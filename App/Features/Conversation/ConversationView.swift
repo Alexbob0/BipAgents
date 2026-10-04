@@ -23,8 +23,11 @@ struct ConversationView: View {
                 let model = ConversationModel(agent: agent, sessionID: sessionID, store: store)
                 self.model = model
                 await model.load()
+                model.reattachIfNeeded()
             }
         }
+        .onAppear { model?.reattachIfNeeded() }
+        .onDisappear { model?.detach() }
     }
 }
 

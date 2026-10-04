@@ -1,6 +1,7 @@
 import Foundation
 import HermesKit
 import Observation
+import UIKit
 import VoiceKit
 
 /// One row of the conversation thread.
@@ -72,6 +73,8 @@ final class ConversationModel {
     private let uploader: (any DocumentUploader)?
     private let bridge: BridgeClient?
     private var streamTask: Task<Void, Never>?
+    /// Keeps the reply streaming for ~30 s after the screen locks, so short replies still arrive live.
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     init(agent: AgentProfile, sessionID: String?, store: AgentStore) {
         self.agent = agent
@@ -126,17 +129,29 @@ final class ConversationModel {
 
     func load() async {
         guard let client, let sessionID else { return }
-        do {
-            async let session = client.session(id: sessionID)
-            async let history = client.messages(sessionID: sessionID)
-            let current = try await session
-            title = current.title
-            items = try await history.flatMap(Self.items(from:))
-            store.noteSession(current, for: agent, preview: latestText)
-            restoreVoiceNotes(sessionID: sessionID)
-        } catch {
-            errorMessage = Self.describe(error)
+        for attempt in 1...3 {
+            do {
+                try await loadOnce(client: client, sessionID: sessionID)
+                errorMessage = nil
+                return
+            } catch let error as HermesError where error.isRetryable && attempt < 3 {
+                // Right after unlocking, Tailscale needs a moment to bring the tunnel back.
+                try? await Task.sleep(for: .seconds(Double(attempt)))
+            } catch {
+                errorMessage = Self.describe(error)
+                return
+            }
         }
+    }
+
+    private func loadOnce(client: HermesClient, sessionID: String) async throws {
+        async let session = client.session(id: sessionID)
+        async let history = client.messages(sessionID: sessionID)
+        let current = try await session
+        title = current.title
+        items = try await history.flatMap(Self.items(from:))
+        store.noteSession(current, for: agent, preview: latestText)
+        restoreVoiceNotes(sessionID: sessionID)
     }
 
     private static func items(from message: HermesMessage) -> [ChatItem] {
@@ -171,6 +186,7 @@ final class ConversationModel {
         replyByVoice = voiceNote != nil && VoiceReplyPolicy.current.shouldReplyByVoice(to: trimmed)
         isRunning = true
         errorMessage = nil
+        beginBackgroundTask()
 
         streamTask = Task {
             do {
@@ -181,15 +197,204 @@ final class ConversationModel {
                     voiceNotes[item.id] = note
                 }
                 let input = MessageInput(text: trimmed, attachments: attachments.map(\.hermesAttachment))
-                for try await event in client.chatStream(sessionID: sessionID, input: input, uploader: uploader) {
-                    apply(event)
+                // A run lives on aibox whatever happens to this connection (screen locked, app in
+                // background) and can be re-attached to afterwards. Inline images are documented for
+                // chat/stream only, and a server that rejects runs falls back to chat/stream too.
+                let hasImages = input.attachments.contains { if case .image = $0 { true } else { false } }
+                var handle: RunHandle?
+                var ackLost = false
+                if !hasImages, !Self.runsUnavailable.contains(agent.id) {
+                    do {
+                        handle = try await client.createRun(input: input, sessionID: sessionID,
+                                                            idempotencyKey: UUID().uuidString, uploader: uploader)
+                    } catch let error as HermesError where (error.status ?? 0) >= 500 {
+                        // Seen on aibox: the run starts, then building the 202 crashes. Never resend (the
+                        // agent would do the task twice): wait for its reply in the transcript instead.
+                        #if DEBUG
+                        print("[run] POST /v1/runs answered \(error), waiting for the reply in the transcript")
+                        #endif
+                        ackLost = true
+                    } catch let error as HermesError where [400, 404, 405, 422].contains(error.status ?? 0) {
+                        // Runs rejected up front: nothing ran, chat/stream is safe.
+                        #if DEBUG
+                        print("[run] POST /v1/runs rejected (\(error)), using chat/stream for this agent")
+                        #endif
+                        Self.runsUnavailable.insert(agent.id)
+                    }
                 }
+                if ackLost {
+                    await waitForReply(to: trimmed, client: client, sessionID: sessionID)
+                } else if let handle {
+                    // No bridge.watch here: Hermes hands each run event to a single subscriber, and the
+                    // bridge would take them all from the app.
+                    runID = handle.runID
+                    Self.activeRuns[sessionID] = handle.runID
+                    Self.listeners[sessionID] = self
+                    try await follow(runID: handle.runID, client: client)
+                } else {
+                    for try await event in client.chatStream(sessionID: sessionID, input: input, uploader: uploader) {
+                        apply(event)
+                    }
+                }
+            } catch is CancellationError {
+            } catch let error as HermesError where error.isRetryable && runID != nil {
+                // chat/stream dropped mid-reply: Hermes may have finished meanwhile; resync once active.
+                await resyncWhenActive()
+            } catch {
+                errorMessage = Self.describe(error)
+            }
+            finishRun()
+        }
+    }
+
+    /// Agents whose server rejected `POST /v1/runs` during this launch.
+    private static var runsUnavailable: Set<UUID> = []
+    /// Runs still in progress, by session: a reopened conversation re-attaches to its reply.
+    private static var activeRuns: [String: String] = [:]
+    /// The model currently following each session's run (only one subscriber gets the events).
+    private static var listeners: [String: ConversationModel] = [:]
+    private var detaching = false
+    /// Stopped listening so another screen could follow the run (see `detach()`).
+    private(set) var wasHandedOff = false
+
+    /// The conversation left the screen: stop listening (the run goes on, `reattachIfNeeded` picks it up).
+    /// Only one subscriber gets a run's events, so a hidden screen must not keep them.
+    func detach() {
+        guard streamTask != nil, let sessionID, Self.activeRuns[sessionID] != nil else { return }
+        detaching = true
+        wasHandedOff = true
+        if Self.listeners[sessionID] === self { Self.listeners[sessionID] = nil }
+        streamTask?.cancel()
+    }
+
+    /// Follows the session's run in progress, if any (conversation reopened while the agent works).
+    func reattachIfNeeded() {
+        guard !isRunning, let client, let sessionID, let id = Self.activeRuns[sessionID] else { return }
+        if let other = Self.listeners[sessionID], other !== self { other.detach() } // e.g. a quick voice note
+        Self.listeners[sessionID] = self
+        wasHandedOff = false
+        #if DEBUG
+        print("[run] reopening \(sessionID), re-attaching to \(id)")
+        #endif
+        isRunning = true
+        errorMessage = nil
+        runID = id
+        streamTask = Task {
+            do {
+                try await follow(runID: id, client: client, reattaching: true)
             } catch is CancellationError {
             } catch {
                 errorMessage = Self.describe(error)
             }
             finishRun()
         }
+    }
+
+    /// Streams a run's events; after a disconnect, re-attaches (status poll + new subscription) until it ends.
+    /// Whether a new subscription replays earlier events is unknown, so a re-attached reply is rebuilt from
+    /// what arrives and finally replaced by the run's complete output.
+    private func follow(runID: String, client: HermesClient, reattaching: Bool = false) async throws {
+        var polls = 0
+        var reattached = reattaching
+        var sawTerminalEvent = false
+        var finalOutput: String?
+        for try await update in RunResumer(client: client).resume(runID: runID) {
+            #if DEBUG
+            if case .status(let run) = update { print("[run] \(runID) status \(run.status)") }
+            if case .expired = update { print("[run] \(runID) expired") }
+            #endif
+            switch update {
+            case .status(let run):
+                polls += 1
+                if polls > 1, !reattached {
+                    reattached = true
+                    dropPartialReply()
+                    interim = "Reconnexion à l’agent…"
+                    #if DEBUG
+                    print("[run] re-attaching to \(runID), status \(run.status)")
+                    #endif
+                }
+                if run.status.isTerminal {
+                    interim = nil
+                    finalOutput = run.outcome.output
+                    switch run.status {
+                    case .failed: items.append(ChatItem(.notice(run.outcome.error ?? "Le tour a échoué.")))
+                    case .cancelled, .interrupted: items.append(ChatItem(.notice("La tâche a été interrompue côté agent.")))
+                    default: break
+                    }
+                } else if reattached {
+                    interim = nil
+                }
+            case .event(let event):
+                if event.isTerminal { sawTerminalEvent = true }
+                switch event.kind {
+                case .assistantCompleted(let outcome), .runCompleted(let outcome):
+                    finalOutput = outcome.output ?? finalOutput
+                    if !reattached { apply(event) }
+                default:
+                    apply(event)
+                }
+            case .expired:
+                break
+            }
+        }
+        try Task.checkCancellation()
+        // Normal case: the events already built the reply.
+        guard reattached || !sawTerminalEvent else { return }
+        if let finalOutput, !finalOutput.isEmpty {
+            dropPartialReply()
+            appendAssistant(finalOutput)
+        } else if reattached || !hasStreamedAssistantText {
+            await load() // nothing usable left in the run: the stored transcript is the truth
+        }
+    }
+
+    /// Removes the assistant text of the current turn (after the last user message).
+    private func dropPartialReply() {
+        guard let lastUser = items.lastIndex(where: { if case .user = $0.kind { true } else { false } }) else { return }
+        let turn = items.index(after: lastUser)...
+        items.replaceSubrange(turn, with: items[turn].filter { if case .assistant = $0.kind { false } else { true } })
+    }
+
+    /// The run was submitted but its id never came back: polls the transcript until an assistant message
+    /// follows `text`, for up to 15 minutes (the agent keeps working even if the app is suspended meanwhile).
+    private func waitForReply(to text: String, client: HermesClient, sessionID: String) async {
+        interim = "L’agent travaille…"
+        let deadline = ContinuousClock.now + .seconds(15 * 60)
+        while ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(3))
+            guard UIApplication.shared.applicationState == .active,
+                  let history = try? await client.messages(sessionID: sessionID),
+                  let asked = history.lastIndex(where: { $0.role == .user && $0.text.contains(text) })
+            else { continue }
+            if history[history.index(after: asked)...].contains(where: { $0.role == .assistant && !$0.text.isEmpty }) { break }
+        }
+        interim = nil
+        await load()
+    }
+
+    /// After a chat/stream connection dropped: wait for the app to be active, then reload the thread.
+    private func resyncWhenActive() async {
+        interim = "Reconnexion à l’agent…"
+        while UIApplication.shared.applicationState != .active {
+            try? await Task.sleep(for: .milliseconds(500))
+            if Task.isCancelled { return }
+        }
+        interim = nil
+        await load()
+    }
+
+    private func beginBackgroundTask() {
+        endBackgroundTask()
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "hermes-reply") { [weak self] in
+            self?.endBackgroundTask()
+        }
+    }
+
+    private func endBackgroundTask() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
     }
 
     private func ensureSession(client: HermesClient, firstMessage: String) async throws -> String {
@@ -314,8 +519,7 @@ final class ConversationModel {
     private func restoreVoiceNotes(sessionID: String) {
         var pending = VoiceNoteStore.shared.entries(for: sessionID)
         #if DEBUG
-        print("[voice-notes] session \(sessionID): \(pending.count) stored — \(pending.map { "\($0.kind.rawValue): \($0.text)" })")
-        for item in items { if case .user(let text, _) = item.kind { print("[voice-notes] history user: \(text.debugDescription)") } }
+        print("[voice-notes] session \(sessionID): \(pending.count) stored")
         #endif
         guard !pending.isEmpty else { return }
         // Hermes may not hand the text back byte for byte (prefixes, punctuation, spacing): compare letters
@@ -351,6 +555,19 @@ final class ConversationModel {
     }
 
     private func finishRun() {
+        if detaching {
+            // Left the screen mid-run: the run goes on and stays registered for re-attachment.
+            detaching = false
+            isRunning = false
+            interim = nil
+            streamTask = nil
+            endBackgroundTask()
+            return
+        }
+        if let sessionID {
+            Self.activeRuns[sessionID] = nil
+            if Self.listeners[sessionID] === self { Self.listeners[sessionID] = nil }
+        }
         if case .assistant(let text, true)? = items.last?.kind {
             items[items.count - 1].kind = .assistant(text: text, isStreaming: false)
         }
@@ -367,6 +584,7 @@ final class ConversationModel {
         interim = nil
         runID = nil
         streamTask = nil
+        endBackgroundTask()
     }
 
     /// Voice note in → voice note out: the whole reply becomes one audio file, played as soon as it is ready.

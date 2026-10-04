@@ -72,6 +72,12 @@ final class QuickVoiceCenter {
         model.send(text: transcript, attachments: [], voiceNote: recording)
         Task {
             while model.isRunning { try? await Task.sleep(for: .milliseconds(300)) }
+            if model.wasHandedOff {
+                // The conversation was opened and follows the reply itself.
+                status[agent.id] = nil
+                if conversations[agent.id] === model { conversations[agent.id] = nil }
+                return
+            }
             let reply = model.items.reversed().lazy.compactMap { item -> String? in
                 if case .assistant(let text, _) = item.kind, !text.isEmpty { text } else { nil }
             }.first
