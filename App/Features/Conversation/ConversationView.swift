@@ -1,4 +1,5 @@
 import HermesKit
+import QuickLook
 import SwiftUI
 
 struct ConversationView: View {
@@ -196,10 +197,43 @@ struct UserBubble: View {
     var text: String
     var attachments: [LocalAttachment]
 
+    @State private var viewing: ViewedPhoto?
+    @State private var quickLook: URL?
+
+    private struct ViewedPhoto: Identifiable {
+        let id = UUID()
+        let image: UIImage
+    }
+
+    private var photos: [(LocalAttachment, UIImage)] {
+        attachments.compactMap { attachment in PhotoThumbnails.image(for: attachment).map { (attachment, $0) } }
+    }
+
+    private var others: [LocalAttachment] {
+        attachments.filter { PhotoThumbnails.image(for: $0) == nil }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(attachments) { attachment in
-                AttachmentChip(attachment: attachment, onDark: true)
+            // Photos as real thumbnails: tap for full screen.
+            ForEach(photos, id: \.0.id) { attachment, image in
+                Button { viewing = ViewedPhoto(image: UIImage(data: attachment.data) ?? image) } label: {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: thumbnailSize(of: image).width, height: thumbnailSize(of: image).height)
+                        .clipShape(.rect(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Photo \(attachment.filename), toucher pour l’agrandir")
+            }
+            // Files: tap opens them in Quick Look when the app kept a copy.
+            ForEach(others) { attachment in
+                Button { quickLook = attachment.fileURL } label: {
+                    AttachmentChip(attachment: attachment, onDark: true)
+                }
+                .buttonStyle(.plain)
+                .disabled(attachment.fileURL == nil)
             }
             if !text.isEmpty {
                 Text(text)
@@ -209,11 +243,21 @@ struct UserBubble: View {
             }
         }
         .foregroundStyle(Theme.onInk)
-        .padding(attachments.isEmpty ? EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14) : EdgeInsets(top: 6, leading: 6, bottom: 10, trailing: 6))
+        .padding(attachments.isEmpty ? EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14) : EdgeInsets(top: 6, leading: 6, bottom: text.isEmpty ? 6 : 10, trailing: 6))
         .background(Theme.ink, in: UnevenRoundedRectangle(topLeadingRadius: 22, bottomLeadingRadius: 22, bottomTrailingRadius: 6, topTrailingRadius: 22, style: .continuous))
         .frame(maxWidth: 300, alignment: .trailing)
         .frame(maxWidth: .infinity, alignment: .trailing)
         .textSelection(.enabled)
+        .fullScreenCover(item: $viewing) { photo in PhotoViewer(image: photo.image) }
+        .quickLookPreview($quickLook)
+    }
+
+    /// Keeps the photo's proportions within 240 × 240 pt.
+    private func thumbnailSize(of image: UIImage) -> CGSize {
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return CGSize(width: 240, height: 240) }
+        let scale = min(240 / size.width, 240 / size.height)
+        return CGSize(width: max(80, size.width * scale), height: max(80, size.height * scale))
     }
 }
 

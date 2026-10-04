@@ -32,6 +32,12 @@ struct LocalAttachment: Identifiable, Equatable {
     var filename: String
     var mimeType: String
     var data: Data
+    /// Where the app keeps it (`AttachmentStore`): opened full screen / in Quick Look.
+    var fileURL: URL? = nil
+    /// Byte size when `data` is not loaded (a stored document).
+    var storedSize: Int? = nil
+
+    var byteCount: Int { storedSize ?? data.count }
 
     var hermesAttachment: Attachment {
         switch kind {
@@ -123,7 +129,19 @@ final class ConversationModel {
     static func demoItems(for agent: AgentProfile) -> [ChatItem] {
         let sheet = LocalAttachment(kind: .document, filename: "sommeil-septembre.xlsx",
                                     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data: Data(count: 48_000))
+        // A drawn « photo » (a sunset over a hill) to review thumbnails and the full-screen viewer.
+        let photoData = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 1200)).jpegData(withCompressionQuality: 0.85) { context in
+            let colors = [UIColor(red: 0.98, green: 0.62, blue: 0.42, alpha: 1).cgColor, UIColor(red: 0.42, green: 0.36, blue: 0.75, alpha: 1).cgColor]
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1])!
+            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: 1200), options: [])
+            UIColor(red: 1, green: 0.85, blue: 0.55, alpha: 1).setFill()
+            UIBezierPath(ovalIn: CGRect(x: 330, y: 520, width: 240, height: 240)).fill()
+            UIColor(red: 0.2, green: 0.45, blue: 0.35, alpha: 1).setFill()
+            UIBezierPath(ovalIn: CGRect(x: -300, y: 760, width: 1500, height: 900)).fill()
+        }
+        let photo = LocalAttachment(kind: .image, filename: "coucher-de-soleil.jpg", mimeType: "image/jpeg", data: photoData)
         return [
+            ChatItem(.user(text: "Regarde le coucher de soleil de ma balade d’hier soir.", attachments: [photo])),
             ChatItem(.user(text: "Je me suis couché tard hier. Je peux reprendre un café cet après-midi ?", attachments: [])),
             ChatItem(.reasoning(text: "Vérifier ses habitudes de sommeil et la demi-vie de la caféine.")),
             ChatItem(.tools([
@@ -164,6 +182,7 @@ final class ConversationModel {
         items = try await history.flatMap(Self.items(from:))
         store.noteSession(current, for: agent, preview: latestText)
         restoreVoiceNotes(sessionID: sessionID)
+        restoreAttachments(sessionID: sessionID)
     }
 
     private static func items(from message: HermesMessage) -> [ChatItem] {
@@ -207,6 +226,13 @@ final class ConversationModel {
                     note.url = VoiceNoteStore.shared.add(.user, text: trimmed, file: note.url, duration: note.duration,
                                                          waveform: note.waveform, sessionID: sessionID)
                     voiceNotes[item.id] = note
+                }
+                if !attachments.isEmpty {
+                    // Hermes keeps only the text: the app keeps the files, to show them again later.
+                    let stored = AttachmentStore.shared.add(text: trimmed, attachments: attachments, sessionID: sessionID)
+                    if let index = items.firstIndex(where: { $0.id == item.id }) {
+                        items[index].kind = .user(text: trimmed, attachments: stored)
+                    }
                 }
                 let input = MessageInput(text: trimmed, attachments: attachments.map(\.hermesAttachment))
                 // A run lives on aibox whatever happens to this connection (screen locked, app in
@@ -636,6 +662,28 @@ final class ConversationModel {
 
 
     /// Re-attaches stored voice notes to the reloaded history (Hermes keeps only the text), in order.
+    /// Puts the photos and files sent back on their messages (Hermes keeps only the text), in order.
+    private func restoreAttachments(sessionID: String) {
+        var pending = AttachmentStore.shared.entries(for: sessionID)
+        guard !pending.isEmpty else { return }
+        func normalized(_ text: String) -> String {
+            String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
+        }
+        for index in items.indices {
+            guard case .user(let text, let current) = items[index].kind, current.isEmpty, !pending.isEmpty else { continue }
+            let history = normalized(text)
+            // The history may add document references to the text: a stored text found inside it matches.
+            // A photo sent without text comes back empty or as a short placeholder.
+            guard let match = pending.firstIndex(where: { entry in
+                let sent = normalized(entry.text)
+                return sent.isEmpty ? history.count <= 12 : history.contains(sent)
+            }) else { continue }
+            let entry = pending.remove(at: match)
+            let restored = AttachmentStore.shared.attachments(of: entry)
+            if !restored.isEmpty { items[index].kind = .user(text: entry.text, attachments: restored) }
+        }
+    }
+
     private func restoreVoiceNotes(sessionID: String) {
         var pending = VoiceNoteStore.shared.entries(for: sessionID)
         guard !pending.isEmpty else { return }

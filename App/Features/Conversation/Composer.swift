@@ -236,7 +236,7 @@ struct AttachmentChip: View {
     }
 
     private var meta: String {
-        let size = ByteCountFormatter.string(fromByteCount: Int64(attachment.data.count), countStyle: .file)
+        let size = ByteCountFormatter.string(fromByteCount: Int64(attachment.byteCount), countStyle: .file)
         return "\(FileBadge.label(for: attachment.filename)) · \(size)"
     }
 }
