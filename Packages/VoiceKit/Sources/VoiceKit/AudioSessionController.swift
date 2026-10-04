@@ -64,12 +64,14 @@ final class AudioSessionController {
         }
         try session.setActive(true)
         #endif
+        if activePurpose == nil { AudioSessionUsage.begin() }
         activePurpose = purpose
     }
 
     func deactivate() {
         guard activePurpose != nil else { return }
         activePurpose = nil
+        AudioSessionUsage.end()
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif

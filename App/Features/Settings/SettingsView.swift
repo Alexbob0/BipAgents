@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var isAddingAgent = false
     @State private var editing: AgentProfile?
     @AppStorage(VoiceReplyPolicy.storageKey) private var voiceReplyPolicy = VoiceReplyPolicy.smart
+    @AppStorage(BipBabble.enabledKey) private var bipSounds = true
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
@@ -44,10 +45,13 @@ struct SettingsView: View {
                     } label: {
                         Label("Réponse vocale à mes vocaux", systemImage: "waveform")
                     }
+                    Toggle(isOn: $bipSounds) {
+                        Label("Sons des Bips", systemImage: "speaker.wave.2.bubble")
+                    }
                 } header: {
                     Text("Voix")
                 } footer: {
-                    Text("« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Live ».")
+                    Text("« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Live ». Les Bips babillent quand tu joues avec eux (sauf en mode silencieux).")
                 }
                 Section("Application") {
                     NavigationLink { DiagnosticsView() } label: {

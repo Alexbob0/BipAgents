@@ -24,6 +24,7 @@ final class VoiceNotePlayer {
             let player = try AVAudioPlayer(contentsOf: url)
             player.play()
             self.player = player
+            AudioSessionUsage.begin()
             playingURL = url
             ticker = Task { [weak self] in
                 while let self, let player = self.player, !Task.isCancelled {
@@ -40,7 +41,10 @@ final class VoiceNotePlayer {
     func stop() {
         ticker?.cancel()
         ticker = nil
-        player?.stop()
+        if let player {
+            player.stop()
+            AudioSessionUsage.end()
+        }
         player = nil
         playingURL = nil
         progress = 0

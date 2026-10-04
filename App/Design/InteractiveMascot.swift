@@ -242,6 +242,7 @@ struct InteractiveMascot: View {
     private func say(_ text: String) {
         bubbleTask?.cancel()
         withAnimation(.spring(duration: 0.3, bounce: 0.4)) { bubble = text }
+        BipBabble.shared.say(text, appearance: appearance, mood: reactionMood)
         bubbleTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
