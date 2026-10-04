@@ -4,6 +4,7 @@ import UserNotifications
 
 /// Push plumbing: notification categories, APNs registration with each agent's bridge,
 /// and the "Approuver / Refuser" actions that resolve a Hermes approval from the lock screen.
+@MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate {
     private(set) var store: AgentStore?
     private(set) var router: Router?
@@ -87,12 +88,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+    // Completion-handler variants on purpose: with the async ones, Swift calls UIKit's completion handler
+    // from a background thread and UIKit aborts (« Call must be made on main thread »).
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list, .sound])
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
+        let action = response.actionIdentifier
+        #if DEBUG
+        print("[push] tapped: action=\(action) agent=\(info["agent"] ?? "-") session=\(info["session_id"] ?? "-") outbox=\(info["outbox_id"] ?? "-") kind=\(info["kind"] ?? "-")")
+        #endif
         let payload = NotificationPayload(
             agent: info["agent"] as? String,
             runID: info["run_id"] as? String,
@@ -100,15 +109,31 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             sessionID: info["session_id"] as? String,
             outboxID: info["outbox_id"] as? String
         )
-        await handle(actionIdentifier: response.actionIdentifier, payload: payload)
+        nonisolated(unsafe) let done = completionHandler // called once, on the main actor
+        Task { @MainActor in
+            await self.handle(actionIdentifier: action, payload: payload)
+            done()
+        }
     }
 
+    @MainActor
     private func handle(actionIdentifier: String, payload: NotificationPayload) async {
         guard let store, let router else {
+            #if DEBUG
+            print("[push] app not ready, tap kept for later")
+            #endif
             pendingTap = (actionIdentifier, payload)
             return
         }
-        guard let agent = store.agents.first(where: { $0.bridgeName == payload.agent?.lowercased() || $0.name == payload.agent }) else { return }
+        guard let agent = store.agents.first(where: { $0.bridgeName == payload.agent?.lowercased() || $0.name == payload.agent }) else {
+            #if DEBUG
+            print("[push] no agent matches \(payload.agent ?? "-") among \(store.agents.map(\.bridgeName))")
+            #endif
+            return
+        }
+        #if DEBUG
+        print("[push] opening \(agent.name), session \(payload.sessionID ?? "-")")
+        #endif
         switch actionIdentifier {
         case Action.approveOnce, Action.deny:
             guard let runID = payload.runID, let client = store.client(for: agent) else { return }
