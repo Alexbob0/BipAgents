@@ -15,7 +15,6 @@ struct Composer: View {
     /// Push-to-talk result, sent right away.
     var onDictated: (String, VoiceRecording?) -> Void
     /// Short tap on the mic: open the hands-free call.
-    var onCall: () -> Void
 
     var appearance: AgentAppearance
 
@@ -27,6 +26,12 @@ struct Composer: View {
     @State private var isImportingFiles = false
     @State private var importError: String?
     @FocusState private var isFocused: Bool
+
+    private var fieldPrompt: Text {
+        dictation.showsHoldHint
+            ? Text("Maintiens le micro pour enregistrer").foregroundStyle(Theme.danger)
+            : Text(placeholder)
+    }
 
     private var canSend: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
@@ -72,13 +77,14 @@ struct Composer: View {
                 }
                 .accessibilityLabel("Joindre une photo ou un fichier")
 
-                TextField(placeholder, text: $text, axis: .vertical)
+                // After a too-short press on the mic, the hint takes the placeholder's place (WhatsApp-style).
+                TextField("", text: $text, prompt: fieldPrompt, axis: .vertical)
                     .font(Theme.body(16))
                     .lineLimit(1...6)
                     .focused($isFocused)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(Theme.field, in: .rect(cornerRadius: 23, style: .continuous))
+                    .background(dictation.showsHoldHint ? Theme.dangerTint : Theme.field, in: .rect(cornerRadius: 23, style: .continuous))
 
                 trailingButton
             }
@@ -88,6 +94,7 @@ struct Composer: View {
         .padding(.bottom, 8)
         .background(.bar)
         .animation(.snappy, value: dictation.isActive)
+        .animation(.snappy, value: dictation.showsHoldHint)
         .photosPicker(isPresented: $isPickingPhotos, selection: $photoItems, maxSelectionCount: 6, matching: .images)
         .fileImporter(isPresented: $isImportingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true, onCompletion: importFiles)
         .onChange(of: photoItems) { _, items in
@@ -132,7 +139,7 @@ struct Composer: View {
             .accessibilityLabel("Envoyer")
             .sensoryFeedback(.impact(weight: .light), trigger: attachments.count)
         } else {
-            DictationButton(voice: voice, controller: dictation, palette: palette, onDictated: onDictated, onTap: onCall)
+            DictationButton(voice: voice, controller: dictation, palette: palette, onDictated: onDictated)
         }
     }
 

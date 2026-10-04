@@ -32,9 +32,7 @@ extension Color {
     }
 
     init(light: UInt32, dark: UInt32) {
-        self.init(uiColor: UIColor { traits in
-            UIColor(Color(hex: traits.userInterfaceStyle == .dark ? dark : light))
-        })
+        self.init(uiColor: .dynamic(light: UIColor(rgb: light), dark: UIColor(rgb: dark)))
     }
 
     /// Parses `#RRGGBB` or `RRGGBB`.
@@ -42,6 +40,19 @@ extension Color {
         let digits = hexString.trimmingCharacters(in: CharacterSet(charactersIn: "# "))
         guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
         self.init(hex: value)
+    }
+}
+
+extension UIColor {
+    convenience init(rgb: UInt32) {
+        self.init(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                  blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+    }
+
+    /// Light/dark color. Built in a nonisolated context on purpose: SwiftUI resolves colors on its async
+    /// render thread, and a provider closure formed in main-actor code would trap there (Swift 6 isolation check).
+    nonisolated static func dynamic(light: UIColor, dark: UIColor) -> UIColor {
+        UIColor { $0.userInterfaceStyle == .dark ? dark : light }
     }
 }
 

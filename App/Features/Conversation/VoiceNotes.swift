@@ -76,12 +76,12 @@ struct VoiceNoteControl: View {
                     .foregroundStyle(accent == foreground ? Theme.ink : .white)
                     .frame(width: 32, height: 32)
                     .background(accent, in: .circle)
-                HStack(spacing: 2) {
+                HStack(spacing: 1.5) {
                     ForEach(Array(waveform.enumerated()), id: \.offset) { index, level in
                         let played = isPlaying && Double(index) / Double(max(waveform.count, 1)) < player.progress
                         Capsule()
                             .fill(foreground.opacity(played || !isPlaying ? 1 : 0.45))
-                            .frame(width: 3, height: 4 + 22 * CGFloat(level))
+                            .frame(width: 2.5, height: 4 + 22 * CGFloat(level))
                     }
                 }
                 .frame(height: 28)
@@ -89,6 +89,8 @@ struct VoiceNoteControl: View {
                     .font(Theme.body(13, weight: .heavy))
                     .monospacedDigit()
                     .foregroundStyle(foreground)
+                    .lineLimit(1)
+                    .fixedSize()
             }
         }
         .buttonStyle(.plain)

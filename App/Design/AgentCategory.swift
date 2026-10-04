@@ -106,7 +106,7 @@ struct AgentPalette: Sendable, Equatable {
         deep = Color(hue: h, saturation: min(1, s * 1.05), brightness: b * 0.62)
         let light = UIColor(hue: h, saturation: s * 0.16, brightness: 0.98, alpha: 1)
         let dark = UIColor(hue: h, saturation: s * 0.45, brightness: 0.22, alpha: 1)
-        tint = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
+        tint = Color(uiColor: .dynamic(light: light, dark: dark))
     }
 
     private static func darkTint(_ main: UInt32) -> UInt32 {

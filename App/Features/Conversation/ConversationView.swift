@@ -70,11 +70,11 @@ private struct ConversationContent: View {
                     model.send(text: text, attachments: attachments, voiceNote: recording)
                     attachments = []
                 },
-                onCall: { isCalling = true },
                 appearance: model.agent.appearance
             )
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar) // full height for the thread, like messaging apps
         .fullScreenCover(isPresented: $isCalling) {
             NavigationStack { CallView(agent: model.agent, sessionID: model.sessionID) }
         }

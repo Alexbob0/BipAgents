@@ -89,18 +89,19 @@ final class ConversationModel {
     }
 
     /// "Écouter" on an assistant message (tap again to stop).
+    /// « Écouter » on a reply: generates its voice message on demand (once, then replays it).
     func toggleSpeech(of item: ChatItem) {
         guard case .assistant(let text, _) = item.kind else { return }
+        if case .ready(let url, _)? = voiceReplies[item.id] {
+            player.toggle(url)
+            return
+        }
         if speakingItemID == item.id {
             voice.stopSpeaking()
             speakingItemID = nil
             return
         }
-        speakingItemID = item.id
-        Task {
-            await voice.speak(text)
-            if speakingItemID == item.id { speakingItemID = nil }
-        }
+        generateVoice(for: item.id, text: text, anchor: text, autoplay: true)
     }
 
     /// Sample thread for `-demo` (design review without a server).
@@ -132,6 +133,7 @@ final class ConversationModel {
             title = current.title
             store.noteSession(current, for: agent)
             items = try await history.flatMap(Self.items(from:))
+            restoreVoiceNotes(sessionID: sessionID)
         } catch {
             errorMessage = Self.describe(error)
         }
@@ -166,13 +168,18 @@ final class ConversationModel {
         let item = ChatItem(.user(text: trimmed, attachments: attachments))
         items.append(item)
         if let voiceNote { voiceNotes[item.id] = voiceNote }
-        replyByVoice = voiceNote != nil && UserDefaults.standard.object(forKey: Self.voiceRepliesKey) as? Bool ?? true
+        replyByVoice = voiceNote != nil && VoiceReplyPolicy.current.shouldReplyByVoice(to: trimmed)
         isRunning = true
         errorMessage = nil
 
         streamTask = Task {
             do {
                 let sessionID = try await ensureSession(client: client, firstMessage: trimmed)
+                if var note = voiceNote {
+                    note.url = VoiceNoteStore.shared.add(.user, text: trimmed, file: note.url, duration: note.duration,
+                                                         waveform: note.waveform, sessionID: sessionID)
+                    voiceNotes[item.id] = note
+                }
                 let input = MessageInput(text: trimmed, attachments: attachments.map(\.hermesAttachment))
                 for try await event in client.chatStream(sessionID: sessionID, input: input, uploader: uploader) {
                     apply(event)
@@ -302,7 +309,46 @@ final class ConversationModel {
         items[index].kind = .approval(request, resolved: resolved)
     }
 
-    static let voiceRepliesKey = "voiceRepliesToVoiceNotes"
+
+    /// Re-attaches stored voice notes to the reloaded history (Hermes keeps only the text), in order.
+    private func restoreVoiceNotes(sessionID: String) {
+        var pending = VoiceNoteStore.shared.entries(for: sessionID)
+        #if DEBUG
+        print("[voice-notes] session \(sessionID): \(pending.count) stored — \(pending.map { "\($0.kind.rawValue): \($0.text)" })")
+        for item in items { if case .user(let text, _) = item.kind { print("[voice-notes] history user: \(text.debugDescription)") } }
+        #endif
+        guard !pending.isEmpty else { return }
+        // Hermes may not hand the text back byte for byte (prefixes, punctuation, spacing): compare letters
+        // and digits only, and accept a stored text found inside the history's.
+        func normalized(_ text: String) -> String {
+            String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
+        }
+        func matches(_ stored: String, _ history: String) -> Bool {
+            let a = normalized(stored), b = normalized(history)
+            return !a.isEmpty && (a == b || b.contains(a))
+        }
+        for item in items {
+            let (kind, text): (VoiceNoteStore.Entry.Kind, String)
+            switch item.kind {
+            case .user(let value, let attachments) where attachments.isEmpty: (kind, text) = (.user, value)
+            case .assistant(let value, _): (kind, text) = (.reply, value)
+            default: continue
+            }
+            guard let index = pending.firstIndex(where: { $0.kind == kind && matches($0.text, text) }) else { continue }
+            let entry = pending.remove(at: index)
+            let url = VoiceNoteStore.shared.url(of: entry)
+            guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { continue }
+            switch kind {
+            case .user:
+                voiceNotes[item.id] = VoiceRecording(url: url, duration: entry.duration, transcript: entry.text, waveform: entry.waveform)
+            case .reply:
+                voiceReplies[item.id] = .ready(url, duration: entry.duration)
+            }
+        }
+        #if DEBUG
+        print("[voice-notes] restored \(voiceNotes.count) voice notes, \(voiceReplies.count) replies")
+        #endif
+    }
 
     private func finishRun() {
         if case .assistant(let text, true)? = items.last?.kind {
@@ -320,33 +366,49 @@ final class ConversationModel {
     }
 
     /// Voice note in → voice note out: the whole reply becomes one audio file, played as soon as it is ready.
+    /// Voice note in, and the policy says the user can't (or asked not to) read: reply with a voice message.
     private func prepareVoiceReply() {
         // The turn's reply text: every assistant item after the last user message.
         guard let lastUser = items.lastIndex(where: { if case .user = $0.kind { true } else { false } }) else { return }
         let replies = items[(lastUser + 1)...].compactMap { item -> (UUID, String)? in
             if case .assistant(let text, _) = item.kind, !text.isEmpty { (item.id, text) } else { nil }
         }
-        guard let target = replies.last?.0 else { return }
-        let text = replies.map(\.1).joined(separator: "\n\n")
+        guard let target = replies.last else { return }
+        generateVoice(for: target.0, text: replies.map(\.1).joined(separator: "\n\n"), anchor: target.1, autoplay: true)
+    }
+
+    /// One audio file for `text` from the bridge (Kyutai), stored with the session and shown under `itemID`.
+    private func generateVoice(for itemID: UUID, text: String, anchor: String, autoplay: Bool) {
         guard let bridge else {
             // No bridge: read it live with the on-device voice instead.
-            Task { await voice.speak(text) }
+            speakLive(itemID: itemID, text: text)
             return
         }
-        voiceReplies[target] = .preparing
+        voiceReplies[itemID] = .preparing
         Task {
             do {
                 let data = try await bridge.messageAudio(text: text, agent: agent.bridgeName)
-                let url = VoiceNotePlayer.cacheURL(name: "reply-\(target.uuidString).mp3")
+                var url = VoiceNotePlayer.cacheURL(name: "reply-\(itemID.uuidString).mp3")
                 try data.write(to: url)
                 let duration = VoiceNotePlayer.duration(of: url)
-                voiceReplies[target] = .ready(url, duration: duration)
-                player.toggle(url)
+                if let sessionID {
+                    url = VoiceNoteStore.shared.add(.reply, text: anchor, file: url, duration: duration, waveform: [], sessionID: sessionID)
+                }
+                voiceReplies[itemID] = .ready(url, duration: duration)
+                if autoplay { player.toggle(url) }
             } catch {
                 // Bridge without /v1/tts/message (older version) or unreachable: read it live instead.
-                voiceReplies[target] = .unavailable
-                await voice.speak(text)
+                voiceReplies[itemID] = nil
+                speakLive(itemID: itemID, text: text)
             }
+        }
+    }
+
+    private func speakLive(itemID: UUID, text: String) {
+        speakingItemID = itemID
+        Task {
+            await voice.speak(text)
+            if speakingItemID == itemID { speakingItemID = nil }
         }
     }
 

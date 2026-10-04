@@ -9,7 +9,10 @@ final class DictationController {
 
     private(set) var phase: Phase = .idle
     private(set) var startedAt: Date?
+    /// "Maintiens pour enregistrer", shown briefly after a too-short press (WhatsApp behaviour).
+    private(set) var showsHoldHint = false
     var dragOffset: CGSize = .zero
+    private var hintTask: Task<Void, Never>?
 
     static let cancelDistance: CGFloat = 90
     static let lockDistance: CGFloat = 80
@@ -25,6 +28,15 @@ final class DictationController {
             // Recorded too: the message is sent as a voice note (audio + transcript).
             let url = VoiceNotePlayer.cacheURL(name: "note-\(UUID().uuidString).m4a")
             do { try await voice.startDictation(recordingTo: url) } catch { cancel(voice) }
+        }
+    }
+
+    func flashHoldHint() {
+        hintTask?.cancel()
+        showsHoldHint = true
+        hintTask = Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            if !Task.isCancelled { showsHoldHint = false }
         }
     }
 
@@ -56,13 +68,12 @@ final class DictationController {
     }
 }
 
-/// Mic button: hold to dictate (release sends, slide left cancels, slide up locks), tap to call.
+/// Mic button: hold to record a voice note (release sends, slide left cancels, slide up locks); a short tap only shows a hint.
 struct DictationButton: View {
     var voice: VoiceEngine
     var controller: DictationController
     var palette: AgentPalette
     var onDictated: (String, VoiceRecording?) -> Void
-    var onTap: () -> Void
 
     @State private var pressStart: Date?
 
@@ -87,9 +98,17 @@ struct DictationButton: View {
         .gesture(controller.phase == .locked ? nil : holdGesture)
         .onTapGesture { if controller.phase == .locked { send() } }
         .sensoryFeedback(.impact(weight: .medium), trigger: controller.phase)
-        .accessibilityLabel(controller.phase == .locked ? "Envoyer la dictée" : "Maintenir pour dicter, toucher pour appeler")
+        .accessibilityLabel(controller.phase == .locked ? "Envoyer le message vocal" : "Maintenir pour enregistrer un message vocal")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction { onTap() }
+        .accessibilityAction {
+            // VoiceOver can't hold: first activation records (locked), the second sends.
+            if controller.phase == .idle {
+                controller.begin(voice)
+                controller.lock()
+            } else {
+                send()
+            }
+        }
     }
 
     private var holdGesture: some Gesture {
@@ -107,8 +126,9 @@ struct DictationButton: View {
                 let held = pressStart.map { Date.now.timeIntervalSince($0) } ?? 0
                 if controller.phase == .locked { return }
                 if held < 0.3 {
+                    // A tap is not a recording: cancel and explain, like WhatsApp.
                     controller.cancel(voice)
-                    onTap()
+                    controller.flashHoldHint()
                 } else if controller.willCancel {
                     controller.cancel(voice)
                 } else {

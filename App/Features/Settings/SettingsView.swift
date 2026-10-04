@@ -5,7 +5,7 @@ struct SettingsView: View {
     @Environment(AgentStore.self) private var store
     @State private var isAddingAgent = false
     @State private var editing: AgentProfile?
-    @AppStorage(ConversationModel.voiceRepliesKey) private var voiceReplies = true
+    @AppStorage(VoiceReplyPolicy.storageKey) private var voiceReplyPolicy = VoiceReplyPolicy.smart
 
     var body: some View {
         List {
@@ -33,13 +33,15 @@ struct SettingsView: View {
                 Button("Ajouter un agent", systemImage: "plus") { isAddingAgent = true }
             }
             Section {
-                Toggle(isOn: $voiceReplies) {
-                    Label("Réponse vocale à mes messages vocaux", systemImage: "waveform")
+                Picker(selection: $voiceReplyPolicy) {
+                    ForEach(VoiceReplyPolicy.allCases) { Text($0.label).tag($0) }
+                } label: {
+                    Label("Réponse vocale à mes vocaux", systemImage: "waveform")
                 }
             } header: {
                 Text("Voix")
             } footer: {
-                Text("Quand tu maintiens le micro, ton message part en vocal et l’agent te répond par un message vocal (Kyutai). Pour une conversation en direct, utilise « Parler ».")
+                Text("« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Parler ».")
             }
             Section("Application") {
                 NavigationLink { DiagnosticsView() } label: {
