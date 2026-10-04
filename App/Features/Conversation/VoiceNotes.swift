@@ -129,6 +129,7 @@ struct VoiceReplyView: View {
     var state: VoiceReplyState
     var palette: AgentPalette
     var player: VoiceNotePlayer
+    var onStop: () -> Void = {}
 
     var body: some View {
         switch state {
@@ -142,6 +143,28 @@ struct VoiceReplyView: View {
             .padding(.horizontal, 12)
             .frame(height: 38)
             .background(palette.tint, in: .capsule)
+        case .streaming:
+            Button(action: onStop) {
+                HStack(spacing: 8) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(palette.deep, in: .circle)
+                    Image(systemName: "waveform")
+                        .symbolEffect(.variableColor.iterative, isActive: true)
+                        .foregroundStyle(palette.deep)
+                    Text("Lecture…")
+                        .font(Theme.body(13, weight: .bold))
+                        .foregroundStyle(palette.deep)
+                }
+                .padding(.leading, 5)
+                .padding(.trailing, 14)
+                .frame(height: 38)
+                .background(palette.tint, in: .capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Arrêter la lecture")
         case .ready(let url, let duration):
             VoiceNoteControl(url: url, duration: duration, waveform: Self.placeholderWave, player: player,
                              foreground: palette.deep, accent: palette.deep)

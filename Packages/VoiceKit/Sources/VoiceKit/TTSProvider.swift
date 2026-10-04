@@ -43,7 +43,7 @@ extension TTSProvider {
 
 extension AsyncThrowingStream where Failure == any Error {
     /// Runs `body` in a task that `yield`s elements; cancelling the consumer cancels the task.
-    static func producing(_ body: @escaping @Sendable (_ yield: (Element) -> Void) async throws -> Void) -> Self
+    public static func producing(_ body: @escaping @Sendable (_ yield: (Element) -> Void) async throws -> Void) -> Self
     where Element: Sendable {
         let (stream, continuation) = makeStream()
         let task = Task {
