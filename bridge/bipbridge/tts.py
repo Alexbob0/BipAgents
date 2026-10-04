@@ -23,6 +23,7 @@ from typing import AsyncIterator, List, Optional, Tuple
 import httpx
 
 from .logs import fields
+from .numbers_fr import prepare_for_synthesis
 from .textproc import normalize_for_speech
 
 log = logging.getLogger("bipbridge.tts")
@@ -142,6 +143,8 @@ class Audio:
 
 
 POCKET_PREFIX = "pocket:"
+POCKET_ATTEMPTS = 2
+POCKET_RETRY_DELAY = 0.5  # seconds
 
 
 @dataclass
@@ -200,6 +203,7 @@ class TtsService:
 
     def _prepare(self, text: str, normalized: bool, max_chars: Optional[int]) -> str:
         clean = text.strip() if normalized else normalize_for_speech(text, self.sentence_max_chars)
+        clean = prepare_for_synthesis(clean)  # numbers in words, CamelCase split, parentheses as pauses
         if not clean:
             raise TtsError("empty text after normalization", status=400)
         limit = max_chars if max_chars is not None else self.max_chars
@@ -219,18 +223,25 @@ class TtsService:
         if hit is not None:
             return Audio(hit.data, hit.content_type, hit.format, hit.sample_rate, hit.channels, cached=True)
         engine, engine_voice = self._route(voice)
-        try:
-            async with engine.scheduler.slot(priority):
-                hit = self._cache_get(key)  # an identical request may have just finished
-                if hit is not None:
-                    return Audio(hit.data, hit.content_type, hit.format, hit.sample_rate, hit.channels, cached=True)
-                audio = await self._call_engine(engine, clean, engine_voice, fmt)
-        except TtsError as exc:
-            if engine is self.kyutai or exc.status < 500:
-                raise
-            log.warning("pocket failed, falling back to kyutai", extra=fields(error=str(exc)))
-            async with self.kyutai.scheduler.slot(priority):
-                return await self._call_engine(self.kyutai, clean, self.default_voice, fmt)
+        attempts = POCKET_ATTEMPTS if engine is self.pocket else 1
+        for attempt in range(1, attempts + 1):
+            try:
+                async with engine.scheduler.slot(priority):
+                    hit = self._cache_get(key)  # an identical request may have just finished
+                    if hit is not None:
+                        return Audio(hit.data, hit.content_type, hit.format, hit.sample_rate, hit.channels, cached=True)
+                    audio = await self._call_engine(engine, clean, engine_voice, fmt)
+                break
+            except TtsError as exc:
+                if engine is self.kyutai or exc.status < 500:
+                    raise
+                if attempt < attempts:
+                    log.info("pocket failed, retrying", extra=fields(error=str(exc)))
+                    await asyncio.sleep(POCKET_RETRY_DELAY)
+                    continue
+                log.warning("pocket failed, falling back to kyutai", extra=fields(error=str(exc), text=clean[:60]))
+                async with self.kyutai.scheduler.slot(priority):
+                    return await self._call_engine(self.kyutai, clean, self.default_voice, fmt)
         self._cache_put(key, audio)
         return audio
 
@@ -250,19 +261,27 @@ class TtsService:
             return
         engine, engine_voice = self._route(voice)
         received = bytearray()
-        try:
-            async for chunk in self._stream_engine(engine, clean, engine_voice, priority):
-                received.extend(chunk)
-                yield chunk
-        except TtsError as exc:
-            if received:
-                return  # cut mid-stream: the client keeps what it already played, nothing is cached
-            if engine is self.kyutai or exc.status < 500:
-                raise
-            log.warning("pocket stream failed, falling back to kyutai", extra=fields(error=str(exc)))
-            async for chunk in self._stream_engine(self.kyutai, clean, self.default_voice, priority):
-                yield chunk
-            return
+        attempts = POCKET_ATTEMPTS if engine is self.pocket else 1
+        for attempt in range(1, attempts + 1):
+            try:
+                async for chunk in self._stream_engine(engine, clean, engine_voice, priority):
+                    received.extend(chunk)
+                    yield chunk
+                break
+            except TtsError as exc:
+                if received:
+                    return  # cut mid-stream: the client keeps what it already played, nothing is cached
+                if engine is self.kyutai or exc.status < 500:
+                    raise
+                if attempt < attempts:
+                    # Usually busy finishing a cancelled request (one generation at a time): try once more.
+                    log.info("pocket stream failed, retrying", extra=fields(error=str(exc)))
+                    await asyncio.sleep(POCKET_RETRY_DELAY)
+                    continue
+                log.warning("pocket stream failed, falling back to kyutai", extra=fields(error=str(exc), text=clean[:60]))
+                async for chunk in self._stream_engine(self.kyutai, clean, self.default_voice, priority):
+                    yield chunk
+                return
         if received:
             self._cache_put(key, Audio(bytes(received), FORMATS["pcm16"][1], "pcm16"))
 
