@@ -42,6 +42,40 @@ struct BridgeClient: Sendable {
         try await send(request)
     }
 
+    /// `GET /v1/runs/{id}/events`: the run's Hermes events relayed by the bridge, replayed from the start on each
+    /// connection. While the app listens, the bridge pushes nothing; once it leaves, approvals and « reply ready »
+    /// are pushed. Throws `HermesError.http(404…)` on a bridge without this route.
+    func runEvents(agent: String, runID: String, sessionID: String?) -> AsyncThrowingStream<HermesEvent, any Error> {
+        var components = URLComponents(url: baseURL.appending(path: "v1/runs/\(runID)/events"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "agent", value: agent)]
+            + (sessionID.map { [URLQueryItem(name: "session_id", value: $0)] } ?? [])
+        var request = URLRequest(url: components.url!, timeoutInterval: 60) // keepalives every 10 s
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        authorize(&request)
+        let session = session
+        let (stream, continuation) = AsyncThrowingStream<HermesEvent, any Error>.makeStream()
+        let task = Task {
+            do {
+                let (bytes, response) = try await session.bytes(for: request)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                guard (200..<300).contains(status) else {
+                    if status == 401 || status == 403 { throw HermesError.unauthorized(message: "Clé du bridge refusée") }
+                    throw HermesError.http(status: status, message: nil, code: nil)
+                }
+                for try await sse in bytes.sseEvents {
+                    if let event = HermesEvent(sse: sse) { continuation.yield(event) }
+                }
+                continuation.finish()
+            } catch let error as URLError {
+                continuation.finish(throwing: error.code == .cancelled ? CancellationError() : HermesError.unreachable(error.code))
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in task.cancel() }
+        return stream
+    }
+
     func outbox(since: Date? = nil, agent: String? = nil) async throws -> [OutboxItem] {
         var components = URLComponents(url: baseURL.appending(path: "v1/outbox"), resolvingAgainstBaseURL: false)!
         var items: [URLQueryItem] = []

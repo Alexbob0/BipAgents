@@ -237,8 +237,8 @@ final class ConversationModel {
                 if ackLost {
                     await waitForReply(to: trimmed, client: client, sessionID: sessionID)
                 } else if let handle {
-                    // No bridge.watch here: Hermes hands each run event to a single subscriber, and the
-                    // bridge would take them all from the app.
+                    // Hermes hands each run event to a single subscriber: `follow` goes through the bridge
+                    // (which then also knows when to push), never bridge.watch + Hermes side by side.
                     runID = handle.runID
                     Self.activeRuns[sessionID] = handle.runID
                     Self.listeners[sessionID] = self
@@ -340,17 +340,80 @@ final class ConversationModel {
         }
     }
 
+    /// Bridges without `GET /v1/runs/{id}/events` (older version), by agent.
+    private static var bridgeWithoutRunEvents: Set<UUID> = []
+
+    /// Follows a run until it ends: through the bridge when it has the route (one Hermes subscription shared
+    /// with the bridge's push logic, replayed from the start on every reconnection), else from Hermes directly.
+    private func follow(runID: String, client: HermesClient, reattaching: Bool = false) async throws {
+        if let bridge, !Self.bridgeWithoutRunEvents.contains(agent.id) {
+            if try await followViaBridge(bridge, runID: runID, reattaching: reattaching) { return }
+            // The bridge lost the run (restarted, gone after 15 min): Hermes still knows its status.
+            try await followViaHermes(runID: runID, client: client, reattaching: true)
+        } else {
+            try await followViaHermes(runID: runID, client: client, reattaching: reattaching)
+        }
+    }
+
+    /// Returns false when the bridge cannot follow this run (older bridge, run unknown to it).
+    private func followViaBridge(_ bridge: BridgeClient, runID: String, reattaching: Bool) async throws -> Bool {
+        let reconnecting = "Reconnexion à l’agent…"
+        var failures = 0
+        var backoff = Backoff()
+        var connections = 0
+        while true {
+            try Task.checkCancellation()
+            if connections > 0 || reattaching { clearCurrentTurn() } // the bridge replays the run from its start
+            if connections > 0 { interim = reconnecting }
+            connections += 1
+            do {
+                for try await event in bridge.runEvents(agent: agent.bridgeName, runID: runID, sessionID: sessionID) {
+                    failures = 0
+                    backoff.reset()
+                    if interim == reconnecting { interim = nil }
+                    if event.type == "bridge.error" {
+                        let code = event.raw["code"]?.stringValue
+                        #if DEBUG
+                        print("[run] bridge error on \(runID): \(code ?? "?")")
+                        #endif
+                        if code == "hermes_unreachable" { continue } // the bridge keeps retrying
+                        return false
+                    }
+                    apply(event)
+                    if event.isTerminal { return true }
+                }
+            } catch let error as HermesError where error.status == 404 {
+                Self.bridgeWithoutRunEvents.insert(agent.id)
+                return false
+            } catch let error as HermesError where error.isRetryable {
+                // Screen locked, app in background, Tailscale waking up: reconnect and replay.
+                failures += 1
+                #if DEBUG
+                print("[run] bridge stream for \(runID) lost (\(error)), retry \(failures)")
+                #endif
+                if failures > 12 { throw error }
+            }
+            try await Task.sleep(for: backoff.next())
+        }
+    }
+
+    /// Removes everything after the last user message (a replayed run rebuilds it).
+    private func clearCurrentTurn() {
+        guard let lastUser = items.lastIndex(where: { if case .user = $0.kind { true } else { false } }) else { return }
+        items.removeSubrange(items.index(after: lastUser)...)
+        isWaitingForApproval = false
+    }
+
     /// Streams a run's events; after a disconnect, re-attaches (status poll + new subscription) until it ends.
     /// Whether a new subscription replays earlier events is unknown, so a re-attached reply is rebuilt from
     /// what arrives and finally replaced by the run's complete output.
-    private func follow(runID: String, client: HermesClient, reattaching: Bool = false) async throws {
+    private func followViaHermes(runID: String, client: HermesClient, reattaching: Bool) async throws {
         var polls = 0
         var reattached = reattaching
         var sawTerminalEvent = false
         var finalOutput: String?
         for try await update in RunResumer(client: client).resume(runID: runID) {
             #if DEBUG
-            if case .status(let run) = update { print("[run] \(runID) status \(run.status)") }
             if case .expired = update { print("[run] \(runID) expired") }
             #endif
             switch update {
@@ -568,9 +631,6 @@ final class ConversationModel {
     /// Re-attaches stored voice notes to the reloaded history (Hermes keeps only the text), in order.
     private func restoreVoiceNotes(sessionID: String) {
         var pending = VoiceNoteStore.shared.entries(for: sessionID)
-        #if DEBUG
-        print("[voice-notes] session \(sessionID): \(pending.count) stored")
-        #endif
         guard !pending.isEmpty else { return }
         // Hermes may not hand the text back byte for byte (prefixes, punctuation, spacing): compare letters
         // and digits only, and accept a stored text found inside the history's.
@@ -599,9 +659,6 @@ final class ConversationModel {
                 voiceReplies[item.id] = .ready(url, duration: entry.duration)
             }
         }
-        #if DEBUG
-        print("[voice-notes] restored \(voiceNotes.count) voice notes, \(voiceReplies.count) replies")
-        #endif
     }
 
     private func finishRun() {

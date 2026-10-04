@@ -378,9 +378,6 @@ public final class VoiceEngine {
         Task { [weak self] in
             for await text in session.transcripts {
                 guard let self, self.sink.isCurrent(session) else { continue }
-                #if DEBUG
-                print("[voice] partial: \(text)")
-                #endif
                 self.partialTranscript = text
             }
         }

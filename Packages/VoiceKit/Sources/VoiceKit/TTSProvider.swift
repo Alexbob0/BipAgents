@@ -133,9 +133,9 @@ public struct BridgeTTSProvider: TTSProvider {
         let chunk = PCMChunk(samples: Data(samples), sampleRate: rate.flatMap { $0 > 0 ? $0 : nil } ?? Self.defaultSampleRate)
         #if DEBUG
         let audio = Double(samples.count) / 2 / chunk.sampleRate
-        print(String(format: "[voice] bridge TTS %.2fs for %.2fs of audio (%d chars, cache %@): “%@”",
+        print(String(format: "[voice] bridge TTS %.2fs for %.2fs of audio (%d chars, cache %@)",
                      Date.now.timeIntervalSince(started), audio, sentence.count,
-                     http.value(forHTTPHeaderField: "X-Cache") ?? "?", String(sentence.prefix(40))))
+                     http.value(forHTTPHeaderField: "X-Cache") ?? "?"))
         #endif
         return chunk
     }
@@ -179,9 +179,9 @@ public struct BridgeTTSProvider: TTSProvider {
         }
         emit()
         #if DEBUG
-        print(String(format: "[voice] bridge TTS stream: first audio %.2fs, done %.2fs for %.2fs of audio (%d chars): “%@”",
+        print(String(format: "[voice] bridge TTS stream: first audio %.2fs, done %.2fs for %.2fs of audio (%d chars)",
                      firstAudio ?? -1, Date.now.timeIntervalSince(started), Double(total) / 2 / sampleRate,
-                     text.count, String(text.prefix(40))))
+                     text.count))
         #endif
     }
 }
