@@ -174,3 +174,8 @@ def test_unwrap_cron_keeps_the_job_name_and_output():
     assert unwrap_cron(wrapped) == ("test-push-bipagents", "Bonjour Alex, ceci est un test.")
     assert unwrap_cron("Cronjob Response: Morning feeds\n-------------\n\nLe point du matin.") == ("Morning feeds", "Le point du matin.")
     assert unwrap_cron("  Un message normal.  ") == (None, "Un message normal.")
+    hermes_021 = ("Cronjob Response: Test push propre (job_id: 1a2b3c4d5e6f)\n-------------\n\nCoucou, test réussi.\n\n"
+                  'To stop or manage this job, send me a new message (e.g. "stop reminder Test push propre").')
+    assert unwrap_cron(hermes_021) == ("Test push propre", "Coucou, test réussi.")
+    both = hermes_021 + "\n\nNote: The agent cannot see this message, and therefore cannot respond to it."
+    assert unwrap_cron(both) == ("Test push propre", "Coucou, test réussi.")

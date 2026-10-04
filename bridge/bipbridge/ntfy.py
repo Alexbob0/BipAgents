@@ -31,7 +31,8 @@ _SESSION_TAG = re.compile(r"^session[:_=](.+)$")
 
 
 _CRON_HEADER = re.compile(r"^\s*Cronjob Response:\s*(?P<name>[^\n]*?)\s*(?:\(job_id:\s*[\w-]+\))?\s*\n\s*-{3,}\s*\n?")
-_CRON_FOOTER = re.compile(r"\n\s*Note: The agent cannot see this message[^\n]*\s*$")
+# Footer notes Hermes appends (wording varies by version), possibly several.
+_CRON_FOOTER = re.compile(r"\n\s*(?:Note: The agent cannot see this message|To stop or manage this job)[^\n]*\s*$")
 
 
 def unwrap_cron(text: str) -> Tuple[Optional[str], str]:
@@ -41,7 +42,12 @@ def unwrap_cron(text: str) -> Tuple[Optional[str], str]:
     match = _CRON_HEADER.match(text)
     if not match:
         return None, text
-    body = _CRON_FOOTER.sub("", text[match.end():]).strip()
+    body = text[match.end():].strip()
+    while True:
+        trimmed = _CRON_FOOTER.sub("", "\n" + body).strip()
+        if trimmed == body:
+            break
+        body = trimmed
     return (match.group("name").strip() or None), body
 
 
