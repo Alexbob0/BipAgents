@@ -174,10 +174,18 @@ extension AgentStore {
                          appearance: AgentAppearance(category: .daily)),
         ]
         // `-demoAgents 5`: more sample agents, to review the compact home cards.
-        let extra: [(String, AgentCategory)] = [("Budget", .finance), ("Boulot", .work), ("Maison", .home), ("Atelier", .creative)]
-        for (name, category) in extra.prefix(max(0, UserDefaults.standard.integer(forKey: "demoAgents") - 2)) {
-            store.agents.append(AgentProfile(config: AgentConfig(name: name, baseURL: URL(string: "https://aibox.example.ts.net:8650")!),
-                                             appearance: AgentAppearance(category: category)))
+        let extra: [(String, AgentCategory, String, String)] = [
+            ("Budget", .finance, "Dépenses d’octobre", "Tu as dépensé 420 € en courses ce mois-ci, 12 % de moins qu’en septembre."),
+            ("Boulot", .work, "Réunion de lundi", "J’ai préparé l’ordre du jour et envoyé l’invitation à l’équipe pour 10 h."),
+            ("Maison", .home, "Chaudière", "Le technicien passe jeudi entre 8 h et 12 h, pense à laisser l’accès au garage."),
+            ("Atelier", .creative, "Histoire du soir", "Il était une fois un petit renard qui collectionnait les étoiles filantes…"),
+        ]
+        for (index, (name, category, title, preview)) in extra.prefix(max(0, UserDefaults.standard.integer(forKey: "demoAgents") - 2)).enumerated() {
+            let agent = AgentProfile(config: AgentConfig(name: name, baseURL: URL(string: "https://aibox.example.ts.net:8650")!),
+                                     appearance: AgentAppearance(category: category))
+            store.agents.append(agent)
+            store.latestSession[agent.id] = HermesSession(id: "demo-extra-\(index)", title: title,
+                                                          updatedAt: .now.addingTimeInterval(-Double(index + 2) * 3600), lastMessagePreview: preview)
         }
         for agent in store.agents { store.reachability[agent.id] = .online }
         store.latestSession[store.agents[0].id] = HermesSession(id: "demo", title: "Plan sommeil du soir", updatedAt: .now.addingTimeInterval(-900),

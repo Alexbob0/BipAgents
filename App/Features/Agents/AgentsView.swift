@@ -74,19 +74,42 @@ struct AgentCard: View {
     }
 
     private var palette: AgentPalette { agent.appearance.palette }
-    private var buttonHeight: CGFloat { compact ? 42 : 50 }
+    private var buttonHeight: CGFloat { compact ? 40 : 50 }
+
+    /// « 15 min », « 2 h », « 3 j »: how old the last message is, as short as possible.
+    static func shortAge(of date: Date, now: Date = .now) -> String {
+        let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
+        if minutes < 1 { return "à l’instant" }
+        if minutes < 60 { return "\(minutes) min" }
+        if minutes < 24 * 60 { return "\(minutes / 60) h" }
+        return "\(minutes / (24 * 60)) j"
+    }
 
     var body: some View {
-        VStack(spacing: compact ? 10 : 12) {
+        VStack(spacing: compact ? 8 : 12) {
             HStack(alignment: .center, spacing: 12) {
                 NavigationLink(value: AgentRoute.sessions(agent)) {
-                    VStack(alignment: .leading, spacing: compact ? 4 : 6) {
-                        Text(agent.name)
-                            .font(Theme.display(compact ? 21 : 25))
-                            .foregroundStyle(Theme.ink)
-                        HStack(spacing: 8) {
-                            CategoryChip(appearance: agent.appearance)
-                            ReachabilityLabel(reachability: reachability)
+                    Group {
+                        if compact {
+                            // One line: name, category, online dot.
+                            HStack(spacing: 8) {
+                                Text(agent.name)
+                                    .font(Theme.display(20))
+                                    .foregroundStyle(Theme.ink)
+                                    .lineLimit(1)
+                                CategoryChip(appearance: agent.appearance)
+                                ReachabilityLabel(reachability: reachability, showsText: false)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(agent.name)
+                                    .font(Theme.display(25))
+                                    .foregroundStyle(Theme.ink)
+                                HStack(spacing: 8) {
+                                    CategoryChip(appearance: agent.appearance)
+                                    ReachabilityLabel(reachability: reachability)
+                                }
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -94,8 +117,8 @@ struct AgentCard: View {
                 }
                 .buttonStyle(.plain)
                 // Outside the link: tapping the Bip makes it react instead of opening the agent.
-                InteractiveMascot(appearance: agent.appearance, baseMood: mood, size: compact ? 64 : 92, bubbleEdge: .leading)
-                    .padding(.vertical, compact ? -14 : -22)
+                InteractiveMascot(appearance: agent.appearance, baseMood: mood, size: compact ? 48 : 92, bubbleEdge: .leading)
+                    .padding(.vertical, compact ? -10 : -22)
             }
             .zIndex(1) // the Bip stays above the preview below when dragged or jumping
 
@@ -109,6 +132,24 @@ struct AgentCard: View {
                 .transition(.opacity)
             } else if let latest, let preview = latest.lastMessagePreview {
                 NavigationLink(value: AgentRoute.conversation(agent, sessionID: latest.id)) {
+                    if compact {
+                        // One line: « Title · latest message », date on the right.
+                        HStack(spacing: 8) {
+                            (Text(latest.title.map { "\($0) · " } ?? "").font(Theme.body(14, weight: .heavy)).foregroundStyle(Theme.muted)
+                                + Text(preview).font(Theme.body(14)).foregroundStyle(Theme.ink))
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            if let date = latest.updatedAt {
+                                Text(Self.shortAge(of: date))
+                                    .font(Theme.body(12, weight: .heavy))
+                                    .foregroundStyle(Theme.muted)
+                                    .fixedSize()
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                        .background(Theme.card, in: .rect(cornerRadius: 16, style: .continuous))
+                    } else {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
                             Text(latest.title ?? "Dernière conversation")
@@ -120,15 +161,16 @@ struct AgentCard: View {
                         .font(Theme.body(12.5, weight: .heavy))
                         .foregroundStyle(Theme.muted)
                         Text(preview)
-                            .font(Theme.body(compact ? 14 : 15))
+                            .font(Theme.body(15))
                             .foregroundStyle(Theme.ink)
-                            .lineLimit(compact ? 1 : 2)
+                            .lineLimit(2)
                             .multilineTextAlignment(.leading)
                     }
                     .padding(.horizontal, 14)
-                    .padding(.vertical, compact ? 9 : 12)
+                    .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.card, in: .rect(cornerRadius: 18, style: .continuous))
+                    }
                 }
                 .buttonStyle(.plain)
             }
@@ -148,7 +190,7 @@ struct AgentCard: View {
             }
             .labelStyle(.compactPill)
         }
-        .padding(compact ? 14 : 18)
+        .padding(compact ? 12 : 18)
         .background(palette.tint, in: .rect(cornerRadius: 30, style: .continuous))
         .animation(.snappy, value: quickStatus)
     }
@@ -184,12 +226,15 @@ struct CategoryChip: View {
 
 struct ReachabilityLabel: View {
     var reachability: AgentReachability
+    var showsText = true
 
     var body: some View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 7, height: 7)
-            Text(reachability.label)
+            if showsText { Text(reachability.label) }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(reachability.label)
         .font(Theme.body(13, weight: .bold))
         .foregroundStyle(Theme.ink2)
     }
