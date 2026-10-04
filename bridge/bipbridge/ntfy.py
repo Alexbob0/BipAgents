@@ -14,7 +14,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional, Set, Tuple
 
 import httpx
 
@@ -28,6 +28,21 @@ log = logging.getLogger("bipbridge.ntfy")
 
 BACKOFF_START, BACKOFF_MAX = 0.5, 8.0
 _SESSION_TAG = re.compile(r"^session[:_=](.+)$")
+
+
+_CRON_HEADER = re.compile(r"^\s*Cronjob Response:\s*(?P<name>[^\n]*?)\s*(?:\(job_id:\s*[\w-]+\))?\s*\n\s*-{3,}\s*\n?")
+_CRON_FOOTER = re.compile(r"\n\s*Note: The agent cannot see this message[^\n]*\s*$")
+
+
+def unwrap_cron(text: str) -> Tuple[Optional[str], str]:
+    """Hermes wraps cron deliveries in a header (« Cronjob Response: <job> (job_id: …) » + dashes) and a
+    footer note. Returns ``(job name, agent output)``; other messages come back unchanged."""
+    text = text.strip()
+    match = _CRON_HEADER.match(text)
+    if not match:
+        return None, text
+    body = _CRON_FOOTER.sub("", text[match.end():]).strip()
+    return (match.group("name").strip() or None), body
 
 
 def auth_header(token: Optional[str]) -> Dict[str, str]:
@@ -53,10 +68,10 @@ class OutboxService:
         return os.path.join(self.config.outbox.audio_dir, f"{item_id}.mp3")
 
     async def ingest(self, agent: AgentConfig, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        text = str(message.get("message") or "").strip()
+        job_title, text = unwrap_cron(str(message.get("message") or ""))
         if not text:
             return None
-        title = message.get("title") if isinstance(message.get("title"), str) else None
+        title = message.get("title") if isinstance(message.get("title"), str) else job_title
         session_id = None
         for tag in message.get("tags") or []:
             match = _SESSION_TAG.match(str(tag))

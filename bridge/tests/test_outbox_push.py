@@ -165,3 +165,12 @@ async def test_apns_jwt_refresh_and_retry(p8_path):
         lambda r: httpx.Response(400, json={"reason": "BadDeviceToken"}))))
     result = await bad.send("c" * 64, {"aps": {}}, environment="sandbox")
     assert result.token_is_dead
+
+
+def test_unwrap_cron_keeps_the_job_name_and_output():
+    from bipbridge.ntfy import unwrap_cron
+    wrapped = ("Cronjob Response: test-push-bipagents (job_id: 0681ac73805e)\n-------------\n\n"
+               "Bonjour Alex, ceci est un test.\n\nNote: The agent cannot see this message, and therefore cannot respond to it.")
+    assert unwrap_cron(wrapped) == ("test-push-bipagents", "Bonjour Alex, ceci est un test.")
+    assert unwrap_cron("Cronjob Response: Morning feeds\n-------------\n\nLe point du matin.") == ("Morning feeds", "Le point du matin.")
+    assert unwrap_cron("  Un message normal.  ") == (None, "Un message normal.")
