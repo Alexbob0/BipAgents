@@ -211,3 +211,32 @@ def test_tts_stream_errors_before_audio_are_http_errors(client):
     assert client.post("/v1/tts/stream", headers=AUTH, json={"text": "a", "agent": "Nope"}).status_code == 404
     client.backend.kyutai_status = 500
     assert client.post("/v1/tts/stream", headers=AUTH, json={"text": "Panne."}).status_code == 502
+
+
+def test_pocket_voices_go_to_pocket_tts(client):
+    text = "Coucou, on marche un peu ?"
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": text, "voice": "pocket:loutre"})
+    assert resp.status_code == 200
+    sent = client.backend.pocket_inputs[-1]
+    assert sent["voice"] == "loutre" and sent["format"] == "pcm16"
+    assert resp.content == pcm_for(sent["input"][::-1])
+    kyutai_calls = len(client.backend.kyutai_inputs)
+    whole = client.post("/v1/tts/message", headers=AUTH, json={"text": text, "voice": "pocket:loutre"})
+    assert whole.status_code == 200 and whole.content.startswith(b"ID3pocket")
+    assert client.backend.pocket_inputs[-1]["response_format"] == "mp3"
+    assert len(client.backend.kyutai_inputs) == kyutai_calls  # Kyutai untouched
+    assert client.get("/health").json()["pocket"] is True
+
+
+def test_pocket_down_falls_back_to_kyutai_default_voice(client):
+    client.backend.pocket_status = 503
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": "Pocket est en panne.", "voice": "pocket:lutin"})
+    assert resp.status_code == 200
+    assert client.backend.kyutai_inputs[-1]["voice"] == "5476"
+    assert resp.content == pcm_for(client.backend.kyutai_inputs[-1]["input"])
+    sentence = client.post("/v1/tts/sentence", headers=AUTH, json={"text": "Toujours en panne.", "voice": "pocket:lutin"})
+    assert sentence.status_code == 200 and client.backend.kyutai_inputs[-1]["voice"] == "5476"
+    # The fallback audio is not cached under the Pocket voice: once Pocket is back, it is used.
+    client.backend.pocket_status = 200
+    again = client.post("/v1/tts/stream", headers=AUTH, json={"text": "Pocket est en panne.", "voice": "pocket:lutin"})
+    assert client.backend.pocket_inputs[-1]["voice"] == "lutin" and again.content != resp.content

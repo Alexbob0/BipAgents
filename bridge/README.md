@@ -125,6 +125,7 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 | `bridge_key` | — (obligatoire) | clé Bearer unique de l'app (≥ 32 car., `python -m bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | écoute locale |
 | `[kyutai] url`, `default_voice` | `http://127.0.0.1:8097`, `5476` | TTS |
+| `[pocket] url` | absent (désactivé) | Kyutai Pocket TTS pour les voix `pocket:<nom>` des Bips |
 | `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push désactivé si vide | |
 | `[push] previews` | `false` | `false` : corps de notification générique, le texte transite par le tailnet |
@@ -178,6 +179,13 @@ quelle que soit la longueur du texte), en-têtes `X-Sample-Rate`, `X-Channels`, 
 Les erreurs survenues avant le premier octet audio sont des erreurs HTTP classiques (400, 404, 413 au-delà de
 8000 car., 502). Un Kyutai sans route de streaming (404) est remplacé par une synthèse en un bloc. Un flux complet
 est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si le bridge ne connaît pas la route.
+
+### Voix et moteurs
+`voice` (corps des routes TTS, ou `voice` d'un agent dans la config) : une voix Kyutai (`5476`, `4193`, `5207`, chemin
+`cml-tts/fr/…`) passe par Kyutai 1.6B (GPU) ; une voix `pocket:<nom>` (`pocket:loutre`, `pocket:chat2`, `pocket:lutin`,
+`pocket:ours`, `pocket:colibri`, cf. `voices/french/`) passe par Kyutai Pocket TTS (CPU, section `[pocket]`), avec sa
+propre file d'attente. Si Pocket n'est pas configuré, est injoignable ou échoue avant le premier son, la requête
+retombe sur la voix Kyutai par défaut (cet audio-là n'est pas mis en cache). `/health` indique `"pocket": true|false|null`.
 
 ### `WS /v1/voice`
 Client → serveur (texte JSON) :

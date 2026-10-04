@@ -85,6 +85,8 @@ class Config:
     kyutai_url: str = "http://127.0.0.1:8097"
     kyutai_timeout: float = 120.0
     default_voice: str = "5476"
+    # Kyutai Pocket TTS (CPU) for the Bips' voices, used by voices named "pocket:<name>". None = off.
+    pocket_url: Optional[str] = None
     ntfy_url: str = "http://127.0.0.1:8645"
     push_previews: bool = False
     watch_followed_runs: bool = True
@@ -149,6 +151,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
     data_dir = _expand(str(data.get("data_dir", DEFAULT_DATA_DIR)))
 
     kyutai = data.get("kyutai", {}) or {}
+    pocket = data.get("pocket", {}) or {}
     ntfy = data.get("ntfy", {}) or {}
     push = data.get("push", {}) or {}
     apns_t = data.get("apns", {}) or {}
@@ -218,6 +221,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         kyutai_url=str(kyutai.get("url", "http://127.0.0.1:8097")).rstrip("/"),
         kyutai_timeout=float(kyutai.get("timeout_seconds", 120)),
         default_voice=str(kyutai.get("default_voice", "5476")),
+        pocket_url=str(pocket["url"]).rstrip("/") if pocket.get("url") else None,
         ntfy_url=str(ntfy.get("url", "http://127.0.0.1:8645")).rstrip("/"),
         push_previews=bool(push.get("previews", False)),
         watch_followed_runs=bool(push.get("watch_followed_runs", True)),
