@@ -90,32 +90,33 @@ struct InboxView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Ce que tes agents t’envoient d’eux-mêmes")
-                    .font(Theme.body(15))
-                    .foregroundStyle(Theme.ink2)
-                filters
-                if let error = inbox.errorMessage { NoticeRow(text: error, isError: true) }
-                if visible.isEmpty && !inbox.isLoading {
-                    emptyState
-                }
-                ForEach(visible) { entry in
-                    InboxCard(entry: entry, isPlaying: inbox.playingID == entry.id, isUnread: entry.item.createdAt > inbox.lastSeen) {
-                        Task { await inbox.togglePlayback(entry, store: agents) }
-                    } reply: {
-                        router.open(.conversation(entry.agent, sessionID: entry.item.sessionID))
-                    } replyByVoice: {
-                        router.open(.call(entry.agent))
+        VStack(spacing: 0) {
+            ScreenHeader(overline: "Messages de tes agents", title: "Boîte")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    filters
+                    if let error = inbox.errorMessage { NoticeRow(text: error, isError: true) }
+                    if visible.isEmpty && !inbox.isLoading {
+                        emptyState
+                    }
+                    ForEach(visible) { entry in
+                        InboxCard(entry: entry, isPlaying: inbox.playingID == entry.id, isUnread: entry.item.createdAt > inbox.lastSeen) {
+                            Task { await inbox.togglePlayback(entry, store: agents) }
+                        } reply: {
+                            router.open(.conversation(entry.agent, sessionID: entry.item.sessionID))
+                        } replyByVoice: {
+                            router.open(.call(entry.agent))
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .refreshable { await inbox.refresh(agents: agents) }
         }
         .background(Theme.background)
-        .navigationTitle("Boîte")
-        .refreshable { await inbox.refresh(agents: agents) }
+        .toolbar(.hidden, for: .navigationBar)
         .onDisappear { inbox.markAllSeen() }
     }
 

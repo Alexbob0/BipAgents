@@ -5,6 +5,7 @@ struct SessionsView: View {
     let agent: AgentProfile
 
     @Environment(AgentStore.self) private var store
+    @Environment(Router.self) private var router
     @State private var sessions: [HermesSession] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -75,11 +76,15 @@ struct SessionsView: View {
                 CategoryChip(appearance: agent.appearance)
                 ReachabilityLabel(reachability: store.reachability[agent.id] ?? .unknown)
             }
+            // Buttons, not NavigationLinks: two links in one List row act as a single cell and a tap
+            // pushed both (the call ended up hidden under the new conversation).
             HStack(spacing: 10) {
-                NavigationLink(value: AgentRoute.call(agent)) { Label("Appeler", systemImage: "phone.fill") }
+                Button { router.agentsPath.append(AgentRoute.call(agent)) } label: { Label("Appeler", systemImage: "phone.fill") }
                     .buttonStyle(.pill(.primary, height: 46))
-                NavigationLink(value: AgentRoute.conversation(agent, sessionID: nil)) { Label("Nouvelle", systemImage: "square.and.pencil") }
-                    .buttonStyle(.pill(.secondary, height: 46))
+                Button { router.agentsPath.append(AgentRoute.conversation(agent, sessionID: nil)) } label: {
+                    Label("Nouvelle", systemImage: "square.and.pencil")
+                }
+                .buttonStyle(.pill(.secondary, height: 46))
             }
             .padding(.top, 10)
             .padding(.horizontal, 40)

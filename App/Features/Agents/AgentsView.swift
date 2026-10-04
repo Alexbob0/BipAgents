@@ -6,49 +6,31 @@ struct AgentsView: View {
     @State private var isAddingAgent = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                if store.agents.isEmpty {
-                    EmptyAgentsView { isAddingAgent = true }
-                } else {
-                    ForEach(store.agents) { agent in
-                        AgentCard(agent: agent, reachability: store.reachability[agent.id] ?? .unknown, latest: store.latestSession[agent.id])
+        VStack(spacing: 0) {
+            ScreenHeader(overline: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)).capitalizedFirst, title: "Salut") {
+                HeaderButton(systemImage: "plus", label: "Ajouter un agent") { isAddingAgent = true }
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    if store.agents.isEmpty {
+                        EmptyAgentsView { isAddingAgent = true }
+                    } else {
+                        ForEach(store.agents) { agent in
+                            AgentCard(agent: agent, reachability: store.reachability[agent.id] ?? .unknown, latest: store.latestSession[agent.id])
+                        }
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 32)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 32)
+            .refreshable { await store.refreshAll() }
         }
         .background(Theme.background)
         .toolbar(.hidden, for: .navigationBar)
-        .refreshable { await store.refreshAll() }
         .sheet(isPresented: $isAddingAgent) { AddAgentFlow() }
     }
 
-    private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(Date.now, format: .dateTime.weekday(.wide).day().month(.wide))
-                    .font(Theme.body(15, weight: .bold))
-                    .foregroundStyle(Theme.ink2)
-                Text("Salut")
-                    .font(Theme.display(34))
-                    .foregroundStyle(Theme.ink)
-            }
-            Spacer()
-            Button { isAddingAgent = true } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 19, weight: .bold))
-                    .frame(width: 46, height: 46)
-                    .card(radius: 23)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Ajouter un agent")
-            .padding(.top, 12)
-        }
-        .padding(.top, 12)
-    }
 }
 
 enum AgentRoute: Hashable {

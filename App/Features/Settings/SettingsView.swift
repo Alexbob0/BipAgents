@@ -7,54 +7,64 @@ struct SettingsView: View {
     @State private var editing: AgentProfile?
     @AppStorage(VoiceReplyPolicy.storageKey) private var voiceReplyPolicy = VoiceReplyPolicy.smart
 
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
+    }
+
     var body: some View {
-        List {
-            Section("Agents") {
-                ForEach(store.agents) { agent in
-                    Button { editing = agent } label: {
-                        HStack(spacing: 12) {
-                            MascotAvatar(appearance: agent.appearance, size: 40)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(agent.name).font(Theme.body(16, weight: .heavy))
-                                Text(agent.config.baseURL.host() ?? agent.config.baseURL.absoluteString)
-                                    .font(Theme.mono)
-                                    .foregroundStyle(Theme.muted)
+        VStack(spacing: 0) {
+            ScreenHeader(overline: "BipAgents \(version)", title: "Réglages")
+            List {
+                Section("Agents") {
+                    ForEach(store.agents) { agent in
+                        Button { editing = agent } label: {
+                            HStack(spacing: 12) {
+                                MascotAvatar(appearance: agent.appearance, size: 40)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(agent.name).font(Theme.body(16, weight: .heavy))
+                                    Text(agent.config.baseURL.host() ?? agent.config.baseURL.absoluteString)
+                                        .font(Theme.mono)
+                                        .foregroundStyle(Theme.muted)
+                                }
+                                Spacer()
+                                ReachabilityLabel(reachability: store.reachability[agent.id] ?? .unknown)
                             }
-                            Spacer()
-                            ReachabilityLabel(reachability: store.reachability[agent.id] ?? .unknown)
+                        }
+                        .foregroundStyle(Theme.ink)
+                        .swipeActions {
+                            Button("Supprimer", systemImage: "trash", role: .destructive) { store.remove(agent) }
                         }
                     }
-                    .foregroundStyle(Theme.ink)
-                    .swipeActions {
-                        Button("Supprimer", systemImage: "trash", role: .destructive) { store.remove(agent) }
+                    .onMove(perform: store.move)
+                    Button("Ajouter un agent", systemImage: "plus") { isAddingAgent = true }
+                }
+                Section {
+                    Picker(selection: $voiceReplyPolicy) {
+                        ForEach(VoiceReplyPolicy.allCases) { Text($0.label).tag($0) }
+                    } label: {
+                        Label("Réponse vocale à mes vocaux", systemImage: "waveform")
                     }
+                } header: {
+                    Text("Voix")
+                } footer: {
+                    Text("« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Parler ».")
                 }
-                .onMove(perform: store.move)
-                Button("Ajouter un agent", systemImage: "plus") { isAddingAgent = true }
+                Section("Application") {
+                    NavigationLink { DiagnosticsView() } label: {
+                        Label("Diagnostics et latences", systemImage: "gauge.with.dots.needle.33percent")
+                    }
+                    Button { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) } label: {
+                        Label("Micro, notifications et Face ID", systemImage: "gear")
+                    }
+                    LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–")
+                }
+                .foregroundStyle(Theme.ink)
             }
-            Section {
-                Picker(selection: $voiceReplyPolicy) {
-                    ForEach(VoiceReplyPolicy.allCases) { Text($0.label).tag($0) }
-                } label: {
-                    Label("Réponse vocale à mes vocaux", systemImage: "waveform")
-                }
-            } header: {
-                Text("Voix")
-            } footer: {
-                Text("« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Parler ».")
-            }
-            Section("Application") {
-                NavigationLink { DiagnosticsView() } label: {
-                    Label("Diagnostics et latences", systemImage: "gauge.with.dots.needle.33percent")
-                }
-                Button { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) } label: {
-                    Label("Micro, notifications et Face ID", systemImage: "gear")
-                }
-                LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–")
-            }
-            .foregroundStyle(Theme.ink)
+            .scrollContentBackground(.hidden)
+            .contentMargins(.top, 4, for: .scrollContent)
         }
-        .navigationTitle("Réglages")
+        .background(Theme.background)
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $isAddingAgent) { AddAgentFlow() }
         .sheet(item: $editing) { agent in EditAgentStyleView(agent: agent) }
     }
