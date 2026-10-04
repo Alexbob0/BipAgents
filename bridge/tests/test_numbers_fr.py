@@ -54,3 +54,17 @@ def test_spell_numbers(text, spoken):
 ])
 def test_prepare_for_synthesis(text, spoken):
     assert prepare_for_synthesis(text) == spoken
+
+
+@pytest.mark.parametrize("text, spoken", [
+    ("Bordeaux St-Jean → Paris Montparnasse le 03/02/2027 : 19 €.",
+     "Bordeaux Saint-Jean vers Paris Montparnasse le trois février deux mille vingt-sept : dix-neuf euros."),
+    ("RDV avec Mme Martin et M. Durand, Dr Lopez absent.", "rendez-vous avec Madame Martin et Monsieur Durand, Docteur Lopez absent."),
+    ("Comptez env. 2 h, p. ex. le matin, c.-à-d. tôt.", "Comptez environ deux heures, par exemple le matin, c'est-à-dire tôt."),
+    ("Pommes, poires, etc. Puis le dessert.", "Pommes, poires, et cetera, Puis le dessert."),
+    ("Ligne n°4, Sainte-Anne & Ste Marie, ≈ 30 min, ≥ 5 km.",
+     "Ligne numéro quatre, Sainte-Anne et Sainte Marie, environ trente minutes, au moins cinq kilomètres."),
+    ("Wellness + Vie, 3 × 10 reps, PSG vs OM.", "Wellness plus Vie, trois fois dix reps, PSG contre OM."),
+])
+def test_lexicon(text, spoken):
+    assert prepare_for_synthesis(text) == spoken

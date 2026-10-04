@@ -215,14 +215,33 @@ def _split_camel(match: re.Match) -> str:
     return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", match.group(0))
 
 
+# Symbols and abbreviations a TTS engine would read letter by letter or skip. Add entries here as they come up.
+_CAP = r"(?=[ -]?[A-ZÀ-Ý])"  # followed by a capitalized name
+_LEXICON = [
+    (r"\s*(?:→|->|⟶|⇒|=>)\s*", " vers "), (r"\s*(?:←|<-)\s*", " depuis "),
+    (r"\bSt(?=[- ][A-ZÀ-Ý])", "Saint"), (r"\bSte(?=[- ][A-ZÀ-Ý])", "Sainte"),
+    (r"\bM\.(?= [A-ZÀ-Ý])", "Monsieur"), (r"\bMM\.(?= [A-ZÀ-Ý])", "Messieurs"), (r"\bMme\b\.?", "Madame"),
+    (r"\bMmes\b\.?", "Mesdames"), (r"\bMlle\b\.?", "Mademoiselle"), (r"\bDr\b\.?" + _CAP, "Docteur"),
+    (r"\bPr\b\.?" + _CAP, "Professeur"), (r"\bBd\b\.?", "boulevard"), (r"\bav\.(?= )", "avenue"),
+    (r"\benv\.", "environ"), (r"\bapprox\.", "environ"), (r"\bp\. ?ex\.", "par exemple"),
+    (r"\bc\.?-à-d\.?", "c'est-à-dire"), (r"\betc\.(?=\s*\S)", "et cetera,"), (r"\betc\.", "et cetera."),
+    (r"\bcf\.", "voir"), (r"\bvs\.?(?= )", "contre"), (r"\b[nN]°\s?", "numéro "), (r"\bRDV\b|\brdv\b", "rendez-vous"),
+    (r"\bsvp\b|\bSVP\b", "s'il vous plaît"), (r"\btél\.", "téléphone"), (r"\s+&\s+", " et "),
+    (r"\s+\+\s+", " plus "), (r"(?<!\w)(?:≈|~)\s?(?=\d)", "environ "), (r"(?<!\w)≥\s?", "au moins "),
+    (r"(?<!\w)≤\s?", "au plus "), (r"(?<=\d)\s?×\s?(?=\d)", " fois "), (r"\s@\s", " arobase "),
+]
+_LEXICON = [(re.compile(pattern), words) for pattern, words in _LEXICON]
+
 _SLASH_WORDS = [(re.compile(r"\bet ?/ ?ou\b", re.I), "et ou"), (re.compile(r"\baller ?/ ?retour\b", re.I), "aller-retour"),
                 (re.compile(r"\bA/R\b"), "aller-retour"), (re.compile(r"\bkm/h\b"), "kilomètres heure")]
 _SLASH = re.compile(r"(?<=\w) ?/ ?(?=\w)")
 
 
 def prepare_for_synthesis(text: str) -> str:
-    """Last touch before a TTS engine: numbers in words, slashes read ("ou", "sur", dates), CamelCase names
+    """Last touch before a TTS engine: symbols and abbreviations expanded, numbers in words, slashes read ("ou", "sur", dates), CamelCase names
     split, and parentheses or dashes read as pauses ("le train (TGV) part" -> "le train, TGV, part")."""
+    for pattern, words in _LEXICON:
+        text = pattern.sub(words, text)
     text = spell_numbers(text)
     for pattern, words in _SLASH_WORDS:
         text = pattern.sub(words, text)
