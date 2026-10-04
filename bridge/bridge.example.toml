@@ -1,0 +1,70 @@
+# BipAgents bridge — exemple de configuration (aucun secret ici : dépôt open source).
+# Copier vers ~/.config/hermes-ios/bridge.toml puis `chmod 600` ce fichier.
+# Chemin alternatif : variable d'environnement BRIDGE_CONFIG.
+#
+# Chaque secret peut être donné en ligne (`bridge_key = "…"`) ou par fichier
+# (`bridge_key_file = "~/.config/hermes-ios/bridge.key"`), idem `hermes_key(_file)` et `ntfy_token(_file)`.
+
+bridge_key = "CHANGE-ME-run-python-m-bipbridge-genkey"
+host = "127.0.0.1"          # exposé sur le tailnet par `tailscale serve`, jamais directement
+port = 8643
+log_level = "info"
+data_dir = "~/.local/share/hermes-bridge"
+
+[kyutai]
+url = "http://127.0.0.1:8097"
+default_voice = "5476"      # alias Kyutai (default, 5476, 4193, 5207) ou chemin cml-tts/fr/…_enhanced.wav
+timeout_seconds = 120
+
+[ntfy]
+url = "http://127.0.0.1:8645"
+
+[apns]
+# Laisser team_id/key_id vides pour désactiver le push.
+team_id = ""                # Apple Developer Team ID (10 caractères)
+key_id = ""                 # Key ID de la clé APNs .p8
+p8_path = "~/.config/hermes-ios/AuthKey_KEYID.p8"   # mode 600
+bundle_id = "io.github.bipagents"
+environment = "sandbox"     # défaut pour les appareils qui n'en précisent pas : sandbox (Xcode) | production (TestFlight/App Store)
+
+[push]
+previews = false            # false : le corps du push est générique, le contenu est lu sur le tailnet par l'extension
+watch_followed_runs = true  # un run suivi en vocal reste surveillé (approbations) si l'app passe en arrière-plan
+
+[outbox]
+db_path = "~/.local/share/hermes-bridge/bridge.db"
+audio_dir = "~/.local/share/hermes-bridge/audio"
+retention_days = 90
+audio_max_chars = 2000      # au-delà, pas de pré-synthèse audio
+audio_wait_seconds = 8      # attente max de l'audio avant d'envoyer le push
+
+[limits]
+upload_max_mb = 50
+upload_retention_days = 30
+upload_file_mode = "640"    # octal ; voir README (utilisateur du conteneur Hermes)
+upload_dir_mode = "750"
+sentence_max_chars = 180
+tts_max_chars = 1000        # limite de POST /v1/tts/sentence
+tts_cache_entries = 256
+watch_max_minutes = 120
+purge_interval_hours = 6
+
+[agents.wellness]
+display_name = "Wellness"
+hermes_url = "http://127.0.0.1:8642"
+hermes_key = "CHANGE-ME-API_SERVER_KEY-of-wellness"
+ntfy_topic = "hermes-wellness-out"
+ntfy_token = "CHANGE-ME-tk_token-with-read-access"
+upload_dir_host = "~/hermes-agent/hermes-home/profiles/wellness/uploads"
+upload_dir_container = "/home/hermes/.hermes/profiles/wellness/uploads"
+voice = "5476"
+
+[agents.vie]
+display_name = "Vie"
+hermes_url = "http://127.0.0.1:8644"
+hermes_key = "CHANGE-ME-API_SERVER_KEY-of-vie"
+ntfy_topic = "hermes-vie-out"
+ntfy_token = "CHANGE-ME-tk_token-with-read-access"
+upload_dir_host = "~/hermes-agent/hermes-home/profiles/vie/uploads"
+upload_dir_container = "/home/hermes/.hermes/profiles/vie/uploads"
+voice = "5476"

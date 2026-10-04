@@ -1,0 +1,11 @@
+: keepalive
+
+data: {"event":"message.delta","run_id":"run_xyz","delta":"Je vais "}
+
+data: {"event":"approval.request","run_id":"run_xyz","request_id":"req-1","command":"rm -rf build/","description":"dangerous deletion","pattern_key":"rm_rf","type":"dangerous_command",
+data: "choices":["once","session","always","deny"]}
+
+data: {"event":"approval.responded","run_id":"run_xyz","choice":"once","request_id":"req-1","resolved":1}
+
+data: {"event":"run.completed","run_id":"run_xyz","output":"Fait."}
+

@@ -1,0 +1,19 @@
+: keepalive
+
+event: assistant.delta
+data: {"type":"assistant.delta","run_id":"run_abc","session_id":"sess_1","delta":"Bonjour"}
+
+data: {"type":"tool.started","run_id":"run_abc","tool":"terminal","preview":"ls -la","tool_call_id":"call_1"}
+
+: keepalive
+
+data: {"type":"tool.completed","run_id":"run_abc","tool":"terminal","duration":0.42,"error":false,"preview":"README.md","tool_call_id":"call_1"}
+
+data: {"type":"assistant.commentary","run_id":"run_abc","message_id":"m1","text":"Je regarde…","already_streamed":false}
+
+data: {"type":"assistant.delta","run_id":"run_abc","delta":" Sam, ça va ?"}
+
+data: {"type":"assistant.completed","run_id":"run_abc","text":"Bonjour Sam, ça va ?","completed":true,"partial":false,"interrupted":false}
+
+data: {"type":"run.completed","run_id":"run_abc","output":"Bonjour Sam, ça va ?","usage":{"input_tokens":50,"output_tokens":12,"total_tokens":62}}
+

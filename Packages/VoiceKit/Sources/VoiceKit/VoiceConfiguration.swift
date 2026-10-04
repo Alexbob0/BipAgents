@@ -1,0 +1,66 @@
+import Foundation
+
+public struct VoiceConfiguration: Sendable {
+    public var locale: Locale = Locale(identifier: "fr-FR")
+    /// Silence after speech that ends an utterance in a call (SPEC: ≈ 600–800 ms).
+    public var endOfUtteranceSilence: Duration = .milliseconds(700)
+    public var bargeInEnabled: Bool = true
+    /// Linear RMS (0…1) above which the mic counts as speech for end-of-utterance. Calibrate on device.
+    public var speechThreshold: Float = 0.02
+    /// Barge-in detector tuning (threshold above echo residue, minimum duration, gap tolerance).
+    public var bargeIn: BargeInDetector.Configuration = .init()
+
+    public init(locale: Locale = Locale(identifier: "fr-FR"),
+                endOfUtteranceSilence: Duration = .milliseconds(700),
+                bargeInEnabled: Bool = true,
+                speechThreshold: Float = 0.02,
+                bargeIn: BargeInDetector.Configuration = .init()) {
+        self.locale = locale
+        self.endOfUtteranceSilence = endOfUtteranceSilence
+        self.bargeInEnabled = bargeInEnabled
+        self.speechThreshold = speechThreshold
+        self.bargeIn = bargeIn
+    }
+
+    var endOfUtterance: EndOfUtteranceDetector.Configuration {
+        .init(speechThreshold: speechThreshold, silenceDuration: endOfUtteranceSilence.timeInterval)
+    }
+}
+
+public struct VoiceMetrics: Sendable, Equatable {
+    /// Speech end (end-of-utterance decision, or `finishDictation()`) → final transcript.
+    public var lastSTTDuration: Duration?
+    /// First text delta received → first audio scheduled.
+    public var lastFirstAudioLatency: Duration?
+    /// Speech detected during playback (barge-in decision, timed on the mic buffer) → playback stopped.
+    public var lastBargeInLatency: Duration?
+
+    public init(lastSTTDuration: Duration? = nil, lastFirstAudioLatency: Duration? = nil, lastBargeInLatency: Duration? = nil) {
+        self.lastSTTDuration = lastSTTDuration
+        self.lastFirstAudioLatency = lastFirstAudioLatency
+        self.lastBargeInLatency = lastBargeInLatency
+    }
+}
+
+public enum VoiceError: Error, Sendable, Equatable, CustomStringConvertible {
+    case permissionDenied
+    case recognizerUnavailable
+    case microphoneUnavailable
+    case busy
+
+    public var description: String {
+        switch self {
+        case .permissionDenied: "Micro ou reconnaissance vocale non autorisés"
+        case .recognizerUnavailable: "Reconnaissance vocale indisponible pour cette langue"
+        case .microphoneUnavailable: "Micro indisponible"
+        case .busy: "La voix est déjà utilisée"
+        }
+    }
+}
+
+extension Duration {
+    var timeInterval: TimeInterval {
+        let (seconds, attoseconds) = components
+        return Double(seconds) + Double(attoseconds) * 1e-18
+    }
+}
