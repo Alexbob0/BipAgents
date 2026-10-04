@@ -7,6 +7,7 @@ struct ConversationView: View {
     var start: ConversationStart = .none
 
     @Environment(AgentStore.self) private var store
+    @Environment(InboxStore.self) private var inbox
     @State private var model: ConversationModel?
 
     var body: some View {
@@ -25,8 +26,12 @@ struct ConversationView: View {
                 await model.load()
                 model.reattachIfNeeded()
             }
+            if let sessionID = model?.sessionID { inbox.dismissMissedReplies(sessionID: sessionID) }
         }
-        .onAppear { model?.reattachIfNeeded() }
+        .onAppear {
+            model?.reattachIfNeeded()
+            if let sessionID = model?.sessionID { inbox.dismissMissedReplies(sessionID: sessionID) }
+        }
         .onDisappear { model?.detach() }
     }
 }
@@ -120,7 +125,7 @@ private struct ConversationContent: View {
             VStack(alignment: .leading, spacing: 6) {
                 AssistantRow(appearance: model.agent.appearance, text: text, isStreaming: isStreaming)
                 if let reply = model.voiceReplies[item.id] {
-                    VoiceReplyView(state: reply, palette: palette, player: model.player)
+                    VoiceReplyView(state: reply, palette: palette, player: model.player) { model.stopVoiceReply(item.id) }
                         .padding(.leading, 40)
                 } else if !isStreaming {
                     ListenButton(palette: palette, isPlaying: model.speakingItemID == item.id) { model.toggleSpeech(of: item) }

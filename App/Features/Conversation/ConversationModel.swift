@@ -44,6 +44,8 @@ struct LocalAttachment: Identifiable, Equatable {
 /// The agent's spoken version of a reply to a voice note.
 enum VoiceReplyState: Equatable {
     case preparing
+    /// Playing while Kyutai still produces it (recorded at the same time).
+    case streaming
     case ready(URL, duration: TimeInterval)
     case unavailable
 }
@@ -58,6 +60,8 @@ final class ConversationModel {
     /// Spoken replies to voice notes, by assistant item id.
     private(set) var voiceReplies: [UUID: VoiceReplyState] = [:]
     let player = VoiceNotePlayer()
+    private let streamer = StreamingSpeechPlayer()
+    private var voiceTask: Task<Void, Never>?
     private var replyByVoice = false
     private(set) var sessionID: String?
     private(set) var title: String?
@@ -105,6 +109,14 @@ final class ConversationModel {
             return
         }
         generateVoice(for: item.id, text: text, anchor: text, autoplay: true)
+    }
+
+    /// Stops a reply that is playing while it is generated (it is generated again on the next « Écouter »).
+    func stopVoiceReply(_ itemID: UUID) {
+        guard voiceReplies[itemID] == .streaming || voiceReplies[itemID] == .preparing else { return }
+        voiceTask?.cancel()
+        streamer.stop()
+        voiceReplies[itemID] = nil
     }
 
     /// Sample thread for `-demo` (design review without a server).
@@ -257,14 +269,52 @@ final class ConversationModel {
     /// Stopped listening so another screen could follow the run (see `detach()`).
     private(set) var wasHandedOff = false
 
+    /// Called when a run finishes while no conversation screen follows it (the app puts it in the Boîte).
+    static var onMissedReply: ((_ agent: AgentProfile, _ sessionID: String, _ runID: String, _ text: String) -> Void)?
+    private static var watchers: [String: Task<Void, Never>] = [:]
+
     /// The conversation left the screen: stop listening (the run goes on, `reattachIfNeeded` picks it up).
     /// Only one subscriber gets a run's events, so a hidden screen must not keep them.
     func detach() {
-        guard streamTask != nil, let sessionID, Self.activeRuns[sessionID] != nil else { return }
+        guard streamTask != nil, let sessionID, let runID = Self.activeRuns[sessionID] else { return }
         detaching = true
         wasHandedOff = true
         if Self.listeners[sessionID] === self { Self.listeners[sessionID] = nil }
         streamTask?.cancel()
+        if let client { Self.watchInBackground(runID: runID, sessionID: sessionID, agent: agent, client: client) }
+    }
+
+    /// Polls the run's status (which takes no events away from a screen) until it ends, unless a conversation
+    /// screen re-attaches meanwhile; a finished reply nobody saw goes to `onMissedReply`.
+    private static func watchInBackground(runID: String, sessionID: String, agent: AgentProfile, client: HermesClient) {
+        guard watchers[runID] == nil else { return }
+        watchers[runID] = Task {
+            defer { watchers[runID] = nil }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                guard activeRuns[sessionID] == runID, listeners[sessionID] == nil else { return }
+                guard UIApplication.shared.applicationState == .active else { continue }
+                let run: HermesRun
+                do {
+                    run = try await client.getRun(id: runID)
+                } catch HermesError.http(404, _, _) {
+                    activeRuns[sessionID] = nil // forgotten by the server: the transcript has the reply
+                    return
+                } catch {
+                    continue
+                }
+                guard run.status.isTerminal else { continue }
+                guard listeners[sessionID] == nil else { return }
+                activeRuns[sessionID] = nil
+                #if DEBUG
+                print("[run] \(runID) finished while away: \(run.status)")
+                #endif
+                if run.status == .completed, let text = run.outcome.output, !text.isEmpty {
+                    onMissedReply?(agent, sessionID, runID, text)
+                }
+                return
+            }
+        }
     }
 
     /// Follows the session's run in progress, if any (conversation reopened while the agent works).
@@ -599,8 +649,49 @@ final class ConversationModel {
         generateVoice(for: target.0, text: replies.map(\.1).joined(separator: "\n\n"), anchor: target.1, autoplay: true)
     }
 
-    /// One audio file for `text` from the bridge (Kyutai), stored with the session and shown under `itemID`.
+    /// Speaks `text` while Kyutai streams it (first audio in ~1 s), recording it as a voice note stored with the
+    /// session under `itemID`. Falls back to the whole-file route, then to the live voice.
     private func generateVoice(for itemID: UUID, text: String, anchor: String, autoplay: Bool) {
+        guard autoplay, let bridgeURL = agent.config.bridgeURL, let key = store.secrets(for: agent)?.bridgeKey else {
+            return generateVoiceFile(for: itemID, text: text, anchor: anchor, autoplay: autoplay)
+        }
+        let tts = BridgeTTSProvider(bridgeURL: bridgeURL, bridgeKey: key, voice: agent.voice)
+        player.stop()
+        voiceTask?.cancel()
+        voiceReplies[itemID] = .preparing
+        voiceTask = Task {
+            let url = VoiceNotePlayer.cacheURL(name: "reply-\(itemID.uuidString).m4a")
+            let source = tts.stream(text)
+            let chunks = AsyncThrowingStream<PCMChunk, any Error>.producing { yield in
+                var first = true
+                for try await chunk in source {
+                    if first {
+                        first = false
+                        await MainActor.run { self.voiceReplies[itemID] = .streaming }
+                    }
+                    yield(chunk)
+                }
+            }
+            do {
+                let duration = try await streamer.play(chunks, recordingTo: url)
+                var stored = url
+                if let sessionID {
+                    stored = VoiceNoteStore.shared.add(.reply, text: anchor, file: url, duration: duration, waveform: [], sessionID: sessionID)
+                }
+                voiceReplies[itemID] = .ready(stored, duration: duration)
+            } catch is CancellationError {
+                if voiceReplies[itemID] == .streaming || voiceReplies[itemID] == .preparing { voiceReplies[itemID] = nil }
+            } catch {
+                #if DEBUG
+                print("[voice] streamed reply failed (\(error)), using the whole-file route")
+                #endif
+                generateVoiceFile(for: itemID, text: text, anchor: anchor, autoplay: autoplay)
+            }
+        }
+    }
+
+    /// One audio file for `text` from the bridge (Kyutai), stored with the session and shown under `itemID`.
+    private func generateVoiceFile(for itemID: UUID, text: String, anchor: String, autoplay: Bool) {
         guard let bridge else {
             // No bridge: read it live with the on-device voice instead.
             speakLive(itemID: itemID, text: text)
@@ -609,7 +700,7 @@ final class ConversationModel {
         voiceReplies[itemID] = .preparing
         Task {
             do {
-                let data = try await bridge.messageAudio(text: text, agent: agent.bridgeName)
+                let data = try await bridge.messageAudio(text: text, agent: agent.bridgeName, voice: agent.voice)
                 var url = VoiceNotePlayer.cacheURL(name: "reply-\(itemID.uuidString).mp3")
                 try data.write(to: url)
                 let duration = VoiceNotePlayer.duration(of: url)

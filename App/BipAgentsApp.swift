@@ -33,6 +33,9 @@ struct BipAgentsApp: App {
             .task {
                 appDelegate.store = agents
                 appDelegate.router = router
+                ConversationModel.onMissedReply = { [inbox] agent, sessionID, runID, text in
+                    inbox.addMissedReply(agent: agent, sessionID: sessionID, runID: runID, text: text)
+                }
                 if !agents.isDemo { await appDelegate.enablePushIfPossible() }
             }
         }

@@ -11,7 +11,28 @@ final class InboxStore {
         var id: String { "\(agent.id)/\(item.id)" }
     }
 
-    private(set) var entries: [Entry] = []
+    /// Replies an agent finished while their conversation was closed (see `ConversationModel.onMissedReply`).
+    struct MissedReply: Codable, Hashable {
+        var runID: String
+        var agent: AgentProfile
+        var sessionID: String
+        var text: String
+        var createdAt: Date
+    }
+
+    private var outbox: [Entry] = []
+    private var missed: [MissedReply] = InboxStore.loadMissed()
+    private static let missedKey = "inbox.missedReplies"
+
+    /// Agent messages (bridge outbox) and missed replies, newest first.
+    var entries: [Entry] {
+        let replies = missed.map { reply in
+            Entry(item: OutboxItem(id: "reply-\(reply.runID)", agent: reply.agent.bridgeName, title: "Réponse",
+                                   text: reply.text, createdAt: reply.createdAt, sessionID: reply.sessionID, hasAudio: false),
+                  agent: reply.agent)
+        }
+        return (outbox + replies).sorted { $0.item.createdAt > $1.item.createdAt }
+    }
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     private(set) var playingID: String?
@@ -28,7 +49,7 @@ final class InboxStore {
 
     func refresh(agents store: AgentStore) async {
         if store.isDemo {
-            entries = Self.demo(store)
+            outbox = Self.demo(store)
             return
         }
         isLoading = true
@@ -44,12 +65,35 @@ final class InboxStore {
                 failures += 1
             }
         }
-        entries = collected.sorted { $0.item.createdAt > $1.item.createdAt }
+        outbox = collected
         errorMessage = failures > 0 ? "Certains agents sont injoignables (Tailscale ?)." : nil
     }
 
     func markAllSeen() {
         lastSeen = .now
+    }
+
+    func addMissedReply(agent: AgentProfile, sessionID: String, runID: String, text: String) {
+        guard !missed.contains(where: { $0.runID == runID }) else { return }
+        missed.append(MissedReply(runID: runID, agent: agent, sessionID: sessionID, text: text, createdAt: .now))
+        missed = Array(missed.suffix(30))
+        saveMissed()
+    }
+
+    /// The conversation was opened: its missed replies are read there.
+    func dismissMissedReplies(sessionID: String) {
+        guard missed.contains(where: { $0.sessionID == sessionID }) else { return }
+        missed.removeAll { $0.sessionID == sessionID }
+        saveMissed()
+    }
+
+    private func saveMissed() {
+        UserDefaults.standard.set(try? JSONEncoder().encode(missed), forKey: Self.missedKey)
+    }
+
+    private static func loadMissed() -> [MissedReply] {
+        guard let data = UserDefaults.standard.data(forKey: missedKey) else { return [] }
+        return (try? JSONDecoder().decode([MissedReply].self, from: data)) ?? []
     }
 
     func togglePlayback(_ entry: Entry, store: AgentStore) async {
@@ -150,7 +194,7 @@ struct InboxView: View {
         VStack(spacing: 12) {
             InteractiveMascot(appearance: AgentAppearance(category: .daily), baseMood: .sleeping, size: 120)
             Text("Rien de neuf").font(Theme.title(20))
-            Text("Les check-ins et rappels de tes agents arriveront ici, avec leur version audio.")
+            Text("Les check-ins et rappels de tes agents arriveront ici, avec leur version audio, ainsi que les réponses terminées pendant que tu étais ailleurs.")
                 .font(Theme.body(15))
                 .foregroundStyle(Theme.ink2)
                 .multilineTextAlignment(.center)
@@ -193,6 +237,7 @@ struct InboxCard: View {
             Text(entry.item.text)
                 .font(Theme.body(15.5))
                 .foregroundStyle(Theme.ink)
+                .lineLimit(8)
             if entry.item.hasAudio {
                 Button(action: play) {
                     HStack(spacing: 10) {

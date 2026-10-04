@@ -135,6 +135,13 @@ final class AgentStore {
     private func load() {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         agents = (try? JSONDecoder().decode([AgentProfile].self, from: data)) ?? []
+        // The Bips' voices arrived: agents still on the old default Kyutai voice get their category's Bip voice.
+        let migrated = "voices.bips.v1"
+        if !UserDefaults.standard.bool(forKey: migrated) {
+            for index in agents.indices where agents[index].config.voice == "5476" { agents[index].config.voice = nil }
+            UserDefaults.standard.set(true, forKey: migrated)
+            save()
+        }
     }
 
     private func save() {
@@ -152,9 +159,9 @@ extension AgentStore {
     static var preview: AgentStore {
         let store = AgentStore(fileURL: URL.temporaryDirectory.appending(path: "preview-agents-\(UUID()).json"))
         store.agents = [
-            AgentProfile(config: AgentConfig(name: "Wellness", baseURL: URL(string: "https://aibox.example.ts.net:8642")!, voice: "5476"),
+            AgentProfile(config: AgentConfig(name: "Wellness", baseURL: URL(string: "https://aibox.example.ts.net:8642")!),
                          appearance: AgentAppearance(category: .wellness)),
-            AgentProfile(config: AgentConfig(name: "Vie", baseURL: URL(string: "https://aibox.example.ts.net:8644")!, voice: "5476"),
+            AgentProfile(config: AgentConfig(name: "Vie", baseURL: URL(string: "https://aibox.example.ts.net:8644")!),
                          appearance: AgentAppearance(category: .daily)),
         ]
         for agent in store.agents { store.reachability[agent.id] = .online }

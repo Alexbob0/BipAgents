@@ -58,10 +58,10 @@ struct BridgeClient: Sendable {
 
     /// A whole reply as one mp3 (voice-message mode): Kyutai batches the sentences, so this is much faster
     /// per second of audio than the call mode's sentence-by-sentence synthesis.
-    func messageAudio(text: String, agent: String) async throws -> Data {
+    func messageAudio(text: String, agent: String, voice: String) async throws -> Data {
         var request = request("v1/tts/message", method: "POST")
         request.timeoutInterval = 180
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text, "agent": agent, "format": "mp3"])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text, "agent": agent, "voice": voice, "format": "mp3"])
         return try await send(request)
     }
 

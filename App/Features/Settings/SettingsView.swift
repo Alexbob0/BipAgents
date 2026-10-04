@@ -88,6 +88,30 @@ struct EditAgentStyleView: View {
         NavigationStack {
             AgentStylePicker(name: $agent.config.name, appearance: $agent.appearance, categoryWasPicked: $picked)
                 .background(Theme.background)
+                .safeAreaInset(edge: .bottom) {
+                    NavigationLink {
+                        AgentVoicePicker(voice: $agent.config.voice, category: agent.appearance.category)
+                    } label: {
+                        HStack {
+                            Label("Voix", systemImage: "waveform")
+                                .font(Theme.body(16, weight: .heavy))
+                            Spacer()
+                            Text(AgentVoices.option(for: agent.voice).name)
+                                .font(Theme.body(15, weight: .bold))
+                                .foregroundStyle(Theme.ink2)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Theme.muted)
+                        }
+                        .foregroundStyle(Theme.ink)
+                        .padding(.horizontal, 18)
+                        .frame(height: 54)
+                        .background(Theme.card, in: .rect(cornerRadius: 18, style: .continuous))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                    }
+                    .buttonStyle(.plain)
+                }
                 .navigationTitle("Modifier")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

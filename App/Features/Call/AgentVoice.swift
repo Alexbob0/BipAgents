@@ -10,7 +10,7 @@ extension AgentStore {
             #endif
             return SystemTTSProvider()
         }
-        return FallbackTTSProvider(primary: BridgeTTSProvider(bridgeURL: bridgeURL, bridgeKey: key, voice: agent.config.voice ?? "5476"),
+        return FallbackTTSProvider(primary: BridgeTTSProvider(bridgeURL: bridgeURL, bridgeKey: key, voice: agent.voice),
                                    fallback: SystemTTSProvider())
     }
 }

@@ -9,7 +9,7 @@ struct AddAgentFlow: View {
     @State private var name = ""
     @State private var baseURL = "https://"
     @State private var apiKey = ""
-    @State private var voice = "5476"
+    @State private var voice = "" // empty: the category's Bip voice (changeable later in Réglages)
     @State private var bridgeURL = ""
     @State private var bridgeKey = ""
     @State private var appearance = AgentAppearance(category: .daily)
@@ -59,7 +59,8 @@ struct AddAgentFlow: View {
                 TextField("Adresse", text: $baseURL)
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                 SecureField("Clé API", text: $apiKey)
-                TextField("Voix Kyutai", text: $voice)
+                TextField("Voix (vide : voix du Bip)", text: $voice)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
             }
             Section {
                 TextField("Adresse du bridge", text: $bridgeURL)
