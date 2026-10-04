@@ -56,7 +56,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             byBridge[client.baseURL, default: (client, [])].1.append(agent.bridgeName)
         }
         for (client, agents) in byBridge.values {
-            Task { try? await client.registerDevice(token: token, environment: environment, agents: agents) }
+            Task {
+                do {
+                    try await client.registerDevice(token: token, environment: environment, agents: agents)
+                    #if DEBUG
+                    print("[push] device registered with \(client.baseURL.host() ?? "?") (\(environment)) for \(agents)")
+                    #endif
+                } catch {
+                    print("[push] device registration failed: \(error)")
+                }
+            }
         }
     }
 
