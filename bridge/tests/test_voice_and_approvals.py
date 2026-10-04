@@ -200,3 +200,62 @@ def test_voice_reports_unreachable_hermes(client):
     assert frames[1][1]["code"] == "hermes_unreachable"
     assert frames[-1][1] == {"type": "done", "run_id": "down_1", "reason": "error"}
     assert len(client.backend.run_requests) == 3
+
+
+def read_sse(resp):
+    """(event, data) pairs of an SSE response until it ends; keepalives skipped."""
+    events, name = [], None
+    for line in resp.iter_lines():
+        if line.startswith("event: "):
+            name = line[len("event: "):]
+        elif line.startswith("data: "):
+            events.append((name, json.loads(line[len("data: "):])))
+    return events
+
+
+def test_app_follows_run_through_bridge_and_replays_on_reattach(client):
+    client.backend.runs["run_a"] = [
+        sse("tool.started", run_id="run_a", tool="web_search"),
+        sse("message.delta", run_id="run_a", delta="Bonjour "),
+        sse("message.delta", run_id="run_a", delta="Alex."),
+        sse("run.completed", run_id="run_a", output="Bonjour Alex."),
+    ]
+    url = "/v1/runs/run_a/events?agent=wellness&session_id=api_123"
+    with client.stream("GET", url, headers=AUTH) as resp:
+        assert resp.status_code == 200 and resp.headers["content-type"].startswith("text/event-stream")
+        first = read_sse(resp)
+    assert [name for name, _ in first] == ["tool.started", "message.delta", "message.delta", "run.completed"]
+    assert first[-1][1]["output"] == "Bonjour Alex."
+    # Re-attaching (app reopened, connection lost) replays the whole run from the bridge's backlog.
+    with client.stream("GET", url, headers=AUTH) as resp:
+        assert read_sse(resp) == first
+    assert len(client.backend.run_requests) == 1  # one Hermes subscription for both
+
+
+def test_app_route_validates_agent_and_ids(client):
+    assert client.get("/v1/runs/run_a/events?agent=nope", headers=AUTH).status_code == 404
+    assert client.get("/v1/runs/run_a/events?agent=wellness&session_id=bad%20id", headers=AUTH).status_code == 400
+
+
+def test_reply_ready_pushed_when_the_app_left(client):
+    register(client)
+    gate = threading.Event()
+    client.backend.runs["run_r"] = [sse("message.delta", run_id="run_r", delta="Je cherche."), gate,
+                                    sse("run.completed", run_id="run_r", output="Le train de 9h est à 19 €.")]
+    services = client.app.state.services
+
+    def follow_then_leave():  # what the SSE route does, then the app leaves the conversation
+        listener = services.hub.subscribe(services.config.agent("wellness"), "run_r", kind="app", watch=True)
+        listener.sub.session_id = "api_9"
+        assert listener.sub.followers == 1
+        listener.close()
+        return listener.sub
+
+    sub = client.portal.call(follow_then_leave)
+    assert sub.followers == 0
+    gate.set()
+    apns = client.apns
+    assert wait_until(lambda: len(apns.requests) >= 1)
+    payload = apns.payloads()[0]
+    assert payload["kind"] == "reply" and payload["session_id"] == "api_9" and payload["run_id"] == "run_r"
+    assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "Ta réponse est prête."
