@@ -70,6 +70,10 @@ private struct ConversationContent: View {
         }
         .defaultScrollAnchor(.bottom)
         .scrollDismissesKeyboard(.interactively)
+        // A tap anywhere in the thread puts the keyboard away (buttons in it still work: simultaneous).
+        .simultaneousGesture(TapGesture().onEnded {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        })
         .safeAreaInset(edge: .bottom) {
             Composer(
                 text: $draft,
