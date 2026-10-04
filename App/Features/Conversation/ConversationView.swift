@@ -41,6 +41,7 @@ struct ConversationView: View {
 }
 
 private struct ConversationContent: View {
+    private static let bottom = "thread-bottom"
     @Bindable var model: ConversationModel
     var start: ConversationStart
     @State private var isCalling = false
@@ -49,13 +50,25 @@ private struct ConversationContent: View {
 
     private var palette: AgentPalette { model.agent.appearance.palette }
 
+    /// How many of the latest items are drawn (« Messages précédents » shows more).
+    @State private var visibleCount = 80
+
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
+            // A plain VStack: a LazyVStack guesses row heights and, when the thread's height jumps (a reply
+            // rebuilt after a reconnection), could leave the view scrolled past its content, blank.
+            VStack(alignment: .leading, spacing: 12) {
+                if model.items.count > visibleCount {
+                    Button("Messages précédents", systemImage: "arrow.up") { visibleCount += 80 }
+                        .buttonStyle(.pill(.soft, height: 40))
+                        .frame(maxWidth: 240)
+                        .frame(maxWidth: .infinity)
+                }
                 if model.items.isEmpty && !model.isRunning {
                     ConversationEmptyState(agent: model.agent)
                 }
-                ForEach(model.items) { item in
+                ForEach(model.items.suffix(visibleCount)) { item in
                     row(for: item)
                 }
                 if model.isRunning, !model.isWaitingForApproval, !(model.items.last?.isStreamingAssistant ?? false) {
@@ -64,11 +77,21 @@ private struct ConversationContent: View {
                 if let error = model.errorMessage {
                     NoticeRow(text: error, isError: true)
                 }
+                Color.clear.frame(height: 1).id(Self.bottom)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
         .defaultScrollAnchor(.bottom)
+        .onChange(of: model.items.last?.id) { _, _ in
+            // A message just sent (or the thread rebuilt): show the end of the conversation.
+            if case .user? = model.items.last?.kind {
+                withAnimation(.snappy) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+            }
+        }
+        .onChange(of: model.isRunning) { _, running in
+            if !running { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+        }
         .scrollDismissesKeyboard(.interactively)
         // A tap anywhere in the thread puts the keyboard away (buttons in it still work: simultaneous).
         .simultaneousGesture(TapGesture().onEnded {
@@ -91,6 +114,7 @@ private struct ConversationContent: View {
                 },
                 appearance: model.agent.appearance
             )
+        }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar) // full height for the thread, like messaging apps
