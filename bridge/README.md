@@ -171,6 +171,14 @@ Corps : `{"text": "…", "voice"?: "5476", "format"?: "pcm16"|"opus"|"wav" (déf
 - toujours `X-Cache: hit|miss`. Erreurs : 400 (texte vide après normalisation, format), 404 (agent), 413 (> 1000 car.),
   502 (Kyutai injoignable / erreur).
 
+### `POST /v1/tts/stream`
+Même corps que `/v1/tts/sentence` (le format est toujours PCM16). Relaie Kyutai `POST /v1/audio/stream` :
+réponse 200 en transfert *chunked*, PCM s16le mono 24 kHz envoyé à mesure qu'il est produit (premier son ≈ 0,75 s,
+quelle que soit la longueur du texte), en-têtes `X-Sample-Rate`, `X-Channels`, `X-Sample-Format: s16le`.
+Les erreurs survenues avant le premier octet audio sont des erreurs HTTP classiques (400, 404, 413 au-delà de
+8000 car., 502). Un Kyutai sans route de streaming (404) est remplacé par une synthèse en un bloc. Un flux complet
+est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si le bridge ne connaît pas la route.
+
 ### `WS /v1/voice`
 Client → serveur (texte JSON) :
 - `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`

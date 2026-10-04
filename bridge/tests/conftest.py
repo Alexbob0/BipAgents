@@ -67,6 +67,7 @@ class FakeBackend:
         self.kyutai_active = 0
         self.kyutai_max_active = 0
         self.kyutai_status = 200
+        self.kyutai_streaming = True  # False: an older Kyutai without /v1/audio/stream
         self.kyutai_lock = threading.Lock()
         # run_id -> list of SSE chunks (str) or threading.Event (wait until set)
         self.runs: Dict[str, List[Any]] = {}
@@ -108,6 +109,17 @@ class FakeBackend:
                 self.kyutai_active -= 1
         if self.kyutai_status != 200:
             return httpx.Response(self.kyutai_status, text="boom")
+        if request.url.path == "/v1/audio/stream":
+            if not self.kyutai_streaming:
+                return httpx.Response(404, json={"detail": "Not Found"})
+            pcm = pcm_for(body["input"])
+
+            async def chunks():
+                half = len(pcm) // 2 + 1  # odd split on purpose: chunks need not be sample-aligned
+                yield pcm[:half]
+                yield pcm[half:]
+
+            return httpx.Response(200, content=chunks(), headers={"content-type": "application/octet-stream"})
         fmt = body["response_format"]
         if fmt == "wav":
             return httpx.Response(200, content=make_wav(pcm_for(body["input"])),

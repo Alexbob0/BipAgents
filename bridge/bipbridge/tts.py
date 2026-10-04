@@ -193,6 +193,56 @@ class TtsService:
         self._cache_put(key, audio)
         return audio
 
+    async def stream(self, text: str, voice: Optional[str] = None, priority: int = INTERACTIVE,
+                     max_chars: Optional[int] = None) -> AsyncIterator[bytes]:
+        """PCM16 mono 24 kHz chunks as Kyutai produces them (``POST /v1/audio/stream``): the first
+        audio arrives after ~0.75 s instead of after the whole text. Validation errors and a Kyutai
+        failure before the first chunk raise ``TtsError``; an older Kyutai without the streaming
+        route (404/405) falls back to one whole-file synthesis. A complete stream is cached."""
+        clean = normalize_for_speech(text, self.sentence_max_chars)
+        if not clean:
+            raise TtsError("empty text after normalization", status=400)
+        limit = max_chars if max_chars is not None else self.max_chars
+        if limit and len(clean) > limit:
+            raise TtsError(f"text too long ({len(clean)} > {limit} chars)", status=413)
+        voice = voice or self.default_voice
+        key = (voice, "pcm16", clean)
+        hit = self._cache_get(key)
+        if hit is not None:
+            yield hit.data
+            return
+        async with self.scheduler.slot(priority):
+            self.calls += 1
+            url = f"{self.base_url}/v1/audio/stream"
+            body = {"input": clean, "voice": voice, "format": "pcm16"}
+            received = bytearray()
+            try:
+                async with self.client.stream("POST", url, json=body, timeout=self.timeout) as resp:
+                    if resp.status_code in (404, 405):
+                        audio = None
+                    elif resp.status_code != 200:
+                        log.warning("kyutai stream error", extra=fields(status=resp.status_code))
+                        raise TtsError(f"Kyutai returned HTTP {resp.status_code}")
+                    else:
+                        audio = True
+                        async for chunk in resp.aiter_bytes():
+                            if chunk:
+                                received.extend(chunk)
+                                yield chunk
+            except httpx.HTTPError as exc:
+                log.warning("kyutai stream failed", extra=fields(error=type(exc).__name__, sent=len(received)))
+                if not received:
+                    raise TtsError("Kyutai unreachable") from exc
+                return  # mid-stream cut: the client keeps what it already played
+            if audio is None:
+                self.calls -= 1  # counted again by the whole-file call
+                fallback = await self._call_kyutai(clean, voice, "pcm16")
+                self._cache_put(key, fallback)
+                yield fallback.data
+                return
+        if received:
+            self._cache_put(key, Audio(bytes(received), FORMATS["pcm16"][1], "pcm16"))
+
     async def _call_kyutai(self, text: str, voice: str, fmt: str) -> Audio:
         kyutai_fmt, content_type = FORMATS[fmt]
         self.calls += 1
