@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import time
 from collections import deque
@@ -22,7 +23,7 @@ from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 import httpx
 
 from .config import AgentConfig
-from .hermes import TERMINAL_TYPES, HermesClient, HermesHTTPError, SSEEvent
+from .hermes import DELTA_TYPES, TERMINAL_TYPES, HermesClient, HermesHTTPError, SSEEvent
 from .logs import fields
 from .push import PushService
 
@@ -35,6 +36,20 @@ GIVE_UP_AFTER = 40  # ~5 min of consecutive connection failures ends even a watc
 UNREACHABLE_AFTER = 3  # consecutive connection failures before voice listeners are told
 
 Key = Tuple[str, str]
+
+
+def _append_to_backlog(backlog: Deque[SSEEvent], event: SSEEvent) -> None:
+    """Consecutive text deltas are merged in the replay backlog: a long reply is thousands of token
+    deltas, which would push its beginning out of the bounded backlog (a late follower then saw the
+    reply start mid-sentence). Live listeners still get every delta as it comes."""
+    last = backlog[-1] if backlog else None
+    delta = event.data.get("delta")
+    if (last is not None and event.type in DELTA_TYPES and last.type == event.type
+            and isinstance(delta, str) and isinstance(last.data.get("delta"), str)):
+        data = {**last.data, "delta": last.data["delta"] + delta}
+        backlog[-1] = SSEEvent(event.type, data, json.dumps(data, ensure_ascii=False))
+        return
+    backlog.append(event)
 
 
 class Listener:
@@ -220,7 +235,7 @@ class RunHub:
             backoff = min(backoff * 2, BACKOFF_MAX)
 
     async def _dispatch(self, sub: RunSubscription, event: SSEEvent) -> None:
-        sub.backlog.append(event)
+        _append_to_backlog(sub.backlog, event)
         for listener in list(sub.listeners):
             listener.queue.put_nowait(event)
         if event.type == "approval.request":

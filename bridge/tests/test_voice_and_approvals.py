@@ -226,9 +226,12 @@ def test_app_follows_run_through_bridge_and_replays_on_reattach(client):
         first = read_sse(resp)
     assert [name for name, _ in first] == ["tool.started", "message.delta", "message.delta", "run.completed"]
     assert first[-1][1]["output"] == "Bonjour Alex."
-    # Re-attaching (app reopened, connection lost) replays the whole run from the bridge's backlog.
+    # Re-attaching (app reopened, connection lost) replays the whole run from the bridge's backlog,
+    # consecutive deltas merged.
     with client.stream("GET", url, headers=AUTH) as resp:
-        assert read_sse(resp) == first
+        replay = read_sse(resp)
+    assert [name for name, _ in replay] == ["tool.started", "message.delta", "run.completed"]
+    assert replay[1][1]["delta"] == "Bonjour Alex."
     assert len(client.backend.run_requests) == 1  # one Hermes subscription for both
 
 
@@ -259,3 +262,19 @@ def test_reply_ready_pushed_when_the_app_left(client):
     payload = apns.payloads()[0]
     assert payload["kind"] == "reply" and payload["session_id"] == "api_9" and payload["run_id"] == "run_r"
     assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "Ta réponse est prête."
+
+
+def test_replay_backlog_merges_deltas_so_long_replies_keep_their_start(client):
+    import bipbridge.runs as runs_module
+    words = [f"mot{i} " for i in range(runs_module.BACKLOG_EVENTS + 500)]
+    client.backend.runs["run_long"] = [sse("message.delta", run_id="run_long", delta="Début : ")] + [
+        sse("message.delta", run_id="run_long", delta=w) for w in words] + [
+        sse("tool.started", run_id="run_long", tool="web_search"),
+        sse("message.delta", run_id="run_long", delta="Fin."),
+        sse("run.completed", run_id="run_long", output="…")]
+    with client.stream("GET", "/v1/runs/run_long/events?agent=wellness", headers=AUTH) as resp:
+        read_sse(resp)  # first follower: every delta, live
+    with client.stream("GET", "/v1/runs/run_long/events?agent=wellness", headers=AUTH) as resp:
+        replay = read_sse(resp)  # late follower: the backlog
+    assert [name for name, _ in replay] == ["message.delta", "tool.started", "message.delta", "run.completed"]
+    assert replay[0][1]["delta"] == "Début : " + "".join(words)
