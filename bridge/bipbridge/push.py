@@ -72,6 +72,7 @@ def reply_payload(agent: str, title: str, run_id: str, session_id: Optional[str]
         "aps": {
             "alert": {"title": title, "body": preview or REPLY_BODY},
             "thread-id": agent,
+            "mutable-content": 1,  # the extension shows it as a message from the agent's Bip
             "category": "MESSAGE",
             "sound": "default",
         },
