@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Python (bridge)
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Secrets never belong here
+*.p8
+bridge.toml
+.env
+
+# Machine-specific context (private infrastructure details)
+context/

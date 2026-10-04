@@ -1,0 +1,11 @@
+# Optionnel : bridge en conteneur podman rootless. Le mode venv + systemd --user est recommandé (plus simple).
+# Build : podman build -t localhost/hermes-bridge:0.1.0 -f Containerfile .
+# Run   : voir README.md (réseau hôte, config et dossiers d'upload montés au même chemin).
+FROM docker.io/library/python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 BRIDGE_CONFIG=/config/bridge.toml
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY bipbridge ./bipbridge
+EXPOSE 8643
+CMD ["python", "-m", "bipbridge", "serve"]
