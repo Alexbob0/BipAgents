@@ -24,10 +24,39 @@ public protocol TTSProvider: Sendable {
     /// Called once before the first sentence of each reply (lets `FallbackTTSProvider` retry its primary).
     /// Default: no-op.
     func beginReply()
+    /// Audio for `text` as it is produced, in order. Default: `synthesize` as a single chunk.
+    func stream(_ text: String) -> AsyncThrowingStream<PCMChunk, any Error>
+    /// Whether `stream` really delivers audio progressively, so a long segment starts playing as fast as a
+    /// short one. Default: false.
+    var streamsAudio: Bool { get }
 }
 
 extension TTSProvider {
     public func beginReply() {}
+
+    public func stream(_ text: String) -> AsyncThrowingStream<PCMChunk, any Error> {
+        AsyncThrowingStream.producing { yield in yield(try await synthesize(text)) }
+    }
+
+    public var streamsAudio: Bool { false }
+}
+
+extension AsyncThrowingStream where Failure == any Error {
+    /// Runs `body` in a task that `yield`s elements; cancelling the consumer cancels the task.
+    static func producing(_ body: @escaping @Sendable (_ yield: (Element) -> Void) async throws -> Void) -> Self
+    where Element: Sendable {
+        let (stream, continuation) = makeStream()
+        let task = Task {
+            do {
+                try await body { continuation.yield($0) }
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in task.cancel() }
+        return stream
+    }
 }
 
 public enum TTSError: Error, Sendable, Equatable, CustomStringConvertible {
@@ -46,6 +75,10 @@ public enum TTSError: Error, Sendable, Equatable, CustomStringConvertible {
 
 /// `POST {bridgeURL}/v1/tts/sentence`, JSON `{"text","voice","format":"pcm16"}`, `Authorization: Bearer bridgeKey`.
 /// Response body = raw PCM int16 mono; sample rate from the `X-Sample-Rate` header (default 24000).
+///
+/// `stream(_:)` uses `POST /v1/tts/stream` (same body, chunked PCM relayed from Kyutai as it is produced:
+/// first audio after ~0.75 s whatever the text length), and falls back to `/v1/tts/sentence` on an older
+/// bridge (404).
 public struct BridgeTTSProvider: TTSProvider {
     public var bridgeURL: URL
     public var bridgeKey: String
@@ -55,6 +88,11 @@ public struct BridgeTTSProvider: TTSProvider {
     /// a prefetched sentence legitimately waits behind the one being synthesized. An unreachable bridge
     /// fails fast anyway (connection refused, offline…), long before this.
     public var timeout: TimeInterval = 30
+    /// Use `/v1/tts/stream` for `stream(_:)`.
+    public var streaming = true
+    /// Bytes per streamed chunk: the first one small so playback starts at once, then larger.
+    var firstChunkBytes = 4_800   // 100 ms at 24 kHz
+    var chunkBytes = 19_200       // 400 ms
 
     public init(bridgeURL: URL, bridgeKey: String, voice: String, session: URLSession = .shared) {
         self.bridgeURL = bridgeURL
@@ -71,8 +109,8 @@ public struct BridgeTTSProvider: TTSProvider {
 
     static let defaultSampleRate: Double = 24_000
 
-    func request(for sentence: String) throws -> URLRequest {
-        var request = URLRequest(url: bridgeURL.appending(path: "v1/tts/sentence"), timeoutInterval: timeout)
+    func request(for sentence: String, path: String = "v1/tts/sentence") throws -> URLRequest {
+        var request = URLRequest(url: bridgeURL.appending(path: path), timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("Bearer \(bridgeKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -100,6 +138,51 @@ public struct BridgeTTSProvider: TTSProvider {
                      http.value(forHTTPHeaderField: "X-Cache") ?? "?", String(sentence.prefix(40))))
         #endif
         return chunk
+    }
+
+    public var streamsAudio: Bool { streaming }
+
+    public func stream(_ text: String) -> AsyncThrowingStream<PCMChunk, any Error> {
+        guard streaming else { return AsyncThrowingStream.producing { yield in yield(try await synthesize(text)) } }
+        return AsyncThrowingStream.producing { yield in try await streamChunks(text, yield) }
+    }
+
+    private func streamChunks(_ text: String, _ yield: (PCMChunk) -> Void) async throws {
+        #if DEBUG
+        let started = Date.now
+        var firstAudio: TimeInterval?
+        #endif
+        let (bytes, response) = try await session.bytes(for: request(for: text, path: "v1/tts/stream"))
+        guard let http = response as? HTTPURLResponse else { throw TTSError.invalidResponse }
+        if http.statusCode == 404 { return yield(try await synthesize(text)) } // bridge without streaming
+        guard (200..<300).contains(http.statusCode) else { throw TTSError.httpStatus(http.statusCode) }
+        let rate = http.value(forHTTPHeaderField: "X-Sample-Rate").flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        let sampleRate = rate.flatMap { $0 > 0 ? $0 : nil } ?? Self.defaultSampleRate
+        var buffer = Data(capacity: chunkBytes)
+        var target = firstChunkBytes, total = 0
+        func emit() {
+            let whole = buffer.count - buffer.count % 2 // never split a sample
+            guard whole > 0 else { return }
+            yield(PCMChunk(samples: buffer.prefix(whole), sampleRate: sampleRate))
+            buffer.removeFirst(whole)
+            total += whole
+            #if DEBUG
+            if firstAudio == nil { firstAudio = Date.now.timeIntervalSince(started) }
+            #endif
+        }
+        for try await byte in bytes {
+            buffer.append(byte)
+            if buffer.count >= target {
+                emit()
+                target = chunkBytes
+            }
+        }
+        emit()
+        #if DEBUG
+        print(String(format: "[voice] bridge TTS stream: first audio %.2fs, done %.2fs for %.2fs of audio (%d chars): “%@”",
+                     firstAudio ?? -1, Date.now.timeIntervalSince(started), Double(total) / 2 / sampleRate,
+                     text.count, String(text.prefix(40))))
+        #endif
     }
 }
 
@@ -140,6 +223,33 @@ public struct FallbackTTSProvider: TTSProvider {
             }
         }
         return try await fallback.synthesize(sentence)
+    }
+
+    public var streamsAudio: Bool { !isUsingFallback && primary.streamsAudio }
+
+    /// Like `synthesize`, but the primary can only be abandoned before its first chunk: once audio has
+    /// played in one voice, a failure ends that segment instead of finishing it in another voice.
+    public func stream(_ text: String) -> AsyncThrowingStream<PCMChunk, any Error> {
+        AsyncThrowingStream.producing { yield in
+            if !isUsingFallback {
+                var delivered = false
+                do {
+                    for try await chunk in primary.stream(text) {
+                        delivered = true
+                        yield(chunk)
+                    }
+                    return
+                } catch {
+                    if Task.isCancelled || Self.isCancellation(error) || delivered { throw error }
+                    #if DEBUG
+                    print("[voice] primary TTS failed: \(error) — \(Self.isOutage(error) ? "switching to fallback" : "skipping segment")")
+                    #endif
+                    guard Self.isOutage(error) else { throw error }
+                    state.failedOver.withLock { $0 = true }
+                }
+            }
+            for try await chunk in fallback.stream(text) { yield(chunk) }
+        }
     }
 
     /// Unreachable, timed out or failing server — as opposed to a request the server rejected (4xx).

@@ -181,3 +181,33 @@ def test_tts_message_returns_one_mp3_for_a_whole_reply(client):
     assert client.post("/v1/tts/message", headers=AUTH, json={"text": "x" * 9000}).status_code == 413
     assert client.post("/v1/tts/message", headers=AUTH, json={"text": "x", "format": "flac"}).status_code == 400
 
+
+
+def test_tts_stream_relays_kyutai_pcm_chunks(client):
+    text = "Bonjour Alex. On commence doucement."
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": text, "agent": "Wellness"})
+    assert resp.status_code == 200
+    assert resp.headers["x-sample-rate"] == "24000"
+    assert resp.headers["x-sample-format"] == "s16le"
+    sent = client.backend.kyutai_inputs[-1]
+    assert sent["format"] == "pcm16" and "response_format" not in sent
+    assert resp.content == pcm_for(sent["input"])
+    calls = len(client.backend.kyutai_inputs)
+    again = client.post("/v1/tts/stream", headers=AUTH, json={"text": text, "agent": "Wellness"})
+    assert again.content == resp.content and len(client.backend.kyutai_inputs) == calls  # cached
+
+
+def test_tts_stream_falls_back_to_whole_file_on_old_kyutai(client):
+    client.backend.kyutai_streaming = False
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": "Un ancien Kyutai."})
+    assert resp.status_code == 200
+    assert client.backend.kyutai_inputs[-1]["response_format"] == "wav"
+    assert resp.content == pcm_for(client.backend.kyutai_inputs[-1]["input"])
+
+
+def test_tts_stream_errors_before_audio_are_http_errors(client):
+    assert client.post("/v1/tts/stream", headers=AUTH, json={"text": "  "}).status_code == 400
+    assert client.post("/v1/tts/stream", headers=AUTH, json={"text": "x" * 9000}).status_code == 413
+    assert client.post("/v1/tts/stream", headers=AUTH, json={"text": "a", "agent": "Nope"}).status_code == 404
+    client.backend.kyutai_status = 500
+    assert client.post("/v1/tts/stream", headers=AUTH, json={"text": "Panne."}).status_code == 502

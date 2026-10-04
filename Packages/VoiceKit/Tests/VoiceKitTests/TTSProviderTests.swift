@@ -14,6 +14,8 @@ private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     static let replies = Mutex<[String: Reply]>([:])
+    /// Per "host/path" overrides of `replies`.
+    static let pathReplies = Mutex<[String: Reply]>([:])
     static let requests = Mutex<[String: (URLRequest, Data)]>([:])
 
     static func session(host: String, reply: Reply) -> URLSession {
@@ -29,7 +31,8 @@ private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     override func startLoading() {
         let host = request.url?.host() ?? ""
         Self.requests.withLock { $0[host] = (request, Self.body(of: request)) }
-        guard let reply = Self.replies.withLock({ $0[host] }),
+        let path = request.url?.path() ?? ""
+        guard let reply = Self.pathReplies.withLock({ $0[host + path] }) ?? Self.replies.withLock({ $0[host] }),
               let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: reply.headers) else {
             client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
             return
@@ -98,6 +101,37 @@ struct BridgeTTSProviderTests {
     @Test func throwsOnHTTPError() async {
         let tts = provider(host: "down.test", reply: .init(status: 503, headers: [:], body: Data()))
         await #expect(throws: TTSError.httpStatus(503)) { try await tts.synthesize("Salut.") }
+    }
+
+    @Test func streamsChunksFromTheStreamRoute() async throws {
+        var pcm = Data((0..<10_001).map { UInt8(truncatingIfNeeded: $0) })
+        let tts = provider(host: "stream.test", reply: .init(status: 200, headers: ["X-Sample-Rate": "24000"], body: pcm))
+        #expect(tts.streamsAudio)
+        var chunks: [PCMChunk] = []
+        for try await chunk in tts.stream("Bonjour Sam.") { chunks.append(chunk) }
+        let (request, body) = try #require(StubURLProtocol.requests.withLock { $0["stream.test"] })
+        #expect(request.url?.path() == "/v1/tts/stream")
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
+        #expect(json == ["text": "Bonjour Sam.", "voice": "5476", "format": "pcm16"])
+        #expect(chunks.first?.samples.count == 4_800) // small first chunk: playback starts at once
+        #expect(chunks.allSatisfy { $0.samples.count.isMultiple(of: 2) && $0.sampleRate == 24_000 })
+        pcm.removeLast() // odd trailing byte dropped
+        #expect(chunks.reduce(Data()) { $0 + $1.samples } == pcm)
+    }
+
+    @Test func streamFallsBackToSentenceRouteOnOlderBridge() async throws {
+        let pcm = Data([1, 0, 2, 0])
+        StubURLProtocol.pathReplies.withLock { $0["old.test/v1/tts/stream"] = .init(status: 404, headers: [:], body: Data()) }
+        let tts = provider(host: "old.test", reply: .init(status: 200, headers: [:], body: pcm))
+        var chunks: [PCMChunk] = []
+        for try await chunk in tts.stream("Salut.") { chunks.append(chunk) }
+        #expect(chunks == [PCMChunk(samples: pcm, sampleRate: 24_000)])
+        #expect(StubURLProtocol.requests.withLock { $0["old.test"] }?.0.url?.path() == "/v1/tts/sentence")
+    }
+
+    @Test func streamThrowsOnHTTPError() async {
+        let tts = provider(host: "stream-down.test", reply: .init(status: 502, headers: [:], body: Data()))
+        await #expect(throws: TTSError.httpStatus(502)) { for try await _ in tts.stream("Salut.") {} }
     }
 
     @Test func throwsWhenUnreachable() async {

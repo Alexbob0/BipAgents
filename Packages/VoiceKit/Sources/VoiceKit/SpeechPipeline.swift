@@ -9,12 +9,16 @@ import Foundation
 ///   next segment (≤ `maxGroupLength`), which keeps the synthesizer ahead of playback;
 /// - segments are emitted strictly in order the moment each one is ready, never waiting for the end of
 ///   the reply. A segment that fails is skipped rather than ending the whole reply.
+/// - with a streaming provider (`TTSProvider.streamsAudio`), each segment's chunks are emitted as they
+///   arrive (later segments' chunks wait their turn), and the first segment is not cut short since a
+///   long text then starts playing as fast as a short one.
 /// Cancelling the consumer of `events(for:)` cancels the text stream and every synthesis request.
 struct SpeechPipeline: Sendable {
     enum Event: Sendable {
         /// First text delta received (start of the "first audio" latency measurement).
         case textStarted(ContinuousClock.Instant)
-        /// `index` counts emitted segments; `text` is what `audio` says.
+        /// `index` counts emitted segments; `text` is the whole segment `audio` belongs to. A streamed
+        /// segment yields several events with the same index, in playback order.
         case sentence(index: Int, text: String, audio: PCMChunk)
     }
 
@@ -41,10 +45,10 @@ struct SpeechPipeline: Sendable {
         case sentences([String])
         case textEnded
         case textFailed(any Error)
-        case synthesized(Int, Result<PCMChunk, any Error>)
+        case chunk(Int, PCMChunk)
+        /// The segment's audio is complete (`nil`) or ended with an error (skipped from there on).
+        case synthesized(Int, (any Error)?)
     }
-
-    private enum Outcome { case audio(PCMChunk), skipped }
 
     private func run(_ deltas: AsyncThrowingStream<String, any Error>,
                      _ output: AsyncThrowingStream<Event, any Error>.Continuation) async {
@@ -72,7 +76,9 @@ struct SpeechPipeline: Sendable {
 
         var pending: [String] = []          // complete sentences not requested yet
         var segments: [String] = []         // requested segment texts, by index
-        var ready: [Int: Outcome] = [:]
+        var buffered: [Int: [PCMChunk]] = [:]  // chunks of segments after the one playing
+        var done: Set<Int> = []
+        var lastEmitting = -1
         var synthesis: [Int: Task<Void, Never>] = [:]
         var nextToEmit = 0, emitted = 0
         var textEnded = false
@@ -93,39 +99,50 @@ struct SpeechPipeline: Sendable {
                 textEnded = true
             case .textFailed(let error):
                 return output.finish(throwing: error)
-            case .synthesized(let index, let result):
-                synthesis[index] = nil
-                switch result {
-                case .success(let audio): ready[index] = .audio(audio)
-                case .failure(let error) where FallbackTTSProvider.isCancellation(error): return output.finish(throwing: error)
-                case .failure: ready[index] = .skipped
+            case .chunk(let index, let audio):
+                if index == nextToEmit {
+                    emit(audio, segment: index)
+                } else {
+                    buffered[index, default: []].append(audio)
                 }
+            case .synthesized(let index, let error):
+                synthesis[index] = nil
+                if let error, FallbackTTSProvider.isCancellation(error) { return output.finish(throwing: error) }
+                done.insert(index)
             }
 
-            while let outcome = ready.removeValue(forKey: nextToEmit) {
-                if case .audio(let audio) = outcome {
-                    output.yield(.sentence(index: emitted, text: segments[nextToEmit], audio: audio))
-                    emitted += 1
-                }
+            while done.remove(nextToEmit) != nil {
                 nextToEmit += 1
+                for audio in buffered.removeValue(forKey: nextToEmit) ?? [] { emit(audio, segment: nextToEmit) }
             }
             while !pending.isEmpty, synthesis.count < maxInFlight {
                 let index = segments.count, text = nextSegment(from: &pending, isFirst: segments.isEmpty)
                 segments.append(text)
                 synthesis[index] = Task {
-                    let result: Result<PCMChunk, any Error>
-                    do { result = .success(try await tts.synthesize(text)) } catch { result = .failure(error) }
-                    step.yield(.synthesized(index, result))
+                    do {
+                        for try await audio in tts.stream(text) { step.yield(.chunk(index, audio)) }
+                        step.yield(.synthesized(index, nil))
+                    } catch {
+                        step.yield(.synthesized(index, error))
+                    }
                 }
             }
             if textEnded, pending.isEmpty, synthesis.isEmpty, nextToEmit == segments.count { return output.finish() }
         }
         output.finish(throwing: CancellationError())
+
+        func emit(_ audio: PCMChunk, segment: Int) {
+            if segment != lastEmitting {
+                lastEmitting = segment
+                emitted += 1
+            }
+            output.yield(.sentence(index: emitted - 1, text: segments[segment], audio: audio))
+        }
     }
 
     /// Takes the next segment's text off `pending`.
     private func nextSegment(from pending: inout [String], isFirst: Bool) -> String {
-        if isFirst {
+        if isFirst, !tts.streamsAudio {
             let (head, tail) = Self.splitHead(pending[0], maxLength: firstSegmentLength)
             if let tail { pending[0] = tail } else { pending.removeFirst() }
             return head

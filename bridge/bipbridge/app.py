@@ -11,7 +11,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
@@ -201,6 +201,36 @@ def build_router() -> APIRouter:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
         return Response(content=audio.data, media_type=audio.content_type,
                         headers={"X-Cache": "hit" if audio.cached else "miss", "Cache-Control": "no-store"})
+
+    @router.post("/tts/stream")
+    async def tts_stream(body: TtsRequest, request: Request) -> Response:
+        """Raw PCM16 (s16le, mono, 24 kHz) streamed as Kyutai produces it: first audio in ~0.75 s.
+        Errors before the first chunk are plain HTTP errors; the body is chunked audio only."""
+        services = _services(request)
+        agent = services.config.agent(body.agent) if body.agent else None
+        if body.agent and agent is None:
+            raise HTTPException(status_code=404, detail="unknown agent")
+        voice = body.voice or (agent.voice if agent else None) or services.config.default_voice
+        chunks = services.tts.stream(body.text, voice, INTERACTIVE, max_chars=MESSAGE_MAX_CHARS)
+        try:
+            first = await chunks.__anext__()
+        except StopAsyncIteration:
+            first = b""
+        except TtsError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+        async def relay() -> AsyncIterator[bytes]:
+            try:
+                if first:
+                    yield first
+                async for chunk in chunks:
+                    yield chunk
+            finally:
+                await chunks.aclose()
+
+        return StreamingResponse(relay(), media_type="application/octet-stream",
+                                 headers={"X-Sample-Rate": "24000", "X-Channels": "1",
+                                          "X-Sample-Format": "s16le", "Cache-Control": "no-store"})
 
     @router.post("/files")
     async def upload_file(request: Request) -> Dict[str, Any]:

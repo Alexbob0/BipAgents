@@ -49,6 +49,45 @@ private final class SlowTTS: TTSProvider {
     }
 }
 
+/// Streaming TTS: each word of a segment is one chunk (its UTF-8 text), after a per-segment delay.
+private final class StreamingTTS: TTSProvider {
+    private let delays: [String: Duration]
+    private let failAfterFirstChunk: Set<String>
+    let requests = Mutex<[String]>([])
+
+    init(delays: [String: Duration] = [:], failAfterFirstChunk: Set<String> = []) {
+        self.delays = delays
+        self.failAfterFirstChunk = failAfterFirstChunk
+    }
+
+    var streamsAudio: Bool { true }
+
+    func synthesize(_ sentence: String) async throws -> PCMChunk { fatalError("streaming only") }
+
+    func stream(_ text: String) -> AsyncThrowingStream<PCMChunk, any Error> {
+        requests.withLock { $0.append(text) }
+        let words = text.split(separator: " ").map { String($0) + " " }
+        let delay = delays[text] ?? .milliseconds(2)
+        let failing = failAfterFirstChunk.contains(text)
+        return AsyncThrowingStream.producing { yield in
+            for (index, word) in words.enumerated() {
+                try await Task.sleep(for: delay)
+                if failing, index == 1 { throw TTSError.httpStatus(500) }
+                yield(PCMChunk(samples: Data(word.utf8), sampleRate: 24_000))
+            }
+        }
+    }
+}
+
+/// Every emitted chunk as (segment index, audio-as-text).
+private func collectChunks(_ events: AsyncThrowingStream<SpeechPipeline.Event, any Error>) async throws -> [(Int, String)] {
+    var chunks: [(Int, String)] = []
+    for try await event in events {
+        if case .sentence(let index, _, let audio) = event { chunks.append((index, String(decoding: audio.samples, as: UTF8.self))) }
+    }
+    return chunks
+}
+
 private func stream(_ deltas: [String]) -> AsyncThrowingStream<String, any Error> {
     AsyncThrowingStream { continuation in
         deltas.forEach { continuation.yield($0) }
@@ -194,5 +233,28 @@ struct SpeechPipelineTests {
         let tts = SlowTTS()
         #expect(try await collect(SpeechPipeline(tts: tts).events(for: stream(["```", "\ncode\n", "```\n"]))).isEmpty)
         #expect(tts.requests.isEmpty)
+    }
+
+    @Test func streamedChunksPlayInSegmentOrder() async throws {
+        // Segment 0 streams slowly, segment 1 fast: its chunks must wait until segment 0 is complete.
+        let tts = StreamingTTS(delays: ["Un deux trois.": .milliseconds(30), "Quatre cinq.": .milliseconds(1)])
+        let pipeline = SpeechPipeline(tts: tts, maxInFlight: 2, grouping: false)
+        let chunks = try await collectChunks(pipeline.events(for: stream(["Un deux trois. Quatre cinq."])))
+        #expect(chunks.map(\.0) == [0, 0, 0, 1, 1])
+        #expect(chunks.map(\.1).joined() == "Un deux trois. Quatre cinq. ")
+    }
+
+    @Test func streamingProviderGetsTheWholeFirstSentence() async throws {
+        let tts = StreamingTTS()
+        let sentence = "Voici trois conseils adaptés à ta situation, en partant de ce que tu m’as dit hier soir."
+        _ = try await collectChunks(SpeechPipeline(tts: tts).events(for: stream([sentence])))
+        #expect(tts.requests.withLock { $0 } == [sentence]) // no head split: no extra request warm-up
+    }
+
+    @Test func segmentFailingMidStreamKeepsWhatPlayedAndMovesOn() async throws {
+        let tts = StreamingTTS(failAfterFirstChunk: ["Un deux trois."])
+        let chunks = try await collectChunks(SpeechPipeline(tts: tts, grouping: false).events(for: stream(["Un deux trois. Quatre cinq."])))
+        #expect(chunks.map(\.1) == ["Un ", "Quatre ", "cinq. "])
+        #expect(chunks.map(\.0) == [0, 1, 1])
     }
 }
