@@ -273,6 +273,13 @@ final class ConversationModel {
     static var onMissedReply: ((_ agent: AgentProfile, _ sessionID: String, _ runID: String, _ text: String) -> Void)?
     private static var watchers: [String: Task<Void, Never>] = [:]
 
+    /// The app went to the background: every screen stops listening, so the bridge — which pushes only when
+    /// nobody follows a run — notifies when the reply is ready. A suspended app's connection can stay open
+    /// for a long time otherwise. Screens re-attach when the app is active again.
+    static func detachAll() {
+        for model in Array(listeners.values) { model.detach() }
+    }
+
     /// The conversation left the screen: stop listening (the run goes on, `reattachIfNeeded` picks it up).
     /// Only one subscriber gets a run's events, so a hidden screen must not keep them.
     func detach() {

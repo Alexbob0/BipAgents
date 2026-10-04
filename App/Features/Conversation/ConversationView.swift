@@ -8,6 +8,7 @@ struct ConversationView: View {
 
     @Environment(AgentStore.self) private var store
     @Environment(InboxStore.self) private var inbox
+    @Environment(\.scenePhase) private var scenePhase
     @State private var model: ConversationModel?
 
     var body: some View {
@@ -33,6 +34,9 @@ struct ConversationView: View {
             if let sessionID = model?.sessionID { inbox.dismissMissedReplies(sessionID: sessionID) }
         }
         .onDisappear { model?.detach() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model?.reattachIfNeeded() }
+        }
     }
 }
 

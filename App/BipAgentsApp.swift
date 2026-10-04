@@ -8,6 +8,7 @@ struct BipAgentsApp: App {
     @State private var router = Router()
     @State private var inbox = InboxStore()
     @State private var quickVoice = QuickVoiceCenter()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -31,6 +32,9 @@ struct BipAgentsApp: App {
             .tint(Theme.ink)
             .fontDesign(.rounded)
             .onChange(of: agents.agents, initial: true) { _, profiles in AgentAvatars.export(profiles) }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { ConversationModel.detachAll() }
+            }
             .task {
                 appDelegate.attach(store: agents, router: router)
                 ConversationModel.onMissedReply = { [inbox] agent, sessionID, runID, text in
