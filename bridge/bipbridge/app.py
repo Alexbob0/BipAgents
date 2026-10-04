@@ -100,6 +100,9 @@ class Services:
 
 # -- request models (typing.Optional/List: pydantic evaluates annotations on Python 3.9) ---------
 
+MESSAGE_MAX_CHARS = 8000
+
+
 class TtsRequest(BaseModel):
     text: str = Field(..., max_length=20000)
     voice: Optional[str] = Field(None, max_length=300)
@@ -179,6 +182,25 @@ def build_router() -> APIRouter:
         if audio.format == "pcm16":
             headers["X-Sample-Format"] = "s16le"
         return Response(content=audio.data, media_type=audio.content_type, headers=headers)
+
+    @router.post("/tts/message")
+    async def tts_message(body: TtsRequest, request: Request) -> Response:
+        """A whole reply as one audio file (voice-message mode). Kyutai gets the full text at once, so it
+        batches the sentences on the GPU: far faster per second of audio than sentence by sentence."""
+        services = _services(request)
+        agent = services.config.agent(body.agent) if body.agent else None
+        if body.agent and agent is None:
+            raise HTTPException(status_code=404, detail="unknown agent")
+        fmt = body.format if body.format != "pcm16" else "mp3"  # default to a compressed file here
+        if fmt not in ("mp3", "opus", "wav"):
+            raise HTTPException(status_code=400, detail="format must be mp3, opus or wav")
+        voice = body.voice or (agent.voice if agent else None) or services.config.default_voice
+        try:
+            audio = await services.tts.synthesize(body.text, voice, fmt, INTERACTIVE, max_chars=MESSAGE_MAX_CHARS)
+        except TtsError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+        return Response(content=audio.data, media_type=audio.content_type,
+                        headers={"X-Cache": "hit" if audio.cached else "miss", "Cache-Control": "no-store"})
 
     @router.post("/files")
     async def upload_file(request: Request) -> Dict[str, Any]:
