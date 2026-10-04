@@ -1,4 +1,5 @@
 import Foundation
+import Intents
 import Security
 import UserNotifications
 
@@ -18,24 +19,42 @@ final class NotificationService: UNNotificationServiceExtension {
         }
         bestAttempt = content
         let userInfo = request.content.userInfo
-        guard let agentName = userInfo["agent"] as? String,
-              let bridge = SharedAgents.bridge(forAgentNamed: agentName) else {
+        guard let agentName = userInfo["agent"] as? String, let agent = SharedAgents.agent(named: agentName) else {
             contentHandler(content)
             return
         }
         let outboxID = userInfo["outbox_id"] as? String
         let runID = userInfo["run_id"] as? String
+        let isReply = userInfo["kind"] as? String == "reply"
         // The system owns these objects; the extension's own contract is "call the handler once, soon".
         nonisolated(unsafe) let pending = content
         nonisolated(unsafe) let deliver = contentHandler
         task = Task {
-            if let outboxID {
-                await Self.enrich(pending, outboxID: outboxID, bridge: bridge)
-            } else if let runID {
-                await Self.enrichApproval(pending, agent: agentName, runID: runID, bridge: bridge)
+            if let bridge = agent.bridge {
+                if let outboxID {
+                    await Self.enrich(pending, outboxID: outboxID, bridge: bridge)
+                } else if let runID, !isReply {
+                    await Self.enrichApproval(pending, agent: agentName, runID: runID, bridge: bridge)
+                }
             }
-            deliver(pending)
+            deliver(await Self.asMessage(pending, from: agent))
         }
+    }
+
+    /// A communication notification: the agent's Bip as the sender's picture (the app icon goes in the
+    /// corner), its name as the sender, one conversation per agent. Falls back to the plain notification.
+    private static func asMessage(_ content: UNMutableNotificationContent, from agent: SharedAgents.Agent) async -> UNNotificationContent {
+        let image = agent.avatar.map { INImage(imageData: $0) }
+        let sender = INPerson(personHandle: INPersonHandle(value: agent.id.uuidString, type: .unknown), nameComponents: nil,
+                              displayName: agent.name, image: image, contactIdentifier: nil, customIdentifier: agent.id.uuidString)
+        let intent = INSendMessageIntent(recipients: nil, outgoingMessageType: .outgoingMessageText, content: content.body,
+                                         speakableGroupName: nil, conversationIdentifier: agent.id.uuidString,
+                                         serviceName: nil, sender: sender, attachments: nil)
+        if let image { intent.setImage(image, forParameterNamed: \.sender) }
+        let interaction = INInteraction(intent: intent, response: nil)
+        interaction.direction = .incoming
+        try? await interaction.donate()
+        return (try? content.updating(from: intent)) ?? content
     }
 
     override func serviceExtensionTimeWillExpire() {
@@ -91,6 +110,14 @@ enum SharedAgents {
         }
     }
 
+    struct Agent {
+        var id: UUID
+        var name: String
+        var bridge: Bridge?
+        /// The Bip drawn by the app (`AgentAvatars`), PNG.
+        var avatar: Data?
+    }
+
     private struct StoredAgent: Decodable {
         struct Config: Decodable { var id: UUID; var name: String; var bridgeURL: URL? }
         var config: Config
@@ -98,14 +125,16 @@ enum SharedAgents {
 
     private struct StoredSecrets: Decodable { var bridgeKey: String? }
 
-    static func bridge(forAgentNamed name: String) -> Bridge? {
+    static func agent(named name: String) -> Agent? {
         guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.io.github.bipagents"),
               let data = try? Data(contentsOf: container.appending(path: "agents.json")),
               let agents = try? JSONDecoder().decode([StoredAgent].self, from: data),
-              let agent = agents.first(where: { $0.config.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }),
-              let url = agent.config.bridgeURL,
-              let key = bridgeKey(for: agent.config.id) else { return nil }
-        return Bridge(url: url, key: key)
+              let stored = agents.first(where: { $0.config.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame })
+        else { return nil }
+        let id = stored.config.id
+        let bridge = stored.config.bridgeURL.flatMap { url in bridgeKey(for: id).map { Bridge(url: url, key: $0) } }
+        let avatar = try? Data(contentsOf: container.appending(path: "avatars/\(id.uuidString).png"))
+        return Agent(id: id, name: stored.config.name, bridge: bridge, avatar: avatar)
     }
 
     private static func bridgeKey(for agentID: UUID) -> String? {

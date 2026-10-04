@@ -30,6 +30,7 @@ struct BipAgentsApp: App {
             .environment(quickVoice)
             .tint(Theme.ink)
             .fontDesign(.rounded)
+            .onChange(of: agents.agents, initial: true) { _, profiles in AgentAvatars.export(profiles) }
             .task {
                 appDelegate.store = agents
                 appDelegate.router = router
