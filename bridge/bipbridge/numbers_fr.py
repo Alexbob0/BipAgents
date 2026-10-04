@@ -227,10 +227,22 @@ _LEXICON = [
     (r"\bc\.?-à-d\.?", "c'est-à-dire"), (r"\betc\.(?=\s*\S)", "et cetera,"), (r"\betc\.", "et cetera."),
     (r"\bcf\.", "voir"), (r"\bvs\.?(?= )", "contre"), (r"\b[nN]°\s?", "numéro "), (r"\bRDV\b|\brdv\b", "rendez-vous"),
     (r"\bsvp\b|\bSVP\b", "s'il vous plaît"), (r"\btél\.", "téléphone"), (r"\s+&\s+", " et "),
-    (r"\s+\+\s+", " plus "), (r"(?<!\w)(?:≈|~)\s?(?=\d)", "environ "), (r"(?<!\w)≥\s?", "au moins "),
+    (r"\s+\+\s+", " plus "), (r"(?<=\d)\s?[~∼]\s?(?=\d)", " à "), (r"\s*(?<!~)[~∼≈≃](?!~)\s*", " environ "), (r"(?<!\w)≥\s?", "au moins "),
     (r"(?<!\w)≤\s?", "au plus "), (r"(?<=\d)\s?×\s?(?=\d)", " fois "), (r"\s@\s", " arobase "),
 ]
-_LEXICON = [(re.compile(pattern), words) for pattern, words in _LEXICON]
+# English words common in the agents' replies, respelled so a French voice says them right
+# (singular, plural). Tuned by ear: adjust the spelling when one still sounds off.
+_ENGLISH = {
+    "run": "reune", "runs": "reunes", "cron": "crone", "crons": "crones", "live": "laïve", "lives": "laïves",
+    "push": "pouche", "bug": "beug", "bugs": "beugs", "email": "imèle", "emails": "imèles", "mail": "mèle",
+    "mails": "mèles", "skill": "skile", "skills": "skiles", "prompt": "prompte", "prompts": "promptes",
+    "token": "tokène", "tokens": "tokènes", "update": "eupdète", "updates": "eupdètes", "cloud": "claoude",
+    "bridge": "bridje", "wellness": "ouèlnesse", "trainline": "trène laïne", "feedback": "fidbak",
+    "workflow": "weurkflo", "workflows": "weurkflos", "check": "tchèque", "checks": "tchèques",
+}
+_LEXICON = [(re.compile(pattern), words) for pattern, words in _LEXICON] + [
+    (re.compile(r"\b" + word + r"\b", re.IGNORECASE), spoken) for word, spoken in _ENGLISH.items()
+]
 
 _SLASH_WORDS = [(re.compile(r"\bet ?/ ?ou\b", re.I), "et ou"), (re.compile(r"\baller ?/ ?retour\b", re.I), "aller-retour"),
                 (re.compile(r"\bA/R\b"), "aller-retour"), (re.compile(r"\bkm/h\b"), "kilomètres heure")]
@@ -252,4 +264,5 @@ def prepare_for_synthesis(text: str) -> str:
     text = _CLOSE.sub(", ", text)
     text = _COMMA_RUNS.sub(", ", text)
     text = _COMMA_BEFORE_END.sub(r"\1", text)
+    text = re.sub(r" {2,}", " ", text)
     return text.strip(" ,")

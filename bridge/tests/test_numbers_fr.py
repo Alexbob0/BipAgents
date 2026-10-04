@@ -64,7 +64,18 @@ def test_prepare_for_synthesis(text, spoken):
     ("Pommes, poires, etc. Puis le dessert.", "Pommes, poires, et cetera, Puis le dessert."),
     ("Ligne n°4, Sainte-Anne & Ste Marie, ≈ 30 min, ≥ 5 km.",
      "Ligne numéro quatre, Sainte-Anne et Sainte Marie, environ trente minutes, au moins cinq kilomètres."),
-    ("Wellness + Vie, 3 × 10 reps, PSG vs OM.", "Wellness plus Vie, trois fois dix reps, PSG contre OM."),
+    ("Wellness + Vie, 3 × 10 reps, PSG vs OM.", "ouèlnesse plus Vie, trois fois dix reps, PSG contre OM."),
 ])
 def test_lexicon(text, spoken):
+    assert prepare_for_synthesis(text) == spoken
+
+
+@pytest.mark.parametrize("text, spoken", [
+    ("Ça prend ~15 min, soit ~ une heure en tout, ou 2~3 jours.",
+     "Ça prend environ quinze minutes, soit environ une heure en tout, ou deux à trois jours."),
+    ("Les runs Hermes et le cron du matin.", "Les reunes Hermes et le crone du matin."),
+    ("Lance un Live avec Wellness, puis check tes emails.", "Lance un laïve avec ouèlnesse, puis tchèque tes imèles."),
+    ("Rien d'anglais dans « il court » ni « livret ».", "Rien d'anglais dans « il court » ni « livret »."),
+])
+def test_tilde_and_english_words(text, spoken):
     assert prepare_for_synthesis(text) == spoken
