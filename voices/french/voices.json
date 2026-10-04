@@ -1,0 +1,42 @@
+{
+ "engine": "pocket-tts 3.3.0",
+ "language": "french",
+ "sample_rate": 24000,
+ "voices": {
+  "loutre": {
+   "description": "Loutre joueuse et complice, voix médium-grave, chaude et ronde, débit vif et enjoué, petits rires discrets.",
+   "safetensors_bytes": 2901808,
+   "load_s": 0.0,
+   "first_sound_s": 0.067,
+   "rtf": 4.08
+  },
+  "chat2": {
+   "description": "Petit chat malicieux et un peu paresseux, voix médium-grave, ronronnante et amusée, débit vif et naturel, pas traînant.",
+   "safetensors_bytes": 3639088,
+   "load_s": 0.001,
+   "first_sound_s": 0.061,
+   "rtf": 4.12
+  },
+  "lutin": {
+   "description": "Petit lutin farceur et vif, voix médium, rieuse et expressive, débit rapide mais bien articulé.",
+   "safetensors_bytes": 3344176,
+   "load_s": 0.001,
+   "first_sound_s": 0.059,
+   "rtf": 4.24
+  },
+  "ours": {
+   "description": "Grand ours en peluche calme, voix grave et douce, rassurante, débit lent.",
+   "safetensors_bytes": 4032304,
+   "load_s": 0.0,
+   "first_sound_s": 0.054,
+   "rtf": 4.25
+  },
+  "colibri": {
+   "description": "Petit oiseau vif et enjoué, voix claire et légère, médium, chantante, débit rapide et précis, jamais stridente.",
+   "safetensors_bytes": 3491632,
+   "load_s": 0.001,
+   "first_sound_s": 0.061,
+   "rtf": 4.07
+  }
+ }
+}
