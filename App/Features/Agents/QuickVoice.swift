@@ -101,6 +101,7 @@ final class QuickVoiceCenter {
 /// so a recording can never be left running. A side drag recognizer only measures how far the finger slid.
 struct AudioHoldButton: View {
     var agent: AgentProfile
+    var height: CGFloat = 50
     var onTap: () -> Void
 
     @Environment(QuickVoiceCenter.self) private var quick
@@ -116,7 +117,7 @@ struct AudioHoldButton: View {
         Label(isRecording ? "Relâche" : "Audio", systemImage: isRecording ? "waveform" : "mic.fill")
             .labelStyle(.compactPill)
             .font(Theme.body(16, weight: .heavy))
-            .frame(maxWidth: .infinity, minHeight: 50)
+            .frame(maxWidth: .infinity, minHeight: height)
             .foregroundStyle(isRecording ? .white : Theme.ink)
             .background(isRecording ? Theme.danger : Theme.card, in: .capsule)
             .scaleEffect(isRecording ? 1.04 : 1)

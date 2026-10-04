@@ -122,7 +122,16 @@ final class AgentStore {
         do {
             _ = try await client.capabilities()
             reachability[agent.id] = .online
-            latestSession[agent.id] = try? await client.listSessions(limit: 1).first
+            if var latest = try? await client.listSessions(limit: 1).first {
+                // Hermes' list preview is the session's *first* message: show the latest one instead.
+                if let history = try? await client.messages(sessionID: latest.id),
+                   let last = history.last(where: { ($0.role == .assistant || $0.role == .user) && !$0.text.isEmpty }) {
+                    latest.lastMessagePreview = last.text
+                } else if latestSession[agent.id]?.id == latest.id {
+                    latest.lastMessagePreview = latestSession[agent.id]?.lastMessagePreview
+                }
+                latestSession[agent.id] = latest
+            }
         } catch HermesError.unauthorized(_) {
             reachability[agent.id] = .unauthorized
         } catch {
@@ -155,7 +164,7 @@ final class AgentStore {
 }
 
 extension AgentStore {
-    /// In-memory store with two sample agents, for previews.
+    /// In-memory store with two sample agents (more with `-demoAgents n`), for previews.
     static var preview: AgentStore {
         let store = AgentStore(fileURL: URL.temporaryDirectory.appending(path: "preview-agents-\(UUID()).json"))
         store.agents = [
@@ -164,6 +173,12 @@ extension AgentStore {
             AgentProfile(config: AgentConfig(name: "Vie", baseURL: URL(string: "https://aibox.example.ts.net:8644")!),
                          appearance: AgentAppearance(category: .daily)),
         ]
+        // `-demoAgents 5`: more sample agents, to review the compact home cards.
+        let extra: [(String, AgentCategory)] = [("Budget", .finance), ("Boulot", .work), ("Maison", .home), ("Atelier", .creative)]
+        for (name, category) in extra.prefix(max(0, UserDefaults.standard.integer(forKey: "demoAgents") - 2)) {
+            store.agents.append(AgentProfile(config: AgentConfig(name: name, baseURL: URL(string: "https://aibox.example.ts.net:8650")!),
+                                             appearance: AgentAppearance(category: category)))
+        }
         for agent in store.agents { store.reachability[agent.id] = .online }
         store.latestSession[store.agents[0].id] = HermesSession(id: "demo", title: "Plan sommeil du soir", updatedAt: .now.addingTimeInterval(-900),
             lastMessagePreview: "Ce soir, vise un coucher à 23 h 15 : écrans coupés à 22 h 30, lumière tamisée et chambre à 18 °C.")

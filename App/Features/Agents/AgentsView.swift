@@ -16,8 +16,11 @@ struct AgentsView: View {
                     if store.agents.isEmpty {
                         EmptyAgentsView { isAddingAgent = true }
                     } else {
+                        // Beyond two agents the cards go compact: about four fit on a screen.
+                        let compact = store.agents.count > 2
                         ForEach(store.agents) { agent in
-                            AgentCard(agent: agent, reachability: store.reachability[agent.id] ?? .unknown, latest: store.latestSession[agent.id])
+                            AgentCard(agent: agent, reachability: store.reachability[agent.id] ?? .unknown,
+                                      latest: store.latestSession[agent.id], compact: compact)
                         }
                     }
                 }
@@ -54,6 +57,8 @@ struct AgentCard: View {
     var agent: AgentProfile
     var reachability: AgentReachability
     var latest: HermesSession?
+    /// Smaller Bip, one-line preview, lower buttons (many agents).
+    var compact = false
 
     @Environment(QuickVoiceCenter.self) private var quick
     @Environment(Router.self) private var router
@@ -69,14 +74,15 @@ struct AgentCard: View {
     }
 
     private var palette: AgentPalette { agent.appearance.palette }
+    private var buttonHeight: CGFloat { compact ? 42 : 50 }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: compact ? 10 : 12) {
             HStack(alignment: .center, spacing: 12) {
                 NavigationLink(value: AgentRoute.sessions(agent)) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: compact ? 4 : 6) {
                         Text(agent.name)
-                            .font(Theme.display(25))
+                            .font(Theme.display(compact ? 21 : 25))
                             .foregroundStyle(Theme.ink)
                         HStack(spacing: 8) {
                             CategoryChip(appearance: agent.appearance)
@@ -88,8 +94,8 @@ struct AgentCard: View {
                 }
                 .buttonStyle(.plain)
                 // Outside the link: tapping the Bip makes it react instead of opening the agent.
-                InteractiveMascot(appearance: agent.appearance, baseMood: mood, size: 92, bubbleEdge: .leading)
-                    .padding(.vertical, -22)
+                InteractiveMascot(appearance: agent.appearance, baseMood: mood, size: compact ? 64 : 92, bubbleEdge: .leading)
+                    .padding(.vertical, compact ? -14 : -22)
             }
             .zIndex(1) // the Bip stays above the preview below when dragged or jumping
 
@@ -114,13 +120,13 @@ struct AgentCard: View {
                         .font(Theme.body(12.5, weight: .heavy))
                         .foregroundStyle(Theme.muted)
                         Text(preview)
-                            .font(Theme.body(15))
+                            .font(Theme.body(compact ? 14 : 15))
                             .foregroundStyle(Theme.ink)
-                            .lineLimit(2)
+                            .lineLimit(compact ? 1 : 2)
                             .multilineTextAlignment(.leading)
                     }
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, compact ? 9 : 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.card, in: .rect(cornerRadius: 18, style: .continuous))
                 }
@@ -128,21 +134,21 @@ struct AgentCard: View {
             }
 
             HStack(spacing: 8) {
-                AudioHoldButton(agent: agent) {
+                AudioHoldButton(agent: agent, height: buttonHeight) {
                     router.agentsPath.append(AgentRoute.conversation(agent, sessionID: latest?.id, start: .voiceNote))
                 }
                 NavigationLink(value: AgentRoute.conversation(agent, sessionID: latest?.id, start: .keyboard)) {
                     Label("Écrire", systemImage: "keyboard")
                 }
-                .buttonStyle(.pill(.secondary))
+                .buttonStyle(.pill(.secondary, height: buttonHeight))
                 NavigationLink(value: AgentRoute.call(agent)) {
                     Label("Live", systemImage: "waveform")
                 }
-                .buttonStyle(.pill)
+                .buttonStyle(.pill(.primary, height: buttonHeight))
             }
             .labelStyle(.compactPill)
         }
-        .padding(18)
+        .padding(compact ? 14 : 18)
         .background(palette.tint, in: .rect(cornerRadius: 30, style: .continuous))
         .animation(.snappy, value: quickStatus)
     }

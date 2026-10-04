@@ -23,6 +23,9 @@ final class InboxStore {
     private var outbox: [Entry] = []
     private var missed: [MissedReply] = InboxStore.loadMissed()
     private static let missedKey = "inbox.missedReplies"
+    /// Bridge messages deleted from the Boîte on this iPhone (the bridge keeps them for its retention).
+    private var dismissed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: InboxStore.dismissedKey) ?? [])
+    private static let dismissedKey = "inbox.dismissed"
 
     /// Agent messages (bridge outbox) and missed replies, newest first.
     var entries: [Entry] {
@@ -31,7 +34,7 @@ final class InboxStore {
                                    text: reply.text, createdAt: reply.createdAt, sessionID: reply.sessionID, hasAudio: false),
                   agent: reply.agent)
         }
-        return (outbox + replies).sorted { $0.item.createdAt > $1.item.createdAt }
+        return (outbox.filter { !dismissed.contains($0.id) } + replies).sorted { $0.item.createdAt > $1.item.createdAt }
     }
     private(set) var isLoading = false
     private(set) var errorMessage: String?
@@ -66,11 +69,33 @@ final class InboxStore {
             }
         }
         outbox = collected
+        // Forget deletions of messages the bridge no longer has (retention), so the set stays small.
+        if failures == 0 { saveDismissed(dismissed.intersection(collected.map(\.id))) }
         errorMessage = failures > 0 ? "Certains agents sont injoignables (Tailscale ?)." : nil
     }
 
     func markAllSeen() {
         lastSeen = .now
+    }
+
+    func dismiss(_ entry: Entry) {
+        if entry.item.id.hasPrefix("reply-") {
+            missed.removeAll { "reply-\($0.runID)" == entry.item.id }
+            saveMissed()
+        } else {
+            saveDismissed(dismissed.union([entry.id]))
+        }
+    }
+
+    func dismissAll() {
+        missed.removeAll()
+        saveMissed()
+        saveDismissed(dismissed.union(outbox.map(\.id)))
+    }
+
+    private func saveDismissed(_ ids: Set<String>) {
+        dismissed = ids
+        UserDefaults.standard.set(Array(ids), forKey: Self.dismissedKey)
     }
 
     func addMissedReply(agent: AgentProfile, sessionID: String, runID: String, text: String) {
@@ -128,6 +153,7 @@ struct InboxView: View {
     @Environment(AgentStore.self) private var agents
     @Environment(Router.self) private var router
     @State private var filter: UUID?
+    @State private var confirmingClear = false
 
     private var visible: [InboxStore.Entry] {
         inbox.entries.filter { filter == nil || $0.agent.id == filter }
@@ -135,7 +161,16 @@ struct InboxView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeader(overline: "Messages de tes agents", title: "Boîte")
+            ScreenHeader(overline: "Messages de tes agents", title: "Boîte") {
+                if !inbox.entries.isEmpty {
+                    HeaderButton(systemImage: "trash", label: "Tout effacer") { confirmingClear = true }
+                }
+            }
+            .confirmationDialog("Effacer tous les messages de la Boîte ?", isPresented: $confirmingClear, titleVisibility: .visible) {
+                Button("Tout effacer", role: .destructive) { withAnimation { inbox.dismissAll() } }
+            } message: {
+                Text("Ils disparaissent de cet iPhone ; les conversations ne sont pas touchées.")
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     filters
@@ -150,6 +185,11 @@ struct InboxView: View {
                             router.open(.conversation(entry.agent, sessionID: entry.item.sessionID))
                         } replyByVoice: {
                             router.open(.call(entry.agent))
+                        } dismiss: {
+                            withAnimation { inbox.dismiss(entry) }
+                        }
+                        .contextMenu {
+                            Button("Supprimer", systemImage: "trash", role: .destructive) { withAnimation { inbox.dismiss(entry) } }
                         }
                     }
                 }
@@ -211,6 +251,7 @@ struct InboxCard: View {
     var play: () -> Void
     var reply: () -> Void
     var replyByVoice: () -> Void
+    var dismiss: () -> Void = {}
 
     private var palette: AgentPalette { entry.agent.appearance.palette }
 
@@ -233,6 +274,15 @@ struct InboxCard: View {
                 }
                 Spacer()
                 if isUnread { Circle().fill(Theme.danger).frame(width: 10, height: 10) }
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(Theme.muted)
+                        .frame(width: 30, height: 30)
+                        .background(Theme.background, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Supprimer ce message")
             }
             Text(entry.item.text)
                 .font(Theme.body(15.5))
