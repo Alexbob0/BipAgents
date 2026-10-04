@@ -2,6 +2,7 @@
 import json
 import threading
 
+from bipbridge.numbers_fr import prepare_for_synthesis
 from conftest import AUTH, HERMES_KEY, pcm_for, sse, wait_until
 
 TOKEN = "e" * 64
@@ -45,11 +46,11 @@ def test_voice_follow_happy_path(client):
         assert kind == "json" and header["type"] == "sentence" and header["seq"] == i and header["text"] == text
         assert header["sample_rate"] == 24000 and header["channels"] == 1
         kind, audio = body[2 * i + 1]
-        assert kind == "bin" and audio == pcm_for(text) and header["bytes"] == len(audio)
+        assert kind == "bin" and audio == pcm_for(prepare_for_synthesis(text)) and header["bytes"] == len(audio)
     assert frames[-1][1] == {"type": "done", "run_id": "run_1", "reason": "completed"}
     # Hermes called with the agent key; Kyutai with the agent voice, in order.
     assert backend.run_requests[0].headers["authorization"] == f"Bearer {HERMES_KEY}"
-    assert [b["input"] for b in backend.kyutai_inputs] == sentences
+    assert [b["input"] for b in backend.kyutai_inputs] == [prepare_for_synthesis(s) for s in sentences]
     assert {b["voice"] for b in backend.kyutai_inputs} == {"4193"}
 
 

@@ -28,7 +28,7 @@ async def test_fifo_order_and_no_parallel_calls():
     backend = FakeBackend()
     backend.kyutai_delay = 0.02
     tts = service(backend)
-    texts = [f"Phrase numéro {i}." for i in range(8)]
+    texts = [f"Phrase numéro {word}." for word in ("un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit")]
     tasks = []
     for text in texts:
         tasks.append(asyncio.create_task(tts.synthesize(text, None, "pcm16")))

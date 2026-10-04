@@ -240,3 +240,29 @@ def test_pocket_down_falls_back_to_kyutai_default_voice(client):
     client.backend.pocket_status = 200
     again = client.post("/v1/tts/stream", headers=AUTH, json={"text": "Pocket est en panne.", "voice": "pocket:lutin"})
     assert client.backend.pocket_inputs[-1]["voice"] == "lutin" and again.content != resp.content
+
+
+def test_numbers_are_spelled_before_synthesis(client):
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": "Ta moyenne : **91** bpm à 14h30.", "voice": "pocket:loutre"})
+    assert resp.status_code == 200
+    assert client.backend.pocket_inputs[-1]["input"] == "Ta moyenne : quatre-vingt-onze battements par minute à quatorze heures trente."
+
+
+def test_pocket_hiccup_is_retried_before_falling_back(client, monkeypatch):
+    import bipbridge.tts as tts_module
+    monkeypatch.setattr(tts_module, "POCKET_RETRY_DELAY", 0)
+    backend = client.backend
+    statuses = iter([503, 200])
+    original = backend._pocket
+
+    def flaky(request):
+        if request.url.path != "/health":
+            backend.pocket_status = next(statuses, 200)
+        return original(request)
+
+    monkeypatch.setattr(backend, "_pocket", flaky)
+    kyutai_calls = len(backend.kyutai_inputs)
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": "Un petit hoquet.", "voice": "pocket:ours"})
+    assert resp.status_code == 200
+    assert resp.content == pcm_for(backend.pocket_inputs[-1]["input"][::-1])
+    assert len(backend.pocket_inputs) == 2 and len(backend.kyutai_inputs) == kyutai_calls
