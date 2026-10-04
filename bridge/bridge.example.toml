@@ -16,6 +16,13 @@ url = "http://127.0.0.1:8097"
 default_voice = "5476"      # alias Kyutai (default, 5476, 4193, 5207) ou chemin cml-tts/fr/…_enhanced.wav
 timeout_seconds = 120
 
+# Kyutai Pocket TTS (CPU, premier son ≈ 60 ms) pour les voix des Bips (voices/french/ du dépôt).
+# Une voix « pocket:<nom> » (pocket:loutre, pocket:colibri…) passe par ce serveur, qui parle la même API que
+# Kyutai ; toute autre voix va à Kyutai. Pocket absent ou en panne → voix Kyutai par défaut. Retirer la section
+# pour le désactiver.
+[pocket]
+url = "http://127.0.0.1:8098"
+
 [ntfy]
 url = "http://127.0.0.1:8645"
 

@@ -27,6 +27,7 @@ HERMES_KEY = "hermes-wellness-key-xyz"
 NTFY_TOKEN = "tk_testtoken"
 AUTH = {"Authorization": f"Bearer {BRIDGE_KEY}"}
 KYUTAI = "http://kyutai.test"
+POCKET = "http://pocket.test"
 NTFY = "http://ntfy.test"
 HERMES = "http://hermes-wellness.test"
 
@@ -68,6 +69,8 @@ class FakeBackend:
         self.kyutai_max_active = 0
         self.kyutai_status = 200
         self.kyutai_streaming = True  # False: an older Kyutai without /v1/audio/stream
+        self.pocket_inputs: List[Dict[str, Any]] = []
+        self.pocket_status = 200
         self.kyutai_lock = threading.Lock()
         # run_id -> list of SSE chunks (str) or threading.Event (wait until set)
         self.runs: Dict[str, List[Any]] = {}
@@ -87,6 +90,8 @@ class FakeBackend:
         base = f"{url.scheme}://{url.host}"
         if base == KYUTAI:
             return await self._kyutai(request)
+        if base == POCKET:
+            return self._pocket(request)
         if base == HERMES:
             return self._hermes(request)
         if base == NTFY:
@@ -125,6 +130,21 @@ class FakeBackend:
             return httpx.Response(200, content=make_wav(pcm_for(body["input"])),
                                   headers={"content-type": "audio/wav"})
         return httpx.Response(200, content=b"ID3" + body["input"].encode(), headers={"content-type": "audio/mpeg"})
+
+    def _pocket(self, request: httpx.Request) -> httpx.Response:
+        """Pocket TTS speaks the Kyutai API; its fake audio is the text reversed (tells engines apart)."""
+        if request.url.path == "/health":
+            return httpx.Response(200 if self.pocket_status == 200 else 503, json={"status": "ok"})
+        body = json.loads(request.content)
+        self.pocket_inputs.append(body)
+        if self.pocket_status != 200:
+            return httpx.Response(self.pocket_status, text="pocket down")
+        pcm = pcm_for(body["input"][::-1])
+        if request.url.path == "/v1/audio/stream":
+            return httpx.Response(200, content=pcm, headers={"content-type": "application/octet-stream"})
+        if body.get("response_format") == "wav":
+            return httpx.Response(200, content=make_wav(pcm), headers={"content-type": "audio/wav"})
+        return httpx.Response(200, content=b"ID3pocket" + body["input"].encode(), headers={"content-type": "audio/mpeg"})
 
     def _hermes(self, request: httpx.Request) -> httpx.Response:
         parts = request.url.path.strip("/").split("/")
@@ -212,6 +232,7 @@ def config_dict(tmp_path, p8_path) -> Dict[str, Any]:
         "bridge_key": BRIDGE_KEY,
         "data_dir": str(tmp_path / "data"),
         "kyutai": {"url": KYUTAI, "default_voice": "5476"},
+        "pocket": {"url": POCKET},
         "ntfy": {"url": NTFY},
         "apns": {"team_id": "TEAM123456", "key_id": "TESTKEY123", "p8_path": p8_path,
                  "bundle_id": "io.github.bipagents", "environment": "sandbox"},
