@@ -165,8 +165,7 @@ struct AgentStylePicker: View {
         ScrollView {
             VStack(spacing: 18) {
                 VStack(spacing: 10) {
-                    MascotView(appearance: appearance)
-                        .frame(width: 132, height: 132)
+                    InteractiveMascot(appearance: appearance, size: 132)
                         .animation(.bouncy, value: appearance)
                     TextField("Nom", text: $name)
                         .font(Theme.title(20))

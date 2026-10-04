@@ -108,3 +108,18 @@ extension ButtonStyle where Self == PillButtonStyle {
     static var pill: PillButtonStyle { PillButtonStyle() }
     static func pill(_ kind: PillButtonStyle.Kind, height: CGFloat = 50) -> PillButtonStyle { PillButtonStyle(kind: kind, height: height) }
 }
+
+/// Icon + title tight enough for three pills side by side on an iPhone.
+struct CompactPillLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+            configuration.title.lineLimit(1).minimumScaleFactor(0.8)
+        }
+    }
+}
+
+extension LabelStyle where Self == CompactPillLabelStyle {
+    static var compactPill: CompactPillLabelStyle { CompactPillLabelStyle() }
+}
+

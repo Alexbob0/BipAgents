@@ -12,6 +12,8 @@ struct Composer: View {
     var voice: VoiceEngine
     var onSend: () -> Void
     var onStop: () -> Void
+    /// What to do when the conversation opens (« Écrire » focuses, « Audio » starts recording).
+    var start: ConversationStart = .none
     /// Push-to-talk result, sent right away.
     var onDictated: (String, VoiceRecording?) -> Void
     /// Short tap on the mic: open the hands-free call.
@@ -40,7 +42,7 @@ struct Composer: View {
     var body: some View {
         VStack(spacing: 8) {
             if dictation.isActive {
-                DictationPanel(voice: voice, controller: dictation, appearance: appearance)
+                DictationPanel(voice: voice, controller: dictation, appearance: appearance) { dictation.cancel(voice) }
                     .padding(.bottom, 6)
             }
             if !attachments.isEmpty {
@@ -54,6 +56,9 @@ struct Composer: View {
                     }
                     .padding(.horizontal, 12)
                 }
+            }
+            if let failure = dictation.failure {
+                Text(failure).font(Theme.body(12, weight: .bold)).foregroundStyle(Theme.danger)
             }
             if let importError {
                 Text(importError).font(Theme.body(12, weight: .bold)).foregroundStyle(Theme.danger)
@@ -94,6 +99,15 @@ struct Composer: View {
         .padding(.bottom, 8)
         .background(.bar)
         .animation(.snappy, value: dictation.isActive)
+        .task {
+            switch start {
+            case .none: break
+            case .keyboard: isFocused = true
+            case .voiceNote:
+                dictation.begin(voice)
+                dictation.lock()
+            }
+        }
         .animation(.snappy, value: dictation.showsHoldHint)
         .photosPicker(isPresented: $isPickingPhotos, selection: $photoItems, maxSelectionCount: 6, matching: .images)
         .fileImporter(isPresented: $isImportingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true, onCompletion: importFiles)

@@ -45,7 +45,7 @@ struct SessionsView: View {
         .scrollContentBackground(.hidden)
         .background(alignment: .top) {
             palette.tint
-                .frame(height: 420)
+                .frame(height: 480)
                 .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 36, bottomTrailingRadius: 36))
                 .ignoresSafeArea()
         }
@@ -69,8 +69,8 @@ struct SessionsView: View {
 
     private var header: some View {
         VStack(spacing: 6) {
-            MascotView(appearance: agent.appearance, mood: isLoading ? .thinking : (store.reachability[agent.id] ?? .unknown).mascotMood)
-                .frame(width: 120, height: 120)
+            InteractiveMascot(appearance: agent.appearance,
+                              baseMood: isLoading ? .thinking : (store.reachability[agent.id] ?? .unknown).mascotMood, size: 120)
             Text(agent.name).font(Theme.display(30))
             HStack(spacing: 8) {
                 CategoryChip(appearance: agent.appearance)
@@ -79,7 +79,7 @@ struct SessionsView: View {
             // Buttons, not NavigationLinks: two links in one List row act as a single cell and a tap
             // pushed both (the call ended up hidden under the new conversation).
             HStack(spacing: 10) {
-                Button { router.agentsPath.append(AgentRoute.call(agent)) } label: { Label("Appeler", systemImage: "phone.fill") }
+                Button { router.agentsPath.append(AgentRoute.call(agent)) } label: { Label("Live", systemImage: "waveform") }
                     .buttonStyle(.pill(.primary, height: 46))
                 Button { router.agentsPath.append(AgentRoute.conversation(agent, sessionID: nil)) } label: {
                     Label("Nouvelle", systemImage: "square.and.pencil")
@@ -90,6 +90,7 @@ struct SessionsView: View {
             .padding(.horizontal, 40)
         }
         .frame(maxWidth: .infinity)
+        .padding(.top, 52) // room for the Bip's speech bubble (the list row clips above it)
         .padding(.bottom, 12)
     }
 
@@ -147,27 +148,5 @@ struct SessionRow: View {
             }
         }
         .padding(.vertical, 4)
-    }
-}
-
-struct CallPlaceholderView: View {
-    let agent: AgentProfile
-
-    var body: some View {
-        VStack(spacing: 18) {
-            Spacer()
-            MascotView(appearance: agent.appearance, mood: .listening)
-                .frame(width: 200, height: 200)
-            Text("Le mode appel arrive au jalon 2")
-                .font(Theme.title(20))
-            Text("Dictée sur l’iPhone, voix Kyutai et interruption à la voix.")
-                .font(Theme.body(15))
-                .foregroundStyle(Theme.ink2)
-                .multilineTextAlignment(.center)
-            Spacer()
-        }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(agent.appearance.palette.tint)
     }
 }

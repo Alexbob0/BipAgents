@@ -5,6 +5,8 @@ enum MascotAccessory: Sendable { case sprout, coin, ears, antenna, tuft, star, r
 
 enum MascotMood: Sendable, CaseIterable {
     case happy, listening, thinking, speaking, asking, sleeping
+    // Playful reactions (see `InteractiveMascot`).
+    case giggling, content, surprised, dizzy, grumpy, winking
 }
 
 /// An agent's mascot, drawn in a 120×120 design space (same geometry as the design mockups).
@@ -14,6 +16,10 @@ struct MascotView: View {
     var animated = true
     /// 0…1 mouth opening driven by playback level while speaking; nil = automatic chatter.
     var speakingLevel: Double?
+    /// Where the eyes look, each axis in -1…1 (follows a finger).
+    var gaze: CGVector = .zero
+    /// Extra cheek blush, 0…1 (petting).
+    var blush: Double = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -21,7 +27,7 @@ struct MascotView: View {
         TimelineView(.animation(paused: !animated || reduceMotion)) { timeline in
             Canvas { ctx, size in
                 let t = animated && !reduceMotion ? timeline.date.timeIntervalSinceReferenceDate : 0
-                MascotRenderer(appearance: appearance, mood: mood, time: t, speakingLevel: speakingLevel)
+                MascotRenderer(appearance: appearance, mood: mood, time: t, speakingLevel: speakingLevel, gaze: gaze, blush: blush)
                     .draw(in: &ctx, size: size)
             }
         }
@@ -35,6 +41,8 @@ private struct MascotRenderer {
     let mood: MascotMood
     let time: TimeInterval
     let speakingLevel: Double?
+    var gaze: CGVector = .zero
+    var blush: Double = 0
 
     private let inkColor = Color(hex: 0x16181D)
     private var palette: AgentPalette { appearance.palette }
@@ -64,7 +72,7 @@ private struct MascotRenderer {
         highlight.rotate(by: .degrees(-30))
         highlight.fill(ellipse(0, 0, 12, 7), with: .color(.white.opacity(0.32)))
 
-        let cheek = Color(hex: 0xFF6F91).opacity(0.5)
+        let cheek = Color(hex: 0xFF6F91).opacity(0.5 + 0.4 * min(1, max(0, blush)))
         ctx.fill(ellipse(37, 76, 6.5, 4), with: .color(cheek))
         ctx.fill(ellipse(83, 76, 6.5, 4), with: .color(cheek))
 
@@ -138,7 +146,9 @@ private struct MascotRenderer {
 
     private func drawEyes(in ctx: inout GraphicsContext, rx: CGFloat, ry: CGFloat, y: CGFloat, xs: (CGFloat, CGFloat), glint: CGFloat, blink: Bool = true) {
         let s = blink ? blinkScale : 1
-        for x in [xs.0, xs.1] {
+        let look = CGPoint(x: 3 * max(-1, min(1, gaze.dx)), y: 2.5 * max(-1, min(1, gaze.dy)))
+        for x in [xs.0 + look.x, xs.1 + look.x] {
+            let y = y + look.y
             ctx.fill(ellipse(x, y, rx, ry * s), with: .color(inkColor))
             if s > 0.6 {
                 ctx.fill(ellipse(x + rx * 0.38, y - ry * 0.4, glint, glint), with: .color(.white))
@@ -178,10 +188,57 @@ private struct MascotRenderer {
         case .sleeping:
             ctx.stroke(SVGPath("M41 65q6 5 12 0M67 65q6 5 12 0"), with: .color(inkColor), style: line)
             ctx.fill(ellipse(60, 80, 3, 2.2), with: .color(inkColor))
+        case .giggling:
+            // ^ ^ eyes and a big laughing mouth.
+            ctx.stroke(SVGPath("M41 66q6-7 12 0M67 66q6-7 12 0"), with: .color(inkColor), style: line)
+            let laugh = SVGPath("M50 75q10 14 20 0z")
+            ctx.fill(laugh, with: .color(Color(hex: 0x2B1A1F)))
+            ctx.fill(ellipse(60, 82, 4.5, 2.2), with: .color(Color(hex: 0xFF7A93)))
+        case .content:
+            // Blissful closed eyes and a soft smile.
+            ctx.stroke(SVGPath("M41 64q6 5 12 0M67 64q6 5 12 0"), with: .color(inkColor), style: line)
+            ctx.stroke(SVGPath("M54 78q6 5 12 0"), with: .color(inkColor), style: line)
+        case .surprised:
+            drawEyes(in: &ctx, rx: 7.5, ry: 8.5, y: 62, xs: (46, 74), glint: 2.8, blink: false)
+            ctx.stroke(SVGPath("M39 50l10-2M81 50l-10-2"), with: .color(inkColor), style: line)
+            ctx.fill(ellipse(60, 83, 4.5, 5.5), with: .color(inkColor))
+        case .dizzy:
+            // Spinning spiral eyes and a wobbly mouth.
+            for x in [47.0, 73.0] {
+                var eye = ctx
+                eye.translateBy(x: x, y: 64)
+                eye.rotate(by: .radians(time * 6))
+                eye.stroke(spiral(turns: 2.2, radius: 7), with: .color(inkColor), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            }
+            ctx.stroke(SVGPath("M51 81q3-3 6 0t6 0t6 0"), with: .color(inkColor), style: line)
+        case .grumpy:
+            drawEyes(in: &ctx, rx: 5.5, ry: 4.5, y: 66, xs: (47, 73), glint: 1.5, blink: false)
+            ctx.stroke(SVGPath("M40 55l12 5M80 55l-12 5"), with: .color(inkColor), style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+            ctx.stroke(SVGPath("M53 83q7-6 14 0"), with: .color(inkColor), style: line)
+        case .winking:
+            ctx.stroke(SVGPath("M41 65q6-6 12 0"), with: .color(inkColor), style: line)
+            ctx.fill(ellipse(73, 64, 5.5, 7.5), with: .color(inkColor))
+            ctx.fill(ellipse(75, 61, 2, 2), with: .color(.white))
+            ctx.stroke(SVGPath("M52 77q8 8 16 0"), with: .color(inkColor), style: line)
+            ctx.fill(ellipse(63, 82, 3, 2.4), with: .color(Color(hex: 0xFF7A93)))
         }
     }
 
     // MARK: Helpers
+
+    /// Archimedean spiral centred on the origin.
+    private func spiral(turns: Double, radius: CGFloat) -> Path {
+        var path = Path()
+        let steps = 60
+        for i in 0...steps {
+            let progress = Double(i) / Double(steps)
+            let angle = progress * turns * 2 * .pi
+            let r = radius * CGFloat(progress)
+            let point = CGPoint(x: r * cos(angle), y: r * sin(angle))
+            if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        return path
+    }
 
     private func ellipse(_ cx: CGFloat, _ cy: CGFloat, _ rx: CGFloat, _ ry: CGFloat) -> Path {
         Path(ellipseIn: CGRect(x: cx - rx, y: cy - ry, width: rx * 2, height: ry * 2))

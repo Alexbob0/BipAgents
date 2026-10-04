@@ -128,7 +128,7 @@ final class CallModel {
 
     private func ensureSession(client: HermesClient, title: String) async throws -> String {
         if let sessionID { return sessionID }
-        let session = try await client.createSession(title: "Appel · " + String(title.prefix(40)))
+        let session = try await client.createSession(title: "Live · " + String(title.prefix(40)))
         sessionID = session.id
         store.noteSession(session, for: agent)
         return session.id

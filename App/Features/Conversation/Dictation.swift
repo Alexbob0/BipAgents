@@ -11,6 +11,8 @@ final class DictationController {
     private(set) var startedAt: Date?
     /// "Maintiens pour enregistrer", shown briefly after a too-short press (WhatsApp behaviour).
     private(set) var showsHoldHint = false
+    /// Why the last recording could not start (permissions, busy mic…), shown in the composer.
+    var failure: String?
     var dragOffset: CGSize = .zero
     private var hintTask: Task<Void, Never>?
 
@@ -24,10 +26,22 @@ final class DictationController {
         guard phase == .idle else { return }
         phase = .holding
         startedAt = .now
+        failure = nil
         Task {
+            // First use: ask for mic + speech recognition here rather than failing silently.
+            guard await VoiceEngine.requestPermissions() else {
+                cancel(voice)
+                failure = "Autorise le micro et la reconnaissance vocale dans Réglages."
+                return
+            }
             // Recorded too: the message is sent as a voice note (audio + transcript).
             let url = VoiceNotePlayer.cacheURL(name: "note-\(UUID().uuidString).m4a")
-            do { try await voice.startDictation(recordingTo: url) } catch { cancel(voice) }
+            do {
+                try await voice.startDictation(recordingTo: url)
+            } catch {
+                cancel(voice)
+                failure = voice.lastError ?? "Micro indisponible."
+            }
         }
     }
 
@@ -150,6 +164,8 @@ struct DictationPanel: View {
     var voice: VoiceEngine
     var controller: DictationController
     var appearance: AgentAppearance
+    /// Shown while locked (no finger to slide away): discards the recording.
+    var onCancel: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -162,6 +178,17 @@ struct DictationPanel: View {
                     .font(Theme.body(15, weight: .black))
                 }
                 Spacer()
+                if controller.phase == .locked {
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .black))
+                            .foregroundStyle(Theme.ink2)
+                            .frame(width: 30, height: 30)
+                            .background(Theme.field, in: .circle)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Annuler le message vocal")
+                }
                 Text(hint)
                     .font(Theme.body(12, weight: .heavy))
                     .foregroundStyle(controller.willCancel ? Theme.danger : appearance.palette.deep)

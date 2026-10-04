@@ -36,7 +36,7 @@ struct DiagnosticsView: View {
             Section {
                 ShareLink(item: report) { Label("Exporter le rapport", systemImage: "square.and.arrow.up") }
             } footer: {
-                Text("Les temps « premier token » et « premier audio » sont mesurés pendant les conversations et les appels.")
+                Text("Les temps « premier token » et « premier audio » sont mesurés pendant les conversations et les lives.")
             }
         }
         .navigationTitle("Diagnostics")

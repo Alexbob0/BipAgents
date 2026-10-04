@@ -68,7 +68,7 @@ private struct CallContent: View {
             Button(action: hangUp) {
                 Image(systemName: "chevron.down").font(.system(size: 20, weight: .bold)).frame(width: 44, height: 44)
             }
-            .accessibilityLabel("Réduire l’appel")
+            .accessibilityLabel("Réduire le live")
             Spacer()
             VStack(spacing: 0) {
                 Text(model.agent.name).font(Theme.title(17))
@@ -184,7 +184,7 @@ private struct CallContent: View {
             .disabled(model.voice.state != .speaking)
             Spacer()
             Button(action: hangUp) {
-                controlLabel("Raccrocher", systemImage: "phone.down.fill", background: Theme.danger, foreground: .white)
+                controlLabel("Terminer", systemImage: "xmark", background: Theme.danger, foreground: .white)
             }
             Spacer()
         }

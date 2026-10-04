@@ -59,14 +59,20 @@ final class AgentStore {
 
     func secrets(for agent: AgentProfile) -> AgentSecrets? { Keychain.secrets(for: agent.id) }
 
-    /// The agent's ongoing conversation (most recent session), continued by « Écrire » and « Parler »
+    /// The agent's ongoing conversation (most recent session), continued by « Audio », « Écrire » and « Live »
     /// — one thread per agent, like a messaging app. `nil` until the agent has one.
     func mainSessionID(for agent: AgentProfile) -> String? { latestSession[agent.id]?.id }
 
     /// Called when the app starts or continues a session, so it becomes the agent's ongoing conversation.
-    func noteSession(_ session: HermesSession, for agent: AgentProfile) {
+    /// `preview` is the latest message text when the caller knows it. Session details fetched one by one
+    /// carry no preview: keep the one already shown rather than blanking the home card.
+    func noteSession(_ session: HermesSession, for agent: AgentProfile, preview: String? = nil) {
         var session = session
+        let previous = latestSession[agent.id]
         session.updatedAt = .now
+        session.lastMessagePreview = preview ?? session.lastMessagePreview
+            ?? (previous?.id == session.id ? previous?.lastMessagePreview : nil)
+        if session.title == nil, previous?.id == session.id { session.title = previous?.title }
         latestSession[agent.id] = session
     }
 

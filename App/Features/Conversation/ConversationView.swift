@@ -4,6 +4,7 @@ import SwiftUI
 struct ConversationView: View {
     let agent: AgentProfile
     let sessionID: String?
+    var start: ConversationStart = .none
 
     @Environment(AgentStore.self) private var store
     @State private var model: ConversationModel?
@@ -11,7 +12,7 @@ struct ConversationView: View {
     var body: some View {
         Group {
             if let model {
-                ConversationContent(model: model)
+                ConversationContent(model: model, start: start)
             } else {
                 Color.clear
             }
@@ -29,6 +30,7 @@ struct ConversationView: View {
 
 private struct ConversationContent: View {
     @Bindable var model: ConversationModel
+    var start: ConversationStart
     @State private var isCalling = false
     @State private var draft = ""
     @State private var attachments: [LocalAttachment] = []
@@ -66,6 +68,7 @@ private struct ConversationContent: View {
                 voice: model.voice,
                 onSend: send,
                 onStop: model.stop,
+                start: start,
                 onDictated: { text, recording in
                     model.send(text: text, attachments: attachments, voiceNote: recording)
                     attachments = []
@@ -94,9 +97,9 @@ private struct ConversationContent: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { isCalling = true } label: {
-                    Image(systemName: "phone.fill").foregroundStyle(palette.deep)
+                    Image(systemName: "waveform").foregroundStyle(palette.deep)
                 }
-                .accessibilityLabel("Appeler \(model.agent.name)")
+                .accessibilityLabel("Live avec \(model.agent.name)")
             }
         }
     }
@@ -461,8 +464,7 @@ struct ConversationEmptyState: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            MascotView(appearance: agent.appearance, mood: .happy)
-                .frame(width: 130, height: 130)
+            InteractiveMascot(appearance: agent.appearance, size: 130)
             Text("Dis bonjour à \(agent.name)")
                 .font(Theme.title(20))
             Text("Écris, envoie un fichier, ou maintiens le micro pour parler.")

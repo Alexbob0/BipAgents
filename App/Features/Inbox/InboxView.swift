@@ -148,8 +148,7 @@ struct InboxView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            MascotView(appearance: AgentAppearance(category: .daily), mood: .sleeping)
-                .frame(width: 120, height: 120)
+            InteractiveMascot(appearance: AgentAppearance(category: .daily), baseMood: .sleeping, size: 120)
             Text("Rien de neuf").font(Theme.title(20))
             Text("Les check-ins et rappels de tes agents arriveront ici, avec leur version audio.")
                 .font(Theme.body(15))
@@ -215,7 +214,7 @@ struct InboxCard: View {
             HStack(spacing: 8) {
                 Button(action: reply) { Label("Répondre", systemImage: "arrowshape.turn.up.left.fill") }
                     .buttonStyle(.pill(.primary, height: 42))
-                Button(action: replyByVoice) { Label("À voix haute", systemImage: "mic.fill") }
+                Button(action: replyByVoice) { Label("Live", systemImage: "waveform") }
                     .buttonStyle(.pill(.soft, height: 42))
             }
         }

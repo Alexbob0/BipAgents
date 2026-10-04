@@ -47,7 +47,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Voix")
                 } footer: {
-                    Text("« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Parler ».")
+                    Text("« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Live ».")
                 }
                 Section("Application") {
                     NavigationLink { DiagnosticsView() } label: {

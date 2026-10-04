@@ -131,8 +131,8 @@ final class ConversationModel {
             async let history = client.messages(sessionID: sessionID)
             let current = try await session
             title = current.title
-            store.noteSession(current, for: agent)
             items = try await history.flatMap(Self.items(from:))
+            store.noteSession(current, for: agent, preview: latestText)
             restoreVoiceNotes(sessionID: sessionID)
         } catch {
             errorMessage = Self.describe(error)
@@ -358,6 +358,10 @@ final class ConversationModel {
             replyByVoice = false
             prepareVoiceReply()
         }
+        // Keep the home card's « last conversation » preview in step with the thread.
+        if let sessionID, let latestText {
+            store.noteSession(HermesSession(id: sessionID, title: title), for: agent, preview: latestText)
+        }
         isRunning = false
         isWaitingForApproval = false
         interim = nil
@@ -410,6 +414,18 @@ final class ConversationModel {
             await voice.speak(text)
             if speakingItemID == itemID { speakingItemID = nil }
         }
+    }
+
+    /// Text of the newest user or assistant message (for previews).
+    var latestText: String? {
+        for item in items.reversed() {
+            switch item.kind {
+            case .assistant(let text, _) where !text.isEmpty: return text
+            case .user(let text, _) where !text.isEmpty: return text
+            default: continue
+            }
+        }
+        return nil
     }
 
     static func describe(_ error: any Error) -> String {

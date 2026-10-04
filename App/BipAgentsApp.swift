@@ -7,6 +7,7 @@ struct BipAgentsApp: App {
     @State private var agents = ProcessInfo.processInfo.arguments.contains("-demo") ? AgentStore.preview : AgentStore()
     @State private var router = Router()
     @State private var inbox = InboxStore()
+    @State private var quickVoice = QuickVoiceCenter()
 
     var body: some Scene {
         WindowGroup {
@@ -26,6 +27,7 @@ struct BipAgentsApp: App {
             .environment(agents)
             .environment(router)
             .environment(inbox)
+            .environment(quickVoice)
             .tint(Theme.ink)
             .fontDesign(.rounded)
             .task {
@@ -52,7 +54,7 @@ struct RootView: View {
                         .navigationDestination(for: AgentRoute.self) { route in
                             switch route {
                             case .sessions(let agent): SessionsView(agent: agent)
-                            case .conversation(let agent, let sessionID): ConversationView(agent: agent, sessionID: sessionID)
+                            case .conversation(let agent, let sessionID, let start): ConversationView(agent: agent, sessionID: sessionID, start: start)
                             case .call(let agent): CallView(agent: agent, sessionID: agents.mainSessionID(for: agent))
                             }
                         }

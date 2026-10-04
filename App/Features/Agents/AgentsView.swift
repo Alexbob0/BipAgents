@@ -1,5 +1,6 @@
 import HermesKit
 import SwiftUI
+import VoiceKit
 
 struct AgentsView: View {
     @Environment(AgentStore.self) private var store
@@ -35,8 +36,18 @@ struct AgentsView: View {
 
 enum AgentRoute: Hashable {
     case sessions(AgentProfile)
-    case conversation(AgentProfile, sessionID: String?)
+    case conversation(AgentProfile, sessionID: String?, start: ConversationStart = .none)
+    /// Live: hands-free voice conversation.
     case call(AgentProfile)
+}
+
+/// What a conversation does as soon as it opens (from the agent card's buttons).
+enum ConversationStart: Hashable {
+    case none
+    /// « Écrire »: keyboard up.
+    case keyboard
+    /// « Audio »: a voice note is already recording (locked; ↑ sends, ✕ cancels).
+    case voiceNote
 }
 
 struct AgentCard: View {
@@ -44,12 +55,25 @@ struct AgentCard: View {
     var reachability: AgentReachability
     var latest: HermesSession?
 
+    @Environment(QuickVoiceCenter.self) private var quick
+    @Environment(Router.self) private var router
+
+    private var quickStatus: QuickVoiceCenter.Status? { quick.status[agent.id] }
+
+    private var mood: MascotMood {
+        switch quickStatus {
+        case .recording?: .listening
+        case .waiting?: .thinking
+        default: reachability.mascotMood
+        }
+    }
+
     private var palette: AgentPalette { agent.appearance.palette }
 
     var body: some View {
         VStack(spacing: 12) {
-            NavigationLink(value: AgentRoute.sessions(agent)) {
-                HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                NavigationLink(value: AgentRoute.sessions(agent)) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(agent.name)
                             .font(Theme.display(25))
@@ -59,15 +83,25 @@ struct AgentCard: View {
                             ReachabilityLabel(reachability: reachability)
                         }
                     }
-                    Spacer(minLength: 0)
-                    MascotView(appearance: agent.appearance, mood: reachability.mascotMood)
-                        .frame(width: 92, height: 92)
-                        .padding(.vertical, -22)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
                 }
+                .buttonStyle(.plain)
+                // Outside the link: tapping the Bip makes it react instead of opening the agent.
+                InteractiveMascot(appearance: agent.appearance, baseMood: mood, size: 92, bubbleEdge: .leading)
+                    .padding(.vertical, -22)
             }
-            .buttonStyle(.plain)
+            .zIndex(1) // the Bip stays above the preview below when dragged or jumping
 
-            if let latest, let preview = latest.lastMessagePreview {
+            if let quickStatus {
+                QuickVoiceStatusView(agent: agent, status: quickStatus, level: quick.voice.inputLevel) {
+                    quick.clear(agent)
+                    router.agentsPath.append(AgentRoute.conversation(agent, sessionID: latest?.id))
+                } onDismiss: {
+                    quick.clear(agent)
+                }
+                .transition(.opacity)
+            } else if let latest, let preview = latest.lastMessagePreview {
                 NavigationLink(value: AgentRoute.conversation(agent, sessionID: latest.id)) {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
@@ -93,19 +127,24 @@ struct AgentCard: View {
                 .buttonStyle(.plain)
             }
 
-            HStack(spacing: 10) {
-                NavigationLink(value: AgentRoute.call(agent)) {
-                    Label("Parler", systemImage: "mic.fill")
+            HStack(spacing: 8) {
+                AudioHoldButton(agent: agent) {
+                    router.agentsPath.append(AgentRoute.conversation(agent, sessionID: latest?.id, start: .voiceNote))
                 }
-                .buttonStyle(.pill)
-                NavigationLink(value: AgentRoute.conversation(agent, sessionID: latest?.id)) {
+                NavigationLink(value: AgentRoute.conversation(agent, sessionID: latest?.id, start: .keyboard)) {
                     Label("Écrire", systemImage: "keyboard")
                 }
                 .buttonStyle(.pill(.secondary))
+                NavigationLink(value: AgentRoute.call(agent)) {
+                    Label("Live", systemImage: "waveform")
+                }
+                .buttonStyle(.pill)
             }
+            .labelStyle(.compactPill)
         }
         .padding(18)
         .background(palette.tint, in: .rect(cornerRadius: 30, style: .continuous))
+        .animation(.snappy, value: quickStatus)
     }
 }
 
@@ -163,8 +202,7 @@ struct EmptyAgentsView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            MascotView(appearance: AgentAppearance(category: .tech), mood: .sleeping)
-                .frame(width: 120, height: 120)
+            InteractiveMascot(appearance: AgentAppearance(category: .tech), baseMood: .sleeping, size: 120)
             Text("Aucun agent pour l’instant")
                 .font(Theme.title(20))
             Text("Scanne le QR code affiché par ton serveur Hermes, ou saisis son adresse et sa clé.")
