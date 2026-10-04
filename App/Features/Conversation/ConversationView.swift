@@ -197,11 +197,12 @@ struct AssistantRow: View {
     var appearance: AgentAppearance
     var text: String
     var isStreaming: Bool
+    private let favicons = Favicons.shared
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             MascotAvatar(appearance: appearance, size: 30)
-            Text(markdown)
+            rendered
                 .foregroundStyle(Theme.ink)
                 .lineSpacing(3)
                 .textSelection(.enabled)
@@ -209,9 +210,26 @@ struct AssistantRow: View {
         }
     }
 
+    /// The reply with each link preceded by its site's icon (links open in Safari).
+    private var rendered: Text {
+        let attributed = markdown
+        var result = Text("")
+        var previousLink: URL?
+        for run in attributed.runs {
+            if let link = run.link, link != previousLink, let host = link.host() {
+                let icon = favicons.icon(for: host).map { Image(uiImage: $0) } ?? Image(systemName: "globe")
+                result = Text("\(result)\(Text(icon).font(.system(size: 13)).foregroundStyle(appearance.palette.deep).baselineOffset(-2)) ")
+            }
+            previousLink = run.link
+            result = Text("\(result)\(Text(AttributedString(attributed[run.range])))")
+        }
+        return result
+    }
+
     private var markdown: AttributedString {
         let source = isStreaming ? text + " ▍" : text
         var result = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
+        Self.linkBareURLs(in: &result)
         // An explicit .font on the Text would flatten **bold**/*italic*; set the font per run instead.
         for run in result.runs {
             let intent = run.inlinePresentationIntent ?? []
@@ -219,8 +237,45 @@ struct AssistantRow: View {
             if intent.contains(.emphasized) { font = font.italic() }
             if intent.contains(.code) { font = .system(size: 15, design: .monospaced) }
             result[run.range].font = font
+            if run.link != nil {
+                result[run.range].foregroundColor = appearance.palette.deep
+                result[run.range].underlineStyle = .single
+            }
         }
         return result
+    }
+
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    /// Plain "https://…" or "www.…" in the text become links too (not inside code), shown short:
+    /// "fr.wikipedia.org › Caféine" rather than the whole address.
+    private static func linkBareURLs(in text: inout AttributedString) {
+        guard let detector else { return }
+        let plain = String(text.characters)
+        // Last match first, so replacing one does not move the next ones.
+        for match in detector.matches(in: plain, range: NSRange(plain.startIndex..., in: plain)).reversed() {
+            guard let url = match.url, url.scheme?.hasPrefix("http") == true,
+                  let range = Range(match.range, in: plain),
+                  let lower = AttributedString.Index(range.lowerBound, within: text),
+                  let upper = AttributedString.Index(range.upperBound, within: text) else { continue }
+            let span = lower..<upper
+            // The markdown parser may already have linked it (autolink): the visible text is still the address.
+            guard let first = text[span].runs.first,
+                  text[span].runs.allSatisfy({ !($0.inlinePresentationIntent ?? []).contains(.code) }) else { continue }
+            let target = first.link ?? url
+            var label = AttributedString(shortLabel(for: target), attributes: first.attributes)
+            label.link = target
+            text.replaceSubrange(span, with: label)
+        }
+    }
+
+    static func shortLabel(for url: URL) -> String {
+        var host = url.host() ?? url.absoluteString
+        if host.hasPrefix("www.") { host.removeFirst(4) }
+        let last = url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent
+        guard !last.isEmpty, last != "/" else { return host }
+        let page = last.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
+        return host + " › " + (page.count > 32 ? String(page.prefix(31)) + "…" : page)
     }
 }
 
