@@ -5,8 +5,10 @@ Why one subscription: a Hermes run keeps a single event buffer, so two independe
 The hub keeps a replay backlog so a voice client that attaches after ``POST /v1/watch`` still
 hears the answer from its beginning.
 
-Approval push rule (SPEC §B3.4): on ``approval.request`` for a *watched* run with no voice
-WebSocket attached, push an ``APPROVAL`` notification (once per request).
+Followers are the voice WebSocket and the app's SSE (``GET /v1/runs/{id}/events``): while one is attached
+the user sees the run. Push rule (SPEC §B3.4): on ``approval.request`` for a *watched* run with no
+follower, push an ``APPROVAL`` notification (once per request); when such a run completes, push a
+« reply ready » alert that opens its conversation.
 """
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ from .push import PushService
 log = logging.getLogger("bipbridge.runs")
 
 BACKLOG_EVENTS = 5000
-FINISHED_RETENTION_SECONDS = 120.0
+FINISHED_RETENTION_SECONDS = 900.0  # an app re-attaching later still replays the whole run
 BACKOFF_START, BACKOFF_MAX = 0.5, 8.0
 GIVE_UP_AFTER = 40  # ~5 min of consecutive connection failures ends even a watch
 UNREACHABLE_AFTER = 3  # consecutive connection failures before voice listeners are told
@@ -69,14 +71,16 @@ class RunSubscription:
         self.terminal: Optional[str] = None
         self.task: Optional["asyncio.Task[None]"] = None
         self.pushed: Set[str] = set()
+        self.session_id: Optional[str] = None  # for the « reply ready » push
 
     @property
     def key(self) -> Key:
         return (self.agent.name, self.run_id)
 
     @property
-    def voice_listeners(self) -> int:
-        return sum(1 for listener in self.listeners if listener.kind == "voice")
+    def followers(self) -> int:
+        """Listeners showing the run to the user (voice WebSocket, app SSE)."""
+        return sum(1 for listener in self.listeners if listener.kind in ("voice", "app"))
 
 
 class RunHub:
@@ -226,9 +230,14 @@ class RunHub:
         elif event.type in TERMINAL_TYPES:
             sub.terminal = event.type
             self.forget_approval(sub.agent.name, sub.run_id)
-            if sub.watched and sub.voice_listeners == 0 and self.push is not None:
-                self._spawn(self.push.notify_silent(sub.agent.name, "run_finished", run_id=sub.run_id,
-                                                    status=event.type))
+            if sub.watched and sub.followers == 0 and self.push is not None:
+                output = event.data.get("output") if isinstance(event.data.get("output"), str) else None
+                if event.type == "run.completed" and output:
+                    log.info("reply push", extra=fields(agent=sub.agent.name, run_id=sub.run_id))
+                    self._spawn(self.push.notify_reply(sub.agent.name, sub.run_id, output, sub.session_id))
+                else:
+                    self._spawn(self.push.notify_silent(sub.agent.name, "run_finished", run_id=sub.run_id,
+                                                        status=event.type))
 
     def _on_approval(self, sub: RunSubscription, event: SSEEvent) -> None:
         data = event.data
@@ -241,9 +250,9 @@ class RunHub:
             "description": data.get("description") if isinstance(data.get("description"), str) else None,
             "choices": choices, "created_at": time.time(),
         }
-        if not sub.watched or sub.voice_listeners > 0 or dedupe in sub.pushed or self.push is None:
+        if not sub.watched or sub.followers > 0 or dedupe in sub.pushed or self.push is None:
             log.info("approval seen, no push", extra=fields(agent=sub.agent.name, run_id=sub.run_id,
-                                                            watched=sub.watched, followers=sub.voice_listeners))
+                                                            watched=sub.watched, followers=sub.followers))
             return
         sub.pushed.add(dedupe)
         log.info("approval push", extra=fields(agent=sub.agent.name, run_id=sub.run_id))

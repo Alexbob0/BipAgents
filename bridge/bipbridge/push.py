@@ -18,6 +18,7 @@ from .store import Store
 log = logging.getLogger("bipbridge.push")
 
 MESSAGE_BODY = "Nouveau message"
+REPLY_BODY = "Ta réponse est prête."
 APPROVAL_BODY = "Approbation requise"
 
 
@@ -61,6 +62,25 @@ def approval_payload(agent: str, title: str, run_id: str, request_id: Optional[s
         payload["request_id"] = request_id
     if choices:
         payload["choices"] = list(choices)
+    return payload
+
+
+def reply_payload(agent: str, title: str, run_id: str, session_id: Optional[str] = None,
+                  preview: Optional[str] = None) -> Dict[str, Any]:
+    """A run finished while nobody followed it: tapping opens its conversation."""
+    payload: Dict[str, Any] = {
+        "aps": {
+            "alert": {"title": title, "body": preview or REPLY_BODY},
+            "thread-id": agent,
+            "category": "MESSAGE",
+            "sound": "default",
+        },
+        "agent": agent,
+        "run_id": run_id,
+        "kind": "reply",
+    }
+    if session_id:
+        payload["session_id"] = session_id
     return payload
 
 
@@ -118,6 +138,11 @@ class PushService:
             preview = APPROVAL_BODY + " : " + _preview(command, 120)
         payload = approval_payload(agent, self._title(agent), run_id, request_id, choices, preview)
         return await self._fanout(agent, payload, "alert", 10, collapse_id=request_id or run_id)
+
+    async def notify_reply(self, agent: str, run_id: str, text: str, session_id: Optional[str] = None) -> int:
+        preview = _preview(text) if self.config.push_previews else None
+        payload = reply_payload(agent, self._title(agent), run_id, session_id, preview)
+        return await self._fanout(agent, payload, "alert", 10, collapse_id=run_id)
 
     async def notify_silent(self, agent: str, reason: str, **extra: Any) -> int:
         return await self._fanout(agent, silent_payload(agent, reason, **extra), "background", 5)

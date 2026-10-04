@@ -245,8 +245,18 @@ ntfy `session:<id>` s'il existe. Pour la pagination, repasser le `created_at` du
 ### `POST /v1/watch`
 Corps : `{"agent":"wellness","run_id":"…"}` → `{"watching": true, "agent", "run_id", "followers": n, "finished": bool}`.
 Le bridge s'abonne au run (un seul abonnement Hermes par run, partagé avec le WebSocket, avec rejeu pour un suivi
-tardif) pendant au plus `watch_max_minutes`. Sur `approval.request` sans client vocal attaché : push `APPROVAL`
-(une fois par `request_id`). À la fin du run : push silencieux.
+tardif) pendant au plus `watch_max_minutes`. Sur `approval.request` sans client attaché (WebSocket vocal ou flux de
+l'app) : push `APPROVAL` (une fois par `request_id`). À la fin du run sans client attaché : push « réponse prête »
+(`run.completed` avec une réponse, catégorie `MESSAGE`, `kind: "reply"`, `session_id` si connu), push silencieux sinon.
+
+### `GET /v1/runs/{run_id}/events?agent=…&session_id=…`
+Flux SSE du run pour l'app, relayé depuis l'abonnement unique du bridge à Hermes (Hermes ne livre chaque événement
+qu'à un seul abonné) : mêmes événements que Hermes (`event: <type>`, `data: <json>`), `: keepalive` toutes les 10 s.
+Le run est rejoué depuis son début à chaque connexion (historique gardé 15 min après la fin), donc une reconnexion
+reconstruit la réponse à l'identique. Vaut `POST /v1/watch` : tant que l'app écoute, aucun push ; quand elle part
+(conversation quittée, écran verrouillé), le bridge pousse l'approbation ou la réponse prête, qui rouvre la
+conversation `session_id`. `bridge.error` (`run_not_found`, `hermes_refused`, `hermes_unreachable`, `watch_timeout`)
+signale un problème côté bridge.
 
 ### `POST /v1/approve`
 Corps : `{"agent":"wellness","run_id":"…","choice":"once"|"session"|"always"|"deny","request_id"?:"…"}` → relayé à

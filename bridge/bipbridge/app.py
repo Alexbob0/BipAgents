@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -137,6 +138,10 @@ def _agent_or_404(config: Config, name: Optional[str]):
     if agent is None:
         raise HTTPException(status_code=404, detail="unknown agent")
     return agent
+
+
+SESSION_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
+SSE_KEEPALIVE_SECONDS = 10.0
 
 
 def _check_run_id(run_id: str) -> str:
@@ -307,8 +312,43 @@ def build_router() -> APIRouter:
         agent = _agent_or_404(services.config, body.agent)
         run_id = _check_run_id(body.run_id)
         sub = services.hub.watch(agent, run_id)
-        return {"watching": True, "agent": agent.name, "run_id": run_id, "followers": sub.voice_listeners,
+        return {"watching": True, "agent": agent.name, "run_id": run_id, "followers": sub.followers,
                 "finished": sub.finished}
+
+    @router.get("/runs/{run_id}/events")
+    async def run_events(run_id: str, request: Request, agent: str = Query(...),
+                         session_id: Optional[str] = Query(None, max_length=200)) -> StreamingResponse:
+        """The app follows a run through the bridge (SSE): the bridge holds the single Hermes subscription,
+        replays the run from its start (re-attaching after a disconnect is exact), and knows whether
+        someone is watching, so approvals and « reply ready » are pushed only when nobody is."""
+        services = _services(request)
+        agent_cfg = _agent_or_404(services.config, agent)
+        run_id = _check_run_id(run_id)
+        if session_id is not None and not SESSION_ID.match(session_id):
+            raise HTTPException(status_code=400, detail="invalid session_id")
+        listener = services.hub.subscribe(agent_cfg, run_id, kind="app", watch=True)
+        if session_id:
+            listener.sub.session_id = session_id
+
+        async def events() -> AsyncIterator[bytes]:
+            try:
+                while True:
+                    try:
+                        event = await asyncio.wait_for(listener.queue.get(), timeout=SSE_KEEPALIVE_SECONDS)
+                    except asyncio.TimeoutError:
+                        if await request.is_disconnected():
+                            return
+                        yield b": keepalive\n\n"
+                        continue
+                    if event is None:
+                        return
+                    data = (event.raw or json.dumps(event.data, ensure_ascii=False)).replace("\n", "\ndata: ")
+                    yield f"event: {event.type}\ndata: {data}\n\n".encode("utf-8")
+            finally:
+                listener.close()
+
+        return StreamingResponse(events(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     @router.post("/approve")
     async def approve(body: ApproveRequest, request: Request) -> Response:
