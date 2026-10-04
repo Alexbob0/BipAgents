@@ -31,7 +31,7 @@ def settings(d, indent="\t\t\t\t"):
 common_project = dict(ALWAYS_SEARCH_USER_PATHS="NO", ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS="YES",
     CLANG_ENABLE_MODULES="YES", CLANG_ENABLE_OBJC_ARC="YES", COPY_PHASE_STRIP="NO", ENABLE_STRICT_OBJC_MSGSEND="YES",
     ENABLE_USER_SCRIPT_SANDBOXING="YES", IPHONEOS_DEPLOYMENT_TARGET="18.0", LOCALIZATION_PREFERS_STRING_CATALOGS="YES",
-    SDKROOT="iphoneos", SWIFT_VERSION="6.0", DEVELOPMENT_TEAM='""')
+    SDKROOT="iphoneos", SWIFT_VERSION="6.0")
 proj_debug = dict(common_project, DEBUG_INFORMATION_FORMAT="dwarf", ENABLE_TESTABILITY="YES", GCC_OPTIMIZATION_LEVEL="0",
     MTL_ENABLE_DEBUG_INFO="INCLUDE_SOURCE", ONLY_ACTIVE_ARCH="YES", SWIFT_ACTIVE_COMPILATION_CONDITIONS='"DEBUG $(inherited)"',
     SWIFT_OPTIMIZATION_LEVEL='"-Onone"')
@@ -54,8 +54,9 @@ nse = dict(CODE_SIGN_ENTITLEMENTS="Config/NotificationService.entitlements", COD
     SWIFT_APPROACHABLE_CONCURRENCY="YES", SWIFT_EMIT_LOC_STRINGS="YES", SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY="YES",
     TARGETED_DEVICE_FAMILY='"1,2"')
 
-def cfg(id_, name, d):
-    return f"\t\t{id_} /* {name} */ = {{\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = {{\n{settings(d)}\n\t\t\t}};\n\t\t\tname = {name};\n\t\t}};\n"
+def cfg(id_, name, d, base=None):
+    ref = f"\t\t\tbaseConfigurationReference = {base} /* Base.xcconfig */;\n" if base else ""
+    return f"\t\t{id_} /* {name} */ = {{\n\t\t\tisa = XCBuildConfiguration;\n{ref}\t\t\tbuildSettings = {{\n{settings(d)}\n\t\t\t}};\n\t\t\tname = {name};\n\t\t}};\n"
 
 P = "AA00000000000000000"  # id prefix (24 hex chars total)
 def i(n): return f"{P}{n:05X}"
@@ -97,6 +98,7 @@ objs = f"""/* Begin PBXBuildFile section */
 		{i(0x304)} /* NotificationService-Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "NotificationService-Info.plist"; sourceTree = "<group>"; }};
 		{i(0x305)} /* BipAgents.entitlements */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BipAgents.entitlements; sourceTree = "<group>"; }};
 		{i(0x306)} /* NotificationService.entitlements */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NotificationService.entitlements; sourceTree = "<group>"; }};
+		{i(0x307)} /* Base.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; }};
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -150,6 +152,7 @@ objs = f"""/* Begin PBXBuildFile section */
 				{i(0x304)} /* NotificationService-Info.plist */,
 				{i(0x305)} /* BipAgents.entitlements */,
 				{i(0x306)} /* NotificationService.entitlements */,
+				{i(0x307)} /* Base.xcconfig */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -265,7 +268,7 @@ objs = f"""/* Begin PBXBuildFile section */
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-{cfg(i(0xB01), "Debug", proj_debug)}{cfg(i(0xB02), "Release", proj_release)}{cfg(i(0xB03), "Debug", app)}{cfg(i(0xB04), "Release", app)}{cfg(i(0xB05), "Debug", nse)}{cfg(i(0xB06), "Release", nse)}/* End XCBuildConfiguration section */
+{cfg(i(0xB01), "Debug", proj_debug, i(0x307))}{cfg(i(0xB02), "Release", proj_release, i(0x307))}{cfg(i(0xB03), "Debug", app)}{cfg(i(0xB04), "Release", app)}{cfg(i(0xB05), "Debug", nse)}{cfg(i(0xB06), "Release", nse)}/* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
 		{i(0x901)} /* Build configuration list for PBXProject "BipAgents" */ = {{

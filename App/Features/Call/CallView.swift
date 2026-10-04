@@ -124,6 +124,11 @@ private struct CallContent: View {
         VStack(spacing: 12) {
             if let error = model.errorMessage ?? model.voice.lastError {
                 Text(error).font(Theme.body(15, weight: .bold)).foregroundStyle(Theme.danger)
+                if model.voice.state == .idle {
+                    Button("Réessayer", systemImage: "arrow.clockwise") { Task { await model.retry() } }
+                        .buttonStyle(.pill(.primary, height: 44))
+                        .frame(maxWidth: 200)
+                }
             }
             switch model.voice.state {
             case .listening, .idle:

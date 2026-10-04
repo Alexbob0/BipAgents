@@ -169,3 +169,15 @@ def test_device_validation(client):
     assert resp.status_code == 400 and resp.json()["detail"]["agent_ids"] == ["ghost"]
     # environment defaults to [apns].environment
     assert client.post("/v1/devices", headers=AUTH, json={"token": TOKEN}).json()["environment"] == "sandbox"
+
+
+def test_tts_message_returns_one_mp3_for_a_whole_reply(client):
+    text = "Premier conseil : coupe les écrans. " * 30  # well over the per-sentence limit
+    resp = client.post("/v1/tts/message", headers=AUTH, json={"text": text, "agent": "Wellness"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/mpeg"
+    assert client.backend.kyutai_inputs[-1]["response_format"] == "mp3"
+    assert len(client.backend.kyutai_inputs[-1]["input"]) > 1000
+    assert client.post("/v1/tts/message", headers=AUTH, json={"text": "x" * 9000}).status_code == 413
+    assert client.post("/v1/tts/message", headers=AUTH, json={"text": "x", "format": "flac"}).status_code == 400
+

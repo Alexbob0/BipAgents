@@ -16,6 +16,7 @@ final class CallModel {
     private(set) var startedAt: Date?
     var errorMessage: String?
 
+    private let store: AgentStore
     private let client: HermesClient?
     private let isDemo: Bool
     private var runID: String?
@@ -23,6 +24,7 @@ final class CallModel {
     init(agent: AgentProfile, sessionID: String?, store: AgentStore) {
         self.agent = agent
         self.sessionID = sessionID
+        self.store = store
         client = store.client(for: agent)
         isDemo = store.isDemo
         voice = VoiceEngine(tts: store.ttsProvider(for: agent))
@@ -61,6 +63,13 @@ final class CallModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// After a failed start (mic busy, permission just granted…).
+    func retry() async {
+        errorMessage = nil
+        voice.endCall()
+        await start()
     }
 
     func hangUp() {
@@ -121,6 +130,7 @@ final class CallModel {
         if let sessionID { return sessionID }
         let session = try await client.createSession(title: "Appel · " + String(title.prefix(40)))
         sessionID = session.id
+        store.noteSession(session, for: agent)
         return session.id
     }
 

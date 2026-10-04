@@ -27,6 +27,21 @@ public struct VoiceConfiguration: Sendable {
     }
 }
 
+/// A recorded voice note: the audio file, its transcript and a coarse waveform (0…1, ~40 bars).
+public struct VoiceRecording: Sendable, Hashable {
+    public var url: URL
+    public var duration: TimeInterval
+    public var transcript: String
+    public var waveform: [Float]
+
+    public init(url: URL, duration: TimeInterval, transcript: String, waveform: [Float]) {
+        self.url = url
+        self.duration = duration
+        self.transcript = transcript
+        self.waveform = waveform
+    }
+}
+
 public struct VoiceMetrics: Sendable, Equatable {
     /// Speech end (end-of-utterance decision, or `finishDictation()`) → final transcript.
     public var lastSTTDuration: Duration?

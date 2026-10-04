@@ -116,7 +116,7 @@ struct AgentCard: View {
                     Label("Parler", systemImage: "mic.fill")
                 }
                 .buttonStyle(.pill)
-                NavigationLink(value: AgentRoute.conversation(agent, sessionID: nil)) {
+                NavigationLink(value: AgentRoute.conversation(agent, sessionID: latest?.id)) {
                     Label("Écrire", systemImage: "keyboard")
                 }
                 .buttonStyle(.pill(.secondary))

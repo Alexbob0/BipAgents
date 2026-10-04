@@ -111,7 +111,7 @@ struct BridgeTTSProviderTests {
 
 /// Scripted TTS: records calls, fails or succeeds on demand.
 final class ScriptedTTS: TTSProvider {
-    enum Behaviour: Sendable { case succeed, fail, cancel }
+    enum Behaviour: Sendable { case succeed, fail, reject, cancel }
     let name: String
     private let state: Mutex<(behaviour: Behaviour, calls: [String], replies: Int)>
 
@@ -131,6 +131,7 @@ final class ScriptedTTS: TTSProvider {
         switch behaviour {
         case .succeed: return PCMChunk(samples: Data(name.utf8), sampleRate: 24_000)
         case .fail: throw URLError(.cannotConnectToHost)
+        case .reject: throw TTSError.httpStatus(400)
         case .cancel: throw CancellationError()
         }
     }
@@ -170,6 +171,17 @@ struct FallbackTTSProviderTests {
         await #expect(throws: CancellationError.self) { try await tts.synthesize("Un.") }
         #expect(fallback.calls.isEmpty)
         #expect(!tts.isUsingFallback)
+    }
+
+    @Test func rejectedSentenceDoesNotSwitchVoices() async throws {
+        let primary = ScriptedTTS("bridge", .reject), fallback = ScriptedTTS("system")
+        let tts = FallbackTTSProvider(primary: primary, fallback: fallback)
+        tts.beginReply()
+        await #expect(throws: TTSError.self) { try await tts.synthesize("…") }
+        #expect(fallback.calls.isEmpty)
+        #expect(!tts.isUsingFallback)
+        primary.set(.succeed)
+        #expect(try await tts.synthesize("Deux.").samples == Data("bridge".utf8))
     }
 
     @Test func fallbackErrorsPropagate() async {

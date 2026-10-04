@@ -65,3 +65,14 @@ struct SystemTTSProviderTests {
         #expect(try await SystemTTSProvider().synthesize("  ").frameCount == 0)
     }
 }
+
+@Suite("Voice note waveform")
+struct VoiceNoteWaveformTests {
+    @Test @MainActor func waveformHasFixedBarCountAndTracksPeaks() {
+        let levels: [Float] = Array(repeating: 0.1, count: 100) + Array(repeating: 0.9, count: 100)
+        let bars = VoiceEngine.waveform(from: levels, bars: 40)
+        #expect(bars.count == 40)
+        #expect(bars.first == 0.1 && bars.last == 0.9)
+        #expect(VoiceEngine.waveform(from: [], bars: 10) == Array(repeating: 0.05, count: 10))
+    }
+}

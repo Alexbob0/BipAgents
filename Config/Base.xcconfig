@@ -1,0 +1,3 @@
+// Shared settings. Machine-specific values (signing team) live in Local.xcconfig, which is not committed.
+// Create it with:  echo 'DEVELOPMENT_TEAM = <your Team ID>' > Config/Local.xcconfig
+#include? "Local.xcconfig"

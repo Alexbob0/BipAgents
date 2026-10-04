@@ -59,6 +59,17 @@ final class AgentStore {
 
     func secrets(for agent: AgentProfile) -> AgentSecrets? { Keychain.secrets(for: agent.id) }
 
+    /// The agent's ongoing conversation (most recent session), continued by « Écrire » and « Parler »
+    /// — one thread per agent, like a messaging app. `nil` until the agent has one.
+    func mainSessionID(for agent: AgentProfile) -> String? { latestSession[agent.id]?.id }
+
+    /// Called when the app starts or continues a session, so it becomes the agent's ongoing conversation.
+    func noteSession(_ session: HermesSession, for agent: AgentProfile) {
+        var session = session
+        session.updatedAt = .now
+        latestSession[agent.id] = session
+    }
+
     func add(_ profile: AgentProfile, secrets: AgentSecrets) throws {
         try Keychain.save(secrets, for: profile.id)
         agents.removeAll { $0.id == profile.id }

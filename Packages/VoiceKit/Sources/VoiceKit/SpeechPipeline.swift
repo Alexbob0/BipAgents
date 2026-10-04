@@ -1,21 +1,31 @@
 import Foundation
 
-/// One reply's text → ordered audio: streamed deltas → `SentenceSplitter` → `TTSProvider` → chunks in order.
+/// One reply's text → ordered audio: streamed deltas → `SentenceSplitter` → segments → `TTSProvider`.
 ///
-/// Sentences are synthesized as soon as they are complete, with up to `maxInFlight` requests running
-/// (the sentence being waited for plus the prefetch of the next ones), and are emitted strictly in order
-/// the moment each one is ready — never waiting for the end of the reply. Cancelling the consumer of
-/// `events(for:)` cancels the text stream and every synthesis request.
+/// Tuned for a serial, non-streaming synthesizer (Kyutai behind the bridge: one request at a time, much
+/// faster per second of audio when it gets several sentences at once, since it batches them on the GPU):
+/// - the first segment is the reply's first clause only (≤ `firstSegmentLength`), so audio starts fast;
+/// - while a segment is being synthesized, the following sentences accumulate and leave together as the
+///   next segment (≤ `maxGroupLength`), which keeps the synthesizer ahead of playback;
+/// - segments are emitted strictly in order the moment each one is ready, never waiting for the end of
+///   the reply. A segment that fails is skipped rather than ending the whole reply.
+/// Cancelling the consumer of `events(for:)` cancels the text stream and every synthesis request.
 struct SpeechPipeline: Sendable {
     enum Event: Sendable {
         /// First text delta received (start of the "first audio" latency measurement).
         case textStarted(ContinuousClock.Instant)
+        /// `index` counts emitted segments; `text` is what `audio` says.
         case sentence(index: Int, text: String, audio: PCMChunk)
     }
 
     var tts: any TTSProvider
-    var maxInFlight = 2
+    /// Segments requested at once. 1 suits a serial synthesizer: pending sentences then group up.
+    var maxInFlight = 1
     var maxSentenceLength = 180
+    /// Group pending sentences into one request (off = one request per sentence).
+    var grouping = true
+    var maxGroupLength = 700
+    var firstSegmentLength = 60
 
     func events(for deltas: AsyncThrowingStream<String, any Error>) -> AsyncThrowingStream<Event, any Error> {
         let (stream, output) = AsyncThrowingStream<Event, any Error>.makeStream()
@@ -33,6 +43,8 @@ struct SpeechPipeline: Sendable {
         case textFailed(any Error)
         case synthesized(Int, Result<PCMChunk, any Error>)
     }
+
+    private enum Outcome { case audio(PCMChunk), skipped }
 
     private func run(_ deltas: AsyncThrowingStream<String, any Error>,
                      _ output: AsyncThrowingStream<Event, any Error>.Continuation) async {
@@ -58,10 +70,11 @@ struct SpeechPipeline: Sendable {
             }
         }
 
-        var sentences: [String] = []
-        var ready: [Int: PCMChunk] = [:]
+        var pending: [String] = []          // complete sentences not requested yet
+        var segments: [String] = []         // requested segment texts, by index
+        var ready: [Int: Outcome] = [:]
         var synthesis: [Int: Task<Void, Never>] = [:]
-        var nextToStart = 0, nextToEmit = 0
+        var nextToEmit = 0, emitted = 0
         var textEnded = false
         defer {
             reader.cancel()
@@ -75,33 +88,73 @@ struct SpeechPipeline: Sendable {
             case .textStarted(let instant):
                 output.yield(.textStarted(instant))
             case .sentences(let new):
-                sentences += new
+                pending += new
             case .textEnded:
                 textEnded = true
             case .textFailed(let error):
                 return output.finish(throwing: error)
-            case .synthesized(let index, .success(let audio)):
+            case .synthesized(let index, let result):
                 synthesis[index] = nil
-                ready[index] = audio
-            case .synthesized(_, .failure(let error)):
-                return output.finish(throwing: error)
+                switch result {
+                case .success(let audio): ready[index] = .audio(audio)
+                case .failure(let error) where FallbackTTSProvider.isCancellation(error): return output.finish(throwing: error)
+                case .failure: ready[index] = .skipped
+                }
             }
 
-            while let audio = ready.removeValue(forKey: nextToEmit) {
-                output.yield(.sentence(index: nextToEmit, text: sentences[nextToEmit], audio: audio))
+            while let outcome = ready.removeValue(forKey: nextToEmit) {
+                if case .audio(let audio) = outcome {
+                    output.yield(.sentence(index: emitted, text: segments[nextToEmit], audio: audio))
+                    emitted += 1
+                }
                 nextToEmit += 1
             }
-            while nextToStart < sentences.count, nextToStart - nextToEmit < maxInFlight {
-                let index = nextToStart, text = sentences[index]
+            while !pending.isEmpty, synthesis.count < maxInFlight {
+                let index = segments.count, text = nextSegment(from: &pending, isFirst: segments.isEmpty)
+                segments.append(text)
                 synthesis[index] = Task {
                     let result: Result<PCMChunk, any Error>
                     do { result = .success(try await tts.synthesize(text)) } catch { result = .failure(error) }
                     step.yield(.synthesized(index, result))
                 }
-                nextToStart += 1
             }
-            if textEnded, nextToEmit == sentences.count { return output.finish() }
+            if textEnded, pending.isEmpty, synthesis.isEmpty, nextToEmit == segments.count { return output.finish() }
         }
         output.finish(throwing: CancellationError())
+    }
+
+    /// Takes the next segment's text off `pending`.
+    private func nextSegment(from pending: inout [String], isFirst: Bool) -> String {
+        if isFirst {
+            let (head, tail) = Self.splitHead(pending[0], maxLength: firstSegmentLength)
+            if let tail { pending[0] = tail } else { pending.removeFirst() }
+            return head
+        }
+        guard grouping else { return pending.removeFirst() }
+        var text = pending.removeFirst()
+        while let next = pending.first, text.count + 1 + next.count <= maxGroupLength {
+            text += " " + next
+            pending.removeFirst()
+        }
+        return text
+    }
+
+    /// Cuts a long first sentence at its first natural pause (clause, then word) within `maxLength`.
+    static func splitHead(_ sentence: String, maxLength: Int) -> (head: String, tail: String?) {
+        guard sentence.count > maxLength else { return (sentence, nil) }
+        let window = sentence.prefix(maxLength)
+        let minimum = sentence.index(sentence.startIndex, offsetBy: min(15, maxLength))
+        var cut: String.Index?
+        for separator in [", ", "; ", " : ", " — ", " – "] {
+            if let range = window.range(of: separator, options: .backwards), range.lowerBound >= minimum {
+                cut = range.upperBound
+                break
+            }
+        }
+        if cut == nil, let space = window.lastIndex(of: " "), space >= minimum { cut = sentence.index(after: space) }
+        guard let cut else { return (sentence, nil) }
+        let head = sentence[..<cut].trimmingCharacters(in: .whitespaces)
+        let tail = sentence[cut...].trimmingCharacters(in: .whitespaces)
+        return tail.isEmpty ? (sentence, nil) : (head, tail)
     }
 }

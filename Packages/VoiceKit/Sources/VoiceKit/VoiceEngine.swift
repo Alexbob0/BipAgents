@@ -1,5 +1,9 @@
 import AVFoundation
 import Observation
+import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Voice I/O for the app: push-to-talk dictation, hands-free call (listen → reply → speak → listen, with
 /// barge-in) and "Écouter" playback of a message. Everything here runs on the main actor; audio threads
@@ -37,6 +41,14 @@ public final class VoiceEngine {
     @ObservationIgnored private let playback: PlaybackQueue<PlayerOutput>
     @ObservationIgnored private let formatter = FormatConverter(outputFormat: AudioGraph.playerFormat)
     @ObservationIgnored private var graph: AudioGraph?
+    @ObservationIgnored private var rebuildTask: Task<Void, Never>?
+    @ObservationIgnored private var recordingLevels: [Float] = []
+    @ObservationIgnored private var voiceProcessingAllowed = true
+    @ObservationIgnored private var recentConfigurationChanges: [Date] = []
+    #if DEBUG
+    @ObservationIgnored private var debugPeak: Float = 0
+    @ObservationIgnored private var debugWindowStart: TimeInterval = 0
+    #endif
     @ObservationIgnored private var recognizer: (any SpeechRecognizerBackend)?
     @ObservationIgnored private var endOfUtterance = EndOfUtteranceDetector()
     @ObservationIgnored private var bargeIn = BargeInDetector()
@@ -65,6 +77,23 @@ public final class VoiceEngine {
     // MARK: - Dictation
 
     /// Starts push-to-talk dictation; live text in `partialTranscript`.
+    /// Like `startDictation()`, but also records the audio to `url` (.m4a) for a voice note.
+    public func startDictation(recordingTo url: URL) async throws {
+        try await startDictation()
+        recordingLevels = []
+        sink.startRecording(to: url)
+    }
+
+    /// Stops a recording dictation: the audio file, final transcript and waveform (nil if nothing usable).
+    public func finishRecording() async -> VoiceRecording? {
+        let levels = recordingLevels
+        let file = sink.stopRecording()
+        let transcript = await finishDictation()
+        guard let file else { return nil }
+        return VoiceRecording(url: file.url, duration: file.duration, transcript: transcript,
+                              waveform: Self.waveform(from: levels, bars: 40))
+    }
+
     public func startDictation() async throws {
         switch mode {
         case .dictation: return
@@ -99,6 +128,7 @@ public final class VoiceEngine {
 
     public func cancelDictation() {
         guard case .dictation = mode else { return }
+        if let file = sink.stopRecording() { try? FileManager.default.removeItem(at: file.url) }
         sink.swapSession(nil)?.cancel()
         teardown()
     }
@@ -196,17 +226,50 @@ public final class VoiceEngine {
     // MARK: - Capture
 
     private func prepareCapture() async throws {
+        lastError = nil
         guard VoicePermissions.granted else { throw VoiceError.permissionDenied }
         recognizer = try await SpeechRecognition.makeBackend(locale: configuration.locale)
-        try audioSession.activate(.voice)
-        try buildGraph(capture: true)
+        // Right after the permission alert the app is not active yet and the input route can read as
+        // 0 Hz / 0 channels ("Micro indisponible"): wait for the app to be active, then retry a few times.
+        await Self.waitUntilAppIsActive()
+        var lastFailure: (any Error)?
+        for attempt in 0..<3 {
+            if attempt > 0 { try await Task.sleep(for: .milliseconds(300 * attempt)) }
+            do {
+                try audioSession.activate(.voice)
+                try buildGraph(capture: true)
+                return
+            } catch {
+                lastFailure = error
+                #if DEBUG
+                print("[voice] capture start failed (attempt \(attempt)): \(error) — \(AudioDiagnostics.describe())")
+                #endif
+                Self.log.error("capture start failed (attempt \(attempt)): \(String(describing: error), privacy: .public) — \(AudioDiagnostics.describe(), privacy: .public)")
+                graph?.stop()
+                graph = nil
+                output.node = nil
+            }
+        }
+        throw lastFailure ?? VoiceError.microphoneUnavailable
+    }
+
+    static let log = Logger(subsystem: "io.github.bipagents", category: "voice")
+
+    private static func waitUntilAppIsActive() async {
+        #if canImport(UIKit) && os(iOS)
+        for _ in 0..<20 where UIApplication.shared.applicationState != .active {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        #endif
     }
 
     private func buildGraph(capture: Bool) throws {
         graph?.stop()
         graph = nil
         output.node = nil
-        let graph = try AudioGraph(capture: capture, sink: sink) { [weak self] in self?.configurationChanged() }
+        let graph = try AudioGraph(capture: capture, voiceProcessing: voiceProcessingAllowed, sink: sink) { [weak self] in
+            self?.configurationChanged()
+        }
         self.graph = graph
         output.node = graph.player
     }
@@ -216,32 +279,108 @@ public final class VoiceEngine {
     /// rebuilding anyway could loop, since a new voice-processing engine can trigger another change.
     private func configurationChanged() {
         guard let graph, !graph.engine.isRunning else { return }
-        rebuildGraph()
+        let now = Date.now
+        recentConfigurationChanges = recentConfigurationChanges.filter { now.timeIntervalSince($0) < 5 } + [now]
+        if recentConfigurationChanges.count >= 4, graph.voiceProcessingEnabled {
+            // Voice processing keeps reconfiguring the route: carry on without echo cancellation rather than
+            // never hearing the user (barge-in then relies on the higher threshold only).
+            Self.log.error("audio configuration loop — disabling voice processing")
+            #if DEBUG
+            print("[voice] configuration loop: disabling voice processing")
+            #endif
+            voiceProcessingAllowed = false
+            recentConfigurationChanges = []
+            rebuildGraph()
+            return
+        }
+        restartGraph(graph)
+    }
+
+    /// Same engine, restarted; falls back to a full rebuild if the input does not come back.
+    private func restartGraph(_ graph: AudioGraph) {
+        rebuildTask?.cancel()
+        rebuildTask = Task { [weak self] in
+            for delay in [0, 100, 250, 500] {
+                if delay > 0 { try? await Task.sleep(for: .milliseconds(delay)) }
+                guard let self, !Task.isCancelled, self.graph === graph else { return }
+                do {
+                    try graph.restart()
+                    self.playback.resetOutput()
+                    self.rebuildTask = nil
+                    return
+                } catch {
+                    #if DEBUG
+                    print("[voice] restart after \(delay) ms failed: \(error)")
+                    #endif
+                }
+            }
+            guard let self, !Task.isCancelled, self.graph === graph else { return }
+            self.rebuildTask = nil
+            self.rebuildGraph()
+        }
     }
 
     /// The engine has stopped and formats may have changed. Rebuild, and replay whatever was not yet heard.
+    ///
+    /// The old engine is released first: with voice processing on, a new engine created while the previous
+    /// one still holds the VP unit reports a 0 Hz input (seen on iPhone 16 Pro, iOS 26). The input then
+    /// takes a moment to come back, so retry with short delays before giving up.
     private func rebuildGraph() {
         guard let capture = graph?.capturesInput else { return }
-        do {
-            try buildGraph(capture: capture)
-            playback.resetOutput()
-        } catch {
-            fail(error)
-            teardown()
+        rebuildTask?.cancel()
+        graph?.stop()
+        graph = nil
+        output.node = nil
+        rebuildTask = Task { [weak self] in
+            var lastFailure: (any Error)?
+            for delay in [0, 100, 250, 500, 1000] {
+                if delay > 0 { try? await Task.sleep(for: .milliseconds(delay)) }
+                guard let self, !Task.isCancelled else { return }
+                if case .none = self.mode { return }
+                do {
+                    try self.buildGraph(capture: capture)
+                    self.playback.resetOutput()
+                    self.rebuildTask = nil
+                    return
+                } catch {
+                    lastFailure = error
+                    #if DEBUG
+                    print("[voice] rebuild retry after \(delay) ms failed: \(error)")
+                    #endif
+                }
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.fail(lastFailure ?? VoiceError.microphoneUnavailable)
+            self.teardown()
         }
     }
 
     /// A fresh recogniser session for the next utterance; the previous one is cancelled.
     private func startRecognition() {
         partialTranscript = ""
-        guard let recognizer, let session = try? recognizer.makeSession() else {
+        guard let recognizer else {
             sink.swapSession(nil)?.cancel()
             return
         }
+        let session: any SpeechRecognitionSession
+        do {
+            session = try recognizer.makeSession()
+        } catch {
+            // Without a session nothing is ever transcribed and the call would listen forever: surface it.
+            sink.swapSession(nil)?.cancel()
+            fail(error)
+            return
+        }
+        #if DEBUG
+        print("[voice] recognition session started: \(type(of: recognizer))")
+        #endif
         sink.swapSession(session)?.cancel()
         Task { [weak self] in
             for await text in session.transcripts {
                 guard let self, self.sink.isCurrent(session) else { continue }
+                #if DEBUG
+                print("[voice] partial: \(text)")
+                #endif
                 self.partialTranscript = text
             }
         }
@@ -254,8 +393,17 @@ public final class VoiceEngine {
             outputLevel = AudioLevel.smoothed(outputLevel, toward: level)
         case .input:
             inputLevel = AudioLevel.smoothed(inputLevel, toward: level)
+            if case .dictation = mode { recordingLevels.append(Float(level)) }
             guard mode.isCall else { return }
             let sample = VoiceSample(timestamp: reading.timestamp, rmsLevel: reading.rms, hasPartialTranscript: !partialTranscript.isEmpty)
+            #if DEBUG
+            debugPeak = max(debugPeak, reading.rms)
+            if reading.timestamp - debugWindowStart >= 1 {
+                print(String(format: "[voice] state=%@ peakRMS=%.4f threshold=%.3f partial=%@", "\(state)", debugPeak, configuration.speechThreshold, partialTranscript.isEmpty ? "∅" : "yes"))
+                debugPeak = 0
+                debugWindowStart = reading.timestamp
+            }
+            #endif
             switch state {
             case .listening:
                 if endOfUtterance.process(sample) == .utteranceEnded { utteranceEnded() }
@@ -404,6 +552,8 @@ public final class VoiceEngine {
     // MARK: - Teardown
 
     private func teardown() {
+        rebuildTask?.cancel()
+        rebuildTask = nil
         mode = .none
         replyID += 1
         replyTask?.cancel()
@@ -423,8 +573,22 @@ public final class VoiceEngine {
         partialTranscript = ""
     }
 
+    /// Peak of each of `bars` equal slices of the level history.
+    static func waveform(from levels: [Float], bars: Int) -> [Float] {
+        guard !levels.isEmpty else { return Array(repeating: 0.05, count: bars) }
+        let slice = max(1, levels.count / bars)
+        return (0..<bars).map { bar in
+            let start = min(levels.count - 1, bar * slice)
+            let end = min(levels.count, start + slice)
+            return max(0.05, min(1, levels[start..<end].max() ?? 0))
+        }
+    }
+
     private func fail(_ error: any Error) {
         guard !(error is CancellationError) else { return }
+        #if DEBUG
+        print("[voice] fail: \(error) (\(type(of: error))) state=\(state) — \(AudioDiagnostics.describe())")
+        #endif
         lastError = String(describing: error)
     }
 }

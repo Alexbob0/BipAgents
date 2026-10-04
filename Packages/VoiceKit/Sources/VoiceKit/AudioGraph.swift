@@ -19,6 +19,8 @@ final class CaptureSink: @unchecked Sendable {
     private let continuation: AsyncStream<Reading>.Continuation
     private let lock = NSLock()
     private var session: (any SpeechRecognitionSession)?
+    /// Voice-note recording: the file is created on the first input buffer (its rate is only known then).
+    private var recording: (url: URL, file: AVAudioFile?, frames: AVAudioFramePosition, rate: Double)?
 
     /// Level frames of ~20 ms, whatever buffer size the tap delivers: detector timing stays fine-grained.
     static let frameDuration: TimeInterval = 0.02
@@ -57,8 +59,42 @@ final class CaptureSink: @unchecked Sendable {
                                        rms: AudioLevel.rms(buffer, frames: offset..<end)))
             offset = end
         }
-        guard source == .input, let session = lock.withLock({ self.session }) else { return }
-        if let mono = buffer.monoCopy() { session.append(mono) }
+        guard source == .input else { return }
+        let (session, recording) = lock.withLock { (self.session, self.recording) }
+        guard session != nil || recording != nil, let mono = buffer.monoCopy() else { return }
+        session?.append(mono)
+        if recording != nil { write(mono) }
+    }
+
+    // MARK: Voice-note recording (AAC in .m4a)
+
+    func startRecording(to url: URL) {
+        lock.withLock { recording = (url, nil, 0, 0) }
+    }
+
+    /// Closes the file; returns its URL and duration (nil if nothing was recorded).
+    func stopRecording() -> (url: URL, duration: TimeInterval)? {
+        lock.withLock {
+            defer { recording = nil }
+            guard let recording, recording.file != nil, recording.frames > 0 else { return nil }
+            return (recording.url, Double(recording.frames) / recording.rate) // the file closes when released
+        }
+    }
+
+    private func write(_ buffer: AVAudioPCMBuffer) {
+        lock.withLock {
+            guard var current = recording else { return }
+            if current.file == nil {
+                let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: buffer.format.sampleRate,
+                                               AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 48_000]
+                current.file = try? AVAudioFile(forWriting: current.url, settings: settings,
+                                                commonFormat: .pcmFormatFloat32, interleaved: false)
+                current.rate = buffer.format.sampleRate
+            }
+            guard let file = current.file, (try? file.write(from: buffer)) != nil else { return }
+            current.frames += AVAudioFramePosition(buffer.frameLength)
+            recording = current
+        }
     }
 
     /// Built in a nonisolated context on purpose: a closure formed inside a `@MainActor` method would be
@@ -87,19 +123,23 @@ final class AudioGraph {
     private(set) var voiceProcessingEnabled = false
     private var observer: NSObjectProtocol?
 
-    init(capture: Bool, sink: CaptureSink, onConfigurationChange: @escaping @MainActor @Sendable () -> Void) throws {
+    private let sink: CaptureSink
+
+    init(capture: Bool, voiceProcessing: Bool = true, sink: CaptureSink,
+         onConfigurationChange: @escaping @MainActor @Sendable () -> Void) throws {
         capturesInput = capture
+        self.sink = sink
         if capture {
             let input = engine.inputNode
-            do {
-                try input.setVoiceProcessingEnabled(true)
-                voiceProcessingEnabled = true
-            } catch {
-                // Simulator / unsupported route: keep going without AEC (barge-in will be less reliable).
+            if voiceProcessing {
+                do {
+                    try input.setVoiceProcessingEnabled(true)
+                    voiceProcessingEnabled = true
+                } catch {
+                    // Simulator / unsupported route: keep going without AEC (barge-in will be less reliable).
+                }
             }
-            let format = input.outputFormat(forBus: 0)
-            guard format.sampleRate > 0, format.channelCount > 0 else { throw VoiceError.microphoneUnavailable }
-            input.installTap(onBus: 0, bufferSize: 1024, format: format, block: CaptureSink.tap(sink, .input))
+            try installInputTap()
         }
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: Self.playerFormat)
@@ -115,6 +155,27 @@ final class AudioGraph {
             stop()
             throw error
         }
+    }
+
+    /// Restarts this same engine after a configuration change (Apple's recommended handling). Recreating
+    /// a voice-processing engine instead re-triggers the change and loops.
+    func restart() throws {
+        if capturesInput {
+            engine.inputNode.removeTap(onBus: 0)
+            try installInputTap()
+        }
+        engine.prepare()
+        try engine.start()
+    }
+
+    private func installInputTap() throws {
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        #if DEBUG
+        print("[voice] input hw=\(input.inputFormat(forBus: 0)) out=\(format) vp=\(voiceProcessingEnabled) — \(AudioDiagnostics.describe())")
+        #endif
+        guard format.sampleRate > 0, format.channelCount > 0 else { throw VoiceError.microphoneUnavailable }
+        input.installTap(onBus: 0, bufferSize: 1024, format: format, block: CaptureSink.tap(sink, .input))
     }
 
     func stop() {

@@ -40,11 +40,24 @@ struct LocalAttachment: Identifiable, Equatable {
     }
 }
 
+/// The agent's spoken version of a reply to a voice note.
+enum VoiceReplyState: Equatable {
+    case preparing
+    case ready(URL, duration: TimeInterval)
+    case unavailable
+}
+
 @Observable
 final class ConversationModel {
     let agent: AgentProfile
     let voice: VoiceEngine
     private(set) var speakingItemID: UUID?
+    /// User messages sent as voice notes (audio + transcript), by item id.
+    private(set) var voiceNotes: [UUID: VoiceRecording] = [:]
+    /// Spoken replies to voice notes, by assistant item id.
+    private(set) var voiceReplies: [UUID: VoiceReplyState] = [:]
+    let player = VoiceNotePlayer()
+    private var replyByVoice = false
     private(set) var sessionID: String?
     private(set) var title: String?
     private(set) var items: [ChatItem] = []
@@ -54,6 +67,7 @@ final class ConversationModel {
     private(set) var interim: String?
     var errorMessage: String?
 
+    private let store: AgentStore
     private let client: HermesClient?
     private let uploader: (any DocumentUploader)?
     private let bridge: BridgeClient?
@@ -62,6 +76,7 @@ final class ConversationModel {
     init(agent: AgentProfile, sessionID: String?, store: AgentStore) {
         self.agent = agent
         self.sessionID = sessionID
+        self.store = store
         self.client = store.client(for: agent)
         if store.isDemo { items = Self.demoItems(for: agent) }
         if let bridgeURL = agent.config.bridgeURL, let bridgeKey = store.secrets(for: agent)?.bridgeKey {
@@ -113,7 +128,9 @@ final class ConversationModel {
         do {
             async let session = client.session(id: sessionID)
             async let history = client.messages(sessionID: sessionID)
-            title = try await session.title
+            let current = try await session
+            title = current.title
+            store.noteSession(current, for: agent)
             items = try await history.flatMap(Self.items(from:))
         } catch {
             errorMessage = Self.describe(error)
@@ -139,14 +156,17 @@ final class ConversationModel {
 
     // MARK: Sending
 
-    func send(text: String, attachments: [LocalAttachment]) {
+    func send(text: String, attachments: [LocalAttachment], voiceNote: VoiceRecording? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty, !isRunning else { return }
         guard let client else {
             errorMessage = "Clé d’accès introuvable dans le Trousseau."
             return
         }
-        items.append(ChatItem(.user(text: trimmed, attachments: attachments)))
+        let item = ChatItem(.user(text: trimmed, attachments: attachments))
+        items.append(item)
+        if let voiceNote { voiceNotes[item.id] = voiceNote }
+        replyByVoice = voiceNote != nil && UserDefaults.standard.object(forKey: Self.voiceRepliesKey) as? Bool ?? true
         isRunning = true
         errorMessage = nil
 
@@ -170,6 +190,7 @@ final class ConversationModel {
         let title = firstMessage.isEmpty ? nil : String(firstMessage.prefix(60))
         let session = try await client.createSession(title: title)
         sessionID = session.id
+        store.noteSession(session, for: agent)
         self.title = session.title ?? title
         return session.id
     }
@@ -281,15 +302,52 @@ final class ConversationModel {
         items[index].kind = .approval(request, resolved: resolved)
     }
 
+    static let voiceRepliesKey = "voiceRepliesToVoiceNotes"
+
     private func finishRun() {
         if case .assistant(let text, true)? = items.last?.kind {
             items[items.count - 1].kind = .assistant(text: text, isStreaming: false)
+        }
+        if replyByVoice {
+            replyByVoice = false
+            prepareVoiceReply()
         }
         isRunning = false
         isWaitingForApproval = false
         interim = nil
         runID = nil
         streamTask = nil
+    }
+
+    /// Voice note in → voice note out: the whole reply becomes one audio file, played as soon as it is ready.
+    private func prepareVoiceReply() {
+        // The turn's reply text: every assistant item after the last user message.
+        guard let lastUser = items.lastIndex(where: { if case .user = $0.kind { true } else { false } }) else { return }
+        let replies = items[(lastUser + 1)...].compactMap { item -> (UUID, String)? in
+            if case .assistant(let text, _) = item.kind, !text.isEmpty { (item.id, text) } else { nil }
+        }
+        guard let target = replies.last?.0 else { return }
+        let text = replies.map(\.1).joined(separator: "\n\n")
+        guard let bridge else {
+            // No bridge: read it live with the on-device voice instead.
+            Task { await voice.speak(text) }
+            return
+        }
+        voiceReplies[target] = .preparing
+        Task {
+            do {
+                let data = try await bridge.messageAudio(text: text, agent: agent.bridgeName)
+                let url = VoiceNotePlayer.cacheURL(name: "reply-\(target.uuidString).mp3")
+                try data.write(to: url)
+                let duration = VoiceNotePlayer.duration(of: url)
+                voiceReplies[target] = .ready(url, duration: duration)
+                player.toggle(url)
+            } catch {
+                // Bridge without /v1/tts/message (older version) or unreachable: read it live instead.
+                voiceReplies[target] = .unavailable
+                await voice.speak(text)
+            }
+        }
     }
 
     static func describe(_ error: any Error) -> String {

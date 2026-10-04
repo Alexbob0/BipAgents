@@ -82,7 +82,7 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
 struct SpeechPipelineTests {
     @Test func splitsDeltasAndSpeaksInOrderEvenWhenSynthesisFinishesOutOfOrder() async throws {
         let tts = SlowTTS(delays: ["Un.": .milliseconds(120), "Deux.": .milliseconds(5), "Trois ?": .milliseconds(5)])
-        let pipeline = SpeechPipeline(tts: tts, maxInFlight: 3)
+        let pipeline = SpeechPipeline(tts: tts, maxInFlight: 3, grouping: false)
         let spoken = try await collect(pipeline.events(for: stream(["U", "n. De", "ux. **Tro", "is** ? Fin"])))
         #expect(spoken == ["Un.", "Deux.", "Trois ?", "Fin"])
         // Requests are issued in order; concurrent ones may reach the provider in any order.
@@ -120,7 +120,7 @@ struct SpeechPipelineTests {
     @Test func boundsConcurrentSynthesis() async throws {
         let tts = SlowTTS(defaultDelay: .milliseconds(15))
         let text = (1...8).map { "Phrase \($0)." }.joined(separator: " ")
-        let spoken = try await collect(SpeechPipeline(tts: tts, maxInFlight: 2).events(for: stream([text])))
+        let spoken = try await collect(SpeechPipeline(tts: tts, maxInFlight: 2, grouping: false).events(for: stream([text])))
         #expect(spoken.count == 8)
         #expect(tts.maxInFlight == 2) // the awaited sentence + one prefetch
     }
@@ -134,7 +134,7 @@ struct SpeechPipelineTests {
 
         let firstSpoken = Mutex(false)
         let consumer = Task {
-            for try await event in SpeechPipeline(tts: tts, maxInFlight: 2).events(for: deltas) {
+            for try await event in SpeechPipeline(tts: tts, maxInFlight: 2, grouping: false).events(for: deltas) {
                 if case .sentence = event { firstSpoken.withLock { $0 = true } }
             }
         }
@@ -147,11 +147,37 @@ struct SpeechPipelineTests {
         #expect(tts.requests.count == 3)
     }
 
-    @Test func synthesisErrorEndsTheReply() async {
+    @Test func failedSegmentIsSkipped() async throws {
         let tts = SlowTTS(failing: ["Deux."])
-        await #expect(throws: TTSError.httpStatus(500)) {
-            _ = try await collect(SpeechPipeline(tts: tts).events(for: stream(["Un. Deux. Trois."])))
-        }
+        let spoken = try await collect(SpeechPipeline(tts: tts, grouping: false).events(for: stream(["Un. Deux. Trois."])))
+        #expect(spoken == ["Un.", "Trois."])
+    }
+
+    @Test func groupsSentencesThatPiledUpDuringSynthesis() async throws {
+        let tts = SlowTTS(delays: ["Un.": .milliseconds(150)])
+        let (deltas, input) = AsyncThrowingStream<String, any Error>.makeStream()
+        let consumer = Task { try await collect(SpeechPipeline(tts: tts).events(for: deltas)) }
+        input.yield("Un. ")
+        try await Task.sleep(for: .milliseconds(30)) // "Un." is being synthesized…
+        input.yield("Deux. Trois. Quatre.")         // …while these arrive
+        input.finish()
+        let spoken = try await consumer.value
+        #expect(spoken == ["Un.", "Deux. Trois. Quatre."])
+        #expect(tts.requests == ["Un.", "Deux. Trois. Quatre."])
+    }
+
+    @Test func firstSegmentIsTheFirstClauseOfALongSentence() async throws {
+        let tts = SlowTTS()
+        let sentence = "Voici trois conseils adaptés à ta situation, en partant de ce que tu m’as dit hier soir."
+        let spoken = try await collect(SpeechPipeline(tts: tts).events(for: stream([sentence])))
+        #expect(spoken == ["Voici trois conseils adaptés à ta situation,", "en partant de ce que tu m’as dit hier soir."])
+    }
+
+    @Test func splitHeadFallsBackToAWordBoundary() {
+        let (head, tail) = SpeechPipeline.splitHead("Un deux trois quatre cinq six sept huit neuf dix onze douze treize", maxLength: 30)
+        #expect(head == "Un deux trois quatre cinq six")
+        #expect(tail == "sept huit neuf dix onze douze treize")
+        #expect(SpeechPipeline.splitHead("Court.", maxLength: 30).tail == nil)
     }
 
     @Test func textStreamErrorEndsTheReply() async {

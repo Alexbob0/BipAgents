@@ -66,7 +66,10 @@ private struct ConversationContent: View {
                 voice: model.voice,
                 onSend: send,
                 onStop: model.stop,
-                onDictated: { text in model.send(text: text, attachments: attachments); attachments = [] },
+                onDictated: { text, recording in
+                    model.send(text: text, attachments: attachments, voiceNote: recording)
+                    attachments = []
+                },
                 onCall: { isCalling = true },
                 appearance: model.agent.appearance
             )
@@ -102,11 +105,18 @@ private struct ConversationContent: View {
     private func row(for item: ChatItem) -> some View {
         switch item.kind {
         case .user(let text, let attachments):
-            UserBubble(text: text, attachments: attachments)
+            if let note = model.voiceNotes[item.id], attachments.isEmpty {
+                VoiceNoteBubble(note: note, player: model.player)
+            } else {
+                UserBubble(text: text, attachments: attachments)
+            }
         case .assistant(let text, let isStreaming):
             VStack(alignment: .leading, spacing: 6) {
                 AssistantRow(appearance: model.agent.appearance, text: text, isStreaming: isStreaming)
-                if !isStreaming {
+                if let reply = model.voiceReplies[item.id] {
+                    VoiceReplyView(state: reply, palette: palette, player: model.player)
+                        .padding(.leading, 40)
+                } else if !isStreaming {
                     ListenButton(palette: palette, isPlaying: model.speakingItemID == item.id) { model.toggleSpeech(of: item) }
                         .padding(.leading, 40)
                 }

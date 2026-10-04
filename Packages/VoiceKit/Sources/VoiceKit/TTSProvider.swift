@@ -51,9 +51,10 @@ public struct BridgeTTSProvider: TTSProvider {
     public var bridgeKey: String
     public var voice: String
     public var session: URLSession
-    /// Per-request timeout. Short on purpose: when the bridge is unreachable the fallback must kick in
-    /// before the silence becomes awkward.
-    public var timeout: TimeInterval = 6
+    /// Per-request timeout. Generous on purpose: the bridge queues sentences for Kyutai (one at a time), so
+    /// a prefetched sentence legitimately waits behind the one being synthesized. An unreachable bridge
+    /// fails fast anyway (connection refused, offline…), long before this.
+    public var timeout: TimeInterval = 30
 
     public init(bridgeURL: URL, bridgeKey: String, voice: String, session: URLSession = .shared) {
         self.bridgeURL = bridgeURL
@@ -83,12 +84,22 @@ public struct BridgeTTSProvider: TTSProvider {
     }
 
     public func synthesize(_ sentence: String) async throws -> PCMChunk {
+        #if DEBUG
+        let started = Date.now
+        #endif
         let (data, response) = try await session.data(for: request(for: sentence))
         guard let http = response as? HTTPURLResponse else { throw TTSError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else { throw TTSError.httpStatus(http.statusCode) }
         let rate = http.value(forHTTPHeaderField: "X-Sample-Rate").flatMap { Double($0.trimmingCharacters(in: .whitespaces)) }
         let samples = data.count.isMultiple(of: 2) ? data : data.dropLast() // never split a sample
-        return PCMChunk(samples: Data(samples), sampleRate: rate.flatMap { $0 > 0 ? $0 : nil } ?? Self.defaultSampleRate)
+        let chunk = PCMChunk(samples: Data(samples), sampleRate: rate.flatMap { $0 > 0 ? $0 : nil } ?? Self.defaultSampleRate)
+        #if DEBUG
+        let audio = Double(samples.count) / 2 / chunk.sampleRate
+        print(String(format: "[voice] bridge TTS %.2fs for %.2fs of audio (%d chars, cache %@): “%@”",
+                     Date.now.timeIntervalSince(started), audio, sentence.count,
+                     http.value(forHTTPHeaderField: "X-Cache") ?? "?", String(sentence.prefix(40))))
+        #endif
+        return chunk
     }
 }
 
@@ -120,10 +131,28 @@ public struct FallbackTTSProvider: TTSProvider {
                 return try await primary.synthesize(sentence)
             } catch {
                 if Task.isCancelled || Self.isCancellation(error) { throw error }
+                #if DEBUG
+                print("[voice] primary TTS failed: \(error) — \(Self.isOutage(error) ? "switching to fallback" : "skipping sentence")")
+                #endif
+                // Switch voices only when the primary is really down: mixing voices mid-reply sounds broken.
+                guard Self.isOutage(error) else { throw error }
                 state.failedOver.withLock { $0 = true }
             }
         }
         return try await fallback.synthesize(sentence)
+    }
+
+    /// Unreachable, timed out or failing server — as opposed to a request the server rejected (4xx).
+    static func isOutage(_ error: any Error) -> Bool {
+        switch error {
+        case let error as TTSError:
+            if case .httpStatus(let status) = error { return status >= 500 }
+            return true
+        case is URLError:
+            return true
+        default:
+            return true
+        }
     }
 
     static func isCancellation(_ error: any Error) -> Bool {

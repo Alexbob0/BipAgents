@@ -24,3 +24,6 @@ bridge.toml
 
 # Machine-specific context (private infrastructure details)
 context/
+
+# Local signing team
+Config/Local.xcconfig

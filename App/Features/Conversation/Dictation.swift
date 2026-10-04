@@ -22,7 +22,9 @@ final class DictationController {
         phase = .holding
         startedAt = .now
         Task {
-            do { try await voice.startDictation() } catch { cancel(voice) }
+            // Recorded too: the message is sent as a voice note (audio + transcript).
+            let url = VoiceNotePlayer.cacheURL(name: "note-\(UUID().uuidString).m4a")
+            do { try await voice.startDictation(recordingTo: url) } catch { cancel(voice) }
         }
     }
 
@@ -30,9 +32,16 @@ final class DictationController {
         if phase == .holding { phase = .locked }
     }
 
-    func finish(_ voice: VoiceEngine) async -> String {
+    /// The transcript and, unless it was too short to be worth keeping, the recording.
+    func finish(_ voice: VoiceEngine) async -> (text: String, recording: VoiceRecording?) {
         reset()
-        return await voice.finishDictation().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var recording = await voice.finishRecording() else { return ("", nil) }
+        recording.transcript = recording.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard recording.duration >= 0.6 else {
+            try? FileManager.default.removeItem(at: recording.url)
+            return (recording.transcript, nil)
+        }
+        return (recording.transcript, recording)
     }
 
     func cancel(_ voice: VoiceEngine) {
@@ -52,7 +61,7 @@ struct DictationButton: View {
     var voice: VoiceEngine
     var controller: DictationController
     var palette: AgentPalette
-    var onDictated: (String) -> Void
+    var onDictated: (String, VoiceRecording?) -> Void
     var onTap: () -> Void
 
     @State private var pressStart: Date?
@@ -110,8 +119,8 @@ struct DictationButton: View {
 
     private func send() {
         Task {
-            let text = await controller.finish(voice)
-            if !text.isEmpty { onDictated(text) }
+            let (text, recording) = await controller.finish(voice)
+            if !text.isEmpty { onDictated(text, recording) }
         }
     }
 }

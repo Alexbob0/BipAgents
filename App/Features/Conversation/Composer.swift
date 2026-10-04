@@ -13,7 +13,7 @@ struct Composer: View {
     var onSend: () -> Void
     var onStop: () -> Void
     /// Push-to-talk result, sent right away.
-    var onDictated: (String) -> Void
+    var onDictated: (String, VoiceRecording?) -> Void
     /// Short tap on the mic: open the hands-free call.
     var onCall: () -> Void
 

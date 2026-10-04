@@ -19,8 +19,10 @@ public struct VoiceSample: Sendable, Hashable {
 /// Detects the start and the end of a user utterance from level + transcript samples.
 ///
 /// Speech starts when the level stays above `speechThreshold` for `minSpeechDuration`. The utterance
-/// ends after `silenceDuration` below the threshold, provided a transcript exists; level-only bursts
-/// without any transcript are discarded silently (noise). The transcript flag deliberately does not start
+/// ends after `silenceDuration` below the threshold, provided a transcript exists. The recogniser's text
+/// often lands after the speech itself (≈1 s on device), so after the silence the detector keeps waiting up
+/// to `transcriptGrace` for it; a burst still without transcript then is discarded as noise. The transcript
+/// flag deliberately does not start
 /// speech on its own: the recogniser's partial text lingers until the app resets it after an utterance.
 public struct EndOfUtteranceDetector: Sendable {
     public struct Configuration: Sendable, Hashable {
@@ -28,11 +30,15 @@ public struct EndOfUtteranceDetector: Sendable {
         /// Silence that ends an utterance (SPEC: ≈ 600–800 ms, adjustable).
         public var silenceDuration: TimeInterval
         public var minSpeechDuration: TimeInterval
+        /// Extra wait, after the silence, for a transcript that is late (on-device STT latency).
+        public var transcriptGrace: TimeInterval
 
-        public init(speechThreshold: Float = 0.02, silenceDuration: TimeInterval = 0.7, minSpeechDuration: TimeInterval = 0.1) {
+        public init(speechThreshold: Float = 0.02, silenceDuration: TimeInterval = 0.7, minSpeechDuration: TimeInterval = 0.1,
+                    transcriptGrace: TimeInterval = 2) {
             self.speechThreshold = speechThreshold
             self.silenceDuration = silenceDuration
             self.minSpeechDuration = minSpeechDuration
+            self.transcriptGrace = transcriptGrace
         }
     }
 
@@ -64,10 +70,14 @@ public struct EndOfUtteranceDetector: Sendable {
             lastVoiceAt = sample.timestamp
             return nil
         }
-        guard sample.timestamp - lastVoiceAt >= configuration.silenceDuration else { return nil }
-        let hadSpeech = sample.hasPartialTranscript
-        reset()
-        return hadSpeech ? .utteranceEnded : nil
+        let silence = sample.timestamp - lastVoiceAt
+        guard silence >= configuration.silenceDuration else { return nil }
+        if sample.hasPartialTranscript {
+            reset()
+            return .utteranceEnded
+        }
+        if silence >= configuration.silenceDuration + configuration.transcriptGrace { reset() } // noise
+        return nil
     }
 
     public mutating func process(timestamp: TimeInterval, rmsLevel: Float, hasPartialTranscript: Bool) -> Event? {

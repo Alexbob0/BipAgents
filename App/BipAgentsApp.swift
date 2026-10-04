@@ -53,7 +53,7 @@ struct RootView: View {
                             switch route {
                             case .sessions(let agent): SessionsView(agent: agent)
                             case .conversation(let agent, let sessionID): ConversationView(agent: agent, sessionID: sessionID)
-                            case .call(let agent): CallView(agent: agent)
+                            case .call(let agent): CallView(agent: agent, sessionID: agents.mainSessionID(for: agent))
                             }
                         }
                 }

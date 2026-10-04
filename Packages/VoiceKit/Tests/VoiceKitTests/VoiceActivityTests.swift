@@ -44,7 +44,8 @@ struct EndOfUtteranceDetectorTests {
     }
 
     @Test func noiseWithoutTranscriptIsDiscarded() {
-        let events = run(frames([(0.5, 0.1, false), (1.0, 0.0, false), (0.5, 0.1, true), (1.0, 0.0, true)]))
+        // The burst is dropped only once the transcript grace (0.7 s silence + 2 s) has passed.
+        let events = run(frames([(0.5, 0.1, false), (3.0, 0.0, false), (0.5, 0.1, true), (1.0, 0.0, true)]))
         #expect(events.map(\.1) == [.speechStarted, .speechStarted, .utteranceEnded])
     }
 
@@ -98,5 +99,40 @@ struct BargeInDetectorTests {
         #expect(speech.compactMap { detector.process($0) }.isEmpty)
         detector.playbackStarted()
         #expect(speech.compactMap { detector.process($0) } == [.bargeIn])
+    }
+}
+
+@Suite("End of utterance with late transcript")
+struct LateTranscriptTests {
+    @Test func waitsForATranscriptThatArrivesAfterTheSilence() {
+        var detector = EndOfUtteranceDetector()
+        var t = 0.0
+        func feed(_ rms: Float, _ transcript: Bool, for seconds: Double) -> [EndOfUtteranceDetector.Event] {
+            var events: [EndOfUtteranceDetector.Event] = []
+            let end = t + seconds
+            while t < end {
+                if let event = detector.process(timestamp: t, rmsLevel: rms, hasPartialTranscript: transcript) { events.append(event) }
+                t += 0.02
+            }
+            return events
+        }
+        #expect(feed(0.3, false, for: 0.6) == [.speechStarted])
+        #expect(feed(0.0005, false, for: 1.0).isEmpty) // silence, text not there yet
+        #expect(feed(0.0005, true, for: 0.1) == [.utteranceEnded]) // late text ends the utterance
+    }
+
+    @Test func dropsBurstsThatNeverGetATranscript() {
+        var detector = EndOfUtteranceDetector()
+        var t = 0.0
+        var events: [EndOfUtteranceDetector.Event] = []
+        for (rms, seconds) in [(Float(0.3), 0.4), (Float(0.0005), 4.0)] {
+            let end = t + seconds
+            while t < end {
+                if let event = detector.process(timestamp: t, rmsLevel: rms, hasPartialTranscript: false) { events.append(event) }
+                t += 0.02
+            }
+        }
+        #expect(events == [.speechStarted])
+        #expect(!detector.isSpeaking)
     }
 }
