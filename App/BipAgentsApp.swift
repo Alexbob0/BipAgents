@@ -32,8 +32,7 @@ struct BipAgentsApp: App {
             .fontDesign(.rounded)
             .onChange(of: agents.agents, initial: true) { _, profiles in AgentAvatars.export(profiles) }
             .task {
-                appDelegate.store = agents
-                appDelegate.router = router
+                appDelegate.attach(store: agents, router: router)
                 ConversationModel.onMissedReply = { [inbox] agent, sessionID, runID, text in
                     inbox.addMissedReply(agent: agent, sessionID: sessionID, runID: runID, text: text)
                 }

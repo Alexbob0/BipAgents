@@ -5,8 +5,20 @@ import UserNotifications
 /// Push plumbing: notification categories, APNs registration with each agent's bridge,
 /// and the "Approuver / Refuser" actions that resolve a Hermes approval from the lock screen.
 final class AppDelegate: NSObject, UIApplicationDelegate {
-    var store: AgentStore?
-    var router: Router?
+    private(set) var store: AgentStore?
+    private(set) var router: Router?
+    /// A notification tapped before the app was ready (cold launch from the notification).
+    private var pendingTap: (action: String, payload: NotificationPayload)?
+
+    /// Called once the app's state exists; replays a notification tapped during launch.
+    func attach(store: AgentStore, router: Router) {
+        self.store = store
+        self.router = router
+        if let (action, payload) = pendingTap {
+            pendingTap = nil
+            Task { await handle(actionIdentifier: action, payload: payload) }
+        }
+    }
 
     enum Category {
         static let approval = "APPROVAL"
@@ -85,21 +97,31 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             agent: info["agent"] as? String,
             runID: info["run_id"] as? String,
             requestID: info["request_id"] as? String,
-            sessionID: info["session_id"] as? String
+            sessionID: info["session_id"] as? String,
+            outboxID: info["outbox_id"] as? String
         )
         await handle(actionIdentifier: response.actionIdentifier, payload: payload)
     }
 
     private func handle(actionIdentifier: String, payload: NotificationPayload) async {
-        guard let store, let agent = store.agents.first(where: { $0.bridgeName == payload.agent?.lowercased() || $0.name == payload.agent }) else { return }
+        guard let store, let router else {
+            pendingTap = (actionIdentifier, payload)
+            return
+        }
+        guard let agent = store.agents.first(where: { $0.bridgeName == payload.agent?.lowercased() || $0.name == payload.agent }) else { return }
         switch actionIdentifier {
         case Action.approveOnce, Action.deny:
             guard let runID = payload.runID, let client = store.client(for: agent) else { return }
             let choice: ApprovalChoice = actionIdentifier == Action.deny ? .deny : .once
             _ = try? await client.approve(runID: runID, choice: choice, requestID: payload.requestID)
         default:
-            // Tap or "Répondre": open the conversation the message belongs to (or a new one).
-            router?.open(.conversation(agent, sessionID: payload.sessionID))
+            if payload.sessionID == nil, payload.outboxID != nil, actionIdentifier == UNNotificationDefaultActionIdentifier {
+                // A proactive message without a conversation: it is in the Boîte.
+                router.tab = .inbox
+            } else {
+                // A reply, an approval, or « Répondre »: the conversation it belongs to (or a new one).
+                router.open(.conversation(agent, sessionID: payload.sessionID))
+            }
         }
     }
 }
@@ -109,4 +131,5 @@ private struct NotificationPayload: Sendable {
     var runID: String?
     var requestID: String?
     var sessionID: String?
+    var outboxID: String?
 }
