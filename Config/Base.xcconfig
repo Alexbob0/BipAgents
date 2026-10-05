@@ -1,3 +1,7 @@
 // Shared settings. Machine-specific values (signing team) live in Local.xcconfig, which is not committed.
 // Create it with:  echo 'DEVELOPMENT_TEAM = <your Team ID>' > Config/Local.xcconfig
+// The app's identifier: the extension, App Group and keychain group derive from it. To build under another Apple
+// account, override it in Local.xcconfig:  BIP_BUNDLE_ID = com.example.bipagents
+BIP_BUNDLE_ID = io.github.bipagents
+
 #include? "Local.xcconfig"

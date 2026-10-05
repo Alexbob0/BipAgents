@@ -49,13 +49,36 @@ de Hermes qui les branche sur l'api_server, cf. [`hermes-clarify-api.md`](hermes
 ```bash
 git clone https://github.com/Alexbob0/BipAgents ~/BipAgents
 cd ~/BipAgents/pocket
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt    # Python ≥ 3.10
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt    # Python ≥ 3.10 (VPS : voir ci-dessous)
 .venv/bin/python pocket_server.py --voices ../voices --languages fr,en,es,de
 curl -s http://127.0.0.1:8098/health
 ```
 
 Le premier lancement télécharge les modèles (≈ 440 Mo par langue). Ne charger que les langues utiles accélère le
 démarrage (`--languages fr`). Détails : [`pocket/README.md`](../pocket/README.md).
+
+### Sur un VPS
+
+- **Système** : Ubuntu 24.04 ou Debian 12 conviennent (`sudo apt install python3-venv python3-pip git`).
+- **PyTorch sans CUDA** : sur Linux x86, `pip` installe par défaut PyTorch avec CUDA (plusieurs Go inutiles sans
+  GPU). Installer d'abord la version CPU, puis le reste :
+
+  ```bash
+  .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+  .venv/bin/pip install -r requirements.txt
+  ```
+
+  (Sur ARM, Hetzner CAX ou Ampere, la version par défaut est déjà sans CUDA.)
+- **Partager le CPU avec Hermes** : `--threads 2` réserve 2 cœurs à Pocket (même vitesse mesurée qu'avec tous les
+  cœurs sur Apple M4). Sur x86, `--quantize` (poids int8) gagne ≈ 25 % de vitesse et la moitié de la mémoire ;
+  `pip install "pocket-tts[quantize]"` ajoute torchao pour l'optimiser.
+- **Mémoire et disque** : ≈ 0,6 à 1 Go de RAM pour les 4 langues, ≈ 2 Go de disque pour les modèles (dans
+  `~/.cache/huggingface`, `HF_HOME` pour les mettre ailleurs) et ≈ 1 Go pour PyTorch CPU. Ajouter un peu de swap
+  sur un VPS de 4 Go.
+- **Réseau** : laisser Pocket sur `127.0.0.1` (option par défaut) et ne rien ouvrir au pare-feu : le bridge est sur
+  la même machine, l'iPhone passe par Tailscale. Avec `ufw` : `sudo ufw allow in on tailscale0`, rien d'autre.
+- **Mesurer** une fois installé : `python3 pocket/bench.py` (premier son et vitesse). Visé : premier son sous
+  ≈ 300 ms, au moins 1,5× le temps réel. Sinon : `--quantize` (x86), puis des vCPU dédiés.
 
 ## 4. Le bridge
 
@@ -131,9 +154,17 @@ reste local, seul le bridge l'appelle.
 
 - Compiler avec Xcode sur un iPhone : `echo 'DEVELOPMENT_TEAM = <ton Team ID>' > Config/Local.xcconfig`, puis lancer
   le schéma BipAgents.
-- ⚠️ L'identifiant `io.github.bipagents` (app, extension, App Group, trousseau) est pour l'instant écrit en dur. Sous un
-  autre compte Apple, il faut le remplacer partout par le sien (projet, `Config/*.entitlements`, `AgentStore.swift`,
-  `NotificationService.swift`, `Keychain.swift`) et reporter le nouveau dans `[apns] bundle_id`.
+- Sous ton propre compte Apple, choisis ton identifiant d'app (il doit être unique chez Apple) et ajoute-le à
+  `Config/Local.xcconfig` :
+
+  ```
+  DEVELOPMENT_TEAM = <ton Team ID>
+  BIP_BUNDLE_ID = com.tonnom.bipagents
+  ```
+
+  L'extension (`….NotificationService`), l'App Group (`group.…`) et le groupe de trousseau (`….shared`) en découlent ;
+  Xcode les crée au premier build (*Automatically manage signing*). Reporter le même identifiant dans
+  `[apns] bundle_id` du bridge.
 - Dans l'app : Réglages › Ajouter un agent → adresse `https://mamachine.tailnet.ts.net:8642`, clé api_server, adresse
   du bridge `https://mamachine.tailnet.ts.net:8643` et sa clé. Choisir sa langue et son Bip.
 

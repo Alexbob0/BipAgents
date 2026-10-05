@@ -4,7 +4,8 @@ import Observation
 import SwiftUI
 
 enum AppGroup {
-    static let identifier = "group.io.github.bipagents"
+    /// `group.$(BIP_BUNDLE_ID)` (Config/Base.xcconfig), written into Info.plist at build time.
+    static let identifier = Bundle.main.object(forInfoDictionaryKey: "BIPAppGroup") as? String ?? "group.io.github.bipagents"
 }
 
 /// An agent as the app knows it: Hermes connection settings plus its look.

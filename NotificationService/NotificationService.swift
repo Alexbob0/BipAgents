@@ -141,7 +141,7 @@ enum SharedAgents {
     private struct StoredSecrets: Decodable { var bridgeKey: String? }
 
     static func agent(named name: String) -> Agent? {
-        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.io.github.bipagents"),
+        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Bundle.main.object(forInfoDictionaryKey: "BIPAppGroup") as? String ?? "group.io.github.bipagents"),
               let data = try? Data(contentsOf: container.appending(path: "agents.json")),
               let agents = try? JSONDecoder().decode([StoredAgent].self, from: data),
               let stored = agents.first(where: { $0.config.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame })

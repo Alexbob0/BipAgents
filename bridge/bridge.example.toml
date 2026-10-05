@@ -48,7 +48,7 @@ window_hours = 12        # au premier démarrage, seules les tâches de ces dern
 team_id = ""                # Apple Developer Team ID (10 caractères)
 key_id = ""                 # Key ID de la clé APNs .p8
 p8_path = "~/.config/hermes-ios/AuthKey_KEYID.p8"   # mode 600
-bundle_id = "io.github.bipagents"
+bundle_id = "io.github.bipagents"   # = BIP_BUNDLE_ID de l'app (Config/Local.xcconfig) si tu l'as changé
 environment = "sandbox"     # défaut pour les appareils qui n'en précisent pas : sandbox (Xcode) | production (TestFlight/App Store)
 
 [push]
