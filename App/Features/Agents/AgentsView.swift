@@ -76,6 +76,11 @@ struct AgentCard: View {
     private var palette: AgentPalette { agent.appearance.palette }
     private var buttonHeight: CGFloat { compact ? 40 : 50 }
 
+    /// The agent's « Bot Chat » (its permanent thread) reads as « Discussion ».
+    private func threadTitle(_ session: HermesSession) -> String? {
+        AgentStore.isBotChat(session) ? "Discussion" : session.title
+    }
+
     /// « 15 min », « 2 h », « 3 j »: how old the last message is, as short as possible.
     static func shortAge(of date: Date, now: Date = .now) -> String {
         let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
@@ -135,7 +140,7 @@ struct AgentCard: View {
                     if compact {
                         // One line: « Title · latest message », date on the right.
                         HStack(spacing: 8) {
-                            (Text(latest.title.map { "\($0) · " } ?? "").font(Theme.body(14, weight: .heavy)).foregroundStyle(Theme.muted)
+                            (Text(threadTitle(latest).map { "\($0) · " } ?? "").font(Theme.body(14, weight: .heavy)).foregroundStyle(Theme.muted)
                                 + Text(preview).font(Theme.body(14)).foregroundStyle(Theme.ink))
                                 .lineLimit(1)
                             Spacer(minLength: 0)
@@ -152,7 +157,7 @@ struct AgentCard: View {
                     } else {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
-                            Text(latest.title ?? "Dernière conversation")
+                            Text(threadTitle(latest) ?? "Dernière conversation")
                             Spacer()
                             if let date = latest.updatedAt {
                                 Text(date, format: .relative(presentation: .named))

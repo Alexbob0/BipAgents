@@ -69,11 +69,28 @@ final class AgentStore {
     func noteSession(_ session: HermesSession, for agent: AgentProfile, preview: String? = nil) {
         var session = session
         let previous = latestSession[agent.id]
+        // A scheduled task's conversation, or a side conversation while the agent has a « Bot Chat », never
+        // becomes the thread that « Audio », « Écrire » and « Live » continue.
+        if session.id != previous?.id, Self.isScheduledTask(session) || previous.map(Self.isBotChat) == true { return }
         session.updatedAt = .now
         session.lastMessagePreview = preview ?? session.lastMessagePreview
             ?? (previous?.id == session.id ? previous?.lastMessagePreview : nil)
         if session.title == nil, previous?.id == session.id { session.title = previous?.title }
         latestSession[agent.id] = session
+    }
+
+    /// The agent's ongoing conversation among its sessions (most recent first): its « Bot Chat » (Hermes
+    /// Bot Mode's permanent thread) when it has one, else the most recent one that is not a scheduled task's.
+    static func mainThread(in sessions: [HermesSession]) -> HermesSession? {
+        sessions.first(where: isBotChat) ?? sessions.first { !isScheduledTask($0) }
+    }
+
+    static func isBotChat(_ session: HermesSession) -> Bool {
+        session.title?.caseInsensitiveCompare("Bot Chat") == .orderedSame
+    }
+
+    static func isScheduledTask(_ session: HermesSession) -> Bool {
+        session.id.hasPrefix("cron_") || session.source?.lowercased() == "cron"
     }
 
     func add(_ profile: AgentProfile, secrets: AgentSecrets) throws {
@@ -122,7 +139,7 @@ final class AgentStore {
         do {
             _ = try await client.capabilities()
             reachability[agent.id] = .online
-            if var latest = try? await client.listSessions(limit: 1).first {
+            if let sessions = try? await client.listSessions(limit: 50), var latest = Self.mainThread(in: sessions) {
                 // Hermes' list preview is the session's *first* message: show the latest one instead.
                 if let history = try? await client.messages(sessionID: latest.id),
                    let last = history.last(where: { ($0.role == .assistant || $0.role == .user) && !$0.text.isEmpty }) {
