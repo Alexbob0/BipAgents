@@ -192,7 +192,7 @@ retombe sur la voix Kyutai par défaut (cet audio-là n'est pas mis en cache). `
   tâche dans la Boîte (`[SILENT]` ignoré, section `[cron]`). `GET /v1/cron-jobs?agent=` liste les tâches vues
   (`{agent, job, name, notify, last_seen}`) ; `PUT /v1/cron-jobs/{agent}/{job}` `{"notify": false}` les range
   dans la Boîte sans notification.
-- `GET /v1/media?path=/home/hermes/…` sert un fichier désigné par une ligne `MEDIA:<chemin>` d'un agent, s'il est
+- `GET /v1/media?path=/home/hermes/.hermes/media/…` sert un fichier désigné par une ligne `MEDIA:<chemin>` d'un agent, s'il est
   sous un dossier de `[media.roots]` et a une extension média (audio, image, PDF). Dans un message de la Boîte,
   la ligne est retirée du texte et un mp3 devient l'audio du message.
 
