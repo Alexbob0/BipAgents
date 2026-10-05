@@ -192,6 +192,11 @@ retombe sur la voix Kyutai par défaut (cet audio-là n'est pas mis en cache). `
   tâche dans la Boîte (`[SILENT]` ignoré, section `[cron]`). `GET /v1/cron-jobs?agent=` liste les tâches vues
   (`{agent, job, name, notify, last_seen}`) ; `PUT /v1/cron-jobs/{agent}/{job}` `{"notify": false}` les range
   dans la Boîte sans notification.
+- **Bot Chat** (Hermes Bot Mode) : le même surveillant relit la « Bot Chat » de chaque agent. Un tour que l'agent
+  prend de lui-même (réponse d'un coéquipier via `message_agent`, routine) est poussé comme « réponse prête »,
+  sauf si l'app suivait ce tour ou si la conversation est ouverte sur le téléphone. L'app signale qu'une
+  conversation est ouverte en interrogeant `GET /v1/sessions/{id}/state?agent=` (→ `message_count`) toutes les
+  quelques secondes, ce qui lui sert aussi à afficher ces tours sans recharger à la main.
 - `GET /v1/media?path=/home/hermes/.hermes/media/…` sert un fichier désigné par une ligne `MEDIA:<chemin>` d'un agent, s'il est
   sous un dossier de `[media.roots]` et a une extension média (audio, image, PDF). Dans un message de la Boîte,
   la ligne est retirée du texte et un mp3 devient l'audio du message.

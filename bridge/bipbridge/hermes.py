@@ -147,6 +147,12 @@ class HermesClient:
         items = data.get("sessions", data.get("data", data.get("items"))) if isinstance(data, dict) else data
         return [item for item in items or [] if isinstance(item, dict)]
 
+    async def session(self, agent: AgentConfig, session_id: str) -> Dict[str, Any]:
+        """``GET /api/sessions/{id}``."""
+        data = await self._get_json(agent, f"/api/sessions/{session_id}")
+        inner = data.get("session") if isinstance(data, dict) and isinstance(data.get("session"), dict) else data
+        return inner if isinstance(inner, dict) else {}
+
     async def session_messages(self, agent: AgentConfig, session_id: str) -> List[Dict[str, Any]]:
         """``GET /api/sessions/{id}/messages`` (oldest first)."""
         data = await self._get_json(agent, f"/api/sessions/{session_id}/messages", {"inline_images": "false"})

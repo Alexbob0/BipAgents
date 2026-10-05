@@ -83,6 +83,7 @@ class RunSubscription:
         self.listeners: Set[Listener] = set()
         self.watched = False
         self.finished = False
+        self.finished_at: Optional[float] = None
         self.terminal: Optional[str] = None
         self.task: Optional["asyncio.Task[None]"] = None
         self.pushed: Set[str] = set()
@@ -127,6 +128,14 @@ class RunHub:
         sub = self._get_or_start(agent, run_id)
         sub.watched = True
         return sub
+
+    def followed_recently(self, agent: str, session_id: str, within: float = 600.0) -> bool:
+        """An app-followed run of this session is going on or ended less than `within` seconds ago: its
+        reply was shown live or already pushed as « reply ready »."""
+        now = time.time()
+        return any(sub.agent.name == agent and sub.session_id == session_id
+                   and (not sub.finished or (sub.finished_at or now) > now - within)
+                   for sub in self._subs.values())
 
     def subscription(self, agent: str, run_id: str) -> Optional[RunSubscription]:
         return self._subs.get((agent, run_id))
@@ -185,6 +194,7 @@ class RunHub:
             log.exception("run subscription crashed", extra=fields(agent=sub.agent.name, run_id=sub.run_id))
         finally:
             sub.finished = True
+            sub.finished_at = time.time()
             for listener in list(sub.listeners):
                 listener.queue.put_nowait(None)
             try:
