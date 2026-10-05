@@ -76,6 +76,44 @@ struct BridgeClient: Sendable {
         return stream
     }
 
+    /// A file an agent pointed to with « MEDIA:<path> » (`GET /v1/media`).
+    func media(path: String) async throws -> Data {
+        var components = URLComponents(url: baseURL.appending(path: "v1/media"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "path", value: path)]
+        var request = URLRequest(url: components.url!, timeoutInterval: 60)
+        authorize(&request)
+        return try await send(request)
+    }
+
+    /// A scheduled task the bridge has seen, and whether its replies are pushed.
+    struct CronJob: Identifiable, Hashable, Sendable {
+        var agent: String
+        var job: String
+        var name: String?
+        var notify: Bool
+        var lastSeen: Date?
+        var id: String { "\(agent)/\(job)" }
+    }
+
+    func cronJobs(agent: String) async throws -> [CronJob] {
+        var components = URLComponents(url: baseURL.appending(path: "v1/cron-jobs"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "agent", value: agent)]
+        var request = URLRequest(url: components.url!)
+        authorize(&request)
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        return (json?["jobs"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let agent = row["agent"] as? String, let job = row["job"] as? String else { return nil }
+            return CronJob(agent: agent, job: job, name: row["name"] as? String, notify: row["notify"] as? Bool ?? true,
+                           lastSeen: (row["last_seen"] as? String).flatMap(Self.parseDate))
+        }
+    }
+
+    func setCronNotify(agent: String, job: String, notify: Bool) async throws {
+        var request = request("v1/cron-jobs/\(agent)/\(job)", method: "PUT")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["notify": notify])
+        try await send(request)
+    }
+
     func outbox(since: Date? = nil, agent: String? = nil) async throws -> [OutboxItem] {
         var components = URLComponents(url: baseURL.appending(path: "v1/outbox"), resolvingAgainstBaseURL: false)!
         var items: [URLQueryItem] = []

@@ -48,6 +48,9 @@ struct SettingsView: View {
                     Toggle(isOn: $bipSounds) {
                         Label("Sons des Bips", systemImage: "speaker.wave.2.bubble")
                     }
+                    NavigationLink { CronJobsView() } label: {
+                        Label("Tâches planifiées", systemImage: "clock.badge")
+                    }
                 } header: {
                     Text("Voix")
                 } footer: {

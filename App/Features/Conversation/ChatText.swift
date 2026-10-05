@@ -6,10 +6,18 @@ enum ChatText {
     /// (`<tool_call>execute_code<arg_key>code</arg_key><arg_value>…</tool_call>`), including an
     /// unfinished one while the reply streams.
     static func visible(_ text: String) -> String {
-        guard text.contains("<") else { return text }
-        var result = text.replacing(/<tool_call>[\s\S]*?(?:<\/tool_call>|$)/, with: "")
+        var result = text
+        if result.contains("MEDIA:") { result = result.replacing(/(?m)^[ \t]*MEDIA:[ \t]*\S+[ \t]*$\n?/, with: "") }
+        guard result.contains("<") else { return result.trimmingCharacters(in: .whitespacesAndNewlines) }
+        result = result.replacing(/<tool_call>[\s\S]*?(?:<\/tool_call>|$)/, with: "")
         result = result.replacing(/<\/?(?:arg_key|arg_value|tool_call|tool_response|function_calls?|invoke|parameter)\b[^>]*>/, with: "")
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Files the reply points to with « MEDIA:<path> » lines (the podcast mp3…), shown as players.
+    static func media(in text: String) -> [String] {
+        guard text.contains("MEDIA:") else { return [] }
+        return text.matches(of: /(?m)^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$/).map { String($0.output.1) }
     }
 
     /// A long prompt the user did not type (skill instructions, a scheduled task's brief): its card title.

@@ -166,9 +166,14 @@ private struct ConversationContent: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         case .assistant(let text, let isStreaming):
-            if isStreaming || !ChatText.visible(text).isEmpty {
+            if isStreaming || !ChatText.visible(text).isEmpty || !ChatText.media(in: text).isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     AssistantRow(appearance: model.agent.appearance, text: text, isStreaming: isStreaming)
+                    if !isStreaming {
+                        ForEach(ChatText.media(in: text), id: \.self) { path in
+                            MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:))
+                        }
+                    }
                     // « Écouter » and the time under the turn's final reply only, not under the agent's
                     // running commentary between tools.
                     if let reply = model.voiceReplies[item.id] {

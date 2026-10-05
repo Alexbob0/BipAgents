@@ -154,6 +154,7 @@ struct InboxView: View {
     @Environment(Router.self) private var router
     @State private var filter: UUID?
     @State private var confirmingClear = false
+    @State private var mutedNotice: String?
 
     private var visible: [InboxStore.Entry] {
         inbox.entries.filter { filter == nil || $0.agent.id == filter }
@@ -175,6 +176,7 @@ struct InboxView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     filters
                     if let error = inbox.errorMessage { NoticeRow(text: error, isError: true) }
+                    if let mutedNotice { NoticeRow(text: mutedNotice) }
                     if visible.isEmpty && !inbox.isLoading {
                         emptyState
                     }
@@ -189,6 +191,11 @@ struct InboxView: View {
                             withAnimation { inbox.dismiss(entry) }
                         }
                         .contextMenu {
+                            if let job = Self.cronJob(of: entry) {
+                                Button("Ne plus me notifier pour cette tâche", systemImage: "bell.slash") {
+                                    Task { await mute(job: job, of: entry) }
+                                }
+                            }
                             Button("Supprimer", systemImage: "trash", role: .destructive) { withAnimation { inbox.dismiss(entry) } }
                         }
                     }
@@ -202,6 +209,22 @@ struct InboxView: View {
         .background(Theme.background)
         .toolbar(.hidden, for: .navigationBar)
         .onDisappear { inbox.markAllSeen() }
+    }
+
+    /// The scheduled task behind a message (its session is « cron_<job>_<date>_<time> »).
+    static func cronJob(of entry: InboxStore.Entry) -> String? {
+        guard let session = entry.item.sessionID, let match = session.firstMatch(of: /^cron_(.+?)_\d{8}_\d{6}$/) else { return nil }
+        return String(match.output.1)
+    }
+
+    private func mute(job: String, of entry: InboxStore.Entry) async {
+        guard let bridge = BridgeClient(agent: entry.agent, secrets: agents.secrets(for: entry.agent)) else { return }
+        do {
+            try await bridge.setCronNotify(agent: entry.agent.bridgeName, job: job, notify: false)
+            mutedNotice = "Plus de notification pour « \(entry.item.title?.components(separatedBy: " · ").first ?? "cette tâche") ». Réactivable dans Réglages › Tâches planifiées."
+        } catch {
+            mutedNotice = "Réglage non enregistré : bridge injoignable."
+        }
     }
 
     private var filters: some View {
@@ -284,7 +307,7 @@ struct InboxCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Supprimer ce message")
             }
-            Text(entry.item.text)
+            Text(ChatText.visible(entry.item.text))
                 .font(Theme.body(15.5))
                 .foregroundStyle(Theme.ink)
                 .lineLimit(8)

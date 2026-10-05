@@ -177,7 +177,7 @@ struct VoiceReplyView: View {
     }
 
     /// Replies are synthesized server-side: draw a pleasant fixed wave rather than a measured one.
-    private static let placeholderWave: [Float] = (0..<28).map { i in
+    static let placeholderWave: [Float] = (0..<28).map { i in
         let x = Double(i)
         let swell: Double = 0.6 + 0.4 * abs(cos(x * 0.31))
         let level: Double = 0.25 + 0.6 * abs(sin(x * 0.7)) * swell

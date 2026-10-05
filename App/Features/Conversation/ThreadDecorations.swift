@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 
 /// « Aujourd’hui », « Hier », « lundi 5 octobre » between days of a conversation.
@@ -84,5 +85,64 @@ struct InstructionCard: View {
         .background(Theme.card, in: .rect(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
         .frame(maxWidth: 320, alignment: .trailing)
+    }
+}
+
+/// A file an agent produced (« MEDIA:<path> »): audio plays inline, anything else opens in Quick Look.
+struct MediaRow: View {
+    var path: String
+    var palette: AgentPalette
+    var player: VoiceNotePlayer
+    var load: (String) async throws -> URL
+
+    @State private var file: URL?
+    @State private var duration: TimeInterval = 0
+    @State private var failed = false
+    @State private var quickLook: URL?
+
+    private var name: String { path.split(separator: "/").last.map(String.init) ?? path }
+    private var isAudio: Bool { ["mp3", "m4a", "aac", "wav", "ogg", "opus"].contains((name as NSString).pathExtension.lowercased()) }
+
+    var body: some View {
+        Group {
+            if let file, isAudio {
+                VoiceNoteControl(url: file, duration: duration, waveform: VoiceReplyView.placeholderWave, player: player,
+                                 foreground: palette.deep, accent: palette.deep)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(palette.tint, in: .capsule)
+            } else {
+                Button {
+                    if let file { quickLook = file } else { Task { await fetch() } }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: failed ? "exclamationmark.triangle" : (isAudio ? "waveform" : "doc"))
+                        Text(failed ? "Fichier indisponible" : name).lineLimit(1)
+                        if file == nil && !failed { ProgressView().controlSize(.small) }
+                    }
+                    .font(Theme.body(13, weight: .bold))
+                    .foregroundStyle(palette.deep)
+                    .padding(.horizontal, 14)
+                    .frame(height: 38)
+                    .background(palette.tint, in: .capsule)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.leading, 40)
+        .task { await fetch() }
+        .quickLookPreview($quickLook)
+    }
+
+    private func fetch() async {
+        guard file == nil else { return }
+        do {
+            let url = try await load(path)
+            duration = VoiceNotePlayer.duration(of: url)
+            failed = false
+            file = url
+        } catch {
+            failed = true
+        }
     }
 }

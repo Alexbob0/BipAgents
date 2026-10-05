@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import HermesKit
 import Observation
@@ -860,6 +861,20 @@ final class ConversationModel {
             await voice.speak(text)
             if speakingItemID == itemID { speakingItemID = nil }
         }
+    }
+
+    /// A file an agent pointed to with « MEDIA:<path> », downloaded once through the bridge and kept in Caches.
+    func mediaFile(for path: String) async throws -> URL {
+        let name = path.split(separator: "/").last.map(String.init) ?? "media"
+        let folder = URL.cachesDirectory.appending(path: "media", directoryHint: .isDirectory)
+        let key = SHA256.hash(data: Data(path.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined() // stable across launches
+        let file = folder.appending(path: "\(key)-\(name)")
+        if FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) { return file }
+        guard let bridge else { throw HermesError.unsupported("bridge") }
+        let data = try await bridge.media(path: path)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try data.write(to: file, options: .atomic)
+        return file
     }
 
     /// Text of the newest user or assistant message (for previews).
