@@ -181,6 +181,12 @@ private struct ConversationContent: View {
         case .assistant(let text, let isStreaming):
             if isStreaming || !ChatText.visible(text).isEmpty || !ChatText.media(in: text).isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
+                    if let requester = answeredAgent(before: item) {
+                        Label("Réponse à \(requester)", systemImage: "arrowshape.turn.up.left.fill")
+                            .font(Theme.body(12.5, weight: .heavy))
+                            .foregroundStyle(Theme.muted)
+                            .padding(.leading, 40)
+                    }
                     AssistantRow(appearance: model.agent.appearance, text: text, isStreaming: isStreaming)
                     if !isStreaming {
                         ForEach(ChatText.media(in: text), id: \.self) { path in
@@ -235,6 +241,23 @@ private struct ConversationContent: View {
             }
         }
         return true
+    }
+
+    /// The agent whose request this reply answers (Bot Mode), if the turn was started by another agent asking —
+    /// not by that agent answering a request this one sent (then the reply is for the user).
+    private func answeredAgent(before item: ChatItem) -> String? {
+        guard let index = model.items.firstIndex(where: { $0.id == item.id }) else { return nil }
+        let earlier = model.items[..<index]
+        guard let promptIndex = earlier.lastIndex(where: { if case .user = $0.kind { true } else { false } }),
+              case .user(let text, _) = model.items[promptIndex].kind,
+              let teammate = ChatText.teammateMessage(text) else { return nil }
+        // Only the turn's first reply carries the label.
+        if model.items[(promptIndex + 1)..<index].contains(where: { if case .assistant = $0.kind { true } else { false } }) { return nil }
+        let asked = model.items[..<promptIndex].suffix(40).contains { candidate in
+            guard case .tools(let tools) = candidate.kind else { return false }
+            return tools.contains { $0.tool.contains("message_agent") && ($0.preview ?? "").lowercased().contains(teammate.handle.lowercased()) }
+        }
+        return asked ? nil : teammate.name
     }
 
     private func isFirstUser(_ item: ChatItem) -> Bool {

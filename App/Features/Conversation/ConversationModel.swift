@@ -167,6 +167,7 @@ final class ConversationModel {
             ChatItem(.tools([ToolEvent(tool: "terminal", preview: "python3 analyse_sommeil.py sommeil-septembre.xlsx", status: .started)])),
             ChatItem(.approval(ApprovalRequest(runID: "demo", requestID: "1", command: "pip install openpyxl", choices: [.once, .session, .always, .deny]), resolved: nil)),
             ChatItem(.user(text: "Message from 🤖 Vie (@vie): Alex part à Bordeaux samedi, quel train est le moins fatigant vu sa semaine ?", attachments: [])),
+            ChatItem(.assistant(text: "Celui de 9h : sa semaine est chargée, mieux vaut arriver tôt et faire une sieste l’après-midi.", isStreaming: false)),
             ChatItem(.question(ClarifyRequest(runID: "demo", requestID: "clr", questions: [
                 .init(id: "q1", question: "Quel train pour Bordeaux ?", choices: ["9h — 19 €, arrivée 11h30", "14h — 35 €, arrivée 16h30"]),
             ]), state: .pending)),
