@@ -20,6 +20,26 @@ enum ChatText {
         return text.matches(of: /(?m)^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$/).map { String($0.output.1) }
     }
 
+    /// The choices an agent asks the user to pick from (« 1. … 2. … » or « A) … B) … » after a question),
+    /// offered as quick replies. Plain lists in an answer (tips, steps) are left alone: the message must
+    /// ask something, and offer 2 to 5 short options.
+    static func choices(in text: String) -> [String] {
+        let visible = visible(text)
+        let asks = visible.contains("?") || visible.range(of: #"\b(choisis|choisir|préfères|option|laquelle|lequel|veux-tu|souhaites|dis-moi)\b"#,
+                                                         options: [.regularExpression, .caseInsensitive]) != nil
+        guard asks else { return [] }
+        var options: [String] = []
+        for line in visible.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let match = trimmed.firstMatch(of: /^(?:\*\*)?(?:[1-9]|[A-Ea-e])[.)]\s*(?:\*\*)?\s*(.+)$/) else { continue }
+            let option = String(match.output.1).replacingOccurrences(of: "**", with: "").trimmingCharacters(in: .whitespaces)
+            guard !option.isEmpty else { continue }
+            options.append(option)
+        }
+        guard (2...5).contains(options.count), options.allSatisfy({ $0.count <= 140 }) else { return [] }
+        return options
+    }
+
     /// A long prompt the user did not type (skill instructions, a scheduled task's brief): its card title.
     static func instructionTitle(for text: String, inCronSession: Bool, isFirstUserMessage: Bool) -> String? {
         let skills = text.matches(of: /invoked the "([^"]+)" skill/).map { String($0.output.1) }

@@ -186,6 +186,12 @@ private struct ConversationContent: View {
                     if turnEnd && !isStreaming {
                         TimeLabel(date: item.date).padding(.leading, 40)
                     }
+                    // The agent asks to pick an option: one tap answers (latest reply only).
+                    if !isStreaming, !model.isRunning, item.id == model.items.last?.id {
+                        QuickReplies(options: ChatText.choices(in: text), palette: palette) { option in
+                            model.send(text: option, attachments: [])
+                        }
+                    }
                 }
             }
         case .reasoning(let text):

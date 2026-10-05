@@ -146,3 +146,37 @@ struct MediaRow: View {
         }
     }
 }
+
+/// Options the agent offered, as buttons: a tap sends that option as the answer.
+struct QuickReplies: View {
+    var options: [String]
+    var palette: AgentPalette
+    var choose: (String) -> Void
+
+    var body: some View {
+        if !options.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(options, id: \.self) { option in
+                    Button { choose(option) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrowshape.turn.up.left.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(option)
+                                .multilineTextAlignment(.leading)
+                                .lineLimit(2)
+                        }
+                        .font(Theme.body(14, weight: .bold))
+                        .foregroundStyle(palette.deep)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(palette.tint, in: .rect(cornerRadius: 18, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(palette.main.opacity(0.35)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Répondre : \(option)")
+                }
+            }
+            .padding(.leading, 40)
+        }
+    }
+}

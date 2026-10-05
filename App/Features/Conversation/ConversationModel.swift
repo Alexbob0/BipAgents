@@ -157,6 +157,7 @@ final class ConversationModel {
             ChatItem(.user(text: "Voilà mes nuits de septembre, tu vois une tendance ?", attachments: [sheet])),
             ChatItem(.tools([ToolEvent(tool: "terminal", preview: "python3 analyse_sommeil.py sommeil-septembre.xlsx", status: .started)])),
             ChatItem(.approval(ApprovalRequest(runID: "demo", requestID: "1", command: "pip install openpyxl", choices: [.once, .session, .always, .deny]), resolved: nil)),
+            ChatItem(.assistant(text: "Deux trains possibles pour Bordeaux :\n\n1. **Train de 9h** — 19 €, arrivée 11h30\n2. **Train de 14h** — 35 €, arrivée 16h30\n\nLequel tu préfères ?", isStreaming: false)),
         ]
     }
 
