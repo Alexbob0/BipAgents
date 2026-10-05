@@ -69,8 +69,12 @@ private struct ConversationContent: View {
                 if model.items.isEmpty && !model.isRunning {
                     ConversationEmptyState(agent: model.agent)
                 }
-                ForEach(model.items.suffix(visibleCount)) { item in
-                    row(for: item)
+                let visible = Array(model.items.suffix(visibleCount))
+                ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
+                    if let day = newDay(at: index, in: visible) {
+                        DaySeparator(date: day)
+                    }
+                    row(for: item, turnEnd: isTurnEnd(item))
                 }
                 if model.isRunning, !model.isWaitingForApproval, !(model.items.last?.isStreamingAssistant ?? false) {
                     TypingIndicator(appearance: model.agent.appearance, interim: model.interim)
@@ -146,23 +150,37 @@ private struct ConversationContent: View {
     }
 
     @ViewBuilder
-    private func row(for item: ChatItem) -> some View {
+    private func row(for item: ChatItem, turnEnd: Bool) -> some View {
         switch item.kind {
         case .user(let text, let attachments):
-            if let note = model.voiceNotes[item.id], attachments.isEmpty {
-                VoiceNoteBubble(note: note, player: model.player)
-            } else {
-                UserBubble(text: text, attachments: attachments)
+            VStack(alignment: .trailing, spacing: 4) {
+                if let title = ChatText.instructionTitle(for: text, inCronSession: model.sessionID?.hasPrefix("cron_") == true,
+                                                          isFirstUserMessage: isFirstUser(item)) {
+                    InstructionCard(title: title, text: text, palette: palette)
+                } else if let note = model.voiceNotes[item.id], attachments.isEmpty {
+                    VoiceNoteBubble(note: note, player: model.player)
+                } else {
+                    UserBubble(text: text, attachments: attachments)
+                }
+                TimeLabel(date: item.date)
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         case .assistant(let text, let isStreaming):
-            VStack(alignment: .leading, spacing: 6) {
-                AssistantRow(appearance: model.agent.appearance, text: text, isStreaming: isStreaming)
-                if let reply = model.voiceReplies[item.id] {
-                    VoiceReplyView(state: reply, palette: palette, player: model.player) { model.stopVoiceReply(item.id) }
-                        .padding(.leading, 40)
-                } else if !isStreaming {
-                    ListenButton(palette: palette, isPlaying: model.speakingItemID == item.id) { model.toggleSpeech(of: item) }
-                        .padding(.leading, 40)
+            if isStreaming || !ChatText.visible(text).isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    AssistantRow(appearance: model.agent.appearance, text: text, isStreaming: isStreaming)
+                    // « Écouter » and the time under the turn's final reply only, not under the agent's
+                    // running commentary between tools.
+                    if let reply = model.voiceReplies[item.id] {
+                        VoiceReplyView(state: reply, palette: palette, player: model.player) { model.stopVoiceReply(item.id) }
+                            .padding(.leading, 40)
+                    } else if !isStreaming && turnEnd {
+                        ListenButton(palette: palette, isPlaying: model.speakingItemID == item.id) { model.toggleSpeech(of: item) }
+                            .padding(.leading, 40)
+                    }
+                    if turnEnd && !isStreaming {
+                        TimeLabel(date: item.date).padding(.leading, 40)
+                    }
                 }
             }
         case .reasoning(let text):
@@ -176,6 +194,31 @@ private struct ConversationContent: View {
         case .notice(let text):
             NoticeRow(text: text)
         }
+    }
+
+    /// The last assistant text before the next message from the user (or the end): the turn's reply.
+    private func isTurnEnd(_ item: ChatItem) -> Bool {
+        guard let index = model.items.firstIndex(where: { $0.id == item.id }) else { return true }
+        for next in model.items[(index + 1)...] {
+            switch next.kind {
+            case .user: return true
+            case .assistant: return false
+            default: continue
+            }
+        }
+        return true
+    }
+
+    private func isFirstUser(_ item: ChatItem) -> Bool {
+        model.items.first { if case .user = $0.kind { true } else { false } }?.id == item.id
+    }
+
+    /// The day to announce before `visible[index]` when it starts a new day.
+    private func newDay(at index: Int, in visible: [ChatItem]) -> Date? {
+        guard let date = visible[index].date else { return nil }
+        let previous = visible[..<index].last { $0.date != nil }?.date
+        guard let previous else { return index == 0 ? date : nil }
+        return Calendar.current.isDate(previous, inSameDayAs: date) ? nil : date
     }
 
     private func send() {
@@ -233,7 +276,7 @@ struct UserBubble: View {
                     AttachmentChip(attachment: attachment, onDark: true)
                 }
                 .buttonStyle(.plain)
-                .disabled(attachment.fileURL == nil)
+                .allowsHitTesting(attachment.fileURL != nil)
             }
             if !text.isEmpty {
                 Text(text)
@@ -295,7 +338,8 @@ struct AssistantRow: View {
     }
 
     private var markdown: AttributedString {
-        let source = isStreaming ? text + " ▍" : text
+        let shown = ChatText.visible(text)
+        let source = isStreaming ? shown + " ▍" : shown
         var result = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
         Self.linkBareURLs(in: &result)
         // An explicit .font on the Text would flatten **bold**/*italic*; set the font per run instead.
@@ -419,10 +463,15 @@ struct ReasoningChip: View {
 struct ToolCard: View {
     var tools: [ToolEvent]
     var palette: AgentPalette
+    @State private var expanded = false
+
+    /// A long, finished series shows its first two tools and « N autres ».
+    private var collapsed: Bool { !expanded && tools.count > 3 && !tools.contains { $0.status == .started } }
+    private var shown: [ToolEvent] { collapsed ? Array(tools.prefix(2)) : tools }
 
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(Array(tools.enumerated()), id: \.offset) { index, tool in
+            ForEach(Array(shown.enumerated()), id: \.offset) { index, tool in
                 if index > 0 { Divider().overlay(Theme.line) }
                 HStack(spacing: 10) {
                     Image(systemName: Self.symbol(for: tool.tool))
@@ -432,7 +481,7 @@ struct ToolCard: View {
                         .background(palette.tint, in: .rect(cornerRadius: 10))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(tool.tool).font(Theme.mono).foregroundStyle(Theme.ink)
-                        if let preview = tool.preview, !preview.isEmpty {
+                        if let preview = tool.preview.map(ChatText.toolSummary), !preview.isEmpty {
                             Text(preview).font(Theme.body(13)).foregroundStyle(Theme.ink2).lineLimit(1)
                         }
                     }
@@ -441,6 +490,20 @@ struct ToolCard: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
+            }
+            if collapsed {
+                Divider().overlay(Theme.line)
+                Button { withAnimation(.snappy) { expanded = true } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.down")
+                        Text("\(tools.count - shown.count) autres outils")
+                    }
+                    .font(Theme.body(13, weight: .heavy))
+                    .foregroundStyle(palette.deep)
+                    .frame(maxWidth: .infinity, minHeight: 36)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
             }
         }
         .background(Theme.card, in: .rect(cornerRadius: 20, style: .continuous))

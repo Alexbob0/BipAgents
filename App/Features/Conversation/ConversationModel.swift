@@ -17,10 +17,13 @@ struct ChatItem: Identifiable, Equatable {
 
     let id: UUID
     var kind: Kind
+    /// When it was sent or received (history: from Hermes, may be unknown).
+    var date: Date?
 
-    init(id: UUID = UUID(), _ kind: Kind) {
+    init(id: UUID = UUID(), _ kind: Kind, date: Date? = .now) {
         self.id = id
         self.kind = kind
+        self.date = date
     }
 }
 
@@ -104,7 +107,8 @@ final class ConversationModel {
     /// "Écouter" on an assistant message (tap again to stop).
     /// « Écouter » on a reply: generates its voice message on demand (once, then replays it).
     func toggleSpeech(of item: ChatItem) {
-        guard case .assistant(let text, _) = item.kind else { return }
+        guard case .assistant(let raw, _) = item.kind else { return }
+        let text = ChatText.visible(raw)
         if case .ready(let url, _)? = voiceReplies[item.id] {
             player.toggle(url)
             return
@@ -179,25 +183,46 @@ final class ConversationModel {
         async let history = client.messages(sessionID: sessionID)
         let current = try await session
         title = current.title
-        items = try await history.flatMap(Self.items(from:))
+        items = Self.items(from: try await history)
         store.noteSession(current, for: agent, preview: latestText)
         restoreVoiceNotes(sessionID: sessionID)
         restoreAttachments(sessionID: sessionID)
     }
 
-    private static func items(from message: HermesMessage) -> [ChatItem] {
+    /// The thread from Hermes' stored messages. Consecutive tool calls share one card, and a tool's result
+    /// (its own message, raw output) only completes the call already listed instead of adding a row.
+    static func items(from history: [HermesMessage]) -> [ChatItem] {
         var result: [ChatItem] = []
-        if let reasoning = message.reasoning, !reasoning.isEmpty { result.append(ChatItem(.reasoning(text: reasoning))) }
-        if !message.toolEvents.isEmpty { result.append(ChatItem(.tools(message.toolEvents))) }
-        switch message.role {
-        case .user:
-            result.append(ChatItem(.user(text: message.text, attachments: [])))
-        case .assistant:
-            if !message.text.isEmpty { result.append(ChatItem(.assistant(text: message.text, isStreaming: false))) }
-        case .system, .notice:
-            if !message.text.isEmpty { result.append(ChatItem(.notice(message.text))) }
-        default:
-            break
+        func addTools(_ events: [ToolEvent], date: Date?) {
+            if case .tools(var tools)? = result.last?.kind {
+                tools += events
+                result[result.count - 1].kind = .tools(tools)
+            } else {
+                result.append(ChatItem(.tools(events), date: date))
+            }
+        }
+        for message in history {
+            let date = message.createdAt
+            if message.role == .tool {
+                let listed: [ToolEvent] = if case .tools(let tools)? = result.last?.kind { tools } else { [] }
+                let fresh = message.toolEvents.filter { result in
+                    !listed.contains { $0.callID != nil ? $0.callID == result.callID : $0.tool == result.tool }
+                }
+                if !fresh.isEmpty { addTools(fresh, date: date) }
+                continue
+            }
+            if let reasoning = message.reasoning, !reasoning.isEmpty { result.append(ChatItem(.reasoning(text: reasoning), date: date)) }
+            if !message.toolEvents.isEmpty { addTools(message.toolEvents, date: date) }
+            switch message.role {
+            case .user:
+                result.append(ChatItem(.user(text: message.text, attachments: []), date: date))
+            case .assistant:
+                if !message.text.isEmpty { result.append(ChatItem(.assistant(text: message.text, isStreaming: false), date: date)) }
+            case .system, .notice:
+                if !message.text.isEmpty { result.append(ChatItem(.notice(message.text), date: date)) }
+            default:
+                break
+            }
         }
         return result
     }
@@ -841,7 +866,7 @@ final class ConversationModel {
     var latestText: String? {
         for item in items.reversed() {
             switch item.kind {
-            case .assistant(let text, _) where !text.isEmpty: return text
+            case .assistant(let text, _) where !ChatText.visible(text).isEmpty: return ChatText.visible(text)
             case .user(let text, _) where !text.isEmpty: return text
             default: continue
             }
