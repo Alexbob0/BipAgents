@@ -2,8 +2,8 @@
 
 # Bridge BipAgents (`bipbridge`)
 
-Petit service Python (FastAPI + uvicorn) qui tourne sur **aibox** à côté des gateways Hermes et
-sert l'app iOS BipAgents sur le tailnet (SPEC §B3, §C2, addendum `docs/aibox-fichiers.md`) :
+Petit service Python (FastAPI + uvicorn) qui tourne sur le **serveur** à côté des gateways Hermes et
+sert l'app iOS BipAgents sur le tailnet (SPEC §B3, §C2, addendum `docs/file-uploads.md`) :
 
 | Fonction | Route | Ce que fait le bridge |
 |---|---|---|
@@ -18,7 +18,7 @@ sert l'app iOS BipAgents sur le tailnet (SPEC §B3, §C2, addendum `docs/aibox-f
 Le bridge écoute **uniquement sur `127.0.0.1:8643`** ; l'exposition HTTPS se fait par `tailscale serve`.
 Il ne contient aucun secret : tout est dans `~/.config/hermes-ios/` (mode 600).
 
-## 1. Installation sur aibox (venv + systemd --user, recommandé)
+## 1. Installation sur le serveur (venv + systemd --user, recommandé)
 
 Prérequis : Python ≥ 3.11 (3.12 visé ; le code tourne aussi en 3.9+), Kyutai sur `:8097`, ntfy sur `:8645`,
 api_server Hermes sur `:8642` (wellness) et `:8644` (vie) — SPEC §B1, §B4.
@@ -58,7 +58,7 @@ curl -s -H "Authorization: Bearer $BRIDGE_KEY" http://127.0.0.1:8643/v1/agents
 # 7. Exposition sur le tailnet (HTTPS, certificat réel, rien sur Internet)
 sudo tailscale serve --bg --https=8643 http://127.0.0.1:8643
 # depuis le Mac ou l'iPhone :
-curl https://aibox.example.ts.net:8643/health
+curl https://server.example.ts.net:8643/health
 ```
 
 Mise à jour : recopier `bipbridge/` (et `requirements.txt`), `pip install -r requirements.txt`,
@@ -67,8 +67,8 @@ une conversation vocale en cours est simplement coupée et l'app peut refaire `f
 
 ### Droits sur les fichiers déposés (à vérifier une fois)
 
-Les fichiers sont créés par l'utilisateur `aibox` en mode `640` (dossiers `750`). Ils sont lisibles dans le
-conteneur seulement si l'utilisateur de l'agent y est mappé sur `aibox` (ex. `--userns=keep-id`) :
+Les fichiers sont créés par l'utilisateur du bridge en mode `640` (dossiers `750`). Ils sont lisibles dans le
+conteneur seulement si l'utilisateur de l'agent y est mappé sur cet utilisateur (ex. `--userns=keep-id`) :
 
 ```bash
 podman exec hermes-gateway id
@@ -138,7 +138,7 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 
 ## 3. Ce que l'iPhone appelle
 
-Base : `https://aibox.example.ts.net:8643`, en-tête `Authorization: Bearer <clé bridge>` partout sauf `/health`
+Base : `https://server.example.ts.net:8643`, en-tête `Authorization: Bearer <clé bridge>` partout sauf `/health`
 (401 + `WWW-Authenticate: Bearer` sinon ; WebSocket refusé avec 403 / code 1008). L'identifiant d'agent est
 insensible à la casse (`wellness`, `vie`).
 

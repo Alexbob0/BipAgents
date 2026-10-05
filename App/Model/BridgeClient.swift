@@ -12,7 +12,7 @@ struct OutboxItem: Identifiable, Hashable, Sendable {
     var hasAudio: Bool
 }
 
-/// Client for the aibox bridge (voice, files, push, outbox). Base URL and key come from the agent's settings.
+/// Client for the agent's bridge (voice, files, push, outbox). Base URL and key come from the agent's settings.
 struct BridgeClient: Sendable {
     var baseURL: URL
     var key: String

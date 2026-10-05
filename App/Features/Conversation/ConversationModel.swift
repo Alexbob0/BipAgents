@@ -275,7 +275,7 @@ final class ConversationModel {
                     }
                 }
                 let input = MessageInput(text: trimmed, attachments: attachments.map(\.hermesAttachment))
-                // A run lives on aibox whatever happens to this connection (screen locked, app in
+                // A run lives on the server whatever happens to this connection (screen locked, app in
                 // background) and can be re-attached to afterwards. Photos go the same way unless the
                 // server rejected them in a run before; a server that rejects runs falls back to chat/stream.
                 let hasImages = input.attachments.contains { if case .image = $0 { true } else { false } }
@@ -286,7 +286,7 @@ final class ConversationModel {
                         handle = try await client.createRun(input: input, sessionID: sessionID,
                                                             idempotencyKey: UUID().uuidString, uploader: uploader)
                     } catch let error as HermesError where (error.status ?? 0) >= 500 {
-                        // Seen on aibox: the run starts, then building the 202 crashes. Never resend (the
+                        // Seen on the server: the run starts, then building the 202 crashes. Never resend (the
                         // agent would do the task twice): wait for its reply in the transcript instead.
                         #if DEBUG
                         print("[run] POST /v1/runs answered \(error), waiting for the reply in the transcript")

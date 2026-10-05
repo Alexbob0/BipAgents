@@ -9,7 +9,7 @@ voix `pocket:…` ; l'app ne lui parle jamais directement.
 | Machine | Premier son | Vitesse | Mémoire (4 langues) |
 |---|---|---|---|
 | Mac mini / MacBook Air **Apple M4** (mesuré, 16 Go) | ≈ 50 ms | ≈ 6,5× le temps réel | ≈ 0,6 Go résident |
-| Serveur Linux **x86** (aibox, mesuré via le bridge) | 52–59 ms avec `--quantize` (128–148 ms sans) | ≈ 8,7× | ≈ 1,6 Go résident |
+| Serveur Linux **x86** (mesuré via le bridge) | 52–59 ms avec `--quantize` (128–148 ms sans) | ≈ 8,7× | ≈ 1,6 Go résident |
 | VPS x86, 2 à 4 vCPU dédiés (estimé) | quelques centaines de ms | > temps réel | moins avec `--quantize` |
 
 Une génération à la fois (Pocket n'est pas prévu pour le parallèle et occupe le CPU) : le bridge met de toute

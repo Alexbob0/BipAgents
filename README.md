@@ -118,7 +118,7 @@ flowchart LR
 - `bridge/` — the server-side Python service ([README](bridge/README.md)).
 - `pocket/` — the Pocket TTS server for the Bips' voices ([README](pocket/README.md)).
 - `voices/` — the Bips' voices ([README](voices/README.md)).
-- `docs/` — API notes ([`clarify`](docs/hermes-clarify-api.md), [files](docs/aibox-fichiers.md)), screenshots, [playground](docs/play/index.html) and banner (`node docs/tools/banner.mjs` rebuilds it).
+- `docs/` — API notes ([`clarify`](docs/hermes-clarify-api.md), [files](docs/file-uploads.md)), screenshots, [playground](docs/play/index.html) and banner (`node docs/tools/banner.mjs` rebuilds it).
 - [`SPEC.md`](SPEC.md) — the original spec.
 
 </details>

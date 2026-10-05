@@ -186,9 +186,9 @@ extension AgentStore {
     static var preview: AgentStore {
         let store = AgentStore(fileURL: URL.temporaryDirectory.appending(path: "preview-agents-\(UUID()).json"))
         store.agents = [
-            AgentProfile(config: AgentConfig(name: "Wellness", baseURL: URL(string: "https://aibox.example.ts.net:8642")!),
+            AgentProfile(config: AgentConfig(name: "Wellness", baseURL: URL(string: "https://server.example.ts.net:8642")!),
                          appearance: AgentAppearance(category: .wellness)),
-            AgentProfile(config: AgentConfig(name: "Vie", baseURL: URL(string: "https://aibox.example.ts.net:8644")!),
+            AgentProfile(config: AgentConfig(name: "Vie", baseURL: URL(string: "https://server.example.ts.net:8644")!),
                          appearance: AgentAppearance(category: .daily)),
         ]
         // `-demoAgents 5`: more sample agents, to review the compact home cards.
@@ -199,7 +199,7 @@ extension AgentStore {
             ("Atelier", .creative, String(localized: "Histoire du soir"), String(localized: "Il était une fois un petit renard qui collectionnait les étoiles filantes…")),
         ]
         for (index, (name, category, title, preview)) in extra.prefix(max(0, UserDefaults.standard.integer(forKey: "demoAgents") - 2)).enumerated() {
-            let agent = AgentProfile(config: AgentConfig(name: name, baseURL: URL(string: "https://aibox.example.ts.net:8650")!),
+            let agent = AgentProfile(config: AgentConfig(name: name, baseURL: URL(string: "https://server.example.ts.net:8650")!),
                                      appearance: AgentAppearance(category: category))
             store.agents.append(agent)
             store.latestSession[agent.id] = HermesSession(id: "demo-extra-\(index)", title: title,

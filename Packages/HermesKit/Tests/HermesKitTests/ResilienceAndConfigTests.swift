@@ -6,10 +6,10 @@ import Testing
 @Suite("Agent provisioning")
 struct AgentProvisioningTests {
     @Test func decodesQRPayloadAndSeparatesSecrets() throws {
-        let qr = #"{"name":"Wellness","baseURL":"https://aibox.example.ts.net:8642","apiKey":"k-123","voice":5476,"bridgeURL":"https://aibox.example.ts.net:8643","bridgeKey":"b-456"}"#
+        let qr = #"{"name":"Wellness","baseURL":"https://server.example.ts.net:8642","apiKey":"k-123","voice":5476,"bridgeURL":"https://server.example.ts.net:8643","bridgeKey":"b-456"}"#
         let provisioning = try AgentProvisioning(qrPayload: qr)
         #expect(provisioning.config.name == "Wellness")
-        #expect(provisioning.config.baseURL.absoluteString == "https://aibox.example.ts.net:8642")
+        #expect(provisioning.config.baseURL.absoluteString == "https://server.example.ts.net:8642")
         #expect(provisioning.config.voice == "5476")
         #expect(provisioning.config.bridgeURL?.port == 8643)
         #expect(provisioning.secrets == AgentSecrets(apiKey: "k-123", bridgeKey: "b-456"))

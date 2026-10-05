@@ -31,7 +31,7 @@ then referenced in the text as
 `[Pièce jointe : rapport.pdf (application/pdf, 1,2 Mo) → /home/hermes/.hermes/uploads/…]`.
 - `DocumentUploader` protocol → `UploadedDocument { path, filename, size }`
 - `BridgeDocumentUploader(bridgeURL:bridgeKey:agent:session:)` sends `POST {bridgeURL}/v1/files` as multipart (`agent`, `file`)
-- Not `POST /v1/artifacts/upload`: verified on aibox (2026-10-04), it is the browser-extension broker's one-shot, 5-minute store
+- Not `POST /v1/artifacts/upload`: verified on the server (2026-10-04), it is the browser-extension broker's one-shot, 5-minute store
   (404 unless `browser.extension_control.enabled`), never readable by the agent. Documents always go through the bridge.
 
 **Models**: `AgentConfig`, `AgentSecrets`, `AgentProvisioning(qrPayload:)` (QR JSON → config + secrets), `HermesSession`,
@@ -65,7 +65,7 @@ Mapping is deliberately lenient. Check each point below with `curl -N` on the re
 8. **Run re-subscription**: whether `GET /v1/runs/{id}/events` replays events already delivered or only sends new ones;
    what happens after the 5 min buffer expiry (404 or an empty stream); whether runs started by `chat/stream` are reachable on
    `/v1/runs/{id}*`; and whether `GET /v1/runs/{id}` returns 404 once the brief retention ends.
-9. ~~Artifacts upload~~: checked on aibox, not usable for agent files (see above).
+9. ~~Artifacts upload~~: checked on the server, not usable for agent files (see above).
 10. **Bridge `POST /v1/files`** (to be built, SPEC §B3): it must store files somewhere visible inside the Hermes container
     (`/home/hermes/.hermes/uploads/…`) and return that in-container path.
 11. **Capabilities**: actual feature keys (`run_approval`, `session_*`) and object-valued features.

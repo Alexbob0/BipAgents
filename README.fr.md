@@ -117,7 +117,7 @@ flowchart LR
 - `bridge/` — le service Python côté serveur ([README](bridge/README.fr.md)).
 - `pocket/` — le serveur Pocket TTS des voix des Bips ([README](pocket/README.fr.md)).
 - `voices/` — les voix des Bips ([README](voices/README.fr.md)).
-- `docs/` — notes d'API ([`clarify`](docs/hermes-clarify-api.fr.md), [fichiers](docs/aibox-fichiers.fr.md)), captures, [terrain de jeu](docs/play/index.html) et bannière (`node docs/tools/banner.mjs` la régénère).
+- `docs/` — notes d'API ([`clarify`](docs/hermes-clarify-api.fr.md), [fichiers](docs/file-uploads.fr.md)), captures, [terrain de jeu](docs/play/index.html) et bannière (`node docs/tools/banner.mjs` la régénère).
 - [`SPEC.fr.md`](SPEC.fr.md) — la spécification complète.
 
 </details>

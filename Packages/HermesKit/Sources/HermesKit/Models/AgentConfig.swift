@@ -5,7 +5,7 @@ import Foundation
 public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
     public var id: UUID
     public var name: String
-    /// e.g. `https://aibox.example.ts.net:8642`
+    /// e.g. `https://server.example.ts.net:8642`
     public var baseURL: URL
     /// Kyutai voice alias, e.g. `5476`.
     public var voice: String?

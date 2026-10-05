@@ -1,9 +1,9 @@
 🇬🇧 English · [🇫🇷 Français](SPEC.fr.md)
 
-# SPEC — Native iOS "voice console" app for Hermes agents (aibox)
+# SPEC — Native iOS "voice console" app for Hermes agents
 
-Version 1 — 2026-10-04. Written on aibox from the actual state of the machine (see `context/aibox-facts.md`).
-Audience: Claude Code on the MacBook (Xcode). The "aibox side" parts (§B) will be deployed on aibox
+Version 1 — 2026-10-04. Written on the server from the actual state of the machine (see `context/`, local).
+Audience: Claude Code on the MacBook (Xcode). The "server side" parts (§B) will be deployed on the server
 by the Claude Code running there, or over SSH (§D); the Mac writes their code and the contract.
 
 ## 0. Executive summary
@@ -15,7 +15,7 @@ bot-oriented, with **voice without perceptible latency** (streaming both ways, b
 Non-negotiable principles:
 1. **Native** (Swift 6, SwiftUI, current Xcode, iOS 18+ target). No React Native, no Expo, no WebView for the chat.
 2. **Tailscale-only transport.** Nothing exposed to the Internet. HTTPS via `tailscale serve` with a real certificate
-   (`aibox.example.ts.net`), hence App Transport Security with no exceptions. Push goes through APNs (Apple), the content is fetched over the tailnet.
+   (`server.example.ts.net`), hence App Transport Security with no exceptions. Push goes through APNs (Apple), the content is fetched over the tailnet.
 3. **Streaming everywhere**: persistent WebSocket, audio in frames, TTS played from the first sentence, instant interruption.
 4. **Hermes remains the source of truth**: sessions, memory, tools and approvals live in Hermes through its
    `api_server` (OpenAI-compatible + native routes). The app reimplements no agent logic.
@@ -23,7 +23,7 @@ Non-negotiable principles:
 
 Components:
 - **iOS app** (Mac/Xcode) — §A.
-- **aibox side** (already in place or to be installed) — §B: Hermes api_server ×2 profiles, `tailscale serve`, self-hosted **ntfy** server,
+- **Server side** (already in place or to be installed) — §B: Hermes api_server ×2 profiles, `tailscale serve`, self-hosted **ntfy** server,
   and a small **bridge** service (Python, FastAPI) for voice (sentence-by-sentence streaming TTS, optional server STT) and APNs push.
 - **API contract** between the two — §C.
 
@@ -40,7 +40,7 @@ Components:
 - Repository structure: `App/` (SwiftUI), `Packages/HermesKit` (Hermes API client, pure Swift, testable without UI), `Packages/VoiceKit` (capture, playback, barge-in, bridge WebSocket client), `NotificationService/` (extension), `Tests/`.
 
 ### A2. Data model (app side)
-- `Agent`: `id`, `name` (e.g. Wellness, Vie), `baseURL` (`https://aibox.example.ts.net:8642`), `apiKey` (Keychain), `voice` (Kyutai alias, e.g. `5476`), `color`, `defaultSessionID?`.
+- `Agent`: `id`, `name` (e.g. Wellness, Vie), `baseURL` (`https://server.example.ts.net:8642`), `apiKey` (Keychain), `voice` (Kyutai alias, e.g. `5476`), `color`, `defaultSessionID?`.
 - `Session`: `id` (Hermes id), `agentID`, `title`, `updatedAt`, `lastMessagePreview`. Mirror of `GET /api/sessions`.
 - `Message`: `id`, `role` (user/assistant/tool/system/notice), `text`, `createdAt`, `attachments` (images), `toolEvents` ([`ToolEvent`]), `reasoning?` (collapsible), `audioState` (none/synthesizing/playing/played).
 - `ToolEvent`: `tool`, `preview`, `status` (started/completed/failed), `duration?`.
@@ -53,7 +53,7 @@ Components:
 3. **Conversation**: streaming message thread; compact tool cards (name + preview, expandable); collapsed "reasoning" block; **approval card** with buttons (Once / Session / Always / Deny, depending on `choices`); text + photo composer; **mic button** (long press = push-to-talk, tap = hands-free mode); stop button during a generation (`POST /v1/runs/{id}/stop`).
 4. **Full-screen voice mode** ("call"): visualizer, live partial transcription, reply as text as it comes in, interruption by voice (barge-in) or by tap, hang up.
 5. **Inbox**: proactive messages (cron) received by push, grouped by agent, with "reply" that opens the originating session or creates one.
-6. **Settings**: agents (added via a form or via a JSON **QR code** `{name, baseURL, apiKey, voice}` displayed by aibox), bridge (URL, key), voice, STT (on-device / server), diagnostics (tailnet ping, measured latencies: first token, first audio).
+6. **Settings**: agents (added via a form or via a JSON **QR code** `{name, baseURL, apiKey, voice}` displayed by the server), bridge (URL, key), voice, STT (on-device / server), diagnostics (tailnet ping, measured latencies: first token, first audio).
 
 ### A4. Text flow (Hermes session)
 - Sending: `POST /api/sessions/{id}/chat/stream` with `{"input": "...", "attachments"?: [...]}`, reading SSE. Events to handle: `assistant.delta` (append), `assistant.commentary` (temporary grey bubble), `tool.started` / `tool.completed` / `tool.failed` (cards), `approval.request` (approval card, the run moves to `waiting_for_approval`), `run.completed` / `run.failed` / `run.cancelled` (closing), `: keepalive` lines to ignore.
@@ -65,7 +65,7 @@ Components:
 
 ### A5. Voice flow (goal: < 1 s between end of speech and start of audio, excluding model time)
 1. The user speaks. On-device STT produces **partial transcriptions** displayed live; end-of-utterance detection (silence ≈ 600–800 ms, adjustable) triggers sending.
-2. The app sends the final text to Hermes (§A4) **and** opens/keeps a WebSocket connection to the bridge (`wss://aibox.example.ts.net:8643/v1/voice`), passing it `{agent, session_id, run_id, voice}`.
+2. The app sends the final text to Hermes (§A4) **and** opens/keeps a WebSocket connection to the bridge (`wss://server.example.ts.net:8643/v1/voice`), passing it `{agent, session_id, run_id, voice}`.
 3. The bridge subscribes itself to the run's event stream (`/v1/runs/{id}/events`), splits `assistant.delta` into sentences, synthesizes each sentence with Kyutai and sends binary audio frames back to the app (PCM int16 mono 24 kHz, or Opus), preceded by a JSON header `{seq, sentence_index, text, final}`.
    Acceptable variant for v1: the app does the splitting itself and calls the bridge's `POST /v1/tts/sentence` per sentence (HTTP, simpler), as long as playback starts at the first sentence.
 4. The app plays the frames via `AVAudioPlayerNode` (scheduling successive buffers, queue). No waiting for the end of generation.
@@ -91,7 +91,7 @@ Components:
 ### A8. Out of scope for v1
 Application-level end-to-end encryption (Tailscale is enough), multi-user, watchOS, CarPlay, editing cron jobs from the app (possible later via `/api/jobs`), handling files other than images (the api_server does not accept them).
 
-## B. aibox side
+## B. Server side
 
 ### B1. Enable the Hermes api_server (one per profile)
 - In `~/hermes-agent/hermes-home/profiles/wellness/.env`: `API_SERVER_ENABLED=true`, `API_SERVER_HOST=0.0.0.0` (required: the container uses pasta networking, 127.0.0.1 would not be published), `API_SERVER_PORT=8642`, `API_SERVER_KEY=<long random key, ≥ 32 chars>`. Same for `vie` with `API_SERVER_PORT=8644` and a **separate key**.
@@ -103,8 +103,8 @@ Application-level end-to-end encryption (Tailscale is enough), multi-user, watch
 
 ### B2. HTTPS exposure on the tailnet
 - `sudo tailscale serve --bg --https=8642 http://127.0.0.1:8642`; same for `8644 → 8644`, `8643 → 8643` (bridge), `8645 → 8645` (ntfy). The HTTPS ports must be accepted by this version of `tailscale serve`; otherwise fall back to 443/8443/10000 with `--set-path` per service, or a local Caddy with `tailscale cert`.
-- Result: `https://aibox.example.ts.net:8642/v1/...` reachable only from the tailnet, valid certificate, no firewalld rules.
-- Test from the Mac: `curl https://aibox.example.ts.net:8642/health`.
+- Result: `https://server.example.ts.net:8642/v1/...` reachable only from the tailnet, valid certificate, no firewalld rules.
+- Test from the Mac: `curl https://server.example.ts.net:8642/health`.
 
 ### B3. Voice + push bridge (new service, port 8643, Python 3.12 + FastAPI + uvicorn, rootless podman container or venv + systemd user unit)
 Responsibilities:
@@ -121,7 +121,7 @@ Responsibilities:
 - Wellness crons "Morning sleep check-in" (08:15) and "Evening sleep plan" (20:00): `deliver: simplex` → `deliver: simplex,ntfy` during the transition, then `ntfy` alone. Technical jobs stay on `local`.
 - The text delivered by Hermes is redacted of secrets on the Hermes side before sending.
 
-### B5. Commissioning order on the aibox side
+### B5. Commissioning order on the server side
 1. B1 + B2 (api_server + HTTPS) → the text app (§A4) becomes testable.
 2. B3 TTS part → voice mode.
 3. B4 + B3 push part → proactive messages, then shutting down SimpleX and Telegram for these agents.
@@ -137,7 +137,7 @@ Responsibilities:
 - Approval event: see `context/hermes-approval-and-events.txt` (`choices`, redacted `command`, `request_id`).
 - Limits: 10 concurrent runs (429 beyond that), unread SSE buffers expire after 5 min, no upload of non-image files.
 
-### C2. Bridge (Bearer = bridge key), base `https://aibox.example.ts.net:8643`
+### C2. Bridge (Bearer = bridge key), base `https://server.example.ts.net:8643`
 - `GET /health`
 - `POST /v1/tts/sentence` `{text, voice, format: "pcm16"|"opus"}` → binary audio, headers `X-Sample-Rate: 24000`, `X-Channels: 1`
 - `WS /v1/voice`: client → `{"type":"follow","agent":"wellness","run_id":"…","voice":"5476"}`; server → frames: JSON text message `{"type":"sentence","seq":n,"text":"…"}` followed by a binary audio message; `{"type":"done"}`; client → `{"type":"cancel"}`.
@@ -147,23 +147,23 @@ Responsibilities:
 - APNs payloads: `{"aps":{"alert":{"title":"Wellness","body":"…"},"thread-id":"wellness","mutable-content":1,"category":"MESSAGE"|"APPROVAL","sound":"default"},"outbox_id":"…","agent":"wellness","run_id":"…","request_id":"…"}`
 
 ### C3. Agent config (QR / JSON)
-`{"name":"Wellness","baseURL":"https://aibox.example.ts.net:8642","apiKey":"…","voice":"5476","bridgeURL":"https://aibox.example.ts.net:8643","bridgeKey":"…"}`
+`{"name":"Wellness","baseURL":"https://server.example.ts.net:8642","apiKey":"…","voice":"5476","bridgeURL":"https://server.example.ts.net:8643","bridgeKey":"…"}`
 
-## D. Claude Code (Mac) access to the Hermes configs on aibox
+## D. Claude Code (Mac) access to the Hermes configs on the server
 
-The `context/` folder (local, not published in the repository) already contains everything needed to write the app and the bridge without touching aibox:
+The `context/` folder (local, not published in the repository) already contains everything needed to write the app and the bridge without touching the server:
 machine facts, Hermes docs for the installed version (api-server, cron, ntfy, open-webui, programmatic integration),
 route table, approval contract, Kyutai server source, systemd units.
 
 If **live** access is needed (testing endpoints, reading a specific file):
 1. Local **file sharing** (SMB or other) between the server and the Mac to drop copies to read.
 2. **SSH over the tailnet**: via an authorized key (`ssh-copy-id` from the Mac) or Tailscale SSH (`sudo tailscale set --ssh`). Only one of the two.
-3. **What Claude Code (Mac) may read on aibox** (read-only):
+3. **What Claude Code (Mac) may read on the server** (read-only):
    - `~/hermes-agent/hermes-home/profiles/{wellness,vie}/config.yaml` (sections `gateway`, `platforms`, `platform_toolsets`, `approvals`, `tts`, `stt`), `.../cron/jobs.json`
    - the installed Hermes code: `podman exec hermes-gateway cat /opt/hermes-seed/hermes-agent/<path>` (in particular `gateway/platforms/api_server*.py`, `website/docs/...`)
    - `~/tts-lab/server/kyutai_server.py`, `systemctl --user cat <unit>`, `podman ps`, `ss -ltn`, `tailscale status`
-4. **Forbidden from the Mac**: reading or copying `gateway-run.sh`, any `.env`, `~/.config/hermes-secrets/`, `auth.json` (plaintext secrets); restarting, stopping or modifying a systemd unit or a container; modifying a file under `~/hermes-agent/`; touching other accounts' services on the machine. Changes on the aibox side (§B) go through the owner or through aibox's Claude Code, which knows the pitfalls (restart mid-turn, `hermes update` overwriting patches).
-5. **Integration tests** from the Mac once §B1–B2 are done: `curl -H "Authorization: Bearer $KEY" https://aibox.example.ts.net:8642/v1/capabilities`, then an SSE `chat/stream` with `curl -N`. Keys are passed out of band (never written to the repository).
+4. **Forbidden from the Mac**: reading or copying `gateway-run.sh`, any `.env`, `~/.config/hermes-secrets/`, `auth.json` (plaintext secrets); restarting, stopping or modifying a systemd unit or a container; modifying a file under `~/hermes-agent/`; touching other accounts' services on the machine. Changes on the server side (§B) go through the owner or through The server's Claude Code, which knows the pitfalls (restart mid-turn, `hermes update` overwriting patches).
+5. **Integration tests** from the Mac once §B1–B2 are done: `curl -H "Authorization: Bearer $KEY" https://server.example.ts.net:8642/v1/capabilities`, then an SSE `chat/stream` with `curl -N`. Keys are passed out of band (never written to the repository).
 
 ## E. Milestones and acceptance criteria
 1. **Text**: list the sessions of both agents, stream a reply with tool cards, approve a tool from the card, resume a run after killing the app. Target: first token displayed < 300 ms after the first `assistant.delta` arrives.
