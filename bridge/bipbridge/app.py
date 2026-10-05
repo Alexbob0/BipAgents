@@ -20,6 +20,7 @@ from .apns import ApnsClient
 from .auth import require_bridge_key
 from .config import Config
 from .cronwatch import CronWatcher
+from .media import content_type as media_content_type, resolve as resolve_media
 from .files import UploadSizeLimit, handle_upload, purge_uploads
 from .hermes import HermesClient
 from .logs import fields, redact
@@ -72,7 +73,7 @@ class Services:
                 self._tasks.append(asyncio.create_task(sub.run()))
         if self.config.cron_watch:
             watcher = CronWatcher(self.config, self.hermes, self.outbox, self.config.cron_interval_seconds,
-                                  self.config.cron_window_hours)
+                                  self.config.cron_window_hours, store=self.store)
             self._tasks.append(asyncio.create_task(watcher.run()))
         self._tasks.append(asyncio.create_task(self._purge_loop()))
 
@@ -107,6 +108,10 @@ class Services:
 # -- request models (typing.Optional/List: pydantic evaluates annotations on Python 3.9) ---------
 
 MESSAGE_MAX_CHARS = 8000
+
+
+class CronJobPrefs(BaseModel):
+    notify: bool
 
 
 class TtsRequest(BaseModel):
@@ -310,6 +315,29 @@ def build_router() -> APIRouter:
             if not os.path.exists(path):
                 raise HTTPException(status_code=503, detail="audio synthesis failed")
         return FileResponse(path, media_type="audio/mpeg", filename=f"{item_id}.mp3")
+
+    @router.get("/media")
+    async def get_media(request: Request, path: str = Query(..., max_length=1024)) -> Response:
+        """A file an agent pointed to with « MEDIA:<path> » (only under `[media] roots`)."""
+        host = resolve_media(path, _services(request).config.media_roots)
+        if host is None:
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(host, media_type=media_content_type(host), filename=os.path.basename(host))
+
+    @router.get("/cron-jobs")
+    async def cron_jobs(request: Request, agent: Optional[str] = None) -> Dict[str, Any]:
+        """Scheduled tasks seen by the cron watcher, with whether their replies are pushed."""
+        services = _services(request)
+        name = _agent_or_404(services.config, agent).name if agent else None
+        return {"jobs": await services.store.cron_jobs(name)}
+
+    @router.put("/cron-jobs/{agent}/{job}")
+    async def set_cron_job(agent: str, job: str, body: CronJobPrefs, request: Request) -> Dict[str, Any]:
+        services = _services(request)
+        name = _agent_or_404(services.config, agent).name
+        if not await services.store.set_cron_notify(name, job, body.notify):
+            raise HTTPException(status_code=404, detail="unknown job")
+        return {"agent": name, "job": job, "notify": body.notify}
 
     @router.post("/watch")
     async def watch_run(body: WatchRequest, request: Request) -> Dict[str, Any]:

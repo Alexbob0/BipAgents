@@ -31,6 +31,14 @@ CREATE TABLE IF NOT EXISTS outbox (
     UNIQUE (agent, ntfy_id)
 );
 CREATE INDEX IF NOT EXISTS outbox_created_at ON outbox (created_at);
+CREATE TABLE IF NOT EXISTS cron_jobs (
+    agent TEXT NOT NULL,
+    job TEXT NOT NULL,
+    name TEXT,
+    notify INTEGER NOT NULL DEFAULT 1,
+    last_seen TEXT,
+    PRIMARY KEY (agent, job)
+);
 CREATE TABLE IF NOT EXISTS ntfy_cursor (
     agent TEXT PRIMARY KEY,
     last_id TEXT NOT NULL,
@@ -96,6 +104,28 @@ class Store:
             with self._lock:
                 return self._conn.execute(sql, params).rowcount
         return await asyncio.to_thread(go)
+
+    # -- scheduled tasks -----------------------------------------------------------------------
+
+    async def note_cron_job(self, agent: str, job: str, name: Optional[str]) -> bool:
+        """Records a job seen by the cron watcher; returns whether its replies should be pushed."""
+        await self._run(
+            "INSERT INTO cron_jobs (agent, job, name, notify, last_seen) VALUES (?,?,?,1,?) "
+            "ON CONFLICT(agent, job) DO UPDATE SET name=COALESCE(excluded.name, cron_jobs.name), "
+            "last_seen=excluded.last_seen", (agent, job, name, iso(utcnow())))
+        rows = await self._run("SELECT notify FROM cron_jobs WHERE agent=? AND job=?", (agent, job))
+        return bool(rows[0]["notify"]) if rows else True
+
+    async def cron_jobs(self, agent: Optional[str] = None) -> List[Dict[str, Any]]:
+        sql, params = "SELECT * FROM cron_jobs", ()
+        if agent:
+            sql, params = sql + " WHERE agent=?", (agent,)
+        rows = await self._run(sql + " ORDER BY last_seen DESC", params)
+        return [{**dict(r), "notify": bool(r["notify"])} for r in rows]
+
+    async def set_cron_notify(self, agent: str, job: str, notify: bool) -> bool:
+        return await self._run_count("UPDATE cron_jobs SET notify=? WHERE agent=? AND job=?",
+                                     (1 if notify else 0, agent, job)) > 0
 
     # -- devices -----------------------------------------------------------------------------
 

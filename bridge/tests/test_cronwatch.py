@@ -24,11 +24,12 @@ class FakeOutbox:
         self.ingested = []
         self.seen = set()
 
-    async def ingest(self, agent, message):
+    async def ingest(self, agent, message, notify=True):
         if message["id"] in self.seen:
             return None
         self.seen.add(message["id"])
         self.ingested.append((agent.name, message))
+        self.notify = notify
         return {"id": "x"}
 
 
@@ -75,3 +76,10 @@ def test_silent_old_and_running_sessions_are_skipped(config_dict):
     for _ in range(3):
         asyncio.run(cron.poll(agent, now=NOW))
     assert outbox.ingested == []
+
+
+def test_job_helpers():
+    from bipbridge.cronwatch import job_id, job_name
+    assert job_id("cron_fc344ed09026_20261005_075008") == "fc344ed09026"
+    assert job_id("api_123") is None
+    assert job_name("Podcast du matin · Oct 05 07:53") == "Podcast du matin"

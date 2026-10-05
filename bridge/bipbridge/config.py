@@ -91,6 +91,8 @@ class Config:
     cron_watch: bool = True
     cron_interval_seconds: float = 60.0
     cron_window_hours: float = 12.0
+    # Files the agents point to with « MEDIA:<path> » lines: agent-side prefix -> host directory.
+    media_roots: Dict[str, str] = field(default_factory=dict)
     ntfy_url: str = "http://127.0.0.1:8645"
     push_previews: bool = False
     watch_followed_runs: bool = True
@@ -230,6 +232,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         cron_watch=bool(cron.get("watch", True)),
         cron_interval_seconds=float(cron.get("interval_seconds", 60)),
         cron_window_hours=float(cron.get("window_hours", 12)),
+        media_roots={str(k): _expand(str(v)) for k, v in ((data.get("media", {}) or {}).get("roots", {}) or {}).items()},
         ntfy_url=str(ntfy.get("url", "http://127.0.0.1:8645")).rstrip("/"),
         push_previews=bool(push.get("previews", False)),
         watch_followed_runs=bool(push.get("watch_followed_runs", True)),
