@@ -13,6 +13,8 @@ struct ChatItem: Identifiable, Equatable {
         case reasoning(text: String)
         case tools([ToolEvent])
         case approval(ApprovalRequest, resolved: ApprovalChoice?)
+        /// The agent asks a question (`clarify`): pending, answered, or expired.
+        case question(ClarifyRequest, state: QuestionState)
         case notice(String)
     }
 
@@ -26,6 +28,13 @@ struct ChatItem: Identifiable, Equatable {
         self.kind = kind
         self.date = date
     }
+}
+
+enum QuestionState: Equatable {
+    case pending
+    case answered([String: String])
+    /// Expired, stopped or cancelled: the agent went on without an answer.
+    case closed
 }
 
 /// A file or photo picked on the phone, before/after sending.
@@ -157,7 +166,9 @@ final class ConversationModel {
             ChatItem(.user(text: "Voilà mes nuits de septembre, tu vois une tendance ?", attachments: [sheet])),
             ChatItem(.tools([ToolEvent(tool: "terminal", preview: "python3 analyse_sommeil.py sommeil-septembre.xlsx", status: .started)])),
             ChatItem(.approval(ApprovalRequest(runID: "demo", requestID: "1", command: "pip install openpyxl", choices: [.once, .session, .always, .deny]), resolved: nil)),
-            ChatItem(.assistant(text: "Deux trains possibles pour Bordeaux :\n\n1. **Train de 9h** — 19 €, arrivée 11h30\n2. **Train de 14h** — 35 €, arrivée 16h30\n\nLequel tu préfères ?", isStreaming: false)),
+            ChatItem(.question(ClarifyRequest(runID: "demo", requestID: "clr", questions: [
+                .init(id: "q1", question: "Quel train pour Bordeaux ?", choices: ["9h — 19 €, arrivée 11h30", "14h — 35 €, arrivée 16h30"]),
+            ]), state: .pending)),
         ]
     }
 
@@ -602,6 +613,28 @@ final class ConversationModel {
         }
     }
 
+    /// Answers the agent's question (`nil`: no answer, the agent goes on without one).
+    func answer(_ request: ClarifyRequest, with answers: [String: String]?) {
+        setQuestion(request.requestID, state: answers.map { .answered($0) } ?? .closed)
+        guard let client else { return }
+        Task {
+            do {
+                try await client.answerClarify(runID: request.runID, requestID: request.requestID, answers: answers)
+                isWaitingForApproval = false
+            } catch {
+                setQuestion(request.requestID, state: .pending)
+                errorMessage = Self.describe(error)
+            }
+        }
+    }
+
+    private func setQuestion(_ requestID: String?, state: QuestionState) {
+        guard let index = items.lastIndex(where: { item in
+            if case .question(let request, _) = item.kind { requestID == nil || request.requestID == requestID } else { false }
+        }), case .question(let request, _) = items[index].kind else { return }
+        items[index].kind = .question(request, state: state)
+    }
+
     // MARK: Events
 
     private func apply(_ event: HermesEvent) {
@@ -633,6 +666,15 @@ final class ConversationModel {
                case .approval(let request, _) = items[index].kind {
                 items[index].kind = .approval(request, resolved: choice)
             }
+        case .clarifyRequest(let request):
+            // A replayed question already answered keeps its answer (the responded event follows).
+            if !items.contains(where: { if case .question(let r, _) = $0.kind { r.id == request.id } else { false } }) {
+                isWaitingForApproval = true
+                items.append(ChatItem(.question(request, state: .pending)))
+            }
+        case .clarifyResolved(let requestID, let answers):
+            isWaitingForApproval = false
+            setQuestion(requestID, state: answers.map { .answered($0) } ?? .closed)
         case .assistantCompleted(let outcome), .runCompleted(let outcome):
             if let output = outcome.output, !hasStreamedAssistantText { appendAssistant(output) }
         case .runFailed(let outcome):

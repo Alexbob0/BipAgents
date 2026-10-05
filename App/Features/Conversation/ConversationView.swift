@@ -202,6 +202,10 @@ private struct ConversationContent: View {
             ApprovalCard(request: request, resolved: resolved, agent: model.agent) { choice in
                 model.resolve(request, with: choice)
             }
+        case .question(let request, let state):
+            QuestionCard(request: request, state: state, agent: model.agent) { answers in
+                model.answer(request, with: answers)
+            }
         case .notice(let text):
             NoticeRow(text: text)
         }

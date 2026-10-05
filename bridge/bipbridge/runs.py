@@ -240,6 +240,8 @@ class RunHub:
             listener.queue.put_nowait(event)
         if event.type == "approval.request":
             self._on_approval(sub, event)
+        elif event.type == "clarify.request":
+            self._on_clarify(sub, event)
         elif event.type == "approval.responded":
             self.forget_approval(sub.agent.name, sub.run_id, event.data.get("request_id"))
         elif event.type in TERMINAL_TYPES:
@@ -253,6 +255,20 @@ class RunHub:
                 else:
                     self._spawn(self.push.notify_silent(sub.agent.name, "run_finished", run_id=sub.run_id,
                                                         status=event.type))
+
+    def _on_clarify(self, sub: RunSubscription, event: SSEEvent) -> None:
+        """A question (docs/hermes-clarify-api.md) nobody sees: push it once, like an approval."""
+        data = event.data
+        request_id = data.get("request_id") if isinstance(data.get("request_id"), str) else None
+        dedupe = "clarify:" + (request_id or hashlib.sha256(event.raw.encode("utf-8")).hexdigest()[:16])
+        if not sub.watched or sub.followers > 0 or dedupe in sub.pushed or self.push is None:
+            return
+        questions = data.get("questions") if isinstance(data.get("questions"), list) else []
+        first = questions[0] if questions and isinstance(questions[0], dict) else data
+        question = first.get("question") if isinstance(first.get("question"), str) else None
+        sub.pushed.add(dedupe)
+        log.info("question push", extra=fields(agent=sub.agent.name, run_id=sub.run_id))
+        self._spawn(self.push.notify_question(sub.agent.name, sub.run_id, request_id, question, sub.session_id))
 
     def _on_approval(self, sub: RunSubscription, event: SSEEvent) -> None:
         data = event.data

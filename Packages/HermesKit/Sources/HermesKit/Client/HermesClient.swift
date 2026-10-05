@@ -132,6 +132,18 @@ public struct HermesClient: Sendable {
         return ResponseMapping.approvalResult(try await send("POST", "/v1/runs/\(Self.escape(runID))/approval", body: .object(body)))
     }
 
+    /// `POST /v1/runs/{id}/clarify` with `{"request_id": …, "answers": {questionID: answer}}`, or
+    /// `{"request_id": …, "cancel": true}` when `answers` is nil (docs/hermes-clarify-api.md).
+    public func answerClarify(runID: String, requestID: String, answers: [String: String]?) async throws {
+        var body: [String: JSONValue] = ["request_id": .string(requestID)]
+        if let answers {
+            body["answers"] = .object(answers.mapValues { .string($0) })
+        } else {
+            body["cancel"] = .bool(true)
+        }
+        _ = try await send("POST", "/v1/runs/\(Self.escape(runID))/clarify", body: .object(body))
+    }
+
     /// `POST /v1/runs/{id}/stop`. Returns immediately with `stopping`; the run settles as `cancelled`.
     @discardableResult
     public func stop(runID: String) async throws -> RunStatus {

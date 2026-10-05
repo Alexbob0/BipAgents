@@ -3,6 +3,8 @@ import Foundation
 public enum RunStatus: Sendable, Hashable, Codable, RawRepresentable {
     case running
     case waitingForApproval
+    /// Waiting for the user's answer to a `clarify` question.
+    case waitingForInput
     case completed
     case failed
     case cancelled
@@ -14,6 +16,7 @@ public enum RunStatus: Sendable, Hashable, Codable, RawRepresentable {
         switch rawValue.lowercased() {
         case "running", "started", "in_progress": self = .running
         case "waiting_for_approval": self = .waitingForApproval
+        case "waiting_for_input", "waiting_for_clarify": self = .waitingForInput
         case "completed": self = .completed
         case "failed": self = .failed
         case "cancelled", "canceled": self = .cancelled
@@ -27,6 +30,7 @@ public enum RunStatus: Sendable, Hashable, Codable, RawRepresentable {
         switch self {
         case .running: "running"
         case .waitingForApproval: "waiting_for_approval"
+        case .waitingForInput: "waiting_for_input"
         case .completed: "completed"
         case .failed: "failed"
         case .cancelled: "cancelled"

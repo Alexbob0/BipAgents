@@ -154,3 +154,37 @@ struct HermesEventTests {
         #expect(event.sessionID == "s_1")
     }
 }
+
+@Suite("Clarify events")
+struct ClarifyEventTests {
+    private func event(_ name: String, _ json: String) throws -> HermesEvent {
+        try #require(HermesEvent(sse: SSEEvent(event: name, data: json)))
+    }
+
+    @Test func clarifyRequestWithQuestions() throws {
+        let e = try event("clarify.request", """
+        {"type":"clarify.request","run_id":"run_1","request_id":"clr_1","questions":[
+          {"id":"q1","question":"Quel train ?","choices":["9h — 19 €","14h — 35 €"],"allow_other":false}]}
+        """)
+        guard case .clarifyRequest(let request) = e.kind else { Issue.record("not a clarify request"); return }
+        #expect(request.runID == "run_1" && request.requestID == "clr_1")
+        #expect(request.questions == [ClarifyRequest.Question(id: "q1", question: "Quel train ?", choices: ["9h — 19 €", "14h — 35 €"], allowOther: false)])
+    }
+
+    @Test func singleQuestionAtTopLevel() throws {
+        let e = try event("clarify.request", #"{"run_id":"run_1","request_id":"clr_2","question":"On y va ?","choices":["Oui","Non"]}"#)
+        guard case .clarifyRequest(let request) = e.kind else { Issue.record("not a clarify request"); return }
+        #expect(request.questions.map(\.id) == ["q1"] && request.questions[0].choices == ["Oui", "Non"])
+        #expect(request.questions[0].allowOther)
+    }
+
+    @Test func respondedAndCancelled() throws {
+        let done = try event("clarify.responded", #"{"request_id":"clr_1","answers":{"q1":"9h — 19 €"}}"#)
+        guard case .clarifyResolved(let id, let answers) = done.kind else { Issue.record("not resolved"); return }
+        #expect(id == "clr_1" && answers == ["q1": "9h — 19 €"])
+        let cancelled = try event("clarify.cancelled", #"{"request_id":"clr_1","reason":"timeout"}"#)
+        guard case .clarifyResolved(_, let none) = cancelled.kind else { Issue.record("not resolved"); return }
+        #expect(none == nil)
+        #expect(RunStatus(rawValue: "waiting_for_input") == .waitingForInput)
+    }
+}

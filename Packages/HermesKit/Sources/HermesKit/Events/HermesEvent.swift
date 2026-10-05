@@ -25,6 +25,10 @@ public struct HermesEvent: Sendable, Hashable {
         case tool(ToolEvent)
         case approvalRequest(ApprovalRequest)
         case approvalResponded(choice: ApprovalChoice?, requestID: String?)
+        /// `clarify.request`: the agent asks the user to choose / answer (docs/hermes-clarify-api.md).
+        case clarifyRequest(ClarifyRequest)
+        /// `clarify.responded` (`answers`) or `clarify.cancelled` (`answers` nil).
+        case clarifyResolved(requestID: String?, answers: [String: String]?)
         /// `assistant.completed` on `chat/stream` (final text + real completed/partial/interrupted flags).
         case assistantCompleted(RunOutcome)
         case runCompleted(RunOutcome)
@@ -141,6 +145,16 @@ extension HermesEvent {
             return .approvalResponded(choice: f.string("choice").flatMap(ApprovalChoice.init(lenient:)),
                                       requestID: f.string("request_id"))
 
+        case "clarify.request", "clarify.required":
+            return .clarifyRequest(clarify(f, runID: runID))
+
+        case "clarify.responded", "clarify.resolved":
+            let answers = f.value("answers")?.objectValue?.compactMapValues { $0.lenientString }
+            return .clarifyResolved(requestID: f.string("request_id"), answers: answers ?? [:])
+
+        case "clarify.cancelled", "clarify.canceled", "clarify.expired":
+            return .clarifyResolved(requestID: f.string("request_id"), answers: nil)
+
         case "assistant.completed", "message.complete", "message.completed":
             return .assistantCompleted(outcome(f))
 
@@ -199,6 +213,20 @@ extension HermesEvent {
 
     static let approvalKnownKeys: Set<String> = ["run_id", "runId", "type", "event", "request_id", "command",
                                                   "description", "choices", "session_id"]
+
+    private static func clarify(_ f: LenientFields, runID: String?) -> ClarifyRequest {
+        func question(_ q: LenientFields, fallbackID: String) -> ClarifyRequest.Question? {
+            guard let text = q.string("question", "text", "prompt") else { return nil }
+            let choices = q.value("choices", "options")?.arrayValue?.compactMap { $0.stringValue ?? $0["label"]?.stringValue } ?? []
+            return ClarifyRequest.Question(id: q.string("id", "question_id") ?? fallbackID, question: text, choices: choices,
+                                           allowOther: q.bool("allow_other", "allow_free_text") ?? true)
+        }
+        var questions = (f.value("questions")?.arrayValue ?? []).enumerated().compactMap { index, value in
+            question(LenientFields(value, nestedIn: []), fallbackID: "q\(index + 1)")
+        }
+        if questions.isEmpty, let single = question(f, fallbackID: "q1") { questions = [single] }
+        return ClarifyRequest(runID: runID ?? "", requestID: f.string("request_id", "clarify_id", "id") ?? "", questions: questions)
+    }
 
     private static func approval(_ f: LenientFields, runID: String?) -> ApprovalRequest {
         let choices = f.value("choices")?.arrayValue?
