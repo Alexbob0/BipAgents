@@ -37,7 +37,7 @@ window_hours = 12        # au premier démarrage, seules les tâches de ces dern
 # l'agent (dans son conteneur) -> dossier sur l'hôte. Seuls les fichiers média sous ces dossiers sont servis
 # (GET /v1/media) ; un mp3 joint à un message de la Boîte devient son audio, à la place d'une lecture.
 [media.roots]
-# "/home/hermes/simplex-files" = "~/hermes-agent/simplex-files"
+# "/home/hermes/.hermes/media" = "~/hermes-agent/hermes-home/media"
 
 [apns]
 # Laisser team_id/key_id vides pour désactiver le push.
