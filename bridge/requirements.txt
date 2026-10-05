@@ -10,3 +10,4 @@ h2==4.3.0
 PyJWT==2.15.1
 cryptography==50.0.2
 tomli==2.4.1; python_version < "3.11"
+num2words==0.5.14

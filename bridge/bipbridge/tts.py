@@ -23,6 +23,7 @@ from typing import AsyncIterator, List, Optional, Tuple
 import httpx
 
 from .logs import fields
+from . import speech_intl
 from .numbers_fr import prepare_for_synthesis
 from .textproc import normalize_for_speech
 
@@ -143,6 +144,15 @@ class Audio:
 
 
 POCKET_PREFIX = "pocket:"
+
+
+def voice_language(voice: str) -> str:
+    """``pocket:en/loutre`` -> ``en``; French for ``pocket:loutre`` and Kyutai voices."""
+    if voice.startswith(POCKET_PREFIX):
+        lang, sep, _ = voice[len(POCKET_PREFIX):].partition("/")
+        if sep and lang in speech_intl.LANGUAGES:
+            return lang
+    return "fr"
 POCKET_ATTEMPTS = 2
 POCKET_RETRY_DELAY = 0.5  # seconds
 
@@ -158,9 +168,11 @@ class Engine:
 class TtsService:
     """Kyutai TTS 1.6B (GPU) plus, optionally, Kyutai Pocket TTS (CPU) for the Bips' voices.
 
-    A voice named ``pocket:<name>`` (e.g. ``pocket:loutre``) goes to Pocket; any other voice to Kyutai. Each
-    engine has its own FIFO queue (they run on different hardware). When Pocket is not configured, down or
-    failing before its first audio, the request falls back to Kyutai's default voice (that audio is not cached).
+    A voice named ``pocket:<name>`` (e.g. ``pocket:loutre``) goes to Pocket in French, ``pocket:<lang>/<name>``
+    (``en``, ``es``, ``de``) to Pocket's model for that language; any other voice to Kyutai. Each engine has its
+    own FIFO queue (they run on different hardware). When Pocket is not configured, down or failing before its
+    first audio, a French request falls back to Kyutai's default voice (that audio is not cached); another
+    language fails instead, so the app reads it with the iPhone's voice in the right language.
     """
 
     def __init__(self, client: httpx.AsyncClient, base_url: str, default_voice: str,
@@ -184,6 +196,8 @@ class TtsService:
             if self.pocket is not None:
                 return self.pocket, voice[len(POCKET_PREFIX):]
             log.warning("pocket voice requested but pocket is not configured", extra=fields(voice=voice))
+            if voice_language(voice) != "fr":
+                raise TtsError("pocket is not configured", status=503)
             return self.kyutai, self.default_voice
         return self.kyutai, voice
 
@@ -201,9 +215,10 @@ class TtsService:
         while len(self._cache) > self.cache_entries:
             self._cache.popitem(last=False)
 
-    def _prepare(self, text: str, normalized: bool, max_chars: Optional[int]) -> str:
+    def _prepare(self, text: str, normalized: bool, max_chars: Optional[int], language: str = "fr") -> str:
         clean = text.strip() if normalized else normalize_for_speech(text, self.sentence_max_chars)
-        clean = prepare_for_synthesis(clean)  # numbers in words, CamelCase split, parentheses as pauses
+        # numbers in words, CamelCase split, parentheses as pauses
+        clean = prepare_for_synthesis(clean) if language == "fr" else speech_intl.prepare_for_synthesis(clean, language)
         if not clean:
             raise TtsError("empty text after normalization", status=400)
         limit = max_chars if max_chars is not None else self.max_chars
@@ -216,8 +231,9 @@ class TtsService:
                          max_chars: Optional[int] = None) -> Audio:
         if fmt not in FORMATS:
             raise TtsError(f"unsupported format: {fmt}", status=400)
-        clean = self._prepare(text, normalized, max_chars)
         voice = voice or self.default_voice
+        language = voice_language(voice)
+        clean = self._prepare(text, normalized, max_chars, language)
         key = (voice, fmt, clean)
         hit = self._cache_get(key)
         if hit is not None:
@@ -233,12 +249,17 @@ class TtsService:
                     audio = await self._call_engine(engine, clean, engine_voice, fmt)
                 break
             except TtsError as exc:
+                if engine is self.pocket and language != "fr" and exc.status < 500:
+                    # e.g. this language's voices are not installed: 503 so the app reads it with the iPhone's voice
+                    raise TtsError(f"pocket {language} voice unavailable: {exc}", status=503) from exc
                 if engine is self.kyutai or exc.status < 500:
                     raise
                 if attempt < attempts:
                     log.info("pocket failed, retrying", extra=fields(error=str(exc)))
                     await asyncio.sleep(POCKET_RETRY_DELAY)
                     continue
+                if language != "fr":
+                    raise
                 log.warning("pocket failed, falling back to kyutai", extra=fields(error=str(exc), text=clean[:60]))
                 async with self.kyutai.scheduler.slot(priority):
                     return await self._call_engine(self.kyutai, clean, self.default_voice, fmt)
@@ -252,8 +273,9 @@ class TtsService:
         Validation errors and an engine failure before the first chunk raise ``TtsError``; an engine
         without the streaming route (404/405) falls back to one whole-file synthesis. Only a complete
         stream is cached."""
-        clean = self._prepare(text, False, max_chars)
         voice = voice or self.default_voice
+        language = voice_language(voice)
+        clean = self._prepare(text, False, max_chars, language)
         key = (voice, "pcm16", clean)
         hit = self._cache_get(key)
         if hit is not None:
@@ -271,6 +293,8 @@ class TtsService:
             except TtsError as exc:
                 if received:
                     return  # cut mid-stream: the client keeps what it already played, nothing is cached
+                if engine is self.pocket and language != "fr" and exc.status < 500:
+                    raise TtsError(f"pocket {language} voice unavailable: {exc}", status=503) from exc
                 if engine is self.kyutai or exc.status < 500:
                     raise
                 if attempt < attempts:
@@ -278,6 +302,8 @@ class TtsService:
                     log.info("pocket stream failed, retrying", extra=fields(error=str(exc)))
                     await asyncio.sleep(POCKET_RETRY_DELAY)
                     continue
+                if language != "fr":
+                    raise
                 log.warning("pocket stream failed, falling back to kyutai", extra=fields(error=str(exc), text=clean[:60]))
                 async for chunk in self._stream_engine(self.kyutai, clean, self.default_voice, priority):
                     yield chunk
