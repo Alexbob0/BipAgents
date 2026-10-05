@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Les Bips · BipAgents</title>
+<meta name="description" content="Joue avec les Bips, les mascottes de BipAgents : touche-les, chatouille-les, caresse-les.">
+<style>
+  :root {
+    --ink: #16181D; --ink2: #4A5163; --muted: #8A90A0; --ground: #F4F5F8; --card: #FFFFFF; --line: #E4E6EC;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #F2F3F6; --ink2: #B9BECB; --muted: #8A90A0; --ground: #111318; --card: #1A1D24; --line: #2A2E38; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 40px 16px 56px; }
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+  h1 { margin: 0; font-size: clamp(34px, 6vw, 52px); font-weight: 900; letter-spacing: -0.02em; }
+  .lede { margin: 6px 0 0; color: var(--ink2); font-size: 17px; font-weight: 600; max-width: 560px; line-height: 1.4; }
+  .sound {
+    display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 18px; border-radius: 999px;
+    border: 0; background: var(--ink); color: var(--ground); font: inherit; font-weight: 800; font-size: 15px; cursor: pointer;
+  }
+  .sound[aria-pressed="false"] { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 2px var(--line); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  .card {
+    position: relative; border-radius: 30px; padding: 22px 12px 16px; display: flex; flex-direction: column; align-items: center;
+    background: var(--tint); overflow: visible;
+  }
+  @media (prefers-color-scheme: dark) { .card { background: color-mix(in srgb, var(--main) 18%, var(--card)); } }
+  .stage { position: relative; width: min(170px, 100%); aspect-ratio: 1; touch-action: none; cursor: grab; user-select: none; }
+  .stage:active { cursor: grabbing; }
+  .stage svg { width: 100%; height: 100%; overflow: visible; display: block; }
+  .name { margin-top: 6px; font-weight: 900; font-size: 20px; }
+  .chip {
+    margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px;
+    background: var(--card); color: var(--deep); font-size: 13px; font-weight: 800;
+  }
+  .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--main); }
+  .bubble {
+    position: absolute; left: 50%; top: -12px; transform: translate(-50%, -100%) scale(.6); opacity: 0;
+    background: var(--card); color: var(--deep); font-weight: 900; font-size: 16px; padding: 8px 14px; border-radius: 999px;
+    white-space: nowrap; box-shadow: 0 6px 18px rgba(0,0,0,.12); pointer-events: none; transition: transform .25s cubic-bezier(.3,1.6,.5,1), opacity .2s;
+  }
+  .bubble.show { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+  .particle { position: absolute; pointer-events: none; font-size: 20px; animation: float 1.5s ease-out forwards; }
+  @keyframes float { from { opacity: 1; transform: translate(-50%, 0) scale(.6); } to { opacity: 0; transform: translate(-50%, -90px) scale(1.2); } }
+  .tips { margin: 28px 0 0; display: flex; flex-wrap: wrap; gap: 10px 22px; color: var(--ink2); font-weight: 700; font-size: 15px; padding: 0; list-style: none; }
+  .tips b { color: var(--ink); }
+  footer { margin-top: 40px; color: var(--muted); font-weight: 700; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  footer a { color: var(--ink2); }
+  @media (prefers-reduced-motion: reduce) { .particle { animation-duration: .01s; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Les Bips</h1>
+      <p class="lede">Les mascottes de <a href="https://github.com/Alexbob0/BipAgents" style="color:inherit">BipAgents</a>, une par agent. Touche-les, chatouille-les, caresse-les… et ne les embête pas trop.</p>
+    </div>
+    <button class="sound" id="sound" aria-pressed="true">🔊 Son activé</button>
+  </header>
+  <section class="grid" id="grid" aria-label="Les huit Bips"></section>
+  <ul class="tips">
+    <li><b>Toucher</b> : une réaction surprise</li>
+    <li><b>3 touchers rapides</b> : ça chatouille</li>
+    <li><b>Frotter vite</b> : chatouilles</li>
+    <li><b>Caresser lentement</b> : ronron</li>
+    <li><b>Appui long</b> puis relâcher : Boing !</li>
+    <li><b>Glisser</b> : il te suit des yeux</li>
+    <li><b>Trop embêter</b> : à tes risques</li>
+  </ul>
+  <footer>
+    <span>BipAgents · app iOS pour parler à ses agents Hermes</span>
+    <a href="https://github.com/Alexbob0/BipAgents">GitHub</a>
+    <a href="https://x.com/Bob_AI_Digger">@Bob_AI_Digger</a>
+  </footer>
+</main>
+<script>
+"use strict";
+// ---------------------------------------------------------------------------------------------------------------
+// Same geometry as App/Design/MascotView.swift (120×120 design space), same behaviour as InteractiveMascot.swift,
+// same « Animalese » as BipBabble.swift.
+// ---------------------------------------------------------------------------------------------------------------
+const INK = "#16181D";
+const CATEGORIES = [
+  { id: "wellness", label: "Bien-être", name: "Wellness", main: "#3CC37A", deep: "#1D8A4F", tint: "#E2F5EA", body: "blob", acc: "sprout", pitch: 520 },
+  { id: "finance", label: "Finance", name: "Budget", main: "#F6B826", deep: "#9A6A00", tint: "#FFF3D1", body: "squircle", acc: "coin", pitch: 410 },
+  { id: "daily", label: "Quotidien", name: "Vie", main: "#FF7B5C", deep: "#C9472A", tint: "#FFE8E0", body: "egg", acc: "ears", pitch: 600 },
+  { id: "work", label: "Travail", name: "Boulot", main: "#4F7CFF", deep: "#2B55D4", tint: "#E4EBFF", body: "squircle", acc: "antenna", pitch: 450 },
+  { id: "learning", label: "Apprendre", name: "Prof", main: "#8E6CF5", deep: "#6142D2", tint: "#EDE7FF", body: "cloud", acc: "tuft", pitch: 560 },
+  { id: "home", label: "Maison", name: "Maison", main: "#1FB2C1", deep: "#0D7F8B", tint: "#DDF4F6", body: "egg", acc: "roof", pitch: 490 },
+  { id: "creative", label: "Créatif", name: "Atelier", main: "#F2649E", deep: "#C23774", tint: "#FDE4EE", body: "blob", acc: "star", pitch: 640 },
+  { id: "tech", label: "Tech", name: "Serveur", main: "#6B7489", deep: "#3F4659", tint: "#E7E9EE", body: "squircle", acc: "antenna", pitch: 470 },
+];
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const ell = (cx, cy, rx, ry, attrs) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${Math.max(0, ry)}" ${attrs}/>`;
+const path = (d, attrs) => `<path d="${d}" ${attrs}/>`;
+const strokeLine = (w = 3) => `fill="none" stroke="${INK}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"`;
+
+function bodyShape(c, fill) {
+  switch (c.body) {
+    case "blob": return path("M60 24c25 0 42 17 42 43 0 25-16 39-42 39S18 92 18 67c0-26 17-43 42-43z", `fill="${fill}"`);
+    case "squircle": return `<rect x="19" y="28" width="82" height="78" rx="32" fill="${fill}"/>`;
+    case "egg": return path("M60 20c21 0 38 28 38 52 0 21-16 34-38 34S22 93 22 72c0-24 17-52 38-52z", `fill="${fill}"`);
+    default: return path("M38 46c2-14 12-22 24-22 13 0 23 9 24 22 10 2 17 11 17 22 0 22-18 38-43 38S17 90 17 68c0-12 8-21 21-22z", `fill="${fill}"`);
+  }
+}
+
+function accessory(c, front, t) {
+  const { main, deep } = c, gold = "#FFD84D";
+  const round = w => `fill="none" stroke="${deep}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"`;
+  if (!front) {
+    switch (c.acc) {
+      case "sprout":
+        return path("M60 27c0-7 1-13 3-17", round(4)) + path("M63 12c5-8 15-9 21-4-5 7-14 9-21 4z", `fill="${deep}"`)
+          + path("M61 15c-5-7-14-8-19-3 5 6 13 8 19 3z", `fill="${main}" stroke="${deep}" stroke-width="2"`);
+      case "coin": {
+        const p = Math.sin(t * 2 * Math.PI / 2.4);
+        return `<g transform="translate(60 ${12 - 1.5 - 1.5 * p}) rotate(${6 + 6 * p})">` + ell(0, 0, 9, 9, `fill="${gold}" stroke="${deep}" stroke-width="3"`)
+          + path("M0 -4.5v9", round(2.6)) + `</g>` + path("M42 10l-4-3M78 10l4-3", round(2.5));
+      }
+      case "ears":
+        return [35, 85].map(x => ell(x, 36, 12, 12, `fill="${main}"`) + ell(x, 36, 5.5, 5.5, `fill="#FFB3C1"`)).join("");
+      case "antenna": {
+        const glow = 0.775 + 0.225 * Math.cos(t * 2 * Math.PI / 1.6);
+        return path("M60 30V13", round(3.5)) + ell(60, 10, 6.5, 6.5, `fill="${main}" fill-opacity="${glow}" stroke="${deep}" stroke-width="3"`);
+      }
+      case "tuft":
+        return path("M50 28c-2-8 2-14 8-17-1 6 2 9 4 12 1-6 5-10 11-11-3 5-3 10-2 16z", `fill="${deep}"`);
+    }
+  } else {
+    if (c.acc === "star")
+      return path("M60 3l3.6 7.4 8.1 1.1-5.9 5.6 1.5 8-7.3-3.9-7.3 3.9 1.5-8-5.9-5.6 8.1-1.1z", `fill="${gold}" stroke="${deep}" stroke-width="2.2" stroke-linejoin="round"`);
+    if (c.acc === "roof")
+      return path("M33 35L60 11l27 24", round(6));
+  }
+  return "";
+}
+
+function blinkScale(c, t) {
+  const offset = CATEGORIES.indexOf(c) * 1.37;
+  const phase = ((t + offset) % 4.6) / 4.6;
+  if (phase <= 0.93) return 1;
+  const local = (phase - 0.93) / 0.07;
+  return Math.max(0.1, Math.abs(local * 2 - 1));
+}
+
+function eyes(c, t, gaze, rx, ry, y, xs, glint, blink = true) {
+  const s = blink ? blinkScale(c, t) : 1;
+  const lx = 3 * Math.max(-1, Math.min(1, gaze.x)), ly = 2.5 * Math.max(-1, Math.min(1, gaze.y));
+  return xs.map(x0 => {
+    const x = x0 + lx, yy = y + ly;
+    return ell(x, yy, rx, ry * s, `fill="${INK}"`) + (s > 0.6 ? ell(x + rx * 0.38, yy - ry * 0.4, glint, glint, `fill="#fff"`) : "");
+  }).join("");
+}
+
+function spiral(turns, radius) {
+  let d = "";
+  for (let i = 0; i <= 60; i++) {
+    const p = i / 60, a = p * turns * 2 * Math.PI, r = radius * p;
+    d += (i ? "L" : "M") + (r * Math.cos(a)).toFixed(2) + " " + (r * Math.sin(a)).toFixed(2);
+  }
+  return d;
+}
+
+function face(c, mood, t, gaze, level) {
+  const L = strokeLine();
+  switch (mood) {
+    case "listening": return eyes(c, t, gaze, 7, 9, 63, [46, 74], 2.6) + ell(60, 81, 3.6, 4.2, `fill="${INK}"`);
+    case "thinking": {
+      const pulse = 0.25 + 0.2 * (1 + Math.sin(t * 2 * Math.PI / 1.4));
+      return eyes(c, t, gaze, 5, 6.5, 61, [49, 75], 1.8, false) + path("M54 80h12", L)
+        + [[93, 30, 3], [101, 21, 4.4], [110, 10, 6]].map(([x, y, r]) => ell(x, y, r, r, `fill="${c.deep}" fill-opacity="${pulse}"`)).join("");
+    }
+    case "speaking": {
+      const open = 0.3 + 0.7 * (level ?? (0.5 + 0.5 * Math.sin(t * 2 * Math.PI / 0.56)));
+      return eyes(c, t, gaze, 5.5, 7.5, 64, [47, 73], 2)
+        + `<g transform="translate(60 81) scale(1 ${open})">` + ell(0, -1, 8, 7, `fill="#2B1A1F"`) + ell(0, 3, 5, 2.6, `fill="#FF7A93"`) + `</g>`;
+    }
+    case "asking": return eyes(c, t, gaze, 5.5, 7.5, 64, [47, 73], 2) + path("M39 54l11-4M81 54l-11-4", L) + path("M53 81q3.5-3 7 0t7 0", L);
+    case "sleeping": return path("M41 65q6 5 12 0M67 65q6 5 12 0", L) + ell(60, 80, 3, 2.2, `fill="${INK}"`);
+    case "giggling": return path("M41 66q6-7 12 0M67 66q6-7 12 0", L) + path("M50 75q10 14 20 0z", `fill="#2B1A1F"`) + ell(60, 82, 4.5, 2.2, `fill="#FF7A93"`);
+    case "content": return path("M41 64q6 5 12 0M67 64q6 5 12 0", L) + path("M54 78q6 5 12 0", L);
+    case "surprised": return eyes(c, t, gaze, 7.5, 8.5, 62, [46, 74], 2.8, false) + path("M39 50l10-2M81 50l-10-2", L) + ell(60, 83, 4.5, 5.5, `fill="${INK}"`);
+    case "dizzy":
+      return [47, 73].map(x => `<g transform="translate(${x} 64) rotate(${(t * 6 * 180 / Math.PI) % 360})">` + path(spiral(2.2, 7), strokeLine(2)) + `</g>`).join("")
+        + path("M51 81q3-3 6 0t6 0t6 0", L);
+    case "grumpy": return eyes(c, t, gaze, 5.5, 4.5, 66, [47, 73], 1.5, false) + path("M40 55l12 5M80 55l-12 5", strokeLine(3.5)) + path("M53 83q7-6 14 0", L);
+    case "winking":
+      return path("M41 65q6-6 12 0", L) + ell(73, 64, 5.5, 7.5, `fill="${INK}"`) + ell(75, 61, 2, 2, `fill="#fff"`)
+        + path("M52 77q8 8 16 0", L) + ell(63, 82, 3, 2.4, `fill="#FF7A93"`);
+    default: return eyes(c, t, gaze, 5.5, 7.5, 64, [47, 73], 2) + path("M53 78q7 6 14 0", L);
+  }
+}
+
+function renderBip(c, s, t) {
+  const period = s.mood === "speaking" || s.mood === "listening" ? 0.9 : 3;
+  const bob = REDUCED ? 0 : -2 - 2 * Math.sin(t * 2 * Math.PI / period);
+  const cheek = 0.5 + 0.4 * Math.min(1, Math.max(0, s.blush));
+  return `<svg viewBox="0 0 120 120" aria-hidden="true">`
+    + `<g transform="translate(${s.offset.x} ${s.offset.y}) translate(60 106) rotate(${s.rotation}) scale(${s.scale.x} ${s.scale.y}) translate(-60 -106)">`
+    + ell(60, 113, 32, 4.5, `fill="${INK}" fill-opacity="0.1"`)
+    + [45, 75].map(x => ell(x, 106, 10.5, 6.5, `fill="${c.deep}"`) + ell(x - 3, 104.5, 3.5, 1.8, `fill="#fff" fill-opacity="0.25"`)).join("")
+    + `<g transform="translate(0 ${bob})">`
+    + accessory(c, false, t) + bodyShape(c, c.main) + accessory(c, true, t)
+    + `<g transform="translate(43 44) rotate(-30)">` + ell(0, 0, 12, 7, `fill="#fff" fill-opacity="0.32"`) + `</g>`
+    + ell(37, 76, 6.5, 4, `fill="#FF6F91" fill-opacity="${cheek}"`) + ell(83, 76, 6.5, 4, `fill="#FF6F91" fill-opacity="${cheek}"`)
+    + face(c, s.mood, t, s.gaze, s.level)
+    + `</g></g></svg>`;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Animalese (BipBabble.swift): each letter becomes a tiny syllable, coloured by its vowel, pitched per Bip and mood.
+// ---------------------------------------------------------------------------------------------------------------
+let audio, soundOn = true;
+const VOWELS = { a: [800, 1250], e: [480, 1850], i: [300, 2300], o: [520, 900], u: [330, 850], y: [300, 2100] };
+const PLOSIVES = new Set("bdgkpqt"), FRICATIVES = new Set("cfhjsvxz");
+
+function voiceFor(c, mood) {
+  const v = { base: c.pitch, syl: 0.055, spread: 2.5, drift: 0, bounce: 0, vol: 0.32 };
+  if (mood === "giggling") { v.base *= 1.25; v.syl = 0.045; v.bounce = 3; }
+  if (mood === "surprised") { v.base *= 1.15; v.drift = 5; }
+  if (mood === "content") { v.base *= 0.92; v.syl = 0.075; v.spread = 1.2; v.vol = 0.25; }
+  if (mood === "dizzy") { v.syl = 0.07; v.drift = -7; v.spread = 3.5; }
+  if (mood === "grumpy") { v.base *= 0.72; v.syl = 0.065; v.spread = 1; v.drift = -2; }
+  if (mood === "winking") v.drift = 2;
+  return v;
+}
+
+function babble(text, c, mood) {
+  if (!soundOn) return;
+  audio ??= new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state === "suspended") audio.resume();
+  const rate = audio.sampleRate, v = voiceFor(c, mood);
+  const letters = [...text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")];
+  const sayable = letters.filter(ch => /\p{L}/u.test(ch));
+  if (!sayable.length) return;
+  const ending = [...letters].reverse().find(ch => !/\s|♡/.test(ch));
+  let drift = v.drift + (ending === "?" ? 4 : ending === "!" ? 2 : ending === "…" ? -3 : 0);
+  const out = [];
+  let spoken = 0, last = VOWELS.a;
+  for (const ch of letters) {
+    if (/\s|,/.test(ch)) { out.push(new Float32Array(Math.floor(rate * v.syl * 0.8))); continue; }
+    if (!/\p{L}/u.test(ch)) continue;
+    const progress = sayable.length > 1 ? spoken / (sayable.length - 1) : 0;
+    let semis = ((ch.codePointAt(0) % 5) - 2) / 2 * v.spread + drift * progress + (spoken % 2 === 0 ? v.bounce : -v.bounce / 2);
+    const f0 = v.base * Math.pow(2, semis / 12);
+    if (VOWELS[ch]) last = VOWELS[ch];
+    out.push(syllable(f0, VOWELS[ch] ?? last, v.syl, rate, PLOSIVES.has(ch) ? "p" : FRICATIVES.has(ch) ? "f" : "", v.vol));
+    spoken++;
+  }
+  const total = out.reduce((n, a) => n + a.length, 0);
+  const buffer = audio.createBuffer(1, total, rate), data = buffer.getChannelData(0);
+  let at = 0;
+  for (const part of out) { data.set(part, at); at += part.length; }
+  const src = audio.createBufferSource();
+  src.buffer = buffer;
+  src.connect(audio.destination);
+  src.start();
+}
+
+function syllable(f0, [f1, f2], dur, rate, onset, vol) {
+  const n = Math.floor(rate * dur), out = new Float32Array(n), harmonics = [];
+  for (let k = 1; k * f0 < Math.min(5000, rate / 2.2); k++) {
+    const f = k * f0, shape = Math.exp(-(((f - f1) / 260) ** 2)) + 0.7 * Math.exp(-(((f - f2) / 320) ** 2)) + 0.06;
+    harmonics.push([k, shape / k ** 0.6]);
+  }
+  const norm = harmonics.reduce((s, h) => s + h[1], 0);
+  const attack = rate * 0.004, release = rate * 0.018;
+  const onsetLen = onset ? Math.floor(rate * (onset === "p" ? 0.006 : 0.014)) : 0;
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    phase += 2 * Math.PI * f0 * (1 + 0.04 * i / n) / rate;
+    let value = 0;
+    for (const [k, a] of harmonics) value += a * Math.sin(k * phase);
+    value /= norm;
+    let sample = value * Math.min(1, i / attack) * Math.min(1, (n - i) / release);
+    if (i < onsetLen) {
+      const burst = (Math.random() * 2 - 1) * (onset === "p" ? 0.5 : 0.22);
+      sample = sample * i / onsetLen + burst * (1 - i / onsetLen);
+    }
+    out[i] = sample * vol;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Interactions (InteractiveMascot.swift)
+// ---------------------------------------------------------------------------------------------------------------
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const bips = [];
+
+class Bip {
+  constructor(c) {
+    this.c = c;
+    this.s = { mood: "happy", gaze: { x: 0, y: 0 }, blush: 0, offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0, level: null };
+    this.reaction = null; this.taps = []; this.pokes = []; this.sulking = false; this.timers = [];
+    const card = document.createElement("article");
+    card.className = "card";
+    card.style.setProperty("--main", c.main); card.style.setProperty("--deep", c.deep); card.style.setProperty("--tint", c.tint);
+    card.innerHTML = `<div class="stage" role="button" tabindex="0" aria-label="${c.name}, le Bip ${c.label}. Touche-le pour le faire réagir."><div class="bubble"></div><div class="svg"></div></div>`
+      + `<div class="name">${c.name}</div><div class="chip">${c.label}</div>`;
+    this.stage = card.querySelector(".stage"); this.svg = card.querySelector(".svg"); this.bubble = card.querySelector(".bubble");
+    document.getElementById("grid").append(card);
+    this.listen();
+  }
+
+  get mood() { return this.reaction ?? "happy"; }
+
+  show(mood, seconds) {
+    this.reaction = mood;
+    clearTimeout(this.moodTimer);
+    this.moodTimer = setTimeout(() => { if (!this.sulking) this.reaction = null; }, seconds * 1000);
+  }
+
+  say(text) {
+    this.bubble.textContent = text;
+    this.bubble.classList.add("show");
+    clearTimeout(this.bubbleTimer);
+    this.bubbleTimer = setTimeout(() => this.bubble.classList.remove("show"), 1500);
+    babble(text, this.c, this.reaction);
+  }
+
+  animate(to, ms = 220) {
+    if (REDUCED) return;
+    this.anim = { from: structuredClone({ offset: this.s.offset, scale: this.s.scale, rotation: this.s.rotation }), to, start: performance.now(), ms };
+  }
+
+  jump(h) { this.animate({ offset: { x: 0, y: -h }, scale: { x: 0.88, y: 1.14 }, rotation: this.s.rotation }, 200);
+            setTimeout(() => this.animate({ offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 }, 450), 210); }
+  pop(f) { this.animate({ offset: this.s.offset, scale: { x: f, y: f }, rotation: 0 }, 180);
+           setTimeout(() => this.animate({ offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 }, 380), 190); }
+  spin() { this.animate({ offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 360 }, 700); setTimeout(() => { this.s.rotation = 0; }, 720); }
+  shake(times, angle) {
+    for (let i = 0; i < times; i++) setTimeout(() => this.animate({ offset: this.s.offset, scale: this.s.scale, rotation: i % 2 ? -angle : angle }, 70), i * 70);
+    setTimeout(() => this.animate({ offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 }, 300), times * 70);
+  }
+  burst(kind, count) {
+    for (let i = 0; i < count; i++) {
+      const p = document.createElement("span");
+      p.className = "particle";
+      p.textContent = kind === "heart" ? "♥" : "✦";
+      p.style.color = kind === "heart" ? "#FF5C8A" : this.c.deep;
+      p.style.left = `${50 + (Math.random() * 70 - 35)}%`;
+      p.style.top = "30%";
+      p.style.animationDelay = `${Math.random() * 0.25}s`;
+      this.stage.append(p);
+      setTimeout(() => p.remove(), 1900);
+    }
+  }
+  blushUp() { this.s.blush = 1; setTimeout(() => { this.s.blush = 0; }, 1600); }
+
+  tapped() {
+    if (this.sulking) return;
+    pick([
+      () => { this.show("happy", 0.8); this.say(pick(["Bip !", "Coucou !", "Oui ?", "Hop !"])); this.jump(26); },
+      () => { this.show("winking", 1.1); this.say(pick(["Hé hé", "Bien joué", "Toujours là !"])); this.pop(1.08); },
+      () => { this.show("giggling", 0.9); this.say("Wiii !"); this.spin(); },
+      () => { this.show("surprised", 1.0); this.say(pick(["Oh !", "Ah ?!", "Quoi ?"])); this.pop(1.14); },
+      () => { this.show("content", 1.4); this.say("Merci ♡"); this.burst("heart", 3); this.blushUp(); },
+    ])();
+  }
+  giggle() { this.show("giggling", 1.8); this.say(pick(["Hihi !", "Ça chatouille !", "Arrête, hihi !", "Hahaha !"])); this.burst("sparkle", 4); this.shake(8, 9); }
+  pet() { this.show("content", 2); this.say(pick(["Mmmh…", "Encore…", "Ronron"])); this.burst("heart", 2); this.blushUp(); }
+  annoyed() {
+    this.sulking = true;
+    this.show("dizzy", 1.8); this.say("Tout tourne…"); this.shake(5, 14);
+    setTimeout(() => { this.reaction = "grumpy"; this.say("Hé ! Doucement…"); }, 1800);
+    setTimeout(() => { this.sulking = false; this.reaction = null; }, 4200);
+  }
+
+  touchedDown() {
+    const now = performance.now();
+    this.taps = this.taps.filter(t => now - t < 1200).concat(now);
+    this.pokes = this.pokes.filter(t => now - t < 6000).concat(now);
+    if (this.sulking) return true;
+    if (this.pokes.length >= 8) { this.pokes = []; this.taps = []; this.annoyed(); return true; }
+    if (this.taps.length >= 3) { this.taps = []; this.giggle(); return true; }
+    return false;
+  }
+
+  listen() {
+    let down = null, handled = false, squeezeTimer, squeezed = false, moved = 0, rub;
+    const rect = () => this.stage.getBoundingClientRect();
+    const rubber = d => Math.sign(d) * Math.min(Math.abs(d), 60 * (1 - Math.exp(-Math.abs(d) / 60)));
+    this.stage.addEventListener("pointerdown", e => {
+      this.stage.setPointerCapture(e.pointerId);
+      audio?.resume?.();
+      down = { x: e.clientX, y: e.clientY, t: performance.now() };
+      moved = 0; squeezed = false; rub = { last: null, dir: 0, reversals: [], travelled: 0, start: performance.now() };
+      handled = this.touchedDown();
+      squeezeTimer = setTimeout(() => {
+        if (moved < 15 && !this.sulking) { squeezed = true; this.animate({ offset: this.s.offset, scale: { x: 1.14, y: 0.82 }, rotation: 0 }, 250); }
+      }, 350);
+    });
+    this.stage.addEventListener("pointermove", e => {
+      const r = rect();
+      if (!down) {
+        // Hover: the Bip looks at the pointer.
+        this.s.gaze = { x: (e.clientX - r.left - r.width / 2) / (r.width / 2), y: (e.clientY - r.top - r.height / 2) / (r.height / 2) };
+        return;
+      }
+      const dx = e.clientX - down.x, dy = e.clientY - down.y;
+      moved = Math.hypot(dx, dy);
+      if (moved > 15) {
+        clearTimeout(squeezeTimer);
+        if (squeezed) { squeezed = false; this.animate({ offset: this.s.offset, scale: { x: 1, y: 1 }, rotation: 0 }, 300); }
+      }
+      this.anim = null;
+      this.s.offset = { x: rubber(dx) / 1.4, y: rubber(dy) / 1.4 };
+      this.s.gaze = { x: dx / 60, y: dy / 60 };
+      // Rub tracking: fast back-and-forth = tickle, slow long stroke = pet.
+      const now = performance.now();
+      if (rub.last) {
+        const ddx = e.clientX - rub.last.x;
+        rub.travelled += Math.abs(ddx) + Math.abs(e.clientY - rub.last.y);
+        const dir = Math.sign(ddx);
+        if (dir && rub.dir && dir !== rub.dir && Math.abs(ddx) > 1) rub.reversals.push(now);
+        if (dir) rub.dir = dir;
+      }
+      rub.last = { x: e.clientX, y: e.clientY };
+      rub.reversals = rub.reversals.filter(t => now - t < 900);
+      if (!this.sulking && rub.reversals.length >= 4) { rub.reversals = []; this.giggle(); handled = true; }
+      else if (!this.sulking && !rub.petted && now - rub.start > 600 && rub.travelled > 45 && rub.reversals.length <= 1) { rub.petted = true; this.pet(); handled = true; }
+    });
+    const up = () => {
+      if (!down) return;
+      clearTimeout(squeezeTimer);
+      if (squeezed && !this.sulking) {
+        this.show("surprised", 0.9); this.say("Boing !"); this.jump(48); handled = true;
+      } else if (moved > 6) {
+        this.animate({ offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 }, 450);
+        handled = true;
+      }
+      if (!handled) this.tapped();
+      down = null; this.s.gaze = { x: 0, y: 0 };
+    };
+    this.stage.addEventListener("pointerup", up);
+    this.stage.addEventListener("pointercancel", up);
+    this.stage.addEventListener("pointerleave", () => { if (!down) this.s.gaze = { x: 0, y: 0 }; });
+    this.stage.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.tapped(); } });
+  }
+
+  frame(now, t) {
+    if (this.anim) {
+      const p = Math.min(1, (now - this.anim.start) / this.anim.ms), k = 1 - Math.pow(1 - p, 3) * (1 - 1.6 * p * (1 - p));
+      const lerp = (a, b) => a + (b - a) * k;
+      const { from, to } = this.anim;
+      this.s.offset = { x: lerp(from.offset.x, to.offset.x), y: lerp(from.offset.y, to.offset.y) };
+      this.s.scale = { x: lerp(from.scale.x, to.scale.x), y: lerp(from.scale.y, to.scale.y) };
+      this.s.rotation = lerp(from.rotation, to.rotation);
+      if (p >= 1) this.anim = null;
+    }
+    this.s.mood = this.mood;
+    this.svg.innerHTML = renderBip(this.c, this.s, t);
+  }
+}
+
+CATEGORIES.forEach(c => bips.push(new Bip(c)));
+const t0 = performance.now();
+(function loop(now) {
+  const t = REDUCED ? 0 : (now - t0) / 1000;
+  for (const b of bips) b.frame(now, t);
+  requestAnimationFrame(loop);
+})(t0);
+
+const soundButton = document.getElementById("sound");
+soundButton.addEventListener("click", () => {
+  soundOn = !soundOn;
+  soundButton.setAttribute("aria-pressed", String(soundOn));
+  soundButton.textContent = soundOn ? "🔊 Son activé" : "🔈 Son coupé";
+});
+</script>
+</body>
+</html>
