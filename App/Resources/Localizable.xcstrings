@@ -5719,28 +5719,6 @@
         }
       }
     },
-    "Voix de l’iPhone" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone voice"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voz del iPhone"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone-Stimme"
-          }
-        }
-      }
-    },
     "Voix humaine posée, celle du podcast" : {
       "localizations" : {
         "en" : {

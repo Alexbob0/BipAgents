@@ -882,7 +882,6 @@ final class ConversationModel {
     /// Speaks `text` while Kyutai streams it (first audio in ~1 s), recording it as a voice note stored with the
     /// session under `itemID`. Falls back to the whole-file route, then to the live voice.
     private func generateVoice(for itemID: UUID, text: String, anchor: String, autoplay: Bool) {
-        guard agent.language.usesBridgeVoice else { return speakLive(itemID: itemID, text: text) }
         guard autoplay, let bridgeURL = agent.config.bridgeURL, let key = store.secrets(for: agent)?.bridgeKey else {
             return generateVoiceFile(for: itemID, text: text, anchor: anchor, autoplay: autoplay)
         }

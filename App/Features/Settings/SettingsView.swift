@@ -100,14 +100,10 @@ struct EditAgentStyleView: View {
                         } label: {
                             settingsRow("Langue", systemImage: "globe", value: agent.language.nativeName)
                         }
-                        if agent.language.usesBridgeVoice {
-                            NavigationLink {
-                                AgentVoicePicker(voice: $agent.config.voice, category: agent.appearance.category)
-                            } label: {
-                                settingsRow("Voix", systemImage: "waveform", value: AgentVoices.option(for: agent.voice).name)
-                            }
-                        } else {
-                            settingsRow("Voix", systemImage: "waveform", value: String(localized: "Voix de l’iPhone"), chevron: false)
+                        NavigationLink {
+                            AgentVoicePicker(voice: $agent.config.voice, category: agent.appearance.category, language: agent.language)
+                        } label: {
+                            settingsRow("Voix", systemImage: "waveform", value: AgentVoices.option(for: agent.voiceChoice).name)
                         }
                     }
                     .buttonStyle(.plain)

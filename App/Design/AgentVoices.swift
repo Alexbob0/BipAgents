@@ -2,16 +2,19 @@ import HermesKit
 import SwiftUI
 import VoiceKit
 
-/// A voice an agent can speak with. `id` is what the bridge receives: `pocket:<name>` for the Bips' voices
-/// (Kyutai Pocket TTS, `voices/french/` in the repo), a Kyutai alias otherwise.
+/// A voice an agent can speak with. `id` is the choice stored with the agent: `pocket:<name>` for the Bips'
+/// voices (Kyutai Pocket TTS, `voices/<language>/` in the repo), a Kyutai alias otherwise. The bridge receives
+/// it per language (`AgentVoices.spoken`).
 struct AgentVoiceOption: Identifiable, Hashable {
     let id: String
     let name: String
     let character: String
-    /// Bundled preview (`App/Resources/Voices`), if any.
+    /// Bundled preview (`App/Resources/Voices/<sample>.m4a`, `<sample>-<lang>.m4a` outside French), if any.
     let sample: String?
 
-    var sampleURL: URL? { sample.flatMap { Bundle.main.url(forResource: $0, withExtension: "m4a") } }
+    func sampleURL(in language: AgentLanguage) -> URL? {
+        sample.flatMap { Bundle.main.url(forResource: language == .french ? $0 : "\($0)-\(language.rawValue)", withExtension: "m4a") }
+    }
 }
 
 enum AgentVoices {
@@ -26,6 +29,15 @@ enum AgentVoices {
     static let classic = AgentVoiceOption(id: "5476", name: String(localized: "Voix classique"), character: String(localized: "Voix humaine posée, celle du podcast"), sample: nil)
 
     static var all: [AgentVoiceOption] { bips + [classic] }
+
+    /// Only the Bips speak every language; Kyutai's human voice is French.
+    static func options(in language: AgentLanguage) -> [AgentVoiceOption] { language == .french ? all : bips }
+
+    /// What the bridge receives: `pocket:loutre` in French, `pocket:en/loutre` in English…
+    static func spoken(_ id: String, in language: AgentLanguage) -> String {
+        guard language != .french, id.hasPrefix("pocket:") else { return id }
+        return "pocket:\(language.rawValue)/" + id.dropFirst("pocket:".count)
+    }
 
     static func option(for id: String) -> AgentVoiceOption {
         all.first { $0.id == id } ?? AgentVoiceOption(id: id, name: id, character: String(localized: "Voix personnalisée"), sample: nil)
@@ -46,17 +58,28 @@ extension AgentCategory {
 }
 
 extension AgentProfile {
-    /// The voice sent to the bridge: the one picked, else the category's Bip voice.
-    var voice: String { config.voice ?? appearance.category.defaultVoice }
+    /// The voice picked for this agent in its language, else the category's Bip voice.
+    var voiceChoice: String {
+        guard let picked = config.voice, AgentVoices.options(in: language).contains(where: { $0.id == picked }) || language == .french
+        else { return appearance.category.defaultVoice }
+        return picked
+    }
+
+    /// The voice sent to the bridge.
+    var voice: String { AgentVoices.spoken(voiceChoice, in: language) }
 }
 
 /// Voice choice for one agent, with a preview of each Bip voice.
 struct AgentVoicePicker: View {
     @Binding var voice: String?
     var category: AgentCategory
+    var language: AgentLanguage = .french
     @State private var player = VoiceNotePlayer()
 
-    private var selected: String { voice ?? category.defaultVoice }
+    private var selected: String {
+        guard let voice, AgentVoices.options(in: language).contains(where: { $0.id == voice }) else { return category.defaultVoice }
+        return voice
+    }
 
     var body: some View {
         List {
@@ -67,10 +90,12 @@ struct AgentVoicePicker: View {
             } footer: {
                 Text("Voix synthétiques calculées avec Kyutai Pocket TTS : la réponse démarre presque instantanément.")
             }
-            Section {
-                row(AgentVoices.classic)
-            } footer: {
-                Text("La voix humaine de Kyutai, plus posée mais plus lente à démarrer.")
+            if language == .french {
+                Section {
+                    row(AgentVoices.classic)
+                } footer: {
+                    Text("La voix humaine de Kyutai, plus posée mais plus lente à démarrer.")
+                }
             }
         }
         .navigationTitle("Voix")
@@ -101,7 +126,7 @@ struct AgentVoicePicker: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            if let url = option.sampleURL {
+            if let url = option.sampleURL(in: language) {
                 Button {
                     player.toggle(url)
                 } label: {

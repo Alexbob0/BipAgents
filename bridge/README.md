@@ -187,6 +187,12 @@ est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si l
 propre file d'attente. Si Pocket n'est pas configuré, est injoignable ou échoue avant le premier son, la requête
 retombe sur la voix Kyutai par défaut (cet audio-là n'est pas mis en cache). `/health` indique `"pocket": true|false|null`.
 
+Autres langues : `pocket:<langue>/<nom>` (`pocket:en/loutre`, `pocket:es/ours`, `pocket:de/lutin`, cf.
+`voices/english|spanish|german/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =
+`en/loutre`. Le texte est préparé dans la langue de la voix (`bipbridge/speech_intl.py`, nombres via `num2words` :
+« $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Hors français, un échec de Pocket ne
+retombe pas sur Kyutai (voix française) : le bridge répond 502/503 et l'app lit le texte avec la voix de l'iPhone.
+
 ### Tâches planifiées et fichiers des agents
 - Le bridge relit toutes les minutes les sessions `cron_…` de chaque agent et met la réponse finale de chaque
   tâche dans la Boîte (`[SILENT]` ignoré, section `[cron]`). `GET /v1/cron-jobs?agent=` liste les tâches vues

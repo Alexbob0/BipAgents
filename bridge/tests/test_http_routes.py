@@ -266,3 +266,29 @@ def test_pocket_hiccup_is_retried_before_falling_back(client, monkeypatch):
     assert resp.status_code == 200
     assert resp.content == pcm_for(backend.pocket_inputs[-1]["input"][::-1])
     assert len(backend.pocket_inputs) == 2 and len(backend.kyutai_inputs) == kyutai_calls
+
+
+def test_pocket_language_voices_get_their_language(client):
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": "You spent **$420.50** at 14:30.", "voice": "pocket:en/loutre"})
+    assert resp.status_code == 200
+    sent = client.backend.pocket_inputs[-1]
+    assert sent["voice"] == "en/loutre"
+    assert sent["input"] == "You spent four hundred and twenty dollars and fifty cents at fourteen thirty."
+    client.post("/v1/tts/stream", headers=AUTH, json={"text": "Am 3. Oktober um 23:15 Uhr.", "voice": "pocket:de/ours"})
+    assert client.backend.pocket_inputs[-1]["input"] == "Am dritten Oktober um dreiundzwanzig Uhr fünfzehn."
+
+
+def test_pocket_down_fails_for_other_languages_instead_of_a_french_voice(client):
+    client.backend.pocket_status = 503
+    kyutai_calls = len(client.backend.kyutai_inputs)
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": "Hola, ¿qué tal?", "voice": "pocket:es/colibri"})
+    assert resp.status_code >= 500
+    assert len(client.backend.kyutai_inputs) == kyutai_calls
+    client.backend.pocket_status = 200
+
+
+def test_unknown_pocket_language_voice_is_reported_as_unavailable(client):
+    client.backend.pocket_status = 404
+    resp = client.post("/v1/tts/stream", headers=AUTH, json={"text": "Hallo!", "voice": "pocket:de/ours"})
+    assert resp.status_code >= 500  # the app switches to the iPhone's voice on 5xx only
+    client.backend.pocket_status = 200

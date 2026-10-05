@@ -27,10 +27,6 @@ enum AgentLanguage: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The Bip voices and the bridge's text preparation are French only for now: other languages are read by
-    /// the iPhone's own voice.
-    var usesBridgeVoice: Bool { self == .french }
-
     /// The iPhone's first preferred language we support, else English.
     static var device: AgentLanguage {
         for identifier in Locale.preferredLanguages {
