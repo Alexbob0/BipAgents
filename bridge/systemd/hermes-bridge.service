@@ -1,4 +1,4 @@
-# ~/.config/systemd/user/hermes-bridge.service  (systemd --user, aibox user)
+# ~/.config/systemd/user/hermes-bridge.service  (systemd --user)
 # Installation: see bridge/README.md. Code in ~/hermes-bridge (copy of bridge/), venv in ~/hermes-bridge/.venv
 [Unit]
 Description=BipAgents bridge (per-sentence TTS, voice WS, files, APNs push, ntfy outbox) on 127.0.0.1:8643

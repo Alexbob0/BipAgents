@@ -9,7 +9,7 @@ A small HTTP server around [Kyutai Pocket TTS](https://github.com/kyutai-labs/po
 | Machine | First audio | Speed | Memory (4 languages) |
 |---|---|---|---|
 | Mac mini / MacBook Air **Apple M4** (measured, 16 GB) | ≈ 50 ms | ≈ 6.5× real time | ≈ 0.6 GB resident |
-| **x86** Linux server (aibox, measured through the bridge) | 52–59 ms with `--quantize` (128–148 ms without) | ≈ 8.7× | ≈ 1.6 GB resident |
+| **x86** Linux server (measured through the bridge) | 52–59 ms with `--quantize` (128–148 ms without) | ≈ 8.7× | ≈ 1.6 GB resident |
 | x86 VPS, 2 to 4 dedicated vCPUs (estimated) | a few hundred ms | > real time | less with `--quantize` |
 
 One generation at a time (Pocket is not designed for parallel use and keeps the CPU busy): the bridge queues

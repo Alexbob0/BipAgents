@@ -2,7 +2,7 @@
 
 # Notification relay (for an App Store release)
 
-Decision of 2026-10-04: **not needed as long as the app is used only by its author** (aibox's bridge sends to APNs itself with the team's `.p8` key). The day the app is published on the App Store, the relay will run on **a small Hetzner VM**.
+Decision of 2026-10-04: **not needed as long as the app is used only by its author** (the server's bridge sends to APNs itself with the team's `.p8` key). The day the app is published on the App Store, the relay will run on **a small Hetzner VM**.
 
 ## Why a relay
 The APNs `.p8` key belongs to the team publishing the app and cannot be distributed to users' bridges. A central service, the only holder of the key, receives requests from the bridges and forwards them to APNs (the ntfy.sh model for self-hosted ntfy servers).

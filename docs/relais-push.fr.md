@@ -2,7 +2,7 @@
 
 # Relais de notifications (pour une publication App Store)
 
-Décision du 2026-10-04 : **pas nécessaire tant que l'app n'est utilisée que par son auteur** (le bridge d'aibox envoie lui-même à APNs avec la clé `.p8` de l'équipe). Le jour d'une publication sur l'App Store, le relais tournera sur **une petite VM Hetzner**.
+Décision du 2026-10-04 : **pas nécessaire tant que l'app n'est utilisée que par son auteur** (le bridge du serveur envoie lui-même à APNs avec la clé `.p8` de l'équipe). Le jour d'une publication sur l'App Store, le relais tournera sur **une petite VM Hetzner**.
 
 ## Pourquoi un relais
 La clé APNs `.p8` appartient à l'équipe qui publie l'app et ne peut pas être distribuée aux bridges des utilisateurs. Un service central, seul détenteur de la clé, reçoit les demandes des bridges et les transmet à APNs (modèle ntfy.sh pour les serveurs ntfy auto-hébergés).
