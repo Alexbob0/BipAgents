@@ -30,7 +30,7 @@ final class InboxStore {
     /// Agent messages (bridge outbox) and missed replies, newest first.
     var entries: [Entry] {
         let replies = missed.map { reply in
-            Entry(item: OutboxItem(id: "reply-\(reply.runID)", agent: reply.agent.bridgeName, title: "Réponse",
+            Entry(item: OutboxItem(id: "reply-\(reply.runID)", agent: reply.agent.bridgeName, title: String(localized: "Réponse"),
                                    text: reply.text, createdAt: reply.createdAt, sessionID: reply.sessionID, hasAudio: false),
                   agent: reply.agent)
         }
@@ -71,7 +71,7 @@ final class InboxStore {
         outbox = collected
         // Forget deletions of messages the bridge no longer has (retention), so the set stays small.
         if failures == 0 { saveDismissed(dismissed.intersection(collected.map(\.id))) }
-        errorMessage = failures > 0 ? "Certains agents sont injoignables (Tailscale ?)." : nil
+        errorMessage = failures > 0 ? String(localized: "Certains agents sont injoignables (Tailscale ?).") : nil
     }
 
     func markAllSeen() {
@@ -142,8 +142,8 @@ final class InboxStore {
 
     private static func demo(_ store: AgentStore) -> [Entry] {
         guard let first = store.agents.first else { return [] }
-        return [Entry(item: OutboxItem(id: "1", agent: first.bridgeName, title: "Plan sommeil du soir",
-                                       text: "Ce soir, vise un coucher à 23 h 15 : écrans coupés à 22 h 30, lumière tamisée et chambre à 18 °C.",
+        return [Entry(item: OutboxItem(id: "1", agent: first.bridgeName, title: String(localized: "Plan sommeil du soir"),
+                                       text: String(localized: "Ce soir, vise un coucher à 23 h 15 : écrans coupés à 22 h 30, lumière tamisée et chambre à 18 °C."),
                                        createdAt: .now.addingTimeInterval(-600), sessionID: nil, hasAudio: true), agent: first)]
     }
 }
@@ -162,7 +162,7 @@ struct InboxView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenHeader(overline: "Messages de tes agents", title: "Boîte") {
+            ScreenHeader(overline: String(localized: "Messages de tes agents"), title: "Boîte") {
                 if !inbox.entries.isEmpty {
                     HeaderButton(systemImage: "trash", label: "Tout effacer") { confirmingClear = true }
                 }
@@ -221,16 +221,17 @@ struct InboxView: View {
         guard let bridge = BridgeClient(agent: entry.agent, secrets: agents.secrets(for: entry.agent)) else { return }
         do {
             try await bridge.setCronNotify(agent: entry.agent.bridgeName, job: job, notify: false)
-            mutedNotice = "Plus de notification pour « \(entry.item.title?.components(separatedBy: " · ").first ?? "cette tâche") ». Réactivable dans Réglages › Tâches planifiées."
+            let task = entry.item.title?.components(separatedBy: " · ").first ?? String(localized: "cette tâche")
+            mutedNotice = String(localized: "Plus de notification pour « \(task) ». Réactivable dans Réglages › Tâches planifiées.")
         } catch {
-            mutedNotice = "Réglage non enregistré : bridge injoignable."
+            mutedNotice = String(localized: "Réglage non enregistré : bridge injoignable.")
         }
     }
 
     private var filters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chip("Tout", color: nil, selected: filter == nil) { filter = nil }
+                chip(String(localized: "Tout"), color: nil, selected: filter == nil) { filter = nil }
                 ForEach(agents.agents) { agent in
                     chip(agent.name, color: agent.appearance.palette.main, selected: filter == agent.id) { filter = agent.id }
                 }
@@ -319,7 +320,7 @@ struct InboxCard: View {
                             .foregroundStyle(.white)
                             .frame(width: 34, height: 34)
                             .background(palette.deep, in: .circle)
-                        Text(isPlaying ? "Lecture…" : "Écouter")
+                        Text(isPlaying ? String(localized: "Lecture…") : String(localized: "Écouter"))
                             .font(Theme.body(14, weight: .heavy))
                             .foregroundStyle(palette.deep)
                         Spacer()

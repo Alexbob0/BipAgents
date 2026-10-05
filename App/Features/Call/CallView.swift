@@ -90,7 +90,7 @@ private struct CallContent: View {
         }
     }
 
-    private func pill(_ title: String, active: Bool) -> some View {
+    private func pill(_ title: LocalizedStringKey, active: Bool) -> some View {
         HStack(spacing: 6) {
             if active { Circle().fill(palette.main).frame(width: 7, height: 7) }
             Text(title)
@@ -116,7 +116,7 @@ private struct CallContent: View {
             .frame(width: 280, height: 260)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(model.voice.state == .speaking ? "Interrompre \(model.agent.name)" : model.agent.name)
+        .accessibilityLabel(model.voice.state == .speaking ? String(localized: "Interrompre \(model.agent.name)") : model.agent.name)
     }
 
     @ViewBuilder
@@ -132,7 +132,7 @@ private struct CallContent: View {
             }
             switch model.voice.state {
             case .listening, .idle:
-                Text(model.voice.partialTranscript.isEmpty ? "Je t’écoute…" : model.voice.partialTranscript)
+                Text(model.voice.partialTranscript.isEmpty ? String(localized: "Je t’écoute…") : model.voice.partialTranscript)
                     .font(Theme.display(model.voice.partialTranscript.isEmpty ? 20 : 27))
                     .foregroundStyle(model.voice.partialTranscript.isEmpty ? palette.deep : Theme.ink)
                     .contentTransition(.opacity)
@@ -161,7 +161,7 @@ private struct CallContent: View {
     }
 
     private var hint: some View {
-        Label(model.voice.state == .speaking ? "Parle ou touche \(model.agent.name) pour l’interrompre" : "Un petit silence et c’est envoyé",
+        Label(model.voice.state == .speaking ? String(localized: "Parle ou touche \(model.agent.name) pour l’interrompre") : String(localized: "Un petit silence et c’est envoyé"),
               systemImage: model.voice.state == .speaking ? "hand.raised" : "waveform")
             .font(Theme.body(13, weight: .bold))
             .foregroundStyle(Theme.ink2)
@@ -191,7 +191,7 @@ private struct CallContent: View {
         .buttonStyle(.plain)
     }
 
-    private func controlLabel(_ title: String, systemImage: String, background: Color, foreground: Color) -> some View {
+    private func controlLabel(_ title: LocalizedStringKey, systemImage: String, background: Color, foreground: Color) -> some View {
         VStack(spacing: 8) {
             Image(systemName: systemImage)
                 .font(.system(size: 24, weight: .semibold))

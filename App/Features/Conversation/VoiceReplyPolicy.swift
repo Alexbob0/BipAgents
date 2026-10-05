@@ -21,9 +21,9 @@ enum VoiceReplyPolicy: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .never: "Jamais"
-        case .smart: "Intelligent"
-        case .always: "Toujours après un vocal"
+        case .never: String(localized: "Jamais")
+        case .smart: String(localized: "Intelligent")
+        case .always: String(localized: "Toujours après un vocal")
         }
     }
 

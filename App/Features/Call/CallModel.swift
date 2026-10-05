@@ -27,7 +27,7 @@ final class CallModel {
         self.store = store
         client = store.client(for: agent)
         isDemo = store.isDemo
-        voice = VoiceEngine(tts: store.ttsProvider(for: agent))
+        voice = VoiceEngine(configuration: .init(locale: agent.language.locale), tts: store.ttsProvider(for: agent))
     }
 
     var mood: MascotMood {
@@ -46,11 +46,11 @@ final class CallModel {
             return
         }
         guard client != nil else {
-            errorMessage = "Clé d’accès introuvable."
+            errorMessage = String(localized: "Clé d’accès introuvable.")
             return
         }
         guard await VoiceEngine.requestPermissions() else {
-            errorMessage = "Autorise le micro et la reconnaissance vocale dans Réglages."
+            errorMessage = String(localized: "Autorise le micro et la reconnaissance vocale dans Réglages.")
             return
         }
         do {
@@ -103,14 +103,14 @@ final class CallModel {
                             self.toolInProgress = tool.status == .started ? tool : nil
                         case .approvalRequest(let request):
                             self.pendingApproval = request
-                            continuation.yield("J’ai besoin de ton accord, regarde l’écran. ")
+                            continuation.yield(String(localized: "J’ai besoin de ton accord, regarde l’écran. "))
                         case .runCompleted(let outcome), .assistantCompleted(let outcome):
                             if self.reply.isEmpty, let output = outcome.output {
                                 self.reply = output
                                 continuation.yield(output)
                             }
                         case .runFailed(let outcome):
-                            continuation.yield(outcome.error ?? "Désolé, ça n’a pas marché.")
+                            continuation.yield(outcome.error ?? String(localized: "Désolé, ça n’a pas marché."))
                         default:
                             break
                         }

@@ -64,7 +64,7 @@ struct SessionsView: View {
     }
 
     @ViewBuilder
-    private func sessionSection(_ title: String, _ rows: [HermesSession]) -> some View {
+    private func sessionSection(_ title: LocalizedStringKey, _ rows: [HermesSession]) -> some View {
         if !rows.isEmpty {
             Section {
                 ForEach(rows) { session in
@@ -114,7 +114,7 @@ struct SessionsView: View {
 
     private func load() async {
         guard let client = store.client(for: agent) else {
-            errorMessage = "Clé d’accès introuvable."
+            errorMessage = String(localized: "Clé d’accès introuvable.")
             return
         }
         isLoading = true
@@ -148,7 +148,7 @@ struct SessionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
-                Text(session.title ?? "Sans titre")
+                Text(session.title ?? String(localized: "Sans titre"))
                     .font(Theme.body(16, weight: .heavy))
                     .lineLimit(1)
                 Spacer()
@@ -192,7 +192,7 @@ struct PinnedThreadRow: View {
                             .foregroundStyle(Theme.muted)
                     }
                 }
-                Text(preview.map(ChatText.visible) ?? "Le fil permanent de l’agent")
+                Text(preview.map(ChatText.visible) ?? String(localized: "Le fil permanent de l’agent"))
                     .font(Theme.body(14))
                     .foregroundStyle(Theme.ink2)
                     .lineLimit(2)

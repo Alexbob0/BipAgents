@@ -25,13 +25,14 @@ final class QuickVoiceCenter {
         status[agent.id] = .recording(since: .now)
         Task {
             guard await VoiceEngine.requestPermissions() else {
-                status[agent.id] = .failed("Autorise le micro dans Réglages.")
+                status[agent.id] = .failed(String(localized: "Autorise le micro dans Réglages."))
                 return
             }
             do {
+                voice.configuration.locale = agent.language.locale
                 try await voice.startDictation(recordingTo: VoiceNotePlayer.cacheURL(name: "note-\(UUID().uuidString).m4a"))
             } catch {
-                status[agent.id] = .failed("Micro indisponible.")
+                status[agent.id] = .failed(String(localized: "Micro indisponible."))
             }
         }
     }
@@ -50,7 +51,7 @@ final class QuickVoiceCenter {
             let transcript = recording.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
             guard recording.duration >= 0.6, !transcript.isEmpty else {
                 try? FileManager.default.removeItem(at: recording.url)
-                status[agent.id] = .failed("Je n’ai rien entendu, réessaie.")
+                status[agent.id] = .failed(String(localized: "Je n’ai rien entendu, réessaie."))
                 return
             }
             send(recording, transcript: transcript, to: agent, store: store)
@@ -84,7 +85,7 @@ final class QuickVoiceCenter {
             if let reply {
                 status[agent.id] = .replied(reply)
             } else {
-                status[agent.id] = .failed(model.errorMessage ?? "Pas de réponse.")
+                status[agent.id] = .failed(model.errorMessage ?? String(localized: "Pas de réponse."))
             }
             // Keep the model a little longer if it is preparing a spoken reply (smart voice replies).
             try? await Task.sleep(for: .seconds(120))
@@ -114,7 +115,7 @@ struct AudioHoldButton: View {
     }
 
     var body: some View {
-        Label(isRecording ? "Relâche" : "Audio", systemImage: isRecording ? "waveform" : "mic.fill")
+        Label(isRecording ? String(localized: "Relâche") : String(localized: "Audio"), systemImage: isRecording ? "waveform" : "mic.fill")
             .labelStyle(.compactPill)
             .font(Theme.body(16, weight: .heavy))
             .frame(maxWidth: .infinity, minHeight: height)

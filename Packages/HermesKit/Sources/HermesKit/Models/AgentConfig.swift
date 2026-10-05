@@ -13,6 +13,8 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
     public var category: String?
     public var bridgeURL: URL?
     public var defaultSessionID: String?
+    /// Language the agent is spoken to in (`fr`, `en`, `es`, `de`); `nil` for agents saved before it existed.
+    public var language: String?
 
     public init(
         id: UUID = UUID(),
@@ -22,7 +24,8 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
         colorTag: String? = nil,
         category: String? = nil,
         bridgeURL: URL? = nil,
-        defaultSessionID: String? = nil
+        defaultSessionID: String? = nil,
+        language: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -32,6 +35,7 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
         self.category = category
         self.bridgeURL = bridgeURL
         self.defaultSessionID = defaultSessionID
+        self.language = language
     }
 }
 

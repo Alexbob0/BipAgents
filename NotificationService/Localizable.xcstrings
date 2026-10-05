@@ -1,0 +1,28 @@
+{
+  "sourceLanguage" : "fr",
+  "strings" : {
+    "Veut lancer : %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wants to run: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quiere ejecutar: %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Will ausführen: %@"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -177,7 +177,7 @@ struct Composer: View {
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 guard let data = try? Data(contentsOf: url) else {
-                    importError = "Impossible de lire \(url.lastPathComponent)."
+                    importError = String(localized: "Impossible de lire \(url.lastPathComponent).")
                     continue
                 }
                 let type = UTType(filenameExtension: url.pathExtension) ?? .data

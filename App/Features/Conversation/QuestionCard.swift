@@ -59,9 +59,9 @@ struct QuestionCard: View {
 
     private var header: String {
         switch state {
-        case .pending: request.questions.count > 1 ? "\(agent.name) a quelques questions" : "\(agent.name) te pose une question"
-        case .answered: "Réponse envoyée"
-        case .closed: "Question close"
+        case .pending: request.questions.count > 1 ? String(localized: "\(agent.name) a quelques questions") : String(localized: "\(agent.name) te pose une question")
+        case .answered: String(localized: "Réponse envoyée")
+        case .closed: String(localized: "Question close")
         }
     }
 

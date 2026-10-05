@@ -113,38 +113,38 @@ struct InteractiveMascot: View {
 
     private func hop() {
         show(.happy, for: 0.8)
-        say(["Bip !", "Coucou !", "Oui ?", "Hop !"].randomElement()!)
+        say([String(localized: "Bip !"), String(localized: "Coucou !"), String(localized: "Oui ?"), String(localized: "Hop !")].randomElement()!)
         jump(height: size * 0.22)
     }
 
     private func wink() {
         show(.winking, for: 1.1)
-        say(["Hé hé", "Bien joué", "Toujours là !"].randomElement()!)
+        say([String(localized: "Hé hé"), String(localized: "Bien joué"), String(localized: "Toujours là !")].randomElement()!)
         pop(1.08)
     }
 
     private func spin() {
         show(.giggling, for: 0.9)
-        say("Wiii !")
+        say(String(localized: "Wiii !"))
         animate(.spring(duration: 0.7, bounce: 0.35)) { rotation += .degrees(360) }
     }
 
     private func surprised() {
         show(.surprised, for: 1.0)
-        say(["Oh !", "Ah ?!", "Quoi ?"].randomElement()!)
+        say([String(localized: "Oh !"), String(localized: "Ah ?!"), String(localized: "Quoi ?")].randomElement()!)
         pop(1.14)
     }
 
     private func heart() {
         show(.content, for: 1.4)
-        say("Merci ♡")
+        say(String(localized: "Merci ♡"))
         burst(.heart, count: 3)
         blushUp()
     }
 
     private func giggle() {
         show(.giggling, for: 1.8)
-        say(["Hihi !", "Ça chatouille !", "Arrête, hihi !", "Hahaha !"].randomElement()!)
+        say([String(localized: "Hihi !"), String(localized: "Ça chatouille !"), String(localized: "Arrête, hihi !"), String(localized: "Hahaha !")].randomElement()!)
         burst(.sparkle, count: 4)
         shake(times: 8, angle: 9)
     }
@@ -152,14 +152,14 @@ struct InteractiveMascot: View {
     private func annoyed() {
         sulking = true
         show(.dizzy, for: 1.8)
-        say("Tout tourne…")
+        say(String(localized: "Tout tourne…"))
         shake(times: 5, angle: 14)
         moodTask?.cancel()
         moodTask = Task {
             try? await Task.sleep(for: .seconds(1.8))
             guard !Task.isCancelled else { return }
             reactionMood = .grumpy
-            say("Hé ! Doucement…")
+            say(String(localized: "Hé ! Doucement…"))
             try? await Task.sleep(for: .seconds(2.4))
             sulking = false
             guard !Task.isCancelled else { return }
@@ -177,7 +177,7 @@ struct InteractiveMascot: View {
         if squeezed {
             squeezed = false
             show(.surprised, for: 0.9)
-            say("Boing !")
+            say(String(localized: "Boing !"))
             haptic += 1
             jump(height: size * 0.42)
         } else {
@@ -222,7 +222,7 @@ struct InteractiveMascot: View {
 
     private func pet() {
         show(.content, for: 2)
-        say(["Mmmh…", "Encore…", "Ronron"].randomElement()!)
+        say([String(localized: "Mmmh…"), String(localized: "Encore…"), String(localized: "Ronron")].randomElement()!)
         burst(.heart, count: 2)
         blushUp()
         haptic += 1

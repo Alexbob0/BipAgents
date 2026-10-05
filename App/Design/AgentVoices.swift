@@ -16,19 +16,19 @@ struct AgentVoiceOption: Identifiable, Hashable {
 
 enum AgentVoices {
     static let bips: [AgentVoiceOption] = [
-        AgentVoiceOption(id: "pocket:loutre", name: "Loutre", character: "Joueuse et complice, chaude et ronde", sample: "voice-loutre"),
-        AgentVoiceOption(id: "pocket:colibri", name: "Colibri", character: "Vive et enjouée, claire et chantante", sample: "voice-colibri"),
-        AgentVoiceOption(id: "pocket:lutin", name: "Lutin", character: "Farceur et vif, rieur et expressif", sample: "voice-lutin"),
-        AgentVoiceOption(id: "pocket:chat2", name: "Chat", character: "Malicieux, ronronnant et amusé", sample: "voice-chat2"),
-        AgentVoiceOption(id: "pocket:ours", name: "Ours", character: "Calme et rassurant, grave et doux", sample: "voice-ours"),
+        AgentVoiceOption(id: "pocket:loutre", name: String(localized: "Loutre"), character: String(localized: "Joueuse et complice, chaude et ronde"), sample: "voice-loutre"),
+        AgentVoiceOption(id: "pocket:colibri", name: String(localized: "Colibri"), character: String(localized: "Vive et enjouée, claire et chantante"), sample: "voice-colibri"),
+        AgentVoiceOption(id: "pocket:lutin", name: String(localized: "Lutin"), character: String(localized: "Farceur et vif, rieur et expressif"), sample: "voice-lutin"),
+        AgentVoiceOption(id: "pocket:chat2", name: String(localized: "Chat"), character: String(localized: "Malicieux, ronronnant et amusé"), sample: "voice-chat2"),
+        AgentVoiceOption(id: "pocket:ours", name: String(localized: "Ours"), character: String(localized: "Calme et rassurant, grave et doux"), sample: "voice-ours"),
     ]
     /// Kyutai 1.6B's human voice, the one of the morning podcast.
-    static let classic = AgentVoiceOption(id: "5476", name: "Voix classique", character: "Voix humaine posée, celle du podcast", sample: nil)
+    static let classic = AgentVoiceOption(id: "5476", name: String(localized: "Voix classique"), character: String(localized: "Voix humaine posée, celle du podcast"), sample: nil)
 
     static var all: [AgentVoiceOption] { bips + [classic] }
 
     static func option(for id: String) -> AgentVoiceOption {
-        all.first { $0.id == id } ?? AgentVoiceOption(id: id, name: id, character: "Voix personnalisée", sample: nil)
+        all.first { $0.id == id } ?? AgentVoiceOption(id: id, name: id, character: String(localized: "Voix personnalisée"), sample: nil)
     }
 }
 
@@ -112,7 +112,7 @@ struct AgentVoicePicker: View {
                         .background(Theme.ink, in: .circle)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(player.playingURL == url ? "Arrêter l’aperçu" : "Écouter \(option.name)")
+                .accessibilityLabel(player.playingURL == url ? String(localized: "Arrêter l’aperçu") : String(localized: "Écouter \(option.name)"))
             }
         }
         .padding(.vertical, 4)

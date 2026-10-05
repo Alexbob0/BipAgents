@@ -78,16 +78,16 @@ struct AgentCard: View {
 
     /// The agent's « Bot Chat » (its permanent thread) reads as « Discussion ».
     private func threadTitle(_ session: HermesSession) -> String? {
-        AgentStore.isBotChat(session) ? "Discussion" : session.title
+        AgentStore.isBotChat(session) ? String(localized: "Discussion") : session.title
     }
 
     /// « 15 min », « 2 h », « 3 j »: how old the last message is, as short as possible.
     static func shortAge(of date: Date, now: Date = .now) -> String {
         let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
-        if minutes < 1 { return "à l’instant" }
-        if minutes < 60 { return "\(minutes) min" }
-        if minutes < 24 * 60 { return "\(minutes / 60) h" }
-        return "\(minutes / (24 * 60)) j"
+        if minutes < 1 { return String(localized: "à l’instant") }
+        if minutes < 60 { return String(localized: "\(minutes) min") }
+        if minutes < 24 * 60 { return String(localized: "\(minutes / 60) h") }
+        return String(localized: "\(minutes / (24 * 60)) j")
     }
 
     var body: some View {
@@ -157,7 +157,7 @@ struct AgentCard: View {
                     } else {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
-                            Text(threadTitle(latest) ?? "Dernière conversation")
+                            Text(threadTitle(latest) ?? String(localized: "Dernière conversation"))
                             Spacer()
                             if let date = latest.updatedAt {
                                 Text(date, format: .relative(presentation: .named))

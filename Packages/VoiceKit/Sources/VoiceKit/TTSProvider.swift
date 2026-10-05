@@ -66,9 +66,9 @@ public enum TTSError: Error, Sendable, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .invalidResponse: "Réponse TTS invalide"
+        case .invalidResponse: String(localized: "Réponse TTS invalide", bundle: .module)
         case .httpStatus(let code): "Bridge TTS : HTTP \(code)"
-        case .synthesisFailed(let reason): "Synthèse vocale impossible : \(reason)"
+        case .synthesisFailed(let reason): String(localized: "Synthèse vocale impossible : \(reason)", bundle: .module)
         }
     }
 }

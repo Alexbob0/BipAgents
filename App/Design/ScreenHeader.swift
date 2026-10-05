@@ -4,7 +4,7 @@ import SwiftUI
 /// optional trailing button — same position and type on every screen, pinned above the content.
 struct ScreenHeader<Trailing: View>: View {
     var overline: String
-    var title: String
+    var title: LocalizedStringKey
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
@@ -31,7 +31,7 @@ struct ScreenHeader<Trailing: View>: View {
 }
 
 extension ScreenHeader where Trailing == EmptyView {
-    init(overline: String, title: String) {
+    init(overline: String, title: LocalizedStringKey) {
         self.init(overline: overline, title: title) { EmptyView() }
     }
 }
@@ -39,7 +39,7 @@ extension ScreenHeader where Trailing == EmptyView {
 /// Round 46 pt header button (e.g. « + » on Agents).
 struct HeaderButton: View {
     var systemImage: String
-    var label: String
+    var label: LocalizedStringKey
     var action: () -> Void
 
     var body: some View {

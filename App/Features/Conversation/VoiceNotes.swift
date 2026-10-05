@@ -98,7 +98,7 @@ struct VoiceNoteControl: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isPlaying ? "Pause" : "Écouter le message vocal")
+        .accessibilityLabel(isPlaying ? String(localized: "Pause") : String(localized: "Écouter le message vocal"))
     }
 }
 

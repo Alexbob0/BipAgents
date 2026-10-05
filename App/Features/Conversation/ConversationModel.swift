@@ -111,7 +111,7 @@ final class ConversationModel {
             uploader = nil
         }
         bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent))
-        voice = VoiceEngine(tts: store.ttsProvider(for: agent))
+        voice = VoiceEngine(configuration: .init(locale: agent.language.locale), tts: store.ttsProvider(for: agent))
     }
 
     /// "Écouter" on an assistant message (tap again to stop).
@@ -155,21 +155,21 @@ final class ConversationModel {
         }
         let photo = LocalAttachment(kind: .image, filename: "coucher-de-soleil.jpg", mimeType: "image/jpeg", data: photoData)
         return [
-            ChatItem(.user(text: "Regarde le coucher de soleil de ma balade d’hier soir.", attachments: [photo])),
-            ChatItem(.user(text: "Je me suis couché tard hier. Je peux reprendre un café cet après-midi ?", attachments: [])),
-            ChatItem(.reasoning(text: "Vérifier ses habitudes de sommeil et la demi-vie de la caféine.")),
+            ChatItem(.user(text: String(localized: "Regarde le coucher de soleil de ma balade d’hier soir."), attachments: [photo])),
+            ChatItem(.user(text: String(localized: "Je me suis couché tard hier. Je peux reprendre un café cet après-midi ?"), attachments: [])),
+            ChatItem(.reasoning(text: String(localized: "Vérifier ses habitudes de sommeil et la demi-vie de la caféine."))),
             ChatItem(.tools([
-                ToolEvent(tool: "memory", preview: "Habitudes de sommeil", status: .completed, duration: 0.3),
-                ToolEvent(tool: "web_search", preview: "« caféine demi-vie sommeil »", status: .completed, duration: 1.9),
+                ToolEvent(tool: "memory", preview: String(localized: "Habitudes de sommeil"), status: .completed, duration: 0.3),
+                ToolEvent(tool: "web_search", preview: String(localized: "« caféine demi-vie sommeil »"), status: .completed, duration: 1.9),
             ])),
-            ChatItem(.assistant(text: "Pas cet après-midi : la caféine met 5 à 6 h à s’éliminer de moitié. Avec un coucher visé à 23 h 15, ta limite est **14 h**. Coup de barre ? Une sieste de 20 min avant 15 h.\n\nSources : [Sleep Foundation](https://www.sleepfoundation.org/nutrition/caffeine-and-sleep) et https://fr.wikipedia.org/wiki/Caféine", isStreaming: false)),
-            ChatItem(.user(text: "Voilà mes nuits de septembre, tu vois une tendance ?", attachments: [sheet])),
+            ChatItem(.assistant(text: String(localized: "Pas cet après-midi : la caféine met 5 à 6 h à s’éliminer de moitié. Avec un coucher visé à 23 h 15, ta limite est **14 h**. Coup de barre ? Une sieste de 20 min avant 15 h.\n\nSources : [Sleep Foundation](https://www.sleepfoundation.org/nutrition/caffeine-and-sleep) et https://fr.wikipedia.org/wiki/Caféine"), isStreaming: false)),
+            ChatItem(.user(text: String(localized: "Voilà mes nuits de septembre, tu vois une tendance ?"), attachments: [sheet])),
             ChatItem(.tools([ToolEvent(tool: "terminal", preview: "python3 analyse_sommeil.py sommeil-septembre.xlsx", status: .started)])),
             ChatItem(.approval(ApprovalRequest(runID: "demo", requestID: "1", command: "pip install openpyxl", choices: [.once, .session, .always, .deny]), resolved: nil)),
-            ChatItem(.user(text: "Message from 🤖 Vie (@vie): Alex part à Bordeaux samedi, quel train est le moins fatigant vu sa semaine ?", attachments: [])),
-            ChatItem(.assistant(text: "Celui de 9h : sa semaine est chargée, mieux vaut arriver tôt et faire une sieste l’après-midi.", isStreaming: false)),
+            ChatItem(.user(text: "Message from 🤖 Vie (@vie): " + String(localized: "Alex part à Bordeaux samedi, quel train est le moins fatigant vu sa semaine ?"), attachments: [])),
+            ChatItem(.assistant(text: String(localized: "Celui de 9h : sa semaine est chargée, mieux vaut arriver tôt et faire une sieste l’après-midi."), isStreaming: false)),
             ChatItem(.question(ClarifyRequest(runID: "demo", requestID: "clr", questions: [
-                .init(id: "q1", question: "Quel train pour Bordeaux ?", choices: ["9h — 19 €, arrivée 11h30", "14h — 35 €, arrivée 16h30"]),
+                .init(id: "q1", question: String(localized: "Quel train pour Bordeaux ?"), choices: [String(localized: "9h — 19 €, arrivée 11h30"), String(localized: "14h — 35 €, arrivée 16h30")]),
             ]), state: .pending)),
         ]
     }
@@ -248,7 +248,7 @@ final class ConversationModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty, !isRunning else { return }
         guard let client else {
-            errorMessage = "Clé d’accès introuvable dans le Trousseau."
+            errorMessage = String(localized: "Clé d’accès introuvable dans le Trousseau.")
             return
         }
         let item = ChatItem(.user(text: trimmed, attachments: attachments))
@@ -464,7 +464,7 @@ final class ConversationModel {
 
     /// Returns false when the bridge cannot follow this run (older bridge, run unknown to it).
     private func followViaBridge(_ bridge: BridgeClient, runID: String, reattaching: Bool) async throws -> Bool {
-        let reconnecting = "Reconnexion à l’agent…"
+        let reconnecting = String(localized: "Reconnexion à l’agent…")
         var failures = 0
         var backoff = Backoff()
         var connections = 0
@@ -529,7 +529,7 @@ final class ConversationModel {
                 if polls > 1, !reattached {
                     reattached = true
                     dropPartialReply()
-                    interim = "Reconnexion à l’agent…"
+                    interim = String(localized: "Reconnexion à l’agent…")
                     #if DEBUG
                     print("[run] re-attaching to \(runID), status \(run.status)")
                     #endif
@@ -538,8 +538,8 @@ final class ConversationModel {
                     interim = nil
                     finalOutput = run.outcome.output
                     switch run.status {
-                    case .failed: items.append(ChatItem(.notice(run.outcome.error ?? "Le tour a échoué.")))
-                    case .cancelled, .interrupted: items.append(ChatItem(.notice("La tâche a été interrompue côté agent.")))
+                    case .failed: items.append(ChatItem(.notice(run.outcome.error ?? String(localized: "Le tour a échoué."))))
+                    case .cancelled, .interrupted: items.append(ChatItem(.notice(String(localized: "La tâche a été interrompue côté agent."))))
                     default: break
                     }
                 } else if reattached {
@@ -579,7 +579,7 @@ final class ConversationModel {
     /// The run was submitted but its id never came back: polls the transcript until an assistant message
     /// follows `text`, for up to 15 minutes (the agent keeps working even if the app is suspended meanwhile).
     private func waitForReply(to text: String, client: HermesClient, sessionID: String) async {
-        interim = "L’agent travaille…"
+        interim = String(localized: "L’agent travaille…")
         let deadline = ContinuousClock.now + .seconds(15 * 60)
         while ContinuousClock.now < deadline, !Task.isCancelled {
             try? await Task.sleep(for: .seconds(3))
@@ -595,7 +595,7 @@ final class ConversationModel {
 
     /// After a chat/stream connection dropped: wait for the app to be active, then reload the thread.
     private func resyncWhenActive() async {
-        interim = "Reconnexion à l’agent…"
+        interim = String(localized: "Reconnexion à l’agent…")
         while UIApplication.shared.applicationState != .active {
             try? await Task.sleep(for: .milliseconds(500))
             if Task.isCancelled { return }
@@ -720,11 +720,11 @@ final class ConversationModel {
         case .assistantCompleted(let outcome), .runCompleted(let outcome):
             if let output = outcome.output, !hasStreamedAssistantText { appendAssistant(output) }
         case .runFailed(let outcome):
-            items.append(ChatItem(.notice(outcome.error ?? "Le tour a échoué.")))
+            items.append(ChatItem(.notice(outcome.error ?? String(localized: "Le tour a échoué."))))
         case .runCancelled:
-            items.append(ChatItem(.notice("Arrêté.")))
+            items.append(ChatItem(.notice(String(localized: "Arrêté."))))
         case .runInterrupted(let outcome):
-            items.append(ChatItem(.notice(outcome.error ?? "Interrompu.")))
+            items.append(ChatItem(.notice(outcome.error ?? String(localized: "Interrompu."))))
         default:
             break
         }
@@ -882,6 +882,7 @@ final class ConversationModel {
     /// Speaks `text` while Kyutai streams it (first audio in ~1 s), recording it as a voice note stored with the
     /// session under `itemID`. Falls back to the whole-file route, then to the live voice.
     private func generateVoice(for itemID: UUID, text: String, anchor: String, autoplay: Bool) {
+        guard agent.language.usesBridgeVoice else { return speakLive(itemID: itemID, text: text) }
         guard autoplay, let bridgeURL = agent.config.bridgeURL, let key = store.secrets(for: agent)?.bridgeKey else {
             return generateVoiceFile(for: itemID, text: text, anchor: anchor, autoplay: autoplay)
         }
@@ -983,11 +984,11 @@ final class ConversationModel {
 
     static func describe(_ error: any Error) -> String {
         switch error {
-        case HermesError.unauthorized: "Clé refusée par l’agent."
-        case HermesError.unreachable: "Agent injoignable. Tailscale est-il connecté ?"
-        case HermesError.tooManyRuns: "L’agent est occupé, réessaie dans un instant."
-        case HermesError.documentUploaderUnavailable: "Pour envoyer des fichiers, configure le bridge de cet agent dans les réglages."
-        case let error as HermesError: error.serverMessage ?? "Erreur du serveur."
+        case HermesError.unauthorized: String(localized: "Clé refusée par l’agent.")
+        case HermesError.unreachable: String(localized: "Agent injoignable. Tailscale est-il connecté ?")
+        case HermesError.tooManyRuns: String(localized: "L’agent est occupé, réessaie dans un instant.")
+        case HermesError.documentUploaderUnavailable: String(localized: "Pour envoyer des fichiers, configure le bridge de cet agent dans les réglages.")
+        case let error as HermesError: error.serverMessage ?? String(localized: "Erreur du serveur.")
         default: error.localizedDescription
         }
     }

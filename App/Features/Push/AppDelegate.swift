@@ -37,11 +37,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         center.delegate = self
         center.setNotificationCategories([
             UNNotificationCategory(identifier: Category.approval, actions: [
-                UNNotificationAction(identifier: Action.approveOnce, title: "Approuver une fois", options: [.authenticationRequired]),
-                UNNotificationAction(identifier: Action.deny, title: "Refuser", options: [.destructive, .authenticationRequired]),
+                UNNotificationAction(identifier: Action.approveOnce, title: String(localized: "Approuver une fois"), options: [.authenticationRequired]),
+                UNNotificationAction(identifier: Action.deny, title: String(localized: "Refuser"), options: [.destructive, .authenticationRequired]),
             ], intentIdentifiers: []),
             UNNotificationCategory(identifier: Category.message, actions: [
-                UNNotificationAction(identifier: Action.reply, title: "Répondre", options: [.foreground]),
+                UNNotificationAction(identifier: Action.reply, title: String(localized: "Répondre"), options: [.foreground]),
             ], intentIdentifiers: []),
         ])
         return true

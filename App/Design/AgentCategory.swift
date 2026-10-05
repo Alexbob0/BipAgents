@@ -56,14 +56,14 @@ enum AgentCategory: String, Codable, CaseIterable, Identifiable, Sendable {
 
     private var keywords: [String] {
         switch self {
-        case .wellness: ["well", "santé", "sante", "health", "sommeil", "sleep", "sport", "fitness", "bien-être", "bien etre", "médit", "nutrition", "coach"]
-        case .finance: ["financ", "budget", "banque", "bank", "argent", "money", "invest", "compta", "impôt", "impot", "tax"]
-        case .daily: ["vie", "life", "perso", "agenda", "quotidien", "organis", "assistant", "planning", "famille"]
-        case .work: ["travail", "work", "pro", "bureau", "client", "projet", "business", "mail"]
-        case .learning: ["appren", "learn", "étude", "etude", "langue", "cours", "school", "prof", "tutor"]
-        case .home: ["maison", "home", "domot", "jardin", "cuisine", "courses", "bricol"]
-        case .creative: ["créa", "crea", "écri", "ecri", "write", "musique", "music", "design", "photo", "art"]
-        case .tech: ["tech", "dev", "code", "serveur", "server", "infra", "ops", "admin", "linux"]
+        case .wellness: ["well", "santé", "sante", "health", "sommeil", "sleep", "sport", "fitness", "bien-être", "bien etre", "médit", "nutrition", "coach", "salud", "bienestar", "sueño", "gesund", "schlaf"]
+        case .finance: ["financ", "budget", "banque", "bank", "argent", "money", "invest", "compta", "impôt", "impot", "tax", "dinero", "banco", "impuesto", "geld", "finanz", "steuer"]
+        case .daily: ["vie", "life", "perso", "agenda", "quotidien", "organis", "assistant", "planning", "famille", "family", "daily", "vida", "familia", "alltag", "leben", "familie"]
+        case .work: ["travail", "work", "pro", "bureau", "client", "projet", "business", "mail", "job", "trabajo", "oficina", "arbeit", "büro"]
+        case .learning: ["appren", "learn", "étude", "etude", "langue", "cours", "school", "prof", "tutor", "aprend", "estudi", "idioma", "escuela", "lern", "schule", "sprach"]
+        case .home: ["maison", "home", "domot", "jardin", "cuisine", "courses", "bricol", "garden", "kitchen", "casa", "hogar", "cocina", "haus", "garten", "küche"]
+        case .creative: ["créa", "crea", "écri", "ecri", "write", "musique", "music", "design", "photo", "art", "escrit", "música", "creativ", "schreib", "musik", "kunst", "kreativ"]
+        case .tech: ["tech", "dev", "code", "serveur", "server", "infra", "ops", "admin", "linux", "servidor", "technik"]
         }
     }
 

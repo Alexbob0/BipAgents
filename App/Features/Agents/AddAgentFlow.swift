@@ -29,7 +29,7 @@ struct AddAgentFlow: View {
                 }
             }
             .background(Theme.background)
-            .navigationTitle(step == .connection ? "Ajouter un agent" : "Son style")
+            .navigationTitle(step == .connection ? String(localized: "Ajouter un agent") : String(localized: "Son style"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
@@ -105,7 +105,7 @@ struct AddAgentFlow: View {
 
     private func pasteConfiguration() {
         guard let string = UIPasteboard.general.string else {
-            errorMessage = "Le presse-papiers est vide."
+            errorMessage = String(localized: "Le presse-papiers est vide.")
             return
         }
         _ = apply(string)
@@ -124,7 +124,7 @@ struct AddAgentFlow: View {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = "Configuration illisible : \(error)"
+            errorMessage = String(localized: "Configuration illisible : \(error.localizedDescription)")
             return false
         }
     }
@@ -141,7 +141,8 @@ struct AddAgentFlow: View {
             baseURL: url,
             voice: voice.isEmpty ? nil : voice,
             category: appearance.category.rawValue,
-            bridgeURL: URL(string: bridgeURL).flatMap { $0.host() == nil ? nil : $0 }
+            bridgeURL: URL(string: bridgeURL).flatMap { $0.host() == nil ? nil : $0 },
+            language: AgentLanguage.device.rawValue
         )
         do {
             try store.add(AgentProfile(config: config, appearance: appearance),

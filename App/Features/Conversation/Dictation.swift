@@ -31,7 +31,7 @@ final class DictationController {
             // First use: ask for mic + speech recognition here rather than failing silently.
             guard await VoiceEngine.requestPermissions() else {
                 cancel(voice)
-                failure = "Autorise le micro et la reconnaissance vocale dans Réglages."
+                failure = String(localized: "Autorise le micro et la reconnaissance vocale dans Réglages.")
                 return
             }
             // Recorded too: the message is sent as a voice note (audio + transcript).
@@ -40,7 +40,7 @@ final class DictationController {
                 try await voice.startDictation(recordingTo: url)
             } catch {
                 cancel(voice)
-                failure = voice.lastError ?? "Micro indisponible."
+                failure = voice.lastError ?? String(localized: "Micro indisponible.")
             }
         }
     }
@@ -112,7 +112,7 @@ struct DictationButton: View {
         .gesture(controller.phase == .locked ? nil : holdGesture)
         .onTapGesture { if controller.phase == .locked { send() } }
         .sensoryFeedback(.impact(weight: .medium), trigger: controller.phase)
-        .accessibilityLabel(controller.phase == .locked ? "Envoyer le message vocal" : "Maintenir pour enregistrer un message vocal")
+        .accessibilityLabel(controller.phase == .locked ? String(localized: "Envoyer le message vocal") : String(localized: "Maintenir pour enregistrer un message vocal"))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction {
             // VoiceOver can't hold: first activation records (locked), the second sends.
@@ -194,7 +194,7 @@ struct DictationPanel: View {
                     .foregroundStyle(controller.willCancel ? Theme.danger : appearance.palette.deep)
             }
             LevelBars(level: voice.inputLevel, color: appearance.palette.main)
-            Text(voice.partialTranscript.isEmpty ? "Parle, je transcris…" : voice.partialTranscript)
+            Text(voice.partialTranscript.isEmpty ? String(localized: "Parle, je transcris…") : voice.partialTranscript)
                 .font(Theme.display(22))
                 .foregroundStyle(voice.partialTranscript.isEmpty ? Theme.muted : Theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -216,9 +216,9 @@ struct DictationPanel: View {
 
     private var hint: String {
         switch controller.phase {
-        case .locked: "Verrouillé · touche ↑ pour envoyer"
-        case .holding where controller.willCancel: "Relâche pour annuler"
-        default: "‹ Glisser pour annuler · ↑ verrouiller"
+        case .locked: String(localized: "Verrouillé · touche ↑ pour envoyer")
+        case .holding where controller.willCancel: String(localized: "Relâche pour annuler")
+        default: String(localized: "‹ Glisser pour annuler · ↑ verrouiller")
         }
     }
 }

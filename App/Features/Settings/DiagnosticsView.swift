@@ -47,7 +47,7 @@ struct DiagnosticsView: View {
         .task { await run() }
     }
 
-    private func row(_ title: String, value: Result<Duration, any Error>?) -> some View {
+    private func row(_ title: LocalizedStringKey, value: Result<Duration, any Error>?) -> some View {
         HStack {
             Text(title).font(Theme.body(16, weight: .bold))
             Spacer()
@@ -114,7 +114,7 @@ struct DiagnosticsView: View {
         switch result {
         case nil: "…"
         case .success(let duration): duration.formatted(.units(allowed: [.milliseconds], width: .narrow))
-        case .failure(let error): "échec — \(ConversationModel.describe(error))"
+        case .failure(let error): String(localized: "échec — \(ConversationModel.describe(error))")
         }
     }
 }

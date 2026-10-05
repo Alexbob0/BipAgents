@@ -230,6 +230,8 @@ objs = f"""/* Begin PBXBuildFile section */
 			knownRegions = (
 				fr,
 				en,
+				es,
+				de,
 				Base,
 			);
 			mainGroup = {i(0x601)};

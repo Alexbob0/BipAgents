@@ -64,7 +64,7 @@ struct CronJobsView: View {
                 failures += 1
             }
         }
-        errorMessage = failures > 0 ? "Certains bridges sont injoignables (Tailscale ?) ou pas à jour." : nil
+        errorMessage = failures > 0 ? String(localized: "Certains bridges sont injoignables (Tailscale ?) ou pas à jour.") : nil
     }
 
     private func binding(for job: BridgeClient.CronJob, agent: AgentProfile) -> Binding<Bool> {
@@ -79,7 +79,7 @@ struct CronJobsView: View {
                     try await bridge.setCronNotify(agent: job.agent, job: job.job, notify: notify)
                 } catch {
                     jobs[agent.id]?[index].notify = !notify
-                    errorMessage = "Réglage non enregistré : bridge injoignable."
+                    errorMessage = String(localized: "Réglage non enregistré : bridge injoignable.")
                 }
             }
         }

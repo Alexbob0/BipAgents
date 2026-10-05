@@ -22,9 +22,9 @@ enum AgentReachability: Equatable, Sendable {
     var label: String {
         switch self {
         case .unknown, .checking: "…"
-        case .online: "En ligne"
-        case .unauthorized: "Clé refusée"
-        case .offline: "Hors tailnet"
+        case .online: String(localized: "En ligne")
+        case .unauthorized: String(localized: "Clé refusée")
+        case .offline: String(localized: "Hors tailnet")
         }
     }
 }
@@ -192,10 +192,10 @@ extension AgentStore {
         ]
         // `-demoAgents 5`: more sample agents, to review the compact home cards.
         let extra: [(String, AgentCategory, String, String)] = [
-            ("Budget", .finance, "Dépenses d’octobre", "Tu as dépensé 420 € en courses ce mois-ci, 12 % de moins qu’en septembre."),
-            ("Boulot", .work, "Réunion de lundi", "J’ai préparé l’ordre du jour et envoyé l’invitation à l’équipe pour 10 h."),
-            ("Maison", .home, "Chaudière", "Le technicien passe jeudi entre 8 h et 12 h, pense à laisser l’accès au garage."),
-            ("Atelier", .creative, "Histoire du soir", "Il était une fois un petit renard qui collectionnait les étoiles filantes…"),
+            ("Budget", .finance, String(localized: "Dépenses d’octobre"), String(localized: "Tu as dépensé 420 € en courses ce mois-ci, 12 % de moins qu’en septembre.")),
+            ("Boulot", .work, String(localized: "Réunion de lundi"), String(localized: "J’ai préparé l’ordre du jour et envoyé l’invitation à l’équipe pour 10 h.")),
+            ("Maison", .home, String(localized: "Chaudière"), String(localized: "Le technicien passe jeudi entre 8 h et 12 h, pense à laisser l’accès au garage.")),
+            ("Atelier", .creative, String(localized: "Histoire du soir"), String(localized: "Il était une fois un petit renard qui collectionnait les étoiles filantes…")),
         ]
         for (index, (name, category, title, preview)) in extra.prefix(max(0, UserDefaults.standard.integer(forKey: "demoAgents") - 2)).enumerated() {
             let agent = AgentProfile(config: AgentConfig(name: name, baseURL: URL(string: "https://aibox.example.ts.net:8650")!),
@@ -205,10 +205,10 @@ extension AgentStore {
                                                           updatedAt: .now.addingTimeInterval(-Double(index + 2) * 3600), lastMessagePreview: preview)
         }
         for agent in store.agents { store.reachability[agent.id] = .online }
-        store.latestSession[store.agents[0].id] = HermesSession(id: "demo", title: "Plan sommeil du soir", updatedAt: .now.addingTimeInterval(-900),
-            lastMessagePreview: "Ce soir, vise un coucher à 23 h 15 : écrans coupés à 22 h 30, lumière tamisée et chambre à 18 °C.")
-        store.latestSession[store.agents[1].id] = HermesSession(id: "demo2", title: "Rangement", updatedAt: .now.addingTimeInterval(-3600),
-            lastMessagePreview: "C’est rangé ! Je regarde maintenant les vieux fichiers de logs dans ~/projets…")
+        store.latestSession[store.agents[0].id] = HermesSession(id: "demo", title: String(localized: "Plan sommeil du soir"), updatedAt: .now.addingTimeInterval(-900),
+            lastMessagePreview: String(localized: "Ce soir, vise un coucher à 23 h 15 : écrans coupés à 22 h 30, lumière tamisée et chambre à 18 °C."))
+        store.latestSession[store.agents[1].id] = HermesSession(id: "demo2", title: String(localized: "Rangement"), updatedAt: .now.addingTimeInterval(-3600),
+            lastMessagePreview: String(localized: "C’est rangé ! Je regarde maintenant les vieux fichiers de logs dans ~/projets…"))
         store.isDemo = true
         return store
     }

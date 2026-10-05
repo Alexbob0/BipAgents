@@ -51,10 +51,10 @@ enum ChatText {
     static func instructionTitle(for text: String, inCronSession: Bool, isFirstUserMessage: Bool) -> String? {
         let skills = text.matches(of: /invoked the "([^"]+)" skill/).map { String($0.output.1) }
         if inCronSession && isFirstUserMessage {
-            return skills.isEmpty ? "Consigne de la tâche planifiée" : "Tâche planifiée · \(skills.joined(separator: ", "))"
+            return skills.isEmpty ? String(localized: "Consigne de la tâche planifiée") : String(localized: "Tâche planifiée · \(skills.joined(separator: ", "))")
         }
         if text.hasPrefix("[IMPORTANT:"), !skills.isEmpty {
-            return "Consigne · \(skills.joined(separator: ", "))"
+            return String(localized: "Consigne · \(skills.joined(separator: ", "))")
         }
         return nil
     }

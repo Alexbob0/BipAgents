@@ -139,7 +139,7 @@ private struct ConversationContent: View {
                 text: $draft,
                 attachments: $attachments,
                 palette: palette,
-                placeholder: "Message à \(model.agent.name)",
+                placeholder: String(localized: "Message à \(model.agent.name)"),
                 isRunning: model.isRunning,
                 voice: model.voice,
                 onSend: send,
@@ -523,7 +523,7 @@ struct ListenButton: View {
                     .foregroundStyle(.white)
                     .frame(width: 24, height: 24)
                     .background(palette.deep, in: .circle)
-                Text(isPlaying ? "Arrêter" : "Écouter")
+                Text(isPlaying ? String(localized: "Arrêter") : String(localized: "Écouter"))
                     .font(Theme.body(13, weight: .heavy))
                     .foregroundStyle(palette.deep)
             }
@@ -680,9 +680,9 @@ struct ApprovalCard: View {
                     .frame(width: 56, height: 56)
                     .background(palette.tint, in: .rect(cornerRadius: 20, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(resolved == nil ? "J’ai besoin de ton accord" : "Décision envoyée")
+                    Text(resolved == nil ? String(localized: "J’ai besoin de ton accord") : String(localized: "Décision envoyée"))
                         .font(Theme.title(17))
-                    Text(request.description ?? "\(agent.name) veut lancer cette commande")
+                    Text(request.description ?? String(localized: "\(agent.name) veut lancer cette commande"))
                         .font(Theme.body(13.5))
                         .foregroundStyle(Theme.ink2)
                 }
@@ -716,10 +716,10 @@ struct ApprovalCard: View {
 
     static func title(for choice: ApprovalChoice) -> String {
         switch choice {
-        case .once: "Une fois"
-        case .session: "Cette session"
-        case .always: "Toujours"
-        case .deny: "Refuser"
+        case .once: String(localized: "Une fois")
+        case .session: String(localized: "Cette session")
+        case .always: String(localized: "Toujours")
+        case .deny: String(localized: "Refuser")
         }
     }
 

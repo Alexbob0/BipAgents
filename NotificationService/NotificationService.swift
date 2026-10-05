@@ -103,7 +103,7 @@ final class NotificationService: UNNotificationServiceExtension {
               let items = json["items"] as? [[String: Any]],
               let item = items.first(where: { $0["run_id"] as? String == runID }) else { return }
         if let command = item["command"] as? String, !command.isEmpty {
-            content.body = "Veut lancer : \(command)"
+            content.body = String(localized: "Veut lancer : \(command)")
         } else if let description = item["description"] as? String, !description.isEmpty {
             content.body = description
         }

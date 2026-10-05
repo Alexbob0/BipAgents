@@ -59,7 +59,7 @@ struct BridgeClient: Sendable {
                 let (bytes, response) = try await session.bytes(for: request)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard (200..<300).contains(status) else {
-                    if status == 401 || status == 403 { throw HermesError.unauthorized(message: "Clé du bridge refusée") }
+                    if status == 401 || status == 403 { throw HermesError.unauthorized(message: String(localized: "Clé du bridge refusée")) }
                     throw HermesError.http(status: status, message: nil, code: nil)
                 }
                 for try await sse in bytes.sseEvents {
@@ -162,7 +162,7 @@ struct BridgeClient: Sendable {
                 throw HermesError.http(status: http?.statusCode ?? 0, message: String(data: data, encoding: .utf8), code: nil)
             }
         }
-        throw HermesError.unsupported("Audio pas encore prêt")
+        throw HermesError.unsupported(String(localized: "Audio pas encore prêt"))
     }
 
     // MARK: Plumbing
@@ -184,7 +184,7 @@ struct BridgeClient: Sendable {
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            if status == 401 || status == 403 { throw HermesError.unauthorized(message: "Clé du bridge refusée") }
+            if status == 401 || status == 403 { throw HermesError.unauthorized(message: String(localized: "Clé du bridge refusée")) }
             throw HermesError.http(status: status, message: String(data: data, encoding: .utf8), code: nil)
         }
         return data

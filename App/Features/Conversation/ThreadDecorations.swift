@@ -19,8 +19,8 @@ struct DaySeparator: View {
 
     private var label: String {
         let calendar = Calendar.current
-        if calendar.isDateInToday(date) { return "Aujourd’hui" }
-        if calendar.isDateInYesterday(date) { return "Hier" }
+        if calendar.isDateInToday(date) { return String(localized: "Aujourd’hui") }
+        if calendar.isDateInYesterday(date) { return String(localized: "Hier") }
         let sameYear = calendar.isDate(date, equalTo: .now, toGranularity: .year)
         let style = Date.FormatStyle.dateTime.weekday(.wide).day().month(.wide)
         return (sameYear ? date.formatted(style) : date.formatted(style.year())).capitalizedFirst
@@ -59,7 +59,7 @@ struct InstructionCard: View {
                         .background(palette.tint, in: .rect(cornerRadius: 10))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(title).font(Theme.body(14, weight: .heavy)).foregroundStyle(Theme.ink).lineLimit(1)
-                        Text(expanded ? "Toucher pour replier" : "Toucher pour afficher")
+                        Text(expanded ? String(localized: "Toucher pour replier") : String(localized: "Toucher pour afficher"))
                             .font(Theme.body(12)).foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 4)
@@ -117,7 +117,7 @@ struct MediaRow: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: failed ? "exclamationmark.triangle" : (isAudio ? "waveform" : "doc"))
-                        Text(failed ? "Fichier indisponible" : name).lineLimit(1)
+                        Text(failed ? String(localized: "Fichier indisponible") : name).lineLimit(1)
                         if file == nil && !failed { ProgressView().controlSize(.small) }
                     }
                     .font(Theme.body(13, weight: .bold))
@@ -236,7 +236,7 @@ struct ExchangeChip: View {
                 } else {
                     Image(systemName: "person.2.fill").font(.system(size: 11))
                 }
-                Text(isRequest ? "Échange avec \(name)" : "Réponse de \(name)")
+                Text(isRequest ? String(localized: "Échange avec \(name)") : String(localized: "Réponse de \(name)"))
                 Image(systemName: isOpen ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .bold))
             }
             .font(Theme.body(13, weight: .bold))
@@ -249,6 +249,6 @@ struct ExchangeChip: View {
         }
         .buttonStyle(.plain)
         .padding(.leading, 40)
-        .accessibilityHint(isOpen ? "Replier l’échange" : "Afficher l’échange")
+        .accessibilityHint(isOpen ? String(localized: "Replier l’échange") : String(localized: "Afficher l’échange"))
     }
 }

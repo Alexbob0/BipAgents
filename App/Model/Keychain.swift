@@ -48,6 +48,6 @@ enum Keychain {
 struct KeychainError: Error, LocalizedError {
     var status: OSStatus
     var errorDescription: String? {
-        SecCopyErrorMessageString(status, nil) as String? ?? "Erreur Trousseau \(status)"
+        SecCopyErrorMessageString(status, nil) as String? ?? String(localized: "Erreur Trousseau \(status)")
     }
 }

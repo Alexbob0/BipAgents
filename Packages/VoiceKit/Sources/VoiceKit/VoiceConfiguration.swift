@@ -65,10 +65,10 @@ public enum VoiceError: Error, Sendable, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .permissionDenied: "Micro ou reconnaissance vocale non autorisés"
-        case .recognizerUnavailable: "Reconnaissance vocale indisponible pour cette langue"
-        case .microphoneUnavailable: "Micro indisponible"
-        case .busy: "La voix est déjà utilisée"
+        case .permissionDenied: String(localized: "Micro ou reconnaissance vocale non autorisés", bundle: .module)
+        case .recognizerUnavailable: String(localized: "Reconnaissance vocale indisponible pour cette langue", bundle: .module)
+        case .microphoneUnavailable: String(localized: "Micro indisponible", bundle: .module)
+        case .busy: String(localized: "La voix est déjà utilisée", bundle: .module)
         }
     }
 }
