@@ -203,12 +203,18 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8098)
     parser.add_argument("--quantize", action="store_true", help="int8 weights: less memory, faster on x86 CPUs")
+    parser.add_argument("--threads", type=int, default=0,
+                        help="CPU threads for generation (default: PyTorch's choice); 2 leaves room for Hermes on a 4 vCPU VPS")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     languages = [code.strip() for code in args.languages.split(",") if code.strip()]
     unknown = [code for code in languages if code not in LANGUAGE_DIRS]
     if unknown:
         parser.error(f"unknown language(s): {', '.join(unknown)} (use {', '.join(LANGUAGE_DIRS)})")
+    if args.threads > 0:
+        import torch
+
+        torch.set_num_threads(args.threads)
     engine = Engine.load(args.voices, languages, quantize=args.quantize)
     log.info("voices: %s", engine.available_voices())
 

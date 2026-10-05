@@ -29,7 +29,12 @@ Service au démarrage : `launchd/io.github.bipagents.pocket.plist` (macOS) ou `s
 cf. [`docs/self-hosting.md`](../docs/self-hosting.md). Côté bridge : `[pocket] url = "http://127.0.0.1:8098"`.
 
 Options : `--languages fr,en` (ne charger que certaines langues), `--port 8098`, `--host 127.0.0.1` (laisser en
-local : seul le bridge l'appelle), `--quantize` (poids int8 : moins de mémoire, ≈ 25 % plus rapide sur x86).
+local : seul le bridge l'appelle), `--quantize` (poids int8 : moins de mémoire, ≈ 25 % plus rapide sur x86),
+`--threads 2` (cœurs utilisés : laisse de la place à Hermes ; même vitesse mesurée sur Apple M4).
+
+Mesurer : `python3 bench.py` (premier son et vitesse, sans dépendance). Sur un VPS Linux x86, installer PyTorch
+**CPU** avant le reste (`pip install torch --index-url https://download.pytorch.org/whl/cpu`), sinon pip tire les
+bibliothèques CUDA (plusieurs Go). Conseils VPS : [`docs/self-hosting.md`](../docs/self-hosting.md#sur-un-vps).
 
 Les voix des Bips sont des états pré-calculés (`voices/<langue>/<voix>.safetensors`) : les lire ne demande que le
 modèle public `kyutai/pocket-tts-without-voice-cloning`, téléchargé automatiquement. Le modèle de clonage (accès
