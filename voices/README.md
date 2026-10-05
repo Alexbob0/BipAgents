@@ -1,27 +1,29 @@
-# Voix des Bips
+🇬🇧 English · [🇫🇷 Français](README.fr.md)
 
-Voix de mascotte synthétiques pour les agents BipAgents, rangées par langue. Chaque langue a son propre
-`README.md` (voix, usage, fabrication) et un `voices.json` (descriptions et mesures).
+# Bips' voices
 
-| Langue | Moteur | Voix |
+Synthetic mascot voices for the BipAgents agents, organized by language. Each language has its own
+`README.md` (voices, usage, how they were made) and a `voices.json` (descriptions and measurements).
+
+| Language | Engine | Voices |
 |---|---|---|
-| [`french/`](french/) | Kyutai Pocket TTS 3.3.0, modèle `french` | loutre, chat2, lutin, ours, colibri |
-| `english/`, `spanish/`, `german/` | Kyutai Pocket TTS 3.3.0, modèles `english`, `spanish`, `german` | les mêmes cinq Bips (à générer, cf. ci-dessous) |
+| [`french/`](french/) | Kyutai Pocket TTS 3.3.0, `french` model | loutre, chat2, lutin, ours, colibri |
+| `english/`, `spanish/`, `german/` | Kyutai Pocket TTS 3.3.0, `english`, `spanish`, `german` models | the same five Bips (to be generated, see below) |
 
-Une nouvelle langue = un nouveau dossier (`english/`, `spanish/`…) avec la même structure : `<voix>.safetensors`
-(état Pocket TTS), `<voix>_source.wav` (extrait de clonage), `<voix>_sample.wav` (phrase de test), `voices.json`, `README.md`.
+A new language = a new folder (`english/`, `spanish/`…) with the same structure: `<voice>.safetensors`
+(Pocket TTS state), `<voice>_source.wav` (cloning clip), `<voice>_sample.wav` (test sentence), `voices.json`, `README.md`.
 
-Voix calculées avec Kyutai Pocket TTS (poids CC-BY-4.0, Kyutai) à partir d'extraits Qwen3-TTS VoiceDesign (Apache-2.0).
-Entièrement synthétiques : aucune personne réelle n'est imitée.
+Voices computed with Kyutai Pocket TTS (CC-BY-4.0 weights, Kyutai) from Qwen3-TTS VoiceDesign clips (Apache-2.0).
+Fully synthetic: no real person is imitated.
 
-## Autres langues
+## Other languages
 
-Les Bips gardent leur nom dans chaque langue : le bridge envoie `pocket:<code>/<voix>` (`en`, `es`, `de`) et le
-serveur Pocket charge `voices/<english|spanish|german>/<voix>.safetensors` avec le modèle de la langue. Même recette
-qu'en français : description → Qwen3-TTS VoiceDesign dans la langue → extrait → clonage Pocket. Phrases de test :
+The Bips keep their names in every language: the bridge sends `pocket:<code>/<voice>` (`en`, `es`, `de`) and the
+Pocket server loads `voices/<english|spanish|german>/<voice>.safetensors` with that language's model. Same recipe
+as in French: description → Qwen3-TTS VoiceDesign in the language → clip → Pocket cloning. Test sentences:
 
-- en : « Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon. »
-- es : « ¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde. »
-- de : « Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag. »
+- en: "Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon."
+- es: "¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde."
+- de: "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag."
 
-Les aperçus de l'app sont `App/Resources/Voices/voice-<voix>-<code>.m4a` (convertis depuis `<voix>_sample.wav`).
+The app's previews are `App/Resources/Voices/voice-<voice>-<code>.m4a` (converted from `<voice>_sample.wav`).

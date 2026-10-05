@@ -1,130 +1,133 @@
+<p align="center">🇬🇧 English · <a href="README.fr.md">🇫🇷 Français</a></p>
+
 <p align="center">
-  <img src="docs/bips.svg" alt="Les huit Bips de BipAgents, qui sautillent et clignent des yeux" width="100%">
+  <img src="docs/bips.svg" alt="The eight BipAgents Bips, bouncing and blinking" width="100%">
 </p>
 
 <h1 align="center">BipAgents</h1>
 
 <p align="center">
-  <b>Parle à tes agents IA auto-hébergés comme à des potes de poche.</b><br>
-  App iOS voice-first pour <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>, sur ton propre serveur, via Tailscale.
+  <b>Talk to your self-hosted AI agents like they're pocket-sized buddies.</b><br>
+  A voice-first iOS app for <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>, running on your own server, over Tailscale.
 </p>
 
 <p align="center">
-  <a href="https://alexbob0.github.io/BipAgents/play/"><img alt="Joue avec les Bips" src="https://img.shields.io/badge/%F0%9F%8E%AE_Joue_avec_les_Bips-FF7B5C?style=for-the-badge"></a>
-  <a href="https://x.com/Bob_AI_Digger"><img alt="Suis @Bob_AI_Digger sur X" src="https://img.shields.io/badge/@Bob__AI__Digger-16181D?style=for-the-badge&logo=x&logoColor=white"></a>
+  <a href="https://alexbob0.github.io/BipAgents/play/"><img alt="Play with the Bips" src="https://img.shields.io/badge/%F0%9F%8E%AE_Play_with_the_Bips-FF7B5C?style=for-the-badge"></a>
+  <a href="https://x.com/Bob_AI_Digger"><img alt="Follow @Bob_AI_Digger on X" src="https://img.shields.io/badge/@Bob__AI__Digger-16181D?style=for-the-badge&logo=x&logoColor=white"></a>
   <img alt="iOS 18+" src="https://img.shields.io/badge/iOS-18%2B-4F7CFF?style=for-the-badge&logo=apple&logoColor=white">
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F2649E?style=for-the-badge&logo=swift&logoColor=white">
-  <a href="LICENSE"><img alt="Licence MIT" src="https://img.shields.io/badge/licence-MIT-3CC37A?style=for-the-badge"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3CC37A?style=for-the-badge"></a>
 </p>
 
 ---
 
-Chaque agent est un **Bip** : une petite mascotte avec sa couleur, sa forme, son humeur et **sa voix**. Wellness veille sur ton sommeil, Vie range tes fichiers, Budget surveille tes dépenses… Tu leur écris, tu leur parles, ou tu lances un **Live** pour discuter à voix haute, mains libres. Ils bossent sur **ton** serveur, et l'app te prévient quand ils ont fini, ou quand ils ont besoin de toi.
+Every agent is a **Bip**: a little mascot with its own color, shape, mood and **voice**. Wellness looks after your sleep, Vie tidies your files, Budget keeps an eye on your spending… Text them, talk to them, or start a **Live** to chat out loud, hands-free. They work on **your** server, and the app lets you know when they're done, or when they need you.
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="24%" alt="Accueil : une carte par agent">
-  <img src="docs/screenshots/conversation.png" width="24%" alt="Conversation : outils, liens avec favicons, réponse à écouter">
-  <img src="docs/screenshots/approval-question.png" width="24%" alt="Demande d'accord et question de l'agent">
-  <img src="docs/screenshots/live.png" width="24%" alt="Live : conversation vocale mains libres">
+  <img src="docs/screenshots/home.png" width="24%" alt="Home: one card per agent">
+  <img src="docs/screenshots/conversation.png" width="24%" alt="Conversation: tools, links with favicons, a reply to listen to">
+  <img src="docs/screenshots/approval-question.png" width="24%" alt="An approval request and a question from the agent">
+  <img src="docs/screenshots/live.png" width="24%" alt="Live: hands-free voice conversation">
 </p>
 
-## 🎮 Joue avec les Bips
+## 🎮 Play with the Bips
 
-Les Bips ne sont pas que décoratifs. Dans l'app (et [**dans ton navigateur**](https://alexbob0.github.io/BipAgents/play/)), ils réagissent :
+The Bips aren't just decoration. In the app (and [**in your browser**](https://alexbob0.github.io/BipAgents/play/)), they react:
 
-| Geste | Réaction |
+| Gesture | Reaction |
 |---|---|
-| 👆 Toucher | un petit saut, un clin d'œil, une pirouette… au hasard |
-| 👆👆👆 Trois touchers rapides, ou frotter vite | ça chatouille ! |
-| 🫳 Caresser lentement | ronron, cœurs, joues roses |
-| ✊ Appui long puis relâcher | **Boing !** |
-| 😵 Trop les embêter | le tournis… puis ils boudent |
+| 👆 Tap | a little hop, a wink, a twirl… at random |
+| 👆👆👆 Three quick taps, or a fast rub | that tickles! |
+| 🫳 Slow stroke | purring, hearts, rosy cheeks |
+| ✊ Long press, then let go | **Boing!** |
+| 😵 Pester them too much | they get dizzy… then sulk |
 
-Et ils **babillent** : chaque réaction est dite dans leur « Animalese », un charabia mignon synthétisé à la volée, sans modèle ni réseau, avec une hauteur de voix propre à chaque Bip.
+And they **babble**: every reaction is spoken in their "Animalese", cute gibberish synthesized on the fly, with no model and no network, and a pitch of its own for each Bip.
 
 <p align="center">
-  <a href="https://alexbob0.github.io/BipAgents/play/"><b>→ Ouvrir le terrain de jeu des Bips</b></a>
+  <a href="https://alexbob0.github.io/BipAgents/play/"><b>→ Open the Bips playground</b></a>
 </p>
 
-## ✨ Ce que sait faire l'app
+## ✨ What the app does
 
-- 🎙️ **Voix d'abord** : notes vocales (maintenir « Audio » sur la carte d'un agent, relâcher, c'est parti), **Live** mains libres avec interruption à la voix, « Écouter » sous chaque réponse en streaming.
-- 🗣️ **Une voix par Bip** : voix mignonnes Kyutai Pocket TTS, **sur CPU, sans GPU** (≈ 50 ms avant le premier son sur un Mac mini M4), en français, anglais, espagnol et allemand. Les nombres, symboles et abréviations sont rendus prononçables dans chaque langue.
-- 🔒 **Ça continue écran verrouillé** : les messages partent en *runs* Hermes. Tu fermes l'app, l'agent finit son travail, et la réponse arrive en notification, avec l'avatar du Bip et le vrai texte.
-- ✅ **Accords depuis l'écran verrouillé** : « Wellness veut lancer `pip install openpyxl` » → Une fois / Cette session / Toujours / Refuser, sans ouvrir l'app.
-- ❓ **L'agent peut te poser une question** (outil `clarify`) : une carte avec un bouton par choix, comme sur Hermes Desktop.
-- 🤝 **Les agents se parlent** : Vie peut consulter Wellness ; l'échange se replie en une ligne dans la conversation.
-- 📬 **La Boîte** : rapports des tâches planifiées (cron), réponses arrivées pendant ton absence, à écouter ou à relancer en Live.
-- 📎 **Tout type de fichier** : photos, PDF, Excel, scans… et les fichiers produits par l'agent (audio, documents) s'ouvrent dans l'app.
-- 🌍 **En français, anglais, espagnol et allemand** : l'app suit la langue de l'iPhone, et chaque agent a sa propre langue (reconnaissance vocale et voix).
-- 🔗 Liens cliquables avec favicons, outils repliés, brouillons gardés par conversation, séparateurs de jours.
+- 🎙️ **Voice first**: voice notes (hold "Audio" on an agent's card, let go, done), hands-free **Live** you can interrupt just by talking, and "Listen" under every reply, streamed.
+- 🗣️ **A voice per Bip**: cute Kyutai Pocket TTS voices, **on CPU, no GPU** (≈ 50 ms to first audio on an M4 Mac mini), in English, French, Spanish and German. Numbers, symbols and abbreviations are made speakable in each language.
+- 🔒 **Keeps going on the lock screen**: messages are sent as Hermes *runs*. Close the app, the agent finishes its work, and the reply shows up as a notification, with the Bip's avatar and the actual text.
+- ✅ **Approvals from the lock screen**: "Wellness wants to run `pip install openpyxl`" → Once / This session / Always / Deny, without opening the app.
+- ❓ **The agent can ask you a question** (`clarify` tool): a card with one button per choice, like Hermes Desktop.
+- 🤝 **Agents talk to each other**: Vie can consult Wellness; the exchange folds into a single line in the conversation.
+- 📬 **The Inbox**: scheduled-task (cron) reports and replies that arrived while you were away, to listen to or pick up in Live.
+- 📎 **Any kind of file**: photos, PDFs, spreadsheets, scans… and files the agent produces (audio, documents) open right in the app.
+- 🌍 **In English, French, Spanish and German**: the app follows the iPhone's language, and each agent has its own (speech recognition and voice).
+- 🔗 Clickable links with favicons, folded tool calls, drafts kept per conversation, day separators.
 
 <details>
-<summary><b>📸 Plus de captures</b></summary>
+<summary><b>📸 More screenshots</b></summary>
 <br>
 <p align="center">
-  <img src="docs/screenshots/home-5-agents.png" width="24%" alt="Accueil avec cinq agents">
-  <img src="docs/screenshots/inbox.png" width="24%" alt="La Boîte">
-  <img src="docs/screenshots/settings.png" width="24%" alt="Réglages">
+  <img src="docs/screenshots/home-5-agents.png" width="24%" alt="Home with five agents">
+  <img src="docs/screenshots/inbox.png" width="24%" alt="The Inbox">
+  <img src="docs/screenshots/settings.png" width="24%" alt="Settings">
 </p>
 </details>
 
-## 🧩 Comment ça marche
+## 🧩 How it works
 
 ```mermaid
 flowchart LR
   subgraph iPhone
     A[BipAgents<br/>SwiftUI]
-    N[Extension de<br/>notification]
+    N[Notification<br/>extension]
   end
-  subgraph Serveur["Ton serveur (Tailscale)"]
+  subgraph Server["Your server (Tailscale)"]
     H[Hermes Agent<br/>api_server · runs · Bot Mode]
     B[bipbridge<br/>FastAPI]
-    K[Pocket TTS<br/>voix des Bips, CPU]
+    K[Pocket TTS<br/>Bip voices, CPU]
   end
-  A -- "texte, fichiers, runs (SSE)" --> H
-  A -- "voix, fichiers, suivi des runs" --> B
+  A -- "text, files, runs (SSE)" --> H
+  A -- "voice, files, run following" --> B
   B --> H
   B --> K
-  B -- "push APNs" --> N
+  B -- "APNs push" --> N
 ```
 
-- **L'app** parle directement à l'api_server Hermes (sessions, runs, accords, questions) et au **bridge** pour tout le reste.
-- **Le bridge** (`bridge/`, Python) prépare et fait synthétiser les voix, sert les fichiers, relaie les runs pour qu'aucun événement ne se perde, surveille les tâches planifiées et envoie les notifications push.
-- **Pocket TTS** (`pocket/`) donne leur voix aux Bips, sur le CPU de la même machine.
-- Tout reste chez toi : aucun cloud tiers à part Apple pour les push. Aucun secret dans ce dépôt ; les clés sont saisies dans l'app (Trousseau) ou dans la config du bridge sur le serveur.
+- **The app** talks straight to the Hermes api_server (sessions, runs, approvals, questions) and to the **bridge** for everything else.
+- **The bridge** (`bridge/`, Python) prepares and synthesizes speech, serves files, relays runs so no event gets lost, watches scheduled tasks and sends push notifications.
+- **Pocket TTS** (`pocket/`) gives the Bips their voices, on the same machine's CPU.
+- Everything stays with you: no third-party cloud except Apple for push. No secrets in this repo; keys are entered in the app (Keychain) or in the bridge config on the server.
 
-## 🚀 Démarrer
+## 🚀 Getting started
 
-**Juste pour voir**, sans serveur : ouvre `BipAgents.xcodeproj`, schéma BipAgents → Arguments → `-demo`. Ajoute `-screen conversation`, `-screen call`, `-tab inbox` ou `-demoAgents 5` pour arriver directement sur un écran.
+**Just to have a look**, no server needed: open `BipAgents.xcodeproj`, BipAgents scheme → Arguments → `-demo`. Add `-screen conversation`, `-screen call`, `-tab inbox` or `-demoAgents 5` to land straight on a screen.
 
-**Pour de vrai** : un **Mac mini**, un **VPS** ou un serveur Linux qui fait tourner [Hermes Agent](https://github.com/NousResearch/hermes-agent) suffit, sans GPU. Le guide pas à pas : [**Héberger BipAgents chez soi**](docs/self-hosting.md) (Tailscale, api_server Hermes, Pocket TTS, bridge, lancement au démarrage, notifications).
+**For real**: a **Mac mini**, a **VPS** or a Linux box already running [Hermes Agent](https://github.com/NousResearch/hermes-agent) is enough, no GPU. Step-by-step guide: [**Self-hosting BipAgents**](docs/self-hosting.md) (Tailscale, Hermes api_server, Pocket TTS, bridge, start at boot, notifications).
 
-> 🎙️ **Bonus** : avec un GPU Nvidia, Kyutai TTS 1.6B ajoute une voix humaine posée et sert à un podcast du matin généré par un agent. Facultatif, cf. la fin du guide.
+> 🎙️ **Bonus**: with an Nvidia GPU, Kyutai TTS 1.6B adds a calm human voice and powers a morning podcast generated by an agent. Optional, see the end of the guide.
 
 <details>
-<summary><b>🗂️ Le dépôt</b></summary>
+<summary><b>🗂️ The repo</b></summary>
 
-- `App/` — l'app SwiftUI (iOS 18+, Swift 6).
-  - `Design/` — thème, catégories, mascottes vectorielles (`MascotView`), interactions (`InteractiveMascot`), babillage (`BipBabble`), voix des agents.
-  - `Model/` — `AgentStore` (agents dans l'App Group, clés dans le Trousseau), `BridgeClient`, `Router`.
-  - `Features/` — Agents, Sessions, Conversation, Live, Boîte, Réglages, Diagnostics, notifications.
-- `NotificationService/` — extension qui met le texte complet, l'avatar du Bip et l'audio dans les notifications.
-- `Packages/HermesKit` — client de l'api_server Hermes (SSE, sessions, runs, accords, `clarify`, pièces jointes).
-- `Packages/VoiceKit` — capture, transcription sur l'iPhone, TTS en flux PCM, interruption à la voix.
-- `bridge/` — le service Python côté serveur ([README](bridge/README.md)).
-- `pocket/` — le serveur Pocket TTS des voix des Bips ([README](pocket/README.md)).
-- `voices/` — les voix des Bips ([README](voices/README.md)).
-- `docs/` — notes d'API ([`clarify`](docs/hermes-clarify-api.md), [fichiers](docs/aibox-fichiers.md)), captures, [terrain de jeu](docs/play/index.html) et bannière (`node docs/tools/banner.mjs` la régénère).
-- `SPEC.md` — la spécification complète.
+- `App/` — the SwiftUI app (iOS 18+, Swift 6).
+  - `Design/` — theme, categories, vector mascots (`MascotView`), interactions (`InteractiveMascot`), babbling (`BipBabble`), agent voices.
+  - `Model/` — `AgentStore` (agents in the App Group, keys in the Keychain), `BridgeClient`, `Router`.
+  - `Features/` — Agents, Sessions, Conversation, Live, Inbox, Settings, Diagnostics, notifications.
+  - `Resources/` — string catalogs (English, French, Spanish, German) and voice previews.
+- `NotificationService/` — extension that puts the full text, the Bip's avatar and the audio into notifications.
+- `Packages/HermesKit` — Hermes api_server client (SSE, sessions, runs, approvals, `clarify`, attachments).
+- `Packages/VoiceKit` — capture, on-device transcription, streamed PCM TTS, voice barge-in.
+- `bridge/` — the server-side Python service ([README](bridge/README.md)).
+- `pocket/` — the Pocket TTS server for the Bips' voices ([README](pocket/README.md)).
+- `voices/` — the Bips' voices ([README](voices/README.md)).
+- `docs/` — API notes ([`clarify`](docs/hermes-clarify-api.md), [files](docs/aibox-fichiers.md)), screenshots, [playground](docs/play/index.html) and banner (`node docs/tools/banner.mjs` rebuilds it).
+- [`SPEC.md`](SPEC.md) — the original spec.
 
 </details>
 
-## 💬 Qui est derrière
+## 💬 Who's behind it
 
-Un projet perso de **Bob**, qui creuse l'IA au quotidien : agents, voix, auto-hébergement.
-Les coulisses, les galères et les prochains Bips sont sur X : **[@Bob_AI_Digger](https://x.com/Bob_AI_Digger)** 👋
+A personal project by **Bob**, who digs into AI every day: agents, voices, self-hosting.
+Behind the scenes, the struggles and the next Bips are on X: **[@Bob_AI_Digger](https://x.com/Bob_AI_Digger)** 👋
 
-Construit avec [Hermes Agent](https://github.com/NousResearch/hermes-agent) de Nous Research, les voix [Kyutai](https://kyutai.org), et beaucoup de sessions avec Claude.
+Built with [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research, [Kyutai](https://kyutai.org)'s voices, and many sessions with Claude.
 
-<p align="center"><sub>MIT · Fait avec ♥ et des Bips</sub></p>
+<p align="center"><sub>MIT · Made with ♥ and Bips</sub></p>

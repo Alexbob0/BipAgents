@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Les Bips · BipAgents</title>
-<meta name="description" content="Joue avec les Bips, les mascottes de BipAgents : touche-les, chatouille-les, caresse-les.">
+<title>The Bips · BipAgents</title>
+<meta name="description" content="Play with the Bips, the BipAgents mascots: tap them, tickle them, pet them.">
 <style>
   :root {
     --ink: #16181D; --ink2: #4A5163; --muted: #8A90A0; --ground: #F4F5F8; --card: #FFFFFF; --line: #E4E6EC;
@@ -26,7 +26,9 @@
     display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 18px; border-radius: 999px;
     border: 0; background: var(--ink); color: var(--ground); font: inherit; font-weight: 800; font-size: 15px; cursor: pointer;
   }
-  .sound[aria-pressed="false"] { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 2px var(--line); }
+  .actions { display: flex; gap: 10px; }
+  .lang { min-width: 56px; justify-content: center; }
+  .sound[aria-pressed="false"], .lang { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 2px var(--line); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
   .card {
     position: relative; border-radius: 30px; padding: 22px 12px 16px; display: flex; flex-direction: column; align-items: center;
@@ -61,23 +63,18 @@
 <main>
   <header>
     <div>
-      <h1>Les Bips</h1>
-      <p class="lede">Les mascottes de <a href="https://github.com/Alexbob0/BipAgents" style="color:inherit">BipAgents</a>, une par agent. Touche-les, chatouille-les, caresse-les… et ne les embête pas trop.</p>
+      <h1 data-i18n="title"></h1>
+      <p class="lede" data-i18n-html="lede"></p>
     </div>
-    <button class="sound" id="sound" aria-pressed="true">🔊 Son activé</button>
+    <div class="actions">
+      <button class="sound lang" id="lang" aria-label=""></button>
+      <button class="sound" id="sound" aria-pressed="true"></button>
+    </div>
   </header>
-  <section class="grid" id="grid" aria-label="Les huit Bips"></section>
-  <ul class="tips">
-    <li><b>Toucher</b> : une réaction surprise</li>
-    <li><b>3 touchers rapides</b> : ça chatouille</li>
-    <li><b>Frotter vite</b> : chatouilles</li>
-    <li><b>Caresser lentement</b> : ronron</li>
-    <li><b>Appui long</b> puis relâcher : Boing !</li>
-    <li><b>Glisser</b> : il te suit des yeux</li>
-    <li><b>Trop embêter</b> : à tes risques</li>
-  </ul>
+  <section class="grid" id="grid"></section>
+  <ul class="tips" id="tips"></ul>
   <footer>
-    <span>BipAgents · app iOS pour parler à ses agents Hermes</span>
+    <span data-i18n="footer"></span>
     <a href="https://github.com/Alexbob0/BipAgents">GitHub</a>
     <a href="https://x.com/Bob_AI_Digger">@Bob_AI_Digger</a>
   </footer>
@@ -217,6 +214,62 @@ function renderBip(c, s, t) {
     + `</g></g></svg>`;
 }
 
+// ----------------------------------------------------------------------------------------------------------------
+// English by default, French with ?lang=fr or the FR button (remembered), or a French browser.
+// ---------------------------------------------------------------------------------------------------------------
+const TEXT = {
+  en: {
+    title: "The Bips", other: "FR", otherLabel: "Version française",
+    lede: 'The mascots of <a href="https://github.com/Alexbob0/BipAgents" style="color:inherit">BipAgents</a>, one per agent. Tap them, tickle them, pet them… just don’t pester them too much.',
+    soundOn: "🔊 Sound on", soundOff: "🔈 Sound off", grid: "The eight Bips", footer: "BipAgents · an iOS app to talk to your Hermes agents",
+    aria: (name, label) => `${name}, the ${label} Bip. Tap to make it react.`,
+    tips: [["Tap", "a surprise reaction"], ["3 quick taps", "it tickles"], ["Fast rub", "tickles"], ["Slow stroke", "purring"],
+           ["Long press, then let go", "Boing!"], ["Drag", "it follows you with its eyes"], ["Pester it", "at your own risk"]],
+    cats: { wellness: ["Wellness", "Wellness"], finance: ["Finance", "Budget"], daily: ["Everyday", "Vie"], work: ["Work", "Office"],
+            learning: ["Learning", "Tutor"], home: ["Home", "Home"], creative: ["Creative", "Studio"], tech: ["Tech", "Server"] },
+    hop: ["Bip!", "Hi there!", "Yes?", "Hup!"], wink: ["Hehe", "Nice one", "Still here!"], spin: ["Wheee!"], surprised: ["Oh!", "Huh?!", "What?"],
+    thanks: ["Thanks ♡"], giggle: ["Teehee!", "That tickles!", "Stop it, hehe!", "Hahaha!"], pet: ["Mmm…", "More…", "Purr…"],
+    dizzy: "Everything’s spinning…", grumpy: "Hey! Easy now…", boing: "Boing!",
+  },
+  fr: {
+    title: "Les Bips", other: "EN", otherLabel: "English version",
+    lede: 'Les mascottes de <a href="https://github.com/Alexbob0/BipAgents" style="color:inherit">BipAgents</a>, une par agent. Touche-les, chatouille-les, caresse-les… et ne les embête pas trop.',
+    soundOn: "🔊 Son activé", soundOff: "🔈 Son coupé", grid: "Les huit Bips", footer: "BipAgents · app iOS pour parler à ses agents Hermes",
+    aria: (name, label) => `${name}, le Bip ${label}. Touche-le pour le faire réagir.`,
+    tips: [["Toucher", "une réaction surprise"], ["3 touchers rapides", "ça chatouille"], ["Frotter vite", "chatouilles"], ["Caresser lentement", "ronron"],
+           ["Appui long puis relâcher", "Boing !"], ["Glisser", "il te suit des yeux"], ["Trop embêter", "à tes risques"]],
+    cats: { wellness: ["Bien-être", "Wellness"], finance: ["Finance", "Budget"], daily: ["Quotidien", "Vie"], work: ["Travail", "Boulot"],
+            learning: ["Apprendre", "Prof"], home: ["Maison", "Maison"], creative: ["Créatif", "Atelier"], tech: ["Tech", "Serveur"] },
+    hop: ["Bip !", "Coucou !", "Oui ?", "Hop !"], wink: ["Hé hé", "Bien joué", "Toujours là !"], spin: ["Wiii !"], surprised: ["Oh !", "Ah ?!", "Quoi ?"],
+    thanks: ["Merci ♡"], giggle: ["Hihi !", "Ça chatouille !", "Arrête, hihi !", "Hahaha !"], pet: ["Mmmh…", "Encore…", "Ronron"],
+    dizzy: "Tout tourne…", grumpy: "Hé ! Doucement…", boing: "Boing !",
+  },
+};
+function initialLanguage() {
+  const asked = new URLSearchParams(location.search).get("lang");
+  if (asked === "fr" || asked === "en") return asked;
+  try { const saved = localStorage.getItem("bips-lang"); if (saved === "fr" || saved === "en") return saved; } catch {}
+  return (navigator.language || "").toLowerCase().startsWith("fr") ? "fr" : "en";
+}
+let lang = initialLanguage();
+let L = TEXT[lang];
+
+function applyLanguage() {
+  L = TEXT[lang];
+  document.documentElement.lang = lang;
+  document.title = `${L.title} · BipAgents`;
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = L[el.dataset.i18n]; });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = L[el.dataset.i18nHtml]; });
+  document.getElementById("grid").setAttribute("aria-label", L.grid);
+  document.getElementById("tips").innerHTML = L.tips.map(([gesture, effect]) => `<li><b>${gesture}</b> : ${effect}</li>`).join("")
+    .replaceAll(" : ", lang === "fr" ? " : " : ": ");
+  const button = document.getElementById("lang");
+  button.textContent = L.other;
+  button.setAttribute("aria-label", L.otherLabel);
+  document.getElementById("sound").textContent = soundOn ? L.soundOn : L.soundOff;
+  for (const b of bips) b.relabel();
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Animalese (BipBabble.swift): each letter becomes a tiny syllable, coloured by its vowel, pitched per Bip and mood.
 // ---------------------------------------------------------------------------------------------------------------
@@ -306,11 +359,20 @@ class Bip {
     const card = document.createElement("article");
     card.className = "card";
     card.style.setProperty("--main", c.main); card.style.setProperty("--deep", c.deep); card.style.setProperty("--tint", c.tint);
-    card.innerHTML = `<div class="stage" role="button" tabindex="0" aria-label="${c.name}, le Bip ${c.label}. Touche-le pour le faire réagir."><div class="bubble"></div><div class="svg"></div></div>`
-      + `<div class="name">${c.name}</div><div class="chip">${c.label}</div>`;
+    card.innerHTML = `<div class="stage" role="button" tabindex="0"><div class="bubble"></div><div class="svg"></div></div>`
+      + `<div class="name"></div><div class="chip"></div>`;
+    this.card = card;
     this.stage = card.querySelector(".stage"); this.svg = card.querySelector(".svg"); this.bubble = card.querySelector(".bubble");
+    this.relabel();
     document.getElementById("grid").append(card);
     this.listen();
+  }
+
+  relabel() {
+    const [label, name] = L.cats[this.c.id];
+    this.card.querySelector(".name").textContent = name;
+    this.card.querySelector(".chip").textContent = label;
+    this.stage.setAttribute("aria-label", L.aria(name, label));
   }
 
   get mood() { return this.reaction ?? "happy"; }
@@ -361,19 +423,19 @@ class Bip {
   tapped() {
     if (this.sulking) return;
     pick([
-      () => { this.show("happy", 0.8); this.say(pick(["Bip !", "Coucou !", "Oui ?", "Hop !"])); this.jump(26); },
-      () => { this.show("winking", 1.1); this.say(pick(["Hé hé", "Bien joué", "Toujours là !"])); this.pop(1.08); },
-      () => { this.show("giggling", 0.9); this.say("Wiii !"); this.spin(); },
-      () => { this.show("surprised", 1.0); this.say(pick(["Oh !", "Ah ?!", "Quoi ?"])); this.pop(1.14); },
-      () => { this.show("content", 1.4); this.say("Merci ♡"); this.burst("heart", 3); this.blushUp(); },
+      () => { this.show("happy", 0.8); this.say(pick(L.hop)); this.jump(26); },
+      () => { this.show("winking", 1.1); this.say(pick(L.wink)); this.pop(1.08); },
+      () => { this.show("giggling", 0.9); this.say(pick(L.spin)); this.spin(); },
+      () => { this.show("surprised", 1.0); this.say(pick(L.surprised)); this.pop(1.14); },
+      () => { this.show("content", 1.4); this.say(pick(L.thanks)); this.burst("heart", 3); this.blushUp(); },
     ])();
   }
-  giggle() { this.show("giggling", 1.8); this.say(pick(["Hihi !", "Ça chatouille !", "Arrête, hihi !", "Hahaha !"])); this.burst("sparkle", 4); this.shake(8, 9); }
-  pet() { this.show("content", 2); this.say(pick(["Mmmh…", "Encore…", "Ronron"])); this.burst("heart", 2); this.blushUp(); }
+  giggle() { this.show("giggling", 1.8); this.say(pick(L.giggle)); this.burst("sparkle", 4); this.shake(8, 9); }
+  pet() { this.show("content", 2); this.say(pick(L.pet)); this.burst("heart", 2); this.blushUp(); }
   annoyed() {
     this.sulking = true;
-    this.show("dizzy", 1.8); this.say("Tout tourne…"); this.shake(5, 14);
-    setTimeout(() => { this.reaction = "grumpy"; this.say("Hé ! Doucement…"); }, 1800);
+    this.show("dizzy", 1.8); this.say(L.dizzy); this.shake(5, 14);
+    setTimeout(() => { this.reaction = "grumpy"; this.say(L.grumpy); }, 1800);
     setTimeout(() => { this.sulking = false; this.reaction = null; }, 4200);
   }
 
@@ -435,7 +497,7 @@ class Bip {
       if (!down) return;
       clearTimeout(squeezeTimer);
       if (squeezed && !this.sulking) {
-        this.show("surprised", 0.9); this.say("Boing !"); this.jump(48); handled = true;
+        this.show("surprised", 0.9); this.say(L.boing); this.jump(48); handled = true;
       } else if (moved > 6) {
         this.animate({ offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 }, 450);
         handled = true;
@@ -476,8 +538,17 @@ const soundButton = document.getElementById("sound");
 soundButton.addEventListener("click", () => {
   soundOn = !soundOn;
   soundButton.setAttribute("aria-pressed", String(soundOn));
-  soundButton.textContent = soundOn ? "🔊 Son activé" : "🔈 Son coupé";
+  soundButton.textContent = soundOn ? L.soundOn : L.soundOff;
 });
+document.getElementById("lang").addEventListener("click", () => {
+  lang = lang === "en" ? "fr" : "en";
+  try { localStorage.setItem("bips-lang", lang); } catch {}
+  const url = new URL(location.href);
+  url.searchParams.set("lang", lang);
+  history.replaceState(null, "", url);
+  applyLanguage();
+});
+applyLanguage();
 </script>
 </body>
 </html>

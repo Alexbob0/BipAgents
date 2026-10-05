@@ -1,58 +1,60 @@
-# Serveur Pocket TTS — les voix des Bips
+🇬🇧 English · [🇫🇷 Français](README.fr.md)
 
-Petit serveur HTTP autour de [Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts) : 100 M de paramètres,
-**sur CPU, sans GPU**, en français, anglais, espagnol et allemand. Le bridge (`bridge/`) l'appelle pour toutes les
-voix `pocket:…` ; l'app ne lui parle jamais directement.
+# Pocket TTS server — the Bips' voices
 
-| Machine | Premier son | Vitesse | Mémoire (4 langues) |
+A small HTTP server around [Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts): 100M parameters,
+**on CPU, no GPU**, in French, English, Spanish and German. The bridge (`bridge/`) calls it for all
+`pocket:…` voices; the app never talks to it directly.
+
+| Machine | First audio | Speed | Memory (4 languages) |
 |---|---|---|---|
-| Mac mini / MacBook Air **Apple M4** (mesuré, 16 Go) | ≈ 50 ms | ≈ 6,5× le temps réel | ≈ 0,6 Go résident |
-| Serveur Linux **x86** (aibox, mesuré via le bridge) | 52–59 ms avec `--quantize` (128–148 ms sans) | ≈ 8,7× | ≈ 1,6 Go résident |
-| VPS x86, 2 à 4 vCPU dédiés (estimé) | quelques centaines de ms | > temps réel | moins avec `--quantize` |
+| Mac mini / MacBook Air **Apple M4** (measured, 16 GB) | ≈ 50 ms | ≈ 6.5× real time | ≈ 0.6 GB resident |
+| **x86** Linux server (aibox, measured through the bridge) | 52–59 ms with `--quantize` (128–148 ms without) | ≈ 8.7× | ≈ 1.6 GB resident |
+| x86 VPS, 2 to 4 dedicated vCPUs (estimated) | a few hundred ms | > real time | less with `--quantize` |
 
-Une génération à la fois (Pocket n'est pas prévu pour le parallèle et occupe le CPU) : le bridge met de toute
-façon ses demandes en file. Prévoir 2 cœurs libres pour lui à côté de Hermes.
+One generation at a time (Pocket is not designed for parallel use and keeps the CPU busy): the bridge queues
+its requests anyway. Plan for 2 free cores for it alongside Hermes.
 
 ## Installation
 
-Python ≥ 3.10. Le dépôt cloné dans `~/BipAgents` (les voix sont dans `~/BipAgents/voices`).
+Python ≥ 3.10. The repository cloned into `~/BipAgents` (the voices live in `~/BipAgents/voices`).
 
 ```bash
 cd ~/BipAgents/pocket
-python3 -m venv .venv            # ou : uv venv --python 3.12 .venv
+python3 -m venv .venv            # or: uv venv --python 3.12 .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python pocket_server.py --voices ../voices --languages fr,en,es,de
-# premier lancement : téléchargement des modèles depuis Hugging Face (≈ 440 Mo par langue, une fois)
+# first launch: downloads the models from Hugging Face (≈ 440 MB per language, once)
 curl -s http://127.0.0.1:8098/health
 ```
 
-Service au démarrage : `launchd/io.github.bipagents.pocket.plist` (macOS) ou `systemd/pocket-tts.service` (Linux),
-cf. [`docs/self-hosting.md`](../docs/self-hosting.md). Côté bridge : `[pocket] url = "http://127.0.0.1:8098"`.
+Service at boot: `launchd/io.github.bipagents.pocket.plist` (macOS) or `systemd/pocket-tts.service` (Linux),
+see [`docs/self-hosting.md`](../docs/self-hosting.md). On the bridge side: `[pocket] url = "http://127.0.0.1:8098"`.
 
-Options : `--languages fr,en` (ne charger que certaines langues), `--port 8098`, `--host 127.0.0.1` (laisser en
-local : seul le bridge l'appelle), `--quantize` (poids int8 : moins de mémoire, ≈ 25 % plus rapide sur x86),
-`--threads 2` (cœurs utilisés : laisse de la place à Hermes ; même vitesse mesurée sur Apple M4).
+Options: `--languages fr,en` (load only some languages), `--port 8098`, `--host 127.0.0.1` (keep it
+local: only the bridge calls it), `--quantize` (int8 weights: less memory, ≈ 25% faster on x86),
+`--threads 2` (cores used: leaves room for Hermes; same speed measured on Apple M4).
 
-Mesurer : `python3 bench.py` (premier son et vitesse, sans dépendance). Sur un VPS Linux x86, installer PyTorch
-**CPU** avant le reste (`pip install torch --index-url https://download.pytorch.org/whl/cpu`), sinon pip tire les
-bibliothèques CUDA (plusieurs Go). Conseils VPS : [`docs/self-hosting.md`](../docs/self-hosting.md#sur-un-vps).
+Measure: `python3 bench.py` (first audio and speed, no dependencies). On an x86 Linux VPS, install **CPU**
+PyTorch before the rest (`pip install torch --index-url https://download.pytorch.org/whl/cpu`), otherwise pip pulls
+the CUDA libraries (several GB). VPS tips: [`docs/self-hosting.md`](../docs/self-hosting.md#on-a-vps).
 
-Les voix des Bips sont des états pré-calculés (`voices/<langue>/<voix>.safetensors`) : les lire ne demande que le
-modèle public `kyutai/pocket-tts-without-voice-cloning`, téléchargé automatiquement. Le modèle de clonage (accès
-Hugging Face à demander) ne sert qu'à **fabriquer** de nouvelles voix, cf. [`voices/README.md`](../voices/README.md).
+The Bips' voices are precomputed states (`voices/<language>/<voice>.safetensors`): reading them only requires the
+public model `kyutai/pocket-tts-without-voice-cloning`, downloaded automatically. The cloning model (Hugging Face
+access must be requested) is only needed to **create** new voices, see [`voices/README.md`](../voices/README.md).
 
-## API (celle de Kyutai, utilisée par le bridge)
+## API (Kyutai's, used by the bridge)
 
 - `GET /health` → `{"status": "ok", "languages": ["fr", "en", …], "voices": {"fr": ["loutre", …], …}}`
-- `POST /v1/audio/speech` `{"input": "…", "voice": "loutre", "response_format": "wav" | "mp3"}` → le fichier entier
-- `POST /v1/audio/stream` `{"input": "…", "voice": "en/loutre"}` → PCM16 mono 24 kHz brut, morceau par morceau ;
-  la génération s'arrête si le client coupe (interruption à la voix, réponse annulée)
+- `POST /v1/audio/speech` `{"input": "…", "voice": "loutre", "response_format": "wav" | "mp3"}` → the whole file
+- `POST /v1/audio/stream` `{"input": "…", "voice": "en/loutre"}` → raw PCM16 mono 24 kHz, chunk by chunk;
+  generation stops if the client disconnects (voice interruption, cancelled reply)
 
-`voice` : `loutre` (français) ou `<code>/loutre` avec `en`, `es`, `de`. Voix inconnue → 404 ; le bridge répond alors
-une erreur et l'app lit le texte avec la voix de l'iPhone. Le texte arrive déjà préparé par le bridge (nombres en
-lettres, symboles, abréviations).
+`voice`: `loutre` (French) or `<code>/loutre` with `en`, `es`, `de`. Unknown voice → 404; the bridge then returns
+an error and the app reads the text with the iPhone's voice. The text arrives already prepared by the bridge (numbers
+spelled out, symbols, abbreviations).
 
-Tests (sans modèle ni téléchargement) : `python -m pytest pocket/tests` (avec `fastapi`, `httpx` et `pytest`, par
-exemple depuis le venv du bridge).
+Tests (no model, no download): `python -m pytest pocket/tests` (with `fastapi`, `httpx` and `pytest`, for
+example from the bridge's venv).
 
-Licences : code MIT ; poids Pocket TTS CC-BY-4.0 (Kyutai) ; voix des Bips : cf. `voices/`.
+Licenses: code MIT; Pocket TTS weights CC-BY-4.0 (Kyutai); Bips' voices: see `voices/`.

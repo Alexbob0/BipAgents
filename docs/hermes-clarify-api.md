@@ -1,26 +1,28 @@
-# `clarify` dans l'api_server Hermes (Runs API) — spécification
+🇬🇧 English · [🇫🇷 Français](hermes-clarify-api.fr.md)
 
-Hermes 0.21 expose l'outil `clarify` aux agents de l'api_server mais ne le branche pas : `_create_agent()`
-ne passe aucun `clarify_callback` à `AIAgent`, et l'outil répond « Clarify tool is not available in this
-execution context ». Ce document décrit le branchement attendu par BipAgents. Il est **symétrique des
-approbations** (`_make_approval_notify`, `POST /v1/runs/{id}/approval`).
+# `clarify` in the Hermes api_server (Runs API) — specification
 
-## Côté Hermes (correctif)
+Hermes 0.21 exposes the `clarify` tool to api_server agents but does not wire it up: `_create_agent()`
+passes no `clarify_callback` to `AIAgent`, and the tool answers "Clarify tool is not available in this
+execution context". This document describes the wiring BipAgents expects. It **mirrors
+approvals** (`_make_approval_notify`, `POST /v1/runs/{id}/approval`).
 
-1. Dans `gateway/platforms/api_server_runs.py`, pour chaque run :
-   - poser `agent.clarify_callback` (ou le passer à `_create_agent()`) ;
-   - le callback enregistre la question dans `tools/clarify_gateway.py` (`register`), émet l'événement
-     `clarify.request` (ci-dessous), passe le run au statut `waiting_for_input`, puis attend la réponse
-     (`wait_for_response`) jusqu'à `agent.clarify_timeout` ;
-   - réponse reçue → statut `running`, événement `clarify.responded`, l'outil renvoie la réponse à l'agent ;
-   - délai écoulé ou run arrêté → événement `clarify.cancelled`, l'outil renvoie « pas de réponse »
-     (même comportement qu'une plateforme de messagerie sans réponse).
-2. Nouvelle route `POST /v1/runs/{run_id}/clarify` qui appelle `resolve_gateway_clarify`.
-3. `clarify_timeout` des profils servis à l'app : **30 min** (l'utilisateur répond souvent depuis une
-   notification, plus tard).
-4. Capacité annoncée dans `/v1/capabilities` : `"run_clarify": true`.
+## Hermes side (fix)
 
-## Événements SSE (`GET /v1/runs/{run_id}/events`)
+1. In `gateway/platforms/api_server_runs.py`, for each run:
+   - set `agent.clarify_callback` (or pass it to `_create_agent()`);
+   - the callback registers the question in `tools/clarify_gateway.py` (`register`), emits the
+     `clarify.request` event (below), moves the run to the `waiting_for_input` status, then waits for the answer
+     (`wait_for_response`) up to `agent.clarify_timeout`;
+   - answer received → status `running`, `clarify.responded` event, the tool returns the answer to the agent;
+   - timeout or run stopped → `clarify.cancelled` event, the tool returns "no answer"
+     (same behavior as a messaging platform with no reply).
+2. New route `POST /v1/runs/{run_id}/clarify` that calls `resolve_gateway_clarify`.
+3. `clarify_timeout` for the profiles served to the app: **30 min** (users often answer from a
+   notification, later on).
+4. Capability advertised in `/v1/capabilities`: `"run_clarify": true`.
+
+## SSE events (`GET /v1/runs/{run_id}/events`)
 
 ```
 event: clarify.request
@@ -29,9 +31,9 @@ data: {"type": "clarify.request", "run_id": "run_…", "request_id": "clr_…",
                       "allow_other": true}]}
 ```
 
-- Une question simple de `clarify(question, choices)` donne un tableau `questions` d'un élément (`id` libre,
-  par exemple `"q1"`). Le mode « plusieurs questions » de l'outil donne un élément par question.
-- `choices` peut être vide (question ouverte) ; `allow_other` dit si une réponse libre est acceptée.
+- A simple `clarify(question, choices)` question yields a `questions` array with one element (free-form `id`,
+  e.g. `"q1"`). The tool's "multiple questions" mode yields one element per question.
+- `choices` can be empty (open question); `allow_other` says whether a free-text answer is accepted.
 
 ```
 event: clarify.responded
@@ -41,19 +43,19 @@ event: clarify.cancelled
 data: {"type": "clarify.cancelled", "run_id": "run_…", "request_id": "clr_…", "reason": "timeout" | "stopped"}
 ```
 
-## Réponse (`POST /v1/runs/{run_id}/clarify`)
+## Answer (`POST /v1/runs/{run_id}/clarify`)
 
 ```json
 {"request_id": "clr_…", "answers": {"q1": "9h — 19 €"}}
 ```
 
-- La valeur est le texte d'un choix, ou une réponse libre si `allow_other`.
-- `{"request_id": "clr_…", "cancel": true}` annule (l'agent reçoit « pas de réponse »).
-- Réponses : `200 {"resolved": 1}` ; `404` run ou question inconnus / expirés ; `409` déjà répondue.
+- The value is the text of a choice, or a free-text answer if `allow_other`.
+- `{"request_id": "clr_…", "cancel": true}` cancels (the agent receives "no answer").
+- Responses: `200 {"resolved": 1}`; `404` unknown / expired run or question; `409` already answered.
 
-## Côté BipAgents
+## BipAgents side
 
-- L'app affiche une carte « Question » avec un bouton par choix (un clic suffit pour une question
-  simple ; « Autre… » ouvre un champ si `allow_other`), et répond par la route ci-dessus.
-- Le bridge relaie ces événements comme les autres et, quand l'app ne suit pas le run, envoie une
-  notification « <agent> a une question » qui rouvre la conversation.
+- The app shows a "Question" card with one button per choice (a single tap is enough for a simple
+  question; "Other…" opens a text field if `allow_other`), and answers through the route above.
+- The bridge relays these events like the others and, when the app is not following the run, sends a
+  "<agent> has a question" notification that reopens the conversation.

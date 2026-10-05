@@ -1,74 +1,74 @@
-# BipAgents bridge — exemple de configuration (aucun secret ici : dépôt open source).
-# Copier vers ~/.config/hermes-ios/bridge.toml puis `chmod 600` ce fichier.
-# Chemin alternatif : variable d'environnement BRIDGE_CONFIG.
+# BipAgents bridge — example configuration (no secrets here: open-source repository).
+# Copy to ~/.config/hermes-ios/bridge.toml, then `chmod 600` that file.
+# Alternative path: BRIDGE_CONFIG environment variable.
 #
-# Chaque secret peut être donné en ligne (`bridge_key = "…"`) ou par fichier
-# (`bridge_key_file = "~/.config/hermes-ios/bridge.key"`), idem `hermes_key(_file)` et `ntfy_token(_file)`.
+# Each secret can be given inline (`bridge_key = "…"`) or via a file
+# (`bridge_key_file = "~/.config/hermes-ios/bridge.key"`); same for `hermes_key(_file)` and `ntfy_token(_file)`.
 
 bridge_key = "CHANGE-ME-run-python-m-bipbridge-genkey"
-host = "127.0.0.1"          # exposé sur le tailnet par `tailscale serve`, jamais directement
+host = "127.0.0.1"          # exposed on the tailnet via `tailscale serve`, never directly
 port = 8643
 log_level = "info"
 data_dir = "~/.local/share/hermes-bridge"
 
-# Kyutai TTS 1.6B (GPU Nvidia) : voix humaine « classique » et podcast. Facultatif : sans GPU (Mac mini, VPS),
-# mettre `enabled = false` et garder [pocket] ; la voix par défaut devient alors `[pocket] default_voice`.
+# Kyutai TTS 1.6B (Nvidia GPU): "classic" human voice and podcast. Optional: without a GPU (Mac mini, VPS),
+# set `enabled = false` and keep [pocket]; the default voice then becomes `[pocket] default_voice`.
 [kyutai]
 enabled = true
 url = "http://127.0.0.1:8097"
-default_voice = "5476"      # alias Kyutai (default, 5476, 4193, 5207) ou chemin cml-tts/fr/…_enhanced.wav
+default_voice = "5476"      # Kyutai alias (default, 5476, 4193, 5207) or path cml-tts/fr/…_enhanced.wav
 timeout_seconds = 120
 
-# Kyutai Pocket TTS (CPU, premier son ≈ 50 ms) pour les voix des Bips : serveur pocket/pocket_server.py du dépôt,
-# voix dans voices/. « pocket:<nom> » (pocket:loutre…) parle français, « pocket:en/<nom> », « pocket:es/<nom> »,
-# « pocket:de/<nom> » les autres langues ; toute autre voix va à Kyutai. En français, Pocket absent ou en panne →
-# voix Kyutai par défaut (si Kyutai est activé). Retirer la section pour le désactiver.
+# Kyutai Pocket TTS (CPU, first sound ≈ 50 ms) for the Bips' voices: the repo's pocket/pocket_server.py server,
+# voices in voices/. "pocket:<name>" (pocket:loutre…) speaks French, "pocket:en/<name>", "pocket:es/<name>",
+# "pocket:de/<name>" the other languages; any other voice goes to Kyutai. In French, Pocket missing or down →
+# default Kyutai voice (if Kyutai is enabled). Remove the section to disable it.
 [pocket]
 url = "http://127.0.0.1:8098"
-default_voice = "pocket:loutre"   # voix par défaut quand Kyutai est désactivé
+default_voice = "pocket:loutre"   # default voice when Kyutai is disabled
 
 [ntfy]
 url = "http://127.0.0.1:8645"
 
-# Réponses des tâches planifiées Hermes (sessions cron_…) lues directement dans Hermes et mises dans la
-# Boîte avec un push, quelle que soit la livraison configurée du job (SimpleX, ntfy…). `[SILENT]` ignoré.
+# Replies from Hermes scheduled tasks (cron_… sessions), read directly from Hermes and put in the
+# Inbox with a push, whatever the job's configured delivery (SimpleX, ntfy…). `[SILENT]` ignored.
 [cron]
 watch = true
 interval_seconds = 30
-window_hours = 12        # au premier démarrage, seules les tâches de ces dernières heures sont reprises
+window_hours = 12        # on first start, only tasks from the last N hours are picked up
 
-# Fichiers que les agents désignent par une ligne « MEDIA:<chemin> » (podcast mp3, image…) : préfixe vu par
-# l'agent (dans son conteneur) -> dossier sur l'hôte. Seuls les fichiers média sous ces dossiers sont servis
-# (GET /v1/media) ; un mp3 joint à un message de la Boîte devient son audio, à la place d'une lecture.
+# Files that agents point to with a "MEDIA:<path>" line (podcast mp3, image…): prefix as seen by
+# the agent (inside its container) -> folder on the host. Only media files under these folders are served
+# (GET /v1/media); an mp3 attached to an Inbox message becomes its audio, instead of a read-aloud.
 [media.roots]
 # "/home/hermes/.hermes/media" = "~/hermes-agent/hermes-home/media"
 
 [apns]
-# Laisser team_id/key_id vides pour désactiver le push.
-team_id = ""                # Apple Developer Team ID (10 caractères)
-key_id = ""                 # Key ID de la clé APNs .p8
+# Leave team_id/key_id empty to disable push.
+team_id = ""                # Apple Developer Team ID (10 characters)
+key_id = ""                 # Key ID of the APNs .p8 key
 p8_path = "~/.config/hermes-ios/AuthKey_KEYID.p8"   # mode 600
-bundle_id = "io.github.bipagents"   # = BIP_BUNDLE_ID de l'app (Config/Local.xcconfig) si tu l'as changé
-environment = "sandbox"     # défaut pour les appareils qui n'en précisent pas : sandbox (Xcode) | production (TestFlight/App Store)
+bundle_id = "io.github.bipagents"   # = the app's BIP_BUNDLE_ID (Config/Local.xcconfig) if you changed it
+environment = "sandbox"     # default for devices that don't specify one: sandbox (Xcode) | production (TestFlight/App Store)
 
 [push]
-previews = false            # false : le corps du push est générique, le contenu est lu sur le tailnet par l'extension
-watch_followed_runs = true  # un run suivi en vocal reste surveillé (approbations) si l'app passe en arrière-plan
+previews = false            # false: generic push body, the content is fetched over the tailnet by the extension
+watch_followed_runs = true  # a run followed in voice mode stays watched (approvals) if the app goes to the background
 
 [outbox]
 db_path = "~/.local/share/hermes-bridge/bridge.db"
 audio_dir = "~/.local/share/hermes-bridge/audio"
 retention_days = 90
-audio_max_chars = 2000      # au-delà, pas de pré-synthèse audio
-audio_wait_seconds = 8      # attente max de l'audio avant d'envoyer le push
+audio_max_chars = 2000      # beyond this, no audio pre-synthesis
+audio_wait_seconds = 8      # max wait for the audio before sending the push
 
 [limits]
 upload_max_mb = 50
 upload_retention_days = 30
-upload_file_mode = "640"    # octal ; voir README (utilisateur du conteneur Hermes)
+upload_file_mode = "640"    # octal; see README (Hermes container user)
 upload_dir_mode = "750"
 sentence_max_chars = 180
-tts_max_chars = 1000        # limite de POST /v1/tts/sentence
+tts_max_chars = 1000        # limit for POST /v1/tts/sentence
 tts_cache_entries = 256
 watch_max_minutes = 120
 purge_interval_hours = 6
