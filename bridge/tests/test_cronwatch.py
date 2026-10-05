@@ -116,7 +116,7 @@ def test_bot_chat_turn_taken_alone_is_pushed_once(config_dict):
     asyncio.run(cron.poll(agent, now=NOW))                      # baseline: nothing old is pushed
     assert push.replies == []
     hermes.sessions[0]["message_count"] = 6
-    hermes.messages["api_bot"] += [{"role": "user", "content": "Message from 🤖 Wellness (@wellness): nuit OK"},
+    hermes.messages["api_bot"] += [{"role": "user", "content": "[Routine] Point de midi"},
                                    {"role": "assistant", "content": "Wellness dit que ta nuit était bonne."}]
     asyncio.run(cron.poll(agent, now=NOW))                      # first sight: wait until it stops changing
     asyncio.run(cron.poll(agent, now=NOW))
@@ -150,3 +150,34 @@ def test_session_state_route_records_presence(client):
     assert resp.status_code == 200 and resp.json()["message_count"] == 7
     assert client.app.state.services.presence.viewing("wellness", "api_bot")
     assert client.get("/v1/sessions/bad%20id/state?agent=wellness", headers=AUTH).status_code == 400
+
+
+def test_answer_to_another_agent_is_not_pushed(config_dict):
+    cron, hermes, push, hub, presence, agent = bot_watcher(config_dict)
+    hermes.sessions = [{"id": "api_bot", "title": "Bot Chat", "message_count": 2}]
+    hermes.messages["api_bot"] = [{"role": "user", "content": "Salut"}, {"role": "assistant", "content": "Salut !"}]
+    asyncio.run(cron.poll(agent, now=NOW))
+    hermes.sessions[0]["message_count"] = 4
+    hermes.messages["api_bot"] += [{"role": "user", "content": "Message from 🤖 Vie (@vie): Comment était la nuit d'Alex ?"},
+                                   {"role": "assistant", "content": "Nuit correcte, 7 h 10, score 82."}]
+    for _ in range(2):
+        asyncio.run(cron.poll(agent, now=NOW))
+    assert push.replies == []  # Vie reports back to the user: one notification, from Vie
+
+
+def test_teammate_answer_to_our_own_request_is_pushed(config_dict):
+    cron, hermes, push, hub, presence, agent = bot_watcher(config_dict)
+    hermes.sessions = [{"id": "api_vie", "title": "Bot Chat", "message_count": 2}]
+    hermes.messages["api_vie"] = [{"role": "user", "content": "Salut"}, {"role": "assistant", "content": "Salut !"}]
+    asyncio.run(cron.poll(agent, now=NOW))
+    hermes.sessions[0]["message_count"] = 6
+    hermes.messages["api_vie"] += [
+        {"role": "user", "content": "Demande à Wellness comment était ma nuit"},
+        {"role": "assistant", "content": "Je demande à Wellness.",
+         "tool_calls": [{"function": {"name": "message_agent", "arguments": "{\"target\": \"wellness\", \"message\": \"Nuit d'Alex ?\"}"}}]},
+        {"role": "user", "content": "Message from 🤖 Wellness (@wellness): Nuit correcte, 7 h 10."},
+        {"role": "assistant", "content": "Wellness dit : nuit correcte, 7 h 10."},
+    ]
+    for _ in range(2):
+        asyncio.run(cron.poll(agent, now=NOW))
+    assert push.replies == [("wellness", "Wellness dit : nuit correcte, 7 h 10.", "api_vie")]

@@ -18,6 +18,7 @@ ready ». Its baseline is taken at the first poll, so a restart pushes nothing o
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -118,6 +119,28 @@ def is_bot_chat(session: Dict[str, Any]) -> bool:
     return str(session.get("title") or "").strip().lower() == "bot chat"
 
 
+TEAMMATE_PREFIX = re.compile(r"^\s*Message from \S*\s*.+? \(@([\w.-]+)\):")
+
+
+def answers_another_agent(messages: List[Dict[str, Any]]) -> bool:
+    """The last turn was started by another agent's request (« Message from 🤖 Vie (@vie): … », Bot Mode
+    message_agent), not by an answer to a request this agent sent: the requester reports back to the user.
+    Both directions look alike; an answer follows this agent's own message_agent call to that handle."""
+    for index in range(len(messages) - 1, -1, -1):
+        if str(messages[index].get("role") or "").lower() != "user":
+            continue
+        match = TEAMMATE_PREFIX.match(message_text(messages[index]))
+        if match is None:
+            return False  # the user, a routine…
+        handle = match.group(1).lower()
+        for earlier in reversed(messages[max(0, index - 40):index]):
+            raw = json.dumps(earlier, ensure_ascii=False).lower()
+            if "message_agent" in raw and handle in raw:
+                return False  # the answer to our own request: worth a notification
+        return True
+    return False
+
+
 class CronWatcher:
     def __init__(self, config: Config, hermes: HermesClient, outbox: OutboxService,
                  interval_seconds: float = 60.0, window_hours: float = 12.0, store: Optional[Store] = None,
@@ -192,7 +215,8 @@ class CronWatcher:
         if not first and count is not None and count == self._bot_count[key] and key not in self._bot_candidate:
             return  # nothing new since the last poll
         self._bot_count[key] = count
-        reply = final_reply(await self.hermes.session_messages(agent, sid))
+        messages = await self.hermes.session_messages(agent, sid)
+        reply = final_reply(messages)
         if first or reply is None:
             if reply is not None:
                 self._bot_last[key] = reply  # baseline: what is already there was seen (or is old)
@@ -209,6 +233,8 @@ class CronWatcher:
             return  # the app followed this turn: shown live or pushed as « reply ready »
         if self.presence is not None and self.presence.viewing(agent.name, sid):
             return  # on screen right now
+        if answers_another_agent(messages):
+            return  # an answer to another agent: that agent reports back to the user, one notification
         if self.push is not None and reply.strip() != SILENT:
             log.info("bot chat push", extra=fields(agent=agent.name, session=sid, chars=len(reply)))
             await self.push.notify_reply(agent.name, f"session:{sid}", reply, sid)
