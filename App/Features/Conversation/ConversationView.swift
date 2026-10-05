@@ -496,7 +496,7 @@ struct ToolCard: View {
                         .background(palette.tint, in: .rect(cornerRadius: 10))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(tool.tool).font(Theme.mono).foregroundStyle(Theme.ink)
-                        if let preview = tool.preview.map(ChatText.toolSummary), !preview.isEmpty {
+                        if let preview = tool.preview.map { ChatText.toolSummary($0) }, !preview.isEmpty {
                             Text(preview).font(Theme.body(13)).foregroundStyle(Theme.ink2).lineLimit(1)
                         }
                     }

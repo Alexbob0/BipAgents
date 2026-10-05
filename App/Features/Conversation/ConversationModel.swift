@@ -644,6 +644,12 @@ final class ConversationModel {
             if let bridge { Task { [agent] in try? await bridge.watch(agent: agent.bridgeName, runID: id) } }
         }
         switch event.kind {
+        case .reasoning, .tool, .approvalRequest, .clarifyRequest:
+            endStreamingText() // something else follows a text: that text is complete
+        default:
+            break // deltas, and unknown events that may sit between deltas of the same text
+        }
+        switch event.kind {
         case .delta(let text):
             interim = nil
             appendAssistant(text)
@@ -698,6 +704,14 @@ final class ConversationModel {
             }
         }
         return false
+    }
+
+    /// Marks every assistant text as complete (no cursor, « Écouter » available). Not only the last item:
+    /// Hermes may send the reasoning after the reply.
+    private func endStreamingText() {
+        for index in items.indices {
+            if case .assistant(let text, true) = items[index].kind { items[index].kind = .assistant(text: text, isStreaming: false) }
+        }
     }
 
     private func appendAssistant(_ text: String) {
@@ -799,9 +813,7 @@ final class ConversationModel {
             Self.activeRuns[sessionID] = nil
             if Self.listeners[sessionID] === self { Self.listeners[sessionID] = nil }
         }
-        if case .assistant(let text, true)? = items.last?.kind {
-            items[items.count - 1].kind = .assistant(text: text, isStreaming: false)
-        }
+        endStreamingText()
         if replyByVoice {
             replyByVoice = false
             prepareVoiceReply()

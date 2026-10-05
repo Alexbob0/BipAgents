@@ -53,16 +53,33 @@ enum ChatText {
     }
 
     /// One readable line for a tool card: the query, command or path rather than raw JSON / tool output.
-    static func toolSummary(_ preview: String) -> String {
+    /// Previews are often cut (invalid JSON): the first useful « "key": "value" » is then read directly.
+    static func toolSummary(_ preview: String, depth: Int = 0) -> String {
         var text = preview.replacing(/<\/?untrusted_tool_result[^>]*>/, with: "")
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.hasPrefix("{"), let data = text.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            let keys = ["query", "command", "path", "file_path", "url", "pattern", "name", "code", "content", "text", "input", "output"]
-            if let value = keys.lazy.compactMap({ object[$0] as? String }).first(where: { !$0.isEmpty }) {
+        let keys = ["query", "command", "path", "file_path", "url", "pattern", "name", "code", "content", "text", "input", "output", "result"]
+        if text.hasPrefix("{") {
+            var value: String?
+            if let data = text.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                value = keys.lazy.compactMap { object[$0] as? String }.first { !$0.isEmpty }
+                    ?? object.values.compactMap { $0 as? String }.first
+                if value == nil, object["ok"] as? Bool == true { return "OK" }
+            } else {
+                for key in keys {
+                    if let match = text.firstMatch(of: try! Regex("\"\(key)\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)")),
+                       let captured = match.output[1].substring {
+                        value = String(captured).replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\\"", with: "\"")
+                        break
+                    }
+                }
+            }
+            if let value {
+                // A JSON result inside (`{"output": "{\n  \"ok\": true…`): read one level deeper.
+                let inner = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if depth == 0, inner.hasPrefix("{") { return toolSummary(inner, depth: 1) }
                 text = value
-            } else if let first = object.values.compactMap({ $0 as? String }).first {
-                text = first
+            } else if text.contains(#""ok": true"#) || text.contains(#"\"ok\": true"#) {
+                return "OK"
             }
         }
         let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text

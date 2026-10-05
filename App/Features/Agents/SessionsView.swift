@@ -25,22 +25,18 @@ struct SessionsView: View {
                 Section { NoticeRow(text: errorMessage, isError: true) }
                     .listRowBackground(Color.clear)
             }
-            Section {
-                ForEach(sessions) { session in
-                    NavigationLink(value: AgentRoute.conversation(agent, sessionID: session.id)) {
-                        SessionRow(session: session)
-                    }
-                    .swipeActions {
-                        Button("Supprimer", systemImage: "trash", role: .destructive) { delete(session) }
-                        Button("Renommer", systemImage: "pencil") {
-                            newTitle = session.title ?? ""
-                            renaming = session
-                        }
+            // Bot Mode: the agent's permanent « Bot Chat », pinned above everything else (never deleted here).
+            if let botChat = sessions.first(where: AgentStore.isBotChat) {
+                Section {
+                    NavigationLink(value: AgentRoute.conversation(agent, sessionID: botChat.id)) {
+                        PinnedThreadRow(session: botChat, preview: store.latestSession[agent.id]?.id == botChat.id
+                                            ? store.latestSession[agent.id]?.lastMessagePreview : nil,
+                                        palette: palette)
                     }
                 }
-            } header: {
-                if !sessions.isEmpty { Text("Conversations").font(Theme.body(13, weight: .heavy)) }
             }
+            sessionSection("Conversations", sessions.filter { !AgentStore.isBotChat($0) && !AgentStore.isScheduledTask($0) })
+            sessionSection("Tâches planifiées", sessions.filter(AgentStore.isScheduledTask))
         }
         .scrollContentBackground(.hidden)
         .background(alignment: .top) {
@@ -64,6 +60,28 @@ struct SessionsView: View {
             TextField("Titre", text: $newTitle)
             Button("Annuler", role: .cancel) {}
             Button("OK") { if let renaming { rename(renaming, to: newTitle) } }
+        }
+    }
+
+    @ViewBuilder
+    private func sessionSection(_ title: String, _ rows: [HermesSession]) -> some View {
+        if !rows.isEmpty {
+            Section {
+                ForEach(rows) { session in
+                    NavigationLink(value: AgentRoute.conversation(agent, sessionID: session.id)) {
+                        SessionRow(session: session)
+                    }
+                    .swipeActions {
+                        Button("Supprimer", systemImage: "trash", role: .destructive) { delete(session) }
+                        Button("Renommer", systemImage: "pencil") {
+                            newTitle = session.title ?? ""
+                            renaming = session
+                        }
+                    }
+                }
+            } header: {
+                Text(title).font(Theme.body(13, weight: .heavy))
+            }
         }
     }
 
@@ -145,6 +163,39 @@ struct SessionRow: View {
                     .font(Theme.body(14))
                     .foregroundStyle(Theme.ink2)
                     .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// The agent's permanent thread (Bot Mode « Bot Chat »), pinned on top of its conversations.
+struct PinnedThreadRow: View {
+    var session: HermesSession
+    var preview: String?
+    var palette: AgentPalette
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(palette.deep)
+                .frame(width: 34, height: 34)
+                .background(palette.tint, in: .rect(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text("Discussion").font(Theme.body(16, weight: .heavy))
+                    Spacer()
+                    if let date = session.updatedAt ?? session.createdAt {
+                        Text(date, format: .relative(presentation: .named))
+                            .font(Theme.body(13, weight: .bold))
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
+                Text(preview.map(ChatText.visible) ?? "Le fil permanent de l’agent")
+                    .font(Theme.body(14))
+                    .foregroundStyle(Theme.ink2)
+                    .lineLimit(2)
             }
         }
         .padding(.vertical, 4)
