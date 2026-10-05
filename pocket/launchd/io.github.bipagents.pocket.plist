@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ~/Library/LaunchAgents/io.github.bipagents.pocket.plist — macOS (Mac mini). __HOME__ is replaced at install
+     (see docs/self-hosting.md): sed "s#__HOME__#$HOME#g". -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>io.github.bipagents.pocket</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HOME__/BipAgents/pocket/.venv/bin/python</string>
+    <string>__HOME__/BipAgents/pocket/pocket_server.py</string>
+    <string>--voices</string><string>__HOME__/BipAgents/voices</string>
+    <string>--languages</string><string>fr,en,es,de</string>
+  </array>
+  <key>WorkingDirectory</key><string>__HOME__/BipAgents/pocket</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/bipagents-pocket.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/bipagents-pocket.log</string>
+</dict>
+</plist>

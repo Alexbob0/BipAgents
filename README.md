@@ -49,7 +49,7 @@ Et ils **babillent** : chaque réaction est dite dans leur « Animalese », un c
 ## ✨ Ce que sait faire l'app
 
 - 🎙️ **Voix d'abord** : notes vocales (maintenir « Audio » sur la carte d'un agent, relâcher, c'est parti), **Live** mains libres avec interruption à la voix, « Écouter » sous chaque réponse en streaming.
-- 🗣️ **Une voix par Bip** : voix mignonnes Kyutai Pocket TTS sur CPU, ou voix « sérieuse » Kyutai 1.6B sur GPU pour le podcast du matin. Les nombres, symboles et mots anglais sont rendus prononçables en français.
+- 🗣️ **Une voix par Bip** : voix mignonnes Kyutai Pocket TTS, **sur CPU, sans GPU** (≈ 50 ms avant le premier son sur un Mac mini M4), en français, anglais, espagnol et allemand. Les nombres, symboles et abréviations sont rendus prononçables dans chaque langue.
 - 🔒 **Ça continue écran verrouillé** : les messages partent en *runs* Hermes. Tu fermes l'app, l'agent finit son travail, et la réponse arrive en notification, avec l'avatar du Bip et le vrai texte.
 - ✅ **Accords depuis l'écran verrouillé** : « Wellness veut lancer `pip install openpyxl` » → Une fois / Cette session / Toujours / Refuser, sans ouvrir l'app.
 - ❓ **L'agent peut te poser une question** (outil `clarify`) : une carte avec un bouton par choix, comme sur Hermes Desktop.
@@ -80,7 +80,7 @@ flowchart LR
   subgraph Serveur["Ton serveur (Tailscale)"]
     H[Hermes Agent<br/>api_server · runs · Bot Mode]
     B[bipbridge<br/>FastAPI]
-    K[Kyutai TTS<br/>GPU + Pocket CPU]
+    K[Pocket TTS<br/>voix des Bips, CPU]
   end
   A -- "texte, fichiers, runs (SSE)" --> H
   A -- "voix, fichiers, suivi des runs" --> B
@@ -90,19 +90,17 @@ flowchart LR
 ```
 
 - **L'app** parle directement à l'api_server Hermes (sessions, runs, accords, questions) et au **bridge** pour tout le reste.
-- **Le bridge** (`bridge/`, Python) synthétise les voix, sert les fichiers, relaie les runs pour qu'aucun événement ne se perde, surveille les tâches planifiées et envoie les notifications push.
+- **Le bridge** (`bridge/`, Python) prépare et fait synthétiser les voix, sert les fichiers, relaie les runs pour qu'aucun événement ne se perde, surveille les tâches planifiées et envoie les notifications push.
+- **Pocket TTS** (`pocket/`) donne leur voix aux Bips, sur le CPU de la même machine.
 - Tout reste chez toi : aucun cloud tiers à part Apple pour les push. Aucun secret dans ce dépôt ; les clés sont saisies dans l'app (Trousseau) ou dans la config du bridge sur le serveur.
 
 ## 🚀 Démarrer
 
 **Juste pour voir**, sans serveur : ouvre `BipAgents.xcodeproj`, schéma BipAgents → Arguments → `-demo`. Ajoute `-screen conversation`, `-screen call`, `-tab inbox` ou `-demoAgents 5` pour arriver directement sur un écran.
 
-**Pour de vrai** :
+**Pour de vrai** : un **Mac mini**, un **VPS** ou un serveur Linux qui fait tourner [Hermes Agent](https://github.com/NousResearch/hermes-agent) suffit, sans GPU. Le guide pas à pas : [**Héberger BipAgents chez soi**](docs/self-hosting.md) (Tailscale, api_server Hermes, Pocket TTS, bridge, lancement au démarrage, notifications).
 
-1. Un serveur avec [Hermes Agent](https://github.com/NousResearch/hermes-agent), son api_server activé et [Tailscale](https://tailscale.com).
-2. Le bridge : voir [`bridge/README.md`](bridge/README.md) (TTS Kyutai, push APNs, fichiers, tâches planifiées).
-3. Dans Xcode, choisis ton équipe de signature (cibles BipAgents et NotificationService). Push, App Group `group.io.github.bipagents` et Keychain Sharing sont déclarés dans `Config/*.entitlements`.
-4. Dans l'app : Réglages › Ajouter un agent (adresse Tailscale, clé api_server, profil Hermes, catégorie = son Bip).
+> 🎙️ **Bonus** : avec un GPU Nvidia, Kyutai TTS 1.6B ajoute une voix humaine posée et sert à un podcast du matin généré par un agent. Facultatif, cf. la fin du guide.
 
 <details>
 <summary><b>🗂️ Le dépôt</b></summary>
@@ -115,6 +113,7 @@ flowchart LR
 - `Packages/HermesKit` — client de l'api_server Hermes (SSE, sessions, runs, accords, `clarify`, pièces jointes).
 - `Packages/VoiceKit` — capture, transcription sur l'iPhone, TTS en flux PCM, interruption à la voix.
 - `bridge/` — le service Python côté serveur ([README](bridge/README.md)).
+- `pocket/` — le serveur Pocket TTS des voix des Bips ([README](pocket/README.md)).
 - `voices/` — les voix des Bips ([README](voices/README.md)).
 - `docs/` — notes d'API ([`clarify`](docs/hermes-clarify-api.md), [fichiers](docs/aibox-fichiers.md)), captures, [terrain de jeu](docs/play/index.html) et bannière (`node docs/tools/banner.mjs` la régénère).
 - `SPEC.md` — la spécification complète.

@@ -112,3 +112,16 @@ async def test_scheduler_reentrancy_after_release():
     async with sched.slot(BACKGROUND):
         pass
     assert sched.depth == 0
+
+
+async def test_pocket_only_routes_everything_to_pocket_and_never_to_kyutai():
+    from conftest import POCKET
+    backend = FakeBackend()
+    tts = TtsService(httpx.AsyncClient(transport=backend.transport()), None, "pocket:loutre", pocket_url=POCKET)
+    await tts.synthesize("Bonjour.", "5476", "pcm16")  # a Kyutai voice: the default Bip speaks instead
+    assert backend.pocket_inputs[-1]["voice"] == "loutre" and backend.kyutai_inputs == []
+    backend.pocket_status = 503
+    with pytest.raises(TtsError):
+        await tts.synthesize("Encore.", "pocket:loutre", "pcm16")
+    assert backend.kyutai_inputs == []
+    assert await tts.reachable() is None

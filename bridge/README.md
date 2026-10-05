@@ -124,8 +124,8 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 |---|---|---|
 | `bridge_key` | — (obligatoire) | clé Bearer unique de l'app (≥ 32 car., `python -m bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | écoute locale |
-| `[kyutai] url`, `default_voice` | `http://127.0.0.1:8097`, `5476` | TTS |
-| `[pocket] url` | absent (désactivé) | Kyutai Pocket TTS pour les voix `pocket:<nom>` des Bips |
+| `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | TTS Kyutai 1.6B (GPU) ; `enabled = false` : Pocket seul |
+| `[pocket] url`, `default_voice` | absent (désactivé), `pocket:loutre` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` sert quand Kyutai est désactivé |
 | `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push désactivé si vide | |
 | `[push] previews` | `false` | `false` : corps de notification générique, le texte transite par le tailnet |
