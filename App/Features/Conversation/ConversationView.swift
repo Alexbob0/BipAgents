@@ -120,6 +120,15 @@ private struct ConversationContent: View {
         .onChange(of: model.isRunning) { _, running in
             if !running { proxy.scrollTo(Self.bottom, anchor: .bottom) }
         }
+        // An unsent message survives leaving the conversation (and the app); sending clears it.
+        .task { if draft.isEmpty { draft = UserDefaults.standard.string(forKey: draftKey) ?? "" } }
+        .onChange(of: draft) { _, text in
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                UserDefaults.standard.removeObject(forKey: draftKey)
+            } else {
+                UserDefaults.standard.set(text, forKey: draftKey)
+            }
+        }
         .scrollDismissesKeyboard(.interactively)
         // A tap anywhere in the thread puts the keyboard away (buttons in it still work: simultaneous).
         .simultaneousGesture(TapGesture().onEnded {
@@ -327,6 +336,9 @@ private struct ConversationContent: View {
         guard let previous else { return index == 0 ? date : nil }
         return Calendar.current.isDate(previous, inSameDayAs: date) ? nil : date
     }
+
+    /// Per agent and conversation (« new » before the first message).
+    private var draftKey: String { "draft.\(model.agent.id.uuidString).\(model.sessionID ?? "new")" }
 
     private func send() {
         model.send(text: draft, attachments: attachments)
