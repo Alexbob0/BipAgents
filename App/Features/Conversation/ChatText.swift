@@ -25,7 +25,7 @@ enum ChatText {
     /// ask something, and offer 2 to 5 short options.
     static func choices(in text: String) -> [String] {
         let visible = visible(text)
-        let asks = visible.contains("?") || visible.range(of: #"\b(choisis|choisir|préfères|option|laquelle|lequel|veux-tu|souhaites|dis-moi)\b"#,
+        let asks = visible.contains("?") || visible.range(of: #"\b(choisis|choisir|préfères|option|laquelle|lequel|veux-tu|souhaites|dis-moi|choose|pick|prefer|which|options?|elige|escoge|prefieres|cuál|opción|wähle|wählen|bevorzugst|welche[nrs]?|möchtest)\b"#,
                                                          options: [.regularExpression, .caseInsensitive]) != nil
         guard asks else { return [] }
         var options: [String] = []

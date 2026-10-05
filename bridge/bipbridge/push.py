@@ -28,6 +28,14 @@ QUESTION_BODY = "Une question pour toi"
 APPROVAL_BODY = "Approbation requise"
 
 
+def _alert(title: str, preview: Optional[str], fallback: str) -> Dict[str, Any]:
+    """The alert: the preview when there is one, else a generic body that iOS translates (``loc-key`` is looked
+    up in the app's string catalog, whose keys are these French texts; ``body`` is kept for older apps)."""
+    if preview:
+        return {"title": title, "body": preview}
+    return {"title": title, "body": fallback, "loc-key": fallback}
+
+
 def _preview(text: str, limit: int = 160) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
@@ -37,7 +45,7 @@ def message_payload(agent: str, title: str, outbox_id: str, session_id: Optional
                     preview: Optional[str] = None) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "aps": {
-            "alert": {"title": title, "body": preview or MESSAGE_BODY},
+            "alert": _alert(title, preview, MESSAGE_BODY),
             "thread-id": agent,
             "mutable-content": 1,
             "category": "MESSAGE",
@@ -55,7 +63,7 @@ def approval_payload(agent: str, title: str, run_id: str, request_id: Optional[s
                      choices: Optional[List[str]] = None, preview: Optional[str] = None) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "aps": {
-            "alert": {"title": title, "body": preview or APPROVAL_BODY},
+            "alert": _alert(title, preview, APPROVAL_BODY),
             "thread-id": agent,
             "mutable-content": 1,
             "category": "APPROVAL",
@@ -76,7 +84,7 @@ def reply_payload(agent: str, title: str, run_id: str, session_id: Optional[str]
     """A run finished while nobody followed it: tapping opens its conversation."""
     payload: Dict[str, Any] = {
         "aps": {
-            "alert": {"title": title, "body": preview or REPLY_BODY},
+            "alert": _alert(title, preview, REPLY_BODY),
             "thread-id": agent,
             "mutable-content": 1,  # the extension shows it as a message from the agent's Bip
             "category": "MESSAGE",
@@ -98,7 +106,7 @@ def question_payload(agent: str, title: str, run_id: str, request_id: Optional[s
     """The agent asks something mid-run (clarify) while nobody follows it: tapping opens its conversation."""
     payload: Dict[str, Any] = {
         "aps": {
-            "alert": {"title": title, "body": preview or QUESTION_BODY},
+            "alert": _alert(title, preview, QUESTION_BODY),
             "thread-id": agent,
             "mutable-content": 1,
             "category": "MESSAGE",

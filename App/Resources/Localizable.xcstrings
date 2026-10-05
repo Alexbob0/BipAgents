@@ -607,6 +607,30 @@
         }
       }
     },
+    "Approbation requise" : {
+      "comment" : "Push notification body sent by the bridge as loc-key (bridge/bipbridge/push.py)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approval needed"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se necesita tu permiso"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freigabe nötig"
+          }
+        }
+      }
+    },
     "Approuver une fois" : {
       "localizations" : {
         "en" : {
@@ -3577,6 +3601,30 @@
         }
       }
     },
+    "Nouveau message" : {
+      "comment" : "Push notification body sent by the bridge as loc-key (bridge/bipbridge/push.py)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New message"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuevo mensaje"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Nachricht"
+          }
+        }
+      }
+    },
     "Nouvelle" : {
       "localizations" : {
         "en" : {
@@ -5051,6 +5099,30 @@
         }
       }
     },
+    "Ta réponse est prête." : {
+      "comment" : "Push notification body sent by the bridge as loc-key (bridge/bipbridge/push.py)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your answer is ready."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu respuesta está lista."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Antwort ist fertig."
+          }
+        }
+      }
+    },
     "Tech" : {
       "localizations" : {
         "en" : {
@@ -5443,6 +5515,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einmal"
+          }
+        }
+      }
+    },
+    "Une question pour toi" : {
+      "comment" : "Push notification body sent by the bridge as loc-key (bridge/bipbridge/push.py)",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A question for you"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una pregunta para ti"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Frage an dich"
           }
         }
       }

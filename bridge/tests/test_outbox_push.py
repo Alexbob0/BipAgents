@@ -78,7 +78,7 @@ def test_ntfy_message_lands_in_outbox_with_audio_and_push(ntfy_client, config):
         # Push: MESSAGE payload, sandbox host for the sandbox device, generic body (no preview).
         sandbox = [r for r in apns.requests if r.url.host == "api.sandbox.push.apple.com"]
         payload = json.loads(sandbox[0].content)
-        assert payload == {"aps": {"alert": {"title": "Wellness", "body": "Nouveau message"},
+        assert payload == {"aps": {"alert": {"title": "Wellness", "body": "Nouveau message", "loc-key": "Nouveau message"},
                                    "thread-id": "wellness", "mutable-content": 1, "category": "MESSAGE",
                                    "sound": "default"},
                            "outbox_id": first["id"], "agent": "wellness", "session_id": "sess_42"}

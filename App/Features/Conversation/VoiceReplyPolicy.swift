@@ -35,14 +35,30 @@ enum VoiceReplyPolicy: String, CaseIterable, Identifiable {
         }
     }
 
-    /// « réponds-moi en vocal », « lis-le moi », « dis-le à voix haute », « à l'oral »…
+    /// « réponds-moi en vocal », "read it to me", « léemelo », „lies es mir vor“…: any of the app's languages,
+    /// whatever the agent's (people mix them).
     static func asksForVoice(_ text: String) -> Bool {
-        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "fr_FR"))
-        let cues = ["en vocal", "un vocal", "message vocal", "a l'oral", "a l’oral", "a voix haute", "lis le moi", "lis-le moi",
-                    "lis la moi", "lis-la moi", "lis moi", "lis-moi", "dis le moi", "dis-le moi", "reponds moi a l'oral",
-                    "en audio", "audio stp", "audio s'il te plait"]
-        return cues.contains { folded.contains($0) }
+        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .replacingOccurrences(of: "’", with: "'")
+        return voiceCues.contains { folded.contains($0) }
     }
+
+    /// Lowercased, without accents (the text is folded the same way).
+    static let voiceCues = [
+        // Français
+        "en vocal", "un vocal", "message vocal", "a l'oral", "a voix haute", "lis le moi", "lis-le moi", "lis la moi",
+        "lis-la moi", "lis moi", "lis-moi", "dis le moi", "dis-le moi", "reponds moi a l'oral", "en audio", "audio stp",
+        "audio s'il te plait",
+        // English
+        "voice message", "voice note", "by voice", "read it to me", "read it out", "read me this", "read me the", "out loud", "aloud",
+        "as audio", "in audio", "audio please",
+        // Español
+        "por voz", "mensaje de voz", "nota de voz", "en voz alta", "leemelo", "leemela", "audio por favor",
+        "en un audio",
+        // Deutsch
+        "sprachnachricht", "sprachmemo", "vorlesen", "lies es mir vor", "lies mir", "laut vor", "als audio",
+        "per audio", "audio bitte", "per sprache",
+    ]
 
     /// Headphones, AirPods, CarPlay or a car's Bluetooth: the answer is better heard than read.
     static var isListeningHandsFree: Bool {
