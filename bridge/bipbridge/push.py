@@ -19,6 +19,7 @@ log = logging.getLogger("bipbridge.push")
 
 MESSAGE_BODY = "Nouveau message"
 REPLY_BODY = "Ta réponse est prête."
+QUESTION_BODY = "Une question pour toi"
 APPROVAL_BODY = "Approbation requise"
 
 
@@ -85,6 +86,28 @@ def reply_payload(agent: str, title: str, run_id: str, session_id: Optional[str]
     return payload
 
 
+def question_payload(agent: str, title: str, run_id: str, request_id: Optional[str], session_id: Optional[str] = None,
+                     preview: Optional[str] = None) -> Dict[str, Any]:
+    """The agent asks something mid-run (clarify) while nobody follows it: tapping opens its conversation."""
+    payload: Dict[str, Any] = {
+        "aps": {
+            "alert": {"title": title, "body": preview or QUESTION_BODY},
+            "thread-id": agent,
+            "mutable-content": 1,
+            "category": "MESSAGE",
+            "sound": "default",
+        },
+        "agent": agent,
+        "run_id": run_id,
+        "kind": "question",
+    }
+    if request_id:
+        payload["request_id"] = request_id
+    if session_id:
+        payload["session_id"] = session_id
+    return payload
+
+
 def silent_payload(agent: str, reason: str, **extra: Any) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"aps": {"content-available": 1}, "agent": agent, "reason": reason}
     payload.update({k: v for k, v in extra.items() if v is not None})
@@ -144,6 +167,12 @@ class PushService:
         preview = _preview(text) if self.config.push_previews else None
         payload = reply_payload(agent, self._title(agent), run_id, session_id, preview)
         return await self._fanout(agent, payload, "alert", 10, collapse_id=run_id)
+
+    async def notify_question(self, agent: str, run_id: str, request_id: Optional[str], question: Optional[str],
+                              session_id: Optional[str] = None) -> int:
+        preview = _preview(question) if self.config.push_previews and question else None
+        payload = question_payload(agent, self._title(agent), run_id, request_id, session_id, preview)
+        return await self._fanout(agent, payload, "alert", 10, collapse_id=request_id or run_id)
 
     async def notify_silent(self, agent: str, reason: str, **extra: Any) -> int:
         return await self._fanout(agent, silent_payload(agent, reason, **extra), "background", 5)

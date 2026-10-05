@@ -278,3 +278,28 @@ def test_replay_backlog_merges_deltas_so_long_replies_keep_their_start(client):
         replay = read_sse(resp)  # late follower: the backlog
     assert [name for name, _ in replay] == ["message.delta", "tool.started", "message.delta", "run.completed"]
     assert replay[0][1]["delta"] == "Début : " + "".join(words)
+
+
+def test_question_pushed_when_the_app_left(client):
+    register(client)
+    gate = threading.Event()
+    client.backend.runs["run_q"] = [
+        gate,
+        sse("clarify.request", run_id="run_q", request_id="clr_1",
+            questions=[{"id": "q1", "question": "Quel train ?", "choices": ["9h", "14h"]}]),
+        threading.Event(),  # the run waits for the answer
+    ]
+    services = client.app.state.services
+
+    def follow_then_leave():
+        listener = services.hub.subscribe(services.config.agent("wellness"), "run_q", kind="app", watch=True)
+        listener.sub.session_id = "api_7"
+        listener.close()
+
+    client.portal.call(follow_then_leave)
+    gate.set()
+    apns = client.apns
+    assert wait_until(lambda: len(apns.requests) >= 1)
+    payload = apns.payloads()[0]
+    assert payload["kind"] == "question" and payload["request_id"] == "clr_1" and payload["session_id"] == "api_7"
+    assert payload["aps"]["alert"]["body"] == "Une question pour toi" and payload["aps"]["mutable-content"] == 1
