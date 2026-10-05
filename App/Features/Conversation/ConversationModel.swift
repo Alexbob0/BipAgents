@@ -166,6 +166,7 @@ final class ConversationModel {
             ChatItem(.user(text: "Voilà mes nuits de septembre, tu vois une tendance ?", attachments: [sheet])),
             ChatItem(.tools([ToolEvent(tool: "terminal", preview: "python3 analyse_sommeil.py sommeil-septembre.xlsx", status: .started)])),
             ChatItem(.approval(ApprovalRequest(runID: "demo", requestID: "1", command: "pip install openpyxl", choices: [.once, .session, .always, .deny]), resolved: nil)),
+            ChatItem(.user(text: "Message from 🤖 Vie (@vie): Alex part à Bordeaux samedi, quel train est le moins fatigant vu sa semaine ?", attachments: [])),
             ChatItem(.question(ClarifyRequest(runID: "demo", requestID: "clr", questions: [
                 .init(id: "q1", question: "Quel train pour Bordeaux ?", choices: ["9h — 19 €, arrivée 11h30", "14h — 35 €, arrivée 16h30"]),
             ]), state: .pending)),
@@ -342,6 +343,38 @@ final class ConversationModel {
     /// for a long time otherwise. Screens re-attach when the app is active again.
     static func detachAll() {
         for model in Array(listeners.values) { model.detach() }
+    }
+
+    // MARK: Turns the agent takes on its own
+
+    @ObservationIgnored private var watchTask: Task<Void, Never>?
+    @ObservationIgnored private var knownMessageCount: Int?
+
+    /// While the conversation is on screen: every few seconds, asks the bridge for its message count, which also
+    /// tells the bridge not to push what is visible. A turn the agent took on its own (a teammate's answer,
+    /// a routine) shows up without reopening the conversation.
+    func startWatching() {
+        guard watchTask == nil, let bridge else { return }
+        watchTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, !Task.isCancelled else { return }
+                guard UIApplication.shared.applicationState == .active, let sessionID = self.sessionID else { continue }
+                guard let count = try? await bridge.sessionMessageCount(agent: self.agent.bridgeName, sessionID: sessionID) else { continue }
+                defer { self.knownMessageCount = count }
+                guard let known = self.knownMessageCount, count > known, !self.isRunning else { continue }
+                #if DEBUG
+                print("[thread] \(sessionID): \(count - known) new message(s) taken by the agent, reloading")
+                #endif
+                await self.load()
+            }
+        }
+    }
+
+    func stopWatching() {
+        watchTask?.cancel()
+        watchTask = nil
+        knownMessageCount = nil
     }
 
     /// The conversation left the screen: stop listening (the run goes on, `reattachIfNeeded` picks it up).
@@ -814,6 +847,7 @@ final class ConversationModel {
             if Self.listeners[sessionID] === self { Self.listeners[sessionID] = nil }
         }
         endStreamingText()
+        knownMessageCount = nil // our own turn: take the new count as the baseline, no reload
         if replyByVoice {
             replyByVoice = false
             prepareVoiceReply()

@@ -26,15 +26,20 @@ struct ConversationView: View {
                 let model = ConversationModel(agent: agent, sessionID: sessionID, store: store)
                 self.model = model
                 await model.load()
+                model.startWatching()
                 model.reattachIfNeeded()
             }
             if let sessionID = model?.sessionID { inbox.dismissMissedReplies(sessionID: sessionID) }
         }
         .onAppear {
+            model?.startWatching()
             model?.reattachIfNeeded()
             if let sessionID = model?.sessionID { inbox.dismissMissedReplies(sessionID: sessionID) }
         }
-        .onDisappear { model?.detach() }
+        .onDisappear {
+            model?.stopWatching()
+            model?.detach()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model?.reattachIfNeeded() }
         }
@@ -43,6 +48,7 @@ struct ConversationView: View {
 
 private struct ConversationContent: View {
     private static let bottom = "thread-bottom"
+    @Environment(AgentStore.self) private var store
     @Bindable var model: ConversationModel
     var start: ConversationStart
     @State private var isCalling = false
@@ -153,6 +159,12 @@ private struct ConversationContent: View {
     private func row(for item: ChatItem, turnEnd: Bool) -> some View {
         switch item.kind {
         case .user(let text, let attachments):
+            if let teammate = ChatText.teammateMessage(text) {
+                TeammateCard(name: teammate.name, message: teammate.body,
+                             appearance: store.agents.first { $0.bridgeName == teammate.handle.lowercased()
+                                 || $0.name.lowercased() == teammate.name.lowercased() }?.appearance,
+                             date: item.date)
+            } else {
             VStack(alignment: .trailing, spacing: 4) {
                 if let title = ChatText.instructionTitle(for: text, inCronSession: model.sessionID?.hasPrefix("cron_") == true,
                                                           isFirstUserMessage: isFirstUser(item)) {
@@ -165,6 +177,7 @@ private struct ConversationContent: View {
                 TimeLabel(date: item.date)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
+            }
         case .assistant(let text, let isStreaming):
             if isStreaming || !ChatText.visible(text).isEmpty || !ChatText.media(in: text).isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -548,6 +561,7 @@ struct ToolCard: View {
 
     static func symbol(for tool: String) -> String {
         switch tool.lowercased() {
+        case let t where t.contains("message_agent") || t.contains("peer"): "paperplane"
         case let t where t.contains("terminal") || t.contains("shell"): "terminal"
         case let t where t.contains("web") || t.contains("search") || t.contains("browser"): "globe"
         case let t where t.contains("memory"): "brain"

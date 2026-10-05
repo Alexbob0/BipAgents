@@ -76,6 +76,17 @@ struct BridgeClient: Sendable {
         return stream
     }
 
+    /// `GET /v1/sessions/{id}/state`: the conversation's message count, and « it is on screen » for the bridge
+    /// (no push for what the user is looking at).
+    func sessionMessageCount(agent: String, sessionID: String) async throws -> Int? {
+        var components = URLComponents(url: baseURL.appending(path: "v1/sessions/\(sessionID)/state"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "agent", value: agent)]
+        var request = URLRequest(url: components.url!)
+        authorize(&request)
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        return json?["message_count"] as? Int
+    }
+
     /// A file an agent pointed to with « MEDIA:<path> » (`GET /v1/media`).
     func media(path: String) async throws -> Data {
         var components = URLComponents(url: baseURL.appending(path: "v1/media"), resolvingAgainstBaseURL: false)!

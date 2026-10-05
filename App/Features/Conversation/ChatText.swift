@@ -40,6 +40,13 @@ enum ChatText {
         return options
     }
 
+    /// A message another agent sent through Hermes Bot Mode (`message_agent`):
+    /// « Message from 🤖 Wellness (@wellness): … » → (name, handle, body).
+    static func teammateMessage(_ text: String) -> (name: String, handle: String, body: String)? {
+        guard let match = text.firstMatch(of: /^\s*Message from \S*\s*(.+?) \(@([\w.-]+)\):\s*([\s\S]*)$/) else { return nil }
+        return (String(match.output.1), String(match.output.2), String(match.output.3))
+    }
+
     /// A long prompt the user did not type (skill instructions, a scheduled task's brief): its card title.
     static func instructionTitle(for text: String, inCronSession: Bool, isFirstUserMessage: Bool) -> String? {
         let skills = text.matches(of: /invoked the "([^"]+)" skill/).map { String($0.output.1) }
@@ -57,7 +64,7 @@ enum ChatText {
     static func toolSummary(_ preview: String, depth: Int = 0) -> String {
         var text = preview.replacing(/<\/?untrusted_tool_result[^>]*>/, with: "")
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let keys = ["query", "command", "path", "file_path", "url", "pattern", "name", "code", "content", "text", "input", "output", "result"]
+        let keys = ["query", "command", "path", "file_path", "url", "message", "pattern", "name", "code", "content", "text", "input", "output", "result"]
         if text.hasPrefix("{") {
             var value: String?
             if let data = text.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {

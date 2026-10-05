@@ -180,3 +180,41 @@ struct QuickReplies: View {
         }
     }
 }
+
+/// A message from another agent (Hermes Bot Mode), with that agent's Bip.
+struct TeammateCard: View {
+    var name: String
+    var message: String
+    var appearance: AgentAppearance?
+    var date: Date?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Group {
+                if let appearance {
+                    MascotAvatar(appearance: appearance, size: 30)
+                } else {
+                    Image(systemName: "person.2.fill").font(.system(size: 13)).frame(width: 30, height: 30)
+                        .background(Theme.card, in: .circle)
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrowshape.turn.up.right.fill").font(.system(size: 10, weight: .bold))
+                    Text("Message de \(name)")
+                    Spacer(minLength: 0)
+                    TimeLabel(date: date)
+                }
+                .font(Theme.body(12.5, weight: .heavy))
+                .foregroundStyle(appearance?.palette.deep ?? Theme.ink2)
+                Text(ChatText.visible(message))
+                    .font(Theme.body(15))
+                    .foregroundStyle(Theme.ink)
+                    .textSelection(.enabled)
+            }
+            .padding(12)
+            .background(appearance?.palette.tint ?? Theme.card, in: .rect(cornerRadius: 18, style: .continuous))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
