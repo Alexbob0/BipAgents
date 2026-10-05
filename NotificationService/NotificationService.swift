@@ -26,6 +26,7 @@ final class NotificationService: UNNotificationServiceExtension {
         let outboxID = userInfo["outbox_id"] as? String
         let runID = userInfo["run_id"] as? String
         let isApproval = userInfo["kind"] == nil // replies and questions carry a kind
+        let replyID = userInfo["reply_id"] as? String
         // The system owns these objects; the extension's own contract is "call the handler once, soon".
         nonisolated(unsafe) let pending = content
         nonisolated(unsafe) let deliver = contentHandler
@@ -35,7 +36,7 @@ final class NotificationService: UNNotificationServiceExtension {
                     await Self.enrich(pending, outboxID: outboxID, bridge: bridge)
                 } else if let runID, isApproval {
                     await Self.enrichApproval(pending, agent: agentName, runID: runID, bridge: bridge)
-                } else if let replyID = userInfo["reply_id"] as? String {
+                } else if let replyID {
                     await Self.enrichReply(pending, replyID: replyID, bridge: bridge)
                 }
             }
