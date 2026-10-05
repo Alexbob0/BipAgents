@@ -1,7 +1,7 @@
-# ~/.config/systemd/user/hermes-bridge.service  (systemd --user, utilisateur aibox)
-# Installation : voir bridge/README.md. Code dans ~/hermes-bridge (copie de bridge/), venv dans ~/hermes-bridge/.venv
+# ~/.config/systemd/user/hermes-bridge.service  (systemd --user, aibox user)
+# Installation: see bridge/README.md. Code in ~/hermes-bridge (copy of bridge/), venv in ~/hermes-bridge/.venv
 [Unit]
-Description=BipAgents bridge (TTS par phrases, WS vocal, fichiers, push APNs, outbox ntfy) sur 127.0.0.1:8643
+Description=BipAgents bridge (per-sentence TTS, voice WS, files, APNs push, ntfy outbox) on 127.0.0.1:8643
 After=network-online.target kyutai-tts.service ntfy.service
 Wants=network-online.target
 
@@ -16,7 +16,7 @@ ExecStart=%h/hermes-bridge/.venv/bin/python -m bipbridge serve
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15
-# Fichiers créés : base 027 ; les uploads reçoivent explicitement upload_file_mode (640 par défaut).
+# Created files: base 027; uploads explicitly get upload_file_mode (640 by default).
 UMask=0027
 NoNewPrivileges=true
 

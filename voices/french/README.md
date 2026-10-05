@@ -1,22 +1,24 @@
-# Voix de mascotte BipAgents — Kyutai Pocket TTS (français)
+🇬🇧 English · [🇫🇷 Français](README.fr.md)
 
-Cinq voix synthétiques, conçues le 4 octobre 2026 pour les agents de l'app BipAgents, utilisables avec
-[Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts) sur CPU (premier son ≈ 60–110 ms, ≈ 4× temps réel sur un seul cœur).
+# BipAgents mascot voices — Kyutai Pocket TTS (French)
 
-| Voix | Caractère | Fichiers |
+Five synthetic voices, designed on October 4, 2026 for the BipAgents app's agents, usable with
+[Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts) on CPU (first audio ≈ 60–110 ms, ≈ 4× real time on a single core).
+
+| Voice | Character | Files |
 |---|---|---|
-| **loutre** | joueuse et complice, voix médium-grave, chaude et ronde, débit vif et enjoué | `loutre.safetensors`, `loutre_source.wav`, `loutre_sample.wav` |
-| **chat2** | chat malicieux et un peu paresseux, voix médium-grave, ronronnante et amusée, débit vif | `chat2.*` |
-| **lutin** | lutin farceur et vif, voix médium, rieuse et expressive, débit rapide mais articulé | `lutin.*` |
-| **ours** | grand ours en peluche calme, voix grave et douce, rassurante, débit lent | `ours.*` |
-| **colibri** | petit oiseau vif et enjoué, voix claire et légère, médium, chantante, débit rapide et précis | `colibri.*` |
+| **loutre** (otter) | playful and friendly, medium-low voice, warm and round, lively and cheerful pace | `loutre.safetensors`, `loutre_source.wav`, `loutre_sample.wav` |
+| **chat2** (cat) | mischievous, slightly lazy cat, medium-low voice, purring and amused, lively pace | `chat2.*` |
+| **lutin** (elf) | prankish, lively elf, medium voice, laughing and expressive, fast but articulate pace | `lutin.*` |
+| **ours** (bear) | big calm teddy bear, low and soft voice, reassuring, slow pace | `ours.*` |
+| **colibri** (hummingbird) | small lively, cheerful bird, clear and light voice, medium, singsong, fast and precise pace | `colibri.*` |
 
-- `<voix>.safetensors` : état de voix Pocket TTS pré-calculé (modèle `french`, pocket-tts 3.3.0), 3 à 4 Mo. C'est le fichier à utiliser.
-- `<voix>_source.wav` : l'extrait de 5 à 8 s qui a servi au clonage (sortie Qwen3-TTS VoiceDesign, 24 kHz). Permet de recalculer l'état si les poids Pocket TTS changent.
-- `<voix>_sample.wav` : rendu Pocket TTS de la phrase de test « Coucou ! J'ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi. »
-- `voices.json` : descriptions et mesures.
+- `<voice>.safetensors`: precomputed Pocket TTS voice state (`french` model, pocket-tts 3.3.0), 3 to 4 MB. This is the file to use.
+- `<voice>_source.wav`: the 5 to 8 s clip used for cloning (Qwen3-TTS VoiceDesign output, 24 kHz). Lets you recompute the state if the Pocket TTS weights change.
+- `<voice>_sample.wav`: Pocket TTS rendering of the test sentence « Coucou ! J'ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi. » ("Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon.")
+- `voices.json`: descriptions and measurements.
 
-## Utilisation
+## Usage
 
 ```bash
 pip install pocket-tts
@@ -26,31 +28,31 @@ pocket-tts generate --language french --voice ./loutre.safetensors --text "Bonjo
 ```python
 from pocket_tts import TTSModel
 model = TTSModel.load_model(language="french")
-voice = model.get_state_for_audio_prompt("./loutre.safetensors")   # chargement ≈ 1 ms
+voice = model.get_state_for_audio_prompt("./loutre.safetensors")   # loading ≈ 1 ms
 for chunk in model.generate_audio_stream(voice, "Bonjour, prêt pour la séance ?"):
-    ...  # tenseur PCM float, model.sample_rate = 24000 Hz, un chunk ≈ 80 ms
+    ...  # float PCM tensor, model.sample_rate = 24000 Hz, one chunk ≈ 80 ms
 ```
 
-Un état `.safetensors` se charge **sans** le modèle de clonage (dépôt Hugging Face `kyutai/pocket-tts`, soumis à acceptation
-des conditions) : le modèle public `kyutai/pocket-tts-without-voice-cloning` suffit, comme pour les voix du catalogue Kyutai.
-Le clonage n'est nécessaire que pour recalculer un état depuis `<voix>_source.wav` :
+A `.safetensors` state loads **without** the cloning model (Hugging Face repository `kyutai/pocket-tts`, subject to accepting
+the terms): the public model `kyutai/pocket-tts-without-voice-cloning` is enough, as for the voices in Kyutai's catalog.
+Cloning is only needed to recompute a state from `<voice>_source.wav`:
 
 ```bash
-pocket-tts export-voice --language french ./loutre_source.wav ./loutre.safetensors   # nécessite l'accès au modèle de clonage
+pocket-tts export-voice --language french ./loutre_source.wav ./loutre.safetensors   # requires access to the cloning model
 ```
 
-Les états sont liés aux poids du modèle `french` avec lesquels ils ont été calculés. Si Kyutai publie de nouveaux poids,
-recalculer depuis les sources.
+The states are tied to the `french` model weights they were computed with. If Kyutai releases new weights,
+recompute them from the sources.
 
-## Comment elles ont été faites
+## How they were made
 
-1. Description en français → **Qwen3-TTS-12Hz-1.7B-VoiceDesign** (`generate_voice_design`, language French) : un extrait de la phrase de test par voix.
-2. Extrait → **Pocket TTS** `get_state_for_audio_prompt` → `export_model_state`.
-3. Écoute et sélection manuelle sur une quinzaine de candidates.
+1. Description in French → **Qwen3-TTS-12Hz-1.7B-VoiceDesign** (`generate_voice_design`, language French): one clip of the test sentence per voice.
+2. Clip → **Pocket TTS** `get_state_for_audio_prompt` → `export_model_state`.
+3. Listening and manual selection among about fifteen candidates.
 
-## Licences
+## Licenses
 
-- Voix (ces fichiers) : synthétiques, aucune personne réelle imitée. Les états `.safetensors` dérivent des poids Pocket TTS
-  (**CC-BY-4.0**, Kyutai) : mention « Voix calculées avec Kyutai Pocket TTS » requise. Les extraits source viennent de
+- Voices (these files): synthetic, no real person imitated. The `.safetensors` states derive from the Pocket TTS weights
+  (**CC-BY-4.0**, Kyutai): the attribution "Voices computed with Kyutai Pocket TTS" is required. The source clips come from
   Qwen3-TTS (**Apache-2.0**).
-- Code Pocket TTS : MIT. Conditions d'usage de Kyutai : pas d'imitation de voix sans consentement, pas de contenu trompeur.
+- Pocket TTS code: MIT. Kyutai's terms of use: no voice imitation without consent, no deceptive content.

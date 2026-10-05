@@ -4,7 +4,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const html = readFileSync(new URL("../play/index.html", import.meta.url), "utf8");
 const start = html.indexOf('const INK');
-const end = html.indexOf("// Animalese");
+// The drawing code ends where the page texts (i18n) or the Animalese section begin.
+const end = Math.min(...["// English by default", "// Animalese"].map(m => html.indexOf(m)).filter(i => i >= 0));
 const drawing = html.slice(start, html.lastIndexOf("// ----", end));
 const { CATEGORIES, bodyShape, accessory, eyes, face, ell } = new Function(
   "matchMedia", `${drawing}; return { CATEGORIES, bodyShape, accessory, eyes, face, ell };`)(() => ({ matches: false }));
@@ -31,7 +32,7 @@ const bip = (c, mood, i) => {
 };
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 150" width="${width}" height="150">
-<title>Les Bips de BipAgents</title>
+<title>The BipAgents Bips</title>
 <style>
   .bob { animation: bob 3s ease-in-out infinite; }
   .hop { animation: hop 4.2s ease-in-out infinite; transform-origin: 60px 106px; transform-box: view-box; }

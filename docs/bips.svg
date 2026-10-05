@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 988 150" width="988" height="150">
-<title>Les Bips de BipAgents</title>
+<title>The BipAgents Bips</title>
 <style>
   .bob { animation: bob 3s ease-in-out infinite; }
   .hop { animation: hop 4.2s ease-in-out infinite; transform-origin: 60px 106px; transform-box: view-box; }
