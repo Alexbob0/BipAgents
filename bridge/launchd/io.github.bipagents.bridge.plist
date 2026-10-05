@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ~/Library/LaunchAgents/io.github.bipagents.bridge.plist — macOS (Mac mini). __HOME__ is replaced at install
+     (see docs/self-hosting.md): sed "s#__HOME__#$HOME#g". -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>io.github.bipagents.bridge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HOME__/BipAgents/bridge/.venv/bin/python</string>
+    <string>-m</string><string>bipbridge</string><string>serve</string>
+  </array>
+  <key>WorkingDirectory</key><string>__HOME__/BipAgents/bridge</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BRIDGE_CONFIG</key><string>__HOME__/.config/hermes-ios/bridge.toml</string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/bipagents-bridge.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/bipagents-bridge.log</string>
+</dict>
+</plist>

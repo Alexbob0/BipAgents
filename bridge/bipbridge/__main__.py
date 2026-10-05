@@ -31,7 +31,9 @@ def main(argv=None) -> int:
     if args.command == "check":
         print(f"config OK: {args.config or config_path()}")
         print(f"  listen      {config.host}:{config.port}")
-        print(f"  kyutai      {config.kyutai_url} (voice {config.default_voice})")
+        print(f"  kyutai      {config.kyutai_url or 'off'}")
+        print(f"  pocket      {config.pocket_url or 'off'}")
+        print(f"  voice       {config.default_voice} (default)")
         print(f"  ntfy        {config.ntfy_url}")
         print(f"  apns        {'enabled' if config.apns.enabled else 'disabled'} ({config.apns.environment})")
         print(f"  outbox db   {config.outbox.db_path}")

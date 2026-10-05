@@ -1,0 +1,79 @@
+"""The HTTP contract the bridge relies on, with a fake Pocket model (no torch, no download)."""
+import io
+import sys
+import wave
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import pocket_server  # noqa: E402
+from pocket_server import Engine, create_app  # noqa: E402
+
+
+class FakeModel:
+    sample_rate = 24000
+
+    def __init__(self, code):
+        self.code = code
+        self.loaded = []
+
+    def get_state_for_audio_prompt(self, path):
+        self.loaded.append(Path(path).name)
+        return f"{self.code}:{Path(path).stem}"
+
+
+class FakeEngine(Engine):
+    def stream(self, voice, text, stop):
+        model, state = self.resolve(voice)
+        for word in text.split():
+            if stop.is_set():
+                break
+            yield f"[{state}:{word}]".encode()
+
+
+@pytest.fixture
+def setup(tmp_path):
+    for folder, names in {"french": ["loutre", "ours"], "english": ["loutre"]}.items():
+        (tmp_path / folder).mkdir()
+        for name in names:
+            (tmp_path / folder / f"{name}.safetensors").write_bytes(b"x")
+    engine = FakeEngine(tmp_path, models={"fr": FakeModel("fr"), "en": FakeModel("en")})
+    return engine, TestClient(create_app(engine))
+
+
+def test_health_lists_languages_and_voices(setup):
+    _, client = setup
+    assert client.get("/health").json() == {"status": "ok", "languages": ["fr", "en"],
+                                           "voices": {"fr": ["loutre", "ours"], "en": ["loutre"]}}
+
+
+def test_voice_names_pick_the_language(setup):
+    engine, client = setup
+    assert client.post("/v1/audio/stream", json={"input": "Salut toi", "voice": "loutre"}).content == b"[fr:loutre:Salut][fr:loutre:toi]"
+    assert client.post("/v1/audio/stream", json={"input": "Hi", "voice": "en/loutre"}).content == b"[en:loutre:Hi]"
+    engine.resolve("loutre")
+    assert engine.models["fr"].loaded == ["loutre.safetensors"]  # voice states are loaded once
+
+
+@pytest.mark.parametrize("voice", ["en/ours", "es/loutre", "../secrets", "fr/LOUTRE", "pirate"])
+def test_unknown_voices_are_404(setup, voice):
+    _, client = setup
+    assert client.post("/v1/audio/stream", json={"input": "Hi", "voice": voice}).status_code == 404
+    assert client.post("/v1/audio/speech", json={"input": "Hi", "voice": voice}).status_code == 404
+
+
+def test_speech_formats(setup, monkeypatch):
+    _, client = setup
+    resp = client.post("/v1/audio/speech", json={"input": "Bonjour", "voice": "ours", "response_format": "wav"})
+    assert resp.status_code == 200 and resp.headers["content-type"] == "audio/wav"
+    with wave.open(io.BytesIO(resp.content)) as wav:
+        assert (wav.getnchannels(), wav.getsampwidth(), wav.getframerate()) == (1, 2, 24000)
+        assert wav.readframes(100) == b"[fr:ours:Bonjour]"
+    monkeypatch.setattr(pocket_server, "mp3_bytes", lambda pcm, rate: b"ID3" + pcm)
+    mp3 = client.post("/v1/audio/speech", json={"input": "Bonjour", "voice": "ours", "response_format": "mp3"})
+    assert mp3.headers["content-type"] == "audio/mpeg" and mp3.content.startswith(b"ID3")
+    assert client.post("/v1/audio/speech", json={"input": "Bonjour", "voice": "ours", "response_format": "opus"}).status_code == 415
+    assert client.post("/v1/audio/speech", json={"input": "  ", "voice": "ours"}).status_code == 400
+

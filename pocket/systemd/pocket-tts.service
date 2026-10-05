@@ -1,0 +1,19 @@
+# ~/.config/systemd/user/pocket-tts.service  (systemd --user) — Linux server or VPS.
+# Code: the repo cloned in ~/BipAgents, venv in ~/BipAgents/pocket/.venv (see pocket/README.md).
+[Unit]
+Description=BipAgents Pocket TTS (Bips' voices, CPU) on 127.0.0.1:8098
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/BipAgents/pocket
+Environment=PYTHONUNBUFFERED=1
+# --quantize: int8 weights, less memory and ~25 % faster on x86 CPUs.
+ExecStart=%h/BipAgents/pocket/.venv/bin/python pocket_server.py --voices %h/BipAgents/voices --languages fr,en,es,de
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

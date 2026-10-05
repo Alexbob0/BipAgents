@@ -175,18 +175,19 @@ class TtsService:
     language fails instead, so the app reads it with the iPhone's voice in the right language.
     """
 
-    def __init__(self, client: httpx.AsyncClient, base_url: str, default_voice: str,
+    def __init__(self, client: httpx.AsyncClient, base_url: Optional[str], default_voice: str,
                  cache_entries: int = 256, timeout: float = 120.0, max_chars: int = 1000,
                  sentence_max_chars: int = 180, pocket_url: Optional[str] = None):
         self.client = client
-        self.base_url = base_url.rstrip("/")
+        self.base_url = (base_url or "").rstrip("/")
         self.default_voice = default_voice
         self.cache_entries = max(0, cache_entries)
         self.timeout = timeout
         self.max_chars = max_chars
         self.sentence_max_chars = sentence_max_chars
         self.scheduler = FifoScheduler()
-        self.kyutai = Engine("kyutai", self.base_url, self.scheduler)
+        # None: Pocket only (no GPU); then the default voice is a Pocket one and nothing falls back to Kyutai.
+        self.kyutai = Engine("kyutai", self.base_url, self.scheduler) if base_url else None
         self.pocket = Engine("pocket", pocket_url.rstrip("/"), FifoScheduler()) if pocket_url else None
         self._cache: "OrderedDict[Tuple[str, str, str], Audio]" = OrderedDict()
         self.calls = 0  # engine requests actually made (diagnostics / tests)
@@ -196,9 +197,13 @@ class TtsService:
             if self.pocket is not None:
                 return self.pocket, voice[len(POCKET_PREFIX):]
             log.warning("pocket voice requested but pocket is not configured", extra=fields(voice=voice))
-            if voice_language(voice) != "fr":
+            if voice_language(voice) != "fr" or self.kyutai is None:
                 raise TtsError("pocket is not configured", status=503)
             return self.kyutai, self.default_voice
+        if self.kyutai is None:
+            if not self.default_voice.startswith(POCKET_PREFIX):
+                raise TtsError("kyutai is not configured", status=503)
+            return self._route(self.default_voice)  # a Kyutai voice asked for, no Kyutai here: the default Bip
         return self.kyutai, voice
 
     def _cache_get(self, key: Tuple[str, str, str]) -> Optional[Audio]:
@@ -258,7 +263,7 @@ class TtsService:
                     log.info("pocket failed, retrying", extra=fields(error=str(exc)))
                     await asyncio.sleep(POCKET_RETRY_DELAY)
                     continue
-                if language != "fr":
+                if language != "fr" or self.kyutai is None:
                     raise
                 log.warning("pocket failed, falling back to kyutai", extra=fields(error=str(exc), text=clean[:60]))
                 async with self.kyutai.scheduler.slot(priority):
@@ -302,7 +307,7 @@ class TtsService:
                     log.info("pocket stream failed, retrying", extra=fields(error=str(exc)))
                     await asyncio.sleep(POCKET_RETRY_DELAY)
                     continue
-                if language != "fr":
+                if language != "fr" or self.kyutai is None:
                     raise
                 log.warning("pocket stream failed, falling back to kyutai", extra=fields(error=str(exc), text=clean[:60]))
                 async for chunk in self._stream_engine(self.kyutai, clean, self.default_voice, priority):
@@ -359,8 +364,11 @@ class TtsService:
             return Audio(pcm, content_type, fmt, rate, channels)
         return Audio(body, content_type, fmt)
 
-    async def reachable(self, engine: Optional[Engine] = None) -> bool:
+    async def reachable(self, engine: Optional[Engine] = None) -> Optional[bool]:
+        """Whether the engine (Kyutai by default) answers ``/health``; None when it is not configured."""
         engine = engine or self.kyutai
+        if engine is None:
+            return None
         try:
             resp = await self.client.get(f"{engine.base_url}/health", timeout=2.0)
             return resp.status_code == 200

@@ -82,7 +82,8 @@ class Config:
     host: str = "127.0.0.1"
     port: int = 8643
     log_level: str = "info"
-    kyutai_url: str = "http://127.0.0.1:8097"
+    # Kyutai TTS 1.6B (GPU): the human voice and the podcast. None = off (Pocket only, e.g. on a Mac mini or a VPS).
+    kyutai_url: Optional[str] = "http://127.0.0.1:8097"
     kyutai_timeout: float = 120.0
     default_voice: str = "5476"
     # Kyutai Pocket TTS (CPU) for the Bips' voices, used by voices named "pocket:<name>". None = off.
@@ -163,6 +164,13 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
     push = data.get("push", {}) or {}
     apns_t = data.get("apns", {}) or {}
     outbox_t = data.get("outbox", {}) or {}
+    # `[kyutai] enabled = false` (or `url = ""`) runs on Pocket alone; the default voice is then a Bip's.
+    kyutai_url = str(kyutai.get("url", "http://127.0.0.1:8097")).rstrip("/") if kyutai.get("enabled", True) else ""
+    pocket_url = str(pocket["url"]).rstrip("/") if pocket.get("url") else None
+    if not kyutai_url and not pocket_url:
+        raise ConfigError("no TTS engine: set [pocket] url, or [kyutai] url")
+    default_voice = str(kyutai.get("default_voice", "5476")) if kyutai_url \
+        else str(pocket.get("default_voice", "pocket:loutre"))
     limits_t = data.get("limits", {}) or {}
 
     apns = ApnsConfig(
@@ -225,10 +233,10 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         host=str(data.get("host", "127.0.0.1")),
         port=int(data.get("port", 8643)),
         log_level=str(data.get("log_level", "info")).lower(),
-        kyutai_url=str(kyutai.get("url", "http://127.0.0.1:8097")).rstrip("/"),
+        kyutai_url=kyutai_url or None,
         kyutai_timeout=float(kyutai.get("timeout_seconds", 120)),
-        default_voice=str(kyutai.get("default_voice", "5476")),
-        pocket_url=str(pocket["url"]).rstrip("/") if pocket.get("url") else None,
+        default_voice=default_voice,
+        pocket_url=pocket_url,
         cron_watch=bool(cron.get("watch", True)),
         cron_interval_seconds=float(cron.get("interval_seconds", 30)),
         cron_window_hours=float(cron.get("window_hours", 12)),

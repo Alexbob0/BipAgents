@@ -1,0 +1,5 @@
+# Pocket TTS server for BipAgents (pocket_server.py). Python >= 3.10. Tested on macOS (Apple M4) with these versions.
+pocket-tts==3.3.0
+lameenc==1.8.4
+fastapi>=0.110
+uvicorn>=0.30

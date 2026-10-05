@@ -61,3 +61,14 @@ def test_invalid_configs():
                                                                "upload_dir_host": "/tmp/x"}}})
     with pytest.raises(ConfigError):
         parse_config({"bridge_key": "b" * 40, "apns": {"environment": "dev"}})
+
+
+def test_kyutai_can_be_turned_off_for_pocket_only():
+    from bipbridge.config import ConfigError, parse_config
+    base = {"bridge_key": "k" * 40}
+    config = parse_config({**base, "kyutai": {"enabled": False}, "pocket": {"url": "http://127.0.0.1:8098"}})
+    assert config.kyutai_url is None and config.default_voice == "pocket:loutre"
+    config = parse_config({**base, "kyutai": {"url": ""}, "pocket": {"url": "http://p", "default_voice": "pocket:ours"}})
+    assert config.kyutai_url is None and config.default_voice == "pocket:ours"
+    with pytest.raises(ConfigError):
+        parse_config({**base, "kyutai": {"enabled": False}})
