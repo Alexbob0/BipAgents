@@ -104,3 +104,16 @@ struct MessageInputTests {
         """)
     }
 }
+
+@Suite("Run input")
+struct RunInputTests {
+    @Test func photosGoAsOneUserMessage() throws {
+        let prepared = PreparedInput(text: "Décris", images: [.init(data: Data([1, 2]), mimeType: "image/jpeg")])
+        let body = prepared.runBody(merging: ["session_id": "s1"])
+        let messages = try #require(body["input"]?.arrayValue)
+        #expect(messages.count == 1 && messages[0]["role"]?.stringValue == "user")
+        #expect(messages[0]["content"]?.arrayValue?.count == 2)
+        #expect(body["session_id"]?.stringValue == "s1")
+        #expect(PreparedInput(text: "Salut").runBody()["input"]?.stringValue == "Salut")
+    }
+}

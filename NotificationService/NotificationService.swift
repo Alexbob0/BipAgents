@@ -35,6 +35,8 @@ final class NotificationService: UNNotificationServiceExtension {
                     await Self.enrich(pending, outboxID: outboxID, bridge: bridge)
                 } else if let runID, isApproval {
                     await Self.enrichApproval(pending, agent: agentName, runID: runID, bridge: bridge)
+                } else if let replyID = userInfo["reply_id"] as? String {
+                    await Self.enrichReply(pending, replyID: replyID, bridge: bridge)
                 }
             }
             deliver(await Self.asMessage(pending, from: agent))
@@ -77,6 +79,18 @@ final class NotificationService: UNNotificationServiceExtension {
                 content.attachments = [attachment]
             }
         }
+    }
+
+    /// « Reply ready » / question pushes carry an id only: show the agent's text, fetched over the tailnet (it
+    /// never goes through Apple). Markdown marks and `MEDIA:` lines are dropped; iOS truncates the rest.
+    private static func enrichReply(_ content: UNMutableNotificationContent, replyID: String, bridge: SharedAgents.Bridge) async {
+        guard let data = try? await bridge.get(bridge.url.appending(path: "v1/replies").appending(path: replyID)),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var text = json["text"] as? String else { return }
+        text = text.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("MEDIA:") }.joined(separator: "\n")
+        for mark in ["**", "__", "`", "### ", "## ", "# "] { text = text.replacingOccurrences(of: mark, with: "") }
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty { content.body = String(text.prefix(1000)) }
     }
 
     /// Approval pushes carry ids only; show the (already redacted) command the agent wants to run.

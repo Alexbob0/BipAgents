@@ -345,6 +345,14 @@ def build_router() -> APIRouter:
         return {"session_id": session_id, "message_count": count if isinstance(count, int) else None,
                 "updated_at": session.get("updated_at") or session.get("last_active")}
 
+    @router.get("/replies/{reply_id}")
+    async def get_reply(reply_id: str, request: Request) -> Dict[str, Any]:
+        """The text of a reply / question push, for the Notification Service Extension (kept 24 h)."""
+        text = _services(request).push.text(reply_id)
+        if text is None:
+            raise HTTPException(status_code=404, detail="not found")
+        return {"id": reply_id, "text": text}
+
     @router.get("/cron-jobs")
     async def cron_jobs(request: Request, agent: Optional[str] = None) -> Dict[str, Any]:
         """Scheduled tasks seen by the cron watcher, with whether their replies are pushed."""

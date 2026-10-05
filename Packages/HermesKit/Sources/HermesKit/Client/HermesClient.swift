@@ -90,7 +90,7 @@ public struct HermesClient: Sendable {
         var extra: [String: JSONValue] = [:]
         if let sessionID { extra["session_id"] = .string(sessionID) }
         if let instructions { extra["instructions"] = .string(instructions) }
-        var request = try self.request("POST", "/v1/runs", body: input.body(merging: extra))
+        var request = try self.request("POST", "/v1/runs", body: input.runBody(merging: extra))
         if let idempotencyKey { request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key") }
         let (data, response) = try await HTTP.send(request, session: urlSession)
         let json = try HTTP.json(data)

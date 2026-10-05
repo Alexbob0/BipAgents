@@ -79,6 +79,14 @@ public struct PreparedInput: Sendable, Hashable {
     public func body(merging extra: [String: JSONValue] = [:]) -> JSONValue {
         .object(extra.merging(["input": input]) { _, new in new })
     }
+
+    /// `/v1/runs` reads a multimodal `input` as a list of messages (« No user message found in input » for bare
+    /// parts): photos go as one user message whose content is the parts. Text-only input stays a string.
+    public func runBody(merging extra: [String: JSONValue] = [:]) -> JSONValue {
+        guard !images.isEmpty else { return body(merging: extra) }
+        let message: JSONValue = ["role": "user", "content": input]
+        return .object(extra.merging(["input": .array([message])]) { _, new in new })
+    }
 }
 
 extension MessageInput {
