@@ -276,12 +276,12 @@ final class ConversationModel {
                 }
                 let input = MessageInput(text: trimmed, attachments: attachments.map(\.hermesAttachment))
                 // A run lives on aibox whatever happens to this connection (screen locked, app in
-                // background) and can be re-attached to afterwards. Inline images are documented for
-                // chat/stream only, and a server that rejects runs falls back to chat/stream too.
+                // background) and can be re-attached to afterwards. Photos go the same way unless the
+                // server rejected them in a run before; a server that rejects runs falls back to chat/stream.
                 let hasImages = input.attachments.contains { if case .image = $0 { true } else { false } }
                 var handle: RunHandle?
                 var ackLost = false
-                if !hasImages, !Self.runsUnavailable.contains(agent.id) {
+                if !(hasImages && Self.imagesUnavailableInRuns.contains(agent.id)), !Self.runsUnavailable.contains(agent.id) {
                     do {
                         handle = try await client.createRun(input: input, sessionID: sessionID,
                                                             idempotencyKey: UUID().uuidString, uploader: uploader)
@@ -292,12 +292,12 @@ final class ConversationModel {
                         print("[run] POST /v1/runs answered \(error), waiting for the reply in the transcript")
                         #endif
                         ackLost = true
-                    } catch let error as HermesError where [400, 404, 405, 422].contains(error.status ?? 0) {
-                        // Runs rejected up front: nothing ran, chat/stream is safe.
+                    } catch let error as HermesError where [400, 404, 405, 413, 415, 422].contains(error.status ?? 0) {
+                        // Rejected up front: nothing ran, chat/stream is safe. With photos, only photos fall back.
                         #if DEBUG
-                        print("[run] POST /v1/runs rejected (\(error)), using chat/stream for this agent")
+                        print("[run] POST /v1/runs rejected (\(error)), using chat/stream\(hasImages ? " for photos" : "") for this agent")
                         #endif
-                        Self.runsUnavailable.insert(agent.id)
+                        if hasImages { Self.imagesUnavailableInRuns.insert(agent.id) } else { Self.runsUnavailable.insert(agent.id) }
                     }
                 }
                 if ackLost {
@@ -327,6 +327,8 @@ final class ConversationModel {
 
     /// Agents whose server rejected `POST /v1/runs` during this launch.
     private static var runsUnavailable: Set<UUID> = []
+    /// Agents whose server rejected a run with photos during this launch (photos then use chat/stream).
+    private static var imagesUnavailableInRuns: Set<UUID> = []
     /// Runs still in progress, by session: a reopened conversation re-attaches to its reply.
     private static var activeRuns: [String: String] = [:]
     /// The model currently following each session's run (only one subscriber gets the events).
