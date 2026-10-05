@@ -83,3 +83,70 @@ def test_job_helpers():
     assert job_id("cron_fc344ed09026_20261005_075008") == "fc344ed09026"
     assert job_id("api_123") is None
     assert job_name("Podcast du matin · Oct 05 07:53") == "Podcast du matin"
+
+
+class FakePush:
+    def __init__(self):
+        self.replies = []
+
+    async def notify_reply(self, agent, run_id, text, session_id=None):
+        self.replies.append((agent, text, session_id))
+
+
+class FakeHub:
+    def __init__(self):
+        self.followed = set()
+
+    def followed_recently(self, agent, session_id, within=600.0):
+        return (agent, session_id) in self.followed
+
+
+def bot_watcher(config_dict):
+    from bipbridge.cronwatch import Presence
+    config = parse_config(config_dict)
+    hermes, push, hub, presence = FakeHermes(), FakePush(), FakeHub(), Presence()
+    cron = CronWatcher(config, hermes, FakeOutbox(), hub=hub, push=push, presence=presence)
+    return cron, hermes, push, hub, presence, config.agent("wellness")
+
+
+def test_bot_chat_turn_taken_alone_is_pushed_once(config_dict):
+    cron, hermes, push, hub, presence, agent = bot_watcher(config_dict)
+    hermes.sessions = [{"id": "api_bot", "title": "Bot Chat", "message_count": 4}]
+    hermes.messages["api_bot"] = [{"role": "user", "content": "Bonjour"}, {"role": "assistant", "content": "Ancienne réponse"}]
+    asyncio.run(cron.poll(agent, now=NOW))                      # baseline: nothing old is pushed
+    assert push.replies == []
+    hermes.sessions[0]["message_count"] = 6
+    hermes.messages["api_bot"] += [{"role": "user", "content": "Message from 🤖 Wellness (@wellness): nuit OK"},
+                                   {"role": "assistant", "content": "Wellness dit que ta nuit était bonne."}]
+    asyncio.run(cron.poll(agent, now=NOW))                      # first sight: wait until it stops changing
+    asyncio.run(cron.poll(agent, now=NOW))
+    assert push.replies == [("wellness", "Wellness dit que ta nuit était bonne.", "api_bot")]
+    asyncio.run(cron.poll(agent, now=NOW))
+    assert len(push.replies) == 1
+
+
+def test_bot_chat_reply_followed_or_on_screen_is_not_pushed(config_dict):
+    cron, hermes, push, hub, presence, agent = bot_watcher(config_dict)
+    hermes.sessions = [{"id": "api_bot", "title": "Bot Chat", "message_count": 2}]
+    hermes.messages["api_bot"] = [{"role": "user", "content": "Salut"}, {"role": "assistant", "content": "Salut !"}]
+    asyncio.run(cron.poll(agent, now=NOW))
+    hermes.sessions[0]["message_count"] = 4
+    hermes.messages["api_bot"] += [{"role": "user", "content": "Et demain ?"}, {"role": "assistant", "content": "Grand soleil."}]
+    hub.followed.add(("wellness", "api_bot"))                   # the app sent it and followed the run
+    for _ in range(2):
+        asyncio.run(cron.poll(agent, now=NOW))
+    hub.followed.clear()
+    hermes.sessions[0]["message_count"] = 6
+    hermes.messages["api_bot"] += [{"role": "user", "content": "Message from 🤖 Vie (@vie): ?"}, {"role": "assistant", "content": "Vu."}]
+    presence.touch("wellness", "api_bot")                       # the conversation is open on the phone
+    for _ in range(2):
+        asyncio.run(cron.poll(agent, now=NOW))
+    assert push.replies == []
+
+
+def test_session_state_route_records_presence(client):
+    from conftest import AUTH
+    resp = client.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
+    assert resp.status_code == 200 and resp.json()["message_count"] == 7
+    assert client.app.state.services.presence.viewing("wellness", "api_bot")
+    assert client.get("/v1/sessions/bad%20id/state?agent=wellness", headers=AUTH).status_code == 400

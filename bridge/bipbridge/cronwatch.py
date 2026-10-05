@@ -1,4 +1,5 @@
-"""Scheduled-task replies → Boîte + push, whatever the job's delivery settings.
+"""Scheduled-task replies → Boîte + push, whatever the job's delivery settings; and turns an agent takes
+on its own in its « Bot Chat » (a teammate's answer, a routine) → push.
 
 Hermes cron jobs deliver where their ``deliver`` says (SimpleX, Telegram…), but every run also leaves a
 session (``cron_<job>_<YYYYMMDD>_<HHMMSS>``). The watcher polls each agent's recent sessions and puts the
@@ -9,12 +10,17 @@ pushes it like an ntfy message — so nothing a job says is missed in the app.
 - ``[SILENT]`` (nothing new to report) is skipped.
 - Only runs from the last ``window_hours`` count, so a first start does not replay old history;
   each session is stored once (``ntfy_id = hermes-session:<id>``), so restarts never duplicate.
+
+Bot Chat (Hermes Bot Mode): a new final reply that the app did not follow (``RunHub.followed_recently``)
+and that nobody is looking at (``Presence``, refreshed by the open conversation) is pushed as « reply
+ready ». Its baseline is taken at the first poll, so a restart pushes nothing old.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
@@ -93,11 +99,37 @@ def final_reply(messages: List[Dict[str, Any]]) -> Optional[str]:
     return None
 
 
+class Presence:
+    """Conversations open on the phone right now (the app polls their state while one is on screen)."""
+
+    def __init__(self, ttl_seconds: float = 45.0):
+        self.ttl = ttl_seconds
+        self._seen: Dict[str, float] = {}
+
+    def touch(self, agent: str, session_id: str) -> None:
+        self._seen[f"{agent}/{session_id}"] = time.monotonic()
+
+    def viewing(self, agent: str, session_id: str) -> bool:
+        seen = self._seen.get(f"{agent}/{session_id}")
+        return seen is not None and time.monotonic() - seen < self.ttl
+
+
+def is_bot_chat(session: Dict[str, Any]) -> bool:
+    return str(session.get("title") or "").strip().lower() == "bot chat"
+
+
 class CronWatcher:
     def __init__(self, config: Config, hermes: HermesClient, outbox: OutboxService,
-                 interval_seconds: float = 60.0, window_hours: float = 12.0, store: Optional[Store] = None):
+                 interval_seconds: float = 60.0, window_hours: float = 12.0, store: Optional[Store] = None,
+                 hub: Optional[Any] = None, push: Optional[Any] = None, presence: Optional[Presence] = None):
         self.config = config
         self.store = store
+        self.hub = hub
+        self.push = push
+        self.presence = presence
+        self._bot_count: Dict[str, Any] = {}       # Bot Chat key -> message count at the last poll
+        self._bot_candidate: Dict[str, str] = {}   # Bot Chat key -> unsent reply seen at the previous poll
+        self._bot_last: Dict[str, str] = {}        # Bot Chat key -> last reply handled
         self.hermes = hermes
         self.outbox = outbox
         self.interval = interval_seconds
@@ -122,6 +154,9 @@ class CronWatcher:
         for session in await self.hermes.list_sessions(agent, limit=20):
             sid = str(session.get("id") or session.get("session_id") or "")
             key = f"{agent.name}/{sid}"
+            if sid and is_bot_chat(session):
+                await self._poll_bot_chat(agent, sid, session)
+                continue
             if not sid or key in self._done or not is_cron_session(session):
                 continue
             started = session_started(session)
@@ -148,6 +183,35 @@ class CronWatcher:
                 stored += 1
                 log.info("cron reply stored", extra=fields(agent=agent.name, session=sid, chars=len(reply)))
         return stored
+
+    async def _poll_bot_chat(self, agent: AgentConfig, sid: str, session: Dict[str, Any]) -> None:
+        key = f"{agent.name}/{sid}"
+        count = session.get("message_count", session.get("messages"))
+        count = count if isinstance(count, int) else None
+        first = key not in self._bot_count
+        if not first and count is not None and count == self._bot_count[key] and key not in self._bot_candidate:
+            return  # nothing new since the last poll
+        self._bot_count[key] = count
+        reply = final_reply(await self.hermes.session_messages(agent, sid))
+        if first or reply is None:
+            if reply is not None:
+                self._bot_last[key] = reply  # baseline: what is already there was seen (or is old)
+            return
+        if reply == self._bot_last.get(key):
+            self._bot_candidate.pop(key, None)
+            return
+        if self._bot_candidate.get(key) != reply:
+            self._bot_candidate[key] = reply  # take it once it stops changing
+            return
+        self._bot_candidate.pop(key, None)
+        self._bot_last[key] = reply
+        if self.hub is not None and self.hub.followed_recently(agent.name, sid):
+            return  # the app followed this turn: shown live or pushed as « reply ready »
+        if self.presence is not None and self.presence.viewing(agent.name, sid):
+            return  # on screen right now
+        if self.push is not None and reply.strip() != SILENT:
+            log.info("bot chat push", extra=fields(agent=agent.name, session=sid, chars=len(reply)))
+            await self.push.notify_reply(agent.name, f"session:{sid}", reply, sid)
 
     async def _note_job(self, agent: AgentConfig, session_id: str, title: Optional[str]) -> bool:
         """Remembers the job (for the app's « Tâches planifiées » settings); False if it is muted."""

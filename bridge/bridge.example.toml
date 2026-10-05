@@ -30,7 +30,7 @@ url = "http://127.0.0.1:8645"
 # Boîte avec un push, quelle que soit la livraison configurée du job (SimpleX, ntfy…). `[SILENT]` ignoré.
 [cron]
 watch = true
-interval_seconds = 60
+interval_seconds = 30
 window_hours = 12        # au premier démarrage, seules les tâches de ces dernières heures sont reprises
 
 # Fichiers que les agents désignent par une ligne « MEDIA:<chemin> » (podcast mp3, image…) : préfixe vu par

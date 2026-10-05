@@ -169,6 +169,8 @@ class FakeBackend:
                 await wait_flag(self.release, 30)
 
             return httpx.Response(200, content=stream(), headers={"content-type": "text/event-stream"})
+        if len(parts) == 3 and parts[:2] == ["api", "sessions"]:
+            return httpx.Response(200, json={"id": parts[2], "title": "Bot Chat", "message_count": 7})
         if len(parts) == 4 and parts[:2] == ["v1", "runs"] and parts[3] == "approval":
             self.approvals.append({"run_id": parts[2], "body": json.loads(request.content)})
             status, payload = self.approval_response

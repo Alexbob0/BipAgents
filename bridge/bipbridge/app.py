@@ -19,10 +19,10 @@ from . import __version__
 from .apns import ApnsClient
 from .auth import require_bridge_key
 from .config import Config
-from .cronwatch import CronWatcher
+from .cronwatch import CronWatcher, Presence
 from .media import content_type as media_content_type, resolve as resolve_media
 from .files import UploadSizeLimit, handle_upload, purge_uploads
-from .hermes import HermesClient
+from .hermes import HermesClient, HermesHTTPError
 from .logs import fields, redact
 from .ntfy import NtfySubscriber, OutboxService, ntfy_reachable
 from .push import PushService
@@ -62,6 +62,7 @@ class Services:
         self.push = PushService(config, self.store, apns)
         self.hub = RunHub(self.hermes, self.push, watch_max_seconds=config.limits.watch_max_seconds)
         self.outbox = OutboxService(config, self.store, self.tts, self.push)
+        self.presence = Presence()
         self.subscribers: List[NtfySubscriber] = []
         self._tasks: List["asyncio.Task[Any]"] = []
 
@@ -73,7 +74,8 @@ class Services:
                 self._tasks.append(asyncio.create_task(sub.run()))
         if self.config.cron_watch:
             watcher = CronWatcher(self.config, self.hermes, self.outbox, self.config.cron_interval_seconds,
-                                  self.config.cron_window_hours, store=self.store)
+                                  self.config.cron_window_hours, store=self.store, hub=self.hub, push=self.push,
+                                  presence=self.presence)
             self._tasks.append(asyncio.create_task(watcher.run()))
         self._tasks.append(asyncio.create_task(self._purge_loop()))
 
@@ -323,6 +325,25 @@ def build_router() -> APIRouter:
         if host is None:
             raise HTTPException(status_code=404, detail="not found")
         return FileResponse(host, media_type=media_content_type(host), filename=os.path.basename(host))
+
+    @router.get("/sessions/{session_id}/state")
+    async def session_state(session_id: str, request: Request, agent: str = Query(...)) -> Dict[str, Any]:
+        """Polled by an open conversation: its message count (to show turns the agent takes on its own),
+        and « the user is looking at it » (no push for what is on screen)."""
+        services = _services(request)
+        agent_cfg = _agent_or_404(services.config, agent)
+        if not SESSION_ID.match(session_id):
+            raise HTTPException(status_code=400, detail="invalid session_id")
+        services.presence.touch(agent_cfg.name, session_id)
+        try:
+            session = await services.hermes.session(agent_cfg, session_id)
+        except HermesHTTPError as exc:
+            raise HTTPException(status_code=exc.status if exc.status in (401, 403, 404) else 502, detail="Hermes refused") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="Hermes unreachable") from exc
+        count = session.get("message_count", session.get("messages"))
+        return {"session_id": session_id, "message_count": count if isinstance(count, int) else None,
+                "updated_at": session.get("updated_at") or session.get("last_active")}
 
     @router.get("/cron-jobs")
     async def cron_jobs(request: Request, agent: Optional[str] = None) -> Dict[str, Any]:
