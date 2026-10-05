@@ -262,6 +262,10 @@ def test_reply_ready_pushed_when_the_app_left(client):
     payload = apns.payloads()[0]
     assert payload["kind"] == "reply" and payload["session_id"] == "api_9" and payload["run_id"] == "run_r"
     assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "Ta réponse est prête."
+    # The text stays off Apple: the extension fetches it from the bridge.
+    reply = client.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH)
+    assert reply.status_code == 200 and reply.json()["text"] == "Le train de 9h est à 19 €."
+    assert client.get("/v1/replies/nope", headers=AUTH).status_code == 404
 
 
 def test_replay_backlog_merges_deltas_so_long_replies_keep_their_start(client):

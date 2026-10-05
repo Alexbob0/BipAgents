@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+import time
+import uuid
+from collections import OrderedDict
+from typing import Any, Dict, List, Optional, Tuple
 
 from .apns import ApnsClient
 from .config import Config
@@ -18,6 +21,8 @@ from .store import Store
 log = logging.getLogger("bipbridge.push")
 
 MESSAGE_BODY = "Nouveau message"
+TEXTS_KEPT = 200
+TEXT_TTL = 24 * 3600.0
 REPLY_BODY = "Ta réponse est prête."
 QUESTION_BODY = "Une question pour toi"
 APPROVAL_BODY = "Approbation requise"
@@ -67,7 +72,7 @@ def approval_payload(agent: str, title: str, run_id: str, request_id: Optional[s
 
 
 def reply_payload(agent: str, title: str, run_id: str, session_id: Optional[str] = None,
-                  preview: Optional[str] = None) -> Dict[str, Any]:
+                  preview: Optional[str] = None, reply_id: Optional[str] = None) -> Dict[str, Any]:
     """A run finished while nobody followed it: tapping opens its conversation."""
     payload: Dict[str, Any] = {
         "aps": {
@@ -83,11 +88,13 @@ def reply_payload(agent: str, title: str, run_id: str, session_id: Optional[str]
     }
     if session_id:
         payload["session_id"] = session_id
+    if reply_id:
+        payload["reply_id"] = reply_id  # the extension fetches the text on the device (GET /v1/replies/{id})
     return payload
 
 
 def question_payload(agent: str, title: str, run_id: str, request_id: Optional[str], session_id: Optional[str] = None,
-                     preview: Optional[str] = None) -> Dict[str, Any]:
+                     preview: Optional[str] = None, reply_id: Optional[str] = None) -> Dict[str, Any]:
     """The agent asks something mid-run (clarify) while nobody follows it: tapping opens its conversation."""
     payload: Dict[str, Any] = {
         "aps": {
@@ -105,6 +112,8 @@ def question_payload(agent: str, title: str, run_id: str, request_id: Optional[s
         payload["request_id"] = request_id
     if session_id:
         payload["session_id"] = session_id
+    if reply_id:
+        payload["reply_id"] = reply_id
     return payload
 
 
@@ -121,6 +130,20 @@ class PushService:
         self.apns = apns
         if apns is None:
             log.warning("APNs not configured: push notifications disabled")
+        # Texts of recent reply / question pushes, fetched by the Notification Service Extension over the
+        # tailnet (GET /v1/replies/{id}): the alert shows the message, which never goes through Apple.
+        self._texts: "OrderedDict[str, Tuple[float, str]]" = OrderedDict()
+
+    def remember(self, text: str) -> str:
+        reply_id = uuid.uuid4().hex
+        self._texts[reply_id] = (time.time(), text)
+        while len(self._texts) > TEXTS_KEPT or (self._texts and next(iter(self._texts.values()))[0] < time.time() - TEXT_TTL):
+            self._texts.popitem(last=False)
+        return reply_id
+
+    def text(self, reply_id: str) -> Optional[str]:
+        entry = self._texts.get(reply_id)
+        return entry[1] if entry and entry[0] >= time.time() - TEXT_TTL else None
 
     def _title(self, agent: str) -> str:
         cfg = self.config.agent(agent)
@@ -165,13 +188,14 @@ class PushService:
 
     async def notify_reply(self, agent: str, run_id: str, text: str, session_id: Optional[str] = None) -> int:
         preview = _preview(text) if self.config.push_previews else None
-        payload = reply_payload(agent, self._title(agent), run_id, session_id, preview)
+        payload = reply_payload(agent, self._title(agent), run_id, session_id, preview, self.remember(text))
         return await self._fanout(agent, payload, "alert", 10, collapse_id=run_id)
 
     async def notify_question(self, agent: str, run_id: str, request_id: Optional[str], question: Optional[str],
                               session_id: Optional[str] = None) -> int:
         preview = _preview(question) if self.config.push_previews and question else None
-        payload = question_payload(agent, self._title(agent), run_id, request_id, session_id, preview)
+        reply_id = self.remember(question) if question else None
+        payload = question_payload(agent, self._title(agent), run_id, request_id, session_id, preview, reply_id)
         return await self._fanout(agent, payload, "alert", 10, collapse_id=request_id or run_id)
 
     async def notify_silent(self, agent: str, reason: str, **extra: Any) -> int:
