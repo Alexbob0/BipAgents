@@ -70,7 +70,7 @@ démarrage (`--languages fr`). Détails : [`pocket/README.md`](../pocket/README.
 
   (Sur ARM, Hetzner CAX ou Ampere, la version par défaut est déjà sans CUDA.)
 - **Partager le CPU avec Hermes** : `--threads 2` réserve 2 cœurs à Pocket (même vitesse mesurée qu'avec tous les
-  cœurs sur Apple M4). Sur x86, `--quantize` (poids int8) gagne ≈ 25 % de vitesse et la moitié de la mémoire ;
+  cœurs sur Apple M4). Sur x86, **mettre `--quantize`** (poids int8) : mesuré sur un serveur x86, le premier son passe de ≈ 140 ms à ≈ 55 ms ;
   `pip install "pocket-tts[quantize]"` ajoute torchao pour l'optimiser.
 - **Mémoire et disque** : ≈ 0,6 à 1 Go de RAM pour les 4 langues, ≈ 2 Go de disque pour les modèles (dans
   `~/.cache/huggingface`, `HF_HOME` pour les mettre ailleurs) et ≈ 1 Go pour PyTorch CPU. Ajouter un peu de swap

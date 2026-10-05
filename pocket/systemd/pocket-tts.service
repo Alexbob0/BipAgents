@@ -9,8 +9,9 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/BipAgents/pocket
 Environment=PYTHONUNBUFFERED=1
-# --quantize: int8 weights, less memory and ~25 % faster on x86 CPUs. --threads 2: leave CPU to Hermes.
-ExecStart=%h/BipAgents/pocket/.venv/bin/python pocket_server.py --voices %h/BipAgents/voices --languages fr,en,es,de --threads 2
+# --quantize: int8 weights, much faster on x86 CPUs (measured: ~55 ms to first audio instead of ~140). Drop it on ARM.
+# --threads 2: leave CPU to Hermes.
+ExecStart=%h/BipAgents/pocket/.venv/bin/python pocket_server.py --voices %h/BipAgents/voices --languages fr,en,es,de --threads 2 --quantize
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
