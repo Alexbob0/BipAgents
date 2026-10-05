@@ -218,3 +218,37 @@ struct TeammateCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
+
+/// An exchange with another agent, folded into one line (like the reasoning): « Échange avec Vie » for a
+/// request from Vie and this agent's answer, « Réponse de Wellness » for an answer to this agent's request.
+struct ExchangeChip: View {
+    var name: String
+    var isRequest: Bool
+    var appearance: AgentAppearance?
+    var isOpen: Bool
+    var toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 7) {
+                if let appearance {
+                    MascotAvatar(appearance: appearance, size: 20)
+                } else {
+                    Image(systemName: "person.2.fill").font(.system(size: 11))
+                }
+                Text(isRequest ? "Échange avec \(name)" : "Réponse de \(name)")
+                Image(systemName: isOpen ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .bold))
+            }
+            .font(Theme.body(13, weight: .bold))
+            .foregroundStyle(Theme.ink2)
+            .padding(.leading, 6)
+            .padding(.trailing, 12)
+            .frame(height: 30)
+            .background(Theme.card, in: .capsule)
+            .overlay(Capsule().stroke(Theme.line))
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 40)
+        .accessibilityHint(isOpen ? "Replier l’échange" : "Afficher l’échange")
+    }
+}

@@ -49,6 +49,7 @@ struct ConversationView: View {
 private struct ConversationContent: View {
     private static let bottom = "thread-bottom"
     @Environment(AgentStore.self) private var store
+    @State private var openExchanges: Set<UUID> = []
     @Bindable var model: ConversationModel
     var start: ConversationStart
     @State private var isCalling = false
@@ -76,11 +77,27 @@ private struct ConversationContent: View {
                     ConversationEmptyState(agent: model.agent)
                 }
                 let visible = Array(model.items.suffix(visibleCount))
+                let owners = exchangeOwners
                 ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
                     if let day = newDay(at: index, in: visible) {
                         DaySeparator(date: day)
                     }
-                    row(for: item, turnEnd: isTurnEnd(item))
+                    // Exchanges between agents (Bot Mode) fold into one line, like the reasoning.
+                    if let owner = owners[item.id] {
+                        if owner == item.id, case .user(let text, _) = item.kind, let teammate = ChatText.teammateMessage(text) {
+                            ExchangeChip(name: teammate.name, isRequest: isRequest(item),
+                                         appearance: appearance(of: teammate), isOpen: openExchanges.contains(owner)) {
+                                withAnimation(.snappy) {
+                                    if openExchanges.contains(owner) { openExchanges.remove(owner) } else { openExchanges.insert(owner) }
+                                }
+                            }
+                            if openExchanges.contains(owner) { row(for: item, turnEnd: false) }
+                        } else if openExchanges.contains(owner) {
+                            row(for: item, turnEnd: isTurnEnd(item))
+                        }
+                    } else {
+                        row(for: item, turnEnd: isTurnEnd(item))
+                    }
                 }
                 if model.isRunning, !model.isWaitingForApproval, !(model.items.last?.isStreamingAssistant ?? false) {
                     TypingIndicator(appearance: model.agent.appearance, interim: model.interim)
@@ -241,6 +258,45 @@ private struct ConversationContent: View {
             }
         }
         return true
+    }
+
+    /// Exchanges with other agents (Bot Mode), folded by default: item id → the teammate message opening it.
+    /// A request from another agent folds with the whole turn answering it; an answer to a request this agent
+    /// sent folds alone (what follows is this agent's reply to the user).
+    private var exchangeOwners: [UUID: UUID] {
+        var owners: [UUID: UUID] = [:]
+        var current: UUID?
+        for item in model.items {
+            if case .user(let text, _) = item.kind {
+                current = nil
+                if ChatText.teammateMessage(text) != nil {
+                    owners[item.id] = item.id
+                    if isRequest(item) { current = item.id }
+                }
+            } else if let current {
+                switch item.kind {
+                case .approval, .question: break // waiting for the user: never folded away
+                default: owners[item.id] = current
+                }
+            }
+        }
+        return owners
+    }
+
+    /// A teammate message that asks this agent something (vs. answers a request this agent sent through
+    /// message_agent just before).
+    private func isRequest(_ item: ChatItem) -> Bool {
+        guard case .user(let text, _) = item.kind, let teammate = ChatText.teammateMessage(text),
+              let index = model.items.firstIndex(where: { $0.id == item.id }) else { return false }
+        let asked = model.items[..<index].suffix(40).contains { candidate in
+            guard case .tools(let tools) = candidate.kind else { return false }
+            return tools.contains { $0.tool.contains("message_agent") && ($0.preview ?? "").lowercased().contains(teammate.handle.lowercased()) }
+        }
+        return !asked
+    }
+
+    private func appearance(of teammate: (name: String, handle: String, body: String)) -> AgentAppearance? {
+        store.agents.first { $0.bridgeName == teammate.handle.lowercased() || $0.name.lowercased() == teammate.name.lowercased() }?.appearance
     }
 
     /// The agent whose request this reply answers (Bot Mode), if the turn was started by another agent asking —
