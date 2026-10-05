@@ -134,6 +134,25 @@ class HermesClient:
     def _headers(agent: AgentConfig, accept: str = "application/json") -> Dict[str, str]:
         return {"Authorization": f"Bearer {agent.hermes_key}", "Accept": accept}
 
+    async def _get_json(self, agent: AgentConfig, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        resp = await self.client.get(f"{agent.hermes_url}{path}", params=params, headers=self._headers(agent),
+                                     timeout=15.0)
+        if resp.status_code != 200:
+            raise HermesHTTPError(resp.status_code, resp.text[:500])
+        return resp.json()
+
+    async def list_sessions(self, agent: AgentConfig, limit: int = 20) -> List[Dict[str, Any]]:
+        """``GET /api/sessions`` (most recent first)."""
+        data = await self._get_json(agent, "/api/sessions", {"limit": limit})
+        items = data.get("sessions", data.get("data", data.get("items"))) if isinstance(data, dict) else data
+        return [item for item in items or [] if isinstance(item, dict)]
+
+    async def session_messages(self, agent: AgentConfig, session_id: str) -> List[Dict[str, Any]]:
+        """``GET /api/sessions/{id}/messages`` (oldest first)."""
+        data = await self._get_json(agent, f"/api/sessions/{session_id}/messages", {"inline_images": "false"})
+        items = data.get("messages", data.get("data", data.get("items"))) if isinstance(data, dict) else data
+        return [item for item in items or [] if isinstance(item, dict)]
+
     async def run_events(self, agent: AgentConfig, run_id: str) -> AsyncIterator[SSEEvent]:
         """Yield events of ``GET /v1/runs/{run_id}/events`` until the server closes the stream.
         Raises :class:`HermesHTTPError` on a non-200 answer."""
