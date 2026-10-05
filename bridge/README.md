@@ -187,6 +187,15 @@ est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si l
 propre file d'attente. Si Pocket n'est pas configuré, est injoignable ou échoue avant le premier son, la requête
 retombe sur la voix Kyutai par défaut (cet audio-là n'est pas mis en cache). `/health` indique `"pocket": true|false|null`.
 
+### Tâches planifiées et fichiers des agents
+- Le bridge relit toutes les minutes les sessions `cron_…` de chaque agent et met la réponse finale de chaque
+  tâche dans la Boîte (`[SILENT]` ignoré, section `[cron]`). `GET /v1/cron-jobs?agent=` liste les tâches vues
+  (`{agent, job, name, notify, last_seen}`) ; `PUT /v1/cron-jobs/{agent}/{job}` `{"notify": false}` les range
+  dans la Boîte sans notification.
+- `GET /v1/media?path=/home/hermes/…` sert un fichier désigné par une ligne `MEDIA:<chemin>` d'un agent, s'il est
+  sous un dossier de `[media.roots]` et a une extension média (audio, image, PDF). Dans un message de la Boîte,
+  la ligne est retirée du texte et un mp3 devient l'audio du message.
+
 ### `WS /v1/voice`
 Client → serveur (texte JSON) :
 - `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`

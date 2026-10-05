@@ -13,13 +13,15 @@ import json
 import logging
 import os
 import re
+import shutil
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 
 from .config import AgentConfig, Config
 from .logs import fields
+from .media import extract_media, resolve
 from .push import PushService
 from .store import Store, iso
 from .tts import BACKGROUND, TtsError, TtsService
@@ -73,10 +75,14 @@ class OutboxService:
     def audio_file(self, item_id: str) -> str:
         return os.path.join(self.config.outbox.audio_dir, f"{item_id}.mp3")
 
-    async def ingest(self, agent: AgentConfig, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def ingest(self, agent: AgentConfig, message: Dict[str, Any], notify: bool = True) -> Optional[Dict[str, Any]]:
+        """Stores a message and pushes it (``notify=False``: stored silently, still in the Boîte)."""
         job_title, text = unwrap_cron(str(message.get("message") or ""))
-        if not text:
+        text, media_paths = extract_media(text)
+        if not text and not media_paths:
             return None
+        if not text:
+            text = "🎧"
         title = message.get("title") if isinstance(message.get("title"), str) else job_title
         session_id = None
         for tag in message.get("tags") or []:
@@ -91,12 +97,26 @@ class OutboxService:
         if item is None:
             return None  # duplicate (already ingested)
         log.info("outbox message stored", extra=fields(agent=agent.name, id=item["id"], chars=len(text)))
-        task = asyncio.create_task(self._deliver(agent, item))
+        item = await self._attach_media_audio(item, media_paths)
+        task = asyncio.create_task(self._deliver(agent, item, notify))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return item
 
-    async def _deliver(self, agent: AgentConfig, item: Dict[str, Any]) -> None:
+    async def _attach_media_audio(self, item: Dict[str, Any], paths: List[str]) -> Dict[str, Any]:
+        """The message's own mp3 (a podcast) becomes its audio instead of a synthesized reading."""
+        for path in paths:
+            host = resolve(path, self.config.media_roots)
+            if host is None or not host.lower().endswith(".mp3"):
+                continue
+            target = self.audio_file(item["id"])
+            os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
+            await asyncio.to_thread(shutil.copyfile, host, target)
+            await self.store.set_outbox_audio(item["id"], target)
+            return {**item, "audio_path": target}
+        return item
+
+    async def _deliver(self, agent: AgentConfig, item: Dict[str, Any], notify: bool = True) -> None:
         """Wait (bounded) for the pre-synthesized audio, then push."""
         audio_task = self.ensure_audio(item, agent)
         if audio_task is not None:
@@ -104,6 +124,8 @@ class OutboxService:
                 await asyncio.wait_for(asyncio.shield(audio_task), timeout=self.config.outbox.audio_wait_seconds)
             except (asyncio.TimeoutError, Exception):
                 pass  # push now; the audio route serves it once ready
+        if not notify:
+            return
         try:
             await self.push.notify_message(agent.name, item["id"], item["text"], item.get("session_id"),
                                            item.get("title"))

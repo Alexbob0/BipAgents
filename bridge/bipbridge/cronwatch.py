@@ -22,6 +22,7 @@ from .config import AgentConfig, Config
 from .hermes import HermesClient
 from .logs import fields
 from .ntfy import OutboxService
+from .store import Store
 
 log = logging.getLogger("bipbridge.cronwatch")
 
@@ -55,6 +56,18 @@ def session_started(session: Dict[str, Any]) -> Optional[datetime]:
     return None
 
 
+def job_id(session_id: str) -> Optional[str]:
+    match = _CRON_ID.match(session_id)
+    return match.group("job") if match else None
+
+
+def job_name(title: Optional[str]) -> Optional[str]:
+    """« Podcast du matin · Oct 05 07:53 » → « Podcast du matin »."""
+    if not title:
+        return None
+    return title.split(" · ")[0].strip() or None
+
+
 def message_text(message: Dict[str, Any]) -> str:
     content = message.get("content", message.get("text"))
     if isinstance(content, str):
@@ -82,8 +95,9 @@ def final_reply(messages: List[Dict[str, Any]]) -> Optional[str]:
 
 class CronWatcher:
     def __init__(self, config: Config, hermes: HermesClient, outbox: OutboxService,
-                 interval_seconds: float = 60.0, window_hours: float = 12.0):
+                 interval_seconds: float = 60.0, window_hours: float = 12.0, store: Optional[Store] = None):
         self.config = config
+        self.store = store
         self.hermes = hermes
         self.outbox = outbox
         self.interval = interval_seconds
@@ -126,9 +140,18 @@ class CronWatcher:
             self._candidate.pop(key, None)
             self._done.add(key)
             title = session.get("title") if isinstance(session.get("title"), str) else None
+            notify = await self._note_job(agent, sid, title)
             item = await self.outbox.ingest(agent, {"message": reply, "title": title,
-                                                    "id": f"hermes-session:{sid}", "tags": [f"session:{sid}"]})
+                                                    "id": f"hermes-session:{sid}", "tags": [f"session:{sid}"]},
+                                            notify=notify)
             if item is not None:
                 stored += 1
                 log.info("cron reply stored", extra=fields(agent=agent.name, session=sid, chars=len(reply)))
         return stored
+
+    async def _note_job(self, agent: AgentConfig, session_id: str, title: Optional[str]) -> bool:
+        """Remembers the job (for the app's « Tâches planifiées » settings); False if it is muted."""
+        job = job_id(session_id)
+        if job is None or self.store is None:
+            return True
+        return await self.store.note_cron_job(agent.name, job, job_name(title))
