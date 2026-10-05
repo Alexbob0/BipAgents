@@ -19,6 +19,7 @@ from . import __version__
 from .apns import ApnsClient
 from .auth import require_bridge_key
 from .config import Config
+from .cronwatch import CronWatcher
 from .files import UploadSizeLimit, handle_upload, purge_uploads
 from .hermes import HermesClient
 from .logs import fields, redact
@@ -69,6 +70,10 @@ class Services:
                 sub = NtfySubscriber(self.http, self.config.ntfy_url, agent, self.store, self.outbox)
                 self.subscribers.append(sub)
                 self._tasks.append(asyncio.create_task(sub.run()))
+        if self.config.cron_watch:
+            watcher = CronWatcher(self.config, self.hermes, self.outbox, self.config.cron_interval_seconds,
+                                  self.config.cron_window_hours)
+            self._tasks.append(asyncio.create_task(watcher.run()))
         self._tasks.append(asyncio.create_task(self._purge_loop()))
 
     async def _purge_loop(self) -> None:

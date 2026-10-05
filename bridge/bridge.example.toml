@@ -26,6 +26,13 @@ url = "http://127.0.0.1:8098"
 [ntfy]
 url = "http://127.0.0.1:8645"
 
+# Réponses des tâches planifiées Hermes (sessions cron_…) lues directement dans Hermes et mises dans la
+# Boîte avec un push, quelle que soit la livraison configurée du job (SimpleX, ntfy…). `[SILENT]` ignoré.
+[cron]
+watch = true
+interval_seconds = 60
+window_hours = 12        # au premier démarrage, seules les tâches de ces dernières heures sont reprises
+
 [apns]
 # Laisser team_id/key_id vides pour désactiver le push.
 team_id = ""                # Apple Developer Team ID (10 caractères)
