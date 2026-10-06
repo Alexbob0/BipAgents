@@ -9,6 +9,11 @@ Speaks the Kyutai-style API the bridge uses (``bridge/bipbridge/tts.py``):
 ``voice`` is ``loutre`` (French) or ``<code>/loutre`` (``en``, ``es``, ``de``): the voice state
 ``<voices>/<french|english|spanish|german>/loutre.safetensors`` with that language's model. Unknown voice: 404.
 
+Phrasing: the model is trained on single sentences and, left alone, packs several into one generation (rushed,
+with erratic pauses). Here each sentence is generated on its own (very short ones join their neighbour), the
+model's own leading/trailing silence is trimmed, each sentence gets a moderate level adjustment, and the pause
+after it follows the punctuation and line breaks (paragraphs, list items). ``pace: "live"`` shortens the pauses.
+
 Run: ``python pocket_server.py --voices ../voices --languages fr,en,es,de`` (listens on 127.0.0.1:8098).
 """
 from __future__ import annotations
@@ -17,13 +22,14 @@ import argparse
 import asyncio
 import io
 import logging
+import random
 import re
 import threading
 import time
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -42,12 +48,124 @@ class SpeechRequest(BaseModel):
     voice: str
     response_format: str = "wav"
     model: Optional[str] = None
+    pace: str = "read"
 
 
 class StreamRequest(BaseModel):
     input: str
     voice: str
     format: str = "pcm16"
+    pace: str = "read"
+
+
+# Pause after a sentence (seconds), by its final punctuation; "para" after a line (paragraph, list item).
+PAUSES = {
+    "read": {".": 0.32, "!": 0.36, "?": 0.40, "…": 0.55, "para": 0.62, "": 0.30},
+    "live": {".": 0.22, "!": 0.24, "?": 0.26, "…": 0.38, "para": 0.40, "": 0.20},
+}
+SHORT_WORDS = 3  # "Oui." "C'est noté." are generated with their neighbour, not alone
+_SENTENCE = re.compile(r".+?(?:[.!?…]+[\"'»”)\]]*(?=\s|$)|$)")
+_TRAILING = re.compile(r"[\"'»”)\]\s]+$")
+
+
+def phrases(text: str) -> List[Tuple[str, str]]:
+    """``[(sentence, pause kind), …]``: one generation per sentence; the last of each line pauses as a paragraph."""
+    out: List[Tuple[str, str]] = []
+    for line in (l.strip() for l in text.split("\n")):
+        if not line:
+            continue
+        merged: List[str] = []
+        for part in (p.strip() for p in _SENTENCE.findall(line)):
+            if not part:
+                continue
+            if merged and len(merged[-1].split()) <= SHORT_WORDS:
+                merged[-1] += " " + part
+            else:
+                merged.append(part)
+        if len(merged) > 1 and len(merged[-1].split()) <= SHORT_WORDS:
+            last = merged.pop()
+            merged[-1] += " " + last
+        for i, sentence in enumerate(merged):
+            end = _TRAILING.sub("", sentence)[-1:]
+            out.append((sentence, "para" if i == len(merged) - 1 else (end if end in ".!?…" else "")))
+    return out
+
+
+def shape(chunks: Iterable, rate: int, threshold: float = 0.012, pad: float = 0.03,
+          target: float = 0.075, max_gain: float = 1.6, min_gain: float = 0.7, gain_window: float = 0.2) -> Iterator:
+    """One sentence's float audio chunks, streamed: leading silence dropped, trailing silence held back and cut
+    at the end (``pad`` kept around the voice), and one gain for the sentence, set on its first ``gain_window``
+    seconds of voice (so loud and quiet sentences meet halfway without flattening their inner dynamics)."""
+    import numpy as np
+
+    frame = max(1, int(rate * 0.01))
+    margin = int(rate * pad)
+    started = False
+    gain: Optional[float] = None
+    pending = np.zeros(0, dtype=np.float32)  # not yet emitted: waiting for the gain, or possibly trailing silence
+
+    def voiced_frames(x):
+        n = len(x) // frame
+        if n == 0:
+            return np.zeros(0, dtype=bool)
+        energy = np.sqrt(np.mean(x[: n * frame].reshape(n, frame) ** 2, axis=1))
+        return energy > threshold
+
+    for chunk in chunks:
+        x = np.asarray(chunk, dtype=np.float32).reshape(-1)
+        pending = np.concatenate([pending, x])
+        if not started:
+            voiced = voiced_frames(pending)
+            if not voiced.any():
+                pending = pending[-margin:] if margin else pending[:0]
+                continue
+            first = int(np.argmax(voiced)) * frame
+            pending = pending[max(0, first - margin):]
+            started = True
+        if gain is None:
+            voiced = voiced_frames(pending)
+            if voiced.sum() * frame < rate * gain_window:
+                continue
+            n = len(voiced) * frame
+            frames = pending[:n].reshape(-1, frame)[voiced]
+            rms = float(np.sqrt(np.mean(frames ** 2))) or target
+            gain = min(max_gain, max(min_gain, target / rms))
+        voiced = voiced_frames(pending)
+        if voiced.any():
+            last = (len(voiced) - int(np.argmax(voiced[::-1]))) * frame  # end of the last voiced frame
+            yield pending[:last] * gain
+            pending = pending[last:]
+    if started:
+        if gain is None:  # a sentence shorter than the gain window
+            voiced = voiced_frames(pending)
+            n = len(voiced) * frame
+            frames = pending[:n].reshape(-1, frame)[voiced] if n else pending
+            rms = float(np.sqrt(np.mean(frames ** 2))) if len(frames) else target
+            gain = min(max_gain, max(min_gain, target / (rms or target)))
+            voiced_end = (len(voiced) - int(np.argmax(voiced[::-1]))) * frame if voiced.any() else len(pending)
+            yield pending[: voiced_end + margin] * gain
+        else:
+            yield pending[:margin] * gain
+
+
+def phrased(text: str, generate: Callable[[str], Iterable], rate: int, pace: str = "read",
+            stop: Optional[threading.Event] = None, jitter: float = 0.1) -> Iterator:
+    """The whole text as float audio chunks: each sentence generated and shaped, then its pause (the last one
+    too, shorter: it is the gap before the next request's sentence in Live)."""
+    import numpy as np
+
+    pauses = PAUSES.get(pace, PAUSES["read"])
+    items = phrases(text)
+    for index, (sentence, kind) in enumerate(items):
+        if stop is not None and stop.is_set():
+            return
+        yield from shape(generate(sentence), rate)
+        if index == len(items) - 1:
+            # After the last one too, by its punctuation: in Live the app sends one sentence per request and
+            # plays them back to back, so this is the breath between them.
+            kind = _TRAILING.sub("", sentence)[-1:]
+        seconds = pauses.get(kind, pauses[""]) * random.uniform(1 - jitter, 1 + jitter)
+        yield np.zeros(int(rate * seconds), dtype=np.float32)
 
 
 @dataclass
@@ -95,24 +213,30 @@ class Engine:
             self.states[key] = model.get_state_for_audio_prompt(path)
         return model, self.states[key]
 
-    def stream(self, voice: str, text: str, stop: threading.Event) -> Iterator[bytes]:
-        """PCM16 chunks as Pocket decodes them; ``stop`` ends the generation early."""
+    def stream(self, voice: str, text: str, stop: threading.Event, pace: str = "read") -> Iterator[bytes]:
+        """PCM16 chunks as Pocket decodes them, phrased sentence by sentence; ``stop`` ends the generation early."""
         model, state = self.resolve(voice)
+
+        def generate(sentence: str) -> Iterator:
+            for chunk in model.generate_audio_stream(state, sentence, frames_after_eos=1, stop=stop):
+                yield chunk.detach().cpu().numpy()
+
         with self.lock:
-            for chunk in model.generate_audio_stream(state, text, stop=stop):
+            for audio in phrased(text, generate, self.sample_rate, pace, stop):
                 if stop.is_set():
                     break
-                yield to_pcm16(chunk)
+                if len(audio):
+                    yield to_pcm16(audio)
 
-    def synthesize(self, voice: str, text: str) -> bytes:
-        return b"".join(self.stream(voice, text, threading.Event()))
+    def synthesize(self, voice: str, text: str, pace: str = "read") -> bytes:
+        return b"".join(self.stream(voice, text, threading.Event(), pace))
 
 
-def to_pcm16(chunk) -> bytes:
-    """A float tensor in [-1, 1] -> little-endian int16 bytes."""
-    import torch
+def to_pcm16(audio) -> bytes:
+    """Float samples in [-1, 1] -> little-endian int16 bytes."""
+    import numpy as np
 
-    return (chunk.detach().clamp(-1, 1) * 32767).to(torch.int16).cpu().numpy().tobytes()
+    return (np.clip(np.asarray(audio, dtype=np.float32), -1, 1) * 32767).astype("<i2").tobytes()
 
 
 def wav_bytes(pcm: bytes, rate: int) -> bytes:
@@ -160,7 +284,7 @@ def create_app(engine: Engine):
         check(body.input, body.voice)
         if body.response_format not in ("wav", "mp3"):
             raise HTTPException(415, f"unsupported format: {body.response_format}")
-        pcm = await run_in_threadpool(engine.synthesize, body.voice, body.input)
+        pcm = await run_in_threadpool(engine.synthesize, body.voice, body.input, body.pace)
         if body.response_format == "mp3":
             return Response(await run_in_threadpool(mp3_bytes, pcm, engine.sample_rate), media_type="audio/mpeg")
         return Response(wav_bytes(pcm, engine.sample_rate), media_type="audio/wav")
@@ -174,7 +298,7 @@ def create_app(engine: Engine):
 
         def produce() -> None:
             try:
-                for chunk in engine.stream(body.voice, body.input, stop):
+                for chunk in engine.stream(body.voice, body.input, stop, body.pace):
                     loop.call_soon_threadsafe(queue.put_nowait, chunk)
             except Exception as exc:  # reported by ending the stream early
                 log.warning("generation failed: %s", exc)
