@@ -206,6 +206,10 @@ class TtsService:
             return self._route(self.default_voice)  # a Kyutai voice asked for, no Kyutai here: the default Bip
         return self.kyutai, voice
 
+    def _paragraphs(self, voice: str) -> bool:
+        """Pocket phrases the text itself (a pause per sentence, longer between lines): keep the line breaks."""
+        return voice.startswith(POCKET_PREFIX) and self.pocket is not None
+
     def _cache_get(self, key: Tuple[str, str, str]) -> Optional[Audio]:
         audio = self._cache.get(key)
         if audio is not None:
@@ -220,8 +224,9 @@ class TtsService:
         while len(self._cache) > self.cache_entries:
             self._cache.popitem(last=False)
 
-    def _prepare(self, text: str, normalized: bool, max_chars: Optional[int], language: str = "fr") -> str:
-        clean = text.strip() if normalized else normalize_for_speech(text, self.sentence_max_chars)
+    def _prepare(self, text: str, normalized: bool, max_chars: Optional[int], language: str = "fr",
+                 paragraphs: bool = False) -> str:
+        clean = text.strip() if normalized else normalize_for_speech(text, self.sentence_max_chars, paragraphs)
         # numbers in words, CamelCase split, parentheses as pauses
         clean = prepare_for_synthesis(clean) if language == "fr" else speech_intl.prepare_for_synthesis(clean, language)
         if not clean:
@@ -238,7 +243,7 @@ class TtsService:
             raise TtsError(f"unsupported format: {fmt}", status=400)
         voice = voice or self.default_voice
         language = voice_language(voice)
-        clean = self._prepare(text, normalized, max_chars, language)
+        clean = self._prepare(text, normalized, max_chars, language, paragraphs=self._paragraphs(voice))
         key = (voice, fmt, clean)
         hit = self._cache_get(key)
         if hit is not None:
@@ -280,7 +285,7 @@ class TtsService:
         stream is cached."""
         voice = voice or self.default_voice
         language = voice_language(voice)
-        clean = self._prepare(text, False, max_chars, language)
+        clean = self._prepare(text, False, max_chars, language, paragraphs=self._paragraphs(voice))
         key = (voice, "pcm16", clean)
         hit = self._cache_get(key)
         if hit is not None:

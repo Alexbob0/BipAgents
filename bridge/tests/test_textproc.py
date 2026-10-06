@@ -95,3 +95,11 @@ def test_trailing_space_after_sentence_is_emitted_immediately():
     assert sp.feed("Je dois demander. ") == ["Je dois demander."]
     assert sp.feed("Il dit « oui. ") == []  # waits: the guillemet may close
     assert sp.feed("» Ensuite") == ["Il dit « oui. »"]
+
+
+def test_paragraphs_are_kept_for_a_phrasing_reader():
+    from bipbridge.textproc import normalize_for_speech
+    text = "Intro **courte** :\n\n- Premier point\n- Second point.\n\n```sh\nrm -rf x\n\nls\n```\nFin ?"
+    assert normalize_for_speech(text, 180, paragraphs=True).split("\n") == [
+        "Intro courte :", "Premier point.", "Second point.", "Fin ?"]  # items get their full stop
+    assert "\n" not in normalize_for_speech(text, 180)

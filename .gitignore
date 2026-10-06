@@ -27,3 +27,4 @@ context/
 
 # Local signing team
 Config/Local.xcconfig
+voices/ab-test/

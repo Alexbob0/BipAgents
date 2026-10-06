@@ -25,7 +25,7 @@ class FakeModel:
 
 
 class FakeEngine(Engine):
-    def stream(self, voice, text, stop):
+    def stream(self, voice, text, stop, pace="read"):
         model, state = self.resolve(voice)
         for word in text.split():
             if stop.is_set():
@@ -77,3 +77,43 @@ def test_speech_formats(setup, monkeypatch):
     assert client.post("/v1/audio/speech", json={"input": "Bonjour", "voice": "ours", "response_format": "opus"}).status_code == 415
     assert client.post("/v1/audio/speech", json={"input": "  ", "voice": "ours"}).status_code == 400
 
+
+
+def test_phrases_split_sentences_and_lines_and_join_short_ones():
+    from pocket_server import phrases
+    text = "Bonne question ! D'après ce que j'ai trouvé, c'est simple.\nLe train de neuf heures, le plus reposant.\nOui. D'accord, je le note pour demain."
+    assert phrases(text) == [
+        ("Bonne question ! D'après ce que j'ai trouvé, c'est simple.", "para"),  # 2 words: joined to the next
+        ("Le train de neuf heures, le plus reposant.", "para"),
+        ("Oui. D'accord, je le note pour demain.", "para"),
+    ]
+    assert phrases("Tu veux que je réserve le premier train ? Je peux aussi regarder les retours…") == [
+        ("Tu veux que je réserve le premier train ?", "?"), ("Je peux aussi regarder les retours…", "para")]
+    assert phrases("Prix : 3.5 euros pour le billet aller") == [("Prix : 3.5 euros pour le billet aller", "para")]
+
+
+def test_shape_trims_silence_and_levels_each_sentence():
+    np = pytest.importorskip("numpy")
+    from pocket_server import shape
+    rate = 1000  # 10-sample frames keep the arithmetic readable
+    silence, voice = np.zeros(300, dtype=np.float32), np.full(400, 0.3, dtype=np.float32)
+    chunks = [silence[:150], silence[150:], voice[:200], voice[200:], silence]
+    out = np.concatenate(list(shape(chunks, rate, pad=0.03, target=0.075, gain_window=0.2)))
+    assert len(out) == 30 + 400 + 30  # pad before and after the voice, the rest of the silence dropped
+    assert np.isclose(out[100], 0.3 * 0.7)  # loud sentence: gain floored at 0.7
+    quiet = np.concatenate(list(shape([np.full(400, 0.02, dtype=np.float32)], rate)))
+    assert np.isclose(quiet.max(), 0.02 * 1.6)  # quiet sentence: raised, but capped at 1.6
+
+
+def test_phrased_puts_pauses_between_sentences_only():
+    np = pytest.importorskip("numpy")
+    from pocket_server import phrased
+    rate = 1000
+    generate = lambda sentence: [np.full(300, 0.075, dtype=np.float32)]
+    audio = list(phrased("Une première phrase assez longue. Une deuxième phrase assez longue ?\nFin du paragraphe et du texte.",
+                         generate, rate, pace="read", jitter=0))
+    pauses = [len(a) for a in audio if len(a) and not a.any()]
+    assert pauses == [320, 620, 320]  # after the ".", after the line, then the last sentence's own "."
+    live = [len(a) for a in phrased("Une première phrase assez longue. Une deuxième phrase assez longue.", generate, rate,
+                                    pace="live", jitter=0) if len(a) and not a.any()]
+    assert live == [220, 220]

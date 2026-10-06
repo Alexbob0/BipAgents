@@ -254,6 +254,15 @@ def split_sentences(text: str, max_chars: int = 180) -> List[str]:
     return splitter.feed(text) + splitter.flush()
 
 
-def normalize_for_speech(text: str, max_chars: int = 180) -> str:
-    """Whole-text normalization (used for outbox audio): sentences joined by spaces."""
-    return " ".join(split_sentences(text, max_chars))
+_FENCE = re.compile(r"```.*?(?:```|$)", re.S)
+_BLOCKS = re.compile(r"\n\s*\n|\n(?=[ \t]*(?:[-*•+]|\d{1,2}[.)])[ \t])")
+
+
+def normalize_for_speech(text: str, max_chars: int = 180, paragraphs: bool = False) -> str:
+    """Whole-text normalization (used for outbox audio): sentences joined by spaces. ``paragraphs``: one line
+    per paragraph or list item, so the reader (Pocket) breathes between them instead of running on."""
+    if not paragraphs:
+        return " ".join(split_sentences(text, max_chars))
+    blocks = _BLOCKS.split(_FENCE.sub("", text.replace("\r\n", "\n")))
+    lines = (" ".join(split_sentences(block, max_chars)) for block in blocks)
+    return "\n".join(line for line in lines if line)
