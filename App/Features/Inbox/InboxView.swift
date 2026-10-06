@@ -236,6 +236,7 @@ struct InboxView: View {
             }
             .refreshable { await inbox.refresh(agents: agents) }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayer() } // the audio playing, above the tab bar
         .background(Theme.background)
         .toolbar(.hidden, for: .navigationBar)
         .onDisappear { inbox.markAllSeen() }

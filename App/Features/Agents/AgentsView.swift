@@ -30,6 +30,7 @@ struct AgentsView: View {
             }
             .refreshable { await store.refreshAll() }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayer() } // the audio playing, above the tab bar
         .background(Theme.background)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $isAddingAgent) { AddAgentFlow() }

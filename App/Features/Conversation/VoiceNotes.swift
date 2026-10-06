@@ -11,6 +11,8 @@ struct NowPlayingInfo {
     var title: String
     var artist: String?
     var artwork: UIImage?
+    /// The agent's color, for the mini player.
+    var tint: Color? = nil
 
     /// « point-du-matin » → « Point du matin »: a file name as a title.
     static func title(fromFileName name: String) -> String {
@@ -23,7 +25,7 @@ struct NowPlayingInfo {
     /// An agent's audio: its name, and its Bip as the artwork (the PNG exported for notifications).
     static func agent(_ agent: AgentProfile, title: String) -> NowPlayingInfo {
         let artwork = AgentAvatars.folder.flatMap { UIImage(contentsOfFile: $0.appending(path: "\(agent.id.uuidString).png").path(percentEncoded: false)) }
-        return NowPlayingInfo(title: title, artist: agent.name, artwork: artwork)
+        return NowPlayingInfo(title: title, artist: agent.name, artwork: artwork, tint: agent.appearance.palette.deep)
     }
 }
 
@@ -44,6 +46,13 @@ final class VoiceNotePlayer {
     static let rates: [Float] = [0.5, 1, 1.25, 1.5, 2]
     /// What the loaded audio is (title, agent, artwork), for the full player too.
     private(set) var nowPlaying: NowPlayingInfo?
+    /// Audio cards currently on screen: the mini player shows only when the playing one is scrolled away.
+    private(set) var visibleCards: Set<URL> = []
+    var loadedCardOnScreen: Bool { loadedURL.map(visibleCards.contains) ?? false }
+
+    func setCard(_ url: URL, visible: Bool) {
+        if visible { visibleCards.insert(url) } else { visibleCards.remove(url) }
+    }
 
     /// The file playing right now (not paused).
     var playingURL: URL? { isPlaying ? loadedURL : nil }
@@ -335,8 +344,86 @@ struct AudioCard: View {
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(tint.opacity(0.25), lineWidth: 1))
         .contentShape(.rect(cornerRadius: 22))
         .onTapGesture { showsPlayer = true }
+        .onScrollVisibilityChange(threshold: 0.3) { player.setCard(url, visible: $0) }
+        .onDisappear { player.setCard(url, visible: false) }
         .sheet(isPresented: $showsPlayer) {
             FullPlayer(url: url, duration: duration, player: player, tint: tint, info: info)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+/// A long audio playing whose card is out of sight (scrolled away, another screen): pinned at the top of the
+/// conversation, above the tab bar elsewhere. Play / pause, ✕ to stop, a tap opens the full player.
+struct MiniPlayer: View {
+    var player: VoiceNotePlayer = .shared
+    @State private var showsPlayer = false
+
+    private var isShown: Bool { player.loadedURL != nil && player.duration >= 60 && !player.loadedCardOnScreen }
+
+    var body: some View {
+        VStack {
+            if isShown, let url = player.loadedURL { bar(url) }
+        }
+        .animation(.snappy, value: isShown)
+    }
+
+    private func bar(_ url: URL) -> some View {
+        let tint = player.nowPlaying?.tint ?? Theme.ink
+        return HStack(spacing: 10) {
+            Artwork(image: player.nowPlaying?.artwork, tint: tint, size: 38)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(player.nowPlaying?.title ?? url.deletingPathExtension().lastPathComponent)
+                    .font(Theme.body(14, weight: .heavy))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    if let artist = player.nowPlaying?.artist { Text(artist) }
+                    Text("-") + Text(Duration.seconds(max(0, player.duration - player.currentTime)), format: .time(pattern: .minuteSecond))
+                }
+                .font(Theme.body(12, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(Theme.ink2)
+            }
+            Spacer(minLength: 4)
+            Button { player.toggle(url) } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(tint, in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(player.isPlaying ? String(localized: "Pause") : String(localized: "Écouter"))
+            Button { player.stop() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(Theme.ink2)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Arrêter la lecture"))
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
+        .padding(.vertical, 7)
+        .background(Theme.card, in: .rect(cornerRadius: 18, style: .continuous))
+        .overlay(alignment: .bottom) {
+            GeometryReader { proxy in
+                Capsule().fill(tint).frame(width: proxy.size.width * player.progress, height: 2.5)
+            }
+            .frame(height: 2.5)
+            .padding(.horizontal, 14)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        .contentShape(.rect(cornerRadius: 18))
+        .onTapGesture { showsPlayer = true }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .sheet(isPresented: $showsPlayer) {
+            FullPlayer(url: url, duration: player.duration, player: player, tint: tint, info: player.nowPlaying)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
