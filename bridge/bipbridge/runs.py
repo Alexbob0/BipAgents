@@ -192,7 +192,7 @@ class RunHub:
                 sub.pushed.add(dedupe)
                 log.info("approval push (left unanswered)", extra=fields(agent=agent, run_id=run_id))
                 self._spawn(self.push.notify_approval(agent, run_id, item.get("request_id"), item.get("choices"),
-                                                      item.get("command")))
+                                                      item.get("command"), sub.session_id))
         answered = {e.data.get("request_id") for e in sub.backlog
                     if e.type in ("clarify.responded", "clarify.cancelled") and isinstance(e.data, dict)}
         for event in sub.backlog:
@@ -318,4 +318,4 @@ class RunHub:
             return
         sub.pushed.add(dedupe)
         log.info("approval push", extra=fields(agent=sub.agent.name, run_id=sub.run_id))
-        self._spawn(self.push.notify_approval(sub.agent.name, sub.run_id, request_id, choices, command))
+        self._spawn(self.push.notify_approval(sub.agent.name, sub.run_id, request_id, choices, command, sub.session_id))
