@@ -140,8 +140,18 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             let choice: ApprovalChoice = actionIdentifier == Action.deny ? .deny : .once
             _ = try? await client.approve(runID: runID, choice: choice, requestID: payload.requestID)
         default:
-            if payload.outboxID != nil {
+            var runSession = payload.sessionID
+            if runSession == nil, payload.outboxID == nil, let runID = payload.runID, let client = store.client(for: agent) {
+                runSession = (try? await client.getRun(id: runID))?.sessionID // older bridge: ask Hermes
+            }
+            if payload.outboxID == nil, let runID = payload.runID, let session = runSession {
+                // An approval (or a reply): its conversation, re-attached to the run, which asks Hermes for the card.
+                ConversationModel.noteActiveRun(runID, sessionID: session)
+                router.open(.conversation(agent, sessionID: session))
+            } else if payload.outboxID != nil || (payload.sessionID == nil && payload.runID != nil) {
                 // A scheduled task's report or a proactive message: it is in the agent's Discussion (and the Boîte).
+                // An approval without its conversation (older bridge): the Discussion too, where the card shows up
+                // (asked to Hermes) rather than an empty new conversation.
                 var main = store.latestSession[agent.id]
                 if main.map(AgentStore.isBotChat) != true, let client = store.client(for: agent),
                    let sessions = try? await client.listSessions(limit: 50) {
@@ -149,8 +159,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 }
                 if let main, AgentStore.isBotChat(main) {
                     router.open(.conversation(agent, sessionID: main.id))
-                } else {
+                } else if payload.outboxID != nil {
                     router.tab = .inbox
+                } else {
+                    router.open(.conversation(agent, sessionID: nil))
                 }
             } else {
                 // A reply, an approval, or « Répondre »: the conversation it belongs to (or a new one).

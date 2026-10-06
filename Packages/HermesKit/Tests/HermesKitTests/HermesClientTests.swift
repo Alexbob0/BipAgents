@@ -189,12 +189,25 @@ struct HermesClientTests {
         #expect(run.sessionID == "s1")
         #expect(run.outcome.usage?.inputTokens == 5)
         #expect(run.shutdownRequestedAt != nil)
+        #expect(run.pendingApproval == ApprovalRequest(runID: "run_abc123"))  // no details kept: still answerable
 
         #expect(try await client.stop(runID: "run_abc123") == .stopping)
 
         try await client.steer(runID: "run_abc123", text: "plus court")
         #expect(server.requests[3].path == "/v1/runs/run_abc123/steer")
         #expect(server.requests[3].json == ["input": "plus court"])
+    }
+
+    @Test func runStatusKeepsThePendingApproval() async throws {
+        let server = StubServer { _ in
+            .json(["run_id": "run_p", "status": "waiting_for_approval", "last_event": "approval.request",
+                   "approval": ["event": "approval.request", "run_id": "run_p", "request_id": "req_7",
+                                "command": "rm -rf /tmp/podcast", "description": "delete in root path",
+                                "choices": ["once", "session", "always", "deny"]]])
+        }
+        let approval = try #require(try await server.client().getRun(id: "run_p").pendingApproval)
+        #expect(approval.runID == "run_p" && approval.requestID == "req_7" && approval.command == "rm -rf /tmp/podcast")
+        #expect(approval.description == "delete in root path" && approval.choices == [.once, .session, .always, .deny])
     }
 
     @Test func decodesOpenAIStyleErrors() async throws {

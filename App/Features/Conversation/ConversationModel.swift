@@ -214,6 +214,31 @@ final class ConversationModel {
         restoreAttachments(sessionID: sessionID)
     }
 
+    /// While a run is on screen, Hermes' own view of it: an approval it waits for that no card shows (the bridge
+    /// restarted and lost it, the event was missed) appears; a run Hermes already finished while the app still
+    /// waits for its events (they are gone) ends here with the stored transcript instead of « working » forever.
+    private func checkRunWithHermes() async {
+        guard let client, let runID = runID ?? sessionID.flatMap({ Self.activeRuns[$0] }),
+              let run = try? await client.getRun(id: runID) else { return }
+        if let approval = run.pendingApproval, !hasOpenApprovalCard(runID: runID) {
+            items.append(ChatItem(.approval(approval, resolved: nil)))
+            isWaitingForApproval = true
+        } else if run.status.isTerminal, isRunning, !detaching {
+            #if DEBUG
+            print("[run] \(runID) already \(run.status) on Hermes, its events never came: reloading")
+            #endif
+            streamTask?.cancel()
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(300)) // let the cancelled follow finish the run first
+                await self?.load()
+            }
+        }
+    }
+
+    private func hasOpenApprovalCard(runID: String) -> Bool {
+        items.contains { if case .approval(let shown, nil) = $0.kind { shown.runID == runID } else { false } }
+    }
+
     /// An approval still waiting for this conversation (seen by the bridge, e.g. asked while the user was away or
     /// before leaving the screen): shown again so the agent is never left waiting for a card that is gone.
     private func showPendingApprovals() async {
@@ -386,7 +411,14 @@ final class ConversationModel {
     /// Agents whose server rejected a run with photos during this launch (photos then use chat/stream).
     private static var imagesUnavailableInRuns: Set<UUID> = []
     /// Runs still in progress, by session: a reopened conversation re-attaches to its reply.
-    private static var activeRuns: [String: String] = [:]
+    private static var activeRuns: [String: String] = ActiveRuns.load() {
+        didSet { ActiveRuns.save(activeRuns) }
+    }
+
+    /// A run of `sessionID` the app learned about elsewhere (an approval notification): re-attached on opening.
+    static func noteActiveRun(_ runID: String, sessionID: String) {
+        activeRuns[sessionID] = runID
+    }
     /// The model currently following each session's run (only one subscriber gets the events).
     private static var listeners: [String: ConversationModel] = [:]
     private var detaching = false
@@ -419,6 +451,7 @@ final class ConversationModel {
                 try? await Task.sleep(for: .seconds(5))
                 guard let self, !Task.isCancelled else { return }
                 guard UIApplication.shared.applicationState == .active, let sessionID = self.sessionID else { continue }
+                if self.isRunning { await self.checkRunWithHermes() }
                 guard let count = try? await bridge.sessionMessageCount(agent: self.agent.bridgeName, sessionID: sessionID) else { continue }
                 defer { self.knownMessageCount = count }
                 // A run in progress (followed, or left while the phone was locked and about to be re-attached and
@@ -1071,5 +1104,31 @@ final class ConversationModel {
         case let error as HermesError: error.serverMessage ?? String(localized: "Erreur du serveur.")
         default: error.localizedDescription
         }
+    }
+}
+
+/// Runs in progress by session, kept across launches (2 hours at most): after the app was closed, reopening the
+/// conversation re-attaches to its run and asks Hermes where it stands (an approval waiting, already finished…).
+enum ActiveRuns {
+    private static let key = "activeRuns"
+    private static let maxAge: TimeInterval = 2 * 3600
+
+    static func load() -> [String: String] {
+        guard let stored = UserDefaults.standard.dictionary(forKey: key) as? [String: [String: Any]] else { return [:] }
+        let now = Date.now.timeIntervalSince1970
+        return stored.compactMapValues { entry in
+            guard let run = entry["run"] as? String, let at = entry["at"] as? Double, now - at < maxAge else { return nil }
+            return run
+        }
+    }
+
+    static func save(_ runs: [String: String]) {
+        let previous = UserDefaults.standard.dictionary(forKey: key) as? [String: [String: Any]] ?? [:]
+        let now = Date.now.timeIntervalSince1970
+        let stored = runs.reduce(into: [String: [String: Any]]()) { result, entry in
+            let kept = previous[entry.key].flatMap { $0["run"] as? String == entry.value ? $0["at"] as? Double : nil }
+            result[entry.key] = ["run": entry.value, "at": kept ?? now]
+        }
+        UserDefaults.standard.set(stored, forKey: key)
     }
 }

@@ -228,6 +228,15 @@ extension HermesEvent {
         return ClarifyRequest(runID: runID ?? "", requestID: f.string("request_id", "clarify_id", "id") ?? "", questions: questions)
     }
 
+    /// The approval stored in a run's status (`approval` of `GET /v1/runs/{id}`), or a bare request for the run when
+    /// Hermes did not keep its details: the run can still be answered (Hermes resolves its pending approval).
+    static func approvalRequest(from value: JSONValue?, runID: String) -> ApprovalRequest {
+        guard let value, value.objectValue != nil else { return ApprovalRequest(runID: runID) }
+        var request = approval(LenientFields(value), runID: runID)
+        request.runID = runID
+        return request
+    }
+
     private static func approval(_ f: LenientFields, runID: String?) -> ApprovalRequest {
         let choices = f.value("choices")?.arrayValue?
             .compactMap { $0.stringValue.flatMap(ApprovalChoice.init(lenient:)) } ?? []

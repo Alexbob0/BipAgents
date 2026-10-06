@@ -120,3 +120,12 @@ public struct RunHandle: Sendable, Hashable {
     /// `Idempotency-Replayed: true` — an identical earlier request already created this run.
     public var replayed: Bool
 }
+
+extension HermesRun {
+    /// What a run parked in `waiting_for_approval` waits for. Hermes keeps the `approval.request` in the run's status,
+    /// so a client that missed the event (a relay restarted, the screen was away) can still show and answer it.
+    public var pendingApproval: ApprovalRequest? {
+        guard status == .waitingForApproval else { return nil }
+        return HermesEvent.approvalRequest(from: raw["approval"], runID: runID)
+    }
+}

@@ -60,7 +60,8 @@ def message_payload(agent: str, title: str, outbox_id: str, session_id: Optional
 
 
 def approval_payload(agent: str, title: str, run_id: str, request_id: Optional[str],
-                     choices: Optional[List[str]] = None, preview: Optional[str] = None) -> Dict[str, Any]:
+                     choices: Optional[List[str]] = None, preview: Optional[str] = None,
+                     session_id: Optional[str] = None) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "aps": {
             "alert": _alert(title, preview, APPROVAL_BODY),
@@ -76,6 +77,8 @@ def approval_payload(agent: str, title: str, run_id: str, request_id: Optional[s
         payload["request_id"] = request_id
     if choices:
         payload["choices"] = list(choices)
+    if session_id:
+        payload["session_id"] = session_id  # tapping opens that conversation, where the card is
     return payload
 
 
@@ -187,11 +190,12 @@ class PushService:
         return await self._fanout(agent, payload, "alert", 10)
 
     async def notify_approval(self, agent: str, run_id: str, request_id: Optional[str],
-                              choices: Optional[List[str]] = None, command: Optional[str] = None) -> int:
+                              choices: Optional[List[str]] = None, command: Optional[str] = None,
+                              session_id: Optional[str] = None) -> int:
         preview = None
         if self.config.push_previews and command:
             preview = APPROVAL_BODY + " : " + _preview(command, 120)
-        payload = approval_payload(agent, self._title(agent), run_id, request_id, choices, preview)
+        payload = approval_payload(agent, self._title(agent), run_id, request_id, choices, preview, session_id)
         return await self._fanout(agent, payload, "alert", 10, collapse_id=request_id or run_id)
 
     async def notify_reply(self, agent: str, run_id: str, text: str, session_id: Optional[str] = None) -> int:
