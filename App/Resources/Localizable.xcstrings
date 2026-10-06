@@ -5542,6 +5542,28 @@
         }
       }
     },
+    "Tu peux me faire le point du matin en audio ?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can you give me the morning briefing as audio?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Me haces el resumen de la mañana en audio?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kannst du mir das Morgen-Briefing als Audio machen?"
+          }
+        }
+      }
+    },
     "Tâche planifiée" : {
       "comment" : "Label above a scheduled task's report in an agent's Discussion",
       "localizations" : {
@@ -5721,6 +5743,28 @@
         }
       }
     },
+    "Vitesse de lecture" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playback speed"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocidad de reproducción"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabegeschwindigkeit"
+          }
+        }
+      }
+    },
     "Vive et enjouée, claire et chantante" : {
       "localizations" : {
         "en" : {
@@ -5761,6 +5805,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hier meine Nächte im September – siehst du einen Trend?"
+          }
+        }
+      }
+    },
+    "Voilà ton point du matin 🎙️" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Here's your morning briefing 🎙️"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aquí tienes tu resumen de la mañana 🎙️"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier ist dein Morgen-Briefing 🎙️"
           }
         }
       }

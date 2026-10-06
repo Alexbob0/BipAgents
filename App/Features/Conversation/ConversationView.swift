@@ -200,7 +200,7 @@ private struct ConversationContent: View {
                     if ChatText.isSubtaskReport(text) {
                         ForEach(ChatText.mediaPaths(inReport: text), id: \.self) { path in
                             MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:), hideIfMissing: true,
-                                     info: .agent(model.agent, title: ((path as NSString).lastPathComponent as NSString).deletingPathExtension))
+                                     info: .agent(model.agent, title: NowPlayingInfo.title(fromFileName: (path as NSString).lastPathComponent)))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -226,7 +226,7 @@ private struct ConversationContent: View {
                     if !isStreaming {
                         ForEach(ChatText.media(in: text), id: \.self) { path in
                             MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:),
-                                     info: .agent(model.agent, title: ((path as NSString).lastPathComponent as NSString).deletingPathExtension))
+                                     info: .agent(model.agent, title: NowPlayingInfo.title(fromFileName: (path as NSString).lastPathComponent)))
                         }
                     }
                     // « Écouter » and the time under the turn's final reply only, not under the agent's

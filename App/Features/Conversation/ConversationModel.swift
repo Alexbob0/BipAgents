@@ -1,3 +1,4 @@
+import AVFoundation
 import CryptoKit
 import Foundation
 import HermesKit
@@ -171,6 +172,8 @@ final class ConversationModel {
                 ToolEvent(tool: "web_search", preview: String(localized: "« caféine demi-vie sommeil »"), status: .completed, duration: 1.9),
             ])),
             ChatItem(.assistant(text: String(localized: "Pas cet après-midi : la caféine met 5 à 6 h à s’éliminer de moitié. Avec un coucher visé à 23 h 15, ta limite est **14 h**. Coup de barre ? Une sieste de 20 min avant 15 h.\n\nSources : [Sleep Foundation](https://www.sleepfoundation.org/nutrition/caffeine-and-sleep) et https://fr.wikipedia.org/wiki/Caféine"), isStreaming: false)),
+            ChatItem(.user(text: String(localized: "Tu peux me faire le point du matin en audio ?"), attachments: [])),
+            ChatItem(.assistant(text: "MEDIA:/home/hermes/.hermes/media/point-du-matin.mp3\n" + String(localized: "Voilà ton point du matin 🎙️"), isStreaming: false)),
             ChatItem(.user(text: String(localized: "Voilà mes nuits de septembre, tu vois une tendance ?"), attachments: [sheet])),
             ChatItem(.tools([ToolEvent(tool: "terminal", preview: "python3 analyse_sommeil.py sommeil-septembre.xlsx", status: .started)])),
             ChatItem(.approval(ApprovalRequest(runID: "demo", requestID: "1", command: "pip install openpyxl", choices: [.once, .session, .always, .deny]), resolved: nil)),
@@ -262,6 +265,28 @@ final class ConversationModel {
 
     private func hasApprovalCard(for request: ApprovalRequest) -> Bool {
         items.contains { if case .approval(let shown, _) = $0.kind { shown.id == request.id } else { false } }
+    }
+
+    /// Demo mode: a 95 s soft melody standing in for an agent's podcast (no server), to review the audio player.
+    private static func demoAudio() throws -> URL {
+        let url = URL.cachesDirectory.appending(path: "demo-podcast.m4a")
+        if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) { return url }
+        let rate = 24_000.0
+        let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!
+        let file = try AVAudioFile(forWriting: url, settings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate,
+                                                                 AVNumberOfChannelsKey: 1])
+        let notes: [Double] = [523.25, 587.33, 659.25, 783.99, 659.25, 587.33]
+        for second in 0..<95 {
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(rate))!
+            buffer.frameLength = buffer.frameCapacity
+            let note = notes[second % notes.count]
+            for i in 0..<Int(rate) {
+                let t = Double(i) / rate
+                buffer.floatChannelData![0][i] = Float(0.12 * sin(2 * .pi * note * t) * exp(-2.5 * t))
+            }
+            try file.write(from: buffer)
+        }
+        return url
     }
 
     /// The agent's recent scheduled-task reports and proactive messages (last 30 days), from its bridge.
@@ -1084,6 +1109,7 @@ final class ConversationModel {
 
     /// A file an agent pointed to with « MEDIA:<path> », downloaded once through the bridge and kept in Caches.
     func mediaFile(for path: String) async throws -> URL {
+        if store.isDemo { return try Self.demoAudio() }
         let name = path.split(separator: "/").last.map(String.init) ?? "media"
         let folder = URL.cachesDirectory.appending(path: "media", directoryHint: .isDirectory)
         let key = SHA256.hash(data: Data(path.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined() // stable across launches

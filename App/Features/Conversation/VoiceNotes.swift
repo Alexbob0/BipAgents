@@ -12,6 +12,14 @@ struct NowPlayingInfo {
     var artist: String?
     var artwork: UIImage?
 
+    /// « point-du-matin » → « Point du matin »: a file name as a title.
+    static func title(fromFileName name: String) -> String {
+        let words = (name as NSString).deletingPathExtension
+            .replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ").joined(separator: " ")
+        return words.prefix(1).uppercased() + words.dropFirst()
+    }
+
     /// An agent's audio: its name, and its Bip as the artwork (the PNG exported for notifications).
     static func agent(_ agent: AgentProfile, title: String) -> NowPlayingInfo {
         let artwork = AgentAvatars.folder.flatMap { UIImage(contentsOfFile: $0.appending(path: "\(agent.id.uuidString).png").path(percentEncoded: false)) }
@@ -31,6 +39,11 @@ final class VoiceNotePlayer {
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
+    /// Playback speed, kept from one listen to the next.
+    private(set) var rate: Float = UserDefaults.standard.object(forKey: "playbackRate") as? Float ?? 1
+    static let rates: [Float] = [0.5, 1, 1.25, 1.5, 2]
+    /// What the loaded audio is (title, agent, artwork), for the full player too.
+    private(set) var nowPlaying: NowPlayingInfo?
 
     /// The file playing right now (not paused).
     var playingURL: URL? { isPlaying ? loadedURL : nil }
@@ -85,6 +98,13 @@ final class VoiceNotePlayer {
         updateNowPlaying()
     }
 
+    func setRate(_ rate: Float) {
+        self.rate = rate
+        UserDefaults.standard.set(rate, forKey: "playbackRate")
+        player?.rate = rate
+        updateNowPlaying()
+    }
+
     func skip(by seconds: TimeInterval) {
         guard let url = loadedURL else { return }
         seek(url, to: currentTime + seconds)
@@ -101,15 +121,19 @@ final class VoiceNotePlayer {
         currentTime = 0
         duration = 0
         info = nil
+        nowPlaying = nil
         if publishesNowPlaying { MPNowPlayingInfoCenter.default().nowPlayingInfo = nil }
     }
 
     private func load(_ url: URL, info: NowPlayingInfo?) -> Bool {
         stop()
         guard let player = try? AVAudioPlayer(contentsOf: url) else { return false }
+        player.enableRate = true  // before prepareToPlay
         player.prepareToPlay()
+        player.rate = rate
         self.player = player
         self.info = info
+        nowPlaying = info
         loadedURL = url
         duration = player.duration
         currentTime = 0
@@ -142,7 +166,8 @@ final class VoiceNotePlayer {
             MPMediaItemPropertyTitle: info?.title ?? loadedURL?.deletingPathExtension().lastPathComponent ?? "BipAgents",
             MPMediaItemPropertyPlaybackDuration: player.duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: player.currentTime,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(rate) : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: Double(rate),
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
         if let artist = info?.artist { now[MPMediaItemPropertyArtist] = artist }
@@ -170,14 +195,19 @@ final class VoiceNotePlayer {
         Self.handle(center.changePlaybackPositionCommand) { [weak self] time in
             if let self, let url = self.loadedURL, let time { self.seek(url, to: time) }
         }
+        center.changePlaybackRateCommand.supportedPlaybackRates = Self.rates.map { NSNumber(value: $0) }
+        Self.handle(center.changePlaybackRateCommand) { [weak self] rate in
+            if let self, let rate { self.setRate(Float(rate)) }
+        }
     }
 
     /// Lock screen / Dynamic Island buttons: MediaPlayer may call them off the main thread, so the handler is built
-    /// outside the main actor and hops to it (`positionTime` for a position change).
+    /// outside the main actor and hops to it (with `positionTime` for a position change, the rate for a speed change).
     nonisolated private static func handle(_ command: MPRemoteCommand,
                                            _ action: @escaping @MainActor @Sendable (TimeInterval?) -> Void) {
         command.addTarget { event in
             let time = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime
+                ?? (event as? MPChangePlaybackRateCommandEvent).map { TimeInterval($0.playbackRate) }
             Task { @MainActor in action(time) }
             return .success
         }
@@ -247,43 +277,207 @@ struct VoiceNoteControl: View {
     }
 
     private var longPlayer: some View {
-        let elapsed = isLoaded ? player.currentTime : 0
-        return VStack(spacing: 6) {
-            HStack(spacing: 14) {
-                skipButton(-15)
-                Button { player.toggle(url, info: info) } label: { playIcon }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isPlaying ? String(localized: "Pause") : String(localized: "Écouter"))
-                skipButton(15)
-                Spacer(minLength: 8)
-                AirPlayButton(tint: UIColor(foreground))
-                    .frame(width: 34, height: 34)
+        AudioCard(url: url, duration: duration, player: player, tint: accent, info: info)
+    }
+}
+
+/// A long audio in a conversation (a podcast): artwork, title, agent and duration, a play button, and a thin
+/// progress bar once started. A tap opens the full player.
+struct AudioCard: View {
+    var url: URL
+    var duration: TimeInterval
+    var player: VoiceNotePlayer
+    var tint: Color
+    var info: NowPlayingInfo?
+    @State private var showsPlayer = false
+
+    private var isLoaded: Bool { player.loadedURL == url }
+    private var isPlaying: Bool { player.playingURL == url }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Artwork(image: info?.artwork, tint: tint, size: 56)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(info?.title ?? url.deletingPathExtension().lastPathComponent)
+                        .font(Theme.body(15, weight: .heavy))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(2)
+                    HStack(spacing: 6) {
+                        if let artist = info?.artist { Text(artist) }
+                        Text(Duration.seconds(isLoaded ? max(0, duration - player.currentTime) : duration),
+                             format: .time(pattern: .minuteSecond))
+                            .monospacedDigit()
+                        if isLoaded, player.rate != 1 { Text(SpeedLabel.text(player.rate)) }
+                    }
+                    .font(Theme.body(13, weight: .bold))
+                    .foregroundStyle(Theme.ink2)
+                }
+                Spacer(minLength: 4)
+                Button { player.toggle(url, info: info) } label: {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 17, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(tint, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isPlaying ? String(localized: "Pause") : String(localized: "Écouter"))
             }
-            Slider(value: Binding(get: { elapsed }, set: { player.seek(url, to: $0, info: info) }), in: 0...max(duration, 1))
-                .tint(foreground)
-            HStack {
-                Text(Duration.seconds(elapsed), format: .time(pattern: .minuteSecond))
-                Spacer()
-                Text("-") + Text(Duration.seconds(max(0, duration - elapsed)), format: .time(pattern: .minuteSecond))
+            if isLoaded {
+                ProgressView(value: player.progress)
+                    .tint(tint)
             }
-            .font(Theme.body(12, weight: .heavy))
-            .monospacedDigit()
-            .foregroundStyle(foreground)
         }
-        .frame(minWidth: 240)
+        .padding(12)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(Theme.card, in: .rect(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(tint.opacity(0.25), lineWidth: 1))
+        .contentShape(.rect(cornerRadius: 22))
+        .onTapGesture { showsPlayer = true }
+        .sheet(isPresented: $showsPlayer) {
+            FullPlayer(url: url, duration: duration, player: player, tint: tint, info: info)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+/// The full player (sheet): large artwork, scrubbing, −15 / play / +15, speed, AirPlay and share.
+struct FullPlayer: View {
+    var url: URL
+    var duration: TimeInterval
+    var player: VoiceNotePlayer
+    var tint: Color
+    var info: NowPlayingInfo?
+
+    private var isLoaded: Bool { player.loadedURL == url }
+    private var isPlaying: Bool { player.playingURL == url }
+
+    var body: some View {
+        let elapsed = isLoaded ? player.currentTime : 0
+        VStack(spacing: 18) {
+            Artwork(image: info?.artwork, tint: tint, size: 150)
+                .padding(.top, 28)
+            VStack(spacing: 4) {
+                Text(info?.title ?? url.deletingPathExtension().lastPathComponent)
+                    .font(Theme.title(20))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                if let artist = info?.artist {
+                    Text(artist).font(Theme.body(15, weight: .bold)).foregroundStyle(Theme.ink2)
+                }
+            }
+            .padding(.horizontal, 24)
+            VStack(spacing: 4) {
+                Slider(value: Binding(get: { elapsed }, set: { player.seek(url, to: $0, info: info) }), in: 0...max(duration, 1))
+                    .tint(tint)
+                HStack {
+                    Text(Duration.seconds(elapsed), format: .time(pattern: .minuteSecond))
+                    Spacer()
+                    Text("-") + Text(Duration.seconds(max(0, duration - elapsed)), format: .time(pattern: .minuteSecond))
+                }
+                .font(Theme.body(12, weight: .heavy))
+                .monospacedDigit()
+                .foregroundStyle(Theme.ink2)
+            }
+            .padding(.horizontal, 24)
+            HStack(spacing: 34) {
+                skip(-15)
+                Button { player.toggle(url, info: info) } label: {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 26, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 70, height: 70)
+                        .background(tint, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isPlaying ? String(localized: "Pause") : String(localized: "Écouter"))
+                skip(15)
+            }
+            HStack {
+                Menu {
+                    ForEach(VoiceNotePlayer.rates, id: \.self) { rate in
+                        Button { player.setRate(rate) } label: {
+                            if rate == player.rate { Label(SpeedLabel.text(rate), systemImage: "checkmark") } else { Text(SpeedLabel.text(rate)) }
+                        }
+                    }
+                } label: {
+                    Text(SpeedLabel.text(player.rate))
+                        .font(Theme.body(15, weight: .heavy))
+                        .foregroundStyle(tint)
+                        .frame(minWidth: 56, minHeight: 36)
+                        .background(tint.opacity(0.12), in: .capsule)
+                }
+                .accessibilityLabel(String(localized: "Vitesse de lecture"))
+                Spacer()
+                AirPlayButton(tint: UIColor(tint)).frame(width: 36, height: 36)
+                Spacer()
+                ShareLink(item: ShareFile.named(url, (info?.title ?? "Audio") + "." + url.pathExtension)) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(tint)
+                        .frame(width: 56, height: 36)
+                }
+                .accessibilityLabel(String(localized: "Partager"))
+            }
+            .padding(.horizontal, 28)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+        .background(Theme.background)
     }
 
-    private func skipButton(_ seconds: TimeInterval) -> some View {
+    private func skip(_ seconds: TimeInterval) -> some View {
         Button {
-            if !isLoaded { player.seek(url, to: max(0, seconds), info: info) } else { player.skip(by: seconds) }
+            if isLoaded { player.skip(by: seconds) } else { player.seek(url, to: max(0, seconds), info: info) }
         } label: {
             Image(systemName: seconds < 0 ? "gobackward.15" : "goforward.15")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(foreground)
-                .frame(width: 36, height: 36)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(width: 48, height: 48)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(seconds < 0 ? String(localized: "Reculer de 15 secondes") : String(localized: "Avancer de 15 secondes"))
+    }
+}
+
+/// The agent's Bip (or a waveform when unknown) as the audio's artwork.
+struct Artwork: View {
+    var image: UIImage?
+    var tint: Color
+    var size: CGFloat
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Image(systemName: "waveform").font(.system(size: size * 0.4, weight: .bold)).foregroundStyle(tint)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(tint.opacity(0.12))
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(.rect(cornerRadius: size * 0.22, style: .continuous))
+    }
+}
+
+enum SpeedLabel {
+    /// « ×1,25 » in French, « ×1.25 » in English.
+    static func text(_ rate: Float) -> String {
+        "×" + Double(rate).formatted(.number.precision(.fractionLength(0...2)))
+    }
+}
+
+extension View {
+    /// The tinted pill around a short voice note; a long audio is an `AudioCard`, which draws its own card.
+    @ViewBuilder
+    func voiceNoteChrome(_ tint: Color, long: Bool) -> some View {
+        if long {
+            self
+        } else {
+            padding(.horizontal, 10).padding(.vertical, 6).background(tint, in: .capsule)
+        }
     }
 }
 
@@ -372,9 +566,7 @@ struct VoiceReplyView: View {
             HStack(spacing: 8) {
                 VoiceNoteControl(url: url, duration: duration, waveform: Self.placeholderWave, player: player,
                                  foreground: palette.deep, accent: palette.deep, info: info)
-                    .padding(.horizontal, duration >= 60 ? 14 : 10)
-                    .padding(.vertical, duration >= 60 ? 10 : 6)
-                    .background(palette.tint, in: .rect(cornerRadius: 22, style: .continuous))
+                    .voiceNoteChrome(palette.tint, long: duration >= 60)
                 ShareFileButton(url: ShareFile.named(url, String(localized: "Réponse vocale") + " " +
                                                      Date.now.formatted(.dateTime.day().month().hour().minute())), palette: palette)
             }

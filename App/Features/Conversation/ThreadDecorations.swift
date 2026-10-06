@@ -133,10 +133,8 @@ struct MediaRow: View {
             if let file, isAudio {
                 VoiceNoteControl(url: file, duration: duration, waveform: VoiceReplyView.placeholderWave, player: player,
                                  foreground: palette.deep, accent: palette.deep,
-                                 info: info ?? NowPlayingInfo(title: (name as NSString).deletingPathExtension))
-                    .padding(.horizontal, duration >= 60 ? 14 : 10)
-                    .padding(.vertical, duration >= 60 ? 10 : 6)
-                    .background(palette.tint, in: .rect(cornerRadius: 22, style: .continuous))
+                                 info: info ?? NowPlayingInfo(title: NowPlayingInfo.title(fromFileName: name)))
+                    .voiceNoteChrome(palette.tint, long: duration >= 60)
             } else if let image {
                 Button { viewing = ViewedPhoto(image: image) } label: {
                     Image(uiImage: image)
@@ -166,7 +164,8 @@ struct MediaRow: View {
                 }
                 .buttonStyle(.plain)
             }
-            if let shareURL { ShareFileButton(url: shareURL, palette: palette) }
+            // A long audio's card opens the full player, which has its own Share button.
+            if let shareURL, !(isAudio && duration >= 60) { ShareFileButton(url: shareURL, palette: palette) }
         }
         .padding(.leading, 40)
         .task { await fetch() }
@@ -276,7 +275,7 @@ struct ScheduledMessageRow: View {
             }
             ForEach(files, id: \.self) { path in
                 MediaRow(path: path, palette: palette, player: player, load: media,
-                         info: .agent(agent, title: ((path as NSString).lastPathComponent as NSString).deletingPathExtension))
+                         info: .agent(agent, title: NowPlayingInfo.title(fromFileName: (path as NSString).lastPathComponent)))
             }
             TimeLabel(date: item.createdAt).padding(.leading, 40)
         }
