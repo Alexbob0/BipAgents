@@ -1,3 +1,4 @@
+import HermesKit
 import AVFoundation
 import Observation
 import SwiftUI
@@ -20,6 +21,15 @@ final class InboxStore {
         var createdAt: Date
     }
 
+    /// An agent waiting for the user's OK, whatever conversation asked it (the bridge's pending approvals).
+    struct PendingApproval: Identifiable, Hashable {
+        var request: ApprovalRequest
+        var agent: AgentProfile
+        var id: String { "\(agent.id)/\(request.id)" }
+    }
+
+    /// Shown first in the Boîte: answerable even when the conversation that asked is unknown or gone.
+    private(set) var approvals: [PendingApproval] = []
     private var outbox: [Entry] = []
     private var missed: [MissedReply] = InboxStore.loadMissed()
     private static let missedKey = "inbox.missedReplies"
@@ -48,7 +58,7 @@ final class InboxStore {
         set { UserDefaults.standard.set(newValue, forKey: lastSeenKey) }
     }
 
-    var unreadCount: Int { entries.filter { $0.item.createdAt > lastSeen }.count }
+    var unreadCount: Int { entries.filter { $0.item.createdAt > lastSeen }.count + approvals.count }
 
     func refresh(agents store: AgentStore) async {
         if store.isDemo {
@@ -58,6 +68,7 @@ final class InboxStore {
         isLoading = true
         defer { isLoading = false }
         var collected: [Entry] = []
+        var waiting: [PendingApproval] = []
         var failures = 0
         for agent in store.agents {
             guard let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent)) else { continue }
@@ -67,11 +78,25 @@ final class InboxStore {
             } catch {
                 failures += 1
             }
+            let pending = (try? await bridge.pendingApprovals(agent: agent.bridgeName)) ?? []
+            waiting += pending.map { PendingApproval(request: $0, agent: agent) }
         }
         outbox = collected
+        approvals = waiting
         // Forget deletions of messages the bridge no longer has (retention), so the set stays small.
         if failures == 0 { saveDismissed(dismissed.intersection(collected.map(\.id))) }
         errorMessage = failures > 0 ? String(localized: "Certains agents sont injoignables (Tailscale ?).") : nil
+    }
+
+    func resolve(_ approval: PendingApproval, with choice: ApprovalChoice, store: AgentStore) async {
+        guard let client = store.client(for: approval.agent) else { return }
+        do {
+            _ = try await client.approve(runID: approval.request.runID, choice: choice, requestID: approval.request.requestID)
+            approvals.removeAll { $0.id == approval.id }
+        } catch {
+            errorMessage = ConversationModel.describe(error)
+            await refresh(agents: store) // already answered or expired: show what is left
+        }
     }
 
     func markAllSeen() {
@@ -177,7 +202,12 @@ struct InboxView: View {
                     filters
                     if let error = inbox.errorMessage { NoticeRow(text: error, isError: true) }
                     if let mutedNotice { NoticeRow(text: mutedNotice) }
-                    if visible.isEmpty && !inbox.isLoading {
+                    ForEach(inbox.approvals) { approval in
+                        ApprovalCard(request: approval.request, resolved: nil, agent: approval.agent) { choice in
+                            Task { await inbox.resolve(approval, with: choice, store: agents) }
+                        }
+                    }
+                    if visible.isEmpty && inbox.approvals.isEmpty && !inbox.isLoading {
                         emptyState
                     }
                     ForEach(visible) { entry in
