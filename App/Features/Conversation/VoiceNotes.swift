@@ -146,40 +146,39 @@ final class VoiceNotePlayer {
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
         if let artist = info?.artist { now[MPMediaItemPropertyArtist] = artist }
-        if let image = info?.artwork {
-            now[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-        }
+        if let image = info?.artwork { now[MPMediaItemPropertyArtwork] = Self.artwork(image) }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = now
+    }
+
+    /// MediaPlayer asks for the image on its own queue: the handler must not be main-actor isolated (it was, by the
+    /// module's default isolation, and Swift's runtime check stopped the app the moment the lock screen asked).
+    nonisolated private static func artwork(_ image: UIImage) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in image }
     }
 
     private func configureRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.resume() }
-            return .success
-        }
-        center.pauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.pause() }
-            return .success
-        }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { if let self { self.isPlaying ? self.pause() : self.resume() } }
-            return .success
+        Self.handle(center.playCommand) { [weak self] _ in self?.resume() }
+        Self.handle(center.pauseCommand) { [weak self] _ in self?.pause() }
+        Self.handle(center.togglePlayPauseCommand) { [weak self] _ in
+            if let self { self.isPlaying ? self.pause() : self.resume() }
         }
         center.skipBackwardCommand.preferredIntervals = [15]
-        center.skipBackwardCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.skip(by: -15) }
-            return .success
-        }
+        Self.handle(center.skipBackwardCommand) { [weak self] _ in self?.skip(by: -15) }
         center.skipForwardCommand.preferredIntervals = [15]
-        center.skipForwardCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.skip(by: 15) }
-            return .success
+        Self.handle(center.skipForwardCommand) { [weak self] _ in self?.skip(by: 15) }
+        Self.handle(center.changePlaybackPositionCommand) { [weak self] time in
+            if let self, let url = self.loadedURL, let time { self.seek(url, to: time) }
         }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            let time = event.positionTime
-            MainActor.assumeIsolated { if let self, let url = self.loadedURL { self.seek(url, to: time) } }
+    }
+
+    /// Lock screen / Dynamic Island buttons: MediaPlayer may call them off the main thread, so the handler is built
+    /// outside the main actor and hops to it (`positionTime` for a position change).
+    nonisolated private static func handle(_ command: MPRemoteCommand,
+                                           _ action: @escaping @MainActor @Sendable (TimeInterval?) -> Void) {
+        command.addTarget { event in
+            let time = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime
+            Task { @MainActor in action(time) }
             return .success
         }
     }

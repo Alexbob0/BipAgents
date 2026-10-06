@@ -41,6 +41,14 @@ struct BipAgentsApp: App {
                     inbox.addMissedReply(agent: agent, sessionID: sessionID, runID: runID, text: text)
                 }
                 if !agents.isDemo { await appDelegate.enablePushIfPossible() }
+                #if DEBUG
+                // `-testNowPlaying`: plays a bundled voice preview with artwork through the shared player (lock screen,
+                // Dynamic Island), to check the MediaPlayer callbacks without a server.
+                if ProcessInfo.processInfo.arguments.contains("-testNowPlaying"),
+                   let url = Bundle.main.url(forResource: "voice-colibri", withExtension: "m4a") {
+                    VoiceNotePlayer.shared.toggle(url, info: NowPlayingInfo(title: "Test", artist: "Bip", artwork: UIImage(systemName: "star.fill")))
+                }
+                #endif
             }
         }
     }
