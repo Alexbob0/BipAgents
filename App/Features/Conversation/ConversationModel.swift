@@ -405,7 +405,10 @@ final class ConversationModel {
                 guard UIApplication.shared.applicationState == .active, let sessionID = self.sessionID else { continue }
                 guard let count = try? await bridge.sessionMessageCount(agent: self.agent.bridgeName, sessionID: sessionID) else { continue }
                 defer { self.knownMessageCount = count }
-                guard let known = self.knownMessageCount, count > known, !self.isRunning else { continue }
+                // A run in progress (followed, or left while the phone was locked and about to be re-attached and
+                // replayed) builds its own reply: reloading meanwhile would add it a second time.
+                guard let known = self.knownMessageCount, count > known, !self.isRunning,
+                      Self.activeRuns[sessionID] == nil else { continue }
                 #if DEBUG
                 print("[thread] \(sessionID): \(count - known) new message(s) taken by the agent, reloading")
                 #endif
@@ -606,6 +609,24 @@ final class ConversationModel {
             appendAssistant(finalOutput)
         } else if reattached || !hasStreamedAssistantText {
             await load() // nothing usable left in the run: the stored transcript is the truth
+        }
+    }
+
+    /// The same reply twice in the current turn (a reload that landed while a re-attached run was replayed):
+    /// keeps the first.
+    private func dropRepeatedReplies() {
+        guard let lastUser = items.lastIndex(where: { if case .user = $0.kind { true } else { false } }) else { return }
+        var seen: Set<String> = []
+        var index = items.index(after: lastUser)
+        while index < items.endIndex {
+            if case .assistant(let text, _) = items[index].kind {
+                let key = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !key.isEmpty, !seen.insert(key).inserted {
+                    items.remove(at: index)
+                    continue
+                }
+            }
+            index = items.index(after: index)
         }
     }
 
@@ -890,6 +911,7 @@ final class ConversationModel {
             if Self.listeners[sessionID] === self { Self.listeners[sessionID] = nil }
         }
         endStreamingText()
+        dropRepeatedReplies()
         knownMessageCount = nil // our own turn: take the new count as the baseline, no reload
         if replyByVoice {
             replyByVoice = false
