@@ -220,6 +220,9 @@ final class ConversationModel {
     private func checkRunWithHermes() async {
         guard let client, let runID = runID ?? sessionID.flatMap({ Self.activeRuns[$0] }),
               let run = try? await client.getRun(id: runID) else { return }
+        #if DEBUG
+        print("[run] \(runID) on Hermes: \(run.status), approval \(run.pendingApproval != nil ? "pending" : "none"), card \(hasOpenApprovalCard(runID: runID) ? "shown" : "none")")
+        #endif
         if let approval = run.pendingApproval, !hasOpenApprovalCard(runID: runID) {
             items.append(ChatItem(.approval(approval, resolved: nil)))
             isWaitingForApproval = true
@@ -587,6 +590,9 @@ final class ConversationModel {
                         if code == "hermes_unreachable" { continue } // the bridge keeps retrying
                         return false
                     }
+                    #if DEBUG
+                    if event.type != "message.delta" { print("[run] \(runID) via bridge: \(event.type)") }
+                    #endif
                     apply(event)
                     if event.isTerminal { return true }
                 }

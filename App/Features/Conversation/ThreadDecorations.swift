@@ -95,6 +95,8 @@ struct MediaRow: View {
     var palette: AgentPalette
     var player: VoiceNotePlayer
     var load: (String) async throws -> URL
+    /// A file merely mentioned (in a sub-task report): shown only if it exists.
+    var hideIfMissing = false
 
     @State private var file: URL?
     @State private var shareURL: URL?
@@ -117,6 +119,14 @@ struct MediaRow: View {
     }
 
     var body: some View {
+        if failed && hideIfMissing {
+            EmptyView()
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if let file, isAudio {
                 VoiceNoteControl(url: file, duration: duration, waveform: VoiceReplyView.placeholderWave, player: player,

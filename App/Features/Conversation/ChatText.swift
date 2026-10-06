@@ -56,7 +56,23 @@ enum ChatText {
         if text.hasPrefix("[IMPORTANT:"), !skills.isEmpty {
             return String(localized: "Consigne · \(skills.joined(separator: ", "))")
         }
+        if isSubtaskReport(text) { return String(localized: "Résultat d'une sous-tâche") }
         return nil
+    }
+
+    /// What Hermes hands the agent when a background sub-agent (`delegate_task`) finishes: posted as a user turn,
+    /// but written by Hermes, not by the user.
+    static func isSubtaskReport(_ text: String) -> Bool {
+        let head = text.prefix(80)
+        return head.hasPrefix("[ASYNC DELEGATION") || head.hasPrefix("[DELEGATION") || head.hasPrefix("[SUBAGENT")
+    }
+
+    /// Media files a report names (the podcast a sub-agent just generated): `/…/media/…/x.mp3` paths, in order.
+    static func mediaPaths(inReport text: String) -> [String] {
+        var seen = Set<String>()
+        return text.matches(of: /\/[\w.\/-]*\/media\/[\w.\/-]+\.(?:mp3|m4a|wav|ogg|opus|png|jpe?g|gif|webp|heic|mp4|m4v|mov)/)
+            .map { String($0.output) }
+            .filter { seen.insert($0).inserted }
     }
 
     /// One readable line for a tool card: the query, command or path rather than raw JSON / tool output.

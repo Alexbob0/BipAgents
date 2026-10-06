@@ -4814,6 +4814,28 @@
         }
       }
     },
+    "Résultat d'une sous-tâche" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sub-task result"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resultado de una subtarea"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ergebnis einer Teilaufgabe"
+          }
+        }
+      }
+    },
     "Réunion de lundi" : {
       "localizations" : {
         "en" : {

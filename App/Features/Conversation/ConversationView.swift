@@ -197,6 +197,12 @@ private struct ConversationContent: View {
                 if let title = ChatText.instructionTitle(for: text, inCronSession: model.sessionID?.hasPrefix("cron_") == true,
                                                           isFirstUserMessage: isFirstUser(item)) {
                     InstructionCard(title: title, text: text, palette: palette)
+                    if ChatText.isSubtaskReport(text) {
+                        ForEach(ChatText.mediaPaths(inReport: text), id: \.self) { path in
+                            MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:), hideIfMissing: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
                 } else if let note = model.voiceNotes[item.id], attachments.isEmpty {
                     VoiceNoteBubble(note: note, player: model.player)
                 } else {
