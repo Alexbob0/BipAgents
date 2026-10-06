@@ -86,17 +86,21 @@ def message_text(message: Dict[str, Any]) -> str:
 
 
 def final_reply(messages: List[Dict[str, Any]]) -> Optional[str]:
-    """The run's last assistant text, if the conversation ends on the assistant."""
+    """The run's final answer: the last message is the assistant's, with text and no tool call.
+
+    Anything else means the run is still going: a tool result (the agent will continue), or an assistant
+    message calling a tool, even with a comment ("je passe par terminal…") while a long tool runs (the
+    podcast's synthesis takes minutes, so such a comment would otherwise look final)."""
     for message in reversed(messages):
         role = str(message.get("role") or "").lower()
         if role == "assistant":
+            if message.get("tool_calls"):
+                return None
             text = message_text(message)
             if text:
                 return text
-            continue  # tool-call turn without text
-        if role in ("tool", "function"):
-            continue
-        return None  # ends on the prompt: still running
+            continue  # empty assistant message
+        return None  # a tool result or the prompt: still running
     return None
 
 
@@ -199,9 +203,12 @@ class CronWatcher:
             self._done.add(key)
             title = session.get("title") if isinstance(session.get("title"), str) else None
             notify = await self._note_job(agent, sid, title)
+            if not title and self.store is not None and job_id(sid):
+                title = await self.store.cron_job_name(agent.name, job_id(sid))
+            # replace: a reply stored too early (older bridge) is corrected instead of dropped as a duplicate
             item = await self.outbox.ingest(agent, {"message": reply, "title": title,
                                                     "id": f"hermes-session:{sid}", "tags": [f"session:{sid}"]},
-                                            notify=notify)
+                                            notify=notify, replace=True)
             if item is not None:
                 stored += 1
                 log.info("cron reply stored", extra=fields(agent=agent.name, session=sid, chars=len(reply)))

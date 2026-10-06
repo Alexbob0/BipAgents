@@ -24,7 +24,7 @@ class FakeOutbox:
         self.ingested = []
         self.seen = set()
 
-    async def ingest(self, agent, message, notify=True):
+    async def ingest(self, agent, message, notify=True, replace=False):
         if message["id"] in self.seen:
             return None
         self.seen.add(message["id"])
@@ -181,3 +181,21 @@ def test_teammate_answer_to_our_own_request_is_pushed(config_dict):
     for _ in range(2):
         asyncio.run(cron.poll(agent, now=NOW))
     assert push.replies == [("wellness", "Wellness dit : nuit correcte, 7 h 10.", "api_vie")]
+
+
+def test_a_comment_before_a_running_tool_is_not_the_final_reply(config_dict):
+    calling = {"role": "assistant", "content": "execute_code est bloqué en cron — je passe par terminal.",
+               "tool_calls": [{"function": {"name": "terminal", "arguments": "{}"}}]}
+    assert final_reply([{"role": "user", "content": "Produis le podcast"}, calling]) is None
+    assert final_reply([{"role": "user", "content": "Produis le podcast"}, calling,
+                        {"role": "tool", "content": "ok"}]) is None
+    assert final_reply([{"role": "user", "content": "Produis le podcast"}, calling, {"role": "tool", "content": "ok"},
+                        {"role": "assistant", "content": "MEDIA:/m/podcast.mp3\n🎙️ Point du matin"}]) == \
+        "MEDIA:/m/podcast.mp3\n🎙️ Point du matin"
+    cron, hermes, outbox, agent = watcher(config_dict)
+    sid = "cron_fc344ed09026_20261006_075008"
+    hermes.sessions = [{"id": sid, "title": "Podcast du matin"}]
+    hermes.messages[sid] = [{"role": "user", "content": "Produis le podcast"}, calling]
+    for _ in range(3):  # the synthesis takes minutes: the comment stays unchanged, it is not taken
+        asyncio.run(cron.poll(agent, now=datetime(2026, 10, 6, 8, 0)))
+    assert outbox.ingested == []
