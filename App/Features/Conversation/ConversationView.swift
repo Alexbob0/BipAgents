@@ -199,7 +199,8 @@ private struct ConversationContent: View {
                     InstructionCard(title: title, text: text, palette: palette)
                     if ChatText.isSubtaskReport(text) {
                         ForEach(ChatText.mediaPaths(inReport: text), id: \.self) { path in
-                            MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:), hideIfMissing: true)
+                            MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:), hideIfMissing: true,
+                                     info: .agent(model.agent, title: ((path as NSString).lastPathComponent as NSString).deletingPathExtension))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -224,13 +225,15 @@ private struct ConversationContent: View {
                     AssistantRow(appearance: model.agent.appearance, text: text, isStreaming: isStreaming)
                     if !isStreaming {
                         ForEach(ChatText.media(in: text), id: \.self) { path in
-                            MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:))
+                            MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:),
+                                     info: .agent(model.agent, title: ((path as NSString).lastPathComponent as NSString).deletingPathExtension))
                         }
                     }
                     // « Écouter » and the time under the turn's final reply only, not under the agent's
                     // running commentary between tools.
                     if let reply = model.voiceReplies[item.id] {
-                        VoiceReplyView(state: reply, palette: palette, player: model.player) { model.stopVoiceReply(item.id) }
+                        VoiceReplyView(state: reply, palette: palette, player: model.player,
+                                       info: .agent(model.agent, title: String(localized: "Réponse vocale"))) { model.stopVoiceReply(item.id) }
                             .padding(.leading, 40)
                     } else if !isStreaming && turnEnd {
                         ListenButton(palette: palette, isPlaying: model.speakingItemID == item.id) { model.toggleSpeech(of: item) }

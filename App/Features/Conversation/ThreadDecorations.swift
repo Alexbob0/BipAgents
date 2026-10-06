@@ -97,6 +97,8 @@ struct MediaRow: View {
     var load: (String) async throws -> URL
     /// A file merely mentioned (in a sub-task report): shown only if it exists.
     var hideIfMissing = false
+    /// Lock screen / Dynamic Island title and agent for an audio file.
+    var info: NowPlayingInfo? = nil
 
     @State private var file: URL?
     @State private var shareURL: URL?
@@ -130,10 +132,11 @@ struct MediaRow: View {
         HStack(alignment: .bottom, spacing: 8) {
             if let file, isAudio {
                 VoiceNoteControl(url: file, duration: duration, waveform: VoiceReplyView.placeholderWave, player: player,
-                                 foreground: palette.deep, accent: palette.deep)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(palette.tint, in: .capsule)
+                                 foreground: palette.deep, accent: palette.deep,
+                                 info: info ?? NowPlayingInfo(title: (name as NSString).deletingPathExtension))
+                    .padding(.horizontal, duration >= 60 ? 14 : 10)
+                    .padding(.vertical, duration >= 60 ? 10 : 6)
+                    .background(palette.tint, in: .rect(cornerRadius: 22, style: .continuous))
             } else if let image {
                 Button { viewing = ViewedPhoto(image: image) } label: {
                     Image(uiImage: image)
@@ -268,10 +271,12 @@ struct ScheduledMessageRow: View {
                 AssistantRow(appearance: agent.appearance, text: item.text, isStreaming: false)
             }
             if item.hasAudio {
-                MediaRow(path: "\(label).mp3", palette: palette, player: player, load: { _ in try await audio() })
+                MediaRow(path: "\(label).mp3", palette: palette, player: player, load: { _ in try await audio() },
+                         info: .agent(agent, title: label))
             }
             ForEach(files, id: \.self) { path in
-                MediaRow(path: path, palette: palette, player: player, load: media)
+                MediaRow(path: path, palette: palette, player: player, load: media,
+                         info: .agent(agent, title: ((path as NSString).lastPathComponent as NSString).deletingPathExtension))
             }
             TimeLabel(date: item.createdAt).padding(.leading, 40)
         }

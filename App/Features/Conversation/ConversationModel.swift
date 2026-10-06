@@ -81,7 +81,8 @@ final class ConversationModel {
     private(set) var voiceNotes: [UUID: VoiceRecording] = [:]
     /// Spoken replies to voice notes, by assistant item id.
     private(set) var voiceReplies: [UUID: VoiceReplyState] = [:]
-    let player = VoiceNotePlayer()
+    /// Shared: a podcast keeps playing after leaving the conversation, and with the phone locked.
+    let player = VoiceNotePlayer.shared
     private let streamer = StreamingSpeechPlayer()
     private var voiceTask: Task<Void, Never>?
     private var replyByVoice = false
