@@ -171,12 +171,33 @@ class RunHub:
 
     def _remove_listener(self, listener: Listener) -> None:
         sub = listener.sub
+        was_followed = sub.followers > 0
         sub.listeners.discard(listener)
+        if was_followed and sub.followers == 0 and sub.watched and not sub.finished:
+            self._push_unseen(sub)
         if not sub.listeners and not sub.watched and not sub.finished:
             if sub.task is not None:
                 sub.task.cancel()
             if self._subs.get(sub.key) is sub:
                 del self._subs[sub.key]
+
+    def _push_unseen(self, sub: RunSubscription) -> None:
+        """The app stopped showing the run (left the conversation, screen locked) while an approval or a
+        question was waiting: it was on screen, so never pushed. Push it now, or the run waits unseen until
+        Hermes' timeout."""
+        if self.push is None:
+            return
+        for (agent, run_id, dedupe), item in list(self._pending.items()):
+            if agent == sub.agent.name and run_id == sub.run_id and dedupe not in sub.pushed:
+                sub.pushed.add(dedupe)
+                log.info("approval push (left unanswered)", extra=fields(agent=agent, run_id=run_id))
+                self._spawn(self.push.notify_approval(agent, run_id, item.get("request_id"), item.get("choices"),
+                                                      item.get("command")))
+        answered = {e.data.get("request_id") for e in sub.backlog
+                    if e.type in ("clarify.responded", "clarify.cancelled") and isinstance(e.data, dict)}
+        for event in sub.backlog:
+            if event.type == "clarify.request" and event.data.get("request_id") not in answered:
+                self._on_clarify(sub, event)
 
     def _spawn(self, coro: Any) -> None:
         task = asyncio.create_task(coro)
@@ -289,7 +310,7 @@ class RunHub:
         self._pending[(sub.agent.name, sub.run_id, dedupe)] = {
             "agent": sub.agent.name, "run_id": sub.run_id, "request_id": request_id, "command": command,
             "description": data.get("description") if isinstance(data.get("description"), str) else None,
-            "choices": choices, "created_at": time.time(),
+            "choices": choices, "created_at": time.time(), "session_id": sub.session_id,
         }
         if not sub.watched or sub.followers > 0 or dedupe in sub.pushed or self.push is None:
             log.info("approval seen, no push", extra=fields(agent=sub.agent.name, run_id=sub.run_id,
