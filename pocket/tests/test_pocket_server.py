@@ -98,11 +98,21 @@ def test_shape_trims_silence_and_levels_each_sentence():
     rate = 1000  # 10-sample frames keep the arithmetic readable
     silence, voice = np.zeros(300, dtype=np.float32), np.full(400, 0.3, dtype=np.float32)
     chunks = [silence[:150], silence[150:], voice[:200], voice[200:], silence]
-    out = np.concatenate(list(shape(chunks, rate, pad=0.03, target=0.075, gain_window=0.2)))
-    assert len(out) == 30 + 400 + 30  # pad before and after the voice, the rest of the silence dropped
+    out = np.concatenate(list(shape(chunks, rate, lead_pad=0.03, tail_pad=0.08, fade=0.02)))
+    assert len(out) == 30 + 400 + 80  # margins before and after the voice, the rest of the silence dropped
     assert np.isclose(out[100], 0.3 * 0.7)  # loud sentence: gain floored at 0.7
+    assert out[-1] == 0 and out[-25] == 0  # fade-out over silence: no click
     quiet = np.concatenate(list(shape([np.full(400, 0.02, dtype=np.float32)], rate)))
     assert np.isclose(quiet.max(), 0.02 * 1.6)  # quiet sentence: raised, but capped at 1.6
+
+
+def test_shape_keeps_a_soft_ending():
+    np = pytest.importorskip("numpy")
+    from pocket_server import shape
+    rate = 1000
+    loud, soft = np.full(300, 0.1, dtype=np.float32), np.full(100, 0.008, dtype=np.float32)  # a fading last syllable
+    out = np.concatenate(list(shape([loud, soft, np.zeros(300, dtype=np.float32)], rate, tail_pad=0.08)))
+    assert len(out) >= 300 + 100  # the soft end (8 % of the sentence level) is kept, not cut
 
 
 def test_phrased_puts_pauses_between_sentences_only():
