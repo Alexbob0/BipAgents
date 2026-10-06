@@ -39,6 +39,13 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
     last_seen TEXT,
     PRIMARY KEY (agent, job)
 );
+CREATE TABLE IF NOT EXISTS watched_runs (
+    agent TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    session_id TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (agent, run_id)
+);
 CREATE TABLE IF NOT EXISTS ntfy_cursor (
     agent TEXT PRIMARY KEY,
     last_id TEXT NOT NULL,
@@ -115,6 +122,21 @@ class Store:
             "last_seen=excluded.last_seen", (agent, job, name, iso(utcnow())))
         rows = await self._run("SELECT notify FROM cron_jobs WHERE agent=? AND job=?", (agent, job))
         return bool(rows[0]["notify"]) if rows else True
+
+    # -- runs watched for push (survive a restart) ----------------------------------------------
+
+    async def remember_run(self, agent: str, run_id: str, session_id: Optional[str]) -> None:
+        await self._run("INSERT INTO watched_runs (agent, run_id, session_id, created_at) VALUES (?,?,?,?) "
+                        "ON CONFLICT(agent, run_id) DO UPDATE SET session_id=COALESCE(excluded.session_id, session_id)",
+                        (agent, run_id, session_id, iso(utcnow())))
+
+    async def forget_run(self, agent: str, run_id: str) -> None:
+        await self._run("DELETE FROM watched_runs WHERE agent=? AND run_id=?", (agent, run_id))
+
+    async def watched_runs(self, max_age_seconds: float) -> List[Dict[str, Any]]:
+        cutoff = iso(utcnow() - timedelta(seconds=max_age_seconds))
+        await self._run("DELETE FROM watched_runs WHERE created_at < ?", (cutoff,))
+        return [dict(r) for r in await self._run("SELECT * FROM watched_runs ORDER BY created_at", ())]
 
     async def cron_job_name(self, agent: str, job: str) -> Optional[str]:
         rows = await self._run("SELECT name FROM cron_jobs WHERE agent=? AND job=?", (agent, job))

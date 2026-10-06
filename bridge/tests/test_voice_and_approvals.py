@@ -331,3 +331,59 @@ def test_approval_is_pushed_when_the_app_stops_following(client):
     approvals = [p for p in client.apns.payloads() if p["aps"].get("category") == "APPROVAL"]
     assert len(approvals) == 1 and approvals[0]["request_id"] == "req_l"
     finish.set()
+
+
+def test_watched_runs_resume_after_a_restart_with_their_pending_approval(tmp_path):
+    import asyncio
+    from bipbridge.config import AgentConfig
+    from bipbridge.hermes import HermesHTTPError
+    from bipbridge.runs import RunHub
+    from bipbridge.store import Store
+
+    class Hermes:
+        def __init__(self, runs):
+            self.runs = runs
+
+        async def run(self, agent, run_id):
+            if run_id not in self.runs:
+                raise HermesHTTPError(404, "gone")
+            return self.runs[run_id]
+
+        async def run_events(self, agent, run_id):
+            await asyncio.sleep(3600)
+            yield  # pragma: no cover
+
+    class Push:
+        def __init__(self):
+            self.approvals = []
+
+        async def notify_approval(self, *args):
+            self.approvals.append(args)
+
+    agent = AgentConfig(name="vie", display_name="Vie", hermes_url="http://h", hermes_key="k" * 40)
+
+    async def go():
+        store = Store(str(tmp_path / "b.db"))
+        before = RunHub(Hermes({}), None, store=store)
+        before.watch(agent, "run_wait", "api_bot")
+        before.watch(agent, "run_done")
+        before.watch(agent, "run_gone")
+        await asyncio.sleep(0.05)
+        await before.close()
+        hermes = Hermes({
+            "run_wait": {"status": "waiting_for_approval", "session_id": "api_bot",
+                         "approval": {"request_id": "req_x", "command": "python3 -c 'tts health'",
+                                      "choices": ["once", "session", "deny"]}},
+            "run_done": {"status": "completed"},
+        })
+        push = Push()
+        after = RunHub(hermes, push, store=store)
+        assert await after.resume({"vie": agent}) == 1
+        pending = after.pending_approvals("vie")
+        assert [(p["run_id"], p["request_id"], p["session_id"]) for p in pending] == [("run_wait", "req_x", "api_bot")]
+        await asyncio.sleep(0.05)
+        assert len(push.approvals) == 1 and push.approvals[0][5] == "api_bot"  # nobody follows: pushed, with its session
+        assert [r["run_id"] for r in await store.watched_runs(3600)] == ["run_wait"]  # finished and unknown ones forgotten
+        await after.close()
+
+    asyncio.run(go())

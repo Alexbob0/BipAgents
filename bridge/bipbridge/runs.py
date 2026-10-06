@@ -101,9 +101,10 @@ class RunSubscription:
 
 class RunHub:
     def __init__(self, hermes: HermesClient, push: Optional[PushService], watch_max_seconds: int = 7200,
-                 retention_seconds: float = FINISHED_RETENTION_SECONDS):
+                 retention_seconds: float = FINISHED_RETENTION_SECONDS, store: Optional[Any] = None):
         self.hermes = hermes
         self.push = push
+        self.store = store  # watched runs survive a restart (resume())
         self.watch_max_seconds = watch_max_seconds
         self.retention_seconds = retention_seconds
         self._subs: Dict[Key, RunSubscription] = {}
@@ -124,10 +125,46 @@ class RunHub:
         sub.listeners.add(listener)
         return listener
 
-    def watch(self, agent: AgentConfig, run_id: str) -> RunSubscription:
+    def watch(self, agent: AgentConfig, run_id: str, session_id: Optional[str] = None) -> RunSubscription:
         sub = self._get_or_start(agent, run_id)
         sub.watched = True
+        if session_id and not sub.session_id:
+            sub.session_id = session_id
+        if self.store is not None and not sub.finished:
+            self._spawn(self.store.remember_run(agent.name, run_id, sub.session_id))
         return sub
+
+    async def resume(self, agents: Dict[str, AgentConfig]) -> int:
+        """After a restart: watch again the runs that were watched, and rebuild what Hermes still waits for (an
+        approval asked before the restart is not replayed by its event stream, but kept in the run's status)."""
+        if self.store is None:
+            return 0
+        resumed = 0
+        for row in await self.store.watched_runs(self.watch_max_seconds):
+            agent = agents.get(row["agent"])
+            if agent is None:
+                await self.store.forget_run(row["agent"], row["run_id"])
+                continue
+            try:
+                run = await self.hermes.run(agent, row["run_id"])
+            except HermesHTTPError as exc:
+                if exc.status in (404, 410):
+                    await self.store.forget_run(agent.name, row["run_id"])
+                continue
+            except Exception:  # Hermes restarting: try again at the next bridge start
+                continue
+            status = str(run.get("status") or "")
+            if status in ("completed", "failed", "cancelled", "canceled", "interrupted"):
+                await self.store.forget_run(agent.name, row["run_id"])
+                continue
+            sub = self.watch(agent, row["run_id"], row.get("session_id") or run.get("session_id"))
+            approval = run.get("approval")
+            if status == "waiting_for_approval" and isinstance(approval, dict):
+                data = {**approval, "run_id": row["run_id"]}
+                await self._dispatch(sub, SSEEvent("approval.request", data, raw=json.dumps(data, sort_keys=True)))
+            resumed += 1
+            log.info("run watch resumed", extra=fields(agent=agent.name, run_id=row["run_id"], status=status))
+        return resumed
 
     def followed_recently(self, agent: str, session_id: str, within: float = 600.0) -> bool:
         """An app-followed run of this session is going on or ended less than `within` seconds ago: its
@@ -278,6 +315,8 @@ class RunHub:
         elif event.type in TERMINAL_TYPES:
             sub.terminal = event.type
             self.forget_approval(sub.agent.name, sub.run_id)
+            if self.store is not None:
+                self._spawn(self.store.forget_run(sub.agent.name, sub.run_id))
             if sub.watched and sub.followers == 0 and self.push is not None:
                 output = event.data.get("output") if isinstance(event.data.get("output"), str) else None
                 if event.type == "run.completed" and output:

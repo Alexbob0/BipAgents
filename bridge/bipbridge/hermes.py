@@ -141,6 +141,11 @@ class HermesClient:
             raise HermesHTTPError(resp.status_code, resp.text[:500])
         return resp.json()
 
+    async def run(self, agent: AgentConfig, run_id: str) -> Dict[str, Any]:
+        """``GET /v1/runs/{id}``: status, session, and the pending ``approval`` of a run parked on one."""
+        data = await self._get_json(agent, f"/v1/runs/{run_id}")
+        return data if isinstance(data, dict) else {}
+
     async def list_sessions(self, agent: AgentConfig, limit: int = 20) -> List[Dict[str, Any]]:
         """``GET /api/sessions`` (most recent first)."""
         data = await self._get_json(agent, "/api/sessions", {"limit": limit})
