@@ -15,7 +15,8 @@ MEDIA_LINE = re.compile(r"^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$", re.MULTILINE)
 CONTENT_TYPES = {
     ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg",
     ".opus": "audio/ogg", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
-    ".webp": "image/webp", ".pdf": "application/pdf",
+    ".webp": "image/webp", ".heic": "image/heic", ".pdf": "application/pdf",
+    ".mp4": "video/mp4", ".m4v": "video/x-m4v", ".mov": "video/quicktime", ".webm": "video/webm",
 }
 
 
