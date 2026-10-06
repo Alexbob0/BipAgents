@@ -161,6 +161,10 @@ def shape(chunks: Iterable, rate: int, lead_threshold: float = 0.006, tail_ratio
     yield tail
 
 
+def trails_off(sentence: str) -> bool:
+    return _TRAILING.sub("", sentence).endswith(("…", "..."))
+
+
 def phrased(text: str, generate: Callable[[str], Iterable], rate: int, pace: str = "read",
             stop: Optional[threading.Event] = None, jitter: float = 0.1) -> Iterator:
     """The whole text as float audio chunks: each sentence generated and shaped, then its pause (the last one
@@ -172,7 +176,8 @@ def phrased(text: str, generate: Callable[[str], Iterable], rate: int, pace: str
     for index, (sentence, kind) in enumerate(items):
         if stop is not None and stop.is_set():
             return
-        yield from shape(generate(sentence), rate)
+        # « aujourd'hui… »: the voice trails off, keep more of it than after a plain full stop.
+        yield from shape(generate(sentence), rate, tail_pad=0.2 if trails_off(sentence) else 0.08)
         if index == len(items) - 1:
             # After the last one too, by its punctuation: in Live the app sends one sentence per request and
             # plays them back to back, so this is the breath between them.
@@ -232,7 +237,9 @@ class Engine:
 
         def generate(sentence: str) -> Iterator:
             # Pocket's own end-of-speech margin (its frames_after_eos guess): forcing it short clipped endings.
-            for chunk in model.generate_audio_stream(state, sentence, stop=stop):
+            # A trailing-off « … » gets more room (6 frames, ~0.5 s) to fade out by itself.
+            extra = {"frames_after_eos": 6} if trails_off(sentence) else {}
+            for chunk in model.generate_audio_stream(state, sentence, stop=stop, **extra):
                 yield chunk.detach().cpu().numpy()
 
         with self.lock:

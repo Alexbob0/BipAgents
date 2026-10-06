@@ -127,3 +127,14 @@ def test_phrased_puts_pauses_between_sentences_only():
     live = [len(a) for a in phrased("Une première phrase assez longue. Une deuxième phrase assez longue.", generate, rate,
                                     pace="live", jitter=0) if len(a) and not a.any()]
     assert live == [220, 220]
+
+
+def test_trailing_off_sentences_keep_more_tail():
+    np = pytest.importorskip("numpy")
+    from pocket_server import phrased, trails_off
+    assert trails_off("Tu as l'air en forme aujourd'hui…") and trails_off("Bon... on verra.") is False
+    rate = 1000
+    generate = lambda sentence: [np.full(300, 0.075, dtype=np.float32), np.zeros(400, dtype=np.float32)]
+    plain = [a for a in phrased("Une phrase assez longue pour elle seule.", generate, rate, jitter=0)]
+    trailing = [a for a in phrased("Une phrase assez longue pour elle seule…", generate, rate, jitter=0)]
+    assert len(trailing[-2]) - len(plain[-2]) == 120  # 200 ms kept after the voice instead of 80
