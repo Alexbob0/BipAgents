@@ -119,6 +119,22 @@ struct BridgeClient: Sendable {
         }
     }
 
+    /// Approvals the bridge saw and nobody answered yet (`GET /v1/approvals`).
+    func pendingApprovals(agent: String) async throws -> [ApprovalRequest] {
+        var components = URLComponents(url: baseURL.appending(path: "v1/approvals"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "agent", value: agent)]
+        var request = URLRequest(url: components.url!)
+        authorize(&request)
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        return (json?["items"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let runID = row["run_id"] as? String else { return nil }
+            let choices = (row["choices"] as? [String] ?? []).compactMap(ApprovalChoice.init(lenient:))
+            return ApprovalRequest(runID: runID, requestID: row["request_id"] as? String, command: row["command"] as? String,
+                                   description: row["description"] as? String, choices: choices.isEmpty ? [.once, .deny] : choices,
+                                   sessionID: row["session_id"] as? String)
+        }
+    }
+
     func setCronNotify(agent: String, job: String, notify: Bool) async throws {
         var request = request("v1/cron-jobs/\(agent)/\(job)", method: "PUT")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["notify": notify])

@@ -307,3 +307,27 @@ def test_question_pushed_when_the_app_left(client):
     payload = apns.payloads()[0]
     assert payload["kind"] == "question" and payload["request_id"] == "clr_1" and payload["session_id"] == "api_7"
     assert payload["aps"]["alert"]["body"] == "Une question pour toi" and payload["aps"]["mutable-content"] == 1
+
+
+def test_approval_is_pushed_when_the_app_stops_following(client):
+    register(client)
+    asked, finish = threading.Event(), threading.Event()
+    client.backend.runs["run_l"] = [
+        sse("message.delta", run_id="run_l", delta="Je génère le podcast. "),
+        asked,
+        approval_event("run_l", "req_l"),
+        finish,
+        sse("run.completed", run_id="run_l"),
+    ]
+    with client.websocket_connect("/v1/voice", headers=AUTH) as ws:
+        ws.send_text(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_l"}))
+        receive_frames(ws, until_type="sentence")
+        client.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_l"})
+        asked.set()
+        assert wait_until(lambda: client.get("/v1/approvals", headers=AUTH).json()["items"])
+        assert client.apns.requests == []  # on screen: the app shows it
+    # Left the conversation with the approval unanswered: it is pushed now, once.
+    assert wait_until(lambda: any(p["aps"].get("category") == "APPROVAL" for p in client.apns.payloads()))
+    approvals = [p for p in client.apns.payloads() if p["aps"].get("category") == "APPROVAL"]
+    assert len(approvals) == 1 and approvals[0]["request_id"] == "req_l"
+    finish.set()

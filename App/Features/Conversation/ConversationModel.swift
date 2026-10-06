@@ -208,9 +208,25 @@ final class ConversationModel {
         title = current.title
         let thread = Self.items(from: try await history)
         items = AgentStore.isBotChat(current) ? Self.merging(await outbox, into: thread) : thread
+        await showPendingApprovals()
         store.noteSession(current, for: agent, preview: latestText)
         restoreVoiceNotes(sessionID: sessionID)
         restoreAttachments(sessionID: sessionID)
+    }
+
+    /// An approval still waiting for this conversation (seen by the bridge, e.g. asked while the user was away or
+    /// before leaving the screen): shown again so the agent is never left waiting for a card that is gone.
+    private func showPendingApprovals() async {
+        guard let bridge, let sessionID, let pending = try? await bridge.pendingApprovals(agent: agent.bridgeName) else { return }
+        for request in pending where request.sessionID == sessionID || request.runID == Self.activeRuns[sessionID] {
+            guard !hasApprovalCard(for: request) else { continue }
+            items.append(ChatItem(.approval(request, resolved: nil)))
+            isWaitingForApproval = true
+        }
+    }
+
+    private func hasApprovalCard(for request: ApprovalRequest) -> Bool {
+        items.contains { if case .approval(let shown, _) = $0.kind { shown.id == request.id } else { false } }
     }
 
     /// The agent's recent scheduled-task reports and proactive messages (last 30 days), from its bridge.
@@ -513,7 +529,10 @@ final class ConversationModel {
         var connections = 0
         while true {
             try Task.checkCancellation()
-            if connections > 0 || reattaching { clearCurrentTurn() } // the bridge replays the run from its start
+            if connections > 0 || reattaching {
+                clearCurrentTurn() // the bridge replays the run from its start…
+                await showPendingApprovals() // …but an approval it no longer has must stay answerable
+            }
             if connections > 0 { interim = reconnecting }
             connections += 1
             do {
@@ -762,7 +781,7 @@ final class ConversationModel {
             upsertTool(tool)
         case .approvalRequest(let request):
             isWaitingForApproval = true
-            items.append(ChatItem(.approval(request, resolved: nil)))
+            if !hasApprovalCard(for: request) { items.append(ChatItem(.approval(request, resolved: nil))) }
         case .approvalResponded(let choice, _):
             isWaitingForApproval = false
             if let choice, let index = items.lastIndex(where: { if case .approval(_, nil) = $0.kind { true } else { false } }),
