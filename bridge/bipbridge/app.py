@@ -60,7 +60,7 @@ class Services:
                 log.warning("APNs key file missing", extra=fields(path=config.apns.p8_path))
         self.apns = apns
         self.push = PushService(config, self.store, apns)
-        self.hub = RunHub(self.hermes, self.push, watch_max_seconds=config.limits.watch_max_seconds)
+        self.hub = RunHub(self.hermes, self.push, watch_max_seconds=config.limits.watch_max_seconds, store=self.store)
         self.outbox = OutboxService(config, self.store, self.tts, self.push)
         self.presence = Presence()
         self.subscribers: List[NtfySubscriber] = []
@@ -78,6 +78,7 @@ class Services:
                                   presence=self.presence)
             self._tasks.append(asyncio.create_task(watcher.run()))
         self._tasks.append(asyncio.create_task(self._purge_loop()))
+        self._tasks.append(asyncio.create_task(self.hub.resume(self.config.agents)))
 
     async def _purge_loop(self) -> None:
         await asyncio.sleep(5)
@@ -132,6 +133,7 @@ class DeviceRequest(BaseModel):
 class WatchRequest(BaseModel):
     agent: str
     run_id: str
+    session_id: Optional[str] = None
 
 
 class ApproveRequest(BaseModel):
@@ -373,7 +375,8 @@ def build_router() -> APIRouter:
         services = _services(request)
         agent = _agent_or_404(services.config, body.agent)
         run_id = _check_run_id(body.run_id)
-        sub = services.hub.watch(agent, run_id)
+        session_id = body.session_id if body.session_id and SESSION_ID.match(body.session_id) else None
+        sub = services.hub.watch(agent, run_id, session_id)
         return {"watching": True, "agent": agent.name, "run_id": run_id, "followers": sub.followers,
                 "finished": sub.finished}
 

@@ -36,9 +36,12 @@ struct BridgeClient: Sendable {
     }
 
     /// Ask the bridge to watch a run so an approval request still reaches the phone if the app is closed.
-    func watch(agent: String, runID: String) async throws {
+    /// The bridge keeps watching the run (pushes its approvals and reply when nobody follows it), across restarts.
+    func watch(agent: String, runID: String, sessionID: String? = nil) async throws {
         var request = request("v1/watch", method: "POST")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["agent": agent, "run_id": runID])
+        var body = ["agent": agent, "run_id": runID]
+        if let sessionID { body["session_id"] = sessionID }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         try await send(request)
     }
 

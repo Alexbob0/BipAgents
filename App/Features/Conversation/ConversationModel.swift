@@ -796,7 +796,7 @@ final class ConversationModel {
         if let id = event.runID, id != runID {
             runID = id
             // Lets the bridge push the approval request if the app is closed meanwhile.
-            if let bridge { Task { [agent] in try? await bridge.watch(agent: agent.bridgeName, runID: id) } }
+            if let bridge { Task { [agent, sessionID] in try? await bridge.watch(agent: agent.bridgeName, runID: id, sessionID: sessionID) } }
         }
         switch event.kind {
         case .reasoning, .tool, .approvalRequest, .clarifyRequest:
