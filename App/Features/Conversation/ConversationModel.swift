@@ -243,10 +243,16 @@ final class ConversationModel {
     /// before leaving the screen): shown again so the agent is never left waiting for a card that is gone.
     private func showPendingApprovals() async {
         guard let bridge, let sessionID, let pending = try? await bridge.pendingApprovals(agent: agent.bridgeName) else { return }
-        for request in pending where request.sessionID == sessionID || request.runID == Self.activeRuns[sessionID] {
-            guard !hasApprovalCard(for: request) else { continue }
+        for request in pending {
+            var mine = request.sessionID == sessionID || request.runID == Self.activeRuns[sessionID]
+            if !mine, request.sessionID == nil, let client {
+                // The bridge does not know the run's conversation (it re-watched it after a restart): Hermes does.
+                mine = (try? await client.getRun(id: request.runID))?.sessionID == sessionID
+            }
+            guard mine, !hasApprovalCard(for: request) else { continue }
             items.append(ChatItem(.approval(request, resolved: nil)))
             isWaitingForApproval = true
+            Self.activeRuns[sessionID] = request.runID // and follow that run from now on
         }
     }
 
