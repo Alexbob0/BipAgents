@@ -3,6 +3,12 @@ import SwiftUI
 
 /// A sent photo, full screen: pinch or double-tap to zoom, drag to pan, swipe down (or ✕) to close,
 /// share button.
+/// A photo opened full screen (`.fullScreenCover(item:)`).
+struct ViewedPhoto: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
 struct PhotoViewer: View {
     var image: UIImage
     @Environment(\.dismiss) private var dismiss

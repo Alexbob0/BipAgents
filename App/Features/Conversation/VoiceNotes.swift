@@ -166,11 +166,15 @@ struct VoiceReplyView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Arrêter la lecture")
         case .ready(let url, let duration):
-            VoiceNoteControl(url: url, duration: duration, waveform: Self.placeholderWave, player: player,
-                             foreground: palette.deep, accent: palette.deep)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(palette.tint, in: .capsule)
+            HStack(spacing: 8) {
+                VoiceNoteControl(url: url, duration: duration, waveform: Self.placeholderWave, player: player,
+                                 foreground: palette.deep, accent: palette.deep)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(palette.tint, in: .capsule)
+                ShareFileButton(url: ShareFile.named(url, String(localized: "Réponse vocale") + " " +
+                                                     Date.now.formatted(.dateTime.day().month().hour().minute())), palette: palette)
+            }
         case .unavailable:
             EmptyView()
         }

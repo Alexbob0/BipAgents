@@ -1,3 +1,4 @@
+import AVKit
 import QuickLook
 import SwiftUI
 
@@ -96,25 +97,45 @@ struct MediaRow: View {
     var load: (String) async throws -> URL
 
     @State private var file: URL?
+    @State private var shareURL: URL?
+    @State private var image: UIImage?
     @State private var duration: TimeInterval = 0
     @State private var failed = false
     @State private var quickLook: URL?
+    @State private var viewing: ViewedPhoto?
 
     private var name: String { path.split(separator: "/").last.map(String.init) ?? path }
     private var isAudio: Bool { Self.isAudio(name) }
+    private var isVideo: Bool { ["mp4", "m4v", "mov"].contains((name as NSString).pathExtension.lowercased()) }
 
     static func isAudio(_ path: String) -> Bool {
         ["mp3", "m4a", "aac", "wav", "ogg", "opus"].contains((path as NSString).pathExtension.lowercased())
     }
 
+    static func isImage(_ path: String) -> Bool {
+        ["png", "jpg", "jpeg", "gif", "webp", "heic"].contains((path as NSString).pathExtension.lowercased())
+    }
+
     var body: some View {
-        Group {
+        HStack(alignment: .bottom, spacing: 8) {
             if let file, isAudio {
                 VoiceNoteControl(url: file, duration: duration, waveform: VoiceReplyView.placeholderWave, player: player,
                                  foreground: palette.deep, accent: palette.deep)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(palette.tint, in: .capsule)
+            } else if let image {
+                Button { viewing = ViewedPhoto(image: image) } label: {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 240, maxHeight: 300)
+                        .clipShape(.rect(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(name)
+            } else if let file, isVideo {
+                VideoClip(url: file)
             } else {
                 Button {
                     if let file { quickLook = file } else { Task { await fetch() } }
@@ -132,10 +153,12 @@ struct MediaRow: View {
                 }
                 .buttonStyle(.plain)
             }
+            if let shareURL { ShareFileButton(url: shareURL, palette: palette) }
         }
         .padding(.leading, 40)
         .task { await fetch() }
         .quickLookPreview($quickLook)
+        .fullScreenCover(item: $viewing) { photo in PhotoViewer(image: photo.image) }
     }
 
     private func fetch() async {
@@ -143,10 +166,61 @@ struct MediaRow: View {
         do {
             let url = try await load(path)
             duration = VoiceNotePlayer.duration(of: url)
+            if Self.isImage(name) { image = UIImage(contentsOfFile: url.path(percentEncoded: false)) }
             failed = false
             file = url
+            shareURL = ShareFile.named(url, name)
         } catch {
             failed = true
+        }
+    }
+}
+
+/// A video an agent produced, played inline.
+struct VideoClip: View {
+    var url: URL
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .frame(width: 260, height: 180)
+            .clipShape(.rect(cornerRadius: 18, style: .continuous))
+            .onAppear { if player == nil { player = AVPlayer(url: url) } }
+            .onDisappear { player?.pause() }
+    }
+}
+
+/// « Partager »: the share sheet (Save to Files, Save Image / Video to Photos, AirDrop, Messages…).
+struct ShareFileButton: View {
+    var url: URL
+    var palette: AgentPalette
+
+    var body: some View {
+        ShareLink(item: url) {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(palette.deep)
+                .frame(width: 38, height: 38)
+                .background(palette.tint, in: .circle)
+        }
+        .accessibilityLabel(String(localized: "Partager"))
+    }
+}
+
+enum ShareFile {
+    /// `file` under a readable name (« Podcast du matin.mp3 » rather than the cache's hashed name), for the share
+    /// sheet: a copy in a temporary folder, or `file` itself if the copy fails.
+    static func named(_ file: URL, _ name: String) -> URL {
+        var clean = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        if (clean as NSString).pathExtension.isEmpty, !file.pathExtension.isEmpty { clean += "." + file.pathExtension }
+        let folder = URL.temporaryDirectory.appending(path: "share/\(UUID().uuidString.prefix(8))", directoryHint: .isDirectory)
+        let target = folder.appending(path: clean)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: file, to: target)
+            return target
+        } catch {
+            return file
         }
     }
 }

@@ -4748,6 +4748,28 @@
         }
       }
     },
+    "Réponse vocale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voice reply"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Respuesta de voz"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachantwort"
+          }
+        }
+      }
+    },
     "Réponse vocale à mes vocaux" : {
       "localizations" : {
         "en" : {

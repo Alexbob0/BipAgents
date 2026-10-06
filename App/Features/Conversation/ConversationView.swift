@@ -367,10 +367,6 @@ struct UserBubble: View {
     @State private var viewing: ViewedPhoto?
     @State private var quickLook: URL?
 
-    private struct ViewedPhoto: Identifiable {
-        let id = UUID()
-        let image: UIImage
-    }
 
     private var photos: [(LocalAttachment, UIImage)] {
         attachments.compactMap { attachment in PhotoThumbnails.image(for: attachment).map { (attachment, $0) } }
