@@ -16,6 +16,9 @@ struct ChatItem: Identifiable, Equatable {
         /// The agent asks a question (`clarify`): pending, answered, or expired.
         case question(ClarifyRequest, state: QuestionState)
         case notice(String)
+        /// A scheduled task's report or a proactive message (bridge outbox), shown at its time in the agent's
+        /// « Discussion » so everything the agent says lives in one place.
+        case scheduled(OutboxItem)
     }
 
     let id: UUID
@@ -154,7 +157,11 @@ final class ConversationModel {
             UIBezierPath(ovalIn: CGRect(x: -300, y: 760, width: 1500, height: 900)).fill()
         }
         let photo = LocalAttachment(kind: .image, filename: "coucher-de-soleil.jpg", mimeType: "image/jpeg", data: photoData)
+        let evening = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: .now.addingTimeInterval(-86400)) ?? .now
         return [
+            ChatItem(.scheduled(OutboxItem(id: "demo-plan", agent: agent.bridgeName, title: String(localized: "Plan sommeil du soir"),
+                                           text: String(localized: "Ce soir, vise un coucher à 23 h 15 : écrans coupés à 22 h 30, lumière tamisée et chambre à 18 °C."),
+                                           createdAt: evening, sessionID: nil, hasAudio: false)), date: evening),
             ChatItem(.user(text: String(localized: "Regarde le coucher de soleil de ma balade d’hier soir."), attachments: [photo])),
             ChatItem(.user(text: String(localized: "Je me suis couché tard hier. Je peux reprendre un café cet après-midi ?"), attachments: [])),
             ChatItem(.reasoning(text: String(localized: "Vérifier ses habitudes de sommeil et la demi-vie de la caféine."))),
@@ -196,12 +203,45 @@ final class ConversationModel {
     private func loadOnce(client: HermesClient, sessionID: String) async throws {
         async let session = client.session(id: sessionID)
         async let history = client.messages(sessionID: sessionID)
+        async let outbox = scheduledMessages()
         let current = try await session
         title = current.title
-        items = Self.items(from: try await history)
+        let thread = Self.items(from: try await history)
+        items = AgentStore.isBotChat(current) ? Self.merging(await outbox, into: thread) : thread
         store.noteSession(current, for: agent, preview: latestText)
         restoreVoiceNotes(sessionID: sessionID)
         restoreAttachments(sessionID: sessionID)
+    }
+
+    /// The agent's recent scheduled-task reports and proactive messages (last 30 days), from its bridge.
+    private func scheduledMessages() async -> [OutboxItem] {
+        guard let bridge, sessionID?.hasPrefix("cron_") != true,
+              let items = try? await bridge.outbox(agent: agent.bridgeName) else { return [] }
+        let since = Date.now.addingTimeInterval(-30 * 24 * 3600)
+        return items.filter { $0.agent == agent.bridgeName && $0.createdAt > since }
+    }
+
+    /// `scheduled` inserted by date among the thread's messages (undated messages keep their place).
+    static func merging(_ scheduled: [OutboxItem], into thread: [ChatItem]) -> [ChatItem] {
+        var result = thread
+        for item in scheduled.sorted(by: { $0.createdAt < $1.createdAt }) {
+            let index = result.firstIndex { ($0.date ?? .distantPast) > item.createdAt } ?? result.endIndex
+            result.insert(ChatItem(.scheduled(item), date: item.createdAt), at: index)
+        }
+        return result
+    }
+
+    /// The audio of an outbox item (the podcast's mp3, or its synthesized voice), cached on the phone.
+    func outboxAudio(_ item: OutboxItem) async throws -> URL {
+        let folder = URL.cachesDirectory.appending(path: "outbox", directoryHint: .isDirectory)
+        let key = SHA256.hash(data: Data(item.id.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+        let file = folder.appending(path: "\(key).mp3")
+        if FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) { return file }
+        guard let bridge else { throw HermesError.unsupported("bridge") }
+        let data = try await bridge.audio(forOutboxItem: item.id)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try data.write(to: file, options: .atomic)
+        return file
     }
 
     /// The thread from Hermes' stored messages. Consecutive tool calls share one card, and a tool's result

@@ -3403,6 +3403,29 @@
         }
       }
     },
+    "Message proactif" : {
+      "comment" : "Label above a proactive message from an agent shown in its Discussion",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proactive message"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mensaje proactivo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proaktive Nachricht"
+          }
+        }
+      }
+    },
     "Message à %@" : {
       "localizations" : {
         "en" : {

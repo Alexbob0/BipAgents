@@ -140,9 +140,18 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             let choice: ApprovalChoice = actionIdentifier == Action.deny ? .deny : .once
             _ = try? await client.approve(runID: runID, choice: choice, requestID: payload.requestID)
         default:
-            if payload.sessionID == nil, payload.outboxID != nil, actionIdentifier == UNNotificationDefaultActionIdentifier {
-                // A proactive message without a conversation: it is in the Boîte.
-                router.tab = .inbox
+            if payload.outboxID != nil {
+                // A scheduled task's report or a proactive message: it is in the agent's Discussion (and the Boîte).
+                var main = store.latestSession[agent.id]
+                if main.map(AgentStore.isBotChat) != true, let client = store.client(for: agent),
+                   let sessions = try? await client.listSessions(limit: 50) {
+                    main = AgentStore.mainThread(in: sessions)  // cold launch: not loaded yet
+                }
+                if let main, AgentStore.isBotChat(main) {
+                    router.open(.conversation(agent, sessionID: main.id))
+                } else {
+                    router.tab = .inbox
+                }
             } else {
                 // A reply, an approval, or « Répondre »: the conversation it belongs to (or a new one).
                 router.open(.conversation(agent, sessionID: payload.sessionID))

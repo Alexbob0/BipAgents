@@ -253,6 +253,9 @@ private struct ConversationContent: View {
             }
         case .notice(let text):
             NoticeRow(text: text)
+        case .scheduled(let outbox):
+            ScheduledMessageRow(item: outbox, agent: model.agent, player: model.player,
+                                audio: { try await model.outboxAudio(outbox) }, media: model.mediaFile(for:))
         }
     }
 

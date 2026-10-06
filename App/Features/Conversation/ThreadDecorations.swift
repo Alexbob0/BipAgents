@@ -101,7 +101,11 @@ struct MediaRow: View {
     @State private var quickLook: URL?
 
     private var name: String { path.split(separator: "/").last.map(String.init) ?? path }
-    private var isAudio: Bool { ["mp3", "m4a", "aac", "wav", "ogg", "opus"].contains((name as NSString).pathExtension.lowercased()) }
+    private var isAudio: Bool { Self.isAudio(name) }
+
+    static func isAudio(_ path: String) -> Bool {
+        ["mp3", "m4a", "aac", "wav", "ogg", "opus"].contains((path as NSString).pathExtension.lowercased())
+    }
 
     var body: some View {
         Group {
@@ -143,6 +147,48 @@ struct MediaRow: View {
             file = url
         } catch {
             failed = true
+        }
+    }
+}
+
+/// A scheduled task's report (morning podcast, evening plan…) or a proactive message, at its time in the agent's
+/// Discussion: the task's name above, then the agent's text and its audio, like any message from the agent.
+struct ScheduledMessageRow: View {
+    var item: OutboxItem
+    var agent: AgentProfile
+    var player: VoiceNotePlayer
+    var audio: () async throws -> URL
+    var media: (String) async throws -> URL
+
+    private var palette: AgentPalette { agent.appearance.palette }
+
+    /// « Podcast du matin · Oct 06 07:53 » → « Podcast du matin ».
+    private var label: String {
+        let name = item.title?.components(separatedBy: " · ").first?.trimmingCharacters(in: .whitespaces) ?? ""
+        return name.isEmpty ? String(localized: "Message proactif") : name
+    }
+
+    /// Files the message points to, except the audio already played from the outbox.
+    private var files: [String] {
+        ChatText.media(in: item.text).filter { !(item.hasAudio && MediaRow.isAudio($0)) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(label, systemImage: "clock.fill")
+                .font(Theme.body(12.5, weight: .heavy))
+                .foregroundStyle(palette.deep)
+                .padding(.leading, 40)
+            if !ChatText.visible(item.text).isEmpty {
+                AssistantRow(appearance: agent.appearance, text: item.text, isStreaming: false)
+            }
+            if item.hasAudio {
+                MediaRow(path: "\(label).mp3", palette: palette, player: player, load: { _ in try await audio() })
+            }
+            ForEach(files, id: \.self) { path in
+                MediaRow(path: path, palette: palette, player: player, load: media)
+            }
+            TimeLabel(date: item.createdAt).padding(.leading, 40)
         }
     }
 }
