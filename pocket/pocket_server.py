@@ -91,61 +91,74 @@ def phrases(text: str) -> List[Tuple[str, str]]:
     return out
 
 
-def shape(chunks: Iterable, rate: int, threshold: float = 0.012, pad: float = 0.03,
-          target: float = 0.075, max_gain: float = 1.6, min_gain: float = 0.7, gain_window: float = 0.2) -> Iterator:
-    """One sentence's float audio chunks, streamed: leading silence dropped, trailing silence held back and cut
-    at the end (``pad`` kept around the voice), and one gain for the sentence, set on its first ``gain_window``
-    seconds of voice (so loud and quiet sentences meet halfway without flattening their inner dynamics)."""
+def shape(chunks: Iterable, rate: int, lead_threshold: float = 0.006, tail_ratio: float = 0.06,
+          lead_pad: float = 0.05, tail_pad: float = 0.08, fade: float = 0.02, target: float = 0.075,
+          max_gain: float = 1.6, min_gain: float = 0.7, gain_window: float = 0.2) -> Iterator:
+    """One sentence's float audio chunks, streamed: leading silence dropped, trailing silence held back and cut at
+    the end, and one gain for the sentence, set on its first ``gain_window`` seconds of voice (loud and quiet
+    sentences meet halfway without flattening their inner dynamics).
+
+    The end of a sentence is judged relative to its own level (``tail_ratio`` of its voiced RMS): light, high
+    voices end softly, and a fixed threshold clipped their last syllable. ``tail_pad`` is kept after the voice,
+    with a short fade-out, so the cut never clicks."""
     import numpy as np
 
     frame = max(1, int(rate * 0.01))
-    margin = int(rate * pad)
+    lead_margin, tail_margin, fade_len = int(rate * lead_pad), int(rate * tail_pad), int(rate * fade)
     started = False
     gain: Optional[float] = None
+    tail_threshold = lead_threshold
     pending = np.zeros(0, dtype=np.float32)  # not yet emitted: waiting for the gain, or possibly trailing silence
 
-    def voiced_frames(x):
+    def energy(x):
         n = len(x) // frame
         if n == 0:
-            return np.zeros(0, dtype=bool)
-        energy = np.sqrt(np.mean(x[: n * frame].reshape(n, frame) ** 2, axis=1))
-        return energy > threshold
+            return np.zeros(0, dtype=np.float32)
+        return np.sqrt(np.mean(x[: n * frame].reshape(n, frame) ** 2, axis=1))
+
+    def last_voiced_end(x) -> Optional[int]:
+        voiced = energy(x) > tail_threshold
+        return (len(voiced) - int(np.argmax(voiced[::-1]))) * frame if voiced.any() else None
+
+    def set_gain(x) -> None:
+        nonlocal gain, tail_threshold
+        e = energy(x)
+        voiced = e[e > lead_threshold]
+        rms = float(np.sqrt(np.mean(voiced ** 2))) if len(voiced) else target
+        gain = min(max_gain, max(min_gain, target / (rms or target)))
+        tail_threshold = max(0.003, tail_ratio * rms)
 
     for chunk in chunks:
-        x = np.asarray(chunk, dtype=np.float32).reshape(-1)
-        pending = np.concatenate([pending, x])
+        pending = np.concatenate([pending, np.asarray(chunk, dtype=np.float32).reshape(-1)])
         if not started:
-            voiced = voiced_frames(pending)
+            voiced = energy(pending) > lead_threshold
             if not voiced.any():
-                pending = pending[-margin:] if margin else pending[:0]
+                pending = pending[-lead_margin:] if lead_margin else pending[:0]
                 continue
-            first = int(np.argmax(voiced)) * frame
-            pending = pending[max(0, first - margin):]
+            pending = pending[max(0, int(np.argmax(voiced)) * frame - lead_margin):]
             started = True
         if gain is None:
-            voiced = voiced_frames(pending)
-            if voiced.sum() * frame < rate * gain_window:
+            if (energy(pending) > lead_threshold).sum() * frame < rate * gain_window:
                 continue
-            n = len(voiced) * frame
-            frames = pending[:n].reshape(-1, frame)[voiced]
-            rms = float(np.sqrt(np.mean(frames ** 2))) or target
-            gain = min(max_gain, max(min_gain, target / rms))
-        voiced = voiced_frames(pending)
-        if voiced.any():
-            last = (len(voiced) - int(np.argmax(voiced[::-1]))) * frame  # end of the last voiced frame
-            yield pending[:last] * gain
-            pending = pending[last:]
-    if started:
-        if gain is None:  # a sentence shorter than the gain window
-            voiced = voiced_frames(pending)
-            n = len(voiced) * frame
-            frames = pending[:n].reshape(-1, frame)[voiced] if n else pending
-            rms = float(np.sqrt(np.mean(frames ** 2))) if len(frames) else target
-            gain = min(max_gain, max(min_gain, target / (rms or target)))
-            voiced_end = (len(voiced) - int(np.argmax(voiced[::-1]))) * frame if voiced.any() else len(pending)
-            yield pending[: voiced_end + margin] * gain
-        else:
-            yield pending[:margin] * gain
+            set_gain(pending)
+        end = last_voiced_end(pending)
+        if end is not None:
+            yield pending[:end] * gain
+            pending = pending[end:]
+    if not started:
+        return
+    if gain is None:  # a sentence shorter than the gain window
+        set_gain(pending)
+        end = last_voiced_end(pending)
+        if end is None:
+            end = len(pending)
+        tail = pending[: end + tail_margin] * gain
+    else:
+        tail = pending[:tail_margin] * gain
+    if fade_len and len(tail) > fade_len:
+        tail = tail.copy()
+        tail[-fade_len:] *= np.linspace(1, 0, fade_len, dtype=np.float32)
+    yield tail
 
 
 def phrased(text: str, generate: Callable[[str], Iterable], rate: int, pace: str = "read",
@@ -218,7 +231,8 @@ class Engine:
         model, state = self.resolve(voice)
 
         def generate(sentence: str) -> Iterator:
-            for chunk in model.generate_audio_stream(state, sentence, frames_after_eos=1, stop=stop):
+            # Pocket's own end-of-speech margin (its frames_after_eos guess): forcing it short clipped endings.
+            for chunk in model.generate_audio_stream(state, sentence, stop=stop):
                 yield chunk.detach().cpu().numpy()
 
         with self.lock:
