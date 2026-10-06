@@ -167,7 +167,9 @@ private struct ConversationContent: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(model.agent.name).font(Theme.title(16))
                         if let title = model.title {
-                            Text(title).font(Theme.body(12)).foregroundStyle(Theme.ink2).lineLimit(1)
+                            // The agent's permanent « Bot Chat » reads as « Discussion », like on its card.
+                            Text(title.caseInsensitiveCompare("Bot Chat") == .orderedSame ? String(localized: "Discussion") : title)
+                                .font(Theme.body(12)).foregroundStyle(Theme.ink2).lineLimit(1)
                         }
                     }
                 }

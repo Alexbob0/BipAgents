@@ -165,7 +165,8 @@ struct ScheduledMessageRow: View {
     /// « Podcast du matin · Oct 06 07:53 » → « Podcast du matin ».
     private var label: String {
         let name = item.title?.components(separatedBy: " · ").first?.trimmingCharacters(in: .whitespaces) ?? ""
-        return name.isEmpty ? String(localized: "Message proactif") : name
+        if !name.isEmpty { return name }
+        return item.sessionID?.hasPrefix("cron_") == true ? String(localized: "Tâche planifiée") : String(localized: "Message proactif")
     }
 
     /// Files the message points to, except the audio already played from the outbox.

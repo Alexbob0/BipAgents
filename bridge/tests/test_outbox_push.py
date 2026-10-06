@@ -179,3 +179,19 @@ def test_unwrap_cron_keeps_the_job_name_and_output():
     assert unwrap_cron(hermes_021) == ("Test push propre", "Coucou, test réussi.")
     both = hermes_021 + "\n\nNote: The agent cannot see this message, and therefore cannot respond to it."
     assert unwrap_cron(both) == ("Test push propre", "Coucou, test réussi.")
+
+
+def test_a_reply_stored_too_early_is_replaced_not_dropped(tmp_path):
+    import asyncio
+    from bipbridge.store import Store
+    store = Store(str(tmp_path / "b.db"))
+    async def go():
+        first = await store.add_outbox("vie", "je passe par terminal…", title=None, ntfy_id="hermes-session:cron_x")
+        assert await store.add_outbox("vie", "🎙️ Point du matin", ntfy_id="hermes-session:cron_x") is None
+        assert await store.replace_outbox("vie", "hermes-session:cron_x", "je passe par terminal…") is None  # unchanged
+        await store.set_outbox_audio(first["id"], "/tmp/old.mp3")
+        fixed = await store.replace_outbox("vie", "hermes-session:cron_x", "🎙️ Point du matin", "Podcast du matin")
+        assert fixed["id"] == first["id"] and fixed["text"] == "🎙️ Point du matin"
+        assert fixed["title"] == "Podcast du matin" and fixed["audio_path"] is None
+        assert await store.replace_outbox("vie", "hermes-session:other", "x") is None
+    asyncio.run(go())

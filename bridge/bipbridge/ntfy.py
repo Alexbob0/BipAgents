@@ -75,8 +75,10 @@ class OutboxService:
     def audio_file(self, item_id: str) -> str:
         return os.path.join(self.config.outbox.audio_dir, f"{item_id}.mp3")
 
-    async def ingest(self, agent: AgentConfig, message: Dict[str, Any], notify: bool = True) -> Optional[Dict[str, Any]]:
-        """Stores a message and pushes it (``notify=False``: stored silently, still in the Boîte)."""
+    async def ingest(self, agent: AgentConfig, message: Dict[str, Any], notify: bool = True,
+                     replace: bool = False) -> Optional[Dict[str, Any]]:
+        """Stores a message and pushes it (``notify=False``: stored silently, still in the Boîte).
+        ``replace``: a message already stored under the same id but with another text is updated and pushed again."""
         job_title, text = unwrap_cron(str(message.get("message") or ""))
         text, media_paths = extract_media(text)
         if not text and not media_paths:
@@ -94,6 +96,10 @@ class OutboxService:
             sent_at = iso(datetime.fromtimestamp(message["time"], tz=timezone.utc))
         item = await self.store.add_outbox(agent.name, text, title=title, ntfy_id=message.get("id"),
                                            sent_at=sent_at, session_id=session_id)
+        if item is None and replace and message.get("id"):
+            item = await self.store.replace_outbox(agent.name, str(message["id"]), text, title)
+            if item is not None:
+                log.info("outbox message replaced", extra=fields(agent=agent.name, id=item["id"], chars=len(text)))
         if item is None:
             return None  # duplicate (already ingested)
         log.info("outbox message stored", extra=fields(agent=agent.name, id=item["id"], chars=len(text)))

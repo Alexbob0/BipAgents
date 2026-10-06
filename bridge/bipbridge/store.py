@@ -116,6 +116,10 @@ class Store:
         rows = await self._run("SELECT notify FROM cron_jobs WHERE agent=? AND job=?", (agent, job))
         return bool(rows[0]["notify"]) if rows else True
 
+    async def cron_job_name(self, agent: str, job: str) -> Optional[str]:
+        rows = await self._run("SELECT name FROM cron_jobs WHERE agent=? AND job=?", (agent, job))
+        return rows[0]["name"] if rows and rows[0]["name"] else None
+
     async def cron_jobs(self, agent: Optional[str] = None) -> List[Dict[str, Any]]:
         sql, params = "SELECT * FROM cron_jobs", ()
         if agent:
@@ -176,6 +180,16 @@ class Store:
         if count == 0:
             return None
         return await self.get_outbox(item_id)
+
+    async def replace_outbox(self, agent: str, ntfy_id: str, text: str,
+                             title: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """New text for an already stored message (its audio is redone); ``None`` if unknown or unchanged."""
+        rows = await self._run("SELECT * FROM outbox WHERE agent=? AND ntfy_id=?", (agent, ntfy_id))
+        if not rows or rows[0]["text"] == text:
+            return None
+        await self._run("UPDATE outbox SET text=?, title=COALESCE(?, title), audio_path=NULL, created_at=? WHERE id=?",
+                        (text, title, iso(utcnow()), rows[0]["id"]))
+        return await self.get_outbox(rows[0]["id"])
 
     async def set_outbox_audio(self, item_id: str, path: str) -> None:
         await self._run("UPDATE outbox SET audio_path=? WHERE id=?", (path, item_id))

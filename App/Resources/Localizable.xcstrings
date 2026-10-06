@@ -5454,6 +5454,29 @@
         }
       }
     },
+    "Tâche planifiée" : {
+      "comment" : "Label above a scheduled task's report in an agent's Discussion",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scheduled task"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tarea programada"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geplante Aufgabe"
+          }
+        }
+      }
+    },
     "Tâche planifiée · %@" : {
       "localizations" : {
         "en" : {
