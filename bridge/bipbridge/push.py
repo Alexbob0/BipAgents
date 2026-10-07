@@ -26,6 +26,7 @@ TEXT_TTL = 24 * 3600.0
 REPLY_BODY = "Ta réponse est prête."
 QUESTION_BODY = "Une question pour toi"
 APPROVAL_BODY = "Approbation requise"
+SUBTASK_BODY = "Sous-tâche terminée"
 
 
 def _alert(title: str, preview: Optional[str], fallback: str) -> Dict[str, Any]:
@@ -83,11 +84,12 @@ def approval_payload(agent: str, title: str, run_id: str, request_id: Optional[s
 
 
 def reply_payload(agent: str, title: str, run_id: str, session_id: Optional[str] = None,
-                  preview: Optional[str] = None, reply_id: Optional[str] = None) -> Dict[str, Any]:
+                  preview: Optional[str] = None, reply_id: Optional[str] = None,
+                  fallback: str = REPLY_BODY) -> Dict[str, Any]:
     """A run finished while nobody followed it: tapping opens its conversation."""
     payload: Dict[str, Any] = {
         "aps": {
-            "alert": _alert(title, preview, REPLY_BODY),
+            "alert": _alert(title, preview, fallback),
             "thread-id": agent,
             "mutable-content": 1,  # the extension shows it as a message from the agent's Bip
             "category": "MESSAGE",
@@ -202,6 +204,14 @@ class PushService:
         preview = _preview(text) if self.config.push_previews else None
         payload = reply_payload(agent, self._title(agent), run_id, session_id, preview, self.remember(text))
         return await self._fanout(agent, payload, "alert", 10, collapse_id=run_id)
+
+    async def notify_subtask(self, agent: str, session_id: str, line: Optional[str] = None) -> int:
+        """A background sub-task finished and Hermes left its report in the conversation without waking the agent:
+        « 🎧 Podcast jeudi » when it made a file, else « Sous-tâche terminée ». Tapping opens the conversation."""
+        preview = line if self.config.push_previews and line else None
+        payload = reply_payload(agent, self._title(agent), f"session:{session_id}", session_id, preview,
+                                self.remember(line) if line else None, fallback=SUBTASK_BODY)
+        return await self._fanout(agent, payload, "alert", 10, collapse_id=f"subtask:{session_id}")
 
     async def notify_question(self, agent: str, run_id: str, request_id: Optional[str], question: Optional[str],
                               session_id: Optional[str] = None) -> int:

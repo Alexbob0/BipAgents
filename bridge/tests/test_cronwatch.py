@@ -92,6 +92,9 @@ class FakePush:
     async def notify_reply(self, agent, run_id, text, session_id=None):
         self.replies.append((agent, text, session_id))
 
+    async def notify_subtask(self, agent, session_id, line=None):
+        self.replies.append((agent, ("subtask", line), session_id))
+
 
 class FakeHub:
     def __init__(self):
@@ -221,3 +224,66 @@ def test_a_later_delivery_after_a_followed_reply_is_pushed():
     # A run still going: its replies are on screen.
     sub.finished = False
     assert hub.followed_recently("vie", "api_bot", "anything")
+
+
+REPORT = ("[ASYNC DELEGATION BATCH COMPLETE — deleg_1194136c]\n\nTask 1 (completed): mini podcast generated, "
+          "saved to /home/hermes/.hermes/media/podcast_jeudi0810.mp3 (58 s).")
+
+
+def test_report_helpers():
+    from bipbridge.cronwatch import report_line, subtask_report
+    assert subtask_report([{"role": "assistant", "content": "Relancé"}, {"role": "user", "content": REPORT}]) == REPORT
+    assert subtask_report([{"role": "user", "content": REPORT}, {"role": "assistant", "content": "Voilà"}]) is None
+    assert subtask_report([{"role": "user", "content": "Salut"}]) is None
+    assert report_line(REPORT) == "🎧 Podcast jeudi0810"
+    assert report_line("[ASYNC DELEGATION BATCH COMPLETE — x] see /srv/media/chart-sleep.png") == "🖼️ Chart sleep"
+    assert report_line("[ASYNC DELEGATION BATCH COMPLETE — x] done, nothing saved") is None
+
+
+def test_a_report_left_without_a_reply_is_pushed_once(config_dict):
+    cron, hermes, push, hub, presence, agent = bot_watcher(config_dict)
+    hermes.sessions = [{"id": "api_bot", "title": "Bot Chat", "message_count": 2}]
+    hermes.messages["api_bot"] = [{"role": "user", "content": "Un podcast ?"}, {"role": "assistant", "content": "Relancé : le sous-agent régénère le podcast."}]
+    asyncio.run(cron.poll(agent, now=NOW))
+    hub.followed.add(("wellness", "api_bot"))                   # the app followed « Relancé… »
+    hermes.sessions[0]["message_count"] = 3
+    hermes.messages["api_bot"].append({"role": "user", "content": REPORT})  # Hermes: stored, no wake turn
+    asyncio.run(cron.poll(agent, now=NOW))                      # first sight: maybe the agent wakes up
+    assert push.replies == []
+    asyncio.run(cron.poll(agent, now=NOW))                      # still last: nobody will reply
+    assert push.replies == [("wellness", ("subtask", "🎧 Podcast jeudi0810"), "api_bot")]
+    for _ in range(2):
+        asyncio.run(cron.poll(agent, now=NOW))
+    assert len(push.replies) == 1
+
+
+def test_a_report_the_agent_answers_is_not_pushed_twice(config_dict):
+    cron, hermes, push, hub, presence, agent = bot_watcher(config_dict)
+    hermes.sessions = [{"id": "api_bot", "title": "Bot Chat", "message_count": 2}]
+    hermes.messages["api_bot"] = [{"role": "user", "content": "Un podcast ?"}, {"role": "assistant", "content": "C'est lancé."}]
+    asyncio.run(cron.poll(agent, now=NOW))
+    hermes.sessions[0]["message_count"] = 3
+    hermes.messages["api_bot"].append({"role": "user", "content": REPORT})
+    asyncio.run(cron.poll(agent, now=NOW))
+    hermes.sessions[0]["message_count"] = 4                     # this Hermes wakes the agent: it delivers
+    hermes.messages["api_bot"].append({"role": "assistant", "content": "MEDIA:/m/podcast.mp3\nVoilà ton podcast !"})
+    for _ in range(3):
+        asyncio.run(cron.poll(agent, now=NOW))
+    assert push.replies == [("wellness", "MEDIA:/m/podcast.mp3\nVoilà ton podcast !", "api_bot")]
+
+
+def test_a_report_in_another_conversation_is_pushed_unless_on_screen(config_dict):
+    cron, hermes, push, hub, presence, agent = bot_watcher(config_dict)
+    hermes.sessions = [{"id": "api_x", "title": "Recherche", "message_count": 2},
+                       {"id": "api_y", "title": "Autre", "message_count": 2}]
+    hermes.messages = {"api_x": [{"role": "user", "content": "Cherche"}, {"role": "assistant", "content": "Lancé."}],
+                       "api_y": [{"role": "user", "content": "Cherche"}, {"role": "assistant", "content": "Lancé."}]}
+    asyncio.run(cron.poll(agent, now=NOW))                      # baseline, nothing fetched
+    assert hermes.message_calls == 0
+    for sid in ("api_x", "api_y"):
+        hermes.sessions[[s["id"] for s in hermes.sessions].index(sid)]["message_count"] = 3
+        hermes.messages[sid].append({"role": "user", "content": "[ASYNC DELEGATION BATCH COMPLETE — d] 3 sources found."})
+    presence.touch("wellness", "api_y")
+    for _ in range(3):
+        asyncio.run(cron.poll(agent, now=NOW))
+    assert push.replies == [("wellness", ("subtask", None), "api_x")]
