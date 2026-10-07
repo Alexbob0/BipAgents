@@ -14,6 +14,11 @@ pushes it like an ntfy message — so nothing a job says is missed in the app.
 Bot Chat (Hermes Bot Mode): a new final reply that the app did not follow (``RunHub.followed_recently``)
 and that nobody is looking at (``Presence``, refreshed by the open conversation) is pushed as « reply
 ready ». Its baseline is taken at the first poll, so a restart pushes nothing old.
+
+Sub-task reports, in any conversation: when a background ``delegate_task`` finishes in an api_server session,
+Hermes stores its report as a user turn and does not wake the agent, so no reply follows. A report still last
+one poll later is pushed (« 🎧 Podcast jeudi » for the file it names); an agent Hermes does wake replies
+within that minute, and its reply is pushed instead.
 """
 from __future__ import annotations
 
@@ -35,6 +40,9 @@ log = logging.getLogger("bipbridge.cronwatch")
 
 _CRON_ID = re.compile(r"^cron_(?P<job>.+?)_(?P<date>\d{8})_(?P<time>\d{6})$")
 SILENT = "[SILENT]"
+REPORT_PREFIXES = ("[ASYNC DELEGATION", "[DELEGATION", "[SUBAGENT")
+_REPORT_MEDIA = re.compile(r"/[\w./-]*/media/[\w./-]+\.(?:mp3|m4a|wav|ogg|opus|png|jpe?g|gif|webp|heic|mp4|m4v|mov)\b")
+_MEDIA_ICONS = {"mp3": "🎧", "m4a": "🎧", "wav": "🎧", "ogg": "🎧", "opus": "🎧", "mp4": "🎬", "m4v": "🎬", "mov": "🎬"}
 
 
 def is_cron_session(session: Dict[str, Any]) -> bool:
@@ -104,6 +112,24 @@ def final_reply(messages: List[Dict[str, Any]]) -> Optional[str]:
     return None
 
 
+def subtask_report(messages: List[Dict[str, Any]]) -> Optional[str]:
+    """The sub-task report Hermes left as the conversation's last message, if any."""
+    if not messages or str(messages[-1].get("role") or "").lower() != "user":
+        return None
+    text = message_text(messages[-1])
+    return text if text.startswith(REPORT_PREFIXES) else None
+
+
+def report_line(report: str) -> Optional[str]:
+    """« 🎧 Podcast jeudi0810 » for the first file a report names (as the app's previews), None without one."""
+    match = _REPORT_MEDIA.search(report)
+    if match is None:
+        return None
+    stem, _, ext = match.group(0).rsplit("/", 1)[-1].rpartition(".")
+    words = " ".join(stem.replace("_", " ").replace("-", " ").split())
+    return f"{_MEDIA_ICONS.get(ext.lower(), '🖼️')} {words[:1].upper()}{words[1:]}"
+
+
 class Presence:
     """Conversations open on the phone right now (the app polls their state while one is on screen)."""
 
@@ -157,6 +183,8 @@ class CronWatcher:
         self._bot_count: Dict[str, Any] = {}       # Bot Chat key -> message count at the last poll
         self._bot_candidate: Dict[str, str] = {}   # Bot Chat key -> unsent reply seen at the previous poll
         self._bot_last: Dict[str, str] = {}        # Bot Chat key -> last reply handled
+        self._report_candidate: Dict[str, str] = {}  # session key -> sub-task report last at the previous poll
+        self._report_last: Dict[str, str] = {}       # session key -> last report handled
         self.hermes = hermes
         self.outbox = outbox
         self.interval = interval_seconds
@@ -183,6 +211,9 @@ class CronWatcher:
             key = f"{agent.name}/{sid}"
             if sid and is_bot_chat(session):
                 await self._poll_bot_chat(agent, sid, session)
+                continue
+            if sid and not is_cron_session(session):
+                await self._poll_thread(agent, sid, session)
                 continue
             if not sid or key in self._done or not is_cron_session(session):
                 continue
@@ -219,10 +250,12 @@ class CronWatcher:
         count = session.get("message_count", session.get("messages"))
         count = count if isinstance(count, int) else None
         first = key not in self._bot_count
-        if not first and count is not None and count == self._bot_count[key] and key not in self._bot_candidate:
+        if not first and count is not None and count == self._bot_count[key] \
+                and key not in self._bot_candidate and key not in self._report_candidate:
             return  # nothing new since the last poll
         self._bot_count[key] = count
         messages = await self.hermes.session_messages(agent, sid)
+        await self._check_report(agent, sid, messages, first)
         reply = final_reply(messages)
         if first or reply is None:
             if reply is not None:
@@ -245,6 +278,43 @@ class CronWatcher:
         if self.push is not None and reply.strip() != SILENT:
             log.info("bot chat push", extra=fields(agent=agent.name, session=sid, chars=len(reply)))
             await self.push.notify_reply(agent.name, f"session:{sid}", reply, sid)
+
+    async def _poll_thread(self, agent: AgentConfig, sid: str, session: Dict[str, Any]) -> None:
+        """Another conversation: fetched only when its message count moves, for sub-task reports."""
+        key = f"{agent.name}/{sid}"
+        count = session.get("message_count", session.get("messages"))
+        if not isinstance(count, int):
+            return  # can't tell what changed without fetching every conversation each round
+        first = key not in self._bot_count
+        if first or (count == self._bot_count[key] and key not in self._report_candidate):
+            self._bot_count[key] = count  # first sight: what is there is old
+            return
+        self._bot_count[key] = count
+        await self._check_report(agent, sid, await self.hermes.session_messages(agent, sid), False)
+
+    async def _check_report(self, agent: AgentConfig, sid: str, messages: List[Dict[str, Any]], first: bool) -> None:
+        key = f"{agent.name}/{sid}"
+        report = subtask_report(messages)
+        if report is None:
+            self._report_candidate.pop(key, None)  # nothing, or the agent woke up and replied
+            return
+        if first:
+            self._report_last[key] = report
+            return
+        if report == self._report_last.get(key):
+            self._report_candidate.pop(key, None)
+            return
+        if self._report_candidate.get(key) != report:
+            self._report_candidate[key] = report  # still last at the next poll: nobody woke the agent
+            return
+        self._report_candidate.pop(key, None)
+        self._report_last[key] = report
+        if self.presence is not None and self.presence.viewing(agent.name, sid):
+            return  # on screen: the report card shows it
+        if self.push is not None:
+            line = report_line(report)
+            log.info("subtask report push", extra=fields(agent=agent.name, session=sid, media=line is not None))
+            await self.push.notify_subtask(agent.name, sid, line)
 
     async def _note_job(self, agent: AgentConfig, session_id: str, title: Optional[str]) -> bool:
         """Remembers the job (for the app's « Tâches planifiées » settings); False if it is muted."""
