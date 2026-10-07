@@ -22,6 +22,9 @@ def test_voice_language(voice, language):
     ("es", "1 día, 1 semana, 1.250 pasos, 3,5 km.", "un día, una semana, mil doscientos cincuenta pasos, tres coma cinco kilómetros."),
     ("de", "Um 23:15 Uhr, 18 °C.", "Um dreiundzwanzig Uhr fünfzehn, achtzehn Grad."),
     ("de", "420,50 € am 3. Oktober 2026.", "vierhundertzwanzig Euro fünfzig am dritten Oktober zweitausendsechsundzwanzig."),
+    ("en", "Due 2026-10-12.", "Due October twelfth, twenty twenty-six."),
+    ("es", "Para el 2026-10-12.", "Para el doce de octubre de dos mil veintiséis."),
+    ("de", "Bis 2026-10-12.", "Bis zwölften Oktober zweitausendsechsundzwanzig."),
     ("de", "1 Tag, 1 Woche, 1.250 Schritte, z. B. 1999", "ein Tag, eine Woche, eintausendzweihundertfünfzig Schritte, zum Beispiel neunzehnhundertneunundneunzig"),
 ])
 def test_prepare_for_synthesis(lang, text, spoken):

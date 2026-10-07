@@ -166,6 +166,29 @@ _ORDINAL_DE_DATE = re.compile(r"\b([1-9]|[12]\d|3[01])\. (?=" + "|".join(_MONTHS
 _YEAR_DE = re.compile(r"(?<![\w.,])(1[1-9]\d\d)(?![\w]|[.,]\d)")
 
 
+_MONTHS = {
+    "en": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+           "November", "December"],
+    "es": ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+           "noviembre", "diciembre"],
+    "de": _MONTHS_DE,
+}
+
+
+def _iso_date(match: re.Match, lang: str) -> str:
+    """"2026-10-12" -> "October twelfth, twenty twenty-six", "12 de octubre de 2026", "12. Oktober 2026" (the later
+    steps spell the Spanish and German numbers)."""
+    year, month, day = (int(g) for g in match.groups())
+    if not (1 <= month <= 12 and 1 <= day <= 31):
+        return match.group(0)
+    name = _MONTHS[lang][month - 1]
+    if lang == "en":
+        return f"{name} {spell(day, lang, 'ordinal')}, {spell(year, lang, 'year')}"
+    if lang == "es":
+        return f"{day} de {name} de {year}"
+    return f"{day}. {name} {spell(year, lang, 'year')}"
+
+
 def spell_numbers(text: str, lang: str) -> str:
     if lang not in LANGUAGES or not any(c.isdigit() for c in text):
         return text
@@ -175,7 +198,7 @@ def spell_numbers(text: str, lang: str) -> str:
     grouped = _GROUPED_COMMA if lang == "en" else _GROUPED_DOT
     text = grouped.sub(lambda m: re.sub(r"[,.]", "", m.group(1)), text)
     text = _CURRENCY_FIRST.sub(lambda m: f"{m.group(2)} {m.group(1)}", text)  # "$5" -> "5 $" -> "five dollars"
-    text = _ISO_DATE.sub(lambda m: f"{m.group(1)}/{m.group(2)}/{m.group(3)}", text)  # kept whole, not a range
+    text = _ISO_DATE.sub(lambda m: _iso_date(m, lang), text)  # "2026-10-12": a date, not a range
     text = fr.RANGE.sub(f" {_WORDS[lang]['to']} ", text)  # "42-46 %" -> "42 to 46 %", not one hyphenated word
     if lang == "en":
         text = _ORDINAL_EN.sub(lambda m: spell(int(m.group(1)), lang, "ordinal"), text)
