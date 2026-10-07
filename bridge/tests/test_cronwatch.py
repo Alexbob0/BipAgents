@@ -97,7 +97,7 @@ class FakeHub:
     def __init__(self):
         self.followed = set()
 
-    def followed_recently(self, agent, session_id, within=600.0):
+    def followed_recently(self, agent, session_id, reply=None, within=600.0):
         return (agent, session_id) in self.followed
 
 
@@ -199,3 +199,25 @@ def test_a_comment_before_a_running_tool_is_not_the_final_reply(config_dict):
     for _ in range(3):  # the synthesis takes minutes: the comment stays unchanged, it is not taken
         asyncio.run(cron.poll(agent, now=datetime(2026, 10, 6, 8, 0)))
     assert outbox.ingested == []
+
+
+def test_a_later_delivery_after_a_followed_reply_is_pushed():
+    import time
+    from bipbridge.config import AgentConfig
+    from bipbridge.runs import RunHub, RunSubscription
+
+    agent = AgentConfig(name="vie", display_name="Vie", hermes_url="http://h", hermes_key="k" * 40)
+    hub = RunHub(hermes=None, push=None)
+    sub = RunSubscription(agent, "run_1")
+    sub.session_id, sub.finished, sub.finished_at = "api_bot", True, time.time() - 120
+    sub.output = "C'est lancé : un sous-agent prépare le podcast, je te le livre dès qu'il a fini."
+    hub._subs[sub.key] = sub
+    # The reply the app followed live: no push.
+    assert hub.followed_recently("vie", "api_bot", "C'est lancé : un sous-agent prépare le podcast, je te le livre dès qu'il a fini.")
+    # Two minutes later Vie delivers the sub-task's result on its own: a new reply, pushed.
+    assert not hub.followed_recently("vie", "api_bot", "Voilà ton podcast ! MEDIA:/home/hermes/.hermes/media/podcast.mp3")
+    # Another conversation is never concerned.
+    assert not hub.followed_recently("vie", "api_other", "C'est lancé")
+    # A run still going: its replies are on screen.
+    sub.finished = False
+    assert hub.followed_recently("vie", "api_bot", "anything")
