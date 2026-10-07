@@ -6,8 +6,8 @@ Speaks the Kyutai-style API the bridge uses (``bridge/bipbridge/tts.py``):
 - ``POST /v1/audio/speech``  ``{"input", "voice", "response_format": "wav"|"mp3"}`` -> the whole file
 - ``POST /v1/audio/stream``  ``{"input", "voice"}`` -> raw PCM16 mono 24 kHz, chunk by chunk (~80 ms each)
 
-``voice`` is ``loutre`` (French) or ``<code>/loutre`` (``en``, ``es``, ``de``): the voice state
-``<voices>/<french|english|spanish|german>/loutre.safetensors`` with that language's model. Unknown voice: 404.
+``voice`` is ``colibri`` (French) or ``<code>/colibri`` (``en``, ``es``, ``de``): the voice state
+``<voices>/<french|english|spanish|german>/colibri.safetensors`` with that language's model. Unknown voice: 404.
 
 Phrasing: the model is trained on single sentences and, left alone, packs several into one generation (rushed,
 with erratic pauses). Here each sentence is generated on its own (very short ones join their neighbour), the
@@ -216,7 +216,7 @@ class Engine:
                 for code in self.models}
 
     def resolve(self, voice: str) -> Tuple[object, object]:
-        """``"en/loutre"`` -> (English model, loutre's English voice state)."""
+        """``"en/colibri"`` -> (English model, colibri's English voice state)."""
         code, sep, name = voice.partition("/")
         if not sep:
             code, name = "fr", voice

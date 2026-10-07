@@ -19,12 +19,14 @@ struct AgentVoiceOption: Identifiable, Hashable {
 
 enum AgentVoices {
     static let bips: [AgentVoiceOption] = [
-        AgentVoiceOption(id: "pocket:loutre", name: String(localized: "Loutre"), character: String(localized: "Joueuse et complice, chaude et ronde"), sample: "voice-loutre"),
+        AgentVoiceOption(id: "pocket:mousse", name: "Mousse", character: String(localized: "Ronde et légère, chaleureuse sans en faire trop"), sample: "voice-mousse"),
         AgentVoiceOption(id: "pocket:colibri", name: String(localized: "Colibri"), character: String(localized: "Vive et enjouée, claire et chantante"), sample: "voice-colibri"),
-        AgentVoiceOption(id: "pocket:lutin", name: String(localized: "Lutin"), character: String(localized: "Farceur et vif, rieur et expressif"), sample: "voice-lutin"),
-        AgentVoiceOption(id: "pocket:chat2", name: String(localized: "Chat"), character: String(localized: "Malicieux, ronronnant et amusé"), sample: "voice-chat2"),
+        AgentVoiceOption(id: "pocket:lumen", name: "Lumen", character: String(localized: "Claire et très articulée, idéale pour les infos"), sample: "voice-lumen"),
+        AgentVoiceOption(id: "pocket:galet", name: "Galet", character: String(localized: "Posée et nette, un guide calme"), sample: "voice-galet"),
         AgentVoiceOption(id: "pocket:ours", name: String(localized: "Ours"), character: String(localized: "Calme et rassurant, grave et doux"), sample: "voice-ours"),
     ]
+    /// Bip voices that were replaced (the first series): agents that had picked one go back to their category's.
+    static let retired: Set<String> = ["pocket:loutre", "pocket:chat2", "pocket:lutin"]
     /// Kyutai 1.6B's human voice, the one of the morning podcast.
     static let classic = AgentVoiceOption(id: "5476", name: String(localized: "Voix classique"), character: String(localized: "Voix humaine posée, celle du podcast"), sample: nil)
 
@@ -37,7 +39,7 @@ enum AgentVoices {
     /// Only the Bips speak every language; Kyutai's human voice is French.
     static func options(in language: AgentLanguage) -> [AgentVoiceOption] { language == .french ? all : bips + [iphone] }
 
-    /// What the bridge receives: `pocket:loutre` in French, `pocket:en/loutre` in English…
+    /// What the bridge receives: `pocket:galet` in French, `pocket:en/galet` in English…
     static func spoken(_ id: String, in language: AgentLanguage) -> String {
         guard language != .french, id.hasPrefix("pocket:") else { return id }
         return "pocket:\(language.rawValue)/" + id.dropFirst("pocket:".count)
@@ -52,10 +54,10 @@ extension AgentCategory {
     /// The Bip voice an agent of this category gets until one is picked.
     var defaultVoice: String {
         switch self {
-        case .wellness: "pocket:loutre"
+        case .wellness: "pocket:mousse"
         case .daily: "pocket:colibri"
-        case .creative, .learning: "pocket:lutin"
-        case .work, .tech: "pocket:chat2"
+        case .creative, .learning: "pocket:lumen"
+        case .work, .tech: "pocket:galet"
         case .finance, .home: "pocket:ours"
         }
     }

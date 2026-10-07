@@ -1,7 +1,7 @@
 """Time to first audio and speed of a running Pocket server (standard library only).
 
-    python bench.py                       # http://127.0.0.1:8098, voice loutre
-    python bench.py --voice en/loutre --text "Hi there! Three meetings today."
+    python bench.py                       # http://127.0.0.1:8098, voice colibri
+    python bench.py --voice en/colibri --text "Hi there! Three meetings today."
 """
 import argparse
 import http.client
@@ -15,7 +15,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8098)
-    parser.add_argument("--voice", default="loutre")
+    parser.add_argument("--voice", default="colibri")
     parser.add_argument("--text", default=SENTENCE)
     parser.add_argument("--runs", type=int, default=3)
     args = parser.parse_args()

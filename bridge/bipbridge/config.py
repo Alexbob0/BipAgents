@@ -170,7 +170,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
     if not kyutai_url and not pocket_url:
         raise ConfigError("no TTS engine: set [pocket] url, or [kyutai] url")
     default_voice = str(kyutai.get("default_voice", "5476")) if kyutai_url \
-        else str(pocket.get("default_voice", "pocket:loutre"))
+        else str(pocket.get("default_voice", "pocket:colibri"))
     limits_t = data.get("limits", {}) or {}
 
     apns = ApnsConfig(

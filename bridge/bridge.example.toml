@@ -20,12 +20,12 @@ default_voice = "5476"      # Kyutai alias (default, 5476, 4193, 5207) or path c
 timeout_seconds = 120
 
 # Kyutai Pocket TTS (CPU, first sound ≈ 50 ms) for the Bips' voices: the repo's pocket/pocket_server.py server,
-# voices in voices/. "pocket:<name>" (pocket:loutre…) speaks French, "pocket:en/<name>", "pocket:es/<name>",
+# voices in voices/. "pocket:<name>" (pocket:colibri…) speaks French, "pocket:en/<name>", "pocket:es/<name>",
 # "pocket:de/<name>" the other languages; any other voice goes to Kyutai. In French, Pocket missing or down →
 # default Kyutai voice (if Kyutai is enabled). Remove the section to disable it.
 [pocket]
 url = "http://127.0.0.1:8098"
-default_voice = "pocket:loutre"   # default voice when Kyutai is disabled
+default_voice = "pocket:colibri"   # default voice when Kyutai is disabled
 
 [ntfy]
 url = "http://127.0.0.1:8645"

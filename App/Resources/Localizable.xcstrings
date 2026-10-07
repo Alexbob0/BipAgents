@@ -1335,28 +1335,6 @@
         }
       }
     },
-    "Chat" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cat"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gato"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Katze"
-          }
-        }
-      }
-    },
     "Chaudière" : {
       "localizations" : {
         "en" : {
@@ -1375,6 +1353,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heizkessel"
+          }
+        }
+      }
+    },
+    "Claire et très articulée, idéale pour les infos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear and crisp, made for information"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clara y muy articulada, ideal para informar"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klar und deutlich, ideal für Infos"
           }
         }
       }
@@ -2215,28 +2215,6 @@
         }
       }
     },
-    "Farceur et vif, rieur et expressif" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mischievous and quick, giggly and expressive"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bromista y vivaz, risueño y expresivo"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Frech und flink, fröhlich und ausdrucksstark"
-          }
-        }
-      }
-    },
     "Fermer" : {
       "localizations" : {
         "en" : {
@@ -2809,28 +2787,6 @@
         }
       }
     },
-    "Joueuse et complice, chaude et ronde" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Playful and friendly, warm and round"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Juguetona y cómplice, cálida y redonda"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verspielt und vertraut, warm und rund"
-          }
-        }
-      }
-    },
     "J’ai besoin de ton accord" : {
       "localizations" : {
         "en" : {
@@ -3227,50 +3183,6 @@
         }
       }
     },
-    "Loutre" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Otter"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nutria"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Otter"
-          }
-        }
-      }
-    },
-    "Lutin" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pixie"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Duende"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kobold"
-          }
-        }
-      }
-    },
     "L’agent est occupé, réessaie dans un instant." : {
       "localizations" : {
         "en" : {
@@ -3377,28 +3289,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zuhause"
-          }
-        }
-      }
-    },
-    "Malicieux, ronronnant et amusé" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sly, purring, and amused"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pícaro, ronroneante y divertido"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schelmisch, schnurrend und amüsiert"
           }
         }
       }
@@ -4154,6 +4044,28 @@
         }
       }
     },
+    "Posée et nette, un guide calme" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Steady and clear, a calm guide"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serena y nítida, una guía tranquila"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruhig und klar, ein gelassener Guide"
+          }
+        }
+      }
+    },
     "Pour envoyer des fichiers, configure le bridge de cet agent dans les réglages." : {
       "localizations" : {
         "en" : {
@@ -4590,6 +4502,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nichts Neues"
+          }
+        }
+      }
+    },
+    "Ronde et légère, chaleureuse sans en faire trop" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Round and light, warm without overdoing it"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redonda y ligera, cálida sin pasarse"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rund und leicht, warm ohne Übertreibung"
           }
         }
       }

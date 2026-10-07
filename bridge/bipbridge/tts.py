@@ -147,7 +147,7 @@ POCKET_PREFIX = "pocket:"
 
 
 def voice_language(voice: str) -> str:
-    """``pocket:en/loutre`` -> ``en``; French for ``pocket:loutre`` and Kyutai voices."""
+    """``pocket:en/colibri`` -> ``en``; French for ``pocket:colibri`` and Kyutai voices."""
     if voice.startswith(POCKET_PREFIX):
         lang, sep, _ = voice[len(POCKET_PREFIX):].partition("/")
         if sep and lang in speech_intl.LANGUAGES:
@@ -168,7 +168,7 @@ class Engine:
 class TtsService:
     """Kyutai TTS 1.6B (GPU) plus, optionally, Kyutai Pocket TTS (CPU) for the Bips' voices.
 
-    A voice named ``pocket:<name>`` (e.g. ``pocket:loutre``) goes to Pocket in French, ``pocket:<lang>/<name>``
+    A voice named ``pocket:<name>`` (e.g. ``pocket:colibri``) goes to Pocket in French, ``pocket:<lang>/<name>``
     (``en``, ``es``, ``de``) to Pocket's model for that language; any other voice to Kyutai. Each engine has its
     own FIFO queue (they run on different hardware). When Pocket is not configured, down or failing before its
     first audio, a French request falls back to Kyutai's default voice (that audio is not cached); another

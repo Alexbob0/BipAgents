@@ -169,6 +169,13 @@ final class AgentStore {
             UserDefaults.standard.set(true, forKey: migrated)
             save()
         }
+        // The first Bip voices (Loutre, Chat, Lutin) were replaced: back to the category's voice.
+        if agents.contains(where: { $0.config.voice.map(AgentVoices.retired.contains) == true }) {
+            for index in agents.indices where agents[index].config.voice.map(AgentVoices.retired.contains) == true {
+                agents[index].config.voice = nil
+            }
+            save()
+        }
     }
 
     private func save() {

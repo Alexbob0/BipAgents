@@ -45,12 +45,12 @@ access must be requested) is only needed to **create** new voices, see [`voices/
 
 ## API (Kyutai's, used by the bridge)
 
-- `GET /health` → `{"status": "ok", "languages": ["fr", "en", …], "voices": {"fr": ["loutre", …], …}}`
-- `POST /v1/audio/speech` `{"input": "…", "voice": "loutre", "response_format": "wav" | "mp3"}` → the whole file
-- `POST /v1/audio/stream` `{"input": "…", "voice": "en/loutre"}` → raw PCM16 mono 24 kHz, chunk by chunk;
+- `GET /health` → `{"status": "ok", "languages": ["fr", "en", …], "voices": {"fr": ["colibri", …], …}}`
+- `POST /v1/audio/speech` `{"input": "…", "voice": "colibri", "response_format": "wav" | "mp3"}` → the whole file
+- `POST /v1/audio/stream` `{"input": "…", "voice": "en/colibri"}` → raw PCM16 mono 24 kHz, chunk by chunk;
   generation stops if the client disconnects (voice interruption, cancelled reply)
 
-`voice`: `loutre` (French) or `<code>/loutre` with `en`, `es`, `de`. Unknown voice → 404; the bridge then returns
+`voice`: `colibri` (French) or `<code>/colibri` with `en`, `es`, `de`. Unknown voice → 404; the bridge then returns
 an error and the app reads the text with the iPhone's voice. The text arrives already prepared by the bridge (numbers
 spelled out, symbols, abbreviations).
 

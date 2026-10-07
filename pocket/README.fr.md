@@ -45,12 +45,12 @@ Hugging Face à demander) ne sert qu'à **fabriquer** de nouvelles voix, cf. [`v
 
 ## API (celle de Kyutai, utilisée par le bridge)
 
-- `GET /health` → `{"status": "ok", "languages": ["fr", "en", …], "voices": {"fr": ["loutre", …], …}}`
-- `POST /v1/audio/speech` `{"input": "…", "voice": "loutre", "response_format": "wav" | "mp3"}` → le fichier entier
-- `POST /v1/audio/stream` `{"input": "…", "voice": "en/loutre"}` → PCM16 mono 24 kHz brut, morceau par morceau ;
+- `GET /health` → `{"status": "ok", "languages": ["fr", "en", …], "voices": {"fr": ["colibri", …], …}}`
+- `POST /v1/audio/speech` `{"input": "…", "voice": "colibri", "response_format": "wav" | "mp3"}` → le fichier entier
+- `POST /v1/audio/stream` `{"input": "…", "voice": "en/colibri"}` → PCM16 mono 24 kHz brut, morceau par morceau ;
   la génération s'arrête si le client coupe (interruption à la voix, réponse annulée)
 
-`voice` : `loutre` (français) ou `<code>/loutre` avec `en`, `es`, `de`. Voix inconnue → 404 ; le bridge répond alors
+`voice` : `colibri` (français) ou `<code>/colibri` avec `en`, `es`, `de`. Voix inconnue → 404 ; le bridge répond alors
 une erreur et l'app lit le texte avec la voix de l'iPhone. Le texte arrive déjà préparé par le bridge (nombres en
 lettres, symboles, abréviations).
 
