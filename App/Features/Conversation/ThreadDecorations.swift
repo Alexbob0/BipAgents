@@ -133,8 +133,7 @@ struct MediaRow: View {
             if let file, isAudio {
                 VoiceNoteControl(url: file, duration: duration, waveform: VoiceReplyView.placeholderWave, player: player,
                                  foreground: palette.deep, accent: palette.deep,
-                                 info: info ?? NowPlayingInfo(title: NowPlayingInfo.title(fromFileName: name)))
-                    .voiceNoteChrome(palette.tint, long: duration >= 60)
+                                 info: info ?? NowPlayingInfo(title: NowPlayingInfo.title(fromFileName: name)), asCard: true)
             } else if let image {
                 Button { viewing = ViewedPhoto(image: image) } label: {
                     Image(uiImage: image)
@@ -164,8 +163,8 @@ struct MediaRow: View {
                 }
                 .buttonStyle(.plain)
             }
-            // A long audio's card opens the full player, which has its own Share button.
-            if let shareURL, !(isAudio && duration >= 60) { ShareFileButton(url: shareURL, palette: palette) }
+            // An audio card opens the full player, which has its own Share button.
+            if let shareURL, !isAudio { ShareFileButton(url: shareURL, palette: palette) }
         }
         .padding(.leading, 40)
         .task { await fetch() }

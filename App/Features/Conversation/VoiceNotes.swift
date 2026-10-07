@@ -49,8 +49,12 @@ final class VoiceNotePlayer {
     /// Audio cards currently on screen: the mini player shows only when the playing one is scrolled away.
     private(set) var visibleCards: Set<URL> = []
     var loadedCardOnScreen: Bool { loadedURL.map(visibleCards.contains) ?? false }
+    /// Every audio shown as a card (an agent's file, even under a minute): the mini player follows them.
+    private(set) var cards: Set<URL> = []
+    var loadedIsCard: Bool { loadedURL.map(cards.contains) ?? false }
 
     func setCard(_ url: URL, visible: Bool) {
+        cards.insert(url)
         if visible { visibleCards.insert(url) } else { visibleCards.remove(url) }
     }
 
@@ -243,10 +247,12 @@ struct VoiceNoteControl: View {
     var foreground: Color
     var accent: Color
     var info: NowPlayingInfo? = nil
+    /// A file an agent sent (a podcast, a story): the full card whatever its length, not a voice-note bubble.
+    var asCard = false
 
     private var isLoaded: Bool { player.loadedURL == url }
     private var isPlaying: Bool { player.playingURL == url }
-    private var isLong: Bool { duration >= 60 }
+    private var isLong: Bool { asCard || duration >= 60 }
 
     var body: some View {
         if isLong { longPlayer } else { compact }
@@ -360,7 +366,7 @@ struct MiniPlayer: View {
     var player: VoiceNotePlayer = .shared
     @State private var showsPlayer = false
 
-    private var isShown: Bool { player.loadedURL != nil && player.duration >= 60 && !player.loadedCardOnScreen }
+    private var isShown: Bool { player.loadedURL != nil && (player.duration >= 60 || player.loadedIsCard) && !player.loadedCardOnScreen }
 
     var body: some View {
         VStack {
