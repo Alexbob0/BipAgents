@@ -2,7 +2,7 @@ import Foundation
 import HermesKit
 
 /// A proactive message an agent sent on its own (cron check-in…), stored by the bridge's outbox.
-struct OutboxItem: Identifiable, Hashable, Sendable {
+struct OutboxItem: Identifiable, Hashable, Sendable, Codable {
     var id: String
     var agent: String
     var title: String?

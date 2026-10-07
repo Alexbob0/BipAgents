@@ -189,6 +189,11 @@ final class ConversationModel {
 
     func load() async {
         guard let client, let sessionID else { return }
+        if items.isEmpty, !store.isDemo, let cached = ThreadCache.load(sessionID: sessionID) {
+            // Shown at once from the phone's copy; the call below only updates what changed.
+            title = cached.title
+            show(cached.messages, outbox: cached.outbox, botChat: cached.botChat, sessionID: sessionID)
+        }
         for attempt in 1...3 {
             do {
                 try await loadOnce(client: client, sessionID: sessionID)
@@ -210,12 +215,16 @@ final class ConversationModel {
         async let outbox = scheduledMessages()
         let current = try await session
         title = current.title
-        let thread = Self.items(from: try await history)
-        items = AgentStore.isBotChat(current) ? Self.merging(await outbox, into: thread) : thread
+        let messages = try await history
+        let botChat = AgentStore.isBotChat(current)
+        let scheduled = botChat ? await outbox : []
+        if messages != shownMessages || scheduled != shownOutbox {
+            show(messages, outbox: scheduled, botChat: botChat, sessionID: sessionID)
+            ThreadCache.save(ThreadCache.Entry(title: current.title, messages: messages, outbox: scheduled, botChat: botChat),
+                             sessionID: sessionID)
+        }
         await showPendingApprovals()
         store.noteSession(current, for: agent, preview: latestText)
-        restoreVoiceNotes(sessionID: sessionID)
-        restoreAttachments(sessionID: sessionID)
     }
 
     /// While a run is on screen, Hermes' own view of it: an approval it waits for that no card shows (the bridge
@@ -287,6 +296,19 @@ final class ConversationModel {
             try file.write(from: buffer)
         }
         return url
+    }
+
+    /// What the thread currently shows, as received: an identical reload changes nothing on screen.
+    @ObservationIgnored private var shownMessages: [HermesMessage]?
+    @ObservationIgnored private var shownOutbox: [OutboxItem] = []
+
+    private func show(_ messages: [HermesMessage], outbox: [OutboxItem], botChat: Bool, sessionID: String) {
+        let thread = Self.items(from: messages)
+        items = botChat ? Self.merging(outbox, into: thread) : thread
+        shownMessages = messages
+        shownOutbox = outbox
+        restoreVoiceNotes(sessionID: sessionID)
+        restoreAttachments(sessionID: sessionID)
     }
 
     /// The agent's recent scheduled-task reports and proactive messages (last 30 days), from its bridge.
@@ -1170,5 +1192,35 @@ enum ActiveRuns {
             result[entry.key] = ["run": entry.value, "at": kept ?? now]
         }
         UserDefaults.standard.set(stored, forKey: key)
+    }
+}
+
+/// The phone's copy of each conversation (last 300 messages), so a thread opens at once and can be read offline.
+enum ThreadCache {
+    struct Entry: Codable {
+        var title: String?
+        var messages: [HermesMessage]
+        var outbox: [OutboxItem]
+        var botChat: Bool
+    }
+
+    private static var folder: URL { URL.cachesDirectory.appending(path: "threads", directoryHint: .isDirectory) }
+
+    private static func file(_ sessionID: String) -> URL {
+        let key = SHA256.hash(data: Data(sessionID.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+        return folder.appending(path: "\(key).json")
+    }
+
+    static func load(sessionID: String) -> Entry? {
+        guard let data = try? Data(contentsOf: file(sessionID)) else { return nil }
+        return try? JSONDecoder().decode(Entry.self, from: data)
+    }
+
+    static func save(_ entry: Entry, sessionID: String) {
+        var entry = entry
+        entry.messages = Array(entry.messages.suffix(300))
+        guard let data = try? JSONEncoder().encode(entry) else { return }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? data.write(to: file(sessionID), options: .atomic)
     }
 }
