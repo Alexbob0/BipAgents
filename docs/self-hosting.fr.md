@@ -100,7 +100,7 @@ enabled = false                 # pas de Kyutai 1.6B : les Bips font tout
 
 [pocket]
 url = "http://127.0.0.1:8098"
-default_voice = "pocket:loutre"
+default_voice = "pocket:colibri"
 
 [agents.wellness]               # une section par agent
 display_name = "Wellness"

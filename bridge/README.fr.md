@@ -127,7 +127,7 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 | `bridge_key` | — (obligatoire) | clé Bearer unique de l'app (≥ 32 car., `python -m bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | écoute locale |
 | `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | TTS Kyutai 1.6B (GPU) ; `enabled = false` : Pocket seul |
-| `[pocket] url`, `default_voice` | absent (désactivé), `pocket:loutre` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` sert quand Kyutai est désactivé |
+| `[pocket] url`, `default_voice` | absent (désactivé), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` sert quand Kyutai est désactivé |
 | `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push désactivé si vide | |
 | `[push] previews` | `false` | `false` : corps de notification générique, le texte transite par le tailnet |
@@ -184,14 +184,14 @@ est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si l
 
 ### Voix et moteurs
 `voice` (corps des routes TTS, ou `voice` d'un agent dans la config) : une voix Kyutai (`5476`, `4193`, `5207`, chemin
-`cml-tts/fr/…`) passe par Kyutai 1.6B (GPU) ; une voix `pocket:<nom>` (`pocket:loutre`, `pocket:chat2`, `pocket:lutin`,
-`pocket:ours`, `pocket:colibri`, cf. `voices/french/`) passe par Kyutai Pocket TTS (CPU, section `[pocket]`), avec sa
+`cml-tts/fr/…`) passe par Kyutai 1.6B (GPU) ; une voix `pocket:<nom>` (`pocket:colibri`, `pocket:mousse`, `pocket:lumen`,
+`pocket:galet`, `pocket:ours`, cf. `voices/french/`) passe par Kyutai Pocket TTS (CPU, section `[pocket]`), avec sa
 propre file d'attente. Si Pocket n'est pas configuré, est injoignable ou échoue avant le premier son, la requête
 retombe sur la voix Kyutai par défaut (cet audio-là n'est pas mis en cache). `/health` indique `"pocket": true|false|null`.
 
-Autres langues : `pocket:<langue>/<nom>` (`pocket:en/loutre`, `pocket:es/ours`, `pocket:de/lutin`, cf.
+Autres langues : `pocket:<langue>/<nom>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, cf.
 `voices/english|spanish|german/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =
-`en/loutre`. Le texte est préparé dans la langue de la voix (`bipbridge/speech_intl.py`, nombres via `num2words` :
+`en/colibri`. Le texte est préparé dans la langue de la voix (`bipbridge/speech_intl.py`, nombres via `num2words` :
 « $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Hors français, un échec de Pocket ne
 retombe pas sur Kyutai (voix française) : le bridge répond 502/503 et l'app lit le texte avec la voix de l'iPhone.
 
