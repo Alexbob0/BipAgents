@@ -135,6 +135,20 @@ private struct ConversationContent: View {
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         })
         .safeAreaInset(edge: .top, spacing: 0) { MiniPlayer() }
+        .overlay(alignment: .top) {
+            if model.isUpdating {
+                Label("Mise à jour…", systemImage: "arrow.triangle.2.circlepath")
+                    .font(Theme.body(12.5, weight: .heavy))
+                    .foregroundStyle(Theme.ink2)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Theme.card, in: .capsule)
+                    .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: model.isUpdating)
         .safeAreaInset(edge: .bottom) {
             Composer(
                 text: $draft,

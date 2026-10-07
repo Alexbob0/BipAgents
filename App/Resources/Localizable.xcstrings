@@ -3470,6 +3470,28 @@
         }
       }
     },
+    "Mise à jour…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updating…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualizando…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere…"
+          }
+        }
+      }
+    },
     "Mmmh…" : {
       "localizations" : {
         "en" : {

@@ -187,8 +187,21 @@ final class ConversationModel {
 
     // MARK: Loading
 
+    /// « Mise à jour… »: a thread shown from the phone's copy (or already on screen) is being fetched again, and it
+    /// takes long enough to notice (Tailscale waking up).
+    private(set) var isUpdating = false
+
     func load() async {
         guard let client, let sessionID else { return }
+        let indicator = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled, let self, !self.items.isEmpty else { return }
+            self.isUpdating = true
+        }
+        defer {
+            indicator.cancel()
+            isUpdating = false
+        }
         if items.isEmpty, !store.isDemo, let cached = ThreadCache.load(sessionID: sessionID) {
             // Shown at once from the phone's copy; the call below only updates what changed.
             title = cached.title
