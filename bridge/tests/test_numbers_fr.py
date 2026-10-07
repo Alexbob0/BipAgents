@@ -33,7 +33,7 @@ def test_spell_ordinal(n, words):
     ("Ta VFC est de 45 ms.", "Ta VFC est de quarante-cinq millisecondes."),
     ("Appelle le 06 12 34.", "Appelle le zéro six douze trente-quatre."),
     ("Version 3.3.0 sans chiffres lus.", "Version 3.3.0 sans chiffres lus."),
-    ("Entre 10-12 personnes.", "Entre dix-douze personnes."),
+    ("Entre 10-12 personnes.", "Entre dix à douze personnes."),
     ("Rien à lire ici.", "Rien à lire ici."),
 ])
 def test_spell_numbers(text, spoken):
@@ -78,4 +78,17 @@ def test_lexicon(text, spoken):
     ("Rien d'anglais dans « il court » ni « livret ».", "Rien d'anglais dans « il court » ni « livret »."),
 ])
 def test_tilde_and_english_words(text, spoken):
+    assert prepare_for_synthesis(text) == spoken
+
+
+@pytest.mark.parametrize("text, spoken", [
+    ("Entre 42-46% des cas.", "Entre quarante-deux à quarante-six pour cent des cas."),
+    ("Entre 42–46 % des cas.", "Entre quarante-deux à quarante-six pour cent des cas."),
+    ("De 9-12h", "De neuf à douze heures"),
+    ("le 12-10-2026", "le douze octobre deux mille vingt-six"),
+    ("le 2026-10-12", "le douze octobre deux mille vingt-six"),
+    ("Il fait -5 °C", "Il fait moins cinq degrés"),
+])
+def test_ranges_and_dashed_dates(text, spoken):
+    # « 42-46 % » used to become one hyphenated word the voice repeated in a loop
     assert prepare_for_synthesis(text) == spoken

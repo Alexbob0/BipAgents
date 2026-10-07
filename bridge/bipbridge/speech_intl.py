@@ -68,9 +68,9 @@ _ONE = {
 }
 _CURRENCIES = {"euros", "dollars", "pounds", "dólares", "Euro", "Dollar"}
 _WORDS = {
-    "en": {"point": "point", "minus": "minus", "or": "or"},
-    "es": {"point": "coma", "minus": "menos", "or": "o"},
-    "de": {"point": "Komma", "minus": "minus", "or": "oder"},
+    "en": {"point": "point", "minus": "minus", "or": "or", "to": "to"},
+    "es": {"point": "coma", "minus": "menos", "or": "o", "to": "a"},
+    "de": {"point": "Komma", "minus": "minus", "or": "oder", "to": "bis"},
 }
 _LEXICON_SOURCE: Dict[str, List[Tuple[str, str]]] = {
     "en": [(r"\s*(?:→|->|⟶|⇒|=>)\s*", " to "), (r"\s+&\s+", " and "), (r"\s+\+\s+", " plus "),
@@ -149,6 +149,7 @@ def _time(lang: str) -> Callable[[re.Match], str]:
     return replace
 
 
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _TIME_COLON = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b")
 _TIME_COLON_DE = re.compile(r"\b([01]?\d|2[0-3])[:.]([0-5]\d)(?: ?Uhr\b)?")
 _GROUPED_SPACE = re.compile(r"(?<![\d,.])(\d{1,3}(?:[   ]\d{3})+)(?![\d]|[,.]\d)")
@@ -174,6 +175,8 @@ def spell_numbers(text: str, lang: str) -> str:
     grouped = _GROUPED_COMMA if lang == "en" else _GROUPED_DOT
     text = grouped.sub(lambda m: re.sub(r"[,.]", "", m.group(1)), text)
     text = _CURRENCY_FIRST.sub(lambda m: f"{m.group(2)} {m.group(1)}", text)  # "$5" -> "5 $" -> "five dollars"
+    text = _ISO_DATE.sub(lambda m: f"{m.group(1)}/{m.group(2)}/{m.group(3)}", text)  # kept whole, not a range
+    text = fr.RANGE.sub(f" {_WORDS[lang]['to']} ", text)  # "42-46 %" -> "42 to 46 %", not one hyphenated word
     if lang == "en":
         text = _ORDINAL_EN.sub(lambda m: spell(int(m.group(1)), lang, "ordinal"), text)
         text = _YEAR_CONTEXT_EN.sub(lambda m: f"{m.group(1)} {spell(int(m.group(2)), lang, 'year')}", text)

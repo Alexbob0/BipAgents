@@ -159,6 +159,12 @@ _MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "ao
 _FRACTIONS = {(1, 2): "un demi", (1, 3): "un tiers", (2, 3): "deux tiers", (1, 4): "un quart", (3, 4): "trois quarts"}
 _PER = re.compile(r"\b(\d+) ?([hj]) ?/ ?(\d+)\b")
 _DATE_FULL = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})\b")
+# Dates with dashes (« 12-10-2026 », ISO « 2026-10-12 ») and ranges (« 42-46 % », « 9-12h », « 2025–2026 »):
+# a range left as « quarante-deux-quarante-six » is one long hyphenated word the voice stumbles on (it repeated
+# « quarante-deux » in a loop), so the dash between two numbers is read « à ».
+_DATE_DASHED = re.compile(r"\b(\d{1,2})-(\d{1,2})-(\d{4})\b")
+_DATE_ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+RANGE = re.compile(r"(?<=\d)\s?[-–—]\s?(?=\d)")
 _DATE_SHORT = re.compile(r"\b(0[1-9]|[12]\d|3[01])/(0[1-9]|1[0-2])\b")
 _FRACTION = re.compile(r"(?<![\w/])(\d+) ?/ ?(\d+)(?![\w/])")
 
@@ -189,6 +195,9 @@ def spell_numbers(text: str) -> str:
         return text
     text = _GROUPED.sub(lambda m: re.sub(r"[   ]", "", m.group(1)), text)
     text = _PER.sub(_per, text)
+    text = _DATE_DASHED.sub(lambda m: _date(*m.groups()) or m.group(0), text)
+    text = _DATE_ISO.sub(lambda m: _date(m.group(3), m.group(2), m.group(1)) or m.group(0), text)
+    text = RANGE.sub(" à ", text)
     text = _DATE_FULL.sub(lambda m: _date(*m.groups()) or m.group(0), text)
     text = _DATE_SHORT.sub(lambda m: _date(*m.groups()) or m.group(0), text)
     text = _FRACTION.sub(_fraction, text)

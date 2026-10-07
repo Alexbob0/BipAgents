@@ -2919,6 +2919,28 @@
         }
       }
     },
+    "La voix d’Apple, directement sur le téléphone, sans serveur" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple's voice, right on the phone, no server"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voz de Apple, directamente en el teléfono, sin servidor"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apples Stimme, direkt auf dem Telefon, ohne Server"
+          }
+        }
+      }
+    },
     "La voix humaine de Kyutai, plus posée mais plus lente à démarrer." : {
       "localizations" : {
         "en" : {
@@ -4150,6 +4172,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Um Dateien zu senden, richte die Bridge dieses Agenten in den Einstellungen ein."
+          }
+        }
+      }
+    },
+    "Pour une meilleure qualité, télécharge une voix « Premium » ou « Améliorée » dans Réglages iOS › Accessibilité › Contenu énoncé › Voix." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For better quality, download a “Premium” or “Enhanced” voice in iOS Settings › Accessibility › Spoken Content › Voices."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para más calidad, descarga una voz «Premium» o «Mejorada» en Ajustes de iOS › Accesibilidad › Contenido leído › Voces."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für bessere Qualität lade eine „Premium“- oder „Erweitert“-Stimme in den iOS-Einstellungen › Bedienungshilfen › Gesprochene Inhalte › Stimmen."
           }
         }
       }
@@ -5915,6 +5959,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bip-Stimme"
+          }
+        }
+      }
+    },
+    "Voix de l’iPhone" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone voice"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voz del iPhone"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone-Stimme"
           }
         }
       }

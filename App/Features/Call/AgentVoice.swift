@@ -7,6 +7,7 @@ extension AgentStore {
     /// otherwise (and as fallback: the bridge fails rather than read Spanish with a French voice).
     func ttsProvider(for agent: AgentProfile) -> any TTSProvider {
         let system = SystemTTSProvider(language: agent.language.locale.identifier(.bcp47))
+        if agent.usesSystemVoice { return system }
         guard let bridgeURL = agent.config.bridgeURL, let key = secrets(for: agent)?.bridgeKey else {
             #if DEBUG
             print("[voice] \(agent.name): no bridge configured (url: \(agent.config.bridgeURL != nil), key: \(secrets(for: agent)?.bridgeKey != nil)) → system voice")

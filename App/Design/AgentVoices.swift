@@ -28,10 +28,14 @@ enum AgentVoices {
     /// Kyutai 1.6B's human voice, the one of the morning podcast.
     static let classic = AgentVoiceOption(id: "5476", name: String(localized: "Voix classique"), character: String(localized: "Voix humaine posée, celle du podcast"), sample: nil)
 
-    static var all: [AgentVoiceOption] { bips + [classic] }
+    /// Apple's voice, on the phone: no server involved (Live, « Écouter », voice replies).
+    static let iphone = AgentVoiceOption(id: "system", name: String(localized: "Voix de l’iPhone"),
+                                         character: String(localized: "La voix d’Apple, directement sur le téléphone, sans serveur"), sample: nil)
+
+    static var all: [AgentVoiceOption] { bips + [classic, iphone] }
 
     /// Only the Bips speak every language; Kyutai's human voice is French.
-    static func options(in language: AgentLanguage) -> [AgentVoiceOption] { language == .french ? all : bips }
+    static func options(in language: AgentLanguage) -> [AgentVoiceOption] { language == .french ? all : bips + [iphone] }
 
     /// What the bridge receives: `pocket:loutre` in French, `pocket:en/loutre` in English…
     static func spoken(_ id: String, in language: AgentLanguage) -> String {
@@ -67,6 +71,9 @@ extension AgentProfile {
 
     /// The voice sent to the bridge.
     var voice: String { AgentVoices.spoken(voiceChoice, in: language) }
+
+    /// Speaks with the iPhone's own voice (picked in its settings), never through the bridge.
+    var usesSystemVoice: Bool { voiceChoice == AgentVoices.iphone.id }
 }
 
 /// Voice choice for one agent, with a preview of each Bip voice.
@@ -96,6 +103,11 @@ struct AgentVoicePicker: View {
                 } footer: {
                     Text("La voix humaine de Kyutai, plus posée mais plus lente à démarrer.")
                 }
+            }
+            Section {
+                row(AgentVoices.iphone)
+            } footer: {
+                Text("Pour une meilleure qualité, télécharge une voix « Premium » ou « Améliorée » dans Réglages iOS › Accessibilité › Contenu énoncé › Voix.")
             }
         }
         .navigationTitle("Voix")
