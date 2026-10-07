@@ -14,6 +14,25 @@ enum ChatText {
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// One line for a home card or a session row: a file the agent sent reads « 🎧 Point du matin » rather than
+    /// nothing (its MEDIA line hidden), and a sub-task report Hermes posted reads as such rather than its raw
+    /// « [ASYNC DELEGATION BATCH COMPLETE — deleg_…] ». Idempotent, so stored previews can go through it again.
+    static func preview(_ text: String) -> String {
+        let report = isSubtaskReport(text)
+        let files = report ? mediaPaths(inReport: text) : media(in: text)
+        let words = report ? "" : visible(text)
+        guard let file = files.first else { return report ? String(localized: "Sous-tâche terminée") : words }
+        let name = (file as NSString).lastPathComponent
+        let icon = switch (name as NSString).pathExtension.lowercased() {
+        case "mp3", "m4a", "wav", "ogg", "opus", "aac", "flac": "🎧"
+        case "png", "jpg", "jpeg", "gif", "webp", "heic": "🖼️"
+        case "mp4", "m4v", "mov": "🎬"
+        default: "📎"
+        }
+        let line = "\(icon) \(NowPlayingInfo.title(fromFileName: name))"
+        return words.isEmpty ? line : "\(line) · \(words)"
+    }
+
     /// Files the reply points to with « MEDIA:<path> » lines (the podcast mp3…), shown as players.
     static func media(in text: String) -> [String] {
         guard text.contains("MEDIA:") else { return [] }

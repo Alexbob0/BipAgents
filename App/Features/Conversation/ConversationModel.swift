@@ -1162,8 +1162,8 @@ final class ConversationModel {
     var latestText: String? {
         for item in items.reversed() {
             switch item.kind {
-            case .assistant(let text, _) where !ChatText.visible(text).isEmpty: return ChatText.visible(text)
-            case .user(let text, _) where !text.isEmpty: return text
+            case .assistant(let text, _) where !ChatText.preview(text).isEmpty: return ChatText.preview(text)
+            case .user(let text, _) where !text.isEmpty: return ChatText.preview(text)
             default: continue
             }
         }

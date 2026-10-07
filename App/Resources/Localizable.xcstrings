@@ -5100,6 +5100,28 @@
         }
       }
     },
+    "Sous-tâche terminée" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sub-task done"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subtarea terminada"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilaufgabe erledigt"
+          }
+        }
+      }
+    },
     "Suggérée d’après son nom" : {
       "localizations" : {
         "en" : {

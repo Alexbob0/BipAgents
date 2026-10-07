@@ -136,7 +136,7 @@ struct AgentCard: View {
                     quick.clear(agent)
                 }
                 .transition(.opacity)
-            } else if let latest, let preview = latest.lastMessagePreview {
+            } else if let latest, let preview = latest.lastMessagePreview.map(ChatText.preview) {
                 NavigationLink(value: AgentRoute.conversation(agent, sessionID: latest.id)) {
                     if compact {
                         // One line: « Title · latest message », date on the right.

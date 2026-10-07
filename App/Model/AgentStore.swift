@@ -161,7 +161,7 @@ final class AgentStore {
                 // Hermes' list preview is the session's *first* message: show the latest one instead.
                 if let history = try? await client.messages(sessionID: latest.id),
                    let last = history.last(where: { ($0.role == .assistant || $0.role == .user) && !$0.text.isEmpty }) {
-                    latest.lastMessagePreview = last.text
+                    latest.lastMessagePreview = ChatText.preview(last.text)
                 } else if latestSession[agent.id]?.id == latest.id {
                     latest.lastMessagePreview = latestSession[agent.id]?.lastMessagePreview
                 }

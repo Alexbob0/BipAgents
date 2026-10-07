@@ -158,7 +158,7 @@ struct SessionRow: View {
                         .foregroundStyle(Theme.muted)
                 }
             }
-            if let preview = session.lastMessagePreview {
+            if let preview = session.lastMessagePreview.map(ChatText.preview) {
                 Text(preview)
                     .font(Theme.body(14))
                     .foregroundStyle(Theme.ink2)
@@ -192,7 +192,7 @@ struct PinnedThreadRow: View {
                             .foregroundStyle(Theme.muted)
                     }
                 }
-                Text(preview.map(ChatText.visible) ?? String(localized: "Le fil permanent de l’agent"))
+                Text(preview.map(ChatText.preview) ?? String(localized: "Le fil permanent de l’agent"))
                     .font(Theme.body(14))
                     .foregroundStyle(Theme.ink2)
                     .lineLimit(2)
