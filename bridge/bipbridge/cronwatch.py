@@ -236,7 +236,7 @@ class CronWatcher:
             return
         self._bot_candidate.pop(key, None)
         self._bot_last[key] = reply
-        if self.hub is not None and self.hub.followed_recently(agent.name, sid):
+        if self.hub is not None and self.hub.followed_recently(agent.name, sid, reply):
             return  # the app followed this turn: shown live or pushed as « reply ready »
         if self.presence is not None and self.presence.viewing(agent.name, sid):
             return  # on screen right now

@@ -88,6 +88,7 @@ class RunSubscription:
         self.task: Optional["asyncio.Task[None]"] = None
         self.pushed: Set[str] = set()
         self.session_id: Optional[str] = None  # for the « reply ready » push
+        self.output: Optional[str] = None  # the run's final text (run.completed), to recognise its reply
 
     @property
     def key(self) -> Key:
@@ -166,13 +167,28 @@ class RunHub:
             log.info("run watch resumed", extra=fields(agent=agent.name, run_id=row["run_id"], status=status))
         return resumed
 
-    def followed_recently(self, agent: str, session_id: str, within: float = 600.0) -> bool:
-        """An app-followed run of this session is going on or ended less than `within` seconds ago: its
-        reply was shown live or already pushed as « reply ready »."""
+    def followed_recently(self, agent: str, session_id: str, reply: Optional[str] = None, within: float = 600.0) -> bool:
+        """`reply` belongs to an app-followed run of this session (going on, or ended less than `within` seconds
+        ago): it was shown live or already pushed as « reply ready ».
+
+        A later turn the agent takes on its own (a background sub-task's result it now delivers) is *not* that
+        reply, even within the window: it is recognised by text, the finished run's output, so it gets its push."""
         now = time.time()
-        return any(sub.agent.name == agent and sub.session_id == session_id
-                   and (not sub.finished or (sub.finished_at or now) > now - within)
-                   for sub in self._subs.values())
+        squash = lambda text: " ".join(text.split())
+        for sub in self._subs.values():
+            if sub.agent.name != agent or sub.session_id != session_id:
+                continue
+            if not sub.finished:
+                return True
+            if (sub.finished_at or now) <= now - within:
+                continue
+            if reply is None or sub.output is None:
+                if (sub.finished_at or now) > now - 60:  # output unknown: only a reply right after the run
+                    return True
+                continue
+            if squash(reply) and squash(reply) in squash(sub.output):
+                return True
+        return False
 
     def subscription(self, agent: str, run_id: str) -> Optional[RunSubscription]:
         return self._subs.get((agent, run_id))
@@ -314,6 +330,8 @@ class RunHub:
             self.forget_approval(sub.agent.name, sub.run_id, event.data.get("request_id"))
         elif event.type in TERMINAL_TYPES:
             sub.terminal = event.type
+            if isinstance(event.data.get("output"), str):
+                sub.output = event.data["output"]
             self.forget_approval(sub.agent.name, sub.run_id)
             if self.store is not None:
                 self._spawn(self.store.forget_run(sub.agent.name, sub.run_id))
