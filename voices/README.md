@@ -7,7 +7,7 @@ Synthetic mascot voices for the BipAgents agents, organized by language. Each la
 
 | Language | Engine | Voices |
 |---|---|---|
-| [`french/`](french/) | Kyutai Pocket TTS 3.3.0, `french` model | loutre, chat2, lutin, ours, colibri |
+| [`french/`](french/) | Kyutai Pocket TTS 3.3.0, `french` model | galet, lumen, mousse, ours, colibri |
 | `english/`, `spanish/`, `german/` | Kyutai Pocket TTS 3.3.0, `english`, `spanish`, `german` models | the same five Bips (to be generated, see below) |
 
 A new language = a new folder (`english/`, `spanish/`…) with the same structure: `<voice>.safetensors`

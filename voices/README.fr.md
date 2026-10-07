@@ -7,7 +7,7 @@ Voix de mascotte synthétiques pour les agents BipAgents, rangées par langue. C
 
 | Langue | Moteur | Voix |
 |---|---|---|
-| [`french/`](french/) | Kyutai Pocket TTS 3.3.0, modèle `french` | loutre, chat2, lutin, ours, colibri |
+| [`french/`](french/) | Kyutai Pocket TTS 3.3.0, modèle `french` | galet, lumen, mousse, ours, colibri |
 | `english/`, `spanish/`, `german/` | Kyutai Pocket TTS 3.3.0, modèles `english`, `spanish`, `german` | les mêmes cinq Bips (à générer, cf. ci-dessous) |
 
 Une nouvelle langue = un nouveau dossier (`english/`, `spanish/`…) avec la même structure : `<voix>.safetensors`
