@@ -2,33 +2,36 @@
 
 # Voix de mascotte BipAgents — Kyutai Pocket TTS (français)
 
-Cinq voix synthétiques, conçues le 4 octobre 2026 pour les agents de l'app BipAgents, utilisables avec
-[Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts) sur CPU (premier son ≈ 60–110 ms, ≈ 4× temps réel sur un seul cœur).
+Cinq voix synthétiques pour les agents de l'app BipAgents, utilisables avec
+[Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts) sur CPU (premier son ≈ 85–160 ms, ≈ 7–10× temps réel sur 8 fils).
+Galet, Lumen et Mousse (7 octobre 2026) sont des voix de petite mascotte : calmes, informatives, au timbre légèrement
+stylisé comme un personnage d'animation, ni réalistes ni robotiques. Ours et Colibri datent du 4 octobre 2026.
 
 | Voix | Caractère | Fichiers |
 |---|---|---|
-| **loutre** | joueuse et complice, voix médium-grave, chaude et ronde, débit vif et enjoué | `loutre.safetensors`, `loutre_source.wav`, `loutre_sample.wav` |
-| **chat2** | chat malicieux et un peu paresseux, voix médium-grave, ronronnante et amusée, débit vif | `chat2.*` |
-| **lutin** | lutin farceur et vif, voix médium, rieuse et expressive, débit rapide mais articulé | `lutin.*` |
+| **galet** | posée, médium-grave, nette et assurée, débit régulier, ton de guide calme qui explique clairement | `galet.safetensors`, `galet_source.wav`, `galet_sample.wav` |
+| **lumen** | claire et lumineuse, médium, très articulée, neutre et efficace, débit régulier, idéale pour lire des informations | `lumen.*` |
+| **mousse** | ronde et légère, médium, souriante mais sobre, chaleureuse, débit naturel, articulation nette | `mousse.*` |
 | **ours** | grand ours en peluche calme, voix grave et douce, rassurante, débit lent | `ours.*` |
 | **colibri** | petit oiseau vif et enjoué, voix claire et légère, médium, chantante, débit rapide et précis | `colibri.*` |
 
-- `<voix>.safetensors` : état de voix Pocket TTS pré-calculé (modèle `french`, pocket-tts 3.3.0), 3 à 4 Mo. C'est le fichier à utiliser.
-- `<voix>_source.wav` : l'extrait de 5 à 8 s qui a servi au clonage (sortie Qwen3-TTS VoiceDesign, 24 kHz). Permet de recalculer l'état si les poids Pocket TTS changent.
+- `<voix>.safetensors` : état de voix Pocket TTS pré-calculé (modèle `french`, pocket-tts 3.3.0). C'est le fichier à utiliser.
+  13 à 16 Mo pour galet, lumen et mousse (extraits de 22–26 s), 3 à 4 Mo pour ours et colibri (extraits de 5–7 s).
+- `<voix>_source.wav` : l'extrait qui a servi au clonage (sortie Qwen3-TTS VoiceDesign, mono 24 kHz, pic −1 dBFS). Permet de recalculer l'état si les poids Pocket TTS changent.
 - `<voix>_sample.wav` : rendu Pocket TTS de la phrase de test « Coucou ! J'ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi. »
-- `voices.json` : descriptions et mesures.
+- `voices.json` : descriptions, consignes de design, graines et mesures.
 
 ## Utilisation
 
 ```bash
 pip install pocket-tts
-pocket-tts generate --language french --voice ./loutre.safetensors --text "Bonjour, prêt pour la séance ?" --output bonjour.wav
+pocket-tts generate --language french --voice ./mousse.safetensors --text "Bonjour, prêt pour la séance ?" --output bonjour.wav
 ```
 
 ```python
 from pocket_tts import TTSModel
 model = TTSModel.load_model(language="french")
-voice = model.get_state_for_audio_prompt("./loutre.safetensors")   # chargement ≈ 1 ms
+voice = model.get_state_for_audio_prompt("./mousse.safetensors")   # chargement ≈ 1 ms
 for chunk in model.generate_audio_stream(voice, "Bonjour, prêt pour la séance ?"):
     ...  # tenseur PCM float, model.sample_rate = 24000 Hz, un chunk ≈ 80 ms
 ```
@@ -38,7 +41,7 @@ des conditions) : le modèle public `kyutai/pocket-tts-without-voice-cloning` su
 Le clonage n'est nécessaire que pour recalculer un état depuis `<voix>_source.wav` :
 
 ```bash
-pocket-tts export-voice --language french ./loutre_source.wav ./loutre.safetensors   # nécessite l'accès au modèle de clonage
+pocket-tts export-voice --language french ./mousse_source.wav ./mousse.safetensors   # nécessite l'accès au modèle de clonage
 ```
 
 Les états sont liés aux poids du modèle `french` avec lesquels ils ont été calculés. Si Kyutai publie de nouveaux poids,
@@ -46,9 +49,14 @@ recalculer depuis les sources.
 
 ## Comment elles ont été faites
 
-1. Description en français → **Qwen3-TTS-12Hz-1.7B-VoiceDesign** (`generate_voice_design`, language French) : un extrait de la phrase de test par voix.
-2. Extrait → **Pocket TTS** `get_state_for_audio_prompt` → `export_model_state`.
-3. Écoute et sélection manuelle sur une quinzaine de candidates.
+1. Description « petite mascotte » en français (voir `design_instruct` dans `voices.json`) → **Qwen3-TTS-12Hz-1.7B-VoiceDesign**
+   (`generate_voice_design`, language French) : une seule prise de 24 à 30 s d'un texte « point de la journée » par candidate,
+   trois graines par concept, six concepts.
+2. Prise → blancs retirés, pic −1 dBFS → **Pocket TTS** `export-voice --language french` (`get_state_for_audio_prompt` → `export_model_state`).
+3. Tri : pas de saturation, pas de bégaiement (contrôle par reconnaissance vocale), pas de changement de voix en cours de prise
+   (empreinte de locuteur début/fin) ; puis écoute et choix manuel parmi les 18 candidates, chacune lisant les cinq mêmes réponses.
+
+Ours et Colibri viennent de la première série (extrait court de 5–8 s de la phrase de test, même modèle, même clonage).
 
 ## Licences
 

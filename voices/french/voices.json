@@ -2,41 +2,56 @@
  "engine": "pocket-tts 3.3.0",
  "language": "french",
  "sample_rate": 24000,
+ "design": {
+  "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+  "text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe. La météo annonce dix-huit degrés et un peu de pluie en fin d'après-midi, pense au parapluie. Côté sommeil, tu as dormi sept heures, c'est mieux qu'hier. Est-ce que tu veux que je te rappelle la réunion un quart d'heure avant ? Je reste disponible si tu as une question.",
+  "note": "galet, lumen, mousse (07/10/2026) : un seul extrait Qwen de 22 à 27 s par voix, description « petite mascotte », choisi parmi 18 candidates ; ours et colibri (04/10/2026) : extrait court de 5 à 8 s"
+ },
+ "measurement_note": "first_sound_s = premier octet PCM de POST /v1/audio/stream du serveur pocket/pocket_server.py (--quantize, 8 fils, Ryzen AI Max+ 395), médiane de 3 essais ; rtf = vitesse par rapport au temps réel",
  "voices": {
-  "loutre": {
-   "description": "Loutre joueuse et complice, voix médium-grave, chaude et ronde, débit vif et enjoué, petits rires discrets.",
-   "safetensors_bytes": 2901808,
-   "load_s": 0.0,
-   "first_sound_s": 0.067,
-   "rtf": 4.08
+  "galet": {
+   "description": "Petite mascotte posée, voix médium-grave, nette et assurée, débit régulier, ton de guide calme qui explique clairement.",
+   "design_instruct": "Voix de petite mascotte posée, médium-grave, nette et assurée, débit régulier, ton de guide calme qui explique clairement, timbre légèrement stylisé comme un personnage d'animation, jamais robotique, enregistrement studio sans écho.",
+   "seed": 20201,
+   "candidate": "galet_c1",
+   "source_s": 26.1,
+   "safetensors_bytes": 16123704,
+   "first_sound_s": 0.159,
+   "rtf": 7.45
   },
-  "chat2": {
-   "description": "Petit chat malicieux et un peu paresseux, voix médium-grave, ronronnante et amusée, débit vif et naturel, pas traînant.",
-   "safetensors_bytes": 3639088,
-   "load_s": 0.001,
-   "first_sound_s": 0.061,
-   "rtf": 4.12
+  "lumen": {
+   "description": "Petite mascotte claire et lumineuse, voix médium, très articulée, neutre et efficace, débit régulier, idéale pour lire des informations.",
+   "design_instruct": "Voix de petite mascotte claire et lumineuse, médium, très articulée, neutre et efficace, débit régulier, idéale pour lire des informations, timbre légèrement stylisé comme un personnage d'animation, jamais robotique, enregistrement studio sans écho.",
+   "seed": 20303,
+   "candidate": "lumen_c3",
+   "source_s": 22.0,
+   "safetensors_bytes": 13567800,
+   "first_sound_s": 0.127,
+   "rtf": 8.24
   },
-  "lutin": {
-   "description": "Petit lutin farceur et vif, voix médium, rieuse et expressive, débit rapide mais bien articulé.",
-   "safetensors_bytes": 3344176,
-   "load_s": 0.001,
-   "first_sound_s": 0.059,
-   "rtf": 4.24
+  "mousse": {
+   "description": "Petite mascotte ronde et légère, voix médium, souriante mais sobre, chaleureuse, débit naturel, articulation nette.",
+   "design_instruct": "Voix de petite mascotte ronde et légère, médium, souriante mais sobre, chaleureuse, débit naturel, articulation nette, timbre légèrement stylisé comme un personnage d'animation, jamais robotique, enregistrement studio sans écho.",
+   "seed": 20502,
+   "candidate": "mousse_c2",
+   "source_s": 22.9,
+   "safetensors_bytes": 14108472,
+   "first_sound_s": 0.096,
+   "rtf": 8.13
   },
   "ours": {
    "description": "Grand ours en peluche calme, voix grave et douce, rassurante, débit lent.",
+   "source_s": 6.5,
    "safetensors_bytes": 4032304,
-   "load_s": 0.0,
-   "first_sound_s": 0.054,
-   "rtf": 4.25
+   "first_sound_s": 0.087,
+   "rtf": 9.58
   },
   "colibri": {
    "description": "Petit oiseau vif et enjoué, voix claire et légère, médium, chantante, débit rapide et précis, jamais stridente.",
+   "source_s": 5.6,
    "safetensors_bytes": 3491632,
-   "load_s": 0.001,
-   "first_sound_s": 0.061,
-   "rtf": 4.07
+   "first_sound_s": 0.085,
+   "rtf": 9.22
   }
  }
 }
