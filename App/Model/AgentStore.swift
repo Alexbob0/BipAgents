@@ -36,7 +36,12 @@ final class AgentStore {
     private(set) var agents: [AgentProfile] = []
     private(set) var reachability: [UUID: AgentReachability] = [:]
     /// Most recent session per agent, for the home card preview.
-    private(set) var latestSession: [UUID: HermesSession] = [:]
+    private(set) var latestSession: [UUID: HermesSession] = [:] {
+        didSet { if persistsPreviews { Self.savePreviews(latestSession) } }
+    }
+    /// The home cards' last message survives a relaunch: shown at once, refreshed by `refreshAll`.
+    @ObservationIgnored private var persistsPreviews = false
+    private static var previewsURL: URL { URL.cachesDirectory.appending(path: "agent-previews.json") }
 
     private let fileURL: URL
     /// Sample data only: never touches the network or the Keychain.
@@ -45,6 +50,18 @@ final class AgentStore {
     init(fileURL: URL = AgentStore.defaultFileURL) {
         self.fileURL = fileURL
         load()
+        if fileURL == AgentStore.defaultFileURL {  // not the demo / preview stores
+            if let data = try? Data(contentsOf: Self.previewsURL),
+               let saved = try? JSONDecoder().decode([UUID: HermesSession].self, from: data) {
+                latestSession = saved.filter { id, _ in agents.contains { $0.id == id } }
+            }
+            persistsPreviews = true
+        }
+    }
+
+    private static func savePreviews(_ sessions: [UUID: HermesSession]) {
+        guard let data = try? JSONEncoder().encode(sessions) else { return }
+        try? data.write(to: previewsURL, options: .atomic)
     }
 
     /// In the App Group container so the notification extension can find each agent's bridge.
