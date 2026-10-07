@@ -22,7 +22,7 @@ struct CallView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
+        .tabBarHidden(true)
         .task {
             guard model == nil else { return }
             let model = CallModel(agent: agent, sessionID: sessionID, store: store)

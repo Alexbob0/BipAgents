@@ -169,7 +169,7 @@ private struct ConversationContent: View {
         }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar) // full height for the thread, like messaging apps
+        .tabBarHidden(true) // full height for the thread, like messaging apps
         .fullScreenCover(isPresented: $isCalling) {
             NavigationStack { CallView(agent: model.agent, sessionID: model.sessionID) }
         }

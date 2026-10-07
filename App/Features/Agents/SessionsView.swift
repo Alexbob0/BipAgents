@@ -46,6 +46,7 @@ struct SessionsView: View {
                 .ignoresSafeArea()
         }
         .background(Theme.background)
+        .tabBarHidden(false)
         .refreshable { await load() }
         .task { await load() }
         .toolbar {
