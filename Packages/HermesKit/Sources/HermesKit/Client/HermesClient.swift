@@ -92,6 +92,9 @@ public struct HermesClient: Sendable {
         if let instructions { extra["instructions"] = .string(instructions) }
         var request = try self.request("POST", "/v1/runs", body: input.runBody(merging: extra))
         if let idempotencyKey { request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key") }
+        #if DEBUG
+        print("[trace] POST /v1/runs: \((request.httpBody?.count ?? 0) / 1024) KB, \(input.images.count) photo(s)")
+        #endif
         let (data, response) = try await HTTP.send(request, session: urlSession)
         let json = try HTTP.json(data)
         guard let runID = json["run_id"]?.lenientString ?? json["id"]?.lenientString else {

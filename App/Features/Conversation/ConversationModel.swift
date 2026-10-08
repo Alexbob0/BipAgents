@@ -404,6 +404,10 @@ final class ConversationModel {
         }
         let item = ChatItem(.user(text: trimmed, attachments: attachments))
         items.append(item)
+        #if DEBUG
+        trace = RunTrace()
+        trace?.log("send: \(trimmed.count) chars, \(attachments.count) attachment(s)")
+        #endif
         if let voiceNote { voiceNotes[item.id] = voiceNote }
         replyByVoice = voiceNote != nil && VoiceReplyPolicy.current.shouldReplyByVoice(to: trimmed)
         isRunning = true
@@ -457,6 +461,9 @@ final class ConversationModel {
                     // Hermes hands each run event to a single subscriber: `follow` goes through the bridge
                     // (which then also knows when to push), never bridge.watch + Hermes side by side.
                     runID = handle.runID
+                    #if DEBUG
+                    trace?.log("run \(handle.runID) accepted")
+                    #endif
                     Self.activeRuns[sessionID] = handle.runID
                     Self.listeners[sessionID] = self
                     try await follow(runID: handle.runID, client: client)
@@ -860,6 +867,9 @@ final class ConversationModel {
     // MARK: Events
 
     private func apply(_ event: HermesEvent) {
+        #if DEBUG
+        trace?.note(event)
+        #endif
         if let id = event.runID, id != runID {
             runID = id
             // Lets the bridge push the approval request if the app is closed meanwhile.
@@ -1022,6 +1032,10 @@ final class ConversationModel {
     }
 
     private func finishRun() {
+        #if DEBUG
+        trace?.log("finished")
+        trace = nil
+        #endif
         if detaching {
             // Left the screen mid-run: the run goes on and stays registered for re-attachment.
             detaching = false
@@ -1157,6 +1171,38 @@ final class ConversationModel {
         try data.write(to: file, options: .atomic)
         return file
     }
+
+    #if DEBUG
+    /// « [trace] » console lines timing one message: send, run accepted, first event, first word, each tool, end.
+    struct RunTrace {
+        private let start = ContinuousClock.now
+        private var sawEvent = false
+        private var sawText = false
+
+        func log(_ line: String) {
+            let ms = (ContinuousClock.now - start).components
+            print("[trace] +\(ms.seconds * 1000 + ms.attoseconds / 1_000_000_000_000_000) ms \(line)")
+        }
+
+        mutating func note(_ event: HermesEvent) {
+            if !sawEvent { sawEvent = true; log("first event: \(event.kind)".prefix(90).description) }
+            switch event.kind {
+            case .delta where !sawText:
+                sawText = true
+                log("first words")
+            case .reasoning where !sawText:
+                break
+            case .tool(let tool):
+                log("tool \(tool.tool) \(tool.status.rawValue)\(tool.duration.map { String(format: " (%.1f s)", $0) } ?? "")")
+            case .runCompleted, .runFailed, .runCancelled, .runInterrupted:
+                log("run ended: \(String(describing: event.kind).prefix(40))")
+            default:
+                break
+            }
+        }
+    }
+    @ObservationIgnored private var trace: RunTrace?
+    #endif
 
     /// Text of the newest user or assistant message (for previews).
     var latestText: String? {
