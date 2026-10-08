@@ -20,7 +20,7 @@ Il ne contient aucun secret : tout est dans `~/.config/hermes-ios/` (mode 600).
 
 ## 1. Installation sur le serveur (venv + systemd --user, recommandé)
 
-Prérequis : Python ≥ 3.11 (3.12 visé ; le code tourne aussi en 3.9+), Kyutai sur `:8097`, ntfy sur `:8645`,
+Prérequis : Python ≥ 3.11 (3.12 visé), Kyutai sur `:8097`, ntfy sur `:8645`,
 api_server Hermes sur `:8642` (wellness) et `:8644` (vie) — SPEC §B1, §B4.
 
 ```bash
