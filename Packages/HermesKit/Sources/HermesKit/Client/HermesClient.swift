@@ -188,7 +188,7 @@ public struct HermesClient: Sendable {
         return request
     }
 
-    private func send(_ method: String, _ path: String, query: [String: String] = [:], body: JSONValue? = nil) async throws -> JSONValue {
+    func send(_ method: String, _ path: String, query: [String: String] = [:], body: JSONValue? = nil) async throws -> JSONValue {
         let (data, _) = try await HTTP.send(try request(method, path, query: query, body: body), session: urlSession)
         return try HTTP.json(data)
     }

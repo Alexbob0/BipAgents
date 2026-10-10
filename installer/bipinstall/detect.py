@@ -112,6 +112,24 @@ def lan_addresses() -> List[str]:
     return found
 
 
+def local_timezone() -> Optional[str]:
+    """« Europe/Paris »: from TZ, /etc/localtime's link or /etc/timezone (None when unknown)."""
+    if os.environ.get("TZ", "").count("/") >= 1:
+        return os.environ["TZ"].lstrip(":")
+    try:
+        target = os.path.realpath("/etc/localtime")
+        if "zoneinfo/" in target:
+            return target.split("zoneinfo/", 1)[1]
+    except OSError:
+        pass
+    try:
+        with open("/etc/timezone", encoding="utf-8") as fh:
+            name = fh.read().strip()
+            return name or None
+    except OSError:
+        return None
+
+
 def detect() -> Machine:
     cli = tailscale_cli()
     return Machine(

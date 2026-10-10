@@ -130,6 +130,10 @@ def setup_hub(runner: Runner, port: int, model: Model) -> str:
     _config(runner, HUB_PROFILE, "API_SERVER_PORT", str(port))
     _config(runner, HUB_PROFILE, "API_SERVER_KEY", key)
     _config(runner, HUB_PROFILE, "gateway.multiplex_profiles", "true")
+    from .detect import local_timezone
+    timezone = local_timezone()
+    if timezone and timezone != "UTC":
+        _config(runner, HUB_PROFILE, "timezone", timezone)   # routines run at the person's hours
     set_model(runner, HUB_PROFILE, model)
     return key
 

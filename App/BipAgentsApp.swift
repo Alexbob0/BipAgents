@@ -13,11 +13,13 @@ struct BipAgentsApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                // `-demo -screen conversation|call` opens straight on that screen (design review, screenshots).
+                // `-demo -screen conversation|call|agent|routine` opens straight on that screen (design review, screenshots).
                 if let screen = UserDefaults.standard.string(forKey: "screen"), !screen.isEmpty, let agent = agents.agents.first {
                     NavigationStack {
                         switch screen {
                         case "call": CallView(agent: agent)
+                        case "routine": RoutineEditor(agent: agent, routine: nil) {}
+                        case "agent": SessionsView(agent: agent)
                         default: ConversationView(agent: agent, sessionID: nil)
                         }
                     }

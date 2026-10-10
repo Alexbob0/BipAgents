@@ -40,6 +40,21 @@ struct SessionsView: View {
                     }
                 }
             }
+            Section {
+                NavigationLink {
+                    RoutinesView(agent: agent)
+                } label: {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Routines").font(Theme.body(16, weight: .heavy))
+                            Text("Ce que \(agent.name) fait tout seul, et quand")
+                                .font(Theme.body(13)).foregroundStyle(Theme.ink2)
+                        }
+                    } icon: {
+                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(palette.deep)
+                    }
+                }
+            }
             sessionSection("Conversations", Self.newestFirst(sessions.filter { !AgentStore.isBotChat($0) && !AgentStore.isScheduledTask($0) }))
             let tasks = Self.newestFirst(sessions.filter(AgentStore.isScheduledTask))
             sessionSection("Tâches planifiées", showsAllTasks ? tasks : Array(tasks.prefix(5)))

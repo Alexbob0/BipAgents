@@ -41,6 +41,36 @@ struct HermesClientTests {
         #expect(capabilities.endpoints["session_list"] == "/api/sessions")
     }
 
+    @Test func routines() async throws {
+        let job: JSONValue = ["id": "j1", "name": "Point du lundi", "prompt": "Fais le point", "state": "scheduled",
+                                  "enabled": true, "schedule": ["kind": "cron", "expr": "0 8 * * 1"],
+                                  "schedule_display": "0 8 * * 1", "next_run_at": "2026-10-12T08:00:00+02:00"]
+        let server = StubServer { request in
+            switch (request.method, request.path) {
+            case ("GET", "/api/jobs"):
+                return .json(["jobs": [job, ["id": "j2", "name": "Rappel", "state": "paused", "enabled": false,
+                                            "schedule": ["kind": "interval", "minutes": 120]]]])
+            case ("POST", "/api/jobs"), ("PATCH", "/api/jobs/j1"): return .json(["job": job])
+            default: return .json(["ok": true])
+            }
+        }
+        let client = server.client()
+        let listed = try await client.routines()
+        #expect(listed.map { $0.id } == ["j1", "j2"])
+        #expect(listed[0].schedule == "0 8 * * 1" && !listed[0].isPaused && listed[0].nextRunAt != nil)
+        #expect(listed[1].schedule == "every 120m" && listed[1].isPaused)
+        #expect(server.requests[0].query == ["include_disabled": "true"])
+        _ = try await client.createRoutine(name: "Point du lundi", schedule: "0 8 * * 1", prompt: "Fais le point")
+        #expect(server.requests[1].json == ["name": "Point du lundi", "schedule": "0 8 * * 1", "prompt": "Fais le point",
+                                            "deliver": "local"])
+        _ = try await client.updateRoutine(id: "j1", schedule: "0 9 * * 1")
+        #expect(server.requests[2].json == ["schedule": "0 9 * * 1"])
+        try await client.setRoutine(id: "j1", paused: true)
+        try await client.runRoutine(id: "j1")
+        try await client.deleteRoutine(id: "j1")
+        #expect(server.requests.suffix(3).map { "\($0.method) \($0.path)" } == ["POST /api/jobs/j1/pause", "POST /api/jobs/j1/run", "DELETE /api/jobs/j1"])
+    }
+
     @Test func sessionsCRUD() async throws {
         let server = StubServer { request in
             switch (request.method, request.path) {
