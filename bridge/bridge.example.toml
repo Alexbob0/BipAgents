@@ -106,6 +106,7 @@ port = 8650
 # Own commands instead of a systemd/launchd service per space, e.g. a container each ({agent}, {home} filled in):
 # start = "podman run -d --name hermes-space-{agent} ... "
 # stop = "podman rm -f hermes-space-{agent}"
+# container_home = "/home/hermes/.hermes"   # the space's HERMES_HOME inside that container (attachments)
 
 [agents.wellness]
 display_name = "Wellness"

@@ -121,6 +121,9 @@ class SpacesConfig:
     sandbox: str = "auto"            # "auto": podman/docker sandbox when found; "none": never
     start: Optional[str] = None      # own commands instead of systemd/launchd: "{agent}" and "{home}" filled in
     stop: Optional[str] = None
+    # A space in a container of its own (start/stop commands): its HERMES_HOME as the agent sees it, for the
+    # attachments' folder (e.g. /home/hermes/.hermes). Empty: the same path as on this host.
+    container_home: str = ""
 
 
 @dataclass
@@ -373,6 +376,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         sandbox=str(spaces_t.get("sandbox", "auto")),
         start=str(spaces_t["start"]) if spaces_t.get("start") else None,
         stop=str(spaces_t["stop"]) if spaces_t.get("stop") else None,
+        container_home=str(spaces_t.get("container_home", "")).rstrip("/"),
     )
     if spaces.sandbox not in ("auto", "none"):
         raise ConfigError("spaces.sandbox must be 'auto' or 'none'")
