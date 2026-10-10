@@ -25,6 +25,10 @@ else
 fi
 
 cd "$DIR"
-# Questions are asked on the terminal even when this script comes through a pipe.
-exec env PYTHONPATH="$DIR/installer" uv run --quiet --python 3.12 --with httpx --with pyyaml \
-  python -m bipinstall "$@" </dev/tty
+# Questions are asked on the terminal even when this script comes through a pipe (curl … | bash).
+run() { env PYTHONPATH="$DIR/installer" uv run --quiet --python 3.12 --with httpx --with pyyaml python -m bipinstall "$@"; }
+if [ ! -t 0 ] && (exec </dev/tty) 2>/dev/null; then
+  run "$@" </dev/tty
+else
+  run "$@"
+fi
