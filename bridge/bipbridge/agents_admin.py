@@ -128,6 +128,69 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     return agent
 
 
+class AgentSettings(BaseModel):
+    soul: Optional[str] = Field(default=None, max_length=8000)
+    toolsets: Optional[Dict[str, bool]] = None
+
+
+def managed(config: Config, agent_id: str) -> AgentConfig:
+    """An agent this bridge created in the person's hub (never one set up by hand, like an agent in its own container)."""
+    agent = config.agent(agent_id)
+    hub = config.hermes.hub_url
+    if agent is None or not config.hermes.enabled or not agent.hermes_url.startswith(f"{hub}/p/"):
+        raise LookupError(agent_id)
+    return agent
+
+
+def profile_folder(config: Config, agent: AgentConfig) -> Path:
+    return Path(config.hermes.home or Path.home() / ".hermes") / "profiles" / agent.name
+
+
+def remove_agent_section(config_path: str, name: str) -> None:
+    """Drops `[agents.<name>]` from the bridge's config file (its lines, up to the next table)."""
+    lines = Path(config_path).read_text(encoding="utf-8").splitlines(keepends=True)
+    kept, skipping = [], False
+    for line in lines:
+        header = line.strip()
+        if header.startswith("[") and header.endswith("]"):
+            skipping = header == f"[agents.{name}]"
+        if not skipping:
+            kept.append(line)
+    Path(config_path).write_text("".join(kept).rstrip("\n") + "\n", encoding="utf-8")
+
+
+async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncClient) -> Dict[str, Any]:
+    soul_path = profile_folder(config, agent) / "SOUL.md"
+    soul = soul_path.read_text(encoding="utf-8") if soul_path.exists() else ""
+    resp = await http.get(f"{agent.hermes_url}/v1/toolsets", headers={"Authorization": f"Bearer {agent.hermes_key}"},
+                          timeout=10)
+    resp.raise_for_status()
+    toolsets = [{k: t.get(k) for k in ("name", "label", "description", "enabled", "configured")}
+                for t in resp.json().get("data", []) if isinstance(t, dict) and t.get("name")]
+    return {"id": agent.name, "name": agent.display_name, "soul": soul, "toolsets": toolsets}
+
+
+async def write_settings(config: Config, agent: AgentConfig, body: AgentSettings, run: Callable[..., Any] = run_hermes) -> None:
+    if body.soul is not None:
+        (profile_folder(config, agent) / "SOUL.md").write_text(body.soul.strip() + "\n", encoding="utf-8")
+    env = {"HERMES_HOME": config.hermes.home} if config.hermes.home else {}
+    for action in ("enable", "disable"):
+        names = sorted(n for n, on in (body.toolsets or {}).items() if on == (action == "enable"))
+        if any(not n.replace("-", "").replace("_", "").isalnum() for n in names):
+            raise ValueError("invalid toolset name")
+        if names:
+            await run([config.hermes.bin, "-p", agent.name, "tools", action, *names, "--platform", "api_server"], env)
+
+
+async def delete_agent(config: Config, agent: AgentConfig, run: Callable[..., Any] = run_hermes) -> None:
+    env = {"HERMES_HOME": config.hermes.home} if config.hermes.home else {}
+    await run([config.hermes.bin, "profile", "delete", agent.name, "--yes"], env)
+    if config.source_path:
+        remove_agent_section(config.source_path, agent.name)
+    config.agents.pop(agent.name, None)
+    log.info("agent deleted", extra=fields(agent=agent.name))
+
+
 def agents_admin_router() -> APIRouter:
     router = APIRouter()
     lock = asyncio.Lock()   # one creation at a time (profile names, the config file)
@@ -155,5 +218,49 @@ def agents_admin_router() -> APIRouter:
                 raise HTTPException(status_code=502, detail="Hermes could not create the agent") from exc
         return {"id": agent.name, "name": agent.display_name, "url": agent.public_url,
                 "key": agent.hermes_key if agent.public_url else None}
+
+    @router.get("/agents/{agent_id}/settings")
+    async def get_settings(agent_id: str, request: Request) -> Dict[str, Any]:
+        services = request.app.state.services
+        try:
+            agent = managed(services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        try:
+            return await read_settings(services.config, agent, services.http)
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="Hermes unreachable") from exc
+
+    @router.patch("/agents/{agent_id}/settings")
+    async def patch_settings(agent_id: str, body: AgentSettings, request: Request) -> Dict[str, Any]:
+        services = request.app.state.services
+        try:
+            agent = managed(services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        async with lock:
+            try:
+                await write_settings(services.config, agent, body)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except (RuntimeError, asyncio.TimeoutError) as exc:
+                raise HTTPException(status_code=502, detail="Hermes could not change the agent") from exc
+        try:
+            return await read_settings(services.config, agent, services.http)
+        except httpx.HTTPError:
+            return {"id": agent.name, "name": agent.display_name}
+
+    @router.delete("/agents/{agent_id}", status_code=204)
+    async def remove(agent_id: str, request: Request) -> None:
+        services = request.app.state.services
+        try:
+            agent = managed(services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        async with lock:
+            try:
+                await delete_agent(services.config, agent)
+            except (RuntimeError, asyncio.TimeoutError) as exc:
+                raise HTTPException(status_code=502, detail="Hermes could not delete the agent") from exc
 
     return router
