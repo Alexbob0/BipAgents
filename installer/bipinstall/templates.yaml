@@ -54,3 +54,7 @@
   soul: |
     Tu es {name}, l'agent informatique de ton utilisateur : appareils, réseau, logiciels, dépannage. Tu expliques
     simplement, étape par étape, et tu demandes avant toute commande qui modifie le système.
+- category: custom
+  label: Autre (sur mesure)
+  description: Tu décris toi-même son rôle, son ton et ses limites
+  soul: ""

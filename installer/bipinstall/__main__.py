@@ -94,7 +94,27 @@ def verify(model: hermes.Model) -> hermes.Model:
 
 # -- the run -------------------------------------------------------------------------------------------
 
-def pick_agents() -> List[tuple]:
+CATEGORIES = [("daily", "Quotidien"), ("wellness", "Bien-être"), ("finance", "Finances"), ("home", "Maison"),
+              ("work", "Travail"), ("learning", "Apprendre"), ("creative", "Créatif"), ("tech", "Informatique")]
+
+
+def custom_agent(name: str) -> dict:
+    """« Autre » : the person writes the agent's role, tone and limits; they become its SOUL.md."""
+    say(f"\nOn construit {name} sur mesure (Entrée pour passer une question).")
+    role = ""
+    while not role:
+        role = ask(f"Que fait {name} pour toi ? (ex. « suit mes plantes et me dit quand les arroser »)")
+    tone = ask("Son ton ? (ex. direct, chaleureux, drôle, formel)", "clair et bienveillant")
+    rules = ask("Ce qu'il doit toujours faire ou ne jamais faire ?", "")
+    language = ask("Dans quelle langue répond-il ?", "français")
+    say("Quelle couleur de Bip ?")
+    category = CATEGORIES[choose("Couleur", [label for _, label in CATEGORIES], default=8) - 1][0]
+    soul = (f"Tu es {name}, un agent personnel de ton utilisateur. Ton rôle : {role.rstrip('.')}.\n"
+            f"Ton ton : {tone}. Tu réponds en {language}, de façon concise.\n")
+    if rules:
+        soul += f"Règles à respecter : {rules.rstrip('.')}.\n"
+    soul += "Tu demandes avant toute action irréversible (envoyer, acheter, supprimer).\n"
+    return {"category": category, "label": "Autre", "description": role[:120], "soul": soul}
     """(the name the person gives, its template) for each agent to create. No name is imposed."""
     say("\nQuels genres d'agents créer pour commencer ? (numéros séparés par des virgules ; d'autres s'ajoutent depuis l'app)")
     for i, t in enumerate(TEMPLATES, 1):
@@ -106,7 +126,7 @@ def pick_agents() -> List[tuple]:
         name = ""
         while not name:
             name = ask(f"Comment s'appelle ton agent « {template['label']} » ?").strip()
-        named.append((name, template))
+        named.append((name, custom_agent(name) if template["category"] == "custom" else template))
     return named
 
 
