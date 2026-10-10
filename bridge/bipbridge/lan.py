@@ -119,6 +119,18 @@ def pairing_payload(config: Config, agent: AgentConfig) -> Dict[str, Any]:
     return payload
 
 
+def install_payload(config: Config) -> Dict[str, Any]:
+    """The install's QR code: the bridge's tailnet address and key (and the LAN door). The app then asks the bridge
+    for every agent (``GET /v1/agents``), so one scan adds them all, and agents created later show up too."""
+    if not config.public_url:
+        raise ValueError("public_url is missing (the bridge's address on the tailnet)")
+    payload: Dict[str, Any] = {"v": 2, "bridgeURL": config.public_url, "bridgeKey": config.bridge_key}
+    lan = lan_info(config)
+    if lan:
+        payload["lan"] = lan
+    return payload
+
+
 def hermes_proxy() -> APIRouter:
     """``/hermes/<agent>/<path>`` → the agent's Hermes, streamed both ways (SSE included). Hermes checks its own key:
     the app sends it as on the tailnet."""

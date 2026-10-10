@@ -146,6 +146,10 @@ class HermesClient:
         data = await self._get_json(agent, f"/v1/runs/{run_id}")
         return data if isinstance(data, dict) else {}
 
+    async def capabilities(self, agent: AgentConfig) -> Dict[str, Any]:
+        """``GET /v1/capabilities``: answers when the agent's gateway is up."""
+        return await self._get_json(agent, "/v1/capabilities")
+
     async def list_sessions(self, agent: AgentConfig, limit: int = 20) -> List[Dict[str, Any]]:
         """``GET /api/sessions`` (most recent first)."""
         data = await self._get_json(agent, "/api/sessions", {"limit": limit})

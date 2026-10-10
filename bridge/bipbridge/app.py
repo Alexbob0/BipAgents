@@ -24,6 +24,7 @@ from .media import content_type as media_content_type, resolve as resolve_media
 from .files import UploadSizeLimit, handle_upload, purge_uploads
 from .hermes import HermesClient, HermesHTTPError
 from .lan import hermes_proxy, lan_info
+from .relay import RelayClient, relay_router
 from .logs import fields, redact
 from .ntfy import NtfySubscriber, OutboxService, ntfy_reachable
 from .push import PushService
@@ -60,7 +61,12 @@ class Services:
             else:
                 log.warning("APNs key file missing", extra=fields(path=config.apns.p8_path))
         self.apns = apns
-        self.push = PushService(config, self.store, apns)
+        # Without its own APNs key, an install (another person's bridge) sends through the administrator's relay.
+        sender: Any = apns
+        if sender is None and config.push_relay_url and config.push_relay_key:
+            sender = RelayClient(config.push_relay_url, config.push_relay_key, self.http)
+        self.push_mode = "apns" if apns is not None else ("relay" if sender is not None else None)
+        self.push = PushService(config, self.store, sender)
         self.hub = RunHub(self.hermes, self.push, watch_max_seconds=config.limits.watch_max_seconds, store=self.store)
         self.outbox = OutboxService(config, self.store, self.tts, self.push)
         self.presence = Presence()
@@ -179,9 +185,13 @@ def build_router() -> APIRouter:
 
     @router.get("/agents")
     async def list_agents(request: Request) -> Dict[str, Any]:
+        """This install's agents. With `url` (their Hermes on the tailnet) and `key`, it is all the app needs to add
+        them from one QR code (the install's: the bridge's address and key), and to pick up agents created later."""
         config = _services(request).config
-        return {"agents": [{"id": a.name, "name": a.display_name, "voice": a.voice or config.default_voice,
-                            "uploads": bool(a.upload_dir_host), "inbox": bool(a.ntfy_topic)}
+        return {"bridge": {"url": config.public_url, "lan": lan_info(config)},
+                "agents": [{"id": a.name, "name": a.display_name, "voice": a.voice or config.default_voice,
+                            "uploads": bool(a.upload_dir_host), "inbox": bool(a.ntfy_topic),
+                            "url": a.public_url, "key": a.hermes_key if a.public_url else None}
                            for a in config.agents.values()]}
 
     @router.post("/tts/sentence")
@@ -348,6 +358,34 @@ def build_router() -> APIRouter:
         return {"session_id": session_id, "message_count": count if isinstance(count, int) else None,
                 "updated_at": session.get("updated_at") or session.get("last_active")}
 
+    @router.get("/status")
+    async def status(request: Request) -> Dict[str, Any]:
+        """Is each agent's Hermes up, and does the model answer? Lets the app tell « server down » from « model
+        down » (its machine off, an expired API key)."""
+        services = _services(request)
+        config = services.config
+
+        async def hermes_ok(agent) -> Dict[str, Any]:
+            try:
+                await asyncio.wait_for(services.hermes.capabilities(agent), timeout=5)
+                return {"ok": True}
+            except Exception as exc:  # unreachable, refused, timeout
+                return {"ok": False, "error": type(exc).__name__}
+
+        async def model_ok() -> Optional[Dict[str, Any]]:
+            if not config.model_health_url:
+                return None
+            headers = {"Authorization": f"Bearer {config.model_health_key}"} if config.model_health_key else {}
+            try:
+                resp = await services.http.get(config.model_health_url, headers=headers, timeout=5.0)
+                return {"ok": resp.status_code < 400, "status": resp.status_code}
+            except httpx.HTTPError as exc:
+                return {"ok": False, "error": type(exc).__name__}
+
+        names = list(config.agents)
+        results = await asyncio.gather(*(hermes_ok(config.agents[n]) for n in names), model_ok())
+        return {"agents": dict(zip(names, results[:-1])), "model": results[-1]}
+
     @router.get("/pairing")
     async def pairing(request: Request) -> Dict[str, Any]:
         """The LAN door as it is now (address, certificate): the app refreshes it while the tailnet works."""
@@ -479,9 +517,10 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
             services.tts.reachable(), ntfy_reachable(services.http, config.ntfy_url),
             services.tts.reachable(pocket) if pocket else asyncio.sleep(0, result=None))
         return {"ok": True, "version": __version__, "kyutai": kyutai_ok, "pocket": pocket_ok, "ntfy": ntfy_ok,
-                "apns": services.apns is not None, "tts_queue": services.tts.scheduler.depth}
+                "apns": services.apns is not None, "push": services.push_mode, "tts_queue": services.tts.scheduler.depth}
 
     app.include_router(build_router())
+    app.include_router(relay_router())
     if config.lan.enabled:
         app.include_router(hermes_proxy())
     app.add_api_websocket_route("/v1/voice", voice_endpoint)
