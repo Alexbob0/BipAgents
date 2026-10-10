@@ -37,6 +37,18 @@ def install_ports(config: Path) -> List[int]:
     return [base + 2, base + 3, base + 5]   # agents, bridge, desk
 
 
+def wait_until_stopped(seconds: float = 30) -> None:
+    """The gateway writes its shutdown state on the way out: removing its folder before that races with it."""
+    import subprocess
+    import time
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        found = subprocess.run(["pgrep", "-u", str(os.getuid()), "-f", "hermes.*gateway"], capture_output=True)
+        if found.returncode != 0:
+            return
+        time.sleep(1)
+
+
 def remove(path: Path, runner: Runner) -> None:
     if not path.exists() and not path.is_symlink():
         return
@@ -44,6 +56,13 @@ def remove(path: Path, runner: Runner) -> None:
     if runner.dry:
         return
     if path.is_dir() and not path.is_symlink():
+        for _ in range(3):   # a file written while removing (a process shutting down): try again
+            try:
+                shutil.rmtree(path)
+                return
+            except OSError:
+                import time
+                time.sleep(1)
         shutil.rmtree(path)
     else:
         path.unlink()
@@ -77,7 +96,10 @@ def uninstall(runner: Runner, *, everything: bool, home: Optional[Path] = None, 
 
     # 3. Hermes' gateway service (Hermes removes its own unit / plist).
     if Path(hermes_bin()).exists():
+        runner.run([hermes_bin(), "gateway", "stop"], check=False)
         runner.run([hermes_bin(), "gateway", "uninstall"], check=False)
+        if not runner.dry:
+            wait_until_stopped()
 
     # 4. The bridge's config, keys, certificate and outbox.
     remove(home / ".config" / "bipagents", runner)
@@ -86,5 +108,6 @@ def uninstall(runner: Runner, *, everything: bool, home: Optional[Path] = None, 
     # 5. Hermes itself and the agents' data, only when asked.
     if everything:
         remove(hermes_home(), runner)
-        remove(home / ".local" / "bin" / "hermes", runner)
+        for wrapper in ("hermes", "hermes-acp", "hermes-agent"):
+            remove(home / ".local" / "bin" / wrapper, runner)
         remove(home / ".cache" / "huggingface" / "hub" / "models--kyutai--pocket-tts-without-voice-cloning", runner)
