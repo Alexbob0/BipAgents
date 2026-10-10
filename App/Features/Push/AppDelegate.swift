@@ -104,7 +104,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         #endif
         let payload = NotificationPayload(
             agent: info["agent"] as? String,
-            runID: info["run_id"] as? String,
+            // « session:<id> »: a turn the bridge saw in a conversation (a Discussion reply, a sub-task's report),
+            // not a run to re-attach to: following it left the thread stale, without what was just delivered.
+            runID: (info["run_id"] as? String).flatMap { $0.hasPrefix("session:") ? nil : $0 },
             requestID: info["request_id"] as? String,
             sessionID: info["session_id"] as? String,
             outboxID: info["outbox_id"] as? String
