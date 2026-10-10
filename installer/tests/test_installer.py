@@ -142,7 +142,7 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
     assert "--commit 517b5e10f" in runner.log[0] and "--skip-browser" in runner.log[0]
     hermes.apply_patches(runner, ROOT / "hermes" / "patches")
     applied = [line for line in runner.log if " apply " in line and "--check" not in line]
-    assert [line.rsplit("/", 1)[-1] for line in applied] == ["0001-api-server-clarify.patch",
+    assert [line.rsplit("/", 1)[-1].strip("'") for line in applied] == ["0001-api-server-clarify.patch",
                                                             "0004-image-store-replay-recent-images.patch"]
 
 
