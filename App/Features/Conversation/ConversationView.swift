@@ -147,7 +147,13 @@ private struct ConversationContent: View {
             if !running { proxy.scrollTo(Self.bottom, anchor: .bottom) }
         }
         // An unsent message survives leaving the conversation (and the app); sending clears it.
-        .task { if draft.isEmpty { draft = UserDefaults.standard.string(forKey: draftKey) ?? "" } }
+        .task {
+            guard draft.isEmpty, let saved = UserDefaults.standard.string(forKey: draftKey) else { return }
+            #if DEBUG
+            print("[draft] restored \(saved.count) characters for \(draftKey)")
+            #endif
+            draft = saved
+        }
         .onChange(of: draft) { _, text in
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 UserDefaults.standard.removeObject(forKey: draftKey)
@@ -397,8 +403,12 @@ private struct ConversationContent: View {
 
     private func send() {
         model.send(text: draft, attachments: attachments)
+        // The saved draft goes now, not on the next update: a screen rebuilt meanwhile would restore it.
+        UserDefaults.standard.removeObject(forKey: draftKey)
         draft = ""
         attachments = []
+        // The keyboard can commit a pending autocorrection just after the tap, putting the text back: clear again.
+        Task { @MainActor in draft = "" }
     }
 }
 

@@ -3868,6 +3868,28 @@
         }
       }
     },
+    "Ouvrir la conversation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the conversation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir la conversación"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterhaltung öffnen"
+          }
+        }
+      }
+    },
     "Parle ou touche %@ pour l’interrompre" : {
       "localizations" : {
         "en" : {

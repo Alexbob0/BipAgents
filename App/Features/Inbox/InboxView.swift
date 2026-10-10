@@ -370,5 +370,9 @@ struct InboxCard: View {
         }
         .padding(16)
         .card(radius: 26)
+        // A tap on the message opens its conversation, like « Répondre » (its buttons keep their own action).
+        .contentShape(.rect(cornerRadius: 26))
+        .onTapGesture(perform: reply)
+        .accessibilityAction(named: Text("Ouvrir la conversation"), reply)
     }
 }

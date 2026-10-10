@@ -67,11 +67,16 @@ struct RootView: View {
                 NavigationStack(path: $router.agentsPath) {
                     AgentsView()
                         .navigationDestination(for: AgentRoute.self) { route in
-                            switch route {
-                            case .sessions(let agent): SessionsView(agent: agent)
-                            case .conversation(let agent, let sessionID, let start): ConversationView(agent: agent, sessionID: sessionID, start: start)
-                            case .call(let agent): CallView(agent: agent, sessionID: agents.mainSessionID(for: agent))
+                            Group {
+                                switch route {
+                                case .sessions(let agent): SessionsView(agent: agent)
+                                case .conversation(let agent, let sessionID, let start): ConversationView(agent: agent, sessionID: sessionID, start: start)
+                                case .call(let agent): CallView(agent: agent, sessionID: agents.mainSessionID(for: agent))
+                                }
                             }
+                            // A notification replaces the screen on top with another agent's conversation: same place
+                            // in the stack, so SwiftUI would keep the old screen (and its state) without a new identity.
+                            .id(route)
                         }
                 }
             }
