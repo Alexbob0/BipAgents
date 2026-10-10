@@ -20,7 +20,7 @@ from . import hermes, models
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
-from .stack import AgentEntry, Install, bridge_service, bridge_toml, pocket_service, tailscale_commands
+from .stack import AgentEntry, Install, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
 
 REPO = Path(__file__).resolve().parents[2]
 TEMPLATES = yaml.safe_load((Path(__file__).with_name("templates.yaml")).read_text(encoding="utf-8"))
@@ -233,7 +233,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         soul = template["soul"].replace("{name}", display_name)
         key = hermes.create_agent(runner, profile, description=template["description"], soul=soul, model=model)
         inst.agents.append(AgentEntry(profile, display_name, key))
-    hermes.install_service(runner)
+    try:
+        hermes.install_service(runner)
+    except RuntimeError:
+        # Hermes declines its own service in some setups (inside a container): ours runs the same command.
+        say("  Service Hermes : j'installe le mien.")
+        label, path, content = hermes_service(inst, machine.system, hermes.hermes_bin(), hermes.hermes_home())
+        write(path, content, runner)
+        start_service(machine.system, label, path, runner)
 
     say("2/5 Voix des Bips…")
     if pocket_running():

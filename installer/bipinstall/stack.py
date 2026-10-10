@@ -165,6 +165,20 @@ def pocket_service(inst: Install, system: str, languages: str) -> tuple[str, Pat
     return "bipagents-pocket", path, systemd_unit("BipAgents voices (Pocket TTS)", program, inst.repo / "pocket", env)
 
 
+def hermes_service(inst: Install, system: str, hermes: str, hermes_home: Path) -> tuple[str, Path, str]:
+    """Our own service for Hermes' gateway (`hermes gateway run`), when Hermes refuses to install its own (inside a
+    container, or a service manager it does not handle)."""
+    program = [hermes, "gateway", "run"]
+    env = {"HERMES_HOME": str(hermes_home), "PATH": f"{inst.home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+           "PYTHONUNBUFFERED": "1"}
+    if system == "macos":
+        path = inst.home / "Library" / "LaunchAgents" / "io.github.bipagents.hermes.plist"
+        return "io.github.bipagents.hermes", path, launchd_plist(
+            "io.github.bipagents.hermes", program, inst.home, env, inst.home / "Library" / "Logs" / "bipagents-hermes.log")
+    path = inst.home / ".config" / "systemd" / "user" / "bipagents-hermes.service"
+    return "bipagents-hermes", path, systemd_unit("Hermes gateway (BipAgents)", program, inst.home, env)
+
+
 def tailscale_commands(cli: str, ports: Ports, desk: bool = False) -> List[str]:
     """What publishes this install on the tailnet (HTTPS with the tailnet's certificate), never on the Internet. The
     agents' desk only when it is installed."""
