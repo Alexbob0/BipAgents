@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from . import souls
 from .config import AgentConfig, Config
+from . import peers
 from . import services as connected
 from .spaces import SpaceError, Spaces
 from .vault import CannotHold
@@ -279,6 +280,31 @@ def agents_admin_router() -> APIRouter:
             return await read_settings(services.config, agent, services.http)
         except httpx.HTTPError:
             return {"id": agent.name, "name": agent.display_name}
+
+    @router.get("/agent-links")
+    async def agent_links(request: Request) -> Dict[str, Any]:
+        services = request.app.state.services
+        config: Config = services.config
+        return {"agents": [{"id": a.name, "name": a.display_name,
+                            "managed": peers.managed_home(config, a) is not None} for a in config.agents.values()],
+                "links": [{"from": s, "to": t} for s, t in services.links.load()["links"]]}
+
+    @router.put("/agent-links")
+    async def set_agent_links(request: Request) -> Dict[str, Any]:
+        services = request.app.state.services
+        body = await request.json()
+        wanted = [(str(x.get("from", "")).lower(), str(x.get("to", "")).lower()) for x in body.get("links", [])
+                  if isinstance(x, dict)]
+        async with lock:
+            try:
+                result = await peers.apply(services.config, services.links, wanted, run_hermes)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except (RuntimeError, asyncio.TimeoutError) as exc:
+                raise HTTPException(status_code=502, detail="Hermes could not be set up") from exc
+        # Agents set up by hand need their token added by the administrator: say which, never the token itself.
+        return {"links": [{"from": s, "to": t} for s, t in services.links.load()["links"]],
+                "needs_setup": sorted(result["manual"])}
 
     @router.get("/tool-catalog")
     async def tool_catalog() -> Dict[str, Any]:
