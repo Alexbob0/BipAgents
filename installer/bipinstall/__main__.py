@@ -34,8 +34,9 @@ def ask(question: str, default: str = "") -> str:
     shown = f" [{default}]" if default else ""
     try:
         answer = input(f"{question}{shown} : ").strip()
-    except EOFError:
-        answer = ""
+    except EOFError:  # no one to answer (answers given in advance ran out): stop rather than ask forever
+        say("\nPas de réponse : installation interrompue, rien d'autre n'a été modifié.")
+        raise SystemExit(1)
     return answer or default
 
 
