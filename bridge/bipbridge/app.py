@@ -25,6 +25,7 @@ from .files import UploadSizeLimit, handle_upload, purge_uploads
 from .hermes import HermesClient, HermesHTTPError
 from .lan import hermes_proxy, lan_info
 from .relay import RelayClient, relay_router
+from .agents_admin import agents_admin_router
 from .logs import fields, redact
 from .ntfy import NtfySubscriber, OutboxService, ntfy_reachable
 from .push import PushService
@@ -521,6 +522,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
 
     app.include_router(build_router())
     app.include_router(relay_router())
+    app.include_router(agents_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     if config.lan.enabled:
         app.include_router(hermes_proxy())
     app.add_api_websocket_route("/v1/voice", voice_endpoint)

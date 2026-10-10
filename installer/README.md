@@ -66,5 +66,5 @@ Mac mini used as a server).
 - `install.sh` (repository root): fetches the repository and Python (uv), then runs the installer.
 - `bipinstall/`: `detect.py` (the machine), `models.py` (finding and checking the model), `plan.py` (the profile and
   its memory), `ports.py`, `hermes.py` (Hermes through its own commands), `stack.py` (bridge, voices, services),
-  `templates.yaml` (agent templates).
+  agent kinds in `bridge/bipbridge/agent_templates.yaml` (shared with the bridge).
 - Tests: `python -m pytest installer/tests` (no network, nothing installed).

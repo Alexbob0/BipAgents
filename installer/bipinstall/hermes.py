@@ -162,18 +162,5 @@ def install_service(runner: Runner) -> None:
     runner.run([hermes_bin(), "gateway", "install", "--start-now", "--start-on-login"])
 
 
-def profile_name(display_name: str, taken: Iterable[str] = ()) -> str:
-    """« Léa » → « lea », « Mon coach » → « mon-coach »: the profile (and bridge) id of a name the person chose."""
-    import unicodedata
-    plain = unicodedata.normalize("NFKD", display_name).encode("ascii", "ignore").decode().lower()
-    slug = "-".join("".join(c if c.isalnum() else " " for c in plain).split())[:32] or "agent"
-    if slug == HUB_PROFILE:
-        slug = "agent-default"
-    name, n = slug, 2
-    while name in set(taken):
-        name, n = f"{slug}-{n}", n + 1
-    return name
-
-
 def agent_url(base: str, name: str) -> str:
     return f"{base.rstrip('/')}/p/{name}"

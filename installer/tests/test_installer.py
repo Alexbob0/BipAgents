@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "installer"))
 sys.path.insert(0, str(ROOT / "bridge"))
 
 from bipinstall import hermes, models  # noqa: E402
+from bipbridge import souls  # noqa: E402
 from bipinstall.detect import Machine  # noqa: E402
 from bipinstall.plan import make_plan  # noqa: E402
 from bipinstall.ports import Ports, pick_block  # noqa: E402
@@ -94,11 +95,11 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
 
 
 def test_names_are_the_persons():
-    assert hermes.profile_name("Léa") == "lea"
-    assert hermes.profile_name("Mon coach sportif !") == "mon-coach-sportif"
-    assert hermes.profile_name("Léa", taken=["lea"]) == "lea-2"
-    assert hermes.profile_name("Default") == "agent-default"
-    assert hermes.profile_name("🙂") == "agent"
+    assert souls.profile_name("Léa") == "lea"
+    assert souls.profile_name("Mon coach sportif !") == "mon-coach-sportif"
+    assert souls.profile_name("Léa", taken=["lea"]) == "lea-2"
+    assert souls.profile_name("Default") == "agent-default"
+    assert souls.profile_name("🙂") == "agent"
     from bipinstall.__main__ import TEMPLATES
     assert all("{name}" in t["soul"] and "name" not in t for t in TEMPLATES if t["category"] != "custom")
     assert TEMPLATES[-1]["category"] == "custom"
@@ -174,6 +175,8 @@ def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     assert config.push_relay_url == "https://aibox.tail0000.ts.net:8643"
     assert config.model_health_url == "http://192.168.1.30:8888/v1/models"
     assert config.kyutai_url is None and config.pocket_url == "http://127.0.0.1:8098"
+    assert config.hermes.enabled and config.hermes.hub_url == "http://127.0.0.1:9202"
+    assert config.hermes.public_hub_url == "https://mini.tail0000.ts.net:9202"
     assert tailscale_commands("tailscale", inst.ports)[0] == "tailscale serve --bg --https=9202 http://127.0.0.1:9202"
     label, path, content = bridge_service(inst, "macos")
     assert path.name == "io.github.bipagents.bridge.plist" and str(inst.bridge_config) in content
