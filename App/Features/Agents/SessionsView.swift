@@ -11,6 +11,11 @@ struct SessionsView: View {
     @State private var errorMessage: String?
     @State private var renaming: HermesSession?
     @State private var newTitle = ""
+    /// Sessions read so far: more pages come as the list is scrolled to its end.
+    @State private var nextOffset = 0
+    @State private var reachedEnd = true
+    @State private var isLoadingMore = false
+    @State private var showsAllTasks = false
 
     private var palette: AgentPalette { agent.appearance.palette }
 
@@ -35,8 +40,21 @@ struct SessionsView: View {
                     }
                 }
             }
-            sessionSection("Conversations", sessions.filter { !AgentStore.isBotChat($0) && !AgentStore.isScheduledTask($0) })
-            sessionSection("Tâches planifiées", sessions.filter(AgentStore.isScheduledTask))
+            sessionSection("Conversations", Self.newestFirst(sessions.filter { !AgentStore.isBotChat($0) && !AgentStore.isScheduledTask($0) }))
+            let tasks = Self.newestFirst(sessions.filter(AgentStore.isScheduledTask))
+            sessionSection("Tâches planifiées", showsAllTasks ? tasks : Array(tasks.prefix(5)))
+            if tasks.count > 5 && !showsAllTasks {
+                Button("Afficher les \(tasks.count - 5) autres") { withAnimation { showsAllTasks = true } }
+                    .font(Theme.body(14, weight: .bold))
+                    .foregroundStyle(palette.deep)
+                    .listRowBackground(Color.clear)
+            }
+            if !reachedEnd {
+                // The end of what was read: the next page loads when it comes into view.
+                HStack { Spacer(); ProgressView(); Spacer() }
+                    .listRowBackground(Color.clear)
+                    .task(id: nextOffset) { await loadMore() }  // again after each page while still in view
+            }
         }
         .scrollContentBackground(.hidden)
         .background(alignment: .top) {
@@ -121,11 +139,36 @@ struct SessionsView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            sessions = try await client.listSessions(limit: 50)
+            // Enough pages for a screenful of conversations, even after many scheduled-task runs.
+            let result = try await AgentStore.sessions(from: client) { read in
+                read.filter { !AgentStore.isScheduledTask($0) && !AgentStore.isBotChat($0) }.count >= 20
+            }
+            sessions = result.sessions
+            nextOffset = result.sessions.count
+            reachedEnd = result.complete
             errorMessage = nil
         } catch {
             errorMessage = ConversationModel.describe(error)
         }
+    }
+
+    private func loadMore() async {
+        guard !reachedEnd, !isLoadingMore, let client = store.client(for: agent) else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        guard let result = try? await AgentStore.sessions(from: client, offset: nextOffset, maxPages: 1) else { return }
+        sessions += result.sessions.filter { session in !sessions.contains { $0.id == session.id } }
+        nextOffset += result.sessions.count
+        reachedEnd = result.complete
+    }
+
+    /// Most recent activity first; the server's order breaks ties (and stands when dates are missing).
+    private static func newestFirst(_ sessions: [HermesSession]) -> [HermesSession] {
+        sessions.enumerated().sorted { a, b in
+            let da = a.element.updatedAt ?? a.element.createdAt, db = b.element.updatedAt ?? b.element.createdAt
+            if let da, let db, da != db { return da > db }
+            return a.offset < b.offset
+        }.map(\.element)
     }
 
     private func delete(_ session: HermesSession) {

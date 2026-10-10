@@ -343,6 +343,28 @@
         }
       }
     },
+    "Afficher les %lld autres" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show %lld more"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar %lld más"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld weitere anzeigen"
+          }
+        }
+      }
+    },
     "Afficher l’échange" : {
       "localizations" : {
         "en" : {
@@ -515,6 +537,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alex fährt Samstag nach Bordeaux – welcher Zug ist nach seiner Woche am entspanntesten?"
+          }
+        }
+      }
+    },
+    "Aller aux derniers messages" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go to latest messages"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ir a los últimos mensajes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu den neuesten Nachrichten"
           }
         }
       }
@@ -1309,6 +1353,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einige Bridges sind nicht erreichbar (Tailscale?) oder veraltet."
+          }
+        }
+      }
+    },
+    "Cette conversation n’existe plus." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This conversation no longer exists."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta conversación ya no existe."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Unterhaltung gibt es nicht mehr."
           }
         }
       }

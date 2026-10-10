@@ -60,6 +60,8 @@ private struct ConversationContent: View {
 
     /// How many of the latest items are drawn (« Messages précédents » shows more).
     @State private var visibleCount = 80
+    /// Scrolled up, away from the latest messages: a button brings the end back.
+    @State private var isAwayFromBottom = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -111,6 +113,30 @@ private struct ConversationContent: View {
             .padding(.vertical, 12)
         }
         .defaultScrollAnchor(.bottom)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentSize.height - geometry.visibleRect.maxY > 300
+        } action: { _, away in
+            withAnimation(.snappy) { isAwayFromBottom = away }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if isAwayFromBottom {
+                Button {
+                    withAnimation(.snappy) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                } label: {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(palette.deep)
+                        .frame(width: 44, height: 44)
+                        .background(Theme.card, in: .circle)
+                        .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Aller aux derniers messages")
+                .padding(.trailing, 16)
+                .padding(.bottom, 12)
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
+        }
         .onChange(of: model.items.last?.id) { _, _ in
             // A message just sent (or the thread rebuilt): show the end of the conversation.
             if case .user? = model.items.last?.kind {

@@ -97,6 +97,28 @@ final class AgentStore {
         latestSession[agent.id] = session
     }
 
+    /// Hermes lists sessions most recent first, a page at a time. Scheduled tasks open a session per run, so they
+    /// can push conversations (and the Bot Chat, opened once) past the first page: pages are read until `enough`
+    /// is satisfied, the list ends or `maxPages` is reached. `complete` tells whether the list ended.
+    static func sessions(from client: HermesClient, offset: Int = 0, pageSize: Int = 50, maxPages: Int = 6,
+                         until enough: ([HermesSession]) -> Bool = { _ in false }) async throws -> (sessions: [HermesSession], complete: Bool) {
+        var all: [HermesSession] = []
+        var offset = offset
+        for _ in 0..<maxPages {
+            let page = try await client.listSessions(limit: pageSize, offset: offset)
+            offset += page.count
+            all += page.filter { session in !all.contains { $0.id == session.id } }
+            if page.count < pageSize { return (all, true) }
+            if enough(all) { break }
+        }
+        return (all, false)
+    }
+
+    /// Hermes says this session no longer exists (deleted here, elsewhere, or by aibox): its home card preview goes.
+    func forgetSession(_ sessionID: String, for agent: AgentProfile) {
+        if latestSession[agent.id]?.id == sessionID { latestSession[agent.id] = nil }
+    }
+
     /// The agent's ongoing conversation among its sessions (most recent first): its « Bot Chat » (Hermes
     /// Bot Mode's permanent thread) when it has one, else the most recent one that is not a scheduled task's.
     static func mainThread(in sessions: [HermesSession]) -> HermesSession? {
@@ -157,7 +179,8 @@ final class AgentStore {
         do {
             _ = try await client.capabilities()
             reachability[agent.id] = .online
-            if let sessions = try? await client.listSessions(limit: 50), var latest = Self.mainThread(in: sessions) {
+            if let sessions = try? await Self.sessions(from: client, maxPages: 4, until: { $0.contains(where: Self.isBotChat) }).sessions,
+               var latest = Self.mainThread(in: sessions) {
                 // Hermes' list preview is the session's *first* message: show the latest one instead.
                 if let history = try? await client.messages(sessionID: latest.id),
                    let last = history.last(where: { ($0.role == .assistant || $0.role == .user) && !$0.text.isEmpty }) {

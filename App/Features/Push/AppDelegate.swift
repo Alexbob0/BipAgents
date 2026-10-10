@@ -154,7 +154,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 // (asked to Hermes) rather than an empty new conversation.
                 var main = store.latestSession[agent.id]
                 if main.map(AgentStore.isBotChat) != true, let client = store.client(for: agent),
-                   let sessions = try? await client.listSessions(limit: 50) {
+                   let sessions = try? await AgentStore.sessions(from: client, maxPages: 4,
+                                                                 until: { $0.contains(where: AgentStore.isBotChat) }).sessions {
                     main = AgentStore.mainThread(in: sessions)  // cold launch: not loaded yet
                 }
                 if let main, AgentStore.isBotChat(main) {

@@ -215,6 +215,9 @@ final class ConversationModel {
             } catch let error as HermesError where error.isRetryable && attempt < 3 {
                 // Right after unlocking, Tailscale needs a moment to bring the tunnel back.
                 try? await Task.sleep(for: .seconds(Double(attempt)))
+            } catch let error as HermesError where error.status == 404 {
+                forgetDeletedSession()
+                return
             } catch {
                 errorMessage = Self.describe(error)
                 return
@@ -529,7 +532,16 @@ final class ConversationModel {
                 guard let self, !Task.isCancelled else { return }
                 guard UIApplication.shared.applicationState == .active, let sessionID = self.sessionID else { continue }
                 if self.isRunning { await self.checkRunWithHermes() }
-                guard let count = try? await bridge.sessionMessageCount(agent: self.agent.bridgeName, sessionID: sessionID) else { continue }
+                let count: Int?
+                do {
+                    count = try await bridge.sessionMessageCount(agent: self.agent.bridgeName, sessionID: sessionID)
+                } catch let error as HermesError where error.status == 404 {
+                    self.forgetDeletedSession()
+                    return
+                } catch {
+                    continue
+                }
+                guard let count else { continue }
                 defer { self.knownMessageCount = count }
                 // A run in progress (followed, or left while the phone was locked and about to be re-attached and
                 // replayed) builds its own reply: reloading meanwhile would add it a second time.
@@ -541,6 +553,21 @@ final class ConversationModel {
                 await self.load()
             }
         }
+    }
+
+    /// Hermes no longer has this conversation (deleted elsewhere, or by aibox): stop polling it and drop what the
+    /// phone remembered of it (local copy, run to re-attach, home card preview), so nothing asks for it again.
+    private func forgetDeletedSession() {
+        guard let sessionID else { return }
+        #if DEBUG
+        print("[thread] \(sessionID) no longer exists on Hermes: forgotten")
+        #endif
+        ThreadCache.remove(sessionID: sessionID)
+        Self.activeRuns[sessionID] = nil
+        store.forgetSession(sessionID, for: agent)
+        watchTask?.cancel()
+        watchTask = nil
+        errorMessage = String(localized: "Cette conversation n’existe plus.")
     }
 
     func stopWatching() {
@@ -1273,6 +1300,10 @@ enum ThreadCache {
     static func load(sessionID: String) -> Entry? {
         guard let data = try? Data(contentsOf: file(sessionID)) else { return nil }
         return try? JSONDecoder().decode(Entry.self, from: data)
+    }
+
+    static func remove(sessionID: String) {
+        try? FileManager.default.removeItem(at: file(sessionID))
     }
 
     static func save(_ entry: Entry, sessionID: String) {
