@@ -134,6 +134,18 @@ def test_uninstall_undoes_the_install(tmp_path, monkeypatch):
     assert f"remove {tmp_path}/.hermes" in "\n".join(runner.log)
 
 
+def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+    monkeypatch.setenv("HOME", str(tmp_path))   # no Hermes installed there
+    runner = hermes.Runner(dry=True)
+    hermes.install(runner, browser=False)
+    assert "--commit 517b5e10f" in runner.log[0] and "--skip-browser" in runner.log[0]
+    hermes.apply_patches(runner, ROOT / "hermes" / "patches")
+    applied = [line for line in runner.log if " apply " in line and "--check" not in line]
+    assert [line.rsplit("/", 1)[-1] for line in applied] == ["0001-api-server-clarify.patch",
+                                                            "0004-image-store-replay-recent-images.patch"]
+
+
 def test_bot_mode_marker(tmp_path):
     (tmp_path / "profile.yaml").write_text("description: Budget\n")
     hermes.mark_as_bot(tmp_path)
