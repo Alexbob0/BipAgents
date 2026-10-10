@@ -39,6 +39,8 @@ class AgentConfig:
     upload_dir_host: Optional[str] = None
     upload_dir_container: Optional[str] = None
     voice: Optional[str] = None
+    # The agent's Hermes address as the app reaches it on the tailnet (`tailscale serve`), for the pairing QR code.
+    public_url: Optional[str] = None
 
 
 @dataclass
@@ -77,6 +79,17 @@ class OutboxConfig:
 
 
 @dataclass
+class LanConfig:
+    """The local-network door (no Tailscale): the same bridge over HTTPS with a self-signed certificate the app pins,
+    Hermes relayed under /hermes/<agent>/. Off by default: everything else only listens on 127.0.0.1."""
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8650
+    address: Optional[str] = None   # advertised to the app; detected when empty
+    cert_dir: str = ""
+
+
+@dataclass
 class Config:
     bridge_key: str
     host: str = "127.0.0.1"
@@ -101,6 +114,9 @@ class Config:
     outbox: OutboxConfig = field(default_factory=OutboxConfig)
     limits: Limits = field(default_factory=Limits)
     agents: Dict[str, AgentConfig] = field(default_factory=dict)
+    lan: LanConfig = field(default_factory=LanConfig)
+    # The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
+    public_url: Optional[str] = None
     source_path: Optional[str] = None
 
     def agent(self, name: Optional[str]) -> Optional[AgentConfig]:
@@ -226,7 +242,17 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             upload_dir_host=_expand(str(up_host)) if up_host else None,
             upload_dir_container=str(up_cont).rstrip("/") if up_cont else None,
             voice=str(table["voice"]) if table.get("voice") else None,
+            public_url=str(table["public_url"]).rstrip("/") if table.get("public_url") else None,
         )
+
+    lan_t = data.get("lan", {}) or {}
+    lan = LanConfig(
+        enabled=bool(lan_t.get("enabled", False)),
+        host=str(lan_t.get("host", "0.0.0.0")),
+        port=int(lan_t.get("port", 8650)),
+        address=str(lan_t["address"]).strip() if lan_t.get("address") else None,
+        cert_dir=_expand(str(lan_t.get("cert_dir", os.path.join(data_dir, "lan")))),
+    )
 
     return Config(
         bridge_key=bridge_key,
@@ -248,6 +274,8 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         outbox=outbox,
         limits=limits,
         agents=agents,
+        lan=lan,
+        public_url=str(data["public_url"]).rstrip("/") if data.get("public_url") else None,
         source_path=source_path,
     )
 

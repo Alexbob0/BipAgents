@@ -275,6 +275,7 @@
 				INFOPLIST_FILE = "Config/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = BipAgents;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Pour prendre une photo ou scanner le QR code d’un agent.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pour joindre ton serveur sur le Wi-Fi quand Tailscale ne répond pas.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour parler à tes agents.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Pour envoyer des photos à tes agents.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Pour transcrire ta voix directement sur l’iPhone.";
@@ -311,6 +312,7 @@
 				INFOPLIST_FILE = "Config/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = BipAgents;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Pour prendre une photo ou scanner le QR code d’un agent.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pour joindre ton serveur sur le Wi-Fi quand Tailscale ne répond pas.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour parler à tes agents.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Pour envoyer des photos à tes agents.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Pour transcrire ta voix directement sur l’iPhone.";

@@ -12,6 +12,9 @@ struct AddAgentFlow: View {
     @State private var voice = "" // empty: the category's Bip voice (changeable later in Réglages)
     @State private var bridgeURL = ""
     @State private var bridgeKey = ""
+    /// The bridge's local-network door, from the QR code only (its certificate fingerprint cannot be typed).
+    @State private var lanURL: URL?
+    @State private var lanFingerprint: String?
     @State private var appearance = AgentAppearance(category: .daily)
     @State private var categoryWasPicked = false
     @State private var errorMessage: String?
@@ -79,6 +82,7 @@ struct AddAgentFlow: View {
         .fullScreenCover(isPresented: $isScanning) {
             ZStack(alignment: .top) {
                 QRScanner { payload in
+                    if updatesExistingAgent(payload) { isScanning = false; dismiss(); return }
                     isScanning = false
                     if apply(payload) { goToStyle() }
                 }
@@ -121,12 +125,21 @@ struct AddAgentFlow: View {
             bridgeURL = provisioning.config.bridgeURL?.absoluteString ?? ""
             apiKey = provisioning.secrets.apiKey
             bridgeKey = provisioning.secrets.bridgeKey ?? ""
+            lanURL = provisioning.config.lanURL
+            lanFingerprint = provisioning.config.lanFingerprint
             errorMessage = nil
             return true
         } catch {
             errorMessage = String(localized: "Configuration illisible : \(error.localizedDescription)")
             return false
         }
+    }
+
+    /// The QR code of an agent already set up (same Hermes address): its connection is updated (new keys, local
+    /// address), nothing else changes.
+    private func updatesExistingAgent(_ payload: String) -> Bool {
+        guard let provisioning = try? AgentProvisioning(qrPayload: payload) else { return false }
+        return (try? store.updateConnection(from: provisioning)) == true
     }
 
     private func goToStyle() {
@@ -142,7 +155,9 @@ struct AddAgentFlow: View {
             voice: voice.isEmpty ? nil : voice,
             category: appearance.category.rawValue,
             bridgeURL: URL(string: bridgeURL).flatMap { $0.host() == nil ? nil : $0 },
-            language: AgentLanguage.device.rawValue
+            language: AgentLanguage.device.rawValue,
+            lanURL: lanURL,
+            lanFingerprint: lanFingerprint
         )
         do {
             try store.add(AgentProfile(config: config, appearance: appearance),

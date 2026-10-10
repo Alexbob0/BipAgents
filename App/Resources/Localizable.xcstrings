@@ -2105,6 +2105,28 @@
         }
       }
     },
+    "En ligne · réseau local" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online · local network"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En línea · red local"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online · lokales Netz"
+          }
+        }
+      }
+    },
     "Encore…" : {
       "localizations" : {
         "en" : {
@@ -3624,6 +3646,28 @@
         }
       }
     },
+    "Ni Tailscale ni le réseau local ne répondent. Si l’adresse du serveur a changé, affiche un nouveau QR code sur le serveur, puis scanne-le avec le bouton +." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neither Tailscale nor the local network answers. If the server's address changed, show a new QR code on the server, then scan it with the + button."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ni Tailscale ni la red local responden. Si la dirección del servidor cambió, muestra un nuevo código QR en el servidor y escanéalo con el botón +."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weder Tailscale noch das lokale Netz antworten. Wenn sich die Adresse des Servers geändert hat, zeige auf dem Server einen neuen QR-Code an und scanne ihn mit der Taste +."
+          }
+        }
+      }
+    },
     "Nom" : {
       "localizations" : {
         "en" : {
@@ -5118,6 +5162,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dokument scannen"
+          }
+        }
+      }
+    },
+    "Serveur injoignable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server unreachable"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidor inaccesible"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server nicht erreichbar"
           }
         }
       }

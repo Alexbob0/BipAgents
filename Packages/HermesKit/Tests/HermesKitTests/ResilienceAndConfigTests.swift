@@ -20,6 +20,17 @@ struct AgentProvisioningTests {
         #expect(!encoded.contains("b-456"))
     }
 
+    @Test func lanDoorComesWithItsCertificate() throws {
+        let print = String(repeating: "ab", count: 32)
+        let qr = #"{"name":"Vie","baseURL":"https://h.ts.net:8644","apiKey":"k","lan":{"url":"https://192.168.8.10:8650","fingerprint":"\#(print.uppercased())"}}"#
+        let provisioning = try AgentProvisioning(qrPayload: qr)
+        #expect(provisioning.config.lanURL?.absoluteString == "https://192.168.8.10:8650")
+        #expect(provisioning.config.lanFingerprint == print)
+        // Without a valid fingerprint the door is ignored (a self-signed certificate must be pinned).
+        let unpinned = try AgentProvisioning(qrPayload: #"{"name":"Vie","baseURL":"https://h.ts.net:8644","apiKey":"k","lan":{"url":"https://192.168.8.10:8650"}}"#)
+        #expect(unpinned.config.lanURL == nil)
+    }
+
     @Test func minimalPayload() throws {
         let provisioning = try AgentProvisioning(qrPayload: #"{"name":"Vie","baseURL":"https://h.ts.net:8644","apiKey":"k"}"#)
         #expect(provisioning.config.voice == nil)

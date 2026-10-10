@@ -18,10 +18,27 @@ struct BridgeClient: Sendable {
     var key: String
     var session: URLSession = .shared
 
+    /// On the tailnet, or through the LAN door when the tailnet is down (see `LocalLink`).
     init?(agent: AgentProfile, secrets: AgentSecrets?) {
+        guard let url = LocalLink.bridgeURL(for: agent), let key = secrets?.bridgeKey else { return nil }
+        baseURL = url
+        self.key = key
+        session = LocalLink.session(for: agent)
+    }
+
+    /// The bridge on the tailnet, whatever the current route (to refresh the LAN door's details).
+    init?(tailnetOf agent: AgentProfile, secrets: AgentSecrets?) {
         guard let url = agent.config.bridgeURL, let key = secrets?.bridgeKey else { return nil }
         baseURL = url
         self.key = key
+    }
+
+    /// `GET /v1/pairing`: the LAN door as the bridge sees it now (nil when it is off).
+    func pairing() async throws -> (url: URL, fingerprint: String)? {
+        let json = try JSONSerialization.jsonObject(with: try await send(request("v1/pairing"))) as? [String: Any]
+        guard let lan = json?["lan"] as? [String: Any], let raw = lan["url"] as? String, let url = URL(string: raw),
+              let fingerprint = lan["fingerprint"] as? String, fingerprint.count == 64 else { return nil }
+        return (url, fingerprint.lowercased())
     }
 
     func health() async throws -> Bool {
@@ -235,7 +252,7 @@ struct BridgeClient: Sendable {
 
 extension AgentProfile {
     /// The agent's key in the bridge configuration (`wellness`, `vie`…).
-    var bridgeName: String {
+    nonisolated var bridgeName: String {
         name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).replacing(" ", with: "-")
     }
 }

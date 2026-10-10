@@ -13,17 +13,20 @@ struct AgentProfile: Codable, Identifiable, Hashable, Sendable {
     var config: AgentConfig
     var appearance: AgentAppearance
 
-    var id: UUID { config.id }
-    var name: String { config.name }
+    nonisolated var id: UUID { config.id }
+    nonisolated var name: String { config.name }
 }
 
 enum AgentReachability: Equatable, Sendable {
     case unknown, checking, online, unauthorized, offline(String)
+    /// Reached through the bridge's door on the local network (the tailnet does not answer).
+    case local
 
     var label: String {
         switch self {
         case .unknown, .checking: "…"
         case .online: String(localized: "En ligne")
+        case .local: String(localized: "En ligne · réseau local")
         case .unauthorized: String(localized: "Clé refusée")
         case .offline: String(localized: "Hors tailnet")
         }
@@ -33,7 +36,9 @@ enum AgentReachability: Equatable, Sendable {
 /// Configured agents, persisted as JSON in Application Support; secrets go to the Keychain.
 @Observable
 final class AgentStore {
-    private(set) var agents: [AgentProfile] = []
+    private(set) var agents: [AgentProfile] = [] {
+        didSet { LocalLink.updatePins(for: agents) }
+    }
     private(set) var reachability: [UUID: AgentReachability] = [:]
     /// Most recent session per agent, for the home card preview.
     private(set) var latestSession: [UUID: HermesSession] = [:] {
@@ -72,7 +77,26 @@ final class AgentStore {
 
     func client(for agent: AgentProfile) -> HermesClient? {
         guard let secrets = Keychain.secrets(for: agent.id) else { return nil }
-        return HermesClient(baseURL: agent.config.baseURL, apiKey: secrets.apiKey)
+        return HermesClient(baseURL: LocalLink.hermesURL(for: agent), apiKey: secrets.apiKey,
+                            session: LocalLink.session(for: agent))
+    }
+
+    /// A newly scanned QR code of an agent already here (same Hermes address): new keys, bridge and LAN door,
+    /// the rest (Bip, voice, language) kept. Returns false when no agent matches.
+    func updateConnection(from provisioning: AgentProvisioning) throws -> Bool {
+        let scanned = provisioning.config
+        guard let index = agents.firstIndex(where: {
+            $0.config.baseURL.host() == scanned.baseURL.host() && $0.config.baseURL.port == scanned.baseURL.port
+        }) else { return false }
+        var profile = agents[index]
+        profile.config.bridgeURL = scanned.bridgeURL ?? profile.config.bridgeURL
+        profile.config.lanURL = scanned.lanURL
+        profile.config.lanFingerprint = scanned.lanFingerprint
+        try Keychain.save(provisioning.secrets, for: profile.id)
+        agents[index] = profile
+        save()
+        Task { await refreshReachability(of: profile) }
+        return true
     }
 
     func secrets(for agent: AgentProfile) -> AgentSecrets? { Keychain.secrets(for: agent.id) }
@@ -170,15 +194,43 @@ final class AgentStore {
         }
     }
 
+    /// Tailnet first; when it does not answer, the bridge's door on the local network (if the agent has one). While
+    /// the tailnet works, the door's address is refreshed from the bridge, so a new IP needs no new QR code.
     func refreshReachability(of agent: AgentProfile) async {
-        guard let client = client(for: agent) else {
+        guard let secrets = secrets(for: agent) else {
             reachability[agent.id] = .unauthorized
             return
         }
         reachability[agent.id] = .checking
+        let tailnet = HermesClient(baseURL: agent.config.baseURL, apiKey: secrets.apiKey)
         do {
-            _ = try await client.capabilities()
+            _ = try await withTimeout(8) { try await tailnet.capabilities() }
+            LocalLink.setActive(false, for: agent)
             reachability[agent.id] = .online
+            await refreshLocalDoor(of: agent, secrets: secrets)
+        } catch HermesError.unauthorized(_) {
+            reachability[agent.id] = .unauthorized
+            return
+        } catch {
+            guard let door = agent.config.lanURL else {
+                reachability[agent.id] = .offline(error.localizedDescription)
+                return
+            }
+            let local = HermesClient(baseURL: door.appending(path: "hermes/\(agent.bridgeName)"), apiKey: secrets.apiKey,
+                                     session: LocalLink.session)
+            do {
+                _ = try await withTimeout(5) { try await local.capabilities() }
+                LocalLink.setActive(true, for: agent)
+                reachability[agent.id] = .local
+            } catch {
+                LocalLink.setActive(false, for: agent)
+                lostAgents.insert(agent.id)
+                reachability[agent.id] = .offline(error.localizedDescription)
+                return
+            }
+        }
+        lostAgents.remove(agent.id)
+        if let client = client(for: agent) {
             if let sessions = try? await Self.sessions(from: client, maxPages: 4, until: { $0.contains(where: Self.isBotChat) }).sessions,
                var latest = Self.mainThread(in: sessions) {
                 // Hermes' list preview is the session's *first* message: show the latest one instead.
@@ -190,11 +242,25 @@ final class AgentStore {
                 }
                 latestSession[agent.id] = latest
             }
-        } catch HermesError.unauthorized(_) {
-            reachability[agent.id] = .unauthorized
-        } catch {
-            reachability[agent.id] = .offline(error.localizedDescription)
         }
+    }
+
+    /// Agents unreachable both on the tailnet and on the local network although they have a LAN door: their
+    /// address may have changed while the tailnet was down (the home screen says how to get a new QR code).
+    private(set) var lostAgents: Set<UUID> = []
+
+    private func refreshLocalDoor(of agent: AgentProfile, secrets: AgentSecrets) async {
+        guard let bridge = BridgeClient(tailnetOf: agent, secrets: secrets) else { return }
+        let door: (url: URL, fingerprint: String)?
+        do { door = try await bridge.pairing() } catch { return }  // an older bridge, or a hiccup: keep what we have
+        guard let index = agents.firstIndex(where: { $0.id == agent.id }) else { return }
+        guard agents[index].config.lanURL != door?.url || agents[index].config.lanFingerprint != door?.fingerprint else { return }
+        #if DEBUG
+        print("[lan] \(agent.name): door \(door.map { $0.url.absoluteString } ?? "off")")
+        #endif
+        agents[index].config.lanURL = door?.url
+        agents[index].config.lanFingerprint = door?.fingerprint
+        save()
     }
 
     // MARK: Persistence

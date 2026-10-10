@@ -10,6 +10,7 @@ host = "127.0.0.1"          # exposed on the tailnet via `tailscale serve`, neve
 port = 8643
 log_level = "info"
 data_dir = "~/.local/share/hermes-bridge"
+public_url = "https://mamachine.tailnet.ts.net:8643"   # the bridge on the tailnet, for the pairing QR code
 
 # Kyutai TTS 1.6B (Nvidia GPU): "classic" human voice and podcast. Optional: without a GPU (Mac mini, VPS),
 # set `enabled = false` and keep [pocket]; the default voice then becomes `[pocket] default_voice`.
@@ -73,9 +74,19 @@ tts_cache_entries = 256
 watch_max_minutes = 120
 purge_interval_hours = 6
 
+# Local-network door, for when Tailscale is down (no Internet, VPN off): the bridge also listens on the LAN over
+# HTTPS with its own certificate (created in data_dir/lan, pinned by the app through the QR code) and relays Hermes.
+# Open this port on the LAN only (firewall), never on the Internet.
+[lan]
+enabled = false
+host = "0.0.0.0"
+port = 8650
+# address = "192.168.1.20"   # advertised to the app; detected when empty (set it when the bridge runs in a container)
+
 [agents.wellness]
 display_name = "Wellness"
 hermes_url = "http://127.0.0.1:8642"
+public_url = "https://mamachine.tailnet.ts.net:8642"   # its Hermes on the tailnet, for the pairing QR code
 hermes_key = "CHANGE-ME-API_SERVER_KEY-of-wellness"
 ntfy_topic = "hermes-wellness-out"
 ntfy_token = "CHANGE-ME-tk_token-with-read-access"

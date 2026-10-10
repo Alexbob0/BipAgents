@@ -23,6 +23,7 @@ from .cronwatch import CronWatcher, Presence
 from .media import content_type as media_content_type, resolve as resolve_media
 from .files import UploadSizeLimit, handle_upload, purge_uploads
 from .hermes import HermesClient, HermesHTTPError
+from .lan import hermes_proxy, lan_info
 from .logs import fields, redact
 from .ntfy import NtfySubscriber, OutboxService, ntfy_reachable
 from .push import PushService
@@ -347,6 +348,11 @@ def build_router() -> APIRouter:
         return {"session_id": session_id, "message_count": count if isinstance(count, int) else None,
                 "updated_at": session.get("updated_at") or session.get("last_active")}
 
+    @router.get("/pairing")
+    async def pairing(request: Request) -> Dict[str, Any]:
+        """The LAN door as it is now (address, certificate): the app refreshes it while the tailnet works."""
+        return {"lan": lan_info(_services(request).config)}
+
     @router.get("/replies/{reply_id}")
     async def get_reply(reply_id: str, request: Request) -> Dict[str, Any]:
         """The text of a reply / question push, for the Notification Service Extension (kept 24 h)."""
@@ -476,5 +482,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
                 "apns": services.apns is not None, "tts_queue": services.tts.scheduler.depth}
 
     app.include_router(build_router())
+    if config.lan.enabled:
+        app.include_router(hermes_proxy())
     app.add_api_websocket_route("/v1/voice", voice_endpoint)
     return app

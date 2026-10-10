@@ -15,6 +15,11 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
     public var defaultSessionID: String?
     /// Language the agent is spoken to in (`fr`, `en`, `es`, `de`); `nil` for agents saved before it existed.
     public var language: String?
+    /// The bridge's door on the local network (`https://192.168.x.y:8650`), used when the tailnet is down; Hermes is
+    /// reached through it under `/hermes/<agent>/`. Its certificate is self-signed: only `lanFingerprint` is accepted.
+    public var lanURL: URL?
+    /// SHA-256 of the LAN door's certificate (DER), lowercase hex.
+    public var lanFingerprint: String?
 
     public init(
         id: UUID = UUID(),
@@ -25,7 +30,9 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
         category: String? = nil,
         bridgeURL: URL? = nil,
         defaultSessionID: String? = nil,
-        language: String? = nil
+        language: String? = nil,
+        lanURL: URL? = nil,
+        lanFingerprint: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -36,6 +43,8 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
         self.bridgeURL = bridgeURL
         self.defaultSessionID = defaultSessionID
         self.language = language
+        self.lanURL = lanURL
+        self.lanFingerprint = lanFingerprint
     }
 }
 
@@ -92,6 +101,11 @@ public struct AgentProvisioning: Sendable, Hashable {
         let baseURL = try url("baseURL", try required("baseURL", "base_url", "url"))
         let apiKey = try required("apiKey", "api_key", "key")
         let bridgeURL = try optional("bridgeURL", "bridge_url").map { try url("bridgeURL", $0) }
+        // `"lan": {"url": "https://192.168.8.10:8650", "fingerprint": "<sha256 hex>"}`: both or nothing.
+        let lan = fields.value(["lan"])
+        let lanURL = lan?["url"]?.stringValue.flatMap(URL.init(string:)).flatMap { $0.scheme == "https" && $0.host() != nil ? $0 : nil }
+        let lanFingerprint = lan?["fingerprint"]?.stringValue?.lowercased()
+            .filter { $0.isHexDigit }.nilIfEmpty.flatMap { $0.count == 64 ? $0 : nil }
 
         config = AgentConfig(
             id: id,
@@ -100,7 +114,9 @@ public struct AgentProvisioning: Sendable, Hashable {
             voice: optional("voice"),
             colorTag: optional("color", "colorTag"),
             category: optional("category"),
-            bridgeURL: bridgeURL
+            bridgeURL: bridgeURL,
+            lanURL: lanFingerprint == nil ? nil : lanURL,
+            lanFingerprint: lanURL == nil ? nil : lanFingerprint
         )
         secrets = AgentSecrets(apiKey: apiKey, bridgeKey: optional("bridgeKey", "bridge_key"))
     }

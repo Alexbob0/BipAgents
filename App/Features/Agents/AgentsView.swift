@@ -16,6 +16,7 @@ struct AgentsView: View {
                     if store.agents.isEmpty {
                         EmptyAgentsView { isAddingAgent = true }
                     } else {
+                        if !store.lostAgents.isEmpty { LostServerNotice() }
                         // Beyond two agents the cards go compact: about four fit on a screen.
                         let compact = store.agents.count > 2
                         ForEach(store.agents) { agent in
@@ -206,7 +207,7 @@ struct AgentCard: View {
 extension AgentReachability {
     var mascotMood: MascotMood {
         switch self {
-        case .online, .unknown: .happy
+        case .online, .local, .unknown: .happy
         case .checking: .thinking
         case .unauthorized: .asking
         case .offline: .sleeping
@@ -248,10 +249,35 @@ struct ReachabilityLabel: View {
 
     private var color: Color {
         switch reachability {
-        case .online: Theme.online
+        case .online, .local: Theme.online
         case .unauthorized, .offline: Theme.danger
         case .unknown, .checking: Theme.muted
         }
+    }
+}
+
+/// Neither the tailnet nor the bridge's local door answers: the server may be off, or its local address changed
+/// while the tailnet was down (the app learns new addresses on its own only through the tailnet).
+struct LostServerNotice: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Serveur injoignable", systemImage: "wifi.exclamationmark")
+                .font(Theme.body(15, weight: .heavy))
+                .foregroundStyle(Theme.danger)
+            Text("Ni Tailscale ni le réseau local ne répondent. Si l’adresse du serveur a changé, affiche un nouveau QR code sur le serveur, puis scanne-le avec le bouton +.")
+                .font(Theme.body(14))
+                .foregroundStyle(Theme.ink2)
+            Text(verbatim: "python -m bipbridge qr")
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(Theme.ink)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Theme.background, in: .rect(cornerRadius: 8))
+                .textSelection(.enabled)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card, in: .rect(cornerRadius: 22, style: .continuous))
     }
 }
 
