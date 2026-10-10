@@ -196,6 +196,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         write(path, content, runner)
         start_service(machine.system, label, path, runner)
 
+    if machine.system == "macos":
+        say("  macOS peut demander si Python peut accéder aux appareils du réseau local : accepte, sinon les agents\n"
+            "  et le bridge ne joindront pas un modèle installé sur une autre machine de la maison.")
     say("3/5 Bridge…")
     venv(REPO / "bridge", runner)
     write(inst.bridge_config, bridge_toml(inst), runner, mode=0o600)
