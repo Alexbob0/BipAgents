@@ -14,8 +14,8 @@ from typing import List, Optional
 from .detect import detect
 from .hermes import Runner, hermes_bin, hermes_home
 
-SERVICES = {"macos": ["io.github.bipagents.bridge", "io.github.bipagents.pocket"],
-            "linux": ["bipagents-bridge", "bipagents-pocket"]}
+SERVICES = {"macos": ["io.github.bipagents.bridge", "io.github.bipagents.pocket", "io.github.bipagents.hermes"],
+            "linux": ["bipagents-bridge", "bipagents-pocket", "bipagents-hermes"]}
 
 
 def service_path(system: str, label: str, home: Path) -> Path:
