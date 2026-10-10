@@ -156,6 +156,103 @@ struct BridgeClient: Sendable {
         return AgentSettings(soul: soul, toolsets: toolsets)
     }
 
+    /// A credential of the agents' vault, as the app sees it: never its password.
+    struct VaultItem: Sendable, Identifiable, Hashable {
+        var id: String
+        var label: String
+        var origin: String
+        var identifier: String
+        var hasOTP: Bool
+        var agents: [String]
+    }
+
+    /// An agent of this install, and whether it may hold credentials (`why`: needs_own_space, not_configured).
+    struct VaultAgent: Sendable, Identifiable, Hashable {
+        var id: String
+        var name: String
+        var canHold: Bool
+        var why: String?
+    }
+
+    /// What the person typed; nil fields are left as they are (a password left empty is kept).
+    struct VaultLogin: Sendable {
+        var label: String?
+        var site: String?
+        var identifier: String?
+        var password: String?
+        var otpSecret: String?
+        var agents: [String]?
+    }
+
+    /// `GET /v1/vault`: nil when this bridge has no vault (older bridge).
+    func vault() async throws -> (items: [VaultItem], agents: [VaultAgent])? {
+        let data: Data
+        do {
+            data = try await send(request("v1/vault"))
+        } catch HermesError.http(let status, _, _) where status == 404 {
+            return nil
+        }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let items = (json?["items"] as? [[String: Any]] ?? []).compactMap(Self.vaultItem)
+        let agents = (json?["agents"] as? [[String: Any]] ?? []).compactMap { row -> VaultAgent? in
+            guard let id = row["id"] as? String else { return nil }
+            return VaultAgent(id: id, name: row["name"] as? String ?? id, canHold: row["can_hold"] as? Bool ?? false,
+                              why: row["why"] as? String)
+        }
+        return (items, agents)
+    }
+
+    /// The agents that cannot hold credentials yet, from a 409 (agent id -> reason).
+    struct CannotHold: Error, Sendable {
+        var agents: [String: String]
+    }
+
+    /// `POST /v1/vault` (new) or `PATCH /v1/vault/{id}`.
+    @discardableResult
+    func saveVaultItem(_ login: VaultLogin, id: String? = nil) async throws -> VaultItem {
+        var request = request(id.map { "v1/vault/\($0)" } ?? "v1/vault", method: id == nil ? "POST" : "PATCH")
+        request.timeoutInterval = 60
+        var body: [String: Any] = ["kind": "login"]
+        if let value = login.label { body["label"] = value }
+        if let value = login.site { body["site"] = value }
+        if let value = login.identifier {
+            body["identifier"] = value
+            body["identifier_type"] = value.contains("@") ? "email"
+                : value.allSatisfy({ $0.isNumber || "+ ".contains($0) }) ? "phone" : "username"
+        }
+        if let value = login.password, !value.isEmpty { body["password"] = value }
+        if let value = login.otpSecret { body["otp_secret"] = value }
+        if let value = login.agents { body["agents"] = value }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 409, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let agents = (json["detail"] as? [String: Any])?["agents"] as? [String: String] {
+            throw CannotHold(agents: agents)
+        }
+        guard (200..<300).contains(status) else {
+            if status == 401 || status == 403 { throw HermesError.unauthorized(message: String(localized: "Clé du bridge refusée")) }
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw HermesError.http(status: status, message: detail, code: nil)
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let item = Self.vaultItem(json) else { throw HermesError.invalidResponse("vault item") }
+        return item
+    }
+
+    func deleteVaultItem(_ id: String) async throws {
+        var request = request("v1/vault/\(id)", method: "DELETE")
+        request.timeoutInterval = 60
+        try await send(request)
+    }
+
+    private static func vaultItem(_ row: [String: Any]) -> VaultItem? {
+        guard let id = row["id"] as? String else { return nil }
+        return VaultItem(id: id, label: row["label"] as? String ?? "", origin: row["origin"] as? String ?? "",
+                         identifier: row["identifier"] as? String ?? "", hasOTP: row["has_otp"] as? Bool ?? false,
+                         agents: row["agents"] as? [String] ?? [])
+    }
+
     /// `GET /v1/status`: whether the model answers (nil when the bridge does not check it, or is older).
     func modelIsUp() async throws -> Bool? {
         let json = try JSONSerialization.jsonObject(with: try await send(request("v1/status"))) as? [String: Any]

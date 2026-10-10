@@ -8712,6 +8712,666 @@
           }
         }
       }
+    },
+    "Coffre des agents" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agents’ vault"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caja fuerte de los agentes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tresor der Agenten"
+          }
+        }
+      }
+    },
+    "Coffre" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vault"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caja fuerte"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tresor"
+          }
+        }
+      }
+    },
+    "Les identifiants de sites que tes agents utilisent sans jamais les voir." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The website logins your agents use without ever seeing them."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los accesos a sitios web que tus agentes usan sin verlos nunca."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Website-Zugänge, die deine Agenten nutzen, ohne sie je zu sehen."
+          }
+        }
+      }
+    },
+    "Active un code sur l’iPhone pour utiliser le coffre." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set a passcode on the iPhone to use the vault."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa un código en el iPhone para usar la caja fuerte."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lege einen Code auf dem iPhone fest, um den Tresor zu nutzen."
+          }
+        }
+      }
+    },
+    "Agents qui peuvent s’en servir" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agents that may use it"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agentes que pueden usarlo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agenten, die ihn nutzen dürfen"
+          }
+        }
+      }
+    },
+    "Ajouter un identifiant" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a login"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir un acceso"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugang hinzufügen"
+          }
+        }
+      }
+    },
+    "Aucun agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No agent"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ningún agente"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Agent"
+          }
+        }
+      }
+    },
+    "Aucun de tes serveurs n’a de coffre pour l’instant (bridge à mettre à jour)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None of your servers has a vault yet (the bridge needs an update)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguno de tus servidores tiene caja fuerte todavía (hay que actualizar el bridge)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keiner deiner Server hat einen Tresor (Bridge muss aktualisiert werden)."
+          }
+        }
+      }
+    },
+    "Aucun identifiant pour l’instant. Ajoute celui d’un site, puis choisis quels agents peuvent s’en servir." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No logins yet. Add one for a website, then choose which agents may use it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no hay accesos. Añade el de un sitio y elige qué agentes pueden usarlo."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Zugänge. Füge einen für eine Website hinzu und wähle, welche Agenten ihn nutzen dürfen."
+          }
+        }
+      }
+    },
+    "Clé 2FA (facultative)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2FA key (optional)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clave 2FA (opcional)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2FA-Schlüssel (optional)"
+          }
+        }
+      }
+    },
+    "Code 2FA" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2FA code"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Código 2FA"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2FA-Code"
+          }
+        }
+      }
+    },
+    "E-mail ou identifiant" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E-mail or user name"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Correo o usuario"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E-Mail oder Benutzername"
+          }
+        }
+      }
+    },
+    "La clé de configuration que le site donne pour une app d’authentification (ou le lien otpauth://). L’agent saura alors entrer le code à 6 chiffres." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The setup key the website gives for an authenticator app (or the otpauth:// link). The agent can then enter the 6-digit code."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La clave de configuración que da el sitio para una app de autenticación (o el enlace otpauth://). El agente podrá introducir el código de 6 cifras."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Einrichtungsschlüssel, den die Website für eine Authenticator-App angibt (oder der otpauth://-Link). Der Agent kann dann den 6-stelligen Code eingeben."
+          }
+        }
+      }
+    },
+    "Le coffre est verrouillé" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The vault is locked"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La caja fuerte está cerrada"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Tresor ist gesperrt"
+          }
+        }
+      }
+    },
+    "Déverrouiller" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unlock"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desbloquear"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entsperren"
+          }
+        }
+      }
+    },
+    "Le site doit être exactement celui de la page de connexion : l’agent ne remplira le mot de passe nulle part ailleurs." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The website must be exactly the login page’s: the agent will fill the password nowhere else."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El sitio debe ser exactamente el de la página de inicio de sesión: el agente no rellenará la contraseña en ningún otro lugar."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Website muss genau die der Anmeldeseite sein: Der Agent trägt das Passwort nirgendwo sonst ein."
+          }
+        }
+      }
+    },
+    "Les agents qui s’en servaient ne pourront plus se connecter à ce site." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The agents that used it will no longer be able to log in to this website."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los agentes que lo usaban ya no podrán iniciar sesión en este sitio."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Agenten, die ihn genutzt haben, können sich nicht mehr bei dieser Website anmelden."
+          }
+        }
+      }
+    },
+    "Mot de passe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Password"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contraseña"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passwort"
+          }
+        }
+      }
+    },
+    "Nom (ex. SNCF)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name (e.g. SNCF)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre (p. ej. SNCF)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name (z. B. SNCF)"
+          }
+        }
+      }
+    },
+    "Nouveau mot de passe (vide : inchangé)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New password (empty: unchanged)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nueva contraseña (vacía: sin cambios)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Passwort (leer: unverändert)"
+          }
+        }
+      }
+    },
+    "Nouvel identifiant" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New login"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuevo acceso"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuer Zugang"
+          }
+        }
+      }
+    },
+    "Ouvrir le coffre des agents" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the agents’ vault"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir la caja fuerte de los agentes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den Tresor der Agenten öffnen"
+          }
+        }
+      }
+    },
+    "Retirer le code 2FA" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove the 2FA code"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar el código 2FA"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2FA-Code entfernen"
+          }
+        }
+      }
+    },
+    "Site (ex. sncf-connect.com)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Website (e.g. sncf-connect.com)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sitio (p. ej. sncf-connect.com)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Website (z. B. sncf-connect.com)"
+          }
+        }
+      }
+    },
+    "Supprimer « %@ » ?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete “%@”?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar «%@»?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ löschen?"
+          }
+        }
+      }
+    },
+    "Serveur" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidor"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server"
+          }
+        }
+      }
+    },
+    "Tes agents remplissent eux-mêmes le formulaire de connexion, seulement sur le site enregistré. Ils ne voient jamais le mot de passe, et l’app ne le réaffiche jamais : tu peux le remplacer ou le supprimer." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your agents fill in the login form themselves, only on the saved website. They never see the password, and the app never shows it again: you can replace or delete it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus agentes rellenan ellos mismos el formulario de inicio de sesión, solo en el sitio guardado. Nunca ven la contraseña, y la app no la vuelve a mostrar: puedes cambiarla o eliminarla."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Agenten füllen das Anmeldeformular selbst aus, nur auf der gespeicherten Website. Sie sehen das Passwort nie, und die App zeigt es nie wieder an: Du kannst es ersetzen oder löschen."
+          }
+        }
+      }
+    },
+    "Un agent ne reçoit des identifiants que s’il a son propre espace sur le serveur : un agent qui partage le sien pourrait lire ceux des autres." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent gets logins only if it has its own space on the server: an agent that shares its space could read the others’."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un agente solo recibe accesos si tiene su propio espacio en el servidor: un agente que comparte el suyo podría leer los de los demás."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Agent erhält Zugänge nur mit einem eigenen Bereich auf dem Server: Ein Agent, der seinen teilt, könnte die der anderen lesen."
+          }
+        }
+      }
+    },
+    "%@ n’est pas encore branché au coffre sur le serveur." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is not connected to the vault on the server yet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ aún no está conectado a la caja fuerte en el servidor."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist auf dem Server noch nicht mit dem Tresor verbunden."
+          }
+        }
+      }
+    },
+    "%@ partage son espace avec d’autres agents : il lui faut d’abord le sien." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ shares its space with other agents: it first needs one of its own."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ comparte su espacio con otros agentes: primero necesita uno propio."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ teilt seinen Bereich mit anderen Agenten: Es braucht zuerst einen eigenen."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

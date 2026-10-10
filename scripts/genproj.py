@@ -2,6 +2,8 @@
 APP_INFO = {
     "CFBundleDisplayName": "BipAgents",
     "NSCameraUsageDescription": "Pour prendre une photo ou scanner le QR code d’un agent.",
+    "NSFaceIDUsageDescription": "Pour ouvrir le coffre des agents.",
+    "NSLocalNetworkUsageDescription": "Pour joindre ton serveur sur le Wi-Fi quand Tailscale ne répond pas.",
     "NSMicrophoneUsageDescription": "Pour parler à tes agents.",
     "NSPhotoLibraryUsageDescription": "Pour envoyer des photos à tes agents.",
     "NSSpeechRecognitionUsageDescription": "Pour transcrire ta voix directement sur l’iPhone.",

@@ -260,6 +260,7 @@ def agents_admin_router() -> APIRouter:
         async with lock:
             try:
                 await delete_agent(services.config, agent)
+                await services.vault.forget_agent(services.config, agent.name)
             except (RuntimeError, asyncio.TimeoutError) as exc:
                 raise HTTPException(status_code=502, detail="Hermes could not delete the agent") from exc
 

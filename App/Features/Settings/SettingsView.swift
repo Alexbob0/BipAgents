@@ -40,6 +40,14 @@ struct SettingsView: View {
                     Button("Ajouter un agent", systemImage: "plus") { isAddingAgent = true }
                 }
                 Section {
+                    NavigationLink { VaultView() } label: {
+                        Label("Coffre des agents", systemImage: "lock.shield")
+                    }
+                } footer: {
+                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir.")
+                }
+                .foregroundStyle(Theme.ink)
+                Section {
                     Picker(selection: $voiceReplyPolicy) {
                         ForEach(VoiceReplyPolicy.allCases) { Text($0.label).tag($0) }
                     } label: {
