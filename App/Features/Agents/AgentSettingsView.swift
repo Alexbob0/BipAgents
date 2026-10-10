@@ -56,6 +56,7 @@ struct AgentSettingsView: View {
             } footer: {
                 Text("Un outil grisé demande une clé ou un compte à configurer sur le serveur.")
             }
+            ServicesSection(agent: agent, settings: $settings, bridge: bridge) { confirmsMove = true }
             Section {
                 if settings.isolated {
                     Label("Son propre espace", systemImage: "lock.shield.fill")

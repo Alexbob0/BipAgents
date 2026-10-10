@@ -117,6 +117,77 @@ struct BridgeClient: Sendable {
         var toolsets: [Toolset]
         /// In its own space (not the shared hub): it may hold credentials.
         var isolated: Bool
+        /// Services connected to it (MCP servers).
+        var services: [ConnectedService]
+    }
+
+    /// A service (MCP server) connected to an agent. `catalog` nil: set up by hand on the server (a local command).
+    struct ConnectedService: Sendable, Identifiable, Hashable {
+        var id: String
+        var url: String?
+        var catalog: String?
+    }
+
+    /// A service the app offers to connect, with the fields it asks for.
+    struct CatalogService: Sendable, Identifiable, Hashable {
+        struct Field: Sendable, Hashable {
+            var id: String
+            var label: String
+            var placeholder: String
+            var secret: Bool
+            var optional: Bool
+        }
+        var id: String
+        var label: String
+        var description: String
+        var icon: String
+        var personal: Bool
+        var fields: [Field]
+    }
+
+    /// `GET /v1/tool-catalog`.
+    func toolCatalog() async throws -> [CatalogService] {
+        let json = try JSONSerialization.jsonObject(with: try await send(request("v1/tool-catalog"))) as? [String: Any]
+        return (json?["services"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let id = row["id"] as? String else { return nil }
+            let fields = (row["fields"] as? [[String: Any]] ?? []).compactMap { f -> CatalogService.Field? in
+                guard let fid = f["id"] as? String else { return nil }
+                return .init(id: fid, label: f["label"] as? String ?? fid, placeholder: f["placeholder"] as? String ?? "",
+                             secret: f["secret"] as? Bool ?? false, optional: f["optional"] as? Bool ?? false)
+            }
+            return CatalogService(id: id, label: row["label"] as? String ?? id, description: row["description"] as? String ?? "",
+                                  icon: row["icon"] as? String ?? "puzzlepiece.extension",
+                                  personal: row["personal"] as? Bool ?? false, fields: fields)
+        }
+    }
+
+    /// `POST /v1/agents/{id}/services`: `values` are the catalog entry's fields (the token included).
+    func connectService(_ catalog: String, values: [String: String], to agent: String) async throws {
+        var request = request("v1/agents/\(agent)/services", method: "POST")
+        request.timeoutInterval = 60
+        request.httpBody = try JSONSerialization.data(withJSONObject: values.merging(["catalog": catalog]) { a, _ in a })
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 409, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let agents = (json["detail"] as? [String: Any])?["agents"] as? [String: String] {
+            throw CannotHold(agents: agents)
+        }
+        guard (200..<300).contains(status) else {
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw HermesError.http(status: status, message: detail, code: nil)
+        }
+    }
+
+    func disconnectService(_ name: String, from agent: String) async throws {
+        try await send(request("v1/agents/\(agent)/services/\(name)", method: "DELETE"))
+    }
+
+    /// `POST …/services/{name}/test`: whether the agent reaches the service, and how many tools it offers.
+    func testService(_ name: String, of agent: String) async throws -> (ok: Bool, message: String?, tools: Int?) {
+        var request = request("v1/agents/\(agent)/services/\(name)/test", method: "POST")
+        request.timeoutInterval = 90
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        return (json?["ok"] as? Bool ?? false, json?["message"] as? String, json?["tools"] as? Int)
     }
 
     /// `GET /v1/agents/{id}/settings`: nil when this bridge does not manage the agent (set up by hand, or an older bridge).
@@ -164,7 +235,12 @@ struct BridgeClient: Sendable {
             return Toolset(id: id, label: row["label"] as? String ?? id, description: row["description"] as? String ?? "",
                            enabled: row["enabled"] as? Bool ?? false, configured: row["configured"] as? Bool ?? true)
         }
-        return AgentSettings(soul: soul, toolsets: toolsets, isolated: json["isolated"] as? Bool ?? false)
+        let services = (json["services"] as? [[String: Any]] ?? []).compactMap { row -> ConnectedService? in
+            guard let name = row["name"] as? String else { return nil }
+            return ConnectedService(id: name, url: row["url"] as? String, catalog: row["catalog"] as? String)
+        }
+        return AgentSettings(soul: soul, toolsets: toolsets, isolated: json["isolated"] as? Bool ?? false,
+                             services: services)
     }
 
     /// A credential of the agents' vault, as the app sees it: never its password.

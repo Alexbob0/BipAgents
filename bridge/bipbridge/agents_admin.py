@@ -22,7 +22,9 @@ from pydantic import BaseModel, Field
 
 from . import souls
 from .config import AgentConfig, Config
+from . import services as connected
 from .spaces import SpaceError, Spaces
+from .vault import CannotHold
 from .logs import fields
 
 log = logging.getLogger("bipbridge.agents")
@@ -191,7 +193,8 @@ async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncCli
     resp.raise_for_status()
     toolsets = [{k: t.get(k) for k in ("name", "label", "description", "enabled", "configured")}
                 for t in resp.json().get("data", []) if isinstance(t, dict) and t.get("name")]
-    return {"id": agent.name, "name": agent.display_name, "soul": soul, "toolsets": toolsets, "isolated": agent.isolated}
+    return {"id": agent.name, "name": agent.display_name, "soul": soul, "toolsets": toolsets, "isolated": agent.isolated,
+            "services": connected.listing(config, agent)}
 
 
 async def write_settings(config: Config, agent: AgentConfig, body: AgentSettings, run: Callable[..., Any] = run_hermes) -> None:
@@ -276,6 +279,49 @@ def agents_admin_router() -> APIRouter:
             return await read_settings(services.config, agent, services.http)
         except httpx.HTTPError:
             return {"id": agent.name, "name": agent.display_name}
+
+    @router.get("/tool-catalog")
+    async def tool_catalog() -> Dict[str, Any]:
+        return {"services": [{k: item.get(k) for k in ("id", "label", "description", "icon", "personal", "fields")}
+                             for item in connected.catalog()]}
+
+    def managed_or_404(request: Request, agent_id: str) -> AgentConfig:
+        try:
+            return managed(request.app.state.services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+
+    @router.post("/agents/{agent_id}/services", status_code=201)
+    async def connect_service(agent_id: str, request: Request) -> Dict[str, Any]:
+        agent = managed_or_404(request, agent_id)
+        try:
+            return await connected.add(request.app.state.services.config, agent, await request.json(), run_hermes)
+        except CannotHold as exc:
+            raise HTTPException(status_code=409, detail={"code": "cannot_hold", "agents": exc.reasons}) from exc
+        except connected.ServiceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (RuntimeError, asyncio.TimeoutError) as exc:
+            raise HTTPException(status_code=502, detail="Hermes could not add the service") from exc
+
+    @router.delete("/agents/{agent_id}/services/{name}", status_code=204)
+    async def disconnect_service(agent_id: str, name: str, request: Request) -> None:
+        agent = managed_or_404(request, agent_id)
+        try:
+            await connected.remove(request.app.state.services.config, agent, name, run_hermes)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="no such service") from exc
+        except (RuntimeError, asyncio.TimeoutError) as exc:
+            raise HTTPException(status_code=502, detail="Hermes could not remove the service") from exc
+
+    @router.post("/agents/{agent_id}/services/{name}/test")
+    async def test_service(agent_id: str, name: str, request: Request) -> Dict[str, Any]:
+        agent = managed_or_404(request, agent_id)
+        try:
+            return await connected.test(request.app.state.services.config, agent, name, run_hermes)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="no such service") from exc
+        except (RuntimeError, asyncio.TimeoutError) as exc:
+            return {"ok": False, "message": str(exc)[-300:], "tools": None}
 
     @router.post("/agents/{agent_id}/space")
     async def own_space(agent_id: str, request: Request) -> Dict[str, Any]:
