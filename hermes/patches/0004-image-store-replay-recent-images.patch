@@ -1,0 +1,717 @@
+diff --git a/agent/session_persistence.py b/agent/session_persistence.py
+index 8c0f6e797..1fe1736e7 100644
+--- a/agent/session_persistence.py
++++ b/agent/session_persistence.py
+@@ -212,6 +212,11 @@ def _db_flush_row(agent, msg: Dict, is_current_turn_user: bool) -> Dict[str, Any
+         content, api_content = durable_user_row_content(agent, msg, content, api_content)
+         ov_timestamp = getattr(agent, "_persist_user_message_timestamp", None)
+         timestamp = timestamp if ov_timestamp is None else ov_timestamp
++    if role == "user":
++        # Local patch 0004: the row stays text-only; its images go to the image store (keyed by the
++        # message_uid stamped here) so later runs can re-attach them on the wire.
++        from agent.image_store import persist_message_images
++        persist_message_images(msg, session_id=getattr(agent, "session_id", None), ts=timestamp)
+     if api_content == content:
+         api_content = None
+     # get_messages_as_conversation replays rows through sanitize_context().strip(); capture the sent bytes
+diff --git a/agent/turn_context.py b/agent/turn_context.py
+index 639e99ed4..dd75db462 100644
+--- a/agent/turn_context.py
++++ b/agent/turn_context.py
+@@ -1252,6 +1252,7 @@ def build_api_messages(
+     canonical_messages = canonicalize_replay_history(messages[:split], now=turn_now) + messages[split:]
+ 
+     api_messages = []
++    _image_pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+     for idx, msg in enumerate(canonical_messages):
+         # Structural clone, NOT msg.copy(): in-place transforms below must not reach
+         # persisted history via nested containers; see _clone_message_for_send.
+@@ -1312,6 +1313,18 @@ def build_api_messages(
+         # 'reasoning_details' is kept here; the chat-completions transport drops it on the
+         # wire for every route that does not replay it (OpenRouter/Nous do).
+         api_messages.append(api_msg)
++        _image_pairs.append((msg, api_msg))
++
++    # Local patch 0004: re-attach the stored images of earlier user rows (most recent
++    # KEEP_RECENT) on this wire copy, only when the active model sees images natively.
++    try:
++        if agent._model_supports_vision():
++            from agent.image_store import rehydrate_wire_images
++            _n_images = rehydrate_wire_images(_image_pairs)
++            if _n_images:
++                logger.info("image_store: re-attached %d stored image(s) to the request", _n_images)
++    except Exception:
++        logger.warning("image_store: re-attaching stored images failed", exc_info=True)
+ 
+     # A provider-rejected Anthropic signature is suppressed outside canonical history and
+     # survives fresh request construction / process resume via session model_config.
+diff --git a/gateway/run.py b/gateway/run.py
+index f745ad816..482b2e853 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -3737,6 +3737,11 @@ class GatewayRunner(
+             "state.db startup maintenance",
+             lambda: _for_each_served_profile(
+                 self, lambda _label: _housekeeping_state_db_maintenance(_launch_sessions)))
++        # Local patch 0004: stored user images whose message is gone (deleted session, compaction).
++        from agent.image_store import startup_gc as _image_store_startup_gc
++        _housekeeping_chore(
++            "image_store startup cleanup",
++            lambda: _for_each_served_profile(self, lambda _label: _image_store_startup_gc()))
+         # Checkpoint store pruning is a housekeeping chore (``_housekeeping_checkpoint_prune``), not a
+         # constructor step: its ``git gc`` repacks the whole store (tens of seconds on a GB store) and
+         # here it ran before the control socket, adapters and the code_sha stamp — so the first
+diff --git a/hermes_state_sessions.py b/hermes_state_sessions.py
+index 7e137ea3e..b662d7a6a 100644
+--- a/hermes_state_sessions.py
++++ b/hermes_state_sessions.py
+@@ -1647,6 +1647,9 @@ class SessionSessionsMixin:
+         deleted = self._execute_write(_do)
+         for sid in removed_ids:
+             self._remove_session_files(sessions_dir, sid)
++        if removed_ids:  # local patch 0004: drop the deleted sessions' stored images
++            from agent.image_store import purge_deleted_sessions
++            purge_deleted_sessions(self, removed_ids, sessions_dir)
+         return bool(deleted)
+ 
+     def delete_session_if_empty(self, session_id: str, sessions_dir: Optional[Path] = None) -> bool:
+@@ -1728,6 +1731,9 @@ class SessionSessionsMixin:
+         count = self._execute_write(_do)
+         for sid in removed_ids:
+             self._remove_session_files(sessions_dir, sid)
++        if removed_ids:  # local patch 0004: drop the deleted sessions' stored images
++            from agent.image_store import purge_deleted_sessions
++            purge_deleted_sessions(self, removed_ids, sessions_dir)
+         return count
+ 
+     # Shared by count_empty_sessions / delete_empty_sessions so badge and sweep agree. message_count
+diff --git a/agent/image_store.py b/agent/image_store.py
+new file mode 100644
+index 000000000..2093e683b
+--- /dev/null
++++ b/agent/image_store.py
+@@ -0,0 +1,426 @@
++"""Durable store for user-attached images so follow-up turns can still see them (local patch 0004).
++
++The session DB keeps text only (``_durable_content`` turns image parts into ``[screenshot]``), so a
++fresh run rebuilt from the DB used to lose every image. Here:
++
++* on flush, the images of a user row (``data:`` URLs or remote URLs) are written once to
++  ``<HERMES_HOME>/image_store/<sha256>.<ext>`` and the row's ``message_uid`` gets a sidecar
++  ``image_store/refs/<message_uid>.json`` (session id, save time, ordered refs). The DB row and the
++  session messages API are unchanged: text only, no base64;
++* on request build (wire copy only, vision-capable models only), the ``KEEP_RECENT`` most recent
++  images of the conversation are re-attached as ``image_url`` parts at the position of their
++  ``[screenshot]`` marker; every other marker reads ``[image envoyée plus tôt]``. The rebuild is a
++  pure function of the history (a marker renders the same with or without its sidecar once it is
++  out of the window), so a row's bytes only change when a newer image pushes it out;
++* retention: per session only the ``KEEP_RECENT`` newest images keep a ref (older refs are pruned
++  when a new image is saved), session deletion drops the session's refs, and a startup sweep drops
++  refs whose message is no longer active in the DB. A file goes when no ref points to it anymore
++  (one sha256 can back several messages).
++"""
++from __future__ import annotations
++
++import base64
++import binascii
++import hashlib
++import json
++import logging
++import os
++import re
++import time
++from pathlib import Path
++from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
++
++logger = logging.getLogger(__name__)
++
++KEEP_RECENT = 3
++SCREENSHOT_MARKER = "[screenshot]"
++OLDER_IMAGE_TEXT = "[image envoyée plus tôt]"
++_IMAGE_PART_TYPES = {"image", "image_url", "input_image"}
++_DATA_URL_RE = re.compile(r"^data:(image/[\w.+-]+);base64,(.*)$", re.S)
++_EXT = {"image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp",
++        "image/heic": "heic", "image/heif": "heif", "image/avif": "avif", "image/bmp": "bmp"}
++_UID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
++_FILE_RE = re.compile(r"^[0-9a-f]{64}\.[a-z0-9]{1,5}$")
++_TMP_MAX_AGE_S = 3600
++
++
++def store_root(home: Optional[Path] = None) -> Path:
++    if home is None:
++        from hermes_constants import get_hermes_home
++
++        home = Path(get_hermes_home())
++    return Path(home) / "image_store"
++
++
++def _part_url(part: Dict[str, Any]) -> Tuple[str, Optional[str]]:
++    """``(url, detail)`` of an OpenAI/Responses-style image part ('' when absent)."""
++    ref = part.get("image_url")
++    if isinstance(ref, dict):
++        return str(ref.get("url") or ""), ref.get("detail") if isinstance(ref.get("detail"), str) else None
++    if isinstance(ref, str):
++        return ref, part.get("detail") if isinstance(part.get("detail"), str) else None
++    return "", None
++
++
++def _write_private(path: Path, data: bytes) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
++    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
++    with os.fdopen(fd, "wb") as fh:
++        fh.write(data)
++    os.replace(tmp, path)
++
++
++def _store_part(root: Path, part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
++    url, detail = _part_url(part)
++    if not url:
++        return None
++    ref: Dict[str, Any]
++    m = _DATA_URL_RE.match(url)
++    if m:
++        mime = m.group(1).lower()
++        try:
++            raw = base64.b64decode(m.group(2), validate=False)
++        except (binascii.Error, ValueError):
++            return None
++        if not raw:
++            return None
++        name = f"{hashlib.sha256(raw).hexdigest()}.{_EXT.get(mime, 'bin')}"
++        path = root / name
++        if not path.exists():
++            _write_private(path, raw)
++        ref = {"file": name, "mime": mime}
++    elif url.startswith(("http://", "https://")):
++        ref = {"url": url}
++    else:
++        return None
++    if detail:
++        ref["detail"] = detail
++    return ref
++
++
++# --- sidecars ---------------------------------------------------------------------------------
++
++def _sidecar_path(root: Path, uid: str) -> Path:
++    return root / "refs" / f"{uid}.json"
++
++
++def _read_sidecar(path: Path) -> Optional[Dict[str, Any]]:
++    """Normalized sidecar ``{"session_id", "ts", "refs"}``; the first build wrote a bare ref list."""
++    try:
++        data = json.loads(path.read_text("utf-8"))
++    except (OSError, ValueError):
++        return None
++    if isinstance(data, list):
++        data = {"session_id": None, "ts": 0.0, "refs": data}
++    if not isinstance(data, dict) or not isinstance(data.get("refs"), list):
++        return None
++    data["refs"] = [r for r in data["refs"] if isinstance(r, dict)]
++    return data
++
++
++def _write_sidecar(path: Path, data: Dict[str, Any]) -> None:
++    payload = json.dumps({"v": 2, "session_id": data.get("session_id"), "ts": data.get("ts", 0.0),
++                          "refs": data["refs"]}, ensure_ascii=False, sort_keys=True).encode("utf-8")
++    if not path.exists() or path.read_bytes() != payload:
++        _write_private(path, payload)
++
++
++def _iter_sidecars(root: Path) -> Iterable[Tuple[str, Path, Dict[str, Any]]]:
++    refs_dir = root / "refs"
++    if not refs_dir.is_dir():
++        return
++    for path in sorted(refs_dir.glob("*.json")):
++        uid = path.stem
++        if not _UID_RE.match(uid):
++            continue
++        data = _read_sidecar(path)
++        if data is not None:
++            yield uid, path, data
++
++
++def _live_ref_count(data: Dict[str, Any]) -> int:
++    return sum(1 for r in data["refs"] if not r.get("pruned"))
++
++
++def _enforce_window(entries: List[Tuple[Path, Dict[str, Any]]], keep: int = KEEP_RECENT) -> int:
++    """``entries`` = one session's sidecars, NEWEST FIRST. Keep the ``keep`` newest images; older refs
++    become ``{"pruned": true}`` placeholders (positions must survive) and a sidecar left with no live
++    ref is deleted. Returns the number of refs pruned."""
++    budget, pruned = keep, 0
++    for path, data in entries:
++        changed = False
++        for ref in reversed(data["refs"]):  # the latest images of a message first
++            if ref.get("pruned"):
++                continue
++            if budget > 0:
++                budget -= 1
++                continue
++            ref.clear()
++            ref["pruned"] = True
++            pruned += 1
++            changed = True
++        if not _live_ref_count(data):
++            path.unlink(missing_ok=True)
++        elif changed:
++            _write_sidecar(path, data)
++    return pruned
++
++
++def _referenced_files(root: Path) -> Set[str]:
++    return {str(r["file"]) for _, _, data in _iter_sidecars(root) for r in data["refs"]
++            if not r.get("pruned") and r.get("file")}
++
++
++def remove_orphan_files(root: Path, now: Optional[float] = None) -> int:
++    """Delete stored images no live ref points to (plus stale temp files); returns the count."""
++    if not root.is_dir():
++        return 0
++    keep = _referenced_files(root)
++    now = time.time() if now is None else now
++    removed = 0
++    for path in root.iterdir():
++        if not path.is_file():
++            continue
++        name = path.name
++        stale_tmp = name.startswith(".") and name.endswith(".tmp") and now - path.stat().st_mtime > _TMP_MAX_AGE_S
++        if (_FILE_RE.match(name) and name not in keep) or stale_tmp:
++            path.unlink(missing_ok=True)
++            removed += 1
++    tmp_dir = root / "refs"
++    if tmp_dir.is_dir():
++        for path in tmp_dir.glob(".*.tmp"):
++            if now - path.stat().st_mtime > _TMP_MAX_AGE_S:
++                path.unlink(missing_ok=True)
++    return removed
++
++
++# --- write path -------------------------------------------------------------------------------
++
++def content_has_images(content: Any) -> bool:
++    return isinstance(content, list) and any(
++        isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES for p in content)
++
++
++def persist_message_images(msg: Dict[str, Any], session_id: Optional[str] = None,
++                           home: Optional[Path] = None, ts: Optional[float] = None) -> int:
++    """Store the images of a live user message and its ref sidecar, then apply the session's
++    retention window; returns the number of images stored. ``ts`` (the row's timestamp) orders the
++    window, so a late re-flush of an old message never counts as the newest image.
++
++    Stamps the message's ``message_uid`` (minted once per logical message, exactly what the DB insert
++    would do) so the row and the sidecar share the key. Never raises: a failure only means the image
++    is not replayed on later runs (previous behaviour)."""
++    content = msg.get("content")
++    if msg.get("role") != "user" or not content_has_images(content):
++        return 0
++    try:
++        from agent.message_metadata import stamp_message_uid
++
++        uid = stamp_message_uid(msg)
++        if not _UID_RE.match(uid):
++            return 0
++        root = store_root(home)
++        sidecar = _sidecar_path(root, uid)
++        if sidecar.exists():
++            return _live_ref_count(_read_sidecar(sidecar) or {"refs": []})  # re-flush of a saved message
++        refs = [r for r in (_store_part(root, p) for p in content
++                            if isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES) if r]
++        if not refs:
++            return 0
++        _write_sidecar(sidecar, {"session_id": session_id, "ts": float(ts) if isinstance(ts, (int, float)) else time.time(), "refs": refs})
++        if session_id:
++            same = [(path, data) for _, path, data in _iter_sidecars(root) if data.get("session_id") == session_id]
++            same.sort(key=lambda e: e[1].get("ts") or 0.0, reverse=True)
++            if _enforce_window(same):
++                remove_orphan_files(root)
++        return len(refs)
++    except Exception:
++        logger.warning("image_store: could not persist images of a user message", exc_info=True)
++        return 0
++
++
++# --- cleanup against the DB -------------------------------------------------------------------
++
++def _active_rows_by_uid(db: Any, uids: List[str]) -> Dict[str, Tuple[str, int]]:
++    """``uid -> (session_id, newest active row id)`` for the uids still ACTIVE in the DB (rows archived
++    by compaction never reach the model again)."""
++    found: Dict[str, Tuple[str, int]] = {}
++    with db._read_ctx() as conn:
++        for i in range(0, len(uids), 500):
++            chunk = uids[i:i + 500]
++            marks = ",".join("?" * len(chunk))
++            for uid, sid, rid in conn.execute(
++                f"SELECT message_uid, session_id, MAX(id) FROM messages WHERE active = 1 "
++                f"AND message_uid IN ({marks}) GROUP BY message_uid", chunk,
++            ).fetchall():
++                found[uid] = (sid, rid)
++    return found
++
++
++def gc_store(db: Any, home: Optional[Path] = None) -> Dict[str, int]:
++    """Startup sweep: drop refs whose message is no longer active in the DB, re-apply the per-session
++    window by DB order, then delete unreferenced files."""
++    root = store_root(home)
++    stats = {"refs_removed": 0, "refs_pruned": 0, "files_removed": 0}
++    sidecars = list(_iter_sidecars(root))
++    if not sidecars:
++        stats["files_removed"] = remove_orphan_files(root)
++        return stats
++    alive = _active_rows_by_uid(db, [uid for uid, _, _ in sidecars])
++    by_session: Dict[str, List[Tuple[int, Path, Dict[str, Any]]]] = {}
++    for uid, path, data in sidecars:
++        if uid not in alive:
++            path.unlink(missing_ok=True)
++            stats["refs_removed"] += 1
++            continue
++        sid, rid = alive[uid]
++        by_session.setdefault(sid, []).append((rid, path, data))
++    for entries in by_session.values():
++        entries.sort(key=lambda e: e[0], reverse=True)
++        stats["refs_pruned"] += _enforce_window([(p, d) for _, p, d in entries])
++    stats["files_removed"] = remove_orphan_files(root)
++    return stats
++
++
++def purge_deleted_sessions(db: Any, session_ids: List[str], sessions_dir: Optional[Path] = None) -> int:
++    """After a session delete: drop the refs saved for those sessions whose message is gone from the DB
++    (a compression child may still own the same message uid), then unreferenced files. Never raises."""
++    try:
++        root = store_root(Path(sessions_dir).parent if sessions_dir is not None else None)
++        wanted = set(session_ids)
++        candidates = [(uid, path) for uid, path, data in _iter_sidecars(root) if data.get("session_id") in wanted]
++        if not candidates:
++            return 0
++        alive = _active_rows_by_uid(db, [uid for uid, _ in candidates])
++        removed = 0
++        for uid, path in candidates:
++            if uid not in alive:
++                path.unlink(missing_ok=True)
++                removed += 1
++        files = remove_orphan_files(root)
++        logger.info("image_store: session delete dropped %d ref(s), %d file(s)", removed, files)
++        return removed
++    except Exception:
++        logger.warning("image_store: purge after session delete failed", exc_info=True)
++        return 0
++
++
++def startup_gc() -> None:
++    """Gateway housekeeping entry point (profile-scoped by the caller)."""
++    from hermes_state_registry import acquire, release_or_close
++
++    db = acquire()
++    try:
++        stats = gc_store(db)
++    finally:
++        release_or_close(db)
++    if any(stats.values()):
++        logger.info("image_store: startup cleanup %s", stats)
++
++
++# --- read path --------------------------------------------------------------------------------
++
++def load_refs(uid: Any, home: Optional[Path] = None) -> List[Dict[str, Any]]:
++    if not isinstance(uid, str) or not _UID_RE.match(uid):
++        return []
++    data = _read_sidecar(_sidecar_path(store_root(home), uid))
++    return data["refs"] if data else []
++
++
++def _ref_to_part(ref: Dict[str, Any], root: Path) -> Optional[Dict[str, Any]]:
++    if ref.get("pruned"):
++        return None
++    if ref.get("file"):
++        name = str(ref["file"])
++        if not _FILE_RE.match(name):
++            return None
++        try:
++            raw = (root / name).read_bytes()
++        except OSError:
++            return None
++        url = f"data:{ref.get('mime') or 'image/jpeg'};base64,{base64.b64encode(raw).decode('ascii')}"
++    elif isinstance(ref.get("url"), str) and ref["url"]:
++        url = ref["url"]
++    else:
++        return None
++    image_url: Dict[str, Any] = {"url": url}
++    if isinstance(ref.get("detail"), str):
++        image_url["detail"] = ref["detail"]
++    return {"type": "image_url", "image_url": image_url}
++
++
++def _split_on_markers(text: str) -> List[Any]:
++    """Text → segments: str chunks and ``None`` for each ``[screenshot]`` line (the inverse of
++    ``_durable_content``'s ``"\\n".join``)."""
++    segments: List[Any] = []
++    buf: List[str] = []
++    for line in text.split("\n"):
++        if line == SCREENSHOT_MARKER:
++            if buf:
++                segments.append("\n".join(buf))
++                buf = []
++            segments.append(None)
++        else:
++            buf.append(line)
++    if buf:
++        segments.append("\n".join(buf))
++    return segments
++
++
++def _rebuild(text: str, refs: List[Dict[str, Any]], keep: List[bool], root: Path) -> Any:
++    """Content for one stored row: kept refs become image parts, every other marker ``OLDER_IMAGE_TEXT``."""
++    segments = _split_on_markers(text)
++    n_markers = sum(1 for s in segments if s is None)
++    # Refs without a marker (text rewritten) go at the end.
++    segments += [None] * max(0, len(refs) - n_markers)
++    parts: List[Dict[str, Any]] = []
++    i = 0
++    for seg in segments:
++        if seg is not None:
++            if seg.strip():
++                parts.append({"type": "text", "text": seg})
++            continue
++        ref = refs[i] if i < len(refs) else None
++        part = _ref_to_part(ref, root) if ref is not None and keep[i] else None
++        i += 1
++        parts.append(part if part is not None else {"type": "text", "text": OLDER_IMAGE_TEXT})
++    if not any(p["type"] == "image_url" for p in parts):
++        # Nothing re-attached: keep a plain string, merging the text parts.
++        return "\n".join(p["text"] for p in parts)
++    return parts
++
++
++def rehydrate_wire_images(pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]], keep_recent: int = KEEP_RECENT,
++                          home: Optional[Path] = None) -> int:
++    """Re-attach stored images on the wire copies. ``pairs`` = ``(source_msg, api_msg)`` in conversation
++    order; only ``api_msg`` is modified. Live images (list content still holding image parts) count
++    toward the window but are left alone. Returns the number of images re-attached."""
++    from agent.message_metadata import message_uid_or_none
++
++    root = store_root(home)
++    plan: List[Tuple[Dict[str, Any], List[Dict[str, Any]], List[bool]]] = []
++    budget = max(0, int(keep_recent))
++    for src, api_msg in reversed(pairs):
++        if src.get("role") != "user":
++            continue
++        content = api_msg.get("content")
++        if content_has_images(content):
++            budget -= sum(1 for p in content if isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES)
++            continue
++        if not isinstance(content, str) or SCREENSHOT_MARKER not in content:
++            continue
++        refs = load_refs(message_uid_or_none(src), home)
++        keep = [False] * len(refs)
++        for j in range(len(refs) - 1, -1, -1):  # the latest images of a row first
++            if budget > 0 and not refs[j].get("pruned"):
++                keep[j] = True
++                budget -= 1
++        plan.append((api_msg, refs, keep))
++    attached = 0
++    for api_msg, refs, keep in plan:
++        rebuilt = _rebuild(api_msg["content"], refs, keep, root)
++        api_msg["content"] = rebuilt
++        if isinstance(rebuilt, list):
++            attached += sum(1 for p in rebuilt if p.get("type") == "image_url")
++    return attached
+diff --git a/tests/agent/test_image_store_local.py b/tests/agent/test_image_store_local.py
+new file mode 100644
+index 000000000..90b1bdd8f
+--- /dev/null
++++ b/tests/agent/test_image_store_local.py
+@@ -0,0 +1,192 @@
++"""Local patch 0004: user images survive across runs (store on flush, re-attach on the wire)."""
++import base64
++import copy
++
++import pytest
++
++import agent.conversation_loop  # noqa: F401 -- imported at collection: its bootstrap reads the install manifest
++from agent import image_store
++from agent.session_persistence import _durable_content
++
++
++def _data_url(payload: bytes, mime: str = "image/png") -> str:
++    return f"data:{mime};base64,{base64.b64encode(payload).decode('ascii')}"
++
++
++@pytest.fixture
++def home(tmp_path, monkeypatch):
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    return tmp_path
++
++
++def _user(text, *payloads):
++    parts = [{"type": "text", "text": text}]
++    parts += [{"type": "image_url", "image_url": {"url": _data_url(p)}} for p in payloads]
++    return {"role": "user", "content": parts}
++
++
++def _stored_row(live):
++    """What a fresh run loads from the DB: text-only content + the row's message_uid."""
++    return {"role": "user", "content": _durable_content(live["content"]), "message_uid": live["message_uid"]}
++
++
++def test_persist_writes_file_and_sidecar_but_row_stays_text(home):
++    live = _user("Que vois-tu ?", b"img-A")
++    assert image_store.persist_message_images(live) == 1
++    files = sorted(p.name for p in (home / "image_store").iterdir() if p.is_file())
++    assert len(files) == 1 and files[0].endswith(".png")
++    assert (home / "image_store" / files[0]).read_bytes() == b"img-A"
++    assert image_store.load_refs(live["message_uid"]) == [{"file": files[0], "mime": "image/png"}]
++    # The DB projection (and so the session messages API) is unchanged: text only, no base64.
++    assert _durable_content(live["content"]) == "Que vois-tu ?\n[screenshot]"
++
++
++def test_rehydrate_restores_exact_live_parts(home):
++    live = _user("Que vois-tu ?", b"img-A")
++    image_store.persist_message_images(live)
++    row = _stored_row(live)
++    api = copy.deepcopy(row)
++    assert image_store.rehydrate_wire_images([(row, api)]) == 1
++    assert api["content"] == live["content"]  # byte-identical to what run 1 sent → prefix cache stays valid
++    assert row["content"] == "Que vois-tu ?\n[screenshot]"  # the source history is never modified
++
++
++def test_only_three_most_recent_images_are_reattached(home):
++    rows = []
++    for i in range(5):
++        live = _user(f"photo {i}", f"img-{i}".encode())
++        image_store.persist_message_images(live)
++        rows.append(_stored_row(live))
++        rows.append({"role": "assistant", "content": f"vu {i}"})
++    pairs = [(r, copy.deepcopy(r)) for r in rows]
++    assert image_store.rehydrate_wire_images(pairs) == 3
++    users = [api for src, api in pairs if src["role"] == "user"]
++    assert users[0]["content"] == "photo 0\n[image envoyée plus tôt]"
++    assert users[1]["content"] == "photo 1\n[image envoyée plus tôt]"
++    for api in users[2:]:
++        assert [p["type"] for p in api["content"]] == ["text", "image_url"]
++    # Deterministic: a second build of the same history yields the same bytes.
++    again = [(r, copy.deepcopy(r)) for r in rows]
++    image_store.rehydrate_wire_images(again)
++    assert [a for _, a in again] == [a for _, a in pairs]
++
++
++def test_live_images_count_toward_the_window(home):
++    old = _user("ancienne", b"img-old")
++    image_store.persist_message_images(old)
++    row = _stored_row(old)
++    current = _user("nouvelle", b"n1", b"n2", b"n3")
++    pairs = [(row, copy.deepcopy(row)), (current, copy.deepcopy(current))]
++    assert image_store.rehydrate_wire_images(pairs) == 0
++    assert pairs[0][1]["content"] == "ancienne\n[image envoyée plus tôt]"
++    assert pairs[1][1]["content"] == current["content"]
++
++
++def test_marker_without_ref_reads_as_older_image(home):
++    # A pre-patch row, or one whose ref was pruned/purged: same bytes either way (cache-stable).
++    row = {"role": "user", "content": "ancien message\n[screenshot]", "message_uid": "abc123"}
++    api = copy.deepcopy(row)
++    assert image_store.rehydrate_wire_images([(row, api)]) == 0
++    assert api["content"] == "ancien message\n[image envoyée plus tôt]"
++    assert row["content"] == "ancien message\n[screenshot]"
++
++
++# --- retention (patch 0004, second part) ---------------------------------------------------------
++
++@pytest.fixture
++def db(home):
++    from hermes_state import SessionDB
++
++    d = SessionDB(db_path=home / "state.db")
++    yield d
++    d.close()
++
++
++def _add(db, sid, payload, ts):
++    """One user turn with one image, written like the agent does: image store first, then the row."""
++    live = _user(f"photo {payload!r}", payload)
++    image_store.persist_message_images(live, session_id=sid, ts=ts)
++    db.ensure_session(sid, "api_server")
++    db.append_message(sid, "user", content=_durable_content(live["content"]),
++                      message_uid=live["message_uid"], timestamp=ts)
++    return live["message_uid"]
++
++
++def _files(home):
++    return sorted(p.name for p in (home / "image_store").iterdir() if p.is_file())
++
++
++def _sha_name(payload):
++    import hashlib
++    return f"{hashlib.sha256(payload).hexdigest()}.png"
++
++
++def test_window_keeps_three_newest_images_per_session(home, db):
++    uids = [_add(db, "S1", f"s1-{i}".encode(), 1000 + i) for i in range(5)]
++    other = _add(db, "S2", b"s2-0", 900)  # older than everything in S1, other session: untouched
++    assert [bool(image_store.load_refs(u)) for u in uids] == [False, False, True, True, True]
++    assert image_store.load_refs(other)
++    assert _files(home) == sorted([_sha_name(f"s1-{i}".encode()) for i in (2, 3, 4)] + [_sha_name(b"s2-0")])
++    # A pruned row then reads as an older image, the kept ones are re-attached.
++    rows = [{"role": "user", "content": f"photo {f's1-{i}'.encode()!r}\n[screenshot]", "message_uid": u}
++            for i, u in enumerate(uids)]
++    pairs = [(r, copy.deepcopy(r)) for r in rows]
++    assert image_store.rehydrate_wire_images(pairs) == 3
++    assert pairs[0][1]["content"].endswith("[image envoyée plus tôt]")
++
++
++def test_late_reflush_of_an_old_message_does_not_evict_newer_images(home, db):
++    for i in range(3):
++        _add(db, "S1", f"new-{i}".encode(), 2000 + i)
++    old = _user("vieille", b"old")
++    image_store.persist_message_images(old, session_id="S1", ts=1000)
++    assert not image_store.load_refs(old["message_uid"])
++    assert _sha_name(b"old") not in _files(home)
++
++
++def test_shared_file_survives_until_its_last_reference(home, db):
++    _add(db, "S1", b"shared", 1000)
++    _add(db, "S2", b"shared", 1001)
++    for i in range(3):  # pushes S1's copy out of S1's window
++        _add(db, "S1", f"s1-{i}".encode(), 1100 + i)
++    assert _sha_name(b"shared") in _files(home)  # still referenced by S2
++    assert db.delete_session("S2", sessions_dir=home / "sessions")
++    assert _sha_name(b"shared") not in _files(home)
++
++
++def test_delete_session_purges_its_refs_and_files(home, db):
++    keep = _add(db, "KEEP", b"keep", 1000)
++    gone = [_add(db, "GONE", f"g{i}".encode(), 1001 + i) for i in range(2)]
++    assert db.delete_session("GONE", sessions_dir=home / "sessions")
++    assert not any(image_store.load_refs(u) for u in gone)
++    assert _files(home) == [_sha_name(b"keep")] and image_store.load_refs(keep)
++
++
++def test_bulk_delete_sessions_purges_too(home, db):
++    a, b = _add(db, "A", b"a", 1000), _add(db, "B", b"b", 1001)
++    assert db.delete_sessions(["A", "B"], sessions_dir=home / "sessions") == 2
++    assert not image_store.load_refs(a) and not image_store.load_refs(b) and _files(home) == []
++
++
++def test_startup_gc_drops_refs_of_missing_or_compacted_messages(home, db):
++    import os
++    import time
++
++    live = _add(db, "S", b"live", 1000)
++    compacted = _add(db, "S", b"compacted", 999)
++    import sqlite3
++    conn = sqlite3.connect(home / "state.db")
++    conn.execute("UPDATE messages SET active = 0 WHERE message_uid = ?", (compacted,))
++    conn.commit()
++    conn.close()
++    never = _user("jamais en base", b"never")  # sidecar written, row never committed (crash)
++    image_store.persist_message_images(never, session_id="S", ts=998)
++    root = home / "image_store"
++    (root / ("0" * 64 + ".jpg")).write_bytes(b"orphan file")
++    tmp = root / ".x.jpg.1.tmp"
++    tmp.write_bytes(b"half written")
++    old = time.time() - 7200
++    os.utime(tmp, (old, old))
++    stats = image_store.gc_store(db)
++    assert stats["refs_removed"] == 2 and stats["files_removed"] == 4
++    assert image_store.load_refs(live) and _files(home) == [_sha_name(b"live")]
