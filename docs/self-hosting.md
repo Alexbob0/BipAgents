@@ -167,8 +167,17 @@ stays local, only the bridge calls it.
   The extension (`….NotificationService`), the App Group (`group.…`) and the keychain group (`….shared`) derive from it;
   Xcode creates them on the first build (*Automatically manage signing*). Use the same identifier in the bridge's
   `[apns] bundle_id`.
-- In the app: Settings › Add an agent → address `https://mamachine.tailnet.ts.net:8642`, api_server key, bridge
-  address `https://mamachine.tailnet.ts.net:8643` and its key. Pick your language and your Bip.
+- In the app: Settings › Add an agent → **Scan the QR code**. On the server, fill in `public_url` (the bridge's
+  and each agent's tailnet address) in `bridge.toml`, then show the code with `python -m bipbridge qr` (one per
+  agent, `--agent vie` for one only, `--png vie.png` to save it). It holds the agent's keys: show it only to your
+  own phone. Without it: address `https://mamachine.tailnet.ts.net:8642`, api_server key, bridge address
+  `https://mamachine.tailnet.ts.net:8643` and its key. Pick your language and your Bip.
+
+**Without Tailscale (optional)**: with `[lan] enabled = true`, the bridge also opens an HTTPS door on your local
+network (port 8650, open it on the LAN only) and the QR code carries its address and certificate fingerprint. When
+the tailnet does not answer, the app goes through that door, accepting only that certificate; it shows « Online ·
+local network ». It learns a new local address on its own while the tailnet works; if the address changed while the
+tailnet was down, it asks you to scan a new QR code. Notifications still need the Internet (Apple).
 
 **Notifications** (replies on the lock screen, approvals, Inbox): they go through Apple and require a paid
 Apple Developer account. Create an APNs key (.p8) and fill in `[apns]`, see [`bridge/README.md`](../bridge/README.md#apns).
