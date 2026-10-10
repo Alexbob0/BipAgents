@@ -152,6 +152,10 @@ class Spaces:
             await self.run(["systemctl", "--user", "disable", "--now", unit_name(agent)], {})
             path.unlink(missing_ok=True)
             await self.run(["systemctl", "--user", "daemon-reload"], {})
+            try:   # a stopped gateway may exit non-zero: no « failed » line left in the user's units
+                await self.run(["systemctl", "--user", "reset-failed", unit_name(agent)], {})
+            except RuntimeError:
+                pass
 
     async def move(self, config: Config, agent: AgentConfig, http: httpx.AsyncClient) -> AgentConfig:
         """The agent, from the hub into its own space. Returns its new configuration (the caller saves it)."""
