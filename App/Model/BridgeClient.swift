@@ -189,6 +189,39 @@ struct BridgeClient: Sendable {
         })
     }
 
+    /// An agent's desktop: a page to show (its live view through the bridge, or a viewer page set up by hand).
+    struct Desktop: Sendable {
+        var url: URL
+        var relayed: Bool      // through the bridge (« Prendre la main » available)
+        var youHold: Bool
+        var reason: String?
+    }
+
+    /// `POST /v1/agents/{id}/desktop`: nil when the agent has no desktop running.
+    func desktop(of agent: String) async throws -> Desktop? {
+        let data: Data
+        do {
+            data = try await send(request("v1/agents/\(agent)/desktop", method: "POST"))
+        } catch HermesError.http(let status, _, _) where status == 404 || status == 409 {
+            return nil
+        }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        if json?["kind"] as? String == "page", let raw = json?["url"] as? String, let url = URL(string: raw) {
+            return Desktop(url: url, relayed: false, youHold: false, reason: nil)
+        }
+        guard let path = json?["path"] as? String else { return nil }
+        return Desktop(url: baseURL.appending(path: path), relayed: true, youHold: json?["you_hold"] as? Bool ?? false,
+                       reason: json?["reason"] as? String)
+    }
+
+    /// `POST …/desktop/control`: the person takes the desktop over (the agent's browser waits) or hands it back.
+    func controlDesktop(of agent: String, take: Bool) async throws -> Bool {
+        var request = request("v1/agents/\(agent)/desktop/control", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["take": take])
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        return json?["you_hold"] as? Bool ?? false
+    }
+
     /// `GET /v1/tool-catalog`.
     func toolCatalog() async throws -> [CatalogService] {
         let json = try JSONSerialization.jsonObject(with: try await send(request("v1/tool-catalog"))) as? [String: Any]

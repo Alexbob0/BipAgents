@@ -18,6 +18,8 @@ struct SessionsView: View {
     @State private var showsAllTasks = false
     /// Its personality and tools, when its bridge created it (nil for an agent set up by hand).
     @State private var settings: BridgeClient.AgentSettings?
+    /// Its desktop, when one is running (its own browser, live).
+    @State private var desktop: BridgeClient.Desktop?
 
     private var palette: AgentPalette { agent.appearance.palette }
 
@@ -54,6 +56,20 @@ struct SessionsView: View {
                         }
                     } icon: {
                         Image(systemName: "clock.arrow.circlepath").foregroundStyle(palette.deep)
+                    }
+                }
+                if let desktop {
+                    NavigationLink {
+                        DesktopView(agent: agent, desktop: desktop)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Bureau").font(Theme.body(16, weight: .heavy))
+                                Text("Son navigateur, en direct").font(Theme.body(13)).foregroundStyle(Theme.ink2)
+                            }
+                        } icon: {
+                            Image(systemName: "macwindow").foregroundStyle(palette.deep)
+                        }
                     }
                 }
                 if let settings {
@@ -189,6 +205,7 @@ struct SessionsView: View {
         if let found = try? await withTimeout(8, { try await bridge.agentSettings(agent.bridgeName) }) {
             settings = found
         }
+        desktop = try? await withTimeout(8, { try await bridge.desktop(of: agent.bridgeName) }) ?? nil
     }
 
     private func loadMore() async {

@@ -57,7 +57,8 @@ def test_an_agent_moves_into_its_own_space_and_keeps_everything(config_dict, tmp
     with sqlite3.connect(space / "profiles" / "budget" / "state.db") as db:
         assert db.execute("select content from messages").fetchall() == [("bonjour",)]
     assert commands[0] == (["/opt/hermes", "-p", "budget", "config", "set", "gateway.strict", "true"], {"HERMES_HOME": str(space)})
-    assert commands[1][0][:2] == ["sh", "-c"] and "start-space budget" in commands[1][0][2]
+    assert commands[1][0][-2:] == ["browser.backend", "off"]
+    assert commands[2][0][:2] == ["sh", "-c"] and "start-space budget" in commands[2][0][2]
     assert commands[-1] == (["/opt/hermes", "profile", "delete", "budget", "--yes"], {"HERMES_HOME": str(hub)})
 
     save_agent(config, moved)

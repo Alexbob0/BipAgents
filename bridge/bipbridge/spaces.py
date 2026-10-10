@@ -181,6 +181,8 @@ class Spaces:
             sandboxed = bool(config.spaces.start) or sandbox_available(config)
             # Attachments only from its own files (a routed profile reads this from its own config).
             await self.run([config.hermes.bin, "-p", agent.name, "config", "set", "gateway.strict", "true"], env)
+            # Hermes' own browser tools: « Browser Use » puts a socket under the agent's folder, too long a path here.
+            await self.run([config.hermes.bin, "-p", agent.name, "config", "set", "browser.backend", "off"], env)
             if not config.spaces.start and sandbox_available(config):
                 # Terminal, files, code and the browser's desktop in a container; nothing of the host mounted.
                 await self.run([config.hermes.bin, "-p", agent.name, "config", "set", "terminal.backend", "docker"], env)

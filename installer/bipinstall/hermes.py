@@ -131,6 +131,26 @@ def sandbox_runtime() -> Optional[str]:
     return shutil.which("podman") or shutil.which("docker")
 
 
+DESKTOP_BINARIES = ("Xvnc", "xfwm4", "xfce4-panel", "xfdesktop", "xfsettingsd", "dbus-run-session", "xauth", "xdpyinfo")
+
+
+def desktop_ready() -> bool:
+    """Hermes' Bot Desktop (a visible browser the agents drive, watched live from the app) runs on Linux, with TigerVNC
+    and Xfce installed (`hermes computer-use screen install`, which needs sudo once)."""
+    import platform
+    import shutil
+    return platform.system() == "Linux" and all(shutil.which(b) for b in DESKTOP_BINARIES)
+
+
+def setup_desktop(runner: Runner, browser: str) -> None:
+    """The agents' browser in a desktop of their own: visible, started on first use and stopped when idle (sooner on
+    a small machine), so the person can watch it live and take over from the app."""
+    _config(runner, HUB_PROFILE, "browser.backend", "off")          # Hermes' own browser tools (vault fill included)
+    _config(runner, HUB_PROFILE, "browser.headed", "true")
+    _config(runner, HUB_PROFILE, "bot_desktop.auto_start", "true")
+    _config(runner, HUB_PROFILE, "bot_desktop.idle_stop_minutes", "60" if browser == "permanent" else "10")
+
+
 def setup_hub(runner: Runner, port: int, model: Model, sandbox: bool = False) -> str:
     """The default profile: the one listener (127.0.0.1, published on the tailnet by `tailscale serve`). Every agent
     is cloned from it, so what is set here (sandbox, attachments) holds for all of them."""
