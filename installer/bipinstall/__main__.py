@@ -70,8 +70,11 @@ def pick_model(machine: Machine) -> tuple[hermes.Model, bool]:
     found = [s for s in found if (s.base_url.startswith("http://127.0.0.1")) == (where == 3)]
     if not found:
         say("Aucun trouvé automatiquement.")
-        base = ask("Adresse du serveur (ex. http://192.168.1.20:11434/v1)")
-        server = models.Server(base_url=base.rstrip("/"), kind="manuel")
+        base = ""
+        while not base.startswith(("http://", "https://")):
+            base = ask("Adresse du serveur (ex. http://192.168.1.20:11434/v1)")
+        base = base.rstrip("/")
+        server = models.Server(base_url=base if base.endswith("/v1") else base + "/v1", kind="manuel")
     else:
         server = found[choose("Serveur", [f"{s.kind} — {s.base_url} ({len(s.models)} modèle(s))" for s in found]) - 1]
     key = ask("Clé d'API du serveur (vide s'il n'en a pas)")
@@ -176,7 +179,12 @@ def wait_for(url: str, headers: Optional[dict] = None, seconds: int = 90) -> boo
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account")
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "uninstall":
+        return uninstall_main(argv[1:])
+    parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
+                                     "(`bipinstall uninstall` removes it)")
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
     parser.add_argument("--relay-url", help="the administrator's bridge, to send notifications without an APNs key")
     parser.add_argument("--relay-key", help="this install's relay key (given by the administrator)")
@@ -266,6 +274,27 @@ def main(argv: Optional[List[str]] = None) -> int:
     say("\nC'est prêt. Scanne ce code dans l'app BipAgents (Ajouter un agent › Scanner le QR code) :")
     subprocess.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "qr", "--config",
                     str(inst.bridge_config)], cwd=REPO / "bridge", check=False)
+    return 0
+
+
+def uninstall_main(argv: List[str]) -> int:
+    from .uninstall import uninstall
+
+    parser = argparse.ArgumentParser(prog="bipinstall uninstall", description="Remove BipAgents from this account")
+    parser.add_argument("--all", action="store_true", help="also remove Hermes and the agents' data (conversations, memory)")
+    parser.add_argument("--dry-run", action="store_true", help="show what would be removed")
+    args = parser.parse_args(argv)
+    if args.all and not args.dry_run:
+        say("Ceci supprime aussi Hermes et toutes les données des agents : conversations, mémoire, fichiers.")
+        if ask("Tape « supprimer » pour confirmer") != "supprimer":
+            say("Rien n'a été supprimé.")
+            return 1
+    runner = hermes.Runner(dry=args.dry_run)
+    uninstall(runner, everything=args.all)
+    for line in runner.log:
+        say(f"  {'$ ' if not line.startswith('remove') else ''}{line}")
+    say("BipAgents est retiré de ce compte." + ("" if args.all else " Les données des agents sont gardées dans ~/.hermes "
+                                                 "(`uninstall --all` pour les supprimer aussi)."))
     return 0
 
 

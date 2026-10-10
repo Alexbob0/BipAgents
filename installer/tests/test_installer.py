@@ -114,6 +114,26 @@ def test_custom_agent(monkeypatch):
     assert "jamais de produits chimiques" in agent["soul"]
 
 
+def test_uninstall_undoes_the_install(tmp_path, monkeypatch):
+    from bipinstall.uninstall import install_ports, uninstall
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+    (tmp_path / ".config" / "bipagents").mkdir(parents=True)
+    (tmp_path / ".config" / "bipagents" / "bridge.toml").write_text('bridge_key = "x"\nport = 9203\n')
+    agents = tmp_path / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    (agents / "io.github.bipagents.bridge.plist").write_text("<plist/>")
+    (tmp_path / ".hermes").mkdir()
+    assert install_ports(tmp_path / ".config" / "bipagents" / "bridge.toml") == [9202, 9203, 9205]
+    runner = hermes.Runner(dry=True)
+    uninstall(runner, everything=False, home=tmp_path, system="macos", tailscale="tailscale")
+    log = "\n".join(runner.log)
+    assert "tailscale serve --https=9202 off" in log and "launchctl bootout" in log
+    assert f"remove {tmp_path}/.config/bipagents" in log and ".hermes" not in log   # the agents' data stays
+    runner = hermes.Runner(dry=True)
+    uninstall(runner, everything=True, home=tmp_path, system="macos", tailscale=None)
+    assert f"remove {tmp_path}/.hermes" in "\n".join(runner.log)
+
+
 def test_bot_mode_marker(tmp_path):
     (tmp_path / "profile.yaml").write_text("description: Budget\n")
     hermes.mark_as_bot(tmp_path)

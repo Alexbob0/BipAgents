@@ -41,6 +41,12 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
    compte d'une autre personne sous Linux), il affiche les commandes pour l'administrateur.
 8. **Affiche un seul QR code** : scanné dans l'app, il ajoute tous les agents de l'installation.
 
+## Désinstaller
+
+`python -m bipinstall uninstall` (depuis `~/BipAgents`, avec `PYTHONPATH=installer`) retire les services, la publication
+sur le tailnet et la config du bridge, en gardant les données des agents dans `~/.hermes`. `--all` supprime aussi
+Hermes et ces données, après confirmation. `--dry-run` montre ce qui serait retiré.
+
 ## Plusieurs personnes sur une machine
 
 Chacun lance l'installateur dans **son propre compte** : ses agents, sa mémoire, ses fichiers et ses sessions de
