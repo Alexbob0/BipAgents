@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from . import souls
 from .config import AgentConfig, Config
+from .spaces import SpaceError, Spaces
 from .logs import fields
 
 log = logging.getLogger("bipbridge.agents")
@@ -71,6 +72,15 @@ def append_agent(config_path: str, agent: AgentConfig) -> None:
         lines.append(f"public_url = {q(agent.public_url)}")
     if agent.upload_dir_host:
         lines += [f"upload_dir_host = {q(agent.upload_dir_host)}", f"upload_dir_container = {q(agent.upload_dir_container or '')}"]
+    if agent.isolated:
+        lines.append("isolated = true")
+    if agent.sandboxed:
+        lines.append("sandboxed = true")
+    if agent.python:
+        lines.append("python = [" + ", ".join(q(a) for a in agent.python) + "]")
+    for key in ("hermes_home", "hermes_root", "space"):
+        if getattr(agent, key):
+            lines.append(f"{key} = {q(getattr(agent, key))}")
     with open(config_path, "a", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
 
@@ -134,16 +144,30 @@ class AgentSettings(BaseModel):
 
 
 def managed(config: Config, agent_id: str) -> AgentConfig:
-    """An agent this bridge created in the person's hub (never one set up by hand, like an agent in its own container)."""
+    """An agent this bridge created: in the person's hub, or moved into its own space (never one set up by hand,
+    like an agent in a container of its own)."""
     agent = config.agent(agent_id)
     hub = config.hermes.hub_url
-    if agent is None or not config.hermes.enabled or not agent.hermes_url.startswith(f"{hub}/p/"):
+    if agent is None or not config.hermes.enabled or not (agent.space or agent.hermes_url.startswith(f"{hub}/p/")):
         raise LookupError(agent_id)
     return agent
 
 
+def home_root(config: Config, agent: AgentConfig) -> str:
+    """The HERMES_HOME of the gateway that serves the agent: its space's, or the hub's."""
+    return agent.space or config.hermes.home or str(Path.home() / ".hermes")
+
+
 def profile_folder(config: Config, agent: AgentConfig) -> Path:
-    return Path(config.hermes.home or Path.home() / ".hermes") / "profiles" / agent.name
+    return Path(home_root(config, agent)) / "profiles" / agent.name
+
+
+def save_agent(config: Config, agent: AgentConfig) -> None:
+    """The agent's section of the bridge's config file rewritten (after a move)."""
+    if config.source_path:
+        remove_agent_section(config.source_path, agent.name)
+        append_agent(config.source_path, agent)
+    config.agents[agent.name] = agent
 
 
 def remove_agent_section(config_path: str, name: str) -> None:
@@ -167,13 +191,13 @@ async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncCli
     resp.raise_for_status()
     toolsets = [{k: t.get(k) for k in ("name", "label", "description", "enabled", "configured")}
                 for t in resp.json().get("data", []) if isinstance(t, dict) and t.get("name")]
-    return {"id": agent.name, "name": agent.display_name, "soul": soul, "toolsets": toolsets}
+    return {"id": agent.name, "name": agent.display_name, "soul": soul, "toolsets": toolsets, "isolated": agent.isolated}
 
 
 async def write_settings(config: Config, agent: AgentConfig, body: AgentSettings, run: Callable[..., Any] = run_hermes) -> None:
     if body.soul is not None:
         (profile_folder(config, agent) / "SOUL.md").write_text(body.soul.strip() + "\n", encoding="utf-8")
-    env = {"HERMES_HOME": config.hermes.home} if config.hermes.home else {}
+    env = {"HERMES_HOME": home_root(config, agent)}
     for action in ("enable", "disable"):
         names = sorted(n for n, on in (body.toolsets or {}).items() if on == (action == "enable"))
         if any(not n.replace("-", "").replace("_", "").isalnum() for n in names):
@@ -183,8 +207,11 @@ async def write_settings(config: Config, agent: AgentConfig, body: AgentSettings
 
 
 async def delete_agent(config: Config, agent: AgentConfig, run: Callable[..., Any] = run_hermes) -> None:
-    env = {"HERMES_HOME": config.hermes.home} if config.hermes.home else {}
-    await run([config.hermes.bin, "profile", "delete", agent.name, "--yes"], env)
+    if agent.space:
+        await Spaces(run).remove(config, agent)
+    else:
+        env = {"HERMES_HOME": config.hermes.home} if config.hermes.home else {}
+        await run([config.hermes.bin, "profile", "delete", agent.name, "--yes"], env)
     if config.source_path:
         remove_agent_section(config.source_path, agent.name)
     config.agents.pop(agent.name, None)
@@ -249,6 +276,26 @@ def agents_admin_router() -> APIRouter:
             return await read_settings(services.config, agent, services.http)
         except httpx.HTTPError:
             return {"id": agent.name, "name": agent.display_name}
+
+    @router.post("/agents/{agent_id}/space")
+    async def own_space(agent_id: str, request: Request) -> Dict[str, Any]:
+        """Moves an agent of the shared hub into its own space (so it may hold credentials). Takes up to two minutes."""
+        services = request.app.state.services
+        try:
+            agent = managed(services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        async with lock:
+            try:
+                moved = await Spaces(run_hermes).move(services.config, agent, services.http)
+            except SpaceError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            except (RuntimeError, OSError, asyncio.TimeoutError) as exc:
+                log.warning("move into a space failed", extra=fields(agent=agent.name, error=str(exc)[-200:]))
+                raise HTTPException(status_code=502, detail="the space could not be created") from exc
+            save_agent(services.config, moved)
+        return {"id": moved.name, "name": moved.display_name, "url": moved.public_url,
+                "key": moved.hermes_key if moved.public_url else None, "isolated": True}
 
     @router.delete("/agents/{agent_id}", status_code=204)
     async def remove(agent_id: str, request: Request) -> None:

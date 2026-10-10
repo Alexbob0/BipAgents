@@ -213,6 +213,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     say(f"\nProfil {plan.profile} : environ {plan.memory_gib(1):.1f} Go pour toi, {plan.people} personne(s) au total sur cette machine.")
     for note in plan.notes:
         say(f"  · {note}")
+    sandbox = hermes.sandbox_runtime()
+    if sandbox:
+        say(f"  · Bac à sable : les outils des agents tournent dans un conteneur ({Path(sandbox).name}).")
+    else:
+        say("  · Pas de bac à sable (podman absent) : tes agents ne pourront pas garder de mots de passe du coffre.")
     say(f"Ports {ports.base}–{ports.base + 9} : agents {ports.hermes}, bridge {ports.bridge}, réseau local {ports.lan}.")
     chosen = pick_agents()
     if ask("\nOn y va ? (o/n)", "o").lower() not in ("o", "oui", "y", "yes"):
@@ -226,7 +231,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches")
     if skipped:
         say(f"  Patches non appliqués à cette version d'Hermes : {', '.join(skipped)} (l'app marche, sans ces fonctions).")
-    hub_key = hermes.setup_hub(runner, ports.hermes, model)
+    hub_key = hermes.setup_hub(runner, ports.hermes, model, sandbox=bool(sandbox))
     for display_name, template in chosen:
         profile = souls.profile_name(display_name, (a.name for a in inst.agents))
         soul = template["soul"].replace("{name}", display_name)

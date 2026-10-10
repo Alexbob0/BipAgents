@@ -81,5 +81,7 @@ def test_pairing_route_and_hermes_relay(lan_config):
         assert client.get("/hermes/wellness/admin").status_code == 404  # only Hermes' API paths
 
 
-def test_relay_absent_when_lan_off(client):
-    assert client.get("/hermes/wellness/v1/capabilities").status_code == 404
+def test_relay_only_reaches_known_agents_and_hermes_routes(client):
+    # Always there (agents in their own space are reached through it), but nothing else than an agent's Hermes API.
+    assert client.get("/hermes/nobody/v1/capabilities").status_code == 404
+    assert client.get("/hermes/wellness/etc/passwd").status_code == 404

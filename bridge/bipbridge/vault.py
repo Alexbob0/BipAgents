@@ -112,6 +112,10 @@ def holder(config: Config, agent: AgentConfig) -> Optional[str]:
     """None when the agent can hold credentials, else why not."""
     if not agent.isolated:
         return "needs_own_space"
+    if agent.space and not agent.sandboxed:
+        # Its own gateway, but under the same account as the hub's agents, without a sandbox: they could still
+        # read its vault on disk.
+        return "needs_sandbox"
     if not agent.python or not agent.hermes_home:
         return "not_configured"
     return None
