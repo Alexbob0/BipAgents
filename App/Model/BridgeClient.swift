@@ -57,6 +57,51 @@ struct BridgeClient: Sendable {
         }
     }
 
+    /// A kind of agent the bridge can create (`custom` = « Autre », described by the person).
+    struct AgentKind: Sendable, Identifiable, Hashable {
+        var id: String
+        var label: String
+        var description: String
+        var custom: Bool
+    }
+
+    /// `GET /v1/agent-kinds`: nil when this bridge cannot create agents (set up by hand, or an older bridge).
+    func agentKinds() async throws -> [AgentKind]? {
+        let json = try JSONSerialization.jsonObject(with: try await send(request("v1/agent-kinds"))) as? [String: Any]
+        guard json?["can_create"] as? Bool == true else { return nil }
+        return (json?["kinds"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let id = row["id"] as? String else { return nil }
+            return AgentKind(id: id, label: row["label"] as? String ?? id, description: row["description"] as? String ?? "",
+                             custom: row["custom"] as? Bool ?? false)
+        }
+    }
+
+    /// What the person wrote for an « Autre » agent.
+    struct CustomAgent: Sendable {
+        var role: String
+        var tone: String
+        var rules: String
+        var language: String
+        var category: String
+    }
+
+    /// `POST /v1/agents`: a new agent on this install (the gateway takes up to half a minute to serve it).
+    func createAgent(name: String, kind: String?, custom: CustomAgent?) async throws -> InstallAgent {
+        var request = request("v1/agents", method: "POST")
+        request.timeoutInterval = 90
+        var body: [String: Any] = ["name": name]
+        if let kind { body["kind"] = kind }
+        if let custom {
+            body["custom"] = ["role": custom.role, "tone": custom.tone, "rules": custom.rules,
+                              "language": custom.language, "category": custom.category]
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        guard let id = json?["id"] as? String, let raw = json?["url"] as? String, let url = URL(string: raw),
+              let key = json?["key"] as? String else { throw HermesError.invalidResponse("agent creation") }
+        return InstallAgent(id: id, name: json?["name"] as? String ?? name, url: url, key: key)
+    }
+
     /// `GET /v1/status`: whether the model answers (nil when the bridge does not check it, or is older).
     func modelIsUp() async throws -> Bool? {
         let json = try JSONSerialization.jsonObject(with: try await send(request("v1/status"))) as? [String: Any]

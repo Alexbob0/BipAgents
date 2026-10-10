@@ -91,21 +91,53 @@ final class AgentStore {
         let listed = try await withTimeout(15) { try await bridge.installAgents() }
         var added = 0, updated = 0
         for agent in listed {
-            let config = AgentConfig(name: agent.name, baseURL: agent.url, bridgeURL: pairing.bridgeURL,
-                                     language: AgentLanguage.device.rawValue, lanURL: pairing.lanURL,
-                                     lanFingerprint: pairing.lanFingerprint, bridgeAgent: agent.id)
-            let secrets = AgentSecrets(apiKey: agent.key, bridgeKey: pairing.bridgeKey)
-            if try updateConnection(from: AgentProvisioning(config: config, secrets: secrets)) {
-                updated += 1
-            } else {
-                let category = AgentCategory.suggest(name: agent.name)
-                var profile = AgentProfile(config: config, appearance: AgentAppearance(category: category))
-                profile.config.category = category.rawValue
-                try add(profile, secrets: secrets)
+            if try addDiscovered(agent, bridgeURL: pairing.bridgeURL, bridgeKey: pairing.bridgeKey,
+                                 lanURL: pairing.lanURL, lanFingerprint: pairing.lanFingerprint) {
                 added += 1
+            } else {
+                updated += 1
             }
         }
         return (added, updated)
+    }
+
+    /// One agent of an install, added (true) or, when already here, its connection updated (false).
+    @discardableResult
+    func addDiscovered(_ agent: BridgeClient.InstallAgent, bridgeURL: URL, bridgeKey: String, lanURL: URL?,
+                       lanFingerprint: String?, category: AgentCategory? = nil) throws -> Bool {
+        let config = AgentConfig(name: agent.name, baseURL: agent.url, bridgeURL: bridgeURL,
+                                 language: AgentLanguage.device.rawValue, lanURL: lanURL,
+                                 lanFingerprint: lanFingerprint, bridgeAgent: agent.id)
+        let secrets = AgentSecrets(apiKey: agent.key, bridgeKey: bridgeKey)
+        if try updateConnection(from: AgentProvisioning(config: config, secrets: secrets)) { return false }
+        let category = category ?? AgentCategory.suggest(name: agent.name)
+        var profile = AgentProfile(config: config, appearance: AgentAppearance(category: category))
+        profile.config.category = category.rawValue
+        try add(profile, secrets: secrets)
+        return true
+    }
+
+    /// An install where agents can be created from the app: the first of this phone's bridges that says so.
+    struct CreatableInstall: Sendable {
+        var bridgeURL: URL
+        var bridgeKey: String
+        var lanURL: URL?
+        var lanFingerprint: String?
+        var kinds: [BridgeClient.AgentKind]
+    }
+
+    func creatableInstall() async -> CreatableInstall? {
+        var seen = Set<URL>()
+        for agent in agents {
+            guard let url = agent.config.bridgeURL, seen.insert(url).inserted,
+                  let key = secrets(for: agent)?.bridgeKey else { continue }
+            let bridge = BridgeClient(url: url, key: key)
+            if let kinds = try? await withTimeout(6, { try await bridge.agentKinds() }) {
+                return CreatableInstall(bridgeURL: url, bridgeKey: key, lanURL: agent.config.lanURL,
+                                        lanFingerprint: agent.config.lanFingerprint, kinds: kinds)
+            }
+        }
+        return nil
     }
 
     /// A newly scanned QR code of an agent already here (same Hermes address): new keys, bridge and LAN door,

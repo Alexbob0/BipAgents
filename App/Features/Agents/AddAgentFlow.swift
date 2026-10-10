@@ -22,6 +22,8 @@ struct AddAgentFlow: View {
     @State private var isScanning = false
     /// An install's QR code is being read: its bridge is asked for every agent.
     @State private var isPairing = false
+    /// One of this phone's servers can create agents: « Créer un agent » comes first.
+    @State private var creatable: AgentStore.CreatableInstall?
 
     enum Step { case connection, style }
 
@@ -50,6 +52,17 @@ struct AddAgentFlow: View {
 
     private var connectionForm: some View {
         Form {
+            if let creatable {
+                Section {
+                    NavigationLink {
+                        CreateAgentFlow(install: creatable) { dismiss() }
+                    } label: {
+                        Label("Créer un agent", systemImage: "sparkles").fontWeight(.heavy)
+                    }
+                } footer: {
+                    Text("Un nouvel agent sur ton serveur : un genre, un nom, et c’est parti.")
+                }
+            }
             Section {
                 if QRScanner.isAvailable {
                     Button("Scanner le QR code", systemImage: "qrcode.viewfinder") { isScanning = true }
@@ -85,6 +98,7 @@ struct AddAgentFlow: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .task { if creatable == nil, !store.isDemo { creatable = await store.creatableInstall() } }
         .fullScreenCover(isPresented: $isScanning) {
             ZStack(alignment: .top) {
                 QRScanner { payload in

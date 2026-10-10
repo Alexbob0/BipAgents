@@ -983,6 +983,28 @@
         }
       }
     },
+    "Autre" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otro"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere"
+          }
+        }
+      }
+    },
     "Autre réponse…" : {
       "localizations" : {
         "en" : {
@@ -1265,6 +1287,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kategorie"
+          }
+        }
+      }
+    },
+    "Ce qu’il doit toujours ou ne jamais faire" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What it must always or never do"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que siempre o nunca debe hacer"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was er immer oder nie tun soll"
+          }
+        }
+      }
+    },
+    "Ce qu’il fait pour toi" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What it does for you"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué hace por ti"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was er für dich tut"
           }
         }
       }
@@ -1863,6 +1929,50 @@
         }
       }
     },
+    "Créer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crear"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellen"
+          }
+        }
+      }
+    },
+    "Créer un agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create an agent"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crear un agente"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent erstellen"
+          }
+        }
+      }
+    },
     "C’est rangé ! Je regarde maintenant les vieux fichiers de logs dans ~/projets…" : {
       "localizations" : {
         "en" : {
@@ -2325,6 +2435,28 @@
         }
       }
     },
+    "Ex. suit mes plantes et me dit quand les arroser" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E.g. keeps an eye on my plants and tells me when to water them"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ej. vigila mis plantas y me dice cuándo regarlas"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Z. B. behält meine Pflanzen im Blick und sagt mir, wann ich gießen soll"
+          }
+        }
+      }
+    },
     "Exporter le rapport" : {
       "localizations" : {
         "en" : {
@@ -2431,6 +2563,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Finanzen"
+          }
+        }
+      }
+    },
+    "Genres" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kinds"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipos"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arten"
           }
         }
       }
@@ -2897,6 +3051,28 @@
         }
       }
     },
+    "Je prépare %@…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Getting %@ ready…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparando a %@…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird vorbereitet …"
+          }
+        }
+      }
+    },
     "Je récupère les agents du serveur…" : {
       "localizations" : {
         "en" : {
@@ -3201,6 +3377,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Zwischenablage ist leer."
+          }
+        }
+      }
+    },
+    "Le serveur n’a pas pu créer cet agent. Réessaie dans un instant." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server couldn't create this agent. Try again in a moment."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El servidor no pudo crear este agente. Inténtalo de nuevo en un momento."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server konnte diesen Agenten nicht erstellen. Versuch es gleich noch einmal."
           }
         }
       }
@@ -4440,6 +4638,28 @@
         }
       }
     },
+    "Quel genre d’agent ?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What kind of agent?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Qué tipo de agente?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welche Art von Agent?"
+          }
+        }
+      }
+    },
     "Quel train pour Bordeaux ?" : {
       "localizations" : {
         "en" : {
@@ -5188,6 +5408,28 @@
         }
       }
     },
+    "Sa couleur" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its colour"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su color"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seine Farbe"
+          }
+        }
+      }
+    },
     "Salut" : {
       "localizations" : {
         "en" : {
@@ -5364,6 +5606,50 @@
         }
       }
     },
+    "Son caractère" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its character"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su carácter"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sein Charakter"
+          }
+        }
+      }
+    },
+    "Son nom" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its name"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su nombre"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sein Name"
+          }
+        }
+      }
+    },
     "Son style" : {
       "localizations" : {
         "en" : {
@@ -5382,6 +5668,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sein Stil"
+          }
+        }
+      }
+    },
+    "Son ton (ex. direct, chaleureux, drôle)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its tone (e.g. direct, warm, funny)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su tono (ej. directo, cálido, divertido)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sein Ton (z. B. direkt, herzlich, witzig)"
           }
         }
       }
@@ -5518,6 +5826,28 @@
         }
       }
     },
+    "Sur mesure" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Made to measure"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A medida"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Maß"
+          }
+        }
+      }
+    },
     "Sélectionner du texte" : {
       "localizations" : {
         "en" : {
@@ -5648,6 +5978,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Titel"
+          }
+        }
+      }
+    },
+    "Ton agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your agent"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu agente"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Agent"
           }
         }
       }
@@ -6001,6 +6353,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geplante Aufgaben"
+          }
+        }
+      }
+    },
+    "Un nouvel agent sur ton serveur : un genre, un nom, et c’est parti." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A new agent on your server: a kind, a name, and off it goes."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un nuevo agente en tu servidor: un tipo, un nombre y listo."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein neuer Agent auf deinem Server: eine Art, ein Name, und los geht's."
           }
         }
       }
@@ -6575,6 +6949,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das kitzelt!"
+          }
+        }
+      }
+    },
+    "Ça peut prendre jusqu’à une demi-minute, le temps que le serveur le démarre." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It can take up to half a minute while the server starts it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puede tardar hasta medio minuto mientras el servidor lo inicia."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das kann bis zu einer halben Minute dauern, während der Server ihn startet."
           }
         }
       }
