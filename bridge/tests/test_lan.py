@@ -32,7 +32,7 @@ def test_pairing_payload_carries_tailnet_addresses_keys_and_lan(lan_config):
 
     ensure_certificate(lan_config)
     payload = pairing_payload(lan_config, lan_config.agent("wellness"))
-    assert payload["baseURL"] == "https://aibox.example.ts.net:8642"
+    assert payload["baseURL"] == "https://aibox.example.ts.net:8642" and payload["agent"] == "wellness"
     assert payload["apiKey"] == HERMES_KEY
     assert payload["bridgeURL"] == "https://aibox.example.ts.net:8643"
     assert payload["lan"] == {"url": "https://192.168.8.177:8650", "fingerprint": fingerprint(lan_config)}

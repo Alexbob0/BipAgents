@@ -33,6 +33,36 @@ struct BridgeClient: Sendable {
         self.key = key
     }
 
+    /// A bridge reached by its address and key alone (an install's QR code, before any agent exists here).
+    init(url: URL, key: String) {
+        baseURL = url
+        self.key = key
+    }
+
+    /// One agent of an install, as `GET /v1/agents` lists it.
+    struct InstallAgent: Sendable {
+        var id: String
+        var name: String
+        var url: URL
+        var key: String
+    }
+
+    /// `GET /v1/agents`: every agent of this install that the app can reach (with its tailnet address and key).
+    func installAgents() async throws -> [InstallAgent] {
+        let json = try JSONSerialization.jsonObject(with: try await send(request("v1/agents"))) as? [String: Any]
+        return (json?["agents"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let id = row["id"] as? String, let raw = row["url"] as? String, let url = URL(string: raw),
+                  let key = row["key"] as? String, !key.isEmpty else { return nil }
+            return InstallAgent(id: id, name: row["name"] as? String ?? id.capitalized, url: url, key: key)
+        }
+    }
+
+    /// `GET /v1/status`: whether the model answers (nil when the bridge does not check it, or is older).
+    func modelIsUp() async throws -> Bool? {
+        let json = try JSONSerialization.jsonObject(with: try await send(request("v1/status"))) as? [String: Any]
+        return (json?["model"] as? [String: Any])?["ok"] as? Bool
+    }
+
     /// `GET /v1/pairing`: the LAN door as the bridge sees it now (nil when it is off).
     func pairing() async throws -> (url: URL, fingerprint: String)? {
         let json = try JSONSerialization.jsonObject(with: try await send(request("v1/pairing"))) as? [String: Any]
@@ -251,8 +281,8 @@ struct BridgeClient: Sendable {
 }
 
 extension AgentProfile {
-    /// The agent's key in the bridge configuration (`wellness`, `vie`…).
+    /// The agent's key in the bridge configuration (`wellness`, `vie`…): as the bridge gave it, else from the name.
     nonisolated var bridgeName: String {
-        name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).replacing(" ", with: "-")
+        config.bridgeAgent ?? name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).replacing(" ", with: "-")
     }
 }

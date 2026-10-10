@@ -20,6 +20,9 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
     public var lanURL: URL?
     /// SHA-256 of the LAN door's certificate (DER), lowercase hex.
     public var lanFingerprint: String?
+    /// The agent's id in its bridge's config (`quotidien`, `vie`…), when the bridge gave it; otherwise the app derives
+    /// it from the name, as agents set up by hand always did.
+    public var bridgeAgent: String?
 
     public init(
         id: UUID = UUID(),
@@ -32,7 +35,8 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
         defaultSessionID: String? = nil,
         language: String? = nil,
         lanURL: URL? = nil,
-        lanFingerprint: String? = nil
+        lanFingerprint: String? = nil,
+        bridgeAgent: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -45,6 +49,7 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
         self.language = language
         self.lanURL = lanURL
         self.lanFingerprint = lanFingerprint
+        self.bridgeAgent = bridgeAgent
     }
 }
 
@@ -71,6 +76,11 @@ public enum AgentConfigError: Error, Sendable, Equatable {
 public struct AgentProvisioning: Sendable, Hashable {
     public var config: AgentConfig
     public var secrets: AgentSecrets
+
+    public init(config: AgentConfig, secrets: AgentSecrets) {
+        self.config = config
+        self.secrets = secrets
+    }
 
     public init(qrPayload: String, id: UUID = UUID()) throws {
         try self.init(qrPayload: Data(qrPayload.utf8), id: id)
@@ -116,7 +126,8 @@ public struct AgentProvisioning: Sendable, Hashable {
             category: optional("category"),
             bridgeURL: bridgeURL,
             lanURL: lanFingerprint == nil ? nil : lanURL,
-            lanFingerprint: lanURL == nil ? nil : lanFingerprint
+            lanFingerprint: lanURL == nil ? nil : lanFingerprint,
+            bridgeAgent: optional("agent", "bridgeAgent")?.lowercased()
         )
         secrets = AgentSecrets(apiKey: apiKey, bridgeKey: optional("bridgeKey", "bridge_key"))
     }
@@ -124,4 +135,29 @@ public struct AgentProvisioning: Sendable, Hashable {
 
 extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+/// The QR code of a whole install (`python -m bipbridge qr`): its bridge's address and key, and its LAN door. The app
+/// then asks the bridge for every agent (`GET /v1/agents`), so one scan adds them all.
+public struct InstallPairing: Sendable, Hashable {
+    public var bridgeURL: URL
+    public var bridgeKey: String
+    public var lanURL: URL?
+    public var lanFingerprint: String?
+
+    /// Nil when the payload is not an install's (an agent's own code, or something else).
+    public init?(qrPayload: String) {
+        guard let json = try? JSONValue.parse(Data(qrPayload.utf8)), json.objectValue != nil,
+              json["baseURL"] == nil, json["v"]?.lenientString == "2",
+              let raw = json["bridgeURL"]?.stringValue, let url = URL(string: raw), url.scheme == "https", url.host() != nil,
+              let key = json["bridgeKey"]?.stringValue, !key.isEmpty else { return nil }
+        bridgeURL = url
+        bridgeKey = key
+        let print = json["lan"]?["fingerprint"]?.stringValue?.lowercased().filter(\.isHexDigit)
+        let door = json["lan"]?["url"]?.stringValue.flatMap(URL.init(string:))
+        if let door, door.scheme == "https", let print, print.count == 64 {
+            lanURL = door
+            lanFingerprint = print
+        }
+    }
 }

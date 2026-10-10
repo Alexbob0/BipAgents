@@ -93,6 +93,16 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     assert hermes.agent_url("https://mini.tail0000.ts.net:8642", "finance") == "https://mini.tail0000.ts.net:8642/p/finance"
 
 
+def test_names_are_the_persons():
+    assert hermes.profile_name("Léa") == "lea"
+    assert hermes.profile_name("Mon coach sportif !") == "mon-coach-sportif"
+    assert hermes.profile_name("Léa", taken=["lea"]) == "lea-2"
+    assert hermes.profile_name("Default") == "agent-default"
+    assert hermes.profile_name("🙂") == "agent"
+    from bipinstall.__main__ import TEMPLATES
+    assert all("{name}" in t["soul"] and "name" not in t for t in TEMPLATES)
+
+
 def test_bot_mode_marker(tmp_path):
     (tmp_path / "profile.yaml").write_text("description: Budget\n")
     hermes.mark_as_bot(tmp_path)

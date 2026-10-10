@@ -1269,6 +1269,28 @@
         }
       }
     },
+    "Ce serveur n’a encore aucun agent joignable." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This server has no reachable agent yet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor aún no tiene agentes accesibles."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server hat noch keinen erreichbaren Agenten."
+          }
+        }
+      }
+    },
     "Ce soir, vise un coucher à 23 h 15 : écrans coupés à 22 h 30, lumière tamisée et chambre à 18 °C." : {
       "localizations" : {
         "en" : {
@@ -2677,6 +2699,28 @@
         }
       }
     },
+    "Impossible de joindre ce serveur. Tailscale est-il connecté ?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't reach this server. Is Tailscale connected?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se puede contactar con este servidor. ¿Está Tailscale conectado?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server nicht erreichbar. Ist Tailscale verbunden?"
+          }
+        }
+      }
+    },
     "Impossible de lire %@." : {
       "localizations" : {
         "en" : {
@@ -2849,6 +2893,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ich habe nichts gehört, versuch’s nochmal."
+          }
+        }
+      }
+    },
+    "Je récupère les agents du serveur…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Getting the server's agents…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obteniendo los agentes del servidor…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agenten des Servers werden geladen …"
           }
         }
       }
@@ -3047,6 +3113,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprache"
+          }
+        }
+      }
+    },
+    "Le QR code affiché par ton serveur ajoute tous ses agents d’un coup." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The QR code shown by your server adds all its agents at once."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El código QR de tu servidor añade todos sus agentes de una vez."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der QR-Code deines Servers fügt alle seine Agenten auf einmal hinzu."
           }
         }
       }
@@ -3642,6 +3730,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bearbeiten"
+          }
+        }
+      }
+    },
+    "Modèle injoignable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model unreachable"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo inaccesible"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell nicht erreichbar"
           }
         }
       }

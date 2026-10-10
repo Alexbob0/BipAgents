@@ -31,6 +31,18 @@ struct AgentProvisioningTests {
         #expect(unpinned.config.lanURL == nil)
     }
 
+    @Test func installCodeIsNotAnAgentCode() throws {
+        let print = String(repeating: "cd", count: 32)
+        let code = #"{"v":2,"bridgeURL":"https://mini.ts.net:8643","bridgeKey":"b-1","lan":{"url":"https://192.168.1.20:8644","fingerprint":"\#(print)"}}"#
+        let install = try #require(InstallPairing(qrPayload: code))
+        #expect(install.bridgeURL.port == 8643 && install.bridgeKey == "b-1")
+        #expect(install.lanURL?.host() == "192.168.1.20" && install.lanFingerprint == print)
+        #expect(InstallPairing(qrPayload: #"{"name":"Vie","baseURL":"https://h:8644","apiKey":"k"}"#) == nil)
+        #expect(throws: AgentConfigError.self) { try AgentProvisioning(qrPayload: code) }
+        let agent = try AgentProvisioning(qrPayload: #"{"name":"Vie","agent":"Quotidien","baseURL":"https://h:8642/p/quotidien","apiKey":"k"}"#)
+        #expect(agent.config.bridgeAgent == "quotidien" && agent.config.baseURL.path() == "/p/quotidien")
+    }
+
     @Test func minimalPayload() throws {
         let provisioning = try AgentProvisioning(qrPayload: #"{"name":"Vie","baseURL":"https://h.ts.net:8644","apiKey":"k"}"#)
         #expect(provisioning.config.voice == nil)

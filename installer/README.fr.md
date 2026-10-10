@@ -32,7 +32,7 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
 4. **Installe Hermes** avec son installateur officiel, en **une gateway par personne** (mode multiplex d'Hermes) :
    chaque agent est un profil joint à `/p/<agent>/` avec sa propre clé. Les nouveaux agents sont pris en compte sans
    redémarrage.
-5. **Crée les premiers agents** à partir de modèles (Quotidien, Bien-être, Budget, Maison, Travail, Apprendre,
+5. **Crée les premiers agents**, que la personne nomme elle-même, à partir de genres (Quotidien, Bien-être, Finances, Maison, Travail, Apprendre,
    Créatif, Tech), chacun avec une personnalité de départ (`SOUL.md`) et inscrit au Bot Mode pour qu'ils se parlent.
 6. **Met en place les voix** (Pocket TTS, un serveur par machine, partagé par tous) et **le bridge** (sa config dans
    `~/.config/bipagents/bridge.toml`, clés générées, sa porte sur le réseau local), en services qui démarrent seuls :

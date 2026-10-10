@@ -20,6 +20,8 @@ struct AddAgentFlow: View {
     @State private var errorMessage: String?
     @State private var step = Step.connection
     @State private var isScanning = false
+    /// An install's QR code is being read: its bridge is asked for every agent.
+    @State private var isPairing = false
 
     enum Step { case connection, style }
 
@@ -55,7 +57,11 @@ struct AddAgentFlow: View {
                 }
                 Button("Coller la configuration", systemImage: "doc.on.clipboard", action: pasteConfiguration)
             } footer: {
-                Text("Le QR code affiché par ton serveur contient l’adresse, la clé et la voix de l’agent.")
+                if isPairing {
+                    Label("Je récupère les agents du serveur…", systemImage: "arrow.triangle.2.circlepath")
+                } else {
+                    Text("Le QR code affiché par ton serveur ajoute tous ses agents d’un coup.")
+                }
             }
             Section("Agent") {
                 TextField("Nom", text: $name)
@@ -82,6 +88,7 @@ struct AddAgentFlow: View {
         .fullScreenCover(isPresented: $isScanning) {
             ZStack(alignment: .top) {
                 QRScanner { payload in
+                    if let install = InstallPairing(qrPayload: payload) { isScanning = false; pair(install); return }
                     if updatesExistingAgent(payload) { isScanning = false; dismiss(); return }
                     isScanning = false
                     if apply(payload) { goToStyle() }
@@ -112,7 +119,27 @@ struct AddAgentFlow: View {
             errorMessage = String(localized: "Le presse-papiers est vide.")
             return
         }
+        if let install = InstallPairing(qrPayload: string) { return pair(install) }
         _ = apply(string)
+    }
+
+    /// An install's code: every agent of its bridge, added (or updated) at once.
+    private func pair(_ install: InstallPairing) {
+        isPairing = true
+        errorMessage = nil
+        Task {
+            defer { isPairing = false }
+            do {
+                let result = try await store.addInstall(install)
+                if result.added + result.updated == 0 {
+                    errorMessage = String(localized: "Ce serveur n’a encore aucun agent joignable.")
+                } else {
+                    dismiss()
+                }
+            } catch {
+                errorMessage = String(localized: "Impossible de joindre ce serveur. Tailscale est-il connecté ?")
+            }
+        }
     }
 
     /// Fills the form from a provisioning payload (QR / JSON). Returns false if it is not valid.

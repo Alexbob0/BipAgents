@@ -211,6 +211,7 @@ extension AgentReachability {
         case .checking: .thinking
         case .unauthorized: .asking
         case .offline: .sleeping
+        case .modelDown: .thinking
         }
     }
 }
@@ -251,6 +252,7 @@ struct ReachabilityLabel: View {
         switch reachability {
         case .online, .local: Theme.online
         case .unauthorized, .offline: Theme.danger
+        case .modelDown: Color.orange
         case .unknown, .checking: Theme.muted
         }
     }

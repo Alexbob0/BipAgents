@@ -21,12 +21,15 @@ enum AgentReachability: Equatable, Sendable {
     case unknown, checking, online, unauthorized, offline(String)
     /// Reached through the bridge's door on the local network (the tailnet does not answer).
     case local
+    /// The agents' server answers, but not the model they use (its machine off, an expired API key).
+    case modelDown
 
     var label: String {
         switch self {
         case .unknown, .checking: "…"
         case .online: String(localized: "En ligne")
         case .local: String(localized: "En ligne · réseau local")
+        case .modelDown: String(localized: "Modèle injoignable")
         case .unauthorized: String(localized: "Clé refusée")
         case .offline: String(localized: "Hors tailnet")
         }
@@ -81,17 +84,43 @@ final class AgentStore {
                             session: LocalLink.session(for: agent))
     }
 
+    /// An install's QR code: every agent its bridge lists is added, or updated when already here (same Hermes
+    /// address). Returns how many were added and updated.
+    func addInstall(_ pairing: InstallPairing) async throws -> (added: Int, updated: Int) {
+        let bridge = BridgeClient(url: pairing.bridgeURL, key: pairing.bridgeKey)
+        let listed = try await withTimeout(15) { try await bridge.installAgents() }
+        var added = 0, updated = 0
+        for agent in listed {
+            let config = AgentConfig(name: agent.name, baseURL: agent.url, bridgeURL: pairing.bridgeURL,
+                                     language: AgentLanguage.device.rawValue, lanURL: pairing.lanURL,
+                                     lanFingerprint: pairing.lanFingerprint, bridgeAgent: agent.id)
+            let secrets = AgentSecrets(apiKey: agent.key, bridgeKey: pairing.bridgeKey)
+            if try updateConnection(from: AgentProvisioning(config: config, secrets: secrets)) {
+                updated += 1
+            } else {
+                let category = AgentCategory.suggest(name: agent.name)
+                var profile = AgentProfile(config: config, appearance: AgentAppearance(category: category))
+                profile.config.category = category.rawValue
+                try add(profile, secrets: secrets)
+                added += 1
+            }
+        }
+        return (added, updated)
+    }
+
     /// A newly scanned QR code of an agent already here (same Hermes address): new keys, bridge and LAN door,
     /// the rest (Bip, voice, language) kept. Returns false when no agent matches.
     func updateConnection(from provisioning: AgentProvisioning) throws -> Bool {
         let scanned = provisioning.config
         guard let index = agents.firstIndex(where: {
             $0.config.baseURL.host() == scanned.baseURL.host() && $0.config.baseURL.port == scanned.baseURL.port
+                && $0.config.baseURL.path() == scanned.baseURL.path()   // agents of one gateway differ by /p/<agent>
         }) else { return false }
         var profile = agents[index]
         profile.config.bridgeURL = scanned.bridgeURL ?? profile.config.bridgeURL
         profile.config.lanURL = scanned.lanURL
         profile.config.lanFingerprint = scanned.lanFingerprint
+        profile.config.bridgeAgent = scanned.bridgeAgent ?? profile.config.bridgeAgent
         try Keychain.save(provisioning.secrets, for: profile.id)
         agents[index] = profile
         save()
@@ -208,6 +237,10 @@ final class AgentStore {
             LocalLink.setActive(false, for: agent)
             reachability[agent.id] = .online
             await refreshLocalDoor(of: agent, secrets: secrets)
+            if let bridge = BridgeClient(tailnetOf: agent, secrets: secrets),
+               (try? await withTimeout(8) { try await bridge.modelIsUp() }) == false {
+                reachability[agent.id] = .modelDown
+            }
         } catch HermesError.unauthorized(_) {
             reachability[agent.id] = .unauthorized
             return

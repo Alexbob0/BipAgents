@@ -31,7 +31,7 @@ Add `--dry-run` to see every step and command without changing anything.
    On a 16 GB Mac mini with the model elsewhere: about 1 GB per person plus the voices — a family fits.
 4. **Installs Hermes** with its official installer, as **one gateway per person** (Hermes' multiplex mode): every
    agent is a profile reached at `/p/<agent>/` with its own key. New agents are picked up without a restart.
-5. **Creates the first agents** from templates (Everyday, Wellness, Budget, Home, Work, Learn, Creative, Tech),
+5. **Creates the first agents**, named by the person, from kinds (Everyday, Wellness, Finances, Home, Work, Learn, Creative, Tech),
    each with a starting personality (`SOUL.md`) and joined to Bot Mode so they can talk to each other.
 6. **Sets up the voices** (Pocket TTS, one server per machine, shared by everyone) and **the bridge** (its config in
    `~/.config/bipagents/bridge.toml`, keys generated, its local-network door), as services that start on their own:

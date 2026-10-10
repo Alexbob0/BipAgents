@@ -109,7 +109,8 @@ def pairing_payload(config: Config, agent: AgentConfig) -> Dict[str, Any]:
         raise ValueError(f"agents.{agent.name}.public_url is missing (its Hermes address on the tailnet)")
     if not config.public_url:
         raise ValueError("public_url is missing (the bridge's address on the tailnet)")
-    payload: Dict[str, Any] = {"name": agent.display_name, "baseURL": agent.public_url, "apiKey": agent.hermes_key,
+    payload: Dict[str, Any] = {"name": agent.display_name, "agent": agent.name, "baseURL": agent.public_url,
+                               "apiKey": agent.hermes_key,
                                "bridgeURL": config.public_url, "bridgeKey": config.bridge_key}
     if agent.voice:
         payload["voice"] = agent.voice
