@@ -11,6 +11,9 @@ port = 8643
 log_level = "info"
 data_dir = "~/.local/share/hermes-bridge"
 public_url = "https://mamachine.tailnet.ts.net:8643"   # the bridge on the tailnet, for the pairing QR code
+# Messages between agents (the app's « Qui peut écrire à qui »): the bridge is their only peer and checks each
+# message against the links the person allowed. How the agents reach it (default http://127.0.0.1:<port>/peer):
+# peer_url = "http://host.containers.internal:8643/peer"   # agents in containers
 
 # Kyutai TTS 1.6B (Nvidia GPU): "classic" human voice and podcast. Optional: without a GPU (Mac mini, VPS),
 # set `enabled = false` and keep [pocket]; the default voice then becomes `[pocket] default_voice`.

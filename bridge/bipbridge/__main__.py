@@ -1,4 +1,4 @@
-"""``python -m bipbridge [serve|check|genkey|qr]``."""
+"""``python -m bipbridge [serve|check|genkey|qr|peer-token]``."""
 from __future__ import annotations
 
 import argparse
@@ -14,9 +14,10 @@ from .logs import setup_logging
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="bipbridge", description="BipAgents bridge for Hermes agents")
-    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr"],
+    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token"],
                         help="serve (default), check the config, print a new random bridge key, "
-                             "or show an agent's pairing QR code for the app")
+                             "show an agent's pairing QR code for the app, or (peer-token --agent X) give an agent set "
+                             "up by hand its token for messaging the others")
     parser.add_argument("--config", help="config path (default: $BRIDGE_CONFIG or ~/.config/hermes-ios/bridge.toml)")
     parser.add_argument("--agent", help="qr: one agent's own code (default: the install's code, which adds every agent)")
     parser.add_argument("--png", help="qr: also save the QR code as a PNG (one agent)")
@@ -54,6 +55,20 @@ def main(argv=None) -> int:
 
     if args.command == "qr":
         return _qr(config, args)
+
+    if args.command == "peer-token":
+        import os
+        from .peers import PEER_NAME, Links, manual_token, peer_url
+        if not args.agent:
+            print("peer-token needs --agent", file=sys.stderr)
+            return 2
+        links = Links(os.path.join(os.path.dirname(config.outbox.db_path), "peers.json"))
+        token = manual_token(config, links, args.agent)
+        print(f"# In the HERMES_HOME of the gateway serving {args.agent} (the bridge must be reachable from there):")
+        print(f"hermes config set bot_peers.{PEER_NAME}.url {peer_url(config)}")
+        print(f"# In that agent's profile .env (its old token, if any, stops working):")
+        print(f"HERMES_PEER_{PEER_NAME.upper()}_KEY={token}")
+        return 0
 
     import uvicorn
 

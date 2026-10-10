@@ -43,8 +43,11 @@ struct SettingsView: View {
                     NavigationLink { VaultView() } label: {
                         Label("Coffre des agents", systemImage: "lock.shield")
                     }
+                    NavigationLink { AgentLinksView() } label: {
+                        Label("Qui peut écrire à qui", systemImage: "arrow.left.arrow.right")
+                    }
                 } footer: {
-                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir.")
+                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir, et les agents qui peuvent s’écrire.")
                 }
                 .foregroundStyle(Theme.ink)
                 Section {

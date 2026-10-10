@@ -9834,6 +9834,160 @@
           }
         }
       }
+    },
+    "Qui peut écrire à qui" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Who can write to whom"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quién puede escribir a quién"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wer wem schreiben darf"
+          }
+        }
+      }
+    },
+    "Peut écrire à %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can write to %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puede escribir a %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Darf %@ schreiben"
+          }
+        }
+      }
+    },
+    "Les identifiants de sites que tes agents utilisent sans jamais les voir, et les agents qui peuvent s’écrire." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The website logins your agents use without ever seeing them, and which agents may write to each other."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los accesos a sitios web que tus agentes usan sin verlos nunca, y qué agentes pueden escribirse."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Website-Zugänge, die deine Agenten nutzen, ohne sie zu sehen, und welche Agenten einander schreiben dürfen."
+          }
+        }
+      }
+    },
+    "%@ a été installé à la main : sur le serveur, lance « python -m bipbridge peer-token --agent %@ » et ajoute ce qu’il affiche à sa configuration." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ was set up by hand: on the server, run “python -m bipbridge peer-token --agent %2$@” and add what it prints to its configuration."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ se instaló a mano: en el servidor, ejecuta «python -m bipbridge peer-token --agent %2$@» y añade lo que muestra a su configuración."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ wurde von Hand eingerichtet: Führe auf dem Server „python -m bipbridge peer-token --agent %2$@“ aus und füge die Ausgabe seiner Konfiguration hinzu."
+          }
+        }
+      }
+    },
+    "Un agent ne peut écrire qu’aux agents que tu as cochés ici. Il ne reçoit jamais leurs clés : c’est ton serveur qui transmet le message, et il refuse tout le reste." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent can only write to the agents you ticked here. It never gets their keys: your server carries the message and refuses everything else."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un agente solo puede escribir a los agentes que marques aquí. Nunca recibe sus claves: tu servidor transmite el mensaje y rechaza todo lo demás."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Agent kann nur den hier angehakten Agenten schreiben. Er erhält nie ihre Schlüssel: Dein Server überbringt die Nachricht und lehnt alles andere ab."
+          }
+        }
+      }
+    },
+    "Aucun de tes serveurs ne transmet encore les messages entre agents (bridge à mettre à jour)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None of your servers carries messages between agents yet (the bridge needs an update)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguno de tus servidores transmite aún mensajes entre agentes (hay que actualizar el bridge)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keiner deiner Server überträgt Nachrichten zwischen Agenten (Bridge muss aktualisiert werden)."
+          }
+        }
+      }
+    },
+    "Un agent ne peut écrire qu’aux agents que tu as cochés ici. Il ne reçoit jamais leurs clés : c’est ton serveur qui transmet le message, et il refuse tout le reste. Les agents qui partagent l’espace commun peuvent aussi s’écrire entre eux." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent can only write to the agents you ticked here. It never gets their keys: your server carries the message and refuses everything else. Agents sharing the common space can also write to each other."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un agente solo puede escribir a los agentes que marques aquí. Nunca recibe sus claves: tu servidor transmite el mensaje y rechaza todo lo demás. Los agentes que comparten el espacio común también pueden escribirse entre ellos."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Agent kann nur den hier angehakten Agenten schreiben. Er erhält nie ihre Schlüssel: Dein Server überbringt die Nachricht und lehnt alles andere ab. Agenten im gemeinsamen Bereich können sich auch untereinander schreiben."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

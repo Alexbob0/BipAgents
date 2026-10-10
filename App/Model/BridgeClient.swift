@@ -145,6 +145,50 @@ struct BridgeClient: Sendable {
         var fields: [Field]
     }
 
+    /// One agent of the install for the links screen (`managed`: the bridge can give it its token itself).
+    struct LinkAgent: Sendable, Identifiable, Hashable {
+        var id: String
+        var name: String
+        var managed: Bool
+    }
+
+    struct AgentLink: Sendable, Hashable {
+        var from: String
+        var to: String
+    }
+
+    /// `GET /v1/agent-links`: nil when the bridge is older.
+    func agentLinks() async throws -> (agents: [LinkAgent], links: Set<AgentLink>)? {
+        let data: Data
+        do {
+            data = try await send(request("v1/agent-links"))
+        } catch HermesError.http(let status, _, _) where status == 404 {
+            return nil
+        }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let agents = (json?["agents"] as? [[String: Any]] ?? []).compactMap { row -> LinkAgent? in
+            guard let id = row["id"] as? String else { return nil }
+            return LinkAgent(id: id, name: row["name"] as? String ?? id, managed: row["managed"] as? Bool ?? false)
+        }
+        return (agents, Self.links(json))
+    }
+
+    /// `PUT /v1/agent-links`: every allowed link; returns the agents set up by hand that still need their token.
+    func setAgentLinks(_ links: Set<AgentLink>) async throws -> [String] {
+        var request = request("v1/agent-links", method: "PUT")
+        request.timeoutInterval = 60
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["links": links.map { ["from": $0.from, "to": $0.to] }])
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        return json?["needs_setup"] as? [String] ?? []
+    }
+
+    private static func links(_ json: [String: Any]?) -> Set<AgentLink> {
+        Set((json?["links"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let from = row["from"] as? String, let to = row["to"] as? String else { return nil }
+            return AgentLink(from: from, to: to)
+        })
+    }
+
     /// `GET /v1/tool-catalog`.
     func toolCatalog() async throws -> [CatalogService] {
         let json = try JSONSerialization.jsonObject(with: try await send(request("v1/tool-catalog"))) as? [String: Any]

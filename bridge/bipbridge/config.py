@@ -181,6 +181,9 @@ class Config:
     model_health_key: Optional[str] = None
     # The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
     public_url: Optional[str] = None
+    # The bridge as the agents reach it, for messages between agents (peers.py). Default: http://127.0.0.1:<port>/peer;
+    # e.g. http://host.containers.internal:8643/peer for agents in containers.
+    peer_url: Optional[str] = None
     source_path: Optional[str] = None
 
     def agent(self, name: Optional[str]) -> Optional[AgentConfig]:
@@ -409,6 +412,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         model_health_url=str(model_t["health_url"]) if model_t.get("health_url") else None,
         model_health_key=_secret(model_t, "health_key", "model", required=False),
         public_url=str(data["public_url"]).rstrip("/") if data.get("public_url") else None,
+        peer_url=str(data["peer_url"]).rstrip("/") if data.get("peer_url") else None,
         source_path=source_path,
     )
 
