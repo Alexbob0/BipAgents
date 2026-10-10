@@ -105,3 +105,44 @@ def test_refusals(managed):
         asyncio.run(attempt(NewAgent(name="X")))
     taken = asyncio.run(attempt(NewAgent(name="Wellness", kind="wellness")))
     assert taken.name == "wellness-2"   # « wellness » already exists in this bridge
+
+
+def test_settings_and_delete(managed):
+    from bipbridge.agents_admin import (AgentSettings, NewAgent, create_agent, delete_agent, managed as managed_agent,
+                                        read_settings, write_settings)
+
+    config, path, tmp = managed
+    commands = []
+
+    async def run(args, env):
+        commands.append(list(args))
+        return ""
+
+    def gateway(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/v1/toolsets"):
+            return httpx.Response(200, json={"data": [{"name": "web", "label": "Web", "description": "Search", "enabled": True,
+                                                       "configured": True, "tools": ["web_search"]}]})
+        if request.url.path.endswith("/v1/capabilities"):
+            return httpx.Response(200, json={})
+        return httpx.Response(201, json={})
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(gateway)) as http:
+            agent = await create_agent(config, NewAgent(name="Budget", kind="finance"), http, run=run)
+            settings = await read_settings(config, agent, http)
+            await write_settings(config, agent, AgentSettings(soul="Tu es Budget, sobre.", toolsets={"web": False, "terminal": True}), run=run)
+            with pytest.raises(ValueError):
+                await write_settings(config, agent, AgentSettings(toolsets={"web; rm -rf": True}), run=run)
+            return agent, settings
+
+    agent, settings = asyncio.run(go())
+    assert settings["soul"].startswith("Tu es Budget") and settings["toolsets"][0]["name"] == "web"
+    assert (tmp / ".hermes" / "profiles" / "budget" / "SOUL.md").read_text() == "Tu es Budget, sobre.\n"
+    assert ["/opt/hermes", "-p", "budget", "tools", "enable", "terminal", "--platform", "api_server"] in commands
+    assert ["/opt/hermes", "-p", "budget", "tools", "disable", "web", "--platform", "api_server"] in commands
+    with pytest.raises(LookupError):
+        managed_agent(config, "wellness")   # set up by hand: never edited or deleted from the app
+    assert "[agents.budget]" in path.read_text()
+    asyncio.run(delete_agent(config, agent, run=run))
+    assert commands[-1] == ["/opt/hermes", "profile", "delete", "budget", "--yes"]
+    assert "[agents.budget]" not in path.read_text() and config.agent("budget") is None

@@ -1,96 +1,9 @@
-diff --git a/agent/session_persistence.py b/agent/session_persistence.py
-index 8c0f6e797..1fe1736e7 100644
---- a/agent/session_persistence.py
-+++ b/agent/session_persistence.py
-@@ -212,6 +212,11 @@ def _db_flush_row(agent, msg: Dict, is_current_turn_user: bool) -> Dict[str, Any
-         content, api_content = durable_user_row_content(agent, msg, content, api_content)
-         ov_timestamp = getattr(agent, "_persist_user_message_timestamp", None)
-         timestamp = timestamp if ov_timestamp is None else ov_timestamp
-+    if role == "user":
-+        # Local patch 0004: the row stays text-only; its images go to the image store (keyed by the
-+        # message_uid stamped here) so later runs can re-attach them on the wire.
-+        from agent.image_store import persist_message_images
-+        persist_message_images(msg, session_id=getattr(agent, "session_id", None), ts=timestamp)
-     if api_content == content:
-         api_content = None
-     # get_messages_as_conversation replays rows through sanitize_context().strip(); capture the sent bytes
-diff --git a/agent/turn_context.py b/agent/turn_context.py
-index 639e99ed4..dd75db462 100644
---- a/agent/turn_context.py
-+++ b/agent/turn_context.py
-@@ -1252,6 +1252,7 @@ def build_api_messages(
-     canonical_messages = canonicalize_replay_history(messages[:split], now=turn_now) + messages[split:]
- 
-     api_messages = []
-+    _image_pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
-     for idx, msg in enumerate(canonical_messages):
-         # Structural clone, NOT msg.copy(): in-place transforms below must not reach
-         # persisted history via nested containers; see _clone_message_for_send.
-@@ -1312,6 +1313,18 @@ def build_api_messages(
-         # 'reasoning_details' is kept here; the chat-completions transport drops it on the
-         # wire for every route that does not replay it (OpenRouter/Nous do).
-         api_messages.append(api_msg)
-+        _image_pairs.append((msg, api_msg))
-+
-+    # Local patch 0004: re-attach the stored images of earlier user rows (most recent
-+    # KEEP_RECENT) on this wire copy, only when the active model sees images natively.
-+    try:
-+        if agent._model_supports_vision():
-+            from agent.image_store import rehydrate_wire_images
-+            _n_images = rehydrate_wire_images(_image_pairs)
-+            if _n_images:
-+                logger.info("image_store: re-attached %d stored image(s) to the request", _n_images)
-+    except Exception:
-+        logger.warning("image_store: re-attaching stored images failed", exc_info=True)
- 
-     # A provider-rejected Anthropic signature is suppressed outside canonical history and
-     # survives fresh request construction / process resume via session model_config.
-diff --git a/gateway/run.py b/gateway/run.py
-index f745ad816..482b2e853 100644
---- a/gateway/run.py
-+++ b/gateway/run.py
-@@ -3737,6 +3737,11 @@ class GatewayRunner(
-             "state.db startup maintenance",
-             lambda: _for_each_served_profile(
-                 self, lambda _label: _housekeeping_state_db_maintenance(_launch_sessions)))
-+        # Local patch 0004: stored user images whose message is gone (deleted session, compaction).
-+        from agent.image_store import startup_gc as _image_store_startup_gc
-+        _housekeeping_chore(
-+            "image_store startup cleanup",
-+            lambda: _for_each_served_profile(self, lambda _label: _image_store_startup_gc()))
-         # Checkpoint store pruning is a housekeeping chore (``_housekeeping_checkpoint_prune``), not a
-         # constructor step: its ``git gc`` repacks the whole store (tens of seconds on a GB store) and
-         # here it ran before the control socket, adapters and the code_sha stamp — so the first
-diff --git a/hermes_state_sessions.py b/hermes_state_sessions.py
-index 7e137ea3e..b662d7a6a 100644
---- a/hermes_state_sessions.py
-+++ b/hermes_state_sessions.py
-@@ -1647,6 +1647,9 @@ class SessionSessionsMixin:
-         deleted = self._execute_write(_do)
-         for sid in removed_ids:
-             self._remove_session_files(sessions_dir, sid)
-+        if removed_ids:  # local patch 0004: drop the deleted sessions' stored images
-+            from agent.image_store import purge_deleted_sessions
-+            purge_deleted_sessions(self, removed_ids, sessions_dir)
-         return bool(deleted)
- 
-     def delete_session_if_empty(self, session_id: str, sessions_dir: Optional[Path] = None) -> bool:
-@@ -1728,6 +1731,9 @@ class SessionSessionsMixin:
-         count = self._execute_write(_do)
-         for sid in removed_ids:
-             self._remove_session_files(sessions_dir, sid)
-+        if removed_ids:  # local patch 0004: drop the deleted sessions' stored images
-+            from agent.image_store import purge_deleted_sessions
-+            purge_deleted_sessions(self, removed_ids, sessions_dir)
-         return count
- 
-     # Shared by count_empty_sessions / delete_empty_sessions so badge and sweep agree. message_count
 diff --git a/agent/image_store.py b/agent/image_store.py
 new file mode 100644
-index 000000000..2093e683b
+index 0000000000..4a120ed4b7
 --- /dev/null
 +++ b/agent/image_store.py
-@@ -0,0 +1,426 @@
+@@ -0,0 +1,423 @@
 +"""Durable store for user-attached images so follow-up turns can still see them (local patch 0004).
 +
 +The session DB keeps text only (``_durable_content`` turns image parts into ``[screenshot]``), so a
@@ -129,7 +42,7 @@ index 000000000..2093e683b
 +SCREENSHOT_MARKER = "[screenshot]"
 +OLDER_IMAGE_TEXT = "[image envoyée plus tôt]"
 +_IMAGE_PART_TYPES = {"image", "image_url", "input_image"}
-+_DATA_URL_RE = re.compile(r"^data:(image/[\w.+-]+);base64,(.*)$", re.S)
++_DATA_URL_RE = re.compile(r"^data:(image/[\w.+-]+);base64,(.*)$", re.DOTALL)
 +_EXT = {"image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp",
 +        "image/heic": "heic", "image/heif": "heif", "image/avif": "avif", "image/bmp": "bmp"}
 +_UID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -156,7 +69,9 @@ index 000000000..2093e683b
 +
 +
 +def _write_private(path: Path, data: bytes) -> None:
-+    path.parent.mkdir(parents=True, exist_ok=True)
++    from hermes_constants import mkdir_under_hermes_home
++
++    mkdir_under_hermes_home(path.parent)  # a late flush must never recreate a deleted named profile
 +    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
 +    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
 +    with os.fdopen(fd, "wb") as fh:
@@ -164,29 +79,26 @@ index 000000000..2093e683b
 +    os.replace(tmp, path)
 +
 +
-+def _store_part(root: Path, part: Dict[str, Any]) -> Optional[Dict[str, Any]]:
++def _store_part(root: Path, part: Dict[str, Any]) -> Dict[str, Any]:
++    """The ref for one image part; ``{"pruned": True}`` holds the marker position of one not replayed.
++
++    Only bytes we hold are replayed: a remote URL is re-fetched by the provider on every request, so
++    an expired signed URL or a deleted file would turn every later turn into a 400."""
 +    url, detail = _part_url(part)
-+    if not url:
-+        return None
-+    ref: Dict[str, Any]
 +    m = _DATA_URL_RE.match(url)
-+    if m:
-+        mime = m.group(1).lower()
-+        try:
-+            raw = base64.b64decode(m.group(2), validate=False)
-+        except (binascii.Error, ValueError):
-+            return None
-+        if not raw:
-+            return None
-+        name = f"{hashlib.sha256(raw).hexdigest()}.{_EXT.get(mime, 'bin')}"
-+        path = root / name
-+        if not path.exists():
-+            _write_private(path, raw)
-+        ref = {"file": name, "mime": mime}
-+    elif url.startswith(("http://", "https://")):
-+        ref = {"url": url}
-+    else:
-+        return None
++    if not m:
++        return {"pruned": True}
++    try:
++        raw = base64.b64decode(m.group(2), validate=False)
++    except (binascii.Error, ValueError):
++        return {"pruned": True}
++    if not raw:
++        return {"pruned": True}
++    mime = m.group(1).lower()
++    name = f"{hashlib.sha256(raw).hexdigest()}.{_EXT.get(mime, 'bin')}"
++    if not (root / name).exists():
++        _write_private(root / name, raw)
++    ref: Dict[str, Any] = {"file": name, "mime": mime}
 +    if detail:
 +        ref["detail"] = detail
 +    return ref
@@ -317,9 +229,9 @@ index 000000000..2093e683b
 +        sidecar = _sidecar_path(root, uid)
 +        if sidecar.exists():
 +            return _live_ref_count(_read_sidecar(sidecar) or {"refs": []})  # re-flush of a saved message
-+        refs = [r for r in (_store_part(root, p) for p in content
-+                            if isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES) if r]
-+        if not refs:
++        # One ref per image part, in order: refs map to the row's markers by position.
++        refs = [_store_part(root, p) for p in content if isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES]
++        if not _live_ref_count({"refs": refs}):
 +            return 0
 +        _write_sidecar(sidecar, {"session_id": session_id, "ts": float(ts) if isinstance(ts, (int, float)) else time.time(), "refs": refs})
 +        if session_id:
@@ -327,7 +239,7 @@ index 000000000..2093e683b
 +            same.sort(key=lambda e: e[1].get("ts") or 0.0, reverse=True)
 +            if _enforce_window(same):
 +                remove_orphan_files(root)
-+        return len(refs)
++        return _live_ref_count({"refs": refs})
 +    except Exception:
 +        logger.warning("image_store: could not persist images of a user message", exc_info=True)
 +        return 0
@@ -433,8 +345,6 @@ index 000000000..2093e683b
 +        except OSError:
 +            return None
 +        url = f"data:{ref.get('mime') or 'image/jpeg'};base64,{base64.b64encode(raw).decode('ascii')}"
-+    elif isinstance(ref.get("url"), str) and ref["url"]:
-+        url = ref["url"]
 +    else:
 +        return None
 +    image_url: Dict[str, Any] = {"url": url}
@@ -517,12 +427,99 @@ index 000000000..2093e683b
 +        if isinstance(rebuilt, list):
 +            attached += sum(1 for p in rebuilt if p.get("type") == "image_url")
 +    return attached
+diff --git a/agent/session_persistence.py b/agent/session_persistence.py
+index 864fb66e5f..7fdc72e508 100644
+--- a/agent/session_persistence.py
++++ b/agent/session_persistence.py
+@@ -212,6 +212,11 @@ def _db_flush_row(agent, msg: dict, is_current_turn_user: bool) -> dict[str, Any
+         content, api_content = durable_user_row_content(agent, msg, content, api_content)
+         ov_timestamp = getattr(agent, "_persist_user_message_timestamp", None)
+         timestamp = timestamp if ov_timestamp is None else ov_timestamp
++    if role == "user":
++        # Local patch 0004: the row stays text-only; its images go to the image store (keyed by the
++        # message_uid stamped here) so later runs can re-attach them on the wire.
++        from agent.image_store import persist_message_images
++        persist_message_images(msg, session_id=getattr(agent, "session_id", None), ts=timestamp)
+     if api_content == content:
+         api_content = None
+     # get_messages_as_conversation replays rows through sanitize_context().strip(); capture the sent bytes
+diff --git a/agent/turn_context.py b/agent/turn_context.py
+index 32cfaeecd8..70237c3132 100644
+--- a/agent/turn_context.py
++++ b/agent/turn_context.py
+@@ -1258,6 +1258,7 @@ def build_api_messages(
+     canonical_messages = canonicalize_replay_history(messages[:split], now=turn_now) + messages[split:]
+ 
+     api_messages = []
++    _image_pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+     for idx, msg in enumerate(canonical_messages):
+         # Structural clone, NOT msg.copy(): in-place transforms below must not reach
+         # persisted history via nested containers; see _clone_message_for_send.
+@@ -1318,6 +1319,18 @@ def build_api_messages(
+         # 'reasoning_details' is kept here; the chat-completions transport drops it on the
+         # wire for every route that does not replay it (OpenRouter/Nous do).
+         api_messages.append(api_msg)
++        _image_pairs.append((msg, api_msg))
++
++    # Local patch 0004: re-attach the stored images of earlier user rows (most recent
++    # KEEP_RECENT) on this wire copy, only when the active model sees images natively.
++    try:
++        if agent._model_supports_vision():
++            from agent.image_store import rehydrate_wire_images
++            _n_images = rehydrate_wire_images(_image_pairs)
++            if _n_images:
++                logger.info("image_store: re-attached %d stored image(s) to the request", _n_images)
++    except Exception:
++        logger.warning("image_store: re-attaching stored images failed", exc_info=True)
+ 
+     # A provider-rejected Anthropic signature is suppressed outside canonical history and
+     # survives fresh request construction / process resume via session model_config.
+diff --git a/gateway/run.py b/gateway/run.py
+index 9b40970ce4..fef0d94979 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -3673,6 +3673,11 @@ class GatewayRunner(
+             "state.db startup maintenance",
+             lambda: _for_each_served_profile(
+                 self, lambda _label: _housekeeping_state_db_maintenance(_launch_sessions)))
++        # Local patch 0004: stored user images whose message is gone (deleted session, compaction).
++        from agent.image_store import startup_gc as _image_store_startup_gc
++        _housekeeping_chore(
++            "image_store startup cleanup",
++            lambda: _for_each_served_profile(self, lambda _label: _image_store_startup_gc()))
+         # Checkpoint store pruning is a housekeeping chore (``_housekeeping_checkpoint_prune``), not a
+         # constructor step: its ``git gc`` repacks the whole store (tens of seconds on a GB store) and
+         # here it ran before the control socket, adapters and the code_sha stamp — so the first
+diff --git a/hermes_state_sessions.py b/hermes_state_sessions.py
+index 38cf19de5d..e209e49772 100644
+--- a/hermes_state_sessions.py
++++ b/hermes_state_sessions.py
+@@ -1747,6 +1747,9 @@ class SessionSessionsMixin:
+         deleted = self._execute_write(_do)
+         for sid in removed_ids:
+             self._remove_session_files(sessions_dir, sid)
++        if removed_ids:  # local patch 0004: drop the deleted sessions' stored images
++            from agent.image_store import purge_deleted_sessions
++            purge_deleted_sessions(self, removed_ids, sessions_dir)
+         return bool(deleted)
+ 
+     def delete_session_if_empty(self, session_id: str, sessions_dir: Optional[Path] = None) -> bool:
+@@ -1860,6 +1863,9 @@ class SessionSessionsMixin:
+         count = self._execute_write(_do)
+         for sid in removed_ids:
+             self._remove_session_files(sessions_dir, sid)
++        if removed_ids:  # local patch 0004: drop the deleted sessions' stored images
++            from agent.image_store import purge_deleted_sessions
++            purge_deleted_sessions(self, removed_ids, sessions_dir)
+         return count
+ 
+     # Shared by count_empty_sessions / delete_empty_sessions so badge and sweep agree. message_count
 diff --git a/tests/agent/test_image_store_local.py b/tests/agent/test_image_store_local.py
 new file mode 100644
-index 000000000..90b1bdd8f
+index 0000000000..33279d4c46
 --- /dev/null
 +++ b/tests/agent/test_image_store_local.py
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,219 @@
 +"""Local patch 0004: user images survive across runs (store on flush, re-attach on the wire)."""
 +import base64
 +import copy
@@ -715,3 +712,30 @@ index 000000000..90b1bdd8f
 +    stats = image_store.gc_store(db)
 +    assert stats["refs_removed"] == 2 and stats["files_removed"] == 4
 +    assert image_store.load_refs(live) and _files(home) == [_sha_name(b"live")]
++
++
++def test_only_stored_bytes_replay_and_each_image_keeps_its_marker(home):
++    # From the upstream review: a remote URL is re-fetched by the provider on every request (an
++    # expired signed URL 400s the turn), and a part that stores nothing must not shift later images.
++    live = {"role": "user", "content": [
++        {"type": "text", "text": "compare"},
++        {"type": "image_url", "image_url": {"url": "https://cdn.example/signed.png?X-Amz-Expires=60"}},
++        {"type": "image_url", "image_url": {"url": "data:image/png;base64,"}},
++        {"type": "image_url", "image_url": {"url": _data_url(b"third")}},
++    ]}
++    assert image_store.persist_message_images(live) == 1
++    row = _stored_row(live)
++    pairs = [(row, copy.deepcopy(row))]
++    assert image_store.rehydrate_wire_images(pairs, keep_recent=3, home=home) == 1
++    older = {"type": "text", "text": image_store.OLDER_IMAGE_TEXT}
++    assert pairs[0][1]["content"] == [live["content"][0], older, older, live["content"][3]]
++
++
++def test_a_late_flush_never_recreates_a_deleted_profile(tmp_path, monkeypatch):
++    root = tmp_path / ".hermes"
++    (root / "profiles" / ".deleted").mkdir(parents=True)
++    (root / "profiles" / ".deleted" / "gone").touch()  # what `hermes profile delete` leaves behind
++    gone = root / "profiles" / "gone"
++    monkeypatch.setenv("HERMES_HOME", str(gone))
++    assert image_store.persist_message_images(_user("late", b"img"), session_id="S") == 0
++    assert not gone.exists()

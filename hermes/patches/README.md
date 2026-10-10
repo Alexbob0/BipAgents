@@ -48,9 +48,14 @@ flow was checked end to end against a live gateway.
 no longer sees the photo and cannot answer a follow-up question about it.
 
 **What the patch does.**
-- When a user message is saved, its images (`data:` or remote URLs) are written once to
+- When a user message is saved, its `data:` images are written once to
   `<HERMES_HOME>/image_store/<sha256>.<ext>`, with a small reference file per message under
   `image_store/refs/`. The database row and the session messages API stay text only, with no base64.
+  A remote URL is not kept for replay: the provider would fetch it again on every request, and an
+  expired link would break every later turn. It reads as an older image, and keeps its position so
+  the next images stay on their own markers.
+- Writes go through `mkdir_under_hermes_home`, so a save that lands after `hermes profile delete`
+  never brings a deleted agent's folder back.
 - When a request is built, and only for a model that sees images natively, the 3 most recent images
   of the conversation are put back as `image_url` parts where their `[screenshot]` marker was. Older
   markers read `[image envoyée plus tôt]` ("image sent earlier"). The result depends only on the
@@ -60,7 +65,10 @@ no longer sees the photo and cannot answer a follow-up question about it.
   compaction). A file is removed once no reference points to it.
 
 **Files.** `agent/image_store.py` (new), `agent/session_persistence.py`, `agent/turn_context.py`,
-`gateway/run.py`, `hermes_state_sessions.py`, `tests/agent/test_image_store_local.py` (new, 11 tests).
+`gateway/run.py`, `hermes_state_sessions.py`, `tests/agent/test_image_store_local.py` (new, 13 tests).
+
+The remote-URL, marker-position and deleted-profile fixes come from the maintainer's review of the
+upstream PR (NousResearch/hermes-agent#136217, commit `28dd115949d`).
 
 **Upstream note.** The placeholder text for older images is in French; an upstream version would use
 English or make it configurable.
