@@ -48,7 +48,7 @@ def test_create_custom_agent(managed):
     assert agent.name == "fougere" and agent.display_name == "Fougère"
     assert agent.hermes_url == "http://127.0.0.1:8642/p/fougere"
     assert agent.public_url == "https://mini.ts.net:8642/p/fougere"
-    assert commands[0][:5] == ["/opt/hermes", "profile", "create", "fougere", "--clone"]
+    assert commands[0][:6] == ["/opt/hermes", "profile", "create", "fougere", "--clone-from", "default"]
     assert commands[1][:6] == ["/opt/hermes", "-p", "fougere", "config", "set", "API_SERVER_KEY"]
     soul = (tmp / ".hermes" / "profiles" / "fougere" / "SOUL.md").read_text()
     assert soul.startswith("Tu es Fougère") and "suit mes plantes" in soul and "drôle" in soul
