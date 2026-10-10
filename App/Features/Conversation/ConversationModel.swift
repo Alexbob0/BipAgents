@@ -876,7 +876,7 @@ final class ConversationModel {
         guard let client else { return }
         Task {
             do {
-                try await client.answerClarify(runID: request.runID, requestID: request.requestID, answers: answers)
+                try await client.answer(request, answers: answers)
                 isWaitingForApproval = false
             } catch {
                 setQuestion(request.requestID, state: .pending)

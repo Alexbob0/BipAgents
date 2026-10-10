@@ -150,10 +150,10 @@ extension HermesEvent {
 
         case "clarify.responded", "clarify.resolved":
             let answers = f.value("answers")?.objectValue?.compactMapValues { $0.lenientString }
-            return .clarifyResolved(requestID: f.string("request_id"), answers: answers ?? [:])
+            return .clarifyResolved(requestID: f.string("request_id", "clarify_id"), answers: answers ?? [:])
 
-        case "clarify.cancelled", "clarify.canceled", "clarify.expired":
-            return .clarifyResolved(requestID: f.string("request_id"), answers: nil)
+        case "clarify.cancelled", "clarify.canceled", "clarify.expired", "clarify.retired":
+            return .clarifyResolved(requestID: f.string("request_id", "clarify_id"), answers: nil)
 
         case "assistant.completed", "message.complete", "message.completed":
             return .assistantCompleted(outcome(f))
@@ -219,13 +219,16 @@ extension HermesEvent {
             guard let text = q.string("question", "text", "prompt") else { return nil }
             let choices = q.value("choices", "options")?.arrayValue?.compactMap { $0.stringValue ?? $0["label"]?.stringValue } ?? []
             return ClarifyRequest.Question(id: q.string("id", "question_id") ?? fallbackID, question: text, choices: choices,
-                                           allowOther: q.bool("allow_other", "allow_free_text") ?? true)
+                                           allowOther: q.bool("allow_other", "allow_free_text") ?? true,
+                                           multiSelect: q.bool("multi_select") ?? false)
         }
         var questions = (f.value("questions")?.arrayValue ?? []).enumerated().compactMap { index, value in
             question(LenientFields(value, nestedIn: []), fallbackID: "q\(index + 1)")
         }
         if questions.isEmpty, let single = question(f, fallbackID: "q1") { questions = [single] }
-        return ClarifyRequest(runID: runID ?? "", requestID: f.string("request_id", "clarify_id", "id") ?? "", questions: questions)
+        let perQuestion = f.string("request_id") == nil && f.string("clarify_id") != nil
+        return ClarifyRequest(runID: runID ?? "", requestID: f.string("request_id", "clarify_id", "id") ?? "", questions: questions,
+                              perQuestion: perQuestion)
     }
 
     /// The approval stored in a run's status (`approval` of `GET /v1/runs/{id}`), or a bare request for the run when

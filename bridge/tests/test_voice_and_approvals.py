@@ -309,6 +309,28 @@ def test_question_pushed_when_the_app_left(client):
     assert payload["aps"]["alert"]["body"] == "Une question pour toi" and payload["aps"]["mutable-content"] == 1
 
 
+def test_upstream_question_contract_is_pushed_too(client):
+    """Hermes' upstream clarify (one question per `clarify_id`) is pushed like ours."""
+    register(client)
+    gate = threading.Event()
+    client.backend.runs["run_u"] = [
+        gate,
+        sse("clarify.request", run_id="run_u", clarify_id="cq_9", question="Quel train ?", choices=["9h", "14h"],
+            multi_select=False),
+        threading.Event(),
+    ]
+    services = client.app.state.services
+
+    def follow_then_leave():
+        listener = services.hub.subscribe(services.config.agent("wellness"), "run_u", kind="app", watch=True)
+        listener.close()
+
+    client.portal.call(follow_then_leave)
+    gate.set()
+    assert wait_until(lambda: len(client.apns.requests) >= 1)
+    assert client.apns.payloads()[0]["request_id"] == "cq_9"
+
+
 def test_approval_is_pushed_when_the_app_stops_following(client):
     register(client)
     asked, finish = threading.Event(), threading.Event()

@@ -147,6 +147,23 @@ public struct HermesClient: Sendable {
         _ = try await send("POST", "/v1/runs/\(Self.escape(runID))/clarify", body: .object(body))
     }
 
+    /// Answers a question in the contract it came in: BipAgents' batch (`answerClarify`) or Hermes' upstream one
+    /// question per request (`{"clarify_id", "response"}`, several choices as a JSON-encoded array of labels, an empty
+    /// string to skip).
+    public func answer(_ request: ClarifyRequest, answers: [String: String]?) async throws {
+        guard request.perQuestion else {
+            return try await answerClarify(runID: request.runID, requestID: request.requestID, answers: answers)
+        }
+        let question = request.questions.first
+        var response = answers?[question?.id ?? ""] ?? answers?.values.first ?? ""
+        if question?.multiSelect == true, !response.isEmpty,
+           let data = try? JSONSerialization.data(withJSONObject: [response]), let json = String(data: data, encoding: .utf8) {
+            response = json
+        }
+        _ = try await send("POST", "/v1/runs/\(Self.escape(request.runID))/clarify",
+                           body: ["clarify_id": .string(request.requestID), "response": .string(response)])
+    }
+
     /// `POST /v1/runs/{id}/stop`. Returns immediately with `stopping`; the run settles as `cancelled`.
     @discardableResult
     public func stop(runID: String) async throws -> RunStatus {

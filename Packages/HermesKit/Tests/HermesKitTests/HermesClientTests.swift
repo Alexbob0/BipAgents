@@ -41,6 +41,20 @@ struct HermesClientTests {
         #expect(capabilities.endpoints["session_list"] == "/api/sessions")
     }
 
+    @Test func answersInTheQuestionsContract() async throws {
+        let server = StubServer { _ in .json(["ok": true]) }
+        let client = server.client()
+        let batch = ClarifyRequest(runID: "r1", requestID: "req", questions: [.init(id: "q1", question: "?")])
+        try await client.answer(batch, answers: ["q1": "9 h"])
+        #expect(server.requests[0].json == ["request_id": "req", "answers": ["q1": "9 h"]])
+        let single = ClarifyRequest(runID: "r1", requestID: "c-7",
+                                    questions: [.init(id: "q1", question: "?", choices: ["A", "B"], multiSelect: true)], perQuestion: true)
+        try await client.answer(single, answers: ["q1": "A"])
+        #expect(server.requests[1].json == ["clarify_id": "c-7", "response": "[\"A\"]"])
+        try await client.answer(single, answers: nil)   // dismissed: the tool's no-answer
+        #expect(server.requests[2].json == ["clarify_id": "c-7", "response": ""])
+    }
+
     @Test func routines() async throws {
         let job: JSONValue = ["id": "j1", "name": "Point du lundi", "prompt": "Fais le point", "state": "scheduled",
                                   "enabled": true, "schedule": ["kind": "cron", "expr": "0 8 * * 1"],

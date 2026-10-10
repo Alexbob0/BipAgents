@@ -75,6 +75,20 @@ class Listener:
             self.hub._remove_listener(self)
 
 
+# A question answered or gone: BipAgents' patch (`clarify.responded` / `clarify.cancelled`, `request_id`) or Hermes'
+# upstream contract (`clarify.retired`, one question per `clarify_id`).
+CLARIFY_DONE = ("clarify.responded", "clarify.cancelled", "clarify.retired")
+
+
+def _clarify_id(data: Any) -> Optional[str]:
+    if not isinstance(data, dict):
+        return None
+    for key in ("request_id", "clarify_id"):
+        if isinstance(data.get(key), str):
+            return data[key]
+    return None
+
+
 class RunSubscription:
     def __init__(self, agent: AgentConfig, run_id: str):
         self.agent = agent
@@ -246,10 +260,10 @@ class RunHub:
                 log.info("approval push (left unanswered)", extra=fields(agent=agent, run_id=run_id))
                 self._spawn(self.push.notify_approval(agent, run_id, item.get("request_id"), item.get("choices"),
                                                       item.get("command"), sub.session_id))
-        answered = {e.data.get("request_id") for e in sub.backlog
-                    if e.type in ("clarify.responded", "clarify.cancelled") and isinstance(e.data, dict)}
+        answered = {_clarify_id(e.data) for e in sub.backlog
+                    if e.type in CLARIFY_DONE and isinstance(e.data, dict)}
         for event in sub.backlog:
-            if event.type == "clarify.request" and event.data.get("request_id") not in answered:
+            if event.type == "clarify.request" and _clarify_id(event.data) not in answered:
                 self._on_clarify(sub, event)
 
     def _spawn(self, coro: Any) -> None:
@@ -347,7 +361,7 @@ class RunHub:
     def _on_clarify(self, sub: RunSubscription, event: SSEEvent) -> None:
         """A question (docs/hermes-clarify-api.md) nobody sees: push it once, like an approval."""
         data = event.data
-        request_id = data.get("request_id") if isinstance(data.get("request_id"), str) else None
+        request_id = _clarify_id(data)
         dedupe = "clarify:" + (request_id or hashlib.sha256(event.raw.encode("utf-8")).hexdigest()[:16])
         if not sub.watched or sub.followers > 0 or dedupe in sub.pushed or self.push is None:
             return

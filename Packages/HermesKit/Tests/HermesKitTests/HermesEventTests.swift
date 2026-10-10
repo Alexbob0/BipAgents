@@ -187,4 +187,14 @@ struct ClarifyEventTests {
         #expect(none == nil)
         #expect(RunStatus(rawValue: "waiting_for_input") == .waitingForInput)
     }
+
+    @Test func upstreamPerQuestionClarify() throws {
+        let event = HermesEvent(sse: SSEEvent(data: #"{"event":"clarify.request","run_id":"run_1","clarify_id":"q-7","question":"Quel train ?","choices":["9 h","14 h"],"multi_select":true}"#))
+        guard case .clarifyRequest(let request) = event?.kind else { Issue.record("not a clarify request"); return }
+        #expect(request.perQuestion && request.requestID == "q-7" && request.questions.first?.multiSelect == true)
+        #expect(request.questions.first?.choices == ["9 h", "14 h"])
+        let retired = HermesEvent(sse: SSEEvent(data: #"{"event":"clarify.retired","run_id":"run_1","clarify_id":"q-7"}"#))
+        guard case .clarifyResolved(let id, let answers)? = retired?.kind else { Issue.record("not resolved"); return }
+        #expect(id == "q-7" && answers == nil)
+    }
 }
