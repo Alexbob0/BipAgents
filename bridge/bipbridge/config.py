@@ -6,6 +6,7 @@ Secrets may be given inline (``bridge_key``, ``hermes_key``, ``ntfy_token``) or 
 """
 from __future__ import annotations
 
+import glob
 import logging
 import os
 import shlex
@@ -50,6 +51,9 @@ class AgentConfig:
     python: List[str] = field(default_factory=list)
     hermes_home: Optional[str] = None
     hermes_root: Optional[str] = None   # Hermes' code folder, when that Python needs it (`hermes_bootstrap`)
+    # Its own space (spaces.py): the HERMES_HOME of the gateway that serves it alone.
+    space: Optional[str] = None
+    sandboxed: bool = False   # its tools run in a sandbox container (or its space is a container of its own)
 
 
 @dataclass
@@ -98,10 +102,23 @@ class HermesInstall:
     # Hermes in a container: its HERMES_HOME as the agents see it (`home` is the same folder on the host), and
     # `bin` a wrapper that runs `hermes` inside the container.
     container_home: str = ""
+    # How to run Hermes' own Python, and its code folder (the vault writes the agents' items with it).
+    python: List[str] = field(default_factory=list)
+    root: str = ""
 
     @property
     def enabled(self) -> bool:
         return bool(self.bin and self.hub_url)
+
+
+@dataclass
+class SpacesConfig:
+    """Agents' own spaces (spaces.py): where they live, their local ports, and how their gateway is started."""
+    root: str = DEFAULT_DATA_DIR + "/spaces"
+    first_port: int = 8660
+    sandbox: str = "auto"            # "auto": podman/docker sandbox when found; "none": never
+    start: Optional[str] = None      # own commands instead of systemd/launchd: "{agent}" and "{home}" filled in
+    stop: Optional[str] = None
 
 
 @dataclass
@@ -155,6 +172,7 @@ class Config:
     lan: LanConfig = field(default_factory=LanConfig)
     relay: RelayConfig = field(default_factory=RelayConfig)
     hermes: HermesInstall = field(default_factory=HermesInstall)
+    spaces: "SpacesConfig" = field(default_factory=lambda: SpacesConfig())
     # Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
     push_relay_url: Optional[str] = None
     push_relay_key: Optional[str] = None
@@ -300,6 +318,8 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             python=_command(table.get("python")),
             hermes_home=str(table["hermes_home"]).rstrip("/") if table.get("hermes_home") else None,
             hermes_root=str(table["hermes_root"]).rstrip("/") if table.get("hermes_root") else None,
+            space=_expand(str(table["space"])) if table.get("space") else None,
+            sandboxed=bool(table.get("sandboxed", False)),
         )
 
     relay_t = data.get("relay", {}) or {}
@@ -330,7 +350,26 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         hub_url=str(hermes_t.get("hub_url", "")).rstrip("/"),
         public_hub_url=str(hermes_t.get("public_hub_url", "")).rstrip("/"),
         container_home=str(hermes_t.get("container_home", "")).rstrip("/"),
+        python=_command(hermes_t.get("python")),
+        root=_expand(str(hermes_t["root"])) if hermes_t.get("root") else "",
     )
+    if hermes_install.home and not hermes_install.python:
+        # Hermes' official install: its own Python under <home>/tools, its code in <home>/hermes-agent.
+        found = sorted(glob.glob(os.path.join(hermes_install.home, "tools", "python-*", "bin", "python3")))
+        code = os.path.join(hermes_install.home, "hermes-agent")
+        if found and os.path.isdir(code):
+            hermes_install.python = [found[-1], "-I"]
+            hermes_install.root = hermes_install.root or code
+    spaces_t = data.get("spaces", {}) or {}
+    spaces = SpacesConfig(
+        root=_expand(str(spaces_t.get("root", os.path.join(data_dir, "spaces")))),
+        first_port=int(spaces_t.get("first_port", 8660)),
+        sandbox=str(spaces_t.get("sandbox", "auto")),
+        start=str(spaces_t["start"]) if spaces_t.get("start") else None,
+        stop=str(spaces_t["stop"]) if spaces_t.get("stop") else None,
+    )
+    if spaces.sandbox not in ("auto", "none"):
+        raise ConfigError("spaces.sandbox must be 'auto' or 'none'")
 
     lan_t = data.get("lan", {}) or {}
     lan = LanConfig(
@@ -364,6 +403,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         lan=lan,
         relay=relay,
         hermes=hermes_install,
+        spaces=spaces,
         push_relay_url=push_relay_url,
         push_relay_key=push_relay_key,
         model_health_url=str(model_t["health_url"]) if model_t.get("health_url") else None,

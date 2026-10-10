@@ -122,9 +122,24 @@ def set_model(runner: Runner, profile: str, model: Model) -> None:
     _config(runner, profile, "model.supports_vision", "true" if model.vision else "false")
 
 
-def setup_hub(runner: Runner, port: int, model: Model) -> str:
-    """The default profile: the one listener (127.0.0.1, published on the tailnet by `tailscale serve`)."""
+def sandbox_runtime() -> Optional[str]:
+    """podman (or docker) on Linux: the agents' tools then run in a container (Hermes' `docker` terminal backend)."""
+    import platform
+    import shutil
+    if platform.system() != "Linux":
+        return None
+    return shutil.which("podman") or shutil.which("docker")
+
+
+def setup_hub(runner: Runner, port: int, model: Model, sandbox: bool = False) -> str:
+    """The default profile: the one listener (127.0.0.1, published on the tailnet by `tailscale serve`). Every agent
+    is cloned from it, so what is set here (sandbox, attachments) holds for all of them."""
     key = new_key()
+    # Attachments (MEDIA:) only from the agent's own files, never from another's folder.
+    _config(runner, HUB_PROFILE, "gateway.strict", "true")
+    if sandbox:
+        # Terminal, files, code and browser in a container: an agent cannot read another's files on the host.
+        _config(runner, HUB_PROFILE, "terminal.backend", "docker")
     _config(runner, HUB_PROFILE, "API_SERVER_ENABLED", "true")
     _config(runner, HUB_PROFILE, "API_SERVER_HOST", "127.0.0.1")
     _config(runner, HUB_PROFILE, "API_SERVER_PORT", str(port))

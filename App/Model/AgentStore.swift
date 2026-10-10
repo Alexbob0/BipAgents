@@ -232,6 +232,19 @@ final class AgentStore {
         save()
     }
 
+    /// An agent of `bridgeURL`'s install moved (into its own space): its new address on this phone.
+    func relocate(bridgeAgent: String, of bridgeURL: URL, to url: URL) {
+        guard let index = agents.firstIndex(where: {
+            // The bridge reached on the tailnet or through the LAN door: either address identifies the install.
+            $0.bridgeName == bridgeAgent
+                && [$0.config.bridgeURL?.host(), $0.config.lanURL?.host()].contains(bridgeURL.host())
+        }) else { return }
+        agents[index].config.baseURL = url
+        save()
+        let profile = agents[index]
+        Task { await refreshReachability(of: profile) }
+    }
+
     func remove(_ profile: AgentProfile) {
         Keychain.delete(for: profile.id)
         agents.removeAll { $0.id == profile.id }
@@ -277,6 +290,16 @@ final class AgentStore {
             reachability[agent.id] = .unauthorized
             return
         } catch {
+            // Moved on the server (into its own space, from another phone): its bridge knows the new address.
+            if let bridge = BridgeClient(tailnetOf: agent, secrets: secrets),
+               let listed = try? await withTimeout(8, { try await bridge.installAgents() }),
+               let found = listed.first(where: { $0.id == agent.bridgeName }), found.url != agent.config.baseURL,
+               let index = agents.firstIndex(where: { $0.id == agent.id }) {
+                agents[index].config.baseURL = found.url
+                save()
+                await refreshReachability(of: agents[index])
+                return
+            }
             guard let door = agent.config.lanURL else {
                 reachability[agent.id] = .offline(error.localizedDescription)
                 return

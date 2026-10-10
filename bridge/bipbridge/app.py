@@ -526,7 +526,8 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(relay_router())
     app.include_router(agents_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(vault_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
-    if config.lan.enabled:
-        app.include_router(hermes_proxy())
+    # The agents' Hermes through the bridge: on the LAN door, and for agents in their own space (their gateway listens
+    # on a local port only). Hermes checks each agent's own key.
+    app.include_router(hermes_proxy())
     app.add_api_websocket_route("/v1/voice", voice_endpoint)
     return app

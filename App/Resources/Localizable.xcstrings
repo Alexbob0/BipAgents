@@ -9372,6 +9372,226 @@
           }
         }
       }
+    },
+    "Le serveur n’a pas de bac à sable (podman) : l’espace de %@ ne protège pas encore ses mots de passe des autres agents." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server has no sandbox (podman): %@’s space does not protect its passwords from the other agents yet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El servidor no tiene entorno aislado (podman): el espacio de %@ aún no protege sus contraseñas de los demás agentes."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat keine Sandbox (podman): Der Bereich von %@ schützt seine Passwörter noch nicht vor den anderen Agenten."
+          }
+        }
+      }
+    },
+    "Lui donner son propre espace" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Give it its own space"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Darle su propio espacio"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihm einen eigenen Bereich geben"
+          }
+        }
+      }
+    },
+    "Lui donner son espace" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Give it its space"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Darle su espacio"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereich geben"
+          }
+        }
+      }
+    },
+    "Donner son propre espace à %@ ?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Give %@ its own space?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Dar a %@ su propio espacio?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ einen eigenen Bereich geben?"
+          }
+        }
+      }
+    },
+    "Installation de son espace…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setting up its space…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparando su espacio…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereich wird eingerichtet …"
+          }
+        }
+      }
+    },
+    "Son propre espace" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its own space"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su propio espacio"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigener Bereich"
+          }
+        }
+      }
+    },
+    "Son espace" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its space"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su espacio"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sein Bereich"
+          }
+        }
+      }
+    },
+    "%@ a son espace à lui : il peut se servir d’identifiants du coffre, et les autres agents ne peuvent pas lire ses fichiers." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ has a space of its own: it can use logins from the vault, and the other agents cannot read its files."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tiene su propio espacio: puede usar accesos de la caja fuerte y los demás agentes no pueden leer sus archivos."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat einen eigenen Bereich: Es kann Zugänge aus dem Tresor nutzen, und die anderen Agenten können seine Dateien nicht lesen."
+          }
+        }
+      }
+    },
+    "%@ partage le serveur avec les autres agents créés ici. Pour qu’il se serve d’identifiants du coffre, donne-lui son propre espace." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ shares the server with the other agents created here. To let it use logins from the vault, give it its own space."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ comparte el servidor con los demás agentes creados aquí. Para que use accesos de la caja fuerte, dale su propio espacio."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ teilt den Server mit den anderen hier erstellten Agenten. Damit es Zugänge aus dem Tresor nutzen kann, gib ihm einen eigenen Bereich."
+          }
+        }
+      }
+    },
+    "Pour garder des mots de passe, %@ part dans un espace à lui sur le serveur : il ne peut plus lire les autres agents, ni eux le sien, et ses outils travaillent dans un bac à sable quand le serveur le permet. Ses conversations, sa mémoire et ses routines le suivent. Environ 30 secondes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To keep passwords, %@ moves into a space of its own on the server: it can no longer read the other agents, nor they its own, and its tools work in a sandbox when the server allows it. Its conversations, memory and routines come along. About 30 seconds."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para guardar contraseñas, %@ pasa a un espacio propio en el servidor: ya no puede leer a los demás agentes, ni ellos el suyo, y sus herramientas trabajan en un entorno aislado si el servidor lo permite. Sus conversaciones, su memoria y sus rutinas lo acompañan. Unos 30 segundos."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um Passwörter aufzubewahren, zieht %@ in einen eigenen Bereich auf dem Server: Es kann die anderen Agenten nicht mehr lesen und sie nicht seinen, und seine Werkzeuge arbeiten in einer Sandbox, wenn der Server es erlaubt. Gespräche, Gedächtnis und Routinen kommen mit. Etwa 30 Sekunden."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

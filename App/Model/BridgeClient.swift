@@ -115,6 +115,8 @@ struct BridgeClient: Sendable {
     struct AgentSettings: Sendable {
         var soul: String
         var toolsets: [Toolset]
+        /// In its own space (not the shared hub): it may hold credentials.
+        var isolated: Bool
     }
 
     /// `GET /v1/agents/{id}/settings`: nil when this bridge does not manage the agent (set up by hand, or an older bridge).
@@ -138,6 +140,15 @@ struct BridgeClient: Sendable {
         return Self.settings(from: try await send(request))
     }
 
+    /// `POST /v1/agents/{id}/space`: the agent moves out of the shared hub into its own space (so it may hold
+    /// credentials). Its new address on the tailnet (through the bridge); about half a minute.
+    func moveToOwnSpace(_ agent: String) async throws -> URL? {
+        var request = request("v1/agents/\(agent)/space", method: "POST")
+        request.timeoutInterval = 180
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        return (json?["url"] as? String).flatMap(URL.init(string:))
+    }
+
     /// `DELETE /v1/agents/{id}`: the agent, its conversations, memory and routines, gone from the install.
     func deleteAgent(_ agent: String) async throws {
         var request = request("v1/agents/\(agent)", method: "DELETE")
@@ -153,7 +164,7 @@ struct BridgeClient: Sendable {
             return Toolset(id: id, label: row["label"] as? String ?? id, description: row["description"] as? String ?? "",
                            enabled: row["enabled"] as? Bool ?? false, configured: row["configured"] as? Bool ?? true)
         }
-        return AgentSettings(soul: soul, toolsets: toolsets)
+        return AgentSettings(soul: soul, toolsets: toolsets, isolated: json["isolated"] as? Bool ?? false)
     }
 
     /// A credential of the agents' vault, as the app sees it: never its password.

@@ -196,6 +196,9 @@ struct VaultItemEditor: View {
     let onSaved: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AgentStore.self) private var store
+    @State private var moving: BridgeClient.VaultAgent?
+    @State private var movingNow: String?
     @State private var label = ""
     @State private var site = ""
     @State private var identifier = ""
@@ -249,18 +252,28 @@ struct VaultItemEditor: View {
             }
             Section {
                 ForEach(install.agents) { agent in
-                    Toggle(isOn: Binding(get: { agents.contains(agent.id) }, set: { on in
-                        if on { agents.insert(agent.id) } else { agents.remove(agent.id) }
-                    })) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(agent.name)
-                            if let why = agent.why, !agents.contains(agent.id) {
-                                Text(Self.reason(why, name: agent.name))
-                                    .font(Theme.body(12.5, weight: .regular)).foregroundStyle(Theme.ink2)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle(isOn: Binding(get: { agents.contains(agent.id) }, set: { on in
+                            if on { agents.insert(agent.id) } else { agents.remove(agent.id) }
+                        })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(agent.name)
+                                if movingNow == agent.id {
+                                    Label("Installation de son espace…", systemImage: "hourglass")
+                                        .font(Theme.body(12.5, weight: .regular)).foregroundStyle(Theme.ink2)
+                                } else if let why = agent.why, !agents.contains(agent.id) {
+                                    Text(Self.reason(why, name: agent.name))
+                                        .font(Theme.body(12.5, weight: .regular)).foregroundStyle(Theme.ink2)
+                                }
                             }
                         }
+                        .disabled(!agent.canHold && !agents.contains(agent.id))
+                        if agent.why == "needs_own_space" && movingNow != agent.id {
+                            Button("Lui donner son propre espace") { moving = agent }
+                                .font(Theme.body(13.5, weight: .bold))
+                                .buttonStyle(.borderless)
+                        }
                     }
-                    .disabled(!agent.canHold && !agents.contains(agent.id))
                 }
             } header: {
                 Text("Agents qui peuvent s’en servir")
@@ -277,6 +290,14 @@ struct VaultItemEditor: View {
                 if isSaving { ProgressView() } else { Button("Enregistrer") { Task { await save() } }.disabled(!canSave) }
             }
         }
+        .confirmationDialog(Text("Donner son propre espace à \(moving?.name ?? "") ?"),
+                            isPresented: Binding(get: { moving != nil }, set: { if !$0 { moving = nil } }),
+                            titleVisibility: .visible, presenting: moving) { agent in
+            Button("Lui donner son espace") { Task { await giveOwnSpace(agent) } }
+            Button("Annuler", role: .cancel) {}
+        } message: { agent in
+            Text(OwnSpace.explanation(agent.name))
+        }
         .onAppear {
             guard let item, label.isEmpty else { return }
             label = item.label
@@ -287,9 +308,25 @@ struct VaultItemEditor: View {
     }
 
     static func reason(_ why: String, name: String) -> String {
-        why == "needs_own_space"
-            ? String(localized: "\(name) partage son espace avec d’autres agents : il lui faut d’abord le sien.")
-            : String(localized: "\(name) n’est pas encore branché au coffre sur le serveur.")
+        switch why {
+        case "needs_own_space": String(localized: "\(name) partage son espace avec d’autres agents : il lui faut d’abord le sien.")
+        case "needs_sandbox": String(localized: "Le serveur n’a pas de bac à sable (podman) : l’espace de \(name) ne protège pas encore ses mots de passe des autres agents.")
+        default: String(localized: "\(name) n’est pas encore branché au coffre sur le serveur.")
+        }
+    }
+
+    private func giveOwnSpace(_ agent: BridgeClient.VaultAgent) async {
+        movingNow = agent.id
+        defer { movingNow = nil }
+        do {
+            let url = try await install.bridge.moveToOwnSpace(agent.id)
+            if let url { store.relocate(bridgeAgent: agent.id, of: install.bridge.baseURL, to: url) }
+            if let vault = try await install.bridge.vault() { install.agents = vault.agents }
+            agents.insert(agent.id)
+            errorMessage = nil
+        } catch {
+            errorMessage = ConversationModel.describe(error)
+        }
     }
 
     private func save() async {
@@ -309,5 +346,12 @@ struct VaultItemEditor: View {
         } catch {
             errorMessage = ConversationModel.describe(error)
         }
+    }
+}
+
+/// What moving an agent into its own space means, in the words the app shows before doing it.
+enum OwnSpace {
+    static func explanation(_ name: String) -> String {
+        String(localized: "Pour garder des mots de passe, \(name) part dans un espace à lui sur le serveur : il ne peut plus lire les autres agents, ni eux le sien, et ses outils travaillent dans un bac à sable quand le serveur le permet. Ses conversations, sa mémoire et ses routines le suivent. Environ 30 secondes.")
     }
 }

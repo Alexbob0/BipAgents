@@ -17,6 +17,8 @@ struct AgentSettingsView: View {
     @State private var confirming: ToolInfo?
     @State private var confirmsDeletion = false
     @State private var isDeleting = false
+    @State private var confirmsMove = false
+    @State private var isMoving = false
     @FocusState private var editsSoul: Bool
 
     private var palette: AgentPalette { agent.appearance.palette }
@@ -53,6 +55,28 @@ struct AgentSettingsView: View {
                 Text("Ce que \(agent.name) peut faire")
             } footer: {
                 Text("Un outil grisé demande une clé ou un compte à configurer sur le serveur.")
+            }
+            Section {
+                if settings.isolated {
+                    Label("Son propre espace", systemImage: "lock.shield.fill")
+                } else if isMoving {
+                    Label("Installation de son espace…", systemImage: "hourglass")
+                } else {
+                    Button("Lui donner son propre espace", systemImage: "lock.shield") { confirmsMove = true }
+                        .confirmationDialog(Text("Donner son propre espace à \(agent.name) ?"), isPresented: $confirmsMove,
+                                            titleVisibility: .visible) {
+                            Button("Lui donner son espace") { Task { await moveToOwnSpace() } }
+                            Button("Annuler", role: .cancel) {}
+                        } message: {
+                            Text(OwnSpace.explanation(agent.name))
+                        }
+                }
+            } header: {
+                Text("Son espace")
+            } footer: {
+                Text(settings.isolated
+                     ? "\(agent.name) a son espace à lui : il peut se servir d’identifiants du coffre, et les autres agents ne peuvent pas lire ses fichiers."
+                     : "\(agent.name) partage le serveur avec les autres agents créés ici. Pour qu’il se serve d’identifiants du coffre, donne-lui son propre espace.")
             }
             Section {
                 Button(role: .destructive) { confirmsDeletion = true } label: {
@@ -162,6 +186,21 @@ struct AgentSettingsView: View {
             settings.soul = soul
             savedSoul = true
             editsSoul = false
+            errorMessage = nil
+        } catch {
+            errorMessage = ConversationModel.describe(error)
+        }
+    }
+
+    private func moveToOwnSpace() async {
+        guard let bridge, let bridgeURL = agent.config.bridgeURL else { return }
+        isMoving = true
+        defer { isMoving = false }
+        do {
+            if let url = try await bridge.moveToOwnSpace(agent.bridgeName) {
+                store.relocate(bridgeAgent: agent.bridgeName, of: bridgeURL, to: url)
+            }
+            settings.isolated = true
             errorMessage = nil
         } catch {
             errorMessage = ConversationModel.describe(error)

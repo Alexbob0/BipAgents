@@ -93,6 +93,17 @@ host = "0.0.0.0"
 port = 8650
 # address = "192.168.1.20"   # advertised to the app; detected when empty (set it when the bridge runs in a container)
 
+# Agents' own spaces (the app's « Lui donner son propre espace »): an agent created in the shared hub moves into
+# its own Hermes, so it may hold logins from the vault. Each space gets its own gateway on a local port (reached
+# by the app through this bridge, nothing new on the tailnet) and, with podman or docker, its tools in a sandbox.
+# [spaces]
+# root = "~/.local/share/hermes-bridge/spaces"
+# first_port = 8660        # the first free port from there
+# sandbox = "auto"         # "none": never a sandbox (agents in a space then cannot hold logins)
+# Own commands instead of a systemd/launchd service per space, e.g. a container each ({agent}, {home} filled in):
+# start = "podman run -d --name hermes-space-{agent} ... "
+# stop = "podman rm -f hermes-space-{agent}"
+
 [agents.wellness]
 display_name = "Wellness"
 hermes_url = "http://127.0.0.1:8642"
