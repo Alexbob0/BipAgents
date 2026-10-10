@@ -94,13 +94,20 @@ def verify(model: hermes.Model) -> hermes.Model:
 
 # -- the run -------------------------------------------------------------------------------------------
 
-def pick_agents() -> List[dict]:
-    say("\nQuels agents créer pour commencer ? (numéros séparés par des virgules ; d'autres s'ajoutent depuis l'app)")
+def pick_agents() -> List[tuple]:
+    """(the name the person gives, its template) for each agent to create. No name is imposed."""
+    say("\nQuels genres d'agents créer pour commencer ? (numéros séparés par des virgules ; d'autres s'ajoutent depuis l'app)")
     for i, t in enumerate(TEMPLATES, 1):
-        say(f"  {i}. {t['name']} — {t['description']}")
-    picked = ask("Agents", "1")
+        say(f"  {i}. {t['label']} — {t['description']}")
+    picked = ask("Genres", "1")
     chosen = [TEMPLATES[int(x) - 1] for x in picked.replace(" ", "").split(",") if x.isdigit() and 1 <= int(x) <= len(TEMPLATES)]
-    return chosen or [TEMPLATES[0]]
+    named = []
+    for template in chosen or [TEMPLATES[0]]:
+        name = ""
+        while not name:
+            name = ask(f"Comment s'appelle ton agent « {template['label']} » ?").strip()
+        named.append((name, template))
+    return named
 
 
 def pocket_running() -> bool:
@@ -182,9 +189,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     say("\n1/5 Hermes…")
     hermes.install(runner, browser=plan.browser != "none")
     hub_key = hermes.setup_hub(runner, ports.hermes, model)
-    for template in chosen:
-        key = hermes.create_agent(runner, template["key"], description=template["description"], soul=template["soul"], model=model)
-        inst.agents.append(AgentEntry(template["key"], template["name"], key))
+    for display_name, template in chosen:
+        profile = hermes.profile_name(display_name, (a.name for a in inst.agents))
+        soul = template["soul"].replace("{name}", display_name)
+        key = hermes.create_agent(runner, profile, description=template["description"], soul=soul, model=model)
+        inst.agents.append(AgentEntry(profile, display_name, key))
     hermes.install_service(runner)
 
     say("2/5 Voix des Bips…")
