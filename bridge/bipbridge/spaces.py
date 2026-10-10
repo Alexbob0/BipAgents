@@ -196,7 +196,10 @@ class Spaces:
             moved.python = list(config.hermes.python)
             moved.hermes_root = config.hermes.root or None
             moved.hermes_home = str(root / "profiles" / agent.name)
-            moved.upload_dir_host = moved.upload_dir_container = str(root / "profiles" / agent.name / "uploads")
+            moved.upload_dir_host = str(root / "profiles" / agent.name / "uploads")
+            # Where the agent finds them: inside its container, its HERMES_HOME may sit elsewhere.
+            seen = config.spaces.container_home or str(root)
+            moved.upload_dir_container = f"{seen}/profiles/{agent.name}/uploads"
             headers = {"Authorization": f"Bearer {agent.hermes_key}"}
             for _ in range(120):
                 try:

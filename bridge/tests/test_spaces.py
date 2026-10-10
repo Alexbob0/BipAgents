@@ -28,7 +28,8 @@ def test_an_agent_moves_into_its_own_space_and_keeps_everything(config_dict, tmp
     config_dict["hermes"] = {"bin": "/opt/hermes", "home": str(hub), "hub_url": "http://127.0.0.1:8642",
                              "python": "/opt/py -I", "root": "/opt/hermes-agent"}
     config_dict["spaces"] = {"root": str(tmp_path / "spaces"), "first_port": 18660, "sandbox": "none",
-                             "start": "start-space {agent} {home}", "stop": "stop-space {agent}"}
+                             "start": "start-space {agent} {home}", "stop": "stop-space {agent}",
+                             "container_home": "/home/hermes/.hermes"}
     config_dict["agents"]["Budget"] = {"hermes_url": "http://127.0.0.1:8642/p/budget", "hermes_key": "b" * 32}
     config = parse_config(config_dict, source_path=str(config_path))
     commands = []
@@ -50,6 +51,8 @@ def test_an_agent_moves_into_its_own_space_and_keeps_everything(config_dict, tmp
     assert moved.hermes_url == "http://127.0.0.1:18660/p/budget" and moved.isolated and moved.space == str(space)
     assert moved.public_url == "https://box.ts.net:8643/hermes/budget"   # through the bridge: no new tailnet port
     assert moved.python == ["/opt/py", "-I"] and moved.hermes_home == str(space / "profiles" / "budget")
+    assert moved.upload_dir_host == str(space / "profiles" / "budget" / "uploads")
+    assert moved.upload_dir_container == "/home/hermes/.hermes/profiles/budget/uploads"   # as the agent sees it
     env = (space / ".env").read_text()
     assert "OPENROUTER_API_KEY=or-key" in env and "API_SERVER_PORT=18660" in env and "hub-key" not in env
     assert (space / "profiles" / "budget" / "memories" / "MEMORY.md").read_text() == "Aime les tableaux."
