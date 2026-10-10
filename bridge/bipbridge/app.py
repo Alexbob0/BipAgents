@@ -28,6 +28,7 @@ from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router
 from .vault import Vault, vault_router
 from .peers import Links, peer_router
+from .desktop import Tickets, desktop_admin_router, desktop_router, static_files
 from .logs import fields, redact
 from .ntfy import NtfySubscriber, OutboxService, ntfy_reachable
 from .push import PushService
@@ -75,6 +76,7 @@ class Services:
         self.presence = Presence()
         self.vault = Vault(os.path.join(os.path.dirname(config.outbox.db_path), "vault"))
         self.links = Links(os.path.join(os.path.dirname(config.outbox.db_path), "peers.json"))
+        self.desktop_tickets = Tickets()
         self.subscribers: List[NtfySubscriber] = []
         self._tasks: List["asyncio.Task[Any]"] = []
 
@@ -532,5 +534,8 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     # on a local port only). Hermes checks each agent's own key.
     app.include_router(hermes_proxy())
     app.include_router(peer_router())   # agents' own tokens, checked against the links the person allowed
+    app.include_router(desktop_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.mount("/desktop/static/novnc", static_files(), name="novnc")
+    app.include_router(desktop_router())   # the page and its stream: a short-lived ticket from the route above
     app.add_api_websocket_route("/v1/voice", voice_endpoint)
     return app

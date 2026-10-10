@@ -54,6 +54,8 @@ class AgentConfig:
     # Its own space (spaces.py): the HERMES_HOME of the gateway that serves it alone.
     space: Optional[str] = None
     sandboxed: bool = False   # its tools run in a sandbox container (or its space is a container of its own)
+    # A viewer page of its browser set up by hand (e.g. a noVNC on the tailnet): the app opens it as « Bureau ».
+    desktop_url: Optional[str] = None
 
 
 @dataclass
@@ -323,6 +325,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             hermes_root=str(table["hermes_root"]).rstrip("/") if table.get("hermes_root") else None,
             space=_expand(str(table["space"])) if table.get("space") else None,
             sandboxed=bool(table.get("sandboxed", False)),
+            desktop_url=str(table["desktop_url"]) if table.get("desktop_url") else None,
         )
 
     relay_t = data.get("relay", {}) or {}

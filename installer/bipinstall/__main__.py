@@ -232,6 +232,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     if skipped:
         say(f"  Patches non appliqués à cette version d'Hermes : {', '.join(skipped)} (l'app marche, sans ces fonctions).")
     hub_key = hermes.setup_hub(runner, ports.hermes, model, sandbox=bool(sandbox))
+    if plan.browser != "none":
+        if hermes.desktop_ready() or sandbox:
+            hermes.setup_desktop(runner, plan.browser)
+        elif machine.system == "linux":
+            say("  Bureau des agents : il manque TigerVNC et Xfce. Pour que l'app montre leur navigateur en direct,\n"
+                "  lance une fois (avec sudo) : hermes computer-use screen install, puis relance cet installeur.")
     for display_name, template in chosen:
         profile = souls.profile_name(display_name, (a.name for a in inst.agents))
         soul = template["soul"].replace("{name}", display_name)
