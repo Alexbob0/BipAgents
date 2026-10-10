@@ -119,6 +119,9 @@ def custom_agent(name: str) -> dict:
         soul += f"Règles à respecter : {rules.rstrip('.')}.\n"
     soul += "Tu demandes avant toute action irréversible (envoyer, acheter, supprimer).\n"
     return {"category": category, "label": "Autre", "description": role[:120], "soul": soul}
+
+
+def pick_agents() -> List[tuple]:
     """(the name the person gives, its template) for each agent to create. No name is imposed."""
     say("\nQuels genres d'agents créer pour commencer ? (numéros séparés par des virgules ; d'autres s'ajoutent depuis l'app)")
     for i, t in enumerate(TEMPLATES, 1):

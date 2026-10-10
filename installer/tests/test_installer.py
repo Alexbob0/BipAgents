@@ -179,3 +179,29 @@ def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     assert path.name == "io.github.bipagents.bridge.plist" and str(inst.bridge_config) in content
     label, path, content = bridge_service(inst, "linux")
     assert label == "bipagents-bridge" and "BRIDGE_CONFIG=" in content
+
+
+def test_whole_dry_run(monkeypatch, tmp_path, capsys):
+    """The installer from the first question to the end, without network or changes."""
+    from bipinstall import __main__ as cli
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli, "detect", lambda: mac(16))
+    monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(8640))
+    monkeypatch.setattr(cli.models, "discover", lambda addresses: _async([models.Server("http://192.168.1.30:8888/v1", "vLLM", ["glm"])]))
+    monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
+    monkeypatch.setattr(cli, "pocket_running", lambda: True)
+    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "", "4", "o"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert cli.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "profile create lea" in out and "profile create fougere" in out
+    assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
+    assert "<clé>" in out and "API_SERVER_KEY <clé>" in out
+
+
+async def _async_value(value):
+    return value
+
+
+def _async(value):
+    return _async_value(value)
