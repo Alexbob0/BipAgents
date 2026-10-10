@@ -86,6 +86,9 @@ class HermesInstall:
     home: str = ""
     hub_url: str = ""            # the multiplex gateway, local (http://127.0.0.1:8642)
     public_hub_url: str = ""     # the same on the tailnet, given to the app
+    # Hermes in a container: its HERMES_HOME as the agents see it (`home` is the same folder on the host), and
+    # `bin` a wrapper that runs `hermes` inside the container.
+    container_home: str = ""
 
     @property
     def enabled(self) -> bool:
@@ -306,6 +309,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         home=_expand(str(hermes_t["home"])) if hermes_t.get("home") else "",
         hub_url=str(hermes_t.get("hub_url", "")).rstrip("/"),
         public_hub_url=str(hermes_t.get("public_hub_url", "")).rstrip("/"),
+        container_home=str(hermes_t.get("container_home", "")).rstrip("/"),
     )
 
     lan_t = data.get("lan", {}) or {}

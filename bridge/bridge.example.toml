@@ -74,6 +74,16 @@ tts_cache_entries = 256
 watch_max_minutes = 120
 purge_interval_hours = 6
 
+# The person's own Hermes, managed by this bridge: lets the app create agents (« + »). Written by the installer;
+# leave it out for agents set up by hand. With Hermes in a container: `bin` is a wrapper running `hermes` inside it,
+# `home` the HERMES_HOME folder on the host and `container_home` the same folder inside the container.
+# [hermes]
+# bin = "~/.local/bin/hermes"
+# home = "~/.hermes"
+# hub_url = "http://127.0.0.1:8642"                      # the multiplex gateway (one per person)
+# public_hub_url = "https://mamachine.tailnet.ts.net:8642"
+# container_home = "/home/hermes/.hermes"
+
 # Local-network door, for when Tailscale is down (no Internet, VPN off): the bridge also listens on the LAN over
 # HTTPS with its own certificate (created in data_dir/lan, pinned by the app through the QR code) and relays Hermes.
 # Open this port on the LAN only (firewall), never on the Internet.

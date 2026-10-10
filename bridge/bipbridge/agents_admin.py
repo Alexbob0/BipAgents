@@ -103,8 +103,9 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     (folder / "SOUL.md").write_text(soul, encoding="utf-8")
     mark_as_bot(folder)
     uploads = folder / "uploads"
+    seen_by_agent = f"{install.container_home}/profiles/{profile}/uploads" if install.container_home else str(uploads)
     agent = AgentConfig(name=profile, display_name=name, hermes_url=f"{install.hub_url}/p/{profile}", hermes_key=key,
-                        upload_dir_host=str(uploads), upload_dir_container=str(uploads),
+                        upload_dir_host=str(uploads), upload_dir_container=seen_by_agent,
                         public_url=f"{install.public_hub_url}/p/{profile}" if install.public_hub_url else None)
     # The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
     headers = {"Authorization": f"Bearer {key}"}
