@@ -1,0 +1,47 @@
+# Services an agent can be connected to from the app (MCP servers). Each one becomes an `mcp_servers` entry of
+# the agent's Hermes profile; a token goes to the profile's .env, never on a command line. A service with a
+# token or on a personal account (`personal: true`) needs the agent to have its own space.
+#
+# fields: what the app asks. `url` is built from them ({address}); `token` is the secret.
+- id: home_assistant
+  label: Maison connectée (Home Assistant)
+  description: Allume, éteint et lit tes appareils. Dans Home Assistant, ajoute l'intégration « Model Context Protocol Server », puis crée un jeton (Profil › Sécurité › Jetons d'accès longue durée).
+  icon: house
+  url: "{address}/api/mcp"
+  personal: true
+  fields:
+    - id: address
+      label: Adresse de Home Assistant
+      placeholder: http://homeassistant.local:8123
+    - id: token
+      label: Jeton d'accès longue durée
+      secret: true
+
+- id: github
+  label: GitHub
+  description: Dépôts, tickets et pull requests. Crée un jeton personnel (Settings › Developer settings › Personal access tokens) avec les droits voulus.
+  icon: chevron.left.forwardslash.chevron.right
+  url: https://api.githubcopilot.com/mcp/
+  personal: true
+  fields:
+    - id: token
+      label: Jeton personnel GitHub
+      secret: true
+
+- id: custom
+  label: Autre service (adresse MCP)
+  description: N'importe quel serveur MCP joignable par une adresse web. Un jeton, s'il en faut un, est envoyé comme « Bearer ».
+  icon: puzzlepiece.extension
+  url: "{address}"
+  personal: false
+  fields:
+    - id: name
+      label: Nom du service
+      placeholder: agenda
+    - id: address
+      label: Adresse du serveur MCP
+      placeholder: https://exemple.org/mcp
+    - id: token
+      label: Jeton (facultatif)
+      secret: true
+      optional: true
