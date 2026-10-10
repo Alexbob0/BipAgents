@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import stat
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 try:  # Python 3.11+
     import tomllib  # type: ignore[import-not-found]
@@ -41,6 +42,14 @@ class AgentConfig:
     voice: Optional[str] = None
     # The agent's Hermes address as the app reaches it on the tailnet (`tailscale serve`), for the pairing QR code.
     public_url: Optional[str] = None
+    # The agent has its own space (container, sandbox): it may hold credentials from the vault. Agents of the
+    # shared hub never do.
+    isolated: bool = False
+    # How to run Python in the agent's Hermes (e.g. `podman exec -i hermes-vie /opt/hermes/venv/bin/python`)
+    # and its HERMES_HOME as that Python sees it: the vault writes the agent's items there.
+    python: List[str] = field(default_factory=list)
+    hermes_home: Optional[str] = None
+    hermes_root: Optional[str] = None   # Hermes' code folder, when that Python needs it (`hermes_bootstrap`)
 
 
 @dataclass
@@ -203,6 +212,13 @@ def check_permissions(path: str) -> None:
                     extra={"fields": {"path": path, "mode": oct(mode)}})
 
 
+def _command(value: Any) -> List[str]:
+    """`"podman exec -i x python"` or `["podman", "exec", ...]`."""
+    if not value:
+        return []
+    return [str(v) for v in value] if isinstance(value, list) else shlex.split(str(value))
+
+
 def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Config:
     bridge_key = _secret(data, "bridge_key", "bridge", required=True)
     assert bridge_key is not None
@@ -280,6 +296,10 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             upload_dir_container=str(up_cont).rstrip("/") if up_cont else None,
             voice=str(table["voice"]) if table.get("voice") else None,
             public_url=str(table["public_url"]).rstrip("/") if table.get("public_url") else None,
+            isolated=bool(table.get("isolated", False)),
+            python=_command(table.get("python")),
+            hermes_home=str(table["hermes_home"]).rstrip("/") if table.get("hermes_home") else None,
+            hermes_root=str(table["hermes_root"]).rstrip("/") if table.get("hermes_root") else None,
         )
 
     relay_t = data.get("relay", {}) or {}

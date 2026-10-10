@@ -113,3 +113,10 @@ ntfy_token = "CHANGE-ME-tk_token-with-read-access"
 upload_dir_host = "~/hermes-agent/hermes-home/profiles/vie/uploads"
 upload_dir_container = "/home/hermes/.hermes/profiles/vie/uploads"
 voice = "5476"
+# The agents' vault (Réglages → Coffre in the app): an agent may hold logins only when it has its own space
+# (its own container or sandbox), never in a gateway shared with other agents. The bridge writes the items the
+# person allows into the agent's Hermes vault with that agent's Python; the secret goes on stdin, never argv.
+# isolated = true
+# python = "podman exec -i hermes-vie /home/hermes/.local/share/hermes/python/bin/python3 -I"
+# hermes_home = "/home/hermes/.hermes/profiles/vie"   # the agent's HERMES_HOME, as that Python sees it
+# hermes_root = "/home/hermes/.hermes/hermes-agent"    # Hermes' code folder, when that Python needs it
