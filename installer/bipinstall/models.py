@@ -74,9 +74,18 @@ async def _probe(client: httpx.AsyncClient, host: str, port: int) -> Optional[Se
     return Server(base_url=base, kind=LAN_PORTS.get(port, "OpenAI-compatible"), models=names)
 
 
-async def discover(addresses: Iterable[str], ports: Iterable[int] = tuple(LAN_PORTS), timeout: float = 0.6,
-                   concurrency: int = 128, transport: Optional[httpx.AsyncBaseTransport] = None) -> List[Server]:
-    """Model servers answering on the local network (a few seconds for a /24)."""
+async def discover(addresses: Iterable[str], ports: Iterable[int] = tuple(LAN_PORTS), timeout: float = 1.5,
+                   concurrency: int = 96, transport: Optional[httpx.AsyncBaseTransport] = None) -> List[Server]:
+    """Model servers answering on the local network (a few seconds for a /24). A busy server can miss one round:
+    an empty result is tried once more, slower."""
+    found = await _discover_once(addresses, ports, timeout, concurrency, transport)
+    if not found:
+        found = await _discover_once(addresses, ports, timeout * 2, concurrency // 2, transport)
+    return found
+
+
+async def _discover_once(addresses: Iterable[str], ports: Iterable[int], timeout: float, concurrency: int,
+                         transport: Optional[httpx.AsyncBaseTransport]) -> List[Server]:
     semaphore = asyncio.Semaphore(concurrency)
     async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
         async def guarded(host: str, port: int) -> Optional[Server]:
