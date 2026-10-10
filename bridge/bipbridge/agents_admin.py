@@ -94,8 +94,9 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     profile = souls.profile_name(name, config.agents)
     env = {"HERMES_HOME": install.home} if install.home else {}
     hermes = install.bin
-    # Same model and settings as the person's other agents (--clone), its own key, its personality.
-    await run([hermes, "profile", "create", profile, "--clone", "--no-alias", "--description", description], env)
+    # The hub's (default profile's) model and settings, never another agent's: cloning the active profile would copy
+    # its MCP servers and peer keys. Its own key, its personality.
+    await run([hermes, "profile", "create", profile, "--clone-from", "default", "--no-alias", "--description", description], env)
     key = secrets.token_urlsafe(32)
     await run([hermes, "-p", profile, "config", "set", "API_SERVER_KEY", key], env)
     folder = Path(install.home or Path.home() / ".hermes") / "profiles" / profile
@@ -109,7 +110,7 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
                         public_url=f"{install.public_hub_url}/p/{profile}" if install.public_hub_url else None)
     # The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
     headers = {"Authorization": f"Bearer {key}"}
-    for _ in range(45):
+    for _ in range(90):   # a new profile is served at once; its key is picked up within ~30 s
         try:
             resp = await http.get(f"{agent.hermes_url}/v1/capabilities", headers=headers, timeout=3)
             if resp.status_code == 200:
