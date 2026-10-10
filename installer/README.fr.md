@@ -67,5 +67,5 @@ compte est ouvert (ouverture de session automatique sur un Mac mini qui sert de 
 - `install.sh` (racine du dépôt) : récupère le dépôt et Python (uv), puis lance l'installateur.
 - `bipinstall/` : `detect.py` (la machine), `models.py` (trouver et tester le modèle), `plan.py` (le profil et sa
   mémoire), `ports.py`, `hermes.py` (Hermes par ses propres commandes), `stack.py` (bridge, voix, services),
-  `templates.yaml` (modèles d'agents).
+  genres d'agents dans `bridge/bipbridge/agent_templates.yaml` (partagés avec le bridge).
 - Tests : `python -m pytest installer/tests` (sans réseau, rien d'installé).

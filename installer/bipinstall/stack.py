@@ -74,6 +74,11 @@ def bridge_toml(inst: Install) -> str:
     lines += ["", "[kyutai]"] + ([f"url = {_q(inst.kyutai_url)}"] if inst.kyutai_url else ["enabled = false"])
     lines += ["", "[pocket]", f"url = {_q(inst.pocket_url)}", 'default_voice = "pocket:colibri"']
     lines += ["", "[cron]", "watch = true"]
+    # The person's own Hermes: lets the app create agents (« + »).
+    lines += ["", "[hermes]", f"bin = {_q(str(inst.home / '.local' / 'bin' / 'hermes'))}",
+              f"home = {_q(str(inst.home / '.hermes'))}", f"hub_url = {_q(hub_local)}"]
+    if hub_public:
+        lines.append(f"public_hub_url = {_q(hub_public)}")
     media = inst.home / ".hermes" / "media"
     lines += ["", "[media.roots]", f"{_q(str(media))} = {_q(str(media))}"]   # native Hermes: same path both sides
     if inst.relay_url and inst.relay_key:

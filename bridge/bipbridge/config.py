@@ -79,6 +79,20 @@ class OutboxConfig:
 
 
 @dataclass
+class HermesInstall:
+    """The person's own Hermes, managed by this bridge (an install made by the installer): lets the app create
+    agents. Empty `bin` = agents are not managed here (set up by hand, like aibox's containers)."""
+    bin: str = ""
+    home: str = ""
+    hub_url: str = ""            # the multiplex gateway, local (http://127.0.0.1:8642)
+    public_hub_url: str = ""     # the same on the tailnet, given to the app
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.bin and self.hub_url)
+
+
+@dataclass
 class RelayConfig:
     """This bridge relays the notifications of other installs on the server, which have no APNs key of their own
     (another person's bridge): each install gets its own key, listed here as key -> install name."""
@@ -128,6 +142,7 @@ class Config:
     agents: Dict[str, AgentConfig] = field(default_factory=dict)
     lan: LanConfig = field(default_factory=LanConfig)
     relay: RelayConfig = field(default_factory=RelayConfig)
+    hermes: HermesInstall = field(default_factory=HermesInstall)
     # Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
     push_relay_url: Optional[str] = None
     push_relay_key: Optional[str] = None
@@ -285,6 +300,13 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
     push_relay_url = str(push["relay_url"]).rstrip("/") if push.get("relay_url") else None
     push_relay_key = _secret(push, "relay_key", "push", required=bool(push_relay_url))
     model_t = data.get("model", {}) or {}
+    hermes_t = data.get("hermes", {}) or {}
+    hermes_install = HermesInstall(
+        bin=_expand(str(hermes_t["bin"])) if hermes_t.get("bin") else "",
+        home=_expand(str(hermes_t["home"])) if hermes_t.get("home") else "",
+        hub_url=str(hermes_t.get("hub_url", "")).rstrip("/"),
+        public_hub_url=str(hermes_t.get("public_hub_url", "")).rstrip("/"),
+    )
 
     lan_t = data.get("lan", {}) or {}
     lan = LanConfig(
@@ -317,6 +339,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         agents=agents,
         lan=lan,
         relay=relay,
+        hermes=hermes_install,
         push_relay_url=push_relay_url,
         push_relay_key=push_relay_key,
         model_health_url=str(model_t["health_url"]) if model_t.get("health_url") else None,

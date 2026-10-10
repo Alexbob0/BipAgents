@@ -23,7 +23,10 @@ from .ports import pick_block
 from .stack import AgentEntry, Install, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
 
 REPO = Path(__file__).resolve().parents[2]
-TEMPLATES = yaml.safe_load((Path(__file__).with_name("templates.yaml")).read_text(encoding="utf-8"))
+sys.path.insert(0, str(REPO / "bridge"))
+from bipbridge import souls  # noqa: E402  (kinds of agents, shared with the bridge)
+
+TEMPLATES = souls.templates()
 
 
 def say(text: str = "") -> None:
@@ -113,12 +116,8 @@ def custom_agent(name: str) -> dict:
     language = ask("Dans quelle langue répond-il ?", "français")
     say("Quelle couleur de Bip ?")
     category = CATEGORIES[choose("Couleur", [label for _, label in CATEGORIES], default=8) - 1][0]
-    soul = (f"Tu es {name}, un agent personnel de ton utilisateur. Ton rôle : {role.rstrip('.')}.\n"
-            f"Ton ton : {tone}. Tu réponds en {language}, de façon concise.\n")
-    if rules:
-        soul += f"Règles à respecter : {rules.rstrip('.')}.\n"
-    soul += "Tu demandes avant toute action irréversible (envoyer, acheter, supprimer).\n"
-    return {"category": category, "label": "Autre", "description": role[:120], "soul": soul}
+    return {"category": category, "label": "Autre", "description": role[:120],
+            "soul": souls.custom_soul(name, role, tone, rules, language)}
 
 
 def pick_agents() -> List[tuple]:
@@ -229,7 +228,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         say(f"  Patches non appliqués à cette version d'Hermes : {', '.join(skipped)} (l'app marche, sans ces fonctions).")
     hub_key = hermes.setup_hub(runner, ports.hermes, model)
     for display_name, template in chosen:
-        profile = hermes.profile_name(display_name, (a.name for a in inst.agents))
+        profile = souls.profile_name(display_name, (a.name for a in inst.agents))
         soul = template["soul"].replace("{name}", display_name)
         key = hermes.create_agent(runner, profile, description=template["description"], soul=soul, model=model)
         inst.agents.append(AgentEntry(profile, display_name, key))
