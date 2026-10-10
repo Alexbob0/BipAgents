@@ -79,6 +79,18 @@ class OutboxConfig:
 
 
 @dataclass
+class RelayConfig:
+    """This bridge relays the notifications of other installs on the server, which have no APNs key of their own
+    (another person's bridge): each install gets its own key, listed here as key -> install name."""
+    clients: Dict[str, str] = field(default_factory=dict)
+    per_hour: int = 600
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.clients)
+
+
+@dataclass
 class LanConfig:
     """The local-network door (no Tailscale): the same bridge over HTTPS with a self-signed certificate the app pins,
     Hermes relayed under /hermes/<agent>/. Off by default: everything else only listens on 127.0.0.1."""
@@ -115,6 +127,13 @@ class Config:
     limits: Limits = field(default_factory=Limits)
     agents: Dict[str, AgentConfig] = field(default_factory=dict)
     lan: LanConfig = field(default_factory=LanConfig)
+    relay: RelayConfig = field(default_factory=RelayConfig)
+    # Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
+    push_relay_url: Optional[str] = None
+    push_relay_key: Optional[str] = None
+    # Optional check that the model answers (`GET <url>`, e.g. its /v1/models), for « model unreachable ».
+    model_health_url: Optional[str] = None
+    model_health_key: Optional[str] = None
     # The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
     public_url: Optional[str] = None
     source_path: Optional[str] = None
@@ -245,6 +264,28 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             public_url=str(table["public_url"]).rstrip("/") if table.get("public_url") else None,
         )
 
+    relay_t = data.get("relay", {}) or {}
+    clients: Dict[str, str] = {}
+    for name, key in (relay_t.get("clients", {}) or {}).items():  # [relay.clients] chi = "key"
+        if str(key).strip():
+            clients[str(key).strip()] = str(name)
+    if relay_t.get("clients_file"):  # or one « name key » per line
+        path = _expand(str(relay_t["clients_file"]))
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    parts = line.split()
+                    if len(parts) == 2 and not line.lstrip().startswith("#"):
+                        clients[parts[1]] = parts[0]
+        except OSError as exc:
+            raise ConfigError(f"relay.clients_file: cannot read {path}: {exc}") from exc
+    if any(len(key) < 32 for key in clients):
+        raise ConfigError("relay: client keys must be at least 32 characters (python -m bipbridge genkey)")
+    relay = RelayConfig(clients=clients, per_hour=int(relay_t.get("per_hour", 600)))
+    push_relay_url = str(push["relay_url"]).rstrip("/") if push.get("relay_url") else None
+    push_relay_key = _secret(push, "relay_key", "push", required=bool(push_relay_url))
+    model_t = data.get("model", {}) or {}
+
     lan_t = data.get("lan", {}) or {}
     lan = LanConfig(
         enabled=bool(lan_t.get("enabled", False)),
@@ -275,6 +316,11 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         limits=limits,
         agents=agents,
         lan=lan,
+        relay=relay,
+        push_relay_url=push_relay_url,
+        push_relay_key=push_relay_key,
+        model_health_url=str(model_t["health_url"]) if model_t.get("health_url") else None,
+        model_health_key=_secret(model_t, "health_key", "model", required=False),
         public_url=str(data["public_url"]).rstrip("/") if data.get("public_url") else None,
         source_path=source_path,
     )

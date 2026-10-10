@@ -18,7 +18,7 @@ def main(argv=None) -> int:
                         help="serve (default), check the config, print a new random bridge key, "
                              "or show an agent's pairing QR code for the app")
     parser.add_argument("--config", help="config path (default: $BRIDGE_CONFIG or ~/.config/hermes-ios/bridge.toml)")
-    parser.add_argument("--agent", help="qr: the agent (default: every agent, one after the other)")
+    parser.add_argument("--agent", help="qr: one agent's own code (default: the install's code, which adds every agent)")
     parser.add_argument("--png", help="qr: also save the QR code as a PNG (one agent)")
     parser.add_argument("--json", action="store_true", help="qr: print the payload instead of the QR code")
     args = parser.parse_args(argv)
@@ -101,31 +101,34 @@ async def _serve_with_lan(app, config) -> None:
 
 def _qr(config, args) -> int:
     """An agent's pairing QR code in the terminal (scan it in the app: Ajouter un agent › Scanner le QR code)."""
-    from .lan import ensure_certificate, pairing_payload
+    from .lan import ensure_certificate, install_payload, pairing_payload
 
     if config.lan.enabled:
         ensure_certificate(config)  # the fingerprint goes in the payload
-    agents = [config.agent(args.agent)] if args.agent else list(config.agents.values())
-    if not agents or agents[0] is None:
+    if args.agent and config.agent(args.agent) is None:
         print(f"unknown agent: {args.agent}", file=sys.stderr)
         return 2
-    for agent in agents:
-        try:
-            payload = json.dumps(pairing_payload(config, agent), separators=(",", ":"), ensure_ascii=False)
-        except ValueError as exc:
-            print(f"config error: {exc}", file=sys.stderr)
-            return 2
-        if args.json:
-            print(payload)
-            continue
-        import segno
+    try:
+        if args.agent:
+            agent = config.agent(args.agent)
+            label, data = agent.display_name, pairing_payload(config, agent)
+        else:
+            label, data = "BipAgents", install_payload(config)
+    except ValueError as exc:
+        print(f"config error: {exc}", file=sys.stderr)
+        return 2
+    payload = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+    if args.json:
+        print(payload)
+        return 0
+    import segno
 
-        code = segno.make(payload, error="m")
-        print(f"\n{agent.display_name} — contains the agent's keys: show it only to your own phone.\n")
-        code.terminal(compact=True)
-        if args.png:
-            code.save(args.png, scale=8, border=2)
-            print(f"saved: {args.png}")
+    code = segno.make(payload, error="m")
+    print(f"\n{label} — contains keys: show it only to your own phone.\n")
+    code.terminal(compact=True)
+    if args.png:
+        code.save(args.png, scale=8, border=2)
+        print(f"saved: {args.png}")
     return 0
 
 
