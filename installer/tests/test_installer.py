@@ -100,7 +100,18 @@ def test_names_are_the_persons():
     assert hermes.profile_name("Default") == "agent-default"
     assert hermes.profile_name("🙂") == "agent"
     from bipinstall.__main__ import TEMPLATES
-    assert all("{name}" in t["soul"] and "name" not in t for t in TEMPLATES)
+    assert all("{name}" in t["soul"] and "name" not in t for t in TEMPLATES if t["category"] != "custom")
+    assert TEMPLATES[-1]["category"] == "custom"
+
+
+def test_custom_agent(monkeypatch):
+    from bipinstall import __main__ as cli
+    answers = iter(["suit mes plantes et me dit quand les arroser", "drôle", "jamais de produits chimiques", "", "4"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    agent = cli.custom_agent("Fougère")
+    assert agent["category"] == "home" and agent["description"].startswith("suit mes plantes")
+    assert agent["soul"].startswith("Tu es Fougère") and "drôle" in agent["soul"] and "en français" in agent["soul"]
+    assert "jamais de produits chimiques" in agent["soul"]
 
 
 def test_bot_mode_marker(tmp_path):

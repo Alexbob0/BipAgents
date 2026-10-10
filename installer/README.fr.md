@@ -33,7 +33,7 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
    chaque agent est un profil joint à `/p/<agent>/` avec sa propre clé. Les nouveaux agents sont pris en compte sans
    redémarrage.
 5. **Crée les premiers agents**, que la personne nomme elle-même, à partir de genres (Quotidien, Bien-être, Finances, Maison, Travail, Apprendre,
-   Créatif, Tech), chacun avec une personnalité de départ (`SOUL.md`) et inscrit au Bot Mode pour qu'ils se parlent.
+   Créatif, Tech) ou « Autre » sur mesure (son rôle, son ton, ses règles, sa langue et sa couleur, décrits par la personne), chacun avec une personnalité de départ (`SOUL.md`) et inscrit au Bot Mode pour qu'ils se parlent.
 6. **Met en place les voix** (Pocket TTS, un serveur par machine, partagé par tous) et **le bridge** (sa config dans
    `~/.config/bipagents/bridge.toml`, clés générées, sa porte sur le réseau local), en services qui démarrent seuls :
    launchd sur macOS, services utilisateur systemd sur Linux.
