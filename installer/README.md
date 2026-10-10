@@ -29,7 +29,8 @@ Add `--dry-run` to see every step and command without changing anything.
    | Large | Linux server ≥ 64 GB | elsewhere | Pocket + Kyutai (Nvidia GPU) | permanent, one per person |
 
    On a 16 GB Mac mini with the model elsewhere: about 1 GB per person plus the voices — a family fits.
-4. **Installs Hermes** with its official installer, as **one gateway per person** (Hermes' multiplex mode): every
+4. **Installs Hermes** with its official installer, at the version tested with BipAgents (`517b5e10f`), applies the
+   patches of `hermes/patches/` (the agent's questions in the app, photos kept for follow-up questions), as **one gateway per person** (Hermes' multiplex mode): every
    agent is a profile reached at `/p/<agent>/` with its own key. New agents are picked up without a restart.
 5. **Creates the first agents**, named by the person, from kinds (Everyday, Wellness, Finances, Home, Work, Learn, Creative, Tech) or a custom « Other » (its role, tone, rules, language and colour, described by the person),
    each with a starting personality (`SOUL.md`) and joined to Bot Mode so they can talk to each other.

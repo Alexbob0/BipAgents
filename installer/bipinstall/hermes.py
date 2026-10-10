@@ -17,6 +17,9 @@ from typing import Dict, Iterable, List, Optional, Sequence
 import yaml  # PyYAML, installed with the installer
 
 INSTALL_URL = "https://hermes-agent.nousresearch.com/install.sh"
+# The Hermes version BipAgents is tested with: its patches (hermes/patches/) apply cleanly there. Override with
+# BIPAGENTS_HERMES_COMMIT (empty = Hermes' own default, without guarantee for the patches).
+HERMES_COMMIT = os.environ.get("BIPAGENTS_HERMES_COMMIT", "517b5e10f")
 HUB_PROFILE = "default"
 
 
@@ -75,7 +78,31 @@ def install(runner: Runner, *, browser: bool) -> None:
     if Path(hermes_bin()).exists():
         return
     flags = ["--non-interactive", "--skip-computer-use"] + ([] if browser else ["--skip-browser"])
+    if HERMES_COMMIT:
+        flags += ["--commit", HERMES_COMMIT]
     runner.run(f"curl -fsSL {INSTALL_URL} | bash -s -- {' '.join(flags)}", shell=True)
+
+
+def hermes_checkout() -> Path:
+    return Path(os.environ.get("HERMES_INSTALL_DIR", hermes_home() / "hermes-agent"))
+
+
+def apply_patches(runner: Runner, patches: Path) -> List[str]:
+    """BipAgents' Hermes patches (questions from the agent in the app, photos kept for follow-up questions), applied
+    once, before the gateway first starts. Returns the patches that could not be applied (the app then works without
+    those features)."""
+    checkout = hermes_checkout()
+    skipped: List[str] = []
+    for patch in sorted(patches.glob("*.patch")):
+        applied = ["git", "-C", str(checkout), "apply", "--reverse", "--check", str(patch)]
+        if not runner.dry and subprocess.run(applied, capture_output=True).returncode == 0:
+            continue   # already there (a second run of the installer)
+        try:
+            runner.run(["git", "-C", str(checkout), "apply", "--check", str(patch)])
+            runner.run(["git", "-C", str(checkout), "apply", str(patch)])
+        except RuntimeError:
+            skipped.append(patch.name)
+    return skipped
 
 
 def _config(runner: Runner, profile: str, key: str, value: str) -> None:

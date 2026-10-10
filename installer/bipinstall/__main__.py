@@ -221,6 +221,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                    relay_url=args.relay_url, relay_key=args.relay_key)
     say("\n1/5 Hermes…")
     hermes.install(runner, browser=plan.browser != "none")
+    skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches")
+    if skipped:
+        say(f"  Patches non appliqués à cette version d'Hermes : {', '.join(skipped)} (l'app marche, sans ces fonctions).")
     hub_key = hermes.setup_hub(runner, ports.hermes, model)
     for display_name, template in chosen:
         profile = hermes.profile_name(display_name, (a.name for a in inst.agents))
