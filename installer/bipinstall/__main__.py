@@ -190,13 +190,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--relay-key", help="this install's relay key (given by the administrator)")
     parser.add_argument("--ports", type=int, help="the first port of this install's block (default: the first free one)")
     parser.add_argument("--languages", default="fr,en", help="voices to load: fr, en, es, de")
+    parser.add_argument("--no-tailscale", action="store_true",
+                        help="this machine only, nothing published on a tailnet (tests, or a setup done by hand)")
     args = parser.parse_args(argv)
     runner = hermes.Runner(dry=args.dry_run)
 
     machine = detect()
     say(f"BipAgents — installation pour {os.environ.get('USER', 'ce compte')}")
     say(f"Machine : {machine.summary}")
-    if not machine.tailnet_name:
+    if args.no_tailscale:
+        machine.tailnet_name = None
+    elif not machine.tailnet_name:
         say("Tailscale n'est pas connecté : installe-le et connecte-toi (https://tailscale.com/download), puis relance.")
         if not args.dry_run:
             return 1
@@ -244,7 +248,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     start_service(machine.system, label, path, runner)
 
     say("4/5 Tailscale…")
-    commands = tailscale_commands(machine.tailscale or "tailscale", ports, desk=plan.browser == "permanent")
+    commands = [] if args.no_tailscale else None
+    if commands is None:
+        commands = tailscale_commands(machine.tailscale or "tailscale", ports, desk=plan.browser == "permanent")
     published = True
     for command in commands:
         try:
@@ -270,6 +276,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             say(f"  $ {re.sub(r'(_KEY )[^ ]+', lambda m: m.group(1) + '<clé>', line)}")
         say("\n--- bridge.toml ---")
         say(re.sub(r'(_key = )"[^"]*"', r'\1"<clé>"', bridge_toml(inst)))
+        return 0
+    if args.no_tailscale:
+        say("\nC'est prêt, sur cette machine seulement (sans Tailscale, l'app ne peut pas encore la joindre).")
         return 0
     say("\nC'est prêt. Scanne ce code dans l'app BipAgents (Ajouter un agent › Scanner le QR code) :")
     subprocess.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "qr", "--config",
