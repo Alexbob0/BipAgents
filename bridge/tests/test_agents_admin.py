@@ -69,6 +69,24 @@ def test_kinds_route_on_a_bridge_without_hermes(client):
     assert client.post("/v1/agents", json={"name": "Léa", "kind": "daily"}).status_code == 401
 
 
+def test_hermes_in_a_container(managed):
+    from bipbridge.agents_admin import NewAgent, create_agent
+
+    config, _, tmp = managed
+    config.hermes.container_home = "/home/hermes/.hermes"
+
+    async def run(args, env):
+        return ""
+
+    async def go():
+        async with httpx.AsyncClient(transport=fake_gateway([])) as http:
+            return await create_agent(config, NewAgent(name="Budget", kind="finance"), http, run=run)
+
+    agent = asyncio.run(go())
+    assert agent.upload_dir_host == str(tmp / ".hermes" / "profiles" / "budget" / "uploads")
+    assert agent.upload_dir_container == "/home/hermes/.hermes/profiles/budget/uploads"
+
+
 def test_refusals(managed):
     from bipbridge.agents_admin import NewAgent, create_agent
 
