@@ -102,6 +102,60 @@ struct BridgeClient: Sendable {
         return InstallAgent(id: id, name: json?["name"] as? String ?? name, url: url, key: key)
     }
 
+    /// One group of built-in tools of an agent (`web`, `terminal`…), as Hermes lists it.
+    struct Toolset: Sendable, Identifiable, Hashable {
+        var id: String
+        var label: String
+        var description: String
+        var enabled: Bool
+        var configured: Bool
+    }
+
+    /// What can be changed on an agent this install created: its personality and its tools.
+    struct AgentSettings: Sendable {
+        var soul: String
+        var toolsets: [Toolset]
+    }
+
+    /// `GET /v1/agents/{id}/settings`: nil when this bridge does not manage the agent (set up by hand, or an older bridge).
+    func agentSettings(_ agent: String) async throws -> AgentSettings? {
+        do {
+            return Self.settings(from: try await send(request("v1/agents/\(agent)/settings")))
+        } catch HermesError.http(let status, _, _) where status == 404 || status == 405 || status == 409 {
+            return nil
+        }
+    }
+
+    /// `PATCH /v1/agents/{id}/settings`: a new personality and/or tools turned on or off. Hermes uses them from the next message.
+    @discardableResult
+    func updateAgentSettings(_ agent: String, soul: String? = nil, toolsets: [String: Bool]? = nil) async throws -> AgentSettings? {
+        var request = request("v1/agents/\(agent)/settings", method: "PATCH")
+        request.timeoutInterval = 60
+        var body: [String: Any] = [:]
+        if let soul { body["soul"] = soul }
+        if let toolsets { body["toolsets"] = toolsets }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return Self.settings(from: try await send(request))
+    }
+
+    /// `DELETE /v1/agents/{id}`: the agent, its conversations, memory and routines, gone from the install.
+    func deleteAgent(_ agent: String) async throws {
+        var request = request("v1/agents/\(agent)", method: "DELETE")
+        request.timeoutInterval = 60
+        try await send(request)
+    }
+
+    private static func settings(from data: Data) -> AgentSettings? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let soul = json["soul"] as? String else { return nil }
+        let toolsets = (json["toolsets"] as? [[String: Any]] ?? []).compactMap { row -> Toolset? in
+            guard let id = row["name"] as? String else { return nil }
+            return Toolset(id: id, label: row["label"] as? String ?? id, description: row["description"] as? String ?? "",
+                           enabled: row["enabled"] as? Bool ?? false, configured: row["configured"] as? Bool ?? true)
+        }
+        return AgentSettings(soul: soul, toolsets: toolsets)
+    }
+
     /// `GET /v1/status`: whether the model answers (nil when the bridge does not check it, or is older).
     func modelIsUp() async throws -> Bool? {
         let json = try JSONSerialization.jsonObject(with: try await send(request("v1/status"))) as? [String: Any]

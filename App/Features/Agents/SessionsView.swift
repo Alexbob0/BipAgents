@@ -16,6 +16,8 @@ struct SessionsView: View {
     @State private var reachedEnd = true
     @State private var isLoadingMore = false
     @State private var showsAllTasks = false
+    /// Its personality and tools, when its bridge created it (nil for an agent set up by hand).
+    @State private var settings: BridgeClient.AgentSettings?
 
     private var palette: AgentPalette { agent.appearance.palette }
 
@@ -54,6 +56,20 @@ struct SessionsView: View {
                         Image(systemName: "clock.arrow.circlepath").foregroundStyle(palette.deep)
                     }
                 }
+                if let settings {
+                    NavigationLink {
+                        AgentSettingsView(agent: agent, settings: settings)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Personnalité et outils").font(Theme.body(16, weight: .heavy))
+                                Text("Qui est \(agent.name), ce qu’il peut faire").font(Theme.body(13)).foregroundStyle(Theme.ink2)
+                            }
+                        } icon: {
+                            Image(systemName: "slider.horizontal.3").foregroundStyle(palette.deep)
+                        }
+                    }
+                }
             }
             sessionSection("Conversations", Self.newestFirst(sessions.filter { !AgentStore.isBotChat($0) && !AgentStore.isScheduledTask($0) }))
             let tasks = Self.newestFirst(sessions.filter(AgentStore.isScheduledTask))
@@ -82,6 +98,7 @@ struct SessionsView: View {
         .tabBarHidden(false)
         .refreshable { await load() }
         .task { await load() }
+        .task { await loadSettings() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: AgentRoute.conversation(agent, sessionID: nil)) {
@@ -164,6 +181,13 @@ struct SessionsView: View {
             errorMessage = nil
         } catch {
             errorMessage = ConversationModel.describe(error)
+        }
+    }
+
+    private func loadSettings() async {
+        guard let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent)) else { return }
+        if let found = try? await withTimeout(8, { try await bridge.agentSettings(agent.bridgeName) }) {
+            settings = found
         }
     }
 

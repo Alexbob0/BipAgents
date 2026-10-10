@@ -15,6 +15,8 @@ struct AddAgentFlow: View {
     /// The bridge's local-network door, from the QR code only (its certificate fingerprint cannot be typed).
     @State private var lanURL: URL?
     @State private var lanFingerprint: String?
+    /// The agent's key in its bridge, from a pasted or scanned code (« fougere » for « Fougère »).
+    @State private var bridgeAgent: String?
     @State private var appearance = AgentAppearance(category: .daily)
     @State private var categoryWasPicked = false
     @State private var errorMessage: String?
@@ -168,6 +170,7 @@ struct AddAgentFlow: View {
             bridgeKey = provisioning.secrets.bridgeKey ?? ""
             lanURL = provisioning.config.lanURL
             lanFingerprint = provisioning.config.lanFingerprint
+            bridgeAgent = provisioning.config.bridgeAgent
             errorMessage = nil
             return true
         } catch {
@@ -198,7 +201,8 @@ struct AddAgentFlow: View {
             bridgeURL: URL(string: bridgeURL).flatMap { $0.host() == nil ? nil : $0 },
             language: AgentLanguage.device.rawValue,
             lanURL: lanURL,
-            lanFingerprint: lanFingerprint
+            lanFingerprint: lanFingerprint,
+            bridgeAgent: bridgeAgent
         )
         do {
             try store.add(AgentProfile(config: config, appearance: appearance),
