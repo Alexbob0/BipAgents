@@ -1753,6 +1753,28 @@
         }
       }
     },
+    "Copier" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopieren"
+          }
+        }
+      }
+    },
     "Coucou !" : {
       "localizations" : {
         "en" : {
@@ -3978,6 +4000,28 @@
         }
       }
     },
+    "Partager…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen …"
+          }
+        }
+      }
+    },
     "Pas cet après-midi : la caféine met 5 à 6 h à s’éliminer de moitié. Avec un coucher visé à 23 h 15, ta limite est **14 h**. Coup de barre ? Une sieste de 20 min avant 15 h.\n\nSources : [Sleep Foundation](https://www.sleepfoundation.org/nutrition/caffeine-and-sleep) et https://fr.wikipedia.org/wiki/Caféine" : {
       "localizations" : {
         "en" : {
@@ -5364,6 +5408,28 @@
         }
       }
     },
+    "Sélectionner du texte" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select Text"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleccionar texto"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text auswählen"
+          }
+        }
+      }
+    },
     "Ta réponse" : {
       "localizations" : {
         "en" : {
@@ -5670,6 +5736,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alles dreht sich…"
+          }
+        }
+      }
+    },
+    "Transférer à…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forward to…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reenviar a…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiterleiten an …"
           }
         }
       }

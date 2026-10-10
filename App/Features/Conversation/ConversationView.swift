@@ -255,6 +255,7 @@ private struct ConversationContent: View {
                     VoiceNoteBubble(note: note, player: model.player)
                 } else {
                     UserBubble(text: text, attachments: attachments)
+                        .messageActions(text, in: model.agent)
                 }
                 TimeLabel(date: item.date)
             }
@@ -270,6 +271,7 @@ private struct ConversationContent: View {
                             .padding(.leading, 40)
                     }
                     AssistantRow(appearance: model.agent.appearance, text: text, isStreaming: isStreaming)
+                        .messageActions(text, in: model.agent)
                     if !isStreaming {
                         ForEach(ChatText.media(in: text), id: \.self) { path in
                             MediaRow(path: path, palette: palette, player: model.player, load: model.mediaFile(for:),
@@ -399,7 +401,7 @@ private struct ConversationContent: View {
     }
 
     /// Per agent and conversation (« new » before the first message).
-    private var draftKey: String { "draft.\(model.agent.id.uuidString).\(model.sessionID ?? "new")" }
+    private var draftKey: String { ConversationDraft.key(agentID: model.agent.id, sessionID: model.sessionID) }
 
     private func send() {
         model.send(text: draft, attachments: attachments)
@@ -468,9 +470,8 @@ struct UserBubble: View {
         .foregroundStyle(Theme.onInk)
         .padding(attachments.isEmpty ? EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14) : EdgeInsets(top: 6, leading: 6, bottom: text.isEmpty ? 6 : 10, trailing: 6))
         .background(Theme.ink, in: UnevenRoundedRectangle(topLeadingRadius: 22, bottomLeadingRadius: 22, bottomTrailingRadius: 6, topTrailingRadius: 22, style: .continuous))
+        .contentShape(.contextMenuPreview, UnevenRoundedRectangle(topLeadingRadius: 22, bottomLeadingRadius: 22, bottomTrailingRadius: 6, topTrailingRadius: 22, style: .continuous))
         .frame(maxWidth: 300, alignment: .trailing)
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .textSelection(.enabled)
         .fullScreenCover(item: $viewing) { photo in PhotoViewer(image: photo.image) }
         .quickLookPreview($quickLook)
     }
@@ -496,7 +497,6 @@ struct AssistantRow: View {
             rendered
                 .foregroundStyle(Theme.ink)
                 .lineSpacing(3)
-                .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -522,6 +522,7 @@ struct AssistantRow: View {
         let source = isStreaming ? shown + " ▍" : shown
         var result = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
         Self.linkBareURLs(in: &result)
+        ChatText.linkContacts(in: &result)
         // An explicit .font on the Text would flatten **bold**/*italic*; set the font per run instead.
         for run in result.runs {
             let intent = run.inlinePresentationIntent ?? []
@@ -529,8 +530,9 @@ struct AssistantRow: View {
             if intent.contains(.emphasized) { font = font.italic() }
             if intent.contains(.code) { font = .system(size: 15, design: .monospaced) }
             result[run.range].font = font
-            if run.link != nil {
-                result[run.range].foregroundColor = appearance.palette.deep
+            if let link = run.link {
+                // Calls, e-mails and maps in blue, as in Messages; web pages in the agent's color with their icon.
+                result[run.range].foregroundColor = ChatText.isContactLink(link) ? Color.blue : appearance.palette.deep
                 result[run.range].underlineStyle = .single
             }
         }

@@ -267,6 +267,7 @@ struct ScheduledMessageRow: View {
                 .padding(.leading, 40)
             if !ChatText.visible(item.text).isEmpty {
                 AssistantRow(appearance: agent.appearance, text: item.text, isStreaming: false)
+                    .messageActions(item.text, in: agent)
             }
             if item.hasAudio {
                 MediaRow(path: "\(label).mp3", palette: palette, player: player, load: { _ in try await audio() },

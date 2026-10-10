@@ -221,6 +221,8 @@ struct InboxView: View {
                             withAnimation { inbox.dismiss(entry) }
                         }
                         .contextMenu {
+                            Button("Copier", systemImage: "doc.on.doc") { UIPasteboard.general.string = ChatText.plain(entry.item.text) }
+                            ShareLink(item: ChatText.plain(entry.item.text)) { Label("Partager…", systemImage: "square.and.arrow.up") }
                             if let job = Self.cronJob(of: entry) {
                                 Button("Ne plus me notifier pour cette tâche", systemImage: "bell.slash") {
                                     Task { await mute(job: job, of: entry) }
