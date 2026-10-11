@@ -77,6 +77,7 @@ class Services:
         self.vault = Vault(os.path.join(os.path.dirname(config.outbox.db_path), "vault"))
         self.links = Links(os.path.join(os.path.dirname(config.outbox.db_path), "peers.json"))
         self.desktop_tickets = Tickets()
+        self.desktop_control: Dict[str, bool] = {}   # desktops set up by hand: the person took over (input passes)
         self.subscribers: List[NtfySubscriber] = []
         self._tasks: List["asyncio.Task[Any]"] = []
 

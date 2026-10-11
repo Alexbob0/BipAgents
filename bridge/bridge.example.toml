@@ -139,3 +139,7 @@ voice = "5476"
 # python = "podman exec -i hermes-vie /home/hermes/.local/share/hermes/python/bin/python3 -I"
 # hermes_home = "/home/hermes/.hermes/profiles/vie"   # the agent's HERMES_HOME, as that Python sees it
 # hermes_root = "/home/hermes/.hermes/hermes-agent"    # Hermes' code folder, when that Python needs it
+# Its browser's desktop set up by hand (a VNC behind websockify, like a noVNC page): the bridge logs in itself and
+# shows it in the app (« Bureau », Face ID), so the VNC port needs no publishing on the tailnet.
+# desktop_vnc = "ws://127.0.0.1:6080/websockify"        # or "tcp://127.0.0.1:5901"
+# desktop_vnc_password_file = "~/.config/hermes-vnc.pass" # the password in clear, or a vncpasswd file (chmod 600)

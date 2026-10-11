@@ -9,8 +9,11 @@ Watching sends no input: the bridge drops keyboard, pointer, clipboard and resiz
 took over. « Prendre la main » writes Hermes' own lease (`bot-desktop/lease.json`, holder « human »), which
 stops the agent's browser and computer-use tools until the person hands back.
 
-An agent whose browser already has a viewer page (a noVNC set up by hand, like Vie's) gives its address in the
-config (`desktop_url`), and the app opens that page instead.
+An agent whose browser runs on a VNC server set up by hand (like Vie's stealth Chrome) gives its address
+(`desktop_vnc`: `ws://127.0.0.1:6080/websockify` for a websockify, or `tcp://127.0.0.1:5901`) and its VNC
+password file (`desktop_vnc_password_file`): the bridge logs in itself and shows it the same way, so the
+password never reaches the phone and the VNC port need not be published. Taking over there only lets input
+through: such a browser has no Hermes lease to pause. (`desktop_url` still opens a viewer page as it is.)
 """
 from __future__ import annotations
 
@@ -181,6 +184,161 @@ async def open_rfb(folder: Path) -> Tuple[asyncio.StreamReader, Any, Callable[[]
     return reader, writer, writer.close
 
 
+# -- VNC set up by hand: the bridge logs in ------------------------------------------------------------
+
+class Upstream:
+    """Bytes to and from a desktop: a stream (Unix socket, TCP, docker exec) or a websockify WebSocket."""
+
+    def __init__(self, reader: Any = None, writer: Any = None, close: Optional[Callable[[], Any]] = None,
+                 websocket: Any = None):
+        self.reader, self.writer, self._close, self.websocket = reader, writer, close, websocket
+        self.buffer = b""
+
+    async def read(self) -> bytes:
+        if self.buffer:
+            data, self.buffer = self.buffer, b""
+            return data
+        if self.websocket is not None:
+            try:
+                message = await self.websocket.recv()
+            except Exception:
+                return b""
+            return message if isinstance(message, bytes) else message.encode()
+        return await self.reader.read(65536)
+
+    async def readexactly(self, n: int) -> bytes:
+        while len(self.buffer) < n:
+            chunk = await (self.websocket.recv() if self.websocket is not None else self.reader.read(65536))
+            if not chunk:
+                raise ConnectionError("desktop closed the connection")
+            self.buffer += chunk if isinstance(chunk, bytes) else chunk.encode()
+        data, self.buffer = self.buffer[:n], self.buffer[n:]
+        return data
+
+    async def write(self, data: bytes) -> None:
+        if self.websocket is not None:
+            await self.websocket.send(data)
+        else:
+            self.writer.write(data)
+            await self.writer.drain()
+
+    async def close(self) -> None:
+        with contextlib.suppress(Exception):
+            if self.websocket is not None:
+                await self.websocket.close()
+            elif self._close is not None:
+                self._close()
+
+
+VNCPASSWD_KEY = bytes([23, 82, 107, 6, 35, 78, 88, 7])   # the fixed key vncpasswd files are obscured with
+
+
+def _des(key: bytes, data: bytes, decrypt: bool = False) -> bytes:
+    from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
+    from cryptography.hazmat.primitives.ciphers import Cipher, modes
+
+    cipher = Cipher(TripleDES(key * 3), modes.ECB())   # three equal keys: plain DES
+    ctx = cipher.decryptor() if decrypt else cipher.encryptor()
+    return ctx.update(data) + ctx.finalize()
+
+
+def _reverse_bits(data: bytes) -> bytes:
+    return bytes(int(f"{b:08b}"[::-1], 2) for b in data)
+
+
+def read_vnc_password(path: str) -> str:
+    """The password in clear, or a `vncpasswd` file (8 bytes obscured with a fixed, public key: not a protection,
+    this file must stay out of the agents' reach like any other key)."""
+    raw = Path(path).read_bytes()
+    try:
+        text = raw.decode("utf-8").strip()
+        if text and text.isprintable():
+            return text
+    except UnicodeDecodeError:
+        pass
+    plain = _des(_reverse_bits(VNCPASSWD_KEY), raw[:8], decrypt=True)
+    return plain.split(b"\0", 1)[0].decode("latin-1")
+
+
+def vnc_response(password: str, challenge: bytes) -> bytes:
+    """RFB « VNC Authentication »: the challenge encrypted with DES, keyed by the password's first 8 bytes with each
+    byte's bits reversed (the protocol's quirk)."""
+    key = password.encode("latin-1", "replace")[:8].ljust(8, b"\0")
+    return _des(_reverse_bits(key), challenge)
+
+
+async def vnc_login(up: Upstream, password: Optional[str]) -> None:
+    """The client side of an RFB 3.8 handshake with the desktop's server, up to (not including) ClientInit."""
+    version = await up.readexactly(12)
+    if not version.startswith(b"RFB 003.") or int(version[8:11]) < 7:
+        raise ConnectionError(f"unsupported VNC server {version!r}")
+    await up.write(b"RFB 003.008\n")
+    count = (await up.readexactly(1))[0]
+    if count == 0:
+        size = struct.unpack(">I", await up.readexactly(4))[0]
+        raise ConnectionError((await up.readexactly(size)).decode(errors="replace"))
+    offered = await up.readexactly(count)
+    if 2 in offered and password:
+        await up.write(b"\x02")
+        await up.write(vnc_response(password, await up.readexactly(16)))
+    elif 1 in offered:
+        await up.write(b"\x01")
+    else:
+        raise ConnectionError("the VNC server wants a password the bridge does not have")
+    if struct.unpack(">I", await up.readexactly(4))[0] != 0:
+        raise ConnectionError("VNC password refused")
+
+
+class Downstream:
+    """The app's side (FastAPI WebSocket), read in exact sizes for the handshake the bridge answers itself."""
+
+    def __init__(self, websocket: WebSocket):
+        self.websocket = websocket
+        self.buffer = b""
+
+    async def readexactly(self, n: int) -> bytes:
+        while len(self.buffer) < n:
+            message = await self.websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect()
+            self.buffer += message.get("bytes") or (message.get("text") or "").encode()
+        data, self.buffer = self.buffer[:n], self.buffer[n:]
+        return data
+
+
+async def serve_handshake(app_side: Downstream, websocket: WebSocket, up: Upstream) -> None:
+    """To the app: no password (it passed Face ID and holds a ticket). Its ClientInit goes on to the server, shared."""
+    await websocket.send_bytes(b"RFB 003.008\n")
+    await app_side.readexactly(12)
+    await websocket.send_bytes(b"\x01\x01")             # one security type: None
+    await app_side.readexactly(1)
+    await websocket.send_bytes(b"\x00\x00\x00\x00")   # SecurityResult: OK
+    await app_side.readexactly(1)                     # ClientInit
+    await up.write(b"\x01")                           # shared: never kick another viewer off
+
+
+async def open_vnc(agent: AgentConfig) -> Upstream:
+    url = agent.desktop_vnc or ""
+    password = None
+    if agent.desktop_vnc_password_file:
+        password = read_vnc_password(agent.desktop_vnc_password_file)
+    if url.startswith(("ws://", "wss://")):
+        from websockets.asyncio.client import connect
+        up = Upstream(websocket=await connect(url, subprotocols=["binary"], max_size=None, open_timeout=10))
+    elif url.startswith("tcp://"):
+        host, _, port = url[len("tcp://"):].rpartition(":")
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, int(port)), timeout=10)
+        up = Upstream(reader, writer, writer.close)
+    else:
+        raise ValueError("desktop_vnc must be ws://… or tcp://host:port")
+    try:
+        await vnc_login(up, password)
+    except Exception:
+        await up.close()
+        raise
+    return up
+
+
 # -- routes ------------------------------------------------------------------------------------------
 
 class Tickets:
@@ -252,7 +410,9 @@ def desktop_router() -> APIRouter:
             raise HTTPException(status_code=404, detail="expired")
         agent = services.config.agent(name)
         folder = desktop_dir(services.config, agent) if agent else None
-        view_only = "false" if folder is not None and app_holds(folder) else "true"
+        holds = (services.desktop_control.get(name, False) if agent and agent.desktop_vnc
+                 else folder is not None and app_holds(folder))
+        view_only = "false" if holds else "true"
         return HTMLResponse(PAGE.replace("__VIEW_ONLY__", view_only), headers={"Cache-Control": "no-store"})
 
     @router.websocket("/desktop/{ticket}/ws")
@@ -260,42 +420,59 @@ def desktop_router() -> APIRouter:
         services = websocket.app.state.services
         name = services.desktop_tickets.agent(ticket)
         agent = services.config.agent(name) if name else None
-        folder = desktop_dir(services.config, agent) if agent else None
-        if folder is None:
+        folder = desktop_dir(services.config, agent) if agent and not agent.desktop_vnc else None
+        if agent is None or (folder is None and not agent.desktop_vnc):
             await websocket.close(code=4401)
             return
         try:
-            reader, writer, close = await open_rfb(folder)
-        except (OSError, ValueError) as exc:
-            log.info("desktop unavailable", extra=fields(agent=name, error=str(exc)))
+            if agent.desktop_vnc:
+                up = await open_vnc(agent)
+            else:
+                assert folder is not None
+                reader, writer, close = await open_rfb(folder)
+                up = Upstream(reader, writer, close)
+        except (OSError, ValueError, ConnectionError, asyncio.TimeoutError) as exc:
+            log.info("desktop unavailable", extra=fields(agent=name, error=str(exc)[:200]))
             await websocket.close(code=4001)
             return
         await websocket.accept(subprotocol="binary" if "binary" in websocket.scope.get("subprotocols", []) else None)
-        gate = InputGate(lambda: app_holds(folder))
+        app_side = Downstream(websocket)
+        if agent.desktop_vnc:
+            try:
+                await serve_handshake(app_side, websocket, up)
+            except (WebSocketDisconnect, ConnectionError):
+                await up.close()
+                return
+            gate = InputGate(lambda: services.desktop_control.get(agent.name, False))
+            gate.handshake = 0
+        else:
+            gate = InputGate(lambda: app_holds(folder))
         last_touch = 0.0
 
         async def down() -> None:
             nonlocal last_touch
-            while data := await reader.read(65536):
+            while data := await up.read():
                 await websocket.send_bytes(data)
-                if time.time() - last_touch > 60:   # someone is watching: Hermes keeps the desktop up
+                if folder is not None and time.time() - last_touch > 60:   # watched: Hermes keeps the desktop up
                     last_touch = time.time()
                     with contextlib.suppress(OSError):
                         (folder / "activity").touch()
 
-        async def up() -> None:
+        async def from_app() -> None:
+            if app_side.buffer:
+                pending, app_side.buffer = app_side.buffer, b""
+                if out := gate.feed(pending):
+                    await up.write(out)
             while True:
                 message = await websocket.receive()
                 if message["type"] == "websocket.disconnect":
                     return
-                data = message.get("bytes") or (message.get("text") or "").encode()
-                out = gate.feed(data)
+                out = gate.feed(message.get("bytes") or (message.get("text") or "").encode())
                 if out:
-                    writer.write(out)
-                    await writer.drain()
+                    await up.write(out)
 
         log.info("desktop viewer connected", extra=fields(agent=name))
-        tasks = [asyncio.create_task(down()), asyncio.create_task(up())]
+        tasks = [asyncio.create_task(down()), asyncio.create_task(from_app())]
         try:
             await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         except (WebSocketDisconnect, ValueError, ConnectionError):
@@ -303,7 +480,7 @@ def desktop_router() -> APIRouter:
         finally:
             for task in tasks:
                 task.cancel()
-            close()
+            await up.close()
             with contextlib.suppress(Exception):
                 await websocket.close()
 
@@ -319,6 +496,11 @@ def desktop_admin_router() -> APIRouter:
         agent = services.config.agent(agent_id)
         if agent is None:
             raise HTTPException(status_code=404, detail="unknown agent")
+        if agent.desktop_vnc:
+            ticket = services.desktop_tickets.new(agent.name)
+            return {"kind": "novnc", "path": f"desktop/{ticket}/", "you_hold": services.desktop_control.get(agent.name, False),
+                    "holder": "human" if services.desktop_control.get(agent.name) else "agent", "reason": None,
+                    "pauses_agent": False}   # no Hermes lease there: taking over does not stop the agent
         if agent.desktop_url:
             return {"kind": "page", "url": agent.desktop_url}
         folder = desktop_dir(services.config, agent)
@@ -327,16 +509,20 @@ def desktop_admin_router() -> APIRouter:
         ticket = services.desktop_tickets.new(agent.name)
         lease = _read_lease(folder)
         return {"kind": "novnc", "path": f"desktop/{ticket}/", "you_hold": app_holds(folder),
-                "holder": lease.get("holder"), "reason": lease.get("reason") or None}
+                "holder": lease.get("holder"), "reason": lease.get("reason") or None, "pauses_agent": True}
 
     @router.post("/agents/{agent_id}/desktop/control")
     async def control(agent_id: str, request: Request) -> Dict[str, Any]:
         services = request.app.state.services
         agent = services.config.agent(agent_id)
+        body = await request.json()
+        if agent is not None and agent.desktop_vnc:
+            # No Hermes lease on a desktop set up by hand: taking over only lets the person's input through.
+            services.desktop_control[agent.name] = bool(body.get("take"))
+            return {"holder": "human" if body.get("take") else "agent", "you_hold": bool(body.get("take"))}
         folder = desktop_dir(services.config, agent) if agent else None
         if folder is None:
             raise HTTPException(status_code=404, detail="unknown agent")
-        body = await request.json()
         lease = set_lease(folder, bool(body.get("take")), reason="Depuis l'app BipAgents")
         log.info("desktop control", extra=fields(agent=agent.name, holder=lease["holder"]))
         return {"holder": lease["holder"], "you_hold": app_holds(folder)}
