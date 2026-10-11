@@ -43,6 +43,7 @@ struct AgentLinksView: View {
         }
         .navigationTitle("Qui peut écrire à qui")
         .overlay { if isLoading { ProgressView() } }
+        .refreshable { await load() }
         .task { await load() }
     }
 
@@ -56,16 +57,24 @@ struct AgentLinksView: View {
     }
 
     private func load() async {
+        isLoading = true
         defer { isLoading = false }
+        var lastError: (any Error)?
         for agent in store.agents {
-            guard let candidate = BridgeClient(agent: agent, secrets: store.secrets(for: agent)),
-                  let found = try? await withTimeout(10, { try await candidate.agentLinks() }) else { continue }
-            bridge = candidate
-            agents = found.agents
-            links = found.links
-            return
+            guard let candidate = BridgeClient(agent: agent, secrets: store.secrets(for: agent)) else { continue }
+            do {
+                guard let found = try await withTimeout(10, { try await candidate.agentLinks() }) else { continue }
+                bridge = candidate
+                agents = found.agents
+                links = found.links
+                errorMessage = nil
+                return
+            } catch {
+                lastError = error   // unreachable right now: say so, not « too old »
+            }
         }
-        errorMessage = String(localized: "Aucun de tes serveurs ne transmet encore les messages entre agents (bridge à mettre à jour).")
+        errorMessage = lastError.map { ConversationModel.describe($0) }
+            ?? String(localized: "Aucun de tes serveurs ne transmet encore les messages entre agents (bridge à mettre à jour).")
     }
 
     private func save(_ next: Set<BridgeClient.AgentLink>) async {

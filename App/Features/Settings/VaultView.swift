@@ -317,7 +317,7 @@ struct VaultItemEditor: View {
         case "needs_own_space": String(localized: "\(name) partage son espace avec d’autres agents : il lui faut d’abord le sien.")
         case "needs_sandbox": String(localized: "Le serveur n’a pas de bac à sable (podman) : l’espace de \(name) ne protège pas encore ses mots de passe des autres agents.")
         case "unprotected_install": String(localized: "Ce serveur n’isole pas ses agents des clés du serveur : aucun mot de passe tant que ce n’est pas réglé.")
-        default: String(localized: "\(name) n’est pas encore branché au coffre sur le serveur.")
+        default: String(localized: "\(name) n’est pas encore branché au coffre sur le serveur : c’est à faire par son administrateur.")
         }
     }
 

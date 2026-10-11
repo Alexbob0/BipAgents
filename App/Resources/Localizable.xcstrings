@@ -10186,6 +10186,28 @@
           }
         }
       }
+    },
+    "%@ n’est pas encore branché au coffre sur le serveur : c’est à faire par son administrateur." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is not connected to the vault on the server yet: its administrator does that."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ aún no está conectado a la caja fuerte en el servidor: lo hace su administrador."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist auf dem Server noch nicht mit dem Tresor verbunden: Das erledigt sein Administrator."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
