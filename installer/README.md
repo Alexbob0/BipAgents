@@ -67,6 +67,14 @@ takes the patches off. `--all` never removes a Hermes that was there before BipA
 run in a sandbox, the bridge keeps no passwords (no vault): it tells you so, without changing their tools. It needs a
 Hermes that serves several agents at one address (`hermes update` otherwise).
 
+## Updating Hermes
+
+Whenever you want: `bash ~/BipAgents/install.sh hermes-update`. Before changing anything, it says which BipAgents
+patches still apply on the new version (checked on a copy). Then it takes our patches off, runs `hermes update`
+(its backup, its dependencies), puts back the patches that apply, restarts the agents (the hub and their spaces) and
+checks that each one answers. When an agent no longer answers, it offers to go back to the previous version.
+`--check` checks without changing anything.
+
 ## Uninstall
 
 `python -m bipinstall uninstall` (from `~/BipAgents`, with `PYTHONPATH=installer`) removes the services, the tailnet

@@ -193,12 +193,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         argv = sys.argv[1:]
     if argv and argv[0] == "uninstall":
         return uninstall_main(argv[1:])
+    if argv and argv[0] == "hermes-update":
+        from .update import main as update_main
+        return update_main(argv[1:])
     if argv and argv[0] == "famille":
         from .family import main as family_main
         return family_main(argv[1:])
     parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
                                      "(`bipinstall uninstall` removes it; `bipinstall famille ajouter <nom>` prepares a "
-                                     "family member's install on this server)")
+                                     "family member's install on this server; `bipinstall hermes-update` updates Hermes "
+                                     "and checks the agents)")
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
     parser.add_argument("--relay-url", help="the administrator's bridge, to send notifications without an APNs key")
     parser.add_argument("--relay-key", help="this install's relay key (given by the administrator)")

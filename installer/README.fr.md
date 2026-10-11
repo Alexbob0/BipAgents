@@ -69,6 +69,14 @@ tes agents ne tournent pas dans un bac à sable, le bridge ne garde pas de mots 
 dit, sans changer leurs outils. Il faut une version d'Hermes qui sert plusieurs agents à la même adresse
 (`hermes update` sinon).
 
+## Mettre Hermes à jour
+
+Quand tu veux : `bash ~/BipAgents/install.sh hermes-update`. Avant de toucher à quoi que ce soit, il dit quels
+correctifs BipAgents s'appliquent encore sur la nouvelle version (vérifié sur une copie). Puis il retire nos
+correctifs, lance `hermes update` (sa sauvegarde, ses dépendances), remet les correctifs qui s'appliquent,
+redémarre les agents (le hub et leurs espaces) et vérifie que chacun répond. Si un agent ne répond plus, il propose
+de revenir à la version précédente. `--check` vérifie sans rien changer.
+
 ## Désinstaller
 
 `python -m bipinstall uninstall` (depuis `~/BipAgents`, avec `PYTHONPATH=installer`) retire les services, la publication
