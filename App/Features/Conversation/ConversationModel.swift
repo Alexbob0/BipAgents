@@ -320,12 +320,20 @@ final class ConversationModel {
     @ObservationIgnored private var shownOutbox: [OutboxItem] = []
 
     private func show(_ messages: [HermesMessage], outbox: [OutboxItem], botChat: Bool, sessionID: String) {
-        let thread = Self.items(from: messages)
-        items = botChat ? Self.merging(outbox, into: thread) : thread
+        var thread = Self.items(from: messages)
+        if botChat { thread = Self.merging(outbox, into: thread) }
+        Self.restoreAttachments(in: &thread, sessionID: sessionID)
+        // Set once: every change to `items` refreshes the thread on screen.
+        items = thread
         shownMessages = messages
         shownOutbox = outbox
         restoreVoiceNotes(sessionID: sessionID)
-        restoreAttachments(sessionID: sessionID)
+    }
+
+    /// Letters and digits only, lowercased: Hermes may not hand a text back byte for byte (prefixes, punctuation,
+    /// spacing, document references added).
+    private static func normalized(_ text: String) -> String {
+        String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
     }
 
     /// The agent's recent scheduled-task reports and proactive messages (last 30 days), from its bridge.
@@ -1006,57 +1014,55 @@ final class ConversationModel {
 
     /// Re-attaches stored voice notes to the reloaded history (Hermes keeps only the text), in order.
     /// Puts the photos and files sent back on their messages (Hermes keeps only the text), in order.
-    private func restoreAttachments(sessionID: String) {
-        var pending = AttachmentStore.shared.entries(for: sessionID)
+    private static func restoreAttachments(in items: inout [ChatItem], sessionID: String) {
+        // Each stored text normalized once, not once per message it is compared with.
+        var pending = AttachmentStore.shared.entries(for: sessionID).map { (entry: $0, sent: normalized($0.text)) }
         guard !pending.isEmpty else { return }
-        func normalized(_ text: String) -> String {
-            String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
-        }
         for index in items.indices {
             guard case .user(let text, let current) = items[index].kind, current.isEmpty, !pending.isEmpty else { continue }
             let history = normalized(text)
             // The history may add document references to the text: a stored text found inside it matches.
             // A photo sent without text comes back empty or as a short placeholder.
-            guard let match = pending.firstIndex(where: { entry in
-                let sent = normalized(entry.text)
-                return sent.isEmpty ? history.count <= 12 : history.contains(sent)
-            }) else { continue }
-            let entry = pending.remove(at: match)
+            guard let match = pending.firstIndex(where: { $0.sent.isEmpty ? history.count <= 12 : history.contains($0.sent) })
+            else { continue }
+            let entry = pending.remove(at: match).entry
             let restored = AttachmentStore.shared.attachments(of: entry)
             if !restored.isEmpty { items[index].kind = .user(text: entry.text, attachments: restored) }
         }
     }
 
     private func restoreVoiceNotes(sessionID: String) {
-        var pending = VoiceNoteStore.shared.entries(for: sessionID)
+        // A stored text matches when found inside the history's (compared normalized, each text once).
+        var pending = VoiceNoteStore.shared.entries(for: sessionID).compactMap { entry in
+            let stored = Self.normalized(entry.text)
+            return stored.isEmpty ? nil : (entry: entry, stored: stored)
+        }
         guard !pending.isEmpty else { return }
-        // Hermes may not hand the text back byte for byte (prefixes, punctuation, spacing): compare letters
-        // and digits only, and accept a stored text found inside the history's.
-        func normalized(_ text: String) -> String {
-            String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
-        }
-        func matches(_ stored: String, _ history: String) -> Bool {
-            let a = normalized(stored), b = normalized(history)
-            return !a.isEmpty && (a == b || b.contains(a))
-        }
+        var notes = voiceNotes, replies = voiceReplies
         for item in items {
+            guard !pending.isEmpty else { break }
             let (kind, text): (VoiceNoteStore.Entry.Kind, String)
             switch item.kind {
             case .user(let value, let attachments) where attachments.isEmpty: (kind, text) = (.user, value)
             case .assistant(let value, _): (kind, text) = (.reply, value)
             default: continue
             }
-            guard let index = pending.firstIndex(where: { $0.kind == kind && matches($0.text, text) }) else { continue }
-            let entry = pending.remove(at: index)
+            guard pending.contains(where: { $0.entry.kind == kind }) else { continue }
+            let history = Self.normalized(text)
+            guard let index = pending.firstIndex(where: { $0.entry.kind == kind && history.contains($0.stored) }) else { continue }
+            let entry = pending.remove(at: index).entry
             let url = VoiceNoteStore.shared.url(of: entry)
             guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { continue }
             switch kind {
             case .user:
-                voiceNotes[item.id] = VoiceRecording(url: url, duration: entry.duration, transcript: entry.text, waveform: entry.waveform)
+                notes[item.id] = VoiceRecording(url: url, duration: entry.duration, transcript: entry.text, waveform: entry.waveform)
             case .reply:
-                voiceReplies[item.id] = .ready(url, duration: entry.duration)
+                replies[item.id] = .ready(url, duration: entry.duration)
             }
         }
+        // Set once each, like `items`.
+        voiceNotes = notes
+        voiceReplies = replies
     }
 
     private func finishRun() {

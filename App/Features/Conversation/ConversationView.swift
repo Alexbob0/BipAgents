@@ -118,10 +118,14 @@ private struct ConversationContent: View {
             .padding(.vertical, 12)
         }
         .defaultScrollAnchor(.bottom)
+        // Earlier messages drawn above after opening: the view stays on the latest ones without a nudge.
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentSize.height - geometry.visibleRect.maxY > 300
         } action: { _, away in
-            withAnimation(.snappy) { isAwayFromBottom = away }
+            // Not withAnimation: while the thread settles on opening, that transaction would animate the
+            // scroll too, the messages sliding down into place.
+            isAwayFromBottom = away
         }
         .overlay(alignment: .bottomTrailing) {
             if isAwayFromBottom {
@@ -142,9 +146,11 @@ private struct ConversationContent: View {
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
-        .onChange(of: model.items.last?.id) { _, _ in
-            // A message just sent (or the thread rebuilt): show the end of the conversation.
-            if case .user? = model.items.last?.kind {
+        .animation(.snappy, value: isAwayFromBottom)
+        .onChange(of: model.items.last?.id) { previous, _ in
+            // A message just sent (or the thread rebuilt): show the end of the conversation. Not when the thread
+            // first appears: it opens at the end already.
+            if previous != nil, case .user? = model.items.last?.kind {
                 withAnimation(.snappy) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
             }
         }

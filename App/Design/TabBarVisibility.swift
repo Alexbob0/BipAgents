@@ -38,7 +38,9 @@ private struct TabBarVisibility: UIViewControllerRepresentable {
             super.viewWillAppear(animated)
             let hidden = hidden, page = page
             guard let tabs = page.tabBarController, tabs.isTabBarHidden != hidden else { return }
-            guard let coordinator = page.transitionCoordinator else {
+            // A page that hides the bar is laid out without it from its first frame: hidden along the transition,
+            // the space it frees grew under the page as it slid in, and a thread kept at its bottom slid down.
+            guard !hidden, let coordinator = page.transitionCoordinator else {
                 tabs.setTabBarHidden(hidden, animated: animated)
                 return
             }
