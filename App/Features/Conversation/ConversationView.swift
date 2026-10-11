@@ -58,8 +58,13 @@ private struct ConversationContent: View {
 
     private var palette: AgentPalette { model.agent.appearance.palette }
 
-    /// How many of the latest items are drawn (« Messages précédents » shows more).
-    @State private var visibleCount = 80
+    /// How many of the latest items are drawn (« Messages précédents » shows more). The page opens with the last
+    /// few, then draws the earlier ones above them a batch per frame: laying out 80 messages at once froze the
+    /// opening animation for a third of a second.
+    @State private var visibleCount = Self.firstBatch
+    private static let firstBatch = 16
+    private static let batch = 16
+    private static let pageSize = 80
     /// Scrolled up, away from the latest messages: a button brings the end back.
     @State private var isAwayFromBottom = false
 
@@ -70,7 +75,7 @@ private struct ConversationContent: View {
             // rebuilt after a reconnection), could leave the view scrolled past its content, blank.
             VStack(alignment: .leading, spacing: 12) {
                 if model.items.count > visibleCount {
-                    Button("Messages précédents", systemImage: "arrow.up") { visibleCount += 80 }
+                    Button("Messages précédents", systemImage: "arrow.up") { visibleCount += Self.pageSize }
                         .buttonStyle(.pill(.soft, height: 40))
                         .frame(maxWidth: 240)
                         .frame(maxWidth: .infinity)
@@ -145,6 +150,13 @@ private struct ConversationContent: View {
         }
         .onChange(of: model.isRunning) { _, running in
             if !running { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+        }
+        .task {
+            try? await Task.sleep(for: .milliseconds(350)) // the opening animation first
+            while visibleCount < Self.pageSize, !Task.isCancelled {
+                visibleCount = min(Self.pageSize, visibleCount + Self.batch)
+                try? await Task.sleep(for: .milliseconds(40))
+            }
         }
         // An unsent message survives leaving the conversation (and the app); sending clears it.
         .task {
@@ -516,7 +528,28 @@ struct AssistantRow: View {
         return result
     }
 
+    /// Replies already formatted, by color and text: parsing the markdown and finding links and contacts was redone
+    /// for every reply at every refresh of the thread, freezing it again when the server's copy arrived.
+    private static let formatted = NSCache<NSString, Formatted>()
+
+    private final class Formatted {
+        let text: AttributedString
+        init(_ text: AttributedString) { self.text = text }
+    }
+
     private var markdown: AttributedString {
+        // While streaming, the text changes with every word: not worth keeping.
+        guard !isStreaming else { return format() }
+        let key = "\(appearance.hashValue)|\(text)" as NSString
+        if let cached = Self.formatted.object(forKey: key) {
+            return cached.text
+        }
+        let result = format()
+        Self.formatted.setObject(Formatted(result), forKey: key)
+        return result
+    }
+
+    private func format() -> AttributedString {
         let shown = ChatText.visible(text)
         let source = isStreaming ? shown + " ▍" : shown
         var result = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
@@ -602,12 +635,36 @@ struct MascotAvatar: View {
     var appearance: AgentAppearance
     var size: CGFloat
     var mood: MascotMood = .happy
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        MascotView(appearance: appearance, mood: mood, animated: false)
-            .padding(size * 0.08)
-            .frame(width: size, height: size)
-            .background(appearance.palette.tint, in: .circle)
+        Group {
+            if let image = Self.image(appearance, mood: mood, size: size, colorScheme: colorScheme) {
+                Image(uiImage: image).resizable()
+            } else {
+                MascotView(appearance: appearance, mood: mood, animated: false)
+            }
+        }
+        .padding(size * 0.08)
+        .frame(width: size, height: size)
+        .background(appearance.palette.tint, in: .circle)
+    }
+
+    /// Each Bip drawn once per look, mood and size: a thread lays out one beside every reply, and dozens of vector
+    /// Bips made opening a conversation slow.
+    private static var images: [String: UIImage] = [:]
+
+    private static func image(_ appearance: AgentAppearance, mood: MascotMood, size: CGFloat, colorScheme: ColorScheme) -> UIImage? {
+        let key = "\(appearance.hashValue)|\(mood)|\(size)|\(colorScheme)"
+        if let image = images[key] { return image }
+        let side = size * 0.84
+        let renderer = ImageRenderer(content: MascotView(appearance: appearance, mood: mood, animated: false)
+            .frame(width: side, height: side)
+            .environment(\.colorScheme, colorScheme))
+        renderer.scale = UITraitCollection.current.displayScale
+        guard let image = renderer.uiImage else { return nil }
+        images[key] = image
+        return image
     }
 }
 
