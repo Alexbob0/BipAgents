@@ -10208,6 +10208,160 @@
           }
         }
       }
+    },
+    "Réglages de %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ settings"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen von %@"
+          }
+        }
+      }
+    },
+    "Réglages de l’agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent settings"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes del agente"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent-Einstellungen"
+          }
+        }
+      }
+    },
+    "Apparence, langue et voix" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Look, language and voice"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apariencia, idioma y voz"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aussehen, Sprache und Stimme"
+          }
+        }
+      }
+    },
+    "Retirer de cet iPhone" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove from this iPhone"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar de este iPhone"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von diesem iPhone entfernen"
+          }
+        }
+      }
+    },
+    "Retirer %@ de cet iPhone ?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove %@ from this iPhone?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Quitar a %@ de este iPhone?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ von diesem iPhone entfernen?"
+          }
+        }
+      }
+    },
+    "Seulement de cette app : %@ reste sur le serveur, avec ses conversations. Tu pourras le rajouter avec le QR code." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only from this app: %1$@ stays on the server, with its conversations. You can add it back with the QR code."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo de esta app: %1$@ sigue en el servidor, con sus conversaciones. Podrás volver a añadirlo con el código QR."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur aus dieser App: %1$@ bleibt mit seinen Gesprächen auf dem Server. Du kannst ihn mit dem QR-Code wieder hinzufügen."
+          }
+        }
+      }
+    },
+    "%@ a été installé à la main sur le serveur : sa personnalité et ses outils se règlent là-bas." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ was set up by hand on the server: its personality and tools are set there."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ se instaló a mano en el servidor: su personalidad y sus herramientas se ajustan allí."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde von Hand auf dem Server eingerichtet: Persönlichkeit und Werkzeuge werden dort eingestellt."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

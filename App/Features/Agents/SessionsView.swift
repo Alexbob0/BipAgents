@@ -16,10 +16,6 @@ struct SessionsView: View {
     @State private var reachedEnd = true
     @State private var isLoadingMore = false
     @State private var showsAllTasks = false
-    /// Its personality and tools, when its bridge created it (nil for an agent set up by hand).
-    @State private var settings: BridgeClient.AgentSettings?
-    /// Its desktop, when one is running (its own browser, live).
-    @State private var desktop: BridgeClient.Desktop?
 
     private var palette: AgentPalette { agent.appearance.palette }
 
@@ -41,49 +37,6 @@ struct SessionsView: View {
                         PinnedThreadRow(session: botChat, preview: store.latestSession[agent.id]?.id == botChat.id
                                             ? store.latestSession[agent.id]?.lastMessagePreview : nil,
                                         palette: palette)
-                    }
-                }
-            }
-            Section {
-                NavigationLink {
-                    RoutinesView(agent: agent)
-                } label: {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Routines").font(Theme.body(16, weight: .heavy))
-                            Text("Ce que \(agent.name) fait tout seul, et quand")
-                                .font(Theme.body(13)).foregroundStyle(Theme.ink2)
-                        }
-                    } icon: {
-                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(palette.deep)
-                    }
-                }
-                if let desktop {
-                    NavigationLink {
-                        DesktopView(agent: agent, desktop: desktop)
-                    } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Bureau").font(Theme.body(16, weight: .heavy))
-                                Text("Son navigateur, en direct").font(Theme.body(13)).foregroundStyle(Theme.ink2)
-                            }
-                        } icon: {
-                            Image(systemName: "macwindow").foregroundStyle(palette.deep)
-                        }
-                    }
-                }
-                if let settings {
-                    NavigationLink {
-                        AgentSettingsView(agent: agent, settings: settings)
-                    } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Personnalité et outils").font(Theme.body(16, weight: .heavy))
-                                Text("Qui est \(agent.name), ce qu’il peut faire").font(Theme.body(13)).foregroundStyle(Theme.ink2)
-                            }
-                        } icon: {
-                            Image(systemName: "slider.horizontal.3").foregroundStyle(palette.deep)
-                        }
                     }
                 }
             }
@@ -114,8 +67,15 @@ struct SessionsView: View {
         .tabBarHidden(false)
         .refreshable { await load() }
         .task { await load() }
-        .task { await loadSettings() }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    AgentOptionsView(agent: agent)
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("Réglages de l’agent")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: AgentRoute.conversation(agent, sessionID: nil)) {
                     Image(systemName: "square.and.pencil")
@@ -200,13 +160,6 @@ struct SessionsView: View {
         }
     }
 
-    private func loadSettings() async {
-        guard let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent)) else { return }
-        if let found = try? await withTimeout(8, { try await bridge.agentSettings(agent.bridgeName) }) {
-            settings = found
-        }
-        desktop = try? await withTimeout(8, { try await bridge.desktop(of: agent.bridgeName) }) ?? nil
-    }
 
     private func loadMore() async {
         guard !reachedEnd, !isLoadingMore, let client = store.client(for: agent) else { return }

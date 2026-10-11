@@ -4,7 +4,6 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AgentStore.self) private var store
     @State private var isAddingAgent = false
-    @State private var editing: AgentProfile?
     @AppStorage(VoiceReplyPolicy.storageKey) private var voiceReplyPolicy = VoiceReplyPolicy.smart
     @AppStorage(BipBabble.enabledKey) private var bipSounds = true
 
@@ -18,7 +17,7 @@ struct SettingsView: View {
             List {
                 Section("Agents") {
                     ForEach(store.agents) { agent in
-                        Button { editing = agent } label: {
+                        NavigationLink { AgentOptionsView(agent: agent) } label: {
                             HStack(spacing: 12) {
                                 MascotAvatar(appearance: agent.appearance, size: 40)
                                 VStack(alignment: .leading, spacing: 1) {
@@ -84,7 +83,6 @@ struct SettingsView: View {
         .background(Theme.background)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $isAddingAgent) { AddAgentFlow() }
-        .sheet(item: $editing) { agent in EditAgentStyleView(agent: agent) }
     }
 }
 
