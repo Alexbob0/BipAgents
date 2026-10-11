@@ -46,8 +46,9 @@ def patches() -> List[Path]:
 
 
 def applied_now() -> List[Path]:
-    """Our patches the Hermes code has right now."""
-    return [p for p in patches() if git("apply", "--reverse", "--check", str(p)).returncode == 0]
+    """Our patches the Hermes code has right now (in whichever version fits it)."""
+    return [v for p in patches() for v in hermes.patch_variants(p)
+            if git("apply", "--reverse", "--check", str(v)).returncode == 0]
 
 
 def channel(out: str) -> str:
@@ -67,8 +68,9 @@ def preflight(branch: str, wanted: List[Path]) -> Tuple[str, Dict[str, bool]]:
     folder = Path(tempfile.mkdtemp(prefix="bipagents-hermes-"))
     try:
         git("worktree", "add", "--detach", "--force", str(folder / "copy"), f"origin/{branch}", check=True)
-        result = {p.name: subprocess.run(["git", "-C", str(folder / "copy"), "apply", "--check", str(p)],
-                                         capture_output=True).returncode == 0 for p in wanted}
+        result = {p.name: any(subprocess.run(["git", "-C", str(folder / "copy"), "apply", "--check", str(v)],
+                                             capture_output=True).returncode == 0 for v in hermes.patch_variants(p))
+                  for p in wanted}
     finally:
         git("worktree", "remove", "--force", str(folder / "copy"))
         shutil.rmtree(folder, ignore_errors=True)
@@ -162,13 +164,13 @@ def recorded_patches() -> Optional[List[str]]:
         return None
 
 
-def remember_patches(names: List[str]) -> None:
+def remember_patches(paths: List[str]) -> None:
     record = Path.home() / ".config" / "bipagents" / RECORD
     try:
         data = json.loads(record.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return
-    data["patched"] = [str(PATCHES / n) for n in names]
+    data["patched"] = list(paths)   # the files applied, so an uninstall takes off exactly those
     record.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
@@ -191,7 +193,8 @@ def main(argv: List[str]) -> int:
     mine = applied_now()
     chosen = recorded_patches()
     # A Hermes that came with BipAgents gets every patch; one the person had before, those they chose.
-    wanted = [p for p in patches() if chosen is None or str(p) in chosen or p in mine]
+    chosen_names = {Path(c).name for c in chosen} if chosen is not None else set()
+    wanted = [p for p in patches() if chosen is None or p.name in chosen_names or p.name in {m.name for m in mine}]
     out = subprocess.run([hermes.hermes_bin(), "update", "--check"], capture_output=True, text=True).stdout
     branch = channel(out)
     late = behind(out)
@@ -232,12 +235,14 @@ def main(argv: List[str]) -> int:
     skipped = hermes.apply_patches(runner, PATCHES, applied=applied) if chosen is None else []
     if chosen is not None:   # only those the person chose on their own Hermes
         for patch in wanted:
-            if git("apply", "--check", str(patch)).returncode == 0:
-                runner.run(["git", "-C", str(hermes.hermes_checkout()), "apply", str(patch)])
-                applied.append(str(patch))
-            else:
+            fit = next((v for v in hermes.patch_variants(patch) if git("apply", "--check", str(v)).returncode == 0),
+                       None)
+            if fit is None:
                 skipped.append(patch.name)
-        remember_patches([Path(p).name for p in applied])
+                continue
+            runner.run(["git", "-C", str(hermes.hermes_checkout()), "apply", str(fit)])
+            applied.append(str(fit))
+        remember_patches(applied)
     after = git("rev-parse", "--short=9", "HEAD").stdout.strip()
     say(ui.done(f"Hermes {before} → {after}."))
     if skipped:

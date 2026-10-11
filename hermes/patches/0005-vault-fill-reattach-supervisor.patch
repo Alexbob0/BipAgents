@@ -31,8 +31,8 @@ index f41e4d12d7..6faa220d66 100644
 +        try:
 +            return SUPERVISOR_REGISTRY.get_or_start(task_id=task_id, cdp_url=_get_cdp_override(),
 +                                                    dialog_policy=policy, dialog_timeout_s=timeout_s)
-+        except Exception as exc:
-+            logger.debug("vault fill: supervisor attach to the configured browser failed (%s)", exc)
++        except Exception:   # any failure to attach means no supervisor: the fill then refuses, never via argv
++            logger.debug("vault fill: supervisor attach to the configured browser failed", exc_info=True)
 +            return None
 +
      res = _run_browser_command(_last_session_key(task_id), "get", ["cdp-url"])

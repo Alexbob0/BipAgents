@@ -11,6 +11,15 @@ until equivalent changes land upstream.
 
 Numbers 0002 and 0003 are not published yet.
 
+**`next/`: the same patches for a newer Hermes.** People update Hermes whenever they want
+(`install.sh hermes-update`). When a patch no longer applies there, the installer tries its version in `next/`,
+rebased on upstream `main` at `97a9ae8ee` (2026-10-11): 0001 and 0004 (0005 applies as is). Same behaviour and
+wire contract as the base patches; refreshed when upstream moves past them.
+
+**Upstream.** 0005 is proposed as NousResearch/hermes-agent#136660. 0001 is offered to the open #116259 (branch
+`Alexbob0:feat/runs-api-clarify`, rebased on `97a9ae8ee`, 80 tests passing) rather than as a competing PR. 0004 is
+NousResearch/hermes-agent#136217, where the maintainer asks to choose between it and #133281.
+
 | Patch | On `517b5e10f` | On upstream `main` (`a62979dc36`) |
 |---|---|---|
 | 0001 api_server clarify | applies | **does not apply as is**: context conflict in `gateway/platforms/api_server_runs.py` (upstream switched `"web.Request"` annotations to `web.Request`); `git apply --3way` applies `api_server.py` cleanly and only needs that conflict resolved. Upstream has no clarify support in the Runs API yet. |
@@ -91,4 +100,4 @@ configured browser nothing changes.
 **Files.** `tools/browser_vault_tool.py`.
 
 **Tests.** Checked end to end against a live gateway: in one conversation, a fill, the browser closed, then started
-again and a second fill.
+again and a second fill. Proposed upstream with three tests: NousResearch/hermes-agent#136660.

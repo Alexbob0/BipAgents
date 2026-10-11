@@ -1,0 +1,312 @@
+diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
+index 8045b00317..194b99e0f8 100644
+--- a/gateway/platforms/api_server.py
++++ b/gateway/platforms/api_server.py
+@@ -67,7 +67,7 @@ _BROWSER_CONTROL_PROTOCOL_VERSION = 1
+ # /v1/capabilities static feature flags (order is part of the JSON shape).
+ _STATIC_FEATURE_FLAGS = {
+     "run_status": True, "run_events_sse": True, "run_stop": True, "run_steer": True,
+-    "run_approval_response": True, "tool_progress_events": True, "approval_events": True,
++    "run_approval_response": True, "run_clarify": True, "tool_progress_events": True, "approval_events": True,
+     "session_resources": True, "model_options": True, "session_chat": True,
+     "session_chat_streaming": True, "session_fork": True, "session_model_lock": True,
+     "reasoning_streaming": True,
+@@ -83,7 +83,7 @@ _CAPABILITY_ENDPOINTS = (
+     ("responses", ("POST", "/v1/responses")), ("runs", ("POST", "/v1/runs")),
+     ("run_status", ("GET", "/v1/runs/{run_id}")),
+     ("run_events", ("GET", "/v1/runs/{run_id}/events")),
+-    ("run_approval", ("POST", "/v1/runs/{run_id}/approval")),
++    ("run_approval", ("POST", "/v1/runs/{run_id}/approval")), ("run_clarify", ("POST", "/v1/runs/{run_id}/clarify")),
+     ("run_steer", ("POST", "/v1/runs/{run_id}/steer")),
+     ("run_stop", ("POST", "/v1/runs/{run_id}/stop")), ("skills", ("GET", "/v1/skills")),
+     ("toolsets", ("GET", "/v1/toolsets")), ("sessions", ("GET", "/api/sessions")),
+@@ -1339,11 +1339,10 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+ 
+     def _active_structured_run_count(self) -> int:
+         """Count structured runs that still have executable work."""
+-        # "stopping" is not terminal: executor work continues until the agent notices.
+         return sum(
+             1
+             for status in self._run_statuses.values()
+-            if status.get("status") in {"queued", "running", "waiting_for_approval", "stopping"}
++            if status.get("status") in _api_runs.ACTIVE_RUN_STATUSES
+         )
+ 
+     @staticmethod
+@@ -4407,6 +4406,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+     _handle_get_run = _run_route_delegate("_handle_get_run")
+     _handle_run_events = _run_route_delegate("_handle_run_events")
+     _handle_run_approval = _run_route_delegate("_handle_run_approval")
++    _handle_run_clarify = _run_route_delegate("_handle_run_clarify")
+     _handle_steer_run = _run_route_delegate("_handle_steer_run")
+     _handle_stop_run = _run_route_delegate("_handle_stop_run")
+ 
+diff --git a/gateway/platforms/api_server_runs.py b/gateway/platforms/api_server_runs.py
+index bfb5b4dbee..05085a530f 100644
+--- a/gateway/platforms/api_server_runs.py
++++ b/gateway/platforms/api_server_runs.py
+@@ -27,6 +27,11 @@ except ImportError:
+ from gateway.platforms.api_server_room_grants import _json_error, _room_grant_error_response
+ from gateway.platforms.api_server_run_idempotency import TERMINAL_STATUSES
+ 
++# Run parked on a ``clarify`` question (``_make_clarify_callback``); the twin of "waiting_for_approval".
++CLARIFY_WAITING_STATUS = "waiting_for_input"
++# Statuses whose executor work is still live ("stopping" is not terminal: the agent has yet to notice).
++ACTIVE_RUN_STATUSES = frozenset({"queued", "running", "waiting_for_approval", CLARIFY_WAITING_STATUS, "stopping"})
++
+ 
+ logger = logging.getLogger("gateway.platforms.api_server")
+ 
+@@ -224,6 +229,9 @@ def _initialize_run_state(self, *, store_factory) -> None:
+     self._run_idempotency_ids: set[str] = set()
+     self._stopping_run_ids: set[str] = set()
+     self._shutdown_interrupted_run_ids: set[str] = set()
++    # run_id -> {request_id -> {"ids": {question_id: clarify_id}, "answered", "cancelled"}} (clarify core
++    # resolves by clarify_id, clients by run_id + request_id — same split as approvals).
++    self._run_clarify_requests: dict[str, dict[str, dict[str, Any]]] = {}
+     self._run_shutdown_requested_at: Optional[float] = None
+     (
+         self._run_owners, self._run_streams, self._run_streams_created, self._active_run_agents,
+@@ -236,6 +244,7 @@ def _http_routes(self) -> list[tuple[str, str, Any]]:
+         ("POST", "/v1/runs", self._handle_runs), ("GET", "/v1/runs/{run_id}", self._handle_get_run),
+         ("GET", "/v1/runs/{run_id}/events", self._handle_run_events),
+         ("POST", "/v1/runs/{run_id}/approval", self._handle_run_approval),
++        ("POST", "/v1/runs/{run_id}/clarify", self._handle_run_clarify),
+         ("POST", "/v1/runs/{run_id}/steer", self._handle_steer_run),
+         ("POST", "/v1/runs/{run_id}/stop", self._handle_stop_run)]
+ 
+@@ -269,6 +278,8 @@ def _set_run_status(self, run_id: str, status: str, **fields: Any) -> dict[str,
+         current.setdefault("shutdown_requested_at", shutdown_requested_at)
+     if status != "waiting_for_approval":
+         current.pop("approval", None)
++    if status != CLARIFY_WAITING_STATUS:
++        current.pop("clarify", None)
+     self._run_statuses[run_id] = current
+     should_persist = (
+         status != previous_status
+@@ -523,7 +534,7 @@ def _forget_run(self, run_id: str, *tables) -> None:
+ def _retire_live_run(self, run_id: str) -> None:
+     """Retire agent/task/approval control state once the executor-backed task is done."""
+     _forget_run(self, run_id, self._active_run_agents, self._active_run_tasks, self._run_approval_sessions,
+-                self._stopping_run_ids, self._shutdown_interrupted_run_ids)
++                self._stopping_run_ids, self._shutdown_interrupted_run_ids, self._run_clarify_requests)
+ 
+ 
+ def _drop_run_transport(self, run_id: str) -> None:
+@@ -912,6 +923,102 @@ async def _execute_run_via_live_owner(self, run: _RunLaunch, home, record: dict[
+         _retire_live_run(self, run_id)
+ 
+ 
++def _register_clarify_questions(questions, request_id: str, session_key: str, redact) -> tuple[
++        dict[str, str], list[dict[str, Any]]]:
++    """Register each question in ``tools.clarify_gateway`` as ``<request_id>:<qid>``; returns
++    ``({qid: clarify_id}, wire questions)``. The wire carries bare labels: "(Recommended)" is
++    presentation, and clients render choice 0 first."""
++    from tools import clarify_gateway as clarify_mod
++    from tools.clarify_tool import strip_recommended
++    ids: dict[str, str] = {}
++    wire_questions: list[dict[str, Any]] = []
++    for index, entry in enumerate(questions or []):
++        qid = str(entry.get("qid") or f"q{index}")
++        question = str(entry.get("question") or "")
++        bare = [strip_recommended(str(c)) for c in (entry.get("choices_offered") or entry.get("choices") or [])]
++        multi_select = bool(entry.get("multi_select"))
++        ids[qid] = f"{request_id}:{qid}"
++        clarify_mod.register(ids[qid], session_key, question, bare or None, multi_select)
++        wire_questions.append({
++            "id": qid, "question": redact(question, force=True), "choices": [redact(c, force=True) for c in bare],
++            "multi_select": multi_select, "allow_other": True})
++    return ids, wire_questions
++
++
++def _clarify_cancel_reason(self, run_id: str, state: dict[str, Any], response: Optional[str]) -> Optional[str]:
++    """Why a clarify wait ended without an answer (``None`` when ``response`` is an answer)."""
++    from tools import clarify_gateway as clarify_mod
++    if response not in (None, "", clarify_mod.CANCELLED):
++        return None
++    if run_id in self._stopping_run_ids:
++        return "stopped"
++    if state["cancelled"]:
++        return "cancelled"
++    return "timeout" if response is None else "stopped"
++
++
++def _make_clarify_callback(self, run: _RunLaunch, *, _api_server) -> Callable[[list], dict]:
++    """``clarify`` bridge for ``/v1/runs`` (the approval bridge's twin), honouring
++    ``tools.clarify_tool``'s ``callback(questions) -> {"answers", "outcome", "notice"?}`` contract:
++    emit ``clarify.request``, park the run as ``waiting_for_input`` and block the agent thread until
++    ``POST /v1/runs/{id}/clarify`` answers or dismisses it, the run is stopped, or
++    ``agent.clarify_timeout`` elapses."""
++    run_id, loop = run.run_id, asyncio.get_running_loop()
++
++    def _clarify(questions) -> dict:
++        from tools import clarify_gateway as clarify_mod
++        request_id = f"clr_{uuid.uuid4().hex[:12]}"
++        ids, wire_questions = _register_clarify_questions(
++            questions, request_id, run.approval_session_key, _api_server.redact_sensitive_text)
++        state: dict[str, Any] = {"ids": ids, "answered": False, "cancelled": False}
++        self._run_clarify_requests.setdefault(run_id, {})[request_id] = state
++        event = _run_event(
++            run_id, "clarify.request", type="clarify.request", request_id=request_id, questions=wire_questions)
++        self._set_run_status(run_id, CLARIFY_WAITING_STATUS, last_event="clarify.request", clarify=event)
++        with suppress(RuntimeError):  # loop already closed (gateway shutdown)
++            loop.call_soon_threadsafe(run.put_event, event)
++        timeout = float(clarify_mod.get_clarify_timeout())
++        deadline = None if timeout <= 0 else time.monotonic() + timeout
++        reply: dict[str, Any] = {"answers": {}, "outcome": "submitted"}
++        reason: Optional[str] = None
++        try:
++            for qid, clarify_id in ids.items():
++                # wait_for_response treats <= 0 as unlimited, so a spent deadline still waits a tick.
++                remaining = 0.0 if deadline is None else max(deadline - time.monotonic(), 0.01)
++                response = clarify_mod.wait_for_response(clarify_id, remaining)
++                reason = _clarify_cancel_reason(self, run_id, state, response)
++                if reason is not None:
++                    break
++                reply["answers"][qid] = None if response == clarify_mod.SKIPPED else response
++        finally:
++            # The resolved request stays (flagged) until the run retires, so a repeated POST gets 409, not 404.
++            state["cancelled" if reason is not None else "answered"] = True
++            if self._run_statuses.get(run_id, {}).get("status") == CLARIFY_WAITING_STATUS:
++                self._set_run_status(
++                    run_id, "running", last_event="clarify.cancelled" if reason is not None else "clarify.responded")
++        if reason is None:
++            return reply
++        clarify_mod.clear_session(run.approval_session_key)  # questions of the batch not yet waited on
++        with suppress(RuntimeError):
++            loop.call_soon_threadsafe(run.put_event, _run_event(
++                run_id, "clarify.cancelled", type="clarify.cancelled", request_id=request_id, reason=reason))
++        if reason == "timeout":
++            return {**reply, "outcome": "timed_out",
++                    "notice": f"The user did not answer within {int(timeout // 60) or 1} minutes."}
++        return {**reply, "outcome": "cancelled", "notice": "The run was stopped." if reason == "stopped"
++                else "The user dismissed the question without answering."}
++
++    return _clarify
++
++
++def _cancel_run_clarify(self, run_id: str, session_key: Optional[str]) -> None:
++    """Release a run's blocked clarify waiter and forget its requests (finish/sweep); idempotent."""
++    from tools import clarify_gateway as clarify_mod
++    if session_key:
++        clarify_mod.clear_session(session_key)
++    self._run_clarify_requests.pop(run_id, None)
++
++
+ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
+     """Drive one admitted run, publish its terminal event/status, release live state."""
+     _redact_api_error_text = _api_server._redact_api_error_text
+@@ -962,6 +1069,10 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
+                 stream_delta_callback=_text_cb, tool_progress_callback=self._make_run_event_callback(run_id, loop),
+                 interim_assistant_callback=_interim_cb, **run.agent_kwargs)
+         self._active_run_agents[run_id] = agent
++        # Without a callback the clarify tool answers "not available in this execution context". Hosted-room
++        # runs keep that: a room peer has no clarify relay and only API-key callers may answer.
++        if run.agent_kwargs.get("room_dispatch") is None:
++            agent.clarify_callback = _make_clarify_callback(self, run, _api_server=_api_server)
+         approval_notify = _make_approval_notify(self, run, _api_server=_api_server)
+         result, usage, served_runtime = await _submit_api_worker(
+             loop, lambda: _run_agent_sync(self, run, agent, approval_notify, _api_server=_api_server))
+@@ -998,6 +1109,7 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
+         # On cancellation (/stop) the executor thread may still block on an approval
+         # Event; unregistering releases it. Idempotent on normal completion.
+         _unregister_approval_notify(run.approval_session_key)
++        _cancel_run_clarify(self, run_id, run.approval_session_key)
+         with suppress(Exception):
+             loop.call_soon(run.put_event, None)  # close after the queued events
+         _retire_live_run(self, run_id)
+@@ -1216,6 +1328,75 @@ async def _handle_run_approval(self, request: web.Request, *, _api_server) -> we
+         "resolved": resolved})
+ 
+ 
++def _clarify_answer_text(value: Any) -> tuple[str, Any]:
++    """``(text handed to the agent, value echoed on the wire)`` for one answer: ``null`` or blank skips
++    the question, a list is a multi-select pick (JSON array string, decoded by ``tools.clarify_tool``)."""
++    from tools import clarify_gateway as clarify_mod
++    if isinstance(value, list):
++        items = [str(v).strip() for v in value if str(v).strip()]
++        return (json.dumps(items, ensure_ascii=False), items) if items else (clarify_mod.SKIPPED, None)
++    text = "" if value is None else str(value).strip()
++    return (text, text) if text else (clarify_mod.SKIPPED, None)
++
++
++async def _handle_run_clarify(self, request: web.Request, *, _api_server) -> web.Response:
++    """POST /v1/runs/{run_id}/clarify — answer (``{"request_id", "answers": {qid: text|[texts]|null}}``,
++    null = skip that question) or dismiss (``{"request_id", "cancel": true}``) a pending clarify."""
++    _openai_error = _api_server._openai_error
++    run_id, _, _, _, err = _load_owned_run(
++        self, request, _api_server=_api_server, permission=None, active_fallback=False)
++    if err is not None:
++        return err
++    body, err = await self._read_json_body(request)
++    if err:
++        return err
++    pending = self._run_clarify_requests.get(run_id) or {}
++    raw_request_id = body.get("request_id")
++    request_id = raw_request_id.strip() if isinstance(raw_request_id, str) else ""
++    if not request_id and len(pending) == 1:
++        request_id = next(iter(pending))
++    state = pending.get(request_id)
++    if state is None:
++        return _json_error(
++            _openai_error, f"Run has no pending clarify request{' ' + request_id if request_id else ''}: {run_id}",
++            code="clarify_not_pending", status=404)
++    if state["answered"] or state["cancelled"]:
++        return _json_error(
++            _openai_error, f"Clarify request already resolved: {request_id}", code="clarify_already_resolved",
++            status=409)
++    from tools import clarify_gateway as clarify_mod
++    if _api_server._coerce_request_bool(body.get("cancel"), default=False):
++        state["cancelled"] = True
++        resolved = sum(clarify_mod.resolve_gateway_clarify(cid, clarify_mod.CANCELLED) for cid in state["ids"].values())
++        return web.json_response({
++            "object": "hermes.run.clarify_response", "run_id": run_id, "request_id": request_id,
++            "cancelled": True, "resolved": resolved})
++    answers = body.get("answers")
++    if not isinstance(answers, dict):
++        return _json_error(
++            _openai_error, "Missing 'answers' object ({question_id: answer}) or 'cancel': true.",
++            code="invalid_clarify_answers", status=400)
++    missing = [qid for qid in state["ids"] if qid not in answers]
++    if missing:
++        return _json_error(
++            _openai_error, f"Missing answer for question '{missing[0]}' (use null to skip it).",
++            code="clarify_answers_incomplete", status=400)
++    texts = {qid: _clarify_answer_text(answers[qid]) for qid in state["ids"]}
++    state["answered"] = True
++    resolved = sum(clarify_mod.resolve_gateway_clarify(cid, texts[qid][0]) for qid, cid in state["ids"].items())
++    if resolved <= 0:
++        state["answered"] = False
++        return _json_error(
++            _openai_error, f"Clarify request expired or already resolved: {request_id}",
++            code="clarify_already_resolved", status=409)
++    wire_answers = {qid: wire for qid, (_, wire) in texts.items()}
++    _mark_run_event(self, run_id, "clarify.responded", type="clarify.responded", request_id=request_id,
++                    answers=wire_answers)
++    return web.json_response({
++        "object": "hermes.run.clarify_response", "run_id": run_id, "request_id": request_id,
++        "resolved": resolved, "answers": wire_answers})
++
++
+ async def _handle_steer_run(self, request: web.Request, *, _api_server) -> web.Response:
+     """POST /v1/runs/{run_id}/steer — inject guidance into a running agent."""
+     _openai_error = _api_server._openai_error
+@@ -1265,6 +1446,10 @@ async def _handle_stop_run(self, request: web.Request, *, _api_server) -> web.Re
+             code="run_not_active", status=409)
+     self._set_run_status(run_id, "stopping", last_event="run.stopping")
+     self._stopping_run_ids.add(run_id)
++    # A clarify waiter blocks on a threading.Event the hard interrupt cannot reach: release it
++    # (the callback then emits ``clarify.cancelled`` with reason "stopped").
++    from tools import clarify_gateway as clarify_mod
++    clarify_mod.clear_session(self._run_approval_sessions.get(run_id) or run_id)
+     if agent is not None:
+         with suppress(Exception):
+             _api_server.request_hard_interrupt(agent, "Stop requested via API")
+@@ -1295,6 +1480,7 @@ def _sweep_orphaned_runs_once(self, now: Optional[float] = None) -> None:
+         _drop_run_transport(self, run_id)
+         if task is None or task.done():
+             _unregister_approval_notify(self._run_approval_sessions.get(run_id))
++            _cancel_run_clarify(self, run_id, self._run_approval_sessions.get(run_id))
+             _retire_live_run(self, run_id)
+     for run_id, status in list(self._run_statuses.items()):
+         if (status.get("status") in {"completed", "failed", "cancelled"}
