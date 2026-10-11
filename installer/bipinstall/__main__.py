@@ -16,7 +16,7 @@ from typing import List, Optional
 import httpx
 import yaml
 
-from . import hermes, models
+from . import hermes, models, ui
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
@@ -36,7 +36,7 @@ def say(text: str = "") -> None:
 def ask(question: str, default: str = "") -> str:
     shown = f" [{default}]" if default else ""
     try:
-        answer = input(f"{question}{shown} : ").strip()
+        answer = input(f"{ui.question(question)}{shown} : ").strip()
     except EOFError:  # no one to answer (answers given in advance ran out): stop rather than ask forever
         say("\nPas de réponse : installation interrompue, rien d'autre n'a été modifié.")
         raise SystemExit(1)
@@ -92,10 +92,11 @@ def verify(model: hermes.Model) -> hermes.Model:
     say(f"Je teste {model.name}…")
     result = asyncio.run(models.check(model.base_url or "", model.name, model.api_key))
     if not result.ok:
-        say(f"Le modèle ne répond pas ({result.error}). Vérifie l'adresse, la clé ou le nom, puis relance.")
+        say(ui.sad(f"Le modèle ne répond pas ({result.error})."))
+        say("Vérifie l'adresse, la clé ou le nom, puis relance.")
         sys.exit(1)
     model.vision = bool(result.vision)
-    say(f"OK en {result.seconds:.1f} s. {'Il lit les images : les photos lui seront envoyées telles quelles.' if model.vision else 'Il ne lit pas les images : Hermes les lui décrira.'}")
+    say(ui.done(f"Il répond en {result.seconds:.1f} s.") + f" {'Il lit les images : les photos lui seront envoyées telles quelles.' if model.vision else 'Il ne lit pas les images : Hermes les lui décrira.'}")
     return model
 
 
@@ -186,8 +187,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         argv = sys.argv[1:]
     if argv and argv[0] == "uninstall":
         return uninstall_main(argv[1:])
+    if argv and argv[0] == "famille":
+        from .family import main as family_main
+        return family_main(argv[1:])
     parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
-                                     "(`bipinstall uninstall` removes it)")
+                                     "(`bipinstall uninstall` removes it; `bipinstall famille ajouter <nom>` prepares a "
+                                     "family member's install on this server)")
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
     parser.add_argument("--relay-url", help="the administrator's bridge, to send notifications without an APNs key")
     parser.add_argument("--relay-key", help="this install's relay key (given by the administrator)")
@@ -199,30 +204,31 @@ def main(argv: Optional[List[str]] = None) -> int:
     runner = hermes.Runner(dry=args.dry_run)
 
     machine = detect()
-    say(f"BipAgents — installation pour {os.environ.get('USER', 'ce compte')}")
-    say(f"Machine : {machine.summary}")
+    say(ui.banner(os.environ.get("USER", ""), machine.summary))
     if args.no_tailscale:
         machine.tailnet_name = None
     elif not machine.tailnet_name:
-        say("Tailscale n'est pas connecté : installe-le et connecte-toi (https://tailscale.com/download), puis relance.")
+        say(ui.sad("Tailscale n'est pas connecté."))
+        say("Installe-le et connecte-toi (https://tailscale.com/download), puis relance.")
         if not args.dry_run:
             return 1
     model, model_here = pick_model(machine)
     plan = make_plan(machine, model_here)
     ports = pick_block(wanted=args.ports)
-    say(f"\nProfil {plan.profile} : environ {plan.memory_gib(1):.1f} Go pour toi, {plan.people} personne(s) au total sur cette machine.")
-    for note in plan.notes:
-        say(f"  · {note}")
+    say(f"\n{ui.BOLD}Profil {plan.profile}{ui.RESET} : environ {plan.memory_gib(1):.1f} Go pour toi, "
+        f"{plan.people} personne(s) au total sur cette machine.")
+    for line in plan.notes:
+        say(ui.note(line))
     sandbox = hermes.sandbox_runtime()
     if sandbox:
-        say(f"  · Bac à sable : les outils des agents tournent dans un conteneur ({Path(sandbox).name}).")
+        say(ui.note(f"Bac à sable : les outils des agents tournent dans un conteneur ({Path(sandbox).name})."))
     elif machine.system == "linux":
         say("  · Pas de bac à sable : tes agents n'auront ni terminal ni accès aux fichiers par défaut, et pas de coffre.\n"
             "    Pour les deux, fais installer podman une fois (sudo apt install podman, ou dnf), puis relance.")
     else:
         say("  · Sur Mac, pas encore de bac à sable : tes agents n'auront ni terminal ni accès aux fichiers par défaut,\n"
             "    et pas de coffre de mots de passe.")
-    say(f"Ports {ports.base}–{ports.base + 9} : agents {ports.hermes}, bridge {ports.bridge}, réseau local {ports.lan}.")
+    say(ui.note(f"Ports {ports.base}–{ports.base + 9} : agents {ports.hermes}, bridge {ports.bridge}, réseau local {ports.lan}."))
     chosen = pick_agents()
     if ask("\nOn y va ? (o/n)", "o").lower() not in ("o", "oui", "y", "yes"):
         return 1
@@ -230,7 +236,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     inst = Install(repo=REPO, home=Path.home(), ports=ports, tailnet_name=machine.tailnet_name,
                    lan_address=(machine.lan_addresses or [None])[0], model=model,
                    relay_url=args.relay_url, relay_key=args.relay_key, isolated=bool(sandbox))
-    say("\n1/5 Hermes…")
+    say(ui.step(1, 5, "Hermes, le cerveau des agents"))
     hermes.install(runner, browser=plan.browser != "none")
     skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches")
     if skipped:
@@ -256,7 +262,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         write(path, content, runner)
         start_service(machine.system, label, path, runner)
 
-    say("2/5 Voix des Bips…")
+    say(ui.done("Hermes et tes agents sont en place."))
+    say(ui.step(2, 5, "Les voix des Bips"))
     if pocket_running():
         say("  déjà en place sur cette machine : je la partage.")
     else:
@@ -268,14 +275,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     if machine.system == "macos":
         say("  macOS peut demander si Python peut accéder aux appareils du réseau local : accepte, sinon les agents\n"
             "  et le bridge ne joindront pas un modèle installé sur une autre machine de la maison.")
-    say("3/5 Bridge…")
+    say(ui.step(3, 5, "Le bridge, qui relie l'app à tes agents"))
     venv(REPO / "bridge", runner)
     write(inst.bridge_config, bridge_toml(inst), runner, mode=0o600)
     label, path, content = bridge_service(inst, machine.system)
     write(path, content, runner)
     start_service(machine.system, label, path, runner)
 
-    say("4/5 Tailscale…")
+    say(ui.done("Bridge démarré."))
+    say(ui.step(4, 5, "Tailscale, pour joindre tes agents de partout"))
     commands = [] if args.no_tailscale else None
     if commands is None:
         commands = tailscale_commands(machine.tailscale or "tailscale", ports, desk=plan.browser == "permanent")
@@ -290,7 +298,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         for command in commands:
             say(f"    sudo {command}")
 
-    say("5/5 Vérifications…")
+    say(ui.step(5, 5, "Vérifications"))
     if not runner.dry:
         hub = f"http://127.0.0.1:{ports.hermes}"
         for agent in inst.agents:
@@ -306,9 +314,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         say(re.sub(r'(_key = )"[^"]*"', r'\1"<clé>"', bridge_toml(inst)))
         return 0
     if args.no_tailscale:
-        say("\nC'est prêt, sur cette machine seulement (sans Tailscale, l'app ne peut pas encore la joindre).")
+        say(ui.finale("C'est prêt, sur cette machine seulement."))
+        say("Sans Tailscale, l'app ne peut pas encore la joindre.")
         return 0
-    say("\nC'est prêt. Scanne ce code dans l'app BipAgents (Ajouter un agent › Scanner le QR code) :")
+    say(ui.finale("C'est prêt ! Scanne ce code dans l'app."))
+    say("Dans l'app BipAgents : « + » › Scanner le QR code.")
     subprocess.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "qr", "--config",
                     str(inst.bridge_config)], cwd=REPO / "bridge", check=False)
     return 0

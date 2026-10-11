@@ -211,3 +211,29 @@ async def _async_value(value):
 
 def _async(value):
     return _async_value(value)
+
+
+def test_family_member_gets_a_relay_key_and_a_block_of_ports(tmp_path):
+    from bipinstall import family
+
+    config = tmp_path / "bridge.toml"
+    config.write_text('bridge_key = "k"\npublic_url = "https://box.ts.net:8643"\n\n[apns]\nteam_id = "T"\n')
+    result = family.add("Léa", str(config), is_free=lambda port: True)
+    assert result["member"] == "lea" and result["relay_url"] == "https://box.ts.net:8643"
+    assert result["ports"].base == 9200                     # never 8640: the administrator's own block
+    assert 'clients_file = "' in config.read_text() and "[relay]" in config.read_text()
+    clients = tmp_path / "relay-clients"
+    assert clients.read_text() == f"lea {result['key']}\n" and oct(clients.stat().st_mode & 0o777) == "0o600"
+    second = family.add("Chloé", str(config), is_free=lambda port: True)
+    assert second["ports"].base == 9210                     # reserved blocks are not handed out twice
+    with pytest.raises(SystemExit):
+        family.add("Léa", str(config), is_free=lambda port: True)
+    # The bridge reads the relay keys back as `name key` lines.
+    from bipbridge.config import parse_config
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover
+        import tomli as tomllib
+    data = tomllib.loads(config.read_text())
+    data.update({"bridge_key": "x" * 40, "pocket": {"url": "http://p"}})
+    assert set(parse_config(data).relay.clients.values()) == {"lea", "chloe"}

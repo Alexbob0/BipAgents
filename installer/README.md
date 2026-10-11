@@ -54,8 +54,17 @@ separated by the system. The voices and the model are shared. Each install takes
 first, then 9200, 9210…).
 
 Notifications go through Apple with the administrator's key, which stays in their install: their bridge relays the
-others' (`[relay]` in their `bridge.toml`, one key per install), and the others install with
-`--relay-url https://<server>:8643 --relay-key <their key>`.
+others' (one key per install).
+
+The administrator prepares each person's place, from **their own** account:
+
+```bash
+bash ~/BipAgents/install.sh famille ajouter Lea
+```
+
+It creates Lea's relay key, reserves her block of ports, and prints the line she pastes in **her** session (relay
+address, key and ports included), then the `tailscale serve` commands to run once her install is done. Restart your
+bridge afterwards so it knows the new key.
 
 On Linux, for the services of an account to run while that person is logged out, the administrator enables it once:
 `sudo loginctl enable-linger <user>`. On macOS, services run while the account is logged in (automatic login on a

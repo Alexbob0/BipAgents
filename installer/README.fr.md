@@ -55,8 +55,17 @@ navigateur, séparés par le système. Les voix et le modèle sont partagés. Ch
 ports (8640 pour la première, puis 9200, 9210…).
 
 Les notifications passent par Apple avec la clé de l'administrateur, qui reste dans son installation : son bridge
-relaie celles des autres (`[relay]` dans son `bridge.toml`, une clé par installation), et les autres installent avec
-`--relay-url https://<serveur>:8643 --relay-key <leur clé>`.
+relaie celles des autres (une clé par installation).
+
+L'administrateur prépare la place de chacun, depuis **son** compte :
+
+```bash
+bash ~/BipAgents/install.sh famille ajouter Léa
+```
+
+Ça crée la clé de relais de Léa, réserve son bloc de ports, et affiche la ligne qu'elle colle dans **sa** session
+(adresse du relais, clé et ports compris), puis les commandes `tailscale serve` à lancer une fois son installation
+finie. Redémarre ton bridge après, pour qu'il connaisse la nouvelle clé.
 
 Sous Linux, pour que les services d'un compte tournent quand la personne n'est pas connectée, l'administrateur
 l'active une fois : `sudo loginctl enable-linger <utilisateur>`. Sous macOS, les services tournent tant que le
