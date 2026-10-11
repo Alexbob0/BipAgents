@@ -48,12 +48,13 @@ RUN chmod 755 /opt/stealth/entrypoint.sh /opt/stealth/mcp.sh && useradd -m -u 10
 # devtools_relay.py),
 # the persistent profile and launch flags (the bridge adds the language, and a GPU's when it passes /dev/dri in), and
 # the flags the server adds in any container that this one does without (a single process, no GPU at all, and a
-# redundant one Chrome shows a warning bar for).
+# redundant one Chrome shows a warning bar for), and a browser always shown on the screen (an agent's headless ignored).
 ENV DISPLAY=:99 \
     STEALTH_CDP_PORT=9222 \
     STEALTH_USER_DATA_DIR=/home/bip/profile \
     STEALTH_BROWSER_ARGS="--window-size=1600,900;--no-first-run;--no-default-browser-check;--disable-dev-shm-usage;--ignore-gpu-blocklist;--test-type;--hide-crash-restore-bubble" \
     STEALTH_DROP_ARGS="--single-process;--disable-gpu;--disable-setuid-sandbox" \
+    STEALTH_HEADFUL=1 \
     BROWSER_IDLE_TIMEOUT=1800 \
     PYTHONWARNINGS=ignore \
     PYTHONUNBUFFERED=1

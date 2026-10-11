@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.1.0
+version: 1.2.0
 author: BipAgents
 license: MIT
 metadata:
@@ -17,8 +17,8 @@ list_tabs, execute_script, close_instance…). The person can watch this browser
 over the mouse and keyboard.
 
 ## 1. Start it once per task
-Call `spawn_browser` with no arguments: the profile (cookies and logins kept between tasks), the window, the language
-and the time zone are already set. Keep the `instance_id` it returns for every later call. Never start a second
+Call `spawn_browser` with no arguments, never `headless`: the profile (cookies and logins kept between tasks), the
+window, the language and the time zone are already set, and the browser always shows on your desktop. Keep the `instance_id` it returns for every later call. Never start a second
 browser while one runs: reuse the instance (`list_instances` tells you if one is already open).
 
 ## 2. Browse
