@@ -26,6 +26,7 @@ class Machine:
     tailscale: Optional[str] = None       # path of the CLI
     tailnet_name: Optional[str] = None    # this machine's MagicDNS name, e.g. "aibox.tail1234.ts.net"
     lan_addresses: List[str] = field(default_factory=list)
+    cloud: Optional[str] = None           # the provider of a rented server (VPS), e.g. "Hetzner"
 
     @property
     def summary(self) -> str:
@@ -112,6 +113,29 @@ def lan_addresses() -> List[str]:
     return found
 
 
+# What a rented server's firmware calls its maker (/sys/class/dmi/id/sys_vendor, then product_name).
+CLOUD_VENDORS = (("hetzner", "Hetzner"), ("digitalocean", "DigitalOcean"), ("amazon ec2", "AWS"), ("amazon", "AWS"),
+                 ("google", "Google Cloud"), ("ovh", "OVHcloud"), ("scaleway", "Scaleway"), ("vultr", "Vultr"),
+                 ("linode", "Akamai Linode"), ("akamai", "Akamai Linode"), ("oracle", "Oracle Cloud"),
+                 ("contabo", "Contabo"), ("ionos", "IONOS"), ("upcloud", "UpCloud"), ("exoscale", "Exoscale"),
+                 ("infomaniak", "Infomaniak"), ("microsoft corporation", "Azure"))
+
+
+def cloud_vendor(dmi: str = "/sys/class/dmi/id") -> Optional[str]:
+    """The provider when this machine is a rented server (Linux reads it from the firmware), else None."""
+    seen = []
+    for name in ("sys_vendor", "product_name", "chassis_vendor", "bios_vendor"):
+        try:
+            with open(os.path.join(dmi, name), encoding="utf-8", errors="replace") as fh:
+                seen.append(fh.read().strip().lower())
+        except OSError:
+            continue
+    text = " ".join(seen)
+    if "microsoft corporation" in text and "virtual machine" not in text:
+        return None   # a Surface, not an Azure VM
+    return next((label for key, label in CLOUD_VENDORS if key in text), None)
+
+
 def local_timezone() -> Optional[str]:
     """« Europe/Paris »: from TZ, /etc/localtime's link or /etc/timezone (None when unknown)."""
     if os.environ.get("TZ", "").count("/") >= 1:
@@ -142,4 +166,5 @@ def detect() -> Machine:
         tailscale=cli,
         tailnet_name=tailnet_name(cli),
         lan_addresses=lan_addresses(),
+        cloud=cloud_vendor() if platform.system() == "Linux" else None,
     )

@@ -100,7 +100,7 @@ flowchart LR
 
 **Juste pour voir**, sans serveur : ouvre `BipAgents.xcodeproj`, schéma BipAgents → Arguments → `-demo`. Ajoute `-screen conversation`, `-screen call`, `-tab inbox` ou `-demoAgents 5` pour arriver directement sur un écran.
 
-**Pour de vrai** : un **Mac mini**, un **VPS** ou un serveur Linux qui fait tourner [Hermes Agent](https://github.com/NousResearch/hermes-agent) suffit, sans GPU. Le guide pas à pas : [**Héberger BipAgents chez soi**](docs/self-hosting.fr.md) (Tailscale, api_server Hermes, Pocket TTS, bridge, lancement au démarrage, notifications).
+**Pour de vrai** : un **Mac mini**, un **VPS** ou un serveur Linux qui fait tourner [Hermes Agent](https://github.com/NousResearch/hermes-agent) suffit, sans GPU. Le guide pas à pas : [**Héberger BipAgents chez soi**](docs/self-hosting.fr.md) (Tailscale, api_server Hermes, Pocket TTS, bridge, lancement au démarrage, notifications). Sans machine à la maison : [**BipAgents sur un serveur loué**](docs/vps.fr.md).
 
 > 🎙️ **Bonus** : avec un GPU Nvidia, Kyutai TTS 1.6B ajoute une voix humaine posée et sert à un podcast du matin généré par un agent. Facultatif, cf. la fin du guide.
 

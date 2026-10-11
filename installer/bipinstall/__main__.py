@@ -56,9 +56,10 @@ def choose(question: str, options: List[str], default: int = 1) -> int:
 
 def pick_model(machine: Machine) -> tuple[hermes.Model, bool]:
     say("\nOù tourne le modèle (le « cerveau » des agents) ?")
-    where = choose("Choix", ["Sur une autre machine de mon réseau (PC avec GPU, Spark, Mac…)",
-                             "Dans le cloud, par API (OpenRouter, OpenAI, Anthropic, Mistral)",
-                             "Sur cette machine (Ollama ou LM Studio déjà installé)"])
+    first = "Sur une autre machine de mon tailnet (PC avec GPU, Spark, Mac à la maison…)" if machine.cloud \
+        else "Sur une autre machine de mon réseau (PC avec GPU, Spark, Mac…)"
+    where = choose("Choix", [first, "Dans le cloud, par API (OpenRouter, OpenAI, Anthropic, Mistral)",
+                             "Sur cette machine (Ollama ou LM Studio déjà installé)"], default=2 if machine.cloud else 1)
     if where == 2:
         provider = models.CLOUD[choose("Fournisseur", [p.name for p in models.CLOUD]) - 1]
         say(f"Ta clé se crée ici : {provider.key_hint}")
@@ -69,14 +70,19 @@ def pick_model(machine: Machine) -> tuple[hermes.Model, bool]:
         hermes_provider = {"openrouter": "openrouter", "openai": "openai-api", "anthropic": "anthropic"}.get(provider.key, "custom")
         model = hermes.Model(hermes_provider, name, base_url=provider.base_url, api_key=key)
         return verify(model), False
-    say("Je cherche les serveurs de modèles sur ton réseau…")
-    found = asyncio.run(models.discover(machine.lan_addresses if where == 1 else []))
+    if where == 1 and machine.cloud:
+        found = []   # no home network around a rented server: the address on the tailnet is asked below
+    else:
+        say("Je cherche les serveurs de modèles sur ton réseau…")
+        found = asyncio.run(models.discover(machine.lan_addresses if where == 1 else []))
     found = [s for s in found if (s.base_url.startswith("http://127.0.0.1")) == (where == 3)]
     if not found:
-        say("Aucun trouvé automatiquement.")
+        if not (where == 1 and machine.cloud):
+            say("Aucun trouvé automatiquement.")
+        example = "http://pc-maison.tail1234.ts.net:11434/v1" if machine.cloud else "http://192.168.1.20:11434/v1"
         base = ""
         while not base.startswith(("http://", "https://")):
-            base = ask("Adresse du serveur (ex. http://192.168.1.20:11434/v1)")
+            base = ask(f"Adresse du serveur (ex. {example})")
         base = base.rstrip("/")
         server = models.Server(base_url=base if base.endswith("/v1") else base + "/v1", kind="manuel")
     else:
@@ -205,6 +211,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     machine = detect()
     say(ui.banner(os.environ.get("USER", ""), machine.summary))
+    if machine.cloud:
+        say(ui.note(f"Serveur loué chez {machine.cloud} : pas de porte sur un réseau local (elle serait sur Internet),\n"
+                    "    tout passe par Tailscale. Ton hébergeur a accès au disque : chiffre ce qui compte, et garde le "
+                    "système à jour."))
+        machine.lan_addresses = []
     if args.no_tailscale:
         machine.tailnet_name = None
     elif not machine.tailnet_name:
