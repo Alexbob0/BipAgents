@@ -37,6 +37,10 @@ struct AgentSharesView: View {
                         }
                     } header: {
                         Text(reader.name)
+                    } footer: {
+                        if reader.external {
+                            Text("\(reader.name) a été installé à la main : ce que tu changes ici s’applique au prochain redémarrage de son conteneur.")
+                        }
                     }
                 }
             }

@@ -11198,6 +11198,28 @@
           }
         }
       }
+    },
+    "%@ a été installé à la main : ce que tu changes ici s’applique au prochain redémarrage de son conteneur." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ was set up by hand: what you change here applies when its container next restarts."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ se instaló a mano: lo que cambies aquí se aplica en el próximo reinicio de su contenedor."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde von Hand eingerichtet: Was du hier änderst, gilt ab dem nächsten Neustart seines Containers."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

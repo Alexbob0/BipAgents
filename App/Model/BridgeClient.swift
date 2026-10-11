@@ -198,6 +198,8 @@ struct BridgeClient: Sendable {
         var id: String
         var name: String
         var whyNot: String?
+        /// Set up by hand: its administrator mounts the folders when it starts (a change applies at its restart).
+        var external = false
     }
 
     /// « reader peut lire ce que source partage » (read-only).
@@ -217,7 +219,8 @@ struct BridgeClient: Sendable {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let agents = (json?["agents"] as? [[String: Any]] ?? []).compactMap { row -> ShareAgent? in
             guard let id = row["id"] as? String else { return nil }
-            return ShareAgent(id: id, name: row["name"] as? String ?? id, whyNot: row["why_not"] as? String)
+            return ShareAgent(id: id, name: row["name"] as? String ?? id, whyNot: row["why_not"] as? String,
+                              external: row["external"] as? Bool ?? false)
         }
         return (agents, Self.reads(json))
     }

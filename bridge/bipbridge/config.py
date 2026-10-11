@@ -60,6 +60,10 @@ class AgentConfig:
     # password: the bridge logs in itself and relays the desktop to the app (Face ID there), see desktop.py.
     desktop_vnc: Optional[str] = None
     desktop_vnc_password_file: Optional[str] = None
+    # Set up by hand, its administrator mounts the shared folders (shares.py) when it starts: `"external"`, and the
+    # command to run after the person changes them (e.g. restarting its container once it is idle).
+    shares: str = ""
+    shares_apply: Optional[str] = None
 
 
 @dataclass
@@ -354,6 +358,8 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             desktop_vnc=str(table["desktop_vnc"]) if table.get("desktop_vnc") else None,
             desktop_vnc_password_file=_expand(str(table["desktop_vnc_password_file"]))
             if table.get("desktop_vnc_password_file") else None,
+            shares=str(table.get("shares", "")),
+            shares_apply=str(table["shares_apply"]) if table.get("shares_apply") else None,
         )
 
     relay_t = data.get("relay", {}) or {}

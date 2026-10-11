@@ -25,22 +25,7 @@ from .logs import fields
 
 log = logging.getLogger("bipbridge.shares")
 
-SKILL = """---
-name: shared-data
-description: "Share data with your other agents (your /partage folder) and read what they share with you (/lecture/<agent>, read-only)."
-version: 1.0.0
-author: BipAgents
-license: MIT
----
-
-# Data shared between agents
-
-- `/partage` is yours to share: files you put there can be read by the agents the person allowed (read-only for
-  them). Put only what is meant for them there (summaries, exports), never secrets.
-- `/lecture/<agent>` holds what another agent shares with you, read-only: read it, never try to change it. If it is
-  missing or empty, that agent shares nothing (yet) or the person has not allowed it.
-"""
-
+SKILL = (Path(__file__).with_name("skills") / "shared-data" / "SKILL.md").read_text(encoding="utf-8")
 
 def shares_root(config: Config) -> Path:
     return Path(config.outbox.db_path).parent / "shares"
@@ -84,7 +69,10 @@ def _profile_config(folder: Path) -> Dict[str, Any]:
 def why_not(config: Config, agent: AgentConfig) -> Optional[str]:
     """None when the agent can share and read; otherwise why not: `not_managed` (set up by hand: its
     administrator mounts folders), `no_sandbox` (its tools run on this machine, where a read-only mount means
-    nothing)."""
+    nothing). An agent set up by hand with `shares = "external"` takes part: its administrator mounts what
+    `mounts()` lists when it starts."""
+    if agent.shares == "external":
+        return None
     folder = profile_dir(config, agent)
     if folder is None:
         return "not_managed"
@@ -123,15 +111,20 @@ async def apply(config: Config, wanted: List[Tuple[str, str]], run: Callable[...
                 raise ValueError(f"{name}: {reason}")
     before = load(config)
     concerned: Set[str] = {n for pair in before + wanted for n in pair}
+    for source in sorted({s for _, s in wanted}):
+        share = shares_root(config) / source
+        share.mkdir(parents=True, exist_ok=True)
+        os.chmod(share, 0o700)
+    changed_external = []
     for name in sorted(concerned):
         agent = config.agent(name)
+        if agent is not None and agent.shares == "external":
+            if mounts(config, name, before) != mounts(config, name, wanted):
+                changed_external.append(agent)
+            continue
         folder = profile_dir(config, agent) if agent else None
         if agent is None or folder is None or not folder.is_dir():
             continue
-        if any(source == name for _, source in wanted):
-            share = shares_root(config) / name
-            share.mkdir(parents=True, exist_ok=True)
-            os.chmod(share, 0o700)
         current = (_profile_config(folder).get("terminal") or {}).get("docker_volumes") or []
         volumes = volumes_for(config, name, wanted, [str(v) for v in current] if isinstance(current, list) else [])
         home = str(folder.parent.parent)
@@ -144,8 +137,22 @@ async def apply(config: Config, wanted: List[Tuple[str, str]], run: Callable[...
         else:
             shutil.rmtree(skill.parent, ignore_errors=True)
     save(config, wanted)
+    for agent in changed_external:
+        # Its administrator's command (e.g. restart its container when it is idle): what it mounts changed.
+        if agent.shares_apply:
+            try:
+                await run(["sh", "-c", agent.shares_apply.format(agent=agent.name)], {})
+            except RuntimeError as exc:
+                log.warning("shares not applied", extra=fields(agent=agent.name, error=str(exc)[-200:]))
     log.info("agent shares set", extra=fields(reads=len(wanted)))
     return sorted(set(wanted))
+
+
+def mounts(config: Config, agent: str, reads: Optional[List[Tuple[str, str]]] = None) -> List[str]:
+    """What an agent set up by hand mounts (`podman run -v …`): its shared folder when another agent reads it, and
+    what it may read, read-only. `python -m bipbridge shares-mounts --agent <name>` prints them."""
+    reads = load(config) if reads is None else reads
+    return volumes_for(config, agent, reads, [])
 
 
 async def forget(config: Config, agent: str, run: Callable[..., Any]) -> None:

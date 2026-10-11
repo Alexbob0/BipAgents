@@ -441,8 +441,8 @@ def agents_admin_router() -> APIRouter:
     async def agent_shares(request: Request) -> Dict[str, Any]:
         """Who may read what another agent shares (read-only), and which agents can take part."""
         config: Config = request.app.state.services.config
-        return {"agents": [{"id": a.name, "name": a.display_name, "why_not": shares.why_not(config, a)}
-                           for a in config.agents.values()],
+        return {"agents": [{"id": a.name, "name": a.display_name, "why_not": shares.why_not(config, a),
+                            "external": a.shares == "external"} for a in config.agents.values()],
                 "reads": [{"reader": r, "source": s} for r, s in shares.load(config)]}
 
     @router.put("/agent-shares")

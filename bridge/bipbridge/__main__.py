@@ -14,11 +14,12 @@ from .logs import setup_logging
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="bipbridge", description="BipAgents bridge for Hermes agents")
-    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser"],
+    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser", "shares-mounts"],
                         help="serve (default), check the config, print a new random bridge key, "
                              "show an agent's pairing QR code for the app, (peer-token --agent X) give an agent set "
                              "up by hand its token for messaging the others, or (browser add|remove --agent X|--all) "
-                             "set up or remove agents' visible browsers")
+                             "set up or remove agents' visible browsers, or (shares-mounts --agent X) print the "
+                             "`-v` mounts an agent set up by hand needs for its shared folders")
     parser.add_argument("--config", help="config path (default: $BRIDGE_CONFIG or ~/.config/hermes-ios/bridge.toml)")
     parser.add_argument("--agent", help="qr: one agent's own code (default: the install's code, which adds every agent)")
     parser.add_argument("--png", help="qr: also save the QR code as a PNG (one agent)")
@@ -71,6 +72,16 @@ def main(argv=None) -> int:
         print(f"hermes config set bot_peers.{PEER_NAME}.url {peer_url(config)}")
         print(f"# In that agent's profile .env (its old token, if any, stops working):")
         print(f"HERMES_PEER_{PEER_NAME.upper()}_KEY={token}")
+        return 0
+
+    if args.command == "shares-mounts":
+        # For the start script of an agent set up by hand (shares = "external"): one `-v` argument per line.
+        from .shares import mounts
+        if not args.agent or config.agent(args.agent) is None:
+            print("shares-mounts needs --agent X (an agent of this bridge)", file=sys.stderr)
+            return 2
+        for mount in mounts(config, config.agent(args.agent).name):
+            print(f"-v\n{mount}")
         return 0
 
     if args.command == "browser":
