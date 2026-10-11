@@ -45,6 +45,24 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
    compte d'une autre personne sous Linux), il affiche les commandes pour l'administrateur.
 9. **Affiche un seul QR code** : scanné dans l'app, il ajoute tous les agents de l'installation.
 
+## Si tu as déjà Hermes
+
+L'installateur le voit et s'y branche **sans toucher à tes réglages** : pas de question sur le modèle, et ni ton
+modèle, ni tes outils, ni tes plateformes (Telegram…), ni tes agents ne changent. Il te demande quels agents (profils)
+afficher dans l'app, ton profil principal compris, et te montre avant de commencer tout ce qu'il va changer :
+
+- l'API locale d'Hermes, si elle est coupée : activée sur 127.0.0.1, sur un port de ton bloc, avec une nouvelle clé ;
+- une clé pour chaque agent affiché qui n'en a pas ;
+- les correctifs BipAgents dans le code d'Hermes, si tu les veux et si ta version est celle testée ;
+- un service pour ta gateway si elle ne tourne pas, ou un redémarrage si elle tourne déjà en service (à la main,
+  tu la redémarres toi-même).
+
+Tout ça est noté dans `~/.config/bipagents/existing-hermes.json` : la désinstallation remet chaque réglage comme
+avant et retire les correctifs. `--all` ne supprime jamais un Hermes qui était là avant BipAgents. Si les outils de
+tes agents ne tournent pas dans un bac à sable, le bridge ne garde pas de mots de passe (pas de coffre) : il te le
+dit, sans changer leurs outils. Il faut une version d'Hermes qui sert plusieurs agents à la même adresse
+(`hermes update` sinon).
+
 ## Désinstaller
 
 `python -m bipinstall uninstall` (depuis `~/BipAgents`, avec `PYTHONPATH=installer`) retire les services, la publication

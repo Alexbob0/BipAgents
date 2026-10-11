@@ -87,19 +87,21 @@ def hermes_checkout() -> Path:
     return Path(os.environ.get("HERMES_INSTALL_DIR", hermes_home() / "hermes-agent"))
 
 
-def apply_patches(runner: Runner, patches: Path) -> List[str]:
+def apply_patches(runner: Runner, patches: Path, applied: Optional[List[str]] = None) -> List[str]:
     """BipAgents' Hermes patches (questions from the agent in the app, photos kept for follow-up questions), applied
     once, before the gateway first starts. Returns the patches that could not be applied (the app then works without
     those features)."""
     checkout = hermes_checkout()
     skipped: List[str] = []
-    for patch in sorted(patches.glob("*.patch")):
-        applied = ["git", "-C", str(checkout), "apply", "--reverse", "--check", str(patch)]
-        if not runner.dry and subprocess.run(applied, capture_output=True).returncode == 0:
+    for patch in sorted(p for p in patches.glob("*.patch") if not p.name.startswith(".")):
+        already = ["git", "-C", str(checkout), "apply", "--reverse", "--check", str(patch)]
+        if not runner.dry and subprocess.run(already, capture_output=True).returncode == 0:
             continue   # already there (a second run of the installer)
         try:
             runner.run(["git", "-C", str(checkout), "apply", "--check", str(patch)])
             runner.run(["git", "-C", str(checkout), "apply", str(patch)])
+            if applied is not None:
+                applied.append(str(patch))   # by us: an uninstall takes it back off a Hermes that was there before
         except RuntimeError:
             skipped.append(patch.name)
     return skipped
