@@ -45,8 +45,11 @@ struct SettingsView: View {
                     NavigationLink { AgentLinksView() } label: {
                         Label("Qui peut écrire à qui", systemImage: "arrow.left.arrow.right")
                     }
+                    NavigationLink { AgentSharesView() } label: {
+                        Label("Qui peut lire quoi", systemImage: "folder.badge.person.crop")
+                    }
                 } footer: {
-                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir, et les agents qui peuvent s’écrire.")
+                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir, les agents qui peuvent s’écrire, et ce qu’ils peuvent lire les uns des autres.")
                 }
                 .foregroundStyle(Theme.ink)
                 Section {

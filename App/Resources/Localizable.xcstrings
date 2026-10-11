@@ -10560,6 +10560,204 @@
           }
         }
       }
+    },
+    "Qui peut lire quoi" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Who can read what"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quién puede leer qué"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wer darf was lesen"
+          }
+        }
+      }
+    },
+    "Les identifiants de sites que tes agents utilisent sans jamais les voir, les agents qui peuvent s’écrire, et ce qu’ils peuvent lire les uns des autres." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The website logins your agents use without ever seeing them, which agents can write to each other, and what they can read from each other."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los accesos a sitios que tus agentes usan sin verlos nunca, qué agentes pueden escribirse y qué pueden leer unos de otros."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Website-Zugänge, die deine Agenten nutzen, ohne sie je zu sehen, welche Agenten sich schreiben dürfen und was sie voneinander lesen dürfen."
+          }
+        }
+      }
+    },
+    "Il faut au moins deux agents dont les outils tournent dans un bac à sable pour partager des données." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sharing data needs at least two agents whose tools run in a sandbox."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para compartir datos hacen falta al menos dos agentes cuyas herramientas funcionen en un entorno aislado."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Teilen von Daten braucht es mindestens zwei Agenten, deren Werkzeuge in einer Sandbox laufen."
+          }
+        }
+      }
+    },
+    "Peut lire ce que partage %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can read what %@ shares"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puede leer lo que comparte %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Darf lesen, was %@ teilt"
+          }
+        }
+      }
+    },
+    "Ses outils tournent sur le serveur lui-même, sans bac à sable : pas de partage." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its tools run on the server itself, without a sandbox: no sharing."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sus herramientas funcionan en el propio servidor, sin entorno aislado: no comparte."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seine Werkzeuge laufen direkt auf dem Server, ohne Sandbox: kein Teilen."
+          }
+        }
+      }
+    },
+    "Installé à la main : son administrateur partage ses dossiers sur le serveur." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set up by hand: its administrator shares its folders on the server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalado a mano: su administrador comparte sus carpetas en el servidor."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von Hand eingerichtet: Sein Administrator teilt seine Ordner auf dem Server."
+          }
+        }
+      }
+    },
+    "Sans partage" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No sharing"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin compartir"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Teilen"
+          }
+        }
+      }
+    },
+    "Un agent met dans son dossier « partage » ce que les autres peuvent lire. Ceux que tu coches ici le voient, en lecture seule : ils ne peuvent rien y changer, et ne voient rien d’autre (ni sa mémoire, ni ses conversations, ni ses clés)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent puts what others may read in its « partage » folder. The agents you tick here see it, read-only: they cannot change anything in it, and see nothing else (not its memory, conversations or keys)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un agente pone en su carpeta « partage » lo que los demás pueden leer. Los que marques aquí lo ven, solo en lectura: no pueden cambiar nada y no ven nada más (ni su memoria, ni sus conversaciones, ni sus claves)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Agent legt in seinen Ordner « partage », was andere lesen dürfen. Die hier angehakten sehen es, nur lesend: Sie können nichts ändern und sehen sonst nichts (weder sein Gedächtnis noch seine Unterhaltungen oder Schlüssel)."
+          }
+        }
+      }
+    },
+    "Aucun de tes serveurs ne partage encore de données entre agents (bridge à mettre à jour)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None of your servers shares data between agents yet (bridge to update)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguno de tus servidores comparte todavía datos entre agentes (bridge por actualizar)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keiner deiner Server teilt bisher Daten zwischen Agenten (Bridge aktualisieren)."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

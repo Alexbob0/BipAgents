@@ -21,7 +21,7 @@ import yaml
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import browsers, souls
+from . import browsers, shares, souls
 from .config import AgentConfig, Config
 from . import peers
 from . import services as connected
@@ -318,6 +318,7 @@ async def delete_agent(config: Config, agent: AgentConfig, run: Callable[..., An
     if config.source_path:
         remove_agent_section(config.source_path, agent.name)
     config.agents.pop(agent.name, None)
+    await shares.forget(config, agent.name, run)
     log.info("agent deleted", extra=fields(agent=agent.name))
 
 
@@ -419,6 +420,29 @@ def agents_admin_router() -> APIRouter:
         # Agents set up by hand need their token added by the administrator: say which, never the token itself.
         return {"links": [{"from": s, "to": t} for s, t in services.links.load()["links"]],
                 "needs_setup": sorted(result["manual"])}
+
+    @router.get("/agent-shares")
+    async def agent_shares(request: Request) -> Dict[str, Any]:
+        """Who may read what another agent shares (read-only), and which agents can take part."""
+        config: Config = request.app.state.services.config
+        return {"agents": [{"id": a.name, "name": a.display_name, "why_not": shares.why_not(config, a)}
+                           for a in config.agents.values()],
+                "reads": [{"reader": r, "source": s} for r, s in shares.load(config)]}
+
+    @router.put("/agent-shares")
+    async def set_agent_shares(request: Request) -> Dict[str, Any]:
+        config: Config = request.app.state.services.config
+        body = await request.json()
+        wanted = [(str(x.get("reader", "")).lower(), str(x.get("source", "")).lower()) for x in body.get("reads", [])
+                  if isinstance(x, dict)]
+        async with lock:
+            try:
+                reads = await shares.apply(config, wanted, run_hermes)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except (RuntimeError, asyncio.TimeoutError) as exc:
+                raise HTTPException(status_code=502, detail="Hermes could not be set up") from exc
+        return {"reads": [{"reader": r, "source": s} for r, s in reads]}
 
     @router.get("/tool-catalog")
     async def tool_catalog() -> Dict[str, Any]:

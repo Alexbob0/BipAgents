@@ -191,6 +191,49 @@ struct BridgeClient: Sendable {
         var to: String
     }
 
+    /// An agent as the read links list it: `whyNot` is nil when it can share and read (its tools run in a sandbox).
+    struct ShareAgent: Sendable, Identifiable, Hashable {
+        var id: String
+        var name: String
+        var whyNot: String?
+    }
+
+    /// « reader peut lire ce que source partage » (read-only).
+    struct ShareRead: Sendable, Hashable {
+        var reader: String
+        var source: String
+    }
+
+    /// `GET /v1/agent-shares`: nil when the bridge is older.
+    func agentShares() async throws -> (agents: [ShareAgent], reads: Set<ShareRead>)? {
+        let data: Data
+        do {
+            data = try await send(request("v1/agent-shares"))
+        } catch HermesError.http(let status, _, _) where status == 404 {
+            return nil
+        }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let agents = (json?["agents"] as? [[String: Any]] ?? []).compactMap { row -> ShareAgent? in
+            guard let id = row["id"] as? String else { return nil }
+            return ShareAgent(id: id, name: row["name"] as? String ?? id, whyNot: row["why_not"] as? String)
+        }
+        return (agents, Self.reads(json))
+    }
+
+    func setAgentShares(_ reads: Set<ShareRead>) async throws -> Set<ShareRead> {
+        var request = request("v1/agent-shares", method: "PUT")
+        request.timeoutInterval = 60
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["reads": reads.map { ["reader": $0.reader, "source": $0.source] }])
+        return Self.reads(try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any])
+    }
+
+    private static func reads(_ json: [String: Any]?) -> Set<ShareRead> {
+        Set((json?["reads"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let reader = row["reader"] as? String, let source = row["source"] as? String else { return nil }
+            return ShareRead(reader: reader, source: source)
+        })
+    }
+
     /// `GET /v1/agent-links`: nil when the bridge is older.
     func agentLinks() async throws -> (agents: [LinkAgent], links: Set<AgentLink>)? {
         let data: Data
