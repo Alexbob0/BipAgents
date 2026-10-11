@@ -48,8 +48,11 @@ struct SettingsView: View {
                     NavigationLink { AgentSharesView() } label: {
                         Label("Qui peut lire quoi", systemImage: "folder.badge.person.crop")
                     }
+                    NavigationLink { FamilyView() } label: {
+                        Label("Famille", systemImage: "house.and.flag")
+                    }
                 } footer: {
-                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir, les agents qui peuvent s’écrire, et ce qu’ils peuvent lire les uns des autres.")
+                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir, les agents qui peuvent s’écrire, ce qu’ils peuvent lire les uns des autres, et les agents de tes proches.")
                 }
                 .foregroundStyle(Theme.ink)
                 Section {

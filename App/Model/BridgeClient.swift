@@ -184,6 +184,8 @@ struct BridgeClient: Sendable {
         var id: String
         var name: String
         var managed: Bool
+        /// The linked household it belongs to (nil: an agent of this install).
+        var household: String? = nil
     }
 
     struct AgentLink: Sendable, Hashable {
@@ -234,6 +236,63 @@ struct BridgeClient: Sendable {
         })
     }
 
+    /// This install as a household, and the households linked to it (their agents may write to ours, and ours to
+    /// theirs, along the links each person allows).
+    struct Family: Sendable {
+        var name: String
+        var url: URL?
+        var households: [Household]
+    }
+
+    struct Household: Sendable, Identifiable, Hashable {
+        var id: String
+        var name: String
+    }
+
+    /// `GET /v1/family`: nil when the bridge is older.
+    func family() async throws -> Family? {
+        let data: Data
+        do {
+            data = try await send(request("v1/family"))
+        } catch HermesError.http(let status, _, _) where status == 404 {
+            return nil
+        }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let households = (json?["households"] as? [[String: Any]] ?? []).compactMap { row -> Household? in
+            guard let id = row["id"] as? String else { return nil }
+            return Household(id: id, name: row["name"] as? String ?? id)
+        }
+        return Family(name: json?["name"] as? String ?? "", url: (json?["url"] as? String).flatMap(URL.init(string:)),
+                      households: households)
+    }
+
+    func setFamilyName(_ name: String) async throws {
+        var request = request("v1/family/name", method: "PUT")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        _ = try await send(request)
+    }
+
+    /// `POST /v1/family/invite`: the text of the QR code another household scans (valid ten minutes).
+    func familyInvitation() async throws -> String {
+        let data = try await send(request("v1/family/invite", method: "POST"))
+        guard let text = String(data: data, encoding: .utf8) else { throw HermesError.invalidResponse("invitation") }
+        return text
+    }
+
+    /// `POST /v1/family/join`: another household's invitation, scanned here. Returns its name.
+    func joinFamily(_ invitation: FamilyInvitation) async throws -> String {
+        var request = request("v1/family/join", method: "POST")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["url": invitation.url.absoluteString,
+                                                                       "code": invitation.code])
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        return json?["name"] as? String ?? invitation.name
+    }
+
+    func unlinkHousehold(_ id: String) async throws {
+        _ = try await send(request("v1/family/\(id)", method: "DELETE"))
+    }
+
     /// `GET /v1/agent-links`: nil when the bridge is older.
     func agentLinks() async throws -> (agents: [LinkAgent], links: Set<AgentLink>)? {
         let data: Data
@@ -245,7 +304,8 @@ struct BridgeClient: Sendable {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let agents = (json?["agents"] as? [[String: Any]] ?? []).compactMap { row -> LinkAgent? in
             guard let id = row["id"] as? String else { return nil }
-            return LinkAgent(id: id, name: row["name"] as? String ?? id, managed: row["managed"] as? Bool ?? false)
+            return LinkAgent(id: id, name: row["name"] as? String ?? id, managed: row["managed"] as? Bool ?? false,
+                             household: row["household"] as? String)
         }
         return (agents, Self.links(json))
     }
@@ -725,5 +785,23 @@ extension AgentProfile {
     /// The agent's key in the bridge configuration (`wellness`, `vie`…): as the bridge gave it, else from the name.
     nonisolated var bridgeName: String {
         config.bridgeAgent ?? name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).replacing(" ", with: "-")
+    }
+}
+
+
+/// Another household's invitation, as its QR code carries it: its bridge's address, a one-time code, its name.
+struct FamilyInvitation: Sendable {
+    var url: URL
+    var code: String
+    var name: String
+
+    init?(qrPayload: String) {
+        guard let data = qrPayload.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              json["kind"] as? String == "family", let raw = json["url"] as? String, let url = URL(string: raw),
+              let code = json["code"] as? String, !code.isEmpty else { return nil }
+        self.url = url
+        self.code = code
+        name = json["name"] as? String ?? ""
     }
 }

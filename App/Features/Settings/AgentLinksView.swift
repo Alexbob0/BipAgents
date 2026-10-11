@@ -18,9 +18,10 @@ struct AgentLinksView: View {
             if let errorMessage {
                 Section { NoticeRow(text: errorMessage, isError: true) }.listRowBackground(Color.clear)
             }
-            ForEach(agents) { sender in
+            // Ours first, then the agents of linked households: one of theirs may only write to ours.
+            ForEach(agents.filter { $0.household == nil } + agents.filter { $0.household != nil }) { sender in
                 Section {
-                    ForEach(agents.filter { $0.id != sender.id }) { target in
+                    ForEach(agents.filter { $0.id != sender.id && (sender.household == nil || $0.household == nil) }) { target in
                         Toggle(isOn: binding(sender.id, target.id)) {
                             Text("Peut écrire à \(target.name)")
                         }
@@ -35,7 +36,7 @@ struct AgentLinksView: View {
                 }
             }
             Section {
-                Label("Un agent ne peut écrire qu’aux agents que tu as cochés ici. Il ne reçoit jamais leurs clés : c’est ton serveur qui transmet le message, et il refuse tout le reste. Les agents qui partagent l’espace commun peuvent aussi s’écrire entre eux.",
+                Label("Un agent ne peut écrire qu’aux agents que tu as cochés ici. Il ne reçoit jamais leurs clés : c’est ton serveur qui transmet le message, et il refuse tout le reste. Les agents qui partagent l’espace commun peuvent aussi s’écrire entre eux. Pour les agents d’un proche (Réglages › Famille), il faut que vous l’ayez coché tous les deux, chacun chez soi.",
                       systemImage: "arrow.left.arrow.right")
                     .font(Theme.body(13, weight: .regular)).foregroundStyle(Theme.ink2)
             }

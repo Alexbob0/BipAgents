@@ -105,6 +105,11 @@ struct AddAgentFlow: View {
             ZStack(alignment: .top) {
                 QRScanner { payload in
                     if let install = InstallPairing(qrPayload: payload) { isScanning = false; pair(install); return }
+                    if FamilyInvitation(qrPayload: payload) != nil {
+                        isScanning = false
+                        errorMessage = String(localized: "C’est une invitation de famille : ouvre Réglages › Famille › Scanner son invitation.")
+                        return
+                    }
                     if updatesExistingAgent(payload) { isScanning = false; dismiss(); return }
                     isScanning = false
                     if apply(payload) { goToStyle() }

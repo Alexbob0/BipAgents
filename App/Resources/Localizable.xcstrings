@@ -10758,6 +10758,446 @@
           }
         }
       }
+    },
+    "Famille" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Family"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Familia"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Familie"
+          }
+        }
+      }
+    },
+    "Ton prénom" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your first name"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu nombre"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Vorname"
+          }
+        }
+      }
+    },
+    "Ton foyer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your household"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu hogar"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Haushalt"
+          }
+        }
+      }
+    },
+    "Le nom que verront tes proches à côté de tes agents, par exemple « Vie (%@) »." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The name your relatives see next to your agents, e.g. « Vie (%@) »."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El nombre que verán tus allegados junto a tus agentes, por ejemplo « Vie (%@) »."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Name, den deine Angehörigen neben deinen Agenten sehen, z. B. « Vie (%@) »."
+          }
+        }
+      }
+    },
+    "Alex" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alex"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alex"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alex"
+          }
+        }
+      }
+    },
+    "Aucun proche relié pour l’instant." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No relative linked yet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no hay ningún allegado vinculado."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Angehörigen verbunden."
+          }
+        }
+      }
+    },
+    "Proches reliés" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linked relatives"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allegados vinculados"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbundene Angehörige"
+          }
+        }
+      }
+    },
+    "Inviter un proche" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invite a relative"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invitar a un allegado"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angehörige einladen"
+          }
+        }
+      }
+    },
+    "Scanner son invitation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan their invitation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escanear su invitación"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einladung scannen"
+          }
+        }
+      }
+    },
+    "Chacun a sa propre installation. L’un montre son invitation, l’autre la scanne avec son iPhone. Ensuite, dans « Qui peut écrire à qui », chacun coche chez soi ce qu’il accepte : un message ne passe que si vous l’avez tous les deux autorisé." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each of you has your own install. One shows an invitation, the other scans it with their iPhone. Then, in « Who can write to whom », each of you ticks at home what you accept: a message only goes through if you both allowed it."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada uno tiene su propia instalación. Uno muestra su invitación y el otro la escanea con su iPhone. Después, en « Quién puede escribir a quién », cada uno marca en su casa lo que acepta: un mensaje solo pasa si los dos lo habéis permitido."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder hat seine eigene Installation. Einer zeigt seine Einladung, der andere scannt sie mit seinem iPhone. Danach hakt jeder bei sich unter « Wer darf wem schreiben » an, was er erlaubt: Eine Nachricht geht nur durch, wenn ihr beide es erlaubt habt."
+          }
+        }
+      }
+    },
+    "Ce n’est pas une invitation de famille BipAgents." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is not a BipAgents family invitation."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No es una invitación familiar de BipAgents."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist keine BipAgents-Familieneinladung."
+          }
+        }
+      }
+    },
+    "Scanne l’invitation de ton proche" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan your relative's invitation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escanea la invitación de tu allegado"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanne die Einladung deines Angehörigen"
+          }
+        }
+      }
+    },
+    "Aucun de tes serveurs ne relie encore les familles (bridge à mettre à jour)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None of your servers links families yet (bridge to update)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguno de tus servidores vincula familias todavía (bridge por actualizar)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keiner deiner Server verbindet bisher Familien (Bridge aktualisieren)."
+          }
+        }
+      }
+    },
+    "Relié au foyer de %@. Ses agents sont dans « Qui peut écrire à qui »." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linked to %@'s household. Their agents are in « Who can write to whom »."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vinculado al hogar de %@. Sus agentes están en « Quién puede escribir a quién »."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit dem Haushalt von %@ verbunden. Die Agenten sind unter « Wer darf wem schreiben »."
+          }
+        }
+      }
+    },
+    "Sur l’iPhone de ton proche : Réglages › Famille › Scanner son invitation." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On your relative's iPhone: Settings › Family › Scan their invitation."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En el iPhone de tu allegado: Ajustes › Familia › Escanear su invitación."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf dem iPhone deines Angehörigen: Einstellungen › Familie › Einladung scannen."
+          }
+        }
+      }
+    },
+    "Valable 10 minutes, une seule fois." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valid 10 minutes, once."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Válida 10 minutos, una sola vez."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 Minuten gültig, nur einmal."
+          }
+        }
+      }
+    },
+    "Invitation de %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@'s invitation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invitación de %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einladung von %@"
+          }
+        }
+      }
+    },
+    "C’est une invitation de famille : ouvre Réglages › Famille › Scanner son invitation." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is a family invitation: open Settings › Family › Scan their invitation."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es una invitación familiar: abre Ajustes › Familia › Escanear su invitación."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist eine Familieneinladung: Öffne Einstellungen › Familie › Einladung scannen."
+          }
+        }
+      }
+    },
+    "Les identifiants de sites que tes agents utilisent sans jamais les voir, les agents qui peuvent s’écrire, ce qu’ils peuvent lire les uns des autres, et les agents de tes proches." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The website logins your agents use without ever seeing them, which agents can write to each other, what they can read from each other, and your relatives' agents."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los accesos a sitios que tus agentes usan sin verlos nunca, qué agentes pueden escribirse, qué pueden leer unos de otros y los agentes de tus allegados."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Website-Zugänge, die deine Agenten nutzen, ohne sie je zu sehen, welche Agenten sich schreiben dürfen, was sie voneinander lesen dürfen, und die Agenten deiner Angehörigen."
+          }
+        }
+      }
+    },
+    "Un agent ne peut écrire qu’aux agents que tu as cochés ici. Il ne reçoit jamais leurs clés : c’est ton serveur qui transmet le message, et il refuse tout le reste. Les agents qui partagent l’espace commun peuvent aussi s’écrire entre eux. Pour les agents d’un proche (Réglages › Famille), il faut que vous l’ayez coché tous les deux, chacun chez soi." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An agent can only write to the agents you ticked here. It never gets their keys: your server passes the message on and refuses everything else. Agents sharing the common space can also write to each other. For a relative's agents (Settings › Family), you both have to tick it, each at home."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un agente solo puede escribir a los agentes que marques aquí. Nunca recibe sus claves: tu servidor transmite el mensaje y rechaza todo lo demás. Los agentes que comparten el espacio común también pueden escribirse. Para los agentes de un allegado (Ajustes › Familia), tenéis que marcarlo los dos, cada uno en su casa."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Agent kann nur den Agenten schreiben, die du hier anhakst. Er bekommt nie ihre Schlüssel: Dein Server leitet die Nachricht weiter und lehnt alles andere ab. Agenten im gemeinsamen Bereich können sich auch untereinander schreiben. Bei den Agenten deiner Angehörigen (Einstellungen › Familie) müsst ihr beide es anhaken, jeder bei sich."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

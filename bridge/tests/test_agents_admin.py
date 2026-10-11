@@ -205,7 +205,9 @@ def test_profiles_created_on_the_server_can_be_claimed(managed):
     assert jardin.display_name == "Mon jardin" and jardin.public_url == "https://mini.ts.net:8642/p/jardin"
     cuisine = asyncio.run(go("cuisine", None))
     assert commands == [["/opt/hermes", "-p", "cuisine", "config", "set", "API_SERVER_KEY", cuisine.hermes_key]]
-    assert sessions == []                                                # no Bot Chat opened in their name
+    assert [url for url, _ in sessions] == ["http://127.0.0.1:8642/p/jardin/api/sessions",
+                                            "http://127.0.0.1:8642/p/cuisine/api/sessions"]   # their « Discussion »
+    assert "hermes-bots" in (profiles / "cuisine" / "profile.yaml").read_text()          # Bot Mode
     assert unclaimed_profiles(config) == [] and "[agents.cuisine]" in path.read_text()
     with pytest.raises(LookupError):
         asyncio.run(go("ancien", None))
