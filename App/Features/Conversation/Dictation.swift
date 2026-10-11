@@ -15,9 +15,11 @@ final class DictationController {
     var failure: String?
     var dragOffset: CGSize = .zero
     private var hintTask: Task<Void, Never>?
+    private var lockTask: Task<Void, Never>?
 
     static let cancelDistance: CGFloat = 90
-    static let lockDistance: CGFloat = 80
+    /// Held this long, the recording locks by itself: the finger can let go, ↑ sends.
+    static let lockDelay: Duration = .seconds(1)
 
     var isActive: Bool { phase != .idle }
     var willCancel: Bool { phase == .holding && dragOffset.width < -Self.cancelDistance }
@@ -27,6 +29,10 @@ final class DictationController {
         phase = .holding
         startedAt = .now
         failure = nil
+        lockTask = Task {
+            try? await Task.sleep(for: Self.lockDelay)
+            if !Task.isCancelled, !willCancel { lock() }
+        }
         Task {
             // First use: ask for mic + speech recognition here rather than failing silently.
             guard await VoiceEngine.requestPermissions() else {
@@ -84,13 +90,16 @@ final class DictationController {
     }
 
     private func reset() {
+        lockTask?.cancel()
+        lockTask = nil
         phase = .idle
         startedAt = nil
         dragOffset = .zero
     }
 }
 
-/// Mic button: hold to record a voice note (release sends, slide left cancels, slide up locks); a short tap only shows a hint.
+/// Mic button: hold to record a voice note (release sends, slide left cancels; held a second, it locks: the finger
+/// can let go, ↑ sends); a short tap only shows a hint.
 struct DictationButton: View {
     var voice: VoiceEngine
     var controller: DictationController
@@ -108,20 +117,6 @@ struct DictationButton: View {
             .frame(width: 46, height: 46)
             .background(palette.deep, in: .circle)
             .scaleEffect(controller.phase == .holding ? 1.15 : 1)
-            .overlay(alignment: .top) {
-                // Slide up to lock, as in WhatsApp.
-                if controller.phase == .holding {
-                    VStack(spacing: 2) {
-                        Image(systemName: "lock.fill").font(.system(size: 13, weight: .bold))
-                        Image(systemName: "chevron.up").font(.system(size: 10, weight: .heavy))
-                    }
-                    .foregroundStyle(Theme.ink2)
-                    .frame(width: 34, height: 52)
-                    .background(Theme.field, in: .capsule)
-                    .offset(y: -66)
-                    .transition(.opacity)
-                }
-            }
             .animation(.easeOut(duration: 0.15), value: controller.phase)
         .contentShape(.circle)
         .overlay {
@@ -150,9 +145,8 @@ struct DictationButton: View {
     }
 
     private func pressMoved(_ translation: CGSize) {
-        guard !pressSends else { return }
+        guard !pressSends, controller.phase == .holding else { return }
         controller.dragOffset = translation
-        if translation.height < -DictationController.lockDistance { controller.lock() }
     }
 
     /// `interrupted`: iOS took the touch back (a system gesture, a call…): the recording is dropped.
