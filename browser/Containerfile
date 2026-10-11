@@ -1,0 +1,63 @@
+# The agents' visible browser: a real Chrome (Chromium on ARM, where Google ships none for Linux) on a screen of its
+# own, driven through the stealth-browser-mcp server. One container per agent (bipbridge/browsers.py): its own profile,
+# and what a page can reach (file:// included) is this container, never the host.
+#
+# Nothing of stealth-browser-mcp (MIT) is kept in our repository: it is fetched here from its own repository, at the
+# commit BipAgents is tested with, then our patch (stealth.patch) is applied. Its Python packages come from PyPI at
+# pinned versions (requirements.txt); nodriver among them is AGPL v3, installed as a separate package, unmodified.
+FROM registry.fedoraproject.org/fedora:43
+
+ARG STEALTH_REPO=https://github.com/vibheksoni/stealth-browser-mcp.git
+ARG STEALTH_COMMIT=a7b9eea8aa8dac36dc140ce4f2778d48021e79c0
+
+RUN dnf -y install --setopt=install_weak_deps=False \
+        python3.11 git-core procps-ng \
+        xorg-x11-server-Xvfb x11vnc openbox lxpanel \
+        liberation-fonts dejavu-sans-fonts dejavu-serif-fonts google-noto-sans-fonts \
+        google-noto-emoji-color-fonts google-noto-cjk-fonts \
+        mesa-dri-drivers mesa-vulkan-drivers vulkan-loader mesa-libEGL mesa-libgbm nss alsa-lib \
+    && if [ "$(uname -m)" = x86_64 ]; then \
+           printf '[google-chrome]\nname=google-chrome\nbaseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=https://dl.google.com/linux/linux_signing_key.pub\n' \
+               > /etc/yum.repos.d/google-chrome.repo \
+           && dnf -y install google-chrome-stable; \
+       else \
+           dnf -y install chromium; \
+       fi \
+    && dnf clean all
+
+# Chrome keeps no passwords, cards or addresses of its own: the vault fills them, and they stay in it.
+RUN for dir in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed; do \
+        mkdir -p "$dir" && printf '%s\n' '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false, "PasswordLeakDetectionEnabled": false}' \
+            > "$dir/bipagents.json"; \
+    done
+
+COPY requirements.txt stealth.patch /opt/stealth/
+RUN git clone --quiet "$STEALTH_REPO" /opt/stealth/stealth-browser-mcp \
+    && git -C /opt/stealth/stealth-browser-mcp checkout --quiet "$STEALTH_COMMIT" \
+    && git -C /opt/stealth/stealth-browser-mcp apply /opt/stealth/stealth.patch \
+    && rm -rf /opt/stealth/stealth-browser-mcp/.git \
+    && python3.11 -m venv /opt/stealth/venv \
+    && /opt/stealth/venv/bin/pip install --no-cache-dir --quiet --disable-pip-version-check -r /opt/stealth/requirements.txt
+
+COPY entrypoint.sh mcp.sh devtools_relay.py /opt/stealth/
+# The server's code stays read-only for the user it runs as; only its output folder is theirs.
+RUN chmod 755 /opt/stealth/entrypoint.sh /opt/stealth/mcp.sh && useradd -m -u 1000 bip \
+    && install -d -o bip -g bip /opt/stealth/stealth-browser-mcp/element_clones
+
+# Read by the MCP server (our patch) and by Chrome: the screen, the DevTools port Hermes reaches (relayed on 9223 by
+# devtools_relay.py),
+# the persistent profile and launch flags (the bridge adds the language, and a GPU's when it passes /dev/dri in), and
+# the flags the server adds in any container that this one does without (a single process, no GPU at all, and a
+# redundant one Chrome shows a warning bar for).
+ENV DISPLAY=:99 \
+    STEALTH_CDP_PORT=9222 \
+    STEALTH_USER_DATA_DIR=/home/bip/profile \
+    STEALTH_BROWSER_ARGS="--window-size=1600,900;--no-first-run;--no-default-browser-check;--disable-dev-shm-usage;--ignore-gpu-blocklist;--test-type;--hide-crash-restore-bubble" \
+    STEALTH_DROP_ARGS="--single-process;--disable-gpu;--disable-setuid-sandbox" \
+    BROWSER_IDLE_TIMEOUT=1800 \
+    PYTHONWARNINGS=ignore \
+    PYTHONUNBUFFERED=1
+
+USER bip
+WORKDIR /home/bip
+ENTRYPOINT ["/opt/stealth/entrypoint.sh"]

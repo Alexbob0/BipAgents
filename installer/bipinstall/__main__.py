@@ -229,20 +229,28 @@ def main(argv: Optional[List[str]] = None) -> int:
         say("  · Sur Mac, pas encore de bac à sable : tes agents n'auront ni terminal ni accès aux fichiers par défaut,\n"
             "    et pas de coffre de mots de passe.")
     say(ui.note(f"Ports {ports.base}–{ports.base + 9} : agents {ports.hermes}, bridge {ports.bridge}, réseau local {ports.lan}."))
+    browser = False
+    if sandbox and plan.browser != "none":
+        say("\nChaque agent peut avoir son navigateur visible : un vrai Chrome sur un bureau à lui, que tu regardes en\n"
+            "direct et reprends en main depuis l'app (Bureau). Il se connecte aux sites avec le coffre, sans voir tes\n"
+            "mots de passe. Environ 0,5 Go de mémoire par agent quand il navigue.")
+        browser = ask("Donner un navigateur visible à tes agents ? (o/n)", "o").lower() in ("o", "oui", "y", "yes")
     chosen = pick_agents()
     if ask("\nOn y va ? (o/n)", "o").lower() not in ("o", "oui", "y", "yes"):
         return 1
 
     inst = Install(repo=REPO, home=Path.home(), ports=ports, tailnet_name=machine.tailnet_name,
                    lan_address=(machine.lan_addresses or [None])[0], model=model,
-                   relay_url=args.relay_url, relay_key=args.relay_key, isolated=bool(sandbox))
-    say(ui.step(1, 5, "Hermes, le cerveau des agents"))
+                   relay_url=args.relay_url, relay_key=args.relay_key, isolated=bool(sandbox), browser=browser)
+    steps = iter(range(1, 7 if browser else 6))
+    total = 6 if browser else 5
+    say(ui.step(next(steps), total, "Hermes, le cerveau des agents"))
     hermes.install(runner, browser=plan.browser != "none")
     skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches")
     if skipped:
         say(f"  Patches non appliqués à cette version d'Hermes : {', '.join(skipped)} (l'app marche, sans ces fonctions).")
     hub_key = hermes.setup_hub(runner, ports.hermes, model, sandbox=bool(sandbox))
-    if plan.browser != "none":
+    if plan.browser != "none" and not browser:   # the visible browser brings its own desktop
         if hermes.desktop_ready() or sandbox:
             hermes.setup_desktop(runner, plan.browser)
         elif machine.system == "linux":
@@ -263,7 +271,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         start_service(machine.system, label, path, runner)
 
     say(ui.done("Hermes et tes agents sont en place."))
-    say(ui.step(2, 5, "Les voix des Bips"))
+    say(ui.step(next(steps), total, "Les voix des Bips"))
     if pocket_running():
         say("  déjà en place sur cette machine : je la partage.")
     else:
@@ -275,7 +283,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if machine.system == "macos":
         say("  macOS peut demander si Python peut accéder aux appareils du réseau local : accepte, sinon les agents\n"
             "  et le bridge ne joindront pas un modèle installé sur une autre machine de la maison.")
-    say(ui.step(3, 5, "Le bridge, qui relie l'app à tes agents"))
+    say(ui.step(next(steps), total, "Le bridge, qui relie l'app à tes agents"))
     venv(REPO / "bridge", runner)
     write(inst.bridge_config, bridge_toml(inst), runner, mode=0o600)
     label, path, content = bridge_service(inst, machine.system)
@@ -283,7 +291,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     start_service(machine.system, label, path, runner)
 
     say(ui.done("Bridge démarré."))
-    say(ui.step(4, 5, "Tailscale, pour joindre tes agents de partout"))
+    if browser:
+        say(ui.step(next(steps), total, "Le navigateur visible de tes agents"))
+        say(ui.note("Je prépare son image : Chrome, son bureau et le serveur qui le pilote (stealth-browser-mcp, récupéré "
+                    "sur son dépôt).\n    Compte quelques minutes la première fois."))
+        try:
+            hermes.build_browser(runner, sandbox, REPO)
+            runner.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "browser", "add", "--all",
+                        "--config", str(inst.bridge_config)])
+            if machine.system == "linux":
+                runner.run(["systemctl", "--user", "restart", label])   # the bridge reads the agents' desktops
+            say(ui.done("Chaque agent a son navigateur, sur son propre bureau."))
+        except RuntimeError as exc:
+            say(ui.fail("Le navigateur n'a pas pu être installé : tes agents fonctionnent sans."))
+            say(ui.note(str(exc)[-300:]))
+            say(ui.note("Pour réessayer plus tard :"))
+            say(f"    {sandbox} build -t {hermes.BROWSER_IMAGE} {REPO / 'browser'}")
+            say(f"    {REPO / 'bridge' / '.venv' / 'bin' / 'python'} -m bipbridge browser add --all --config {inst.bridge_config}")
+            say(f"    systemctl --user restart {label}")
+    say(ui.step(next(steps), total, "Tailscale, pour joindre tes agents de partout"))
     commands = [] if args.no_tailscale else None
     if commands is None:
         commands = tailscale_commands(machine.tailscale or "tailscale", ports, desk=plan.browser == "permanent")
@@ -298,7 +324,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         for command in commands:
             say(f"    sudo {command}")
 
-    say(ui.step(5, 5, "Vérifications"))
+    say(ui.step(next(steps), total, "Vérifications"))
     if not runner.dry:
         hub = f"http://127.0.0.1:{ports.hermes}"
         for agent in inst.agents:

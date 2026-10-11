@@ -37,9 +37,12 @@ Add `--dry-run` to see every step and command without changing anything.
 6. **Sets up the voices** (Pocket TTS, one server per machine, shared by everyone) and **the bridge** (its config in
    `~/.config/bipagents/bridge.toml`, keys generated, its local-network door), as services that start on their own:
    launchd on macOS, systemd user units on Linux.
-7. **Publishes the install on the tailnet** (`tailscale serve`, never on the Internet). Without the right to do it
+7. **Gives each agent its visible browser** (Linux with podman, if you want it): a real Chrome on a desktop of its
+   own, which you watch live and take over from the app (Bureau, behind Face ID), and in which the vault fills
+   passwords without the agent seeing them. See [`browser/`](../browser/README.md).
+8. **Publishes the install on the tailnet** (`tailscale serve`, never on the Internet). Without the right to do it
    (another person's account on Linux), it prints the commands for the administrator.
-8. **Shows one QR code**: scanned in the app, it adds every agent of the install.
+9. **Shows one QR code**: scanned in the app, it adds every agent of the install.
 
 ## Uninstall
 

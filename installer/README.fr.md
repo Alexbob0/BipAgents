@@ -38,9 +38,12 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
 6. **Met en place les voix** (Pocket TTS, un serveur par machine, partagé par tous) et **le bridge** (sa config dans
    `~/.config/bipagents/bridge.toml`, clés générées, sa porte sur le réseau local), en services qui démarrent seuls :
    launchd sur macOS, services utilisateur systemd sur Linux.
-7. **Publie l'installation sur le tailnet** (`tailscale serve`, jamais sur Internet). S'il n'en a pas le droit (le
+7. **Donne à chaque agent son navigateur visible** (Linux avec podman, si tu le veux) : un vrai Chrome sur un bureau à
+   lui, que tu regardes en direct et reprends en main depuis l'app (Bureau, derrière Face ID), et dans lequel le coffre
+   remplit les mots de passe sans que l'agent les voie. Voir [`browser/`](../browser/README.md).
+8. **Publie l'installation sur le tailnet** (`tailscale serve`, jamais sur Internet). S'il n'en a pas le droit (le
    compte d'une autre personne sous Linux), il affiche les commandes pour l'administrateur.
-8. **Affiche un seul QR code** : scanné dans l'app, il ajoute tous les agents de l'installation.
+9. **Affiche un seul QR code** : scanné dans l'app, il ajoute tous les agents de l'installation.
 
 ## Désinstaller
 

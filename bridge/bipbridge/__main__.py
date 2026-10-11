@@ -1,4 +1,4 @@
-"""``python -m bipbridge [serve|check|genkey|qr|peer-token]``."""
+"""``python -m bipbridge [serve|check|genkey|qr|peer-token|browser]``."""
 from __future__ import annotations
 
 import argparse
@@ -14,14 +14,17 @@ from .logs import setup_logging
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="bipbridge", description="BipAgents bridge for Hermes agents")
-    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token"],
+    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser"],
                         help="serve (default), check the config, print a new random bridge key, "
-                             "show an agent's pairing QR code for the app, or (peer-token --agent X) give an agent set "
-                             "up by hand its token for messaging the others")
+                             "show an agent's pairing QR code for the app, (peer-token --agent X) give an agent set "
+                             "up by hand its token for messaging the others, or (browser add|remove --agent X|--all) "
+                             "set up or remove agents' visible browsers")
     parser.add_argument("--config", help="config path (default: $BRIDGE_CONFIG or ~/.config/hermes-ios/bridge.toml)")
     parser.add_argument("--agent", help="qr: one agent's own code (default: the install's code, which adds every agent)")
     parser.add_argument("--png", help="qr: also save the QR code as a PNG (one agent)")
     parser.add_argument("--json", action="store_true", help="qr: print the payload instead of the QR code")
+    parser.add_argument("action", nargs="?", choices=["add", "remove"], help="browser: add or remove")
+    parser.add_argument("--all", action="store_true", help="browser add: every agent this install manages")
     args = parser.parse_args(argv)
 
     if args.command == "genkey":
@@ -70,6 +73,9 @@ def main(argv=None) -> int:
         print(f"HERMES_PEER_{PEER_NAME.upper()}_KEY={token}")
         return 0
 
+    if args.command == "browser":
+        return asyncio.run(_browser(config, args))
+
     import uvicorn
 
     from .app import create_app
@@ -112,6 +118,51 @@ async def _serve_with_lan(app, config) -> None:
         if door_task:
             door.should_exit = True
             await door_task
+
+
+async def _browser(config, args) -> int:
+    """Agents' visible browsers (browsers.py), set up from the command line: the installer, or an administrator adding
+    one to an agent that has none. Run it while the bridge is stopped, or restart the bridge after: it rewrites the
+    agents' sections of the config file."""
+    from . import browsers
+    from .agents_admin import home_root, managed, run_hermes, save_agent
+
+    if args.all:
+        names = [a.name for a in config.agents.values() if _manages(config, a.name)]
+    elif args.agent:
+        names = [args.agent]
+    else:
+        print("browser needs --agent X or --all", file=sys.stderr)
+        return 2
+    failed = 0
+    for name in names:
+        try:
+            agent = managed(config, name)
+        except LookupError:
+            print(f"{name}: not an agent this install manages", file=sys.stderr)
+            failed += 1
+            continue
+        try:
+            if args.action == "remove":
+                await browsers.remove(config, name, run_hermes)
+                agent.desktop_vnc = agent.desktop_vnc_password_file = None
+            else:
+                agent = await browsers.setup(config, agent, run_hermes, home_root(config, agent))
+            save_agent(config, agent)
+            print(f"{name}: browser {'removed' if args.action == 'remove' else 'ready'}")
+        except (browsers.BrowserError, RuntimeError, OSError) as exc:
+            print(f"{name}: {exc}", file=sys.stderr)
+            failed += 1
+    return 1 if failed else 0
+
+
+def _manages(config, name) -> bool:
+    from .agents_admin import managed
+    try:
+        managed(config, name)
+        return True
+    except LookupError:
+        return False
 
 
 def _qr(config, args) -> int:

@@ -1,0 +1,93 @@
+diff --git a/src/browser_manager.py b/src/browser_manager.py
+index a614108..62f9c19 100644
+--- a/src/browser_manager.py
++++ b/src/browser_manager.py
+@@ -56,6 +56,62 @@ def _parse_nonnegative_int_env(
+     return parsed
+ 
+ 
++# ---- BipAgents patch (browser/stealth.patch): one browser per agent, in its own container ----
++# STEALTH_CDP_PORT: the first Chrome started listens on this DevTools port, so Hermes (browser.cdp_url) and its vault
++# fill drive the same browser. nodriver connects instead of launching when given a host and port, so only its choice
++# of a free port is replaced, for the time of the launch. Later instances (or a port already taken) keep a random one.
++_fixed_port_lock = asyncio.Lock()
++
++
++def _port_free(port: int) -> bool:
++    import socket
++    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
++        try:
++            sock.bind(("127.0.0.1", port))
++            return True
++        except OSError:
++            return False
++
++
++async def _start_on_fixed_port(config):
++    raw = os.environ.get("STEALTH_CDP_PORT", "").strip()
++    if not raw.isdigit():
++        return await uc.start(config=config)
++    port = int(raw)
++    async with _fixed_port_lock:
++        if not _port_free(port):
++            debug_logger.log_warning("browser_manager", "spawn_browser",
++                                     f"STEALTH_CDP_PORT {port} already in use: random debugging port for this instance")
++            return await uc.start(config=config)
++        from nodriver.core import util as nd_util
++        original = nd_util.free_port
++        nd_util.free_port = lambda: port
++        try:
++            return await uc.start(config=config)
++        finally:
++            nd_util.free_port = original
++
++
++def _apply_container_defaults(options) -> None:
++    """What the agent leaves out, from the container: its persistent profile (STEALTH_USER_DATA_DIR), launch flags
++    (STEALTH_BROWSER_ARGS, separated by « ; », added after the caller's) and time zone (STEALTH_TIMEZONE). An agent then
++    starts the right browser with spawn_browser() and no arguments."""
++    if not options.user_data_dir and os.environ.get("STEALTH_USER_DATA_DIR"):
++        options.user_data_dir = os.environ["STEALTH_USER_DATA_DIR"]
++    extra = [a.strip() for a in os.environ.get("STEALTH_BROWSER_ARGS", "").split(";") if a.strip()]
++    given = {a.split("=", 1)[0] for a in options.browser_args}
++    options.browser_args = list(options.browser_args) + [a for a in extra if a.split("=", 1)[0] not in given]
++    if not options.timezone_id and os.environ.get("STEALTH_TIMEZONE"):
++        options.timezone_id = os.environ["STEALTH_TIMEZONE"]
++
++
++def _without_dropped_args(args):
++    """STEALTH_DROP_ARGS (« ; »-separated): flags added for containers that this one does not need, e.g. --single-process
++    and --disable-gpu, which make Chrome fragile and easy to tell apart from a person's browser."""
++    dropped = {a.strip() for a in os.environ.get("STEALTH_DROP_ARGS", "").split(";") if a.strip()}
++    return [a for a in args if a not in dropped]
++
++
+ class BrowserManager:
+     """Manages multiple browser instances."""
+ 
+@@ -266,6 +322,7 @@ class BrowserManager:
+             BrowserInstance: The spawned browser instance.
+         """
+         instance_id = str(uuid.uuid4())
++        _apply_container_defaults(options)   # BipAgents: the container's profile, flags and time zone
+ 
+         instance = BrowserInstance(
+             instance_id=instance_id,
+@@ -321,7 +378,7 @@ class BrowserManager:
+                 caller_args,
+                 launch_proxy_server,
+             )
+-            launch_args = merge_browser_args(caller_args)
++            launch_args = _without_dropped_args(merge_browser_args(caller_args))   # BipAgents: STEALTH_DROP_ARGS
+             
+             config = uc.Config(
+                 headless=options.headless,
+@@ -331,7 +388,7 @@ class BrowserManager:
+                 browser_args=launch_args
+             )
+ 
+-            browser = await uc.start(config=config)
++            browser = await _start_on_fixed_port(config)   # BipAgents: STEALTH_CDP_PORT
+             tab = browser.main_tab
+             config_obj = getattr(browser, "config", None)
+             actual_user_data_dir = getattr(config_obj, "user_data_dir", options.user_data_dir)

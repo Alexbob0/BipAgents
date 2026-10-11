@@ -135,6 +135,19 @@ class SpacesConfig:
 
 
 @dataclass
+class BrowserConfig:
+    """Each agent's visible browser (browsers.py): a real Chrome on a screen of its own, in a container of its own."""
+    enabled: bool = False            # every agent this install creates gets one
+    runtime: str = ""                # "podman" or "docker" (default: the one found)
+    image: str = "bipagents-browser"
+    first_port: int = 9600           # its DevTools and VNC ports, on 127.0.0.1 only
+    root: str = DEFAULT_DATA_DIR + "/browsers"
+    gpu: str = "auto"                # "auto": /dev/dri when there is one; "none": software rendering
+    language: str = ""               # e.g. "fr-FR" (default: the bridge's locale)
+    timezone: str = ""               # e.g. "Europe/Paris" (default: the bridge's)
+
+
+@dataclass
 class RelayConfig:
     """This bridge relays the notifications of other installs on the server, which have no APNs key of their own
     (another person's bridge): each install gets its own key, listed here as key -> install name."""
@@ -186,6 +199,7 @@ class Config:
     relay: RelayConfig = field(default_factory=RelayConfig)
     hermes: HermesInstall = field(default_factory=HermesInstall)
     spaces: "SpacesConfig" = field(default_factory=lambda: SpacesConfig())
+    browser: BrowserConfig = field(default_factory=BrowserConfig)
     # Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
     push_relay_url: Optional[str] = None
     push_relay_key: Optional[str] = None
@@ -392,6 +406,19 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
     )
     if spaces.sandbox not in ("auto", "none"):
         raise ConfigError("spaces.sandbox must be 'auto' or 'none'")
+    browser_t = data.get("browser", {}) or {}
+    browser = BrowserConfig(
+        enabled=bool(browser_t.get("enabled", False)),
+        runtime=str(browser_t.get("runtime", "")),
+        image=str(browser_t.get("image", "bipagents-browser")),
+        first_port=int(browser_t.get("first_port", 9600)),
+        root=_expand(str(browser_t.get("root", os.path.join(data_dir, "browsers")))),
+        gpu=str(browser_t.get("gpu", "auto")),
+        language=str(browser_t.get("language", "")),
+        timezone=str(browser_t.get("timezone", "")),
+    )
+    if browser.runtime not in ("", "podman", "docker") or browser.gpu not in ("auto", "none"):
+        raise ConfigError("browser.runtime must be 'podman' or 'docker', browser.gpu 'auto' or 'none'")
 
     lan_t = data.get("lan", {}) or {}
     lan = LanConfig(
@@ -426,6 +453,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         relay=relay,
         hermes=hermes_install,
         spaces=spaces,
+        browser=browser,
         push_relay_url=push_relay_url,
         push_relay_key=push_relay_key,
         model_health_url=str(model_t["health_url"]) if model_t.get("health_url") else None,

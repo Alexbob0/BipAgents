@@ -20,7 +20,7 @@ import yaml
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import souls
+from . import browsers, souls
 from .config import AgentConfig, Config
 from . import peers
 from . import services as connected
@@ -86,7 +86,7 @@ def append_agent(config_path: str, agent: AgentConfig) -> None:
         lines.append("sandboxed = true")
     if agent.python:
         lines.append("python = [" + ", ".join(q(a) for a in agent.python) + "]")
-    for key in ("hermes_home", "hermes_root", "space"):
+    for key in ("hermes_home", "hermes_root", "space", "desktop_url", "desktop_vnc", "desktop_vnc_password_file"):
         if getattr(agent, key):
             lines.append(f"{key} = {q(getattr(agent, key))}")
     with open(config_path, "a", encoding="utf-8") as fh:
@@ -142,6 +142,12 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
         await asyncio.sleep(1)
     else:
         raise RuntimeError("the gateway did not pick the new agent up")
+    if config.browser.enabled:
+        try:
+            agent = await browsers.setup(config, agent, run, install.home or str(Path.home() / ".hermes"))
+        except (browsers.BrowserError, RuntimeError, OSError) as exc:
+            # The agent works without it; `python -m bipbridge browser add <agent>` sets it up later.
+            log.warning("browser not set up", extra=fields(agent=profile, error=str(exc)[-200:]))
     if config.source_path:
         append_agent(config.source_path, agent)
     config.agents[profile] = agent
@@ -225,6 +231,8 @@ async def delete_agent(config: Config, agent: AgentConfig, run: Callable[..., An
     else:
         env = {"HERMES_HOME": config.hermes.home} if config.hermes.home else {}
         await run([config.hermes.bin, "profile", "delete", agent.name, "--yes"], env)
+    if browsers.folder(config, agent.name).exists():
+        await browsers.remove(config, agent.name, run)
     if config.source_path:
         remove_agent_section(config.source_path, agent.name)
     config.agents.pop(agent.name, None)

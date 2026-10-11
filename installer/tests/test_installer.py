@@ -144,7 +144,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
     hermes.apply_patches(runner, ROOT / "hermes" / "patches")
     applied = [line for line in runner.log if " apply " in line and "--check" not in line]
     assert [line.rsplit("/", 1)[-1].strip("'") for line in applied] == ["0001-api-server-clarify.patch",
-                                                            "0004-image-store-replay-recent-images.patch"]
+                                                            "0004-image-store-replay-recent-images.patch",
+                                                            "0005-vault-fill-reattach-supervisor.patch"]
 
 
 def test_bot_mode_marker(tmp_path):
@@ -178,8 +179,10 @@ def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     assert config.hermes.enabled and config.hermes.hub_url == "http://127.0.0.1:9202"
     assert config.hermes.public_hub_url == "https://mini.tail0000.ts.net:9202"
     assert config.hermes.isolated is False             # no sandbox: the bridge keeps no credentials
-    inst.isolated = True
-    assert parse_config(tomllib.loads(bridge_toml(inst))).hermes.isolated is True
+    assert config.browser.enabled is False
+    inst.isolated = inst.browser = True
+    config = parse_config(tomllib.loads(bridge_toml(inst)))
+    assert config.hermes.isolated is True and config.browser.enabled is True
     assert tailscale_commands("tailscale", inst.ports)[0] == "tailscale serve --bg --https=9202 http://127.0.0.1:9202"
     label, path, content = bridge_service(inst, "macos")
     assert path.name == "io.github.bipagents.bridge.plist" and str(inst.bridge_config) in content
@@ -203,6 +206,44 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     assert "profile create lea" in out and "profile create fougere" in out
     assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
     assert "<clé>" in out and "API_SERVER_KEY <clé>" in out
+
+
+def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, capsys):
+    """A sandbox on Linux: the agents' visible browser is offered, its image built from the repository, each agent
+    given its container by the bridge, and Hermes' own desktop left out (the browser brings its own)."""
+    from bipinstall import __main__ as cli
+    monkeypatch.setenv("HOME", str(tmp_path))
+    linux = Machine("linux", "x86_64", 32, 8, "Ryzen", "none", tailnet_name="box.tail0000.ts.net",
+                    lan_addresses=["192.168.1.21"])
+    monkeypatch.setattr(cli, "detect", lambda: linux)
+    monkeypatch.setattr(cli.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
+    monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(8640))
+    monkeypatch.setattr(cli.models, "discover", lambda addresses: _async([models.Server("http://192.168.1.30:8888/v1", "vLLM", ["glm"])]))
+    monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
+    monkeypatch.setattr(cli, "pocket_running", lambda: True)
+    answers = iter(["1", "1", "", "o", "1", "Léa", "o"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert cli.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "navigateur visible" in out and "[6/6]" in out
+    assert "/usr/bin/podman build -t bipagents-browser -f " in out and "/browser/Containerfile" in out
+    assert "-m bipbridge browser add --all --config" in out and "systemctl --user restart bipagents-bridge" in out
+    assert "[browser]\nenabled = true" in out and "isolated = true" in out
+    assert "bot_desktop.auto_start" not in out
+
+
+def test_uninstall_removes_the_browsers(tmp_path, monkeypatch):
+    from bipinstall.uninstall import uninstall
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+    units = tmp_path / ".config" / "systemd" / "user"
+    units.mkdir(parents=True)
+    (units / "bipagents-browser-lea.service").write_text("[Unit]\n")
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/podman" if name == "podman" else None)
+    runner = hermes.Runner(dry=True)
+    uninstall(runner, everything=False, home=tmp_path, system="linux", tailscale=None)
+    log = "\n".join(runner.log)
+    assert "systemctl --user disable --now bipagents-browser-lea" in log
+    assert "/usr/bin/podman image rm -f bipagents-browser" in log
 
 
 async def _async_value(value):
