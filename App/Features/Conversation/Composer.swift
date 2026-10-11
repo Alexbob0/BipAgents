@@ -59,7 +59,7 @@ struct Composer: View {
             HStack(alignment: .bottom, spacing: 8) {
                 // Recording takes the bar's place, WhatsApp-style: timer, then the transcript as it comes.
                 if dictation.isActive {
-                    RecordingBar(voice: voice, controller: dictation) { dictation.cancel(voice) }
+                    RecordingBar(voice: voice, controller: dictation) { dictation.discard(voice) }
                         .transition(.opacity)
                 } else {
                     attachMenu

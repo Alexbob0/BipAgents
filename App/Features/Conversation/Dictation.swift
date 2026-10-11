@@ -77,6 +77,12 @@ final class DictationController {
         reset()
     }
 
+    /// The person threw the recording away (slid to cancel, or the bin once locked): felt, like the press.
+    func discard(_ voice: VoiceEngine) {
+        cancel(voice)
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+    }
+
     private func reset() {
         phase = .idle
         startedAt = nil
@@ -116,7 +122,6 @@ struct DictationButton: View {
                     .transition(.opacity)
                 }
             }
-            .offset(controller.phase == .holding ? CGSize(width: min(0, controller.dragOffset.width), height: min(0, controller.dragOffset.height)) : .zero)
             .animation(.easeOut(duration: 0.15), value: controller.phase)
         .contentShape(.circle)
         .overlay {
@@ -162,8 +167,10 @@ struct DictationButton: View {
             return
         }
         if controller.phase == .locked { return }
-        if interrupted || controller.willCancel {
+        if interrupted {
             controller.cancel(voice)
+        } else if controller.willCancel {
+            controller.discard(voice)
         } else if held < 0.3 {
             // A tap is not a recording: cancel and explain, like WhatsApp.
             controller.cancel(voice)
