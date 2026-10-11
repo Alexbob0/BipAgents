@@ -115,12 +115,18 @@ def normalize_origin(url: str) -> str:
     return f"{parts.scheme}://{parts.hostname.lower()}{port}"
 
 
+def in_hub(config: Config, agent: AgentConfig) -> bool:
+    return bool(config.hermes.enabled and not agent.space and agent.hermes_url.startswith(f"{config.hermes.hub_url}/p/"))
+
+
 def holder(config: Config, agent: AgentConfig) -> Optional[str]:
     """None when the agent can hold credentials, else why not."""
     if not config.hermes.isolated:
         return "unprotected_install"    # the agents could read the bridge's own copy: no credentials at all
     if not agent.isolated:
-        return "needs_own_space"
+        # An agent of the shared hub can move into its own space from the app; one set up by hand is up to its
+        # administrator (its own container, then `isolated`, `python` and `hermes_home` in this file).
+        return "needs_own_space" if in_hub(config, agent) else "not_configured"
     if agent.space and not agent.sandboxed:
         # Its own gateway, but under the same account as the hub's agents, without a sandbox: they could still
         # read its vault on disk.

@@ -12,7 +12,8 @@ def setup(config_dict, tmp_path):
                                    "python": "podman exec -i hermes-vie /opt/hermes/venv/bin/python",
                                    "hermes_home": "/home/hermes/.hermes"}
     config_dict["agents"]["Budget"] = {"hermes_url": "http://127.0.0.1:8646/p/budget", "hermes_key": "b" * 32}
-    config_dict["hermes"] = {"isolated": True}   # the agents cannot read the bridge's files
+    config_dict["hermes"] = {"isolated": True,   # the agents cannot read the bridge's files
+                             "bin": "/opt/hermes", "hub_url": "http://127.0.0.1:8646"}
     config = parse_config(config_dict)
     calls = []
 
@@ -89,10 +90,11 @@ def test_routes(client, config_dict):
     services.config.hermes.isolated = True
     listing = client.get("/v1/vault", headers=AUTH)
     assert listing.status_code == 200 and listing.json()["protected"] is True
+    # Set up by hand (not in the hub): up to its administrator, the app offers no move.
     assert listing.json()["agents"] == [{"id": "wellness", "name": "Wellness", "can_hold": False,
-                                         "why": "needs_own_space"}]
+                                         "why": "not_configured"}]
     refused = client.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": ["wellness"]})
-    assert refused.status_code == 409 and refused.json()["detail"]["agents"] == {"wellness": "needs_own_space"}
+    assert refused.status_code == 409 and refused.json()["detail"]["agents"] == {"wellness": "not_configured"}
     kept = client.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": []})
     assert kept.status_code == 201 and "password" not in kept.text
     assert client.delete(f"/v1/vault/{kept.json()['id']}", headers=AUTH).status_code == 204
