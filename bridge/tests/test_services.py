@@ -12,7 +12,7 @@ from bipbridge.vault import CannotHold
 def setup(config_dict, tmp_path):
     hub = tmp_path / ".hermes"
     (hub / "profiles" / "maison").mkdir(parents=True)
-    config_dict["hermes"] = {"bin": "/opt/hermes", "home": str(hub), "hub_url": "http://127.0.0.1:8642"}
+    config_dict["hermes"] = {"bin": "/opt/hermes", "home": str(hub), "hub_url": "http://127.0.0.1:8642", "isolated": True}
     config_dict["agents"]["Maison"] = {"hermes_url": "http://127.0.0.1:8642/p/maison", "hermes_key": "m" * 32}
     config = parse_config(config_dict)
     commands = []

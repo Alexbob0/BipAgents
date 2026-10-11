@@ -10120,6 +10120,72 @@
           }
         }
       }
+    },
+    "Ce serveur n’isole pas encore ses agents : l’un d’eux pourrait lire les clés du serveur, et donc ce coffre. Il ne garde aucun mot de passe tant que ce n’est pas réglé (sur Linux : installer podman, puis relancer l’installeur)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This server does not isolate its agents yet: one of them could read the server’s keys, and so this vault. It keeps no passwords until this is fixed (on Linux: install podman, then run the installer again)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor aún no aísla a sus agentes: uno de ellos podría leer las claves del servidor, y por tanto esta caja fuerte. No guarda ninguna contraseña hasta que se resuelva (en Linux: instala podman y vuelve a ejecutar el instalador)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server isoliert seine Agenten noch nicht: Einer von ihnen könnte die Schlüssel des Servers lesen und damit diesen Tresor. Er speichert keine Passwörter, bis das behoben ist (unter Linux: podman installieren, dann das Installationsprogramm erneut ausführen)."
+          }
+        }
+      }
+    },
+    "Ce serveur n’isole pas ses agents : %@ pourra lire les clés du serveur, et s’en servir pour commander tes autres agents. À n’activer que si tu as confiance dans tout ce qu’il lit (pages web, e-mails, documents)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This server does not isolate its agents: %@ will be able to read the server’s keys and use them to command your other agents. Only turn this on if you trust everything it reads (web pages, e-mails, documents)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor no aísla a sus agentes: %@ podrá leer las claves del servidor y usarlas para dar órdenes a tus otros agentes. Actívalo solo si confías en todo lo que lee (páginas web, correos, documentos)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server isoliert seine Agenten nicht: %@ kann die Schlüssel des Servers lesen und damit deine anderen Agenten steuern. Nur einschalten, wenn du allem vertraust, was es liest (Webseiten, E-Mails, Dokumente)."
+          }
+        }
+      }
+    },
+    "Ce serveur n’isole pas ses agents des clés du serveur : aucun mot de passe tant que ce n’est pas réglé." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This server does not isolate its agents from its keys: no passwords until this is fixed."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor no aísla a sus agentes de sus claves: ninguna contraseña hasta que se resuelva."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server isoliert seine Agenten nicht von seinen Schlüsseln: keine Passwörter, bis das behoben ist."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

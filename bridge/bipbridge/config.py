@@ -107,6 +107,10 @@ class HermesInstall:
     # How to run Hermes' own Python, and its code folder (the vault writes the agents' items with it).
     python: List[str] = field(default_factory=list)
     root: str = ""
+    # The agents cannot read this bridge's files (their tools run in a sandbox, or their Hermes in a container that does
+    # not see them). Without it the bridge keeps no credentials: an agent with a terminal or the file tools, running
+    # under the same account, could read the vault, its key and every agent's key in this file.
+    isolated: bool = False
 
     @property
     def enabled(self) -> bool:
@@ -361,6 +365,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         container_home=str(hermes_t.get("container_home", "")).rstrip("/"),
         python=_command(hermes_t.get("python")),
         root=_expand(str(hermes_t["root"])) if hermes_t.get("root") else "",
+        isolated=bool(hermes_t.get("isolated", False)),
     )
     if hermes_install.home and not hermes_install.python:
         # Hermes' official install: its own Python under <home>/tools, its code in <home>/hermes-agent.

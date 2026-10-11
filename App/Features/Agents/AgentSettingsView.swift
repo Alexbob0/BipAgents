@@ -156,7 +156,11 @@ struct AgentSettingsView: View {
             Button("Activer") { Task { await set(info.id, on: true) } }
             Button("Annuler", role: .cancel) {}
         } message: {
-            Text("\(agent.name) pourra agir sur le serveur où il tourne, qu’il partage avec les autres agents créés ici. Ne lui confie pas de mots de passe : les agents qui en gardent auront bientôt leur propre espace.")
+            if settings.protected {
+                Text("\(agent.name) pourra agir sur le serveur où il tourne, qu’il partage avec les autres agents créés ici. Ne lui confie pas de mots de passe : les agents qui en gardent auront bientôt leur propre espace.")
+            } else {
+                Text("Ce serveur n’isole pas ses agents : \(agent.name) pourra lire les clés du serveur, et s’en servir pour commander tes autres agents. À n’activer que si tu as confiance dans tout ce qu’il lit (pages web, e-mails, documents).")
+            }
         }
     }
 

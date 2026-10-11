@@ -45,7 +45,9 @@ struct VaultView: View {
                     } header: {
                         if installs.count > 1 { Text(install.title) }
                     } footer: {
-                        if install.items.isEmpty {
+                        if !install.protected {
+                            Text("Ce serveur n’isole pas encore ses agents : l’un d’eux pourrait lire les clés du serveur, et donc ce coffre. Il ne garde aucun mot de passe tant que ce n’est pas réglé (sur Linux : installer podman, puis relancer l’installeur).")
+                        } else if install.items.isEmpty {
                             Text("Aucun identifiant pour l’instant. Ajoute celui d’un site, puis choisis quels agents peuvent s’en servir.")
                         }
                     }
@@ -62,7 +64,7 @@ struct VaultView: View {
         .navigationTitle("Coffre")
         .overlay { if isUnlocked && isLoading && installs.isEmpty { ProgressView() } }
         .toolbar {
-            if isUnlocked, let install = installs.first {
+            if isUnlocked, let install = installs.first(where: \.protected) {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Ajouter un identifiant", systemImage: "plus") {
                         editing = VaultEditing(install: install, item: nil)
@@ -152,7 +154,8 @@ struct VaultView: View {
                   let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent)) else { continue }
             if let vault = try? await withTimeout(10, { try await bridge.vault() }) {
                 found.append(VaultInstall(id: bridgeURL.absoluteString, title: bridgeURL.host() ?? bridgeURL.absoluteString,
-                                          bridge: bridge, items: vault.items, agents: vault.agents))
+                                          bridge: bridge, items: vault.items, agents: vault.agents,
+                                          protected: vault.protected))
             }
         }
         installs = found
@@ -176,6 +179,8 @@ struct VaultInstall: Identifiable, Sendable {
     var bridge: BridgeClient
     var items: [BridgeClient.VaultItem]
     var agents: [BridgeClient.VaultAgent]
+    /// Its agents cannot read the bridge's files: only then does it keep credentials.
+    var protected: Bool = true
 
     func name(of agent: String) -> String {
         agents.first { $0.id == agent }?.name ?? agent
@@ -311,6 +316,7 @@ struct VaultItemEditor: View {
         switch why {
         case "needs_own_space": String(localized: "\(name) partage son espace avec d’autres agents : il lui faut d’abord le sien.")
         case "needs_sandbox": String(localized: "Le serveur n’a pas de bac à sable (podman) : l’espace de \(name) ne protège pas encore ses mots de passe des autres agents.")
+        case "unprotected_install": String(localized: "Ce serveur n’isole pas ses agents des clés du serveur : aucun mot de passe tant que ce n’est pas réglé.")
         default: String(localized: "\(name) n’est pas encore branché au coffre sur le serveur.")
         }
     }

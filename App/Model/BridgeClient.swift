@@ -117,6 +117,9 @@ struct BridgeClient: Sendable {
         var toolsets: [Toolset]
         /// In its own space (not the shared hub): it may hold credentials.
         var isolated: Bool
+        /// The install's agents cannot read the bridge's files (sandbox, container). False: a terminal or the file
+        /// tools could read the server's keys.
+        var protected: Bool = true
         /// Services connected to it (MCP servers).
         var services: [ConnectedService]
     }
@@ -317,6 +320,7 @@ struct BridgeClient: Sendable {
             return ConnectedService(id: name, url: row["url"] as? String, catalog: row["catalog"] as? String)
         }
         return AgentSettings(soul: soul, toolsets: toolsets, isolated: json["isolated"] as? Bool ?? false,
+                             protected: json["protected"] as? Bool ?? true,
                              services: services)
     }
 
@@ -349,7 +353,7 @@ struct BridgeClient: Sendable {
     }
 
     /// `GET /v1/vault`: nil when this bridge has no vault (older bridge).
-    func vault() async throws -> (items: [VaultItem], agents: [VaultAgent])? {
+    func vault() async throws -> (items: [VaultItem], agents: [VaultAgent], protected: Bool)? {
         let data: Data
         do {
             data = try await send(request("v1/vault"))
@@ -363,7 +367,8 @@ struct BridgeClient: Sendable {
             return VaultAgent(id: id, name: row["name"] as? String ?? id, canHold: row["can_hold"] as? Bool ?? false,
                               why: row["why"] as? String)
         }
-        return (items, agents)
+        // An older bridge does not say: it predates the rule, treat it as protected (it decides per agent).
+        return (items, agents, json?["protected"] as? Bool ?? true)
     }
 
     /// The agents that cannot hold credentials yet, from a 409 (agent id -> reason).

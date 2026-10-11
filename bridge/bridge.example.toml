@@ -86,6 +86,10 @@ purge_interval_hours = 6
 # hub_url = "http://127.0.0.1:8642"                      # the multiplex gateway (one per person)
 # public_hub_url = "https://mamachine.tailnet.ts.net:8642"
 # container_home = "/home/hermes/.hermes"
+# The agents cannot read this bridge's files: their tools run in a sandbox, or their Hermes in a container that does
+# not see them. Only then does the bridge keep credentials (vault, services with a token). Set it after checking,
+# from an agent's terminal, that this file and the bridge's data folder are out of reach.
+# isolated = true
 
 # Local-network door, for when Tailscale is down (no Internet, VPN off): the bridge also listens on the LAN over
 # HTTPS with its own certificate (created in data_dir/lan, pinned by the app through the QR code) and relays Hermes.

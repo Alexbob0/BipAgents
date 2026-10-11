@@ -50,6 +50,9 @@ def test_create_custom_agent(managed):
     assert agent.public_url == "https://mini.ts.net:8642/p/fougere"
     assert commands[0][:6] == ["/opt/hermes", "profile", "create", "fougere", "--clone-from", "default"]
     assert commands[1][:6] == ["/opt/hermes", "-p", "fougere", "config", "set", "API_SERVER_KEY"]
+    # Nothing says this install's agents are isolated from the bridge: no terminal, files or code until turned on.
+    assert commands[2] == ["/opt/hermes", "-p", "fougere", "tools", "disable", "terminal", "file", "code_execution",
+                           "browser", "--platform", "api_server"]
     soul = (tmp / ".hermes" / "profiles" / "fougere" / "SOUL.md").read_text()
     assert soul.startswith("Tu es Fougère") and "suit mes plantes" in soul and "drôle" in soul
     assert "hermes-bots" in (tmp / ".hermes" / "profiles" / "fougere" / "profile.yaml").read_text()
@@ -146,3 +149,22 @@ def test_settings_and_delete(managed):
     asyncio.run(delete_agent(config, agent, run=run))
     assert commands[-1] == ["/opt/hermes", "profile", "delete", "budget", "--yes"]
     assert "[agents.budget]" not in path.read_text() and config.agent("budget") is None
+
+
+def test_an_isolated_install_keeps_the_agents_tools(managed):
+    from bipbridge.agents_admin import NewAgent, create_agent
+
+    config, path, tmp = managed
+    config.hermes.isolated = True
+    commands, sessions = [], []
+
+    async def run(args, env):
+        commands.append(list(args))
+        return ""
+
+    async def go():
+        async with httpx.AsyncClient(transport=fake_gateway(sessions)) as http:
+            return await create_agent(config, NewAgent(name="Budget", kind="finance"), http, run=run)
+
+    asyncio.run(go())
+    assert not any("disable" in c for c in commands)
