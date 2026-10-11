@@ -1,3 +1,4 @@
+import AppIntents
 import HermesKit
 import SwiftUI
 import WidgetKit
@@ -63,8 +64,24 @@ enum WidgetExport {
 
 /// `bipagents://agent/<id>[?start=voice|keyboard]`: a widget opens the agent's « Discussion » (its permanent
 /// thread), recording a voice note already when asked.
+@MainActor
 enum AppLink {
-    @MainActor
+    private static var handler: ((URL) -> Void)?
+    private static var pending: URL?
+
+    /// Links that arrive before the app's views are ready (a widget launching it) wait until then.
+    static func attach(store: AgentStore, router: Router) {
+        handler = { open($0, store: store, router: router) }
+        if let url = pending {
+            pending = nil
+            open(url, store: store, router: router)
+        }
+    }
+
+    static func deliver(_ url: URL) {
+        if let handler { handler(url) } else { pending = url }
+    }
+
     static func open(_ url: URL, store: AgentStore, router: Router) {
         guard url.scheme == "bipagents", url.host() == "agent",
               let id = UUID(uuidString: url.pathComponents.dropFirst().first ?? ""),
@@ -72,5 +89,28 @@ enum AppLink {
         let start = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "start" }?.value
         router.open(.conversation(agent, sessionID: store.mainSessionID(for: agent),
                                   start: start == "voice" ? .voiceNote : start == "keyboard" ? .keyboard : .none))
+    }
+}
+
+/// The widget's microphone (same intent as in the widget extension, which only declares it): iOS opens the app and runs
+/// it here.
+struct RecordVoiceNoteIntent: AppIntent {
+    static let title: LocalizedStringResource = "Message vocal"
+    static let isDiscoverable = false
+    static let openAppWhenRun = true
+
+    @Parameter(title: "Agent")
+    var agentID: String
+
+    init() {}
+
+    init(agentID: String) {
+        self.agentID = agentID
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        if let url = URL(string: "bipagents://agent/\(agentID)?start=voice") { AppLink.deliver(url) }
+        return .result()
     }
 }

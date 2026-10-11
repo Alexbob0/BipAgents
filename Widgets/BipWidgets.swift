@@ -88,10 +88,12 @@ struct SelectAgentIntent: WidgetConfigurationIntent {
     var agent: AgentEntity?
 }
 
-/// The microphone: opens the app on the agent's « Discussion », a voice note already recording.
+/// The microphone: opens the app on the agent's « Discussion », a voice note already recording. The app declares the
+/// same intent and runs it (`openAppWhenRun`): an `OpenURLIntent` only opens universal links, not `bipagents://`.
 struct RecordVoiceNoteIntent: AppIntent {
     static let title: LocalizedStringResource = "Message vocal"
     static let isDiscoverable = false
+    static let openAppWhenRun = true
 
     @Parameter(title: "Agent")
     var agentID: String
@@ -102,8 +104,8 @@ struct RecordVoiceNoteIntent: AppIntent {
         self.agentID = agentID
     }
 
-    func perform() async throws -> some IntentResult & OpensIntent {
-        .result(opensIntent: OpenURLIntent(SharedData.link(agentID, start: "voice")))
+    func perform() async throws -> some IntentResult {
+        .result()
     }
 }
 

@@ -44,6 +44,7 @@ struct BipAgentsApp: App {
             }
             .task {
                 appDelegate.attach(store: agents, router: router)
+                AppLink.attach(store: agents, router: router)
                 ConversationModel.onMissedReply = { [inbox] agent, sessionID, runID, text in
                     inbox.addMissedReply(agent: agent, sessionID: sessionID, runID: runID, text: text)
                 }
