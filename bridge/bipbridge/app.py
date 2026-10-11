@@ -27,7 +27,8 @@ from .lan import hermes_proxy, lan_info
 from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router
 from .vault import Vault, vault_router
-from .peers import Links, peer_router
+from .households import Households, path_for as households_path
+from .peers import Links, family_router, household_admin_router, peer_router
 from .desktop import Tickets, desktop_admin_router, desktop_router, static_files
 from .logs import fields, redact
 from .ntfy import NtfySubscriber, OutboxService, ntfy_reachable
@@ -76,6 +77,7 @@ class Services:
         self.presence = Presence()
         self.vault = Vault(os.path.join(os.path.dirname(config.outbox.db_path), "vault"))
         self.links = Links(os.path.join(os.path.dirname(config.outbox.db_path), "peers.json"))
+        self.households = Households(households_path(config))
         self.desktop_tickets = Tickets()
         self.desktop_control: Dict[str, bool] = {}   # desktops set up by hand: the person took over (input passes)
         self.subscribers: List[NtfySubscriber] = []
@@ -538,6 +540,8 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     # on a local port only). Hermes checks each agent's own key.
     app.include_router(hermes_proxy())
     app.include_router(peer_router())   # agents' own tokens, checked against the links the person allowed
+    app.include_router(family_router())   # the linked households' bridges, with the key each was given
+    app.include_router(household_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(desktop_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.mount("/desktop/static/novnc", static_files(), name="novnc")
     app.include_router(desktop_router())   # the page and its stream: a short-lived ticket from the route above

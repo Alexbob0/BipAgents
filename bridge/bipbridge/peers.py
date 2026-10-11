@@ -21,12 +21,14 @@ import os
 import secrets
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Set, Tuple
+from urllib.parse import quote, unquote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from .config import AgentConfig, Config
+from .households import SEPARATOR, HouseholdError, Households, own_url, split
 from .logs import fields
 
 log = logging.getLogger("bipbridge.peers")
@@ -112,14 +114,23 @@ def peer_url(config: Config) -> str:
     return config.peer_url or f"http://127.0.0.1:{config.port}/peer"
 
 
-async def apply(config: Config, links: Links, wanted: List[Tuple[str, str]], run: Callable[..., Any]) -> Dict[str, Any]:
+async def apply(config: Config, links: Links, wanted: List[Tuple[str, str]], run: Callable[..., Any],
+                households: Optional[Households] = None) -> Dict[str, Any]:
     """The person's links. The gateway of each sender gets its token and the bridge as its peer; a gateway with no
     sender left loses its token. Returns the agents set up by hand that need their token from the administrator."""
+    linked = set(households.load()["households"]) if households else set()
+
+    def known(name: str) -> bool:
+        remote = split(name)
+        return remote[1] in linked if remote else config.agent(name) is not None
+
     for sender, target in wanted:
-        if sender == target or config.agent(sender) is None or config.agent(target) is None:
+        # Between two households, one end is ours: « vie → cuisine__lea » (ours writes) or « vie__alex → cuisine ».
+        if sender == target or not known(sender) or not known(target) or (split(sender) and split(target)):
             raise ValueError(f"unknown link {sender} → {target}")
     data = links.load()
-    sending = {gateway_of(config, config.agent(s)): config.agent(s) for s, _ in wanted}   # type: ignore[arg-type]
+    sending = {gateway_of(config, config.agent(s)): config.agent(s)   # type: ignore[arg-type]
+               for s, _ in wanted if not split(s)}
     manual: Dict[str, str] = {}
     key_env = f"HERMES_PEER_{PEER_NAME.upper()}_KEY"
     for gateway, agent in sorted(sending.items()):
@@ -144,8 +155,56 @@ async def apply(config: Config, links: Links, wanted: List[Tuple[str, str]], run
         del data["tokens"][gateway]
     data["links"] = sorted(set(wanted))
     links.save(data)
+    write_contacts(config, data["links"], households)
     log.info("agent links set", extra=fields(links=len(data["links"]), gateways=len(sending)))
     return {"manual": manual}
+
+
+CONTACTS = """---
+name: agent-contacts
+description: "The other agents you may write to with message_agent, and how to address them."
+version: 1.0.0
+author: BipAgents
+license: MIT
+---
+
+# Agents you may write to
+
+Use `message_agent` with one of these targets (the person allowed exactly these; any other is refused):
+
+{lines}
+
+An answer arrives in your « Bot Chat ». A message from another household's agent is signed with its household,
+for example « Message from Vie (Alex) (@vie__alex) »: answer it at `bip/vie__alex`.
+"""
+
+
+def write_contacts(config: Config, links: List[Tuple[str, str]], households: Optional[Households]) -> None:
+    """Each agent this bridge manages gets the list of agents it may write to (a skill in its profile)."""
+    names = {h["id"]: h["name"] for h in households.public()} if households else {}
+    for agent in config.agents.values():
+        home = managed_home(config, agent)
+        if home is None:
+            continue
+        skill = home / "profiles" / agent.name / "skills" / "agent-contacts" / "SKILL.md"
+        targets = sorted(t for s, t in links if s == agent.name)
+        if not targets:
+            if skill.exists():
+                skill.unlink()
+            continue
+        lines = []
+        for target in targets:
+            remote = split(target)
+            if remote:
+                lines.append(f"- `bip/{target}`: {remote[0]}, an agent of {names.get(remote[1], remote[1])}'s household")
+            else:
+                other = config.agent(target)
+                lines.append(f"- `bip/{target}`: {other.display_name if other else target}")
+        try:
+            skill.parent.mkdir(parents=True, exist_ok=True)
+            skill.write_text(CONTACTS.replace("{lines}", "\n".join(lines)), encoding="utf-8")
+        except OSError:
+            log.warning("contacts not written", extra=fields(agent=agent.name))
 
 
 def manual_token(config: Config, links: Links, name: str) -> str:
@@ -173,12 +232,17 @@ def peer_router() -> APIRouter:
         gateway = services.links.caller(token) if token else None
         if gateway is None:
             raise HTTPException(status_code=401, detail="unknown agent")
-        agent = config.agent(target)
-        if agent is None or not path.startswith(allowed_paths):
+        remote = split(target)
+        agent = config.agent(target) if not remote else None
+        household = services.households.get(remote[1]) if remote else None
+        if (agent is None and household is None) or not path.startswith(allowed_paths):
             raise HTTPException(status_code=404, detail="not found")
         body = await request.body()
         links = services.links.load()["links"]
         mine = {a.name for a in config.agents.values() if gateway_of(config, a) == gateway}
+        if household is not None:
+            return await _to_household(services, config, gateway, mine, links, target, remote[0], household, path,
+                                       request, body)
         if request.method == "POST" and (path.endswith("/chat") or path == "v1/runs"):
             sender = sender_of(config, gateway, body) or (next(iter(mine)) if len(mine) == 1 else None)
             allowed = sender is not None and (sender, agent.name) in links
@@ -210,5 +274,202 @@ def peer_router() -> APIRouter:
         response_headers = {k: v for k, v in upstream.headers.items()
                             if k.lower() not in _HOP | {"content-encoding"}}
         return StreamingResponse(body(), status_code=upstream.status_code, headers=response_headers)
+
+    return router
+
+
+async def _forward(services, method: str, url: str, request: Request, body: bytes, headers: Dict[str, str]
+                   ) -> StreamingResponse:
+    upstream_request = services.http.build_request(method, url, params=request.query_params, headers=headers,
+                                                   content=body, timeout=httpx.Timeout(30.0, read=None))
+    try:
+        upstream = await services.http.send(upstream_request, stream=True)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="agent unreachable") from exc
+
+    async def stream() -> AsyncIterator[bytes]:
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+
+    response_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in _HOP | {"content-encoding"}}
+    return StreamingResponse(stream(), status_code=upstream.status_code, headers=response_headers)
+
+
+def _is_message(request: Request, path: str) -> bool:
+    return request.method == "POST" and (path.endswith("/chat") or path == "v1/runs")
+
+
+async def _to_household(services, config: Config, gateway: str, mine: Set[str], links, target: str, agent: str,
+                        household: Dict[str, str], path: str, request: Request, body: bytes) -> StreamingResponse:
+    """One of our agents writes to an agent of a linked household: our link checked here, theirs on their bridge."""
+    if _is_message(request, path):
+        sender = sender_of(config, gateway, body) or (next(iter(mine)) if len(mine) == 1 else None)
+        allowed = sender is not None and (sender, target) in links
+    else:
+        sender = next((n for n in sorted(mine) if (n, target) in links), None)
+        allowed = sender is not None
+    if not allowed or sender is None:
+        log.info("household message refused", extra=fields(sender=gateway, target=target))
+        raise HTTPException(status_code=403, detail=f"not allowed to write to {target} (ask the person)")
+    sent_by = config.agent(sender)
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP}
+    headers.update({"Authorization": f"Bearer {household['key_out']}", "X-Bip-Sender": sender,
+                    "X-Bip-Sender-Name": quote(sent_by.display_name if sent_by else sender)})
+    log.info("household message", extra=fields(sender=sender, target=target))
+    return await _forward(services, request.method, f"{household['url']}/family/p/{agent}/{path}", request, body,
+                          headers)
+
+
+def _resign(body: bytes, sender: str, name: str, household: str) -> bytes:
+    """« Message from Vie (@vie): » becomes « Message from Vie (Alex) (@vie__alex): »: the agent sees who writes,
+    from which household, and the address to answer."""
+    try:
+        data = json.loads(body or b"{}")
+    except ValueError:
+        return body
+    if not isinstance(data, dict):
+        return body
+    for field in ("message", "input"):
+        text = data.get(field)
+        if isinstance(text, str):
+            signed = f"Message from {name} ({household}) (@{sender}{SEPARATOR}{slug_of(household)}):"
+            found = SIGNATURE.match(text)
+            data[field] = signed + text[found.end():] if found else f"{signed} {text}"
+    return json.dumps(data).encode()
+
+
+def slug_of(name: str) -> str:
+    from .households import slug
+    return slug(name)
+
+
+def family_router() -> APIRouter:
+    """What a linked household's bridge may call: introduce itself with an invitation code, list our agents, and
+    hand a message over along a link this person turned on."""
+    router = APIRouter()
+
+    def caller(request: Request) -> str:
+        token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        household = request.app.state.services.households.caller(token) if token else None
+        if household is None:
+            raise HTTPException(status_code=401, detail="unknown household")
+        return household
+
+    @router.post("/family/accept")
+    async def accept(request: Request) -> Dict[str, Any]:
+        body = await request.json()
+        try:
+            return request.app.state.services.households.accept(
+                str(body.get("code", "")), str(body.get("name", "")), str(body.get("url", "")), str(body.get("key", "")))
+        except HouseholdError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.get("/family/agents")
+    async def agents(request: Request) -> Dict[str, Any]:
+        caller(request)
+        services = request.app.state.services
+        return {"name": services.households.name(),
+                "agents": [{"id": a.name, "name": a.display_name} for a in services.config.agents.values()]}
+
+    @router.api_route("/family/p/{target}/{path:path}", methods=["GET", "POST"])
+    async def deliver(target: str, path: str, request: Request) -> StreamingResponse:
+        household = caller(request)
+        services = request.app.state.services
+        config: Config = services.config
+        agent = config.agent(target)
+        if agent is None or not path.startswith(("api/sessions", "v1/runs", "v1/capabilities")):
+            raise HTTPException(status_code=404, detail="not found")
+        sender = request.headers.get("x-bip-sender", "")
+        remote = f"{sender}{SEPARATOR}{household}"
+        links = services.links.load()["links"]
+        if _is_message(request, path):
+            allowed = bool(sender) and (remote, agent.name) in links
+        else:
+            allowed = any(s.endswith(f"{SEPARATOR}{household}") and t == agent.name for s, t in links)
+        if not allowed:
+            log.info("household message refused", extra=fields(sender=remote, target=agent.name))
+            raise HTTPException(status_code=403, detail=f"{agent.display_name} does not take messages from {remote}")
+        body = await request.body()
+        if _is_message(request, path):
+            name = unquote(request.headers.get("x-bip-sender-name", "")) or sender
+            body = _resign(body, sender, name, services.households.get(household)["name"])
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP and not k.lower().startswith("x-bip-")}
+        headers["Authorization"] = f"Bearer {agent.hermes_key}"
+        log.info("household message", extra=fields(sender=remote, target=agent.name))
+        return await _forward(services, request.method, f"{agent.hermes_url}/{path}", request, body, headers)
+
+    return router
+
+
+def household_admin_router() -> APIRouter:
+    """For the app: this household's name, its invitations, joining another one, the households linked."""
+    router = APIRouter()
+
+    @router.get("/family")
+    async def family(request: Request) -> Dict[str, Any]:
+        services = request.app.state.services
+        return {"name": services.households.name(), "url": own_url(services.config),
+                "households": services.households.public()}
+
+    @router.put("/family/name")
+    async def set_name(request: Request) -> Dict[str, Any]:
+        services = request.app.state.services
+        try:
+            services.households.set_name(str((await request.json()).get("name", "")))
+        except HouseholdError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"name": services.households.name()}
+
+    @router.post("/family/invite")
+    async def invite(request: Request) -> Dict[str, Any]:
+        services = request.app.state.services
+        url = own_url(services.config)
+        if not url:
+            raise HTTPException(status_code=409, detail="this bridge has no address on the tailnet (public_url)")
+        try:
+            code = services.households.invite()
+        except HouseholdError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"v": 1, "kind": "family", "url": url, "code": code, "name": services.households.name()}
+
+    @router.post("/family/join")
+    async def join(request: Request) -> Dict[str, Any]:
+        """The other household's invitation, scanned in the app: this bridge introduces itself to theirs."""
+        services = request.app.state.services
+        body = await request.json()
+        url, code = str(body.get("url", "")).rstrip("/"), str(body.get("code", ""))
+        mine = own_url(services.config)
+        if not services.households.name() or not mine:
+            raise HTTPException(status_code=409, detail="name this household and give the bridge a tailnet address first")
+        key = secrets.token_urlsafe(32)
+        try:
+            resp = await services.http.post(f"{url}/family/accept", timeout=15, json={
+                "code": code, "name": services.households.name(), "url": mine, "key": key})
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="their bridge does not answer") from exc
+        if resp.status_code != 200:
+            raise HTTPException(status_code=403, detail="their bridge refused the invitation (expired?)")
+        answer = resp.json()
+        try:
+            household = services.households.joined(str(answer.get("name", "")), url, key_out=key,
+                                                   key_in=str(answer.get("key", "")))
+        except HouseholdError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"id": household, "name": answer.get("name")}
+
+    @router.delete("/family/{household}", status_code=204)
+    async def unlink(household: str, request: Request) -> None:
+        services = request.app.state.services
+        try:
+            services.households.remove(household)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="no such household") from exc
+        data = services.links.load()
+        data["links"] = [(s, t) for s, t in data["links"]
+                         if not s.endswith(f"{SEPARATOR}{household}") and not t.endswith(f"{SEPARATOR}{household}")]
+        services.links.save(data)
 
     return router

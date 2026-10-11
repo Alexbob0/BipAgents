@@ -201,9 +201,10 @@ def profile_key(folder: Path) -> Optional[str]:
 
 async def claim_profile(config: Config, name: str, display_name: Optional[str], http: httpx.AsyncClient,
                         run: Callable[..., Any] = run_hermes) -> AgentConfig:
-    """A profile found on the server, served to the app: its own key (kept when it has one), its place in this
-    bridge's config, its visible browser when the install gives one. Its personality, tools and memory stay as
-    they are."""
+    """A profile found on the server, served to the app like an agent made there: its own key (kept when it has
+    one), Bot Mode and its permanent « Bot Chat » (the app's « Discussion », where it can write to the other agents),
+    its place in this bridge's config, its visible browser when the install gives one. Its personality, tools and
+    memory stay as they are."""
     if name not in {p["id"] for p in unclaimed_profiles(config)}:
         raise LookupError(name)
     install = config.hermes
@@ -219,7 +220,8 @@ async def claim_profile(config: Config, name: str, display_name: Optional[str], 
     agent = AgentConfig(name=name, display_name=title, hermes_url=f"{install.hub_url}/p/{name}", hermes_key=key,
                         upload_dir_host=str(uploads), upload_dir_container=seen_by_agent,
                         public_url=f"{install.public_hub_url}/p/{name}" if install.public_hub_url else None)
-    await wait_served(http, agent)
+    mark_as_bot(folder)
+    await wait_served(http, agent, bot_chat=True)
     if config.browser.enabled:
         try:
             agent = await browsers.setup(config, agent, run, install.home or str(Path.home() / ".hermes"))
@@ -400,9 +402,23 @@ def agents_admin_router() -> APIRouter:
     async def agent_links(request: Request) -> Dict[str, Any]:
         services = request.app.state.services
         config: Config = services.config
-        return {"agents": [{"id": a.name, "name": a.display_name,
-                            "managed": peers.managed_home(config, a) is not None} for a in config.agents.values()],
-                "links": [{"from": s, "to": t} for s, t in services.links.load()["links"]]}
+        agents = [{"id": a.name, "name": a.display_name, "managed": peers.managed_home(config, a) is not None}
+                  for a in config.agents.values()]
+        # The agents of the linked households, as their bridges list them (a household that does not answer is
+        # left out for now; its links stay).
+        for household in services.households.public():
+            entry = services.households.get(household["id"])
+            try:
+                resp = await services.http.get(f"{entry['url']}/family/agents", timeout=4,
+                                               headers={"Authorization": f"Bearer {entry['key_out']}"})
+                listed = resp.json().get("agents", []) if resp.status_code == 200 else []
+            except (httpx.HTTPError, ValueError):
+                listed = []
+            for remote in listed:
+                agents.append({"id": f"{remote['id']}{peers.SEPARATOR}{household['id']}",
+                               "name": f"{remote['name']} ({household['name']})", "managed": False,
+                               "household": household["id"]})
+        return {"agents": agents, "links": [{"from": s, "to": t} for s, t in services.links.load()["links"]]}
 
     @router.put("/agent-links")
     async def set_agent_links(request: Request) -> Dict[str, Any]:
@@ -412,7 +428,7 @@ def agents_admin_router() -> APIRouter:
                   if isinstance(x, dict)]
         async with lock:
             try:
-                result = await peers.apply(services.config, services.links, wanted, run_hermes)
+                result = await peers.apply(services.config, services.links, wanted, run_hermes, services.households)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             except (RuntimeError, asyncio.TimeoutError) as exc:

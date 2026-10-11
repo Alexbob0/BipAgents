@@ -70,3 +70,13 @@ def test_the_bridge_refuses_what_the_person_did_not_allow(client):
     assert refused.status_code == 403
     assert client.get("/v1/agent-links", headers=AUTH).json()["agents"][0] == {"id": "wellness", "name": "Wellness",
                                                                                "managed": False}
+
+
+def test_each_sender_learns_whom_it_may_write_to(setup):
+    config, links, run, commands, hub, space = setup
+    asyncio.run(apply(config, links, [("budget", "jardin"), ("budget", "maison")], run))
+    contacts = (hub / "profiles" / "budget" / "skills" / "agent-contacts" / "SKILL.md").read_text()
+    assert "`bip/jardin`: Jardin" in contacts and "`bip/maison`: Maison" in contacts
+    assert not (space / "profiles" / "jardin" / "skills" / "agent-contacts").exists()   # writes to nobody
+    asyncio.run(apply(config, links, [], run))
+    assert not (hub / "profiles" / "budget" / "skills" / "agent-contacts" / "SKILL.md").exists()
