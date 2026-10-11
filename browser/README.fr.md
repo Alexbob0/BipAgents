@@ -51,7 +51,8 @@ au commit testé avec BipAgents (`a7b9eea`, fixé dans le `Containerfile`), et a
 
 - `stealth.patch` : DevTools de Chrome sur un port fixe (`STEALTH_CDP_PORT`), pour que Hermes et le coffre pilotent
   le même navigateur ; les réglages du conteneur (profil, options, fuseau horaire) quand l'agent ne les donne pas ;
-  le retrait d'options que le serveur ajoute dans les conteneurs et dont celui-ci se passe (`STEALTH_DROP_ARGS`).
+  le retrait d'options que le serveur ajoute dans les conteneurs et dont celui-ci se passe (`STEALTH_DROP_ARGS`) ;
+  un navigateur toujours affiché sur l'écran du conteneur, même si l'agent le demande invisible (`STEALTH_HEADFUL`).
 - `requirements.txt` : ses paquets Python aux versions exactes testées, installés depuis PyPI. Parmi eux, **nodriver
   est sous GNU AGPL v3** et certifi sous MPL 2.0 : tous deux installés sans modification, comme paquets séparés.
 - `entrypoint.sh` (l'écran, le serveur VNC), `devtools_relay.py` (les DevTools de Chrome depuis l'hôte, à une adresse

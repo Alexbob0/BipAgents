@@ -1,8 +1,8 @@
 diff --git a/src/browser_manager.py b/src/browser_manager.py
-index a614108..62f9c19 100644
+index a614108..6df82ad 100644
 --- a/src/browser_manager.py
 +++ b/src/browser_manager.py
-@@ -56,6 +56,62 @@ def _parse_nonnegative_int_env(
+@@ -56,6 +56,69 @@ def _parse_nonnegative_int_env(
      return parsed
  
  
@@ -16,6 +16,10 @@ index a614108..62f9c19 100644
 +def _port_free(port: int) -> bool:
 +    import socket
 +    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
++        # As Chrome does when it listens: a port left in TIME_WAIT by the Chrome just closed (for about a minute)
++        # is free for it. Without this, a browser restarted within that minute got a random port Hermes did not
++        # know. A port another Chrome listens on is still refused.
++        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 +        try:
 +            sock.bind(("127.0.0.1", port))
 +            return True
@@ -45,7 +49,10 @@ index a614108..62f9c19 100644
 +def _apply_container_defaults(options) -> None:
 +    """What the agent leaves out, from the container: its persistent profile (STEALTH_USER_DATA_DIR), launch flags
 +    (STEALTH_BROWSER_ARGS, separated by « ; », added after the caller's) and time zone (STEALTH_TIMEZONE). An agent then
-+    starts the right browser with spawn_browser() and no arguments."""
++    starts the right browser with spawn_browser() and no arguments. STEALTH_HEADFUL=1: the browser always shows on the
++    container's screen, where the person watches it, even when the agent asks for headless."""
++    if os.environ.get("STEALTH_HEADFUL") == "1":
++        options.headless = False
 +    if not options.user_data_dir and os.environ.get("STEALTH_USER_DATA_DIR"):
 +        options.user_data_dir = os.environ["STEALTH_USER_DATA_DIR"]
 +    extra = [a.strip() for a in os.environ.get("STEALTH_BROWSER_ARGS", "").split(";") if a.strip()]
@@ -65,7 +72,7 @@ index a614108..62f9c19 100644
  class BrowserManager:
      """Manages multiple browser instances."""
  
-@@ -266,6 +322,7 @@ class BrowserManager:
+@@ -266,6 +329,7 @@ class BrowserManager:
              BrowserInstance: The spawned browser instance.
          """
          instance_id = str(uuid.uuid4())
@@ -73,7 +80,7 @@ index a614108..62f9c19 100644
  
          instance = BrowserInstance(
              instance_id=instance_id,
-@@ -321,7 +378,7 @@ class BrowserManager:
+@@ -321,7 +385,7 @@ class BrowserManager:
                  caller_args,
                  launch_proxy_server,
              )
@@ -82,7 +89,7 @@ index a614108..62f9c19 100644
              
              config = uc.Config(
                  headless=options.headless,
-@@ -331,7 +388,7 @@ class BrowserManager:
+@@ -331,7 +395,7 @@ class BrowserManager:
                  browser_args=launch_args
              )
  

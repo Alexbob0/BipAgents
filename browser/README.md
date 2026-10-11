@@ -50,7 +50,8 @@ commit BipAgents is tested with (`a7b9eea`, set in the `Containerfile`) and appl
 
 - `stealth.patch`: Chrome's DevTools on a fixed port (`STEALTH_CDP_PORT`), so Hermes and the vault drive the same
   browser; the container's defaults (profile, flags, time zone) when the agent leaves them out; flags the server adds
-  in containers that this one does without (`STEALTH_DROP_ARGS`).
+  in containers that this one does without (`STEALTH_DROP_ARGS`); a browser always shown on the container's screen,
+  even when the agent asks for headless (`STEALTH_HEADFUL`).
 - `requirements.txt`: its Python packages at the exact versions tested, installed from PyPI. Among them, **nodriver is
   under the GNU AGPL v3** and certifi under the MPL 2.0: both are installed unmodified, as separate packages.
 - `entrypoint.sh` (the screen, the VNC server), `devtools_relay.py` (Chrome's DevTools from the host, at an address
