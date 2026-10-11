@@ -136,8 +136,10 @@ async def apply(config: Config, links: Links, wanted: List[Tuple[str, str]], run
                    "Tes autres agents, par BipAgents (cible : bip/<agent>)"], env)
         set_env(Path(gateway) / ".env", key_env, token)
         data["tokens"][gateway] = _digest(token)
-    for gateway in [g for g in data["tokens"] if g not in sending]:
-        if not gateway.startswith("manual:") and Path(gateway).is_dir():
+    # A gateway that sends nothing any more loses its token, when the bridge can give it a new one by itself. An agent
+    # set up by hand keeps it: only its administrator could put a new one in, and without a link it is refused anyway.
+    for gateway in [g for g in data["tokens"] if g not in sending and not g.startswith("manual:")]:
+        if Path(gateway).is_dir():
             set_env(Path(gateway) / ".env", key_env, None)
         del data["tokens"][gateway]
     data["links"] = sorted(set(wanted))

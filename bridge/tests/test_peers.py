@@ -45,6 +45,9 @@ def test_each_sending_gateway_gets_a_token_in_its_own_env(setup):
     assert "HERMES_PEER_BIP_KEY" not in (hub / ".env").read_text() and links.caller(hub_token) is None
     token = manual_token(config, links, "wellness")
     assert links.caller(token) == "manual:wellness" == gateway_of(config, config.agent("wellness"))
+    # Turning its last link off keeps its token (only an administrator could put a new one in); it is refused anyway.
+    asyncio.run(apply(config, links, [("budget", "jardin")], run))
+    assert links.caller(token) == "manual:wellness" and not links.allowed("wellness", "budget")
     with pytest.raises(ValueError):
         asyncio.run(apply(config, links, [("budget", "budget")], run))
 
