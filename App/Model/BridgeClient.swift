@@ -198,6 +198,8 @@ struct BridgeClient: Sendable {
         var relayed: Bool      // through the bridge (« Prendre la main » available)
         var youHold: Bool
         var reason: String?
+        /// Taking over stops the agent's browser (a Hermes desktop); false for a desktop set up by hand.
+        var pausesAgent = true
     }
 
     /// `POST /v1/agents/{id}/desktop`: nil when the agent has no desktop running.
@@ -214,7 +216,7 @@ struct BridgeClient: Sendable {
         }
         guard let path = json?["path"] as? String else { return nil }
         return Desktop(url: baseURL.appending(path: path), relayed: true, youHold: json?["you_hold"] as? Bool ?? false,
-                       reason: json?["reason"] as? String)
+                       reason: json?["reason"] as? String, pausesAgent: json?["pauses_agent"] as? Bool ?? true)
     }
 
     /// `POST …/desktop/control`: the person takes the desktop over (the agent's browser waits) or hands it back.

@@ -10362,6 +10362,72 @@
           }
         }
       }
+    },
+    "Tu as la main." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You have control."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tienes el control."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast die Kontrolle."
+          }
+        }
+      }
+    },
+    "Active un code sur l’iPhone pour voir le bureau de tes agents." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set a passcode on the iPhone to see your agents’ desktops."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa un código en el iPhone para ver el escritorio de tus agentes."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lege einen Code auf dem iPhone fest, um die Desktops deiner Agenten zu sehen."
+          }
+        }
+      }
+    },
+    "Voir le bureau de %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "See %@’s desktop"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver el escritorio de %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desktop von %@ ansehen"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

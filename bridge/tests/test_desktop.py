@@ -35,3 +35,57 @@ def test_routes(client):
     assert client.post("/v1/agents/wellness/desktop").status_code == 401
     assert client.get("/desktop/nope/").status_code == 404
     assert client.get("/desktop/static/novnc/core/rfb.js").status_code == 200
+
+
+def test_the_bridge_logs_in_to_a_password_protected_vnc():
+    import asyncio
+    from bipbridge.desktop import Upstream, vnc_login, vnc_response
+
+    challenge = bytes(range(16))
+
+    async def scenario(password_ok: bool):
+        received = bytearray()
+
+        async def server(reader, writer):
+            writer.write(b"RFB 003.008\n")
+            await writer.drain()
+            received.extend(await reader.readexactly(12))
+            writer.write(b"\x01\x02")                       # one type: VNC Authentication
+            await writer.drain()
+            received.extend(await reader.readexactly(1))
+            writer.write(challenge)
+            await writer.drain()
+            answer = await reader.readexactly(16)
+            ok = answer == vnc_response("MotVNC-42", challenge)
+            writer.write(b"\x00\x00\x00\x00" if ok else b"\x00\x00\x00\x01")
+            await writer.drain()
+
+        srv = await asyncio.start_server(server, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        try:
+            await vnc_login(Upstream(reader, writer, writer.close), "MotVNC-42" if password_ok else "faux")
+            result = True
+        except ConnectionError:
+            result = False
+        writer.close()
+        srv.close()
+        return result, bytes(received)
+
+    ok, sent = asyncio.run(scenario(True))
+    assert ok and sent == b"RFB 003.008\n\x02"
+    assert asyncio.run(scenario(False))[0] is False
+    # The DES quirk itself (bit-reversed key bytes) is checked against a real TigerVNC server, not here.
+    assert len(vnc_response("MotVNC-42", challenge)) == 16
+
+
+def test_the_vnc_password_file_may_be_clear_or_vncpasswd(tmp_path):
+    from bipbridge.desktop import read_vnc_password
+
+    clear = tmp_path / "clear.txt"
+    clear.write_text("MotVNC-42\n")
+    assert read_vnc_password(str(clear)) == "MotVNC-42"
+    # Written by TigerVNC's own `vncpasswd` for « MotVNC-42 » (VNC keeps the first 8 characters).
+    obscured = tmp_path / "passwd"
+    obscured.write_bytes(bytes.fromhex("5bb576d0733bc57b"))
+    assert read_vnc_password(str(obscured)) == "MotVNC-4"

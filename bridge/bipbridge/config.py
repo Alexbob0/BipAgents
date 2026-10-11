@@ -56,6 +56,10 @@ class AgentConfig:
     sandboxed: bool = False   # its tools run in a sandbox container (or its space is a container of its own)
     # A viewer page of its browser set up by hand (e.g. a noVNC on the tailnet): the app opens it as « Bureau ».
     desktop_url: Optional[str] = None
+    # Its browser's VNC server set up by hand (ws://…/websockify or tcp://host:port) and the file holding its VNC
+    # password: the bridge logs in itself and relays the desktop to the app (Face ID there), see desktop.py.
+    desktop_vnc: Optional[str] = None
+    desktop_vnc_password_file: Optional[str] = None
 
 
 @dataclass
@@ -333,6 +337,9 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             space=_expand(str(table["space"])) if table.get("space") else None,
             sandboxed=bool(table.get("sandboxed", False)),
             desktop_url=str(table["desktop_url"]) if table.get("desktop_url") else None,
+            desktop_vnc=str(table["desktop_vnc"]) if table.get("desktop_vnc") else None,
+            desktop_vnc_password_file=_expand(str(table["desktop_vnc_password_file"]))
+            if table.get("desktop_vnc_password_file") else None,
         )
 
     relay_t = data.get("relay", {}) or {}

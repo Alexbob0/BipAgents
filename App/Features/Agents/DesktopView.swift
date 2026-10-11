@@ -1,4 +1,5 @@
 import HermesKit
+import LocalAuthentication
 import SwiftUI
 import WebKit
 
@@ -15,10 +16,19 @@ struct DesktopView: View {
     @State private var page = DesktopPage()
     /// A fresh ticket on every opening (they last ten minutes).
     @State private var current: BridgeClient.Desktop?
+    /// A desktop shows logged-in sessions: Face ID (or the passcode) first, as for the vault.
+    @State private var unlocked = false
 
     var body: some View {
         Group {
-            if let current {
+            if !unlocked {
+                VStack(spacing: 14) {
+                    Image(systemName: "lock.shield").font(.system(size: 44)).foregroundStyle(.white.opacity(0.8))
+                    Button("Déverrouiller", systemImage: "faceid") { Task { await open() } }
+                        .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let current {
                 DesktopWebView(url: current.url, page: page)
             } else {
                 ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -30,7 +40,7 @@ struct DesktopView: View {
                 if let errorMessage {
                     NoticeRow(text: errorMessage, isError: true).padding()
                 } else if holding {
-                    Text("Tu as la main : \(agent.name) attend.")
+                    Text((current?.pausesAgent ?? true) ? "Tu as la main : \(agent.name) attend." : "Tu as la main.")
                         .font(Theme.body(13, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(.black.opacity(0.6), in: .capsule).padding(.top, 8)
@@ -40,7 +50,7 @@ struct DesktopView: View {
             .navigationBarTitleDisplayMode(.inline)
             .tabBarHidden(true)
             .toolbar {
-                if desktop.relayed {
+                if desktop.relayed && unlocked {
                     ToolbarItem(placement: .topBarTrailing) {
                         if isSwitching {
                             ProgressView()
@@ -51,18 +61,31 @@ struct DesktopView: View {
                     }
                 }
             }
-            .task {
-                let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent))
-                let fresh = (try? await bridge?.desktop(of: agent.bridgeName)) ?? nil
-                current = fresh ?? desktop
-                holding = current?.youHold ?? false
-                page.setViewOnly(!holding)
-            }
+            .task { await open() }
             .onDisappear {
                 // Leaving the screen hands the desktop back: the agent never stays blocked by a closed view.
                 guard holding, let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent)) else { return }
                 Task { _ = try? await bridge.controlDesktop(of: agent.bridgeName, take: false) }
             }
+    }
+
+    private func open() async {
+        guard !unlocked else { return }
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            errorMessage = String(localized: "Active un code sur l’iPhone pour voir le bureau de tes agents.")
+            return
+        }
+        guard (try? await context.evaluatePolicy(.deviceOwnerAuthentication,
+                                                 localizedReason: String(localized: "Voir le bureau de \(agent.name)"))) == true
+        else { return }
+        unlocked = true
+        let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent))
+        let fresh = (try? await bridge?.desktop(of: agent.bridgeName)) ?? nil
+        current = fresh ?? desktop
+        holding = current?.youHold ?? false
+        page.setViewOnly(!holding)
     }
 
     private func toggle() async {
