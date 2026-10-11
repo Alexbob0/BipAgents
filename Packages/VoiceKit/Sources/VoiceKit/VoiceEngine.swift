@@ -240,7 +240,7 @@ public final class VoiceEngine {
         for attempt in 0..<3 {
             if attempt > 0 { try await Task.sleep(for: .milliseconds(300 * attempt)) }
             do {
-                try await activateSession(mode.isCall ? .voice : .dictation)
+                try await activateSession(.voice)
                 try await startCaptureGraph()
                 return
             } catch is CancellationError {
@@ -285,8 +285,7 @@ public final class VoiceEngine {
         graph = nil
         output.node = nil
         let started = generation
-        // Echo cancellation only in a call: a voice note plays nothing back while recording.
-        let voiceProcessing = voiceProcessingAllowed && mode.isCall
+        let voiceProcessing = voiceProcessingAllowed
         let sink = sink
         let engine = try await Task.detached(priority: .userInitiated) {
             try AudioGraph.start(capture: true, voiceProcessing: voiceProcessing, sink: sink)
@@ -306,8 +305,7 @@ public final class VoiceEngine {
         graph?.stop()
         graph = nil
         output.node = nil
-        // Echo cancellation only in a call: a voice note plays nothing back while recording.
-        let graph = try AudioGraph(capture: capture, voiceProcessing: voiceProcessingAllowed && mode.isCall, sink: sink) { [weak self] in
+        let graph = try AudioGraph(capture: capture, voiceProcessing: voiceProcessingAllowed, sink: sink) { [weak self] in
             self?.configurationChanged()
         }
         self.graph = graph
