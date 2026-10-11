@@ -195,8 +195,7 @@ private struct ConversationContent: View {
                 onDictated: { text, recording in
                     model.send(text: text, attachments: attachments, voiceNote: recording)
                     attachments = []
-                },
-                appearance: model.agent.appearance
+                }
             )
         }
         }

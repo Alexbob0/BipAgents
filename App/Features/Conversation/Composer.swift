@@ -16,9 +16,6 @@ struct Composer: View {
     var start: ConversationStart = .none
     /// Push-to-talk result, sent right away.
     var onDictated: (String, VoiceRecording?) -> Void
-    /// Short tap on the mic: open the hands-free call.
-
-    var appearance: AgentAppearance
 
     @State private var dictation = DictationController()
     @State private var isTakingPhoto = false
@@ -41,10 +38,6 @@ struct Composer: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            if dictation.isActive {
-                DictationPanel(voice: voice, controller: dictation, appearance: appearance) { dictation.cancel(voice) }
-                    .padding(.bottom, 6)
-            }
             if !attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -64,33 +57,14 @@ struct Composer: View {
                 Text(importError).font(Theme.body(12, weight: .bold)).foregroundStyle(Theme.danger)
             }
             HStack(alignment: .bottom, spacing: 8) {
-                Menu {
-                    Button("Photos", systemImage: "photo.on.rectangle") { isPickingPhotos = true }
-                    Button("Fichiers (PDF, Excel, texte…)", systemImage: "doc") { isImportingFiles = true }
-                    if CameraPicker.isAvailable {
-                        Button("Caméra", systemImage: "camera") { isTakingPhoto = true }
-                    }
-                    if DocumentScanner.isAvailable {
-                        Button("Scanner un document", systemImage: "doc.viewfinder") { isScanning = true }
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .frame(width: 46, height: 46)
-                        .background(Theme.field, in: .circle)
+                // Recording takes the bar's place, WhatsApp-style: timer, then the transcript as it comes.
+                if dictation.isActive {
+                    RecordingBar(voice: voice, controller: dictation) { dictation.cancel(voice) }
+                        .transition(.opacity)
+                } else {
+                    attachMenu
+                    field
                 }
-                .accessibilityLabel("Joindre une photo ou un fichier")
-
-                // After a too-short press on the mic, the hint takes the placeholder's place (WhatsApp-style).
-                TextField("", text: $text, prompt: fieldPrompt, axis: .vertical)
-                    .font(Theme.body(16))
-                    .lineLimit(1...6)
-                    .focused($isFocused)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(dictation.showsHoldHint ? Theme.dangerTint : Theme.field, in: .rect(cornerRadius: 23, style: .continuous))
-
                 trailingButton
             }
             .padding(.horizontal, 12)
@@ -98,7 +72,7 @@ struct Composer: View {
         .padding(.top, 10)
         .padding(.bottom, 8)
         .background(.bar)
-        .animation(.snappy, value: dictation.isActive)
+        .animation(.easeOut(duration: 0.15), value: dictation.isActive)
         .task {
             switch start {
             case .none: break
@@ -129,6 +103,37 @@ struct Composer: View {
             }
             .ignoresSafeArea()
         }
+    }
+
+    private var attachMenu: some View {
+        Menu {
+            Button("Photos", systemImage: "photo.on.rectangle") { isPickingPhotos = true }
+            Button("Fichiers (PDF, Excel, texte…)", systemImage: "doc") { isImportingFiles = true }
+            if CameraPicker.isAvailable {
+                Button("Caméra", systemImage: "camera") { isTakingPhoto = true }
+            }
+            if DocumentScanner.isAvailable {
+                Button("Scanner un document", systemImage: "doc.viewfinder") { isScanning = true }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(width: 46, height: 46)
+                .background(Theme.field, in: .circle)
+        }
+        .accessibilityLabel("Joindre une photo ou un fichier")
+    }
+
+    /// After a too-short press on the mic, the hint takes the placeholder's place (WhatsApp-style).
+    private var field: some View {
+        TextField("", text: $text, prompt: fieldPrompt, axis: .vertical)
+            .font(Theme.body(16))
+            .lineLimit(1...6)
+            .focused($isFocused)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(dictation.showsHoldHint ? Theme.dangerTint : Theme.field, in: .rect(cornerRadius: 23, style: .continuous))
     }
 
     @ViewBuilder

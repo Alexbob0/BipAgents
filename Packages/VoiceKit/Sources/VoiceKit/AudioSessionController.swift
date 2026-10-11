@@ -2,13 +2,15 @@ import AVFoundation
 
 /// Owns the `AVAudioSession` configuration and its notifications. No-op on macOS (no audio session).
 ///
-/// - `.voice` (dictation, call): `.playAndRecord` + `.voiceChat` (enables the voice-processing echo
-///   canceller path), `.defaultToSpeaker` (otherwise playback goes to the earpiece), `.allowBluetoothHFP`.
+/// - `.voice` (call): `.playAndRecord` + `.voiceChat` (enables the voice-processing echo canceller path),
+///   `.defaultToSpeaker` (otherwise playback goes to the earpiece), `.allowBluetoothHFP`.
+/// - `.dictation` (voice note): the same without `.voiceChat`. Nothing plays while recording, so there is no echo
+///   to cancel, and the voice-processing unit takes half a second to deliver its first buffer.
 /// - `.playback` ("Écouter" outside a call): `.playback` + `.spokenAudio`, so AirPods stay on A2DP
 ///   (HFP would drop them to narrow-band mono) and no microphone is opened.
 @MainActor
 final class AudioSessionController {
-    enum Purpose { case voice, playback }
+    enum Purpose: Sendable { case voice, dictation, playback }
 
     /// `began`, `shouldResume`.
     var onInterruption: ((Bool, Bool) -> Void)?
@@ -52,21 +54,30 @@ final class AudioSessionController {
         observers.forEach(NotificationCenter.default.removeObserver)
     }
 
-    func activate(_ purpose: Purpose) throws {
+    /// Off the main thread: activating the session takes tens of milliseconds, during which the screen would freeze.
+    func activate(_ purpose: Purpose) async throws {
         #if os(iOS)
+        try await Task.detached(priority: .userInitiated) { try Self.configure(purpose) }.value
+        #endif
+        if activePurpose == nil { AudioSessionUsage.begin() }
+        activePurpose = purpose
+    }
+
+    #if os(iOS)
+    nonisolated private static func configure(_ purpose: Purpose) throws {
         let session = AVAudioSession.sharedInstance()
         switch purpose {
         case .voice:
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
             try? session.setPreferredIOBufferDuration(0.01) // finer level frames → quicker barge-in
+        case .dictation:
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
         case .playback:
             try session.setCategory(.playback, mode: .spokenAudio, options: [])
         }
         try session.setActive(true)
-        #endif
-        if activePurpose == nil { AudioSessionUsage.begin() }
-        activePurpose = purpose
     }
+    #endif
 
     func deactivate() {
         guard activePurpose != nil else { return }

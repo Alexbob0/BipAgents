@@ -117,44 +117,67 @@ final class AudioGraph {
         AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000, channels: 1, interleaved: false)!
     }
 
-    let engine = AVAudioEngine()
-    let player = AVAudioPlayerNode()
+    let engine: AVAudioEngine
+    let player: AVAudioPlayerNode
     let capturesInput: Bool
-    private(set) var voiceProcessingEnabled = false
+    private(set) var voiceProcessingEnabled: Bool
     private var observer: NSObjectProtocol?
 
     private let sink: CaptureSink
 
-    init(capture: Bool, voiceProcessing: Bool = true, sink: CaptureSink,
-         onConfigurationChange: @escaping @MainActor @Sendable () -> Void) throws {
-        capturesInput = capture
-        self.sink = sink
+    /// An engine set up and running, not yet owned by the main actor.
+    struct Started: @unchecked Sendable {
+        let engine: AVAudioEngine
+        let player: AVAudioPlayerNode
+        let voiceProcessingEnabled: Bool
+    }
+
+    /// Sets up and starts an engine. Nonisolated so it can run off the main thread: starting the audio hardware
+    /// takes a few hundred milliseconds, which would freeze the screen's animations meanwhile.
+    nonisolated static func start(capture: Bool, voiceProcessing: Bool, sink: CaptureSink) throws -> Started {
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        var voiceProcessingEnabled = false
         if capture {
-            let input = engine.inputNode
             if voiceProcessing {
                 do {
-                    try input.setVoiceProcessingEnabled(true)
+                    try engine.inputNode.setVoiceProcessingEnabled(true)
                     voiceProcessingEnabled = true
                 } catch {
                     // Simulator / unsupported route: keep going without AEC (barge-in will be less reliable).
                 }
             }
-            try installInputTap()
+            try installInputTap(engine, sink: sink, voiceProcessing: voiceProcessingEnabled)
         }
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: Self.playerFormat)
         engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil, block: CaptureSink.tap(sink, .output))
-
-        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { _ in
-            MainActor.assumeIsolated { onConfigurationChange() }
-        }
         engine.prepare()
         do {
             try engine.start()
         } catch {
-            stop()
+            if capture { engine.inputNode.removeTap(onBus: 0) }
+            engine.mainMixerNode.removeTap(onBus: 0)
             throw error
         }
+        return Started(engine: engine, player: player, voiceProcessingEnabled: voiceProcessingEnabled)
+    }
+
+    init(_ started: Started, capture: Bool, sink: CaptureSink, onConfigurationChange: @escaping @MainActor @Sendable () -> Void) {
+        engine = started.engine
+        player = started.player
+        voiceProcessingEnabled = started.voiceProcessingEnabled
+        capturesInput = capture
+        self.sink = sink
+        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { _ in
+            MainActor.assumeIsolated { onConfigurationChange() }
+        }
+    }
+
+    convenience init(capture: Bool, voiceProcessing: Bool = true, sink: CaptureSink,
+                     onConfigurationChange: @escaping @MainActor @Sendable () -> Void) throws {
+        self.init(try Self.start(capture: capture, voiceProcessing: voiceProcessing, sink: sink), capture: capture, sink: sink,
+                  onConfigurationChange: onConfigurationChange)
     }
 
     /// Restarts this same engine after a configuration change (Apple's recommended handling). Recreating
@@ -162,17 +185,17 @@ final class AudioGraph {
     func restart() throws {
         if capturesInput {
             engine.inputNode.removeTap(onBus: 0)
-            try installInputTap()
+            try Self.installInputTap(engine, sink: sink, voiceProcessing: voiceProcessingEnabled)
         }
         engine.prepare()
         try engine.start()
     }
 
-    private func installInputTap() throws {
+    nonisolated private static func installInputTap(_ engine: AVAudioEngine, sink: CaptureSink, voiceProcessing: Bool) throws {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         #if DEBUG
-        print("[voice] input hw=\(input.inputFormat(forBus: 0)) out=\(format) vp=\(voiceProcessingEnabled) — \(AudioDiagnostics.describe())")
+        print("[voice] input hw=\(input.inputFormat(forBus: 0)) out=\(format) vp=\(voiceProcessing) — \(AudioDiagnostics.describe())")
         #endif
         guard format.sampleRate > 0, format.channelCount > 0 else { throw VoiceError.microphoneUnavailable }
         input.installTap(onBus: 0, bufferSize: 1024, format: format, block: CaptureSink.tap(sink, .input))

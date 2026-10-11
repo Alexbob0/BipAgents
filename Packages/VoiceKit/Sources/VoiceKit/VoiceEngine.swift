@@ -50,6 +50,8 @@ public final class VoiceEngine {
     @ObservationIgnored private var debugWindowStart: TimeInterval = 0
     #endif
     @ObservationIgnored private var recognizer: (any SpeechRecognizerBackend)?
+    /// Bumped by `teardown()`: audio that finishes starting after its use was abandoned is released.
+    @ObservationIgnored private var generation = 0
     @ObservationIgnored private var endOfUtterance = EndOfUtteranceDetector()
     @ObservationIgnored private var bargeIn = BargeInDetector()
     @ObservationIgnored private var replyTask: Task<Void, Never>?
@@ -197,8 +199,10 @@ public final class VoiceEngine {
         case .none:
             mode = .speech
             do {
-                try audioSession.activate(.playback)
+                try await activateSession(.playback)
                 try buildGraph(capture: false)
+            } catch is CancellationError {
+                return
             } catch {
                 fail(error)
                 if case .speech = mode { teardown() }
@@ -236,9 +240,11 @@ public final class VoiceEngine {
         for attempt in 0..<3 {
             if attempt > 0 { try await Task.sleep(for: .milliseconds(300 * attempt)) }
             do {
-                try audioSession.activate(.voice)
-                try buildGraph(capture: true)
+                try await activateSession(mode.isCall ? .voice : .dictation)
+                try await startCaptureGraph()
                 return
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 lastFailure = error
                 #if DEBUG
@@ -263,11 +269,45 @@ public final class VoiceEngine {
         #endif
     }
 
+    /// Activates the session for `purpose`; throws if what needed it was stopped meanwhile.
+    private func activateSession(_ purpose: AudioSessionController.Purpose) async throws {
+        let started = generation
+        try await audioSession.activate(purpose)
+        guard generation == started else {
+            if case .none = mode { audioSession.deactivate() }
+            throw CancellationError()
+        }
+    }
+
+    /// Like `buildGraph(capture: true)`, but the engine starts off the main thread.
+    private func startCaptureGraph() async throws {
+        graph?.stop()
+        graph = nil
+        output.node = nil
+        let started = generation
+        // Echo cancellation only in a call: a voice note plays nothing back while recording.
+        let voiceProcessing = voiceProcessingAllowed && mode.isCall
+        let sink = sink
+        let engine = try await Task.detached(priority: .userInitiated) {
+            try AudioGraph.start(capture: true, voiceProcessing: voiceProcessing, sink: sink)
+        }.value
+        let graph = AudioGraph(engine, capture: true, sink: sink) { [weak self] in
+            self?.configurationChanged()
+        }
+        guard generation == started else {
+            graph.stop()
+            throw CancellationError()
+        }
+        self.graph = graph
+        output.node = graph.player
+    }
+
     private func buildGraph(capture: Bool) throws {
         graph?.stop()
         graph = nil
         output.node = nil
-        let graph = try AudioGraph(capture: capture, voiceProcessing: voiceProcessingAllowed, sink: sink) { [weak self] in
+        // Echo cancellation only in a call: a voice note plays nothing back while recording.
+        let graph = try AudioGraph(capture: capture, voiceProcessing: voiceProcessingAllowed && mode.isCall, sink: sink) { [weak self] in
             self?.configurationChanged()
         }
         self.graph = graph
@@ -526,11 +566,14 @@ public final class VoiceEngine {
             default: break
             }
         } else if graph != nil {
-            do {
-                try audioSession.activate(audioSession.activePurpose ?? .voice)
-                rebuildGraph()
-            } catch {
-                fail(error)
+            Task {
+                do {
+                    try await activateSession(audioSession.activePurpose ?? .voice)
+                    rebuildGraph()
+                } catch is CancellationError {
+                } catch {
+                    fail(error)
+                }
             }
         }
     }
@@ -561,6 +604,7 @@ public final class VoiceEngine {
         graph = nil
         output.node = nil
         recognizer = nil
+        generation += 1
         audioSession.deactivate()
         bargeIn.playbackStopped()
         endOfUtterance.reset()

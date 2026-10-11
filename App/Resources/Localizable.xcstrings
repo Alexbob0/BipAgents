@@ -4792,28 +4792,6 @@
         }
       }
     },
-    "Parle, je transcris…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Talk, I’m transcribing…"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Habla, yo transcribo…"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprich, ich schreibe mit…"
-          }
-        }
-      }
-    },
     "Parole" : {
       "localizations" : {
         "en" : {
@@ -7195,28 +7173,6 @@
         }
       }
     },
-    "Verrouillé · touche ↑ pour envoyer" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Locked · tap ↑ to send"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bloqueado · toca ↑ para enviar"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesperrt · tippe ↑ zum Senden"
-          }
-        }
-      }
-    },
     "Version" : {
       "localizations" : {
         "en" : {
@@ -7917,28 +7873,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "fehlgeschlagen — %@"
-          }
-        }
-      }
-    },
-    "‹ Glisser pour annuler · ↑ verrouiller" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "‹ Slide to cancel · ↑ lock"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "‹ Desliza para cancelar · ↑ bloquear"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "‹ Wischen zum Abbrechen · ↑ sperren"
           }
         }
       }
@@ -11217,6 +11151,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ wurde von Hand eingerichtet: Was du hier änderst, gilt ab dem nächsten Neustart seines Containers."
+          }
+        }
+      }
+    },
+    "Touche ↑ pour envoyer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap ↑ to send"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca ↑ para enviar"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippe auf ↑ zum Senden"
+          }
+        }
+      }
+    },
+    "‹ Glisser pour annuler" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‹ Slide to cancel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‹ Desliza para cancelar"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‹ Zum Abbrechen wischen"
           }
         }
       }
