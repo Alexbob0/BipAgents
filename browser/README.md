@@ -55,8 +55,8 @@ commit BipAgents is tested with (`a7b9eea`, set in the `Containerfile`) and appl
   under the GNU AGPL v3** and certifi under the MPL 2.0: both are installed unmodified, as separate packages.
 - `entrypoint.sh` (the screen, the VNC server), `devtools_relay.py` (Chrome's DevTools from the host, at an address
   that outlives Chrome's restarts), `mcp.sh` (the server with only what browsing needs:
-  no element cloning, file extraction, network interception, raw CDP or debugging hooks) and `SKILL.md` (how the agent
-  uses its browser, copied into its Hermes profile).
+  no element cloning, file extraction, network interception, raw CDP or debugging hooks) and the skill telling the
+  agent how to use its browser (`bridge/bipbridge/skills/visible-browser/SKILL.md`, copied into its Hermes profile).
 
 ## Limits
 

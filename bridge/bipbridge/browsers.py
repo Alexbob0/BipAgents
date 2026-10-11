@@ -33,7 +33,7 @@ from .logs import fields
 
 log = logging.getLogger("bipbridge.browsers")
 
-SKILL = Path(__file__).resolve().parents[2] / "browser" / "SKILL.md"
+SKILL = Path(__file__).with_name("skills") / "visible-browser" / "SKILL.md"
 GPU_FLAGS = ["--use-gl=angle", "--use-angle=vulkan", "--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan"]
 
 
