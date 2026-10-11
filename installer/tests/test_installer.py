@@ -359,6 +359,35 @@ def test_on_a_rented_server_nothing_listens_on_a_local_network(monkeypatch, tmp_
     assert "[lan]\nenabled = false" in out
 
 
+def test_hermes_update_checks(tmp_path, monkeypatch):
+    from bipinstall import update
+    assert update.behind("⚕ Update available: 590 commits behind origin/main.") == 590
+    assert update.behind("✓ Already up to date") == 0
+    assert update.channel("→ Update channel: main\n") == "main"
+    agents = [{"id": "vie", "name": "Vie", "url": "http://h/p/vie", "key": "k"},
+              {"id": "jardin", "name": "Jardin", "url": "http://h/p/jardin", "key": "k"},
+              {"id": "old", "name": "Old", "url": "http://h/p/old", "key": "bad"}]
+
+    def gateway(request):
+        if request.headers["authorization"] == "Bearer bad":
+            return httpx.Response(401)
+        if "/vie/" in str(request.url):
+            return httpx.Response(200, json={"run_submission": True, "run_clarify": True})
+        return httpx.Response(200, json={"run_submission": True})
+
+    client = httpx.Client(transport=httpx.MockTransport(gateway))
+    problems = update.check_agents(agents, expect_clarify=True, client=client, attempts=1)
+    assert problems["vie"] == "" and "0001" in problems["jardin"] and problems["old"] == "refuse sa clé"
+    assert update.check_agents(agents[1:2], expect_clarify=False, client=client, attempts=1) == {"jardin": ""}
+    monkeypatch.setattr(update.Path, "home", lambda: tmp_path)
+    units = tmp_path / ".config" / "systemd" / "user"
+    units.mkdir(parents=True)
+    (units / "bipagents-hermes.service").write_text("")
+    (units / "bipagents-space-jardin.service").write_text("")
+    monkeypatch.setattr(update.platform, "system", lambda: "Linux")
+    assert update.gateway_units() == [("systemd", "bipagents-hermes"), ("systemd", "bipagents-space-jardin")]
+
+
 async def _async_value(value):
     return value
 
