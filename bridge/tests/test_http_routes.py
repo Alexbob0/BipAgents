@@ -42,7 +42,8 @@ def test_agents_listing(client):
     resp = client.get("/v1/agents", headers=AUTH)
     assert resp.json() == {"bridge": {"url": None, "lan": None},
                            "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "uploads": True,
-                                       "inbox": True, "url": None, "key": None}]}
+                                       "inbox": True, "url": None, "key": None}],
+                           "unclaimed": []}
 
 
 # -- TTS -------------------------------------------------------------------------------------------

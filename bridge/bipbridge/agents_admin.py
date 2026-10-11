@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
@@ -130,18 +131,7 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
                         upload_dir_host=str(uploads), upload_dir_container=seen_by_agent,
                         public_url=f"{install.public_hub_url}/p/{profile}" if install.public_hub_url else None)
     # The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
-    headers = {"Authorization": f"Bearer {key}"}
-    for _ in range(90):   # a new profile is served at once; its key is picked up within ~30 s
-        try:
-            resp = await http.get(f"{agent.hermes_url}/v1/capabilities", headers=headers, timeout=3)
-            if resp.status_code == 200:
-                await http.post(f"{agent.hermes_url}/api/sessions", json={"title": "Bot Chat"}, headers=headers, timeout=10)
-                break
-        except httpx.HTTPError:
-            pass
-        await asyncio.sleep(1)
-    else:
-        raise RuntimeError("the gateway did not pick the new agent up")
+    await wait_served(http, agent, bot_chat=True)
     if config.browser.enabled:
         try:
             agent = await browsers.setup(config, agent, run, install.home or str(Path.home() / ".hermes"))
@@ -153,6 +143,98 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     config.agents[profile] = agent
     log.info("agent created", extra=fields(agent=profile, kind=body.kind or "custom"))
     return agent
+
+
+async def wait_served(http: httpx.AsyncClient, agent: AgentConfig, bot_chat: bool = False) -> None:
+    headers = {"Authorization": f"Bearer {agent.hermes_key}"}
+    for _ in range(90):   # a new profile is served at once; its key is picked up within ~30 s
+        try:
+            resp = await http.get(f"{agent.hermes_url}/v1/capabilities", headers=headers, timeout=3)
+            if resp.status_code == 200:
+                if bot_chat:
+                    await http.post(f"{agent.hermes_url}/api/sessions", json={"title": "Bot Chat"}, headers=headers,
+                                    timeout=10)
+                return
+        except httpx.HTTPError:
+            pass
+        await asyncio.sleep(1)
+    raise RuntimeError("the gateway did not pick the agent up")
+
+
+PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def unclaimed_profiles(config: Config) -> List[Dict[str, str]]:
+    """Profiles of this install's Hermes that the app cannot reach yet: created on the server (`hermes profile
+    create`, another tool) rather than from the app. Never the hub's own profile, a deleted one (Hermes leaves a
+    tombstone in profiles/.deleted/) or a folder that is not a profile."""
+    if not config.hermes.enabled:
+        return []
+    root = Path(config.hermes.home or Path.home() / ".hermes") / "profiles"
+    found = []
+    for folder in sorted(root.iterdir()) if root.is_dir() else []:
+        name = folder.name
+        if (not folder.is_dir() or not PROFILE_ID.match(name) or name in config.agents
+                or (root / ".deleted" / name).exists()
+                or not any((folder / m).is_file() for m in ("config.yaml", "SOUL.md", "profile.yaml"))):
+            continue
+        try:
+            meta = yaml.safe_load((folder / "profile.yaml").read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            meta = {}
+        description = str(meta.get("description") or "") if isinstance(meta, dict) else ""
+        found.append({"id": name, "name": name.replace("-", " ").replace("_", " ").title(), "description": description})
+    return found
+
+
+def profile_key(folder: Path) -> Optional[str]:
+    try:
+        lines = (folder / ".env").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        key, _, value = line.partition("=")
+        if key.strip() == "API_SERVER_KEY" and value.strip():
+            return value.strip().strip('"').strip("'")
+    return None
+
+
+async def claim_profile(config: Config, name: str, display_name: Optional[str], http: httpx.AsyncClient,
+                        run: Callable[..., Any] = run_hermes) -> AgentConfig:
+    """A profile found on the server, served to the app: its own key (kept when it has one), its place in this
+    bridge's config, its visible browser when the install gives one. Its personality, tools and memory stay as
+    they are."""
+    if name not in {p["id"] for p in unclaimed_profiles(config)}:
+        raise LookupError(name)
+    install = config.hermes
+    env = {"HERMES_HOME": install.home} if install.home else {}
+    folder = Path(install.home or Path.home() / ".hermes") / "profiles" / name
+    key = profile_key(folder)
+    if not key:
+        key = secrets.token_urlsafe(32)
+        await run([install.bin, "-p", name, "config", "set", "API_SERVER_KEY", key], env)
+    uploads = folder / "uploads"
+    seen_by_agent = f"{install.container_home}/profiles/{name}/uploads" if install.container_home else str(uploads)
+    title = (display_name or "").strip() or name.replace("-", " ").replace("_", " ").title()
+    agent = AgentConfig(name=name, display_name=title, hermes_url=f"{install.hub_url}/p/{name}", hermes_key=key,
+                        upload_dir_host=str(uploads), upload_dir_container=seen_by_agent,
+                        public_url=f"{install.public_hub_url}/p/{name}" if install.public_hub_url else None)
+    await wait_served(http, agent)
+    if config.browser.enabled:
+        try:
+            agent = await browsers.setup(config, agent, run, install.home or str(Path.home() / ".hermes"))
+        except (browsers.BrowserError, RuntimeError, OSError) as exc:
+            log.warning("browser not set up", extra=fields(agent=name, error=str(exc)[-200:]))
+    if config.source_path:
+        append_agent(config.source_path, agent)
+    config.agents[name] = agent
+    log.info("agent claimed", extra=fields(agent=name))
+    return agent
+
+
+class Claim(BaseModel):
+    id: str = Field(max_length=64)
+    name: Optional[str] = Field(default=None, max_length=60)
 
 
 class AgentSettings(BaseModel):
@@ -264,6 +346,21 @@ def agents_admin_router() -> APIRouter:
             except (RuntimeError, asyncio.TimeoutError) as exc:
                 log.warning("agent creation failed", extra=fields(error=str(exc)[:200]))
                 raise HTTPException(status_code=502, detail="Hermes could not create the agent") from exc
+        return {"id": agent.name, "name": agent.display_name, "url": agent.public_url,
+                "key": agent.hermes_key if agent.public_url else None}
+
+    @router.post("/agents/claim", status_code=201)
+    async def claim(body: Claim, request: Request) -> Dict[str, Any]:
+        """A profile created on the server (listed under `unclaimed` by GET /v1/agents), served to the app."""
+        services = request.app.state.services
+        async with lock:
+            try:
+                agent = await claim_profile(services.config, body.id, body.name, services.http)
+            except LookupError as exc:
+                raise HTTPException(status_code=404, detail="no such profile waiting on the server") from exc
+            except (RuntimeError, asyncio.TimeoutError) as exc:
+                log.warning("claim failed", extra=fields(agent=body.id, error=str(exc)[-200:]))
+                raise HTTPException(status_code=502, detail="Hermes did not serve the agent") from exc
         return {"id": agent.name, "name": agent.display_name, "url": agent.public_url,
                 "key": agent.hermes_key if agent.public_url else None}
 
