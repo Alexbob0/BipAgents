@@ -33,7 +33,12 @@ struct BipAgentsApp: App {
             .environment(quickVoice)
             .tint(Theme.ink)
             .fontDesign(.rounded)
-            .onChange(of: agents.agents, initial: true) { _, profiles in AgentAvatars.export(profiles) }
+            .onChange(of: agents.agents, initial: true) { _, profiles in
+                AgentAvatars.export(profiles)
+                WidgetExport.export(profiles, latest: agents.latestSession)
+            }
+            .onChange(of: agents.latestSession) { _, latest in WidgetExport.export(agents.agents, latest: latest) }
+            .onOpenURL { url in AppLink.open(url, store: agents, router: router) }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { ConversationModel.detachAll() }
             }

@@ -1,4 +1,4 @@
-# Generates BipAgents.xcodeproj/project.pbxproj (app + notification service extension).
+# Generates BipAgents.xcodeproj/project.pbxproj (app + notification service extension + widgets).
 APP_INFO = {
     "CFBundleDisplayName": "BipAgents",
     "NSCameraUsageDescription": "Pour prendre une photo ou scanner le QR code d’un agent.",
@@ -55,6 +55,12 @@ nse = dict(CODE_SIGN_ENTITLEMENTS="Config/NotificationService.entitlements", COD
     PRODUCT_BUNDLE_IDENTIFIER='"$(BIP_BUNDLE_ID).NotificationService"', PRODUCT_NAME='"$(TARGET_NAME)"', SKIP_INSTALL="YES",
     SWIFT_APPROACHABLE_CONCURRENCY="YES", SWIFT_EMIT_LOC_STRINGS="YES", SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY="YES",
     TARGETED_DEVICE_FAMILY='"1,2"')
+wid = dict(CODE_SIGN_ENTITLEMENTS="Config/BipWidgets.entitlements", CODE_SIGN_STYLE="Automatic", CURRENT_PROJECT_VERSION="1",
+    GENERATE_INFOPLIST_FILE="YES", INFOPLIST_FILE='"Config/BipWidgets-Info.plist"', INFOPLIST_KEY_CFBundleDisplayName="BipAgents",
+    LD_RUNPATH_SEARCH_PATHS=["$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks"], MARKETING_VERSION="0.1",
+    PRODUCT_BUNDLE_IDENTIFIER='"$(BIP_BUNDLE_ID).Widgets"', PRODUCT_NAME='"$(TARGET_NAME)"', SKIP_INSTALL="YES",
+    SWIFT_APPROACHABLE_CONCURRENCY="YES", SWIFT_EMIT_LOC_STRINGS="YES", SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY="YES",
+    TARGETED_DEVICE_FAMILY='"1,2"')
 
 def cfg(id_, name, d, base=None):
     ref = f"\t\t\tbaseConfigurationReference = {base} /* Base.xcconfig */;\n" if base else ""
@@ -67,6 +73,7 @@ objs = f"""/* Begin PBXBuildFile section */
 		{i(0x101)} /* HermesKit in Frameworks */ = {{isa = PBXBuildFile; productRef = {i(0x201)} /* HermesKit */; }};
 		{i(0x102)} /* VoiceKit in Frameworks */ = {{isa = PBXBuildFile; productRef = {i(0x202)} /* VoiceKit */; }};
 		{i(0x103)} /* NotificationService.appex in Embed Foundation Extensions */ = {{isa = PBXBuildFile; fileRef = {i(0x303)} /* NotificationService.appex */; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }};
+		{i(0x104)} /* BipWidgets.appex in Embed Foundation Extensions */ = {{isa = PBXBuildFile; fileRef = {i(0x308)} /* BipWidgets.appex */; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }};
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -76,6 +83,13 @@ objs = f"""/* Begin PBXBuildFile section */
 			proxyType = 1;
 			remoteGlobalIDString = {i(0x702)};
 			remoteInfo = NotificationService;
+		}};
+		{i(0xC02)} /* PBXContainerItemProxy */ = {{
+			isa = PBXContainerItemProxy;
+			containerPortal = {i(0x001)} /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = {i(0x703)};
+			remoteInfo = BipWidgets;
 		}};
 /* End PBXContainerItemProxy section */
 
@@ -87,6 +101,7 @@ objs = f"""/* Begin PBXBuildFile section */
 			dstSubfolderSpec = 13;
 			files = (
 				{i(0x103)} /* NotificationService.appex in Embed Foundation Extensions */,
+				{i(0x104)} /* BipWidgets.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -101,11 +116,15 @@ objs = f"""/* Begin PBXBuildFile section */
 		{i(0x305)} /* BipAgents.entitlements */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BipAgents.entitlements; sourceTree = "<group>"; }};
 		{i(0x306)} /* NotificationService.entitlements */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NotificationService.entitlements; sourceTree = "<group>"; }};
 		{i(0x307)} /* Base.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; }};
+		{i(0x308)} /* BipWidgets.appex */ = {{isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BipWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; }};
+		{i(0x309)} /* BipWidgets-Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "BipWidgets-Info.plist"; sourceTree = "<group>"; }};
+		{i(0x30A)} /* BipWidgets.entitlements */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BipWidgets.entitlements; sourceTree = "<group>"; }};
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		{i(0x401)} /* App */ = {{isa = PBXFileSystemSynchronizedRootGroup; path = App; sourceTree = "<group>"; }};
 		{i(0x402)} /* NotificationService */ = {{isa = PBXFileSystemSynchronizedRootGroup; path = NotificationService; sourceTree = "<group>"; }};
+		{i(0x403)} /* Widgets */ = {{isa = PBXFileSystemSynchronizedRootGroup; path = Widgets; sourceTree = "<group>"; }};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +144,13 @@ objs = f"""/* Begin PBXBuildFile section */
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		}};
+		{i(0x503)} /* Frameworks */ = {{
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		}};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -133,6 +159,7 @@ objs = f"""/* Begin PBXBuildFile section */
 			children = (
 				{i(0x401)} /* App */,
 				{i(0x402)} /* NotificationService */,
+				{i(0x403)} /* Widgets */,
 				{i(0x603)} /* Config */,
 				{i(0x602)} /* Products */,
 			);
@@ -143,6 +170,7 @@ objs = f"""/* Begin PBXBuildFile section */
 			children = (
 				{i(0x301)} /* BipAgents.app */,
 				{i(0x303)} /* NotificationService.appex */,
+				{i(0x308)} /* BipWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -155,6 +183,8 @@ objs = f"""/* Begin PBXBuildFile section */
 				{i(0x305)} /* BipAgents.entitlements */,
 				{i(0x306)} /* NotificationService.entitlements */,
 				{i(0x307)} /* Base.xcconfig */,
+				{i(0x309)} /* BipWidgets-Info.plist */,
+				{i(0x30A)} /* BipWidgets.entitlements */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -175,6 +205,7 @@ objs = f"""/* Begin PBXBuildFile section */
 			);
 			dependencies = (
 				{i(0xD01)} /* PBXTargetDependency */,
+				{i(0xD02)} /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				{i(0x401)} /* App */,
@@ -208,6 +239,26 @@ objs = f"""/* Begin PBXBuildFile section */
 			productReference = {i(0x303)} /* NotificationService.appex */;
 			productType = "com.apple.product-type.app-extension";
 		}};
+		{i(0x703)} /* BipWidgets */ = {{
+			isa = PBXNativeTarget;
+			buildConfigurationList = {i(0x904)};
+			buildPhases = (
+				{i(0x806)} /* Sources */,
+				{i(0x503)} /* Frameworks */,
+				{i(0x807)} /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				{i(0x403)} /* Widgets */,
+			);
+			name = BipWidgets;
+			productName = BipWidgets;
+			productReference = {i(0x308)} /* BipWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		}};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -222,6 +273,9 @@ objs = f"""/* Begin PBXBuildFile section */
 						CreatedOnToolsVersion = 27.0;
 					}};
 					{i(0x702)} = {{
+						CreatedOnToolsVersion = 27.0;
+					}};
+					{i(0x703)} = {{
 						CreatedOnToolsVersion = 27.0;
 					}};
 				}};
@@ -249,6 +303,7 @@ objs = f"""/* Begin PBXBuildFile section */
 			targets = (
 				{i(0x701)} /* BipAgents */,
 				{i(0x702)} /* NotificationService */,
+				{i(0x703)} /* BipWidgets */,
 			);
 		}};
 /* End PBXProject section */
@@ -256,11 +311,13 @@ objs = f"""/* Begin PBXBuildFile section */
 /* Begin PBXResourcesBuildPhase section */
 		{i(0x802)} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
 		{i(0x805)} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
+		{i(0x807)} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		{i(0x801)} /* Sources */ = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
 		{i(0x804)} /* Sources */ = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
+		{i(0x806)} /* Sources */ = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -269,10 +326,15 @@ objs = f"""/* Begin PBXBuildFile section */
 			target = {i(0x702)} /* NotificationService */;
 			targetProxy = {i(0xC01)} /* PBXContainerItemProxy */;
 		}};
+		{i(0xD02)} /* PBXTargetDependency */ = {{
+			isa = PBXTargetDependency;
+			target = {i(0x703)} /* BipWidgets */;
+			targetProxy = {i(0xC02)} /* PBXContainerItemProxy */;
+		}};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-{cfg(i(0xB01), "Debug", proj_debug, i(0x307))}{cfg(i(0xB02), "Release", proj_release, i(0x307))}{cfg(i(0xB03), "Debug", app)}{cfg(i(0xB04), "Release", app)}{cfg(i(0xB05), "Debug", nse)}{cfg(i(0xB06), "Release", nse)}/* End XCBuildConfiguration section */
+{cfg(i(0xB01), "Debug", proj_debug, i(0x307))}{cfg(i(0xB02), "Release", proj_release, i(0x307))}{cfg(i(0xB03), "Debug", app)}{cfg(i(0xB04), "Release", app)}{cfg(i(0xB05), "Debug", nse)}{cfg(i(0xB06), "Release", nse)}{cfg(i(0xB07), "Debug", wid)}{cfg(i(0xB08), "Release", wid)}/* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
 		{i(0x901)} /* Build configuration list for PBXProject "BipAgents" */ = {{
@@ -298,6 +360,15 @@ objs = f"""/* Begin PBXBuildFile section */
 			buildConfigurations = (
 				{i(0xB05)} /* Debug */,
 				{i(0xB06)} /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		}};
+		{i(0x904)} /* Build configuration list for PBXNativeTarget "BipWidgets" */ = {{
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				{i(0xB07)} /* Debug */,
+				{i(0xB08)} /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
