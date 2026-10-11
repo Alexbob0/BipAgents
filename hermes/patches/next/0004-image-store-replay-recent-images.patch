@@ -1,0 +1,1029 @@
+diff --git a/agent/image_store.py b/agent/image_store.py
+new file mode 100644
+index 0000000000..5cd55b4d04
+--- /dev/null
++++ b/agent/image_store.py
+@@ -0,0 +1,462 @@
++"""Keep user-attached images across turns that are rebuilt from the session DB.
++
++The session DB stores user rows as text: ``session_persistence._durable_content`` turns each image
++part into a ``[screenshot]`` line. Any turn whose history is reloaded from the DB (the API server
++builds a fresh agent per request) therefore sent the model a placeholder instead of the image the
++user asked about one message earlier. This module closes that gap without putting base64 in the DB:
++
++* **write** — when a user row is flushed, its ``data:`` images are written once to
++  ``<HERMES_HOME>/image_store/<sha256>.<ext>`` and the row's ``message_uid`` gets a reference file
++  ``image_store/refs/<message_uid>.json`` (session id, row timestamp, ordered refs). The DB row and
++  every transcript API stay text-only.
++* **read** — when a request is built for a model that takes images natively, the
++  ``vision.replay_recent_images`` most recent images of the conversation (default 3) go back on the
++  wire copy as ``image_url`` parts at their ``[screenshot]`` positions; every other marker reads
++  ``OLDER_IMAGE_TEXT``. The result depends only on the history, so a row's bytes change only when a
++  newer image pushes it out of the window, and the prompt-cache prefix otherwise stays stable.
++* **retention** — each session keeps references to its newest ``replay_recent_images`` images only;
++  deleting or pruning a session drops its references; the gateway's state.db housekeeping drops
++  references whose message is no longer active (compaction, a crash between write and insert).
++  A file is deleted once no reference points to it. ``replay_recent_images: 0`` stores nothing and
++  the next sweep removes what was stored.
++"""
++
++from __future__ import annotations
++
++import base64
++import binascii
++import hashlib
++import json
++import logging
++import os
++import re
++import time
++from pathlib import Path
++from typing import Any, Iterable, Optional
++
++logger = logging.getLogger(__name__)
++
++DEFAULT_REPLAY_RECENT_IMAGES = 3
++SCREENSHOT_MARKER = "[screenshot]"  # what session_persistence._durable_content writes per image part
++OLDER_IMAGE_TEXT = "[image sent earlier, no longer attached]"
++_IMAGE_PART_TYPES = {"image", "image_url", "input_image"}  # the parts _durable_content turns into markers
++_DATA_URL_RE = re.compile(r"^data:(image/[\w.+-]+);base64,(.*)$", re.DOTALL)
++_EXT = {"image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp",
++        "image/heic": "heic", "image/heif": "heif", "image/avif": "avif", "image/bmp": "bmp"}
++_UID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
++_FILE_RE = re.compile(r"^[0-9a-f]{64}\.[a-z0-9]{1,5}$")
++_TMP_MAX_AGE_S = 3600
++_SIDECAR_VERSION = 1
++
++Pair = tuple[dict[str, Any], dict[str, Any]]
++
++
++def resolve_replay_recent_images() -> int:
++    """``vision.replay_recent_images`` (>= 0; 0 disables the store); the default on a bad value."""
++    try:
++        from hermes_cli.config import cfg_get, load_config
++        raw = cfg_get(load_config(), "vision", "replay_recent_images", default=DEFAULT_REPLAY_RECENT_IMAGES)
++    except Exception:
++        logger.warning("image_store: could not read vision.replay_recent_images", exc_info=True)
++        return DEFAULT_REPLAY_RECENT_IMAGES
++    if isinstance(raw, bool) or not isinstance(raw, (int, str)):
++        return DEFAULT_REPLAY_RECENT_IMAGES
++    try:
++        return max(int(raw), 0)
++    except ValueError:
++        return DEFAULT_REPLAY_RECENT_IMAGES
++
++
++def store_root(home: Optional[Path] = None) -> Path:
++    if home is None:
++        from hermes_constants import get_hermes_home
++
++        home = Path(get_hermes_home())
++    return Path(home) / "image_store"
++
++
++def _db_store_root(db: Any) -> Path:
++    """The store next to ``db``'s state.db: its directory is the owning profile's home."""
++    return store_root(Path(db.db_path).parent)
++
++
++def content_has_images(content: Any) -> bool:
++    return isinstance(content, list) and any(
++        isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES for p in content)
++
++
++def _part_url(part: dict[str, Any]) -> tuple[str, Optional[str]]:
++    """``(url, detail)`` of an OpenAI/Responses-style image part ('' when absent)."""
++    ref = part.get("image_url")
++    if isinstance(ref, dict):
++        return str(ref.get("url") or ""), ref.get("detail") if isinstance(ref.get("detail"), str) else None
++    if isinstance(ref, str):
++        return ref, part.get("detail") if isinstance(part.get("detail"), str) else None
++    return "", None
++
++
++def _write_private(path: Path, data: bytes) -> None:
++    from hermes_constants import mkdir_under_hermes_home
++
++    mkdir_under_hermes_home(path.parent)  # a late flush must never recreate a deleted named profile
++    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
++    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
++    with os.fdopen(fd, "wb") as fh:
++        fh.write(data)
++    os.replace(tmp, path)
++
++
++def _store_part(root: Path, part: dict[str, Any]) -> dict[str, Any]:
++    """The ref for one image part; ``{"pruned": True}`` holds the marker position of one not replayed.
++
++    Only bytes we hold are replayed: a remote URL is re-fetched by the provider on every request, so
++    an expired signed URL or a deleted file would turn every later turn into a 400."""
++    url, detail = _part_url(part)
++    m = _DATA_URL_RE.match(url)
++    if not m:
++        return {"pruned": True}
++    try:
++        raw = base64.b64decode(m.group(2), validate=False)
++    except (binascii.Error, ValueError):
++        return {"pruned": True}
++    if not raw:
++        return {"pruned": True}
++    mime = m.group(1).lower()
++    name = f"{hashlib.sha256(raw).hexdigest()}.{_EXT.get(mime, 'bin')}"
++    if not (root / name).exists():
++        _write_private(root / name, raw)
++    ref: dict[str, Any] = {"file": name, "mime": mime}
++    if detail:
++        ref["detail"] = detail
++    return ref
++
++
++# --- reference files ---------------------------------------------------------------------------
++
++def _sidecar_path(root: Path, uid: str) -> Path:
++    return root / "refs" / f"{uid}.json"
++
++
++def _read_sidecar(path: Path) -> Optional[dict[str, Any]]:
++    """``{"session_id", "ts", "refs"}``, or ``None`` when missing or unreadable."""
++    try:
++        data = json.loads(path.read_text(encoding="utf-8-sig"))
++    except (OSError, ValueError):
++        return None
++    if not isinstance(data, dict) or not isinstance(data.get("refs"), list):
++        return None
++    data["refs"] = [r for r in data["refs"] if isinstance(r, dict)]
++    return data
++
++
++def _write_sidecar(path: Path, data: dict[str, Any]) -> None:
++    payload = json.dumps({"v": _SIDECAR_VERSION, "session_id": data.get("session_id"), "ts": data.get("ts", 0.0),
++                          "refs": data["refs"]}, ensure_ascii=False, sort_keys=True).encode("utf-8")
++    if not path.exists() or path.read_bytes() != payload:
++        _write_private(path, payload)
++
++
++def _iter_sidecars(root: Path) -> Iterable[tuple[str, Path, dict[str, Any]]]:
++    refs_dir = root / "refs"
++    if not refs_dir.is_dir():
++        return
++    for path in sorted(refs_dir.glob("*.json")):
++        data = _read_sidecar(path) if _UID_RE.match(path.stem) else None
++        if data is not None:
++            yield path.stem, path, data
++
++
++def _live_ref_count(data: dict[str, Any]) -> int:
++    return sum(1 for r in data["refs"] if not r.get("pruned"))
++
++
++def _enforce_window(entries: list[tuple[Path, dict[str, Any]]], keep: int) -> int:
++    """``entries`` = one session's reference files, NEWEST FIRST. Keep the ``keep`` newest images;
++    older refs become ``{"pruned": true}`` (positions must survive) and a file left with no live ref
++    is deleted. Returns the number of refs pruned."""
++    budget, pruned = keep, 0
++    for path, data in entries:
++        changed = False
++        for ref in reversed(data["refs"]):  # the latest images of a message first
++            if ref.get("pruned"):
++                continue
++            if budget > 0:
++                budget -= 1
++                continue
++            ref.clear()
++            ref["pruned"] = True
++            pruned += 1
++            changed = True
++        if not _live_ref_count(data):
++            path.unlink(missing_ok=True)
++        elif changed:
++            _write_sidecar(path, data)
++    return pruned
++
++
++def remove_orphan_files(root: Path, now: Optional[float] = None) -> int:
++    """Delete stored images no live ref points to (plus stale temp files); returns the count."""
++    if not root.is_dir():
++        return 0
++    keep = {str(r["file"]) for _, _, data in _iter_sidecars(root) for r in data["refs"]
++            if not r.get("pruned") and r.get("file")}
++    now = time.time() if now is None else now
++    removed = 0
++    for directory in (root, root / "refs"):
++        if not directory.is_dir():
++            continue
++        for path in directory.iterdir():
++            name = path.name
++            stale_tmp = name.startswith(".") and name.endswith(".tmp") and now - path.stat().st_mtime > _TMP_MAX_AGE_S
++            orphan = directory == root and _FILE_RE.match(name) is not None and name not in keep
++            if path.is_file() and (orphan or stale_tmp):
++                path.unlink(missing_ok=True)
++                removed += 1
++    return removed
++
++
++# --- write path --------------------------------------------------------------------------------
++
++def persist_message_images(msg: dict[str, Any], session_id: Optional[str] = None, home: Optional[Path] = None,
++                           ts: Optional[float] = None, keep: Optional[int] = None) -> int:
++    """Store the images of a live user message and its reference file, then apply the session's
++    window; returns the number of images stored. ``ts`` (the row's timestamp) orders the window, so
++    a late re-flush of an old message never counts as the newest image.
++
++    Stamps the message's ``message_uid`` (minted once per logical message, as the DB insert would)
++    so the row and the reference file share the key. Never raises: a failure only means the image
++    is not replayed on later turns."""
++    content = msg.get("content")
++    if msg.get("role") != "user" or not content_has_images(content):
++        return 0
++    keep = resolve_replay_recent_images() if keep is None else keep
++    if keep <= 0:
++        return 0
++    try:
++        from agent.message_metadata import stamp_message_uid
++
++        uid = stamp_message_uid(msg)
++        if not _UID_RE.match(uid):
++            return 0
++        root = store_root(home)
++        sidecar = _sidecar_path(root, uid)
++        if sidecar.exists():  # re-flush of a message already stored
++            return _live_ref_count(_read_sidecar(sidecar) or {"refs": []})
++        # One ref per image part, in order: refs map to the row's markers by position.
++        refs = [_store_part(root, p) for p in content if isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES]
++        if not _live_ref_count({"refs": refs}):
++            return 0
++        stamp = float(ts) if isinstance(ts, (int, float)) else time.time()
++        _write_sidecar(sidecar, {"session_id": session_id, "ts": stamp, "refs": refs})
++        if session_id:
++            same = [(path, data) for _, path, data in _iter_sidecars(root) if data.get("session_id") == session_id]
++            same.sort(key=lambda e: e[1].get("ts") or 0.0, reverse=True)
++            if _enforce_window(same, keep):
++                remove_orphan_files(root)
++        return _live_ref_count({"refs": refs})
++    except Exception:
++        logger.warning("image_store: could not store the images of a user message", exc_info=True)
++        return 0
++
++
++# --- cleanup against the DB --------------------------------------------------------------------
++
++def _active_rows_by_uid(db: Any, uids: list[str]) -> dict[str, tuple[str, int]]:
++    """``uid -> (session_id, newest active row id)`` for the uids still ACTIVE in the DB (rows archived
++    by compaction never reach the model again)."""
++    found: dict[str, tuple[str, int]] = {}
++    with db._read_ctx() as conn:
++        for i in range(0, len(uids), 500):
++            chunk = uids[i:i + 500]
++            marks = ",".join("?" * len(chunk))
++            for uid, sid, rid in conn.execute(
++                f"SELECT message_uid, session_id, MAX(id) FROM messages WHERE active = 1 "
++                f"AND message_uid IN ({marks}) GROUP BY message_uid", chunk,
++            ).fetchall():
++                found[uid] = (sid, rid)
++    return found
++
++
++def gc_store(db: Any, keep: Optional[int] = None) -> dict[str, int]:
++    """Drop refs whose message is no longer active in ``db``, re-apply the per-session window in DB
++    order, then delete unreferenced files."""
++    root = _db_store_root(db)
++    keep = resolve_replay_recent_images() if keep is None else keep
++    stats = {"refs_removed": 0, "refs_pruned": 0, "files_removed": 0}
++    sidecars = list(_iter_sidecars(root))
++    alive = _active_rows_by_uid(db, [uid for uid, _, _ in sidecars]) if sidecars else {}
++    by_session: dict[str, list[tuple[int, Path, dict[str, Any]]]] = {}
++    for uid, path, data in sidecars:
++        if uid not in alive:
++            path.unlink(missing_ok=True)
++            stats["refs_removed"] += 1
++            continue
++        sid, rid = alive[uid]
++        by_session.setdefault(sid, []).append((rid, path, data))
++    for entries in by_session.values():
++        entries.sort(key=lambda e: e[0], reverse=True)
++        stats["refs_pruned"] += _enforce_window([(p, d) for _, p, d in entries], keep)
++    stats["files_removed"] = remove_orphan_files(root)
++    return stats
++
++
++def purge_deleted_sessions(db: Any, session_ids: list[str]) -> int:
++    """After sessions are deleted from ``db``: drop the refs saved for them whose message is gone
++    (a compression continuation may still own the same message uid), then unreferenced files.
++    Never raises: the next sweep retries."""
++    try:
++        root = _db_store_root(db)
++        wanted = set(session_ids)
++        candidates = [(uid, path) for uid, path, data in _iter_sidecars(root) if data.get("session_id") in wanted]
++        if not candidates:
++            return 0
++        alive = _active_rows_by_uid(db, [uid for uid, _ in candidates])
++        removed = 0
++        for uid, path in candidates:
++            if uid not in alive:
++                path.unlink(missing_ok=True)
++                removed += 1
++        files = remove_orphan_files(root)
++        logger.info("image_store: session delete dropped %d ref(s), %d file(s)", removed, files)
++        return removed
++    except Exception:
++        logger.warning("image_store: cleanup after a session delete failed", exc_info=True)
++        return 0
++
++
++def sweep_store() -> None:
++    """Housekeeping entry point (the caller binds the owning profile's scope). Never raises."""
++    from hermes_state_registry import acquire, release_or_close
++
++    try:
++        db = acquire()
++        try:
++            stats = gc_store(db)
++        finally:
++            release_or_close(db)
++    except Exception:
++        logger.warning("image_store: sweep failed", exc_info=True)
++        return
++    if any(stats.values()):
++        logger.info("image_store: sweep %s", stats)
++
++
++# --- read path ---------------------------------------------------------------------------------
++
++def load_refs(uid: Any, home: Optional[Path] = None) -> list[dict[str, Any]]:
++    if not isinstance(uid, str) or not _UID_RE.match(uid):
++        return []
++    data = _read_sidecar(_sidecar_path(store_root(home), uid))
++    return data["refs"] if data else []
++
++
++def _ref_to_part(ref: dict[str, Any], root: Path) -> Optional[dict[str, Any]]:
++    if ref.get("pruned"):
++        return None
++    if ref.get("file"):
++        name = str(ref["file"])
++        if not _FILE_RE.match(name):
++            return None
++        try:
++            raw = (root / name).read_bytes()
++        except OSError:
++            return None
++        url = f"data:{ref.get('mime') or 'image/jpeg'};base64,{base64.b64encode(raw).decode('ascii')}"
++    else:
++        return None
++    image_url: dict[str, Any] = {"url": url}
++    if isinstance(ref.get("detail"), str):
++        image_url["detail"] = ref["detail"]
++    return {"type": "image_url", "image_url": image_url}
++
++
++def _split_on_markers(text: str) -> list[Optional[str]]:
++    """Text -> segments: str chunks and ``None`` for each ``[screenshot]`` line (the inverse of
++    ``_durable_content``'s ``"\\n".join``)."""
++    segments: list[Optional[str]] = []
++    buf: list[str] = []
++    for line in text.split("\n"):
++        if line == SCREENSHOT_MARKER:
++            if buf:
++                segments.append("\n".join(buf))
++                buf = []
++            segments.append(None)
++        else:
++            buf.append(line)
++    if buf:
++        segments.append("\n".join(buf))
++    return segments
++
++
++def _rebuild(text: str, refs: list[dict[str, Any]], keep: list[bool], root: Path) -> Any:
++    """Content for one stored row: kept refs become image parts, every other marker ``OLDER_IMAGE_TEXT``."""
++    segments = _split_on_markers(text)
++    n_markers = sum(1 for s in segments if s is None)
++    segments += [None] * max(0, len(refs) - n_markers)  # refs whose marker the text lost go last
++    parts: list[dict[str, Any]] = []
++    i = 0
++    for seg in segments:
++        if seg is not None:
++            if seg.strip():
++                parts.append({"type": "text", "text": seg})
++            continue
++        part = _ref_to_part(refs[i], root) if i < len(refs) and keep[i] else None
++        i += 1
++        parts.append(part if part is not None else {"type": "text", "text": OLDER_IMAGE_TEXT})
++    if not any(p["type"] == "image_url" for p in parts):
++        return "\n".join(p["text"] for p in parts)  # nothing re-attached: keep a plain string
++    return parts
++
++
++def rehydrate_wire_images(pairs: list[Pair], keep_recent: int, home: Optional[Path] = None) -> int:
++    """Re-attach stored images on the wire copies. ``pairs`` = ``(source_msg, api_msg)`` in
++    conversation order; only ``api_msg`` is modified. Live images (list content still holding image
++    parts) count toward the window but are left alone. Returns the number of images re-attached."""
++    from agent.message_metadata import message_uid_or_none
++
++    root = store_root(home)
++    plan: list[tuple[dict[str, Any], list[dict[str, Any]], list[bool]]] = []
++    budget = max(0, int(keep_recent))
++    for src, api_msg in reversed(pairs):
++        if src.get("role") != "user":
++            continue
++        content = api_msg.get("content")
++        if content_has_images(content):
++            budget -= sum(1 for p in content if isinstance(p, dict) and p.get("type") in _IMAGE_PART_TYPES)
++            continue
++        if not isinstance(content, str) or SCREENSHOT_MARKER not in content:
++            continue
++        refs = load_refs(message_uid_or_none(src), home)
++        keep = [False] * len(refs)
++        for j in range(len(refs) - 1, -1, -1):  # the latest images of a row first
++            if budget > 0 and not refs[j].get("pruned"):
++                keep[j] = True
++                budget -= 1
++        plan.append((api_msg, refs, keep))
++    attached = 0
++    for api_msg, refs, keep in plan:
++        rebuilt = _rebuild(api_msg["content"], refs, keep, root)
++        api_msg["content"] = rebuilt
++        if isinstance(rebuilt, list):
++            attached += sum(1 for p in rebuilt if p.get("type") == "image_url")
++    return attached
++
++
++def rehydrate_for_agent(agent: Any, pairs: list[Pair]) -> None:
++    """``build_api_messages`` hook: replay stored images only when this turn sends images natively
++    (``agent.image_input_mode`` / model vision support) and the window is not disabled."""
++    try:
++        keep = resolve_replay_recent_images()
++        if keep <= 0:
++            return
++        from agent.image_routing import decide_image_input_mode
++        from hermes_cli.config import load_config
++        provider = (getattr(agent, "provider", "") or "").strip()
++        model = (getattr(agent, "model", "") or "").strip()
++        if decide_image_input_mode(provider, model, load_config()) != "native":
++            return
++        attached = rehydrate_wire_images(pairs, keep)
++        if attached:
++            logger.info("image_store: re-attached %d stored image(s) to the request", attached)
++    except Exception:
++        logger.warning("image_store: re-attaching stored images failed", exc_info=True)
+diff --git a/agent/session_persistence.py b/agent/session_persistence.py
+index 92a5772a3b..504e97a974 100644
+--- a/agent/session_persistence.py
++++ b/agent/session_persistence.py
+@@ -212,6 +212,11 @@ def _db_flush_row(agent, msg: dict, is_current_turn_user: bool) -> dict[str, Any
+         content, api_content = durable_user_row_content(agent, msg, content, api_content)
+         ov_timestamp = getattr(agent, "_persist_user_message_timestamp", None)
+         timestamp = timestamp if ov_timestamp is None else ov_timestamp
++    if role == "user":
++        # The row stays text-only; its images go to the image store, keyed by the message_uid stamped
++        # here, so a turn rebuilt from the DB can re-attach them on the wire.
++        from agent.image_store import persist_message_images
++        persist_message_images(msg, session_id=getattr(agent, "session_id", None), ts=timestamp)
+     if api_content == content:
+         api_content = None
+     # get_messages_as_conversation replays rows through sanitize_context().strip(); capture the sent bytes
+diff --git a/agent/turn_context.py b/agent/turn_context.py
+index 70d47a6c2e..ddaf61008b 100644
+--- a/agent/turn_context.py
++++ b/agent/turn_context.py
+@@ -1268,6 +1268,7 @@ def build_api_messages(
+     canonical_messages = canonicalize_replay_history(messages[:split], now=turn_now) + messages[split:]
+ 
+     api_messages = []
++    image_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+     for idx, msg in enumerate(canonical_messages):
+         # Structural clone, NOT msg.copy(): in-place transforms below must not reach
+         # persisted history via nested containers; see _clone_message_for_send.
+@@ -1327,6 +1328,11 @@ def build_api_messages(
+         # 'reasoning_details' is shaped by the replay policy above on chat_completions and
+         # left intact for the native adapters (anthropic/bedrock rebuild signed blocks from it).
+         api_messages.append(api_msg)
++        image_pairs.append((msg, api_msg))
++    # Rows rebuilt from the session DB carry ``[screenshot]`` markers: put the most recent stored
++    # images back on this wire copy (vision.replay_recent_images; native image input only).
++    from agent.image_store import rehydrate_for_agent
++    rehydrate_for_agent(agent, image_pairs)
+ 
+     # A provider-rejected Anthropic signature is suppressed outside canonical history and
+     # survives fresh request construction / process resume via session model_config.
+diff --git a/cli-config.yaml.example b/cli-config.yaml.example
+index 629ea2ea93..cbaa9f62eb 100644
+--- a/cli-config.yaml.example
++++ b/cli-config.yaml.example
+@@ -895,6 +895,11 @@ prompt_caching:
+ #   # per session. Unset = 3 inside delegated subagents, unlimited for the main
+ #   # agent; a number applies everywhere; 0 = unlimited.
+ #   max_calls_per_image: 3
++#   # User-attached images re-sent to a native-vision model when a turn's
++#   # history is rebuilt from the session DB (API server, restarts): the N most
++#   # recent of the conversation. Stored under <HERMES_HOME>/image_store, N per
++#   # session, removed with the session. 0 = store and replay none.
++#   replay_recent_images: 3
+ #
+ # auxiliary:
+ #   # Image analysis: vision_analyze tool + browser screenshots
+diff --git a/gateway/run.py b/gateway/run.py
+index a9e9855ec9..5ff33acba6 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -2185,6 +2185,7 @@ from gateway.run_goals import GatewayGoalsMixin
+ from gateway.run_agent_cache import GatewayAgentCacheMixin
+ from gateway.run_profile_reconcile import GatewayProfileReconcileMixin
+ from gateway.run_plugin_rewire import GatewayPluginRewireMixin
++from gateway.run_state_db_housekeeping import _housekeeping_state_db_maintenance, _launch_sessions_dir
+ from gateway.platforms.base import (
+     BasePlatformAdapter,
+     _reply_anchor_for_event,
+@@ -4626,65 +4627,6 @@ def _housekeeping_plugin_update_check() -> None:
+     maybe_run_gateway_check(log=logger)
+ 
+ 
+-def _launch_sessions_dir(config) -> Optional[tuple[Path, Path]]:
+-    """``(launch home, its configured transcript dir)``, or ``None`` when the gateway carries none.
+-
+-    MUST be called outside any profile scope — ``get_hermes_home()`` is what identifies the launch
+-    home. Consumed by :func:`_profile_sessions_dir`.
+-    """
+-    sessions_dir = getattr(config, "sessions_dir", None)
+-    if sessions_dir is None:
+-        return None
+-    return get_hermes_home(), Path(sessions_dir)
+-
+-
+-def _profile_sessions_dir(launch: Optional[tuple[Path, Path]]) -> Path:
+-    """Transcript dir of the profile currently in scope.
+-
+-    ``gateway.sessions_dir`` overrides the LAUNCH profile's transcript dir only; every other served
+-    profile keeps ``<home>/sessions``. Hardcoding ``<home>/sessions`` for the launch home too wrote
+-    transcripts to the configured dir while the prune unlinked under the default one, orphaning
+-    every pruned session's ``.json``/``.jsonl``/``request_dump_*`` forever.
+-    """
+-    home = get_hermes_home()
+-    if launch is not None and Path(launch[0]) == home:
+-        return Path(launch[1])
+-    return home / "sessions"
+-
+-
+-def _housekeeping_state_db_maintenance(launch: Optional[tuple[Path, Path]] = None) -> None:
+-    """Stale-session auto-archive plus auto-prune/VACUUM for ONE profile's state.db; both are gated
+-    by sessions.min_interval_hours (VACUUM additionally by its own throttles). Opens its own
+-    SessionDB — SQLite connections are thread-bound.
+-
+-    Profile-scoped by its caller: ``acquire()``, ``get_hermes_home()`` and ``load_config()`` all
+-    resolve through the active scope, so an unscoped run swept only the LAUNCH profile's store with
+-    the LAUNCH profile's retention settings and a multiplexed secondary was never archived, pruned
+-    or vacuumed by anyone — the dashboard/serve trigger defers to the gateway for every profile a
+-    gateway owns (``web_server_sessions``). *launch* carries the launch home's configured transcript
+-    dir (:func:`_launch_sessions_dir`) so its override still governs its own profile."""
+-    from hermes_cli.config import load_config as _load_full_config
+-    from hermes_state_registry import acquire, release_or_close
+-    _sess_cfg = (_load_full_config().get("sessions") or {})
+-    if not (_sess_cfg.get("auto_archive", False) or _sess_cfg.get("auto_prune", False)):
+-        return
+-    _adb = acquire()
+-    try:
+-        if _sess_cfg.get("auto_archive", False):
+-            _adb.maybe_auto_archive(
+-                idle_days=float(_sess_cfg.get("auto_archive_days", 3)),
+-                min_interval_hours=int(_sess_cfg.get("min_interval_hours", 24)))
+-        if _sess_cfg.get("auto_prune", False):
+-            _adb.maybe_auto_prune_and_vacuum(
+-                retention_days=int(_sess_cfg.get("retention_days", 90)),
+-                min_interval_hours=int(_sess_cfg.get("min_interval_hours", 24)),
+-                min_vacuum_interval_days=int(_sess_cfg.get("min_vacuum_interval_days", 30)),
+-                vacuum=bool(_sess_cfg.get("vacuum_after_prune", True)),
+-                sessions_dir=_profile_sessions_dir(launch))
+-    finally:
+-        release_or_close(_adb)
+-
+-
+ def _housekeeping_deferred_fts_retry() -> None:
+     """A SessionDB opened while another process held the rebuild lock fails closed onto the LIKE fallback
+     and the gateway stays up for days. Non-blocking, rate-limited inside SessionDB; no-op when not stale."""
+diff --git a/gateway/run_state_db_housekeeping.py b/gateway/run_state_db_housekeeping.py
+new file mode 100644
+index 0000000000..b15c3b4db9
+--- /dev/null
++++ b/gateway/run_state_db_housekeeping.py
+@@ -0,0 +1,74 @@
++"""state.db housekeeping for the messaging gateway: per-profile auto-archive and auto-prune/VACUUM.
++
++Split out of ``gateway/run.py``; scheduled at startup and on the housekeeping tick
++(``_start_gateway_housekeeping``), once per served profile under that profile's scope.
++"""
++
++from __future__ import annotations
++
++from pathlib import Path
++from typing import Optional
++
++from hermes_constants import get_hermes_home
++
++
++def _launch_sessions_dir(config) -> Optional[tuple[Path, Path]]:
++    """``(launch home, its configured transcript dir)``, or ``None`` when the gateway carries none.
++
++    MUST be called outside any profile scope — ``get_hermes_home()`` is what identifies the launch
++    home. Consumed by :func:`_profile_sessions_dir`.
++    """
++    sessions_dir = getattr(config, "sessions_dir", None)
++    if sessions_dir is None:
++        return None
++    return get_hermes_home(), Path(sessions_dir)
++
++
++def _profile_sessions_dir(launch: Optional[tuple[Path, Path]]) -> Path:
++    """Transcript dir of the profile currently in scope.
++
++    ``gateway.sessions_dir`` overrides the LAUNCH profile's transcript dir only; every other served
++    profile keeps ``<home>/sessions``. Hardcoding ``<home>/sessions`` for the launch home too wrote
++    transcripts to the configured dir while the prune unlinked under the default one, orphaning
++    every pruned session's ``.json``/``.jsonl``/``request_dump_*`` forever.
++    """
++    home = get_hermes_home()
++    if launch is not None and Path(launch[0]) == home:
++        return Path(launch[1])
++    return home / "sessions"
++
++
++def _housekeeping_state_db_maintenance(launch: Optional[tuple[Path, Path]] = None) -> None:
++    """Stale-session auto-archive plus auto-prune/VACUUM for ONE profile's state.db; both are gated
++    by sessions.min_interval_hours (VACUUM additionally by its own throttles). Opens its own
++    SessionDB — SQLite connections are thread-bound. The stored user images whose message left the
++    DB are swept first, on every run (``agent.image_store``).
++
++    Profile-scoped by its caller: ``acquire()``, ``get_hermes_home()`` and ``load_config()`` all
++    resolve through the active scope, so an unscoped run swept only the LAUNCH profile's store with
++    the LAUNCH profile's retention settings and a multiplexed secondary was never archived, pruned
++    or vacuumed by anyone — the dashboard/serve trigger defers to the gateway for every profile a
++    gateway owns (``web_server_sessions``). *launch* carries the launch home's configured transcript
++    dir (:func:`_launch_sessions_dir`) so its override still governs its own profile."""
++    from hermes_cli.config import load_config as _load_full_config
++    from hermes_state_registry import acquire, release_or_close
++    from agent.image_store import sweep_store
++    sweep_store()  # stored user images whose message left the DB; not gated by the settings below
++    _sess_cfg = (_load_full_config().get("sessions") or {})
++    if not (_sess_cfg.get("auto_archive", False) or _sess_cfg.get("auto_prune", False)):
++        return
++    _adb = acquire()
++    try:
++        if _sess_cfg.get("auto_archive", False):
++            _adb.maybe_auto_archive(
++                idle_days=float(_sess_cfg.get("auto_archive_days", 3)),
++                min_interval_hours=int(_sess_cfg.get("min_interval_hours", 24)))
++        if _sess_cfg.get("auto_prune", False):
++            _adb.maybe_auto_prune_and_vacuum(
++                retention_days=int(_sess_cfg.get("retention_days", 90)),
++                min_interval_hours=int(_sess_cfg.get("min_interval_hours", 24)),
++                min_vacuum_interval_days=int(_sess_cfg.get("min_vacuum_interval_days", 30)),
++                vacuum=bool(_sess_cfg.get("vacuum_after_prune", True)),
++                sessions_dir=_profile_sessions_dir(launch))
++    finally:
++        release_or_close(_adb)
+diff --git a/hermes_cli/config_defaults.py b/hermes_cli/config_defaults.py
+index 9fa095eefc..f84f9589b0 100644
+--- a/hermes_cli/config_defaults.py
++++ b/hermes_cli/config_defaults.py
+@@ -1246,8 +1246,7 @@ DEFAULT_CONFIG = {
+         # instead of going to the agent. [] disables.
+         "stop_phrases": ["stop"],
+     },
+-    # Native vision embeds (vision_analyze / browser screenshots on vision-capable main models) ride
+-    # conversation history and are re-sent on every later API call.
++    # Native images (vision_analyze, browser screenshots, replayed user images) are re-sent on every later call.
+     "vision": {
+         # Byte budget for one embedded image (clamped 64 KiB..4 MiB). Raise it for dense phone
+         # screenshots of tables the model calls "unreadable" at 256 KB.
+@@ -1256,6 +1255,7 @@ DEFAULT_CONFIG = {
+         # null = 3 inside delegated subagents (they run unattended), unlimited for the main agent;
+         # an explicit number applies everywhere; 0 = unlimited.
+         "max_calls_per_image": None,
++        "replay_recent_images": 3,  # newest user images re-sent on turns rebuilt from state.db (agent/image_store.py); 0 = off
+     },
+     # "Hey Hermes" hands-free wake word: always-on, on-device hotword detection that starts a fresh
+     # voice session. Off by default; toggle with /wake.
+diff --git a/hermes_state_maintenance.py b/hermes_state_maintenance.py
+index f8c80ee615..c1aef040fb 100644
+--- a/hermes_state_maintenance.py
++++ b/hermes_state_maintenance.py
+@@ -350,6 +350,9 @@ class SessionMaintenanceMixin:
+         count = self._execute_write(_do)
+         for sid in removed_ids:
+             self._remove_session_files(sessions_dir, sid)
++        if removed_ids:
++            from agent.image_store import purge_deleted_sessions
++            purge_deleted_sessions(self, removed_ids)
+         return count
+ 
+     def _page_pragmas(self, names: tuple[str, ...], fail_msg: str) -> Optional[list]:
+diff --git a/hermes_state_sessions.py b/hermes_state_sessions.py
+index a3435dd5f3..dc15a83178 100644
+--- a/hermes_state_sessions.py
++++ b/hermes_state_sessions.py
+@@ -1747,6 +1747,9 @@ class SessionSessionsMixin:
+         deleted = self._execute_write(_do)
+         for sid in removed_ids:
+             self._remove_session_files(sessions_dir, sid)
++        if removed_ids:
++            from agent.image_store import purge_deleted_sessions
++            purge_deleted_sessions(self, removed_ids)
+         return bool(deleted)
+ 
+     def delete_session_if_empty(self, session_id: str, sessions_dir: Optional[Path] = None) -> bool:
+@@ -1860,6 +1863,9 @@ class SessionSessionsMixin:
+         count = self._execute_write(_do)
+         for sid in removed_ids:
+             self._remove_session_files(sessions_dir, sid)
++        if removed_ids:
++            from agent.image_store import purge_deleted_sessions
++            purge_deleted_sessions(self, removed_ids)
+         return count
+ 
+     # Shared by count_empty_sessions / delete_empty_sessions so badge and sweep agree. message_count
+diff --git a/tests/agent/test_image_store.py b/tests/agent/test_image_store.py
+new file mode 100644
+index 0000000000..a26ca46a16
+--- /dev/null
++++ b/tests/agent/test_image_store.py
+@@ -0,0 +1,281 @@
++"""User images survive turns rebuilt from the session DB (``agent.image_store``): stored on flush,
++replayed on the wire copy for native-vision requests, and cleaned up with their session."""
++
++import base64
++import copy
++import hashlib
++import os
++import sqlite3
++import time
++from types import SimpleNamespace
++from unittest.mock import MagicMock, patch
++
++import pytest
++
++from agent import image_store
++from agent.session_persistence import _durable_content
++
++
++def _data_url(payload: bytes) -> str:
++    return f"data:image/png;base64,{base64.b64encode(payload).decode('ascii')}"
++
++
++def _user(text, *payloads):
++    parts = [{"type": "text", "text": text}]
++    parts += [{"type": "image_url", "image_url": {"url": _data_url(p)}} for p in payloads]
++    return {"role": "user", "content": parts}
++
++
++def _stored_row(live):
++    """What a turn rebuilt from the DB sees: the text-only projection plus the row's message_uid."""
++    return {"role": "user", "content": _durable_content(live["content"]), "message_uid": live["message_uid"]}
++
++
++def _pairs(rows):
++    return [(row, copy.deepcopy(row)) for row in rows]
++
++
++def _sha_name(payload: bytes) -> str:
++    return f"{hashlib.sha256(payload).hexdigest()}.png"
++
++
++def _files(home):
++    root = home / "image_store"
++    return sorted(p.name for p in root.iterdir() if p.is_file()) if root.is_dir() else []
++
++
++@pytest.fixture
++def home(tmp_path, monkeypatch):
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    return tmp_path
++
++
++@pytest.fixture
++def db(home):
++    from hermes_state import SessionDB
++
++    session_db = SessionDB(db_path=home / "state.db")
++    yield session_db
++    session_db.close()
++
++
++def _add(db, sid, payload, ts):
++    """One user turn with one image, written as the agent does: image store first, then the row."""
++    live = _user(f"photo {payload!r}", payload)
++    image_store.persist_message_images(live, session_id=sid, ts=ts)
++    db.ensure_session(sid, "api_server")
++    db.append_message(sid, "user", content=_durable_content(live["content"]),
++                      message_uid=live["message_uid"], timestamp=ts)
++    return live["message_uid"]
++
++
++def test_replayed_row_is_byte_identical_to_the_live_message(home):
++    live = _user("What do you see?", b"img-A")
++    assert image_store.persist_message_images(live) == 1
++    row = _stored_row(live)
++    assert row["content"] == "What do you see?\n[screenshot]"  # the DB row stays text-only
++    pairs = _pairs([row])
++    assert image_store.rehydrate_wire_images(pairs, keep_recent=3) == 1
++    # Same bytes as the turn that first sent it, so the provider's prompt-cache prefix still matches.
++    assert pairs[0][1]["content"] == live["content"]
++    assert row["content"] == "What do you see?\n[screenshot]"  # the source history is never modified
++
++
++def test_only_the_most_recent_images_are_replayed_deterministically(home):
++    rows = []
++    for i in range(5):
++        live = _user(f"photo {i}", f"img-{i}".encode())
++        image_store.persist_message_images(live)
++        rows += [_stored_row(live), {"role": "assistant", "content": f"seen {i}"}]
++    pairs = _pairs(rows)
++    assert image_store.rehydrate_wire_images(pairs, keep_recent=3) == 3
++    users = [api["content"] for src, api in pairs if src["role"] == "user"]
++    assert users[:2] == [f"photo {i}\n{image_store.OLDER_IMAGE_TEXT}" for i in (0, 1)]
++    assert all([p["type"] for p in content] == ["text", "image_url"] for content in users[2:])
++    again = _pairs(rows)
++    image_store.rehydrate_wire_images(again, keep_recent=3)
++    assert [api for _, api in again] == [api for _, api in pairs]
++
++
++def test_live_images_count_toward_the_window(home):
++    old = _user("older", b"img-old")
++    image_store.persist_message_images(old)
++    current = _user("newer", b"n1", b"n2", b"n3")
++    pairs = [(_stored_row(old), _stored_row(old)), (current, copy.deepcopy(current))]
++    assert image_store.rehydrate_wire_images(pairs, keep_recent=3) == 0
++    assert pairs[0][1]["content"] == f"older\n{image_store.OLDER_IMAGE_TEXT}"
++    assert pairs[1][1]["content"] == current["content"]
++
++
++def test_marker_without_a_stored_image_reads_as_an_older_image(home):
++    # A row stored before this feature, or whose image was pruned: same bytes either way.
++    row = {"role": "user", "content": "old message\n[screenshot]", "message_uid": "abc123"}
++    pairs = _pairs([row])
++    assert image_store.rehydrate_wire_images(pairs, keep_recent=3) == 0
++    assert pairs[0][1]["content"] == f"old message\n{image_store.OLDER_IMAGE_TEXT}"
++
++
++def test_only_stored_bytes_replay_and_each_image_keeps_its_marker(home):
++    # A remote URL is re-fetched by the provider on every request (an expired signed URL 400s the
++    # turn); an undecodable part stores nothing. Neither may shift later images onto earlier markers.
++    live = {"role": "user", "content": [
++        {"type": "text", "text": "compare"},
++        {"type": "image_url", "image_url": {"url": "https://cdn.example/signed.png?X-Amz-Expires=60"}},
++        {"type": "image_url", "image_url": {"url": "data:image/png;base64,"}},
++        {"type": "image_url", "image_url": {"url": _data_url(b"third")}},
++    ]}
++    assert image_store.persist_message_images(live) == 1
++    pairs = _pairs([_stored_row(live)])
++    assert image_store.rehydrate_wire_images(pairs, keep_recent=3) == 1
++    older = {"type": "text", "text": image_store.OLDER_IMAGE_TEXT}
++    assert pairs[0][1]["content"] == [live["content"][0], older, older, live["content"][3]]
++
++
++def test_a_late_flush_never_recreates_a_deleted_profile(tmp_path, monkeypatch):
++    root = tmp_path / ".hermes"
++    (root / "profiles" / ".deleted").mkdir(parents=True)
++    (root / "profiles" / ".deleted" / "gone").touch()  # what `hermes profile delete` leaves behind
++    gone = root / "profiles" / "gone"
++    monkeypatch.setenv("HERMES_HOME", str(gone))
++    assert image_store.persist_message_images(_user("late", b"img"), session_id="S", keep=3) == 0
++    assert not gone.exists()
++
++
++def test_each_session_keeps_only_its_newest_images(home, db):
++    uids = [_add(db, "S1", f"s1-{i}".encode(), 1000 + i) for i in range(5)]
++    other = _add(db, "S2", b"s2-0", 900)  # older than all of S1, other session: untouched
++    assert [bool(image_store.load_refs(u)) for u in uids] == [False, False, True, True, True]
++    assert image_store.load_refs(other)
++    assert _files(home) == sorted([_sha_name(f"s1-{i}".encode()) for i in (2, 3, 4)] + [_sha_name(b"s2-0")])
++    # A late re-flush of an older message never evicts newer images.
++    late = _user("late", b"late")
++    image_store.persist_message_images(late, session_id="S1", ts=1)
++    assert not image_store.load_refs(late["message_uid"]) and _sha_name(b"late") not in _files(home)
++
++
++def test_a_shared_file_survives_until_its_last_reference(home, db):
++    _add(db, "S1", b"shared", 1000)
++    _add(db, "S2", b"shared", 1001)
++    for i in range(3):  # pushes S1's copy out of S1's window
++        _add(db, "S1", f"s1-{i}".encode(), 1100 + i)
++    assert _sha_name(b"shared") in _files(home)  # still referenced by S2
++    assert db.delete_session("S2", sessions_dir=home / "sessions")
++    assert _sha_name(b"shared") not in _files(home)
++
++
++def test_deleting_or_pruning_sessions_removes_their_images(home, db):
++    keep = _add(db, "KEEP", b"keep", 1000)  # never ended: prune leaves it alone
++    gone = [_add(db, "GONE", f"g{i}".encode(), 1001 + i) for i in range(2)]
++    bulk = [_add(db, "A", b"a", 1003), _add(db, "B", b"b", 1004)]
++    pruned = _add(db, "OLD", b"old", 1005)
++    assert db.delete_session("GONE", sessions_dir=home / "sessions")
++    assert db.delete_sessions(["A", "B"], sessions_dir=home / "sessions") == 2
++    db.end_session("OLD", "user_exit")
++    assert db.prune_sessions(older_than_days=0) == 1
++    assert not any(image_store.load_refs(u) for u in [*gone, *bulk, pruned])
++    assert image_store.load_refs(keep) and _files(home) == [_sha_name(b"keep")]
++
++
++def test_sweep_drops_images_of_missing_or_compacted_messages(home, db):
++    live = _add(db, "S", b"live", 1000)
++    compacted = _add(db, "S", b"compacted", 999)
++    conn = sqlite3.connect(home / "state.db")
++    conn.execute("UPDATE messages SET active = 0 WHERE message_uid = ?", (compacted,))
++    conn.commit()
++    conn.close()
++    never = _user("never committed", b"never")  # stored, then the process died before the insert
++    image_store.persist_message_images(never, session_id="S", ts=998)
++    root = home / "image_store"
++    (root / ("0" * 64 + ".jpg")).write_bytes(b"orphan file")
++    stale_tmp = root / ".x.jpg.1.tmp"
++    stale_tmp.write_bytes(b"half written")
++    old = time.time() - 7200
++    os.utime(stale_tmp, (old, old))
++    stats = image_store.gc_store(db)
++    assert stats["refs_removed"] == 2 and stats["files_removed"] == 4
++    assert image_store.load_refs(live) and _files(home) == [_sha_name(b"live")]
++
++
++def _write_config(home, text):
++    (home / "config.yaml").write_text(text, encoding="utf-8")
++
++
++def _agent():
++    return SimpleNamespace(provider="openrouter", model="test/model")
++
++
++def test_replay_follows_the_image_input_mode(home):
++    live = _user("look", b"img")
++    image_store.persist_message_images(live)
++    _write_config(home, "agent:\n  image_input_mode: text\n")
++    text_pairs = _pairs([_stored_row(live)])
++    image_store.rehydrate_for_agent(_agent(), text_pairs)
++    assert text_pairs[0][1]["content"] == "look\n[screenshot]"  # untouched: pixels never go out in text mode
++    _write_config(home, "agent:\n  image_input_mode: native\n")
++    native_pairs = _pairs([_stored_row(live)])
++    image_store.rehydrate_for_agent(_agent(), native_pairs)
++    assert native_pairs[0][1]["content"] == live["content"]
++
++
++def test_replay_recent_images_zero_stores_replays_and_keeps_nothing(home, db):
++    stored = _add(db, "S", b"before", 1000)  # stored while the feature was on
++    _write_config(home, "agent:\n  image_input_mode: native\nvision:\n  replay_recent_images: 0\n")
++    live = _user("look", b"img")
++    assert image_store.persist_message_images(live, session_id="S") == 0
++    pairs = _pairs([{"role": "user", "content": "photo\n[screenshot]", "message_uid": stored}])
++    image_store.rehydrate_for_agent(_agent(), pairs)
++    assert pairs[0][1]["content"] == "photo\n[screenshot]"  # exactly the behaviour without the store
++    image_store.gc_store(db)
++    assert _files(home) == [] and not image_store.load_refs(stored)
++
++
++def test_replay_recent_images_setting_sizes_the_window(home):
++    _write_config(home, "agent:\n  image_input_mode: native\nvision:\n  replay_recent_images: 1\n")
++    rows = []
++    for i in range(2):
++        live = _user(f"photo {i}", f"img-{i}".encode())
++        image_store.persist_message_images(live)
++        rows.append(_stored_row(live))
++    pairs = _pairs(rows)
++    image_store.rehydrate_for_agent(_agent(), pairs)
++    assert pairs[0][1]["content"] == f"photo 0\n{image_store.OLDER_IMAGE_TEXT}"
++    assert [p["type"] for p in pairs[1][1]["content"]] == ["text", "image_url"]
++
++
++def _reply(content):
++    message = SimpleNamespace(content=content, tool_calls=None)
++    response = SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")], model="test/model")
++    response.usage = SimpleNamespace(prompt_tokens=100, completion_tokens=10, total_tokens=110)
++    return response
++
++
++def _fresh_agent(db):
++    """A new agent per turn over the same session, as the API server builds one per request."""
++    from run_agent import AIAgent
++
++    with patch("agent.process_bootstrap.OpenAI"):
++        agent = AIAgent(api_key="test-key-1234567890", base_url="https://openrouter.ai/api/v1", model="test/model",
++                        quiet_mode=True, session_db=db, session_id="sid", skip_context_files=True, skip_memory=True)
++    agent.client, agent.tool_delay, agent.save_trajectories = MagicMock(), 0, False
++    agent.client.chat.completions.create.side_effect = [_reply("ok")]
++    return agent
++
++
++def test_a_turn_rebuilt_from_the_db_still_shows_the_earlier_image(home, db, monkeypatch):
++    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
++    _write_config(home, "model:\n  supports_vision: true\n")
++    photo = _user("What colour is this car?", b"car-pixels")
++    first = _fresh_agent(db)
++    first.run_conversation(user_message=photo["content"], conversation_history=[], task_id="sid")
++    sent_first = first.client.chat.completions.create.call_args.kwargs["messages"]
++
++    second = _fresh_agent(db)
++    history = db.get_messages_as_conversation("sid", repair_alternation=True)
++    assert history[0]["content"] == "What colour is this car?\n[screenshot]"  # the DB stays text-only
++    second.run_conversation(user_message="And its brand?", conversation_history=history, task_id="sid")
++    sent_second = second.client.chat.completions.create.call_args.kwargs["messages"]
++
++    first_user = next(m for m in sent_first if m["role"] == "user")
++    replayed = next(m for m in sent_second if m["role"] == "user")
++    assert [p["type"] for p in first_user["content"]] == ["text", "image_url"]
++    assert replayed["content"] == first_user["content"]  # same pixels, same bytes: the cached prefix holds
