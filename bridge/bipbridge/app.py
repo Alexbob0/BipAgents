@@ -196,11 +196,14 @@ def build_router() -> APIRouter:
         """This install's agents. With `url` (their Hermes on the tailnet) and `key`, it is all the app needs to add
         them from one QR code (the install's: the bridge's address and key), and to pick up agents created later."""
         config = _services(request).config
+        from .agents_admin import unclaimed_profiles
         return {"bridge": {"url": config.public_url, "lan": lan_info(config)},
                 "agents": [{"id": a.name, "name": a.display_name, "voice": a.voice or config.default_voice,
                             "uploads": bool(a.upload_dir_host), "inbox": bool(a.ntfy_topic),
                             "url": a.public_url, "key": a.hermes_key if a.public_url else None}
-                           for a in config.agents.values()]}
+                           for a in config.agents.values()],
+                # Profiles created on the server that the app could connect (POST /v1/agents/claim).
+                "unclaimed": unclaimed_profiles(config)}
 
     @router.post("/tts/sentence")
     async def tts_sentence(body: TtsRequest, request: Request) -> Response:

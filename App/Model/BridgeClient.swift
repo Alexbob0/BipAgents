@@ -49,12 +49,43 @@ struct BridgeClient: Sendable {
 
     /// `GET /v1/agents`: every agent of this install that the app can reach (with its tailnet address and key).
     func installAgents() async throws -> [InstallAgent] {
+        try await serverListing().agents
+    }
+
+    /// A profile created on the server (`hermes profile create`…) that the app cannot reach yet.
+    struct UnclaimedProfile: Sendable, Hashable {
+        var id: String
+        var name: String
+        var description: String
+    }
+
+    /// `GET /v1/agents`, all of it: the agents the app can reach, the ids of every agent the bridge serves (reachable
+    /// from here or not), and the profiles waiting on the server.
+    func serverListing() async throws -> (agents: [InstallAgent], served: Set<String>, unclaimed: [UnclaimedProfile]) {
         let json = try JSONSerialization.jsonObject(with: try await send(request("v1/agents"))) as? [String: Any]
-        return (json?["agents"] as? [[String: Any]] ?? []).compactMap { row in
+        let rows = json?["agents"] as? [[String: Any]] ?? []
+        let agents: [InstallAgent] = rows.compactMap { row in
             guard let id = row["id"] as? String, let raw = row["url"] as? String, let url = URL(string: raw),
                   let key = row["key"] as? String, !key.isEmpty else { return nil }
             return InstallAgent(id: id, name: row["name"] as? String ?? id.capitalized, url: url, key: key)
         }
+        let unclaimed: [UnclaimedProfile] = (json?["unclaimed"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let id = row["id"] as? String else { return nil }
+            return UnclaimedProfile(id: id, name: row["name"] as? String ?? id.capitalized,
+                                    description: row["description"] as? String ?? "")
+        }
+        return (agents, Set(rows.compactMap { $0["id"] as? String }), unclaimed)
+    }
+
+    /// `POST /v1/agents/claim`: a profile found on the server, served to the app (its key; nothing else changes).
+    func claimProfile(id: String, name: String) async throws -> InstallAgent {
+        var request = request("v1/agents/claim", method: "POST")
+        request.timeoutInterval = 120
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["id": id, "name": name])
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
+        guard let agentID = json?["id"] as? String, let raw = json?["url"] as? String, let url = URL(string: raw),
+              let key = json?["key"] as? String else { throw HermesError.invalidResponse("agent claim") }
+        return InstallAgent(id: agentID, name: json?["name"] as? String ?? name, url: url, key: key)
     }
 
     /// A kind of agent the bridge can create (`custom` = « Autre », described by the person).

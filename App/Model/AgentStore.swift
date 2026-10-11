@@ -265,6 +265,7 @@ final class AgentStore {
             for agent in agents {
                 group.addTask { await self.refreshReachability(of: agent) }
             }
+            group.addTask { await self.refreshServerNews() }
         }
     }
 
@@ -336,6 +337,92 @@ final class AgentStore {
     /// Agents unreachable both on the tailnet and on the local network although they have a LAN door: their
     /// address may have changed while the tailnet was down (the home screen says how to get a new QR code).
     private(set) var lostAgents: Set<UUID> = []
+
+    // MARK: What changed on the servers
+
+    /// Something a server has that this iPhone does not, or no longer: shown on the home screen, to add, connect or
+    /// remove in one tap (no QR code).
+    struct ServerNews: Identifiable, Sendable {
+        enum Kind: Sendable {
+            /// An agent of the install this iPhone does not have (created from another phone, or on the server).
+            case added(BridgeClient.InstallAgent)
+            /// A profile created on the server that no app reaches yet.
+            case unclaimed(BridgeClient.UnclaimedProfile)
+            /// An agent of this iPhone its server no longer serves.
+            case gone(AgentProfile)
+        }
+
+        var kind: Kind
+        var bridgeURL: URL
+        var bridgeKey: String
+        var lanURL: URL?
+        var lanFingerprint: String?
+
+        var id: String {
+            switch kind {
+            case .added(let agent): "\(bridgeURL.absoluteString)|added|\(agent.id)"
+            case .unclaimed(let profile): "\(bridgeURL.absoluteString)|unclaimed|\(profile.id)"
+            case .gone(let agent): "\(bridgeURL.absoluteString)|gone|\(agent.id.uuidString)"
+            }
+        }
+    }
+
+    private(set) var serverNews: [ServerNews] = []
+    private static let dismissedNewsKey = "dismissedServerNews"
+
+    /// Each install this iPhone knows, asked once what it serves now.
+    func refreshServerNews() async {
+        guard !isDemo else { return }
+        let dismissed = Set(UserDefaults.standard.stringArray(forKey: Self.dismissedNewsKey) ?? [])
+        var found: [ServerNews] = []
+        var seen = Set<URL>()
+        for agent in agents {
+            guard let url = agent.config.bridgeURL, seen.insert(url).inserted,
+                  let key = secrets(for: agent)?.bridgeKey else { continue }
+            let bridge = BridgeClient(url: url, key: key)
+            guard let listing = try? await withTimeout(8, { try await bridge.serverListing() }) else { continue }
+            let here = agents.filter { $0.config.bridgeURL == url }
+            let news = { (kind: ServerNews.Kind) in
+                ServerNews(kind: kind, bridgeURL: url, bridgeKey: key, lanURL: agent.config.lanURL,
+                           lanFingerprint: agent.config.lanFingerprint)
+            }
+            for listed in listing.agents where !here.contains(where: { $0.bridgeName == listed.id }) {
+                found.append(news(.added(listed)))
+            }
+            for profile in listing.unclaimed {
+                found.append(news(.unclaimed(profile)))
+            }
+            for mine in here where !listing.served.contains(mine.bridgeName) {
+                found.append(news(.gone(mine)))
+            }
+        }
+        serverNews = found.filter { !dismissed.contains($0.id) }
+    }
+
+    /// The agent added to this iPhone (a profile on the server is connected first, which takes up to a minute).
+    func accept(_ news: ServerNews, name: String? = nil) async throws {
+        switch news.kind {
+        case .added(let agent):
+            try addDiscovered(agent, bridgeURL: news.bridgeURL, bridgeKey: news.bridgeKey, lanURL: news.lanURL,
+                              lanFingerprint: news.lanFingerprint)
+        case .unclaimed(let profile):
+            let bridge = BridgeClient(url: news.bridgeURL, key: news.bridgeKey)
+            let agent = try await bridge.claimProfile(id: profile.id, name: name ?? profile.name)
+            try addDiscovered(agent, bridgeURL: news.bridgeURL, bridgeKey: news.bridgeKey, lanURL: news.lanURL,
+                              lanFingerprint: news.lanFingerprint)
+        case .gone(let agent):
+            remove(agent)
+        }
+        serverNews.removeAll { $0.id == news.id }
+    }
+
+    /// Not now, and not again for this one.
+    func dismiss(_ news: ServerNews) {
+        var dismissed = UserDefaults.standard.stringArray(forKey: Self.dismissedNewsKey) ?? []
+        dismissed.append(news.id)
+        UserDefaults.standard.set(dismissed, forKey: Self.dismissedNewsKey)
+        serverNews.removeAll { $0.id == news.id }
+    }
 
     private func refreshLocalDoor(of agent: AgentProfile, secrets: AgentSecrets) async {
         guard let bridge = BridgeClient(tailnetOf: agent, secrets: secrets) else { return }

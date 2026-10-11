@@ -17,6 +17,7 @@ struct AgentsView: View {
                         EmptyAgentsView { isAddingAgent = true }
                     } else {
                         if !store.lostAgents.isEmpty { LostServerNotice() }
+                        if !store.serverNews.isEmpty { ServerNewsNotice() }
                         // Beyond two agents the cards go compact: about four fit on a screen.
                         let compact = store.agents.count > 2
                         ForEach(store.agents) { agent in
@@ -280,6 +281,97 @@ struct LostServerNotice: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.card, in: .rect(cornerRadius: 22, style: .continuous))
+    }
+}
+
+/// What changed on this iPhone's servers: agents to add (created from another phone or on the server), profiles to
+/// connect, agents the server no longer has. One tap each; ✕ hides it for good.
+struct ServerNewsNotice: View {
+    @Environment(AgentStore.self) private var store
+    @State private var working: String?
+    @State private var failure: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Du nouveau sur ton serveur", systemImage: "sparkles")
+                .font(Theme.body(15, weight: .heavy))
+                .foregroundStyle(Theme.ink)
+            ForEach(store.serverNews) { news in
+                row(news)
+            }
+            if let failure {
+                Text(failure).font(Theme.body(13)).foregroundStyle(Theme.danger)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card, in: .rect(cornerRadius: 22, style: .continuous))
+    }
+
+    private func row(_ news: AgentStore.ServerNews) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title(news)).font(Theme.body(15, weight: .heavy)).foregroundStyle(Theme.ink)
+                Text(detail(news)).font(Theme.body(13)).foregroundStyle(Theme.ink2)
+            }
+            Spacer(minLength: 0)
+            if working == news.id {
+                ProgressView()
+            } else {
+                Button(action: { Task { await accept(news) } }) {
+                    Text(action(news))
+                }
+                .buttonStyle(.pill(isGone(news) ? .soft : .primary, height: 34))
+                .disabled(working != nil)
+                Button("Plus tard", systemImage: "xmark") { store.dismiss(news) }
+                    .labelStyle(.iconOnly)
+                    .font(Theme.body(13, weight: .heavy))
+                    .foregroundStyle(Theme.muted)
+                    .disabled(working != nil)
+            }
+        }
+    }
+
+    private func isGone(_ news: AgentStore.ServerNews) -> Bool {
+        if case .gone = news.kind { return true }
+        return false
+    }
+
+    private func title(_ news: AgentStore.ServerNews) -> String {
+        switch news.kind {
+        case .added(let agent): agent.name
+        case .unclaimed(let profile): profile.name
+        case .gone(let agent): agent.name
+        }
+    }
+
+    private func detail(_ news: AgentStore.ServerNews) -> String {
+        switch news.kind {
+        case .added: String(localized: "Ajouté sur ton serveur, pas encore sur cet iPhone")
+        case .unclaimed(let profile):
+            profile.description.isEmpty ? String(localized: "Créé sur le serveur, pas encore relié à l’app")
+                                        : profile.description
+        case .gone: String(localized: "N’existe plus sur ton serveur")
+        }
+    }
+
+    private func action(_ news: AgentStore.ServerNews) -> LocalizedStringKey {
+        switch news.kind {
+        case .added: "Ajouter"
+        case .unclaimed: "Relier"
+        case .gone: "Retirer"
+        }
+    }
+
+    private func accept(_ news: AgentStore.ServerNews) async {
+        working = news.id
+        failure = nil
+        defer { working = nil }
+        do {
+            try await store.accept(news)
+        } catch {
+            failure = ConversationModel.describe(error)
+        }
     }
 }
 

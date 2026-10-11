@@ -168,3 +168,55 @@ def test_an_isolated_install_keeps_the_agents_tools(managed):
 
     asyncio.run(go())
     assert not any("disable" in c for c in commands)
+
+
+def test_profiles_created_on_the_server_can_be_claimed(managed):
+    """A profile made with `hermes profile create` (not from the app) is offered to the app, then served: it keeps its
+    own key when it has one, and nothing else of it changes."""
+    from bipbridge.agents_admin import claim_profile, unclaimed_profiles
+
+    config, path, tmp = managed
+    profiles = tmp / ".hermes" / "profiles"
+    (profiles / "cuisine").mkdir(parents=True)
+    (profiles / "cuisine" / "profile.yaml").write_text("description: Recettes et menus\n")
+    (profiles / "jardin").mkdir()
+    (profiles / "jardin" / "SOUL.md").write_text("Tu es Jardin.")
+    (profiles / "jardin" / ".env").write_text("API_SERVER_KEY=own-key\n")
+    (profiles / "ancien").mkdir()
+    (profiles / "ancien" / "config.yaml").write_text("{}")
+    (profiles / ".deleted").mkdir()
+    (profiles / ".deleted" / "ancien").write_text("deleted")          # Hermes' tombstone
+    (profiles / "logs-only").mkdir()                                     # not a profile
+    assert unclaimed_profiles(config) == [
+        {"id": "cuisine", "name": "Cuisine", "description": "Recettes et menus"},
+        {"id": "jardin", "name": "Jardin", "description": ""}]
+    commands, sessions = [], []
+
+    async def run(args, env):
+        commands.append(list(args))
+        return ""
+
+    async def go(name, title):
+        async with httpx.AsyncClient(transport=fake_gateway(sessions)) as http:
+            return await claim_profile(config, name, title, http, run=run)
+
+    jardin = asyncio.run(go("jardin", "Mon jardin"))
+    assert jardin.hermes_key == "own-key" and commands == []            # its key kept, nothing written
+    assert jardin.display_name == "Mon jardin" and jardin.public_url == "https://mini.ts.net:8642/p/jardin"
+    cuisine = asyncio.run(go("cuisine", None))
+    assert commands == [["/opt/hermes", "-p", "cuisine", "config", "set", "API_SERVER_KEY", cuisine.hermes_key]]
+    assert sessions == []                                                # no Bot Chat opened in their name
+    assert unclaimed_profiles(config) == [] and "[agents.cuisine]" in path.read_text()
+    with pytest.raises(LookupError):
+        asyncio.run(go("ancien", None))
+
+
+def test_agents_route_lists_unclaimed_profiles(client, tmp_path):
+    services = client.app.state.services
+    services.config.hermes.bin, services.config.hermes.hub_url = "/opt/hermes", "http://127.0.0.1:8642"
+    services.config.hermes.home = str(tmp_path / ".hermes")
+    (tmp_path / ".hermes" / "profiles" / "cuisine").mkdir(parents=True)
+    (tmp_path / ".hermes" / "profiles" / "cuisine" / "SOUL.md").write_text("Tu es Cuisine.")
+    listing = client.get("/v1/agents", headers=AUTH).json()
+    assert listing["unclaimed"] == [{"id": "cuisine", "name": "Cuisine", "description": ""}]
+    assert client.post("/v1/agents/claim", headers=AUTH, json={"id": "nope"}).status_code == 404
