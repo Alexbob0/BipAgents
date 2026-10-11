@@ -75,6 +75,26 @@ def test_deleting_an_agent_stops_the_others_reading_it(setup):
 
 def test_routes(client):
     listing = client.get("/v1/agent-shares", headers=AUTH).json()
-    assert listing == {"agents": [{"id": "wellness", "name": "Wellness", "why_not": "not_managed"}], "reads": []}
+    assert listing == {"agents": [{"id": "wellness", "name": "Wellness", "why_not": "not_managed", "external": False}],
+                       "reads": []}
     assert client.put("/v1/agent-shares", headers=AUTH, json={"reads": [{"reader": "wellness", "source": "x"}]}
                       ).status_code == 400
+
+
+def test_an_agent_set_up_by_hand_mounts_its_folders_itself(setup, config_dict, tmp_path):
+    """Vie in a container of its own (aibox): the bridge writes nothing in it, its start script mounts what
+    `mounts` lists, and the administrator's command runs when that changed."""
+    config, hub, run, commands, tmp = setup
+    vie = config.agent("vie")
+    vie.hermes_url, vie.shares, vie.shares_apply = "http://127.0.0.1:8644", "external", "restart-when-idle {agent}"
+    assert shares.why_not(config, vie) is None
+    asyncio.run(shares.apply(config, [("vie", "wellness")], run))
+    root = tmp / "data" / "shares"
+    assert shares.mounts(config, "vie") == [f"{root}/wellness:/lecture/wellness:ro"]
+    assert shares.mounts(config, "wellness") == [f"{root}/wellness:/partage"]
+    assert (root / "wellness").is_dir()
+    assert (["sh", "-c", "restart-when-idle vie"], {}) in commands
+    assert not any(args[1:3] == ["-p", "vie"] for args, _ in commands)     # nothing written in its config
+    commands.clear()
+    asyncio.run(shares.apply(config, [("vie", "wellness")], run))           # unchanged: not restarted
+    assert (["sh", "-c", "restart-when-idle vie"], {}) not in commands
