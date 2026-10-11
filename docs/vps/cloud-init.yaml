@@ -1,0 +1,55 @@
+#cloud-config
+# BipAgents on a rented server (Ubuntu 24.04). Paste this file in the « cloud-init » / « user data » field when you
+# create the server, after replacing the SSH key below with yours (the content of ~/.ssh/id_ed25519.pub).
+#
+# It creates two accounts: `admin` (yours, with sudo, for the system) and `bip` (BipAgents and its agents, without
+# sudo: an agent that got out of its sandbox would not be root). It installs podman (the agents' sandboxes) and
+# Tailscale, lets nothing in but SSH and the tailnet, and installs security updates by itself.
+# Guide: docs/vps.md (English) or docs/vps.fr.md (français).
+
+users:
+  - name: admin
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAA_REPLACE_WITH_YOUR_PUBLIC_KEY you@laptop
+  - name: bip
+    shell: /bin/bash
+    lock_passwd: true
+
+package_update: true
+package_upgrade: true
+packages:
+  - podman
+  - uidmap
+  - slirp4netns
+  - passt
+  - git
+  - curl
+  - ufw
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-bipagents.conf
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+runcmd:
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  # `bip` publishes its own ports on the tailnet (tailscale serve) without sudo.
+  - tailscale set --operator=bip || true
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow OpenSSH
+  - ufw allow in on tailscale0
+  - ufw --force enable
+  # BipAgents' services run when nobody is logged in.
+  - loginctl enable-linger bip
+  - systemctl restart ssh

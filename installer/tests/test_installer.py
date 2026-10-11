@@ -328,6 +328,37 @@ def test_uninstall_puts_an_existing_hermes_back(tmp_path, monkeypatch):
     assert f"keep {tmp_path}/.hermes" in log and f"remove {tmp_path}/.hermes\n" not in log + "\n"
 
 
+def test_a_rented_server_is_recognised(tmp_path):
+    from bipinstall.detect import cloud_vendor
+    (tmp_path / "sys_vendor").write_text("Hetzner\n")
+    assert cloud_vendor(str(tmp_path)) == "Hetzner"
+    (tmp_path / "sys_vendor").write_text("Microsoft Corporation\n")
+    (tmp_path / "product_name").write_text("Surface Laptop 7\n")
+    assert cloud_vendor(str(tmp_path)) is None                  # a Surface, not Azure
+    (tmp_path / "product_name").write_text("Virtual Machine\n")
+    assert cloud_vendor(str(tmp_path)) == "Azure"
+    assert cloud_vendor(str(tmp_path / "missing")) is None      # a Mac, a home server
+
+
+def test_on_a_rented_server_nothing_listens_on_a_local_network(monkeypatch, tmp_path, capsys):
+    from bipinstall import __main__ as cli
+    monkeypatch.setenv("HOME", str(tmp_path))
+    vps = Machine("linux", "arm64", 8, 4, "Neoverse-N1", None, tailnet_name="vps.tail0000.ts.net",
+                  lan_addresses=["10.0.0.2"], cloud="Hetzner")
+    monkeypatch.setattr(cli, "detect", lambda: vps)
+    monkeypatch.setattr(cli.hermes, "sandbox_runtime", lambda: None)
+    monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(8640))
+    monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.4, vision=False)))
+    monkeypatch.setattr(cli, "pocket_running", lambda: True)
+    # The model in the cloud is the default choice (Enter), OpenRouter, a key, the model; one agent; go.
+    answers = iter(["", "1", "sk-or-test", "", "1", "Léa", "o"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert cli.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "Serveur loué chez Hetzner" in out and "autre machine de mon tailnet" in out
+    assert "[lan]\nenabled = false" in out
+
+
 async def _async_value(value):
     return value
 

@@ -44,6 +44,12 @@ Add `--dry-run` to see every step and command without changing anything.
    (another person's account on Linux), it prints the commands for the administrator.
 9. **Shows one QR code**: scanned in the app, it adds every agent of the install.
 
+## On a rented server (VPS)
+
+The installer recognises a rented server (Hetzner, OVH, Scaleway, AWS…): no door on a local network, and the model
+in the cloud offered first. The server is prepared in advance with a cloud-init file: see
+[BipAgents on a rented server](../docs/vps.md).
+
 ## If you already have Hermes
 
 The installer sees it and plugs into it **without touching your settings**: no question about the model, and your

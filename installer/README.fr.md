@@ -45,6 +45,12 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
    compte d'une autre personne sous Linux), il affiche les commandes pour l'administrateur.
 9. **Affiche un seul QR code** : scanné dans l'app, il ajoute tous les agents de l'installation.
 
+## Sur un serveur loué (VPS)
+
+L'installateur reconnaît un serveur loué (Hetzner, OVH, Scaleway, AWS…) : pas de porte sur un réseau local, et le
+modèle dans le cloud proposé en premier. Le serveur se prépare d'avance avec un fichier cloud-init : voir
+[BipAgents sur un serveur loué](../docs/vps.fr.md).
+
 ## Si tu as déjà Hermes
 
 L'installateur le voit et s'y branche **sans toucher à tes réglages** : pas de question sur le modèle, et ni ton
