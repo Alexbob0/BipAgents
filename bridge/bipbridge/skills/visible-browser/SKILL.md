@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.0.0
+version: 1.1.0
 author: BipAgents
 license: MIT
 metadata:
@@ -36,7 +36,13 @@ The vault fills a password without you ever seeing it, on the exact site it was 
 2. call `browser_vault_list`, then `browser_vault_fill` with the item for this site, on this same page;
 3. continue with your browser (submit, next page).
 The vault tools act on the same Chrome as your `stealth` tools. If they answer that no browser is running, start
-yours with `spawn_browser` first. Never read back a password field (no script on it), never write a password in a
+yours with `spawn_browser` first.
+
+## When Hermes' browser tools find no browser
+Hermes' own browser tools (`browser_exec`, `browser_navigate`…) and the vault drive this same Chrome: they have no
+browser of their own. At the **first** error saying the browser is unreachable (`BU_CDP_URL … unreachable`,
+`Connection refused` on 127.0.0.1), do not call the same tool again: call `spawn_browser` first, then redo the same
+call. Never fall back to a web search for something the person asked you to do on a website. Never read back a password field (no script on it), never write a password in a
 message.
 
 ## 5. Payments and anything that cannot be undone
