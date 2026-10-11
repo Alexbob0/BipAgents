@@ -93,20 +93,27 @@ def uninstall(runner: Runner, *, everything: bool, home: Optional[Path] = None, 
         remove(path, runner)
     if system == "linux":
         runner.run(["systemctl", "--user", "daemon-reload"], check=False)
+        runner.run(["systemctl", "--user", "reset-failed"] + SERVICES["linux"], check=False)
 
     # The agents' visible browsers: their containers, then their image.
     if system == "linux":
         units = home / ".config" / "systemd" / "user"
-        for unit in sorted(units.glob("bipagents-browser-*.service")) if units.is_dir() else []:
+        browsers = sorted(units.glob("bipagents-browser-*.service")) if units.is_dir() else []
+        for unit in browsers:
             runner.run(["systemctl", "--user", "disable", "--now", unit.stem], check=False)
             remove(unit, runner)
         engine = shutil.which("podman") or shutil.which("docker")
-        if engine:
+        if browsers and engine:
             runner.run([engine, "image", "rm", "-f", "bipagents-browser"], check=False)
-        runner.run(["systemctl", "--user", "daemon-reload"], check=False)
+            runner.run(["systemctl", "--user", "daemon-reload"], check=False)
 
-    # 3. Hermes' gateway service (Hermes removes its own unit / plist).
-    if Path(hermes_bin()).exists():
+    # 3. A Hermes that was there before BipAgents: only our settings are undone, its gateway keeps running.
+    from .existing import RECORD, restore
+    preexisting = restore(runner, config.parent / RECORD)
+    if preexisting and preexisting.get("gateway") == "service" and Path(hermes_bin()).exists():
+        runner.run([hermes_bin(), "gateway", "restart"], check=False)   # its own service, without our settings
+    #    Otherwise Hermes' gateway service (Hermes removes its own unit / plist).
+    elif not preexisting and Path(hermes_bin()).exists():
         runner.run([hermes_bin(), "gateway", "stop"], check=False)
         runner.run([hermes_bin(), "gateway", "uninstall"], check=False)
         if not runner.dry:
@@ -116,8 +123,10 @@ def uninstall(runner: Runner, *, everything: bool, home: Optional[Path] = None, 
     remove(home / ".config" / "bipagents", runner)
     remove(home / ".local" / "share" / "bipagents", runner)
 
-    # 5. Hermes itself and the agents' data, only when asked.
-    if everything:
+    # 5. Hermes itself and the agents' data, only when asked, and never a Hermes that was there before BipAgents.
+    if everything and preexisting:
+        runner.log.append(f"keep {hermes_home()} (Hermes was there before BipAgents)")
+    elif everything:
         remove(hermes_home(), runner)
         for wrapper in ("hermes", "hermes-acp", "hermes-agent"):
             remove(home / ".local" / "bin" / wrapper, runner)

@@ -212,6 +212,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         say("Installe-le et connecte-toi (https://tailscale.com/download), puis relance.")
         if not args.dry_run:
             return 1
+    from .existing import detect_existing
+    existing = detect_existing()
+    if existing:
+        return install_on_existing(args, runner, machine, existing)
     model, model_here = pick_model(machine)
     plan = make_plan(machine, model_here)
     ports = pick_block(wanted=args.ports)
@@ -261,6 +265,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         soul = template["soul"].replace("{name}", display_name)
         key = hermes.create_agent(runner, profile, description=template["description"], soul=soul, model=model)
         inst.agents.append(AgentEntry(profile, display_name, key))
+    gateway_service(inst, machine, runner)
+
+    say(ui.done("Hermes et tes agents sont en place."))
+    return finish(inst, machine, runner, args, steps, total, sandbox, desk=plan.browser == "permanent")
+
+
+def gateway_service(inst: Install, machine: Machine, runner: hermes.Runner) -> None:
     try:
         hermes.install_service(runner)
     except RuntimeError:
@@ -270,7 +281,108 @@ def main(argv: Optional[List[str]] = None) -> int:
         write(path, content, runner)
         start_service(machine.system, label, path, runner)
 
-    say(ui.done("Hermes et tes agents sont en place."))
+
+def yes(answer: str) -> bool:
+    return answer.lower() in ("o", "oui", "y", "yes")
+
+
+def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing) -> int:
+    """BipAgents on the person's own Hermes: their model, tools, platforms, agents and conversations stay as they are.
+    Only the local API and each shown agent's key are added (existing.py), and written down for `uninstall`."""
+    from .existing import RECORD, apply_changes, key_of, plan_changes, profile_label, same_version
+
+    say(f"\nTu as déjà Hermes ({existing.version}) : je m'y branche sans toucher à tes réglages, ton modèle "
+        f"({existing.model or 'non précisé'}), tes outils ni tes agents.")
+    if not existing.multiplex:
+        say(ui.sad("Cette version d'Hermes ne sert pas plusieurs agents à la même adresse."))
+        say("Mets-la à jour (hermes update), puis relance cet installeur.")
+        return 1
+    if (Path.home() / ".config" / "bipagents" / "bridge.toml").exists():
+        say(ui.sad("BipAgents est déjà installé sur ce compte."))
+        say("Pour le refaire : bash ~/BipAgents/install.sh uninstall, puis relance.")
+        return 1
+    ports = pick_block(wanted=args.ports)
+    hub_port = existing.api_port if existing.api_enabled and existing.api_port else ports.hermes
+
+    say("\nQuels agents veux-tu voir dans l'app ? (numéros séparés par des virgules)")
+    for i, profile in enumerate(existing.profiles, 1):
+        about = f" — {profile.description}" if profile.description else ""
+        main_one = " (ton profil principal)" if profile.name == hermes.HUB_PROFILE else ""
+        say(f"  {i}. {profile_label(profile.name)}{main_one}{about}")
+    every = ",".join(str(i) for i in range(1, len(existing.profiles) + 1))
+    picked = ask("Agents", every)
+    numbers = [int(x) for x in picked.replace(" ", "").split(",") if x.isdigit() and 1 <= int(x) <= len(existing.profiles)]
+    shown = [existing.profiles[n - 1] for n in dict.fromkeys(numbers)] or existing.profiles
+    names = {p.name: (ask(f"Son nom dans l'app ({p.name})", profile_label(p.name)) or profile_label(p.name)) for p in shown}
+
+    sandbox = hermes.sandbox_runtime()
+    if existing.protected:
+        say(ui.note("Les outils de tous tes agents tournent dans un bac à sable : le coffre de mots de passe est disponible."))
+    else:
+        exposed = ", ".join(profile_label(p.name) for p in existing.profiles if not p.sandboxed)
+        say(ui.note(f"{exposed} : terminal sur cette machine, donc accès à tes fichiers et aux clés du bridge. Je ne change "
+                    "pas leurs outils,\n    mais le bridge ne gardera pas de mots de passe (pas de coffre)."))
+    browser = False
+    if existing.protected and sandbox and machine.system == "linux":
+        say("\nChaque agent peut avoir son navigateur visible : un vrai Chrome sur un bureau à lui, que tu regardes en\n"
+            "direct et reprends en main depuis l'app (Bureau). Environ 0,5 Go de mémoire par agent quand il navigue.")
+        browser = yes(ask("Donner un navigateur visible à tes agents ? (o/n)", "o"))
+    patch = False
+    if same_version(existing, hermes.HERMES_COMMIT):
+        patch = yes(ask("Appliquer les correctifs BipAgents à ton Hermes (questions de l'agent dans l'app, photos gardées,\n"
+                        "  coffre après un redémarrage du navigateur) ? `hermes update` les retire. (o/n)", "o"))
+    else:
+        say(ui.note(f"Ton Hermes ({existing.commit or 'version inconnue'}) n'est pas la version testée "
+                    f"({hermes.HERMES_COMMIT}) : pas de correctifs BipAgents, l'app marche sans ces fonctions."))
+
+    changes = plan_changes(existing, [p.name for p in shown], hub_port)
+    say("\nCe que je change dans ton Hermes :")
+    for profile, key, value, _ in changes:
+        say(ui.note(f"{profile_label(profile)} : {key} = {'<nouvelle clé>' if key.endswith('KEY') else value}"))
+    if not changes:
+        say(ui.note("rien (ton API locale et les clés de tes agents sont déjà là)"))
+    if patch:
+        say(ui.note("les correctifs BipAgents, dans le code d'Hermes"))
+    restart = bool(changes or patch)
+    if restart:
+        say(ui.note({"service": "ta gateway sera redémarrée une fois",
+                     "manual": "ta gateway tourne à la main : tu la redémarreras à la fin",
+                     "stopped": "ta gateway ne tourne pas : je l'installe en service, qui démarre seul"}[existing.gateway]))
+    say(ui.note("Tout ça s'annule avec la désinstallation de BipAgents."))
+    if not yes(ask("\nOn y va ? (o/n)", "o")):
+        return 1
+
+    inst = Install(repo=REPO, home=Path.home(), ports=ports, tailnet_name=machine.tailnet_name,
+                   lan_address=(machine.lan_addresses or [None])[0], relay_url=args.relay_url, relay_key=args.relay_key,
+                   isolated=existing.protected, browser=browser, hermes_port=hub_port)
+    total = 6 if browser else 5
+    steps = iter(range(1, total + 1))
+    say(ui.step(next(steps), total, "Ton Hermes"))
+    patched: List[str] = []
+    if patch:
+        skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches", applied=patched)
+        if skipped:
+            say(ui.note(f"Correctifs non appliqués : {', '.join(skipped)} (l'app marche, sans ces fonctions)."))
+    apply_changes(runner, changes, inst.config_dir / RECORD, existing.gateway, patched)
+    for profile in shown:
+        inst.agents.append(AgentEntry(profile.name, names[profile.name], key_of(existing, changes, profile.name) or "",
+                                      root=profile.name == hermes.HUB_PROFILE))
+    if restart and existing.gateway == "service":
+        runner.run([hermes.hermes_bin(), "gateway", "restart"])
+    elif restart and existing.gateway == "stopped":
+        gateway_service(inst, machine, runner)
+    elif restart:
+        say(ui.note("Redémarre ta gateway maintenant (arrête-la, puis hermes gateway run) : elle prendra ces réglages."))
+        if not runner.dry:
+            ask("Entrée quand c'est fait")
+    say(ui.done("Ton Hermes est prêt pour l'app."))
+    return finish(inst, machine, runner, args, steps, total, sandbox, bot_chat=False)
+
+
+def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, total: int, sandbox: Optional[str],
+           desk: bool = False, bot_chat: bool = True) -> int:
+    """What every install ends with: the voices, the bridge, the visible browser when chosen, Tailscale, the checks
+    and the QR code."""
     say(ui.step(next(steps), total, "Les voix des Bips"))
     if pocket_running():
         say("  déjà en place sur cette machine : je la partage.")
@@ -291,7 +403,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     start_service(machine.system, label, path, runner)
 
     say(ui.done("Bridge démarré."))
-    if browser:
+    if inst.browser:
         say(ui.step(next(steps), total, "Le navigateur visible de tes agents"))
         say(ui.note("Je prépare son image : Chrome, son bureau et le serveur qui le pilote (stealth-browser-mcp, récupéré "
                     "sur son dépôt).\n    Compte quelques minutes la première fois."))
@@ -312,7 +424,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     say(ui.step(next(steps), total, "Tailscale, pour joindre tes agents de partout"))
     commands = [] if args.no_tailscale else None
     if commands is None:
-        commands = tailscale_commands(machine.tailscale or "tailscale", ports, desk=plan.browser == "permanent")
+        commands = tailscale_commands(machine.tailscale or "tailscale", inst.ports, desk=desk, hermes_port=inst.hermes_port)
     published = True
     for command in commands:
         try:
@@ -326,12 +438,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     say(ui.step(next(steps), total, "Vérifications"))
     if not runner.dry:
-        hub = f"http://127.0.0.1:{ports.hermes}"
+        hub = f"http://127.0.0.1:{inst.hub_port}"
         for agent in inst.agents:
-            if wait_for(f"{hub}/p/{agent.name}/v1/capabilities", {"Authorization": f"Bearer {agent.key}"}):
-                httpx.post(f"{hub}/p/{agent.name}/api/sessions", json={"title": "Bot Chat"},
+            url = hub if agent.root else f"{hub}/p/{agent.name}"
+            answers = wait_for(f"{url}/v1/capabilities", {"Authorization": f"Bearer {agent.key}"})
+            say((ui.done if answers else ui.fail)(f"{agent.display_name} {'répond' if answers else 'ne répond pas encore'}."))
+            if answers and bot_chat:
+                httpx.post(f"{url}/api/sessions", json={"title": "Bot Chat"},
                            headers={"Authorization": f"Bearer {agent.key}"}, timeout=10)
-        wait_for(f"http://127.0.0.1:{ports.bridge}/health")
+        wait_for(f"http://127.0.0.1:{inst.ports.bridge}/health")
     if args.dry_run:
         say("\nÀ blanc : voici ce qui aurait été fait.")
         for line in runner.log:

@@ -21,6 +21,7 @@ class AgentEntry:
     display_name: str
     key: str             # its API_SERVER_KEY
     voice: Optional[str] = None
+    root: bool = False   # the gateway's main profile (an existing Hermes), served at its root, not /p/<name>
 
 
 @dataclass
@@ -41,6 +42,12 @@ class Install:
     isolated: bool = False
     # Each agent gets a visible browser of its own, in a container (browser/, bipbridge/browsers.py).
     browser: bool = False
+    # An existing Hermes keeps its own API port (default: this install's block).
+    hermes_port: Optional[int] = None
+
+    @property
+    def hub_port(self) -> int:
+        return self.hermes_port or self.ports.hermes
 
     @property
     def config_dir(self) -> Path:
@@ -64,8 +71,8 @@ def _q(value: str) -> str:
 
 def bridge_toml(inst: Install) -> str:
     """The bridge's config for this install: its agents behind the person's multiplex gateway."""
-    hub_local = f"http://127.0.0.1:{inst.ports.hermes}"
-    hub_public = inst.public(inst.ports.hermes)
+    hub_local = f"http://127.0.0.1:{inst.hub_port}"
+    hub_public = inst.public(inst.hub_port)
     lines = [
         "# Written by the BipAgents installer. Keys here: chmod 600.",
         f"bridge_key = {_q(inst.bridge_key)}",
@@ -100,11 +107,12 @@ def bridge_toml(inst: Install) -> str:
         lines.append(f"address = {_q(inst.lan_address)}")
     for agent in inst.agents:
         uploads = profile_dir(agent.name) / "uploads"
+        local = hub_local if agent.root else agent_url(hub_local, agent.name)
         lines += ["", f"[agents.{agent.name}]", f"display_name = {_q(agent.display_name)}",
-                  f"hermes_url = {_q(agent_url(hub_local, agent.name))}", f"hermes_key = {_q(agent.key)}",
+                  f"hermes_url = {_q(local)}", f"hermes_key = {_q(agent.key)}",
                   f"upload_dir_host = {_q(str(uploads))}", f"upload_dir_container = {_q(str(uploads))}"]
         if hub_public:
-            lines.append(f"public_url = {_q(agent_url(hub_public, agent.name))}")
+            lines.append(f"public_url = {_q(hub_public if agent.root else agent_url(hub_public, agent.name))}")
         if agent.voice:
             lines.append(f"voice = {_q(agent.voice)}")
     return "\n".join(lines) + "\n"
@@ -192,7 +200,8 @@ def hermes_service(inst: Install, system: str, hermes: str, hermes_home: Path) -
     return "bipagents-hermes", path, systemd_unit("Hermes gateway (BipAgents)", program, inst.home, env)
 
 
-def tailscale_commands(cli: str, ports: Ports, desk: bool = False) -> List[str]:
+def tailscale_commands(cli: str, ports: Ports, desk: bool = False, hermes_port: Optional[int] = None) -> List[str]:
     """What publishes this install on the tailnet (HTTPS with the tailnet's certificate), never on the Internet. The
-    agents' desk only when it is installed."""
-    return [f"{cli} serve --bg --https={p} http://127.0.0.1:{p}" for p in ports.tailnet if desk or p != ports.desk]
+    agents' desk only when it is installed; an existing Hermes on its own port."""
+    published = [hermes_port or ports.hermes] + [p for p in ports.tailnet if p != ports.hermes and (desk or p != ports.desk)]
+    return [f"{cli} serve --bg --https={p} http://127.0.0.1:{p}" for p in published]

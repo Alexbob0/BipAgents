@@ -44,6 +44,23 @@ Add `--dry-run` to see every step and command without changing anything.
    (another person's account on Linux), it prints the commands for the administrator.
 9. **Shows one QR code**: scanned in the app, it adds every agent of the install.
 
+## If you already have Hermes
+
+The installer sees it and plugs into it **without touching your settings**: no question about the model, and your
+model, tools, platforms (Telegram…) and agents stay as they are. It asks which agents (profiles) to show in the app,
+your main profile included, and shows everything it will change before it starts:
+
+- Hermes' local API, when it is off: on, on 127.0.0.1, on a port of your block, with a new key;
+- a key for each shown agent that has none;
+- BipAgents' patches in Hermes' code, if you want them and your version is the tested one;
+- a service for your gateway when it is not running, or a restart when it already runs as a service (one you started
+  by hand, you restart yourself).
+
+All of it is written down in `~/.config/bipagents/existing-hermes.json`: uninstalling puts every setting back and
+takes the patches off. `--all` never removes a Hermes that was there before BipAgents. When your agents' tools do not
+run in a sandbox, the bridge keeps no passwords (no vault): it tells you so, without changing their tools. It needs a
+Hermes that serves several agents at one address (`hermes update` otherwise).
+
 ## Uninstall
 
 `python -m bipinstall uninstall` (from `~/BipAgents`, with `PYTHONPATH=installer`) removes the services, the tailnet
