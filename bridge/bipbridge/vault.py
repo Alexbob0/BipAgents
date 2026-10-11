@@ -70,6 +70,13 @@ class CannotHold(VaultError):
         self.reasons = reasons
 
 
+class Unprotected(VaultError):
+    """This install's agents could read the bridge's files: it keeps no credentials."""
+
+    def __init__(self) -> None:
+        super().__init__("this server does not isolate its agents: no credentials are kept")
+
+
 @dataclass
 class Item:
     id: str
@@ -110,6 +117,8 @@ def normalize_origin(url: str) -> str:
 
 def holder(config: Config, agent: AgentConfig) -> Optional[str]:
     """None when the agent can hold credentials, else why not."""
+    if not config.hermes.isolated:
+        return "unprotected_install"    # the agents could read the bridge's own copy: no credentials at all
     if not agent.isolated:
         return "needs_own_space"
     if agent.space and not agent.sandboxed:
@@ -267,6 +276,8 @@ class Vault:
             log.info("vault item taken back", extra=fields(agent=agent_id, item=record["id"]))
 
     async def create(self, config: Config, body: Dict[str, Any]) -> Item:
+        if not config.hermes.isolated:
+            raise Unprotected()
         record = self.parse(body)
         agents = self._check(config, [str(a) for a in body.get("agents") or []])
         record.update(id=f"item_{uuid.uuid4().hex[:12]}", agents={}, created_at=now(), updated_at=now())
@@ -282,6 +293,8 @@ class Vault:
         return self._item(record)
 
     async def update(self, config: Config, item_id: str, body: Dict[str, Any]) -> Item:
+        if not config.hermes.isolated:
+            raise Unprotected()
         async with self.lock:
             records = self._read()
             index = next((i for i, r in enumerate(records) if r["id"] == item_id), None)
@@ -329,6 +342,8 @@ def vault_router() -> APIRouter:
     def answer(exc: Exception) -> HTTPException:
         if isinstance(exc, CannotHold):
             return HTTPException(status_code=409, detail={"code": "cannot_hold", "agents": exc.reasons})
+        if isinstance(exc, Unprotected):
+            return HTTPException(status_code=409, detail={"code": "unprotected_install"})
         if isinstance(exc, KeyError):
             return HTTPException(status_code=404, detail="no such item")
         return HTTPException(status_code=400, detail=str(exc))
@@ -338,6 +353,7 @@ def vault_router() -> APIRouter:
         services = request.app.state.services
         config = services.config
         return {
+            "protected": config.hermes.isolated,
             "items": [item.public() for item in services.vault.items()],
             "agents": [{"id": a.name, "name": a.display_name, "can_hold": holder(config, a) is None,
                         "why": holder(config, a)} for a in config.agents.values()],

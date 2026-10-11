@@ -57,6 +57,11 @@ async def run_hermes(args: Sequence[str], env: Dict[str, str]) -> str:
     return out.decode(errors="replace")
 
 
+# Tools that read this machine's files: off by default where the agents are not isolated from the bridge. The browser
+# too: Hermes' local Chromium opens file:// pages (checked: it read a file next to the bridge's keys).
+DISK_TOOLS = ("terminal", "file", "code_execution", "browser")
+
+
 def mark_as_bot(folder: Path) -> None:
     """Bot Mode: the agents of an install can message each other in their « Bot Chat »."""
     path = folder / "profile.yaml"
@@ -112,6 +117,9 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     await run([hermes, "profile", "create", profile, "--clone-from", "default", "--no-alias", "--description", description], env)
     key = secrets.token_urlsafe(32)
     await run([hermes, "-p", profile, "config", "set", "API_SERVER_KEY", key], env)
+    if not install.isolated:
+        # Same account as this bridge and no sandbox: nothing that reads the disk until the person turns it on.
+        await run([hermes, "-p", profile, "tools", "disable", *DISK_TOOLS, "--platform", "api_server"], env)
     folder = Path(install.home or Path.home() / ".hermes") / "profiles" / profile
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "SOUL.md").write_text(soul, encoding="utf-8")
@@ -195,6 +203,7 @@ async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncCli
     toolsets = [{k: t.get(k) for k in ("name", "label", "description", "enabled", "configured")}
                 for t in resp.json().get("data", []) if isinstance(t, dict) and t.get("name")]
     return {"id": agent.name, "name": agent.display_name, "soul": soul, "toolsets": toolsets, "isolated": agent.isolated,
+            "protected": config.hermes.isolated,
             "services": connected.listing(config, agent)}
 
 

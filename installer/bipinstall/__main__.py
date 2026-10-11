@@ -216,8 +216,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     sandbox = hermes.sandbox_runtime()
     if sandbox:
         say(f"  · Bac à sable : les outils des agents tournent dans un conteneur ({Path(sandbox).name}).")
+    elif machine.system == "linux":
+        say("  · Pas de bac à sable : tes agents n'auront ni terminal ni accès aux fichiers par défaut, et pas de coffre.\n"
+            "    Pour les deux, fais installer podman une fois (sudo apt install podman, ou dnf), puis relance.")
     else:
-        say("  · Pas de bac à sable (podman absent) : tes agents ne pourront pas garder de mots de passe du coffre.")
+        say("  · Sur Mac, pas encore de bac à sable : tes agents n'auront ni terminal ni accès aux fichiers par défaut,\n"
+            "    et pas de coffre de mots de passe.")
     say(f"Ports {ports.base}–{ports.base + 9} : agents {ports.hermes}, bridge {ports.bridge}, réseau local {ports.lan}.")
     chosen = pick_agents()
     if ask("\nOn y va ? (o/n)", "o").lower() not in ("o", "oui", "y", "yes"):
@@ -225,7 +229,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     inst = Install(repo=REPO, home=Path.home(), ports=ports, tailnet_name=machine.tailnet_name,
                    lan_address=(machine.lan_addresses or [None])[0], model=model,
-                   relay_url=args.relay_url, relay_key=args.relay_key)
+                   relay_url=args.relay_url, relay_key=args.relay_key, isolated=bool(sandbox))
     say("\n1/5 Hermes…")
     hermes.install(runner, browser=plan.browser != "none")
     skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches")

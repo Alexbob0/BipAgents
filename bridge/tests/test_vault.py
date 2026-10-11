@@ -12,6 +12,7 @@ def setup(config_dict, tmp_path):
                                    "python": "podman exec -i hermes-vie /opt/hermes/venv/bin/python",
                                    "hermes_home": "/home/hermes/.hermes"}
     config_dict["agents"]["Budget"] = {"hermes_url": "http://127.0.0.1:8646/p/budget", "hermes_key": "b" * 32}
+    config_dict["hermes"] = {"isolated": True}   # the agents cannot read the bridge's files
     config = parse_config(config_dict)
     calls = []
 
@@ -84,8 +85,10 @@ def test_what_the_app_must_send(setup):
 def test_routes(client, config_dict):
     from conftest import AUTH
 
+    services = client.app.state.services
+    services.config.hermes.isolated = True
     listing = client.get("/v1/vault", headers=AUTH)
-    assert listing.status_code == 200
+    assert listing.status_code == 200 and listing.json()["protected"] is True
     assert listing.json()["agents"] == [{"id": "wellness", "name": "Wellness", "can_hold": False,
                                          "why": "needs_own_space"}]
     refused = client.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": ["wellness"]})
@@ -94,3 +97,16 @@ def test_routes(client, config_dict):
     assert kept.status_code == 201 and "password" not in kept.text
     assert client.delete(f"/v1/vault/{kept.json()['id']}", headers=AUTH).status_code == 204
     assert client.get("/v1/vault").status_code == 401
+
+
+def test_an_install_whose_agents_can_read_the_bridge_keeps_no_credentials(client, tmp_path):
+    from conftest import AUTH
+
+    services = client.app.state.services
+    assert services.config.hermes.isolated is False             # the default: nothing says the agents are isolated
+    listing = client.get("/v1/vault", headers=AUTH).json()
+    assert listing["protected"] is False and listing["agents"][0]["why"] == "unprotected_install"
+    refused = client.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": []})
+    assert refused.status_code == 409 and refused.json()["detail"] == {"code": "unprotected_install"}
+    assert services.vault.items() == [] and not services.vault.path.exists()   # nothing written, not even encrypted
+    assert client.get("/v1/status", headers=AUTH).json()["protected"] is False

@@ -131,6 +131,8 @@ def sandbox_runtime() -> Optional[str]:
     return shutil.which("podman") or shutil.which("docker")
 
 
+DISK_TOOLS = ("terminal", "file", "code_execution", "browser")   # the local browser opens file:// pages
+
 DESKTOP_BINARIES = ("Xvnc", "xfwm4", "xfce4-panel", "xfdesktop", "xfsettingsd", "dbus-run-session", "xauth", "xdpyinfo")
 
 
@@ -160,6 +162,10 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: bool = False) ->
     if sandbox:
         # Terminal, files, code and browser in a container: an agent cannot read another's files on the host.
         _config(runner, HUB_PROFILE, "terminal.backend", "docker")
+    else:
+        # Same account as the bridge, no sandbox: an agent able to read the disk could read the bridge's keys. Off until
+        # the person turns one on in the app (every agent is cloned from this profile).
+        runner.run([hermes_bin(), "-p", HUB_PROFILE, "tools", "disable", *DISK_TOOLS, "--platform", "api_server"])
     _config(runner, HUB_PROFILE, "API_SERVER_ENABLED", "true")
     _config(runner, HUB_PROFILE, "API_SERVER_HOST", "127.0.0.1")
     _config(runner, HUB_PROFILE, "API_SERVER_PORT", str(port))

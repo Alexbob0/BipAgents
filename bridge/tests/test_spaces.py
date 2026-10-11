@@ -26,7 +26,7 @@ def test_an_agent_moves_into_its_own_space_and_keeps_everything(config_dict, tmp
     config_path.write_text("# bridge\n")
     config_dict["public_url"] = "https://box.ts.net:8643"
     config_dict["hermes"] = {"bin": "/opt/hermes", "home": str(hub), "hub_url": "http://127.0.0.1:8642",
-                             "python": "/opt/py -I", "root": "/opt/hermes-agent"}
+                             "python": "/opt/py -I", "root": "/opt/hermes-agent", "isolated": True}
     config_dict["spaces"] = {"root": str(tmp_path / "spaces"), "first_port": 18660, "sandbox": "none",
                              "start": "start-space {agent} {home}", "stop": "stop-space {agent}",
                              "container_home": "/home/hermes/.hermes"}

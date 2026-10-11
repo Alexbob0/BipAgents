@@ -177,6 +177,9 @@ def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     assert config.kyutai_url is None and config.pocket_url == "http://127.0.0.1:8098"
     assert config.hermes.enabled and config.hermes.hub_url == "http://127.0.0.1:9202"
     assert config.hermes.public_hub_url == "https://mini.tail0000.ts.net:9202"
+    assert config.hermes.isolated is False             # no sandbox: the bridge keeps no credentials
+    inst.isolated = True
+    assert parse_config(tomllib.loads(bridge_toml(inst))).hermes.isolated is True
     assert tailscale_commands("tailscale", inst.ports)[0] == "tailscale serve --bg --https=9202 http://127.0.0.1:9202"
     label, path, content = bridge_service(inst, "macos")
     assert path.name == "io.github.bipagents.bridge.plist" and str(inst.bridge_config) in content

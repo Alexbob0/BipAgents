@@ -391,7 +391,7 @@ def build_router() -> APIRouter:
 
         names = list(config.agents)
         results = await asyncio.gather(*(hermes_ok(config.agents[n]) for n in names), model_ok())
-        return {"agents": dict(zip(names, results[:-1])), "model": results[-1]}
+        return {"agents": dict(zip(names, results[:-1])), "model": results[-1], "protected": config.hermes.isolated}
 
     @router.get("/pairing")
     async def pairing(request: Request) -> Dict[str, Any]:

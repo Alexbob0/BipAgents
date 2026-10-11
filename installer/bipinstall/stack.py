@@ -37,6 +37,8 @@ class Install:
     bridge_key: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     kyutai_url: Optional[str] = None
     pocket_url: str = f"http://127.0.0.1:{POCKET_PORT}"
+    # The agents' tools run in a sandbox: they cannot read the bridge's files, so it may keep credentials.
+    isolated: bool = False
 
     @property
     def config_dir(self) -> Path:
@@ -79,6 +81,8 @@ def bridge_toml(inst: Install) -> str:
               f"home = {_q(str(inst.home / '.hermes'))}", f"hub_url = {_q(hub_local)}"]
     if hub_public:
         lines.append(f"public_hub_url = {_q(hub_public)}")
+    if inst.isolated:
+        lines.append("isolated = true")
     media = inst.home / ".hermes" / "media"
     lines += ["", "[media.roots]", f"{_q(str(media))} = {_q(str(media))}"]   # native Hermes: same path both sides
     if inst.relay_url and inst.relay_key:
