@@ -15,6 +15,7 @@ Numbers 0002 and 0003 are not published yet.
 |---|---|---|
 | 0001 api_server clarify | applies | **does not apply as is**: context conflict in `gateway/platforms/api_server_runs.py` (upstream switched `"web.Request"` annotations to `web.Request`); `git apply --3way` applies `api_server.py` cleanly and only needs that conflict resolved. Upstream has no clarify support in the Runs API yet. |
 | 0004 image store | applies | applies |
+| 0005 vault fill re-attach | applies | not checked yet |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -72,3 +73,22 @@ upstream PR (NousResearch/hermes-agent#136217, commit `28dd115949d`).
 
 **Upstream note.** The placeholder text for older images is in French; an upstream version would use
 English or make it configurable.
+
+## 0005 — vault fills after the browser restarted
+
+**Problem.** A vault fill reaches the page through the task's CDP supervisor. When the browser goes away (closed after
+being idle, restarted), the supervisor gives up after a few reconnects and leaves the registry. The next fill (and its
+origin check) then asks the local agent-browser daemon for a browser, never the one configured in `browser.cdp_url`:
+with a sandboxed terminal that daemon is in the sandbox, and the fill fails with « Could not determine the current
+page origin » for the rest of the conversation, even once the configured browser is back. With a browser that an MCP
+server starts on demand (BipAgents' visible browser), that is any conversation that outlives one browser.
+
+**What the patch does.** With a configured browser (`browser.cdp_url` or `BROWSER_CDP_URL`) and no live supervisor,
+`_ensure_supervisor` attaches to that browser again, its endpoint resolved afresh (a restarted Chromium has a new
+browser id). The origin read (`_eval_js`) goes through the same attach before falling back to the CLI. Without a
+configured browser nothing changes.
+
+**Files.** `tools/browser_vault_tool.py`.
+
+**Tests.** Checked end to end against a live gateway: in one conversation, a fill, the browser closed, then started
+again and a second fill.

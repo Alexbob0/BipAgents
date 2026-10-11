@@ -94,6 +94,17 @@ def uninstall(runner: Runner, *, everything: bool, home: Optional[Path] = None, 
     if system == "linux":
         runner.run(["systemctl", "--user", "daemon-reload"], check=False)
 
+    # The agents' visible browsers: their containers, then their image.
+    if system == "linux":
+        units = home / ".config" / "systemd" / "user"
+        for unit in sorted(units.glob("bipagents-browser-*.service")) if units.is_dir() else []:
+            runner.run(["systemctl", "--user", "disable", "--now", unit.stem], check=False)
+            remove(unit, runner)
+        engine = shutil.which("podman") or shutil.which("docker")
+        if engine:
+            runner.run([engine, "image", "rm", "-f", "bipagents-browser"], check=False)
+        runner.run(["systemctl", "--user", "daemon-reload"], check=False)
+
     # 3. Hermes' gateway service (Hermes removes its own unit / plist).
     if Path(hermes_bin()).exists():
         runner.run([hermes_bin(), "gateway", "stop"], check=False)

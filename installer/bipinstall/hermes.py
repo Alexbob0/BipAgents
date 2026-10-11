@@ -153,6 +153,16 @@ def setup_desktop(runner: Runner, browser: str) -> None:
     _config(runner, HUB_PROFILE, "bot_desktop.idle_stop_minutes", "60" if browser == "permanent" else "10")
 
 
+BROWSER_IMAGE = "bipagents-browser"
+
+
+def build_browser(runner: Runner, engine: str, repo: Path) -> None:
+    """The agents' visible browser (browser/Containerfile): Chrome, its screen, and the stealth-browser-mcp server,
+    fetched from its own repository at a fixed commit with our patch. Each agent then gets its own container of it
+    (the bridge sets them up: `python -m bipbridge browser add`)."""
+    runner.run([engine, "build", "-t", BROWSER_IMAGE, "-f", str(repo / "browser" / "Containerfile"), str(repo / "browser")])
+
+
 def setup_hub(runner: Runner, port: int, model: Model, sandbox: bool = False) -> str:
     """The default profile: the one listener (127.0.0.1, published on the tailnet by `tailscale serve`). Every agent
     is cloned from it, so what is set here (sandbox, attachments) holds for all of them."""

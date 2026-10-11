@@ -39,6 +39,8 @@ class Install:
     pocket_url: str = f"http://127.0.0.1:{POCKET_PORT}"
     # The agents' tools run in a sandbox: they cannot read the bridge's files, so it may keep credentials.
     isolated: bool = False
+    # Each agent gets a visible browser of its own, in a container (browser/, bipbridge/browsers.py).
+    browser: bool = False
 
     @property
     def config_dir(self) -> Path:
@@ -83,6 +85,8 @@ def bridge_toml(inst: Install) -> str:
         lines.append(f"public_hub_url = {_q(hub_public)}")
     if inst.isolated:
         lines.append("isolated = true")
+    if inst.browser:
+        lines += ["", "[browser]", "enabled = true"]
     media = inst.home / ".hermes" / "media"
     lines += ["", "[media.roots]", f"{_q(str(media))} = {_q(str(media))}"]   # native Hermes: same path both sides
     if inst.relay_url and inst.relay_key:
