@@ -106,8 +106,8 @@ account, from your terminal: she types nothing, the questions show up on yours. 
 later. Last, the `tailscale serve` commands to run once her install is done. Restart your bridge so it knows the new
 key.
 
-The installer speaks English; the agents it creates speak the language you pick (asked, or `--agents-lang en|fr`),
-and those created later from the app follow the iPhone's.
+The installer speaks English. Agents answer in the language they are written to; the one they write first in
+(routines, reports) is set per agent in the app, the iPhone's by default.
 
 On macOS, create her account in System Settings; she pastes the printed line in **her** session. Services run while
 the account is logged in (automatic login on a Mac mini used as a server).

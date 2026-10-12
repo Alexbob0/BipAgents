@@ -4,8 +4,9 @@ chose, the name they gave — then serves it at once, without a restart. Everyth
 
 Routes (bridge key):
 - `GET /v1/agent-kinds`: the kinds of agents offered, and whether this install can create agents.
-- `POST /v1/agents`: `{"name", "kind"}` or `{"name", "custom": {"role", "tone", "rules", "language", "category"}}`
-  → the new agent as `GET /v1/agents` lists it (id, name, tailnet url, key)."""
+- `POST /v1/agents`: `{"name", "kind", "lang"}` or `{"name", "custom": {"role", "tone", "rules", "category"}, "lang"}`
+  → the new agent as `GET /v1/agents` lists it (id, name, tailnet url, key).
+- `PUT /v1/agents/{id}/language`: `{"lang"}` — the language it writes first in (its SOUL.md's language block)."""
 from __future__ import annotations
 
 import asyncio
@@ -36,16 +37,21 @@ class CustomAgent(BaseModel):
     role: str = Field(..., min_length=3, max_length=600)
     tone: str = Field(default="", max_length=200)
     rules: str = Field(default="", max_length=600)
-    language: str = Field(default="", max_length=40)   # the language it answers in; empty: the request's
+    language: str = Field(default="", max_length=40)   # older apps: its language by name (« Français »)
     category: str = Field(default="tech")
 
 
 class NewAgent(BaseModel):
     name: str = Field(..., min_length=1, max_length=40)
     kind: Optional[str] = None
-    # The app's language (« en », « fr-FR »…): its personality is written in it. Older apps send none: French.
+    # The agent's language (« en », « fr-FR »…): its personality is written in it, and it writes first in it.
+    # Older apps send none: French, as before.
     lang: Optional[str] = None
     custom: Optional[CustomAgent] = None
+
+
+class AgentLanguage(BaseModel):
+    lang: str = Field(..., min_length=2, max_length=20)
 
 
 Runner = Callable[[Sequence[str]], "asyncio.Future[str]"]
@@ -100,17 +106,17 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
                        run: Callable[..., Any] = run_hermes) -> AgentConfig:
     install = config.hermes
     name = body.name.strip()
+    lang = body.lang or (body.custom.language if body.custom and body.custom.language else "fr")
     if body.custom:
         if body.custom.category not in souls.CATEGORIES:
             raise ValueError("unknown category")
-        soul = souls.custom_soul(name, body.custom.role, body.custom.tone, body.custom.rules, body.custom.language,
-                                 lang=body.lang or "fr")
+        soul = souls.custom_soul(name, body.custom.role, body.custom.tone, body.custom.rules, lang=lang)
         description = body.custom.role.strip()[:120]
     elif body.kind:
-        found = souls.template(body.kind, body.lang or "fr")
+        found = souls.template(body.kind, lang)
         if not found or not found["soul"]:
             raise ValueError("unknown kind")
-        soul, description = souls.soul_for(name, body.kind, body.lang or "fr"), found["description"]
+        soul, description = souls.soul_for(name, body.kind, lang), found["description"]
     else:
         raise ValueError("a kind or a custom description is needed")
     profile = souls.profile_name(name, config.agents)
@@ -287,22 +293,40 @@ def remove_agent_section(config_path: str, name: str) -> None:
     Path(config_path).write_text("".join(kept).rstrip("\n") + "\n", encoding="utf-8")
 
 
+def read_soul(config: Config, agent: AgentConfig) -> str:
+    path = profile_folder(config, agent) / "SOUL.md"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def set_language(config: Config, agent: AgentConfig, lang: str) -> str:
+    """The agent's language block rewritten (the rest of its personality untouched); returns the language kept."""
+    code = souls.agent_language(lang)
+    (profile_folder(config, agent) / "SOUL.md").write_text(souls.with_language(read_soul(config, agent), code),
+                                                            encoding="utf-8")
+    return code
+
+
 async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncClient) -> Dict[str, Any]:
-    soul_path = profile_folder(config, agent) / "SOUL.md"
-    soul = soul_path.read_text(encoding="utf-8") if soul_path.exists() else ""
+    # The language block is the bridge's: shown and changed as « language », never in the editable personality.
+    soul, lang = souls.split_language(read_soul(config, agent))
     resp = await http.get(f"{agent.hermes_url}/v1/toolsets", headers={"Authorization": f"Bearer {agent.hermes_key}"},
                           timeout=10)
     resp.raise_for_status()
     toolsets = [{k: t.get(k) for k in ("name", "label", "description", "enabled", "configured")}
                 for t in resp.json().get("data", []) if isinstance(t, dict) and t.get("name")]
-    return {"id": agent.name, "name": agent.display_name, "soul": soul, "toolsets": toolsets, "isolated": agent.isolated,
+    return {"id": agent.name, "name": agent.display_name, "soul": soul.strip(), "language": lang,
+            "toolsets": toolsets, "isolated": agent.isolated,
             "protected": config.hermes.isolated,
             "services": connected.listing(config, agent)}
 
 
 async def write_settings(config: Config, agent: AgentConfig, body: AgentSettings, run: Callable[..., Any] = run_hermes) -> None:
     if body.soul is not None:
-        (profile_folder(config, agent) / "SOUL.md").write_text(body.soul.strip() + "\n", encoding="utf-8")
+        # The personality the person edited, with the language block it had (they never see it).
+        _, lang = souls.split_language(read_soul(config, agent))
+        text = body.soul.strip() + "\n"
+        (profile_folder(config, agent) / "SOUL.md").write_text(souls.with_language(text, lang) if lang else text,
+                                                                encoding="utf-8")
     env = {"HERMES_HOME": home_root(config, agent)}
     for action in ("enable", "disable"):
         names = sorted(n for n, on in (body.toolsets or {}).items() if on == (action == "enable"))
@@ -381,6 +405,17 @@ def agents_admin_router() -> APIRouter:
             return await read_settings(services.config, agent, services.http)
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail="Hermes unreachable") from exc
+
+    @router.put("/agents/{agent_id}/language")
+    async def put_language(agent_id: str, body: AgentLanguage, request: Request) -> Dict[str, Any]:
+        """The agent's language, set in the app: it writes first in it (and answers in whatever it is written to)."""
+        services = request.app.state.services
+        try:
+            agent = managed(services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        async with lock:
+            return {"id": agent.name, "language": set_language(services.config, agent, body.lang)}
 
     @router.patch("/agents/{agent_id}/settings")
     async def patch_settings(agent_id: str, body: AgentSettings, request: Request) -> Dict[str, Any]:

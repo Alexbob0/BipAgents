@@ -1,23 +1,58 @@
 """Kinds of agents and their starting personality (SOUL.md), shared by the installer and the bridge (agents created
 from the app). A kind is not a name: the person names each agent; « Autre » is described by the person.
 
-Each text exists in French and English (`agent_templates.yaml`); another language gets the English one, so an agent's
-personality — and the language it thinks in — follows the person's: the installer's language, or the iPhone's."""
+Each text exists in French and English (`agent_templates.yaml`); another language gets the English one. Whatever the
+text's language, every SOUL.md ends with a language block the bridge owns (`with_language`): answer in the language
+the person writes in, and write first (routines, reports) in the agent's language — the one set in the app, changed
+there at any time without touching the rest of the personality."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
 TEMPLATES_PATH = Path(__file__).with_name("agent_templates.yaml")
 CATEGORIES = ["daily", "wellness", "finance", "home", "work", "learning", "creative", "tech"]
 LANGUAGES = ("fr", "en")
+LANGUAGE_NAMES = {"en": "English", "fr": "French", "es": "Spanish", "de": "German"}
+BLOCK_START, BLOCK_END = "<!-- bipagents:language -->", "<!-- /bipagents:language -->"
 
 
 def language(code: Optional[str]) -> str:
     """« fr-FR », « en_US », « de »… → the templates' language: French or English (everything else)."""
     return "fr" if (code or "").lower().startswith("fr") else "en"
+
+
+def agent_language(code: Optional[str]) -> str:
+    """An agent's language: « en », « fr », « es » or « de » (from « fr-FR », « Français »…); English otherwise."""
+    code = (code or "").strip().lower()
+    for key, name in LANGUAGE_NAMES.items():
+        if code.startswith(key) or code == name.lower():   # « fr-FR », « Français », « French »…
+            return key
+    return "en"
+
+
+def language_block(lang: Optional[str]) -> str:
+    name = LANGUAGE_NAMES[agent_language(lang)]
+    return (f"{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, "
+            f"a report, a reminder), write in {name}.\n{BLOCK_END}")
+
+
+def split_language(soul: str) -> Tuple[str, Optional[str]]:
+    """The personality without its language block, and the block's language (None when it has none)."""
+    start, end = soul.find(BLOCK_START), soul.find(BLOCK_END)
+    if start < 0 or end < start:
+        return soul, None
+    block = soul[start:end]
+    lang = next((code for code, name in LANGUAGE_NAMES.items() if f"write in {name}." in block), "en")
+    return (soul[:start] + soul[end + len(BLOCK_END):]).strip() + "\n", lang
+
+
+def with_language(soul: str, lang: Optional[str]) -> str:
+    """The personality with its language block set to `lang` (replaced if there was one, added otherwise)."""
+    body, _ = split_language(soul)
+    return f"{body.rstrip()}\n\n{language_block(lang)}\n"
 
 
 def _pick(value: Any, lang: str) -> str:
@@ -38,30 +73,30 @@ def template(category: str, lang: Optional[str] = "fr") -> Optional[Dict[str, An
     return next((t for t in templates(lang) if t["category"] == category), None)
 
 
-def soul_for(name: str, category: str, lang: Optional[str] = "fr") -> str:
+def soul_for(name: str, category: str, lang: Optional[str] = "en") -> str:
+    """A kind's personality for `name`, in the agent's language `lang` (its text in French or English)."""
     found = template(category, lang)
     if not found or not found["soul"]:
         raise ValueError(f"no template for {category!r}")
-    return found["soul"].replace("{name}", name)
+    return with_language(found["soul"].replace("{name}", name), lang)
 
 
-def custom_soul(name: str, role: str, tone: str = "", rules: str = "", language_name: str = "",
-                lang: Optional[str] = "fr") -> str:
-    """« Autre »: the role, tone, rules and reply language the person wrote, as a SOUL.md (in `lang`)."""
+def custom_soul(name: str, role: str, tone: str = "", rules: str = "", lang: Optional[str] = "en") -> str:
+    """« Autre »: the role, tone and rules the person wrote, as a SOUL.md in the agent's language `lang`."""
     role, rules = role.strip().rstrip("."), rules.strip().rstrip(".")
     if language(lang) == "fr":
         soul = (f"Tu es {name}, un agent personnel de ton utilisateur. Ton rôle : {role}.\n"
-                f"Ton ton : {(tone or 'clair et bienveillant').strip()}. Tu réponds en "
-                f"{(language_name or 'français').strip()}, de façon concise.\n")
+                f"Ton ton : {(tone or 'clair et bienveillant').strip()}. Tu réponds de façon concise.\n")
         if rules:
             soul += f"Règles à respecter : {rules}.\n"
-        return soul + "Tu demandes avant toute action irréversible (envoyer, acheter, supprimer).\n"
-    soul = (f"You are {name}, your user's personal agent. Your role: {role}.\n"
-            f"Your tone: {(tone or 'clear and kind').strip()}. You answer in {(language_name or 'English').strip()}, "
-            f"concisely.\n")
-    if rules:
-        soul += f"Rules to follow: {rules}.\n"
-    return soul + "You ask before anything irreversible (sending, buying, deleting).\n"
+        soul += "Tu demandes avant toute action irréversible (envoyer, acheter, supprimer).\n"
+    else:
+        soul = (f"You are {name}, your user's personal agent. Your role: {role}.\n"
+                f"Your tone: {(tone or 'clear and kind').strip()}. You answer concisely.\n")
+        if rules:
+            soul += f"Rules to follow: {rules}.\n"
+        soul += "You ask before anything irreversible (sending, buying, deleting).\n"
+    return with_language(soul, lang)
 
 
 def profile_name(display_name: str, taken=()) -> str:

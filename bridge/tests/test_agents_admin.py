@@ -83,7 +83,7 @@ def test_an_agent_created_in_english_thinks_in_english(managed):
     assert (tmp / ".hermes" / "profiles" / "hans" / "SOUL.md").read_text().startswith("You are Hans")
     asyncio.run(go(NewAgent(name="Ivy", custom={"role": "tracks my plants", "category": "home"}, lang="en")))
     soul = (tmp / ".hermes" / "profiles" / "ivy" / "SOUL.md").read_text()
-    assert soul.startswith("You are Ivy") and "tracks my plants" in soul and "answer in English" in soul
+    assert soul.startswith("You are Ivy") and "tracks my plants" in soul and "write in English" in soul
     asyncio.run(go(NewAgent(name="Léo", kind="daily")))   # an app from before: French, as it was
     assert (tmp / ".hermes" / "profiles" / "leo" / "SOUL.md").read_text().startswith("Tu es Léo")
 
@@ -172,7 +172,8 @@ def test_settings_and_delete(managed):
 
     agent, settings = asyncio.run(go())
     assert settings["soul"].startswith("Tu es Budget") and settings["toolsets"][0]["name"] == "web"
-    assert (tmp / ".hermes" / "profiles" / "budget" / "SOUL.md").read_text() == "Tu es Budget, sobre.\n"
+    written = (tmp / ".hermes" / "profiles" / "budget" / "SOUL.md").read_text()
+    assert written.startswith("Tu es Budget, sobre.\n") and "write in French." in written   # its language block kept
     assert ["/opt/hermes", "-p", "budget", "tools", "enable", "terminal", "--platform", "api_server"] in commands
     assert ["/opt/hermes", "-p", "budget", "tools", "disable", "web", "--platform", "api_server"] in commands
     with pytest.raises(LookupError):
@@ -254,3 +255,30 @@ def test_agents_route_lists_unclaimed_profiles(client, tmp_path):
     listing = client.get("/v1/agents", headers=AUTH).json()
     assert listing["unclaimed"] == [{"id": "cuisine", "name": "Cuisine", "description": ""}]
     assert client.post("/v1/agents/claim", headers=AUTH, json={"id": "nope"}).status_code == 404
+
+
+def test_the_language_is_changed_without_touching_the_personality(managed, client):
+    """The app sets an agent's language at any time: only the bridge's language block changes; the person never sees
+    it in the personality they edit, and editing that personality keeps it."""
+    from bipbridge.agents_admin import AgentSettings, NewAgent, create_agent, read_soul, set_language, write_settings
+    from bipbridge import souls
+
+    config, _, tmp = managed
+
+    async def run(args, env):
+        return ""
+
+    async def go():
+        async with httpx.AsyncClient(transport=fake_gateway([])) as http:
+            return await create_agent(config, NewAgent(name="Max", kind="daily", lang="en"), http, run=run)
+
+    agent = asyncio.run(go())
+    assert "write in English." in read_soul(config, agent)
+    assert set_language(config, agent, "es-ES") == "es"
+    soul = read_soul(config, agent)
+    assert "write in Spanish." in soul and soul.startswith("You are Max") and soul.count(souls.BLOCK_START) == 1
+    asyncio.run(write_settings(config, agent, AgentSettings(soul="You are Max, blunt and funny."), run=run))
+    soul = read_soul(config, agent)
+    assert soul.startswith("You are Max, blunt and funny.") and "write in Spanish." in soul
+    body, lang = souls.split_language(soul)
+    assert lang == "es" and souls.BLOCK_START not in body

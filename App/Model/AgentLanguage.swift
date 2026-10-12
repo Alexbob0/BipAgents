@@ -40,6 +40,6 @@ enum AgentLanguage: String, CaseIterable, Identifiable, Sendable {
 }
 
 extension AgentProfile {
-    /// Agents saved before languages existed were all French.
-    var language: AgentLanguage { config.language.flatMap(AgentLanguage.init(rawValue:)) ?? .french }
+    /// Its language as set in its options, else the iPhone's.
+    var language: AgentLanguage { config.language.flatMap(AgentLanguage.init(rawValue:)) ?? .device }
 }

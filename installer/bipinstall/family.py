@@ -108,8 +108,6 @@ def main(argv: List[str]) -> int:
     parser.add_argument("name", help="their first name")
     parser.add_argument("--account", "--compte", dest="account",
                         help="their Linux account (default: their first name, lower case, no accents)")
-    parser.add_argument("--agents-lang", choices=["en", "fr"],
-                        help="the language their first agents speak (default: asked during their install)")
     parser.add_argument("--config", help="your bridge's config (default: found by itself)")
     parser.add_argument("--dry-run", action="store_true",
                         help="only show the commands that would prepare their account, change nothing")
@@ -135,8 +133,7 @@ def main(argv: List[str]) -> int:
     line = f"{INSTALL_LINE} --relay-url {result['relay_url']} --relay-key {result['key']} --ports {ports.base}"
     print(ui.step(first + 1, total, f"{args.name}'s install, in their account"))
     if linux:
-        command = account.install_command(login, account.uid_of(login),
-                                          f"{line} --agents-lang {args.agents_lang}" if args.agents_lang else line)
+        command = account.install_command(login, account.uid_of(login), line)
         if confirm(f"Shall I run it now in the {login} account (it will ask you its questions here)?"):
             if subprocess.run(command).returncode != 0:
                 print(ui.fail("Their install stopped: run the command below again once it's fixed."))

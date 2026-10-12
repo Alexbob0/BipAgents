@@ -104,9 +104,10 @@ final class AgentStore {
     /// One agent of an install, added (true) or, when already here, its connection updated (false).
     @discardableResult
     func addDiscovered(_ agent: BridgeClient.InstallAgent, bridgeURL: URL, bridgeKey: String, lanURL: URL?,
-                       lanFingerprint: String?, category: AgentCategory? = nil) throws -> Bool {
+                       lanFingerprint: String?, category: AgentCategory? = nil,
+                       language: AgentLanguage = .device) throws -> Bool {
         let config = AgentConfig(name: agent.name, baseURL: agent.url, bridgeURL: bridgeURL,
-                                 language: AgentLanguage.device.rawValue, lanURL: lanURL,
+                                 language: language.rawValue, lanURL: lanURL,
                                  lanFingerprint: lanFingerprint, bridgeAgent: agent.id)
         let secrets = AgentSecrets(apiKey: agent.key, bridgeKey: bridgeKey)
         if try updateConnection(from: AgentProvisioning(config: config, secrets: secrets)) { return false }
@@ -228,8 +229,32 @@ final class AgentStore {
 
     func update(_ profile: AgentProfile) {
         guard let index = agents.firstIndex(where: { $0.id == profile.id }) else { return }
+        let languageChanged = agents[index].language != profile.language
         agents[index] = profile
         save()
+        if languageChanged { Task { await tellLanguage(of: profile) } }
+    }
+
+    // MARK: Language
+
+    /// The languages already told to the agents' bridges (« <agent id>:<code> »): each is sent once, and again only
+    /// when it changes (an agent created by the installer learns the iPhone's this way).
+    private static let toldLanguagesKey = "toldAgentLanguages"
+
+    /// Tells the agent's bridge the language it writes first in (its answers follow the language it is written to).
+    func tellLanguage(of agent: AgentProfile) async {
+        let mark = "\(agent.id.uuidString):\(agent.language.rawValue)"
+        let told = UserDefaults.standard.stringArray(forKey: Self.toldLanguagesKey) ?? []
+        guard !told.contains(mark), let bridge = BridgeClient(agent: agent, secrets: secrets(for: agent)) else { return }
+        do {
+            try await bridge.setAgentLanguage(agent.bridgeName, to: agent.language)
+        } catch HermesError.http(status: 404, _, _) {
+            // Set up by hand on the server: its personality is not the bridge's to change. Not asked again.
+        } catch {
+            return   // unreachable for now: told on a later refresh
+        }
+        let others = told.filter { !$0.hasPrefix("\(agent.id.uuidString):") }
+        UserDefaults.standard.set(others + [mark], forKey: Self.toldLanguagesKey)
     }
 
     /// An agent of `bridgeURL`'s install moved (into its own space): its new address on this phone.
@@ -283,6 +308,7 @@ final class AgentStore {
             LocalLink.setActive(false, for: agent)
             reachability[agent.id] = .online
             await refreshLocalDoor(of: agent, secrets: secrets)
+            await tellLanguage(of: agent)
             if let bridge = BridgeClient(tailnetOf: agent, secrets: secrets),
                (try? await withTimeout(8) { try await bridge.modelIsUp() }) == false {
                 reachability[agent.id] = .modelDown

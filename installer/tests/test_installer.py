@@ -18,15 +18,6 @@ from bipinstall.ports import Ports, pick_block  # noqa: E402
 from bipinstall.stack import AgentEntry, Install, bridge_service, bridge_toml, tailscale_commands  # noqa: E402
 
 
-@pytest.fixture(autouse=True)
-def agents_language_asked_again():
-    """The agents' language, set for the tests that are not about it (an install given none asks it)."""
-    from bipinstall import __main__ as cli
-    cli.AGENTS_LANG = "fr"   # tests that are not about the question answer it this way
-    yield
-    cli.AGENTS_LANG = None
-
-
 def mac(memory, gpu="apple"):
     return Machine(system="macos", arch="arm64", memory_gib=memory, cores=10, cpu="Apple M4", gpu=gpu,
                    tailnet_name="mini.tail0000.ts.net", lan_addresses=["192.168.1.20"])
@@ -116,12 +107,12 @@ def test_names_are_the_persons():
 
 def test_custom_agent(monkeypatch):
     from bipinstall import __main__ as cli
-    answers = iter(["suit mes plantes et me dit quand les arroser", "drôle", "jamais de produits chimiques", "", "4"])
+    answers = iter(["keeps an eye on my plants and tells me when to water them", "funny", "never chemicals", "4"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    agent = cli.custom_agent("Fougère")
-    assert agent["category"] == "home" and agent["description"].startswith("suit mes plantes")
-    assert agent["soul"].startswith("Tu es Fougère") and "drôle" in agent["soul"] and "en français" in agent["soul"]
-    assert "jamais de produits chimiques" in agent["soul"]
+    agent = cli.custom_agent("Fern")
+    assert agent["category"] == "home" and agent["description"].startswith("keeps an eye on my plants")
+    assert agent["soul"].startswith("You are Fern") and "funny" in agent["soul"] and "never chemicals" in agent["soul"]
+    assert "write in English." in agent["soul"]   # its language block, until the app sets another
 
 
 def test_uninstall_undoes_the_install(tmp_path, monkeypatch):
@@ -209,9 +200,9 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
     monkeypatch.setattr(cli, "voice_engine_answers", lambda url: False)
-    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "", "4", "y"])
+    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
+    assert cli.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "profile create lea" in out and "profile create fougere" in out
     assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
@@ -219,9 +210,9 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     assert "[kyutai]\nenabled = false" in out
 
 
-def test_the_agents_language_is_asked(monkeypatch, tmp_path, capsys):
-    """The installer speaks English; the agents it creates speak the language picked (asked here, as nothing gave
-    it): their SOUL.md is written in it."""
+def test_the_agents_get_their_language_from_the_app(monkeypatch, tmp_path, capsys):
+    """No language asked: the agents are created in English, answer in the language they are written to, and their
+    language block (the one they write first in) is set later by the app."""
     from bipinstall import __main__ as cli
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(cli, "detect", lambda: mac(16))
@@ -238,17 +229,17 @@ def test_the_agents_language_is_asked(monkeypatch, tmp_path, capsys):
         return create_agent(runner, name, **kw)
 
     monkeypatch.setattr(cli.hermes, "create_agent", remembering)
-    answers = iter(["1", "1", "", "1", "1,9", "Lea", "Fern", "watches my plants", "", "", "", "4", "y"])
+    answers = iter(["1", "1", "", "1,9", "Lea", "Fern", "watches my plants", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run"]) == 0 and cli.AGENTS_LANG == "en"
+    assert cli.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "Hello" in out and "Where does the model" in out and "Hermes, the agents' brain" in out
     assert "The Bips' voices" in out and "Dry run: here is what would have been done." in out
-    assert "Which language will your agents speak?" in out
+    assert "language" not in out.lower().split("the bips' voices")[0]   # nothing asked about it
     assert "API_SERVER_KEY <key>" in out and "Où tourne" not in out
     assert souls_written["lea"].startswith("You are Lea, your user's everyday agent.")
     assert souls_written["fern"].startswith("You are Fern") and "watches my plants" in souls_written["fern"]
-    assert "You answer in English" in souls_written["fern"] and "Tu " not in souls_written["fern"]
+    assert "answer in the language your person writes in" in souls_written["fern"] and "Tu " not in souls_written["fern"]
 
 
 def test_a_kyutai_already_running_is_shared_whatever_the_gpu(monkeypatch, tmp_path, capsys):
@@ -262,9 +253,9 @@ def test_a_kyutai_already_running_is_shared_whatever_the_gpu(monkeypatch, tmp_pa
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
     monkeypatch.setattr(cli, "voice_engine_answers", lambda url: url == "http://127.0.0.1:8097")
-    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "", "4", "y"])
+    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
+    assert cli.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "Kyutai (human voice, podcasts) answers" in out
     assert '[kyutai]\nurl = "http://127.0.0.1:8097"' in out
@@ -285,7 +276,7 @@ def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, cap
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
     answers = iter(["1", "1", "", "y", "1", "Léa", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
+    assert cli.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "visible browser" in out and "[6/6]" in out
     assert "/usr/bin/podman build -t bipagents-browser -f " in out and "/browser/Containerfile" in out
@@ -345,7 +336,7 @@ def test_an_existing_hermes_keeps_its_settings(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
     answers = iter(["", "Marc", "", "y"])   # every agent, the main one renamed « Marc », go
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
+    assert cli.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "You already have Hermes" in out and "Where does the model" not in out
     assert "config set API_SERVER_ENABLED true" in out and "config set API_SERVER_PORT 8642" in out
@@ -415,7 +406,7 @@ def test_on_a_rented_server_nothing_listens_on_a_local_network(monkeypatch, tmp_
     # The model in the cloud is the default choice (Enter), OpenRouter, a key, the model; one agent; go.
     answers = iter(["", "1", "sk-or-test", "", "1", "Léa", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
+    assert cli.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "Server rented from Hetzner" in out and "another machine on my tailnet" in out
     assert "[lan]\nenabled = false" in out

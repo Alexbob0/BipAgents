@@ -109,8 +109,8 @@ Ensuite ça crée sa clé de relais, réserve son bloc de ports, et propose de l
 commande pour plus tard. Enfin, les commandes `tailscale serve` à lancer une fois son installation finie. Redémarre
 ton bridge, pour qu'il connaisse la nouvelle clé.
 
-L'installateur parle anglais ; les agents qu'il crée parlent la langue choisie (demandée, ou `--agents-lang en|fr`),
-et ceux créés ensuite depuis l'app suivent celle de l'iPhone.
+L'installateur parle anglais. Les agents répondent dans la langue qu'on leur écrit ; celle dans laquelle ils
+écrivent d'eux-mêmes (routines, comptes rendus) se règle par agent dans l'app, celle de l'iPhone par défaut.
 
 Sous macOS, crée son compte dans Réglages Système ; elle colle la ligne affichée dans **sa** session. Les services
 tournent tant que le compte est ouvert (ouverture de session automatique sur un Mac mini qui sert de serveur).

@@ -178,10 +178,12 @@ struct CreateAgentFlow: View {
             do {
                 let bridge = BridgeClient(url: install.bridgeURL, key: install.bridgeKey)
                 // An « Autre » agent speaks the language picked for it; a ready-made one, the iPhone's.
+                let spoken = kind.custom ? language : AgentLanguage.device
                 let agent = try await bridge.createAgent(name: name, kind: kind.custom ? nil : kind.id, custom: custom,
-                                                         language: kind.custom ? language : .device)
+                                                         language: spoken)
                 try store.addDiscovered(agent, bridgeURL: install.bridgeURL, bridgeKey: install.bridgeKey,
-                                        lanURL: install.lanURL, lanFingerprint: install.lanFingerprint, category: category)
+                                        lanURL: install.lanURL, lanFingerprint: install.lanFingerprint, category: category,
+                                        language: spoken)
                 onCreated()
             } catch {
                 errorMessage = String(localized: "Le serveur n’a pas pu créer cet agent. Réessaie dans un instant.")

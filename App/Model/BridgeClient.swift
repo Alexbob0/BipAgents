@@ -110,6 +110,14 @@ struct BridgeClient: Sendable {
         }
     }
 
+    /// `PUT /v1/agents/{agent}/language`: the language the agent writes first in (routines, reports); it answers in
+    /// the language it is written to anyway. 404: an agent this install does not manage (set up by hand).
+    func setAgentLanguage(_ agent: String, to language: AgentLanguage) async throws {
+        var request = request("v1/agents/\(agent)/language", method: "PUT")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["lang": language.rawValue])
+        _ = try await send(request)
+    }
+
     /// What the person wrote for an « Autre » agent.
     struct CustomAgent: Sendable {
         var role: String
