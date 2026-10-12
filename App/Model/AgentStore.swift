@@ -248,8 +248,9 @@ final class AgentStore {
         guard !told.contains(mark), let bridge = BridgeClient(agent: agent, secrets: secrets(for: agent)) else { return }
         do {
             try await bridge.setAgentLanguage(agent.bridgeName, to: agent.language)
-        } catch HermesError.http(status: 404, _, _) {
-            // Set up by hand on the server: its personality is not the bridge's to change. Not asked again.
+        } catch HermesError.http(status: 404, let message, _) where message?.contains("not an agent this install manages") == true {
+            // Set up by hand on the server: its personality is not the bridge's to change. Not asked again. (An older
+            // bridge without the route answers a plain 404: asked again once it is updated.)
         } catch {
             return   // unreachable for now: told on a later refresh
         }
