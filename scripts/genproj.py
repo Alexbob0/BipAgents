@@ -281,11 +281,11 @@ objs = f"""/* Begin PBXBuildFile section */
 				}};
 			}};
 			buildConfigurationList = {i(0x901)};
-			developmentRegion = fr;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				fr,
 				en,
+				fr,
 				es,
 				de,
 				Base,

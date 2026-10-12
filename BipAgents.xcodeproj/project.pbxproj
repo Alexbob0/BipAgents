@@ -218,11 +218,11 @@
 				};
 			};
 			buildConfigurationList = AA0000000000000000000901;
-			developmentRegion = fr;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				fr,
 				en,
+				fr,
 				es,
 				de,
 				Base,

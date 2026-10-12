@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyLists-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Only standard HTTPS and Apple's own crypto: exempt, so TestFlight does not ask at every build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>BIPAppGroup</key>
 	<string>group.$(BIP_BUNDLE_ID)</string>
 	<key>CFBundleURLTypes</key>
