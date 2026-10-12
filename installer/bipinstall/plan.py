@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 from .detect import Machine
+from .ui import tr
 
 SYSTEM_GIB = {"macos": 5.0, "linux": 2.0}
 PERSON_GIB = 1.1        # one multiplex gateway + its bridge
@@ -50,11 +51,15 @@ def make_plan(machine: Machine, model_here: bool) -> Plan:
     if plan.people == 0:
         if browser != "none":
             plan.browser = "none"
-            notes.append("Pas assez de mémoire pour le navigateur des agents : il est laissé de côté.")
+            notes.append(tr("Pas assez de mémoire pour le navigateur des agents : il est laissé de côté.",
+                            "Not enough memory for the agents' browser: it is left out."))
             plan.people = max(0, int((free - plan.memory_gib(0)) // PERSON_GIB))
     if model_here:
-        notes.append(f"Le modèle local prend à lui seul environ {LOCAL_MODEL_GIB:.1f} Go. "
-                     "Un modèle sur une autre machine ou par API libère cette place.")
+        notes.append(tr(f"Le modèle local prend à lui seul environ {LOCAL_MODEL_GIB:.1f} Go. "
+                        "Un modèle sur une autre machine ou par API libère cette place.",
+                        f"The local model alone takes about {LOCAL_MODEL_GIB:.1f} GB. "
+                        "A model on another machine or through an API frees that space."))
     if not kyutai:
-        notes.append("Voix des Bips par Pocket (processeur). Kyutai, la voix humaine, est utilisé s'il tourne déjà ici.")
+        notes.append(tr("Voix des Bips par Pocket (processeur). Kyutai, la voix humaine, est utilisé s'il tourne déjà ici.",
+                        "Bip voices by Pocket (CPU). Kyutai, the human voice, is used if it already runs here."))
     return plan

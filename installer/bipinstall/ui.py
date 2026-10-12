@@ -9,6 +9,28 @@ _COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR") and os.environ.g
 _TRUE = os.environ.get("COLORTERM") in ("truecolor", "24bit")
 
 
+def _language() -> str:
+    """French when the system (or BIPAGENTS_LANG / --lang) says so, English otherwise."""
+    for var in ("BIPAGENTS_LANG", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(var, "")
+        if value and value not in ("C", "POSIX", "C.UTF-8"):
+            return "fr" if value.lower().startswith("fr") else "en"
+    return "en"
+
+
+LANG = _language()
+
+
+def set_language(code: str) -> None:
+    global LANG
+    LANG = "fr" if code.lower().startswith("fr") else "en"
+
+
+def tr(fr: str, en: str) -> str:
+    """The French or English text, by the installer's language."""
+    return fr if LANG == "fr" else en
+
+
 def _rgb(r: int, g: int, b: int, fallback: int) -> str:
     if not _COLOR:
         return ""
@@ -41,8 +63,9 @@ def bip(mood: str = "hello", says: str = "") -> str:
 
 
 def banner(user: str, machine: str) -> str:
-    return (f"\n{bip('hello', f'Bonjour {user} ! On installe tes agents.')}\n"
-            f"\n{GREY}Machine : {machine}{RESET}\n")
+    hello = tr(f"Bonjour {user} ! On installe tes agents.", f"Hello {user}! Let's install your agents.")
+    return (f"\n{bip('hello', hello)}\n"
+            f"\n{GREY}{tr('Machine :', 'Machine:')} {machine}{RESET}\n")
 
 
 def step(number: int, total: int, title: str) -> str:

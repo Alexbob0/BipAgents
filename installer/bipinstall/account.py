@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from .ui import tr
+
 SUBID_FIRST = 100_000
 SUBID_COUNT = 65_536
 LINGER_DIR = Path("/var/lib/systemd/linger")
@@ -102,13 +104,14 @@ def prepare(login: str, confirm: Callable[[str], bool], say: Callable[[str], Non
             break
         for command in commands:
             say(f"  $ {shlex.join(command)}")
-        if not confirm("Je lance ces commandes (ton mot de passe sudo peut être demandé) ?"):
+        if not confirm(tr("Je lance ces commandes (ton mot de passe sudo peut être demandé) ?",
+                          "Shall I run these commands (your sudo password may be asked)?")):
             return False
         for command in commands:
             if dry:
                 continue
             if subprocess.run(command).returncode != 0:
-                say(f"Échec de : {shlex.join(command)}")
+                say(tr(f"Échec de : {shlex.join(command)}", f"Failed: {shlex.join(command)}"))
                 return False
         if not created:
             created = True if dry else exists(login)
@@ -141,11 +144,16 @@ def ensure_user_services(say: Callable[[str], None], login: Optional[str] = None
     reachable = check() if check else subprocess.run(["systemctl", "--user", "show-environment"],
                                                      capture_output=True).returncode == 0
     if not reachable:
-        say("Ce compte ne peut pas lancer ses propres services (systemd utilisateur injoignable).")
-        say(f"Demande à l'administrateur du serveur : sudo loginctl enable-linger {login}")
-        say("(ou `bipinstall famille ajouter`, qui prépare le compte), puis relance.")
+        say(tr("Ce compte ne peut pas lancer ses propres services (systemd utilisateur injoignable).",
+               "This account can't run its own services (user systemd can't be reached)."))
+        say(tr(f"Demande à l'administrateur du serveur : sudo loginctl enable-linger {login}",
+               f"Ask the server's administrator: sudo loginctl enable-linger {login}"))
+        say(tr("(ou `bipinstall famille ajouter`, qui prépare le compte), puis relance.",
+               "(or `bipinstall famille ajouter`, which prepares the account), then run this again."))
         return False
     if not linger_enabled(login):
-        say(f"Attention : sans « linger », tes agents s'arrêteront quand tu te déconnecteras. "
-            f"Demande à l'administrateur : sudo loginctl enable-linger {login}")
+        say(tr(f"Attention : sans « linger », tes agents s'arrêteront quand tu te déconnecteras. "
+               f"Demande à l'administrateur : sudo loginctl enable-linger {login}",
+               f"Careful: without \"linger\", your agents will stop when you log out. "
+               f"Ask the administrator: sudo loginctl enable-linger {login}"))
     return True
