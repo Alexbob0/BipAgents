@@ -12,7 +12,6 @@ from typing import Dict, Iterable, List, Optional
 
 import httpx
 
-from .ui import tr
 
 # Usual ports of local model servers: Ollama, LM Studio, vLLM / SGLang, llama.cpp, and other OpenAI-compatible ones.
 LAN_PORTS = {11434: "Ollama", 1234: "LM Studio", 8000: "vLLM", 8080: "llama.cpp", 8888: "OpenAI-compatible",
@@ -26,17 +25,17 @@ class Provider:
     base_url: str
     needs_key: bool = True
     key_hint: str = ""
-    about: tuple = ()        # (French, English) words after the name, if any
+    about: str = ""          # words after the name, if any
 
     @property
     def label(self) -> str:
         """The name as the person sees it in the list."""
-        return f"{self.name} ({tr(*self.about)})" if self.about else self.name
+        return f"{self.name} ({self.about})" if self.about else self.name
 
 
 CLOUD = [
     Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", key_hint="https://openrouter.ai/keys",
-             about=("des centaines de modèles", "hundreds of models")),
+             about="hundreds of models"),
     Provider("openai", "OpenAI", "https://api.openai.com/v1", key_hint="https://platform.openai.com/api-keys"),
     Provider("anthropic", "Anthropic (Claude)", "https://api.anthropic.com/v1",
              key_hint="https://console.anthropic.com/settings/keys"),

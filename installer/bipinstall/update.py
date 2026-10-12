@@ -27,7 +27,6 @@ import httpx
 from . import hermes, ui
 from .existing import RECORD
 from .family import confirm, find_config
-from .ui import tr
 
 REPO = Path(__file__).resolve().parents[2]
 PATCHES = REPO / "hermes" / "patches"
@@ -122,7 +121,7 @@ def check_agents(agents: List[Dict[str, str]], expect_clarify: bool, client=None
     client = client or httpx.Client(timeout=5)
     problems: Dict[str, str] = {}
     for agent in agents:
-        problem = tr("ne répond pas", "isn't answering")
+        problem = "isn't answering"
         for _ in range(attempts):
             try:
                 resp = client.get(f"{agent['url'].rstrip('/')}/v1/capabilities",
@@ -131,7 +130,7 @@ def check_agents(agents: List[Dict[str, str]], expect_clarify: bool, client=None
                 time.sleep(2)
                 continue
             if resp.status_code == 401:
-                problem = tr("refuse sa clé", "refuses its key")
+                problem = "refuses its key"
                 break
             if resp.status_code != 200:
                 time.sleep(2)
@@ -139,11 +138,9 @@ def check_agents(agents: List[Dict[str, str]], expect_clarify: bool, client=None
             caps = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
             features = json.dumps(caps)
             if "run" not in features:
-                problem = tr("n'annonce plus les runs (l'app ne peut plus lui parler)",
-                             "no longer announces runs (the app can't talk to it anymore)")
+                problem = "no longer announces runs (the app can't talk to it anymore)"
             elif expect_clarify and "run_clarify" not in features:
-                problem = tr("n'a plus les questions de l'agent dans l'app (correctif 0001)",
-                             "no longer has the agent's questions in the app (fix 0001)")
+                problem = "no longer has the agent's questions in the app (fix 0001)"
             else:
                 problem = ""
             break
@@ -154,7 +151,7 @@ def check_agents(agents: List[Dict[str, str]], expect_clarify: bool, client=None
 def report(agents: List[Dict[str, str]], problems: Dict[str, str]) -> bool:
     for agent in agents:
         problem = problems.get(agent["id"], "")
-        say(ui.done(tr(f"{agent['name']} répond.", f"{agent['name']} answers.")) if not problem
+        say(ui.done(f"{agent['name']} answers.") if not problem
             else ui.fail(f"{agent['name']} {problem}."))
     return not any(problems.values())
 
@@ -187,11 +184,11 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--yes", action="store_true", help="no question (for a scheduled update)")
     args = parser.parse_args(argv)
     if not Path(hermes.hermes_bin()).exists():
-        say(ui.sad(tr("Hermes n'est pas installé dans ce compte.", "Hermes isn't installed in this account.")))
+        say(ui.sad("Hermes isn't installed in this account."))
         return 1
     config = find_config(args.config)
     agents = agents_of(config)
-    say(ui.bip("busy", tr("On regarde ta version d'Hermes.", "Let's look at your Hermes version.")))
+    say(ui.bip("busy", "Let's look at your Hermes version."))
 
     before = git("rev-parse", "--short=9", "HEAD").stdout.strip()
     mine = applied_now()
@@ -203,37 +200,32 @@ def main(argv: List[str]) -> int:
     branch = channel(out)
     late = behind(out)
     fixes = ", ".join(p.name[:4] for p in mine)
-    say(ui.note(tr(f"Version actuelle : {before} ; correctifs en place : {fixes or 'aucun'}.",
-                   f"Current version: {before}; fixes in place: {fixes or 'none'}.")))
+    say(ui.note(f"Current version: {before}; fixes in place: {fixes or 'none'}."))
     if late == 0:
-        say(ui.done(tr("Hermes est déjà à jour.", "Hermes is already up to date.")))
+        say(ui.done("Hermes is already up to date."))
     elif late is not None:
         target, keeps = preflight(branch, wanted)
-        say(ui.note(tr(f"Nouvelle version disponible ({target}, {late} changements sur « {branch} »).",
-                       f"New version available ({target}, {late} changes on \"{branch}\").")))
+        say(ui.note(f"New version available ({target}, {late} changes on \"{branch}\")."))
         for name, ok in keeps.items():
-            say(ui.done(tr(f"{name} s'applique encore.", f"{name} still applies.")) if ok else
-                ui.fail(tr(f"{name} ne s'applique plus : sa fonction manquera jusqu'à une mise à jour de BipAgents.",
-                           f"{name} no longer applies: its feature will be missing until a BipAgents update.")))
+            say(ui.done(f"{name} still applies.") if ok else
+                ui.fail(f"{name} no longer applies: its feature will be missing until a BipAgents update."))
     if args.check or not late:
-        say(tr("\nTes agents, maintenant :", "\nYour agents, now:"))
+        say("\nYour agents, now:")
         report(agents, check_agents(agents, expect_clarify=any(p.name.startswith("0001") for p in mine)))
         return 0
     if not args.yes:
-        if not confirm(tr("Mettre Hermes à jour maintenant ? Tes agents redémarrent (1 à 2 minutes).",
-                          "Update Hermes now? Your agents restart (1 to 2 minutes).")):
-            say(tr("Rien n'a été changé.", "Nothing was changed."))
+        if not confirm("Update Hermes now? Your agents restart (1 to 2 minutes)."):
+            say("Nothing was changed.")
             return 1
 
     runner = hermes.Runner()
-    say(ui.step(1, 3, tr("Mise à jour d'Hermes", "Updating Hermes")))
+    say(ui.step(1, 3, "Updating Hermes"))
     for patch in reversed(mine):   # its own update then starts from a clean copy
         runner.run(["git", "-C", str(hermes.hermes_checkout()), "apply", "--reverse", str(patch)], check=False)
     try:
         runner.run([hermes.hermes_bin(), "update", "--yes", "--no-gateway-restart"])
     except RuntimeError as exc:
-        say(ui.fail(tr("La mise à jour d'Hermes a échoué : je remets les correctifs sur la version actuelle.",
-                       "The Hermes update failed: putting the fixes back on the current version.")))
+        say(ui.fail("The Hermes update failed: putting the fixes back on the current version."))
         say(ui.note(str(exc)[-400:]))
         for patch in mine:
             runner.run(["git", "-C", str(hermes.hermes_checkout()), "apply", str(patch)], check=False)
@@ -254,24 +246,20 @@ def main(argv: List[str]) -> int:
     after = git("rev-parse", "--short=9", "HEAD").stdout.strip()
     say(ui.done(f"Hermes {before} → {after}."))
     if skipped:
-        say(ui.note(tr(f"Correctifs non remis (ils ne s'appliquent plus) : {', '.join(skipped)}.",
-                       f"Fixes not put back (they no longer apply): {', '.join(skipped)}.")))
+        say(ui.note(f"Fixes not put back (they no longer apply): {', '.join(skipped)}."))
 
-    say(ui.step(2, 3, tr("Redémarrage des agents", "Restarting the agents")))
+    say(ui.step(2, 3, "Restarting the agents"))
     restart(runner)
 
-    say(ui.step(3, 3, tr("Vérifications", "Checks")))
+    say(ui.step(3, 3, "Checks"))
     problems = check_agents(agents, expect_clarify=any(Path(p).name.startswith("0001") for p in applied))
     if report(agents, problems):
-        say(ui.finale(tr("Hermes est à jour, et tes agents aussi.", "Hermes is up to date, and so are your agents.")))
+        say(ui.finale("Hermes is up to date, and so are your agents."))
         return 0
-    say(ui.sad(tr("Quelque chose ne va pas après la mise à jour.", "Something is wrong after the update.")))
-    if args.yes or not confirm(tr(f"Revenir à la version précédente ({before}) ?",
-                                  f"Go back to the previous version ({before})?")):
-        say(tr(f"Pour revenir plus tard : git -C {hermes.hermes_checkout()} checkout {before}, puis relance cette commande "
-               "avec --check.",
-               f"To go back later: git -C {hermes.hermes_checkout()} checkout {before}, then run this command again "
-               "with --check."))
+    say(ui.sad("Something is wrong after the update."))
+    if args.yes or not confirm(f"Go back to the previous version ({before})?"):
+        say(f"To go back later: git -C {hermes.hermes_checkout()} checkout {before}, then run this command again "
+               "with --check.")
         return 1
     for patch in reversed([Path(p) for p in applied]):
         runner.run(["git", "-C", str(hermes.hermes_checkout()), "apply", "--reverse", str(patch)], check=False)
@@ -280,7 +268,6 @@ def main(argv: List[str]) -> int:
         runner.run(["git", "-C", str(hermes.hermes_checkout()), "apply", str(patch)], check=False)
     restart(runner)
     back = report(agents, check_agents(agents, expect_clarify=any(p.name.startswith("0001") for p in mine)))
-    say(ui.note(tr(f"Revenu à {before}.", f"Back to {before}.")
-                + ("" if back else tr(" Si un agent ne répond toujours pas : hermes doctor.",
-                                      " If an agent still isn't answering: hermes doctor."))))
+    say(ui.note(f"Back to {before}."
+                + ("" if back else " If an agent still isn't answering: hermes doctor.")))
     return 0 if back else 1

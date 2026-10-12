@@ -13,7 +13,7 @@ in place.
 - **The model** does not run there (no GPU): it is **in the cloud** (OpenRouter, Mistral, OpenAI, Anthropic), or on
   **a PC at home** reached through Tailscale (the installer then asks for its address on your tailnet).
 - **Notifications** go through Apple with a developer key, or through the relay of another BipAgents install (a
-  relative's: `famille ajouter`).
+  relative's: `family add`).
 - **Cost**: a few euros a month.
 
 ## 1. Pick the server

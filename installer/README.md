@@ -94,10 +94,10 @@ others' (one key per install).
 The administrator prepares each person's place, from **their own** account:
 
 ```bash
-bash ~/BipAgents/install.sh famille ajouter Lea
+bash ~/BipAgents/install.sh family add Lea
 ```
 
-On Linux it first gets her account ready (`lea`, or the one given with `--compte`), showing each `sudo` command
+On Linux it first gets her account ready (`lea`, or the one given with `--account`), showing each `sudo` command
 before running it: the account if it does not exist, its ID ranges for rootless containers (the agents' browser),
 and « linger », so her services run while she is logged out. `--dry-run` shows those commands and changes nothing.
 
@@ -105,6 +105,9 @@ Then it creates her relay key, reserves her block of ports, and offers to run he
 account, from your terminal: she types nothing, the questions show up on yours. Otherwise it prints the command for
 later. Last, the `tailscale serve` commands to run once her install is done. Restart your bridge so it knows the new
 key.
+
+The installer speaks English; the agents it creates speak the language you pick (asked, or `--agents-lang en|fr`),
+and those created later from the app follow the iPhone's.
 
 On macOS, create her account in System Settings; she pastes the printed line in **her** session. Services run while
 the account is logged in (automatic login on a Mac mini used as a server).

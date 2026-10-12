@@ -96,10 +96,10 @@ relaie celles des autres (une clé par installation).
 L'administrateur prépare la place de chacun, depuis **son** compte :
 
 ```bash
-bash ~/BipAgents/install.sh famille ajouter Léa
+bash ~/BipAgents/install.sh family add Léa
 ```
 
-Sous Linux, ça prépare d'abord son compte (`lea`, ou celui donné par `--compte`), en affichant chaque commande `sudo`
+Sous Linux, ça prépare d'abord son compte (`lea`, ou celui donné par `--account`), en affichant chaque commande `sudo`
 avant de la lancer : le compte s'il n'existe pas, ses plages d'identifiants pour les conteneurs sans droits admin (le
 navigateur des agents), et « linger », pour que ses services tournent quand elle n'est pas connectée. `--dry-run`
 montre ces commandes sans rien changer.
@@ -108,6 +108,9 @@ Ensuite ça crée sa clé de relais, réserve son bloc de ports, et propose de l
 **son** compte, depuis ton terminal : elle n'a rien à taper, les questions s'affichent chez toi. Sinon ça affiche la
 commande pour plus tard. Enfin, les commandes `tailscale serve` à lancer une fois son installation finie. Redémarre
 ton bridge, pour qu'il connaisse la nouvelle clé.
+
+L'installateur parle anglais ; les agents qu'il crée parlent la langue choisie (demandée, ou `--agents-lang en|fr`),
+et ceux créés ensuite depuis l'app suivent celle de l'iPhone.
 
 Sous macOS, crée son compte dans Réglages Système ; elle colle la ligne affichée dans **sa** session. Les services
 tournent tant que le compte est ouvert (ouverture de session automatique sur un Mac mini qui sert de serveur).
