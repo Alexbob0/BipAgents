@@ -661,7 +661,7 @@ struct MascotAvatar: View {
     private static var images: [String: UIImage] = [:]
 
     private static func image(_ appearance: AgentAppearance, mood: MascotMood, size: CGFloat, colorScheme: ColorScheme) -> UIImage? {
-        let key = "\(appearance.hashValue)|\(mood)|\(size)|\(colorScheme)"
+        let key = "\(Theme.style)|\(appearance.hashValue)|\(mood)|\(size)|\(colorScheme)"
         if let image = images[key] { return image }
         let side = size * 0.84
         let renderer = ImageRenderer(content: MascotView(appearance: appearance, mood: mood, animated: false)

@@ -114,16 +114,24 @@ struct AudioHoldButton: View {
         if case .recording = quick.status[agent.id] { true } else { false }
     }
 
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: min(Theme.controlRadius, height / 2), style: .continuous)
+    }
+
     var body: some View {
         Label(isRecording ? String(localized: "Relâche") : String(localized: "Audio"), systemImage: isRecording ? "waveform" : "mic.fill")
             .labelStyle(.compactPill)
             .font(Theme.body(16, weight: .heavy))
             .frame(maxWidth: .infinity, minHeight: height)
             .foregroundStyle(isRecording ? .white : Theme.ink)
-            .background(isRecording ? Theme.danger : Theme.card, in: .capsule)
+            .background(isRecording ? Theme.danger : Theme.card, in: shape)
+            .overlay {
+                // Same edge as the other secondary buttons in the Hermes style.
+                if Theme.hermes, !isRecording { shape.stroke(Theme.line, lineWidth: 1) }
+            }
             .scaleEffect(isRecording ? 1.04 : 1)
             .animation(.snappy(duration: 0.15), value: isRecording)
-            .contentShape(.capsule)
+            .contentShape(shape)
             .onTapGesture(perform: onTap) // short press; a hold past 0.3 s goes to the long press instead
             .onLongPressGesture(minimumDuration: 0.3, maximumDistance: .infinity) {
                 recordingStarted = true

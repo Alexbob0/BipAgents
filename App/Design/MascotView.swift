@@ -24,6 +24,16 @@ struct MascotView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if Theme.hermes {
+            PixelMascot(appearance: appearance)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+        } else {
+            bips
+        }
+    }
+
+    private var bips: some View {
         TimelineView(.animation(paused: !animated || reduceMotion)) { timeline in
             Canvas { ctx, size in
                 let t = animated && !reduceMotion ? timeline.date.timeIntervalSinceReferenceDate : 0

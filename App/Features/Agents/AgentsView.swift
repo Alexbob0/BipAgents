@@ -157,7 +157,7 @@ struct AgentCard: View {
                         }
                         .padding(.horizontal, 14)
                         .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-                        .background(Theme.card, in: .rect(cornerRadius: 16, style: .continuous))
+                        .background(Theme.hermes ? Theme.field : Theme.card, in: .rect(cornerRadius: 16, style: .continuous))
                     } else {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
@@ -178,7 +178,7 @@ struct AgentCard: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.card, in: .rect(cornerRadius: 18, style: .continuous))
+                    .background(Theme.hermes ? Theme.field : Theme.card, in: .rect(cornerRadius: 18, style: .continuous))
                     }
                 }
                 .buttonStyle(.plain)
@@ -200,7 +200,7 @@ struct AgentCard: View {
             .labelStyle(.compactPill)
         }
         .padding(compact ? 12 : 18)
-        .background(palette.tint, in: .rect(cornerRadius: 30, style: .continuous))
+        .agentCard(palette)
         .animation(.snappy, value: quickStatus)
     }
 }
@@ -400,4 +400,17 @@ struct EmptyAgentsView: View {
 #Preview {
     NavigationStack { AgentsView() }
         .environment(AgentStore.preview)
+}
+
+private extension View {
+    /// The Bips' agent cards are tinted with the agent's color; Hermes' are flat, with a hairline: the color stays on
+    /// the character.
+    @ViewBuilder
+    func agentCard(_ palette: AgentPalette) -> some View {
+        if Theme.hermes {
+            card(radius: 30)
+        } else {
+            background(palette.tint, in: .rect(cornerRadius: 30, style: .continuous))
+        }
+    }
 }

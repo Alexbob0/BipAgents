@@ -21,7 +21,8 @@ enum WidgetExport {
 
     private static var lastWritten: [Agent] = []
 
-    static func export(_ agents: [AgentProfile], latest: [UUID: HermesSession]) {
+    /// `force`: rewrite even if nothing listed changed (the style did, so the Bips' pictures).
+    static func export(_ agents: [AgentProfile], latest: [UUID: HermesSession], force: Bool = false) {
         guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppGroup.identifier)
         else { return }
         let rows = agents.map { agent in
@@ -31,8 +32,8 @@ enum WidgetExport {
                          preview: latest[agent.id]?.lastMessagePreview.map(ChatText.preview),
                          updatedAt: latest[agent.id]?.updatedAt)
         }
-        guard rows != lastWritten else { return }
-        let looksChanged = rows.map { [$0.id, String($0.main)] } != lastWritten.map { [$0.id, String($0.main)] }
+        guard force || rows != lastWritten else { return }
+        let looksChanged = force || rows.map { [$0.id, String($0.main)] } != lastWritten.map { [$0.id, String($0.main)] }
         lastWritten = rows
         if looksChanged { exportBips(agents, to: container.appending(path: "avatars", directoryHint: .isDirectory)) }
         guard let data = try? JSONEncoder().encode(rows) else { return }

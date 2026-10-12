@@ -41,6 +41,17 @@ struct InteractiveMascot: View {
     @State private var bubbleTask: Task<Void, Never>?
 
     var body: some View {
+        if Theme.hermes {
+            // The Hermes style's characters stay still and silent: no games, no babble.
+            MascotView(appearance: appearance, mood: baseMood)
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        } else {
+            playful
+        }
+    }
+
+    private var playful: some View {
         MascotView(appearance: appearance, mood: reactionMood ?? baseMood, speakingLevel: speakingLevel, gaze: gaze, blush: blush)
             .frame(width: size, height: size)
             .scaleEffect(x: scale.width, y: scale.height, anchor: .bottom)

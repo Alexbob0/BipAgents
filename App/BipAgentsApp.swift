@@ -9,10 +9,11 @@ struct BipAgentsApp: App {
     @State private var inbox = InboxStore()
     @State private var quickVoice = QuickVoiceCenter()
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppStyle.key) private var style: AppStyle = .bips
 
     var body: some Scene {
         WindowGroup {
-            Group {
+            StyledRoot {
                 // `-demo -screen conversation|call|agent|routine` opens straight on that screen (design review, screenshots).
                 if let screen = UserDefaults.standard.string(forKey: "screen"), !screen.isEmpty, let agent = agents.agents.first {
                     NavigationStack {
@@ -31,8 +32,12 @@ struct BipAgentsApp: App {
             .environment(router)
             .environment(inbox)
             .environment(quickVoice)
-            .tint(Theme.ink)
-            .fontDesign(.rounded)
+            .onChange(of: style) { _, style in
+                // The pictures shown outside the app (notifications, widgets) follow the style too.
+                Theme.style = style
+                AgentAvatars.export(agents.agents)
+                WidgetExport.export(agents.agents, latest: agents.latestSession, force: true)
+            }
             .onChange(of: agents.agents, initial: true) { _, profiles in
                 AgentAvatars.export(profiles)
                 WidgetExport.export(profiles, latest: agents.latestSession)
