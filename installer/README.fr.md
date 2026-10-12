@@ -85,35 +85,49 @@ Hermes et ces données, après confirmation. `--dry-run` montre ce qui serait re
 
 ## Plusieurs personnes sur une machine
 
-Chacun lance l'installateur dans **son propre compte** : ses agents, sa mémoire, ses fichiers et ses sessions de
-navigateur, séparés par le système. Les voix et le modèle sont partagés. Chaque installation prend un bloc de dix
-ports (8640 pour la première, puis 9200, 9210…). Les voix aussi : Pocket, et Kyutai s'il tourne sur la machine
-(l'installateur ne l'installe pas ; `--kyutai-url` pour un Kyutai sur une autre machine).
+**Une installation par personne, chacune dans son propre compte.** Chacun a son bridge, son Hermes, ses agents, sa
+mémoire, ses fichiers et ses sessions de navigateur, séparés par le système : les agents de l'un ne peuvent pas lire
+ceux de l'autre. Toutes les installations tournent en même temps sur la même machine, chacune sur son bloc de dix
+ports (8640 pour la première, puis 9200, 9210…).
 
-Les notifications passent par Apple avec la clé de l'administrateur, qui reste dans son installation : son bridge
-relaie celles des autres (une clé par installation).
+Ce qui est partagé : le modèle, les voix (Pocket, et Kyutai s'il tourne sur la machine ; l'installateur n'installe
+pas Kyutai, `--kyutai-url` en désigne un sur une autre machine) et les notifications : elles passent par Apple avec la
+clé de l'administrateur, qui ne quitte jamais son installation ; son bridge relaie celles des autres (une clé de
+relais par installation).
 
-L'administrateur prépare la place de chacun, depuis **son** compte :
+### Qui lance quoi, depuis quel compte
 
-```bash
-bash ~/BipAgents/install.sh family add Léa
-```
+| | Qui | Quel compte | Quoi |
+|---|---|---|---|
+| Une fois | L'administrateur | Le sien (avec `sudo`) | `bash ~/BipAgents/install.sh` — sa propre installation, comme d'habitude |
+| Pour chaque personne | L'administrateur | **Le sien** (avec `sudo`), jamais celui de la personne | `bash ~/BipAgents/install.sh family add Léa` |
+| La personne | — | — | Rien sur le serveur : elle installe l'app et scanne son QR code |
 
-Sous Linux, ça prépare d'abord son compte (`lea`, ou celui donné par `--account`), en affichant chaque commande `sudo`
-avant de la lancer : le compte s'il n'existe pas, ses plages d'identifiants pour les conteneurs sans droits admin (le
-navigateur des agents), et « linger », pour que ses services tournent quand elle n'est pas connectée. `--dry-run`
-montre ces commandes sans rien changer.
+### `family add`, étape par étape (Linux)
 
-Ensuite ça crée sa clé de relais, réserve son bloc de ports, et propose de lancer son installation tout de suite dans
-**son** compte, depuis ton terminal : elle n'a rien à taper, les questions s'affichent chez toi. Sinon ça affiche la
-commande pour plus tard. Enfin, les commandes `tailscale serve` à lancer une fois son installation finie. Redémarre
-ton bridge, pour qu'il connaisse la nouvelle clé.
+À lancer **dans le terminal de l'administrateur**. La commande affiche chaque étape `[n/4]` :
+
+1. **Son compte Linux** (`lea`, ou celui donné par `--account`) : créé s'il n'existe pas, avec ses plages
+   d'identifiants pour les conteneurs sans droits admin (le navigateur des agents) et « linger » (ses services
+   continuent quand elle n'est pas connectée). Chaque commande `sudo` est affichée et confirmée avant ; rien n'est
+   demandé si le compte est déjà prêt. `--dry-run` ne fait qu'afficher ces commandes.
+2. **Redémarre ton bridge**, pour qu'il connaisse sa clé de relais : la commande propose de le faire (`y`), ou
+   affiche la commande à lancer dans un autre terminal de **ton** compte, avant l'étape 3 — en général
+   `systemctl --user restart bipagents-bridge`.
+3. **Son installation, dans son compte** : pas besoin de te connecter à son compte (pas de `ssh lea@…`). Réponds
+   `y` et elle s'y lance par `sudo`, ses questions s'affichant **dans ton terminal** (le modèle, ses premiers agents, le navigateur visible). Elle n'a rien à taper. Réponds `N` pour
+   obtenir la commande et la lancer plus tard.
+4. **Publier ses ports sur le tailnet** : les commandes `tailscale serve` affichées, à lancer depuis ton compte une
+   fois son installation finie.
+
+Son installation se termine par un **QR code** : elle le scanne dans l'app BipAgents sur son iPhone (une fois son
+iPhone dans ton tailnet).
 
 L'installateur parle anglais. Les agents répondent dans la langue qu'on leur écrit ; celle dans laquelle ils
 écrivent d'eux-mêmes (routines, comptes rendus) se règle par agent dans l'app, celle de l'iPhone par défaut.
 
-Sous macOS, crée son compte dans Réglages Système ; elle colle la ligne affichée dans **sa** session. Les services
-tournent tant que le compte est ouvert (ouverture de session automatique sur un Mac mini qui sert de serveur).
+Sous macOS, crée son compte dans Réglages Système ; elle colle la ligne affichée dans **sa propre** session. Les
+services tournent tant que le compte est ouvert (ouverture de session automatique sur un Mac mini qui sert de serveur).
 
 ## Fichiers
 

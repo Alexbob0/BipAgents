@@ -83,34 +83,47 @@ after a confirmation. `--dry-run` shows what would be removed.
 
 ## Several people on one machine
 
-Each person runs the installer in **their own account**: their own agents, memory, files and browser sessions,
-separated by the system. The voices and the model are shared. Each install takes a block of ten ports (8640 for the
-first, then 9200, 9210…). The voices too: Pocket, and Kyutai when it runs on the machine (the installer does not
-install it; `--kyutai-url` for a Kyutai on another machine).
+**One install per person, each in their own account.** Each person gets their own bridge, Hermes, agents, memory,
+files and browser sessions, separated by the system: one person's agents cannot read the other's. All installs run
+at the same time on the same machine, each on its own block of ten ports (8640 for the first, then 9200, 9210…).
 
-Notifications go through Apple with the administrator's key, which stays in their install: their bridge relays the
-others' (one key per install).
+What they share: the model, the voices (Pocket, and Kyutai when it runs on the machine; the installer does not
+install Kyutai, `--kyutai-url` points to one on another machine) and the notifications: they go through Apple with
+the administrator's key, which never leaves the administrator's install; their bridge relays the others' (one relay
+key per install).
 
-The administrator prepares each person's place, from **their own** account:
+### Who runs what, from which account
 
-```bash
-bash ~/BipAgents/install.sh family add Lea
-```
+| | Who | Which account | What |
+|---|---|---|---|
+| Once | The administrator | Their own (with `sudo`) | `bash ~/BipAgents/install.sh` — their own install, as usual |
+| For each person | The administrator | **Their own** (with `sudo`), never the person's | `bash ~/BipAgents/install.sh family add Lea` |
+| The person | — | — | Nothing on the server: they install the app and scan their QR code |
 
-On Linux it first gets her account ready (`lea`, or the one given with `--account`), showing each `sudo` command
-before running it: the account if it does not exist, its ID ranges for rootless containers (the agents' browser),
-and « linger », so her services run while she is logged out. `--dry-run` shows those commands and changes nothing.
+### `family add`, step by step (Linux)
 
-Then it creates her relay key, reserves her block of ports, and offers to run her install right away in **her**
-account, from your terminal: she types nothing, the questions show up on yours. Otherwise it prints the command for
-later. Last, the `tailscale serve` commands to run once her install is done. Restart your bridge so it knows the new
-key.
+Run it **in the administrator's terminal**. It shows each step as `[n/4]`:
+
+1. **Their Linux account** (`lea`, or the one given with `--account`): created if it does not exist, given ID ranges
+   for rootless containers (the agents' browser) and « linger » (their services keep running while they are logged
+   out). Each `sudo` command is shown and confirmed first; nothing is asked when the account is already ready.
+   `--dry-run` only shows these commands.
+2. **Restart your bridge**, so it knows their relay key: it offers to do it (`y`), or prints the command to run in
+   another terminal of **your** account, before step 3 — usually `systemctl --user restart bipagents-bridge`.
+3. **Their install, in their account**: no need to log into their account (no `ssh lea@…`). Answer `y` and it runs
+   there through `sudo`, its questions showing up **in your terminal** (the model, their first agents, the visible browser). They type nothing. Answer `N` to get the
+   command and run it later.
+4. **Publish their ports on the tailnet**: the `tailscale serve` commands it prints, run from your account once
+   their install is done.
+
+Their install ends with a **QR code**: they scan it in the BipAgents app on their iPhone (once their iPhone is on
+your tailnet).
 
 The installer speaks English. Agents answer in the language they are written to; the one they write first in
 (routines, reports) is set per agent in the app, the iPhone's by default.
 
-On macOS, create her account in System Settings; she pastes the printed line in **her** session. Services run while
-the account is logged in (automatic login on a Mac mini used as a server).
+On macOS, create their account in System Settings; they paste the printed line in **their own** session. Services
+run while the account is logged in (automatic login on a Mac mini used as a server).
 
 ## Files
 

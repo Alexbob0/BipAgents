@@ -475,6 +475,17 @@ def test_family_member_gets_a_relay_key_and_a_block_of_ports(tmp_path):
     assert set(parse_config(data).relay.clients.values()) == {"lea", "chloe"}
 
 
+
+def test_family_add_restarts_the_bridge_by_its_own_name(tmp_path, monkeypatch):
+    from bipinstall import family
+    monkeypatch.setattr(family.sys, "platform", "linux")
+    units = tmp_path / ".config" / "systemd" / "user"
+    units.mkdir(parents=True)
+    assert family.bridge_restart(tmp_path) == ["systemctl", "--user", "restart", "bipagents-bridge"]
+    (units / "hermes-pocket.service").write_text("ExecStart=/x/python pocket_server.py\n")
+    (units / "hermes-ios-bridge.service").write_text("ExecStart=/x/python -m bipbridge serve\n")
+    assert family.bridge_restart(tmp_path) == ["systemctl", "--user", "restart", "hermes-ios-bridge"]
+
 # -- a family member's account -----------------------------------------------------------------------------------
 
 from bipinstall import account  # noqa: E402
