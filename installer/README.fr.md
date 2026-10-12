@@ -26,7 +26,7 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
    |---|---|---|---|---|
    | Léger (par défaut) | Mac mini 16 Go | ailleurs (réseau ou API) | Pocket (processeur) | à la demande, un à la fois |
    | Local | Mac 24-32 Go, PC avec GPU | sur cette machine | Pocket | à la demande |
-   | Costaud | Serveur Linux ≥ 64 Go | ailleurs | Pocket + Kyutai (GPU Nvidia) | permanent, un par personne |
+   | Costaud | Serveur Linux ≥ 64 Go | ailleurs | Pocket + Kyutai (GPU, s'il tourne déjà) | permanent, un par personne |
 
    Sur un Mac mini 16 Go avec le modèle ailleurs : environ 1 Go par personne plus les voix, une famille y tient.
 4. **Installe Hermes** avec son installateur officiel, dans la version testée avec BipAgents (`517b5e10f`), y applique
@@ -87,7 +87,8 @@ Hermes et ces données, après confirmation. `--dry-run` montre ce qui serait re
 
 Chacun lance l'installateur dans **son propre compte** : ses agents, sa mémoire, ses fichiers et ses sessions de
 navigateur, séparés par le système. Les voix et le modèle sont partagés. Chaque installation prend un bloc de dix
-ports (8640 pour la première, puis 9200, 9210…).
+ports (8640 pour la première, puis 9200, 9210…). Les voix aussi : Pocket, et Kyutai s'il tourne sur la machine
+(l'installateur ne l'installe pas ; `--kyutai-url` pour un Kyutai sur une autre machine).
 
 Les notifications passent par Apple avec la clé de l'administrateur, qui reste dans son installation : son bridge
 relaie celles des autres (une clé par installation).
