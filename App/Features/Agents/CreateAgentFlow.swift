@@ -177,7 +177,9 @@ struct CreateAgentFlow: View {
             defer { isCreating = false }
             do {
                 let bridge = BridgeClient(url: install.bridgeURL, key: install.bridgeKey)
-                let agent = try await bridge.createAgent(name: name, kind: kind.custom ? nil : kind.id, custom: custom)
+                // An « Autre » agent speaks the language picked for it; a ready-made one, the iPhone's.
+                let agent = try await bridge.createAgent(name: name, kind: kind.custom ? nil : kind.id, custom: custom,
+                                                         language: kind.custom ? language : .device)
                 try store.addDiscovered(agent, bridgeURL: install.bridgeURL, bridgeKey: install.bridgeKey,
                                         lanURL: install.lanURL, lanFingerprint: install.lanFingerprint, category: category)
                 onCreated()

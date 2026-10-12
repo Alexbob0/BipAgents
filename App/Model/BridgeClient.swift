@@ -96,9 +96,12 @@ struct BridgeClient: Sendable {
         var custom: Bool
     }
 
-    /// `GET /v1/agent-kinds`: nil when this bridge cannot create agents (set up by hand, or an older bridge).
+    /// `GET /v1/agent-kinds`: nil when this bridge cannot create agents (set up by hand, or an older bridge). Labels
+    /// and descriptions in the iPhone's language.
     func agentKinds() async throws -> [AgentKind]? {
-        let json = try JSONSerialization.jsonObject(with: try await send(request("v1/agent-kinds"))) as? [String: Any]
+        var request = request("v1/agent-kinds")
+        request.url = request.url?.appending(queryItems: [URLQueryItem(name: "lang", value: AgentLanguage.device.rawValue)])
+        let json = try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Any]
         guard json?["can_create"] as? Bool == true else { return nil }
         return (json?["kinds"] as? [[String: Any]] ?? []).compactMap { row in
             guard let id = row["id"] as? String else { return nil }
@@ -116,11 +119,12 @@ struct BridgeClient: Sendable {
         var category: String
     }
 
-    /// `POST /v1/agents`: a new agent on this install (the gateway takes up to half a minute to serve it).
-    func createAgent(name: String, kind: String?, custom: CustomAgent?) async throws -> InstallAgent {
+    /// `POST /v1/agents`: a new agent on this install (the gateway takes up to half a minute to serve it). `language`:
+    /// the one its personality is written in (the bridge has French and English; others get English).
+    func createAgent(name: String, kind: String?, custom: CustomAgent?, language: AgentLanguage) async throws -> InstallAgent {
         var request = request("v1/agents", method: "POST")
         request.timeoutInterval = 90
-        var body: [String: Any] = ["name": name]
+        var body: [String: Any] = ["name": name, "lang": language.rawValue]
         if let kind { body["kind"] = kind }
         if let custom {
             body["custom"] = ["role": custom.role, "tone": custom.tone, "rules": custom.rules,
