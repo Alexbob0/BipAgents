@@ -54,9 +54,17 @@ def session_env(uid: int, run_dir: Path = Path("/run/user")) -> Dict[str, str]:
     """What `systemctl --user` needs to reach the account's own systemd, when the shell came from `sudo -iu`
     (which sets neither). Empty if that systemd is not running (no linger, no session)."""
     folder = run_dir / str(uid)
-    if not (folder / "bus").exists():
+    try:
+        if not (folder / "bus").exists():
+            return {}
+    except PermissionError:   # another account's runtime folder: only its owner may look inside
         return {}
     return {"XDG_RUNTIME_DIR": str(folder), "DBUS_SESSION_BUS_ADDRESS": f"unix:path={folder / 'bus'}"}
+
+
+def user_manager_running(uid: int, run: Callable[[List[str]], int] = lambda c: subprocess.run(c).returncode) -> bool:
+    """Whether the account's own systemd runs, asked from any account (its runtime folder is private to it)."""
+    return run(["systemctl", "is-active", "--quiet", f"user@{uid}.service"]) == 0
 
 
 def prepare_commands(login: str, *, account_exists: bool, subuid: str, subgid: str, linger: bool) -> List[List[str]]:
@@ -109,7 +117,7 @@ def prepare(login: str, confirm: Callable[[str], bool], say: Callable[[str], Non
     if not dry and linger_enabled(login):
         # Linger starts the account's systemd: give it a moment, the install needs it.
         for _ in range(20):
-            if session_env(uid_of(login)):
+            if user_manager_running(uid_of(login)):
                 break
             time.sleep(0.25)
     return True

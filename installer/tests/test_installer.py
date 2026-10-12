@@ -490,3 +490,18 @@ def test_an_account_without_its_own_systemd_stops_the_install():
     assert not account.ensure_user_services(said.append, login="lea", check=lambda: False)
     assert any("enable-linger lea" in line for line in said)
     assert account.ensure_user_services(said.append, login="lea", check=lambda: True)
+
+
+def test_another_accounts_runtime_folder_is_private(tmp_path):
+    """The administrator cannot look inside a member's /run/user/<uid>: no crash, the system manager is asked."""
+    folder = tmp_path / "1002"
+    folder.mkdir()
+    (folder / "bus").touch()
+    folder.chmod(0o000)
+    try:
+        assert account.session_env(1002, tmp_path) == {}
+    finally:
+        folder.chmod(0o700)
+    asked = []
+    assert account.user_manager_running(1002, run=lambda c: asked.append(c) or 0)
+    assert asked == [["systemctl", "is-active", "--quiet", "user@1002.service"]]
