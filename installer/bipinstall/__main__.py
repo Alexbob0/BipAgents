@@ -215,6 +215,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     machine = detect()
     say(ui.banner(os.environ.get("USER", ""), machine.summary))
+    if machine.system == "linux" and not args.dry_run:
+        from .account import ensure_user_services
+        if not ensure_user_services(say):
+            return 1
     if machine.cloud:
         say(ui.note(f"Serveur loué chez {machine.cloud} : pas de porte sur un réseau local (elle serait sur Internet),\n"
                     "    tout passe par Tailscale. Ton hébergeur a accès au disque : chiffre ce qui compte, et garde le "

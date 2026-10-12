@@ -1,18 +1,22 @@
 """``bipinstall famille ajouter <nom>``, run by the administrator in their own account: prepares a family member's
-install on the same server. It gives them a relay key on the administrator's bridge (their notifications go out
-through it, the APNs key never leaves it), reserves their block of ports, and prints the one line they paste in their
-own session, then the `tailscale serve` commands to run once their install is done. Nothing in their account is
-touched: they install for themselves, without admin rights."""
+install on the same server. On Linux it first gets their account ready (created if needed, ID ranges for rootless
+podman, linger: `account.py`, each sudo command shown and confirmed). It gives them a relay key on the
+administrator's bridge (their notifications go out through it, the APNs key never leaves it), reserves their block of
+ports, offers to run their install in their account right away (or prints the line to paste in their session), then
+the `tailscale serve` commands to run once it is done. Their install itself runs as them, without admin rights."""
 from __future__ import annotations
 
 import json
 import os
 import re
 import secrets
+import shlex
+import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from . import ui
+from . import account, ui
 from .ports import FIRST_BLOCK, Ports, candidate_bases, port_free
 
 INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --"
@@ -90,23 +94,58 @@ def add(name: str, config: Optional[str] = None, is_free=port_free) -> Dict[str,
             "clients_file": str(clients)}
 
 
+def confirm(question: str) -> bool:
+    try:
+        return input(f"{ui.question(question)} [o/N] : ").strip().lower() in ("o", "oui", "y", "yes")
+    except EOFError:
+        return False
+
+
 def main(argv: List[str]) -> int:
     import argparse
     parser = argparse.ArgumentParser(prog="bipinstall famille", description="Prepare a family member's install")
     parser.add_argument("action", choices=["ajouter"])
     parser.add_argument("name", help="their first name")
+    parser.add_argument("--compte", help="their Linux account (default: their first name, lower case, no accents)")
     parser.add_argument("--config", help="your bridge's config (default: found by itself)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="only show the commands that would prepare their account, change nothing")
     args = parser.parse_args(argv)
+    linux = sys.platform.startswith("linux")
+    login = args.compte or slug(args.name)
+    total = 4 if linux else 3
+    print(ui.bip("happy", f"On prépare la place de {args.name}."))
+    if linux:
+        print(ui.step(1, total, f"Son compte Linux : {login}"))
+        if not account.prepare(login, confirm, print, dry=args.dry_run):
+            print(ui.fail("Son compte n'est pas prêt : rien d'autre n'a été fait."))
+            return 1
+        if args.dry_run:
+            return 0
+        print(ui.done(f"Le compte {login} est prêt (conteneurs sans droits admin, services qui restent lancés)."))
     result = add(args.name, args.config)
     ports: Ports = result["ports"]   # type: ignore[assignment]
-    print(ui.bip("happy", f"On prépare la place de {args.name}."))
     print(ui.done(f"Clé de relais créée pour {args.name} (dans {result['clients_file']})."))
     print(ui.done(f"Ports réservés : {ports.base}–{ports.base + 9}."))
-    print(ui.step(1, 3, "Redémarre ton bridge, pour qu'il connaisse cette clé"))
-    print(ui.step(2, 3, f"{args.name} colle cette ligne dans un terminal de SA session (pas la tienne)"))
-    print(f"\n  {INSTALL_LINE} --relay-url {result['relay_url']} --relay-key {result['key']} --ports {ports.base}\n")
-    print(ui.note("La clé ne sert qu'à envoyer ses notifications par ton bridge. Transmets-la-lui en direct, pas par e-mail."))
-    print(ui.step(3, 3, "Quand son installation est finie, publie ses ports sur le tailnet"))
+    first = 2 if linux else 1
+    print(ui.step(first, total, "Redémarre ton bridge, pour qu'il connaisse cette clé"))
+    line = f"{INSTALL_LINE} --relay-url {result['relay_url']} --relay-key {result['key']} --ports {ports.base}"
+    print(ui.step(first + 1, total, f"L'installation de {args.name}, dans son compte"))
+    if linux:
+        command = account.install_command(login, account.uid_of(login), line)
+        if confirm(f"Je la lance maintenant dans le compte {login} (elle te posera les questions ici) ?"):
+            if subprocess.run(command).returncode != 0:
+                print(ui.fail("Son installation s'est arrêtée : relance la commande ci-dessous après avoir corrigé."))
+                print(f"\n  {shlex.join(command)}\n")
+                return 1
+        else:
+            print("Pour la lancer plus tard depuis ton terminal :")
+            print(f"\n  {shlex.join(command)}\n")
+    else:
+        print(f"{args.name} colle cette ligne dans un terminal de SA session (pas la tienne) :")
+        print(f"\n  {line}\n")
+    print(ui.note("La clé ne sert qu'à envoyer ses notifications par ton bridge. Ne l'envoie pas par e-mail."))
+    print(ui.step(total, total, "Quand son installation est finie, publie ses ports sur le tailnet"))
     for port in ports.tailnet:
         print(f"  sudo tailscale serve --bg --https={port} http://127.0.0.1:{port}")
     print(ui.note("Le dernier ne sert que si son bureau des agents est installé."))

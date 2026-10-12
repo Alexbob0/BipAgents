@@ -96,13 +96,17 @@ The administrator prepares each person's place, from **their own** account:
 bash ~/BipAgents/install.sh famille ajouter Lea
 ```
 
-It creates Lea's relay key, reserves her block of ports, and prints the line she pastes in **her** session (relay
-address, key and ports included), then the `tailscale serve` commands to run once her install is done. Restart your
-bridge afterwards so it knows the new key.
+On Linux it first gets her account ready (`lea`, or the one given with `--compte`), showing each `sudo` command
+before running it: the account if it does not exist, its ID ranges for rootless containers (the agents' browser),
+and « linger », so her services run while she is logged out. `--dry-run` shows those commands and changes nothing.
 
-On Linux, for the services of an account to run while that person is logged out, the administrator enables it once:
-`sudo loginctl enable-linger <user>`. On macOS, services run while the account is logged in (automatic login on a
-Mac mini used as a server).
+Then it creates her relay key, reserves her block of ports, and offers to run her install right away in **her**
+account, from your terminal: she types nothing, the questions show up on yours. Otherwise it prints the command for
+later. Last, the `tailscale serve` commands to run once her install is done. Restart your bridge so it knows the new
+key.
+
+On macOS, create her account in System Settings; she pastes the printed line in **her** session. Services run while
+the account is logged in (automatic login on a Mac mini used as a server).
 
 ## Files
 
