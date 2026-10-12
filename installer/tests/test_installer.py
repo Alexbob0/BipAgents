@@ -420,3 +420,52 @@ def test_family_member_gets_a_relay_key_and_a_block_of_ports(tmp_path):
     data = tomllib.loads(config.read_text())
     data.update({"bridge_key": "x" * 40, "pocket": {"url": "http://p"}})
     assert set(parse_config(data).relay.clients.values()) == {"lea", "chloe"}
+
+
+# -- a family member's account -----------------------------------------------------------------------------------
+
+from bipinstall import account  # noqa: E402
+
+SUBUID = "admin:100000:65536\nlea:165536:65536\n"
+
+
+def test_next_subid_range_follows_every_given_range():
+    assert account.next_subid_start(SUBUID, "admin:100000:65536\n") == 231072
+    assert account.next_subid_start("", "") == account.SUBID_FIRST
+
+
+def test_a_missing_account_is_created_first_and_alone():
+    commands = account.prepare_commands("marc", account_exists=False, subuid=SUBUID, subgid=SUBUID, linger=False)
+    assert commands == [["sudo", "useradd", "--create-home", "--shell", "/bin/bash", "marc"]]
+
+
+def test_an_existing_account_gets_only_what_it_lacks():
+    commands = account.prepare_commands("marc", account_exists=True, subuid=SUBUID, subgid=SUBUID + "marc:231072:65536\n",
+                                        linger=False)
+    assert commands == [["sudo", "usermod", "--add-subuids", "296608-362143", "marc"],
+                        ["sudo", "loginctl", "enable-linger", "marc"]]
+    assert account.prepare_commands("lea", account_exists=True, subuid=SUBUID, subgid=SUBUID, linger=True) == []
+
+
+def test_linger_and_session_env(tmp_path):
+    (tmp_path / "linger").mkdir()
+    (tmp_path / "linger" / "lea").touch()
+    assert account.linger_enabled("lea", tmp_path / "linger") and not account.linger_enabled("marc", tmp_path / "linger")
+    assert account.session_env(1001, tmp_path) == {}
+    (tmp_path / "1001").mkdir()
+    (tmp_path / "1001" / "bus").touch()
+    assert account.session_env(1001, tmp_path)["DBUS_SESSION_BUS_ADDRESS"] == f"unix:path={tmp_path}/1001/bus"
+
+
+def test_install_runs_in_their_account_with_their_systemd():
+    command = account.install_command("lea", 1001, "curl -fsSL https://x/install.sh | bash -s -- --ports 8650")
+    assert command[:3] == ["sudo", "-iu", "lea"]
+    assert "XDG_RUNTIME_DIR=/run/user/1001" in command
+    assert command[-1].endswith("--ports 8650")
+
+
+def test_an_account_without_its_own_systemd_stops_the_install():
+    said = []
+    assert not account.ensure_user_services(said.append, login="lea", check=lambda: False)
+    assert any("enable-linger lea" in line for line in said)
+    assert account.ensure_user_services(said.append, login="lea", check=lambda: True)
