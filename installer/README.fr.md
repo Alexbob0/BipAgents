@@ -101,11 +101,11 @@ relais par installation).
 |---|---|---|---|
 | Une fois | L'administrateur | Le sien (avec `sudo`) | `bash ~/BipAgents/install.sh` — sa propre installation, comme d'habitude |
 | Pour chaque personne | L'administrateur | **Le sien** (avec `sudo`), jamais celui de la personne | `bash ~/BipAgents/install.sh family add Léa` |
-| La personne | — | — | Rien sur le serveur : elle installe l'app et scanne son QR code |
+| La personne | — | — | Rien sur le serveur : Tailscale dans ton tailnet, l'app, son QR code |
 
 ### `family add`, étape par étape (Linux)
 
-À lancer **dans le terminal de l'administrateur**. La commande affiche chaque étape `[n/4]` :
+À lancer **dans le terminal de l'administrateur**. La commande affiche chaque étape `[n/5]` :
 
 1. **Son compte Linux** (`lea`, ou celui donné par `--account`) : créé s'il n'existe pas, avec ses plages
    d'identifiants pour les conteneurs sans droits admin (le navigateur des agents) et « linger » (ses services
@@ -115,13 +115,22 @@ relais par installation).
    affiche la commande à lancer dans un autre terminal de **ton** compte, avant l'étape 3 — en général
    `systemctl --user restart bipagents-bridge`.
 3. **Son installation, dans son compte** : pas besoin de te connecter à son compte (pas de `ssh lea@…`). Réponds
-   `y` et elle s'y lance par `sudo`, ses questions s'affichant **dans ton terminal** (le modèle, ses premiers agents, le navigateur visible). Elle n'a rien à taper. Réponds `N` pour
-   obtenir la commande et la lancer plus tard.
-4. **Publier ses ports sur le tailnet** : les commandes `tailscale serve` affichées, à lancer depuis ton compte une
-   fois son installation finie.
+   `y` et elle s'y lance par `sudo`, ses questions s'affichant **dans ton terminal** (le modèle, ses premiers agents,
+   le navigateur visible). Elle n'a rien à taper. Elle se termine par son **QR code**. Réponds `N` pour obtenir la
+   commande et la lancer plus tard.
+4. **Publier ses ports sur le tailnet** : la commande propose de lancer les `sudo tailscale serve` (`y`), ou les
+   affiche.
+5. **Son iPhone, dans TON tailnet** : celui où est le serveur. Un compte Tailscale à elle crée un tailnet à elle, où
+   l'app ne trouve pas le serveur. Donc :
+   1. invite-la dans la [console Tailscale](https://login.tailscale.com/admin/users) › Invite users (son e-mail) ;
+   2. sur son iPhone, elle accepte l'invitation, puis dans l'app Tailscale : icône de profil › Add account › connexion
+      avec l'e-mail invité › choisir ton tailnet ;
+   3. une fois le serveur listé dans l'app Tailscale : l'app BipAgents (TestFlight ou App Store) › « + » › Scanner le
+      QR code.
 
-Son installation se termine par un **QR code** : elle le scanne dans l'app BipAgents sur son iPhone (une fois son
-iPhone dans ton tailnet).
+   Plus simple, mais son iPhone devient alors un de tes appareils : connecter Tailscale avec ton propre compte. Le QR
+   code à nouveau :
+   `sudo -iu lea bash -c 'cd ~/BipAgents/bridge && .venv/bin/python -m bipbridge qr --config ~/.config/bipagents/bridge.toml'`.
 
 L'installateur parle anglais. Les agents répondent dans la langue qu'on leur écrit ; celle dans laquelle ils
 écrivent d'eux-mêmes (routines, comptes rendus) se règle par agent dans l'app, celle de l'iPhone par défaut.
