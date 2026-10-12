@@ -36,13 +36,15 @@ class CustomAgent(BaseModel):
     role: str = Field(..., min_length=3, max_length=600)
     tone: str = Field(default="", max_length=200)
     rules: str = Field(default="", max_length=600)
-    language: str = Field(default="français", max_length=40)
+    language: str = Field(default="", max_length=40)   # the language it answers in; empty: the request's
     category: str = Field(default="tech")
 
 
 class NewAgent(BaseModel):
     name: str = Field(..., min_length=1, max_length=40)
     kind: Optional[str] = None
+    # The app's language (« en », « fr-FR »…): its personality is written in it. Older apps send none: French.
+    lang: Optional[str] = None
     custom: Optional[CustomAgent] = None
 
 
@@ -101,13 +103,14 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     if body.custom:
         if body.custom.category not in souls.CATEGORIES:
             raise ValueError("unknown category")
-        soul = souls.custom_soul(name, body.custom.role, body.custom.tone, body.custom.rules, body.custom.language)
+        soul = souls.custom_soul(name, body.custom.role, body.custom.tone, body.custom.rules, body.custom.language,
+                                 lang=body.lang or "fr")
         description = body.custom.role.strip()[:120]
     elif body.kind:
-        found = souls.template(body.kind)
+        found = souls.template(body.kind, body.lang or "fr")
         if not found or not found["soul"]:
             raise ValueError("unknown kind")
-        soul, description = souls.soul_for(name, body.kind), found["description"]
+        soul, description = souls.soul_for(name, body.kind, body.lang or "fr"), found["description"]
     else:
         raise ValueError("a kind or a custom description is needed")
     profile = souls.profile_name(name, config.agents)
@@ -329,11 +332,11 @@ def agents_admin_router() -> APIRouter:
     lock = asyncio.Lock()   # one creation at a time (profile names, the config file)
 
     @router.get("/agent-kinds")
-    async def kinds(request: Request) -> Dict[str, Any]:
+    async def kinds(request: Request, lang: Optional[str] = None) -> Dict[str, Any]:
         config = request.app.state.services.config
         return {"can_create": config.hermes.enabled,
                 "kinds": [{"id": t["category"], "label": t["label"], "description": t["description"],
-                           "custom": not t["soul"]} for t in souls.templates()]}
+                           "custom": not t["soul"]} for t in souls.templates(lang or "fr")]}
 
     @router.post("/agents", status_code=201)
     async def new_agent(body: NewAgent, request: Request) -> Dict[str, Any]:

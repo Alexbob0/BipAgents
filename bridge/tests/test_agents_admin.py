@@ -63,6 +63,38 @@ def test_create_custom_agent(managed):
     assert reread.agent("fougere").hermes_key == agent.hermes_key   # survives a restart
 
 
+def test_an_agent_created_in_english_thinks_in_english(managed):
+    """The app sends its language: a ready-made kind's personality is written in it (French and English exist;
+    another language gets the English one), and so is an « Autre » agent's."""
+    from bipbridge.agents_admin import NewAgent, create_agent
+
+    config, _, tmp = managed
+
+    async def run(args, env):
+        return ""
+
+    async def go(body):
+        async with httpx.AsyncClient(transport=fake_gateway([])) as http:
+            return await create_agent(config, body, http, run=run)
+
+    asyncio.run(go(NewAgent(name="Max", kind="finance", lang="en")))
+    assert (tmp / ".hermes" / "profiles" / "max" / "SOUL.md").read_text().startswith("You are Max, your user's money agent")
+    asyncio.run(go(NewAgent(name="Hans", kind="daily", lang="de")))
+    assert (tmp / ".hermes" / "profiles" / "hans" / "SOUL.md").read_text().startswith("You are Hans")
+    asyncio.run(go(NewAgent(name="Ivy", custom={"role": "tracks my plants", "category": "home"}, lang="en")))
+    soul = (tmp / ".hermes" / "profiles" / "ivy" / "SOUL.md").read_text()
+    assert soul.startswith("You are Ivy") and "tracks my plants" in soul and "answer in English" in soul
+    asyncio.run(go(NewAgent(name="Léo", kind="daily")))   # an app from before: French, as it was
+    assert (tmp / ".hermes" / "profiles" / "leo" / "SOUL.md").read_text().startswith("Tu es Léo")
+
+
+def test_kinds_in_the_apps_language(client):
+    english = client.get("/v1/agent-kinds", params={"lang": "en"}, headers=AUTH).json()["kinds"]
+    assert next(k for k in english if k["id"] == "finance")["label"] == "Money"
+    french = client.get("/v1/agent-kinds", headers=AUTH).json()["kinds"]
+    assert next(k for k in french if k["id"] == "finance")["label"] == "Finances"
+
+
 def test_kinds_route_on_a_bridge_without_hermes(client):
     kinds = client.get("/v1/agent-kinds", headers=AUTH).json()
     assert kinds["can_create"] is False   # the test bridge does not manage a Hermes
