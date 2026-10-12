@@ -11,7 +11,6 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .ui import tr
 
 GiB = 1024 ** 3
 TAILSCALE_MAC_APP = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
@@ -32,10 +31,9 @@ class Machine:
 
     @property
     def summary(self) -> str:
-        gpu = {"apple": "Apple Silicon", "nvidia": tr("GPU Nvidia", "Nvidia GPU"),
-               "amd": tr("GPU AMD", "AMD GPU")}.get(self.gpu or "", tr("sans GPU", "no GPU"))
-        return tr(f"{self.cpu}, {self.memory_gib:.0f} Go, {self.cores} cœurs, {gpu}",
-                  f"{self.cpu}, {self.memory_gib:.0f} GB, {self.cores} cores, {gpu}")
+        gpu = {"apple": "Apple Silicon", "nvidia": "Nvidia GPU",
+               "amd": "AMD GPU"}.get(self.gpu or "", "no GPU")
+        return f"{self.cpu}, {self.memory_gib:.0f} GB, {self.cores} cores, {gpu}"
 
 
 def _run(*args: str, timeout: float = 5) -> Optional[str]:

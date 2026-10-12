@@ -13,7 +13,7 @@ fermer une fois Tailscale en place.
 - **Le modèle** n'y tourne pas (pas de GPU) : il est **dans le cloud** (OpenRouter, Mistral, OpenAI, Anthropic), ou
   sur **un PC de la maison** joint par Tailscale (l'installateur demande alors son adresse sur ton tailnet).
 - **Les notifications** passent par Apple avec une clé de développeur, ou par le relais d'une autre installation
-  BipAgents (celle d'un proche : `famille ajouter`).
+  BipAgents (celle d'un proche : `family add`).
 - **Le coût** : quelques euros par mois.
 
 ## 1. Choisir le serveur

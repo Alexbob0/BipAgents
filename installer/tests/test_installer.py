@@ -19,11 +19,12 @@ from bipinstall.stack import AgentEntry, Install, bridge_service, bridge_toml, t
 
 
 @pytest.fixture(autouse=True)
-def french():
-    """The tests read the installer's French, whatever this machine's language; one test switches to English."""
-    ui.set_language("fr")
+def agents_language_asked_again():
+    """The agents' language, set for the tests that are not about it (an install given none asks it)."""
+    from bipinstall import __main__ as cli
+    cli.AGENTS_LANG = "fr"   # tests that are not about the question answer it this way
     yield
-    ui.set_language("fr")
+    cli.AGENTS_LANG = None
 
 
 def mac(memory, gpu="apple"):
@@ -37,7 +38,7 @@ def test_plan_fits_the_machine():
     assert 3 <= small.people <= 9   # a family on a 16 GB Mac mini when the model runs elsewhere
     local = make_plan(mac(16), model_here=True)
     assert local.profile == "local" and local.people < small.people
-    assert any("modèle local" in n for n in local.notes)
+    assert any("local model" in n for n in local.notes)
     big = make_plan(Machine("linux", "x86_64", 125, 32, "Ryzen", "nvidia"), model_here=False)
     assert big.profile == "costaud" and big.browser == "permanent" and big.kyutai and big.people >= 10
     tiny = make_plan(mac(8), model_here=True)
@@ -208,18 +209,19 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
     monkeypatch.setattr(cli, "voice_engine_answers", lambda url: False)
-    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "", "4", "o"])
+    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run"]) == 0
+    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
     out = capsys.readouterr().out
     assert "profile create lea" in out and "profile create fougere" in out
     assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
-    assert "<clé>" in out and "API_SERVER_KEY <clé>" in out
+    assert "API_SERVER_KEY <key>" in out
     assert "[kyutai]\nenabled = false" in out
 
 
-def test_whole_dry_run_in_english(monkeypatch, tmp_path, capsys):
-    """The same install for someone whose system speaks English: the installer's words, and the agents' SOUL.md."""
+def test_the_agents_language_is_asked(monkeypatch, tmp_path, capsys):
+    """The installer speaks English; the agents it creates speak the language picked (asked here, as nothing gave
+    it): their SOUL.md is written in it."""
     from bipinstall import __main__ as cli
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(cli, "detect", lambda: mac(16))
@@ -236,34 +238,17 @@ def test_whole_dry_run_in_english(monkeypatch, tmp_path, capsys):
         return create_agent(runner, name, **kw)
 
     monkeypatch.setattr(cli.hermes, "create_agent", remembering)
-    answers = iter(["1", "1", "", "1,9", "Lea", "Fern", "watches my plants", "", "", "", "4", "y"])
+    answers = iter(["1", "1", "", "1", "1,9", "Lea", "Fern", "watches my plants", "", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--lang", "en", "--dry-run"]) == 0 and ui.LANG == "en"
+    assert cli.main(["--dry-run"]) == 0 and cli.AGENTS_LANG == "en"
     out = capsys.readouterr().out
     assert "Hello" in out and "Where does the model" in out and "Hermes, the agents' brain" in out
     assert "The Bips' voices" in out and "Dry run: here is what would have been done." in out
+    assert "Which language will your agents speak?" in out
     assert "API_SERVER_KEY <key>" in out and "Où tourne" not in out
     assert souls_written["lea"].startswith("You are Lea, your user's everyday agent.")
     assert souls_written["fern"].startswith("You are Fern") and "watches my plants" in souls_written["fern"]
     assert "You answer in English" in souls_written["fern"] and "Tu " not in souls_written["fern"]
-
-
-def test_the_language_follows_the_system(monkeypatch):
-    for var in ("BIPAGENTS_LANG", "LC_ALL", "LC_MESSAGES", "LANG"):
-        monkeypatch.delenv(var, raising=False)
-    assert ui._language() == "en"
-    monkeypatch.setenv("LANG", "fr_FR.UTF-8")
-    assert ui._language() == "fr"
-    monkeypatch.setenv("LC_ALL", "C")              # says nothing: the next one decides
-    assert ui._language() == "fr"
-    monkeypatch.setenv("LC_ALL", "en_GB.UTF-8")
-    assert ui._language() == "en"
-    monkeypatch.setenv("BIPAGENTS_LANG", "fr")
-    assert ui._language() == "fr"
-    from bipinstall.__main__ import take_language
-    assert take_language(["famille", "--lang", "en", "ajouter", "Léa"]) == ["famille", "ajouter", "Léa"]
-    assert ui.LANG == "en" and ui.tr("oui", "yes") == "yes"
-    assert take_language(["--lang=fr", "--dry-run"]) == ["--dry-run"] and ui.LANG == "fr"
 
 
 def test_a_kyutai_already_running_is_shared_whatever_the_gpu(monkeypatch, tmp_path, capsys):
@@ -277,11 +262,11 @@ def test_a_kyutai_already_running_is_shared_whatever_the_gpu(monkeypatch, tmp_pa
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
     monkeypatch.setattr(cli, "voice_engine_answers", lambda url: url == "http://127.0.0.1:8097")
-    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "", "4", "o"])
+    answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run"]) == 0
+    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
     out = capsys.readouterr().out
-    assert "Kyutai (voix humaine, podcasts) répond" in out
+    assert "Kyutai (human voice, podcasts) answers" in out
     assert '[kyutai]\nurl = "http://127.0.0.1:8097"' in out
 
 
@@ -298,11 +283,11 @@ def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, cap
     monkeypatch.setattr(cli.models, "discover", lambda addresses: _async([models.Server("http://192.168.1.30:8888/v1", "vLLM", ["glm"])]))
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
-    answers = iter(["1", "1", "", "o", "1", "Léa", "o"])
+    answers = iter(["1", "1", "", "y", "1", "Léa", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run"]) == 0
+    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
     out = capsys.readouterr().out
-    assert "navigateur visible" in out and "[6/6]" in out
+    assert "visible browser" in out and "[6/6]" in out
     assert "/usr/bin/podman build -t bipagents-browser -f " in out and "/browser/Containerfile" in out
     assert "-m bipbridge browser add --all --config" in out and "systemctl --user restart bipagents-bridge" in out
     assert "[browser]\nenabled = true" in out and "isolated = true" in out
@@ -358,15 +343,15 @@ def test_an_existing_hermes_keeps_its_settings(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli.hermes, "sandbox_runtime", lambda: None)
     monkeypatch.setattr(existing, "_run", lambda args: "")
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
-    answers = iter(["", "Marc", "", "o"])   # every agent, the main one renamed « Marc », go
+    answers = iter(["", "Marc", "", "y"])   # every agent, the main one renamed « Marc », go
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run"]) == 0
+    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
     out = capsys.readouterr().out
-    assert "Tu as déjà Hermes" in out and "Où tourne le modèle" not in out
+    assert "You already have Hermes" in out and "Where does the model" not in out
     assert "config set API_SERVER_ENABLED true" in out and "config set API_SERVER_PORT 8642" in out
-    assert "-p cuisine config set API_SERVER_KEY <clé>" in out
+    assert "-p cuisine config set API_SERVER_KEY <key>" in out
     assert "model." not in out and "terminal.backend" not in out and "tools disable" not in out
-    assert "profile create" not in out and "pas de coffre" in out
+    assert "profile create" not in out and "no vault" in out
     assert '[agents.default]\ndisplay_name = "Marc"\nhermes_url = "http://127.0.0.1:8642"' in out
     assert 'hermes_url = "http://127.0.0.1:8642/p/cuisine"' in out and "isolated = true" not in out
 
@@ -428,11 +413,11 @@ def test_on_a_rented_server_nothing_listens_on_a_local_network(monkeypatch, tmp_
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.4, vision=False)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
     # The model in the cloud is the default choice (Enter), OpenRouter, a key, the model; one agent; go.
-    answers = iter(["", "1", "sk-or-test", "", "1", "Léa", "o"])
+    answers = iter(["", "1", "sk-or-test", "", "1", "Léa", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run"]) == 0
+    assert cli.main(["--dry-run", "--agents-lang", "fr"]) == 0
     out = capsys.readouterr().out
-    assert "Serveur loué chez Hetzner" in out and "autre machine de mon tailnet" in out
+    assert "Server rented from Hetzner" in out and "another machine on my tailnet" in out
     assert "[lan]\nenabled = false" in out
 
 
@@ -454,7 +439,7 @@ def test_hermes_update_checks(tmp_path, monkeypatch):
 
     client = httpx.Client(transport=httpx.MockTransport(gateway))
     problems = update.check_agents(agents, expect_clarify=True, client=client, attempts=1)
-    assert problems["vie"] == "" and "0001" in problems["jardin"] and problems["old"] == "refuse sa clé"
+    assert problems["vie"] == "" and "0001" in problems["jardin"] and problems["old"] == "refuses its key"
     assert update.check_agents(agents[1:2], expect_clarify=False, client=client, attempts=1) == {"jardin": ""}
     monkeypatch.setattr(update.Path, "home", lambda: tmp_path)
     units = tmp_path / ".config" / "systemd" / "user"

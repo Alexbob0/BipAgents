@@ -1,6 +1,6 @@
 """A family member's own Linux account, ready for an install of their own: the account itself, the ID ranges rootless
 podman needs (the agents' browser runs in containers), and « linger », so their services keep running when nobody
-is logged in. Prepared by the administrator (`bipinstall famille ajouter`), each command shown and confirmed; the
+is logged in. Prepared by the administrator (`bipinstall family add`), each command shown and confirmed; the
 install, run in that account, then checks it can drive its own systemd (`ensure_user_services`)."""
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from .ui import tr
 
 SUBID_FIRST = 100_000
 SUBID_COUNT = 65_536
@@ -104,14 +103,13 @@ def prepare(login: str, confirm: Callable[[str], bool], say: Callable[[str], Non
             break
         for command in commands:
             say(f"  $ {shlex.join(command)}")
-        if not confirm(tr("Je lance ces commandes (ton mot de passe sudo peut être demandé) ?",
-                          "Shall I run these commands (your sudo password may be asked)?")):
+        if not confirm("Shall I run these commands (your sudo password may be asked)?"):
             return False
         for command in commands:
             if dry:
                 continue
             if subprocess.run(command).returncode != 0:
-                say(tr(f"Échec de : {shlex.join(command)}", f"Failed: {shlex.join(command)}"))
+                say(f"Failed: {shlex.join(command)}")
                 return False
         if not created:
             created = True if dry else exists(login)
@@ -144,16 +142,11 @@ def ensure_user_services(say: Callable[[str], None], login: Optional[str] = None
     reachable = check() if check else subprocess.run(["systemctl", "--user", "show-environment"],
                                                      capture_output=True).returncode == 0
     if not reachable:
-        say(tr("Ce compte ne peut pas lancer ses propres services (systemd utilisateur injoignable).",
-               "This account can't run its own services (user systemd can't be reached)."))
-        say(tr(f"Demande à l'administrateur du serveur : sudo loginctl enable-linger {login}",
-               f"Ask the server's administrator: sudo loginctl enable-linger {login}"))
-        say(tr("(ou `bipinstall famille ajouter`, qui prépare le compte), puis relance.",
-               "(or `bipinstall famille ajouter`, which prepares the account), then run this again."))
+        say("This account can't run its own services (user systemd can't be reached).")
+        say(f"Ask the server's administrator: sudo loginctl enable-linger {login}")
+        say("(or `bipinstall family add`, which prepares the account), then run this again.")
         return False
     if not linger_enabled(login):
-        say(tr(f"Attention : sans « linger », tes agents s'arrêteront quand tu te déconnecteras. "
-               f"Demande à l'administrateur : sudo loginctl enable-linger {login}",
-               f"Careful: without \"linger\", your agents will stop when you log out. "
-               f"Ask the administrator: sudo loginctl enable-linger {login}"))
+        say(f"Careful: without \"linger\", your agents will stop when you log out. "
+               f"Ask the administrator: sudo loginctl enable-linger {login}")
     return True
