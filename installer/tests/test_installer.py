@@ -98,7 +98,8 @@ def test_names_are_the_persons():
     assert souls.profile_name("Léa") == "lea"
     assert souls.profile_name("Mon coach sportif !") == "mon-coach-sportif"
     assert souls.profile_name("Léa", taken=["lea"]) == "lea-2"
-    assert souls.profile_name("Default") == "agent-default"
+    assert souls.profile_name("Default") == "default-agent"
+    assert souls.profile_name("Test") == "test-agent"   # Hermes refuses its reserved names
     assert souls.profile_name("🙂") == "agent"
     from bipinstall.__main__ import templates
     assert all("{name}" in t["soul"] and "name" not in t for t in templates() if t["category"] != "custom")
@@ -346,6 +347,14 @@ def test_an_existing_hermes_keeps_its_settings(monkeypatch, tmp_path, capsys):
     assert '[agents.default]\ndisplay_name = "Marc"\nhermes_url = "http://127.0.0.1:8642"' in out
     assert 'hermes_url = "http://127.0.0.1:8642/p/cuisine"' in out and "isolated = true" not in out
 
+
+def test_a_hermes_our_install_left_unfinished_is_taken_up_again(tmp_path, monkeypatch):
+    from bipinstall import existing, hermes
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+    _existing_hermes(tmp_path, api=True, sandboxed=False)
+    (tmp_path / ".hermes" / hermes.UNFINISHED).touch()
+    assert existing.detect_existing(run=lambda args: "") is None
 
 def test_an_existing_hermes_with_its_api_on_keeps_its_port_and_key(tmp_path, monkeypatch):
     from bipinstall import existing

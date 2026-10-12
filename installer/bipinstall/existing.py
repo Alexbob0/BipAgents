@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
-from .hermes import HUB_PROFILE, Runner, hermes_bin, hermes_checkout, hermes_home, new_key
+from .hermes import HUB_PROFILE, UNFINISHED, Runner, hermes_bin, hermes_checkout, hermes_home, new_key
 
 SANDBOX_BACKENDS = ("docker", "singularity", "modal", "daytona", "ssh", "vercel")
 RECORD = "existing-hermes.json"
@@ -116,6 +116,8 @@ def detect_existing(home: Optional[Path] = None, run=_run) -> Optional["Existing
     home = home or hermes_home()
     if not Path(hermes_bin()).exists() or not (home / "config.yaml").exists():
         return None
+    if (home / UNFINISHED).exists():
+        return None   # the Hermes an earlier run of this installer started and did not finish
     env = read_env(home / ".env")
     config = read_yaml(home / "config.yaml")
     version = (run([hermes_bin(), "--version"]).splitlines() or ["?"])[0].strip()
