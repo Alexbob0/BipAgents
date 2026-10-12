@@ -30,6 +30,25 @@ def find_config(given: Optional[str]) -> Path:
     raise SystemExit("I can't find your bridge's config: give its path with --config.")
 
 
+def bridge_restart(home: Optional[Path] = None) -> List[str]:
+    """The command restarting the administrator's bridge: the service whose command runs `bipbridge` (an install
+    made before the installer may have named it otherwise), else the installer's name."""
+    home = home or Path.home()
+    if sys.platform == "darwin":
+        label = "io.github.bipagents.bridge"
+        for plist in sorted((home / "Library" / "LaunchAgents").glob("*.plist")):
+            if "bipbridge" in plist.read_text(errors="ignore"):
+                label = plist.stem
+                break
+        return ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{label}"]
+    unit = "bipagents-bridge"
+    for path in sorted((home / ".config" / "systemd" / "user").glob("*.service")):
+        if "bipbridge" in path.read_text(errors="ignore"):
+            unit = path.stem
+            break
+    return ["systemctl", "--user", "restart", unit]
+
+
 def slug(name: str) -> str:
     import unicodedata
     plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
@@ -130,10 +149,18 @@ def main(argv: List[str]) -> int:
     print(ui.done(f"Ports reserved: {ports.base}–{ports.base + 9}."))
     first = 2 if linux else 1
     print(ui.step(first, total, "Restart your bridge, so it knows this key"))
+    restart = bridge_restart()
+    if confirm(f"Shall I restart it now ({shlex.join(restart)})?") and subprocess.run(restart).returncode == 0:
+        print(ui.done("Your bridge restarted."))
+    else:
+        print("Restart it from another terminal of YOUR account before going on:")
+        print(f"\n  {shlex.join(restart)}\n")
     line = f"{INSTALL_LINE} --relay-url {result['relay_url']} --relay-key {result['key']} --ports {ports.base}"
     print(ui.step(first + 1, total, f"{args.name}'s install, in their account"))
     if linux:
         command = account.install_command(login, account.uid_of(login), line)
+        print(ui.note(f"No need to log into {login}: their install runs from here through sudo, and its questions "
+                      "show up in this terminal. You answer them for them."))
         if confirm(f"Shall I run it now in the {login} account (it will ask you its questions here)?"):
             if subprocess.run(command).returncode != 0:
                 print(ui.fail("Their install stopped: run the command below again once it's fixed."))
