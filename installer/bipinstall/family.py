@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from . import account, ui
 from .ports import FIRST_BLOCK, Ports, candidate_bases, port_free
@@ -133,7 +134,7 @@ def main(argv: List[str]) -> int:
     args = parser.parse_args(argv)
     linux = sys.platform.startswith("linux")
     login = args.account or slug(args.name)
-    total = 4 if linux else 3
+    total = 5 if linux else 4
     print(ui.bip("happy", f"Let's get things ready for {args.name}."))
     if linux:
         print(ui.step(1, total, f"Their Linux account: {login}"))
@@ -161,7 +162,8 @@ def main(argv: List[str]) -> int:
         command = account.install_command(login, account.uid_of(login), line)
         print(ui.note(f"No need to log into {login}: their install runs from here through sudo, and its questions "
                       "show up in this terminal. You answer them for them."))
-        if confirm(f"Shall I run it now in the {login} account (it will ask you its questions here)?"):
+        installed = confirm(f"Shall I run it now in the {login} account (it will ask you its questions here)?")
+        if installed:
             if subprocess.run(command).returncode != 0:
                 print(ui.fail("Their install stopped: run the command below again once it's fixed."))
                 print(f"\n  {shlex.join(command)}\n")
@@ -170,11 +172,42 @@ def main(argv: List[str]) -> int:
             print("To run it later from your terminal:")
             print(f"\n  {shlex.join(command)}\n")
     else:
+        installed = False
         print(f"{args.name} pastes this line in a terminal of THEIR session (not yours):")
         print(f"\n  {line}\n")
     print(ui.note("The key is only used to send their notifications through your bridge. Don't send it by email."))
-    print(ui.step(total, total, "Once their install is done, publish their ports on the tailnet"))
-    for port in ports.tailnet:
-        print(f"  sudo tailscale serve --bg --https={port} http://127.0.0.1:{port}")
-    print(ui.note("The last one is only needed if their agents' desktop is installed."))
+    print(ui.step(total - 1, total, "Publish their ports on the tailnet"))
+    serve = [["sudo", "tailscale", "serve", "--bg", f"--https={port}", f"http://127.0.0.1:{port}"] for port in ports.tailnet]
+    if installed and confirm("Shall I publish them now (with sudo)?") and \
+            all(subprocess.run(command).returncode == 0 for command in serve):
+        print(ui.done(f"Ports {', '.join(str(p) for p in ports.tailnet)} published on your tailnet."))
+    else:
+        print("Once their install is done, run from YOUR account:")
+        for command in serve:
+            print(f"  {shlex.join(command)}")
+        print(ui.note("The last one is only needed if their agents' desktop is installed."))
+    print(ui.step(total, total, "Their iPhone, on YOUR tailnet"))
+    for line in iphone_steps(args.name, result["relay_url"]):
+        print(line)
+    if linux:
+        qr = "cd ~/BipAgents/bridge && .venv/bin/python -m bipbridge qr --config ~/.config/bipagents/bridge.toml"
+        print(f"To show their QR code again:\n  {shlex.join(['sudo', '-iu', login, 'bash', '-c', qr])}")
     return 0
+
+
+def iphone_steps(name: str, relay_url: str) -> List[str]:
+    """Their iPhone has to join the administrator's tailnet: a Tailscale account of their own makes a tailnet of its
+    own, where this server isn't."""
+    host = urlparse(relay_url).hostname or ""
+    machine, _, tailnet = host.partition(".")
+    tailnet = tailnet or "yours"
+    return [
+        f"{name}'s iPhone must be in YOUR tailnet ({tailnet}), where {machine or 'this server'} is. With a Tailscale "
+        "account of their own, it is in another one and the app can't reach their agents.",
+        "  1. Invite them: https://login.tailscale.com/admin/users › Invite users (their email).",
+        "  2. On their iPhone, they accept the invite, then in the Tailscale app: profile icon › Add account › sign in",
+        f"     with the invited email › pick the {tailnet} tailnet.",
+        f"  3. Once the Tailscale app lists {machine or 'this server'}: Tailscale on, then the BipAgents app (TestFlight or",
+        "     App Store) › \"+\" › Scan QR code (the one their install showed).",
+        "  Or, simpler but their iPhone is then one of your devices: sign Tailscale in with YOUR account.",
+    ]

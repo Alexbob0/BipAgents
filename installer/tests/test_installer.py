@@ -495,6 +495,12 @@ def test_family_add_restarts_the_bridge_by_its_own_name(tmp_path, monkeypatch):
     (units / "hermes-ios-bridge.service").write_text("ExecStart=/x/python -m bipbridge serve\n")
     assert family.bridge_restart(tmp_path) == ["systemctl", "--user", "restart", "hermes-ios-bridge"]
 
+
+def test_family_add_tells_their_iphone_to_join_your_tailnet():
+    from bipinstall import family
+    text = "\n".join(family.iphone_steps("Léa", "https://box.tail1234.ts.net:8643"))
+    assert "YOUR tailnet (tail1234.ts.net)" in text and "box" in text and "Invite users" in text
+
 # -- a family member's account -----------------------------------------------------------------------------------
 
 from bipinstall import account  # noqa: E402
