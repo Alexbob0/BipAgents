@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # BipAgents — install for the person running it, in their own account (no sudo):
 #   curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
-# Options are passed on to the installer: --dry-run, --relay-url URL --relay-key KEY, --ports 9200, --languages fr,en,
-# --agents-lang en|fr (the language of the agents it creates; default: asked)
+# Options are passed on to the installer: --dry-run, --relay-url URL --relay-key KEY, --ports 9200, --languages fr,en
 set -euo pipefail
 
 REPO_URL="${BIPAGENTS_REPO:-https://github.com/Alexbob0/BipAgents.git}"

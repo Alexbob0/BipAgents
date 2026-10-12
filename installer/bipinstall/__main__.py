@@ -27,24 +27,10 @@ sys.path.insert(0, str(REPO / "bridge"))
 from bipbridge import souls  # noqa: E402  (kinds of agents, shared with the bridge)
 
 
-# The language the agents this installer creates think and answer in (their SOUL.md). Agents created later from
-# the app get the iPhone's; these come before any iPhone, so it is asked once (or given with --agents-lang).
-AGENTS_LANG: Optional[str] = None
-
-
-def agents_language() -> str:
-    global AGENTS_LANG
-    if AGENTS_LANG is None:
-        say("\nWhich language will your agents speak?")
-        AGENTS_LANG = ("en", "fr")[choose("Language", ["English", "Français"]) - 1]
-    return AGENTS_LANG
-
-
 def templates() -> List[dict]:
-    """The kinds of agents, their SOUL.md in the agents' language (labels in English: the installer's)."""
-    english = {t["category"]: t for t in souls.templates("en")}
-    return [{**t, "label": english[t["category"]]["label"], "description": english[t["category"]]["description"]}
-            for t in souls.templates(agents_language())]
+    """The kinds of agents, in English. Their language is set later in the app (the iPhone's by default): they answer
+    in the language they are written to, and the app tells them which one to write first in."""
+    return souls.templates("en")
 
 
 def say(text: str = "") -> None:
@@ -149,12 +135,11 @@ def custom_agent(name: str) -> dict:
     tone = ask("Its tone? (e.g. direct, warm, funny, formal)",
                "clear and kind")
     rules = ask("Anything it must always or never do?", "")
-    language = ask("Which language does it answer in?", "English" if agents_language() == "en" else "français")
     say("Which Bip color?")
     options = colours()
     category = options[choose("Color", [label for _, label in options], default=len(options)) - 1][0]
     return {"category": category, "label": "Other", "description": role[:120],
-            "soul": souls.custom_soul(name, role, tone, rules, language, lang=agents_language())}
+            "soul": souls.custom_soul(name, role, tone, rules, lang="en")}
 
 
 def pick_agents() -> List[tuple]:
@@ -230,7 +215,6 @@ def wait_for(url: str, headers: Optional[dict] = None, seconds: int = 90) -> boo
 def main(argv: Optional[List[str]] = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    global AGENTS_LANG
     if argv and argv[0] == "uninstall":
         return uninstall_main(argv[1:])
     if argv and argv[0] == "hermes-update":
@@ -250,12 +234,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--languages", default="fr,en", help="voices to load: fr, en, es, de")
     parser.add_argument("--kyutai-url", help="a Kyutai voice server on another machine (default: the one running on "
                                              "this machine, if any)")
-    parser.add_argument("--agents-lang", choices=["en", "fr"],
-                        help="the language the agents created here speak (default: asked); later ones follow the iPhone")
     parser.add_argument("--no-tailscale", action="store_true",
                         help="this machine only, nothing published on a tailnet (tests, or a setup done by hand)")
     args = parser.parse_args(argv)
-    AGENTS_LANG = args.agents_lang
     runner = hermes.Runner(dry=args.dry_run)
 
     machine = detect()
