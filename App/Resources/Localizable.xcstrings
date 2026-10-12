@@ -5958,28 +5958,6 @@
         }
       }
     },
-    "Réponse vocale à mes vocaux" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voice replies to my voice notes"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Respuesta de voz a mis audios"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachantwort auf meine Sprachnachrichten"
-          }
-        }
-      }
-    },
     "Réponse à %@" : {
       "localizations" : {
         "en" : {
@@ -7565,28 +7543,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“"
-          }
-        }
-      }
-    },
-    "« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Live ». Les Bips babillent quand tu joues avec eux (sauf en mode silencieux)." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“Smart”: the agent replies to a voice message by voice if you’re wearing headphones or driving, or if you ask (“answer me out loud”). “Listen” under each reply generates the audio on demand. For a real-time conversation, use “Live”. Bips babble when you play with them (except in silent mode)."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "«Inteligente»: el agente responde con voz a un mensaje de voz si llevas auriculares o vas en coche, o si se lo pides («respóndeme con voz»). «Escuchar» bajo cada respuesta genera el audio cuando quieras. Para una conversación en directo, usa «Live». Los Bips balbucean cuando juegas con ellos (salvo en modo silencio)."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„Smart“: Der Agent antwortet per Sprachnachricht auf eine Sprachnachricht, wenn du Kopfhörer trägst oder im Auto bist – oder wenn du darum bittest („antworte mir per Sprache“). „Anhören“ unter jeder Antwort erzeugt die Sprachversion auf Wunsch. Für ein Gespräch in Echtzeit nutze „Live“. Die Bips plappern, wenn du mit ihnen spielst (außer im Stumm-Modus)."
           }
         }
       }
@@ -10517,28 +10473,6 @@
         }
       }
     },
-    "Les identifiants de sites que tes agents utilisent sans jamais les voir, les agents qui peuvent s’écrire, et ce qu’ils peuvent lire les uns des autres." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The website logins your agents use without ever seeing them, which agents can write to each other, and what they can read from each other."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los accesos a sitios que tus agentes usan sin verlos nunca, qué agentes pueden escribirse y qué pueden leer unos de otros."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Website-Zugänge, die deine Agenten nutzen, ohne sie je zu sehen, welche Agenten sich schreiben dürfen und was sie voneinander lesen dürfen."
-          }
-        }
-      }
-    },
     "Il faut au moins deux agents dont les outils tournent dans un bac à sable pour partager des données." : {
       "localizations" : {
         "en" : {
@@ -11089,28 +11023,6 @@
         }
       }
     },
-    "Les identifiants de sites que tes agents utilisent sans jamais les voir, les agents qui peuvent s’écrire, ce qu’ils peuvent lire les uns des autres, et les agents de tes proches." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The website logins your agents use without ever seeing them, which agents can write to each other, what they can read from each other, and your relatives' agents."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los accesos a sitios que tus agentes usan sin verlos nunca, qué agentes pueden escribirse, qué pueden leer unos de otros y los agentes de tus allegados."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Website-Zugänge, die deine Agenten nutzen, ohne sie je zu sehen, welche Agenten sich schreiben dürfen, was sie voneinander lesen dürfen, und die Agenten deiner Angehörigen."
-          }
-        }
-      }
-    },
     "Un agent ne peut écrire qu’aux agents que tu as cochés ici. Il ne reçoit jamais leurs clés : c’est ton serveur qui transmet le message, et il refuse tout le reste. Les agents qui partagent l’espace commun peuvent aussi s’écrire entre eux. Pour les agents d’un proche (Réglages › Famille), il faut que vous l’ayez coché tous les deux, chacun chez soi." : {
       "localizations" : {
         "en" : {
@@ -11195,6 +11107,314 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "‹ Zum Abbrechen wischen"
+          }
+        }
+      }
+    },
+    "Apparence" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appearance"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apariencia"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Darstellung"
+          }
+        }
+      }
+    },
+    "Style" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Style"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estilo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stil"
+          }
+        }
+      }
+    },
+    "Bips" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bips"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bips"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bips"
+          }
+        }
+      }
+    },
+    "Mode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mode"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modus"
+          }
+        }
+      }
+    },
+    "Auto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto"
+          }
+        }
+      }
+    },
+    "Clair" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claro"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hell"
+          }
+        }
+      }
+    },
+    "Sombre" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dark"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oscuro"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dunkel"
+          }
+        }
+      }
+    },
+    "Entre agents" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Between agents"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entre agentes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischen Agenten"
+          }
+        }
+      }
+    },
+    "Les messages et les données que tes agents s’échangent, et les agents de tes proches." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The messages and data your agents share, and your family’s agents."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los mensajes y datos que intercambian tus agentes, y los agentes de tu familia."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Nachrichten und Daten, die deine Agenten austauschen, und die Agenten deiner Familie."
+          }
+        }
+      }
+    },
+    "Sécurité" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Security"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seguridad"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sicherheit"
+          }
+        }
+      }
+    },
+    "Automatismes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automations"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatizaciones"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automationen"
+          }
+        }
+      }
+    },
+    "« Intelligent » : en vocal si tu as des écouteurs, es en voiture ou le demandes. « Écouter » sous une réponse la lit à la demande, « Live » pour parler en direct." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Smart”: by voice when you wear headphones, are driving or ask for it. “Listen” under a reply reads it on demand; “Live” to talk in real time."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Inteligente»: por voz si llevas auriculares, vas en coche o lo pides. «Escuchar» bajo una respuesta la lee cuando quieras; «Live» para hablar en directo."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Intelligent“: per Sprache, wenn du Kopfhörer trägst, im Auto bist oder es wünschst. „Anhören“ unter einer Antwort liest sie auf Wunsch vor; „Live“ zum Sprechen in Echtzeit."
+          }
+        }
+      }
+    },
+    "Les Bips babillent quand tu joues avec eux, sauf en mode silencieux. « Auto » suit le réglage de l’iPhone." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Bips babble when you play with them, except in silent mode. “Auto” follows the iPhone’s setting."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los Bips balbucean cuando juegas con ellos, salvo en modo silencio. «Auto» sigue el ajuste del iPhone."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bips plappern, wenn du mit ihnen spielst, außer im Lautlos-Modus. „Auto“ folgt der iPhone-Einstellung."
+          }
+        }
+      }
+    },
+    "Hermes : plus proche du design de Hermes Agent, avec des personnages en pixels. « Auto » suit le réglage de l’iPhone." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: closer to Hermes Agent’s own design, with pixel characters. “Auto” follows the iPhone’s setting."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: más cerca del diseño de Hermes Agent, con personajes en píxeles. «Auto» sigue el ajuste del iPhone."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: näher am Design von Hermes Agent, mit Pixel-Figuren. „Auto“ folgt der iPhone-Einstellung."
           }
         }
       }

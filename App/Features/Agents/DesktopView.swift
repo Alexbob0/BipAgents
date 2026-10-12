@@ -24,8 +24,16 @@ struct DesktopView: View {
             if !unlocked {
                 VStack(spacing: 14) {
                     Image(systemName: "lock.shield").font(.system(size: 44)).foregroundStyle(.white.opacity(0.8))
-                    Button("Déverrouiller", systemImage: "faceid") { Task { await open() } }
-                        .buttonStyle(.borderedProminent)
+                    // White on the desktop's black, icon included (the system style drew it in the tint, unseen).
+                    Button { Task { await open() } } label: {
+                        Label("Déverrouiller", systemImage: "faceid")
+                            .font(Theme.body(16, weight: .heavy))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 24)
+                            .frame(height: 48)
+                            .background(.white, in: .capsule)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let current {

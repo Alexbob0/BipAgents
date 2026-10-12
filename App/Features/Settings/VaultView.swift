@@ -23,7 +23,8 @@ struct VaultView: View {
                         Image(systemName: "lock.shield").font(.system(size: 44)).foregroundStyle(Theme.ink2)
                         Text("Le coffre est verrouillé").font(Theme.title(18))
                         Button("Déverrouiller", systemImage: "faceid") { Task { await unlock() } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.pill(.primary))
+                            .frame(maxWidth: 240)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)

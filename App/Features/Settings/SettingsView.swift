@@ -6,6 +6,8 @@ struct SettingsView: View {
     @State private var isAddingAgent = false
     @AppStorage(VoiceReplyPolicy.storageKey) private var voiceReplyPolicy = VoiceReplyPolicy.smart
     @AppStorage(BipBabble.enabledKey) private var bipSounds = true
+    @AppStorage(AppStyle.key) private var style: AppStyle = .bips
+    @AppStorage(ColorMode.key) private var colorMode: ColorMode = .system
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
@@ -25,6 +27,8 @@ struct SettingsView: View {
                                     Text(agent.config.baseURL.host() ?? agent.config.baseURL.absoluteString)
                                         .font(Theme.mono)
                                         .foregroundStyle(Theme.muted)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
                                 }
                                 Spacer()
                                 ReachabilityLabel(reachability: store.reachability[agent.id] ?? .unknown)
@@ -39,9 +43,6 @@ struct SettingsView: View {
                     Button("Ajouter un agent", systemImage: "plus") { isAddingAgent = true }
                 }
                 Section {
-                    NavigationLink { VaultView() } label: {
-                        Label("Coffre des agents", systemImage: "lock.shield")
-                    }
                     NavigationLink { AgentLinksView() } label: {
                         Label("Qui peut écrire à qui", systemImage: "arrow.left.arrow.right")
                     }
@@ -51,37 +52,71 @@ struct SettingsView: View {
                     NavigationLink { FamilyView() } label: {
                         Label("Famille", systemImage: "house.and.flag")
                     }
+                } header: {
+                    Text("Entre agents")
                 } footer: {
-                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir, les agents qui peuvent s’écrire, ce qu’ils peuvent lire les uns des autres, et les agents de tes proches.")
+                    Text("Les messages et les données que tes agents s’échangent, et les agents de tes proches.")
                 }
-                .foregroundStyle(Theme.ink)
+                Section {
+                    NavigationLink { VaultView() } label: {
+                        Label("Coffre des agents", systemImage: "lock.shield")
+                    }
+                } header: {
+                    Text("Sécurité")
+                } footer: {
+                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir.")
+                }
+                Section("Automatismes") {
+                    NavigationLink { CronJobsView() } label: {
+                        Label("Tâches planifiées", systemImage: "clock.badge")
+                    }
+                }
                 Section {
                     Picker(selection: $voiceReplyPolicy) {
                         ForEach(VoiceReplyPolicy.allCases) { Text($0.label).tag($0) }
                     } label: {
-                        Label("Réponse vocale à mes vocaux", systemImage: "waveform")
-                    }
-                    Toggle(isOn: $bipSounds) {
-                        Label("Sons des Bips", systemImage: "speaker.wave.2.bubble")
-                    }
-                    NavigationLink { CronJobsView() } label: {
-                        Label("Tâches planifiées", systemImage: "clock.badge")
+                        Label("Réponse vocale", systemImage: "waveform")
                     }
                 } header: {
                     Text("Voix")
                 } footer: {
-                    Text("« Intelligent » : l’agent répond en vocal à un message vocal si tu as des écouteurs ou es en voiture, ou si tu le demandes (« réponds-moi en vocal »). « Écouter » sous chaque réponse génère le vocal à la demande. Pour une conversation en direct, utilise « Live ». Les Bips babillent quand tu joues avec eux (sauf en mode silencieux).")
+                    Text("« Intelligent » : en vocal si tu as des écouteurs, es en voiture ou le demandes. « Écouter » sous une réponse la lit à la demande, « Live » pour parler en direct.")
+                }
+                Section {
+                    Picker(selection: $style) {
+                        Text("Bips").tag(AppStyle.bips)
+                        Text("Hermes").tag(AppStyle.hermes)
+                    } label: {
+                        Label("Style", systemImage: "paintpalette")
+                    }
+                    Picker(selection: $colorMode) {
+                        Text("Auto").tag(ColorMode.system)
+                        Text("Clair").tag(ColorMode.light)
+                        Text("Sombre").tag(ColorMode.dark)
+                    } label: {
+                        Label("Mode", systemImage: "circle.lefthalf.filled")
+                    }
+                    if style == .bips {
+                        Toggle(isOn: $bipSounds) {
+                            Label("Sons des Bips", systemImage: "speaker.wave.2.bubble")
+                        }
+                    }
+                } header: {
+                    Text("Apparence")
+                } footer: {
+                    style == .bips
+                        ? Text("Les Bips babillent quand tu joues avec eux, sauf en mode silencieux. « Auto » suit le réglage de l’iPhone.")
+                        : Text("Hermes : plus proche du design de Hermes Agent, avec des personnages en pixels. « Auto » suit le réglage de l’iPhone.")
                 }
                 Section("Application") {
-                    NavigationLink { DiagnosticsView() } label: {
-                        Label("Diagnostics et latences", systemImage: "gauge.with.dots.needle.33percent")
-                    }
                     Button { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) } label: {
                         Label("Micro, notifications et Face ID", systemImage: "gear")
                     }
-                    LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–")
+                    .foregroundStyle(Theme.ink) // a row like the others, not an accent-colored button
+                    NavigationLink { DiagnosticsView() } label: {
+                        Label("Diagnostics et latences", systemImage: "gauge.with.dots.needle.33percent")
+                    }
                 }
-                .foregroundStyle(Theme.ink)
             }
             .scrollContentBackground(.hidden)
             .contentMargins(.top, 4, for: .scrollContent)
