@@ -314,7 +314,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     gateway_service(inst, machine, runner)
 
     say(ui.done("Hermes and your agents are set up."))
-    return finish(inst, machine, runner, args, steps, total, sandbox, desk=plan.browser == "permanent")
+    status = finish(inst, machine, runner, args, steps, total, sandbox, desk=plan.browser == "permanent")
+    if status == 0 and not runner.dry:
+        (hermes.hermes_home() / hermes.UNFINISHED).unlink(missing_ok=True)   # from now on, theirs
+    return status
 
 
 def gateway_service(inst: Install, machine: Machine, runner: hermes.Runner) -> None:

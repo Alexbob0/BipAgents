@@ -52,7 +52,8 @@ class Runner:
         result = subprocess.run(args, input=input_text, text=True, capture_output=True, shell=shell,
                                 env={**os.environ, **self.env}, check=False)
         if result.returncode != 0 and check:
-            raise RuntimeError(f"{shown} failed ({result.returncode}): {result.stderr.strip()[-600:]}")
+            said = result.stderr.strip() or result.stdout.strip()   # Hermes prints its errors on stdout
+            raise RuntimeError(f"{shown} failed ({result.returncode}): {said[-600:]}")
         return result.stdout
 
 
@@ -73,10 +74,16 @@ def new_key() -> str:
     return secrets.token_urlsafe(32)
 
 
+UNFINISHED = ".bipagents-unfinished"   # in HERMES_HOME while the installer sets up a Hermes of its own
+
+
 def install(runner: Runner, *, browser: bool) -> None:
     """The official installer, without questions; Hermes' own browser only when this machine can afford it."""
     if Path(hermes_bin()).exists():
         return
+    if not runner.dry:
+        hermes_home().mkdir(parents=True, exist_ok=True)
+        (hermes_home() / UNFINISHED).touch()   # a run that stops here is taken up again, not taken for « their » Hermes
     flags = ["--non-interactive", "--skip-computer-use"] + ([] if browser else ["--skip-browser"])
     if HERMES_COMMIT:
         flags += ["--commit", HERMES_COMMIT]
@@ -205,8 +212,9 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: bool = False) ->
 
 def create_agent(runner: Runner, name: str, *, description: str, soul: str, model: Model) -> str:
     """A named profile served by the hub under /p/<name>/, with its own key, model and personality. Picked up by a
-    running gateway within 30 s: no restart."""
-    runner.run([hermes_bin(), "profile", "create", name, "--no-alias", "--description", description])
+    running gateway within 30 s: no restart. A profile left by an install that stopped is reused."""
+    if runner.dry or not (profile_dir(name) / "config.yaml").exists():
+        runner.run([hermes_bin(), "profile", "create", name, "--no-alias", "--description", description])
     key = new_key()
     _config(runner, name, "API_SERVER_KEY", key)       # its own key; only the hub enables the api_server
     set_model(runner, name, model)
