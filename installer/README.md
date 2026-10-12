@@ -26,7 +26,7 @@ Add `--dry-run` to see every step and command without changing anything.
    |---|---|---|---|---|
    | Light (default) | Mac mini 16 GB | elsewhere (network or API) | Pocket (CPU) | on demand, one at a time |
    | Local | Mac 24–32 GB, PC with GPU | on this machine | Pocket | on demand |
-   | Large | Linux server ≥ 64 GB | elsewhere | Pocket + Kyutai (Nvidia GPU) | permanent, one per person |
+   | Large | Linux server ≥ 64 GB | elsewhere | Pocket + Kyutai (GPU, if already running) | permanent, one per person |
 
    On a 16 GB Mac mini with the model elsewhere: about 1 GB per person plus the voices — a family fits.
 4. **Installs Hermes** with its official installer, at the version tested with BipAgents (`517b5e10f`), applies the
@@ -85,7 +85,8 @@ after a confirmation. `--dry-run` shows what would be removed.
 
 Each person runs the installer in **their own account**: their own agents, memory, files and browser sessions,
 separated by the system. The voices and the model are shared. Each install takes a block of ten ports (8640 for the
-first, then 9200, 9210…).
+first, then 9200, 9210…). The voices too: Pocket, and Kyutai when it runs on the machine (the installer does not
+install it; `--kyutai-url` for a Kyutai on another machine).
 
 Notifications go through Apple with the administrator's key, which stays in their install: their bridge relays the
 others' (one key per install).

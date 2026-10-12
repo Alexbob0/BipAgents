@@ -56,5 +56,5 @@ def make_plan(machine: Machine, model_here: bool) -> Plan:
         notes.append(f"Le modèle local prend à lui seul environ {LOCAL_MODEL_GIB:.1f} Go. "
                      "Un modèle sur une autre machine ou par API libère cette place.")
     if not kyutai:
-        notes.append("Voix des Bips par Pocket (processeur). Kyutai demande un GPU Nvidia.")
+        notes.append("Voix des Bips par Pocket (processeur). Kyutai, la voix humaine, est utilisé s'il tourne déjà ici.")
     return plan
