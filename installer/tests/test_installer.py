@@ -10,12 +10,20 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "installer"))
 sys.path.insert(0, str(ROOT / "bridge"))
 
-from bipinstall import hermes, models  # noqa: E402
+from bipinstall import hermes, models, ui  # noqa: E402
 from bipbridge import souls  # noqa: E402
 from bipinstall.detect import Machine  # noqa: E402
 from bipinstall.plan import make_plan  # noqa: E402
 from bipinstall.ports import Ports, pick_block  # noqa: E402
 from bipinstall.stack import AgentEntry, Install, bridge_service, bridge_toml, tailscale_commands  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def french():
+    """The tests read the installer's French, whatever this machine's language; one test switches to English."""
+    ui.set_language("fr")
+    yield
+    ui.set_language("fr")
 
 
 def mac(memory, gpu="apple"):
@@ -100,9 +108,9 @@ def test_names_are_the_persons():
     assert souls.profile_name("Léa", taken=["lea"]) == "lea-2"
     assert souls.profile_name("Default") == "agent-default"
     assert souls.profile_name("🙂") == "agent"
-    from bipinstall.__main__ import TEMPLATES
-    assert all("{name}" in t["soul"] and "name" not in t for t in TEMPLATES if t["category"] != "custom")
-    assert TEMPLATES[-1]["category"] == "custom"
+    from bipinstall.__main__ import templates
+    assert all("{name}" in t["soul"] and "name" not in t for t in templates() if t["category"] != "custom")
+    assert templates()[-1]["category"] == "custom"
 
 
 def test_custom_agent(monkeypatch):
@@ -208,6 +216,54 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
     assert "<clé>" in out and "API_SERVER_KEY <clé>" in out
     assert "[kyutai]\nenabled = false" in out
+
+
+def test_whole_dry_run_in_english(monkeypatch, tmp_path, capsys):
+    """The same install for someone whose system speaks English: the installer's words, and the agents' SOUL.md."""
+    from bipinstall import __main__ as cli
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli, "detect", lambda: mac(16))
+    monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(8640))
+    monkeypatch.setattr(cli.models, "discover", lambda addresses: _async([models.Server("http://192.168.1.30:8888/v1", "vLLM", ["glm"])]))
+    monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
+    monkeypatch.setattr(cli, "pocket_running", lambda: True)
+    monkeypatch.setattr(cli, "voice_engine_answers", lambda url: False)
+    souls_written = {}
+    create_agent = cli.hermes.create_agent
+
+    def remembering(runner, name, **kw):   # the dry run writes no SOUL.md: keep what would be written
+        souls_written[name] = kw["soul"]
+        return create_agent(runner, name, **kw)
+
+    monkeypatch.setattr(cli.hermes, "create_agent", remembering)
+    answers = iter(["1", "1", "", "1,9", "Lea", "Fern", "watches my plants", "", "", "", "4", "y"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert cli.main(["--lang", "en", "--dry-run"]) == 0 and ui.LANG == "en"
+    out = capsys.readouterr().out
+    assert "Hello" in out and "Where does the model" in out and "Hermes, the agents' brain" in out
+    assert "The Bips' voices" in out and "Dry run: here is what would have been done." in out
+    assert "API_SERVER_KEY <key>" in out and "Où tourne" not in out
+    assert souls_written["lea"].startswith("You are Lea, your user's everyday agent.")
+    assert souls_written["fern"].startswith("You are Fern") and "watches my plants" in souls_written["fern"]
+    assert "You answer in English" in souls_written["fern"] and "Tu " not in souls_written["fern"]
+
+
+def test_the_language_follows_the_system(monkeypatch):
+    for var in ("BIPAGENTS_LANG", "LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(var, raising=False)
+    assert ui._language() == "en"
+    monkeypatch.setenv("LANG", "fr_FR.UTF-8")
+    assert ui._language() == "fr"
+    monkeypatch.setenv("LC_ALL", "C")              # says nothing: the next one decides
+    assert ui._language() == "fr"
+    monkeypatch.setenv("LC_ALL", "en_GB.UTF-8")
+    assert ui._language() == "en"
+    monkeypatch.setenv("BIPAGENTS_LANG", "fr")
+    assert ui._language() == "fr"
+    from bipinstall.__main__ import take_language
+    assert take_language(["famille", "--lang", "en", "ajouter", "Léa"]) == ["famille", "ajouter", "Léa"]
+    assert ui.LANG == "en" and ui.tr("oui", "yes") == "yes"
+    assert take_language(["--lang=fr", "--dry-run"]) == ["--dry-run"] and ui.LANG == "fr"
 
 
 def test_a_kyutai_already_running_is_shared_whatever_the_gpu(monkeypatch, tmp_path, capsys):
