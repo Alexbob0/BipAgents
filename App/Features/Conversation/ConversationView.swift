@@ -367,9 +367,13 @@ private struct ConversationContent: View {
         }
     }
 
+    /// The longest text that still counts as commentary between tools: an answer written before the agent goes on
+    /// working (updating its notes…) stays in sight.
+    private static let commentaryLength = 200
+
     /// The agent's work, folded by default: item id → the first item of its fold. Work = tools, reasoning, and the
-    /// agent's commentary between tools (« Je vais chercher… »): a text followed in its turn by a tool, then by
-    /// another text or a tool still running. Consecutive work items share a fold; a file the agent sends along the
+    /// agent's short commentary between tools (« Je vais chercher… »): a text of a sentence or two followed in its
+    /// turn by a tool, then by another text or a tool still running. Consecutive work items share a fold; a file the agent sends along the
     /// way, an approval or a question stays in sight.
     private var workFolds: [UUID: UUID] {
         var folds: [UUID: UUID] = [:]
@@ -389,6 +393,7 @@ private struct ConversationContent: View {
                 case .assistant(let text, _):
                     let later = items[(index + 1)..<end]
                     isWork = ChatText.media(in: text).isEmpty
+                        && ChatText.visible(text).count <= Self.commentaryLength
                         && later.contains { if case .tools = $0.kind { true } else { false } }
                         && (running || later.contains { if case .assistant = $0.kind { true } else { false } })
                 default:
