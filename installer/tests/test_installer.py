@@ -286,6 +286,7 @@ def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, cap
     line = out.split("-m bipbridge browser add")[0].splitlines()[-1]
     assert line.strip().startswith("$ cd ") and "/bridge" in line.split("&&")[0]   # where `bipbridge` is
     assert "[browser]\nenabled = true" in out and "isolated = true" in out
+    assert "config set HERMES_DOCKER_BINARY /usr/bin/podman" in out   # not a root docker found first
     assert "bot_desktop.auto_start" not in out
 
 

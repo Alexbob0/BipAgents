@@ -299,7 +299,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches")
     if skipped:
         say(f"  Patches not applied to this Hermes version: {', '.join(skipped)} (the app works, without these features).")
-    hub_key = hermes.setup_hub(runner, ports.hermes, model, sandbox=bool(sandbox))
+    hub_key = hermes.setup_hub(runner, ports.hermes, model, sandbox=sandbox)
     if plan.browser != "none" and not browser:   # the visible browser brings its own desktop
         if hermes.desktop_ready() or sandbox:
             hermes.setup_desktop(runner, plan.browser)

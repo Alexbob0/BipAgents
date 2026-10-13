@@ -187,7 +187,7 @@ def build_browser(runner: Runner, engine: str, repo: Path) -> None:
     runner.run([engine, "build", "-t", BROWSER_IMAGE, "-f", str(repo / "browser" / "Containerfile"), str(repo / "browser")])
 
 
-def setup_hub(runner: Runner, port: int, model: Model, sandbox: bool = False) -> str:
+def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = None) -> str:
     """The default profile: the one listener (127.0.0.1, published on the tailnet by `tailscale serve`). Every agent
     is cloned from it, so what is set here (sandbox, attachments) holds for all of them."""
     key = new_key()
@@ -196,6 +196,9 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: bool = False) ->
     if sandbox:
         # Terminal, files, code and browser in a container: an agent cannot read another's files on the host.
         _config(runner, HUB_PROFILE, "terminal.backend", "docker")
+        # The engine the installer found (podman, rootless): Hermes would otherwise take `docker` first, a root daemon
+        # this account may not be allowed to use.
+        _config(runner, HUB_PROFILE, "HERMES_DOCKER_BINARY", sandbox)
     else:
         # Same account as the bridge, no sandbox: an agent able to read the disk could read the bridge's keys. Off until
         # the person turns one on in the app (every agent is cloned from this profile).
