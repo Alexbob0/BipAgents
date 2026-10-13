@@ -218,9 +218,11 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = 
 
 def create_agent(runner: Runner, name: str, *, description: str, soul: str, model: Model) -> str:
     """A named profile served by the hub under /p/<name>/, with its own key, model and personality. Picked up by a
-    running gateway within 30 s: no restart. A profile left by an install that stopped is reused."""
+    running gateway within 30 s: no restart. A profile left by an install that stopped is reused. Cloned from the hub,
+    as the bridge does for the app's agents: `profile create` alone starts from Hermes' defaults (no sandbox)."""
     if runner.dry or not (profile_dir(name) / "config.yaml").exists():
-        runner.run([hermes_bin(), "profile", "create", name, "--no-alias", "--description", description])
+        runner.run([hermes_bin(), "profile", "create", name, "--clone-from", HUB_PROFILE, "--no-alias",
+                    "--description", description])
     key = new_key()
     _config(runner, name, "API_SERVER_KEY", key)       # its own key; only the hub enables the api_server
     set_model(runner, name, model)
