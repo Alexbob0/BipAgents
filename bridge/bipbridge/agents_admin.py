@@ -55,7 +55,7 @@ class AgentLanguage(BaseModel):
 
 
 class AgentThinking(BaseModel):
-    enabled: bool
+    level: str = Field(..., pattern="^(none|low|medium|high|xhigh)$")
 
 
 Runner = Callable[[Sequence[str]], "asyncio.Future[str]"]
@@ -311,15 +311,17 @@ def set_language(config: Config, agent: AgentConfig, lang: str) -> str:
 
 
 THINKING_PROVIDER = "bipagents-thinking"
+THINKING_LEVELS = ("none", "low", "medium", "high", "xhigh")
+DEFAULT_THINKING = "medium"   # what Hermes asks a custom server for when nothing is set
 
 
 def _profile_config(config: Config, agent: AgentConfig) -> Path:
     return profile_folder(config, agent) / "config.yaml"
 
 
-def read_thinking(config: Config, agent: AgentConfig) -> Optional[bool]:
-    """Whether the agent thinks before answering, or None when its model is not one the bridge can switch (an
-    OpenAI-compatible server of its own: provider `custom` with an address)."""
+def read_thinking(config: Config, agent: AgentConfig) -> Optional[str]:
+    """How much the agent thinks before answering (none … xhigh), or None when its model is not one the bridge can
+    set (an OpenAI-compatible server of the person's: provider `custom` with an address)."""
     try:
         data = yaml.safe_load(_profile_config(config, agent).read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
@@ -327,33 +329,34 @@ def read_thinking(config: Config, agent: AgentConfig) -> Optional[bool]:
     model = data.get("model") if isinstance(data, dict) else None
     if not isinstance(model, dict) or model.get("provider") != "custom" or not model.get("base_url"):
         return None
-    entry = (data.get("providers") or {}).get(THINKING_PROVIDER) or {}
-    kwargs = ((entry.get("extra_body") or {}).get("chat_template_kwargs") or {}) if isinstance(entry, dict) else {}
-    return kwargs.get("enable_thinking") is True
+    effort = (data.get("agent") or {}).get("reasoning_effort") if isinstance(data.get("agent"), dict) else None
+    if effort is None or effort == "":
+        return DEFAULT_THINKING
+    effort = str(effort).strip().lower()
+    if effort in ("none", "false", "disabled", "off"):   # YAML false reads « false »
+        return "none"
+    return effort if effort in THINKING_LEVELS else DEFAULT_THINKING
 
 
-def set_thinking(config: Config, agent: AgentConfig, enabled: bool) -> bool:
-    """Thinking on or off, read by Hermes from the next message (it reloads a profile's config when it changes).
-    Servers differ: most follow the chat template's `enable_thinking` (sent through a provider entry bound to the
-    model's address), some only a high `reasoning_effort` — both are set; off goes back to Hermes' default effort."""
-    if read_thinking(config, agent) is None:
+def set_thinking(config: Config, agent: AgentConfig, level: str) -> str:
+    """The agent's thinking level, read by Hermes from the next message (it reloads a profile's config when it
+    changes): `reasoning_effort`, plus the chat template's `enable_thinking` (bound to the model's address) for
+    servers that only follow that one."""
+    if level not in THINKING_LEVELS or read_thinking(config, agent) is None:
         raise LookupError(agent.name)
     path = _profile_config(config, agent)
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     providers = data.get("providers") if isinstance(data.get("providers"), dict) else {}
     providers[THINKING_PROVIDER] = {"api": data["model"]["base_url"],
-                                    "extra_body": {"chat_template_kwargs": {"enable_thinking": enabled}}}
+                                    "extra_body": {"chat_template_kwargs": {"enable_thinking": level != "none"}}}
     data["providers"] = providers
     settings = data.get("agent") if isinstance(data.get("agent"), dict) else {}
-    if enabled:
-        settings["reasoning_effort"] = "xhigh"
-    else:
-        settings.pop("reasoning_effort", None)
+    settings["reasoning_effort"] = level
     data["agent"] = settings
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
     os.replace(temporary, path)   # never a half-written config for a gateway reading it
-    return enabled
+    return level
 
 
 async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncClient) -> Dict[str, Any]:
@@ -469,7 +472,7 @@ def agents_admin_router() -> APIRouter:
 
     @router.get("/agents/{agent_id}/thinking")
     async def get_thinking(agent_id: str, request: Request) -> Dict[str, Any]:
-        """Whether the agent thinks before answering (null: its model can't be switched from here)."""
+        """How much the agent thinks before answering (null: its model can't be set from here)."""
         services = request.app.state.services
         try:
             agent = managed(services.config, agent_id)
@@ -479,7 +482,7 @@ def agents_admin_router() -> APIRouter:
 
     @router.put("/agents/{agent_id}/thinking")
     async def put_thinking(agent_id: str, body: AgentThinking, request: Request) -> Dict[str, Any]:
-        """Thinking on or off from the app, between two messages."""
+        """The thinking level, from the app, between two messages."""
         services = request.app.state.services
         try:
             agent = managed(services.config, agent_id)
@@ -487,7 +490,7 @@ def agents_admin_router() -> APIRouter:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
         async with lock:
             try:
-                return {"id": agent.name, "thinking": set_thinking(services.config, agent, body.enabled)}
+                return {"id": agent.name, "thinking": set_thinking(services.config, agent, body.level)}
             except LookupError as exc:
                 raise HTTPException(status_code=409, detail="this agent's model can't be switched from here") from exc
 
