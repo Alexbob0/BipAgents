@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import secrets
+import shutil
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -267,9 +268,19 @@ def managed(config: Config, agent_id: str) -> AgentConfig:
     return agent
 
 
+def editable(config: Config, agent_id: str) -> AgentConfig:
+    """An agent whose personality, language and thinking the app may change: one this bridge created, or one set
+    up by hand whose HERMES_HOME it was given (`host_home`)."""
+    agent = config.agent(agent_id)
+    if agent is not None and agent.host_home:
+        return agent
+    return managed(config, agent_id)
+
+
 def home_root(config: Config, agent: AgentConfig) -> str:
-    """The HERMES_HOME of the gateway that serves the agent: its space's, or the hub's."""
-    return agent.space or config.hermes.home or str(Path.home() / ".hermes")
+    """The HERMES_HOME of the gateway that serves the agent: its space's, the one given for an agent set up by
+    hand, or the hub's."""
+    return agent.space or agent.host_home or config.hermes.home or str(Path.home() / ".hermes")
 
 
 def profile_folder(config: Config, agent: AgentConfig) -> Path:
@@ -355,6 +366,7 @@ def set_thinking(config: Config, agent: AgentConfig, level: str) -> str:
     data["agent"] = settings
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    shutil.copymode(path, temporary)
     os.replace(temporary, path)   # never a half-written config for a gateway reading it
     return level
 
@@ -362,6 +374,10 @@ def set_thinking(config: Config, agent: AgentConfig, level: str) -> str:
 async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncClient) -> Dict[str, Any]:
     # The language block is the bridge's: shown and changed as « language », never in the editable personality.
     soul, lang = souls.split_language(read_soul(config, agent))
+    if agent.host_home:   # set up by hand: its tools are its administrator's
+        return {"id": agent.name, "name": agent.display_name, "soul": soul.strip(), "language": lang,
+                "thinking": read_thinking(config, agent), "by_hand": True, "toolsets": [], "isolated": agent.isolated,
+                "protected": True, "services": []}
     resp = await http.get(f"{agent.hermes_url}/v1/toolsets", headers={"Authorization": f"Bearer {agent.hermes_key}"},
                           timeout=10)
     resp.raise_for_status()
@@ -374,6 +390,8 @@ async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncCli
 
 
 async def write_settings(config: Config, agent: AgentConfig, body: AgentSettings, run: Callable[..., Any] = run_hermes) -> None:
+    if agent.host_home and body.toolsets:
+        raise ValueError("the tools of an agent set up by hand are changed on its server")
     if body.soul is not None:
         # The personality the person edited, with the language block it had (they never see it).
         _, lang = souls.split_language(read_soul(config, agent))
@@ -451,7 +469,7 @@ def agents_admin_router() -> APIRouter:
     async def get_settings(agent_id: str, request: Request) -> Dict[str, Any]:
         services = request.app.state.services
         try:
-            agent = managed(services.config, agent_id)
+            agent = editable(services.config, agent_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
         try:
@@ -464,7 +482,7 @@ def agents_admin_router() -> APIRouter:
         """The agent's language, set in the app: it writes first in it (and answers in whatever it is written to)."""
         services = request.app.state.services
         try:
-            agent = managed(services.config, agent_id)
+            agent = editable(services.config, agent_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
         async with lock:
@@ -475,7 +493,7 @@ def agents_admin_router() -> APIRouter:
         """How much the agent thinks before answering (null: its model can't be set from here)."""
         services = request.app.state.services
         try:
-            agent = managed(services.config, agent_id)
+            agent = editable(services.config, agent_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
         return {"id": agent.name, "thinking": read_thinking(services.config, agent)}
@@ -485,7 +503,7 @@ def agents_admin_router() -> APIRouter:
         """The thinking level, from the app, between two messages."""
         services = request.app.state.services
         try:
-            agent = managed(services.config, agent_id)
+            agent = editable(services.config, agent_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
         async with lock:
@@ -498,7 +516,7 @@ def agents_admin_router() -> APIRouter:
     async def patch_settings(agent_id: str, body: AgentSettings, request: Request) -> Dict[str, Any]:
         services = request.app.state.services
         try:
-            agent = managed(services.config, agent_id)
+            agent = editable(services.config, agent_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
         async with lock:

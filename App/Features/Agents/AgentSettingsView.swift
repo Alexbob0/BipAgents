@@ -51,62 +51,70 @@ struct AgentSettingsView: View {
                     Text("Combien \(agent.name) réfléchit avant de répondre : plus, c’est plus lent mais mieux pour les questions difficiles. Aussi dans le menu « + » d’une discussion.")
                 }
             }
-            Section {
-                ForEach(ToolInfo.main.compactMap(toolset(for:)), id: \.0.id) { info, toolset in
-                    toggle(info, toolset)
+            if settings.byHand {
+                Section {
+                    Label("Installé à la main", systemImage: "wrench.adjustable")
+                } footer: {
+                    Text("Ses outils, son espace et sa suppression se règlent sur le serveur.")
                 }
-                DisclosureGroup("Autres outils", isExpanded: $showsOtherTools) {
-                    ForEach(otherToolsets) { toolset in
-                        toggle(ToolInfo(id: toolset.id, label: Self.plainLabel(toolset.label), icon: "puzzlepiece.extension",
-                                        detail: toolset.description, sensitive: ToolInfo.sensitive.contains(toolset.id)),
-                               toolset)
+            } else {
+                Section {
+                    ForEach(ToolInfo.main.compactMap(toolset(for:)), id: \.0.id) { info, toolset in
+                        toggle(info, toolset)
                     }
-                }
-            } header: {
-                Text("Ce que \(agent.name) peut faire")
-            } footer: {
-                Text("Un outil grisé demande une clé ou un compte à configurer sur le serveur.")
-            }
-            ServicesSection(agent: agent, settings: $settings, bridge: bridge) { confirmsMove = true }
-            Section {
-                if settings.isolated {
-                    Label("Son propre espace", systemImage: "lock.shield.fill")
-                } else if isMoving {
-                    Label("Installation de son espace…", systemImage: "hourglass")
-                } else {
-                    Button("Lui donner son propre espace", systemImage: "lock.shield") { confirmsMove = true }
-                        .confirmationDialog(Text("Donner son propre espace à \(agent.name) ?"), isPresented: $confirmsMove,
-                                            titleVisibility: .visible) {
-                            Button("Lui donner son espace") { Task { await moveToOwnSpace() } }
-                            Button("Annuler", role: .cancel) {}
-                        } message: {
-                            Text(OwnSpace.explanation(agent.name))
+                    DisclosureGroup("Autres outils", isExpanded: $showsOtherTools) {
+                        ForEach(otherToolsets) { toolset in
+                            toggle(ToolInfo(id: toolset.id, label: Self.plainLabel(toolset.label), icon: "puzzlepiece.extension",
+                                            detail: toolset.description, sensitive: ToolInfo.sensitive.contains(toolset.id)),
+                                   toolset)
                         }
-                }
-            } header: {
-                Text("Son espace")
-            } footer: {
-                Text(settings.isolated
-                     ? "\(agent.name) a son espace à lui : il peut se servir d’identifiants du coffre, et les autres agents ne peuvent pas lire ses fichiers."
-                     : "\(agent.name) partage le serveur avec les autres agents créés ici. Pour qu’il se serve d’identifiants du coffre, donne-lui son propre espace.")
-            }
-            Section {
-                Button(role: .destructive) { confirmsDeletion = true } label: {
-                    HStack {
-                        Text("Supprimer \(agent.name)")
-                        Spacer()
-                        if isDeleting { ProgressView() }
                     }
+                } header: {
+                    Text("Ce que \(agent.name) peut faire")
+                } footer: {
+                    Text("Un outil grisé demande une clé ou un compte à configurer sur le serveur.")
                 }
-                .disabled(isDeleting)
-                .confirmationDialog("Supprimer \(agent.name) ?", isPresented: $confirmsDeletion, titleVisibility: .visible) {
-                    Button("Supprimer \(agent.name)", role: .destructive) { Task { await delete() } }
-                    Button("Annuler", role: .cancel) {}
-                } message: {
-                    Text("Ses conversations, sa mémoire et ses routines sont effacées du serveur. C’est définitif.")
+                ServicesSection(agent: agent, settings: $settings, bridge: bridge) { confirmsMove = true }
+                Section {
+                    if settings.isolated {
+                        Label("Son propre espace", systemImage: "lock.shield.fill")
+                    } else if isMoving {
+                        Label("Installation de son espace…", systemImage: "hourglass")
+                    } else {
+                        Button("Lui donner son propre espace", systemImage: "lock.shield") { confirmsMove = true }
+                            .confirmationDialog(Text("Donner son propre espace à \(agent.name) ?"), isPresented: $confirmsMove,
+                                                titleVisibility: .visible) {
+                                Button("Lui donner son espace") { Task { await moveToOwnSpace() } }
+                                Button("Annuler", role: .cancel) {}
+                            } message: {
+                                Text(OwnSpace.explanation(agent.name))
+                            }
+                    }
+                } header: {
+                    Text("Son espace")
+                } footer: {
+                    Text(settings.isolated
+                         ? "\(agent.name) a son espace à lui : il peut se servir d’identifiants du coffre, et les autres agents ne peuvent pas lire ses fichiers."
+                         : "\(agent.name) partage le serveur avec les autres agents créés ici. Pour qu’il se serve d’identifiants du coffre, donne-lui son propre espace.")
                 }
-            } footer: {
-                Text("Ses conversations, sa mémoire et ses routines sont effacées du serveur.")
+                Section {
+                    Button(role: .destructive) { confirmsDeletion = true } label: {
+                        HStack {
+                            Text("Supprimer \(agent.name)")
+                            Spacer()
+                            if isDeleting { ProgressView() }
+                        }
+                    }
+                    .disabled(isDeleting)
+                    .confirmationDialog("Supprimer \(agent.name) ?", isPresented: $confirmsDeletion, titleVisibility: .visible) {
+                        Button("Supprimer \(agent.name)", role: .destructive) { Task { await delete() } }
+                        Button("Annuler", role: .cancel) {}
+                    } message: {
+                        Text("Ses conversations, sa mémoire et ses routines sont effacées du serveur. C’est définitif.")
+                    }
+                } footer: {
+                    Text("Ses conversations, sa mémoire et ses routines sont effacées du serveur.")
+                }
             }
         }
         .scrollDismissesKeyboard(.interactively)

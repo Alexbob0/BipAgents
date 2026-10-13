@@ -11770,6 +11770,50 @@
           }
         }
       }
+    },
+    "Installé à la main" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set up by hand"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalado a mano"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von Hand eingerichtet"
+          }
+        }
+      }
+    },
+    "Ses outils, son espace et sa suppression se règlent sur le serveur." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its tools, its space and deleting it are handled on the server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sus herramientas, su espacio y su eliminación se gestionan en el servidor."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Werkzeuge, Bereich und Löschen werden auf dem Server geregelt."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

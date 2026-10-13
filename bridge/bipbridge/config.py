@@ -64,6 +64,10 @@ class AgentConfig:
     # command to run after the person changes them (e.g. restarting its container once it is idle).
     shares: str = ""
     shares_apply: Optional[str] = None
+    # Set up by hand: the HERMES_HOME of the gateway serving it, on this machine (its profile is profiles/<name>).
+    # The app may then change its personality, language and thinking — files the bridge writes there; its tools,
+    # its container and its deletion stay with its administrator.
+    host_home: Optional[str] = None
 
 
 @dataclass
@@ -360,6 +364,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             if table.get("desktop_vnc_password_file") else None,
             shares=str(table.get("shares", "")),
             shares_apply=str(table["shares_apply"]) if table.get("shares_apply") else None,
+            host_home=_expand(str(table["host_home"])) if table.get("host_home") else None,
         )
 
     relay_t = data.get("relay", {}) or {}

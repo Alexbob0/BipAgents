@@ -185,6 +185,8 @@ struct BridgeClient: Sendable {
         var services: [ConnectedService]
         /// How much it thinks before answering; nil when its model can't be set from the app.
         var thinking: ThinkingLevel? = nil
+        /// Set up by hand on the server: only its personality, language and thinking change from the app.
+        var byHand = false
     }
 
     /// A service (MCP server) connected to an agent. `catalog` nil: set up by hand on the server (a local command).
@@ -493,7 +495,8 @@ struct BridgeClient: Sendable {
         return AgentSettings(soul: soul, toolsets: toolsets, isolated: json["isolated"] as? Bool ?? false,
                              protected: json["protected"] as? Bool ?? true,
                              services: services,
-                             thinking: (json["thinking"] as? String).flatMap(ThinkingLevel.init(rawValue:)))
+                             thinking: (json["thinking"] as? String).flatMap(ThinkingLevel.init(rawValue:)),
+                             byHand: json["by_hand"] as? Bool ?? false)
     }
 
     /// A credential of the agents' vault, as the app sees it: never its password.
