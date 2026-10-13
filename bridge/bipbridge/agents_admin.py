@@ -54,6 +54,10 @@ class AgentLanguage(BaseModel):
     lang: str = Field(..., min_length=2, max_length=20)
 
 
+class AgentThinking(BaseModel):
+    enabled: bool
+
+
 Runner = Callable[[Sequence[str]], "asyncio.Future[str]"]
 
 
@@ -306,6 +310,52 @@ def set_language(config: Config, agent: AgentConfig, lang: str) -> str:
     return code
 
 
+THINKING_PROVIDER = "bipagents-thinking"
+
+
+def _profile_config(config: Config, agent: AgentConfig) -> Path:
+    return profile_folder(config, agent) / "config.yaml"
+
+
+def read_thinking(config: Config, agent: AgentConfig) -> Optional[bool]:
+    """Whether the agent thinks before answering, or None when its model is not one the bridge can switch (an
+    OpenAI-compatible server of its own: provider `custom` with an address)."""
+    try:
+        data = yaml.safe_load(_profile_config(config, agent).read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    model = data.get("model") if isinstance(data, dict) else None
+    if not isinstance(model, dict) or model.get("provider") != "custom" or not model.get("base_url"):
+        return None
+    entry = (data.get("providers") or {}).get(THINKING_PROVIDER) or {}
+    kwargs = ((entry.get("extra_body") or {}).get("chat_template_kwargs") or {}) if isinstance(entry, dict) else {}
+    return kwargs.get("enable_thinking") is True
+
+
+def set_thinking(config: Config, agent: AgentConfig, enabled: bool) -> bool:
+    """Thinking on or off, read by Hermes from the next message (it reloads a profile's config when it changes).
+    Servers differ: most follow the chat template's `enable_thinking` (sent through a provider entry bound to the
+    model's address), some only a high `reasoning_effort` — both are set; off goes back to Hermes' default effort."""
+    if read_thinking(config, agent) is None:
+        raise LookupError(agent.name)
+    path = _profile_config(config, agent)
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    providers = data.get("providers") if isinstance(data.get("providers"), dict) else {}
+    providers[THINKING_PROVIDER] = {"api": data["model"]["base_url"],
+                                    "extra_body": {"chat_template_kwargs": {"enable_thinking": enabled}}}
+    data["providers"] = providers
+    settings = data.get("agent") if isinstance(data.get("agent"), dict) else {}
+    if enabled:
+        settings["reasoning_effort"] = "xhigh"
+    else:
+        settings.pop("reasoning_effort", None)
+    data["agent"] = settings
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    os.replace(temporary, path)   # never a half-written config for a gateway reading it
+    return enabled
+
+
 async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncClient) -> Dict[str, Any]:
     # The language block is the bridge's: shown and changed as « language », never in the editable personality.
     soul, lang = souls.split_language(read_soul(config, agent))
@@ -315,7 +365,7 @@ async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncCli
     toolsets = [{k: t.get(k) for k in ("name", "label", "description", "enabled", "configured")}
                 for t in resp.json().get("data", []) if isinstance(t, dict) and t.get("name")]
     return {"id": agent.name, "name": agent.display_name, "soul": soul.strip(), "language": lang,
-            "toolsets": toolsets, "isolated": agent.isolated,
+            "thinking": read_thinking(config, agent), "toolsets": toolsets, "isolated": agent.isolated,
             "protected": config.hermes.isolated,
             "services": connected.listing(config, agent)}
 
@@ -416,6 +466,30 @@ def agents_admin_router() -> APIRouter:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
         async with lock:
             return {"id": agent.name, "language": set_language(services.config, agent, body.lang)}
+
+    @router.get("/agents/{agent_id}/thinking")
+    async def get_thinking(agent_id: str, request: Request) -> Dict[str, Any]:
+        """Whether the agent thinks before answering (null: its model can't be switched from here)."""
+        services = request.app.state.services
+        try:
+            agent = managed(services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        return {"id": agent.name, "thinking": read_thinking(services.config, agent)}
+
+    @router.put("/agents/{agent_id}/thinking")
+    async def put_thinking(agent_id: str, body: AgentThinking, request: Request) -> Dict[str, Any]:
+        """Thinking on or off from the app, between two messages."""
+        services = request.app.state.services
+        try:
+            agent = managed(services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        async with lock:
+            try:
+                return {"id": agent.name, "thinking": set_thinking(services.config, agent, body.enabled)}
+            except LookupError as exc:
+                raise HTTPException(status_code=409, detail="this agent's model can't be switched from here") from exc
 
     @router.patch("/agents/{agent_id}/settings")
     async def patch_settings(agent_id: str, body: AgentSettings, request: Request) -> Dict[str, Any]:
