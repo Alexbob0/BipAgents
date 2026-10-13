@@ -9,7 +9,8 @@ until equivalent changes land upstream.
 - **Upstream check:** `git apply --check` against upstream `main` at `a62979dc36` (2026-10-10, 380 commits
   after the base). It was run on a temporary index, without installing anything.
 
-Numbers 0002 and 0003 are not published yet.
+Numbers 0002 and 0003 were local patches of an install set up by hand: 0003's synchronous peer reply became
+0006, 0002 is no longer needed (Hermes filters the roster agents see on its own).
 
 **`next/`: the same patches for a newer Hermes.** People update Hermes whenever they want
 (`install.sh hermes-update`). When a patch no longer applies there, the installer tries its version in `next/`,
@@ -25,6 +26,7 @@ NousResearch/hermes-agent#136217, where the maintainer asks to choose between it
 | 0001 api_server clarify | applies | **does not apply as is**: context conflict in `gateway/platforms/api_server_runs.py` (upstream switched `"web.Request"` annotations to `web.Request`); `git apply --3way` applies `api_server.py` cleanly and only needs that conflict resolved. Upstream has no clarify support in the Runs API yet. |
 | 0004 image store | applies | applies |
 | 0005 vault fill re-attach | applies | not checked yet |
+| 0006 synchronous peer reply | applies | applies (`f86276d2eb`, 2026-10-13) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -101,3 +103,20 @@ configured browser nothing changes.
 
 **Tests.** Checked end to end against a live gateway: in one conversation, a fill, the browser closed, then started
 again and a second fill. Proposed upstream with three tests: NousResearch/hermes-agent#136660.
+
+## 0006 — a peer's reply comes back to an api_server session
+
+**Problem.** An agent of the app (an api_server session) that messages an agent on a peer (`message_agent` to
+`bip/<agent>`: the bridge, for an agent in its own space) gets « delivered » and is told the reply will come
+later. An api_server session has no asynchronous delivery: the agent polls the delivery while the peer answers
+into that same busy session, and both wait on each other until the timeouts (10 minutes seen).
+
+**What the patch does.** When the session has no asynchronous delivery (`async_delivery_supported()` false), the
+peer message runs `hermes peer dm --json` inline (600 s at most) and returns the peer's reply as the tool result,
+asking the peer to answer in text in that turn. A peer that does not answer in time keeps the message in its Bot
+Chat and the agent is told not to send it again. Sessions with asynchronous delivery (messaging platforms) are
+unchanged.
+
+**Tests.** `tests/tools/test_bot_mode_dm_sync_peer.py` (reply handed back, timeout); the Bot Mode suites still
+pass (115).
+
