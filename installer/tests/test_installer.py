@@ -146,7 +146,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
     applied = [line for line in runner.log if " apply " in line and "--check" not in line]
     assert [line.rsplit("/", 1)[-1].strip("'") for line in applied] == ["0001-api-server-clarify.patch",
                                                             "0004-image-store-replay-recent-images.patch",
-                                                            "0005-vault-fill-reattach-supervisor.patch"]
+                                                            "0005-vault-fill-reattach-supervisor.patch",
+                                                            "0006-bot-mode-sync-peer-reply.patch"]
 
 
 def test_bot_mode_marker(tmp_path):
@@ -282,6 +283,8 @@ def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, cap
     assert "visible browser" in out and "[6/6]" in out
     assert "/usr/bin/podman build -t bipagents-browser -f " in out and "/browser/Containerfile" in out
     assert "-m bipbridge browser add --all --config" in out and "systemctl --user restart bipagents-bridge" in out
+    line = out.split("-m bipbridge browser add")[0].splitlines()[-1]
+    assert line.strip().startswith("$ cd ") and "/bridge" in line.split("&&")[0]   # where `bipbridge` is
     assert "[browser]\nenabled = true" in out and "isolated = true" in out
     assert "bot_desktop.auto_start" not in out
 
