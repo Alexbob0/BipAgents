@@ -98,3 +98,15 @@ def test_an_agent_set_up_by_hand_mounts_its_folders_itself(setup, config_dict, t
     commands.clear()
     asyncio.run(shares.apply(config, [("vie", "wellness")], run))           # unchanged: not restarted
     assert (["sh", "-c", "restart-when-idle vie"], {}) not in commands
+
+
+def test_a_profile_without_its_own_terminal_setting_runs_in_the_hubs_sandbox(setup):
+    """A profile created without --clone has no terminal setting: its gateway runs it with the hub's (TERMINAL_ENV in
+    the hub's .env), so it can share."""
+    config, hub, run, commands, tmp = setup
+    (hub / "profiles" / "budget" / "config.yaml").write_text("model:\n  provider: custom\n")
+    assert shares.why_not(config, config.agent("budget")) == "no_sandbox"
+    (hub / ".env").write_text("API_SERVER_ENABLED=true\nTERMINAL_ENV=docker\n")
+    assert shares.why_not(config, config.agent("budget")) is None
+    (hub / "profiles" / "budget" / ".env").write_text("TERMINAL_ENV=local\n")
+    assert shares.why_not(config, config.agent("budget")) == "no_sandbox"   # the profile's own word wins

@@ -76,9 +76,35 @@ def why_not(config: Config, agent: AgentConfig) -> Optional[str]:
     folder = profile_dir(config, agent)
     if folder is None:
         return "not_managed"
-    terminal = (_profile_config(folder).get("terminal") or {})
-    if not isinstance(terminal, dict) or terminal.get("backend") != "docker":
+    if terminal_backend(folder) != "docker":
         return "no_sandbox"
+    return None
+
+
+def _env_value(path: Path, key: str) -> Optional[str]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        name, sep, value = line.strip().partition("=")
+        if sep and name.strip() == key:
+            return value.strip().strip("'\"") or None
+    return None
+
+
+def terminal_backend(folder: Path) -> Optional[str]:
+    """Where the agent's tools run, as its gateway sees it: the profile's own setting (config.yaml, then its .env's
+    TERMINAL_ENV), else what it gets from the gateway's home (`hermes profile create` without --clone copies none of
+    it: such a profile runs in the hub's sandbox through the hub's environment)."""
+    home = folder.parent.parent
+    for config_dir in (folder, home):
+        terminal = _profile_config(config_dir).get("terminal")
+        if isinstance(terminal, dict) and terminal.get("backend"):
+            return str(terminal["backend"])
+        env = _env_value(config_dir / ".env", "TERMINAL_ENV")
+        if env:
+            return env
     return None
 
 
