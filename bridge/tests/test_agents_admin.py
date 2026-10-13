@@ -346,3 +346,28 @@ def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(confi
     with pytest.raises(ValueError):
         asyncio.run(write_settings(config, agent, AgentSettings(toolsets={"web": False})))
     assert set_thinking(config, agent, "high") == "high" and read_thinking(config, agent) == "high"
+
+
+def test_rewriting_an_agents_section_keeps_what_the_bridge_does_not_set(tmp_path, config_dict):
+    """After a move into its own space (or a browser added), the agent keeps its voice, ntfy topic, shares and a key
+    kept in a file: only what the bridge sets is replaced."""
+    from dataclasses import replace
+    from bipbridge.agents_admin import save_agent
+
+    key_file = tmp_path / "vie.key"
+    key_file.write_text("k" * 32)
+    path = tmp_path / "bridge.toml"
+    path.write_text('bridge_key = "' + "b" * 40 + '"\n\n[pocket]\nurl = "http://p"\n\n[agents.vie]\n'
+                    'display_name = "Vie"\nhermes_url = "http://127.0.0.1:9212/p/vie"\nhermes_key_file = "' + str(key_file) + '"\n'
+                    '# her voice\nvoice = "pocket:colibri"\nntfy_topic = "vie-out"\nshares = "external"\n\n[agents.wellness]\n'
+                    'display_name = "Wellness"\nhermes_url = "http://127.0.0.1:9212/p/wellness"\nhermes_key = "' + "w" * 32 + '"\n')
+    import tomllib
+    config = parse_config(tomllib.loads(path.read_text()), source_path=str(path))
+    moved = replace(config.agent("vie"), hermes_url="http://127.0.0.1:8660/p/vie", space="/s/vie", isolated=True)
+    save_agent(config, moved)
+    reread = parse_config(tomllib.loads(path.read_text()), source_path=str(path))
+    vie = reread.agent("vie")
+    assert vie.voice == "pocket:colibri" and vie.ntfy_topic == "vie-out" and vie.shares == "external"
+    assert vie.space == "/s/vie" and vie.isolated and vie.hermes_url.startswith("http://127.0.0.1:8660")
+    assert vie.hermes_key == "k" * 32 and "hermes_key = " not in path.read_text().split("[agents.vie]")[1].split("[agents")[0]
+    assert path.read_text().count("hermes_url") == 2 and reread.agent("wellness").hermes_key == "w" * 32

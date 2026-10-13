@@ -85,11 +85,17 @@ def mark_as_bot(folder: Path) -> None:
     path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
-def append_agent(config_path: str, agent: AgentConfig) -> None:
-    """The new agent in the bridge's config file, so it is still there after a restart."""
+def _line_key(line: str) -> str:
+    return line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else ""
+
+
+def append_agent(config_path: str, agent: AgentConfig, kept: Sequence[str] = ()) -> None:
+    """The new agent in the bridge's config file, so it is still there after a restart. `kept`: other lines of its
+    section to keep (what the bridge does not set itself: its voice, ntfy, shares…)."""
     q = lambda v: '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    key_line = [] if any(_line_key(k) == "hermes_key_file" for k in kept) else [f"hermes_key = {q(agent.hermes_key)}"]
     lines = ["", f"[agents.{agent.name}]", f"display_name = {q(agent.display_name)}",
-             f"hermes_url = {q(agent.hermes_url)}", f"hermes_key = {q(agent.hermes_key)}"]
+             f"hermes_url = {q(agent.hermes_url)}"] + key_line
     if agent.public_url:
         lines.append(f"public_url = {q(agent.public_url)}")
     if agent.upload_dir_host:
@@ -103,6 +109,8 @@ def append_agent(config_path: str, agent: AgentConfig) -> None:
     for key in ("hermes_home", "hermes_root", "space", "desktop_url", "desktop_vnc", "desktop_vnc_password_file"):
         if getattr(agent, key):
             lines.append(f"{key} = {q(getattr(agent, key))}")
+    written = {_line_key(line) for line in lines} | set(MANAGED_KEYS)
+    lines += [line for line in kept if _line_key(line) not in written]
     with open(config_path, "a", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
 
@@ -287,11 +295,33 @@ def profile_folder(config: Config, agent: AgentConfig) -> Path:
     return Path(home_root(config, agent)) / "profiles" / agent.name
 
 
+# What the bridge writes in an agent's section: on a rewrite (a move, a browser), these are replaced, any other line
+# of the section is kept.
+MANAGED_KEYS = ("display_name", "hermes_url", "hermes_key", "public_url", "upload_dir_host", "upload_dir_container",
+                "isolated", "sandboxed", "python", "hermes_home", "hermes_root", "space", "desktop_url",
+                "desktop_vnc", "desktop_vnc_password_file")
+
+
+def agent_section_lines(config_path: str, name: str) -> List[str]:
+    """The lines of `[agents.<name>]` in the bridge's config file, its header and blank lines left out."""
+    lines, inside = [], False
+    for line in Path(config_path).read_text(encoding="utf-8").splitlines():
+        header = line.strip()
+        if header.startswith("[") and header.endswith("]"):
+            inside = header == f"[agents.{name}]"
+            continue
+        if inside and header:
+            lines.append(line)
+    return lines
+
+
 def save_agent(config: Config, agent: AgentConfig) -> None:
-    """The agent's section of the bridge's config file rewritten (after a move)."""
+    """The agent's section of the bridge's config file rewritten (after a move, a browser): what the bridge sets is
+    replaced, the rest of the section (voice, ntfy, shares, a key kept in a file…) stays."""
     if config.source_path:
+        kept = agent_section_lines(config.source_path, agent.name)
         remove_agent_section(config.source_path, agent.name)
-        append_agent(config.source_path, agent)
+        append_agent(config.source_path, agent, kept)
     config.agents[agent.name] = agent
 
 
