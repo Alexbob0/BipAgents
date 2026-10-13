@@ -40,6 +40,15 @@ struct AgentSettingsView: View {
             } footer: {
                 Text("Son rôle, son ton et ses règles, comme tu les lui expliquerais. \(agent.name) s’en sert dès le prochain message.")
             }
+            if let thinking = settings.thinking {
+                Section {
+                    Toggle(isOn: Binding(get: { thinking }, set: { on in Task { await saveThinking(on) } })) {
+                        Label("Réflexion approfondie", systemImage: "lightbulb")
+                    }
+                } footer: {
+                    Text("\(agent.name) réfléchit avant de répondre : plus lent, mais mieux pour les questions difficiles. Aussi dans le menu « + » d’une discussion.")
+                }
+            }
             Section {
                 ForEach(ToolInfo.main.compactMap(toolset(for:)), id: \.0.id) { info, toolset in
                     toggle(info, toolset)
@@ -193,6 +202,19 @@ struct AgentSettingsView: View {
             editsSoul = false
             errorMessage = nil
         } catch {
+            errorMessage = ConversationModel.describe(error)
+        }
+    }
+
+    private func saveThinking(_ enabled: Bool) async {
+        guard let bridge else { return }
+        let before = settings.thinking
+        settings.thinking = enabled
+        do {
+            try await bridge.setAgentThinking(agent.bridgeName, enabled)
+            errorMessage = nil
+        } catch {
+            settings.thinking = before
             errorMessage = ConversationModel.describe(error)
         }
     }

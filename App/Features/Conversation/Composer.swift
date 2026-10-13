@@ -10,6 +10,8 @@ struct Composer: View {
     var placeholder: String
     var isRunning: Bool
     var voice: VoiceEngine
+    /// « Réflexion approfondie » in the « + » menu, when the agent's model can switch it.
+    var thinking: Binding<Bool>? = nil
     var onSend: () -> Void
     var onStop: () -> Void
     /// What to do when the conversation opens (« Écrire » focuses, « Audio » starts recording).
@@ -115,12 +117,30 @@ struct Composer: View {
             if DocumentScanner.isAvailable {
                 Button("Scanner un document", systemImage: "doc.viewfinder") { isScanning = true }
             }
+            if let thinking {
+                Divider()
+                Toggle(isOn: thinking) {
+                    Label("Réflexion", systemImage: "lightbulb")
+                    Text("Plus lent, pour les questions difficiles")
+                }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 46, height: 46)
                 .background(Theme.field, in: .circle)
+                .overlay(alignment: .topTrailing) {
+                    if thinking?.wrappedValue == true {   // on until turned off: seen before each message
+                        Image(systemName: "lightbulb.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 18, height: 18)
+                            .background(palette.deep, in: .circle)
+                            .offset(x: 2, y: -2)
+                            .accessibilityLabel("Réflexion approfondie activée")
+                    }
+                }
         }
         .accessibilityLabel("Joindre une photo ou un fichier")
     }

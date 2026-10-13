@@ -118,6 +118,24 @@ struct BridgeClient: Sendable {
         _ = try await send(request)
     }
 
+    /// Whether the agent thinks before answering; nil when its model can't be switched from the app (or an older
+    /// bridge).
+    func agentThinking(_ agent: String) async throws -> Bool? {
+        do {
+            let json = try JSONSerialization.jsonObject(with: try await send(request("v1/agents/\(agent)/thinking"))) as? [String: Any]
+            return json?["thinking"] as? Bool
+        } catch HermesError.http(let status, _, _) where status == 404 || status == 405 || status == 409 {
+            return nil
+        }
+    }
+
+    /// `PUT /v1/agents/{id}/thinking`: thinking on or off, from the agent's next message.
+    func setAgentThinking(_ agent: String, _ enabled: Bool) async throws {
+        var request = request("v1/agents/\(agent)/thinking", method: "PUT")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["enabled": enabled])
+        _ = try await send(request)
+    }
+
     /// What the person wrote for an « Autre » agent.
     struct CustomAgent: Sendable {
         var role: String
@@ -165,6 +183,8 @@ struct BridgeClient: Sendable {
         var protected: Bool = true
         /// Services connected to it (MCP servers).
         var services: [ConnectedService]
+        /// Thinks before answering; nil when its model can't be switched from the app.
+        var thinking: Bool? = nil
     }
 
     /// A service (MCP server) connected to an agent. `catalog` nil: set up by hand on the server (a local command).
@@ -472,7 +492,7 @@ struct BridgeClient: Sendable {
         }
         return AgentSettings(soul: soul, toolsets: toolsets, isolated: json["isolated"] as? Bool ?? false,
                              protected: json["protected"] as? Bool ?? true,
-                             services: services)
+                             services: services, thinking: json["thinking"] as? Bool)
     }
 
     /// A credential of the agents' vault, as the app sees it: never its password.

@@ -26,6 +26,7 @@ struct ConversationView: View {
                 let model = ConversationModel(agent: agent, sessionID: sessionID, store: store)
                 self.model = model
                 await model.load()
+                Task { await model.loadThinking() }
                 model.startWatching()
                 model.reattachIfNeeded()
             }
@@ -236,6 +237,7 @@ private struct ConversationContent: View {
                 placeholder: String(localized: "Message à \(model.agent.name)"),
                 isRunning: model.isRunning,
                 voice: model.voice,
+                thinking: model.thinking.map { on in Binding(get: { on }, set: { model.setThinking($0) }) },
                 onSend: send,
                 onStop: model.stop,
                 start: start,

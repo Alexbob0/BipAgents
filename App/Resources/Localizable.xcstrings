@@ -11594,6 +11594,116 @@
           }
         }
       }
+    },
+    "Réflexion approfondie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deep thinking"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reflexión profunda"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gründliches Nachdenken"
+          }
+        }
+      }
+    },
+    "Plus lent, pour les questions difficiles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slower, for hard questions"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Más lento, para preguntas difíciles"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langsamer, für schwierige Fragen"
+          }
+        }
+      }
+    },
+    "Réflexion approfondie activée" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deep thinking on"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reflexión profunda activada"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gründliches Nachdenken an"
+          }
+        }
+      }
+    },
+    "La réflexion n’a pas pu être changée. Réessaie dans un instant." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thinking couldn’t be changed. Try again in a moment."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo cambiar la reflexión. Inténtalo de nuevo en un momento."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Nachdenken konnte nicht geändert werden. Versuch es gleich noch einmal."
+          }
+        }
+      }
+    },
+    "%@ réfléchit avant de répondre : plus lent, mais mieux pour les questions difficiles. Aussi dans le menu « + » d’une discussion." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ thinks before answering: slower, but better for hard questions. Also in a conversation’s “+” menu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ reflexiona antes de responder: más lento, pero mejor para preguntas difíciles. También en el menú «+» de una conversación."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ denkt vor dem Antworten nach: langsamer, aber besser für schwierige Fragen. Auch im „+“-Menü einer Unterhaltung."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -3,6 +3,7 @@ import json
 
 import httpx
 import pytest
+import yaml
 
 from bipbridge.config import parse_config
 from conftest import AUTH
@@ -282,3 +283,29 @@ def test_the_language_is_changed_without_touching_the_personality(managed, clien
     assert soul.startswith("You are Max, blunt and funny.") and "write in Spanish." in soul
     body, lang = souls.split_language(soul)
     assert lang == "es" and souls.BLOCK_START not in body
+
+
+def test_thinking_is_switched_in_the_agents_config(managed):
+    """Thinking on: the chat template's `enable_thinking` (bound to the model's address) and a high effort; off: the
+    template flag off and Hermes' default effort. Only for a model on an OpenAI-compatible server of the person's."""
+    from bipbridge.agents_admin import read_thinking, set_thinking
+
+    config, _, tmp = managed
+    agent = next(iter(config.agents.values()))
+    folder = tmp / ".hermes" / "profiles" / agent.name
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "config.yaml").write_text("model:\n  provider: openrouter\n  default: x\n")
+    assert read_thinking(config, agent) is None
+    with pytest.raises(LookupError):
+        set_thinking(config, agent, True)
+    (folder / "config.yaml").write_text("model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\n"
+                                        "agent:\n  max_turns: 60\n")
+    assert read_thinking(config, agent) is False
+    assert set_thinking(config, agent, True) is True and read_thinking(config, agent) is True
+    data = yaml.safe_load((folder / "config.yaml").read_text())
+    assert data["providers"]["bipagents-thinking"] == {
+        "api": "http://gpu:8888/v1", "extra_body": {"chat_template_kwargs": {"enable_thinking": True}}}
+    assert data["agent"] == {"max_turns": 60, "reasoning_effort": "xhigh"} and data["model"]["default"] == "glm"
+    set_thinking(config, agent, False)
+    data = yaml.safe_load((folder / "config.yaml").read_text())
+    assert data["agent"] == {"max_turns": 60} and read_thinking(config, agent) is False
