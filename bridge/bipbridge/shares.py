@@ -140,7 +140,10 @@ async def apply(config: Config, wanted: List[Tuple[str, str]], run: Callable[...
     for source in sorted({s for _, s in wanted}):
         share = shares_root(config) / source
         share.mkdir(parents=True, exist_ok=True)
-        os.chmod(share, 0o700)
+        # Open to the sandboxes' own user: in a rootless sandbox this account is « root », the agent another user,
+        # which a 700 folder shuts out (its own agent can't write there, its readers can't read). Nothing else
+        # reaches it: the person's home is closed to other accounts, and only these sandboxes mount it.
+        os.chmod(share, 0o777)
     changed_external = []
     for name in sorted(concerned):
         agent = config.agent(name)
