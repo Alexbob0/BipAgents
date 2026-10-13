@@ -44,13 +44,16 @@ class Runner:
     env: Dict[str, str] = field(default_factory=dict)
     log: List[str] = field(default_factory=list)
 
-    def run(self, args: Sequence[str], *, input_text: Optional[str] = None, shell: bool = False, check: bool = True) -> str:
+    def run(self, args: Sequence[str], *, input_text: Optional[str] = None, shell: bool = False, check: bool = True,
+            cwd: Optional[Path] = None) -> str:
         shown = args if isinstance(args, str) else " ".join(shlex.quote(a) for a in args)
+        if cwd:
+            shown = f"cd {shlex.quote(str(cwd))} && {shown}"
         self.log.append(shown)
         if self.dry:
             return ""
         result = subprocess.run(args, input=input_text, text=True, capture_output=True, shell=shell,
-                                env={**os.environ, **self.env}, check=False)
+                                env={**os.environ, **self.env}, check=False, cwd=cwd)
         if result.returncode != 0 and check:
             said = result.stderr.strip() or result.stdout.strip()   # Hermes prints its errors on stdout
             raise RuntimeError(f"{shown} failed ({result.returncode}): {said[-600:]}")

@@ -471,8 +471,9 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
                        "from its repository).\n    Allow a few minutes the first time."))
         try:
             hermes.build_browser(runner, sandbox, REPO)
+            # From the bridge's folder: `bipbridge` is a folder there, not a package installed in its venv.
             runner.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "browser", "add", "--all",
-                        "--config", str(inst.bridge_config)])
+                        "--config", str(inst.bridge_config)], cwd=REPO / "bridge")
             if machine.system == "linux":
                 runner.run(["systemctl", "--user", "restart", label])   # the bridge reads the agents' desktops
             say(ui.done("Each agent has its browser, on its own desktop."))
@@ -481,7 +482,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
             say(ui.note(str(exc)[-300:]))
             say(ui.note("To try again later:"))
             say(f"    {sandbox} build -t {hermes.BROWSER_IMAGE} {REPO / 'browser'}")
-            say(f"    {REPO / 'bridge' / '.venv' / 'bin' / 'python'} -m bipbridge browser add --all --config {inst.bridge_config}")
+            say(f"    cd {REPO / 'bridge'} && .venv/bin/python -m bipbridge browser add --all --config {inst.bridge_config}")
             say(f"    systemctl --user restart {label}")
     say(ui.step(next(steps), total, "Tailscale, to reach your agents from anywhere"))
     commands = [] if args.no_tailscale else None
