@@ -46,9 +46,19 @@ struct ConversationView: View {
     }
 }
 
+/// « Détail du travail »: shown folded under each turn, or hidden altogether (long press on it, or Réglages ›
+/// Discussions).
+enum AgentWork {
+    static let key = "showsWorkDetail"
+}
+
 private struct ConversationContent: View {
     private static let bottom = "thread-bottom"
     @Environment(AgentStore.self) private var store
+    @AppStorage(AgentWork.key) private var showsWorkDetail = true
+    @State private var isTellingWhereToShowWork = false
+    /// The work folds shown open (« Détail du travail »), by their first item's id.
+    @State private var openWork: Set<UUID> = []
     @State private var openExchanges: Set<UUID> = []
     @Bindable var model: ConversationModel
     var start: ConversationStart
@@ -84,6 +94,7 @@ private struct ConversationContent: View {
                     ConversationEmptyState(agent: model.agent)
                 }
                 let visible = Array(model.items.suffix(visibleCount))
+                let work = workFolds
                 let owners = exchangeOwners
                 ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
                     if let day = newDay(at: index, in: visible) {
@@ -102,6 +113,19 @@ private struct ConversationContent: View {
                         } else if openExchanges.contains(owner) {
                             row(for: item, turnEnd: isTurnEnd(item))
                         }
+                    } else if let fold = work[item.id] {
+                        // How the agent worked (tools, reasoning, « Je vais chercher… ») folds into one line.
+                        if showsWorkDetail, fold == item.id || index == 0 {
+                            WorkChip(isOpen: openWork.contains(fold)) {
+                                withAnimation(.snappy) {
+                                    if openWork.contains(fold) { openWork.remove(fold) } else { openWork.insert(fold) }
+                                }
+                            } hide: {
+                                withAnimation(.snappy) { showsWorkDetail = false }
+                                isTellingWhereToShowWork = true
+                            }
+                        }
+                        if showsWorkDetail, openWork.contains(fold) { row(for: item, turnEnd: false) }
                     } else {
                         row(for: item, turnEnd: isTurnEnd(item))
                     }
@@ -118,6 +142,11 @@ private struct ConversationContent: View {
             .padding(.vertical, 12)
         }
         .defaultScrollAnchor(.bottom)
+        .alert("Détail du travail masqué", isPresented: $isTellingWhereToShowWork) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Tu peux le réafficher dans Réglages › Discussions.")
+        }
         // Earlier messages drawn above after opening: the view stays on the latest ones without a nudge.
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .onScrollGeometryChange(for: Bool.self) { geometry in
@@ -336,6 +365,45 @@ private struct ConversationContent: View {
         }
     }
 
+    /// The agent's work, folded by default: item id → the first item of its fold. Work = tools, reasoning, and the
+    /// agent's commentary between tools (« Je vais chercher… »): a text followed in its turn by a tool, then by
+    /// another text or a tool still running. Consecutive work items share a fold; a file the agent sends along the
+    /// way, an approval or a question stays in sight.
+    private var workFolds: [UUID: UUID] {
+        var folds: [UUID: UUID] = [:]
+        let items = model.items
+        var start = 0
+        while start < items.count {
+            var end = start + 1
+            while end < items.count, !items[end].isUser { end += 1 }
+            let turn = start..<end
+            let running = end == items.count && model.isRunning
+            var current: UUID?
+            for index in turn {
+                let isWork: Bool
+                switch items[index].kind {
+                case .tools, .reasoning:
+                    isWork = true
+                case .assistant(let text, _):
+                    let later = items[(index + 1)..<end]
+                    isWork = ChatText.media(in: text).isEmpty
+                        && later.contains { if case .tools = $0.kind { true } else { false } }
+                        && (running || later.contains { if case .assistant = $0.kind { true } else { false } })
+                default:
+                    isWork = false
+                }
+                if isWork {
+                    current = current ?? items[index].id
+                    folds[items[index].id] = current
+                } else {
+                    current = nil
+                }
+            }
+            start = end
+        }
+        return folds
+    }
+
     /// The last assistant text before the next message from the user (or the end): the turn's reply.
     private func isTurnEnd(_ item: ChatItem) -> Bool {
         guard let index = model.items.firstIndex(where: { $0.id == item.id }) else { return true }
@@ -434,6 +502,10 @@ private struct ConversationContent: View {
 private extension ChatItem {
     var isStreamingAssistant: Bool {
         if case .assistant(_, true) = kind { true } else { false }
+    }
+
+    var isUser: Bool {
+        if case .user = kind { true } else { false }
     }
 }
 
@@ -671,6 +743,36 @@ struct MascotAvatar: View {
         guard let image = renderer.uiImage else { return nil }
         images[key] = image
         return image
+    }
+}
+
+/// « Détail du travail »: the tools, reasoning and running commentary of a turn, folded into one line.
+struct WorkChip: View {
+    var isOpen: Bool
+    var toggle: () -> Void
+    var hide: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 7) {
+                Image(systemName: "wrench.and.screwdriver").font(.system(size: 11))
+                Text("Détail du travail")
+                Image(systemName: isOpen ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .bold))
+            }
+            .font(Theme.body(13, weight: .bold))
+            .foregroundStyle(Theme.ink2)
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .background(Theme.card, in: .capsule)
+            .overlay(Capsule().stroke(Theme.line))
+        }
+        .buttonStyle(.plain)
+        .contentShape(.contextMenuPreview, .capsule)
+        .contextMenu {
+            Button("Masquer le détail du travail", systemImage: "eye.slash", action: hide)
+        }
+        .padding(.leading, 40)
+        .accessibilityHint(isOpen ? String(localized: "Replier le détail") : String(localized: "Afficher ce que l’agent a fait"))
     }
 }
 

@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage(BipBabble.enabledKey) private var bipSounds = true
     @AppStorage(AppStyle.key) private var style: AppStyle = .bips
     @AppStorage(ColorMode.key) private var colorMode: ColorMode = .system
+    @AppStorage(AgentWork.key) private var showsWorkDetail = true
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
@@ -81,6 +82,15 @@ struct SettingsView: View {
                     Text("Voix")
                 } footer: {
                     Text("« Intelligent » : en vocal si tu as des écouteurs, es en voiture ou le demandes. « Écouter » sous une réponse la lit à la demande, « Live » pour parler en direct.")
+                }
+                Section {
+                    Toggle(isOn: $showsWorkDetail) {
+                        Label("Détail du travail", systemImage: "wrench.and.screwdriver")
+                    }
+                } header: {
+                    Text("Discussions")
+                } footer: {
+                    Text("Sous chaque réponse, un pli qui montre ce que l’agent a fait : ses recherches, ses commandes, ses messages en chemin.")
                 }
                 Section {
                     Picker(selection: $style) {

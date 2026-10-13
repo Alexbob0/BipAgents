@@ -11418,6 +11418,182 @@
           }
         }
       }
+    },
+    "Détail du travail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Work details"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detalle del trabajo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arbeitsdetails"
+          }
+        }
+      }
+    },
+    "Discussions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversations"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversaciones"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterhaltungen"
+          }
+        }
+      }
+    },
+    "Sous chaque réponse, un pli qui montre ce que l’agent a fait : ses recherches, ses commandes, ses messages en chemin." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Under each reply, a fold showing what the agent did: its searches, its commands, its messages along the way."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bajo cada respuesta, un pliegue que muestra lo que hizo el agente: sus búsquedas, sus comandos, sus mensajes por el camino."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unter jeder Antwort eine Falte, die zeigt, was der Agent getan hat: seine Suchen, seine Befehle, seine Nachrichten unterwegs."
+          }
+        }
+      }
+    },
+    "Détail du travail masqué" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Work details hidden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detalle del trabajo oculto"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arbeitsdetails ausgeblendet"
+          }
+        }
+      }
+    },
+    "Tu peux le réafficher dans Réglages › Discussions." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can show it again in Settings › Conversations."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puedes volver a mostrarlo en Ajustes › Conversaciones."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst sie unter Einstellungen › Unterhaltungen wieder einblenden."
+          }
+        }
+      }
+    },
+    "Masquer le détail du travail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide work details"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar el detalle del trabajo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arbeitsdetails ausblenden"
+          }
+        }
+      }
+    },
+    "Replier le détail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fold the details"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plegar el detalle"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details einklappen"
+          }
+        }
+      }
+    },
+    "Afficher ce que l’agent a fait" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show what the agent did"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar lo que hizo el agente"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigen, was der Agent getan hat"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
