@@ -312,3 +312,37 @@ def test_thinking_level_is_set_in_the_agents_config(managed):
     assert data["providers"]["bipagents-thinking"]["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
     with pytest.raises(LookupError):
         set_thinking(config, agent, "ultra")
+
+
+def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(config_dict, tmp_path):
+    """Given its HERMES_HOME on the machine (`host_home`), an agent in a container of its own has its personality,
+    language and thinking changed from the app; never its tools, its container or its deletion."""
+    from bipbridge.agents_admin import (AgentSettings, editable, managed, read_settings, read_soul, read_thinking,
+                                        set_language, set_thinking, write_settings)
+
+    home = tmp_path / "home-vie"
+    (home / "profiles" / "vie").mkdir(parents=True)
+    (home / "profiles" / "vie" / "SOUL.md").write_text("Tu es Vie.\n")
+    (home / "profiles" / "vie" / "config.yaml").write_text(
+        "model:\n  provider: custom\n  default: dgx-spark\n  base_url: http://gpu:8888/v1\nagent:\n  reasoning_effort: medium\n")
+    config_dict["agents"]["vie"] = {"display_name": "Vie", "hermes_url": "http://127.0.0.1:8644", "hermes_key": "k" * 32,
+                                    "isolated": True, "host_home": str(home)}
+    config = parse_config(config_dict)
+    agent = editable(config, "vie")
+    with pytest.raises(LookupError):
+        managed(config, "vie")                     # no deleting, no space, no services from the app
+    with pytest.raises(LookupError):
+        editable(config, "wellness")               # set up by hand without its home: nothing changes
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500))) as http:
+            return await read_settings(config, agent, http)   # its gateway isn't asked for its tools
+
+    settings = asyncio.run(go())
+    assert settings["soul"] == "Tu es Vie." and settings["by_hand"] and settings["thinking"] == "medium"
+    set_language(config, agent, "fr")
+    asyncio.run(write_settings(config, agent, AgentSettings(soul="Tu es Vie, brève.")))
+    assert read_soul(config, agent).startswith("Tu es Vie, brève.") and "French" in read_soul(config, agent)
+    with pytest.raises(ValueError):
+        asyncio.run(write_settings(config, agent, AgentSettings(toolsets={"web": False})))
+    assert set_thinking(config, agent, "high") == "high" and read_thinking(config, agent) == "high"
