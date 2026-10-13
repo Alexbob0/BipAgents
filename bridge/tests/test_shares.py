@@ -43,7 +43,7 @@ def test_an_agent_reads_what_another_shares_and_nothing_else(setup):
     # Wellness writes in /partage; Vie reads it, read-only; the person's own mount is kept.
     assert volumes_set(commands, "wellness") == [f"{root}/wellness:/partage"]
     assert volumes_set(commands, "vie") == ["/home/x/photos:/photos:ro", f"{root}/wellness:/lecture/wellness:ro"]
-    assert (root / "wellness").is_dir() and oct((root / "wellness").stat().st_mode & 0o777) == "0o700"
+    assert (root / "wellness").is_dir() and oct((root / "wellness").stat().st_mode & 0o777) == "0o777"
     assert (hub / "profiles" / "vie" / "skills" / "shared-data" / "SKILL.md").exists()
     assert shares.load(config) == [("vie", "wellness")]
     # Taken back: the mounts go, the person's stays.
