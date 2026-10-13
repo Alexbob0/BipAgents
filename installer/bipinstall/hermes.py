@@ -146,6 +146,24 @@ def set_model(runner: Runner, profile: str, model: Model) -> None:
     _config(runner, profile, "model.supports_vision", "true" if model.vision else "false")
 
 
+# Hermes names its sandbox images without a registry. podman refuses a short name it would have to ask about (Fedora's
+# « enforcing » mode, no terminal in a service): exit 125, no sandbox. Its aliases say where they come from.
+SANDBOX_IMAGE_ALIASES = {"nousresearch/hermes-sandbox": "docker.io/nousresearch/hermes-sandbox",
+                         "nikolaik/python-nodejs": "docker.io/nikolaik/python-nodejs"}
+
+
+def podman_short_names(runner: Runner, home: Optional[Path] = None) -> Path:
+    """The aliases, for this account only (podman reads ~/.config/containers/registries.conf.d)."""
+    path = (home or Path.home()) / ".config" / "containers" / "registries.conf.d" / "50-bipagents.conf"
+    runner.log.append(f"write {path}")
+    if not runner.dry:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# BipAgents: where Hermes' sandbox images come from (podman won't guess in a service).\n[aliases]\n"
+                        + "".join(f'"{name}" = "{full}"\n' for name, full in SANDBOX_IMAGE_ALIASES.items()),
+                        encoding="utf-8")
+    return path
+
+
 def sandbox_runtime() -> Optional[str]:
     """podman (or docker) on Linux: the agents' tools then run in a container (Hermes' `docker` terminal backend)."""
     import platform
@@ -199,6 +217,8 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = 
         # The engine the installer found (podman, rootless): Hermes would otherwise take `docker` first, a root daemon
         # this account may not be allowed to use.
         _config(runner, HUB_PROFILE, "HERMES_DOCKER_BINARY", sandbox)
+        if Path(sandbox).name == "podman":
+            podman_short_names(runner)
     else:
         # Same account as the bridge, no sandbox: an agent able to read the disk could read the bridge's keys. Off until
         # the person turns one on in the app (every agent is cloned from this profile).

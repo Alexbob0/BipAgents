@@ -287,6 +287,7 @@ def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, cap
     assert line.strip().startswith("$ cd ") and "/bridge" in line.split("&&")[0]   # where `bipbridge` is
     assert "[browser]\nenabled = true" in out and "isolated = true" in out
     assert "config set HERMES_DOCKER_BINARY /usr/bin/podman" in out   # not a root docker found first
+    assert "registries.conf.d/50-bipagents.conf" in out                # its sandbox image by its full name
     assert "bot_desktop.auto_start" not in out
 
 
@@ -567,3 +568,12 @@ def test_another_accounts_runtime_folder_is_private(tmp_path):
     asked = []
     assert account.user_manager_running(1002, run=lambda c: asked.append(c) or 0)
     assert asked == [["systemctl", "is-active", "--quiet", "user@1002.service"]]
+
+
+def test_podman_is_told_where_the_sandbox_image_comes_from(tmp_path):
+    """Hermes asks for « nousresearch/hermes-sandbox:desktop »: without an alias, podman in a service stops at the short
+    name (exit 125) and the agents have no sandbox."""
+    import tomllib
+    path = hermes.podman_short_names(hermes.Runner(), home=tmp_path)
+    aliases = tomllib.loads(path.read_text())["aliases"]
+    assert aliases["nousresearch/hermes-sandbox"] == "docker.io/nousresearch/hermes-sandbox"
