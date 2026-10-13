@@ -285,9 +285,9 @@ def test_the_language_is_changed_without_touching_the_personality(managed, clien
     assert lang == "es" and souls.BLOCK_START not in body
 
 
-def test_thinking_is_switched_in_the_agents_config(managed):
-    """Thinking on: the chat template's `enable_thinking` (bound to the model's address) and a high effort; off: the
-    template flag off and Hermes' default effort. Only for a model on an OpenAI-compatible server of the person's."""
+def test_thinking_level_is_set_in_the_agents_config(managed):
+    """A level from none to xhigh: Hermes' `reasoning_effort` and the chat template's `enable_thinking` (bound to the
+    model's address). Unset reads as Hermes' default. Only for a model on an OpenAI-compatible server of the person's."""
     from bipbridge.agents_admin import read_thinking, set_thinking
 
     config, _, tmp = managed
@@ -297,15 +297,18 @@ def test_thinking_is_switched_in_the_agents_config(managed):
     (folder / "config.yaml").write_text("model:\n  provider: openrouter\n  default: x\n")
     assert read_thinking(config, agent) is None
     with pytest.raises(LookupError):
-        set_thinking(config, agent, True)
+        set_thinking(config, agent, "high")
     (folder / "config.yaml").write_text("model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\n"
                                         "agent:\n  max_turns: 60\n")
-    assert read_thinking(config, agent) is False
-    assert set_thinking(config, agent, True) is True and read_thinking(config, agent) is True
+    assert read_thinking(config, agent) == "medium"
+    assert set_thinking(config, agent, "xhigh") == "xhigh" and read_thinking(config, agent) == "xhigh"
     data = yaml.safe_load((folder / "config.yaml").read_text())
     assert data["providers"]["bipagents-thinking"] == {
         "api": "http://gpu:8888/v1", "extra_body": {"chat_template_kwargs": {"enable_thinking": True}}}
     assert data["agent"] == {"max_turns": 60, "reasoning_effort": "xhigh"} and data["model"]["default"] == "glm"
-    set_thinking(config, agent, False)
+    set_thinking(config, agent, "none")
     data = yaml.safe_load((folder / "config.yaml").read_text())
-    assert data["agent"] == {"max_turns": 60} and read_thinking(config, agent) is False
+    assert data["agent"]["reasoning_effort"] == "none" and read_thinking(config, agent) == "none"
+    assert data["providers"]["bipagents-thinking"]["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
+    with pytest.raises(LookupError):
+        set_thinking(config, agent, "ultra")

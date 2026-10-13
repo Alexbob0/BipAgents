@@ -11595,72 +11595,6 @@
         }
       }
     },
-    "Réflexion approfondie" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deep thinking"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reflexión profunda"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gründliches Nachdenken"
-          }
-        }
-      }
-    },
-    "Plus lent, pour les questions difficiles" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Slower, for hard questions"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Más lento, para preguntas difíciles"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Langsamer, für schwierige Fragen"
-          }
-        }
-      }
-    },
-    "Réflexion approfondie activée" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deep thinking on"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reflexión profunda activada"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gründliches Nachdenken an"
-          }
-        }
-      }
-    },
     "La réflexion n’a pas pu être changée. Réessaie dans un instant." : {
       "localizations" : {
         "en" : {
@@ -11683,24 +11617,156 @@
         }
       }
     },
-    "%@ réfléchit avant de répondre : plus lent, mais mieux pour les questions difficiles. Aussi dans le menu « + » d’une discussion." : {
+    "Désactivée" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ thinks before answering: slower, but better for hard questions. Also in a conversation’s “+” menu."
+            "value" : "Off"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ reflexiona antes de responder: más lento, pero mejor para preguntas difíciles. También en el menú «+» de una conversación."
+            "value" : "Desactivada"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ denkt vor dem Antworten nach: langsamer, aber besser für schwierige Fragen. Auch im „+“-Menü einer Unterhaltung."
+            "value" : "Aus"
+          }
+        }
+      }
+    },
+    "Légère" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligera"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leicht"
+          }
+        }
+      }
+    },
+    "Normale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normal"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normal"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normal"
+          }
+        }
+      }
+    },
+    "Poussée" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deep"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profunda"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gründlich"
+          }
+        }
+      }
+    },
+    "Maximale" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maximum"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máxima"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maximal"
+          }
+        }
+      }
+    },
+    "Réflexion : %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thinking: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reflexión: %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachdenken: %@"
+          }
+        }
+      }
+    },
+    "Combien %@ réfléchit avant de répondre : plus, c’est plus lent mais mieux pour les questions difficiles. Aussi dans le menu « + » d’une discussion." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How much %@ thinks before answering: more is slower but better for hard questions. Also in a conversation’s “+” menu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuánto reflexiona %@ antes de responder: más es más lento pero mejor para preguntas difíciles. También en el menú «+» de una conversación."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie viel %@ vor dem Antworten nachdenkt: mehr ist langsamer, aber besser für schwierige Fragen. Auch im „+“-Menü einer Unterhaltung."
           }
         }
       }

@@ -192,25 +192,25 @@ final class ConversationModel {
     /// takes long enough to notice (Tailscale waking up).
     private(set) var isUpdating = false
 
-    /// Whether the agent thinks before answering (« Réflexion approfondie » in the « + » menu); nil when its model
-    /// can't be switched from the app.
-    private(set) var thinking: Bool?
+    /// How much the agent thinks before answering (« Réflexion » in the « + » menu); nil when its model can't be
+    /// set from the app.
+    private(set) var thinking: ThinkingLevel?
 
     func loadThinking() async {
-        if store.isDemo { thinking = false; return }   // design review: the switch, without a server
+        if store.isDemo { thinking = .medium; return }   // design review: the choice, without a server
         guard let bridge else { return }
         thinking = try? await bridge.agentThinking(agent.bridgeName)
     }
 
     /// From the next message on; back to what it was when the bridge refuses.
-    func setThinking(_ enabled: Bool) {
+    func setThinking(_ level: ThinkingLevel) {
         guard thinking != nil else { return }
         let before = thinking
-        thinking = enabled
+        thinking = level
         guard let bridge else { return }
         Task {
             do {
-                try await bridge.setAgentThinking(agent.bridgeName, enabled)
+                try await bridge.setAgentThinking(agent.bridgeName, level)
             } catch {
                 thinking = before
                 errorMessage = String(localized: "La réflexion n’a pas pu être changée. Réessaie dans un instant.")

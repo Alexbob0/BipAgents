@@ -237,7 +237,7 @@ private struct ConversationContent: View {
                 placeholder: String(localized: "Message à \(model.agent.name)"),
                 isRunning: model.isRunning,
                 voice: model.voice,
-                thinking: model.thinking.map { on in Binding(get: { on }, set: { model.setThinking($0) }) },
+                thinking: model.thinking.map { level in Binding(get: { level }, set: { model.setThinking($0) }) },
                 onSend: send,
                 onStop: model.stop,
                 start: start,

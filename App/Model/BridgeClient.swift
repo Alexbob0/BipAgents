@@ -118,21 +118,21 @@ struct BridgeClient: Sendable {
         _ = try await send(request)
     }
 
-    /// Whether the agent thinks before answering; nil when its model can't be switched from the app (or an older
+    /// How much the agent thinks before answering; nil when its model can't be set from the app (or an older
     /// bridge).
-    func agentThinking(_ agent: String) async throws -> Bool? {
+    func agentThinking(_ agent: String) async throws -> ThinkingLevel? {
         do {
             let json = try JSONSerialization.jsonObject(with: try await send(request("v1/agents/\(agent)/thinking"))) as? [String: Any]
-            return json?["thinking"] as? Bool
+            return (json?["thinking"] as? String).flatMap(ThinkingLevel.init(rawValue:))
         } catch HermesError.http(let status, _, _) where status == 404 || status == 405 || status == 409 {
             return nil
         }
     }
 
-    /// `PUT /v1/agents/{id}/thinking`: thinking on or off, from the agent's next message.
-    func setAgentThinking(_ agent: String, _ enabled: Bool) async throws {
+    /// `PUT /v1/agents/{id}/thinking`: the thinking level, from the agent's next message.
+    func setAgentThinking(_ agent: String, _ level: ThinkingLevel) async throws {
         var request = request("v1/agents/\(agent)/thinking", method: "PUT")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["enabled": enabled])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["level": level.rawValue])
         _ = try await send(request)
     }
 
@@ -183,8 +183,8 @@ struct BridgeClient: Sendable {
         var protected: Bool = true
         /// Services connected to it (MCP servers).
         var services: [ConnectedService]
-        /// Thinks before answering; nil when its model can't be switched from the app.
-        var thinking: Bool? = nil
+        /// How much it thinks before answering; nil when its model can't be set from the app.
+        var thinking: ThinkingLevel? = nil
     }
 
     /// A service (MCP server) connected to an agent. `catalog` nil: set up by hand on the server (a local command).
@@ -492,7 +492,8 @@ struct BridgeClient: Sendable {
         }
         return AgentSettings(soul: soul, toolsets: toolsets, isolated: json["isolated"] as? Bool ?? false,
                              protected: json["protected"] as? Bool ?? true,
-                             services: services, thinking: json["thinking"] as? Bool)
+                             services: services,
+                             thinking: (json["thinking"] as? String).flatMap(ThinkingLevel.init(rawValue:)))
     }
 
     /// A credential of the agents' vault, as the app sees it: never its password.
@@ -838,5 +839,32 @@ struct FamilyInvitation: Sendable {
         self.url = url
         self.code = code
         name = json["name"] as? String ?? ""
+    }
+}
+
+/// How much an agent thinks before answering (Hermes' `reasoning_effort`). The model decides within it: an easy
+/// question gets a quick answer even at « Maximale ».
+enum ThinkingLevel: String, CaseIterable, Identifiable, Sendable {
+    case none, low, medium, high, xhigh
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none: String(localized: "Désactivée")
+        case .low: String(localized: "Légère")
+        case .medium: String(localized: "Normale")
+        case .high: String(localized: "Poussée")
+        case .xhigh: String(localized: "Maximale")
+        }
+    }
+
+    /// Shown on the « + » button: thinking turned off, or deeper than usual (slower answers).
+    var badge: String? {
+        switch self {
+        case .none: "lightbulb.slash.fill"
+        case .high, .xhigh: "lightbulb.fill"
+        case .low, .medium: nil
+        }
     }
 }

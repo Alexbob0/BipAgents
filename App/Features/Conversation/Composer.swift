@@ -10,8 +10,8 @@ struct Composer: View {
     var placeholder: String
     var isRunning: Bool
     var voice: VoiceEngine
-    /// « Réflexion approfondie » in the « + » menu, when the agent's model can switch it.
-    var thinking: Binding<Bool>? = nil
+    /// « Réflexion » in the « + » menu, when the agent's thinking can be set from the app.
+    var thinking: Binding<ThinkingLevel>? = nil
     var onSend: () -> Void
     var onStop: () -> Void
     /// What to do when the conversation opens (« Écrire » focuses, « Audio » starts recording).
@@ -119,10 +119,13 @@ struct Composer: View {
             }
             if let thinking {
                 Divider()
-                Toggle(isOn: thinking) {
+                Picker(selection: thinking) {
+                    ForEach(ThinkingLevel.allCases) { Text($0.label).tag($0) }
+                } label: {
                     Label("Réflexion", systemImage: "lightbulb")
-                    Text("Plus lent, pour les questions difficiles")
+                    Text(thinking.wrappedValue.label)
                 }
+                .pickerStyle(.menu)
             }
         } label: {
             Image(systemName: "plus")
@@ -131,14 +134,13 @@ struct Composer: View {
                 .frame(width: 46, height: 46)
                 .background(Theme.field, in: .circle)
                 .overlay(alignment: .topTrailing) {
-                    if thinking?.wrappedValue == true {   // on until turned off: seen before each message
-                        Image(systemName: "lightbulb.fill")
+                    if let badge = thinking?.wrappedValue.badge {   // kept until changed: seen before each message
+                        Image(systemName: badge)
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 18, height: 18)
-                            .background(palette.deep, in: .circle)
-                            .offset(x: 2, y: -2)
-                            .accessibilityLabel("Réflexion approfondie activée")
+                            .background(palette.deep, in: .circle)   // inside the button: a Menu label is clipped
+                            .accessibilityLabel(Text("Réflexion : \(thinking?.wrappedValue.label ?? "")"))
                     }
                 }
         }

@@ -42,11 +42,13 @@ struct AgentSettingsView: View {
             }
             if let thinking = settings.thinking {
                 Section {
-                    Toggle(isOn: Binding(get: { thinking }, set: { on in Task { await saveThinking(on) } })) {
-                        Label("Réflexion approfondie", systemImage: "lightbulb")
+                    Picker(selection: Binding(get: { thinking }, set: { level in Task { await saveThinking(level) } })) {
+                        ForEach(ThinkingLevel.allCases) { Text($0.label).tag($0) }
+                    } label: {
+                        Label("Réflexion", systemImage: "lightbulb")
                     }
                 } footer: {
-                    Text("\(agent.name) réfléchit avant de répondre : plus lent, mais mieux pour les questions difficiles. Aussi dans le menu « + » d’une discussion.")
+                    Text("Combien \(agent.name) réfléchit avant de répondre : plus, c’est plus lent mais mieux pour les questions difficiles. Aussi dans le menu « + » d’une discussion.")
                 }
             }
             Section {
@@ -206,12 +208,12 @@ struct AgentSettingsView: View {
         }
     }
 
-    private func saveThinking(_ enabled: Bool) async {
+    private func saveThinking(_ level: ThinkingLevel) async {
         guard let bridge else { return }
         let before = settings.thinking
-        settings.thinking = enabled
+        settings.thinking = level
         do {
-            try await bridge.setAgentThinking(agent.bridgeName, enabled)
+            try await bridge.setAgentThinking(agent.bridgeName, level)
             errorMessage = nil
         } catch {
             settings.thinking = before
