@@ -1,0 +1,98 @@
+diff --git a/tests/tools/test_bot_mode_dm_sync_peer.py b/tests/tools/test_bot_mode_dm_sync_peer.py
+new file mode 100644
+index 0000000000..3053559ee2
+--- /dev/null
++++ b/tests/tools/test_bot_mode_dm_sync_peer.py
+@@ -0,0 +1,27 @@
++"""A peer message from a session without async delivery (api_server) waits for the peer's reply and returns it."""
++import json
++import subprocess
++
++from tools import bot_mode_dm
++
++
++def test_peer_reply_comes_back_as_the_tool_result(monkeypatch):
++    seen = {}
++
++    def run(argv, **kwargs):
++        seen["argv"], seen["input"] = argv, kwargs["input"]
++        return subprocess.CompletedProcess(argv, 0, stdout='progress\n{"reply": "Le train de 9 h."}\n', stderr="")
++
++    monkeypatch.setattr(bot_mode_dm.subprocess, "run", run)
++    result = json.loads(bot_mode_dm._deliver_peer_sync(["hermes", "peer", "dm", "bip/vie"], "Quel train ?", "@vie", None))
++    assert result["status"] == "delivered" and result["reply"] == "Le train de 9 h."
++    assert seen["argv"][-1] == "--json" and seen["input"] == "Quel train ?"
++
++
++def test_a_peer_that_does_not_answer_in_time_is_not_asked_again(monkeypatch):
++    def run(argv, **kwargs):
++        raise subprocess.TimeoutExpired(argv, 600)
++
++    monkeypatch.setattr(bot_mode_dm.subprocess, "run", run)
++    result = json.loads(bot_mode_dm._deliver_peer_sync(["hermes", "peer", "dm", "bip/vie"], "Quel train ?", "@vie", None))
++    assert "do NOT resend" in json.dumps(result)
+diff --git a/tools/bot_mode_dm.py b/tools/bot_mode_dm.py
+index 80a44c70b9..dc9536cf43 100644
+--- a/tools/bot_mode_dm.py
++++ b/tools/bot_mode_dm.py
+@@ -198,6 +198,44 @@ def _err(message: str, *, roster: list[str] | None = None, peers: list[str] | No
+     return json.dumps(payload)
+ 
+ 
++_SYNC_PEER_TIMEOUT_S = 600
++_SYNC_PEER_HINT = ("\n\n[Synchronous link: answer right here in this turn, as text. Your answer is handed back to the "
++                   "sender automatically. Do not use message_agent to answer and do not wait for anything.]")
++
++
++def _deliver_peer_sync(argv: list[str], content: str, label: str, author: Optional[dict]) -> str:
++    """Run ``hermes peer dm`` inline and hand the peer's reply back as the tool result: a session without async
++    delivery (api_server) can't receive the reply later, and polling the runner while the peer answers into this
++    same busy session waits on itself until the timeouts."""
++    from tools.bot_relay import delivery_env
++    try:
++        proc = subprocess.run(
++            [*argv, "--json"], input=content, capture_output=True, text=True, timeout=_SYNC_PEER_TIMEOUT_S,
++            env=delivery_env(author, None))
++    except subprocess.TimeoutExpired:
++        return _err(f"No reply from {label} within {_SYNC_PEER_TIMEOUT_S}s. The message IS in its Bot Chat and "
++                    "will be answered there; do NOT resend. Tell the user the answer is pending.")
++    except Exception as exc:
++        return _err(f"Delivery to {label} could not be started: {exc}")
++    if proc.returncode != 0:
++        return _err(f"Delivery to {label} failed (exit {proc.returncode}): "
++                    f"{(proc.stderr or proc.stdout or '').strip()[-400:]}")
++    reply = ""
++    for line in reversed((proc.stdout or "").strip().splitlines()):
++        try:
++            data = json.loads(line)
++        except ValueError:
++            continue
++        if isinstance(data, dict):
++            reply = str(data.get("reply") or "")
++            break
++    return json.dumps({
++        "status": "delivered", "to": label, "reply": reply or "(no reply)",
++        "detail": (f"Delivered synchronously: the 'reply' field IS {label}'s answer. Relay it to the user now, "
++                   "attributed to that agent. Nothing to wait for — do not poll."),
++    }, ensure_ascii=False)
++
++
+ def message_agent_tool(target: str = "", message: str = "", task_id: Optional[str] = None, agent: Any = None) -> str:
+     """Deliver ``message`` to ``target``'s Bot Chat. Returns a JSON ack/error.
+     ``agent`` is the calling AIAgent — used for the Bot Chat gate and sender identity."""
+@@ -263,6 +301,15 @@ def message_agent_tool(target: str = "", message: str = "", task_id: Optional[st
+         # under the wrong interpreter (#108628). _hermes_cli pins the entrypoint beside
+         # this interpreter; _delivery_lock/_local_delivery_home match argv[0] by basename,
+         # so the absolute path stays compatible.
++        try:
++            from gateway.session_context import async_delivery_supported
++            sync_lane = not async_delivery_supported()
++        except Exception:
++            sync_lane = False
++        if sync_lane:
++            return _deliver_peer_sync(
++                [_hermes_cli(), "-p", _self_profile_name(root), "peer", "dm", dm_target],
++                content + _SYNC_PEER_HINT, f"@{peer_profile or peer_name} on peer '{peer_name}'", peer_author)
+         return _start_delivery([_hermes_cli(), "-p", _self_profile_name(root), "peer", "dm", dm_target], content,
+                                f"@{peer_profile or peer_name} on peer '{peer_name}'", stdin_file=True,
+                                author=peer_author, **delivery)
