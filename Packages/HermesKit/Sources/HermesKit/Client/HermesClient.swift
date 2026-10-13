@@ -47,10 +47,13 @@ public struct HermesClient: Sendable {
         _ = try await send("DELETE", "/api/sessions/\(Self.escape(id))")
     }
 
-    /// Transcript. `inlineImages: false` turns images into `[image]` placeholders (kilobytes instead of megabytes).
-    public func messages(sessionID: String, includeCompacted: Bool = false, inlineImages: Bool = false) async throws -> [HermesMessage] {
-        let json = try await send("GET", "/api/sessions/\(Self.escape(sessionID))/messages",
-                                  query: ["include_compacted": "\(includeCompacted)", "inline_images": "\(inlineImages)"])
+    /// Transcript. `inlineImages: false` turns images into `[image]` placeholders (kilobytes instead of megabytes);
+    /// `latest`: only that many of the latest messages.
+    public func messages(sessionID: String, includeCompacted: Bool = false, inlineImages: Bool = false,
+                         latest: Int? = nil) async throws -> [HermesMessage] {
+        var query = ["include_compacted": "\(includeCompacted)", "inline_images": "\(inlineImages)"]
+        if let latest { query["limit"] = "\(latest)"; query["order"] = "latest" }
+        let json = try await send("GET", "/api/sessions/\(Self.escape(sessionID))/messages", query: query)
         return ResponseMapping.list(json, keys: ["messages"]).enumerated()
             .compactMap { ResponseMapping.message($0.element, index: $0.offset) }
     }

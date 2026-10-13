@@ -1091,6 +1091,19 @@ final class ConversationModel {
         voiceReplies = replies
     }
 
+    /// The turn's thinking: Hermes keeps it with the reply but does not stream it, so it is fetched once the turn
+    /// is over and shown in « Détail du travail », before the reply.
+    private func attachReasoning() async {
+        guard let client, let sessionID, !store.isDemo,
+              let recent = try? await client.messages(sessionID: sessionID, latest: 4),
+              let reasoning = recent.last(where: { $0.role == .assistant })?.reasoning, !reasoning.isEmpty,
+              !isRunning,
+              let reply = items.lastIndex(where: { if case .assistant = $0.kind { true } else { false } }) else { return }
+        let start = items[..<reply].lastIndex(where: { if case .user = $0.kind { true } else { false } }).map { $0 + 1 } ?? 0
+        guard !items[start..<reply].contains(where: { if case .reasoning = $0.kind { true } else { false } }) else { return }
+        items.insert(ChatItem(.reasoning(text: reasoning), date: items[reply].date), at: reply)
+    }
+
     private func finishRun() {
         #if DEBUG
         trace?.log("finished")
@@ -1111,6 +1124,7 @@ final class ConversationModel {
         }
         endStreamingText()
         dropRepeatedReplies()
+        Task { await attachReasoning() }
         knownMessageCount = nil // our own turn: take the new count as the baseline, no reload
         if replyByVoice {
             replyByVoice = false
