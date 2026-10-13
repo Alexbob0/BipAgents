@@ -87,7 +87,7 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     key = hermes.create_agent(runner, "finance", description="Budget", soul="Tu es Budget.", model=model)
     log = "\n".join(runner.log)
     assert "config set API_SERVER_PORT 8642" in log and "config set gateway.multiplex_profiles true" in log
-    assert "profile create finance --no-alias" in log
+    assert "profile create finance --clone-from default --no-alias" in log   # the hub's sandbox, as the app's agents
     assert f"-p finance config set API_SERVER_KEY {key}" in log
     assert "-p finance config set API_SERVER_ENABLED" not in log   # only the hub listens
     assert "-p finance config set model.supports_vision true" in log
