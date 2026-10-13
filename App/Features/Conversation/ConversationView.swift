@@ -978,7 +978,6 @@ struct NoticeRow: View {
 struct TypingIndicator: View {
     var appearance: AgentAppearance
     var interim: String?
-    @State private var phase = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -992,19 +991,23 @@ struct TypingIndicator: View {
                     .foregroundStyle(Theme.ink2)
                     .italic()
             } else {
-                HStack(spacing: 5) {
-                    ForEach(0..<3) { index in
-                        Circle()
-                            .fill(Theme.muted)
-                            .frame(width: 7, height: 7)
-                            .opacity(phase ? 1 : 0.3)
-                            .animation(.easeInOut(duration: 0.7).repeatForever().delay(Double(index) * 0.2), value: phase)
+                // Each dot's brightness computed from the clock, not a repeating animation: one would also replay,
+                // forever, any move of the bubble (it appearing, the thread scrolling) and send the dots across
+                // the screen.
+                TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+                    let time = context.date.timeIntervalSinceReferenceDate
+                    HStack(spacing: 5) {
+                        ForEach(0..<3) { index in
+                            Circle()
+                                .fill(Theme.muted)
+                                .frame(width: 7, height: 7)
+                                .opacity(0.3 + 0.7 * (1 - cos((time - Double(index) * 0.2) * .pi / 0.7)) / 2)
+                        }
                     }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
                 .background(Theme.card, in: .rect(cornerRadius: 16))
-                .onAppear { phase = true }
             }
         }
     }
