@@ -41,8 +41,8 @@ def test_an_agent_reads_what_another_shares_and_nothing_else(setup):
     root = tmp / "data" / "shares"
     asyncio.run(shares.apply(config, [("vie", "wellness")], run))
     # Wellness writes in /partage; Vie reads it, read-only; the person's own mount is kept.
-    assert volumes_set(commands, "wellness") == [f"{root}/wellness:/partage"]
-    assert volumes_set(commands, "vie") == ["/home/x/photos:/photos:ro", f"{root}/wellness:/lecture/wellness:ro"]
+    assert volumes_set(commands, "wellness") == [f"{root}/wellness:/partage:z"]
+    assert volumes_set(commands, "vie") == ["/home/x/photos:/photos:ro", f"{root}/wellness:/lecture/wellness:ro,z"]
     assert (root / "wellness").is_dir() and oct((root / "wellness").stat().st_mode & 0o777) == "0o777"
     assert (hub / "profiles" / "vie" / "skills" / "shared-data" / "SKILL.md").exists()
     assert shares.load(config) == [("vie", "wellness")]
@@ -90,8 +90,8 @@ def test_an_agent_set_up_by_hand_mounts_its_folders_itself(setup, config_dict, t
     assert shares.why_not(config, vie) is None
     asyncio.run(shares.apply(config, [("vie", "wellness")], run))
     root = tmp / "data" / "shares"
-    assert shares.mounts(config, "vie") == [f"{root}/wellness:/lecture/wellness:ro"]
-    assert shares.mounts(config, "wellness") == [f"{root}/wellness:/partage"]
+    assert shares.mounts(config, "vie") == [f"{root}/wellness:/lecture/wellness:ro,z"]
+    assert shares.mounts(config, "wellness") == [f"{root}/wellness:/partage:z"]
     assert (root / "wellness").is_dir()
     assert (["sh", "-c", "restart-when-idle vie"], {}) in commands
     assert not any(args[1:3] == ["-p", "vie"] for args, _ in commands)     # nothing written in its config
