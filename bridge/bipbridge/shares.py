@@ -115,10 +115,11 @@ def volumes_for(config: Config, agent: str, reads: List[Tuple[str, str]], curren
     kept = [v for v in current if not str(v).startswith(root + "/")]
     ours: List[str] = []
     if any(source == agent for _, source in reads):
-        ours.append(f"{root}/{agent}:/partage")
+        # `z`: a label every container may read (SELinux, as on Fedora: without it the sandbox can't open the files).
+        ours.append(f"{root}/{agent}:/partage:z")
     for reader, source in sorted(reads):
         if reader == agent:
-            ours.append(f"{root}/{source}:/lecture/{source}:ro")
+            ours.append(f"{root}/{source}:/lecture/{source}:ro,z")
     return kept + ours
 
 
