@@ -1,0 +1,93 @@
+From cd2d130e841893b49720dbe721ee95362c65a4f2 Mon Sep 17 00:00:00 2001
+From: aibox lab <aibox@localhost>
+Date: Wed, 14 Oct 2026 16:53:58 +0200
+Subject: [PATCH] fish_drama3: cache multi_reference_cond encodings too
+
+Podcast requests with one reference per speaker re-encoded every
+reference audio at each request. Share the per-session cache with the
+single-reference path.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../community_models/fish_drama3/session.h    |  1 +
+ src/community_models/fish_drama3/session.cpp  | 40 ++++++++++---------
+ 2 files changed, 23 insertions(+), 18 deletions(-)
+
+diff --git a/include/engine/community_models/fish_drama3/session.h b/include/engine/community_models/fish_drama3/session.h
+index 188ccf07..98f30da2 100644
+--- a/include/engine/community_models/fish_drama3/session.h
++++ b/include/engine/community_models/fish_drama3/session.h
+@@ -26,6 +26,7 @@ private:
+     void reset_stream_state() override {}
+     runtime::TaskResult synthesize(const runtime::TaskRequest & request, bool streaming);
+     Drama3Take conditioning_take(const engine::io::json::Value & value);
++    const codecs::FishDacCodes & cached_reference_codes(const runtime::AudioBuffer & audio);
+     runtime::TaskSpec task_;
+     std::shared_ptr<const Drama3Assets> assets_;
+     std::unique_ptr<Drama3Generator> generator_;
+diff --git a/src/community_models/fish_drama3/session.cpp b/src/community_models/fish_drama3/session.cpp
+index 7a38f073..ea5ffe18 100644
+--- a/src/community_models/fish_drama3/session.cpp
++++ b/src/community_models/fish_drama3/session.cpp
+@@ -220,13 +220,31 @@ void Drama3Session::prepare(const runtime::SessionPreparationRequest & request)
+     mark_prepared();
+ }
+ 
++const codecs::FishDacCodes & Drama3Session::cached_reference_codes(const runtime::AudioBuffer & audio) {
++    uint64_t key = 1469598103934665603ULL ^ static_cast<uint64_t>(audio.sample_rate);
++    const auto * bytes = reinterpret_cast<const unsigned char *>(audio.samples.data());
++    for (size_t index = 0; index < audio.samples.size() * sizeof(float); ++index) key = (key ^ bytes[index]) * 1099511628211ULL;
++    auto cached = reference_codes_.find(key);
++    if (cached == reference_codes_.end()) {
++        const auto started = std::chrono::steady_clock::now();
++        if (reference_codes_.size() >= 16) reference_codes_.clear();
++        cached = reference_codes_.emplace(key, generator_->encode_reference(audio)).first;
++        if (std::getenv("DRAMA3_TIMING")) {
++            std::cerr << "[fish_drama3] timing reference_encode_ms="
++                      << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
++                      << " frames=" << cached->second.frames << "\n";
++        }
++    }
++    return cached->second;
++}
++
+ Drama3Take Drama3Session::conditioning_take(const json::Value & value) {
+     Drama3Take take;
+     take.text = json::require_string(value, "text");
+     validate_drama3_text(take.text, "conditioning text");
+     if (const auto * codes = value.find("vq_codes")) take.codes = parse_codes(*codes, assets_->tower.codebook_size);
+-    else if (const auto * audio = value.find("audio_path")) take.codes = generator_->encode_reference(read_reference(audio->as_string()));
+-    else if (const auto * audio = value.find("audio")) take.codes = generator_->encode_reference(read_reference(audio->as_string()));
++    else if (const auto * audio = value.find("audio_path")) take.codes = cached_reference_codes(read_reference(audio->as_string()));
++    else if (const auto * audio = value.find("audio")) take.codes = cached_reference_codes(read_reference(audio->as_string()));
+     else throw std::runtime_error("Drama 3 conditioning requires vq_codes, audio_path, or audio");
+     return take;
+ }
+@@ -257,22 +275,8 @@ runtime::TaskResult Drama3Session::synthesize(const runtime::TaskRequest & reque
+         const auto transcript = runtime::find_option(effective.options, {"reference_text"});
+         if (!transcript) throw std::runtime_error("Drama 3 reference audio requires reference_text");
+         // A Bip speaks with the same reference at every request: encode it once.
+-        const auto & audio = *effective.voice->speaker->audio;
+-        uint64_t key = 1469598103934665603ULL ^ static_cast<uint64_t>(audio.sample_rate);
+-        const auto * bytes = reinterpret_cast<const unsigned char *>(audio.samples.data());
+-        for (size_t index = 0; index < audio.samples.size() * sizeof(float); ++index) key = (key ^ bytes[index]) * 1099511628211ULL;
+-        auto cached = reference_codes_.find(key);
+-        if (cached == reference_codes_.end()) {
+-            const auto started = std::chrono::steady_clock::now();
+-            if (reference_codes_.size() >= 16) reference_codes_.clear();
+-            cached = reference_codes_.emplace(key, generator_->encode_reference(audio)).first;
+-            if (std::getenv("DRAMA3_TIMING")) {
+-                std::cerr << "[fish_drama3] timing reference_encode_ms="
+-                          << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
+-                          << " frames=" << cached->second.frames << "\n";
+-            }
+-        }
+-        references.push_back({*transcript, cached->second});
++        const auto & codes = cached_reference_codes(*effective.voice->speaker->audio);
++        references.push_back({*transcript, codes});
+     }
+     if (const auto ordered = runtime::find_option(effective.options, {"multi_reference_cond", "references"})) {
+         const auto descriptors = json::parse(*ordered);
+-- 
+2.55.0
+
