@@ -90,10 +90,11 @@ class Gpu:
     free_gib: float
     cuda: Optional[str] = None        # NVIDIA's image version (fits the driver)
     cuda_arch: Optional[str] = None   # the GPU's compute capability, e.g. "89", "121" (built for it alone)
+    build: Optional[str] = None       # version(repo): a new CUDA image when the patches change
 
     @property
     def image(self) -> str:
-        return f"{CUDA_IMAGE}:{AUDIOCPP_COMMIT[:12]}-cuda{self.cuda}" if self.backend == "cuda" else IMAGE
+        return f"{CUDA_IMAGE}:{self.build or AUDIOCPP_COMMIT[:12]}-cuda{self.cuda}" if self.backend == "cuda" else IMAGE
 
     @property
     def bin(self) -> str:
@@ -206,6 +207,40 @@ class Layout:
     def prewarm(self) -> Path:
         return self.root / "prewarm.sh"
 
+    @property
+    def cache(self) -> Path:
+        """The GPU driver's shader cache (HOME in the container): compiled once, not at every start."""
+        return self.root / "cache"
+
+    @property
+    def stamp(self) -> Path:
+        """What this account set up (version and GPU), to update it when the repository changes."""
+        return self.root / "installed.json"
+
+
+def version(repo: Path) -> str:
+    """The build's identity: audio.cpp's commit, our patches, the CUDA recipe and this module (its service and
+    config). A different one after `git pull`: `install.sh drama` rebuilds and restarts."""
+    digest = hashlib.sha256(AUDIOCPP_COMMIT.encode())
+    folder = repo / "tts" / "drama3"
+    for path in sorted(folder.glob("patches/*.patch")) + [folder / "Containerfile.cuda", Path(__file__)]:
+        digest.update(path.name.encode() + path.read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def installed(layout: Layout) -> Optional[dict]:
+    """This account's setup, or None. One made before the stamp existed reads as an older version (its backend from
+    its config)."""
+    try:
+        return json.loads(layout.stamp.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    try:
+        backend = json.loads(layout.config.read_text(encoding="utf-8")).get("backend", "vulkan")
+    except (OSError, ValueError):
+        return None
+    return {"version": None, "backend": backend}
+
 
 def voices_catalog(repo: Path) -> List[dict]:
     return json.loads((repo / "voices" / "drama" / "voices.json").read_text(encoding="utf-8"))["voices"]
@@ -258,7 +293,10 @@ def prewarm_script(repo: Path) -> str:
 
 def service_unit(engine: str, layout: Layout, gpu: Gpu) -> str:
     mounts = ["-v", f"{layout.models}:/srv/drama3/models:ro", "-v", f"{layout.voices}:/srv/drama3/voices:ro",
-              "-v", f"{layout.config}:/srv/drama3/server.json:ro"]
+              "-v", f"{layout.config}:/srv/drama3/server.json:ro", "-v", f"{layout.cache}:/srv/drama3/cache",
+              "-e", "HOME=/srv/drama3/cache",
+              # One copy of each line in the journal (podman's own log driver would add a second).
+              "--log-driver", "passthrough"]
     if gpu.backend == "vulkan":   # its programs were built in this folder (the CUDA image carries its own)
         mounts += ["-v", f"{layout.src}:/srv/drama3/audio.cpp:ro"]
     run = container(engine, mounts + [gpu.image, f"{gpu.bin}/audiocpp_server", "--config", "/srv/drama3/server.json",
@@ -298,6 +336,8 @@ def install(runner: hermes.Runner, repo: Path, data_dir: Path, engine: str, gpu:
     """Builds and starts the server in this account. False when a step fails (the Bips keep Pocket).
     `served_model`: the prepared model already on this machine (checked), instead of downloading and preparing it."""
     layout = Layout(data_dir / "drama3")
+    gpu.build = version(repo)
+    update = installed(layout) is not None
     try:
         if gpu.backend == "cuda":
             say(f"  audio.cpp for your NVIDIA GPU (CUDA {gpu.cuda}{', sm_' + gpu.cuda_arch if gpu.cuda_arch else ''}), "
@@ -373,13 +413,19 @@ def install(runner: hermes.Runner, repo: Path, data_dir: Path, engine: str, gpu:
             # Internal: the server reaches nothing (no Internet, no LAN, no host service); 127.0.0.1:8099 only.
             runner.run([engine, "network", "create", "--internal", NETWORK])
         unit = Path.home() / ".config" / "systemd" / "user" / f"{SERVICE}.service"
+        if not runner.dry:
+            layout.cache.mkdir(parents=True, exist_ok=True)
         write(unit, service_unit(engine, layout, gpu), runner)
         start_service("linux", SERVICE, unit, runner)
+        if update:   # already running the previous version: the new one takes over (~30 s, voices warmed again)
+            runner.run(["systemctl", "--user", "restart", SERVICE])
         say("  Loading the model and warming the 14 voices (~30 s)…")
         if not runner.dry:
             from .__main__ import wait_for
             if not wait_for(f"{URL}/v1/models", seconds=120):
                 raise RuntimeError(f"the server did not come up: journalctl --user -u {SERVICE}")
+        write(layout.stamp, json.dumps({"version": gpu.build, "backend": gpu.backend, "cuda": gpu.cuda,
+                                        "cuda_arch": gpu.cuda_arch}) + "\n", runner)
         return True
     except RuntimeError as exc:
         say(ui.fail("Drama 3 couldn't be set up: the Bips keep their quick voices (Pocket)."))
@@ -416,7 +462,17 @@ def main(argv: List[str]) -> int:
     machine = detect()
     data_dir = Path.home() / ".local" / "share" / "bipagents"
     print(ui.bip("happy", "The Bips' expressive voices (Fish Audio Drama 3)."))
-    if answers():
+    layout = Layout(data_dir / "drama3")
+    mine = installed(layout)
+    if mine and mine.get("version") != version(REPO):
+        # Set up from this account and the repository moved on (patches, service): rebuilt and restarted. Its own
+        # memory is in use by the running server, so the GPU found the first time is kept.
+        print(ui.note("A newer Drama 3 setup is in the repository: updating the server of this machine."))
+        gpu = Gpu(mine.get("backend", "vulkan"), 0, mine.get("cuda"), mine.get("cuda_arch"))
+        if not install(runner, REPO, data_dir, hermes.sandbox_runtime() or "podman", gpu, served_model=args.served_model):
+            return 1
+        print(ui.done("Drama 3 updated."))
+    elif answers():
         print(ui.done(f"Drama 3 already runs on this machine ({URL}): I'll use it."))
     else:
         gpu, reason = choose(machine.system, hermes.sandbox_runtime(), data_dir)

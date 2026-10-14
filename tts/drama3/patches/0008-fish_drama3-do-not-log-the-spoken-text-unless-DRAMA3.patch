@@ -1,0 +1,34 @@
+From 79b6c9eafcf89ec97794adc32eab74b516f0998e Mon Sep 17 00:00:00 2001
+From: "Claude (labo aibox)" <noreply@anthropic.com>
+Date: Wed, 14 Oct 2026 21:43:37 +0200
+Subject: [PATCH] fish_drama3: do not log the spoken text unless
+ DRAMA3_LOG_TEXT is set
+
+The chunk log printed every sentence a client asked for; a server shared by
+several accounts would keep their messages in its journal. Only the length is
+logged now.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/community_models/fish_drama3/session.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/community_models/fish_drama3/session.cpp b/src/community_models/fish_drama3/session.cpp
+index ea5ffe18..bd151df7 100644
+--- a/src/community_models/fish_drama3/session.cpp
++++ b/src/community_models/fish_drama3/session.cpp
+@@ -356,7 +356,10 @@ runtime::TaskResult Drama3Session::synthesize(const runtime::TaskRequest & reque
+             };
+         }
+         const auto & text = chunks[index];
+-        std::cerr << "[fish_drama3] chunk " << index + 1 << "/" << chunks.size() << ": " << text << "\n";
++        // The text being spoken may be private: only its length is logged, unless DRAMA3_LOG_TEXT is set.
++        std::cerr << "[fish_drama3] chunk " << index + 1 << "/" << chunks.size() << ": ";
++        if (std::getenv("DRAMA3_LOG_TEXT")) std::cerr << text << "\n";
++        else std::cerr << text.size() << " bytes\n";
+         if (index > 0 && merged.sample_rate > 0) {
+             const auto pause_ms = static_cast<double>(chunk_pause_ms(chunks[index - 1], text, pauses)) * pause_jitter(pause_random);
+             runtime::AudioBuffer silence{merged.sample_rate, merged.channels, {}};
+-- 
+2.55.0
+

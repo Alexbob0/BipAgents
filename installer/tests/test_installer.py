@@ -671,3 +671,24 @@ def test_drama_on_nvidia_through_cuda(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "build --build-arg CUDA=13.0.1 --build-arg CUDA_ARCH=121" in out and "Containerfile.cuda" in out
     assert "/opt/audiocpp/bin/audiocpp_gguf" in out and "git clone" not in out
+
+
+def test_drama_is_updated_when_the_repository_moves_on(tmp_path, monkeypatch, capsys):
+    """A server set up from this account is rebuilt and restarted after a `git pull` brings new patches; one set up
+    before versions were recorded counts as older."""
+    from bipinstall import drama
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(drama.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
+    monkeypatch.setattr(drama, "answers", lambda url=drama.URL: True)
+    layout = drama.Layout(tmp_path / ".local" / "share" / "bipagents" / "drama3")
+    layout.root.mkdir(parents=True)
+    layout.config.write_text('{"backend": "vulkan"}')
+    assert drama.installed(layout) == {"version": None, "backend": "vulkan"}
+    assert drama.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "updating the server" in out and "systemctl --user restart bipagents-drama" in out
+    assert "0008-fish_drama3-do-not-log" in out and "--log-driver passthrough" in drama.service_unit(
+        "/usr/bin/podman", layout, drama.Gpu("vulkan", 0))
+    layout.stamp.write_text(json.dumps({"version": drama.version(ROOT), "backend": "vulkan"}))
+    assert drama.main(["--dry-run"]) == 0
+    assert "already runs on this machine" in capsys.readouterr().out
