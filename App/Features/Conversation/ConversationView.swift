@@ -54,7 +54,6 @@ enum AgentWork {
 }
 
 private struct ConversationContent: View {
-    private static let bottom = "thread-bottom"
     @Environment(AgentStore.self) private var store
     @AppStorage(AgentWork.key) private var showsWorkDetail = true
     @State private var isTellingWhereToShowWork = false
@@ -78,9 +77,13 @@ private struct ConversationContent: View {
     private static let pageSize = 80
     /// Scrolled up, away from the latest messages: a button brings the end back.
     @State private var isAwayFromBottom = false
+    /// Where the thread is scrolled. Back to the end by its bottom *edge*, not by a view at the end: after a jump to a
+    /// view the thread no longer stuck to the end, and opening or closing the keyboard left the latest messages
+    /// behind it.
+    @State private var position = ScrollPosition(edge: .bottom)
 
     var body: some View {
-        ScrollViewReader { proxy in
+        Group {
         ScrollView {
             // A plain VStack: a LazyVStack guesses row heights and, when the thread's height jumps (a reply
             // rebuilt after a reconnection), could leave the view scrolled past its content, blank.
@@ -137,7 +140,6 @@ private struct ConversationContent: View {
                 if let error = model.errorMessage {
                     NoticeRow(text: error, isError: true)
                 }
-                Color.clear.frame(height: 1).id(Self.bottom)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -150,6 +152,7 @@ private struct ConversationContent: View {
         }
         // Earlier messages drawn above after opening: the view stays on the latest ones without a nudge.
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        .scrollPosition($position)
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentSize.height - geometry.visibleRect.maxY > 300
         } action: { _, away in
@@ -160,7 +163,7 @@ private struct ConversationContent: View {
         .overlay(alignment: .bottomTrailing) {
             if isAwayFromBottom {
                 Button {
-                    withAnimation(.snappy) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                    withAnimation(.snappy) { position.scrollTo(edge: .bottom) }
                 } label: {
                     Image(systemName: "arrow.down")
                         .font(.system(size: 17, weight: .bold))
@@ -181,11 +184,11 @@ private struct ConversationContent: View {
             // A message just sent (or the thread rebuilt): show the end of the conversation. Not when the thread
             // first appears: it opens at the end already.
             if previous != nil, case .user? = model.items.last?.kind {
-                withAnimation(.snappy) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                withAnimation(.snappy) { position.scrollTo(edge: .bottom) }
             }
         }
         .onChange(of: model.isRunning) { _, running in
-            if !running { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+            if !running { position.scrollTo(edge: .bottom) }
         }
         .task {
             try? await Task.sleep(for: .milliseconds(350)) // the opening animation first
