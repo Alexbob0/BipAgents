@@ -93,7 +93,10 @@ final class CallModel {
             let task = Task { @MainActor in
                 do {
                     let sessionID = try await self.ensureSession(client: client, title: text)
-                    for try await event in client.chatStream(sessionID: sessionID, input: MessageInput(text: text)) {
+                    // No thinking in Live: a spoken answer right away, whatever the agent's level for written
+                    // conversations (Hermes applies it to this turn only).
+                    for try await event in client.chatStream(sessionID: sessionID, input: MessageInput(text: text),
+                                                             extra: ["model_options": ["reasoning": ["enabled": false]]]) {
                         if let id = event.runID { self.runID = id }
                         switch event.kind {
                         case .delta(let delta):

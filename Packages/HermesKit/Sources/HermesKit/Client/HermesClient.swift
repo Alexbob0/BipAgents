@@ -67,10 +67,13 @@ public struct HermesClient: Sendable {
 
     /// Runs one turn on a session and streams its events (`POST /api/sessions/{id}/chat/stream`).
     /// Documents are uploaded first through `uploader`; upload errors surface through the stream.
-    public func chatStream(sessionID: String, input: MessageInput, uploader: (any DocumentUploader)? = nil) -> AsyncThrowingStream<HermesEvent, any Error> {
+    /// `extra`: more fields for this turn only, e.g. `model_options` (`["reasoning": ["enabled": false]]`).
+    public func chatStream(sessionID: String, input: MessageInput, uploader: (any DocumentUploader)? = nil,
+                           extra: [String: JSONValue] = [:]) -> AsyncThrowingStream<HermesEvent, any Error> {
         eventStream {
             let prepared = try await input.prepared(uploader: uploader)
-            return try request("POST", "/api/sessions/\(Self.escape(sessionID))/chat/stream", body: prepared.body(), accept: "text/event-stream")
+            return try request("POST", "/api/sessions/\(Self.escape(sessionID))/chat/stream", body: prepared.body(merging: extra),
+                               accept: "text/event-stream")
         }
     }
 
