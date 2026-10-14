@@ -83,6 +83,23 @@ de revenir à la version précédente. `--check` vérifie sans rien changer.
 sur le tailnet et la config du bridge, en gardant les données des agents dans `~/.hermes`. `--all` supprime aussi
 Hermes et ces données, après confirmation. `--dry-run` montre ce qui serait retiré.
 
+## Les voix expressives des Bips (Drama 3)
+
+Sur une machine Linux dotée d'un GPU utilisable en Vulkan et d'environ **26 Go de mémoire GPU libre** (un Strix Halo
+avec sa mémoire unifiée, une grosse carte graphique), l'installateur propose **Fish Audio Drama 3** : 14 voix
+naturelles et mascottes, en français et en anglais, calculées sur le GPU (premier son en ~0,3 s). Ailleurs, les Bips
+gardent leurs voix rapides (Pocket).
+
+- Un serveur par machine, partagé par toutes les installations : le premier compte qui peut le faire tourner
+  l'installe, les autres s'en servent. `bash ~/BipAgents/install.sh drama` le fait en dehors d'une installation et
+  branche le bridge du compte (`[drama] url`) ; à lancer dans chaque compte dont le bridge doit s'en servir.
+- Il télécharge le modèle une fois (24,6 Go, depuis Hugging Face, vérifié), compile audio.cpp à une version épinglée
+  avec nos patches (`tts/drama3/`), et le fait tourner dans un conteneur podman sans droits admin, sur un réseau
+  interne : il n'atteint rien, et seule la machine l'atteint (127.0.0.1:8099). `--served-model <fichier>` reprend un
+  modèle déjà préparé.
+- Licence du modèle : Fish Audio Community License (usage personnel et petit usage commercial ; pas de service
+  hébergé pour d'autres).
+
 ## Plusieurs personnes sur une machine
 
 **Une installation par personne, chacune dans son propre compte.** Chacun a son bridge, son Hermes, ses agents, sa

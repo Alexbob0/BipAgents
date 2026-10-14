@@ -10,4 +10,5 @@ Model license: Fish Audio Community License — personal and small commercial us
 products built on it say « Built with Fish Audio ».
 
 Measured on a Strix Halo (Vulkan RADV): ~23 GiB of GPU memory, first audio 0.27 s once a voice is warm (~1 s the
-first time), 1.2× real time. Not wired into the installer yet.
+first time), 1.2× real time. Set up by the installer (`installer/bipinstall/drama.py`, `install.sh drama`);
+the bridge speaks to it as `drama:<id>` voices (`bridge/bipbridge/tts.py`).
