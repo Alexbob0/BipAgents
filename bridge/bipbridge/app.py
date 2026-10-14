@@ -57,7 +57,8 @@ class Services:
         self.tts = TtsService(self.http, config.kyutai_url, config.default_voice,
                               cache_entries=config.limits.tts_cache_entries, timeout=config.kyutai_timeout,
                               max_chars=config.limits.tts_max_chars,
-                              sentence_max_chars=config.limits.sentence_max_chars, pocket_url=config.pocket_url)
+                              sentence_max_chars=config.limits.sentence_max_chars, pocket_url=config.pocket_url,
+                              drama_url=config.drama_url)
         self.hermes = HermesClient(self.http)
         apns = None
         if config.apns.enabled:
@@ -525,11 +526,14 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     @app.get("/health")
     async def health(request: Request) -> Dict[str, Any]:
         services = _services(request)
-        pocket = services.tts.pocket
-        kyutai_ok, ntfy_ok, pocket_ok = await asyncio.gather(
+        pocket, drama = services.tts.pocket, services.tts.drama
+        kyutai_ok, ntfy_ok, pocket_ok, drama_ok = await asyncio.gather(
             services.tts.reachable(), ntfy_reachable(services.http, config.ntfy_url),
-            services.tts.reachable(pocket) if pocket else asyncio.sleep(0, result=None))
-        return {"ok": True, "version": __version__, "kyutai": kyutai_ok, "pocket": pocket_ok, "ntfy": ntfy_ok,
+            services.tts.reachable(pocket) if pocket else asyncio.sleep(0, result=None),
+            services.tts.reachable(drama) if drama else asyncio.sleep(0, result=None))
+        # « drama »: the app offers the Drama 3 voices (null: not set up here; false: set up, down for now).
+        return {"ok": True, "version": __version__, "kyutai": kyutai_ok, "pocket": pocket_ok, "drama": drama_ok,
+                "ntfy": ntfy_ok,
                 "apns": services.apns is not None, "push": services.push_mode, "tts_queue": services.tts.scheduler.depth}
 
     app.include_router(build_router())

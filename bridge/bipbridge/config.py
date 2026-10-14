@@ -190,6 +190,8 @@ class Config:
     default_voice: str = "5476"
     # Kyutai Pocket TTS (CPU) for the Bips' voices, used by voices named "pocket:<name>". None = off.
     pocket_url: Optional[str] = None
+    # Fish Audio Drama 3 (audio.cpp, GPU) for the Bips' natural and mascot voices, « drama:<id> ». None = off.
+    drama_url: Optional[str] = None
     # Scheduled-task replies read from Hermes sessions into the outbox (see cronwatch.py).
     cron_watch: bool = True
     cron_interval_seconds: float = 30.0
@@ -292,6 +294,8 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
     # `[kyutai] enabled = false` (or `url = ""`) runs on Pocket alone; the default voice is then a Bip's.
     kyutai_url = str(kyutai.get("url", "http://127.0.0.1:8097")).rstrip("/") if kyutai.get("enabled", True) else ""
     pocket_url = str(pocket["url"]).rstrip("/") if pocket.get("url") else None
+    drama = data.get("drama", {}) or {}
+    drama_url = str(drama["url"]).rstrip("/") if drama.get("url") and drama.get("enabled", True) else None
     if not kyutai_url and not pocket_url:
         raise ConfigError("no TTS engine: set [pocket] url, or [kyutai] url")
     default_voice = str(kyutai.get("default_voice", "5476")) if kyutai_url \
@@ -449,6 +453,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         kyutai_timeout=float(kyutai.get("timeout_seconds", 120)),
         default_voice=default_voice,
         pocket_url=pocket_url,
+        drama_url=drama_url,
         cron_watch=bool(cron.get("watch", True)),
         cron_interval_seconds=float(cron.get("interval_seconds", 30)),
         cron_window_hours=float(cron.get("window_hours", 12)),

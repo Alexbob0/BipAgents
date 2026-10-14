@@ -12,3 +12,6 @@ cryptography==50.0.2
 num2words==0.5.14
 segno==1.6.6
 PyYAML==6.0.3
+# Drama 3's 44.1 kHz audio to the app's 24 kHz, chunk by chunk.
+soxr==1.1.0
+numpy==2.5.4
