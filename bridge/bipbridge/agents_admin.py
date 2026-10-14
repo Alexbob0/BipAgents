@@ -381,16 +381,23 @@ def read_thinking(config: Config, agent: AgentConfig) -> Optional[str]:
 
 def set_thinking(config: Config, agent: AgentConfig, level: str) -> str:
     """The agent's thinking level, read by Hermes from the next message (it reloads a profile's config when it
-    changes): `reasoning_effort`, plus the chat template's `enable_thinking` (bound to the model's address) for
-    servers that only follow that one."""
+    changes): `reasoning_effort`, which GLM-like servers follow (the model still answers an easy question at once).
+    « none » also turns the chat template's `enable_thinking` off (bound to the model's address), for servers that
+    only follow that one. Never on: it would win over a turn that asks for no thinking (Live)."""
     if level not in THINKING_LEVELS or read_thinking(config, agent) is None:
         raise LookupError(agent.name)
     path = _profile_config(config, agent)
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     providers = data.get("providers") if isinstance(data.get("providers"), dict) else {}
-    providers[THINKING_PROVIDER] = {"api": data["model"]["base_url"],
-                                    "extra_body": {"chat_template_kwargs": {"enable_thinking": level != "none"}}}
-    data["providers"] = providers
+    if level == "none":
+        providers[THINKING_PROVIDER] = {"api": data["model"]["base_url"],
+                                        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+    else:
+        providers.pop(THINKING_PROVIDER, None)
+    if providers:
+        data["providers"] = providers
+    else:
+        data.pop("providers", None)
     settings = data.get("agent") if isinstance(data.get("agent"), dict) else {}
     settings["reasoning_effort"] = level
     data["agent"] = settings
@@ -399,6 +406,21 @@ def set_thinking(config: Config, agent: AgentConfig, level: str) -> str:
     shutil.copymode(path, temporary)
     os.replace(temporary, path)   # never a half-written config for a gateway reading it
     return level
+
+
+def heal_thinking(config: Config) -> None:
+    """Profiles set by an earlier bridge with the chat template's thinking forced on: that wins over a turn asking for
+    none (Live), so it goes (their reasoning_effort stays)."""
+    for name in config.agents:
+        try:
+            agent = editable(config, name)
+            if read_thinking(config, agent) not in (None, "none"):
+                path = _profile_config(config, agent)
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                if THINKING_PROVIDER in (data.get("providers") or {}):
+                    set_thinking(config, agent, read_thinking(config, agent))
+        except (LookupError, OSError, yaml.YAMLError, KeyError):
+            continue
 
 
 async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncClient) -> Dict[str, Any]:
