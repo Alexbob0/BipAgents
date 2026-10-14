@@ -687,8 +687,8 @@ def test_drama_is_updated_when_the_repository_moves_on(tmp_path, monkeypatch, ca
     assert drama.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "updating the server" in out and "systemctl --user restart bipagents-drama" in out
-    assert "0008-fish_drama3-do-not-log" in out and "--log-driver passthrough" in drama.service_unit(
-        "/usr/bin/podman", layout, drama.Gpu("vulkan", 0))
+    unit = drama.service_unit("/usr/bin/podman", layout, drama.Gpu("vulkan", 0))
+    assert "0008-fish_drama3-do-not-log" in out and "--log-driver passthrough --cgroups split" in unit
     layout.stamp.write_text(json.dumps({"version": drama.version(ROOT), "backend": "vulkan"}))
     assert drama.main(["--dry-run"]) == 0
     assert "already runs on this machine" in capsys.readouterr().out

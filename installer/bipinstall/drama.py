@@ -295,8 +295,9 @@ def service_unit(engine: str, layout: Layout, gpu: Gpu) -> str:
     mounts = ["-v", f"{layout.models}:/srv/drama3/models:ro", "-v", f"{layout.voices}:/srv/drama3/voices:ro",
               "-v", f"{layout.config}:/srv/drama3/server.json:ro", "-v", f"{layout.cache}:/srv/drama3/cache",
               "-e", "HOME=/srv/drama3/cache",
-              # One copy of each line in the journal (podman's own log driver would add a second).
-              "--log-driver", "passthrough"]
+              # One copy of each line in the journal (podman's own log driver would add a second), under this
+              # service (with its own cgroup the container's lines would go to a libpod scope instead), as Quadlet does.
+              "--log-driver", "passthrough", "--cgroups", "split"]
     if gpu.backend == "vulkan":   # its programs were built in this folder (the CUDA image carries its own)
         mounts += ["-v", f"{layout.src}:/srv/drama3/audio.cpp:ro"]
     run = container(engine, mounts + [gpu.image, f"{gpu.bin}/audiocpp_server", "--config", "/srv/drama3/server.json",
