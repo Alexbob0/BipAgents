@@ -85,8 +85,9 @@ Hermes et ces données, après confirmation. `--dry-run` montre ce qui serait re
 
 ## Les voix expressives des Bips (Drama 3)
 
-Sur une machine Linux dotée d'un GPU utilisable en Vulkan et d'environ **26 Go de mémoire GPU libre** (un Strix Halo
-avec sa mémoire unifiée, une grosse carte graphique), l'installateur propose **Fish Audio Drama 3** : 14 voix
+Sur une machine Linux avec environ **26 Go de mémoire GPU libre** — un GPU NVIDIA en CUDA (une carte de 24 Go ou plus,
+un DGX Spark) ou un autre GPU en Vulkan (un Strix Halo avec sa mémoire unifiée) — l'installateur propose
+**Fish Audio Drama 3** : 14 voix
 naturelles et mascottes, en français et en anglais, calculées sur le GPU (premier son en ~0,3 s). Ailleurs, les Bips
 gardent leurs voix rapides (Pocket).
 
@@ -94,7 +95,9 @@ gardent leurs voix rapides (Pocket).
   l'installe, les autres s'en servent. `bash ~/BipAgents/install.sh drama` le fait en dehors d'une installation et
   branche le bridge du compte (`[drama] url`) ; à lancer dans chaque compte dont le bridge doit s'en servir.
 - Il télécharge le modèle une fois (24,6 Go, depuis Hugging Face, vérifié), compile audio.cpp à une version épinglée
-  avec nos patches (`tts/drama3/`), et le fait tourner dans un conteneur podman sans droits admin, sur un réseau
+  avec nos patches (`tts/drama3/` ; pour NVIDIA, une image construite à partir de celles de NVIDIA, avec la version
+  de CUDA que gère le pilote et l'architecture du GPU — podman accède au GPU par le CDI du NVIDIA Container Toolkit,
+  à générer une fois avec `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`), et le fait tourner dans un conteneur podman sans droits admin, sur un réseau
   interne : il n'atteint rien, et seule la machine l'atteint (127.0.0.1:8099). `--served-model <fichier>` reprend un
   modèle déjà préparé.
 - Licence du modèle : Fish Audio Community License (usage personnel et petit usage commercial ; pas de service

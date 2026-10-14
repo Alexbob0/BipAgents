@@ -464,12 +464,12 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         inst.drama_url = drama.URL
         say(f"  Drama 3 (the Bips' expressive voices) answers at {drama.URL}: I'll share it.")
     elif not args.dry_run or getattr(args, "drama", False):
-        reason = drama.why_not(machine.system, hermes.sandbox_runtime(), inst.data_dir)
-        if reason is None:
+        gpu, _ = drama.choose(machine.system, hermes.sandbox_runtime(), inst.data_dir)
+        if gpu is not None:
             say("\nThis machine can give the Bips expressive voices (Fish Audio Drama 3, on its GPU): 14 natural and\n"
                 "mascot voices in French and English. It downloads 24.6 GB once and keeps ~24 GB of GPU memory busy.")
             if yes(ask("Set up Drama 3? (y/n)", "y")) and drama.install(runner, REPO, inst.data_dir,
-                                                                   hermes.sandbox_runtime() or "podman", say):
+                                                                   hermes.sandbox_runtime() or "podman", gpu, say):
                 inst.drama_url = drama.URL
                 say(ui.done("Drama 3 is running: pick the new voices in the app (agent › Voice)."))
     if machine.system == "macos":

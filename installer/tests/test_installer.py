@@ -593,20 +593,23 @@ def test_drama_is_offered_only_where_it_can_run(tmp_path):
     (drm / "card1" / "device" / "mem_info_gtt_used").write_text(str(5 * gib))
     meminfo = tmp_path / "meminfo"
     meminfo.write_text("MemTotal: 131072000 kB\nMemAvailable: 104857600 kB\n")
-    assert drama.why_not("linux", "/usr/bin/podman", tmp_path, drm, meminfo) is None
-    assert "Linux" in drama.why_not("macos", "/usr/bin/podman", tmp_path, drm, meminfo)
-    assert "podman" in drama.why_not("linux", "/usr/bin/docker", tmp_path, drm, meminfo)
+    kw = dict(drm=drm, meminfo=meminfo, probe=False)
+    gpu, reason = drama.choose("linux", "/usr/bin/podman", tmp_path, **kw)
+    assert reason is None and gpu.backend == "vulkan" and gpu.image == drama.IMAGE
+    assert "Linux" in drama.why_not("macos", "/usr/bin/podman", tmp_path, **kw)
+    assert "podman" in drama.why_not("linux", "/usr/bin/docker", tmp_path, **kw)
     (drm / "card1" / "device" / "mem_info_gtt_used").write_text(str(100 * gib))
-    assert "GPU memory" in drama.why_not("linux", "/usr/bin/podman", tmp_path, drm, meminfo)
+    assert "GPU memory" in drama.why_not("linux", "/usr/bin/podman", tmp_path, **kw)
 
 
 def test_drama_server_its_voices_and_its_closed_network():
     from bipinstall import drama
-    config = drama.server_config(ROOT)
+    config = drama.server_config(ROOT, drama.Gpu("vulkan", 100))
     presets = config["models"][0]["voice_presets"]
     assert len(presets) == 14 and presets["fr-mascotte-s17"]["voice_ref"] == "/srv/drama3/voices/fr/fr-mascotte-s17.wav"
     assert presets["en-naturelle-s47"]["reference_text"].startswith("Hello!") and config["min_free_memory_mb"] == 1024
-    unit = drama.service_unit("/usr/bin/podman", drama.Layout(Path("/home/x/.local/share/bipagents/drama3")))
+    unit = drama.service_unit("/usr/bin/podman", drama.Layout(Path("/home/x/.local/share/bipagents/drama3")),
+                              drama.Gpu("vulkan", 100))
     assert "--network bipagents-drama3 -p 127.0.0.1:8099:8099" in unit and "--device /dev/dri" in unit
     assert drama.IMAGE in unit and "StartLimitBurst=3" in unit and "ExecStartPost=/bin/bash" in unit
     warm = drama.prewarm_script(ROOT)
@@ -617,7 +620,7 @@ def test_drama_setup_and_each_bridge_connected_once(tmp_path, monkeypatch, capsy
     from bipinstall import drama
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(drama, "answers", lambda url=drama.URL: False)
-    monkeypatch.setattr(drama, "why_not", lambda *a, **k: None)
+    monkeypatch.setattr(drama, "choose", lambda *a, **k: (drama.Gpu("vulkan", 100), None))
     monkeypatch.setattr(drama.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
     config = tmp_path / ".config" / "bipagents" / "bridge.toml"
     config.parent.mkdir(parents=True)
@@ -639,3 +642,32 @@ def test_the_bridge_config_names_drama_when_it_runs():
     assert "[drama]" not in bridge_toml(inst)
     inst.drama_url = "http://127.0.0.1:8099"
     assert '[drama]\nurl = "http://127.0.0.1:8099"' in bridge_toml(inst)
+
+
+def test_drama_on_nvidia_through_cuda(tmp_path, monkeypatch, capsys):
+    """NVIDIA: the newest CUDA its driver supports, built for its own GPU (e.g. a DGX Spark's GB10, whose memory is
+    the RAM), the GPU handed to podman through CDI."""
+    from bipinstall import drama
+    smi = {"nvidia-smi --query-gpu=memory.free,compute_cap --format=csv,noheader,nounits": "[N/A], 12.1\n",
+           "nvidia-smi": "| NVIDIA-SMI 580.95   Driver Version: 580.95   CUDA Version: 13.0 |\n"}
+    nv = drama.nvidia(lambda args: smi.get(" ".join(args), ""))
+    assert nv == {"free_gib": None, "arch": "121", "driver_cuda": (13, 0)}
+    assert drama.cuda_version((12, 9)) == "12.8.1" and drama.cuda_version((12, 2)) is None
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemAvailable: 104857600 kB\n")
+    gpu, reason = drama.choose("linux", "/usr/bin/podman", tmp_path, meminfo=meminfo, nv=nv, cdi=True)
+    assert reason is None and gpu.backend == "cuda" and gpu.cuda == "13.0.1" and gpu.free_gib == 100
+    assert "nvidia-ctk cdi generate" in drama.why_not("linux", "/usr/bin/podman", tmp_path, meminfo=meminfo, nv=nv, cdi=False)
+    unit = drama.service_unit("/usr/bin/podman", drama.Layout(tmp_path), gpu)
+    assert "--device nvidia.com/gpu=all" in unit and f"{drama.CUDA_IMAGE}:{drama.AUDIOCPP_COMMIT[:12]}-cuda13.0.1" in unit
+    assert "/opt/audiocpp/bin/audiocpp_server" in unit and "/srv/drama3/audio.cpp" not in unit
+    assert drama.server_config(ROOT, gpu)["models"][0]["model_spec_override"] == "/opt/audiocpp/model_specs/fish_drama3.json"
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(drama, "answers", lambda url=drama.URL: False)
+    monkeypatch.setattr(drama, "choose", lambda *a, **k: (gpu, None))
+    monkeypatch.setattr(drama.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
+    assert drama.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "build --build-arg CUDA=13.0.1 --build-arg CUDA_ARCH=121" in out and "Containerfile.cuda" in out
+    assert "/opt/audiocpp/bin/audiocpp_gguf" in out and "git clone" not in out

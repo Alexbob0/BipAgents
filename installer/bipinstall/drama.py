@@ -1,7 +1,9 @@
 """The Bips' expressive voices: Fish Audio Drama 3 on audio.cpp (Vulkan), one server per machine, shared like Pocket.
 
 The first account that can run it brings it up (`bipinstall drama`, or the question during an install): audio.cpp
-built at a pinned commit with our patches (`tts/drama3/patches`) inside a pinned Vulkan image, the model downloaded
+built at a pinned commit with our patches (`tts/drama3/patches`), for NVIDIA through CUDA (an image built from
+NVIDIA's own, `tts/drama3/Containerfile.cuda`, amd64 and arm64) or for other GPUs through Vulkan (a pinned image),
+the model downloaded
 from Hugging Face at a pinned revision and checked, its « tower » requantized (`tts/drama3/tour-q8-tenseurs.txt`),
 the voices of `voices/drama/`, and a systemd user service: a rootless container on an internal network (no way out)
 publishing 127.0.0.1:8099 only, its voices warmed up at start. Every bridge of the machine then gets `[drama] url`.
@@ -17,7 +19,8 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+import re
+from typing import Callable, List, Optional, Tuple
 
 import httpx
 
@@ -29,6 +32,7 @@ SERVICE = "bipagents-drama"
 NETWORK = "bipagents-drama3"
 AUDIOCPP_REPO = "https://github.com/JarodMica/audio.cpp.git"
 AUDIOCPP_COMMIT = "27e92a31737382c9564f0f991666ab9169ca8438"
+CUDA_IMAGE = "localhost/bipagents-drama-cuda"
 IMAGE = ("docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-radv"
          "@sha256:e62a1631b48b3190c91e3013110e02a325c69eede4c6c7e60ca2146f531a3a7e")
 MODEL_URL = ("https://huggingface.co/Jmica/Drama-3-GGUF/resolve/bcb065b8b0b98535a5c002b39bcceeb8bf065513/"
@@ -79,26 +83,103 @@ def mem_available_gib(meminfo: Path = Path("/proc/meminfo")) -> float:
     return 0.0
 
 
-def why_not(system: str, engine: Optional[str], data_dir: Path, drm: Path = Path("/sys/class/drm"),
-            meminfo: Path = Path("/proc/meminfo")) -> Optional[str]:
-    """None when this machine can run Drama 3 for the Bips; otherwise why not, to tell the person."""
-    if system != "linux":
-        return "Linux only for now"
-    if not engine or Path(engine).name != "podman":
-        return "it runs in a rootless podman container: podman is missing"
-    if not any(drm.glob("renderD*")) and not any(Path("/dev/dri").glob("renderD*")):
-        return "no GPU usable through Vulkan (/dev/dri)"
-    gpu = gpu_free_gib(drm)
-    if gpu < NEEDED_GIB:
-        return f"not enough GPU memory ({gpu:.0f} GiB free, {NEEDED_GIB} needed)"
-    ram = mem_available_gib(meminfo)
-    if ram and ram < NEEDED_GIB and gpu - ram < NEEDED_GIB:   # unified memory: the GPU takes it from the RAM
-        return f"not enough free memory ({ram:.0f} GiB available, {NEEDED_GIB} needed)"
-    probe = data_dir if data_dir.exists() else data_dir.parent if data_dir.parent.exists() else Path.home()
-    disk = shutil.disk_usage(probe).free / 2**30
-    if disk < DISK_GIB:
-        return f"not enough disk space ({disk:.0f} GB free, {DISK_GIB} needed while preparing the model)"
+@dataclass
+class Gpu:
+    """How Drama 3 runs here: through CUDA on an NVIDIA GPU, else through Vulkan."""
+    backend: str                      # "cuda" or "vulkan"
+    free_gib: float
+    cuda: Optional[str] = None        # NVIDIA's image version (fits the driver)
+    cuda_arch: Optional[str] = None   # the GPU's compute capability, e.g. "89", "121" (built for it alone)
+
+    @property
+    def image(self) -> str:
+        return f"{CUDA_IMAGE}:{AUDIOCPP_COMMIT[:12]}-cuda{self.cuda}" if self.backend == "cuda" else IMAGE
+
+    @property
+    def bin(self) -> str:
+        """Where audio.cpp's programs are, inside the container."""
+        return "/opt/audiocpp/bin" if self.backend == "cuda" else "/srv/drama3/audio.cpp/build/vulkan/bin"
+
+    @property
+    def spec(self) -> str:
+        return ("/opt/audiocpp/model_specs/fish_drama3.json" if self.backend == "cuda"
+                else "/srv/drama3/audio.cpp/model_specs/fish_drama3.json")
+
+    @property
+    def devices(self) -> List[str]:
+        # CUDA: the GPU through podman's CDI (nvidia-ctk); Vulkan: the render nodes.
+        return ["--device", "nvidia.com/gpu=all"] if self.backend == "cuda" else ["--device", "/dev/dri", "--group-add", "keep-groups"]
+
+
+def _run(args: List[str]) -> str:
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def nvidia(run: Callable[[List[str]], str] = _run) -> Optional[dict]:
+    """The NVIDIA GPU, as `nvidia-smi` sees it: free memory (None on a unified-memory chip like DGX Spark's GB10,
+    which reports none), compute capability, and the newest CUDA its driver supports. None without one."""
+    rows = run(["nvidia-smi", "--query-gpu=memory.free,compute_cap", "--format=csv,noheader,nounits"]).strip()
+    if not rows:
+        return None
+    free_raw, _, cap = rows.splitlines()[0].partition(",")
+    found = re.search(r"CUDA Version:\s*(\d+)\.(\d+)", run(["nvidia-smi"]))
+    free = float(free_raw.strip()) / 1024 if free_raw.strip().replace(".", "", 1).isdigit() else None
+    return {"free_gib": free, "arch": cap.strip().replace(".", "") or None,
+            "driver_cuda": (int(found.group(1)), int(found.group(2))) if found else (0, 0)}
+
+
+def cuda_version(driver_cuda: Tuple[int, int]) -> Optional[str]:
+    """NVIDIA's image for this driver: CUDA 13 when it supports it (Blackwell, DGX Spark), else 12.8."""
+    if driver_cuda >= (13, 0):
+        return "13.0.1"
+    if driver_cuda >= (12, 8):
+        return "12.8.1"
     return None
+
+
+def choose(system: str, engine: Optional[str], data_dir: Path, drm: Path = Path("/sys/class/drm"),
+           meminfo: Path = Path("/proc/meminfo"), nv: Optional[dict] = None, probe: bool = True,
+           cdi: Optional[bool] = None) -> Tuple[Optional[Gpu], Optional[str]]:
+    """How this machine would run Drama 3 for the Bips, or why it can't (to tell the person)."""
+    if system != "linux":
+        return None, "Linux only for now"
+    if not engine or Path(engine).name != "podman":
+        return None, "it runs in a rootless podman container: podman is missing"
+    nv = nv if nv is not None or not probe else nvidia()
+    ram = mem_available_gib(meminfo)
+    if nv:
+        version = cuda_version(nv["driver_cuda"])
+        if version is None:
+            return None, "the NVIDIA driver is too old for CUDA 12.8: update it"
+        ready = cdi if cdi is not None else "nvidia.com/gpu=all" in _run(["nvidia-ctk", "cdi", "list"])
+        if not ready:
+            return None, ("podman can't reach the NVIDIA GPU yet: run once "
+                          "`sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` (NVIDIA Container Toolkit)")
+        free = nv["free_gib"] if nv["free_gib"] is not None else ram   # unified memory: the GPU takes the RAM
+        if free < NEEDED_GIB:
+            return None, f"not enough GPU memory ({free:.0f} GiB free, {NEEDED_GIB} needed)"
+        gpu = Gpu("cuda", free, version, nv["arch"])
+    else:
+        if not any(drm.glob("renderD*")) and not any(Path("/dev/dri").glob("renderD*")):
+            return None, "no GPU usable through CUDA or Vulkan"
+        free = gpu_free_gib(drm)
+        if free < NEEDED_GIB:
+            return None, f"not enough GPU memory ({free:.0f} GiB free, {NEEDED_GIB} needed)"
+        if ram and ram < NEEDED_GIB and free - ram < NEEDED_GIB:   # unified memory: the GPU takes it from the RAM
+            return None, f"not enough free memory ({ram:.0f} GiB available, {NEEDED_GIB} needed)"
+        gpu = Gpu("vulkan", free)
+    probe_dir = data_dir if data_dir.exists() else data_dir.parent if data_dir.parent.exists() else Path.home()
+    disk = shutil.disk_usage(probe_dir).free / 2**30
+    if disk < DISK_GIB:
+        return None, f"not enough disk space ({disk:.0f} GB free, {DISK_GIB} needed while preparing the model)"
+    return gpu, None
+
+
+def why_not(system: str, engine: Optional[str], data_dir: Path, **kw) -> Optional[str]:
+    return choose(system, engine, data_dir, **kw)[1]
 
 
 @dataclass
@@ -125,27 +206,23 @@ class Layout:
     def prewarm(self) -> Path:
         return self.root / "prewarm.sh"
 
-    @property
-    def server_binary(self) -> Path:
-        return self.src / "build" / "vulkan" / "bin" / "audiocpp_server"
-
 
 def voices_catalog(repo: Path) -> List[dict]:
     return json.loads((repo / "voices" / "drama" / "voices.json").read_text(encoding="utf-8"))["voices"]
 
 
-def server_config(repo: Path) -> dict:
+def server_config(repo: Path, gpu: Gpu) -> dict:
     """audio.cpp's config: the model, its 14 voices (reference clip + its transcript) kept warm, real-time settings,
     and a memory guard that refuses to start cleanly rather than crash."""
     presets = {v["id"]: {"voice_ref": f"/srv/drama3/voices/{v['reference']}", "reference_text": v["reference_text"]}
                for v in voices_catalog(repo)}
     return {
         "host": "0.0.0.0", "port": PORT,   # inside the container; podman publishes 127.0.0.1 only
-        "backend": "vulkan", "threads": 8, "lazy_load": False, "max_loaded_models": 1, "ui": False,
+        "backend": gpu.backend, "threads": 8, "lazy_load": False, "max_loaded_models": 1, "ui": False,
         "min_free_memory_mb": 1024,
         "models": [{
             "id": "drama-3", "family": "fish_drama3", "path": f"/srv/drama3/models/{SERVED}", "task": "tts",
-            "mode": "streaming", "model_spec_override": "/srv/drama3/audio.cpp/model_specs/fish_drama3.json",
+            "mode": "streaming", "model_spec_override": gpu.spec,
             "voice_presets": presets,
             "session_options": {"fish_drama3.cpu_expert_layers": 0, "fish_drama3.context_length": 2048,
                                 "fish_drama3.stream_block": 4, "fish_drama3.codec_backend": "same",
@@ -155,14 +232,14 @@ def server_config(repo: Path) -> dict:
     }
 
 
-def container(engine: str, layout: Layout, command: List[str], network: str = "none", publish: bool = False,
-              gpu: bool = False, name: Optional[str] = None) -> List[str]:
+def container(engine: str, command: List[str], network: str = "none", publish: bool = False,
+              gpu: Optional[Gpu] = None, name: Optional[str] = None) -> List[str]:
     args = [engine, "run", "--rm"] + (["--name", name] if name else []) + ["--network", network]
     if publish:
         args += ["-p", f"127.0.0.1:{PORT}:{PORT}"]
     args += ["--userns", "keep-id", "--user", f"{os.getuid()}:{os.getgid()}", "--security-opt", "label=disable"]
     if gpu:
-        args += ["--device", "/dev/dri", "--group-add", "keep-groups"]
+        args += gpu.devices
     return args + command
 
 
@@ -179,12 +256,13 @@ def prewarm_script(repo: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
-def service_unit(engine: str, layout: Layout) -> str:
-    run = container(engine, layout, [
-        "-v", f"{layout.models}:/srv/drama3/models:ro", "-v", f"{layout.src}:/srv/drama3/audio.cpp:ro",
-        "-v", f"{layout.voices}:/srv/drama3/voices:ro", "-v", f"{layout.config}:/srv/drama3/server.json:ro",
-        IMAGE, "/srv/drama3/audio.cpp/build/vulkan/bin/audiocpp_server", "--config", "/srv/drama3/server.json",
-        "--no-ui"], network=NETWORK, publish=True, gpu=True, name=SERVICE)
+def service_unit(engine: str, layout: Layout, gpu: Gpu) -> str:
+    mounts = ["-v", f"{layout.models}:/srv/drama3/models:ro", "-v", f"{layout.voices}:/srv/drama3/voices:ro",
+              "-v", f"{layout.config}:/srv/drama3/server.json:ro"]
+    if gpu.backend == "vulkan":   # its programs were built in this folder (the CUDA image carries its own)
+        mounts += ["-v", f"{layout.src}:/srv/drama3/audio.cpp:ro"]
+    run = container(engine, mounts + [gpu.image, f"{gpu.bin}/audiocpp_server", "--config", "/srv/drama3/server.json",
+                                      "--no-ui"], network=NETWORK, publish=True, gpu=gpu, name=SERVICE)
     return f"""[Unit]
 Description=BipAgents voices (Fish Audio Drama 3 on audio.cpp)
 After=network-online.target
@@ -215,30 +293,39 @@ def sha256(path: Path, progress: Optional[Callable[[str], None]] = None) -> str:
     return digest.hexdigest()
 
 
-def install(runner: hermes.Runner, repo: Path, data_dir: Path, engine: str, say: Callable[[str], None] = print,
-            served_model: Optional[Path] = None) -> bool:
+def install(runner: hermes.Runner, repo: Path, data_dir: Path, engine: str, gpu: Gpu,
+            say: Callable[[str], None] = print, served_model: Optional[Path] = None) -> bool:
     """Builds and starts the server in this account. False when a step fails (the Bips keep Pocket).
     `served_model`: the prepared model already on this machine (checked), instead of downloading and preparing it."""
     layout = Layout(data_dir / "drama3")
     try:
-        say("  audio.cpp, at its pinned version with our patches…")
-        if runner.dry or not (layout.src / ".git").exists():
-            runner.run(["git", "clone", "--quiet", AUDIOCPP_REPO, str(layout.src)])
-        runner.run(["git", "-C", str(layout.src), "am", "--abort"], check=False)   # one left half-done, if any
-        runner.run(["git", "-C", str(layout.src), "checkout", "--quiet", "--force", AUDIOCPP_COMMIT])
-        runner.run(["git", "-C", str(layout.src), "submodule", "update", "--init", "--recursive", "--quiet"])
-        patches = sorted(str(p) for p in (repo / "tts" / "drama3" / "patches").glob("*.patch"))
-        runner.run(["git", "-C", str(layout.src), "-c", "user.name=BipAgents", "-c", "user.email=bipagents@localhost",
-                    "am", "--quiet", *patches])
-        say("  Building it for Vulkan (a minute or two; the image is downloaded once, ~2 GB)…")
-        build = ["-e", "LDFLAGS=-fuse-ld=bfd", "-e", f"HOME={layout.root / '.home'}", "-v", f"{layout.root}:{layout.root}",
-                 "-w", str(layout.src), IMAGE, "scripts/build_linux.sh", "--backend", "vulkan", "--build-type", "Release",
-                 "--model-set", "custom", "--models", "fish_drama3", "--build-dir", "build/vulkan",
-                 "--target", "audiocpp_server", "--target", "audiocpp_gguf", "-j", str(os.cpu_count() or 8)]
-        if not runner.dry:
-            (layout.root / ".home").mkdir(parents=True, exist_ok=True)
-        runner.run(["podman", "pull", "--quiet", IMAGE] if engine.endswith("podman") else [engine, "pull", IMAGE])
-        runner.run(container(engine, layout, build))
+        if gpu.backend == "cuda":
+            say(f"  audio.cpp for your NVIDIA GPU (CUDA {gpu.cuda}{', sm_' + gpu.cuda_arch if gpu.cuda_arch else ''}), "
+                "with our patches: NVIDIA's images are downloaded once (a few GB), then ~10 minutes of building…")
+            if runner.dry or subprocess.run([engine, "image", "exists", gpu.image], capture_output=True).returncode != 0:
+                runner.run([engine, "build", "--build-arg", f"CUDA={gpu.cuda}", "--build-arg", f"CUDA_ARCH={gpu.cuda_arch or ''}",
+                            "-t", gpu.image, "-f", str(repo / "tts" / "drama3" / "Containerfile.cuda"),
+                            str(repo / "tts" / "drama3")])
+        else:
+            say("  audio.cpp, at its pinned version with our patches…")
+            if runner.dry or not (layout.src / ".git").exists():
+                runner.run(["git", "clone", "--quiet", AUDIOCPP_REPO, str(layout.src)])
+            runner.run(["git", "-C", str(layout.src), "am", "--abort"], check=False)   # one left half-done, if any
+            runner.run(["git", "-C", str(layout.src), "checkout", "--quiet", "--force", AUDIOCPP_COMMIT])
+            runner.run(["git", "-C", str(layout.src), "submodule", "update", "--init", "--recursive", "--quiet"])
+            patches = sorted(str(p) for p in (repo / "tts" / "drama3" / "patches").glob("*.patch"))
+            runner.run(["git", "-C", str(layout.src), "-c", "user.name=BipAgents", "-c", "user.email=bipagents@localhost",
+                        "am", "--quiet", *patches])
+            say("  Building it for Vulkan (a minute or two; the image is downloaded once, ~2 GB)…")
+            build = ["-e", "LDFLAGS=-fuse-ld=bfd", "-e", f"HOME={layout.root / '.home'}", "-v",
+                     f"{layout.root}:{layout.root}", "-w", str(layout.src), IMAGE, "scripts/build_linux.sh", "--backend",
+                     "vulkan", "--build-type", "Release", "--model-set", "custom", "--models", "fish_drama3",
+                     "--build-dir", "build/vulkan", "--target", "audiocpp_server", "--target", "audiocpp_gguf",
+                     "-j", str(os.cpu_count() or 8)]
+            if not runner.dry:
+                (layout.root / ".home").mkdir(parents=True, exist_ok=True)
+            runner.run([engine, "pull", "--quiet", IMAGE])
+            runner.run(container(engine, build))
 
         served = layout.models / SERVED
         if served_model and not runner.dry and not served.exists():
@@ -262,10 +349,10 @@ def install(runner: hermes.Runner, repo: Path, data_dir: Path, engine: str, say:
             say("  Preparing it for real-time speech (its « tower » in 8 bits)…")
             names = (repo / "tts" / "drama3" / "tour-q8-tenseurs.txt").read_text().split()
             keep = [arg for name in names for arg in ("--keep-type", f"{name}=q8_0")]
-            runner.run(container(engine, layout, ["-v", f"{layout.root}:{layout.root}", "-w", str(layout.root), IMAGE,
-                                                  str(layout.src / "build" / "vulkan" / "bin" / "audiocpp_gguf"),
-                                                  "--input", str(source), "--output", str(served), "--type", "orig",
-                                                  *keep]))
+            tool = (f"{gpu.bin}/audiocpp_gguf" if gpu.backend == "cuda"
+                    else str(layout.src / "build" / "vulkan" / "bin" / "audiocpp_gguf"))
+            runner.run(container(engine, ["-v", f"{layout.root}:{layout.root}", "-w", str(layout.root), gpu.image, tool,
+                                          "--input", str(source), "--output", str(served), "--type", "orig", *keep]))
             if not runner.dry:
                 if sha256(served) != SERVED_SHA256:
                     served.unlink(missing_ok=True)
@@ -280,13 +367,13 @@ def install(runner: hermes.Runner, repo: Path, data_dir: Path, engine: str, say:
                 for clip in (repo / "voices" / "drama" / language).glob("*.wav"):
                     shutil.copy2(clip, target / clip.name)
         from .__main__ import start_service, write
-        write(layout.config, json.dumps(server_config(repo), ensure_ascii=False, indent=1) + "\n", runner)
+        write(layout.config, json.dumps(server_config(repo, gpu), ensure_ascii=False, indent=1) + "\n", runner)
         write(layout.prewarm, prewarm_script(repo), runner, mode=0o755)
         if runner.dry or subprocess.run([engine, "network", "exists", NETWORK], capture_output=True).returncode != 0:
             # Internal: the server reaches nothing (no Internet, no LAN, no host service); 127.0.0.1:8099 only.
             runner.run([engine, "network", "create", "--internal", NETWORK])
         unit = Path.home() / ".config" / "systemd" / "user" / f"{SERVICE}.service"
-        write(unit, service_unit(engine, layout), runner)
+        write(unit, service_unit(engine, layout, gpu), runner)
         start_service("linux", SERVICE, unit, runner)
         say("  Loading the model and warming the 14 voices (~30 s)…")
         if not runner.dry:
@@ -332,11 +419,12 @@ def main(argv: List[str]) -> int:
     if answers():
         print(ui.done(f"Drama 3 already runs on this machine ({URL}): I'll use it."))
     else:
-        reason = why_not(machine.system, hermes.sandbox_runtime(), data_dir)
-        if reason:
+        gpu, reason = choose(machine.system, hermes.sandbox_runtime(), data_dir)
+        if gpu is None:
             print(ui.fail(f"Not on this machine: {reason}. The Bips keep their quick voices (Pocket)."))
             return 1
-        if not install(runner, REPO, data_dir, hermes.sandbox_runtime() or "podman", served_model=args.served_model):
+        print(ui.note(f"Through {'CUDA' if gpu.backend == 'cuda' else 'Vulkan'}, {gpu.free_gib:.0f} GiB of GPU memory free."))
+        if not install(runner, REPO, data_dir, hermes.sandbox_runtime() or "podman", gpu, served_model=args.served_model):
             return 1
         print(ui.done("Drama 3 is running, for every account on this machine."))
     config = Path.home() / ".config" / "bipagents" / "bridge.toml"
