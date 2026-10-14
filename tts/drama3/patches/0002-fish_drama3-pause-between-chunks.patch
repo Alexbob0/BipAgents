@@ -1,0 +1,109 @@
+From 4435937cfd4f147900562b05c242eb9bb688582b Mon Sep 17 00:00:00 2001
+From: aibox lab <aibox@localhost>
+Date: Wed, 14 Oct 2026 11:49:07 +0200
+Subject: [PATCH 2/2] fish_drama3: pause between chunks
+
+Each chunk stops where its speech stops, so joined chunks ran sentences
+together (median 0.13 s between sentences against 1.1 s unchunked).
+Insert silence between chunks by how the previous one ends:
+sentence_pause_ms (650), speaker_pause_ms (750), clause_pause_ms (250),
+with +/-15 % seeded jitter, and fade chunk edges over 8 ms offline.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/community_models/fish_drama3/session.cpp | 51 ++++++++++++++++++++
+ 1 file changed, 51 insertions(+)
+
+diff --git a/src/community_models/fish_drama3/session.cpp b/src/community_models/fish_drama3/session.cpp
+index bf4ba086..24dbe655 100644
+--- a/src/community_models/fish_drama3/session.cpp
++++ b/src/community_models/fish_drama3/session.cpp
+@@ -7,6 +7,7 @@
+ #include <algorithm>
+ #include <chrono>
+ #include <iostream>
++#include <random>
+ #include <regex>
+ #include <stdexcept>
+ 
+@@ -30,6 +31,42 @@ int64_t chunk_frame_budget(const std::string & text) {
+     return 2 * (2 * characters + 25 * directions) + 50;
+ }
+ 
++// Each chunk stops where its speech stops, so chunks joined back to back run
++// sentences together. Choose the silence between two chunks from how the first
++// one ends: a speaker change, a finished sentence, or a clause cut for length.
++struct ChunkPauses { int64_t sentence_ms = 650, clause_ms = 250, speaker_ms = 750; };
++
++int64_t chunk_pause_ms(const std::string & previous, const std::string & next, const ChunkPauses & pauses) {
++    const auto speaker_of = [](const std::string & text) { return text.substr(0, text.find("|>") + 2); };
++    if (speaker_of(previous) != speaker_of(next)) return pauses.speaker_ms;
++    size_t end = previous.size();
++    while (end > 0) {
++        const char c = previous[end - 1];
++        if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '"' || c == '\'' || c == ')') { --end; continue; }
++        if (c == '>') { const auto open = previous.rfind('<', end - 1); if (open == std::string::npos) break; end = open; continue; }
++        if (end >= 2 && previous.compare(end - 2, 2, "\xc2\xbb") == 0) { end -= 2; continue; }      // »
++        if (end >= 3 && previous.compare(end - 3, 3, "\xe2\x80\x9d") == 0) { end -= 3; continue; }  // ”
++        break;
++    }
++    if (end == 0) return pauses.clause_ms;
++    const char last = previous[end - 1];
++    const bool sentence = last == '.' || last == '!' || last == '?' || last == ']' ||
++        (end >= 3 && previous.compare(end - 3, 3, "\xe2\x80\xa6") == 0);  // …
++    return sentence ? pauses.sentence_ms : pauses.clause_ms;
++}
++
++void fade_edges(runtime::AudioBuffer & audio, int64_t fade_ms) {
++    const auto frames = audio.channels > 0 ? audio.samples.size() / static_cast<size_t>(audio.channels) : 0;
++    const auto length = std::min<size_t>(frames / 2, static_cast<size_t>(audio.sample_rate * fade_ms / 1000));
++    for (size_t frame = 0; frame < length; ++frame) {
++        const float gain = static_cast<float>(frame) / static_cast<float>(length);
++        for (int channel = 0; channel < audio.channels; ++channel) {
++            audio.samples[frame * audio.channels + channel] *= gain;
++            audio.samples[(frames - 1 - frame) * audio.channels + channel] *= gain;
++        }
++    }
++}
++
+ std::vector<std::string> speaker_chunks(const std::vector<std::string> & chunks) {
+     static const std::regex speaker(R"(<\|speaker:[0-9]+\|>)");
+     std::vector<std::string> pieces;
+@@ -211,6 +248,12 @@ runtime::TaskResult Drama3Session::synthesize(const runtime::TaskRequest & reque
+     bool limited = false;
+     const bool bounded = runtime::find_option(effective.options, {"chunk_frame_budget"}).value_or("on") != "off";
+     const int64_t attempts = runtime::parse_positive_i64_option(effective.options, {"chunk_attempts"}, 3);
++    ChunkPauses pauses;
++    pauses.sentence_ms = runtime::parse_i64_option(effective.options, {"sentence_pause_ms"}).value_or(pauses.sentence_ms);
++    pauses.clause_ms = runtime::parse_i64_option(effective.options, {"clause_pause_ms"}).value_or(pauses.clause_ms);
++    pauses.speaker_ms = runtime::parse_i64_option(effective.options, {"speaker_pause_ms"}).value_or(pauses.speaker_ms);
++    std::mt19937 pause_random(sampling.seed);
++    std::uniform_real_distribution<double> pause_jitter(0.85, 1.15);
+     for (size_t index = 0; index < chunks.size(); ++index) {
+         auto context = history;
+         if (!generated_takes.empty()) context.push_back(generated_takes.back());
+@@ -224,6 +267,13 @@ runtime::TaskResult Drama3Session::synthesize(const runtime::TaskRequest & reque
+         }
+         const auto & text = chunks[index];
+         std::cerr << "[fish_drama3] chunk " << index + 1 << "/" << chunks.size() << ": " << text << "\n";
++        if (index > 0 && merged.sample_rate > 0) {
++            const auto pause_ms = static_cast<double>(chunk_pause_ms(chunks[index - 1], text, pauses)) * pause_jitter(pause_random);
++            runtime::AudioBuffer silence{merged.sample_rate, merged.channels, {}};
++            silence.samples.assign(static_cast<size_t>(pause_ms * merged.sample_rate / 1000.0) * merged.channels, 0.0F);
++            runtime::append_audio_buffer(merged, silence);
++            if (callback) callback(silence);
++        }
+         // Streaming has already played the audio of a failed take, so only offline
+         // requests are redrawn. The first draw keeps the historical seed.
+         const int64_t draws = streaming ? 1 : attempts;
+@@ -237,6 +287,7 @@ runtime::TaskResult Drama3Session::synthesize(const runtime::TaskRequest & reque
+             std::cerr << "[fish_drama3] chunk " << index + 1 << " reached " << chunk_sampling.max_frames
+                       << " frames on draw " << draw + 1 << "/" << draws << "\n";
+         }
++        if (!streaming) fade_edges(generated.audio, 8);
+         runtime::append_audio_buffer(merged, generated.audio);
+         limited = limited || generated.reached_limit;
+         generated_takes.push_back({text, std::move(generated.codes)});
+-- 
+2.55.0
+

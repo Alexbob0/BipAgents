@@ -1,0 +1,83 @@
+From bd01be9b84d22b4b6561ddb152fbd6142ce33a4e Mon Sep 17 00:00:00 2001
+From: aibox lab <aibox@localhost>
+Date: Wed, 14 Oct 2026 16:46:18 +0200
+Subject: [PATCH] fish_drama3: cut long sentences at a comma, not mid-phrase
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The length chunker cuts a sentence over text_chunk_size at the last
+space, which split "en début | d'après-midi" with a clause pause in
+between. Move a piece's words after its last comma, semicolon or colon
+(not a decimal comma) to the next piece of the same speaker, all of it
+when it has none or the opening is under 30 bytes. clause_chunks=off
+restores the previous split.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/community_models/fish_drama3/session.cpp | 42 +++++++++++++++++++-
+ 1 file changed, 41 insertions(+), 1 deletion(-)
+
+diff --git a/src/community_models/fish_drama3/session.cpp b/src/community_models/fish_drama3/session.cpp
+index db427e2b..7a38f073 100644
+--- a/src/community_models/fish_drama3/session.cpp
++++ b/src/community_models/fish_drama3/session.cpp
+@@ -106,6 +106,45 @@ std::vector<std::string> speaker_chunks(const std::vector<std::string> & chunks)
+     return pieces;
+ }
+ 
++// The length chunker cuts a long sentence at the last space before the limit,
++// which can split a phrase ("en début | d'après-midi"). Move a piece's words
++// after its last comma, semicolon or colon to the next piece of the same speaker
++// (all of it when it has none), so every cut falls where a reader would breathe.
++std::vector<std::string> clause_chunks(const std::vector<std::string> & pieces) {
++    const auto ends_clause = [](const std::string & text) {
++        static const std::regex end(R"((\.|!|\?|…|,|;|:)("|»|”|’|\)|\])*\s*$)");
++        return std::regex_search(text, end);
++    };
++    std::vector<std::string> out;
++    std::string carry;
++    for (size_t index = 0; index < pieces.size(); ++index) {
++        const auto & piece = pieces[index];
++        const auto speaker = speaker_of(piece);
++        std::string body = piece.substr(speaker.size());
++        const auto first = body.find_first_not_of(' ');
++        body = first == std::string::npos ? std::string{} : body.substr(first);
++        if (!carry.empty()) body = carry + " " + body;
++        carry.clear();
++        const bool next_same = index + 1 < pieces.size() && speaker_of(pieces[index + 1]) == speaker;
++        if (next_same && !ends_clause(body)) {
++            // Last , ; or : that is not a decimal comma (19,5).
++            auto cut = body.find_last_of(",;:");
++            while (cut != std::string::npos && cut > 0 && cut + 1 < body.size() &&
++                   std::isdigit(static_cast<unsigned char>(body[cut - 1])) && std::isdigit(static_cast<unsigned char>(body[cut + 1]))) {
++                cut = body.find_last_of(",;:", cut - 1);
++            }
++            // A short opening ("Mais cette fois,") reads better with what follows.
++            if (cut == std::string::npos || cut < 30) { carry = body; continue; }
++            auto rest = body.substr(cut + 1);
++            const auto start = rest.find_first_not_of(' ');
++            carry = start == std::string::npos ? std::string{} : rest.substr(start);
++            body = body.substr(0, cut + 1);
++        }
++        out.push_back(speaker + " " + body);
++    }
++    return out;
++}
++
+ codecs::FishDacCodes parse_codes(const json::Value & value, int64_t codebook_size) {
+     codecs::FishDacCodes codes;
+     const auto & books = value.as_array();
+@@ -273,7 +312,8 @@ runtime::TaskResult Drama3Session::synthesize(const runtime::TaskRequest & reque
+     const auto mode = engine::text::parse_text_chunk_mode_override(effective.options).value_or(engine::text::TextChunkMode::TagAware);
+     std::vector<std::string> chunk_texts;
+     for (const auto & chunk : runtime::chunk_text_request(effective, chunk_size, mode)) chunk_texts.push_back(chunk.text_input->text);
+-    const auto chunks = speaker_chunks(chunk_texts);
++    const auto chunks = runtime::find_option(effective.options, {"clause_chunks"}).value_or("on") == "off"
++        ? speaker_chunks(chunk_texts) : clause_chunks(speaker_chunks(chunk_texts));
+     runtime::TaskResult result;
+     runtime::AudioBuffer merged;
+     std::vector<Drama3Take> generated_takes;
+-- 
+2.55.0
+

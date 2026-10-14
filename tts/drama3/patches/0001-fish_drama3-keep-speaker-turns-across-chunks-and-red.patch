@@ -1,0 +1,125 @@
+From 87985cbc49dbd70a5d803c3258c79d3a587f285a Mon Sep 17 00:00:00 2001
+From: aibox lab <aibox@localhost>
+Date: Wed, 14 Oct 2026 11:36:08 +0200
+Subject: [PATCH 1/2] fish_drama3: keep speaker turns across chunks and redraw
+ stuck takes
+
+Length-based chunks ignored speaker tags, so a chunk starting mid-turn was
+voiced as speaker 0. Split at every speaker tag and prefix each piece with
+the active speaker.
+
+Bound each chunk by its spoken length (2 frames per character, 25 per
+[direction], doubled, +50) and redraw offline chunks that hit the bound
+with another seed (chunk_attempts, default 3; chunk_frame_budget=off
+disables the bound). Streaming keeps a single draw.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/community_models/fish_drama3/session.cpp | 65 ++++++++++++++++++--
+ 1 file changed, 60 insertions(+), 5 deletions(-)
+
+diff --git a/src/community_models/fish_drama3/session.cpp b/src/community_models/fish_drama3/session.cpp
+index 1a8d0e0b..bf4ba086 100644
+--- a/src/community_models/fish_drama3/session.cpp
++++ b/src/community_models/fish_drama3/session.cpp
+@@ -6,12 +6,52 @@
+ 
+ #include <algorithm>
+ #include <chrono>
++#include <iostream>
++#include <regex>
+ #include <stdexcept>
+ 
+ namespace engine::models::fish_drama3 {
+ namespace {
+ namespace json = engine::io::json;
+ 
++// Length-based chunks ignore speaker turns: a chunk that starts mid-turn has no
++// speaker tag and the prompt builder would voice it as speaker 0. Split at every
++// speaker tag and start each piece with the speaker that is talking.
++// A take that runs far past its text is stuck in silence or looping. Bound each
++// chunk by its spoken length (about 2 frames per character at 21.5 frames/s,
++// plus room for each [direction]) so such a take ends early and can be redrawn.
++int64_t chunk_frame_budget(const std::string & text) {
++    static const std::regex markup(R"(<\|speaker:[0-9]+\|>|<[^>]*>|\[[^\]]*\])");
++    static const std::regex direction(R"(\[[^\]]*\])");
++    const auto spoken = std::regex_replace(text, markup, " ");
++    int64_t characters = 0;
++    for (const unsigned char byte : spoken) characters += (byte & 0xc0) != 0x80 && byte != ' ';
++    const auto directions = std::distance(std::sregex_iterator(text.begin(), text.end(), direction), std::sregex_iterator());
++    return 2 * (2 * characters + 25 * directions) + 50;
++}
++
++std::vector<std::string> speaker_chunks(const std::vector<std::string> & chunks) {
++    static const std::regex speaker(R"(<\|speaker:[0-9]+\|>)");
++    std::vector<std::string> pieces;
++    std::string current = "<|speaker:0|>";
++    for (const auto & chunk : chunks) {
++        size_t cursor = 0;
++        const auto flush = [&](size_t end) {
++            const auto first = chunk.find_first_not_of(" \t\r\n", cursor);
++            if (first == std::string::npos || first >= end) return;
++            const auto last = chunk.find_last_not_of(" \t\r\n", end - 1);
++            pieces.push_back(current + " " + chunk.substr(first, last + 1 - first));
++        };
++        for (auto it = std::sregex_iterator(chunk.begin(), chunk.end(), speaker); it != std::sregex_iterator(); ++it) {
++            flush(static_cast<size_t>(it->position()));
++            current = it->str();
++            cursor = static_cast<size_t>(it->position() + it->length());
++        }
++        flush(chunk.size());
++    }
++    return pieces;
++}
++
+ codecs::FishDacCodes parse_codes(const json::Value & value, int64_t codebook_size) {
+     codecs::FishDacCodes codes;
+     const auto & books = value.as_array();
+@@ -161,15 +201,17 @@ runtime::TaskResult Drama3Session::synthesize(const runtime::TaskRequest & reque
+     }
+     const int64_t chunk_size = runtime::parse_positive_i64_option(effective.options, {"text_chunk_size"}, 200);
+     const auto mode = engine::text::parse_text_chunk_mode_override(effective.options).value_or(engine::text::TextChunkMode::TagAware);
+-    const auto chunks = runtime::chunk_text_request(effective, chunk_size, mode);
++    std::vector<std::string> chunk_texts;
++    for (const auto & chunk : runtime::chunk_text_request(effective, chunk_size, mode)) chunk_texts.push_back(chunk.text_input->text);
++    const auto chunks = speaker_chunks(chunk_texts);
+     runtime::TaskResult result;
+     runtime::AudioBuffer merged;
+     std::vector<Drama3Take> generated_takes;
+     const auto started = std::chrono::steady_clock::now();
+     bool limited = false;
++    const bool bounded = runtime::find_option(effective.options, {"chunk_frame_budget"}).value_or("on") != "off";
++    const int64_t attempts = runtime::parse_positive_i64_option(effective.options, {"chunk_attempts"}, 3);
+     for (size_t index = 0; index < chunks.size(); ++index) {
+-        auto chunk_sampling = sampling;
+-        chunk_sampling.seed += static_cast<uint32_t>(index);
+         auto context = history;
+         if (!generated_takes.empty()) context.push_back(generated_takes.back());
+         std::function<void(const runtime::AudioBuffer &)> callback;
+@@ -180,8 +222,21 @@ runtime::TaskResult Drama3Session::synthesize(const runtime::TaskRequest & reque
+                 stream_event_sink()(event);
+             };
+         }
+-        const auto & text = chunks[index].text_input->text;
+-        auto generated = generator_->generate(text, references, context, chunk_sampling, streaming, callback);
++        const auto & text = chunks[index];
++        std::cerr << "[fish_drama3] chunk " << index + 1 << "/" << chunks.size() << ": " << text << "\n";
++        // Streaming has already played the audio of a failed take, so only offline
++        // requests are redrawn. The first draw keeps the historical seed.
++        const int64_t draws = streaming ? 1 : attempts;
++        Drama3Generation generated;
++        for (int64_t draw = 0; draw < draws; ++draw) {
++            auto chunk_sampling = sampling;
++            chunk_sampling.seed += static_cast<uint32_t>(index + 7919 * draw);
++            if (bounded) chunk_sampling.max_frames = std::min(sampling.max_frames, chunk_frame_budget(text));
++            generated = generator_->generate(text, references, context, chunk_sampling, streaming, callback);
++            if (!generated.reached_limit) break;
++            std::cerr << "[fish_drama3] chunk " << index + 1 << " reached " << chunk_sampling.max_frames
++                      << " frames on draw " << draw + 1 << "/" << draws << "\n";
++        }
+         runtime::append_audio_buffer(merged, generated.audio);
+         limited = limited || generated.reached_limit;
+         generated_takes.push_back({text, std::move(generated.codes)});
+-- 
+2.55.0
+

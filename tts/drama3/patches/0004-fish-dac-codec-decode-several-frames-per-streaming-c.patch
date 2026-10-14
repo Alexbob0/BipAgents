@@ -1,0 +1,154 @@
+From d272944de7700dbed4066283bea0b0bc89a5f390 Mon Sep 17 00:00:00 2001
+From: aibox lab <aibox@localhost>
+Date: Wed, 14 Oct 2026 16:35:52 +0200
+Subject: [PATCH 4/5] fish dac codec: decode several frames per streaming call
+
+Streaming decoded one 46 ms frame per call, one GPU graph each: about a
+third of Drama 3's generation time. The streaming graph can now take a
+block of frames: positions and the window-attention mask cover the block,
+the conv histories and attention cache already handled any length.
+Default stays one frame. A shorter last call is padded and ends the
+stream.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../framework/codecs/fish_dac_codec_runtime.h |  2 +
+ .../codecs/fish_dac_codec_runtime.cpp         | 50 +++++++++++++++----
+ 2 files changed, 41 insertions(+), 11 deletions(-)
+
+diff --git a/include/engine/framework/codecs/fish_dac_codec_runtime.h b/include/engine/framework/codecs/fish_dac_codec_runtime.h
+index e6b3c9a6..096721dd 100644
+--- a/include/engine/framework/codecs/fish_dac_codec_runtime.h
++++ b/include/engine/framework/codecs/fish_dac_codec_runtime.h
+@@ -89,6 +89,8 @@ public:
+     // Decode one frame with persistent causal attention/convolution state.
+     runtime::AudioBuffer decode_stream(const FishDacCodes & codes);
+     void reset_decode_stream();
++    // Frames per decode_stream call (default 1). A call with fewer frames ends the stream.
++    void set_stream_block_frames(int64_t frames);
+     runtime::AudioBuffer decode_latents(const FishDacLatents & latents);
+     runtime::AudioBuffer decode_latents(const std::vector<float> & values, int64_t frames);
+     void release_decode_graphs();
+diff --git a/src/framework/codecs/fish_dac_codec_runtime.cpp b/src/framework/codecs/fish_dac_codec_runtime.cpp
+index d97777de..688a696d 100644
+--- a/src/framework/codecs/fish_dac_codec_runtime.cpp
++++ b/src/framework/codecs/fish_dac_codec_runtime.cpp
+@@ -75,6 +75,8 @@ struct CodecStreamingState {
+     ggml_tensor * positions = nullptr;
+     ggml_tensor * mask = nullptr;
+     int64_t frames = 0;
++    // Codec frames decoded per call; the window attention keeps the last 127 frames.
++    int64_t block = 1;
+ 
+     core::TensorValue with_history(core::ModuleBuildContext & ctx, const core::TensorValue & input, int64_t count) {
+         if (count == 0) return input;
+@@ -98,10 +100,19 @@ struct CodecStreamingState {
+                 ggml_backend_tensor_set(history.first, zeros.data(), 0, zeros.size() * sizeof(float));
+             }
+         }
+-        const int32_t position = static_cast<int32_t>(frames);
+-        ggml_backend_tensor_set(positions, &position, 0, sizeof(position));
+-        std::vector<ggml_fp16_t> values(128, ggml_fp32_to_fp16(-std::numeric_limits<float>::infinity()));
+-        std::fill(values.begin() + std::max<int64_t>(0, 127 - frames), values.end(), ggml_fp32_to_fp16(0.0F));
++        std::vector<int32_t> position(static_cast<size_t>(block));
++        for (int64_t row = 0; row < block; ++row) position[static_cast<size_t>(row)] = static_cast<int32_t>(frames + row);
++        ggml_backend_tensor_set(positions, position.data(), 0, position.size() * sizeof(int32_t));
++        // Keys are the 127 cached frames, then this block. Row r may see cached slot j
++        // when it holds a real frame (j >= 127 - frames) inside its 128-frame window
++        // (j >= r), and the block's own frames up to itself.
++        const int64_t keys = 127 + block;
++        std::vector<ggml_fp16_t> values(static_cast<size_t>(block * keys), ggml_fp32_to_fp16(-std::numeric_limits<float>::infinity()));
++        for (int64_t row = 0; row < block; ++row) {
++            for (int64_t key = std::max<int64_t>({0, 127 - frames, row}); key <= 127 + row; ++key) {
++                values[static_cast<size_t>(row * keys + key)] = ggml_fp32_to_fp16(0.0F);
++            }
++        }
+         ggml_backend_tensor_set(mask, values.data(), 0, values.size() * sizeof(ggml_fp16_t));
+     }
+ 
+@@ -117,7 +128,7 @@ struct CodecStreamingState {
+             ggml_backend_tensor_copy_async(backend, backend, history.second, history.first);
+         }
+         ggml_backend_synchronize(backend);
+-        ++frames;
++        frames += block;
+     }
+ };
+ 
+@@ -530,9 +541,9 @@ core::TensorValue build_window_transformer(
+     CodecStreamingState * stream = nullptr) {
+     auto x = modules::TransposeModule({{0, 2, 1, 3}, 3}).build(ctx, input_bct);
+     auto positions = stream == nullptr ? make_positions(ctx, constants, x.shape.dims[1])
+-        : core::make_tensor(ctx, GGML_TYPE_I32, core::TensorShape::from_dims({1}));
++        : core::make_tensor(ctx, GGML_TYPE_I32, core::TensorShape::from_dims({stream->block}));
+     auto mask = stream == nullptr ? make_causal_mask(ctx, constants, x.shape.dims[1], window_size)
+-        : core::make_tensor(ctx, GGML_TYPE_F16, core::TensorShape::from_dims({1, window_size}));
++        : core::make_tensor(ctx, GGML_TYPE_F16, core::TensorShape::from_dims({stream->block, window_size - 1 + stream->block}));
+     if (stream != nullptr) {
+         stream->positions = positions.tensor;
+         stream->mask = mask.tensor;
+@@ -1004,7 +1015,10 @@ struct DecodeGraph {
+           threads_(std::max(1, execution_context.config().threads)),
+           frame_capacity_(frames),
+           constants_(backend_, threads_, "Fish DAC codec decode constants") {
+-        if (streaming) stream_ = std::make_unique<CodecStreamingState>();
++        if (streaming) {
++            stream_ = std::make_unique<CodecStreamingState>();
++            stream_->block = frames;
++        }
+         ggml_init_params params{graph_arena_bytes, nullptr, true};
+         ctx_.reset(ggml_init(params));
+         if (ctx_ == nullptr) {
+@@ -1414,18 +1428,27 @@ public:
+         return decode_graph_->run(codes);
+     }
+ 
++    // Decodes up to stream_block_frames_ frames per call. A shorter call is padded
++    // and must end the stream: the padding enters the history until the next reset.
+     runtime::AudioBuffer decode_stream(const FishDacCodes & codes) {
+-        if (codes.frames != 1) {
+-            throw std::runtime_error("Fish DAC streaming decode requires one codec frame");
++        if (codes.frames < 1 || codes.frames > stream_block_frames_) {
++            throw std::runtime_error("Fish DAC streaming decode takes one to stream_block_frames codec frames");
+         }
+         if (!stream_decode_graph_) {
+             stream_decode_graph_ = std::make_unique<DecodeGraph>(
+                 component_->impl_->config, component_->impl_->weights,
+-                execution_, graph_arena_bytes_, 1, true);
++                execution_, graph_arena_bytes_, stream_block_frames_, true);
+         }
+         return stream_decode_graph_->run_stream(codes);
+     }
+ 
++    void set_stream_block_frames(int64_t frames) {
++        if (frames < 1 || frames > 64) throw std::runtime_error("Fish DAC stream block must be 1 to 64 frames");
++        if (frames == stream_block_frames_) return;
++        stream_block_frames_ = frames;
++        stream_decode_graph_.reset();
++    }
++
+     void reset_decode_stream() {
+         if (stream_decode_graph_) stream_decode_graph_->reset_stream();
+     }
+@@ -1476,6 +1499,7 @@ private:
+     std::unique_ptr<EncodeGraph> encode_graph_;
+     std::unique_ptr<DecodeGraph> decode_graph_;
+     std::unique_ptr<DecodeGraph> stream_decode_graph_;
++    int64_t stream_block_frames_ = 1;
+     std::unique_ptr<LatentDecodeGraph> latent_decode_graph_;
+ };
+ 
+@@ -1546,6 +1570,10 @@ void FishDacCodecRuntime::reset_decode_stream() {
+     impl_->reset_decode_stream();
+ }
+ 
++void FishDacCodecRuntime::set_stream_block_frames(int64_t frames) {
++    impl_->set_stream_block_frames(frames);
++}
++
+ runtime::AudioBuffer FishDacCodecRuntime::decode_latents(const FishDacLatents & latents) {
+     return impl_->decode_latents(latents);
+ }
+-- 
+2.55.0
+

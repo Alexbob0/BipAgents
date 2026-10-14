@@ -1,0 +1,64 @@
+From fed0401a59065f764777fa72f15c5b3b7d956267 Mon Sep 17 00:00:00 2001
+From: aibox lab <aibox@localhost>
+Date: Wed, 14 Oct 2026 15:32:35 +0200
+Subject: [PATCH] fish_drama3: merge wordless chunks into their neighbours
+
+French puts a space before ! and ?, where the length chunker may cut. A
+chunk holding only "!" made the model read the previous sentence again.
+Glue lone punctuation to the previous piece and carry a lone direction
+tag to the next piece of the same speaker.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/community_models/fish_drama3/session.cpp | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/src/community_models/fish_drama3/session.cpp b/src/community_models/fish_drama3/session.cpp
+index 24dbe655..cc9cc5cb 100644
+--- a/src/community_models/fish_drama3/session.cpp
++++ b/src/community_models/fish_drama3/session.cpp
+@@ -5,6 +5,7 @@
+ #include "engine/framework/text/chunking.h"
+ 
+ #include <algorithm>
++#include <cctype>
+ #include <chrono>
+ #include <iostream>
+ #include <random>
+@@ -69,18 +70,32 @@ void fade_edges(runtime::AudioBuffer & audio, int64_t fade_ms) {
+ 
+ std::vector<std::string> speaker_chunks(const std::vector<std::string> & chunks) {
+     static const std::regex speaker(R"(<\|speaker:[0-9]+\|>)");
++    static const std::regex markup(R"(<[^>]*>|\[[^\]]*\])");
+     std::vector<std::string> pieces;
+     std::string current = "<|speaker:0|>";
++    std::string carried;
+     for (const auto & chunk : chunks) {
+         size_t cursor = 0;
+         const auto flush = [&](size_t end) {
+             const auto first = chunk.find_first_not_of(" \t\r\n", cursor);
+             if (first == std::string::npos || first >= end) return;
+             const auto last = chunk.find_last_not_of(" \t\r\n", end - 1);
+-            pieces.push_back(current + " " + chunk.substr(first, last + 1 - first));
++            auto body = chunk.substr(first, last + 1 - first);
++            // French puts a space before « ! » and « ? », where the chunker may cut. A
++            // piece with nothing to say makes the model read the previous one again:
++            // keep a lone direction for the next piece, glue lone punctuation back.
++            const auto spoken = std::regex_replace(body, markup, "");
++            if (std::none_of(spoken.begin(), spoken.end(), [](unsigned char c) { return std::isalnum(c) || c >= 0x80; })) {
++                if (spoken.size() != body.size()) carried += body + " ";
++                else if (!pieces.empty() && pieces.back().rfind(current, 0) == 0) pieces.back() += " " + body;
++                return;
++            }
++            pieces.push_back(current + " " + carried + body);
++            carried.clear();
+         };
+         for (auto it = std::sregex_iterator(chunk.begin(), chunk.end(), speaker); it != std::sregex_iterator(); ++it) {
+             flush(static_cast<size_t>(it->position()));
++            if (it->str() != current) carried.clear();
+             current = it->str();
+             cursor = static_cast<size_t>(it->position() + it->length());
+         }
+-- 
+2.55.0
+

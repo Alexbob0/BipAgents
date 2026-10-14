@@ -1,0 +1,131 @@
+{
+ "model": "Fish Audio Drama 3 (audio.cpp)",
+ "voices": [
+  {
+   "id": "fr-naturelle-s15",
+   "name": "Chêne",
+   "language": "fr",
+   "kind": "natural",
+   "pitch_hz": 111,
+   "reference": "fr/fr-naturelle-s15.wav",
+   "reference_text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe."
+  },
+  {
+   "id": "fr-naturelle-s32",
+   "name": "Orme",
+   "language": "fr",
+   "kind": "natural",
+   "pitch_hz": 117,
+   "reference": "fr/fr-naturelle-s32.wav",
+   "reference_text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe."
+  },
+  {
+   "id": "fr-naturelle-s21",
+   "name": "Frêne",
+   "language": "fr",
+   "kind": "natural",
+   "pitch_hz": 138,
+   "reference": "fr/fr-naturelle-s21.wav",
+   "reference_text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe."
+  },
+  {
+   "id": "fr-naturelle-s28",
+   "name": "Saule",
+   "language": "fr",
+   "kind": "natural",
+   "pitch_hz": 213,
+   "reference": "fr/fr-naturelle-s28.wav",
+   "reference_text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe."
+  },
+  {
+   "id": "fr-mascotte-s21",
+   "name": "Grillon",
+   "language": "fr",
+   "kind": "mascot",
+   "pitch_hz": 161,
+   "reference": "fr/fr-mascotte-s21.wav",
+   "reference_text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe."
+  },
+  {
+   "id": "fr-mascotte-s17",
+   "name": "Pinson",
+   "language": "fr",
+   "kind": "mascot",
+   "pitch_hz": 256,
+   "reference": "fr/fr-mascotte-s17.wav",
+   "reference_text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe."
+  },
+  {
+   "id": "fr-mascotte-s28",
+   "name": "Mésange",
+   "language": "fr",
+   "kind": "mascot",
+   "pitch_hz": 259,
+   "reference": "fr/fr-mascotte-s28.wav",
+   "reference_text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe."
+  },
+  {
+   "id": "en-naturelle-s47",
+   "name": "Oak",
+   "language": "en",
+   "kind": "natural",
+   "pitch_hz": 121,
+   "reference": "en/en-naturelle-s47.wav",
+   "reference_text": "Hello! Here's your update for the day. You have three meetings: the first one at nine thirty, with the team."
+  },
+  {
+   "id": "en-naturelle-s92",
+   "name": "Elm",
+   "language": "en",
+   "kind": "natural",
+   "pitch_hz": 126,
+   "reference": "en/en-naturelle-s92.wav",
+   "reference_text": "Hello! Here's your update for the day. You have three meetings: the first one at nine thirty, with the team."
+  },
+  {
+   "id": "en-naturelle-s42",
+   "name": "Ash",
+   "language": "en",
+   "kind": "natural",
+   "pitch_hz": 210,
+   "reference": "en/en-naturelle-s42.wav",
+   "reference_text": "Hello! Here's your update for the day. You have three meetings: the first one at nine thirty, with the team."
+  },
+  {
+   "id": "en-naturelle-s57",
+   "name": "Willow",
+   "language": "en",
+   "kind": "natural",
+   "pitch_hz": 237,
+   "reference": "en/en-naturelle-s57.wav",
+   "reference_text": "Hello! Here's your update for the day. You have three meetings: the first one at nine thirty, with the team."
+  },
+  {
+   "id": "en-mascotte-s47",
+   "name": "Wren",
+   "language": "en",
+   "kind": "mascot",
+   "pitch_hz": 139,
+   "reference": "en/en-mascotte-s47.wav",
+   "reference_text": "Hello! Here's your update for the day. You have three meetings: the first one at nine thirty, with the team."
+  },
+  {
+   "id": "en-mascotte-s44",
+   "name": "Finch",
+   "language": "en",
+   "kind": "mascot",
+   "pitch_hz": 249,
+   "reference": "en/en-mascotte-s44.wav",
+   "reference_text": "Hello! Here's your update for the day. You have three meetings: the first one at nine thirty, with the team."
+  },
+  {
+   "id": "en-mascotte-s42",
+   "name": "Robin",
+   "language": "en",
+   "kind": "mascot",
+   "pitch_hz": 256,
+   "reference": "en/en-mascotte-s42.wav",
+   "reference_text": "Hello! Here's your update for the day. You have three meetings: the first one at nine thirty, with the team."
+  }
+ ]
+}
