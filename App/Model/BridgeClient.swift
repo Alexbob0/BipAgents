@@ -611,6 +611,14 @@ struct BridgeClient: Sendable {
         return (url, fingerprint.lowercased())
     }
 
+    /// Whether the bridge has Drama 3's voices set up (its `/health` says `"drama": true` or `false`, down for now;
+    /// null or absent: not set up, or an older bridge).
+    func servesDrama() async throws -> Bool {
+        let (data, _) = try await session.data(for: request("health", authenticated: false))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return json?["drama"] is Bool
+    }
+
     func health() async throws -> Bool {
         let (_, response) = try await session.data(for: request("health", authenticated: false))
         return (response as? HTTPURLResponse)?.statusCode == 200

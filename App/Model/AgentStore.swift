@@ -310,9 +310,13 @@ final class AgentStore {
             reachability[agent.id] = .online
             await refreshLocalDoor(of: agent, secrets: secrets)
             await tellLanguage(of: agent)
-            if let bridge = BridgeClient(tailnetOf: agent, secrets: secrets),
-               (try? await withTimeout(8) { try await bridge.modelIsUp() }) == false {
-                reachability[agent.id] = .modelDown
+            if let bridge = BridgeClient(tailnetOf: agent, secrets: secrets) {
+                if let drama = try? await withTimeout(8, { try await bridge.servesDrama() }) {
+                    AgentVoices.setServesDrama(drama, for: agent)
+                }
+                if (try? await withTimeout(8) { try await bridge.modelIsUp() }) == false {
+                    reachability[agent.id] = .modelDown
+                }
             }
         } catch HermesError.unauthorized(_) {
             reachability[agent.id] = .unauthorized

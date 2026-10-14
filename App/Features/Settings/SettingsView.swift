@@ -161,7 +161,8 @@ struct EditAgentStyleView: View {
                             settingsRow("Langue", systemImage: "globe", value: agent.language.nativeName)
                         }
                         NavigationLink {
-                            AgentVoicePicker(voice: $agent.config.voice, category: agent.appearance.category, language: agent.language)
+                            AgentVoicePicker(voice: $agent.config.voice, category: agent.appearance.category, language: agent.language,
+                                             drama: AgentVoices.servesDrama(agent))
                         } label: {
                             settingsRow("Voix", systemImage: "waveform", value: AgentVoices.option(for: agent.voiceChoice).name)
                         }
