@@ -1,0 +1,21 @@
+# audio.cpp with Fish Audio Drama 3 for NVIDIA GPUs (CUDA), built by the BipAgents installer (installer/bipinstall/drama.py).
+# The same pinned commit and patches as the Vulkan build; NVIDIA's official images (amd64 and arm64, e.g. DGX Spark).
+#   podman build --build-arg CUDA=13.0.1 --build-arg CUDA_ARCH=121 -t bipagents-drama-cuda -f Containerfile.cuda .
+ARG CUDA=12.8.1
+FROM docker.io/nvidia/cuda:${CUDA}-devel-ubuntu24.04 AS build
+ARG COMMIT=27e92a31737382c9564f0f991666ab9169ca8438
+ARG CUDA_ARCH=""
+RUN apt-get update && apt-get install -y --no-install-recommends git cmake ninja-build build-essential ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone https://github.com/JarodMica/audio.cpp.git /src && cd /src && git checkout "$COMMIT" \
+    && git submodule update --init --recursive
+COPY patches/ /patches/
+RUN cd /src && git -c user.name=BipAgents -c user.email=bipagents@localhost am /patches/*.patch
+RUN cd /src && scripts/build_linux.sh --backend cuda ${CUDA_ARCH:+--cuda-arch "$CUDA_ARCH"} --build-type Release \
+      --model-set custom --models fish_drama3 --build-dir build/cuda \
+      --target audiocpp_server --target audiocpp_gguf -j "$(nproc)"
+
+FROM docker.io/nvidia/cuda:${CUDA}-runtime-ubuntu24.04
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 curl && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/build/cuda/bin/audiocpp_server /src/build/cuda/bin/audiocpp_gguf /opt/audiocpp/bin/
+COPY --from=build /src/model_specs/fish_drama3.json /opt/audiocpp/model_specs/fish_drama3.json

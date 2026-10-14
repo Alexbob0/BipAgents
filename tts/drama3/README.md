@@ -9,6 +9,7 @@ themselves are reference clips with their transcripts in `voices/drama/`.
 Model license: Fish Audio Community License — personal and small commercial use; no hosted service for third parties;
 products built on it say « Built with Fish Audio ».
 
-Measured on a Strix Halo (Vulkan RADV): ~23 GiB of GPU memory, first audio 0.27 s once a voice is warm (~1 s the
+NVIDIA: `Containerfile.cuda` builds the same commit and patches on NVIDIA's CUDA images (amd64 and arm64); not
+measured yet. Measured on a Strix Halo (Vulkan RADV): ~23 GiB of GPU memory, first audio 0.27 s once a voice is warm (~1 s the
 first time), 1.2× real time. Set up by the installer (`installer/bipinstall/drama.py`, `install.sh drama`);
 the bridge speaks to it as `drama:<id>` voices (`bridge/bipbridge/tts.py`).
