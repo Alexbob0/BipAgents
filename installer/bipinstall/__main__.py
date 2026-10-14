@@ -193,10 +193,11 @@ def start_service(system: str, label: str, path: Path, runner: hermes.Runner) ->
 
 
 def venv(folder: Path, runner: hermes.Runner) -> None:
-    if (folder / ".venv" / "bin" / "python").exists():
-        return
-    runner.run(["uv", "venv", "--python", "3.12", str(folder / ".venv")])
-    runner.run(["uv", "pip", "install", "--python", str(folder / ".venv" / "bin" / "python"), "-r",
+    """The folder's Python environment, with its requirements as they are now (a new one after an update is
+    installed; nothing happens when they are all there)."""
+    if runner.dry or not (folder / ".venv" / "bin" / "python").exists():
+        runner.run(["uv", "venv", "--python", "3.12", str(folder / ".venv")])
+    runner.run(["uv", "pip", "install", "--quiet", "--python", str(folder / ".venv" / "bin" / "python"), "-r",
                 str(folder / "requirements.txt")])
 
 
@@ -220,12 +221,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "hermes-update":
         from .update import main as update_main
         return update_main(argv[1:])
+    if argv and argv[0] == "drama":
+        from .drama import main as drama_main
+        return drama_main(argv[1:])
     if argv and argv[0] in ("family", "famille"):   # « famille ajouter »: its first name, kept working
         from .family import main as family_main
         return family_main(argv[1:])
     parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
                                      "(`bipinstall uninstall` removes it; `bipinstall family add <name>` prepares a "
-                                     "family member's install on this server; `bipinstall hermes-update` updates Hermes "
+                                     "family member's install on this server; `bipinstall drama` adds the Bips' expressive "
+                                     "voices (Fish Audio Drama 3); `bipinstall hermes-update` updates Hermes "
                                      "and checks the agents)")
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
     parser.add_argument("--relay-url", help="the administrator's bridge, to send notifications without an APNs key")
@@ -454,6 +459,19 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
     elif getattr(args, "kyutai_url", None):
         say(ui.note(f"Kyutai isn't answering at {kyutai}: Bip voices only (Pocket)."))
 
+    from . import drama
+    if drama.answers():
+        inst.drama_url = drama.URL
+        say(f"  Drama 3 (the Bips' expressive voices) answers at {drama.URL}: I'll share it.")
+    elif not args.dry_run or getattr(args, "drama", False):
+        reason = drama.why_not(machine.system, hermes.sandbox_runtime(), inst.data_dir)
+        if reason is None:
+            say("\nThis machine can give the Bips expressive voices (Fish Audio Drama 3, on its GPU): 14 natural and\n"
+                "mascot voices in French and English. It downloads 24.6 GB once and keeps ~24 GB of GPU memory busy.")
+            if yes(ask("Set up Drama 3? (y/n)", "y")) and drama.install(runner, REPO, inst.data_dir,
+                                                                   hermes.sandbox_runtime() or "podman", say):
+                inst.drama_url = drama.URL
+                say(ui.done("Drama 3 is running: pick the new voices in the app (agent › Voice)."))
     if machine.system == "macos":
         say("  macOS may ask whether Python can reach devices on the local network: allow it, or the agents\n"
                "  and the bridge won't reach a model installed on another machine at home.")

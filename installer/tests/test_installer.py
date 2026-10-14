@@ -577,3 +577,65 @@ def test_podman_is_told_where_the_sandbox_image_comes_from(tmp_path):
     path = hermes.podman_short_names(hermes.Runner(), home=tmp_path)
     aliases = tomllib.loads(path.read_text())["aliases"]
     assert aliases["nousresearch/hermes-sandbox"] == "docker.io/nousresearch/hermes-sandbox"
+
+
+# -- Drama 3, the Bips' expressive voices ------------------------------------------------------------------------
+
+def test_drama_is_offered_only_where_it_can_run(tmp_path):
+    from bipinstall import drama
+    drm = tmp_path / "drm"
+    (drm / "card1" / "device").mkdir(parents=True)
+    (drm / "renderD128").touch()
+    gib = 2**30
+    (drm / "card1" / "device" / "mem_info_vram_total").write_text(str(512 * 2**20))
+    (drm / "card1" / "device" / "mem_info_vram_used").write_text("0")
+    (drm / "card1" / "device" / "mem_info_gtt_total").write_text(str(120 * gib))
+    (drm / "card1" / "device" / "mem_info_gtt_used").write_text(str(5 * gib))
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal: 131072000 kB\nMemAvailable: 104857600 kB\n")
+    assert drama.why_not("linux", "/usr/bin/podman", tmp_path, drm, meminfo) is None
+    assert "Linux" in drama.why_not("macos", "/usr/bin/podman", tmp_path, drm, meminfo)
+    assert "podman" in drama.why_not("linux", "/usr/bin/docker", tmp_path, drm, meminfo)
+    (drm / "card1" / "device" / "mem_info_gtt_used").write_text(str(100 * gib))
+    assert "GPU memory" in drama.why_not("linux", "/usr/bin/podman", tmp_path, drm, meminfo)
+
+
+def test_drama_server_its_voices_and_its_closed_network():
+    from bipinstall import drama
+    config = drama.server_config(ROOT)
+    presets = config["models"][0]["voice_presets"]
+    assert len(presets) == 14 and presets["fr-mascotte-s17"]["voice_ref"] == "/srv/drama3/voices/fr/fr-mascotte-s17.wav"
+    assert presets["en-naturelle-s47"]["reference_text"].startswith("Hello!") and config["min_free_memory_mb"] == 1024
+    unit = drama.service_unit("/usr/bin/podman", drama.Layout(Path("/home/x/.local/share/bipagents/drama3")))
+    assert "--network bipagents-drama3 -p 127.0.0.1:8099:8099" in unit and "--device /dev/dri" in unit
+    assert drama.IMAGE in unit and "StartLimitBurst=3" in unit and "ExecStartPost=/bin/bash" in unit
+    warm = drama.prewarm_script(ROOT)
+    assert warm.count("/v1/audio/speech") == 14 and '"input": "Bonjour."' in warm and '"input": "Hello."' in warm
+
+
+def test_drama_setup_and_each_bridge_connected_once(tmp_path, monkeypatch, capsys):
+    from bipinstall import drama
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(drama, "answers", lambda url=drama.URL: False)
+    monkeypatch.setattr(drama, "why_not", lambda *a, **k: None)
+    monkeypatch.setattr(drama.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('bridge_key = "k"\n\n[pocket]\nurl = "http://127.0.0.1:8098"\n')
+    assert drama.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert drama.AUDIOCPP_COMMIT in out and "am --quiet" in out and "0007-fish_drama3" in out
+    assert "--network none" in out and "scripts/build_linux.sh --backend vulkan" in out
+    assert drama.MODEL_URL in out and "--keep-type" in out and "network create --internal bipagents-drama3" in out
+    assert "systemctl --user enable --now bipagents-drama" in out and "restart bipagents-bridge" in out
+    runner = drama.hermes.Runner()
+    assert drama.connect(config, runner) and drama.connect(config, runner)
+    assert config.read_text().count("[drama]") == 1 and 'url = "http://127.0.0.1:8099"' in config.read_text()
+
+
+def test_the_bridge_config_names_drama_when_it_runs():
+    from bipinstall.stack import Install, bridge_toml
+    inst = Install(repo=ROOT, home=Path("/home/lea"), ports=Ports(9200), tailnet_name=None, lan_address=None)
+    assert "[drama]" not in bridge_toml(inst)
+    inst.drama_url = "http://127.0.0.1:8099"
+    assert '[drama]\nurl = "http://127.0.0.1:8099"' in bridge_toml(inst)
