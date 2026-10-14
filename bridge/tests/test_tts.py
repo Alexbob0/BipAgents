@@ -1,5 +1,6 @@
 import array
 import asyncio
+import json
 import struct
 
 import httpx
@@ -125,3 +126,97 @@ async def test_pocket_only_routes_everything_to_pocket_and_never_to_kyutai():
         await tts.synthesize("Encore.", "pocket:loutre", "pcm16")
     assert backend.kyutai_inputs == []
     assert await tts.reachable() is None
+
+
+# -- Drama 3 ---------------------------------------------------------------------------------------------------------
+
+DRAMA = "http://drama.test"
+
+
+def drama_service(backend: FakeBackend, drama_handler, **kw) -> TtsService:
+    async def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "drama.test":
+            return await drama_handler(request)
+        return await backend.handle(request)
+    from conftest import POCKET
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    return TtsService(client, KYUTAI, "5476", pocket_url=POCKET, drama_url=DRAMA, **kw)
+
+
+def tone(seconds: float, rate: int = 44100) -> bytes:
+    import math
+    n = int(seconds * rate)
+    return array.array("h", (int(8000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(n))).tobytes()
+
+
+async def test_drama_streams_its_44k_audio_resampled_to_24k():
+    seen = []
+
+    async def drama(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        audio = tone(1.0)
+
+        async def chunks():
+            for i in range(0, len(audio), 4411):   # odd sizes: chunks need not be sample-aligned
+                yield audio[i:i + 4411]
+
+        return httpx.Response(200, content=chunks())
+
+    tts = drama_service(FakeBackend(), drama)
+    out = b"".join([c async for c in tts.stream("Bonjour, il est sept heures cinquante.", "drama:fr-mascotte-s17")])
+    assert seen == [{"model": "drama-3", "input": "Bonjour, il est sept heures cinquante.", "voice": "fr-mascotte-s17",
+                     "response_format": "pcm", "stream_format": "audio"}]
+    assert abs(len(out) // 2 - 24000) <= 50          # one second at 24 kHz
+    again = b"".join([c async for c in tts.stream("Bonjour, il est sept heures cinquante.", "drama:fr-mascotte-s17")])
+    assert again == out and len(seen) == 1           # a complete take is cached
+
+
+async def test_drama_down_speaks_with_a_pocket_bip_of_the_same_language():
+    async def drama(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    backend = FakeBackend()
+    tts = drama_service(backend, drama)
+    out = b"".join([c async for c in tts.stream("Bonjour.", "drama:fr-mascotte-s17")])
+    assert backend.pocket_inputs[-1]["voice"] == "colibri" and out
+    audio = await tts.synthesize("Hello there.", "drama:en-naturelle-s47", "pcm16")
+    assert backend.pocket_inputs[-1]["voice"] == "en/galet" and audio.data
+
+
+async def test_a_drama_take_reading_on_and_on_is_cut():
+    async def drama(request: httpx.Request) -> httpx.Response:
+        async def chunks():
+            for _ in range(40):                      # 40 s of audio for a 4-character text
+                yield tone(1.0)
+        return httpx.Response(200, content=chunks())
+
+    tts = drama_service(FakeBackend(), drama)
+    out = b"".join([c async for c in tts.stream("Oui.", "drama:fr-naturelle-s15")])
+    assert len(out) / 2 / 24000 < 6
+
+
+async def test_drama_whole_files_and_formats_it_cannot_make():
+    async def drama(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["response_format"] == "wav" and "stream_format" not in body
+        pcm = tone(0.5)
+        header = (b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt " +
+                  struct.pack("<IHHIIHH", 16, 1, 1, 44100, 88200, 2, 16) + b"data" + struct.pack("<I", len(pcm)))
+        return httpx.Response(200, content=header + pcm)
+
+    backend = FakeBackend()
+    tts = drama_service(backend, drama)
+    audio = await tts.synthesize("Bonjour à toi.", "drama:fr-naturelle-s21", "pcm16")
+    assert audio.sample_rate == 24000 and abs(len(audio.data) // 2 - 12000) <= 50
+    wav = await tts.synthesize("Bonjour à toi.", "drama:fr-naturelle-s21", "wav")
+    assert wav.data[:4] == b"RIFF" and wav_to_pcm16(wav.data)[1] == 24000
+    mp3 = await tts.synthesize("Bonjour à toi.", "drama:fr-naturelle-s21", "mp3")   # outbox audio: a Bip reads it
+    assert backend.pocket_inputs[-1]["voice"] == "galet" and mp3.data.startswith(b"ID3pocket")
+
+
+async def test_drama_voices_without_drama_go_to_pocket():
+    backend = FakeBackend()
+    from conftest import POCKET
+    tts = TtsService(httpx.AsyncClient(transport=backend.transport()), KYUTAI, "5476", pocket_url=POCKET)
+    await tts.synthesize("Salut.", "drama:fr-mascotte-s28", "pcm16")
+    assert backend.pocket_inputs[-1]["voice"] == "colibri"

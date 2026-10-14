@@ -72,3 +72,10 @@ def test_kyutai_can_be_turned_off_for_pocket_only():
     assert config.kyutai_url is None and config.default_voice == "pocket:ours"
     with pytest.raises(ConfigError):
         parse_config({**base, "kyutai": {"enabled": False}})
+
+
+def test_drama_is_optional():
+    base = {"bridge_key": "k" * 40, "pocket": {"url": "http://127.0.0.1:8098"}}
+    assert parse_config(base).drama_url is None
+    assert parse_config({**base, "drama": {"url": "http://127.0.0.1:8099/"}}).drama_url == "http://127.0.0.1:8099"
+    assert parse_config({**base, "drama": {"url": "http://127.0.0.1:8099", "enabled": False}}).drama_url is None
