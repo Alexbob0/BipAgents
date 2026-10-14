@@ -303,13 +303,15 @@ def test_thinking_level_is_set_in_the_agents_config(managed):
     assert read_thinking(config, agent) == "medium"
     assert set_thinking(config, agent, "xhigh") == "xhigh" and read_thinking(config, agent) == "xhigh"
     data = yaml.safe_load((folder / "config.yaml").read_text())
-    assert data["providers"]["bipagents-thinking"] == {
-        "api": "http://gpu:8888/v1", "extra_body": {"chat_template_kwargs": {"enable_thinking": True}}}
+    assert "providers" not in data   # never enable_thinking on: it would win over a turn asking for none (Live)
     assert data["agent"] == {"max_turns": 60, "reasoning_effort": "xhigh"} and data["model"]["default"] == "glm"
     set_thinking(config, agent, "none")
     data = yaml.safe_load((folder / "config.yaml").read_text())
     assert data["agent"]["reasoning_effort"] == "none" and read_thinking(config, agent) == "none"
-    assert data["providers"]["bipagents-thinking"]["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
+    assert data["providers"]["bipagents-thinking"] == {
+        "api": "http://gpu:8888/v1", "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+    set_thinking(config, agent, "medium")
+    assert "providers" not in yaml.safe_load((folder / "config.yaml").read_text())
     with pytest.raises(LookupError):
         set_thinking(config, agent, "ultra")
 
@@ -371,3 +373,21 @@ def test_rewriting_an_agents_section_keeps_what_the_bridge_does_not_set(tmp_path
     assert vie.space == "/s/vie" and vie.isolated and vie.hermes_url.startswith("http://127.0.0.1:8660")
     assert vie.hermes_key == "k" * 32 and "hermes_key = " not in path.read_text().split("[agents.vie]")[1].split("[agents")[0]
     assert path.read_text().count("hermes_url") == 2 and reread.agent("wellness").hermes_key == "w" * 32
+
+
+
+def test_thinking_forced_on_by_an_earlier_bridge_is_healed(managed):
+    from bipbridge.agents_admin import heal_thinking, read_thinking
+
+    config, _, tmp = managed
+    agent = next(iter(config.agents.values()))
+    agent.hermes_url = f"http://127.0.0.1:8642/p/{agent.name}"   # served by the hub: the bridge manages it
+    folder = tmp / ".hermes" / "profiles" / agent.name
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "config.yaml").write_text(
+        "model:\n  provider: custom\n  base_url: http://gpu:8888/v1\nagent:\n  reasoning_effort: xhigh\n"
+        "providers:\n  bipagents-thinking:\n    api: http://gpu:8888/v1\n    extra_body:\n"
+        "      chat_template_kwargs:\n        enable_thinking: true\n")
+    heal_thinking(config)
+    data = yaml.safe_load((folder / "config.yaml").read_text())
+    assert "providers" not in data and read_thinking(config, agent) == "xhigh"
