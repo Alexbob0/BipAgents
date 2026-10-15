@@ -168,7 +168,8 @@ struct AgentVoicePicker: View {
     var language: AgentLanguage = .french
     /// The agent's voice server, if any.
     var server: VoiceServerInfo?
-    /// A server voice's preview, synthesized by the bridge.
+    /// A voice's preview synthesized by the bridge, from the voice it receives (`server:fr/<id>`, `pocket:en/galet`):
+    /// for the voice model's voices, and the Bips in a language without a bundled preview.
     var preview: ((String) async throws -> URL)?
     @State private var player = VoiceNotePlayer()
     @State private var previews: [String: URL] = [:]
@@ -195,7 +196,7 @@ struct AgentVoicePicker: View {
                 if serverVoice != nil {
                     Section {
                         NavigationLink {
-                            RelayBipPicker(voice: $voice, defaultVoice: defaultVoice, language: language)
+                            RelayBipPicker(voice: $voice, defaultVoice: defaultVoice, language: language, preview: preview)
                         } label: {
                             HStack {
                                 Text("Relais").font(Theme.body(16, weight: .heavy))
@@ -254,28 +255,27 @@ struct AgentVoicePicker: View {
             }
             .buttonStyle(.plain)
             if AgentVoices.bundledSample(ofServerVoice: id) != nil || preview != nil {
-                previewButton(id: id, name: name) {
-                    if let bundled = AgentVoices.bundledSample(ofServerVoice: id) { return bundled }
-                    if let ready = previews[id] { return ready }
-                    guard let preview else { return nil }
-                    let url = try await preview(id)
-                    previews[id] = url
-                    return url
-                }
+                previewButton(id: id, name: name, bundled: AgentVoices.bundledSample(ofServerVoice: id),
+                              voice: "server:\(language.rawValue)/\(id)")
             }
         }
         .padding(.vertical, 4)
     }
 
-    private func previewButton(id: String, name: String, url: @escaping () async throws -> URL?) -> some View {
-        let playing = previews[id].map { player.playingURL == $0 } ?? false
-            || AgentVoices.bundledSample(ofServerVoice: id).map { player.playingURL == $0 } ?? false
+    /// Plays `bundled` when the app has it, else the bridge's reading of a sentence in `voice` (kept for the screen).
+    private func previewButton(id: String, name: String, bundled: URL?, voice: String) -> some View {
+        let playing = (bundled ?? previews[id]).map { player.playingURL == $0 } ?? false
         return Button {
             if playing { player.stop(); return }
+            if let ready = bundled ?? previews[id] { player.toggle(ready); return }
+            guard let preview else { return }
             loading = id
             Task {
                 defer { loading = nil }
-                if let found = try? await url() { player.toggle(found) }
+                if let made = try? await preview(voice) {
+                    previews[id] = made
+                    player.toggle(made)
+                }
             }
         } label: {
             Group {
@@ -319,18 +319,9 @@ struct AgentVoicePicker: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            if let url = option.sampleURL(in: language) {
-                Button {
-                    player.toggle(url)
-                } label: {
-                    Image(systemName: player.playingURL == url ? "stop.fill" : "play.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(Theme.ink, in: .circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(player.playingURL == url ? String(localized: "Arrêter l’aperçu") : String(localized: "Écouter \(option.name)"))
+            if option.id != AgentVoices.iphone.id, option.sampleURL(in: language) != nil || preview != nil {
+                previewButton(id: option.id, name: option.name, bundled: option.sampleURL(in: language),
+                              voice: AgentVoices.spoken(option.id, in: language))
             }
         }
         .padding(.vertical, 4)
@@ -342,7 +333,9 @@ private struct RelayBipPicker: View {
     @Binding var voice: String?
     var defaultVoice: String
     var language: AgentLanguage
+    var preview: ((String) async throws -> URL)?
     @State private var player = VoiceNotePlayer()
+    @State private var made: [String: URL] = [:]
 
     private var selected: String {
         guard let voice, AgentVoices.bips.contains(where: { $0.id == voice }) else { return defaultVoice }
@@ -370,9 +363,17 @@ private struct RelayBipPicker: View {
                             .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
-                        if let url = option.sampleURL(in: language) {
-                            Button { player.toggle(url) } label: {
-                                Image(systemName: player.playingURL == url ? "stop.fill" : "play.fill")
+                        if option.sampleURL(in: language) != nil || preview != nil {
+                            let url = option.sampleURL(in: language) ?? made[option.id]
+                            Button {
+                                if let url { player.toggle(url); return }
+                                Task {
+                                    guard let found = try? await preview?(AgentVoices.spoken(option.id, in: language)) else { return }
+                                    made[option.id] = found
+                                    player.toggle(found)
+                                }
+                            } label: {
+                                Image(systemName: url.map { player.playingURL == $0 } ?? false ? "stop.fill" : "play.fill")
                                     .font(.system(size: 13, weight: .bold))
                                     .foregroundStyle(.white)
                                     .frame(width: 34, height: 34)

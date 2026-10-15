@@ -168,7 +168,7 @@ struct EditAgentStyleView: View {
                         NavigationLink {
                             AgentVoicePicker(voice: $agent.config.voice, serverVoice: $agent.config.serverVoice,
                                              category: agent.appearance.category, language: agent.language,
-                                             server: AgentVoices.server(for: agent), preview: previewServerVoice)
+                                             server: AgentVoices.server(for: agent), preview: previewVoice)
                         } label: {
                             settingsRow("Voix", systemImage: "waveform", value: voiceSummary)
                         }
@@ -204,8 +204,9 @@ struct EditAgentStyleView: View {
         return server.name(of: id, in: agent.language)
     }
 
-    /// The bridge reads a short sentence with a voice of the voice server (cached on the phone).
-    private func previewServerVoice(_ id: String) async throws -> URL {
+    /// The bridge reads a short sentence in `voice` (a voice model's, or a Bip in a language the app has no preview
+    /// of), cached on the phone.
+    private func previewVoice(_ voice: String) async throws -> URL {
         guard let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent)) else { throw HermesError.unsupported("bridge") }
         let text = switch agent.language {
         case .english: "Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon."
@@ -213,8 +214,9 @@ struct EditAgentStyleView: View {
         case .german: "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag."
         default: "Coucou ! J’ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi."
         }
-        let data = try await bridge.voicePreview(text: text, agent: agent.bridgeName, voice: "server:\(agent.language.rawValue)/\(id)")
-        let url = VoiceNotePlayer.cacheURL(name: "server-voice-\(agent.language.rawValue)-\(id.replacingOccurrences(of: "/", with: "_")).wav")
+        let data = try await bridge.voicePreview(text: text, agent: agent.bridgeName, voice: voice)
+        let name = voice.map { $0.isLetter || $0.isNumber ? String($0) : "_" }.joined()
+        let url = VoiceNotePlayer.cacheURL(name: "voice-preview-\(name).wav")
         try data.write(to: url)
         return url
     }
