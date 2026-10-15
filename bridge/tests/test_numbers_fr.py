@@ -41,7 +41,7 @@ def test_spell_numbers(text, spoken):
 
 
 @pytest.mark.parametrize("text, spoken", [
-    ("Cherche sur DuckDuckGo ou YouTube.", "Cherche sur Duck Duck Go ou You Tube."),
+    ("Cherche sur DuckDuckGo ou YouTube.", "Cherche sur Duck Duck Go ou YouTube."),
     ("Selon OpenAI, iPhone et SNCF restent tels quels.", "Selon Open AI, iPhone et SNCF restent tels quels."),
     ("Le train (TGV) part à 9h.", "Le train, TGV, part à neuf heures."),
     ("Deux options (la seconde est moins chère).", "Deux options, la seconde est moins chère."),
@@ -50,7 +50,7 @@ def test_spell_numbers(text, spoken):
     ("Ouvert 7j/7 et 24h/24.", "Ouvert sept jours sur sept et vingt-quatre heures sur vingt-quatre."),
     ("Rendez-vous le 04/10/2026, rappel le 01/11.", "Rendez-vous le quatre octobre deux mille vingt-six, rappel le premier novembre."),
     ("Données Garmin/Oura, billet aller/retour, A/R, et/ou à 50 km/h.",
-     "Données Garmin ou Oura, billet aller-retour, aller-retour, et ou à cinquante kilomètres heure."),
+     "Données Garmine ou Oûra, billet aller-retour, aller-retour, et ou à cinquante kilomètres heure."),
 ])
 def test_prepare_for_synthesis(text, spoken):
     assert prepare_for_synthesis(text) == spoken
@@ -74,7 +74,7 @@ def test_lexicon(text, spoken):
     ("Ça prend ~15 min, soit ~ une heure en tout, ou 2~3 jours.",
      "Ça prend environ quinze minutes, soit environ une heure en tout, ou deux à trois jours."),
     ("Les runs Hermes et le cron du matin.", "Les reunes Hermes et le crone du matin."),
-    ("Lance un Live avec Wellness, puis check tes emails.", "Lance un laïve avec ouèlnesse, puis tchèque tes imèles."),
+    ("Lance un Live avec Wellness, puis check tes emails.", "Lance un laïve avec ouèlnesse, puis tchèque tes emails."),
     ("Rien d'anglais dans « il court » ni « livret ».", "Rien d'anglais dans « il court » ni « livret »."),
 ])
 def test_tilde_and_english_words(text, spoken):

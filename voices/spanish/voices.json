@@ -1,0 +1,58 @@
+{
+ "engine": "pocket-tts 3.3.0",
+ "language": "spanish",
+ "sample_rate": 24000,
+ "design": {
+  "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+  "text": "¡Buenos días! Te cuento cómo viene el día. Tienes tres reuniones; la primera es a las nueve y media, con el equipo. Se esperan dieciocho grados y algo de lluvia a última hora de la tarde, así que no olvides el paraguas. Anoche dormiste siete horas, un poco mejor que ayer. ¿Quieres que te avise un cuarto de hora antes de la reunión? Aquí estoy si necesitas algo.",
+  "note": "2026-10-15: one Qwen take per candidate written natively in the language (native-speaker accent), three seeds per Bip, picked by ear among 15; the Pocket reference is the take cut on a pause before 10 s (Pocket's german and spanish models cut the reading short with a ~23 s reference)"
+ },
+ "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395)",
+ "voices": {
+  "galet": {
+   "design_instruct": "Voz de una pequeña mascota serena, tono medio-grave, clara y segura, ritmo regular, el tono de un guía tranquilo que explica las cosas con claridad, timbre ligeramente estilizado como un personaje de animación, nunca robótico, grabación de estudio limpia y sin eco. Hablante nativo, acento neutro.",
+   "seed": 53003,
+   "candidate": "galet_s53003",
+   "source_s": 8.0,
+   "safetensors_bytes": 4966200,
+   "first_sound_s": 0.131,
+   "rtf": 8.51
+  },
+  "lumen": {
+   "design_instruct": "Voz de una pequeña mascota clara y luminosa, tono medio, muy bien articulada, neutra y eficaz, ritmo regular, ideal para leer información, timbre ligeramente estilizado como un personaje de animación, nunca robótico, grabación de estudio limpia y sin eco. Hablante nativo, acento neutro.",
+   "seed": 53103,
+   "candidate": "lumen_s53103",
+   "source_s": 8.04,
+   "safetensors_bytes": 5015352,
+   "first_sound_s": 0.08,
+   "rtf": 9.5
+  },
+  "mousse": {
+   "design_instruct": "Voz de una pequeña mascota redonda y ligera, tono medio, sonriente pero sobria, cálida, ritmo natural, articulación nítida, timbre ligeramente estilizado como un personaje de animación, nunca robótico, grabación de estudio limpia y sin eco. Hablante nativo, acento neutro.",
+   "seed": 53201,
+   "candidate": "mousse_s53201",
+   "source_s": 8.34,
+   "safetensors_bytes": 5211960,
+   "first_sound_s": 0.138,
+   "rtf": 8.14
+  },
+  "ours": {
+   "design_instruct": "Voz de una gran mascota osito de peluche, tranquila, grave y suave, tranquilizadora, ritmo lento, timbre ligeramente estilizado como un personaje de animación, nunca robótico, grabación de estudio limpia y sin eco. Hablante nativo, acento neutro.",
+   "seed": 53301,
+   "candidate": "ours_s53301",
+   "source_s": 8.26,
+   "safetensors_bytes": 5162808,
+   "first_sound_s": 0.134,
+   "rtf": 8.69
+  },
+  "colibri": {
+   "design_instruct": "Voz de una pequeña mascota colibrí, viva y alegre, clara y ligera, tono medio, cantarina, ritmo rápido y preciso, nunca chillona, timbre ligeramente estilizado como un personaje de animación, nunca robótico, grabación de estudio limpia y sin eco. Hablante nativo, acento neutro.",
+   "seed": 53402,
+   "candidate": "colibri_s53402",
+   "source_s": 9.1,
+   "safetensors_bytes": 5654328,
+   "first_sound_s": 0.067,
+   "rtf": 9.68
+  }
+ }
+}

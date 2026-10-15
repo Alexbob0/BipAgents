@@ -220,7 +220,9 @@ _COMMA_BEFORE_END = re.compile(r"\s*,\s*([.!?…:;])")
 
 
 def _split_camel(match: re.Match) -> str:
-    """"DuckDuckGo" -> "Duck Duck Go", "OpenAI" -> "Open AI" (each part is then read as a word)."""
+    """"DuckDuckGo" -> "Duck Duck Go", "OpenAI" -> "Open AI" (each part is then read as a word); "WhatsApp" stays."""
+    if match.group(0).lower() in _KEEP_WHOLE:
+        return match.group(0)
     return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", match.group(0))
 
 
@@ -243,15 +245,20 @@ _LEXICON = [
 # (singular, plural). Tuned by ear: adjust the spelling when one still sounds off.
 _ENGLISH = {
     "run": "reune", "runs": "reunes", "cron": "crone", "crons": "crones", "live": "laïve", "lives": "laïves",
-    "push": "pouche", "bug": "beug", "bugs": "beugs", "email": "imèle", "emails": "imèles", "mail": "mèle",
-    "mails": "mèles", "skill": "skile", "skills": "skiles", "prompt": "prompte", "prompts": "promptes",
+    "push": "pouche", "bug": "beug", "bugs": "beugs", "mail": "mèle", "mails": "mèles", "skill": "skile", "skills": "skiles", "prompt": "prompte", "prompts": "promptes",
     "token": "tokène", "tokens": "tokènes", "update": "eupdète", "updates": "eupdètes", "cloud": "claoude",
     "bridge": "bridje", "wellness": "ouèlnesse", "trainline": "trène laïne", "feedback": "fidbak",
     "workflow": "weurkflo", "workflows": "weurkflos", "check": "tchèque", "checks": "tchèques",
+    # Brands, picked by ear on 2026-10-15 (voices/ab-test, Galet): the others sound right as they are written.
+    "garmin": "Garmine", "oura": "Oûra", "spotify": "Spotifaï", "github": "Guite-heub", "tailscale": "Téil-skèil",
+    "bluetooth": "Blou-tousse", "icloud": "Aïe-claoude", "chatgpt": "Tchat G P T", "uber": "Oubeur",
+    "netflix": "Net-flix",
 }
+# Brands said right as they are written, which the CamelCase split would cut (« Whats App »).
+_KEEP_WHOLE = {"whatsapp", "youtube", "airpods", "linkedin"}
 _LEXICON = [(re.compile(pattern), words) for pattern, words in _LEXICON] + [
     (re.compile(r"\b" + word + r"\b", re.IGNORECASE), spoken) for word, spoken in _ENGLISH.items()
-]
+] + [(re.compile(r"\bNotion\b"), "Nôcheune")]   # the app; « une notion » stays French
 
 _SLASH_WORDS = [(re.compile(r"\bet ?/ ?ou\b", re.I), "et ou"), (re.compile(r"\baller ?/ ?retour\b", re.I), "aller-retour"),
                 (re.compile(r"\bA/R\b"), "aller-retour"), (re.compile(r"\bkm/h\b"), "kilomètres heure")]

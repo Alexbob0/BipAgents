@@ -1,0 +1,58 @@
+{
+ "engine": "pocket-tts 3.3.0",
+ "language": "english",
+ "sample_rate": 24000,
+ "design": {
+  "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+  "text": "Good morning! Here's your day at a glance. You have three meetings, and the first one is at nine thirty with the team. The forecast says sixty-four degrees, with a bit of rain late this afternoon, so grab an umbrella. You slept seven hours last night, a little better than yesterday. Want me to remind you fifteen minutes before the meeting? I'm right here if you need anything.",
+  "note": "2026-10-15: one Qwen take per candidate written natively in the language (native-speaker accent), three seeds per Bip, picked by ear among 15"
+ },
+ "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395)",
+ "voices": {
+  "galet": {
+   "design_instruct": "Voice of a small, composed mascot, medium-low pitch, clear and confident, steady pace, the tone of a calm guide who explains things clearly, slightly stylized timbre like an animated character, never robotic, clean studio recording with no echo. Native speaker, standard American English accent.",
+   "seed": 51001,
+   "candidate": "galet_s51001",
+   "source_s": 23.1,
+   "safetensors_bytes": 14255928,
+   "first_sound_s": 0.123,
+   "rtf": 8.16
+  },
+  "lumen": {
+   "design_instruct": "Voice of a small, bright and luminous mascot, medium pitch, very well articulated, neutral and efficient, steady pace, ideal for reading information, slightly stylized timbre like an animated character, never robotic, clean studio recording with no echo. Native speaker, standard American English accent.",
+   "seed": 51103,
+   "candidate": "lumen_s51103",
+   "source_s": 23.04,
+   "safetensors_bytes": 14206776,
+   "first_sound_s": 0.081,
+   "rtf": 8.4
+  },
+  "mousse": {
+   "design_instruct": "Voice of a small, round and light mascot, medium pitch, smiling but restrained, warm, natural pace, crisp articulation, slightly stylized timbre like an animated character, never robotic, clean studio recording with no echo. Native speaker, standard American English accent.",
+   "seed": 51201,
+   "candidate": "mousse_s51201",
+   "source_s": 19.82,
+   "safetensors_bytes": 12240696,
+   "first_sound_s": 0.081,
+   "rtf": 8.66
+  },
+  "ours": {
+   "design_instruct": "Voice of a big, calm teddy bear mascot, low-pitched and soft, reassuring, slow pace, slightly stylized timbre like an animated character, never robotic, clean studio recording with no echo. Native speaker, standard American English accent.",
+   "seed": 51301,
+   "candidate": "ours_s51301",
+   "source_s": 25.4,
+   "safetensors_bytes": 15681336,
+   "first_sound_s": 0.107,
+   "rtf": 8.07
+  },
+  "colibri": {
+   "design_instruct": "Voice of a small, lively and cheerful hummingbird mascot, clear and light, medium pitch, singsong, fast and precise pace, never shrill, slightly stylized timbre like an animated character, never robotic, clean studio recording with no echo. Native speaker, standard American English accent.",
+   "seed": 51403,
+   "candidate": "colibri_s51403",
+   "source_s": 21.9,
+   "safetensors_bytes": 13518648,
+   "first_sound_s": 0.071,
+   "rtf": 8.68
+  }
+ }
+}
