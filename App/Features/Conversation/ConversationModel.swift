@@ -348,12 +348,24 @@ final class ConversationModel {
     private func show(_ messages: [HermesMessage], outbox: [OutboxItem], botChat: Bool, sessionID: String) {
         var thread = Self.items(from: messages)
         if botChat { thread = Self.merging(outbox, into: thread) }
+        Self.showPendingTurn(in: &thread, sessionID: sessionID)
         Self.restoreAttachments(in: &thread, sessionID: sessionID)
         // Set once: every change to `items` refreshes the thread on screen.
         items = thread
         shownMessages = messages
         shownOutbox = outbox
         restoreVoiceNotes(sessionID: sessionID)
+    }
+
+    /// The message of the run in progress, at the end, while Hermes' history does not have it yet.
+    private static func showPendingTurn(in thread: inout [ChatItem], sessionID: String) {
+        guard activeRuns[sessionID] != nil, let text = pendingTurns[sessionID] else { return }
+        let sent = normalized(text)
+        let lastReply = thread.lastIndex { if case .assistant = $0.kind { true } else { false } } ?? -1
+        let stored = thread[(lastReply + 1)...].contains {
+            if case .user(let value, _) = $0.kind { sent.isEmpty || normalized(value).contains(sent) } else { false }
+        }
+        if !stored { thread.append(ChatItem(.user(text: text, attachments: []))) }
     }
 
     /// Letters and digits only, lowercased: Hermes may not hand a text back byte for byte (prefixes, punctuation,
@@ -503,6 +515,7 @@ final class ConversationModel {
                     trace?.log("run \(handle.runID) accepted")
                     #endif
                     Self.activeRuns[sessionID] = handle.runID
+                    Self.pendingTurns[sessionID] = trimmed
                     Self.listeners[sessionID] = self
                     try await follow(runID: handle.runID, client: client)
                 } else {
@@ -527,7 +540,17 @@ final class ConversationModel {
     private static var imagesUnavailableInRuns: Set<UUID> = []
     /// Runs still in progress, by session: a reopened conversation re-attaches to its reply.
     private static var activeRuns: [String: String] = ActiveRuns.load() {
-        didSet { ActiveRuns.save(activeRuns) }
+        didSet {
+            ActiveRuns.save(activeRuns)
+            if pendingTurns.keys.contains(where: { activeRuns[$0] == nil }) {
+                pendingTurns = pendingTurns.filter { activeRuns[$0.key] != nil }
+            }
+        }
+    }
+    /// The message that started each session's run in progress. Hermes stores it with the reply, at the end of the
+    /// turn: a conversation reopened meanwhile (or after a lock) shows it from here.
+    private static var pendingTurns: [String: String] = PendingTurns.load().filter { activeRuns[$0.key] != nil } {
+        didSet { PendingTurns.save(pendingTurns) }
     }
 
     /// A run of `sessionID` the app learned about elsewhere (an approval notification): re-attached on opening.
@@ -741,10 +764,11 @@ final class ConversationModel {
         }
     }
 
-    /// Removes everything after the last user message (a replayed run rebuilds it).
+    /// Removes the reply after the last user message (a replayed run rebuilds it). Scheduled-task reports stay.
     private func clearCurrentTurn() {
         guard let lastUser = items.lastIndex(where: { if case .user = $0.kind { true } else { false } }) else { return }
-        items.removeSubrange(items.index(after: lastUser)...)
+        let reply = items.index(after: lastUser)
+        items = Array(items[..<reply]) + items[reply...].filter { if case .scheduled = $0.kind { true } else { false } }
         isWaitingForApproval = false
     }
 
@@ -1325,6 +1349,19 @@ enum ActiveRuns {
             result[entry.key] = ["run": entry.value, "at": kept ?? now]
         }
         UserDefaults.standard.set(stored, forKey: key)
+    }
+}
+
+/// `ConversationModel.pendingTurns` across launches (the app can be killed while a run goes on).
+enum PendingTurns {
+    private static let key = "pendingTurns"
+
+    static func load() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]
+    }
+
+    static func save(_ turns: [String: String]) {
+        UserDefaults.standard.set(turns, forKey: key)
     }
 }
 

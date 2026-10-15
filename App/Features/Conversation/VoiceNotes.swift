@@ -249,10 +249,12 @@ struct VoiceNoteControl: View {
     var info: NowPlayingInfo? = nil
     /// A file an agent sent (a podcast, a story): the full card whatever its length, not a voice-note bubble.
     var asCard = false
+    /// The person's own voice note: a bubble whatever its length (the card is for what agents send).
+    var asBubble = false
 
     private var isLoaded: Bool { player.loadedURL == url }
     private var isPlaying: Bool { player.playingURL == url }
-    private var isLong: Bool { asCard || duration >= 60 }
+    private var isLong: Bool { asCard || (!asBubble && duration >= 60) }
 
     var body: some View {
         if isLong { longPlayer } else { compact }
@@ -599,7 +601,7 @@ struct VoiceNoteBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             VoiceNoteControl(url: note.url, duration: note.duration, waveform: note.waveform, player: player,
-                             foreground: Theme.onInk, accent: Theme.onInk)
+                             foreground: Theme.onInk, accent: Theme.onInk, asBubble: true)
             if !note.transcript.isEmpty {
                 Text(note.transcript)
                     .font(Theme.body(15))
