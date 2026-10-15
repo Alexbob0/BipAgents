@@ -91,6 +91,10 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     assert f"-p finance config set API_SERVER_KEY {key}" in log
     assert "-p finance config set API_SERVER_ENABLED" not in log   # only the hub listens
     assert "-p finance config set model.supports_vision true" in log
+    assert "-p finance config set compression.threshold_tokens 100000" in log   # a local server: compress early
+    cloud = hermes.Runner(dry=True)
+    hermes.set_model(cloud, "finance", hermes.Model("openrouter", "x", base_url="https://openrouter.ai/api/v1"))
+    assert "threshold_tokens" not in "\n".join(cloud.log)
     assert hermes.agent_url("https://mini.tail0000.ts.net:8642", "finance") == "https://mini.tail0000.ts.net:8642/p/finance"
 
 
