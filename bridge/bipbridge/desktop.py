@@ -357,43 +357,156 @@ class Tickets:
         return found[0] if found and found[1] > time.time() else None
 
 
-PAGE = """<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<style>html,body{margin:0;height:100%;background:#111;overflow:hidden}#screen{width:100%;height:100%}
-#state{position:fixed;top:8px;left:50%;transform:translateX(-50%);font:600 13px -apple-system,sans-serif;color:#fff;
-background:rgba(0,0,0,.55);padding:4px 10px;border-radius:12px}
-#kbd{position:fixed;right:16px;bottom:24px;width:52px;height:52px;border-radius:26px;border:0;font-size:24px;
-background:rgba(255,255,255,.9);display:none}
+PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<style>html,body{margin:0;height:100%;background:#111;overflow:hidden;-webkit-user-select:none;user-select:none}
+#screen{position:absolute;inset:0;touch-action:none}#screen.keys{bottom:calc(52px + env(safe-area-inset-bottom))}
+#state{position:fixed;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+font:600 13px -apple-system,sans-serif;color:#fff;background:rgba(0,0,0,.55);padding:4px 10px;border-radius:12px}
+#bar{position:fixed;left:0;right:0;bottom:0;display:none;gap:6px;overflow-x:auto;background:#1c1c1e;
+padding:8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+-webkit-overflow-scrolling:touch;scrollbar-width:none}#bar::-webkit-scrollbar{display:none}
+#bar button{flex:0 0 auto;min-width:40px;height:36px;padding:0 12px;border:0;border-radius:9px;background:#3a3a3c;color:#fff;
+font:600 14px -apple-system,sans-serif}#bar button.main{background:#fff;color:#000}
 #typing{position:fixed;left:-1000px;top:0;opacity:0;width:1px;height:1px}</style></head>
 <body><div id="screen"></div><div id="state">Connexion…</div>
-<button id="kbd" aria-label="Clavier">⌨︎</button>
+<div id="bar">
+<button id="kbd" class="main">⌨︎ Clavier</button><button id="paste">Coller</button>
+<button data-key="Enter">⏎</button><button data-key="Tab">⇥</button><button data-key="Escape">Échap</button>
+<button data-key="ArrowLeft">←</button><button data-key="ArrowUp">↑</button><button data-key="ArrowDown">↓</button>
+<button data-key="ArrowRight">→</button><button data-key="PageUp">Page ↑</button><button data-key="PageDown">Page ↓</button>
+</div>
 <textarea id="typing" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
 <script type="module">
 import RFB from "../static/novnc/core/rfb.js";
-const state = document.getElementById("state"), kbd = document.getElementById("kbd"), typing = document.getElementById("typing");
-const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + location.pathname.replace(/\\/$/, "") + "/ws";
-const rfb = new RFB(document.getElementById("screen"), url, {shared: true});
+const $ = id => document.getElementById(id);
+const state = $("state"), bar = $("bar"), typing = $("typing"), screenEl = $("screen");
+const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + location.pathname.replace(/\/$/, "") + "/ws";
+const rfb = new RFB(screenEl, url, {shared: true});
 rfb.scaleViewport = true; rfb.resizeSession = false; rfb.viewOnly = __VIEW_ONLY__;
 rfb.addEventListener("connect", () => { state.style.display = "none"; post("connected"); });
 rfb.addEventListener("disconnect", () => { state.style.display = "block"; state.textContent = "Bureau fermé"; post("disconnected"); });
 function post(event) { try { window.webkit.messageHandlers.desktop.postMessage(event); } catch (_) {} }
-function show() { kbd.style.display = rfb.viewOnly ? "none" : "block"; }
+function show() {
+  bar.style.display = rfb.viewOnly ? "none" : "flex";
+  screenEl.classList.toggle("keys", !rfb.viewOnly);
+  window.dispatchEvent(new Event("resize"));
+}
 window.setViewOnly = on => { rfb.viewOnly = on; if (on) typing.blur(); show(); };
 show();
-// iOS opens its keyboard only for a text field tapped by the person: this one turns what is typed into keys.
-kbd.addEventListener("click", () => typing.focus());
+
+// ---- Keys: iOS opens its keyboard only for a field the person taps; what is typed there becomes keys.
+const KEYS = {Backspace: 0xff08, Enter: 0xff0d, Tab: 0xff09, Escape: 0xff1b, ArrowLeft: 0xff51, ArrowUp: 0xff52,
+              ArrowRight: 0xff53, ArrowDown: 0xff54, PageUp: 0xff55, PageDown: 0xff56};
 const keysym = ch => { const c = ch.codePointAt(0); return c < 0x100 ? c : 0x01000000 + c; };
+const typeText = text => { for (const ch of text) ch === "\n" ? rfb.sendKey(KEYS.Enter, "Enter") : rfb.sendKey(keysym(ch)); };
+window.typeText = typeText;
+$("kbd").addEventListener("click", () => typing.focus());
+$("paste").addEventListener("click", async () => {
+  try { typeText(await navigator.clipboard.readText()); } catch (_) { post("paste-refused"); }
+});
+for (const b of bar.querySelectorAll("[data-key]")) b.addEventListener("click", () => rfb.sendKey(KEYS[b.dataset.key], b.dataset.key));
 typing.addEventListener("input", e => {
-  if (e.inputType === "deleteContentBackward") rfb.sendKey(0xff08, "Backspace");
-  else for (const ch of typing.value) ch === "\\n" ? rfb.sendKey(0xff0d, "Enter") : rfb.sendKey(keysym(ch));
+  if (e.inputType === "deleteContentBackward") rfb.sendKey(KEYS.Backspace, "Backspace");
+  else typeText(typing.value);
   typing.value = "";
 });
 typing.addEventListener("keydown", e => {
-  const special = {Backspace: 0xff08, Enter: 0xff0d, Tab: 0xff09, Escape: 0xff1b, ArrowLeft: 0xff51, ArrowUp: 0xff52,
-                   ArrowRight: 0xff53, ArrowDown: 0xff54};
-  if (special[e.key] && !(e.key === "Backspace" && typing.value === "")) return;
-  if (special[e.key]) { e.preventDefault(); rfb.sendKey(special[e.key], e.key); }
+  if (KEYS[e.key] && !(e.key === "Backspace" && typing.value === "")) return;
+  if (KEYS[e.key]) { e.preventDefault(); rfb.sendKey(KEYS[e.key], e.key); }
 });
+
+// ---- Zoom and pan on the phone (noVNC's clipped viewport: a click lands where it is drawn, zoomed or not).
+const display = () => rfb._display, canvas = () => rfb._canvas;
+let zoom = 0;   // 0: the whole screen fits
+function fit() { const d = display(); return d.width ? Math.min(screenEl.clientWidth / d.width, screenEl.clientHeight / d.height) : 1; }
+function local(x, y) { const r = canvas().getBoundingClientRect(); return {x: x - r.left, y: y - r.top}; }
+function setZoom(z, cx, cy) {
+  const d = display();
+  if (!d.width) return;
+  const at = local(cx, cy), fx = d.absX(at.x), fy = d.absY(at.y);   // the remote pixel under the fingers
+  z = Math.min(Math.max(z, fit()), 4);
+  if (z <= fit() * 1.03) { zoom = 0; rfb.clipViewport = false; rfb.scaleViewport = true; return; }
+  rfb.scaleViewport = false; rfb.clipViewport = true;
+  d.viewportChangeSize(screenEl.clientWidth / z, screenEl.clientHeight / z);
+  d.scale = z;
+  zoom = z;
+  const now = local(cx, cy), vp = d._viewportLoc;
+  d.viewportChangePos(fx - now.x / z - vp.x, fy - now.y / z - vp.y);   // that pixel stays under the fingers
+}
+function pan(dx, dy) { if (zoom) display().viewportChangePos(-dx / zoom, -dy / zoom); }
+window.addEventListener("resize", () => {   // rotation: noVNC fits again, then the zoom comes back
+  if (!zoom) return;
+  const z = zoom, r = screenEl.getBoundingClientRect();
+  requestAnimationFrame(() => requestAnimationFrame(() => setZoom(z, r.left + r.width / 2, r.top + r.height / 2)));
+});
+
+// ---- Touch: one finger pans (watching) or clicks and drags (with the hand); two fingers pinch to zoom, and move
+// the zoomed view, or scroll the page when the whole screen shows; a long press is a right click.
+const mouse = (x, y, mask) => { const p = local(x, y); rfb._sendMouse(p.x, p.y, mask); };
+const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+const mid = (a, b) => ({x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2});
+let one = null, two = null, lastTap = 0;
+function start(e) {
+  e.preventDefault(); e.stopPropagation();
+  if (e.touches.length >= 2) {
+    if (one && one.dragging && !rfb.viewOnly) mouse(one.x, one.y, 0);
+    clearTimeout(one && one.timer); one = null;
+    const [a, b] = e.touches;
+    two = {d0: dist(a, b), z0: zoom || fit(), last: mid(a, b), pinching: false, scrolled: 0};
+    return;
+  }
+  const t = e.touches[0];
+  one = {x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, moved: false, dragging: false, long: false};
+  if (!rfb.viewOnly) one.timer = setTimeout(() => {   // long press: right click
+    if (one && !one.moved) { one.long = true; mouse(one.x, one.y, 4); mouse(one.x, one.y, 0); }
+  }, 600);
+}
+function move(e) {
+  e.preventDefault(); e.stopPropagation();
+  if (two && e.touches.length >= 2) {
+    const [a, b] = e.touches, m = mid(a, b), d = dist(a, b);
+    if (!two.pinching && Math.abs(d - two.d0) > 24) two.pinching = true;
+    if (two.pinching) setZoom(two.z0 * d / two.d0, m.x, m.y);
+    if (zoom) pan(m.x - two.last.x, m.y - two.last.y);
+    else if (!rfb.viewOnly && !two.pinching) {   // whole screen shown: two fingers scroll the page
+      two.scrolled += m.y - two.last.y;
+      while (Math.abs(two.scrolled) >= 24) {
+        const up = two.scrolled > 0, mask = up ? 8 : 16;
+        mouse(m.x, m.y, mask); mouse(m.x, m.y, 0);
+        two.scrolled += up ? -24 : 24;
+      }
+    }
+    two.last = m;
+    return;
+  }
+  if (!one) return;
+  const t = e.touches[0], dx = t.clientX - one.x, dy = t.clientY - one.y;
+  if (!one.moved && Math.hypot(t.clientX - one.x0, t.clientY - one.y0) > 8) { one.moved = true; clearTimeout(one.timer); }
+  if (rfb.viewOnly) pan(dx, dy);
+  else if (one.moved && !one.long) {
+    if (!one.dragging) { one.dragging = true; mouse(one.x0, one.y0, 1); }
+    mouse(t.clientX, t.clientY, 1);
+  }
+  one.x = t.clientX; one.y = t.clientY;
+}
+function end(e) {
+  e.preventDefault(); e.stopPropagation();
+  if (two) { if (e.touches.length === 0) two = null; return; }
+  if (!one) return;
+  clearTimeout(one.timer);
+  const tap = !one.moved && !one.long;
+  if (!rfb.viewOnly) {
+    if (one.dragging) mouse(one.x, one.y, 0);
+    else if (tap) { mouse(one.x, one.y, 1); mouse(one.x, one.y, 0); }
+  } else if (tap) {   // watching: a double tap zooms in there, or back out
+    const now = Date.now();
+    if (now - lastTap < 300) { setZoom(zoom ? 0 : fit() * 2.5, one.x, one.y); lastTap = 0; } else lastTap = now;
+  }
+  one = null;
+}
+for (const [type, handler] of [["touchstart", start], ["touchmove", move], ["touchend", end], ["touchcancel", end]])
+  screenEl.addEventListener(type, handler, {capture: true, passive: false});
 </script></body></html>"""
 
 

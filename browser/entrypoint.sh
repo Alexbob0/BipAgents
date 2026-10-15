@@ -5,7 +5,9 @@
 # starts the MCP server (`podman exec … /opt/stealth/mcp.sh`), which starts Chrome on this screen when needed.
 set -eu
 
-Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+# 1366×768, one of the commonest laptop screens: a page reads larger on a phone watching it than on a 1920×1080 one,
+# and the panel stays (sites compare the screen with its usable height and the window: a full screen one looks robotic).
+Xvfb :99 -screen 0 "${BIPAGENTS_SCREEN:-1366x768x24}" -nolisten tcp >/tmp/xvfb.log 2>&1 &
 screen=$!
 i=0
 while [ ! -e /tmp/.X11-unix/X99 ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
