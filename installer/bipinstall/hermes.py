@@ -134,6 +134,17 @@ def _config(runner: Runner, profile: str, key: str, value: str) -> None:
     runner.run(args)
 
 
+# A local server reads a prompt it has not cached at ~1–2k tokens/s, and Hermes compresses at half of the window it
+# detects (a million tokens for some models): a discussion grows to 185k tokens and a lost cache costs two minutes.
+# Compress at this size instead. After a compaction the prompt is back to ~60k (system prompt, summary, recent turns).
+LOCAL_COMPRESSION_TOKENS = 100_000
+
+
+def is_local(base_url: str) -> bool:
+    """A model served on this machine or the local network: plain http (cloud APIs are https)."""
+    return base_url.startswith("http://")
+
+
 def set_model(runner: Runner, profile: str, model: Model) -> None:
     _config(runner, profile, "model.provider", model.provider)
     _config(runner, profile, "model.default", model.name)
@@ -144,6 +155,8 @@ def set_model(runner: Runner, profile: str, model: Model) -> None:
     if model.api_key and model.key_env:
         _config(runner, profile, model.key_env, model.api_key)   # UPPER_SNAKE: written to the profile's .env
     _config(runner, profile, "model.supports_vision", "true" if model.vision else "false")
+    if model.base_url and is_local(model.base_url):
+        _config(runner, profile, "compression.threshold_tokens", str(LOCAL_COMPRESSION_TOKENS))
 
 
 # Hermes names its sandbox images without a registry. podman refuses a short name it would have to ask about (Fedora's
