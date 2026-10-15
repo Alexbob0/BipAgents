@@ -1,5 +1,5 @@
-"""TTS client (Kyutai 1.6B, optional Kyutai Pocket TTS, optional Fish Audio Drama 3): FIFO scheduler per engine,
-WAV -> PCM16 conversion, 44.1 -> 24 kHz resampling for Drama 3, small LRU cache.
+"""TTS client (Kyutai 1.6B, optional Kyutai Pocket TTS, optional voice server of the person's own: Fish Audio Drama 3,
+Kokoro…): FIFO scheduler per engine, WAV -> PCM16 conversion, resampling to 24 kHz, small LRU cache.
 
 Kyutai (``context/kyutai_server.py``) serializes synthesis behind a global lock and returns whole
 files. The bridge mirrors that with its own queue so requests reach Kyutai strictly in arrival
@@ -22,8 +22,9 @@ from typing import AsyncIterator, List, Optional, Tuple
 
 import httpx
 
+from .config import VoiceServerConfig
 from .logs import fields
-from . import speech_intl
+from . import pronunciations, speech_intl
 from .numbers_fr import prepare_for_synthesis
 from .textproc import normalize_for_speech
 
@@ -144,19 +145,20 @@ class Audio:
 
 
 POCKET_PREFIX = "pocket:"
-DRAMA_PREFIX = "drama:"
+SERVER_PREFIX = "server:"
+DRAMA_PREFIX = "drama:"  # a voice server's voice, as an earlier app named the Drama 3 ones (`drama:fr-mascotte-s17`)
 OUTPUT_RATE = 24000      # what the app plays (and Kyutai, Pocket produce)
-DRAMA_RATE = 44100       # Drama 3's codec
-DRAMA_CHARS_PER_SECOND = 15.0
+CHARS_PER_SECOND = 15.0
 
 
 def voice_language(voice: str) -> str:
-    """``pocket:en/colibri`` -> ``en``, ``drama:en-naturelle-s47`` -> ``en``; French for ``pocket:colibri`` and Kyutai
-    voices."""
-    if voice.startswith(POCKET_PREFIX):
-        lang, sep, _ = voice[len(POCKET_PREFIX):].partition("/")
-        if sep and lang in speech_intl.LANGUAGES:
-            return lang
+    """``pocket:en/colibri`` -> ``en``, ``server:en/af_bella`` -> ``en``, ``drama:en-naturelle-s47`` -> ``en``; French for
+    ``pocket:colibri`` and Kyutai voices."""
+    for prefix in (POCKET_PREFIX, SERVER_PREFIX):
+        if voice.startswith(prefix):
+            lang, sep, _ = voice[len(prefix):].partition("/")
+            if sep and lang in speech_intl.LANGUAGES:
+                return lang
     if voice.startswith(DRAMA_PREFIX):
         lang = voice[len(DRAMA_PREFIX):].partition("-")[0]
         if lang in speech_intl.LANGUAGES:
@@ -164,8 +166,21 @@ def voice_language(voice: str) -> str:
     return "fr"
 
 
-def drama_fallback(voice: str) -> str:
-    """The Pocket voice standing in for a Drama 3 voice when Drama 3 is down: a lively Bip for a mascot, a calm one
+def is_server_voice(voice: str) -> bool:
+    return voice.startswith(SERVER_PREFIX) or voice.startswith(DRAMA_PREFIX)
+
+
+def server_voice_id(voice: str) -> str:
+    """The id the voice server knows: ``server:fr/af_bella`` -> ``af_bella``, ``drama:fr-mascotte-s17`` as it is."""
+    if voice.startswith(DRAMA_PREFIX):
+        return voice[len(DRAMA_PREFIX):]
+    rest = voice[len(SERVER_PREFIX):]
+    lang, sep, name = rest.partition("/")
+    return name if sep and lang in speech_intl.LANGUAGES else rest
+
+
+def server_fallback(voice: str) -> str:
+    """The Pocket voice standing in for a voice server's when it is down: a lively Bip for a mascot, a calm one
     otherwise, in the voice's language."""
     lang = voice_language(voice)
     name = "colibri" if "mascotte" in voice or "mascot" in voice else "galet"
@@ -185,7 +200,7 @@ class Resampler:
             self._np = numpy
             self._soxr = soxr.ResampleStream(source, target, 1, dtype="int16", quality="HQ")
         except ImportError:  # pragma: no cover - soxr is a requirement; kept working without it
-            log.warning("soxr missing: linear resampling for Drama 3")
+            log.warning("soxr missing: linear resampling")
             self._soxr = None
             self._position = 0.0
             self._previous: Optional[int] = None
@@ -224,14 +239,36 @@ def pcm16_to_wav(pcm: bytes, rate: int, channels: int = 1) -> bytes:
     return (b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt " +
             struct.pack("<IHHIIHH", 16, 1, channels, rate, rate * channels * 2, channels * 2, 16) +
             b"data" + struct.pack("<I", len(pcm)) + pcm)
+
+
+def mono(pcm: bytes, channels: int) -> bytes:
+    """The first channel of interleaved PCM16."""
+    samples = array.array("h", pcm[: len(pcm) - len(pcm) % (2 * channels)])
+    return samples[::channels].tobytes()
+
+
+def voice_names(data: object) -> List[str]:
+    """The voice ids in a server's answer: `{"voices": ["a", …]}` (audio.cpp, Kokoro), `{"voices": [{"id": …}]}`,
+    Kyutai's `{"aliases": {name: path}}`, or a bare list."""
+    if isinstance(data, dict):
+        data = data.get("voices", data.get("aliases", data.get("data")))
+    if isinstance(data, dict):
+        data = list(data)
+    if not isinstance(data, list):
+        return []
+    names = [item if isinstance(item, str) else (item.get("id") or item.get("name") or item.get("voice_id"))
+             for item in data if isinstance(item, (str, dict))]
+    return [str(name) for name in names if name]
+
+
 POCKET_ATTEMPTS = 2
 POCKET_RETRY_DELAY = 0.5  # seconds
 
 
 @dataclass
 class Engine:
-    """One TTS server with its own queue: the Kyutai API (``/v1/audio/speech``, ``/v1/audio/stream``), or audio.cpp's
-    OpenAI-style API for Drama 3 (``drama``)."""
+    """One TTS server with its own queue: the Kyutai API (``/v1/audio/speech``, ``/v1/audio/stream``), or OpenAI's
+    ``/v1/audio/speech`` for the person's own voice server (``server``)."""
     name: str
     base_url: str
     scheduler: FifoScheduler
@@ -242,17 +279,19 @@ class TtsService:
     """Kyutai TTS 1.6B (GPU) plus, optionally, Kyutai Pocket TTS (CPU) for the Bips' voices.
 
     A voice named ``pocket:<name>`` (e.g. ``pocket:colibri``) goes to Pocket in French, ``pocket:<lang>/<name>``
-    (``en``, ``es``, ``de``) to Pocket's model for that language; ``drama:<id>`` (e.g. ``drama:fr-mascotte-s17``) to
-    Drama 3 (one language per voice, in its id); any other voice to Kyutai. Each engine has its own FIFO queue (they
+    (``en``, ``es``, ``de``) to Pocket's model for that language; ``server:<lang>/<id>`` (or an earlier app's
+    ``drama:<id>``) to the person's voice server; any other voice to Kyutai. Each engine has its own FIFO queue (they
     run on different hardware, and each generates one thing at a time). When Pocket is not configured, down or
     failing before its first audio, a French request falls back to Kyutai's default voice (that audio is not
     cached); another language fails instead, so the app reads it with the iPhone's voice in the right language.
-    When Drama 3 is not configured or fails before its first audio, a Pocket Bip of the same language stands in.
+    When the voice server is not configured or fails before its first audio, a Pocket Bip of the same language stands
+    in.
     """
 
     def __init__(self, client: httpx.AsyncClient, base_url: Optional[str], default_voice: str,
                  cache_entries: int = 256, timeout: float = 120.0, max_chars: int = 1000,
-                 sentence_max_chars: int = 180, pocket_url: Optional[str] = None, drama_url: Optional[str] = None):
+                 sentence_max_chars: int = 180, pocket_url: Optional[str] = None,
+                 voice_server: Optional[VoiceServerConfig] = None, words: Optional[dict] = None):
         self.client = client
         self.base_url = (base_url or "").rstrip("/")
         self.default_voice = default_voice
@@ -264,15 +303,18 @@ class TtsService:
         # None: Pocket only (no GPU); then the default voice is a Pocket one and nothing falls back to Kyutai.
         self.kyutai = Engine("kyutai", self.base_url, self.scheduler) if base_url else None
         self.pocket = Engine("pocket", pocket_url.rstrip("/"), FifoScheduler()) if pocket_url else None
-        self.drama = Engine("drama", drama_url.rstrip("/"), FifoScheduler(), "/v1/models") if drama_url else None
+        self.voice_server = voice_server
+        self.server = Engine("server", voice_server.url, FifoScheduler(), "/v1/models") if voice_server else None
+        self.words = pronunciations.Lexicon(words or {})
+        self._server_voices: Optional[Tuple[float, List[str]]] = None
         self._cache: "OrderedDict[Tuple[str, str, str], Audio]" = OrderedDict()
         self.calls = 0  # engine requests actually made (diagnostics / tests)
 
     def _route(self, voice: str) -> Tuple[Engine, str]:
-        if voice.startswith(DRAMA_PREFIX):
-            if self.drama is not None:
-                return self.drama, voice[len(DRAMA_PREFIX):]
-            return self._route(drama_fallback(voice))
+        if is_server_voice(voice):
+            if self.server is not None:
+                return self.server, server_voice_id(voice)
+            return self._route(server_fallback(voice))
         if voice.startswith(POCKET_PREFIX):
             if self.pocket is not None:
                 return self.pocket, voice[len(POCKET_PREFIX):]
@@ -307,6 +349,7 @@ class TtsService:
     def _prepare(self, text: str, normalized: bool, max_chars: Optional[int], language: str = "fr",
                  paragraphs: bool = False) -> str:
         clean = text.strip() if normalized else normalize_for_speech(text, self.sentence_max_chars, paragraphs)
+        clean = self.words.apply(clean, language)   # « Garmin » as it is said, before numbers and CamelCase
         # numbers in words, CamelCase split, parentheses as pauses
         clean = prepare_for_synthesis(clean) if language == "fr" else speech_intl.prepare_for_synthesis(clean, language)
         if not clean:
@@ -329,17 +372,15 @@ class TtsService:
         if hit is not None:
             return Audio(hit.data, hit.content_type, hit.format, hit.sample_rate, hit.channels, cached=True)
         engine, engine_voice = self._route(voice)
-        if engine is self.drama:
-            if fmt not in ("pcm16", "wav"):  # Drama 3 gives PCM only (no mp3/opus encoder here): its stand-in speaks
-                return await self.synthesize(text, drama_fallback(voice), fmt, priority, normalized, max_chars)
+        if engine is self.server:
             try:
                 async with engine.scheduler.slot(priority):
-                    audio = await self._call_drama(clean, engine_voice, fmt)
+                    audio = await self._call_server(clean, engine_voice, fmt)
             except TtsError as exc:
-                if exc.status < 500:
+                if exc.status < 500 and fmt in ("pcm16", "wav"):
                     raise
-                log.warning("drama failed, using a pocket voice", extra=fields(error=str(exc), text=clean[:60]))
-                return await self.synthesize(text, drama_fallback(voice), fmt, priority, normalized, max_chars)
+                log.warning("voice server failed, using a pocket voice", extra=fields(error=str(exc), format=fmt))
+                return await self.synthesize(text, server_fallback(voice), fmt, priority, normalized, max_chars)
             self._cache_put(key, audio)
             return audio
         attempts = POCKET_ATTEMPTS if engine is self.pocket else 1
@@ -386,9 +427,9 @@ class TtsService:
             return
         engine, engine_voice = self._route(voice)
         received = bytearray()
-        if engine is self.drama:
+        if engine is self.server:
             try:
-                async for chunk in self._stream_drama(clean, engine_voice, priority):
+                async for chunk in self._stream_server(clean, engine_voice, priority):
                     received.extend(chunk)
                     yield chunk
             except TtsError as exc:
@@ -396,8 +437,8 @@ class TtsService:
                     return  # cut mid-stream: the client keeps what it already played, nothing is cached
                 if exc.status < 500:
                     raise
-                log.warning("drama stream failed, using a pocket voice", extra=fields(error=str(exc), text=clean[:60]))
-                async for chunk in self.stream(text, drama_fallback(voice), priority, max_chars):
+                log.warning("voice server stream failed, using a pocket voice", extra=fields(error=str(exc)))
+                async for chunk in self.stream(text, server_fallback(voice), priority, max_chars):
                     yield chunk
                 return
             if received:
@@ -458,68 +499,112 @@ class TtsService:
                 audio = await self._call_engine(engine, text, voice, "pcm16")
                 yield audio.data
 
-    def _drama_body(self, text: str, voice: str, streaming: bool) -> dict:
-        body = {"model": "drama-3", "input": text, "voice": voice, "response_format": "pcm" if streaming else "wav"}
+    def _server_body(self, text: str, voice: str, streaming: bool) -> dict:
+        assert self.voice_server is not None
+        body = {"model": self.voice_server.model, "input": text, "voice": voice,
+                "response_format": "pcm" if streaming else "wav"}
         if streaming:
             body["stream_format"] = "audio"
         return body
 
     @staticmethod
-    def _drama_limit(text: str) -> int:
-        """Most 24 kHz bytes a take should reach: Drama 3 sometimes reads sentences again after the last one, so a
+    def _take_limit(text: str) -> int:
+        """Most 24 kHz bytes a take should reach: some models (Drama 3) read sentences again after the last one, so a
         take running past twice its expected length (15 characters a second) is cut."""
-        expected = len(text) / DRAMA_CHARS_PER_SECOND
+        expected = len(text) / CHARS_PER_SECOND
         return int(max(2 * expected, expected + 4) * OUTPUT_RATE * 2)
 
-    async def _stream_drama(self, text: str, voice: str, priority: int) -> AsyncIterator[bytes]:
-        """Drama 3's PCM (44.1 kHz) as it comes, resampled to 24 kHz. Closing the stream (the client gone, a take too
-        long) stops the generation on the server."""
-        assert self.drama is not None
-        async with self.drama.scheduler.slot(priority):
+    @staticmethod
+    def _server_error(status: int) -> TtsError:
+        return TtsError(f"voice server returned HTTP {status}", status=400 if status in (400, 404, 422) else 502)
+
+    async def _stream_server(self, text: str, voice: str, priority: int) -> AsyncIterator[bytes]:
+        """The voice server's raw PCM as it comes, resampled to 24 kHz; a server that does not stream gives its whole
+        WAV file at once. Closing the stream (the client gone, a take too long) stops the generation on the server."""
+        assert self.server is not None and self.voice_server is not None
+        rate = self.voice_server.stream_rate
+        if not rate:
+            async with self.server.scheduler.slot(priority):
+                audio = await self._call_server(text, voice, "pcm16")
+            yield audio.data
+            return
+        async with self.server.scheduler.slot(priority):
             self.calls += 1
-            resampler = Resampler(DRAMA_RATE, OUTPUT_RATE)
-            limit = self._drama_limit(text)
+            resampler = Resampler(rate, OUTPUT_RATE)
+            limit = self._take_limit(text)
             sent = 0
             try:
-                async with self.client.stream("POST", f"{self.drama.base_url}/v1/audio/speech",
-                                              json=self._drama_body(text, voice, True), timeout=self.timeout) as resp:
+                async with self.client.stream("POST", f"{self.server.base_url}/v1/audio/speech",
+                                              json=self._server_body(text, voice, True), timeout=self.timeout) as resp:
                     if resp.status_code != 200:
-                        log.warning("tts stream error", extra=fields(engine="drama", status=resp.status_code))
-                        raise TtsError(f"drama returned HTTP {resp.status_code}",
-                                       status=400 if resp.status_code in (400, 404, 422) else 502)
+                        log.warning("tts stream error", extra=fields(engine="server", status=resp.status_code))
+                        raise self._server_error(resp.status_code)
                     async for chunk in resp.aiter_bytes():
                         out = resampler.feed(chunk)
                         if out:
                             sent += len(out)
                             yield out
                         if sent > limit:
-                            log.warning("drama take too long, cut", extra=fields(chars=len(text), seconds=sent / 2 / OUTPUT_RATE))
+                            log.warning("voice server take too long, cut",
+                                        extra=fields(chars=len(text), seconds=sent / 2 / OUTPUT_RATE))
                             return
                     tail = resampler.feed(b"", last=True)
                     if tail:
                         yield tail
             except httpx.HTTPError as exc:
-                log.warning("tts stream failed", extra=fields(engine="drama", error=type(exc).__name__, sent=sent))
-                raise TtsError("drama unreachable" if not sent else "drama stream cut") from exc
+                log.warning("tts stream failed", extra=fields(engine="server", error=type(exc).__name__, sent=sent))
+                raise TtsError("voice server unreachable" if not sent else "voice server stream cut") from exc
 
-    async def _call_drama(self, text: str, voice: str, fmt: str) -> Audio:
-        assert self.drama is not None
+    async def _call_server(self, text: str, voice: str, fmt: str) -> Audio:
+        """WAV from the server, as PCM16 at 24 kHz; mp3 or opus asked as such (a server without them fails and a Bip
+        stands in: no encoder here)."""
+        assert self.server is not None
         self.calls += 1
+        body = self._server_body(text, voice, False)
+        if fmt in ("mp3", "opus"):
+            body["response_format"] = fmt
         try:
-            resp = await self.client.post(f"{self.drama.base_url}/v1/audio/speech",
-                                          json=self._drama_body(text, voice, False), timeout=self.timeout)
+            resp = await self.client.post(f"{self.server.base_url}/v1/audio/speech", json=body, timeout=self.timeout)
         except httpx.HTTPError as exc:
-            log.warning("tts request failed", extra=fields(engine="drama", error=type(exc).__name__))
-            raise TtsError("drama unreachable") from exc
+            log.warning("tts request failed", extra=fields(engine="server", error=type(exc).__name__))
+            raise TtsError("voice server unreachable") from exc
         if resp.status_code != 200:
-            log.warning("tts error", extra=fields(engine="drama", status=resp.status_code))
-            raise TtsError(f"drama returned HTTP {resp.status_code}", status=400 if resp.status_code in (400, 404, 422) else 502)
-        pcm, rate, _ = wav_to_pcm16(resp.content)
-        resampler = Resampler(rate, OUTPUT_RATE)
-        pcm = (resampler.feed(pcm, last=True))[: self._drama_limit(text)]
+            log.warning("tts error", extra=fields(engine="server", status=resp.status_code))
+            raise self._server_error(resp.status_code)
+        if fmt in ("mp3", "opus"):
+            return Audio(resp.content, FORMATS[fmt][1], fmt)
+        pcm, rate, channels = wav_to_pcm16(resp.content)
+        if channels != 1:
+            pcm = mono(pcm, channels)
+        if rate != OUTPUT_RATE:
+            pcm = Resampler(rate, OUTPUT_RATE).feed(pcm, last=True)
+        pcm = pcm[: self._take_limit(text)]
         if fmt == "wav":
             return Audio(pcm16_to_wav(pcm, OUTPUT_RATE), FORMATS["wav"][1], "wav", OUTPUT_RATE, 1)
         return Audio(pcm, FORMATS["pcm16"][1], "pcm16", OUTPUT_RATE, 1)
+
+    async def server_voices(self, max_age: float = 300.0) -> List[str]:
+        """The voice server's voices, in its order: `GET /v1/audio/voices` (audio.cpp, Kokoro), Kyutai's
+        `GET /v1/voices`, else the ones its config lists. Kept a few minutes."""
+        if self.voice_server is None:
+            return []
+        now = asyncio.get_running_loop().time()
+        if self._server_voices and now - self._server_voices[0] < max_age:
+            return self._server_voices[1]
+        found: List[str] = []
+        for path in ("/v1/audio/voices", "/v1/voices"):
+            try:
+                resp = await self.client.get(f"{self.voice_server.url}{path}", timeout=5.0)
+                data = resp.json() if resp.status_code == 200 else None
+            except (httpx.HTTPError, ValueError):
+                continue
+            found = voice_names(data)
+            if found:
+                break
+        found = found or list(self.voice_server.voices)
+        if found:
+            self._server_voices = (now, found)
+        return found
 
     async def _call_engine(self, engine: Engine, text: str, voice: str, fmt: str) -> Audio:
         engine_fmt, content_type = FORMATS[fmt]

@@ -31,6 +31,22 @@ timeout_seconds = 120
 url = "http://127.0.0.1:8098"
 default_voice = "pocket:colibri"   # default voice when Kyutai is disabled
 
+# Your own voice model (optional): any server with OpenAI's POST /v1/audio/speech (Fish Audio Drama 3 on audio.cpp,
+# Kokoro, Kyutai…). Its voices are "server:<lang>/<id>" (the app lists them from GET /v1/audio/voices, else `voices`);
+# each use below goes to it (true) or to the agent's Bip (false). Down or failing: a Bip of the same language speaks.
+# [voice_server]
+# url = "http://192.168.1.20:8099"
+# model = "drama-3"          # the `model` it expects ("tts-1" by default)
+# stream_rate = 44100        # it streams raw PCM at this rate (audio.cpp); absent: whole WAV files
+# voices = []                # when it cannot list them
+# live = true                # the Live
+# replies = true             # spoken replies to voice notes
+# reading = true             # messages and reports read aloud
+
+# Words the voices say wrong, respelled (whole words, any case), per language.
+# [pronunciations.fr]
+# Garmin = "Garmine"
+
 [ntfy]
 url = "http://127.0.0.1:8645"
 

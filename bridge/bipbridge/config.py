@@ -41,6 +41,8 @@ class AgentConfig:
     upload_dir_host: Optional[str] = None
     upload_dir_container: Optional[str] = None
     voice: Optional[str] = None
+    # Its voice on the person's own voice server (`server:<lang>/<id>`), for the uses that go there.
+    server_voice: Optional[str] = None
     # The agent's Hermes address as the app reaches it on the tailnet (`tailscale serve`), for the pairing QR code.
     public_url: Optional[str] = None
     # The agent has its own space (container, sandbox): it may hold credentials from the vault. Agents of the
@@ -68,6 +70,24 @@ class AgentConfig:
     # The app may then change its personality, language and thinking — files the bridge writes there; its tools,
     # its container and its deletion stay with its administrator.
     host_home: Optional[str] = None
+
+
+VOICE_USES = ("live", "replies", "reading")
+
+
+@dataclass
+class VoiceServerConfig:
+    """The person's own voice model: any server with OpenAI's `POST /v1/audio/speech` (Fish Audio Drama 3 on
+    audio.cpp, Kokoro, Kyutai…). Its voices are `server:<lang>/<id>`; Pocket's Bips stand in when it is down."""
+    url: str
+    model: str = "tts-1"
+    # The rate of the raw PCM it streams (`response_format: pcm`, audio.cpp: its model's, 44100 for Drama 3); None: it
+    # gets whole WAV files.
+    stream_rate: Optional[int] = None
+    # Its voices, when it cannot list them itself (`GET /v1/audio/voices`).
+    voices: List[str] = field(default_factory=list)
+    # What it speaks: the Live, the replies to voice notes, the reading of messages and reports. The rest: the Bips.
+    uses: Dict[str, bool] = field(default_factory=lambda: {use: True for use in VOICE_USES})
 
 
 @dataclass
@@ -190,8 +210,10 @@ class Config:
     default_voice: str = "5476"
     # Kyutai Pocket TTS (CPU) for the Bips' voices, used by voices named "pocket:<name>". None = off.
     pocket_url: Optional[str] = None
-    # Fish Audio Drama 3 (audio.cpp, GPU) for the Bips' natural and mascot voices, « drama:<id> ». None = off.
-    drama_url: Optional[str] = None
+    # The person's own voice model (`[voice_server]`; an older `[drama] url` is one). None = the Bips only.
+    voice_server: Optional[VoiceServerConfig] = None
+    # Words the voices say wrong, respelled by language (`[pronunciations.fr] Garmin = "Garmine"`).
+    pronunciations: Dict[str, Dict[str, str]] = field(default_factory=dict)
     # Scheduled-task replies read from Hermes sessions into the outbox (see cronwatch.py).
     cron_watch: bool = True
     cron_interval_seconds: float = 30.0
@@ -277,6 +299,21 @@ def _command(value: Any) -> List[str]:
     return [str(v) for v in value] if isinstance(value, list) else shlex.split(str(value))
 
 
+def _voice_server(data: Dict[str, Any]) -> Optional[VoiceServerConfig]:
+    table = data.get("voice_server", {}) or {}
+    drama = data.get("drama", {}) or {}
+    if not table.get("url") and drama.get("url") and drama.get("enabled", True):
+        # Set up by an earlier installer: audio.cpp serving Drama 3 (44.1 kHz)
+        table = {"url": drama["url"], "model": "drama-3", "stream_rate": 44100}
+    if not table.get("url") or not table.get("enabled", True):
+        return None
+    uses = {use: bool(table.get(use, True)) for use in VOICE_USES}
+    rate = table.get("stream_rate")
+    return VoiceServerConfig(url=str(table["url"]).rstrip("/"), model=str(table.get("model") or "tts-1"),
+                             stream_rate=int(rate) if rate else None,
+                             voices=[str(v) for v in table.get("voices", []) or []], uses=uses)
+
+
 def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Config:
     bridge_key = _secret(data, "bridge_key", "bridge", required=True)
     assert bridge_key is not None
@@ -294,8 +331,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
     # `[kyutai] enabled = false` (or `url = ""`) runs on Pocket alone; the default voice is then a Bip's.
     kyutai_url = str(kyutai.get("url", "http://127.0.0.1:8097")).rstrip("/") if kyutai.get("enabled", True) else ""
     pocket_url = str(pocket["url"]).rstrip("/") if pocket.get("url") else None
-    drama = data.get("drama", {}) or {}
-    drama_url = str(drama["url"]).rstrip("/") if drama.get("url") and drama.get("enabled", True) else None
+    voice_server = _voice_server(data)
     if not kyutai_url and not pocket_url:
         raise ConfigError("no TTS engine: set [pocket] url, or [kyutai] url")
     default_voice = str(kyutai.get("default_voice", "5476")) if kyutai_url \
@@ -355,6 +391,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             upload_dir_host=_expand(str(up_host)) if up_host else None,
             upload_dir_container=str(up_cont).rstrip("/") if up_cont else None,
             voice=str(table["voice"]) if table.get("voice") else None,
+            server_voice=str(table["server_voice"]) if table.get("server_voice") else None,
             public_url=str(table["public_url"]).rstrip("/") if table.get("public_url") else None,
             isolated=bool(table.get("isolated", False)),
             python=_command(table.get("python")),
@@ -453,7 +490,9 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         kyutai_timeout=float(kyutai.get("timeout_seconds", 120)),
         default_voice=default_voice,
         pocket_url=pocket_url,
-        drama_url=drama_url,
+        voice_server=voice_server,
+        pronunciations={str(lang): {str(k): str(v) for k, v in table.items()}
+                        for lang, table in (data.get("pronunciations", {}) or {}).items() if isinstance(table, dict)},
         cron_watch=bool(cron.get("watch", True)),
         cron_interval_seconds=float(cron.get("interval_seconds", 30)),
         cron_window_hours=float(cron.get("window_hours", 12)),

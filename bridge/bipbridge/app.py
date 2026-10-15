@@ -27,6 +27,7 @@ from .lan import hermes_proxy, lan_info
 from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router
 from .vault import Vault, vault_router
+from .voices import voice_for, voices_router
 from .households import Households, path_for as households_path
 from .peers import Links, family_router, household_admin_router, peer_router
 from .desktop import Tickets, desktop_admin_router, desktop_router, static_files
@@ -58,7 +59,7 @@ class Services:
                               cache_entries=config.limits.tts_cache_entries, timeout=config.kyutai_timeout,
                               max_chars=config.limits.tts_max_chars,
                               sentence_max_chars=config.limits.sentence_max_chars, pocket_url=config.pocket_url,
-                              drama_url=config.drama_url)
+                              voice_server=config.voice_server, words=config.pronunciations)
         self.hermes = HermesClient(self.http)
         apns = None
         if config.apns.enabled:
@@ -140,6 +141,8 @@ class TtsRequest(BaseModel):
     voice: Optional[str] = Field(None, max_length=300)
     format: str = "pcm16"
     agent: Optional[str] = None
+    # What it is for (`live`, `replies`, `reading`): with no `voice`, the agent's voice for that use.
+    use: Optional[str] = Field(None, max_length=20)
 
 
 class DeviceRequest(BaseModel):
@@ -216,7 +219,7 @@ def build_router() -> APIRouter:
             raise HTTPException(status_code=404, detail="unknown agent")
         if body.format not in ("pcm16", "opus", "wav"):
             raise HTTPException(status_code=400, detail="format must be pcm16, opus or wav")
-        voice = body.voice or (agent.voice if agent else None) or services.config.default_voice
+        voice = body.voice or voice_for(services.config, agent, body.use)
         try:
             audio = await services.tts.synthesize(body.text, voice, body.format, INTERACTIVE)
         except TtsError as exc:
@@ -238,7 +241,7 @@ def build_router() -> APIRouter:
         fmt = body.format if body.format != "pcm16" else "mp3"  # default to a compressed file here
         if fmt not in ("mp3", "opus", "wav"):
             raise HTTPException(status_code=400, detail="format must be mp3, opus or wav")
-        voice = body.voice or (agent.voice if agent else None) or services.config.default_voice
+        voice = body.voice or voice_for(services.config, agent, body.use)
         try:
             audio = await services.tts.synthesize(body.text, voice, fmt, INTERACTIVE, max_chars=MESSAGE_MAX_CHARS)
         except TtsError as exc:
@@ -254,7 +257,7 @@ def build_router() -> APIRouter:
         agent = services.config.agent(body.agent) if body.agent else None
         if body.agent and agent is None:
             raise HTTPException(status_code=404, detail="unknown agent")
-        voice = body.voice or (agent.voice if agent else None) or services.config.default_voice
+        voice = body.voice or voice_for(services.config, agent, body.use)
         chunks = services.tts.stream(body.text, voice, INTERACTIVE, max_chars=MESSAGE_MAX_CHARS)
         try:
             first = await chunks.__anext__()
@@ -528,20 +531,23 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     @app.get("/health")
     async def health(request: Request) -> Dict[str, Any]:
         services = _services(request)
-        pocket, drama = services.tts.pocket, services.tts.drama
-        kyutai_ok, ntfy_ok, pocket_ok, drama_ok = await asyncio.gather(
+        pocket, server = services.tts.pocket, services.tts.server
+        kyutai_ok, ntfy_ok, pocket_ok, server_ok = await asyncio.gather(
             services.tts.reachable(), ntfy_reachable(services.http, config.ntfy_url),
             services.tts.reachable(pocket) if pocket else asyncio.sleep(0, result=None),
-            services.tts.reachable(drama) if drama else asyncio.sleep(0, result=None))
-        # « drama »: the app offers the Drama 3 voices (null: not set up here; false: set up, down for now).
-        return {"ok": True, "version": __version__, "kyutai": kyutai_ok, "pocket": pocket_ok, "drama": drama_ok,
-                "ntfy": ntfy_ok,
+            services.tts.reachable(server) if server else asyncio.sleep(0, result=None))
+        # « voice_server »: the person's own voice model (null: none; false: set up, down for now). « drama »: the same
+        # for the apps that offered Drama 3's voices by name, only when that server is Drama 3.
+        drama = config.voice_server is not None and config.voice_server.model.startswith("drama")
+        return {"ok": True, "version": __version__, "kyutai": kyutai_ok, "pocket": pocket_ok,
+                "voice_server": server_ok, "drama": server_ok if drama else None, "ntfy": ntfy_ok,
                 "apns": services.apns is not None, "push": services.push_mode, "tts_queue": services.tts.scheduler.depth}
 
     app.include_router(build_router())
     app.include_router(relay_router())
     app.include_router(agents_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(vault_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     # The agents' Hermes through the bridge: on the LAN door, and for agents in their own space (their gateway listens
     # on a local port only). Hermes checks each agent's own key.
     app.include_router(hermes_proxy())
