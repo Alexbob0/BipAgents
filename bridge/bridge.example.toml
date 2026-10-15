@@ -42,6 +42,8 @@ default_voice = "pocket:colibri"   # default voice when Kyutai is disabled
 # live = true                # the Live
 # replies = true             # spoken replies to voice notes
 # reading = true             # messages and reports read aloud
+# first_audio_seconds = 5    # a Live sentence or a spoken reply waits this long for its first sound (plus the text's
+#                            # length for whole files), then the agent's Bip says it, and the next ones for 30 s
 
 # Words the voices say wrong, respelled (whole words, any case), per language.
 # [pronunciations.fr]

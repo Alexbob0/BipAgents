@@ -128,7 +128,7 @@ file is readable by group or others. Every secret also accepts the `<name>_file 
 | `host`, `port` | `127.0.0.1`, `8643` | local listening address |
 | `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | Kyutai 1.6B TTS (GPU); `enabled = false`: Pocket only |
 | `[pocket] url`, `default_voice` | absent (disabled), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) for the Bips' voices; `default_voice` is used when Kyutai is disabled |
-| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading` | absent, `tts-1`, none, `[]`, `true` ×3 | the person's own voice model (OpenAI `/v1/audio/speech`), see below; an earlier `[drama] url` counts as one |
+| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, none, `[]`, `true` ×3, `5` | the person's own voice model (OpenAI `/v1/audio/speech`), see below; an earlier `[drama] url` counts as one |
 | `[pronunciations.<lang>] <word> = "<respelling>"` | none | words the voices say wrong, respelled (whole words, any case) |
 | `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push disabled if empty | |
@@ -194,8 +194,9 @@ falls back to the default Kyutai voice (that audio is not cached). `/health` rep
 Own voice model: `server:<language>/<id>` (`server:fr/fr-mascotte-s17`, `server:en/af_bella`) goes to `[voice_server]`, any
 server with OpenAI's `POST /v1/audio/speech` (Fish Audio Drama 3 on audio.cpp, Kokoro, Kyutai…), resampled to 24 kHz.
 An agent has its Bip (`voice`) and its voice there (`server_voice`); `[voice_server] live`, `replies`, `reading` say
-which uses go to the server (`voices.py`: `use` in the TTS routes, the Live WebSocket, the outbox reading). Down or
-failing before the first sound: a Bip of the same language speaks. `GET /v1/voices` lists its voices (from its
+which uses go to the server (`voices.py`: `use` in the TTS routes, the Live WebSocket, the outbox reading). Down,
+failing before the first sound, or too slow for a Live sentence or a spoken reply (no sound `first_audio_seconds`
+after it is sent, plus the text's length for whole files): the agent's Bip speaks, and goes on for 30 s. `GET /v1/voices` lists its voices (from its
 `GET /v1/audio/voices`, Kyutai's `/v1/voices`, else `voices`) and uses; `PUT /v1/voices/uses` and
 `PUT /v1/agents/{id}/voices` change them in the config file. The voices of an earlier app (`drama:<id>`) go there too.
 

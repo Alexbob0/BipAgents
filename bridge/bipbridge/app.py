@@ -27,7 +27,7 @@ from .lan import hermes_proxy, lan_info
 from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router
 from .vault import Vault, vault_router
-from .voices import voice_for, voices_router
+from .voices import relay_for, voice_for, voices_router
 from .households import Households, path_for as households_path
 from .peers import Links, family_router, household_admin_router, peer_router
 from .desktop import Tickets, desktop_admin_router, desktop_router, static_files
@@ -221,7 +221,7 @@ def build_router() -> APIRouter:
             raise HTTPException(status_code=400, detail="format must be pcm16, opus or wav")
         voice = body.voice or voice_for(services.config, agent, body.use)
         try:
-            audio = await services.tts.synthesize(body.text, voice, body.format, INTERACTIVE)
+            audio = await services.tts.synthesize(body.text, voice, body.format, INTERACTIVE, relay=relay_for(agent))
         except TtsError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
         headers = {"X-Sample-Rate": str(audio.sample_rate), "X-Channels": str(audio.channels),
@@ -243,7 +243,8 @@ def build_router() -> APIRouter:
             raise HTTPException(status_code=400, detail="format must be mp3, opus or wav")
         voice = body.voice or voice_for(services.config, agent, body.use)
         try:
-            audio = await services.tts.synthesize(body.text, voice, fmt, INTERACTIVE, max_chars=MESSAGE_MAX_CHARS)
+            audio = await services.tts.synthesize(body.text, voice, fmt, INTERACTIVE, max_chars=MESSAGE_MAX_CHARS,
+                                                  relay=relay_for(agent))
         except TtsError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
         return Response(content=audio.data, media_type=audio.content_type,
@@ -258,7 +259,7 @@ def build_router() -> APIRouter:
         if body.agent and agent is None:
             raise HTTPException(status_code=404, detail="unknown agent")
         voice = body.voice or voice_for(services.config, agent, body.use)
-        chunks = services.tts.stream(body.text, voice, INTERACTIVE, max_chars=MESSAGE_MAX_CHARS)
+        chunks = services.tts.stream(body.text, voice, INTERACTIVE, max_chars=MESSAGE_MAX_CHARS, relay=relay_for(agent))
         try:
             first = await chunks.__anext__()
         except StopAsyncIteration:

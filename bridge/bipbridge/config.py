@@ -88,6 +88,9 @@ class VoiceServerConfig:
     voices: List[str] = field(default_factory=list)
     # What it speaks: the Live, the replies to voice notes, the reading of messages and reports. The rest: the Bips.
     uses: Dict[str, bool] = field(default_factory=lambda: {use: True for use in VOICE_USES})
+    # Seconds a Live sentence or a spoken reply waits for its first sound (plus the text's own length when the server
+    # gives whole files) before the agent's Bip says it instead: a busy GPU never leaves the person in silence.
+    first_audio_seconds: float = 5.0
 
 
 @dataclass
@@ -311,7 +314,8 @@ def _voice_server(data: Dict[str, Any]) -> Optional[VoiceServerConfig]:
     rate = table.get("stream_rate")
     return VoiceServerConfig(url=str(table["url"]).rstrip("/"), model=str(table.get("model") or "tts-1"),
                              stream_rate=int(rate) if rate else None,
-                             voices=[str(v) for v in table.get("voices", []) or []], uses=uses)
+                             voices=[str(v) for v in table.get("voices", []) or []], uses=uses,
+                             first_audio_seconds=float(table.get("first_audio_seconds", 5.0)))
 
 
 def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Config:

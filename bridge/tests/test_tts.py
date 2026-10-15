@@ -290,3 +290,43 @@ async def test_the_persons_own_respellings_win():
     assert backend.pocket_inputs[-1]["input"] == "Ta montre Garmine et ta bague Ou-ra."
     await tts.synthesize("Your Garmin.", "pocket:en/galet", "pcm16")
     assert backend.pocket_inputs[-1]["input"] == "Your Garmin."   # French respellings stay French
+
+
+async def test_a_voice_server_too_slow_for_a_live_sentence_hands_over_to_the_agents_bip():
+    import asyncio
+
+    calls = []
+
+    async def busy(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        await asyncio.sleep(5)                       # a GPU busy with something else
+        return httpx.Response(200, content=wav(tone(0.5, 24000), 24000))
+
+    backend = FakeBackend()
+    tts = drama_service(backend, busy, server=VoiceServerConfig(url=DRAMA, first_audio_seconds=0.2))
+    out = b"".join([c async for c in tts.stream("Bonjour.", "server:fr/v1", relay="pocket:mousse")])
+    assert out and backend.pocket_inputs[-1]["voice"] == "mousse"
+    # For a while, the next sentences go to the Bip at once: one voice through the Live.
+    audio = await tts.synthesize("Ça va ?", "server:fr/v1", "pcm16", relay="pocket:mousse")
+    assert audio.data and len(calls) == 1 and backend.pocket_inputs[-1]["voice"] == "mousse"
+    # The outbox's reading (background) waits for the server.
+    tts._slow_until = 0.0
+    from bipbridge.tts import BACKGROUND
+    task = asyncio.create_task(tts.synthesize("Plus tard.", "server:fr/v1", "pcm16", BACKGROUND))
+    await asyncio.sleep(0.4)
+    assert not task.done()
+    task.cancel()
+
+
+async def test_queued_live_sentences_do_not_count_the_queue_against_the_server():
+    import asyncio
+
+    async def steady(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.15)                    # each sentence well within its deadline once sent
+        return httpx.Response(200, content=wav(tone(0.3, 24000), 24000))
+
+    backend = FakeBackend()
+    tts = drama_service(backend, steady, server=VoiceServerConfig(url=DRAMA, first_audio_seconds=0.25))
+    sentences = [tts.synthesize(f"Phrase {n}.", "server:fr/v1", "pcm16", relay="pocket:mousse") for n in range(4)]
+    await asyncio.gather(*sentences)                 # the 4th waits 0.45 s in the queue: still the server's voice
+    assert backend.pocket_inputs == []

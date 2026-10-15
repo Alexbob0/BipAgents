@@ -27,6 +27,12 @@ def voice_for(config: Config, agent: Optional[AgentConfig], use: Optional[str]) 
     return (agent.voice if agent else None) or config.default_voice
 
 
+def relay_for(agent: Optional[AgentConfig]) -> Optional[str]:
+    """The Bip standing in for the agent's server voice when the server fails or is too slow."""
+    voice = agent.voice if agent else None
+    return voice if voice and voice.startswith("pocket:") else None
+
+
 def set_section_keys(path: str, header: str, values: Dict[str, Any]) -> None:
     """`values` written in the `[header]` table of a TOML file (replaced where they are, else added at its end; the
     table is created when missing). None removes a key. Other lines stay as they are."""
