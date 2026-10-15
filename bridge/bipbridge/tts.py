@@ -149,6 +149,7 @@ SERVER_PREFIX = "server:"
 DRAMA_PREFIX = "drama:"  # a voice server's voice, as an earlier app named the Drama 3 ones (`drama:fr-mascotte-s17`)
 OUTPUT_RATE = 24000      # what the app plays (and Kyutai, Pocket produce)
 CHARS_PER_SECOND = 15.0
+SLOW_SERVER_SECONDS = 30.0   # after a missed deadline, how long the Bips speak instead of the voice server
 
 
 def voice_language(voice: str) -> str:
@@ -307,6 +308,7 @@ class TtsService:
         self.server = Engine("server", voice_server.url, FifoScheduler(), "/v1/models") if voice_server else None
         self.words = pronunciations.Lexicon(words or {})
         self._server_voices: Optional[Tuple[float, List[str]]] = None
+        self._slow_until = 0.0
         self._cache: "OrderedDict[Tuple[str, str, str], Audio]" = OrderedDict()
         self.calls = 0  # engine requests actually made (diagnostics / tests)
 
@@ -359,9 +361,29 @@ class TtsService:
             raise TtsError(f"text too long ({len(clean)} > {limit} chars)", status=413)
         return clean
 
+    def _server_deadline(self, text: str, priority: int) -> Optional[float]:
+        """Seconds an interactive request waits for the voice server's first sound once it is sent (not its turn in
+        the queue: the earlier sentences of a Live are not the server's slowness); background ones (the outbox's
+        reading) wait as long as it takes."""
+        if priority != INTERACTIVE or self.voice_server is None:
+            return None
+        streaming = bool(self.voice_server.stream_rate)
+        return self.voice_server.first_audio_seconds + (0 if streaming else len(text) / CHARS_PER_SECOND)
+
+    def _server_slow(self) -> bool:
+        """It just missed a deadline: for a while, interactive requests go to the Bips at once (one voice throughout a
+        Live, not one sentence each)."""
+        return asyncio.get_running_loop().time() < self._slow_until
+
+    def _mark_server_slow(self, chars: int) -> None:
+        self._slow_until = asyncio.get_running_loop().time() + SLOW_SERVER_SECONDS
+        log.warning("voice server too slow, the Bips speak for a while", extra=fields(chars=chars))
+
     async def synthesize(self, text: str, voice: Optional[str] = None, fmt: str = "pcm16",
                          priority: int = INTERACTIVE, normalized: bool = False,
-                         max_chars: Optional[int] = None) -> Audio:
+                         max_chars: Optional[int] = None, relay: Optional[str] = None) -> Audio:
+        """`relay`: the Bip speaking instead of a voice server's voice when the server fails or is too slow (else a
+        Bip of the same language)."""
         if fmt not in FORMATS:
             raise TtsError(f"unsupported format: {fmt}", status=400)
         voice = voice or self.default_voice
@@ -373,14 +395,24 @@ class TtsService:
             return Audio(hit.data, hit.content_type, hit.format, hit.sample_rate, hit.channels, cached=True)
         engine, engine_voice = self._route(voice)
         if engine is self.server:
+            standin = relay or server_fallback(voice)
+            deadline = self._server_deadline(clean, priority)
+            if deadline is not None and self._server_slow():
+                return await self.synthesize(text, standin, fmt, priority, normalized, max_chars)
             try:
                 async with engine.scheduler.slot(priority):
-                    audio = await self._call_server(clean, engine_voice, fmt)
+                    if deadline is not None and self._server_slow():   # missed by an earlier one while this waited
+                        raise asyncio.TimeoutError
+                    audio = await asyncio.wait_for(self._call_server(clean, engine_voice, fmt), deadline)
+            except asyncio.TimeoutError:
+                if not self._server_slow():
+                    self._mark_server_slow(len(clean))
+                return await self.synthesize(text, standin, fmt, priority, normalized, max_chars)
             except TtsError as exc:
                 if exc.status < 500 and fmt in ("pcm16", "wav"):
                     raise
                 log.warning("voice server failed, using a pocket voice", extra=fields(error=str(exc), format=fmt))
-                return await self.synthesize(text, server_fallback(voice), fmt, priority, normalized, max_chars)
+                return await self.synthesize(text, standin, fmt, priority, normalized, max_chars)
             self._cache_put(key, audio)
             return audio
         attempts = POCKET_ATTEMPTS if engine is self.pocket else 1
@@ -411,7 +443,7 @@ class TtsService:
         return audio
 
     async def stream(self, text: str, voice: Optional[str] = None, priority: int = INTERACTIVE,
-                     max_chars: Optional[int] = None) -> AsyncIterator[bytes]:
+                     max_chars: Optional[int] = None, relay: Optional[str] = None) -> AsyncIterator[bytes]:
         """PCM16 mono 24 kHz chunks as the engine produces them (``POST /v1/audio/stream``): the first
         audio arrives after ~0.75 s with Kyutai, ~0.1 s with Pocket, instead of after the whole text.
         Validation errors and an engine failure before the first chunk raise ``TtsError``; an engine
@@ -428,17 +460,29 @@ class TtsService:
         engine, engine_voice = self._route(voice)
         received = bytearray()
         if engine is self.server:
+            standin = relay or server_fallback(voice)
+            deadline = self._server_deadline(clean, priority)
             try:
-                async for chunk in self._stream_server(clean, engine_voice, priority):
+                if deadline is not None and self._server_slow():
+                    raise asyncio.TimeoutError
+                async for chunk in self._stream_server(clean, engine_voice, priority, deadline):
                     received.extend(chunk)
                     yield chunk
+            except asyncio.TimeoutError:
+                if received:
+                    return
+                if not self._server_slow():
+                    self._mark_server_slow(len(clean))
+                async for chunk in self.stream(text, standin, priority, max_chars):
+                    yield chunk
+                return
             except TtsError as exc:
                 if received:
                     return  # cut mid-stream: the client keeps what it already played, nothing is cached
                 if exc.status < 500:
                     raise
                 log.warning("voice server stream failed, using a pocket voice", extra=fields(error=str(exc)))
-                async for chunk in self.stream(text, server_fallback(voice), priority, max_chars):
+                async for chunk in self.stream(text, standin, priority, max_chars):
                     yield chunk
                 return
             if received:
@@ -518,17 +562,23 @@ class TtsService:
     def _server_error(status: int) -> TtsError:
         return TtsError(f"voice server returned HTTP {status}", status=400 if status in (400, 404, 422) else 502)
 
-    async def _stream_server(self, text: str, voice: str, priority: int) -> AsyncIterator[bytes]:
+    async def _stream_server(self, text: str, voice: str, priority: int,
+                             deadline: Optional[float] = None) -> AsyncIterator[bytes]:
         """The voice server's raw PCM as it comes, resampled to 24 kHz; a server that does not stream gives its whole
-        WAV file at once. Closing the stream (the client gone, a take too long) stops the generation on the server."""
+        WAV file at once. Closing the stream (the client gone, a take too long, no first sound within `deadline`
+        seconds once sent: `asyncio.TimeoutError`) stops the generation on the server."""
         assert self.server is not None and self.voice_server is not None
         rate = self.voice_server.stream_rate
         if not rate:
             async with self.server.scheduler.slot(priority):
-                audio = await self._call_server(text, voice, "pcm16")
+                if deadline is not None and self._server_slow():
+                    raise asyncio.TimeoutError
+                audio = await asyncio.wait_for(self._call_server(text, voice, "pcm16"), deadline)
             yield audio.data
             return
         async with self.server.scheduler.slot(priority):
+            if deadline is not None and self._server_slow():
+                raise asyncio.TimeoutError
             self.calls += 1
             resampler = Resampler(rate, OUTPUT_RATE)
             limit = self._take_limit(text)
@@ -539,7 +589,14 @@ class TtsService:
                     if resp.status_code != 200:
                         log.warning("tts stream error", extra=fields(engine="server", status=resp.status_code))
                         raise self._server_error(resp.status_code)
-                    async for chunk in resp.aiter_bytes():
+                    pieces = resp.aiter_bytes()
+                    waiting = deadline   # for the first piece only
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(pieces.__anext__(), waiting)
+                        except StopAsyncIteration:
+                            break
+                        waiting = None
                         out = resampler.feed(chunk)
                         if out:
                             sent += len(out)
