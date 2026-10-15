@@ -36,13 +36,13 @@ def mac(memory, gpu="apple"):
 
 def test_plan_fits_the_machine():
     small = make_plan(mac(16), model_here=False)
-    assert small.profile == "léger" and small.browser == "on-demand" and not small.kyutai
+    assert small.profile == "léger" and small.browser == "on-demand"
     assert 3 <= small.people <= 9   # a family on a 16 GB Mac mini when the model runs elsewhere
     local = make_plan(mac(16), model_here=True)
     assert local.profile == "local" and local.people < small.people
     assert any("local model" in n for n in local.notes)
     big = make_plan(Machine("linux", "x86_64", 125, 32, "Ryzen", "nvidia"), model_here=False)
-    assert big.profile == "costaud" and big.browser == "permanent" and big.kyutai and big.people >= 10
+    assert big.profile == "costaud" and big.browser == "permanent" and big.people >= 10
     tiny = make_plan(mac(8), model_here=True)
     assert tiny.browser == "none"
 
@@ -192,7 +192,7 @@ def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     assert config.lan.enabled and config.lan.port == 9204 and config.lan.address == "192.168.1.20"
     assert config.push_relay_url == "https://aibox.tail0000.ts.net:8643"
     assert config.model_health_url == "http://192.168.1.30:8888/v1/models"
-    assert config.kyutai_url is None and config.pocket_url == "http://127.0.0.1:8098"
+    assert config.pocket_url == "http://127.0.0.1:8098"
     assert config.hermes.enabled and config.hermes.hub_url == "http://127.0.0.1:9202"
     assert config.hermes.public_hub_url == "https://mini.tail0000.ts.net:9202"
     assert config.hermes.isolated is False             # no sandbox: the bridge keeps no credentials
@@ -259,23 +259,26 @@ def test_the_agents_get_their_language_from_the_app(monkeypatch, tmp_path, capsy
     assert "answer in the language your person writes in" in souls_written["fern"] and "Tu " not in souls_written["fern"]
 
 
-def test_a_kyutai_already_running_is_shared_whatever_the_gpu(monkeypatch, tmp_path, capsys):
-    """Kyutai is never installed by the installer, but one already running (an administrator's, on any GPU) serves
-    this install too."""
+def test_a_kyutai_server_is_a_voice_model_like_any_other(monkeypatch, tmp_path, capsys):
+    """Kyutai is no engine of its own: one already running (an administrator's, on any GPU) is the person's voice model,
+    given here by its old flag."""
     from bipinstall import __main__ as cli
+    from bipinstall import voice_server
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(cli, "detect", lambda: mac(16))
     monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(8640))
     monkeypatch.setattr(cli.models, "discover", lambda addresses: _async([models.Server("http://192.168.1.30:8888/v1", "vLLM", ["glm"])]))
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
-    monkeypatch.setattr(cli, "voice_engine_answers", lambda url: url == "http://127.0.0.1:8097")
+    monkeypatch.setattr(voice_server, "check", lambda url: voice_server.VoiceServer(url.rstrip("/"), ["5476"], "kyutai-tts",
+                                                                                    kind="Kyutai"))
     answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run"]) == 0
+    assert cli.main(["--dry-run", "--kyutai-url", "http://127.0.0.1:8097", "--voice-uses", "reading"]) == 0
     out = capsys.readouterr().out
-    assert "Kyutai (human voice, podcasts) answers" in out
-    assert '[kyutai]\nurl = "http://127.0.0.1:8097"' in out
+    assert "Your voice model: Kyutai — http://127.0.0.1:8097" in out
+    assert '[kyutai]\nenabled = false' in out
+    assert '[voice_server]\nurl = "http://127.0.0.1:8097"\nmodel = "kyutai-tts"\nlive = false\nreplies = false\nreading = true' in out
 
 
 def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, capsys):

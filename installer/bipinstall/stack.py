@@ -36,7 +36,6 @@ class Install:
     relay_url: Optional[str] = None  # the administrator's bridge, when this install has no APNs key
     relay_key: Optional[str] = None
     bridge_key: str = field(default_factory=lambda: secrets.token_urlsafe(32))
-    kyutai_url: Optional[str] = None
     pocket_url: str = f"http://127.0.0.1:{POCKET_PORT}"
     # The person's own voice model (voice_server.py): the bridge's `[voice_server]` lines, none for the Bips only.
     voice_server: List[str] = field(default_factory=list)
@@ -84,7 +83,8 @@ def bridge_toml(inst: Install) -> str:
     ]
     if inst.public(inst.ports.bridge):
         lines.append(f"public_url = {_q(inst.public(inst.ports.bridge))}")
-    lines += ["", "[kyutai]"] + ([f"url = {_q(inst.kyutai_url)}"] if inst.kyutai_url else ["enabled = false"])
+    # Kyutai 1.6B is no engine of its own any more: a Kyutai server is the person's voice model, like any other.
+    lines += ["", "[kyutai]", "enabled = false"]
     lines += ["", "[pocket]", f"url = {_q(inst.pocket_url)}", 'default_voice = "pocket:colibri"']
     if inst.voice_server:
         lines += [""] + inst.voice_server

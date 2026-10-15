@@ -26,7 +26,7 @@ Add `--dry-run` to see every step and command without changing anything.
    |---|---|---|---|---|
    | Light (default) | Mac mini 16 GB | elsewhere (network or API) | Pocket (CPU) | on demand, one at a time |
    | Local | Mac 24–32 GB, PC with GPU | on this machine | Pocket | on demand |
-   | Large | Linux server ≥ 64 GB | elsewhere | Pocket + Kyutai (GPU, if already running) | permanent, one per person |
+   | Large | Linux server ≥ 64 GB | elsewhere | Pocket + your voice model (if one already runs) | permanent, one per person |
 
    On a 16 GB Mac mini with the model elsewhere: about 1 GB per person plus the voices — a family fits.
 4. **Installs Hermes** with its official installer, at the version tested with BipAgents (`517b5e10f`), applies the
@@ -101,8 +101,8 @@ the **reading** of messages and reports. The Bips speak for the rest, and stand 
 files and browser sessions, separated by the system: one person's agents cannot read the other's. All installs run
 at the same time on the same machine, each on its own block of ten ports (8640 for the first, then 9200, 9210…).
 
-What they share: the model, the voices (Pocket, and Kyutai when it runs on the machine; the installer does not
-install Kyutai, `--kyutai-url` points to one on another machine) and the notifications: they go through Apple with
+What they share: the model, the voices (Pocket, and a voice model already running on the machine or the network, see
+above) and the notifications: they go through Apple with
 the administrator's key, which never leaves the administrator's install; their bridge relays the others' (one relay
 key per install).
 
