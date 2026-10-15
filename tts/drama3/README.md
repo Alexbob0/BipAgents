@@ -11,5 +11,10 @@ products built on it say « Built with Fish Audio ».
 
 NVIDIA: `Containerfile.cuda` builds the same commit and patches on NVIDIA's CUDA images (amd64 and arm64); not
 measured yet. Measured on a Strix Halo (Vulkan RADV): ~23 GiB of GPU memory, first audio 0.27 s once a voice is warm (~1 s the
-first time), 1.2× real time. Set up by the installer (`installer/bipinstall/drama.py`, `install.sh drama`);
-the bridge speaks to it as `drama:<id>` voices (`bridge/bipbridge/tts.py`).
+first time), 1.2× real time.
+
+BipAgents does not install it any more (since 2026-10-15): run it yourself, then connect it as your own voice model
+(`install.sh voice`, port 8099 found on its own). The installer that set it up — build with these patches, model
+download and check, tower requantization, rootless podman service on an internal network, voice prewarming — is in
+the history: `git show c684636:installer/bipinstall/drama.py`. Its 14 voices (`voices/drama/`) are reference clips
+for audio.cpp's `voice_presets`; the app shows them as « Voix 1… » with their bundled previews.

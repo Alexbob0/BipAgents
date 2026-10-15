@@ -38,8 +38,8 @@ class Install:
     bridge_key: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     kyutai_url: Optional[str] = None
     pocket_url: str = f"http://127.0.0.1:{POCKET_PORT}"
-    # Fish Audio Drama 3, the Bips' expressive voices (drama.py), when it runs on this machine.
-    drama_url: Optional[str] = None
+    # The person's own voice model (voice_server.py): the bridge's `[voice_server]` lines, none for the Bips only.
+    voice_server: List[str] = field(default_factory=list)
     # The agents' tools run in a sandbox: they cannot read the bridge's files, so it may keep credentials.
     isolated: bool = False
     # Each agent gets a visible browser of its own, in a container (browser/, bipbridge/browsers.py).
@@ -86,8 +86,8 @@ def bridge_toml(inst: Install) -> str:
         lines.append(f"public_url = {_q(inst.public(inst.ports.bridge))}")
     lines += ["", "[kyutai]"] + ([f"url = {_q(inst.kyutai_url)}"] if inst.kyutai_url else ["enabled = false"])
     lines += ["", "[pocket]", f"url = {_q(inst.pocket_url)}", 'default_voice = "pocket:colibri"']
-    if inst.drama_url:
-        lines += ["", "[drama]", f"url = {_q(inst.drama_url)}"]
+    if inst.voice_server:
+        lines += [""] + inst.voice_server
     lines += ["", "[cron]", "watch = true"]
     # The person's own Hermes: lets the app create agents (« + »).
     lines += ["", "[hermes]", f"bin = {_q(str(inst.home / '.local' / 'bin' / 'hermes'))}",

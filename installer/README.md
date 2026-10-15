@@ -81,22 +81,19 @@ checks that each one answers. When an agent no longer answers, it offers to go b
 publishing and the bridge's config, keeping the agents' data in `~/.hermes`. `--all` also removes Hermes and that data,
 after a confirmation. `--dry-run` shows what would be removed.
 
-## The Bips' expressive voices (Drama 3)
+## Voices: the Bips, and your own voice model
 
-On a Linux machine with about **26 GB of free GPU memory** — an NVIDIA GPU through CUDA (a 24 GB+ card, a DGX Spark),
-or another GPU through Vulkan (a Strix Halo with its unified memory) — the installer offers **Fish Audio Drama 3**: 14 natural and mascot voices,
-in French and English, computed on the GPU (first audio in ~0.3 s). Elsewhere the Bips keep their quick voices
-(Pocket).
+The Bips' voices (Kyutai Pocket TTS, on the CPU, in French, English, Spanish and German) are always installed: they
+are light and answer almost instantly. **Your own voice model** can speak for some uses instead: any server already
+running on this machine or the local network with OpenAI's `POST /v1/audio/speech` — Fish Audio Drama 3 on audio.cpp
+(`tts/drama3/`), Kokoro, Kyutai… Nothing is installed for it: the installer looks for one (audio.cpp's port 8099,
+Kokoro's 8880, Kyutai's 8097) and asks what it speaks for — the **Live**, the **spoken replies** to your voice notes,
+the **reading** of messages and reports. The Bips speak for the rest, and stand in when it is down.
 
-- One server per machine, shared by every install: the first account that can run it sets it up, the others use it.
-  `bash ~/BipAgents/install.sh drama` does it outside an install, and connects this account's bridge
-  (`[drama] url`); run it in each account whose bridge should use it.
-- It downloads the model once (24.6 GB, from Hugging Face, checked), builds audio.cpp at a pinned version with our
-  patches (`tts/drama3/`; for NVIDIA, an image built from NVIDIA's own, with the CUDA version the driver supports and
-  the GPU's own architecture — podman reaches the GPU through the NVIDIA Container Toolkit's CDI, set up once with
-  `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`), and runs it in a rootless podman container on an internal network: it reaches nothing,
-  and only this machine reaches it (127.0.0.1:8099). `--served-model <file>` reuses a prepared model already there.
-- Model license: Fish Audio Community License (personal and small commercial use; no hosted service for others).
+- `--voice-server http://192.168.1.20:8880` gives its address; `--voice-uses live,replies` what it speaks for.
+- `bash ~/BipAgents/install.sh voice` connects one later (or changes it, `--off` to go back to the Bips), in each
+  account whose bridge should use it. In the app: each agent › Voice › « Your voice model » (« Voice 1, Voice 2… »),
+  and Settings › Voice › « Your voice model » for what it speaks for.
 
 ## Several people on one machine
 

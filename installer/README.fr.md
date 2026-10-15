@@ -83,25 +83,20 @@ de revenir à la version précédente. `--check` vérifie sans rien changer.
 sur le tailnet et la config du bridge, en gardant les données des agents dans `~/.hermes`. `--all` supprime aussi
 Hermes et ces données, après confirmation. `--dry-run` montre ce qui serait retiré.
 
-## Les voix expressives des Bips (Drama 3)
+## Les voix : les Bips, et ton propre modèle de voix
 
-Sur une machine Linux avec environ **26 Go de mémoire GPU libre** — un GPU NVIDIA en CUDA (une carte de 24 Go ou plus,
-un DGX Spark) ou un autre GPU en Vulkan (un Strix Halo avec sa mémoire unifiée) — l'installateur propose
-**Fish Audio Drama 3** : 14 voix
-naturelles et mascottes, en français et en anglais, calculées sur le GPU (premier son en ~0,3 s). Ailleurs, les Bips
-gardent leurs voix rapides (Pocket).
+Les voix des Bips (Kyutai Pocket TTS, sur le processeur, en français, anglais, espagnol et allemand) sont toujours
+installées : elles sont légères et répondent presque instantanément. **Ton propre modèle de voix** peut parler à leur
+place pour certains usages : tout serveur qui tourne déjà sur la machine ou le réseau local avec le
+`POST /v1/audio/speech` d'OpenAI — Fish Audio Drama 3 sur audio.cpp (`tts/drama3/`), Kokoro, Kyutai… Rien n'est
+installé pour lui : l'installateur en cherche un (port 8099 d'audio.cpp, 8880 de Kokoro, 8097 de Kyutai) et demande
+pour quoi il parle — le **Live**, les **réponses vocales** à tes notes vocales, la **lecture** des messages et des
+rapports. Les Bips parlent pour le reste, et prennent le relais quand il ne répond pas.
 
-- Un serveur par machine, partagé par toutes les installations : le premier compte qui peut le faire tourner
-  l'installe, les autres s'en servent. `bash ~/BipAgents/install.sh drama` le fait en dehors d'une installation et
-  branche le bridge du compte (`[drama] url`) ; à lancer dans chaque compte dont le bridge doit s'en servir.
-- Il télécharge le modèle une fois (24,6 Go, depuis Hugging Face, vérifié), compile audio.cpp à une version épinglée
-  avec nos patches (`tts/drama3/` ; pour NVIDIA, une image construite à partir de celles de NVIDIA, avec la version
-  de CUDA que gère le pilote et l'architecture du GPU — podman accède au GPU par le CDI du NVIDIA Container Toolkit,
-  à générer une fois avec `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`), et le fait tourner dans un conteneur podman sans droits admin, sur un réseau
-  interne : il n'atteint rien, et seule la machine l'atteint (127.0.0.1:8099). `--served-model <fichier>` reprend un
-  modèle déjà préparé.
-- Licence du modèle : Fish Audio Community License (usage personnel et petit usage commercial ; pas de service
-  hébergé pour d'autres).
+- `--voice-server http://192.168.1.20:8880` donne son adresse ; `--voice-uses live,replies` ce pour quoi il parle.
+- `bash ~/BipAgents/install.sh voice` en branche un plus tard (ou le change, `--off` pour revenir aux Bips), dans
+  chaque compte dont le bridge doit s'en servir. Dans l'app : chaque agent › Voix › « Ton modèle de voix » (« Voix 1,
+  Voix 2… »), et Réglages › Voix › « Ton modèle de voix » pour ce pour quoi il parle.
 
 ## Plusieurs personnes sur une machine
 

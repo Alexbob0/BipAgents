@@ -16,6 +16,17 @@ from bipinstall.detect import Machine  # noqa: E402
 from bipinstall.plan import make_plan  # noqa: E402
 from bipinstall.ports import Ports, pick_block  # noqa: E402
 from bipinstall.stack import AgentEntry, Install, bridge_service, bridge_toml, tailscale_commands  # noqa: E402
+from bipinstall.voice_server import discover as DISCOVER  # noqa: E402  (the real one: the tests' fixture replaces it)
+
+
+@pytest.fixture(autouse=True)
+def no_voice_server_on_the_network(monkeypatch):
+    """The install flows meet no voice server (none is looked for on the real network)."""
+    from bipinstall import voice_server
+
+    async def nothing(addresses, *args, **kwargs):
+        return []
+    monkeypatch.setattr(voice_server, "discover", nothing)
 
 
 def mac(memory, gpu="apple"):
@@ -583,116 +594,68 @@ def test_podman_is_told_where_the_sandbox_image_comes_from(tmp_path):
     assert aliases["nousresearch/hermes-sandbox"] == "docker.io/nousresearch/hermes-sandbox"
 
 
-# -- Drama 3, the Bips' expressive voices ------------------------------------------------------------------------
-
-def test_drama_is_offered_only_where_it_can_run(tmp_path):
-    from bipinstall import drama
-    drm = tmp_path / "drm"
-    (drm / "card1" / "device").mkdir(parents=True)
-    (drm / "renderD128").touch()
-    gib = 2**30
-    (drm / "card1" / "device" / "mem_info_vram_total").write_text(str(512 * 2**20))
-    (drm / "card1" / "device" / "mem_info_vram_used").write_text("0")
-    (drm / "card1" / "device" / "mem_info_gtt_total").write_text(str(120 * gib))
-    (drm / "card1" / "device" / "mem_info_gtt_used").write_text(str(5 * gib))
-    meminfo = tmp_path / "meminfo"
-    meminfo.write_text("MemTotal: 131072000 kB\nMemAvailable: 104857600 kB\n")
-    kw = dict(drm=drm, meminfo=meminfo, probe=False)
-    gpu, reason = drama.choose("linux", "/usr/bin/podman", tmp_path, **kw)
-    assert reason is None and gpu.backend == "vulkan" and gpu.image == drama.IMAGE
-    assert "Linux" in drama.why_not("macos", "/usr/bin/podman", tmp_path, **kw)
-    assert "podman" in drama.why_not("linux", "/usr/bin/docker", tmp_path, **kw)
-    (drm / "card1" / "device" / "mem_info_gtt_used").write_text(str(100 * gib))
-    assert "GPU memory" in drama.why_not("linux", "/usr/bin/podman", tmp_path, **kw)
 
 
-def test_drama_server_its_voices_and_its_closed_network():
-    from bipinstall import drama
-    config = drama.server_config(ROOT, drama.Gpu("vulkan", 100))
-    presets = config["models"][0]["voice_presets"]
-    assert len(presets) == 14 and presets["fr-mascotte-s17"]["voice_ref"] == "/srv/drama3/voices/fr/fr-mascotte-s17.wav"
-    assert presets["en-naturelle-s47"]["reference_text"].startswith("Hello!") and config["min_free_memory_mb"] == 1024
-    unit = drama.service_unit("/usr/bin/podman", drama.Layout(Path("/home/x/.local/share/bipagents/drama3")),
-                              drama.Gpu("vulkan", 100))
-    assert "--network bipagents-drama3 -p 127.0.0.1:8099:8099" in unit and "--device /dev/dri" in unit
-    assert drama.IMAGE in unit and "StartLimitBurst=3" in unit and "ExecStartPost=/bin/bash" in unit
-    warm = drama.prewarm_script(ROOT)
-    assert warm.count("/v1/audio/speech") == 14 and '"input": "Bonjour."' in warm and '"input": "Hello."' in warm
+# -- The person's own voice model ---------------------------------------------------------------------------------
+
+def test_a_voice_server_is_found_with_its_voices_and_the_model_it_expects():
+    from bipinstall import voice_server
+
+    def server(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "192.168.1.20" and request.url.port == 8099:
+            if request.url.path == "/v1/audio/voices":
+                return httpx.Response(200, json={"voices": ["fr-mascotte-s17", "fr-naturelle-s15"]})
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"data": [{"id": "drama-3"}]})
+        if request.url.host == "192.168.1.30" and request.url.port == 8097 and request.url.path == "/v1/voices":
+            return httpx.Response(200, json={"default": "5476", "aliases": {"5476": "a.wav"}})
+        raise httpx.ConnectError("refused", request=request)
+
+    found = asyncio.run(DISCOVER(["192.168.1.5"], transport=httpx.MockTransport(server)))
+    by_url = {s.url: s for s in found}
+    drama = by_url["http://192.168.1.20:8099"]
+    assert drama.voices == ["fr-mascotte-s17", "fr-naturelle-s15"] and drama.model == "drama-3"
+    assert drama.stream_rate == 44100 and drama.kind == "Fish Audio Drama 3"
+    kyutai = by_url["http://192.168.1.30:8097"]
+    assert kyutai.voices == ["5476"] and kyutai.kind == "Kyutai" and kyutai.stream_rate is None
+    assert len(found) == 2
 
 
-def test_drama_setup_and_each_bridge_connected_once(tmp_path, monkeypatch, capsys):
-    from bipinstall import drama
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(drama, "answers", lambda url=drama.URL: False)
-    monkeypatch.setattr(drama, "choose", lambda *a, **k: (drama.Gpu("vulkan", 100), None))
-    monkeypatch.setattr(drama.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
-    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
-    config.parent.mkdir(parents=True)
-    config.write_text('bridge_key = "k"\n\n[pocket]\nurl = "http://127.0.0.1:8098"\n')
-    assert drama.main(["--dry-run"]) == 0
-    out = capsys.readouterr().out
-    assert drama.AUDIOCPP_COMMIT in out and "am --quiet" in out and "0007-fish_drama3" in out
-    assert "--network none" in out and "scripts/build_linux.sh --backend vulkan" in out
-    assert drama.MODEL_URL in out and "--keep-type" in out and "network create --internal bipagents-drama3" in out
-    assert "systemctl --user enable --now bipagents-drama" in out and "restart bipagents-bridge" in out
-    runner = drama.hermes.Runner()
-    assert drama.connect(config, runner) and drama.connect(config, runner)
-    assert config.read_text().count("[drama]") == 1 and 'url = "http://127.0.0.1:8099"' in config.read_text()
+def test_the_bridge_gets_its_voice_server_and_what_it_speaks_for(tmp_path):
+    from bipinstall import voice_server
+    server = voice_server.VoiceServer("http://192.168.1.20:8099", ["a"], "drama-3", 44100)
+    lines = voice_server.toml_lines(server, voice_server.parse_uses("live,reading"))
+    assert lines == ['[voice_server]', 'url = "http://192.168.1.20:8099"', 'model = "drama-3"', 'stream_rate = 44100',
+                     'live = true', 'replies = false', 'reading = true']
+    with pytest.raises(ValueError):
+        voice_server.parse_uses("live,podcasts")
+    config = tmp_path / "bridge.toml"
+    config.write_text('bridge_key = "k"\n\n[drama]\nurl = "http://127.0.0.1:8099"\n\n[cron]\nwatch = true\n')
+    assert voice_server.connect(config, lines, hermes.Runner())
+    text = config.read_text()
+    assert "[drama]" not in text and "[cron]\nwatch = true" in text and text.endswith("reading = true\n")
+    voice_server.connect(config, lines, hermes.Runner())
+    assert config.read_text().count("[voice_server]") == 1     # replaced, not added twice
+    import tomllib
+    assert tomllib.loads(config.read_text())["voice_server"]["replies"] is False
 
 
-def test_the_bridge_config_names_drama_when_it_runs():
-    from bipinstall.stack import Install, bridge_toml
-    inst = Install(repo=ROOT, home=Path("/home/lea"), ports=Ports(9200), tailnet_name=None, lan_address=None)
-    assert "[drama]" not in bridge_toml(inst)
-    inst.drama_url = "http://127.0.0.1:8099"
-    assert '[drama]\nurl = "http://127.0.0.1:8099"' in bridge_toml(inst)
+def test_picking_a_voice_server_or_none():
+    from bipinstall import voice_server
+    found = [voice_server.VoiceServer("http://a:8880", ["af_bella"], kind="Kokoro")]
+    assert voice_server.choose(found, lambda q, d="": "", lambda q, o, d=1: 1, print) is found[0]
+    assert voice_server.choose(found, lambda q, d="": "", lambda q, o, d=1: 3, print) is None
+    defaults = []
+    voice_server.choose([], lambda q, d="": "", lambda q, o, d=1: defaults.append(d) or d, print)
+    assert defaults == [2]                                      # nothing found: « None » by default
 
 
-def test_drama_on_nvidia_through_cuda(tmp_path, monkeypatch, capsys):
-    """NVIDIA: the newest CUDA its driver supports, built for its own GPU (e.g. a DGX Spark's GB10, whose memory is
-    the RAM), the GPU handed to podman through CDI."""
-    from bipinstall import drama
-    smi = {"nvidia-smi --query-gpu=memory.free,compute_cap --format=csv,noheader,nounits": "[N/A], 12.1\n",
-           "nvidia-smi": "| NVIDIA-SMI 580.95   Driver Version: 580.95   CUDA Version: 13.0 |\n"}
-    nv = drama.nvidia(lambda args: smi.get(" ".join(args), ""))
-    assert nv == {"free_gib": None, "arch": "121", "driver_cuda": (13, 0)}
-    assert drama.cuda_version((12, 9)) == "12.8.1" and drama.cuda_version((12, 2)) is None
-    meminfo = tmp_path / "meminfo"
-    meminfo.write_text("MemAvailable: 104857600 kB\n")
-    gpu, reason = drama.choose("linux", "/usr/bin/podman", tmp_path, meminfo=meminfo, nv=nv, cdi=True)
-    assert reason is None and gpu.backend == "cuda" and gpu.cuda == "13.0.1" and gpu.free_gib == 100
-    assert "nvidia-ctk cdi generate" in drama.why_not("linux", "/usr/bin/podman", tmp_path, meminfo=meminfo, nv=nv, cdi=False)
-    unit = drama.service_unit("/usr/bin/podman", drama.Layout(tmp_path), gpu)
-    assert "--device nvidia.com/gpu=all" in unit and f"{drama.CUDA_IMAGE}:{drama.AUDIOCPP_COMMIT[:12]}-cuda13.0.1" in unit
-    assert "/opt/audiocpp/bin/audiocpp_server" in unit and "/srv/drama3/audio.cpp" not in unit
-    assert drama.server_config(ROOT, gpu)["models"][0]["model_spec_override"] == "/opt/audiocpp/model_specs/fish_drama3.json"
-
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(drama, "answers", lambda url=drama.URL: False)
-    monkeypatch.setattr(drama, "choose", lambda *a, **k: (gpu, None))
-    monkeypatch.setattr(drama.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
-    assert drama.main(["--dry-run"]) == 0
-    out = capsys.readouterr().out
-    assert "build --build-arg CUDA=13.0.1 --build-arg CUDA_ARCH=121" in out and "Containerfile.cuda" in out
-    assert "/opt/audiocpp/bin/audiocpp_gguf" in out and "git clone" not in out
-
-
-def test_drama_is_updated_when_the_repository_moves_on(tmp_path, monkeypatch, capsys):
-    """A server set up from this account is rebuilt and restarted after a `git pull` brings new patches; one set up
-    before versions were recorded counts as older."""
-    from bipinstall import drama
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(drama.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
-    monkeypatch.setattr(drama, "answers", lambda url=drama.URL: True)
-    layout = drama.Layout(tmp_path / ".local" / "share" / "bipagents" / "drama3")
-    layout.root.mkdir(parents=True)
-    layout.config.write_text('{"backend": "vulkan"}')
-    assert drama.installed(layout) == {"version": None, "backend": "vulkan"}
-    assert drama.main(["--dry-run"]) == 0
-    out = capsys.readouterr().out
-    assert "updating the server" in out and "systemctl --user restart bipagents-drama" in out
-    unit = drama.service_unit("/usr/bin/podman", layout, drama.Gpu("vulkan", 0))
-    assert "0008-fish_drama3-do-not-log" in out and "--log-driver passthrough --cgroups split" in unit
-    layout.stamp.write_text(json.dumps({"version": drama.version(ROOT), "backend": "vulkan"}))
-    assert drama.main(["--dry-run"]) == 0
-    assert "already runs on this machine" in capsys.readouterr().out
+def test_the_voice_server_lines_go_into_the_bridge_config(tmp_path):
+    import tomllib
+    from bipinstall import voice_server
+    inst = Install(repo=tmp_path, home=tmp_path, ports=Ports(8640), tailnet_name=None, lan_address=None,
+                   voice_server=voice_server.toml_lines(voice_server.VoiceServer("http://gpu:8880", ["af_bella"]),
+                                                        {"live": False}))
+    config = tomllib.loads(bridge_toml(inst))
+    assert config["voice_server"] == {"url": "http://gpu:8880", "model": "tts-1", "live": False, "replies": True,
+                                      "reading": True}
