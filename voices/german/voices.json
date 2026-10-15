@@ -1,0 +1,58 @@
+{
+ "engine": "pocket-tts 3.3.0",
+ "language": "german",
+ "sample_rate": 24000,
+ "design": {
+  "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+  "text": "Guten Morgen! Hier ist dein Überblick für heute. Du hast drei Termine, der erste ist um halb zehn mit dem Team. Das Wetter: achtzehn Grad, am späten Nachmittag ein paar Schauer, denk also an den Regenschirm. Du hast heute Nacht sieben Stunden geschlafen, etwas besser als gestern. Soll ich dich eine Viertelstunde vor dem Meeting erinnern? Ich bin da, wenn du Fragen hast.",
+  "note": "2026-10-15: one Qwen take per candidate written natively in the language (native-speaker accent), three seeds per Bip, picked by ear among 15; the Pocket reference is the take cut on a pause before 10 s (Pocket's german and spanish models cut the reading short with a ~23 s reference)"
+ },
+ "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395)",
+ "voices": {
+  "galet": {
+   "design_instruct": "Stimme eines kleinen, gelassenen Maskottchens, mitteltief, klar und selbstsicher, gleichmäßiges Tempo, der Ton eines ruhigen Begleiters, der Dinge verständlich erklärt, leicht stilisierte Klangfarbe wie eine Zeichentrickfigur, niemals roboterhaft, saubere Studioaufnahme ohne Hall. Muttersprachler, akzentfreies Hochdeutsch.",
+   "seed": 52003,
+   "candidate": "galet_s52003",
+   "source_s": 8.62,
+   "safetensors_bytes": 5359416,
+   "first_sound_s": 0.062,
+   "rtf": 8.69
+  },
+  "lumen": {
+   "design_instruct": "Stimme eines kleinen, hellen und strahlenden Maskottchens, mittlere Tonlage, sehr deutlich artikuliert, neutral und effizient, gleichmäßiges Tempo, ideal zum Vorlesen von Informationen, leicht stilisierte Klangfarbe wie eine Zeichentrickfigur, niemals roboterhaft, saubere Studioaufnahme ohne Hall. Muttersprachler, akzentfreies Hochdeutsch.",
+   "seed": 52102,
+   "candidate": "lumen_s52102",
+   "source_s": 8.46,
+   "safetensors_bytes": 5261112,
+   "first_sound_s": 0.058,
+   "rtf": 8.91
+  },
+  "mousse": {
+   "design_instruct": "Stimme eines kleinen, runden und leichten Maskottchens, mittlere Tonlage, freundlich lächelnd, aber zurückhaltend, warm, natürliches Tempo, klare Aussprache, leicht stilisierte Klangfarbe wie eine Zeichentrickfigur, niemals roboterhaft, saubere Studioaufnahme ohne Hall. Muttersprachler, akzentfreies Hochdeutsch.",
+   "seed": 52201,
+   "candidate": "mousse_s52201",
+   "source_s": 8.62,
+   "safetensors_bytes": 5359416,
+   "first_sound_s": 0.069,
+   "rtf": 9.49
+  },
+  "ours": {
+   "design_instruct": "Stimme eines großen, ruhigen Teddybär-Maskottchens, tief und sanft, beruhigend, langsames Tempo, leicht stilisierte Klangfarbe wie eine Zeichentrickfigur, niemals roboterhaft, saubere Studioaufnahme ohne Hall. Muttersprachler, akzentfreies Hochdeutsch.",
+   "seed": 52303,
+   "candidate": "ours_s52303",
+   "source_s": 8.7,
+   "safetensors_bytes": 5408568,
+   "first_sound_s": 0.059,
+   "rtf": 9.23
+  },
+  "colibri": {
+   "design_instruct": "Stimme eines kleinen, lebhaften und fröhlichen Kolibri-Maskottchens, klar und leicht, mittlere Tonlage, melodisch, schnelles und präzises Tempo, nie schrill, leicht stilisierte Klangfarbe wie eine Zeichentrickfigur, niemals roboterhaft, saubere Studioaufnahme ohne Hall. Muttersprachler, akzentfreies Hochdeutsch.",
+   "seed": 52402,
+   "candidate": "colibri_s52402",
+   "source_s": 8.3,
+   "safetensors_bytes": 5162808,
+   "first_sound_s": 0.061,
+   "rtf": 9.47
+  }
+ }
+}
