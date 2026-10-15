@@ -221,16 +221,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "hermes-update":
         from .update import main as update_main
         return update_main(argv[1:])
-    if argv and argv[0] == "drama":
-        from .drama import main as drama_main
-        return drama_main(argv[1:])
+    if argv and argv[0] == "voice":
+        from .voice_server import main as voice_main
+        return voice_main(argv[1:])
     if argv and argv[0] in ("family", "famille"):   # « famille ajouter »: its first name, kept working
         from .family import main as family_main
         return family_main(argv[1:])
     parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
                                      "(`bipinstall uninstall` removes it; `bipinstall family add <name>` prepares a "
-                                     "family member's install on this server; `bipinstall drama` adds the Bips' expressive "
-                                     "voices (Fish Audio Drama 3); `bipinstall hermes-update` updates Hermes "
+                                     "family member's install on this server; `bipinstall voice` connects your own voice "
+                                     "model (a TTS server on the network); `bipinstall hermes-update` updates Hermes "
                                      "and checks the agents)")
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
     parser.add_argument("--relay-url", help="the administrator's bridge, to send notifications without an APNs key")
@@ -239,6 +239,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--languages", default="fr,en", help="voices to load: fr, en, es, de")
     parser.add_argument("--kyutai-url", help="a Kyutai voice server on another machine (default: the one running on "
                                              "this machine, if any)")
+    parser.add_argument("--voice-server", help="your own voice model: a TTS server with OpenAI's /v1/audio/speech "
+                                               "(default: look for one on the local network, then ask)")
+    parser.add_argument("--voice-uses", help="what it speaks for, among live, replies, reading (default: asked)")
     parser.add_argument("--no-tailscale", action="store_true",
                         help="this machine only, nothing published on a tailnet (tests, or a setup done by hand)")
     args = parser.parse_args(argv)
@@ -437,6 +440,29 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
     return finish(inst, machine, runner, args, steps, total, sandbox, bot_chat=False)
 
 
+def own_voice_model(args, machine: Machine) -> List[str]:
+    """The person's own voice model, if they have one running (found on the network, or `--voice-server`), and what it
+    speaks for: the bridge's `[voice_server]` lines, none for the Bips' voices only."""
+    from . import voice_server
+    if getattr(args, "voice_server", None):
+        server = voice_server.check(args.voice_server)
+        if server is None:
+            say(ui.note(f"No voice server answers at {args.voice_server}: the Bips' voices only."))
+            return []
+    else:
+        found = asyncio.run(voice_server.discover(machine.lan_addresses))
+        if not found:
+            return []   # nothing asked: most people have none, `bipinstall voice` connects one later
+        say("\n  A voice model answers on your network. The Bips (Pocket) always speak; yours can speak for some uses.")
+        server = voice_server.choose(found, ask, choose, say)
+        if server is None:
+            return []
+    uses = voice_server.parse_uses(args.voice_uses) if getattr(args, "voice_uses", None) \
+        else voice_server.ask_uses(ask, yes)
+    say(f"  Your voice model: {server.label}.")
+    return voice_server.toml_lines(server, uses)
+
+
 def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, total: int, sandbox: Optional[str],
            desk: bool = False, bot_chat: bool = True) -> int:
     """What every install ends with: the voices, the bridge, the visible browser when chosen, Tailscale, the checks
@@ -459,19 +485,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
     elif getattr(args, "kyutai_url", None):
         say(ui.note(f"Kyutai isn't answering at {kyutai}: Bip voices only (Pocket)."))
 
-    from . import drama
-    if drama.answers():
-        inst.drama_url = drama.URL
-        say(f"  Drama 3 (the Bips' expressive voices) answers at {drama.URL}: I'll share it.")
-    elif not args.dry_run or getattr(args, "drama", False):
-        gpu, _ = drama.choose(machine.system, hermes.sandbox_runtime(), inst.data_dir)
-        if gpu is not None:
-            say("\nThis machine can give the Bips expressive voices (Fish Audio Drama 3, on its GPU): 14 natural and\n"
-                "mascot voices in French and English. It downloads 24.6 GB once and keeps ~24 GB of GPU memory busy.")
-            if yes(ask("Set up Drama 3? (y/n)", "y")) and drama.install(runner, REPO, inst.data_dir,
-                                                                   hermes.sandbox_runtime() or "podman", gpu, say):
-                inst.drama_url = drama.URL
-                say(ui.done("Drama 3 is running: pick the new voices in the app (agent › Voice)."))
+    inst.voice_server = own_voice_model(args, machine)
     if machine.system == "macos":
         say("  macOS may ask whether Python can reach devices on the local network: allow it, or the agents\n"
                "  and the bridge won't reach a model installed on another machine at home.")
