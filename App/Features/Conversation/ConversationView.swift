@@ -64,6 +64,7 @@ private struct ConversationContent: View {
     var start: ConversationStart
     @State private var isCalling = false
     @State private var draft = ""
+    @State private var sentAt: Date?
     @State private var attachments: [LocalAttachment] = []
 
     private var palette: AgentPalette { model.agent.appearance.palette }
@@ -242,7 +243,7 @@ private struct ConversationContent: View {
                 voice: model.voice,
                 thinking: model.thinking.map { level in Binding(get: { level }, set: { model.setThinking($0) }) },
                 onSend: send,
-                onStop: model.stop,
+                onStop: stop,
                 start: start,
                 onDictated: { text, recording in
                     model.send(text: text, attachments: attachments, voiceNote: recording)
@@ -499,13 +500,28 @@ private struct ConversationContent: View {
     private var draftKey: String { ConversationDraft.key(agentID: model.agent.id, sessionID: model.sessionID) }
 
     private func send() {
+        let sent = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         model.send(text: draft, attachments: attachments)
+        sentAt = .now
         // The saved draft goes now, not on the next update: a screen rebuilt meanwhile would restore it.
         UserDefaults.standard.removeObject(forKey: draftKey)
         draft = ""
         attachments = []
-        // The keyboard can commit a pending autocorrection just after the tap, putting the text back: clear again.
-        Task { @MainActor in draft = "" }
+        // The keyboard can commit a pending autocorrection (« «leboncoin» ») a moment after the tap, putting the sent
+        // text back: cleared again for half a second, only while the field still holds that text (not new typing).
+        Task { @MainActor in
+            for delay in [0, 80, 200, 500] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                let field = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !field.isEmpty, sent.hasPrefix(field) || field.hasPrefix(sent) { draft = "" }
+            }
+        }
+    }
+
+    /// « Stop » sits where « Send » was: a second tap meant for sending, just after, must not stop the reply.
+    private func stop() {
+        if let sentAt, Date.now.timeIntervalSince(sentAt) < 1.2 { return }
+        model.stop()
     }
 }
 
@@ -593,16 +609,29 @@ struct AssistantRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             MascotAvatar(appearance: appearance, size: 30)
-            rendered
-                .foregroundStyle(Theme.ink)
-                .lineSpacing(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            let blocks = ChatText.blocks(ChatText.visible(text))
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                    switch block {
+                    case .text(let paragraph):
+                        rendered(paragraph, cursor: isStreaming && index == blocks.count - 1)
+                            .foregroundStyle(Theme.ink)
+                            .lineSpacing(3)
+                    case .table(let table):
+                        ChatTableView(table: table) { cell in rendered(cell, cursor: false, size: 14) }
+                    }
+                }
+                if isStreaming, case .table? = blocks.last {
+                    Text("▍").font(Theme.body(16)).foregroundStyle(Theme.ink)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    /// The reply with each link preceded by its site's icon (links open in Safari).
-    private var rendered: Text {
-        let attributed = markdown
+    /// The text with each link preceded by its site's icon (links open in Safari).
+    private func rendered(_ source: String, cursor: Bool, size: CGFloat = 16) -> Text {
+        let attributed = markdown(source, cursor: cursor, size: size)
         var result = Text("")
         var previousLink: URL?
         for run in attributed.runs {
@@ -625,30 +654,28 @@ struct AssistantRow: View {
         init(_ text: AttributedString) { self.text = text }
     }
 
-    private var markdown: AttributedString {
+    private func markdown(_ source: String, cursor: Bool, size: CGFloat) -> AttributedString {
         // While streaming, the text changes with every word: not worth keeping.
-        guard !isStreaming else { return format() }
-        let key = "\(appearance.hashValue)|\(text)" as NSString
+        guard !isStreaming else { return format(cursor ? source + " ▍" : source, size: size) }
+        let key = "\(appearance.hashValue)|\(size)|\(source)" as NSString
         if let cached = Self.formatted.object(forKey: key) {
             return cached.text
         }
-        let result = format()
+        let result = format(source, size: size)
         Self.formatted.setObject(Formatted(result), forKey: key)
         return result
     }
 
-    private func format() -> AttributedString {
-        let shown = ChatText.visible(text)
-        let source = isStreaming ? shown + " ▍" : shown
+    private func format(_ source: String, size: CGFloat) -> AttributedString {
         var result = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
         Self.linkBareURLs(in: &result)
         ChatText.linkContacts(in: &result)
         // An explicit .font on the Text would flatten **bold**/*italic*; set the font per run instead.
         for run in result.runs {
             let intent = run.inlinePresentationIntent ?? []
-            var font = Theme.body(16, weight: intent.contains(.stronglyEmphasized) ? .heavy : .medium)
+            var font = Theme.body(size, weight: intent.contains(.stronglyEmphasized) ? .heavy : .medium)
             if intent.contains(.emphasized) { font = font.italic() }
-            if intent.contains(.code) { font = .system(size: 15, design: .monospaced) }
+            if intent.contains(.code) { font = .system(size: size - 1, design: .monospaced) }
             result[run.range].font = font
             if let link = run.link {
                 // Calls, e-mails and maps in blue, as in Messages; web pages in the agent's color with their icon.
@@ -690,6 +717,50 @@ struct AssistantRow: View {
         guard !last.isEmpty, last != "/" else { return host }
         let page = last.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
         return host + " › " + (page.count > 32 ? String(page.prefix(31)) + "…" : page)
+    }
+}
+
+/// A table of a reply: a grid with its header on a tinted row, scrolled sideways when wider than the screen, its
+/// cells formatted like the reply (bold, links).
+struct ChatTableView: View {
+    var table: ChatText.Table
+    var cell: (String) -> Text
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(table.header.indices, id: \.self) { column in
+                        cellView(table.header[column], column: column, header: true)
+                    }
+                }
+                .background(Theme.field)
+                ForEach(table.rows.indices, id: \.self) { row in
+                    Divider().gridCellUnsizedAxes(.horizontal)
+                    GridRow {
+                        ForEach(table.rows[row].indices, id: \.self) { column in
+                            cellView(table.rows[row][column], column: column, header: false)
+                        }
+                    }
+                }
+            }
+            .background(Theme.card)
+            .clipShape(.rect(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+        }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+    }
+
+    private func cellView(_ text: String, column: Int, header: Bool) -> some View {
+        let alignment = table.alignments[column]
+        return cell(header ? "**\(text)**" : text)
+            .foregroundStyle(Theme.ink)
+            .multilineTextAlignment(alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
+            .frame(minWidth: 44, maxWidth: 220, alignment: alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .gridColumnAlignment(alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
     }
 }
 

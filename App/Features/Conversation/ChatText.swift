@@ -33,6 +33,99 @@ enum ChatText {
         return words.isEmpty ? line : "\(line) · \(words)"
     }
 
+    /// A reply cut into its paragraphs and its tables (GitHub-style: a `| a | b |` header, a `|---|---|` line, then
+    /// rows), so tables are drawn as grids. Tables inside a ``` code block stay text. A table still streaming shows
+    /// the rows already there.
+    enum Block: Hashable {
+        case text(String)
+        case table(Table)
+    }
+
+    struct Table: Hashable {
+        enum Alignment: Hashable { case leading, center, trailing }
+        var header: [String]
+        var alignments: [Alignment]
+        var rows: [[String]]
+    }
+
+    static func blocks(_ text: String) -> [Block] {
+        guard text.contains("|") else { return [.text(text)] }
+        let lines = text.components(separatedBy: "\n")
+        var blocks: [Block] = []
+        var paragraph: [String] = []
+        var inCode = false
+        var i = 0
+        func flush() {
+            let joined = paragraph.joined(separator: "\n").trimmingCharacters(in: .newlines)
+            if !joined.trimmingCharacters(in: .whitespaces).isEmpty { blocks.append(.text(joined)) }
+            paragraph = []
+        }
+        while i < lines.count {
+            let line = lines[i]
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") { inCode.toggle() }
+            if !inCode, i + 1 < lines.count, line.contains("|"), let alignments = separator(lines[i + 1]) {
+                let header = cells(line)
+                if header.count == alignments.count || (header.count > 1 && alignments.count > 1) {
+                    flush()
+                    var rows: [[String]] = []
+                    i += 2
+                    while i < lines.count, lines[i].contains("|"), !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
+                        rows.append(cells(lines[i]))
+                        i += 1
+                    }
+                    let width = header.count
+                    let aligned = (0..<width).map { $0 < alignments.count ? alignments[$0] : .leading }
+                    let padded = rows.map { row in (0..<width).map { $0 < row.count ? row[$0] : "" } }
+                    blocks.append(.table(Table(header: header, alignments: aligned, rows: padded)))
+                    continue
+                }
+            }
+            paragraph.append(line)
+            i += 1
+        }
+        flush()
+        return blocks.isEmpty ? [.text(text)] : blocks
+    }
+
+    /// `|:---|:--:|---:|` -> the columns' alignments; nil when the line is not a table's separator.
+    private static func separator(_ line: String) -> [Table.Alignment]? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("-"), trimmed.contains("|") || trimmed.hasPrefix(":") || trimmed.hasPrefix("-") else { return nil }
+        let parts = cells(trimmed)
+        guard !parts.isEmpty, parts.allSatisfy({ $0.wholeMatch(of: /:?-{1,}:?/) != nil }) else { return nil }
+        guard trimmed.contains("|") else { return nil }
+        return parts.map { part in
+            switch (part.hasPrefix(":"), part.hasSuffix(":")) {
+            case (true, true): .center
+            case (false, true): .trailing
+            default: .leading
+            }
+        }
+    }
+
+    /// The cells of a `| a | b |` line (escaped `\|` kept as text).
+    private static func cells(_ line: String) -> [String] {
+        var trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("|") { trimmed.removeFirst() }
+        if trimmed.hasSuffix("|") && !trimmed.hasSuffix("\\|") { trimmed.removeLast() }
+        var cells: [String] = []
+        var current = ""
+        var escaped = false
+        for character in trimmed {
+            if escaped {
+                if character != "|" { current.append("\\") }   // only « \| » is the table's escape
+                current.append(character)
+                escaped = false
+                continue
+            }
+            if character == "\\" { escaped = true; continue }
+            if character == "|" { cells.append(current.trimmingCharacters(in: .whitespaces)); current = ""; continue }
+            current.append(character)
+        }
+        cells.append(current.trimmingCharacters(in: .whitespaces))
+        return cells
+    }
+
     /// Files the reply points to with « MEDIA:<path> » lines (the podcast mp3…), shown as players.
     static func media(in text: String) -> [String] {
         guard text.contains("MEDIA:") else { return [] }
