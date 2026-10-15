@@ -11,7 +11,8 @@ APP_INFO = {
     "UIApplicationSupportsIndirectInputEvents": "YES",
     "UILaunchScreen_Generation": "YES",
     "UISupportedInterfaceOrientations_iPad": '"UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
-    "UISupportedInterfaceOrientations_iPhone": "UIInterfaceOrientationPortrait",
+    # Landscape only where the app allows it (OrientationLock: the agent's desktop); portrait everywhere else.
+    "UISupportedInterfaceOrientations_iPhone": '"UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
 }
 
 def q(v):

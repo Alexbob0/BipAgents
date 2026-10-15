@@ -71,6 +71,14 @@ def test_an_agent_gets_its_own_browser_container_and_desktop(setup):
     commands.clear()
     asyncio.run(browsers.setup(config, config.agent("budget"), run, str(hub), is_free=lambda p: True))
     assert json.loads((tmp_path / "browsers" / "budget" / "ports.json").read_text()) == ports
+    assert ["systemctl", "--user", "restart", "bipagents-browser-budget"] not in [c[0] for c in commands]
+    # A unit written by an earlier bridge (a 1600×900 window): rewritten, and its container restarted with these flags.
+    unit_file = tmp_path / "units" / "bipagents-browser-budget.service"
+    unit_file.write_text(unit_file.read_text().replace("--start-maximized", "--window-size=1600,900"))
+    commands.clear()
+    asyncio.run(browsers.setup(config, config.agent("budget"), run, str(hub), is_free=lambda p: True))
+    assert "--start-maximized" in unit_file.read_text() and "--window-size" not in unit_file.read_text()
+    assert ["systemctl", "--user", "restart", "bipagents-browser-budget"] in [c[0] for c in commands]
 
 
 def test_deleting_the_agent_removes_its_browser(setup):

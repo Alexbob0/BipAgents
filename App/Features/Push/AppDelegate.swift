@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// A notification tapped before the app was ready (cold launch from the notification).
     private var pendingTap: (action: String, payload: NotificationPayload)?
 
+    /// Portrait everywhere, except on a screen that allows landscape (`OrientationLock`).
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        OrientationLock.allowed
+    }
+
     /// Called once the app's state exists; replays a notification tapped during launch.
     func attach(store: AgentStore, router: Router) {
         self.store = store

@@ -109,7 +109,8 @@ def run_args(config: Config, agent: str, ports: Dict[str, int], engine: str, gpu
     flags = [f"--accept-lang={lang},{lang.split('-')[0]}"] + (GPU_FLAGS if gpu else [])
     # --test-type and --hide-crash-restore-bubble: no warning bar about --no-sandbox (the container is the sandbox)
     # and no « Restore pages? » after the container was stopped, over what the person watches.
-    base = ["--window-size=1600,900", "--no-first-run", "--no-default-browser-check", "--disable-dev-shm-usage",
+    # Maximized on the 1366×768 screen, its panel kept: as on a laptop (never full screen, which sites read as a robot).
+    base = ["--start-maximized", "--no-first-run", "--no-default-browser-check", "--disable-dev-shm-usage",
             "--ignore-gpu-blocklist", "--test-type", "--hide-crash-restore-bubble"]
     args = [engine, "run", "--rm", "--name", container(agent), "--hostname", "desktop",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--memory", "3g", "--shm-size", "1g",
@@ -179,9 +180,13 @@ async def setup(config: Config, agent: AgentConfig, run: Callable[..., Any], hom
 
     unit = unit_path(agent.name)
     unit.parent.mkdir(parents=True, exist_ok=True)
-    unit.write_text(systemd_unit(agent.name, engine, run_args(config, agent.name, ports, engine, gpu_available(config))))
+    text = systemd_unit(agent.name, engine, run_args(config, agent.name, ports, engine, gpu_available(config)))
+    changed = unit.exists() and unit.read_text() != text
+    unit.write_text(text)
     await run(["systemctl", "--user", "daemon-reload"], {})
     await run(["systemctl", "--user", "enable", "--now", unit.stem], {})
+    if changed:   # set up before with other flags: its container starts again with these (its profile stays)
+        await run(["systemctl", "--user", "restart", unit.stem], {})
 
     env = {"HERMES_HOME": home}
     hermes = config.hermes.bin
