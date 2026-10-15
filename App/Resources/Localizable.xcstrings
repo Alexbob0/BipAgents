@@ -3689,28 +3689,6 @@
         }
       }
     },
-    "La voix humaine de Kyutai, plus posée mais plus lente à démarrer." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kyutai’s human voice: more measured, but slower to start."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La voz humana de Kyutai, más pausada pero más lenta en arrancar."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die menschliche Stimme von Kyutai – ruhiger, aber langsamer beim Start."
-          }
-        }
-      }
-    },
     "Lancer" : {
       "localizations" : {
         "en" : {
@@ -7305,28 +7283,6 @@
         }
       }
     },
-    "Voix classique" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Classic voice"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voz clásica"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Klassische Stimme"
-          }
-        }
-      }
-    },
     "Voix de Bip" : {
       "localizations" : {
         "en" : {
@@ -7367,28 +7323,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone-Stimme"
-          }
-        }
-      }
-    },
-    "Voix humaine posée, celle du podcast" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Measured human voice, the podcast one"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voz humana pausada, la del podcast"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ruhige menschliche Stimme, wie im Podcast"
           }
         }
       }
@@ -11837,50 +11771,6 @@
         }
       }
     },
-    "Aucune : toujours le Bip" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "None: always the Bip"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ninguna: siempre el Bip"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine: immer der Bip"
-          }
-        }
-      }
-    },
-    "Elle parle pour : %@. Le Bip parle pour le reste, et quand le serveur ne répond pas. Les usages se choisissent dans Réglages › Voix." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "It speaks for: %@. The Bip speaks for the rest, and when the server doesn’t answer. Choose what it speaks for in Settings › Voice."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Habla para: %@. El Bip habla para lo demás, y cuando el servidor no responde. Elige sus usos en Ajustes › Voz."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sie spricht für: %@. Der Bip spricht für den Rest und wenn der Server nicht antwortet. Wofür, wählst du unter Einstellungen › Stimme."
-          }
-        }
-      }
-    },
     "Le réglage n’a pas pu être enregistré sur le serveur. Réessaie dans un instant." : {
       "localizations" : {
         "en" : {
@@ -11969,28 +11859,6 @@
         }
       }
     },
-    "Ton serveur ne parle pour aucun usage pour l’instant : choisis-les dans Réglages › Voix." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Your server speaks for nothing yet: choose what in Settings › Voice."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tu servidor aún no habla para nada: elígelo en Ajustes › Voz."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dein Server spricht noch für nichts: wähle es unter Einstellungen › Stimme."
-          }
-        }
-      }
-    },
     "Voix %lld" : {
       "localizations" : {
         "en" : {
@@ -12031,6 +11899,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Server-Stimme"
+          }
+        }
+      }
+    },
+    "Relais" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relay"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relevo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vertretung"
+          }
+        }
+      }
+    },
+    "Le Bip qui parle quand ton serveur ne répond pas. Ce pour quoi ton modèle parle se choisit dans Réglages › Voix." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Bip that speaks when your server doesn’t answer. What your model speaks for is chosen in Settings › Voice."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Bip que habla cuando tu servidor no responde. Para qué habla tu modelo se elige en Ajustes › Voz."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Bip, der spricht, wenn dein Server nicht antwortet. Wofür dein Modell spricht, wählst du unter Einstellungen › Stimme."
+          }
+        }
+      }
+    },
+    "Le Bip qui parle pour : %@, et quand ton serveur ne répond pas. Ce pour quoi ton modèle parle se choisit dans Réglages › Voix." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Bip that speaks for: %@, and when your server doesn’t answer. What your model speaks for is chosen in Settings › Voice."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Bip que habla para: %@, y cuando tu servidor no responde. Para qué habla tu modelo se elige en Ajustes › Voz."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Bip, der spricht für: %@, und wenn dein Server nicht antwortet. Wofür dein Modell spricht, wählst du unter Einstellungen › Stimme."
+          }
+        }
+      }
+    },
+    "Il répond presque instantanément." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It answers almost instantly."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Responde casi al instante."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Er antwortet fast sofort."
           }
         }
       }

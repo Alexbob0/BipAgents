@@ -196,11 +196,12 @@ struct EditAgentStyleView: View {
         Binding { agent.language } set: { agent.config.language = $0.rawValue }
     }
 
-    /// « Voix 2 · Galet »: its server voice, if any, then its Bip.
+    /// « Voix 2 » (its voice model's) or « Galet »: the voice checked for it.
     private var voiceSummary: String {
-        let bip = AgentVoices.option(for: agent.voiceChoice).name
-        guard let server = AgentVoices.server(for: agent), let id = agent.serverVoiceChoice else { return bip }
-        return "\(server.name(of: id, in: agent.language)) · \(bip)"
+        guard let server = AgentVoices.server(for: agent), let id = agent.serverVoiceChoice else {
+            return AgentVoices.option(for: agent.voiceChoice).name
+        }
+        return server.name(of: id, in: agent.language)
     }
 
     /// The bridge reads a short sentence with a voice of the voice server (cached on the phone).

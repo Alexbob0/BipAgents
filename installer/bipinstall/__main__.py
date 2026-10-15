@@ -163,11 +163,8 @@ def pocket_running() -> bool:
     return voice_engine_answers("http://127.0.0.1:8098")
 
 
-KYUTAI_URL = "http://127.0.0.1:8097"
-
-
 def voice_engine_answers(base_url: str) -> bool:
-    """Whether a voice engine (Pocket, Kyutai: same `/health`) already runs there."""
+    """Whether a voice engine (Pocket) already runs there."""
     try:
         return httpx.get(f"{base_url.rstrip('/')}/health", timeout=2).status_code == 200
     except httpx.HTTPError:
@@ -237,10 +234,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--relay-key", help="this install's relay key (given by the administrator)")
     parser.add_argument("--ports", type=int, help="the first port of this install's block (default: the first free one)")
     parser.add_argument("--languages", default="fr,en", help="voices to load: fr, en, es, de")
-    parser.add_argument("--kyutai-url", help="a Kyutai voice server on another machine (default: the one running on "
-                                             "this machine, if any)")
-    parser.add_argument("--voice-server", help="your own voice model: a TTS server with OpenAI's /v1/audio/speech "
-                                               "(default: look for one on the local network, then ask)")
+    parser.add_argument("--voice-server", "--kyutai-url",
+                        help="your own voice model: a TTS server with OpenAI's /v1/audio/speech, Kyutai's included "
+                             "(default: look for one on this machine and the local network, then ask)")
     parser.add_argument("--voice-uses", help="what it speaks for, among live, replies, reading (default: asked)")
     parser.add_argument("--no-tailscale", action="store_true",
                         help="this machine only, nothing published on a tailnet (tests, or a setup done by hand)")
@@ -475,15 +471,6 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         label, path, content = pocket_service(inst, machine.system, args.languages)
         write(path, content, runner)
         start_service(machine.system, label, path, runner)
-
-    # Kyutai (the human voice, the podcasts) is never installed here: it is shared when it already runs, on whatever
-    # GPU it was set up (an administrator's, or another machine given with --kyutai-url).
-    kyutai = getattr(args, "kyutai_url", None) or KYUTAI_URL
-    if voice_engine_answers(kyutai):
-        inst.kyutai_url = kyutai.rstrip("/")
-        say(f"  Kyutai (human voice, podcasts) answers at {inst.kyutai_url}: I'll share it.")
-    elif getattr(args, "kyutai_url", None):
-        say(ui.note(f"Kyutai isn't answering at {kyutai}: Bip voices only (Pocket)."))
 
     inst.voice_server = own_voice_model(args, machine)
     if machine.system == "macos":

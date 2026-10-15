@@ -3,8 +3,8 @@ import SwiftUI
 import VoiceKit
 
 /// A voice an agent can speak with. `id` is the choice stored with the agent: `pocket:<name>` for the Bips (Kyutai
-/// Pocket TTS, `voices/<language>/`), a Kyutai alias otherwise. The bridge receives it per language
-/// (`AgentVoices.spoken`). The voices of the person's own voice server are not here: the bridge lists them.
+/// Pocket TTS, `voices/<language>/`), or the iPhone's. The bridge receives it per language (`AgentVoices.spoken`). The
+/// voices of the person's own voice server (Drama 3, Kokoro, Kyutai…) are not here: the bridge lists them.
 struct AgentVoiceOption: Identifiable, Hashable {
     let id: String
     let name: String
@@ -96,19 +96,14 @@ enum AgentVoices {
     ]
     /// Bip voices that were replaced (the first series): agents that had picked one go back to their category's.
     static let retired: Set<String> = ["pocket:loutre", "pocket:chat2", "pocket:lutin"]
-    /// Kyutai 1.6B's human voice, the one of the morning podcast.
-    static let classic = AgentVoiceOption(id: "5476", name: String(localized: "Voix classique"), character: String(localized: "Voix humaine posée, celle du podcast"), sample: nil)
-
     /// Apple's voice, on the phone: no server involved (Live, « Écouter », voice replies).
     static let iphone = AgentVoiceOption(id: "system", name: String(localized: "Voix de l’iPhone"),
                                          character: String(localized: "La voix d’Apple, directement sur le téléphone, sans serveur"), sample: nil)
 
-    static var all: [AgentVoiceOption] { bips + [classic, iphone] }
+    static var all: [AgentVoiceOption] { bips + [iphone] }
 
-    /// Pocket's Bips speak every language; Kyutai's human voice is French.
-    static func options(in language: AgentLanguage) -> [AgentVoiceOption] {
-        language == .french ? bips + [classic, iphone] : bips + [iphone]
-    }
+    /// Pocket's Bips speak every language.
+    static func options(in language: AgentLanguage) -> [AgentVoiceOption] { all }
 
     /// What the bridge receives: `pocket:galet` in French, `pocket:en/galet` in English…
     static func spoken(_ id: String, in language: AgentLanguage) -> String {
@@ -135,11 +130,10 @@ extension AgentCategory {
 }
 
 extension AgentProfile {
-    /// The Bip (or Kyutai, or iPhone) voice picked for this agent in its language, else its category's Bip.
+    /// The Bip (or iPhone) voice picked for this agent, else its category's Bip (also for a Kyutai voice an earlier
+    /// app offered: Kyutai is now a voice server like the others).
     var voiceChoice: String {
-        guard let picked = config.voice,
-              AgentVoices.options(in: language).contains(where: { $0.id == picked })
-                || (language == .french && !picked.hasPrefix(AgentVoices.dramaPrefix))
+        guard let picked = config.voice, AgentVoices.options(in: language).contains(where: { $0.id == picked })
         else { return appearance.category.defaultVoice }
         return picked
     }
@@ -165,8 +159,8 @@ extension AgentProfile {
     func usesSystemVoice(for use: VoiceUse) -> Bool { voice(for: use) == AgentVoices.iphone.id }
 }
 
-/// Voice choice for one agent: its voice on the person's voice server (« Voix 1, Voix 2… »), and its Bip, with a
-/// preview of each.
+/// Voice choice for one agent: one voice, checked, among its voice model's (« Voix 1, Voix 2… ») and the Bips. With a
+/// voice model's voice, its relay: the Bip that speaks for the other uses, and when the server does not answer.
 struct AgentVoicePicker: View {
     @Binding var voice: String?
     @Binding var serverVoice: String?
@@ -182,21 +176,37 @@ struct AgentVoicePicker: View {
 
     private var defaultVoice: String { category.defaultVoice }
 
+    /// The Bip picked (the agent's voice, or the relay of its server voice).
     private var selected: String {
         guard let voice, AgentVoices.options(in: language).contains(where: { $0.id == voice }) else { return defaultVoice }
         return voice
     }
 
+    private var serverVoices: [String] { server?.voices(in: language) ?? [] }
+
     var body: some View {
         List {
-            if let server, !server.voices(in: language).isEmpty {
+            if let server, !serverVoices.isEmpty {
                 Section {
-                    serverRow(nil, server: server)
-                    ForEach(server.voices(in: language), id: \.self) { serverRow($0, server: server) }
+                    ForEach(serverVoices, id: \.self) { serverRow($0, server: server) }
                 } header: {
                     Text("Ton modèle de voix")
-                } footer: {
-                    Text(serverFooter(server))
+                }
+                if serverVoice != nil {
+                    Section {
+                        NavigationLink {
+                            RelayBipPicker(voice: $voice, defaultVoice: defaultVoice, language: language)
+                        } label: {
+                            HStack {
+                                Text("Relais").font(Theme.body(16, weight: .heavy))
+                                Spacer()
+                                Text(AgentVoices.option(for: selected).name).font(Theme.body(15, weight: .bold))
+                                    .foregroundStyle(Theme.ink2)
+                            }
+                        }
+                    } footer: {
+                        Text(relayFooter(server))
+                    }
                 }
             }
             Section {
@@ -205,13 +215,6 @@ struct AgentVoicePicker: View {
                 Text("Voix de Bip")
             } footer: {
                 Text("Voix synthétiques calculées avec Kyutai Pocket TTS : la réponse démarre presque instantanément.")
-            }
-            if language == .french {
-                Section {
-                    row(AgentVoices.classic)
-                } footer: {
-                    Text("La voix humaine de Kyutai, plus posée mais plus lente à démarrer.")
-                }
             }
             Section {
                 row(AgentVoices.iphone)
@@ -224,32 +227,34 @@ struct AgentVoicePicker: View {
         .onDisappear { player.stop() }
     }
 
-    private func serverFooter(_ server: VoiceServerInfo) -> String {
-        let uses = VoiceUse.allCases.filter(server.takes).map(\.label)
-        guard !uses.isEmpty else {
-            return String(localized: "Ton serveur ne parle pour aucun usage pour l’instant : choisis-les dans Réglages › Voix.")
+    /// What the relay Bip speaks for: the uses the server leaves, and its absences.
+    private func relayFooter(_ server: VoiceServerInfo) -> String {
+        let left = VoiceUse.allCases.filter { !server.takes($0) }.map(\.label)
+        if left.isEmpty {
+            return String(localized: "Le Bip qui parle quand ton serveur ne répond pas. Ce pour quoi ton modèle parle se choisit dans Réglages › Voix.")
         }
-        return String(localized: "Elle parle pour : \(uses.formatted(.list(type: .and))). Le Bip parle pour le reste, et quand le serveur ne répond pas. Les usages se choisissent dans Réglages › Voix.")
+        return String(localized: "Le Bip qui parle pour : \(left.formatted(.list(type: .and))), et quand ton serveur ne répond pas. Ce pour quoi ton modèle parle se choisit dans Réglages › Voix.")
     }
 
-    private func serverRow(_ id: String?, server: VoiceServerInfo) -> some View {
-        HStack(spacing: 12) {
+    private func serverRow(_ id: String, server: VoiceServerInfo) -> some View {
+        let name = server.name(of: id, in: language)
+        return HStack(spacing: 12) {
             Button {
                 serverVoice = id
+                if voice == AgentVoices.iphone.id { voice = nil }   // its relay is a Bip: the bridge reads with it
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: serverVoice == id ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 22))
                         .foregroundStyle(serverVoice == id ? Theme.ink : Theme.muted)
-                    Text(id.map { server.name(of: $0, in: language) } ?? String(localized: "Aucune : toujours le Bip"))
-                        .font(Theme.body(16, weight: .heavy))
+                    Text(name).font(Theme.body(16, weight: .heavy))
                     Spacer(minLength: 0)
                 }
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            if let id, AgentVoices.bundledSample(ofServerVoice: id) != nil || preview != nil {
-                previewButton(id: id, name: server.name(of: id, in: language)) {
+            if AgentVoices.bundledSample(ofServerVoice: id) != nil || preview != nil {
+                previewButton(id: id, name: name) {
                     if let bundled = AgentVoices.bundledSample(ofServerVoice: id) { return bundled }
                     if let ready = previews[id] { return ready }
                     guard let preview else { return nil }
@@ -288,15 +293,18 @@ struct AgentVoicePicker: View {
         .accessibilityLabel(playing ? String(localized: "Arrêter l’aperçu") : String(localized: "Écouter \(name)"))
     }
 
+    /// A Bip (or the iPhone's voice) picked becomes the agent's voice, for everything: no voice model's voice any more.
     private func row(_ option: AgentVoiceOption) -> some View {
-        HStack(spacing: 12) {
+        let checked = serverVoice == nil && selected == option.id
+        return HStack(spacing: 12) {
             Button {
                 voice = option.id == defaultVoice ? nil : option.id
+                serverVoice = nil
             } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: selected == option.id ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: checked ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 22))
-                        .foregroundStyle(selected == option.id ? Theme.ink : Theme.muted)
+                        .foregroundStyle(checked ? Theme.ink : Theme.muted)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             Text(option.name).font(Theme.body(16, weight: .heavy))
@@ -326,5 +334,62 @@ struct AgentVoicePicker: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// The Bip that relays an agent's voice model voice: for the uses the server leaves, and when it does not answer.
+private struct RelayBipPicker: View {
+    @Binding var voice: String?
+    var defaultVoice: String
+    var language: AgentLanguage
+    @State private var player = VoiceNotePlayer()
+
+    private var selected: String {
+        guard let voice, AgentVoices.bips.contains(where: { $0.id == voice }) else { return defaultVoice }
+        return voice
+    }
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(AgentVoices.bips) { option in
+                    HStack(spacing: 12) {
+                        Button {
+                            voice = option.id == defaultVoice ? nil : option.id
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: selected == option.id ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(selected == option.id ? Theme.ink : Theme.muted)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(option.name).font(Theme.body(16, weight: .heavy))
+                                    Text(option.character).font(Theme.body(13)).foregroundStyle(Theme.ink2)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        if let url = option.sampleURL(in: language) {
+                            Button { player.toggle(url) } label: {
+                                Image(systemName: player.playingURL == url ? "stop.fill" : "play.fill")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 34, height: 34)
+                                    .background(Theme.ink, in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "Écouter \(option.name)"))
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            } footer: {
+                Text("Il répond presque instantanément.")
+            }
+        }
+        .navigationTitle("Relais")
+        .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { player.stop() }
     }
 }

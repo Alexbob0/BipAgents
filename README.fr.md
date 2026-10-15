@@ -104,7 +104,7 @@ flowchart LR
 
 **Toute la famille sur un serveur** : une installation par personne, chacune dans son compte, préparée par l'administrateur avec `install.sh family add <prénom>` — [qui lance quoi, depuis quel compte](installer/README.fr.md#plusieurs-personnes-sur-une-machine).
 
-> 🎙️ **Bonus** : avec un GPU (Nvidia, ou AMD récent), Kyutai TTS 1.6B ajoute une voix humaine posée et sert à un podcast du matin généré par un agent. Facultatif, cf. la fin du guide.
+> 🎙️ **Bonus** : avec un GPU, ton propre modèle de voix (Fish Audio Drama 3, Kokoro, Kyutai…) peut parler à la place des Bips pour le Live, les réponses vocales ou la lecture des messages. Facultatif, cf. la fin du guide.
 
 <details>
 <summary><b>🗂️ Le dépôt</b></summary>

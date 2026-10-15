@@ -21,7 +21,7 @@ Nothing is exposed to the Internet: everything goes through your tailnet, over H
 |---|---|---|
 | **Mac mini** Apple Silicon | 16 GB recommended | Measured on M4: first audio ≈ 50 ms, ≈ 6.5× real time, ≈ 0.6 GB for the 4 languages. Disable sleep and enable automatic login (the services are LaunchAgents). |
 | **VPS** Linux | 4 vCPU (2 of them for Pocket), 8 GB | **Dedicated** vCPUs preferably (shared vCPUs slow the voice down). ARM (Ampere, Hetzner CAX) or x86 with `--quantize`. Hermes calls its language model through an API, it does not need a GPU. Not measured: check the first audio latency after installation. |
-| **Linux server** with an Nvidia GPU | | Everything above, plus the Kyutai 1.6B bonus (human voice, podcast) below. |
+| **Linux server** with a GPU | | Everything above, plus the bonus below: your own voice model. |
 
 ## 1. Tailscale
 
@@ -96,7 +96,7 @@ In `~/.config/hermes-ios/bridge.toml`, for a machine without a GPU:
 
 ```toml
 [kyutai]
-enabled = false                 # no Kyutai 1.6B: the Bips do everything
+enabled = false                 # Kyutai 1.6B, if you run it, is a [voice_server] like any other (see the end)
 
 [pocket]
 url = "http://127.0.0.1:8098"
@@ -183,18 +183,20 @@ tailnet was down, it asks you to scan a new QR code. Notifications still need th
 Apple Developer account. Create an APNs key (.p8) and fill in `[apns]`, see [`bridge/README.md`](../bridge/README.md#apns).
 Without it, everything else works, just without notifications.
 
-## Bonus: the human voice and the podcast (Kyutai 1.6B, GPU)
+## Bonus: your own voice model (GPU)
 
-On a machine with an Nvidia GPU, the [Kyutai TTS 1.6B](https://github.com/kyutai-labs/delayed-streams-modeling) server
-adds a calm human voice ("Classic voice" in the app, in French) and powers the morning podcast (a separate Hermes
-skill, outside this repository). Run it on `:8097`, then in the bridge:
+With a GPU, a more expressive voice server can speak instead of the Bips for some uses: the Live, the spoken replies,
+the reading of messages. Any server with OpenAI's `POST /v1/audio/speech` will do: Fish Audio Drama 3 on audio.cpp
+(recipe in `tts/drama3/`), Kokoro, Kyutai TTS 1.6B… Run it, then in the bridge (or `install.sh voice`, which finds it
+on the network):
 
 ```toml
-[kyutai]
-enabled = true
-url = "http://127.0.0.1:8097"
-default_voice = "5476"
+[voice_server]
+url = "http://127.0.0.1:8880"
+live = true
+replies = true
+reading = true
 ```
 
-In French, if Pocket goes down, the bridge then falls back to this voice. Nothing else depends on it: the
-Bips, the four languages, the Inbox and notifications work without it.
+Its voices show up in the app as "Voice 1, Voice 2…" (agent › Voice). When it doesn't answer, the Bips take over.
+Nothing else depends on it: the Bips, the four languages, the Inbox and notifications work without it.
