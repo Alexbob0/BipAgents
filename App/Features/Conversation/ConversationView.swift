@@ -725,13 +725,43 @@ struct AssistantRow: View {
 struct ChatTableView: View {
     var table: ChatText.Table
     var cell: (String) -> Text
+    /// The width the reply leaves it.
+    @State private var available: CGFloat = 320
+
+    private static let padding: CGFloat = 20   // a cell's sides
+
+    /// Each column at its text's width when the table fits; otherwise the widest ones wrap first (never under 90 pt),
+    /// and a table still too wide scrolls sideways. Fixed widths give each wrapped cell its true height.
+    private var widths: [CGFloat] {
+        let natural = table.header.indices.map { column in
+            ([Self.measure(table.header[column], bold: true)] + table.rows.map { Self.measure($0[column], bold: false) }).max() ?? 44
+        }
+        let room = available - Self.padding * CGFloat(natural.count)
+        guard natural.reduce(0, +) > room, let widest = natural.max() else { return natural.map { max($0, 24) } }
+        var low: CGFloat = 90, high = widest
+        for _ in 0..<24 {
+            let middle = (low + high) / 2
+            if natural.map({ min($0, middle) }).reduce(0, +) > room { high = middle } else { low = middle }
+        }
+        return natural.map { max(min($0, low), 24) }
+    }
+
+    /// The text's width on one line, as the reply draws it (markdown marks left out), with a little room.
+    private static func measure(_ text: String, bold: Bool) -> CGFloat {
+        let plain = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            .map { String($0.characters) } ?? text
+        let font = UIFont.systemFont(ofSize: 14, weight: bold ? .heavy : .semibold)
+        let width = (plain as NSString).size(withAttributes: [.font: font]).width
+        return ceil(width * 1.04) + 2
+    }
 
     var body: some View {
+        let widths = widths
         ScrollView(.horizontal, showsIndicators: false) {
             Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                 GridRow {
                     ForEach(table.header.indices, id: \.self) { column in
-                        cellView(table.header[column], column: column, header: true)
+                        cellView(table.header[column], column: column, width: widths[column], header: true)
                     }
                 }
                 .background(Theme.field)
@@ -739,7 +769,7 @@ struct ChatTableView: View {
                     Divider().gridCellUnsizedAxes(.horizontal)
                     GridRow {
                         ForEach(table.rows[row].indices, id: \.self) { column in
-                            cellView(table.rows[row][column], column: column, header: false)
+                            cellView(table.rows[row][column], column: column, width: widths[column], header: false)
                         }
                     }
                 }
@@ -749,16 +779,19 @@ struct ChatTableView: View {
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { available = $0 }
     }
 
-    private func cellView(_ text: String, column: Int, header: Bool) -> some View {
+    private func cellView(_ text: String, column: Int, width: CGFloat, header: Bool) -> some View {
         let alignment = table.alignments[column]
+        let frame: Alignment = alignment == .trailing ? .trailing : alignment == .center ? .center : .leading
         return cell(header ? "**\(text)**" : text)
             .foregroundStyle(Theme.ink)
             .multilineTextAlignment(alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
-            .frame(minWidth: 44, maxWidth: 220, alignment: alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 10)
+            .frame(width: width, alignment: frame)
+            .padding(.horizontal, Self.padding / 2)
             .padding(.vertical, 7)
             .gridColumnAlignment(alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
     }
