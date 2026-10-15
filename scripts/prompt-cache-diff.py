@@ -2,12 +2,13 @@
 """Where consecutive requests of a Hermes session stop sharing their beginning: why a model server's prompt cache
 misses (it can only reuse the part of a prompt that is identical to an earlier one).
 
-Reads the dumps Hermes writes with HERMES_DUMP_REQUESTS=1 (request_dump_<session>_<time>.json in a profile's logs/)
+Reads the dumps Hermes writes with HERMES_DUMP_REQUESTS=1 (request_dump_<session>_<time>.json in a HERMES_HOME's or
+profile's sessions/, searched under the folders given)
 and prints positions, sizes, roles and tool names only, never the text of a message. A heading is named only when
 Hermes' own source contains it word for word (a section of the system prompt, not a line from a discussion or a
 memory); any other is shown as « (hidden) ».
 
-    prompt-cache-diff.py <logs dir>... [--hermes-source ~/.hermes/hermes-agent] [--session <id>]
+    prompt-cache-diff.py <folder>... [--hermes-source ~/.hermes/hermes-agent] [--session <id>]
 """
 import argparse
 import json
@@ -96,11 +97,11 @@ def hermes_source(root: Path) -> str:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("logs", nargs="+", type=Path)
+    parser.add_argument("logs", nargs="+", type=Path)   # searched recursively
     parser.add_argument("--hermes-source", type=Path, default=Path.home() / ".hermes" / "hermes-agent")
     parser.add_argument("--session")
     args = parser.parse_args(argv)
-    dumps = sorted((p for d in args.logs for p in d.glob("request_dump_*.json")), key=lambda p: p.stat().st_mtime)
+    dumps = sorted((p for d in args.logs for p in d.rglob("request_dump_*.json")), key=lambda p: p.stat().st_mtime)
     if not dumps:
         print("No request dump: is HERMES_DUMP_REQUESTS=1 set for that gateway, and was a message sent since?")
         return 1
