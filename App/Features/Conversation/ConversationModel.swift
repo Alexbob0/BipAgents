@@ -117,7 +117,7 @@ final class ConversationModel {
             uploader = nil
         }
         bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent))
-        voice = VoiceEngine(configuration: .init(locale: agent.language.locale), tts: store.ttsProvider(for: agent))
+        voice = VoiceEngine(configuration: .init(locale: agent.language.locale), tts: store.ttsProvider(for: agent, use: .replies))
     }
 
     /// "Écouter" on an assistant message (tap again to stop).
@@ -1181,11 +1181,12 @@ final class ConversationModel {
     /// Speaks `text` while Kyutai streams it (first audio in ~1 s), recording it as a voice note stored with the
     /// session under `itemID`. Falls back to the whole-file route, then to the live voice.
     private func generateVoice(for itemID: UUID, text: String, anchor: String, autoplay: Bool) {
-        if agent.usesSystemVoice { return speakLive(itemID: itemID, text: text) } // the iPhone's voice, picked as such
+        if agent.usesSystemVoice(for: .replies) { return speakLive(itemID: itemID, text: text) } // the iPhone's voice, picked as such
         guard autoplay, let bridgeURL = LocalLink.bridgeURL(for: agent), let key = store.secrets(for: agent)?.bridgeKey else {
             return generateVoiceFile(for: itemID, text: text, anchor: anchor, autoplay: autoplay)
         }
-        let tts = BridgeTTSProvider(bridgeURL: bridgeURL, bridgeKey: key, voice: agent.voice, session: LocalLink.session(for: agent))
+        let tts = BridgeTTSProvider(bridgeURL: bridgeURL, bridgeKey: key, voice: agent.voice(for: .replies),
+                                    session: LocalLink.session(for: agent))
         player.stop()
         voiceTask?.cancel()
         voiceReplies[itemID] = .preparing
@@ -1230,8 +1231,10 @@ final class ConversationModel {
         voiceReplies[itemID] = .preparing
         Task {
             do {
-                let data = try await bridge.messageAudio(text: text, agent: agent.bridgeName, voice: agent.voice)
-                var url = VoiceNotePlayer.cacheURL(name: "reply-\(itemID.uuidString).mp3")
+                let voice = agent.voice(for: .replies)
+                let format = voice.hasPrefix("server:") ? "wav" : "mp3"
+                let data = try await bridge.messageAudio(text: text, agent: agent.bridgeName, voice: voice, format: format)
+                var url = VoiceNotePlayer.cacheURL(name: "reply-\(itemID.uuidString).\(format)")
                 try data.write(to: url)
                 let duration = VoiceNotePlayer.duration(of: url)
                 if let sessionID {

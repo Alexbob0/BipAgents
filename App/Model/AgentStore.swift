@@ -233,6 +233,38 @@ final class AgentStore {
         agents[index] = profile
         save()
         if languageChanged { Task { await tellLanguage(of: profile) } }
+        Task { await tellVoices(of: profile) }
+    }
+
+    // MARK: Voices
+
+    /// The voices already told to the agents' bridges (« <agent id>:<voice>|<server voice> »), each once per change.
+    private static let toldVoicesKey = "toldAgentVoices"
+
+    /// Tells the agent's bridge its Bip and its voice server voice: the bridge reads messages and reports aloud with
+    /// them (the app picks its own per use).
+    func tellVoices(of agent: AgentProfile, bridge: BridgeClient? = nil) async {
+        // The iPhone's voice is the phone's: the bridge reads with the category's Bip instead.
+        let voice = agent.voiceChoice == AgentVoices.iphone.id
+            ? AgentVoices.spoken(agent.appearance.category.defaultVoice, in: agent.language) : agent.voice
+        let server = agent.serverVoiceChoice.map { "server:\(agent.language.rawValue)/\($0)" }
+        let mark = "\(agent.id.uuidString):\(voice)|\(server ?? "")"
+        let told = UserDefaults.standard.stringArray(forKey: Self.toldVoicesKey) ?? []
+        guard !told.contains(mark), let bridge = bridge ?? BridgeClient(agent: agent, secrets: secrets(for: agent)),
+              (try? await bridge.setAgentVoices(agent.bridgeName, voice: voice, serverVoice: server)) != nil
+        else { return }   // unreachable, or an older bridge: told on a later refresh
+        let others = told.filter { !$0.hasPrefix("\(agent.id.uuidString):") }
+        UserDefaults.standard.set(others + [mark], forKey: Self.toldVoicesKey)
+    }
+
+    /// Which uses the voice server of `agent`'s bridge speaks for; every agent of that bridge learns the answer.
+    func setVoiceUses(_ uses: [String: Bool], via agent: AgentProfile) async throws {
+        guard let bridge = BridgeClient(agent: agent, secrets: secrets(for: agent)),
+              var server = AgentVoices.server(for: agent) else { return }
+        server.uses = try await bridge.setVoiceUses(uses)
+        for other in agents where other.config.bridgeURL == agent.config.bridgeURL {
+            AgentVoices.setServer(server, for: other)
+        }
     }
 
     // MARK: Language
@@ -311,8 +343,9 @@ final class AgentStore {
             await refreshLocalDoor(of: agent, secrets: secrets)
             await tellLanguage(of: agent)
             if let bridge = BridgeClient(tailnetOf: agent, secrets: secrets) {
-                if let drama = try? await withTimeout(8, { try await bridge.servesDrama() }) {
-                    AgentVoices.setServesDrama(drama, for: agent)
+                if let server = try? await withTimeout(8, { try await bridge.voiceServer() }) {
+                    AgentVoices.setServer(server, for: agent)
+                    await tellVoices(of: agent, bridge: bridge)
                 }
                 if (try? await withTimeout(8) { try await bridge.modelIsUp() }) == false {
                     reachability[agent.id] = .modelDown

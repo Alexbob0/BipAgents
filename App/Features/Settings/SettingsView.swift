@@ -78,6 +78,11 @@ struct SettingsView: View {
                     } label: {
                         Label("Réponse vocale", systemImage: "waveform")
                     }
+                    if store.agents.contains(where: { AgentVoices.server(for: $0) != nil }) {
+                        NavigationLink { VoiceServerView() } label: {
+                            Label("Ton modèle de voix", systemImage: "server.rack")
+                        }
+                    }
                 } header: {
                     Text("Voix")
                 } footer: {
@@ -161,10 +166,11 @@ struct EditAgentStyleView: View {
                             settingsRow("Langue", systemImage: "globe", value: agent.language.nativeName)
                         }
                         NavigationLink {
-                            AgentVoicePicker(voice: $agent.config.voice, category: agent.appearance.category, language: agent.language,
-                                             drama: AgentVoices.servesDrama(agent))
+                            AgentVoicePicker(voice: $agent.config.voice, serverVoice: $agent.config.serverVoice,
+                                             category: agent.appearance.category, language: agent.language,
+                                             server: AgentVoices.server(for: agent), preview: previewServerVoice)
                         } label: {
-                            settingsRow("Voix", systemImage: "waveform", value: AgentVoices.option(for: agent.voiceChoice).name)
+                            settingsRow("Voix", systemImage: "waveform", value: voiceSummary)
                         }
                     }
                     .buttonStyle(.plain)
@@ -188,6 +194,28 @@ struct EditAgentStyleView: View {
 
     private var language: Binding<AgentLanguage> {
         Binding { agent.language } set: { agent.config.language = $0.rawValue }
+    }
+
+    /// « Voix 2 · Galet »: its server voice, if any, then its Bip.
+    private var voiceSummary: String {
+        let bip = AgentVoices.option(for: agent.voiceChoice).name
+        guard let server = AgentVoices.server(for: agent), let id = agent.serverVoiceChoice else { return bip }
+        return "\(server.name(of: id, in: agent.language)) · \(bip)"
+    }
+
+    /// The bridge reads a short sentence with a voice of the voice server (cached on the phone).
+    private func previewServerVoice(_ id: String) async throws -> URL {
+        guard let bridge = BridgeClient(agent: agent, secrets: store.secrets(for: agent)) else { throw HermesError.unsupported("bridge") }
+        let text = switch agent.language {
+        case .english: "Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon."
+        case .spanish: "¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde."
+        case .german: "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag."
+        default: "Coucou ! J’ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi."
+        }
+        let data = try await bridge.voicePreview(text: text, agent: agent.bridgeName, voice: "server:\(agent.language.rawValue)/\(id)")
+        let url = VoiceNotePlayer.cacheURL(name: "server-voice-\(agent.language.rawValue)-\(id.replacingOccurrences(of: "/", with: "_")).wav")
+        try data.write(to: url)
+        return url
     }
 
     private func settingsRow(_ title: LocalizedStringKey, systemImage: String, value: String, chevron: Bool = true) -> some View {

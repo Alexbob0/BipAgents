@@ -11815,244 +11815,222 @@
         }
       }
     },
-    "Voix naturelles" : {
+    "Activé : la voix choisie sur ton serveur pour chaque agent (Réglages › Agents › Voix). Désactivé : son Bip, qui répond presque instantanément. Si le serveur ne répond pas, le Bip prend le relais." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Natural voices"
+            "value" : "On: the voice picked on your server for each agent (Settings › Agents › Voice). Off: its Bip, which answers almost instantly. If the server doesn’t answer, the Bip takes over."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Voces naturales"
+            "value" : "Activado: la voz elegida en tu servidor para cada agente (Ajustes › Agentes › Voz). Desactivado: su Bip, que responde casi al instante. Si el servidor no responde, el Bip toma el relevo."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Natürliche Stimmen"
+            "value" : "An: die auf deinem Server gewählte Stimme jedes Agenten (Einstellungen › Agenten › Stimme). Aus: sein Bip, der fast sofort antwortet. Antwortet der Server nicht, übernimmt der Bip."
           }
         }
       }
     },
-    "Voix mascottes" : {
+    "Aucune : toujours le Bip" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mascot voices"
+            "value" : "None: always the Bip"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Voces de mascota"
+            "value" : "Ninguna: siempre el Bip"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Maskottchen-Stimmen"
+            "value" : "Keine: immer der Bip"
           }
         }
       }
     },
-    "Voix de Bip rapides" : {
+    "Elle parle pour : %@. Le Bip parle pour le reste, et quand le serveur ne répond pas. Les usages se choisissent dans Réglages › Voix." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quick Bip voices"
+            "value" : "It speaks for: %@. The Bip speaks for the rest, and when the server doesn’t answer. Choose what it speaks for in Settings › Voice."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Voces Bip rápidas"
+            "value" : "Habla para: %@. El Bip habla para lo demás, y cuando el servidor no responde. Elige sus usos en Ajustes › Voz."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schnelle Bip-Stimmen"
+            "value" : "Sie spricht für: %@. Der Bip spricht für den Rest und wenn der Server nicht antwortet. Wofür, wählst du unter Einstellungen › Stimme."
           }
         }
       }
     },
-    "Voix expressives calculées sur le serveur avec Fish Audio Drama 3. Built with Fish Audio." : {
+    "Le réglage n’a pas pu être enregistré sur le serveur. Réessaie dans un instant." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Expressive voices computed on the server with Fish Audio Drama 3. Built with Fish Audio."
+            "value" : "The setting couldn’t be saved on the server. Try again in a moment."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Voces expresivas calculadas en el servidor con Fish Audio Drama 3. Built with Fish Audio."
+            "value" : "No se pudo guardar el ajuste en el servidor. Vuelve a intentarlo en un momento."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ausdrucksstarke Stimmen, auf dem Server mit Fish Audio Drama 3 berechnet. Built with Fish Audio."
+            "value" : "Die Einstellung konnte nicht auf dem Server gespeichert werden. Versuch es gleich noch einmal."
           }
         }
       }
     },
-    "Grave et posée" : {
+    "Lecture des messages" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deep and steady"
+            "value" : "Reading messages aloud"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Grave y serena"
+            "value" : "Lectura de mensajes"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tief und ruhig"
+            "value" : "Nachrichten vorlesen"
           }
         }
       }
     },
-    "Grave et chaleureuse" : {
+    "Réponses vocales" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deep and warm"
+            "value" : "Spoken replies"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Grave y cálida"
+            "value" : "Respuestas habladas"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tief und warm"
+            "value" : "Gesprochene Antworten"
           }
         }
       }
     },
-    "Médium et claire" : {
+    "Ton modèle de voix" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mid-range and clear"
+            "value" : "Your voice model"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Media y clara"
+            "value" : "Tu modelo de voz"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mittel und klar"
+            "value" : "Dein Sprachmodell"
           }
         }
       }
     },
-    "Aiguë et douce" : {
+    "Ton serveur ne parle pour aucun usage pour l’instant : choisis-les dans Réglages › Voix." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Light and gentle"
+            "value" : "Your server speaks for nothing yet: choose what in Settings › Voice."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aguda y suave"
+            "value" : "Tu servidor aún no habla para nada: elígelo en Ajustes › Voz."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hell und sanft"
+            "value" : "Dein Server spricht noch für nichts: wähle es unter Einstellungen › Stimme."
           }
         }
       }
     },
-    "Mascotte espiègle, au timbre médium" : {
+    "Voix %lld" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Playful mascot, mid-range"
+            "value" : "Voice %lld"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mascota traviesa, timbre medio"
+            "value" : "Voz %lld"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verspieltes Maskottchen, mittlere Stimmlage"
+            "value" : "Stimme %lld"
           }
         }
       }
     },
-    "Mascotte vive et joyeuse" : {
+    "Voix du serveur" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lively, cheerful mascot"
+            "value" : "Server voice"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mascota viva y alegre"
+            "value" : "Voz del servidor"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lebhaftes, fröhliches Maskottchen"
-          }
-        }
-      }
-    },
-    "Mascotte aiguë et pétillante" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "High, bubbly mascot"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mascota aguda y chispeante"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hohes, sprudelndes Maskottchen"
+            "value" : "Server-Stimme"
           }
         }
       }

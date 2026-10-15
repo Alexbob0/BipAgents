@@ -611,12 +611,41 @@ struct BridgeClient: Sendable {
         return (url, fingerprint.lowercased())
     }
 
-    /// Whether the bridge has Drama 3's voices set up (its `/health` says `"drama": true` or `false`, down for now;
-    /// null or absent: not set up, or an older bridge).
-    func servesDrama() async throws -> Bool {
-        let (data, _) = try await session.data(for: request("health", authenticated: false))
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return json?["drama"] is Bool
+    /// `GET /v1/voices`: the person's own voice server (its voices and the uses it takes), nil when there is none.
+    /// An older bridge (no route) counts as none.
+    func voiceServer() async throws -> VoiceServerInfo? {
+        let data: Data
+        do {
+            data = try await send(request("v1/voices"))
+        } catch HermesError.http(let status, _, _) where status == 404 || status == 405 {
+            return nil
+        }
+        guard let server = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["server"] as? [String: Any]
+        else { return nil }
+        return VoiceServerInfo(voices: server["voices"] as? [String] ?? [], uses: server["uses"] as? [String: Bool] ?? [:])
+    }
+
+    /// `PUT /v1/voices/uses`: which uses the voice server speaks for.
+    func setVoiceUses(_ uses: [String: Bool]) async throws -> [String: Bool] {
+        var request = request("v1/voices/uses", method: "PUT")
+        request.httpBody = try JSONSerialization.data(withJSONObject: uses)
+        return (try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Bool]) ?? uses
+    }
+
+    /// `PUT /v1/agents/{id}/voices`: the agent's Bip and server voice, as the bridge reads messages aloud with them.
+    func setAgentVoices(_ agent: String, voice: String, serverVoice: String?) async throws {
+        var request = request("v1/agents/\(agent)/voices", method: "PUT")
+        let body: [String: Any] = ["voice": voice, "server_voice": serverVoice ?? NSNull()]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await send(request)
+    }
+
+    /// A short sentence in `voice`, as a WAV file (a voice server's preview).
+    func voicePreview(text: String, agent: String, voice: String) async throws -> Data {
+        var request = request("v1/tts/sentence", method: "POST")
+        request.timeoutInterval = 60
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text, "agent": agent, "voice": voice, "format": "wav"])
+        return try await send(request)
     }
 
     func health() async throws -> Bool {
@@ -755,10 +784,11 @@ struct BridgeClient: Sendable {
 
     /// A whole reply as one mp3 (voice-message mode): Kyutai batches the sentences, so this is much faster
     /// per second of audio than the call mode's sentence-by-sentence synthesis.
-    func messageAudio(text: String, agent: String, voice: String) async throws -> Data {
+    /// `format`: mp3, or wav for a voice server's voice (most make no mp3).
+    func messageAudio(text: String, agent: String, voice: String, format: String = "mp3") async throws -> Data {
         var request = request("v1/tts/message", method: "POST")
         request.timeoutInterval = 180
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text, "agent": agent, "voice": voice, "format": "mp3"])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text, "agent": agent, "voice": voice, "format": format])
         return try await send(request)
     }
 

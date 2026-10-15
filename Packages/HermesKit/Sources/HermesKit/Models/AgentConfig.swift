@@ -7,8 +7,10 @@ public struct AgentConfig: Sendable, Codable, Hashable, Identifiable {
     public var name: String
     /// e.g. `https://server.example.ts.net:8642`
     public var baseURL: URL
-    /// Kyutai voice alias, e.g. `5476`.
+    /// Kyutai voice alias, e.g. `5476`, or a Bip (`pocket:galet`).
     public var voice: String?
+    /// Its voice on the person's own voice server (the id that server knows), for the uses that go there.
+    public var serverVoice: String?
     public var colorTag: String?
     public var category: String?
     public var bridgeURL: URL?
