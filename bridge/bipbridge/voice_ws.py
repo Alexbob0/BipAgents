@@ -25,6 +25,7 @@ from .hermes import DELTA_TYPES, FLUSH_TYPES, TERMINAL_TYPES
 from .logs import fields
 from .textproc import SentenceSplitter
 from .tts import FORMATS, INTERACTIVE, Audio, TtsError
+from .voices import voice_for
 
 log = logging.getLogger("bipbridge.voice")
 
@@ -84,7 +85,7 @@ class VoiceSession:
         except (TypeError, ValueError):
             from_seq = 0
         await self.stop()
-        voice = str(message.get("voice") or agent.voice or self.config.default_voice)
+        voice = str(message.get("voice") or voice_for(self.config, agent, "live"))
         await self.send_json({"type": "following", "run_id": run_id, "agent": agent.name, "format": fmt,
                               "sample_rate": 24000, "channels": 1})
         log.info("voice follow", extra=fields(agent=agent.name, run_id=run_id, format=fmt))

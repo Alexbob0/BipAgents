@@ -128,6 +128,8 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 | `host`, `port` | `127.0.0.1`, `8643` | écoute locale |
 | `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | TTS Kyutai 1.6B (GPU) ; `enabled = false` : Pocket seul |
 | `[pocket] url`, `default_voice` | absent (désactivé), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` sert quand Kyutai est désactivé |
+| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading` | absent, `tts-1`, aucun, `[]`, `true` ×3 | le modèle de voix de la personne (OpenAI `/v1/audio/speech`), voir plus bas ; un ancien `[drama] url` en est un |
+| `[pronunciations.<langue>] <mot> = "<graphie>"` | aucun | les mots que les voix disent mal, réécrits (mots entiers, toute casse) |
 | `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push désactivé si vide | |
 | `[push] previews` | `false` | `false` : corps de notification générique, le texte transite par le tailnet |
@@ -188,6 +190,15 @@ est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si l
 `pocket:galet`, `pocket:ours`, cf. `voices/french/`) passe par Kyutai Pocket TTS (CPU, section `[pocket]`), avec sa
 propre file d'attente. Si Pocket n'est pas configuré, est injoignable ou échoue avant le premier son, la requête
 retombe sur la voix Kyutai par défaut (cet audio-là n'est pas mis en cache). `/health` indique `"pocket": true|false|null`.
+
+Modèle de voix personnel : `server:<langue>/<id>` (`server:fr/fr-mascotte-s17`, `server:en/af_bella`) va à
+`[voice_server]`, tout serveur doté du `POST /v1/audio/speech` d'OpenAI (Fish Audio Drama 3 sur audio.cpp, Kokoro,
+Kyutai…), rééchantillonné en 24 kHz. Un agent a son Bip (`voice`) et sa voix sur ce serveur (`server_voice`) ;
+`[voice_server] live`, `replies`, `reading` disent quels usages passent par le serveur (`voices.py` : `use` dans les
+routes TTS, la WebSocket du Live, la lecture de la boîte). En panne ou en échec avant le premier son : un Bip de la même
+langue parle. `GET /v1/voices` liste ses voix (son `GET /v1/audio/voices`, le `/v1/voices` de Kyutai, sinon `voices`) et
+ses usages ; `PUT /v1/voices/uses` et `PUT /v1/agents/{id}/voices` les changent dans le fichier de config. Les voix d'une
+ancienne app (`drama:<id>`) y vont aussi.
 
 Autres langues : `pocket:<langue>/<nom>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, cf.
 `voices/english|spanish|german/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =

@@ -24,6 +24,7 @@ from .logs import fields
 from .media import extract_media, resolve
 from .push import PushService
 from .store import Store, iso
+from .voices import voice_for
 from .tts import BACKGROUND, TtsError, TtsService
 
 log = logging.getLogger("bipbridge.ntfy")
@@ -154,7 +155,7 @@ class OutboxService:
         task = self._audio_tasks.get(item["id"])
         if task is None:
             agent = agent or self.config.agent(item["agent"])
-            voice = (agent.voice if agent else None) or self.config.default_voice
+            voice = voice_for(self.config, agent, "reading")
             task = asyncio.create_task(self._synthesize(item, voice))
             self._audio_tasks[item["id"]] = task
             task.add_done_callback(lambda _t, i=item["id"]: self._audio_tasks.pop(i, None))

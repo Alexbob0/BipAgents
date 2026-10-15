@@ -74,8 +74,14 @@ def test_kyutai_can_be_turned_off_for_pocket_only():
         parse_config({**base, "kyutai": {"enabled": False}})
 
 
-def test_drama_is_optional():
+def test_the_voice_server_is_optional_and_an_earlier_drama_section_is_one():
     base = {"bridge_key": "k" * 40, "pocket": {"url": "http://127.0.0.1:8098"}}
-    assert parse_config(base).drama_url is None
-    assert parse_config({**base, "drama": {"url": "http://127.0.0.1:8099/"}}).drama_url == "http://127.0.0.1:8099"
-    assert parse_config({**base, "drama": {"url": "http://127.0.0.1:8099", "enabled": False}}).drama_url is None
+    assert parse_config(base).voice_server is None
+    drama = parse_config({**base, "drama": {"url": "http://127.0.0.1:8099/"}}).voice_server
+    assert drama.url == "http://127.0.0.1:8099" and drama.model == "drama-3" and drama.stream_rate == 44100
+    assert drama.uses == {"live": True, "replies": True, "reading": True}
+    assert parse_config({**base, "drama": {"url": "http://127.0.0.1:8099", "enabled": False}}).voice_server is None
+    server = parse_config({**base, "voice_server": {"url": "http://gpu:8880", "model": "kokoro", "live": False,
+                                                    "voices": ["af_bella"]}}).voice_server
+    assert server.model == "kokoro" and server.stream_rate is None and server.voices == ["af_bella"]
+    assert server.uses == {"live": False, "replies": True, "reading": True}
