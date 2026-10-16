@@ -136,7 +136,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             val agent = entry.arguments?.getString("agent") ?: return@composable
                             ChatScreen(store, agent, entry.arguments?.getString("session"), onBack = { nav.popBackStack() },
                                 onAgent = { nav.navigate("agent/$agent") },
-                                onLive = { session -> nav.navigate("live/$agent" + (session?.let { "?session=$it" } ?: "")) })
+                                onLive = { session -> nav.navigate("live/$agent" + (session?.let { "?session=$it" } ?: "")) },
+                                onForward = { target, session -> nav.navigate("chat/$target" + (session?.let { "?session=$it" } ?: "")) })
                         }
                         composable("live/{agent}?session={session}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable

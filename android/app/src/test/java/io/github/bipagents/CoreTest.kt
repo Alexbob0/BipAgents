@@ -75,3 +75,11 @@ class CoreTest {
         assertEquals(Category.DAILY, Category.suggest("Zorglub"))
     }
 }
+
+class ShareTextTest {
+    @Test fun repliesGoOutInWhatsAppSyntax() {
+        val text = "## Plan\nVoici **le plan** et *une idée* ~~barré~~.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n* un\n* deux"
+        assertEquals("*Plan*\nVoici *le plan* et _une idée_ ~barré~.\n\nA · B\n1 · 2\n\n- un\n- deux",
+            io.github.bipagents.ui.ShareText.whatsapp(text))
+    }
+}

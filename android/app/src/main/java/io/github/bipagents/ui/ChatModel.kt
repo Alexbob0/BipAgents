@@ -75,9 +75,11 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (session == null) {
                 // The agent's ongoing conversation: its Bot Chat, else the latest one.
-                val sessions = runCatching { store.hermes(agent)?.allSessions(3) { all -> all.any(Session::isBotChat) } }.getOrNull()
-                val main = sessions?.let(Session::main)
-                _state.update { it.copy(session = main?.id, title = main?.title) }
+                val sessions = runCatching { store.hermes(agent)?.allSessions(3) { all -> all.any(Session::isBotChat) } }
+                val main = sessions.getOrNull()?.let(Session::main)
+                // Server out of reach: the one found last time, from the phone's copy.
+                val id = main?.id ?: if (sessions.isFailure) store.latest.value[agent.id]?.id else null
+                _state.update { it.copy(session = id, title = main?.title, error = sessions.exceptionOrNull()) }
             }
             load()
             _state.value.session?.let { s -> runs.getString(s, null)?.let { follow(it, null) } }
@@ -88,9 +90,15 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
     private suspend fun load() {
         val agent = _state.value.agent ?: return
         val session = _state.value.session ?: return _state.update { it.copy(items = emptyList()) }
+        if (_state.value.items == null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.load(app, session) }?.let { cached ->
+            // Shown at once from the phone's copy; the call below only updates what changed.
+            _state.update { it.copy(items = thread(cached.messages), title = it.title ?: cached.title) }
+        }
         try {
             val messages = store.hermes(agent)?.messages(session) ?: emptyList()
             _state.update { it.copy(items = thread(messages), error = null) }
+            val title = _state.value.title
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.save(app, session, ThreadCache.Entry(title, messages)) }
         } catch (error: HttpError) {
             _state.update { it.copy(items = it.items ?: emptyList(), error = error) }
         }
@@ -324,6 +332,32 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
             }
             if (tools.isNotEmpty()) out += Item.Tools("t${out.size}", tools)
             return out
+        }
+    }
+}
+
+/** The phone's copy of each conversation (its last 300 messages), so a thread opens at once and reads offline. */
+object ThreadCache {
+    @kotlinx.serialization.Serializable
+    data class Entry(val title: String?, val messages: List<Message>)
+
+    private fun file(context: Context, session: String): java.io.File {
+        val key = java.security.MessageDigest.getInstance("SHA-256").digest(session.toByteArray()).take(12)
+            .joinToString("") { "%02x".format(it) }
+        return java.io.File(context.cacheDir, "threads").resolve("$key.json")
+    }
+
+    fun load(context: Context, session: String): Entry? = runCatching {
+        io.github.bipagents.net.json.decodeFromString<Entry>(file(context, session).readText())
+    }.getOrNull()
+
+    fun save(context: Context, session: String, entry: Entry) {
+        runCatching {
+            val f = file(context, session)
+            f.parentFile?.mkdirs()
+            val tmp = java.io.File(f.path + ".tmp")
+            tmp.writeText(io.github.bipagents.net.json.encodeToString(entry.copy(messages = entry.messages.takeLast(300))))
+            tmp.renameTo(f)
         }
     }
 }

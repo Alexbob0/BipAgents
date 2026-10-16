@@ -22,8 +22,10 @@ class AgentStore(context: Context) {
     private val _agents = MutableStateFlow(load())
     val agents: StateFlow<List<Agent>> = _agents.asStateFlow()
 
-    /** The latest conversation of each agent, for its home card. */
-    private val _latest = MutableStateFlow<Map<String, Session>>(emptyMap())
+    /** The latest conversation of each agent, for its home card (kept: the cards and threads open offline too). */
+    private val latestSerializer = kotlinx.serialization.builtins.MapSerializer(kotlinx.serialization.serializer<String>(), Session.serializer())
+    private val _latest = MutableStateFlow<Map<String, Session>>(
+        prefs.getString("latest", null)?.let { runCatching { json.decodeFromString(latestSerializer, it) }.getOrNull() } ?: emptyMap())
     val latest: StateFlow<Map<String, Session>> = _latest.asStateFlow()
 
     /** Whether each agent's Hermes answered lately (null: not asked yet). */
@@ -150,14 +152,19 @@ class AgentStore(context: Context) {
         val hermes = hermes(agent) ?: return
         try {
             val sessions = hermes.allSessions(maxPages = 3) { all -> all.any { it.isBotChat } }
-            Session.main(sessions)?.let { s -> _latest.update { it + (agent.id to s) } }
+            Session.main(sessions)?.let { s -> setLatest(agent, s) }
             _online.update { it + (agent.id to true) }
         } catch (error: HttpError) {
             _online.update { it + (agent.id to (error.status != 0)) }
         }
     }
 
-    fun noteSession(agent: Agent, session: Session) = _latest.update { it + (agent.id to session) }
+    fun noteSession(agent: Agent, session: Session) = setLatest(agent, session)
+
+    private fun setLatest(agent: Agent, session: Session) {
+        _latest.update { it + (agent.id to session) }
+        prefs.edit().putString("latest", json.encodeToString(latestSerializer, _latest.value)).apply()
+    }
 
     private fun same(a: Agent, b: Agent) =
         (a.bridgeAgent != null && a.bridgeAgent == b.bridgeAgent && a.bridgeUrl == b.bridgeUrl) || a.baseUrl == b.baseUrl

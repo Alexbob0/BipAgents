@@ -8,6 +8,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.util.UUID
 
+@kotlinx.serialization.Serializable
 data class Session(
     val id: String,
     val title: String?,
@@ -33,6 +34,7 @@ data class Session(
     }
 }
 
+@kotlinx.serialization.Serializable
 data class Message(
     val id: String,
     val role: String,

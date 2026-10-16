@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import UIKit
 
 /// The saved unsent text of a conversation (kept across leaving it); also how a forwarded message reaches the
@@ -28,8 +29,8 @@ private struct MessageActions: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contextMenu {
-                Button("Copier", systemImage: "doc.on.doc") { UIPasteboard.general.string = plain }
-                ShareLink(item: plain) { Label("Partager…", systemImage: "square.and.arrow.up") }
+                Button("Copier", systemImage: "doc.on.doc") { ShareText.copy(raw) }
+                ShareLink(item: ShareText.whatsapp(raw)) { Label("Partager…", systemImage: "square.and.arrow.up") }
                 Button("Sélectionner du texte", systemImage: "character.textbox") { isSelecting = true }
                 let others = store.agents.filter { $0.id != agent.id }
                 if !others.isEmpty {
@@ -94,6 +95,93 @@ private struct SelectableText: UIViewRepresentable {
 
     func updateUIView(_ view: UITextView, context: Context) {
         if view.text != text { view.text = text }
+    }
+}
+
+/// A reply taken out of the app: copied, shared. Messaging apps format text their own way, so it goes out in
+/// WhatsApp's syntax (`*bold*`, `_italic_`, `~struck~`, lists, quotes), which WhatsApp shows formatted and others read
+/// cleanly; copying also carries the formatted text (RTF) for the apps that paste it (Notes, Mail). Links are written
+/// « label : address » with the real address; tables become lines (« Lundi · 7 h 12 · 82 »).
+enum ShareText {
+    static func whatsapp(_ text: String) -> String {
+        var out: [String] = []
+        var inCode = false
+        for line in flatTables(ChatText.visible(text)).components(separatedBy: "\n") {
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") { inCode.toggle(); out.append(line); continue }
+            if inCode { out.append(line); continue }
+            var l = links(line)
+            l = replace(l, "^#{1,6}\\s+(.+)$", "\u{0}$1\u{0}")
+            l = replace(l, "\\*\\*([^*\\n]+?)\\*\\*|__([^_\\n]+?)__", "\u{0}$1$2\u{0}")
+            l = replace(l, "(?<![*\\w])\\*([^*\\n]+?)\\*(?![*\\w])|(?<![_\\w])_([^_\\n]+?)_(?![_\\w])", "_$1$2_")
+            l = replace(l, "~~([^~\\n]+?)~~", "~$1~")
+            l = replace(l.replacingOccurrences(of: "\u{0}", with: "*"), "^(\\s*)[*•]\\s+", "$1- ")
+            out.append(l)
+        }
+        return out.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// WhatsApp's text, plus the formatted text for the apps that take rich text.
+    static func copy(_ text: String) {
+        var item: [String: Any] = [UTType.utf8PlainText.identifier: whatsapp(text)]
+        if let rtf = rich(text) { item[UTType.rtf.identifier] = rtf }
+        UIPasteboard.general.setItems([item])
+    }
+
+    private static func rich(_ text: String) -> Data? {
+        let shown = flatTables(ChatText.visible(text))
+        guard let parsed = try? AttributedString(markdown: shown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        else { return nil }
+        let body = UIFont.preferredFont(forTextStyle: .body)
+        let out = NSMutableAttributedString()
+        for run in parsed.runs {
+            let intent = run.inlinePresentationIntent ?? []
+            var traits: UIFontDescriptor.SymbolicTraits = []
+            if intent.contains(.stronglyEmphasized) { traits.insert(.traitBold) }
+            if intent.contains(.emphasized) { traits.insert(.traitItalic) }
+            if intent.contains(.code) { traits.insert(.traitMonoSpace) }
+            let font = body.fontDescriptor.withSymbolicTraits(traits).map { UIFont(descriptor: $0, size: body.pointSize) } ?? body
+            var attributes: [NSAttributedString.Key: Any] = [.font: font]
+            if intent.contains(.strikethrough) { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+            if let link = run.link, safe(link) { attributes[.link] = link }
+            out.append(NSAttributedString(string: String(parsed[run.range].characters), attributes: attributes))
+        }
+        return try? out.data(from: NSRange(location: 0, length: out.length),
+                             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+    }
+
+    private static func flatTables(_ text: String) -> String {
+        ChatText.blocks(text).map { block in
+            switch block {
+            case .text(let paragraph): paragraph
+            case .table(let table): ([table.header] + table.rows).map { $0.joined(separator: " · ") }.joined(separator: "\n")
+            }
+        }.joined(separator: "\n\n")
+    }
+
+    private static func safe(_ url: URL) -> Bool { ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") }
+
+    /// `[label](address)` → « label : address » (just the address when the label is it).
+    private static func links(_ line: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: "\\[([^\\]\\n]+)\\]\\(([^)\\s]+)\\)") else { return line }
+        var result = line
+        for match in regex.matches(in: line, range: NSRange(line.startIndex..., in: line)).reversed() {
+            guard let whole = Range(match.range, in: line), let l = Range(match.range(at: 1), in: line),
+                  let a = Range(match.range(at: 2), in: line) else { continue }
+            let label = String(line[l]), address = String(line[a])
+            let shown: String
+            if let url = URL(string: address), safe(url) {
+                shown = label == address || "https://" + label == address ? address : "\(label) : \(address)"
+            } else {
+                shown = label
+            }
+            result.replaceSubrange(Range(match.range, in: result) ?? whole, with: shown)
+        }
+        return result
+    }
+
+    private static func replace(_ text: String, _ pattern: String, _ template: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else { return text }
+        return regex.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: template)
     }
 }
 

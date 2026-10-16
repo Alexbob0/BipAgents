@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -87,7 +88,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import io.github.bipagents.net.RunEvent
 
 @Composable
-fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () -> Unit, onAgent: () -> Unit, onLive: (String?) -> Unit) {
+fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () -> Unit, onAgent: () -> Unit, onLive: (String?) -> Unit,
+               onForward: (agent: String, session: String?) -> Unit) {
     val model: ChatModel = viewModel(key = "chat-$agentId-${session ?: "main"}")
     LaunchedEffect(Unit) {
         model.start(agentId, session)
@@ -95,8 +97,10 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
     }
     val state by model.state.collectAsState()
     val agent = state.agent ?: store.agent(agentId) ?: return
-    var draft by rememberSaveable(agentId) { mutableStateOf("") }
     val context = LocalContext.current
+    // Kept across leaving the conversation (and how a forwarded message arrives).
+    var draft by remember(agentId, session) { mutableStateOf(Drafts.get(context, agentId, session)) }
+    LaunchedEffect(draft) { kotlinx.coroutines.delay(400); Drafts.set(context, agentId, session, draft) }
     val scope = rememberCoroutineScope()
     val attachments = remember { mutableStateListOf<Attachment>() }
     fun take(uris: List<Uri>) = scope.launch {
@@ -105,11 +109,25 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { take(it) }
     val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { take(it) }
     val list = rememberLazyListState()
+    // Scrolled up, away from the latest messages: a button brings the end back, and a reply streaming in leaves the
+    // reader where they are.
+    val away by remember { androidx.compose.runtime.derivedStateOf {
+        val info = list.layoutInfo
+        (info.visibleItemsInfo.lastOrNull()?.index ?: 0) < info.totalItemsCount - 2
+    } }
     val count = (state.items?.size ?: 0) + (if (state.live != null) 2 else 0)
-    LaunchedEffect(count, state.live?.text?.length, state.approval, state.clarify) {
+    var shown by remember { mutableStateOf(0) }
+    LaunchedEffect(count) {
         val last = list.layoutInfo.totalItemsCount - 1
-        if (last >= 0) list.animateScrollToItem(last)
+        if (last >= 0) if (shown == 0) list.scrollToItem(last) else list.animateScrollToItem(last)
+        shown = count
     }
+    LaunchedEffect(state.live?.text?.length, state.approval, state.clarify) {
+        val last = list.layoutInfo.totalItemsCount - 1
+        if (last >= 0 && !away) list.animateScrollToItem(last)
+    }
+    // The latest messages, « Earlier messages » for more (the iPhone's 80 per page).
+    var visibleCount by rememberSaveable { mutableStateOf(80) }
 
     androidx.compose.runtime.CompositionLocalProvider(LocalBridge provides store.bridge(agent)) {
     Column(Modifier.fillMaxSize().imePadding()) {
@@ -125,7 +143,8 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                 RoundButton(Icons.Rounded.GraphicEq, stringResource(R.string.live), { onLive(state.session) }, size = 48.dp, tint = agent.look.deep)
             }
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (state.items?.isEmpty() == true && state.live == null) item {
                 Column(Modifier.fillMaxWidth().padding(top = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -133,13 +152,32 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                     Text(stringResource(R.string.empty_thread, agent.name), style = Bip.text(17, FontWeight.Bold, Bip.ink2))
                 }
             }
-            items(state.items ?: emptyList(), key = { it.key }) { item ->
-                when (item) {
-                    is Item.User -> model.notes.find(state.session, item.text)?.let { VoiceBubble(it, item.key, clock(item.time)) }
-                        ?: UserBubble(item.text, item.image, clock(item.time))
-                    is Item.Reply -> Reply(agent.look, item.text, item.tools, clock(item.time), listen = { model.listen(item.key, item.text) },
-                        listenKey = item.key)
-                    is Item.Tools -> ToolsLine(item.tools)
+            val all = state.items ?: emptyList()
+            if (all.size > visibleCount) item(key = "earlier") {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Pill("↑  " + stringResource(R.string.earlier_messages), dark = false) { visibleCount += 80 }
+                }
+            }
+            var previousDay: Long? = null
+            for (item in all.takeLast(visibleCount)) {
+                val time = when (item) { is Item.User -> item.time; is Item.Reply -> item.time; is Item.Tools -> null }
+                if (time != null) {
+                    val day = dayOf(time)
+                    if (day != previousDay) item(key = "day-${item.key}") { DaySeparator(time) }
+                    previousDay = day
+                }
+                item(key = item.key) {
+                    when (item) {
+                        is Item.User -> MessageActions(item.text, agent.id, onForward) {
+                            model.notes.find(state.session, item.text)?.let { VoiceBubble(it, item.key, clock(item.time)) }
+                                ?: UserBubble(item.text, item.image, clock(item.time))
+                        }
+                        is Item.Reply -> MessageActions(item.text, agent.id, onForward) {
+                            Reply(agent.look, item.text, item.tools, clock(item.time), listen = { model.listen(item.key, item.text) },
+                                listenKey = item.key)
+                        }
+                        is Item.Tools -> ToolsLine(item.tools)
+                    }
                 }
             }
             state.live?.let { live ->
@@ -148,6 +186,12 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
             }
             state.approval?.let { item(key = "approval") { ApprovalCard(agent.look, agent.name, it, model::approve) } }
             state.clarify?.let { item(key = "clarify") { ClarifyCard(agent.look, agent.name, it, model::answer) } }
+        }
+        if (away) Box(Modifier.align(Alignment.BottomEnd).padding(14.dp)) {
+            RoundButton(Icons.Rounded.KeyboardArrowDown, stringResource(R.string.latest_messages), {
+                scope.launch { list.animateScrollToItem((list.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) }
+            }, size = 44.dp)
+        }
         }
         state.error?.let { error ->
             Text(describe(error), style = Bip.text(14, FontWeight.Bold, Bip.danger),
@@ -166,7 +210,8 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
             onVoice = model::sendVoice,
             onPhoto = { photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onFile = { files.launch(arrayOf("*/*")) },
-            onSend = { if (model.send(draft, attachments.toList())) { draft = ""; attachments.clear() } }, onStop = model::stop)
+            onSend = { if (model.send(draft, attachments.toList())) { draft = ""; Drafts.set(context, agentId, session, ""); attachments.clear() } },
+            onStop = model::stop)
     }
     }
 }

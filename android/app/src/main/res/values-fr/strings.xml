@@ -168,4 +168,14 @@
     <string-array name="bip_boing">
         <item>Boing !</item>
     </string-array>
+    <string name="copy">Copier</string>
+    <string name="copied">Copié</string>
+    <string name="share">Partager…</string>
+    <string name="select_text">Sélectionner du texte</string>
+    <string name="forward_to">Transférer à…</string>
+    <string name="today">Aujourd\'hui</string>
+    <string name="yesterday">Hier</string>
+    <string name="earlier_messages">Messages précédents</string>
+    <string name="done">OK</string>
+    <string name="latest_messages">Derniers messages</string>
 </resources>
