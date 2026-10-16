@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import android.util.Base64
+import io.github.bipagents.model.Attachment
 import kotlinx.serialization.json.buildJsonObject
 
 /** One line of the thread. */
@@ -100,19 +103,44 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun send(text: String) {
-        val agent = _state.value.agent ?: return
+    fun send(text: String, attachments: List<Attachment> = emptyList()): Boolean {
+        val agent = _state.value.agent ?: return false
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || following != null) return
-        val hermes = store.hermes(agent) ?: return
-        _state.update { it.copy(live = Live(trimmed), error = null, mood = Mood.THINKING) }
+        if ((trimmed.isEmpty() && attachments.isEmpty()) || following != null) return false
+        val hermes = store.hermes(agent) ?: return false
+        val shown = (attachments.joinToString("") { (if (it.isImage) "🖼️ " else "📎 ") + it.name + "\n" } + trimmed).trim()
+        _state.update { it.copy(live = Live(shown), error = null, mood = Mood.THINKING) }
         following = viewModelScope.launch {
             try {
-                val session = _state.value.session ?: hermes.createSession(trimmed.take(60)).also { s ->
-                    _state.update { it.copy(session = s.id, title = s.title ?: trimmed.take(60)) }
+                val title = trimmed.ifEmpty { attachments.first().name }.take(60)
+                val session = _state.value.session ?: hermes.createSession(title).also { s ->
+                    _state.update { it.copy(session = s.id, title = s.title ?: title) }
                     store.noteSession(agent, s)
                 }.id
-                val run = hermes.startRun(session, buildJsonObject { put("input", JsonPrimitive(trimmed)) })
+                // Files go to the bridge first; the message names where the agent finds them.
+                val documents = attachments.filter { !it.isImage }.map { file ->
+                    val bridge = store.bridge(agent) ?: throw HttpError(404, "no bridge for files")
+                    Attachment.referenceLine(file.name, file.mime, file.bytes.size, bridge.upload(agent.bridgeName, file.name, file.mime, file.bytes))
+                }
+                val words = listOf(trimmed, documents.joinToString("\n")).filter { it.isNotEmpty() }.joinToString("\n\n")
+                val images = attachments.filter { it.isImage }
+                val input = if (images.isEmpty()) buildJsonObject { put("input", JsonPrimitive(words)) } else buildJsonObject {
+                    // /v1/runs reads multimodal input as a list of messages: one user message whose content is the parts.
+                    put("input", JsonArray(listOf(buildJsonObject {
+                        put("role", JsonPrimitive("user"))
+                        put("content", JsonArray(listOfNotNull(
+                            words.takeIf { it.isNotEmpty() }?.let { buildJsonObject { put("type", JsonPrimitive("text")); put("text", JsonPrimitive(it)) } },
+                        ) + images.map { image ->
+                            buildJsonObject {
+                                put("type", JsonPrimitive("image_url"))
+                                put("image_url", buildJsonObject {
+                                    put("url", JsonPrimitive("data:${image.mime};base64," + Base64.encodeToString(image.bytes, Base64.NO_WRAP)))
+                                })
+                            }
+                        }))
+                    })))
+                }
+                val run = hermes.startRun(session, input)
                 runs.edit().putString(session, run).apply()
                 stream(run, trimmed)
             } catch (error: Throwable) {
@@ -121,6 +149,7 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
                 following = null
             }
         }
+        return true
     }
 
     private fun follow(run: String, sent: String?) {

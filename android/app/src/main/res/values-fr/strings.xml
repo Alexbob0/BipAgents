@@ -56,5 +56,8 @@
     <string name="remove_title">Retirer %s ?</string>
     <string name="remove_body">Seulement de ce téléphone : l\'agent et ses conversations restent sur ton serveur.</string>
     <string name="just_now">à l\'instant</string>
+    <string name="attach">Joindre</string>
+    <string name="attach_photo">Photo</string>
+    <string name="attach_file">Fichier</string>
     <string name="cancel">Annuler</string>
 </resources>

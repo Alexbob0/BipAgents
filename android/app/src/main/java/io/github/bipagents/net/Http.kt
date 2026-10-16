@@ -5,6 +5,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -59,11 +60,13 @@ class Api(val base: String, private val key: String) {
     }
 
     suspend fun bytes(path: String, method: String = "GET", body: RequestBody? = null, query: Map<String, String?> = emptyMap(),
-                      headers: Map<String, String> = emptyMap()): ByteArray =
+                      headers: Map<String, String> = emptyMap()): ByteArray = withContext(Dispatchers.IO) {
+        // The body is read here, off the main thread (Android refuses network reads there).
         Http.client.newCall(request(path, method, body, query, headers)).await().use { response ->
             if (!response.isSuccessful) throw failure(response)
             response.body.bytes()
         }
+    }
 
     suspend fun call(path: String, method: String = "GET", body: JsonElement? = null, query: Map<String, String?> = emptyMap(),
                      headers: Map<String, String> = emptyMap()): JsonElement? {

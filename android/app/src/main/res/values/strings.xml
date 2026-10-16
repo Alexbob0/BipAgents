@@ -57,5 +57,8 @@
     <string name="remove_title">Remove %s?</string>
     <string name="remove_body">Only from this phone: the agent and its conversations stay on your server.</string>
     <string name="just_now">just now</string>
+    <string name="attach">Attach</string>
+    <string name="attach_photo">Photo</string>
+    <string name="attach_file">File</string>
     <string name="cancel">Cancel</string>
 </resources>

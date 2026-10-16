@@ -1,5 +1,23 @@
 package io.github.bipagents.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AttachFile
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import io.github.bipagents.model.Attachment
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +76,14 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
     val state by model.state.collectAsState()
     val agent = state.agent ?: store.agent(agentId) ?: return
     var draft by rememberSaveable(agentId) { mutableStateOf("") }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val attachments = remember { mutableStateListOf<Attachment>() }
+    fun take(uris: List<Uri>) = scope.launch {
+        uris.forEach { uri -> withContext(Dispatchers.IO) { Attachment.read(context, uri) }?.let(attachments::add) }
+    }
+    val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { take(it) }
+    val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { take(it) }
     val list = rememberLazyListState()
     val count = (state.items?.size ?: 0) + (if (state.live != null) 2 else 0)
     LaunchedEffect(count, state.live?.text?.length, state.approval, state.clarify) {
@@ -65,6 +91,7 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
         if (last >= 0) list.animateScrollToItem(last)
     }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalBridge provides store.bridge(agent)) {
     Column(Modifier.fillMaxSize().imePadding()) {
         TopBar(agent.name, onBack, leading = { Mascot(agent.look, Modifier.size(40.dp), state.mood) },
             actions = { RoundButton(Icons.AutoMirrored.Rounded.List, stringResource(R.string.conversations), onSessions, size = 44.dp) })
@@ -94,8 +121,20 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
             Text(describe(error), style = Bip.text(14, FontWeight.Bold, Bip.danger),
                 modifier = Modifier.fillMaxWidth().tap(model::dismissError).padding(horizontal = 18.dp, vertical = 6.dp))
         }
+        if (attachments.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            attachments.forEach { file ->
+                Text((if (file.isImage) "🖼️ " else "📎 ") + file.name + "  ✕", style = Bip.text(14, FontWeight.Bold), maxLines = 1,
+                    modifier = Modifier.background(Bip.card, RoundedCornerShape(50)).tap { attachments.remove(file) }
+                        .padding(horizontal = 12.dp, vertical = 7.dp))
+            }
+        }
         Composer(draft, { draft = it }, stringResource(R.string.message_to, agent.name), running = state.live != null,
-            onSend = { model.send(draft); draft = "" }, onStop = model::stop)
+            ready = draft.isNotBlank() || attachments.isNotEmpty(),
+            onPhoto = { photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onFile = { files.launch(arrayOf("*/*")) },
+            onSend = { if (model.send(draft, attachments.toList())) { draft = ""; attachments.clear() } }, onStop = model::stop)
+    }
     }
 }
 
@@ -118,13 +157,43 @@ private fun Reply(look: io.github.bipagents.model.Category, text: String, tools:
             if (typing) Text("•••", style = Bip.text(20, FontWeight.Black, Bip.muted))
             else MarkdownText(text, Modifier.weight(1f))
         }
-        ChatText.media(text).forEach { path ->
-            Text("📎 " + path.substringAfterLast('/'), style = Bip.text(14, FontWeight.Bold, Bip.ink2),
-                modifier = Modifier.padding(start = 36.dp).background(Bip.card, RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 6.dp))
-        }
+        ChatText.media(text).forEach { path -> MediaChip(path) }
         if (time.isNotEmpty()) Text(time, style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(start = 36.dp))
     }
 }
+
+/** A file the agent produced (« MEDIA:<path> »): fetched from the bridge, opened in the app that reads it. */
+@Composable
+private fun MediaChip(path: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val store = (context.applicationContext as io.github.bipagents.BipApp).store
+    val agentBridge = LocalBridge.current
+    var busy by remember { mutableStateOf(false) }
+    val name = path.substringAfterLast('/')
+    Text((if (busy) "… " else "📎 ") + name, style = Bip.text(14, FontWeight.Bold, Bip.ink2),
+        modifier = Modifier.padding(start = 36.dp).background(Bip.card, RoundedCornerShape(50)).tap {
+            val bridge = agentBridge ?: return@tap
+            busy = true
+            scope.launch {
+                try {
+                    val bytes = bridge.media(path)
+                    val file = java.io.File(context.cacheDir, "media").apply { mkdirs() }.resolve(name)
+                    withContext(Dispatchers.IO) { file.writeBytes(bytes) }
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                    val type = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.').lowercase()) ?: "*/*"
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, type)
+                        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                } catch (e: Throwable) {
+                    android.widget.Toast.makeText(context, describe(context, e), android.widget.Toast.LENGTH_SHORT).show()
+                }
+                busy = false
+            }
+        }.padding(horizontal = 12.dp, vertical = 6.dp))
+}
+
+/** The conversation's bridge, for the files its replies point to. */
+val LocalBridge = androidx.compose.runtime.staticCompositionLocalOf<io.github.bipagents.net.Bridge?> { null }
 
 @Composable
 private fun ToolsLine(tools: List<String>) {
@@ -191,16 +260,27 @@ fun Pill(text: String, dark: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: String, running: Boolean, onSend: () -> Unit, onStop: () -> Unit) {
+private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: String, running: Boolean, ready: Boolean,
+                     onPhoto: () -> Unit, onFile: () -> Unit, onSend: () -> Unit, onStop: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
     Row(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box {
+            RoundButton(Icons.Rounded.Add, stringResource(R.string.attach), { menu = true }, size = 52.dp)
+            DropdownMenu(menu, { menu = false }, containerColor = Bip.card) {
+                DropdownMenuItem({ Text(stringResource(R.string.attach_photo), style = Bip.text(16, FontWeight.Bold)) }, { menu = false; onPhoto() },
+                    leadingIcon = { androidx.compose.material3.Icon(Icons.Rounded.Image, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.attach_file), style = Bip.text(16, FontWeight.Bold)) }, { menu = false; onFile() },
+                    leadingIcon = { androidx.compose.material3.Icon(Icons.Rounded.AttachFile, null) })
+            }
+        }
         TextField(draft, onDraft, Modifier.weight(1f), placeholder = { Text(placeholder, style = Bip.text(16, color = Bip.muted)) },
             textStyle = Bip.text(16), maxLines = 6, shape = RoundedCornerShape(26.dp),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             colors = TextFieldDefaults.colors(focusedContainerColor = Bip.card, unfocusedContainerColor = Bip.card,
                 focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
         if (running) RoundButton(Icons.Rounded.Stop, stringResource(R.string.stop), onStop, size = 52.dp, background = Bip.danger, tint = Bip.card)
-        else RoundButton(Icons.Rounded.ArrowUpward, stringResource(R.string.send), { if (draft.isNotBlank()) onSend() }, size = 52.dp,
-            background = if (draft.isBlank()) Bip.line else Bip.ink, tint = Bip.card)
+        else RoundButton(Icons.Rounded.ArrowUpward, stringResource(R.string.send), { if (ready) onSend() }, size = 52.dp,
+            background = if (ready) Bip.ink else Bip.line, tint = Bip.card)
     }
 }

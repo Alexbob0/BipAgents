@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Files the agents produced, kept in the cache to open them in another app. -->
+<paths>
+    <cache-path name="media" path="media/" />
+</paths>
