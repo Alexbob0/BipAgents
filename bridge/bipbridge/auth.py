@@ -27,9 +27,16 @@ def key_matches(expected: str, presented: Optional[str]) -> bool:
 
 
 async def require_bridge_key(request: Request) -> None:
+    """The bridge key (the app), or a web console's session (console.py; `request.state.console` then says so)."""
     expected = request.app.state.config.bridge_key
-    if not key_matches(expected, _extract_bearer(request.headers.get("authorization"))):
-        raise HTTPException(status_code=401, detail="unauthorized", headers={"WWW-Authenticate": "Bearer"})
+    if key_matches(expected, _extract_bearer(request.headers.get("authorization"))):
+        request.state.console = False
+        return
+    from .console import is_console
+    if is_console(request):
+        request.state.console = True
+        return
+    raise HTTPException(status_code=401, detail="unauthorized", headers={"WWW-Authenticate": "Bearer"})
 
 
 def websocket_authorized(websocket: WebSocket) -> bool:

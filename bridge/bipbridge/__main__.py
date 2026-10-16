@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import os
 import secrets
 import sys
 
@@ -14,12 +15,13 @@ from .logs import setup_logging
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="bipbridge", description="BipAgents bridge for Hermes agents")
-    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser", "shares-mounts"],
+    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser", "shares-mounts", "console"],
                         help="serve (default), check the config, print a new random bridge key, "
                              "show an agent's pairing QR code for the app, (peer-token --agent X) give an agent set "
                              "up by hand its token for messaging the others, or (browser add|remove --agent X|--all) "
                              "set up or remove agents' visible browsers, or (shares-mounts --agent X) print the "
-                             "`-v` mounts an agent set up by hand needs for its shared folders")
+                             "`-v` mounts an agent set up by hand needs for its shared folders, or (console) give a "
+                             "one-time link that opens the web console in a browser")
     parser.add_argument("--config", help="config path (default: $BRIDGE_CONFIG or ~/.config/hermes-ios/bridge.toml)")
     parser.add_argument("--agent", help="qr: one agent's own code (default: the install's code, which adds every agent)")
     parser.add_argument("--png", help="qr: also save the QR code as a PNG (one agent)")
@@ -86,6 +88,15 @@ def main(argv=None) -> int:
 
     if args.command == "browser":
         return asyncio.run(_browser(config, args))
+
+    if args.command == "console":
+        from .console import LINK_MINUTES, ConsoleStore
+        store = ConsoleStore(os.path.join(os.path.dirname(config.outbox.db_path), "console.json"))
+        base = (config.public_url or f"http://127.0.0.1:{config.port}").rstrip("/")
+        # The code goes after « # »: the browser keeps it, no server or proxy log ever sees it.
+        print(f"Open this link in your computer's browser (once, within {LINK_MINUTES} minutes):\n\n"
+              f"  {base}/console/#{store.new_link()}\n")
+        return 0
 
     import uvicorn
 
