@@ -225,10 +225,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         from .voice_server import main as voice_main
         return voice_main(argv[1:])
     if argv and argv[0] == "console":   # a one-time link to the web console, from the bridge
-        from .family import find_config
-        return subprocess.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "console", "--config",
-                               str(find_config(argv[2] if argv[1:2] == ["--config"] and len(argv) > 2 else None))],
-                              cwd=REPO / "bridge", check=False).returncode
+        from .console import main as console_main
+        return console_main(argv[1:])
     if argv and argv[0] in ("family", "famille"):   # « famille ajouter »: its first name, kept working
         from .family import main as family_main
         return family_main(argv[1:])
