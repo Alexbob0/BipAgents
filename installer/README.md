@@ -67,6 +67,19 @@ takes the patches off. `--all` never removes a Hermes that was there before BipA
 run in a sandbox, the bridge keeps no passwords (no vault): it tells you so, without changing their tools. It needs a
 Hermes that serves several agents at one address (`hermes update` otherwise).
 
+## Updating BipAgents
+
+`bash ~/BipAgents/install.sh update` brings this account's install up to date: it shows what is new, restarts only
+what changed (the bridge, the Bips' voices when this account runs them, the agents' browsers when their image changed:
+rebuilt, their profiles kept), and applies the settings a fresh install now makes (`installer/bipinstall/migrations.py`:
+for instance risky commands always asking you). What it cannot do from this account comes as commands to run: the
+family's other installs (with `sudo -u <account>`), the Bips' voices run from another account, Hermes' own update.
+Local changes in `~/BipAgents` that block it are shown with the commands that put them aside.
+
+The first time, it offers to do this each night at 4:30 (a timer of this account, `install.sh update --auto`: no
+questions; `systemctl --user disable --now bipagents-update.timer` stops it). `--check` only says what is new. A Hermes
+you had before BipAgents keeps its settings unless you add `--apply-to-my-hermes`.
+
 ## Updating Hermes
 
 Whenever you want: `bash ~/BipAgents/install.sh hermes-update`. Before changing anything, it says which BipAgents

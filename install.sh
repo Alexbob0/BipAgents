@@ -2,6 +2,7 @@
 # BipAgents — install for the person running it, in their own account (no sudo):
 #   curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
 # Options are passed on to the installer: --dry-run, --relay-url URL --relay-key KEY, --ports 9200, --languages fr,en
+# Later: `bash ~/BipAgents/install.sh update` brings it up to date (and offers to do it each night).
 set -euo pipefail
 
 REPO_URL="${BIPAGENTS_REPO:-https://github.com/Alexbob0/BipAgents.git}"
@@ -18,7 +19,12 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 if [ -d "$DIR/.git" ]; then
-  git -C "$DIR" pull --ff-only --quiet
+  # The version before, for `install.sh update` (what changed); a pull that cannot go on is explained by it.
+  export BIPAGENTS_BEFORE="$(git -C "$DIR" rev-parse HEAD)"
+  if ! git -C "$DIR" pull --ff-only --quiet; then
+    [ "${1:-}" = "update" ] || exit 1
+    export BIPAGENTS_PULL_FAILED=1
+  fi
 else
   echo "Downloading BipAgents into $DIR…"
   git clone --depth 1 --quiet "$REPO_URL" "$DIR"

@@ -218,6 +218,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "hermes-update":
         from .update import main as update_main
         return update_main(argv[1:])
+    if argv and argv[0] == "update":
+        from .upgrade import main as upgrade_main
+        return upgrade_main(argv[1:])
     if argv and argv[0] == "voice":
         from .voice_server import main as voice_main
         return voice_main(argv[1:])
@@ -226,7 +229,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return family_main(argv[1:])
     parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
                                      "(`bipinstall uninstall` removes it; `bipinstall family add <name>` prepares a "
-                                     "family member's install on this server; `bipinstall voice` connects your own voice "
+                                     "family member's install on this server; `bipinstall update` brings it up to date; `bipinstall voice` connects your own voice "
                                      "model (a TTS server on the network); `bipinstall hermes-update` updates Hermes "
                                      "and checks the agents)")
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
@@ -304,6 +307,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if skipped:
         say(f"  Patches not applied to this Hermes version: {', '.join(skipped)} (the app works, without these features).")
     hub_key = hermes.setup_hub(runner, ports.hermes, model, sandbox=sandbox)
+    from . import migrations
+    migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)   # a fresh install has them all already
     if plan.browser != "none" and not browser:   # the visible browser brings its own desktop
         if hermes.desktop_ready() or sandbox:
             hermes.setup_desktop(runner, plan.browser)
