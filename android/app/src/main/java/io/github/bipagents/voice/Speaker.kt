@@ -40,6 +40,7 @@ object Speaker {
     /** Plays `file`; `onDone` when it ends (not when stopped). */
     fun play(key: String, file: File, onDone: () -> Unit = {}) {
         stop()
+        AudioPlayer.pause()
         val p = MediaPlayer()
         player = p
         runCatching {
@@ -58,6 +59,7 @@ object Speaker {
      * Throws (to the caller's `onError`) when the stream can't start, so the caller can fall back.
      */
     fun stream(key: String, cache: File, rate: Int = 24000, open: suspend () -> InputStream, onError: (Throwable) -> Unit = {}) {
+        AudioPlayer.pause()
         stop()
         _now.value = Now(key, Phase.PREPARING)
         job = scope.launch {

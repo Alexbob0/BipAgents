@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Files the agents produced, kept in the cache to open them in another app. -->
+<!-- Files opened in or shared to another app: what the agents produced (cache), what the person sent (attachments). -->
 <paths>
     <cache-path name="media" path="media/" />
+    <cache-path name="share" path="share/" />
+    <cache-path name="outbox" path="outbox/" />
+    <files-path name="attachments" path="attachments/" />
 </paths>

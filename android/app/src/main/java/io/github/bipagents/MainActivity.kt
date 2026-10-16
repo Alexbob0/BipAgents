@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -163,7 +164,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         }
                     }
                     // As on the iPhone: on the tabs and on an agent's page, not in a conversation or the Live.
-                    if (route in tabs.map { it.route } || route == "agent/{agent}") TabBar(nav, route, Modifier.align(Alignment.BottomCenter))
+                    if (route in tabs.map { it.route } || route == "agent/{agent}") Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        io.github.bipagents.ui.MiniPlayer()
+                        TabBar(nav, route, Modifier)
+                    }
                 }
             }
         }

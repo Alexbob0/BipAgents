@@ -35,7 +35,8 @@ import kotlinx.serialization.json.buildJsonObject
 sealed interface Item {
     val key: String
     val time: Long?
-    data class User(override val key: String, val text: String, val image: Boolean, override val time: Long?) : Item
+    data class User(override val key: String, val text: String, val image: Boolean, override val time: Long?,
+                    val files: List<io.github.bipagents.model.StoredFile> = emptyList()) : Item
     data class Reply(override val key: String, val text: String, override val time: Long?, val streaming: Boolean = false) : Item
     data class Reasoning(override val key: String, val text: String, override val time: Long?) : Item
     data class Tools(override val key: String, val steps: List<ToolStep>, override val time: Long?) : Item
@@ -44,7 +45,8 @@ sealed interface Item {
 }
 
 /** The turn in progress: what was sent, then what the agent does as it comes (text, reasoning, tools). */
-data class Live(val sent: String?, val items: List<Item> = emptyList(), val run: String? = null, val interim: String? = null) {
+data class Live(val sent: String?, val items: List<Item> = emptyList(), val run: String? = null, val interim: String? = null,
+                val files: List<io.github.bipagents.model.StoredFile> = emptyList()) {
     /** Grows with every event (follows the end of the thread). */
     val size get() = items.sumOf { when (it) { is Item.Reply -> it.text.length; is Item.Reasoning -> it.text.length; is Item.Tools -> it.steps.size; else -> 1 } }
     val streaming get() = (items.lastOrNull() as? Item.Reply)?.streaming == true
@@ -65,6 +67,7 @@ data class ChatState(
 /** A conversation (ConversationModel.swift): turns sent as Hermes runs, followed through the bridge. */
 class ChatModel(application: Application) : AndroidViewModel(application) {
     private val store = (application as BipApp).store
+    private val sentFiles = io.github.bipagents.model.SentFiles(application)
     private val runs = application.getSharedPreferences("runs", Context.MODE_PRIVATE)
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
@@ -102,18 +105,31 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         val session = _state.value.session ?: return _state.update { it.copy(items = emptyList()) }
         if (_state.value.items == null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.load(app, session) }?.let { cached ->
             // Shown at once from the phone's copy; the call below only updates what changed.
-            _state.update { it.copy(items = thread(cached.messages, cached.outbox), title = it.title ?: cached.title) }
+            _state.update { it.copy(items = restore(thread(cached.messages, cached.outbox), session), title = it.title ?: cached.title) }
         }
         try {
             val hermes = store.hermes(agent) ?: return
             if (_state.value.title == null) runCatching { hermes.session(session) }.getOrNull()?.title?.let { t -> _state.update { it.copy(title = t) } }
             val messages = hermes.messages(session)
             val outbox = if (_state.value.title.equals("Bot Chat", ignoreCase = true)) scheduled(agent) else emptyList()
-            _state.update { it.copy(items = thread(messages, outbox), error = null) }
+            _state.update { it.copy(items = restore(thread(messages, outbox), session), error = null) }
             val title = _state.value.title
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.save(app, session, ThreadCache.Entry(title, messages, outbox)) }
         } catch (error: HttpError) {
             _state.update { it.copy(items = it.items ?: emptyList(), error = error) }
+        }
+    }
+
+    /** The photos and files sent, back on their messages (matched by text, in order). */
+    private fun restore(items: List<Item>, session: String): List<Item> {
+        val pending = sentFiles.entries(session).map { it to io.github.bipagents.model.SentFiles.normalized(it.text) }.toMutableList()
+        if (pending.isEmpty()) return items
+        return items.map { item ->
+            if (item !is Item.User || pending.isEmpty()) return@map item
+            val history = io.github.bipagents.model.SentFiles.normalized(item.text)
+            // The history may add document references to the text; a photo sent alone comes back empty or short.
+            val match = pending.indexOfFirst { (_, sent) -> if (sent.isEmpty()) history.length <= 12 else sent in history }
+            if (match < 0) item else item.copy(files = pending.removeAt(match).first.files)
         }
     }
 
@@ -166,8 +182,8 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         val trimmed = text.trim()
         if ((trimmed.isEmpty() && attachments.isEmpty()) || following != null) return false
         val hermes = store.hermes(agent) ?: return false
-        val shown = (attachments.joinToString("") { (if (it.isImage) "🖼️ " else "📎 ") + it.name + "\n" } + trimmed).trim()
-        _state.update { it.copy(live = Live(shown), error = null, mood = Mood.THINKING) }
+        val stored = sentFiles.write(attachments)
+        _state.update { it.copy(live = Live(trimmed, files = stored), error = null, mood = Mood.THINKING) }
         following = viewModelScope.launch {
             try {
                 val title = trimmed.ifEmpty { attachments.first().name }.take(60)
@@ -177,6 +193,7 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
                 }.id
                 pendingNote?.let { notes.add(session, it) }
                 pendingNote = null
+                sentFiles.add(session, trimmed, stored)
                 // Files go to the bridge first; the message names where the agent finds them.
                 val documents = attachments.filter { !it.isImage }.map { file ->
                     val bridge = store.bridge(agent) ?: throw HttpError(404, "no bridge for files")
@@ -219,7 +236,8 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
     private suspend fun stream(run: String, sent: String?) {
         val agent = _state.value.agent ?: return
         val session = _state.value.session
-        _state.update { it.copy(live = Live(sent ?: it.live?.sent, it.live?.items ?: emptyList(), run = run), mood = Mood.THINKING) }
+        _state.update { it.copy(live = Live(sent ?: it.live?.sent, it.live?.items ?: emptyList(), run = run, files = it.live?.files ?: emptyList()),
+            mood = Mood.THINKING) }
         var finished = false
         try {
             val bridge = store.bridge(agent)

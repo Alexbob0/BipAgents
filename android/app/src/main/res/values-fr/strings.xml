@@ -197,4 +197,11 @@
     <string name="tap_to_fold">Toucher pour replier</string>
     <string name="scheduled_task">Tâche planifiée</string>
     <string name="proactive_message">Message proactif</string>
+    <string name="pause">Pause</string>
+    <string name="close">Fermer</string>
+    <string name="file_unavailable">Fichier indisponible</string>
+    <string name="stop_playback">Arrêter la lecture</string>
+    <string name="back_15">Reculer de 15 secondes</string>
+    <string name="forward_15">Avancer de 15 secondes</string>
+    <string name="no_app_for_file">Aucune app de ce téléphone n\'ouvre ce fichier.</string>
 </resources>

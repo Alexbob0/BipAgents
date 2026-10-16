@@ -46,6 +46,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -110,28 +112,30 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { take(it) }
     val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { take(it) }
     val list = rememberLazyListState()
-    // Scrolled up, away from the latest messages: a button brings the end back, and a reply streaming in leaves the
-    // reader where they are.
-    val away by remember { androidx.compose.runtime.derivedStateOf {
-        val info = list.layoutInfo
-        (info.visibleItemsInfo.lastOrNull()?.index ?: 0) < info.totalItemsCount - 2
-    } }
-    val count = (state.items?.size ?: 0) + (if (state.live != null) 2 else 0)
-    var shown by remember { mutableStateOf(0) }
-    LaunchedEffect(count) {
+    // The thread sticks to its end (replies streaming, photos loading) until the person scrolls up; then a button
+    // brings the end back.
+    var stick by remember { mutableStateOf(true) }
+    suspend fun toEnd(animated: Boolean = false) {
         val last = list.layoutInfo.totalItemsCount - 1
-        if (last >= 0) if (shown == 0) list.scrollToItem(last) else list.animateScrollToItem(last)
-        shown = count
+        if (last < 0) return
+        if (animated) list.animateScrollToItem(last, Int.MAX_VALUE) else list.scrollToItem(last, Int.MAX_VALUE)
     }
-    LaunchedEffect(state.live?.size, state.approval, state.clarify) {
-        val last = list.layoutInfo.totalItemsCount - 1
-        if (last >= 0 && !away) list.animateScrollToItem(last)
+    LaunchedEffect(list) {
+        androidx.compose.runtime.snapshotFlow { list.isScrollInProgress }.collect { scrolling -> if (!scrolling) stick = !list.canScrollForward }
     }
+    LaunchedEffect(list) {
+        androidx.compose.runtime.snapshotFlow { list.canScrollForward to list.layoutInfo.totalItemsCount }.collect { (more, _) ->
+            if (more && stick && !list.isScrollInProgress) toEnd()
+        }
+    }
+    val away = !stick && list.canScrollForward
+    // A message just sent: the end of the conversation.
+    LaunchedEffect(state.live?.sent) { if (state.live?.sent != null) { stick = true; toEnd(animated = true) } }
     // The latest messages, « Earlier messages » for more (the iPhone's 80 per page).
     var visibleCount by rememberSaveable { mutableStateOf(80) }
     val live = state.live
     val thread = remember(state.items, live) {
-        (state.items ?: emptyList()) + listOfNotNull(live?.sent?.let { Item.User("live-sent", it, false, null) }) + (live?.items ?: emptyList())
+        (state.items ?: emptyList()) + listOfNotNull(live?.sent?.let { Item.User("live-sent", it, false, null, live.files) }) + (live?.items ?: emptyList())
     }
     val folds = remember(thread, live != null) { ThreadLayout.workFolds(thread, live != null) }
     val owners = remember(thread) { ThreadLayout.exchangeOwners(thread) }
@@ -154,13 +158,13 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                     instruction != null -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         InstructionCard(instructionTitle(instruction), item.text, agent.look)
                         if (instruction is ChatText.Instruction.Subtask) ChatText.mediaPaths(item.text).forEach { path ->
-                            Box(Modifier.fillMaxWidth()) { MediaChip(path) }
+                            Box(Modifier.fillMaxWidth()) { MediaRow(path, agent.look, agent.name, hideIfMissing = true) }
                         }
                         if (item.time != null) Text(clock(item.time), style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(end = 4.dp))
                     }
                     else -> MessageActions(item.text, agent.id, onForward) {
                         model.notes.find(state.session, item.text)?.let { VoiceBubble(it, item.key, clock(item.time)) }
-                            ?: UserBubble(item.text, item.image, clock(item.time))
+                            ?: UserBubble(item.text, item.image, clock(item.time), item.files)
                     }
                 }
             }
@@ -173,7 +177,7 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                 }
                 MessageActions(item.text, agent.id, onForward) {
                     Reply(agent.look, item.text, if (turnEnd && !item.streaming) clock(item.time) else "", streaming = item.streaming,
-                        listen = if (turnEnd && !item.streaming) ({ model.listen(item.key, item.text) }) else null, listenKey = item.key)
+                        listen = if (turnEnd && !item.streaming) ({ model.listen(item.key, item.text) }) else null, listenKey = item.key, name = agent.name)
                 }
                 // The agent asks to pick an option: one tap answers (latest reply only).
                 if (!item.streaming && live == null && index == thread.lastIndex) {
@@ -189,7 +193,7 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                 MessageActions(item.message.text, agent.id, onForward) {
                     Reply(agent.look, item.message.text, clock(item.time),
                         listen = if (item.message.hasAudio) ({ model.playScheduled(item.message) }) else ({ model.listen(item.key, item.message.text) }),
-                        listenKey = if (item.message.hasAudio) "outbox-${item.message.id}" else item.key)
+                        listenKey = if (item.message.hasAudio) "outbox-${item.message.id}" else item.key, name = agent.name)
                 }
             }
         }
@@ -209,6 +213,7 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                 RoundButton(Icons.Rounded.GraphicEq, stringResource(R.string.live), { onLive(state.session) }, size = 48.dp, tint = agent.look.deep)
             }
         }
+        MiniPlayer()
         Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -269,7 +274,7 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
         }
         if (away) Box(Modifier.align(Alignment.BottomEnd).padding(14.dp)) {
             RoundButton(Icons.Rounded.KeyboardArrowDown, stringResource(R.string.latest_messages), {
-                scope.launch { list.animateScrollToItem((list.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) }
+                scope.launch { stick = true; toEnd(animated = true) }
             }, size = 44.dp)
         }
         }
@@ -312,24 +317,49 @@ private fun instructionTitle(instruction: ChatText.Instruction): String = when (
 }
 
 @Composable
-private fun UserBubble(text: String, image: Boolean, time: String) {
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-        Text((if (image) "🖼️ " else "") + text, style = Bip.text(17, FontWeight.SemiBold, Bip.card, lineHeight = 23.sp),
+private fun UserBubble(text: String, image: Boolean, time: String, files: List<io.github.bipagents.model.StoredFile> = emptyList()) {
+    val context = LocalContext.current
+    val folder = remember { java.io.File(context.filesDir, "attachments") }
+    // Files shown as such: their reference lines (« [Pièce jointe : … → …] ») would repeat them.
+    val shown = if (files.isEmpty()) (if (image) "🖼️ " else "") + text
+        else text.lines().filterNot { it.startsWith("[Pièce jointe : ") && it.endsWith("]") }.joinToString("\n").trim()
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        files.filter { it.isImage }.forEach { stored ->
+            val file = folder.resolve(stored.file)
+            var bitmap by remember(stored.file) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+            LaunchedEffect(stored.file) { bitmap = withContext(Dispatchers.IO) { MediaFiles.image(file, 900) } }
+            var viewing by remember { mutableStateOf(false) }
+            bitmap?.let { b ->
+                androidx.compose.foundation.Image(b, stored.name, Modifier.widthIn(max = 240.dp).heightIn(max = 300.dp)
+                    .clip(RoundedCornerShape(18.dp)).tap { viewing = true }, contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+                if (viewing) PhotoViewer(b, { viewing = false }) { MediaFiles.share(context, file, stored.name) }
+            }
+        }
+        files.filterNot { it.isImage }.forEach { stored ->
+            Row(Modifier.background(Bip.card, RoundedCornerShape(50)).border(1.dp, Bip.line, RoundedCornerShape(50))
+                .tap { MediaFiles.open(context, folder.resolve(stored.file), stored.name) }.padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.Icon(Icons.Rounded.AttachFile, null, Modifier.size(16.dp), tint = Bip.ink2)
+                Text(stored.name, style = Bip.text(14, FontWeight.Bold), maxLines = 1, modifier = Modifier.widthIn(max = 220.dp))
+                Text(io.github.bipagents.model.Attachment.formatSize(stored.size), style = Bip.text(12, FontWeight.Bold, Bip.muted))
+            }
+        }
+        if (shown.isNotBlank()) Text(shown, style = Bip.text(17, FontWeight.SemiBold, Bip.card, lineHeight = 23.sp),
             modifier = Modifier.widthIn(max = 310.dp).background(Bip.ink, RoundedCornerShape(22.dp, 22.dp, 6.dp, 22.dp))
                 .padding(horizontal = 16.dp, vertical = 10.dp))
-        if (time.isNotEmpty()) Text(time, style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(top = 3.dp, end = 4.dp))
+        if (time.isNotEmpty()) Text(time, style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(end = 4.dp))
     }
 }
 
 @Composable
 private fun Reply(look: io.github.bipagents.model.Look, text: String, time: String, streaming: Boolean = false,
-                  listen: (() -> Unit)? = null, listenKey: String? = null) {
+                  listen: (() -> Unit)? = null, listenKey: String? = null, name: String = "") {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (ChatText.visible(text).isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Mascot(look, Modifier.size(28.dp), animated = false)
             MarkdownText(text, Modifier.weight(1f), link = look.deep)
         }
-        if (!streaming) ChatText.media(text).forEach { path -> MediaChip(path) }
+        if (!streaming) ChatText.media(text).forEach { path -> MediaRow(path, look, name) }
         if (listen != null && ChatText.visible(text).isNotEmpty()) ListenPill(look, listenKey ?: "", listen)
         if (time.isNotEmpty()) Text(time, style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(start = 36.dp))
     }
@@ -394,36 +424,6 @@ private fun Waveform(levels: List<Float>, modifier: Modifier, color: Color = Bip
 }
 
 private fun duration(seconds: Double): String { val s = seconds.toInt(); return "%d:%02d".format(s / 60, s % 60) }
-
-/** A file the agent produced (« MEDIA:<path> »): fetched from the bridge, opened in the app that reads it. */
-@Composable
-private fun MediaChip(path: String) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val store = (context.applicationContext as io.github.bipagents.BipApp).store
-    val agentBridge = LocalBridge.current
-    var busy by remember { mutableStateOf(false) }
-    val name = path.substringAfterLast('/')
-    Text((if (busy) "… " else "📎 ") + name, style = Bip.text(14, FontWeight.Bold, Bip.ink2),
-        modifier = Modifier.padding(start = 36.dp).background(Bip.card, RoundedCornerShape(50)).tap {
-            val bridge = agentBridge ?: return@tap
-            busy = true
-            scope.launch {
-                try {
-                    val bytes = bridge.media(path)
-                    val file = java.io.File(context.cacheDir, "media").apply { mkdirs() }.resolve(name)
-                    withContext(Dispatchers.IO) { file.writeBytes(bytes) }
-                    val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
-                    val type = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.').lowercase()) ?: "*/*"
-                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, type)
-                        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                } catch (e: Throwable) {
-                    android.widget.Toast.makeText(context, describe(context, e), android.widget.Toast.LENGTH_SHORT).show()
-                }
-                busy = false
-            }
-        }.padding(horizontal = 12.dp, vertical = 6.dp))
-}
 
 /** The conversation's bridge, for the files its replies point to. */
 val LocalBridge = androidx.compose.runtime.staticCompositionLocalOf<io.github.bipagents.net.Bridge?> { null }

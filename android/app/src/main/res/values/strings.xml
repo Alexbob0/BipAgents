@@ -198,4 +198,11 @@
     <string name="tap_to_fold">Tap to fold</string>
     <string name="scheduled_task">Scheduled task</string>
     <string name="proactive_message">Proactive message</string>
+    <string name="pause">Pause</string>
+    <string name="close">Close</string>
+    <string name="file_unavailable">File unavailable</string>
+    <string name="stop_playback">Stop playback</string>
+    <string name="back_15">Back 15 seconds</string>
+    <string name="forward_15">Forward 15 seconds</string>
+    <string name="no_app_for_file">No app on this phone opens this file.</string>
 </resources>

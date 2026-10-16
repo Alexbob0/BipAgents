@@ -197,4 +197,11 @@
     <string name="tap_to_fold">Tippen zum Einklappen</string>
     <string name="scheduled_task">Geplante Aufgabe</string>
     <string name="proactive_message">Proaktive Nachricht</string>
+    <string name="pause">Pause</string>
+    <string name="close">Schließen</string>
+    <string name="file_unavailable">Datei nicht verfügbar</string>
+    <string name="stop_playback">Wiedergabe beenden</string>
+    <string name="back_15">15 Sekunden zurück</string>
+    <string name="forward_15">15 Sekunden vor</string>
+    <string name="no_app_for_file">Keine App auf diesem Telefon öffnet diese Datei.</string>
 </resources>

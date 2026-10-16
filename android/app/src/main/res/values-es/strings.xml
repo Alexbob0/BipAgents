@@ -197,4 +197,11 @@
     <string name="tap_to_fold">Toca para plegar</string>
     <string name="scheduled_task">Tarea programada</string>
     <string name="proactive_message">Mensaje proactivo</string>
+    <string name="pause">Pausa</string>
+    <string name="close">Cerrar</string>
+    <string name="file_unavailable">Archivo no disponible</string>
+    <string name="stop_playback">Detener la reproducción</string>
+    <string name="back_15">Retroceder 15 segundos</string>
+    <string name="forward_15">Avanzar 15 segundos</string>
+    <string name="no_app_for_file">Ninguna app de este teléfono abre este archivo.</string>
 </resources>
