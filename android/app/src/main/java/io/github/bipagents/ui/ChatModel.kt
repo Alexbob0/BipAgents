@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.firstOrNull
+import io.github.bipagents.net.str
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import android.util.Base64
@@ -62,6 +64,8 @@ data class ChatState(
     val clarify: RunEvent.Clarify? = null,
     val error: Throwable? = null,
     val mood: Mood = Mood.IDLE,
+    /** The agent's thinking level, when the app may change it. */
+    val thinking: String? = null,
 )
 
 /** A conversation (ConversationModel.swift): turns sent as Hermes runs, followed through the bridge. */
@@ -79,6 +83,8 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
     private var replyByVoice = false
     /** A voice note waiting for its session (a new conversation gets one when the message goes). */
     private var pendingNote: RecordedNote? = null
+    /** The app is in the background: no following, no « looking at it » for the bridge. */
+    private var detached = false
 
     fun start(agentId: String, session: String?) {
         if (started) return
@@ -94,8 +100,9 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
                 val id = main?.id ?: if (sessions.isFailure) store.latest.value[agent.id]?.id else null
                 _state.update { it.copy(session = id, title = main?.title, error = sessions.exceptionOrNull()) }
             }
+            launch { store.bridge(agent)?.let { b -> runCatching { b.thinking(agent.bridgeName) }.getOrNull() }?.let { t -> _state.update { it.copy(thinking = t) } } }
             load()
-            _state.value.session?.let { s -> runs.getString(s, null)?.let { follow(it, null) } }
+            _state.value.session?.let { s -> runs.getString(s, null)?.let { follow(it, runs.getString("sent.$s", null), reattaching = true) } }
             watch()
         }
     }
@@ -160,20 +167,33 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Turns the agent takes on its own (a routine, a reply that came meanwhile) show up while the thread is open; the
-     *  bridge also learns that the person is looking at it (no push for what is on screen). */
+     *  bridge also learns that the person is looking at it (no push for what is on screen). During a turn, Hermes is
+     *  asked whether the run is still going (its events may never come) or waits for an approval not shown. */
     private fun watch() = viewModelScope.launch {
         var count: Long? = null
         while (isActive) {
             delay(8000)
+            if (detached) continue
             val agent = _state.value.agent ?: continue
             val session = _state.value.session ?: continue
-            if (following != null) continue
+            if (following != null) { checkRun(agent); continue }
             val bridge = store.bridge(agent) ?: continue
             val now = runCatching {
                 bridge.api.call("v1/sessions/${session}/state", query = mapOf("agent" to agent.bridgeName))
             }.getOrNull()?.let { (it as? kotlinx.serialization.json.JsonObject)?.get("message_count") as? JsonPrimitive }?.content?.toLongOrNull()
             if (count != null && now != null && now != count) load()
             count = now ?: count
+        }
+    }
+
+    private suspend fun checkRun(agent: Agent) {
+        val run = _state.value.live?.run ?: return
+        val status = runCatching { store.hermes(agent)?.run(run) }.getOrNull() ?: return
+        if (status.approval != null && _state.value.approval == null) _state.update { it.copy(approval = status.approval, mood = Mood.ASKING) }
+        else if (status.terminal && following != null && !detached) {
+            // Already over on Hermes, its events never came: the history has the reply.
+            following?.cancel()
+            finish(agent, _state.value.session, finished = true)
         }
     }
 
@@ -185,9 +205,10 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         val stored = sentFiles.write(attachments)
         _state.update { it.copy(live = Live(trimmed, files = stored), error = null, mood = Mood.THINKING) }
         following = viewModelScope.launch {
+            var session: String? = null
             try {
                 val title = trimmed.ifEmpty { attachments.first().name }.take(60)
-                val session = _state.value.session ?: hermes.createSession(title).also { s ->
+                session = _state.value.session ?: hermes.createSession(title).also { s ->
                     _state.update { it.copy(session = s.id, title = s.title ?: title) }
                     store.noteSession(agent, s)
                 }.id
@@ -217,39 +238,115 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
                         }))
                     })))
                 }
-                val run = hermes.startRun(session, input)
-                runs.edit().putString(session, run).apply()
-                stream(run, trimmed)
+                // A run lives on the server whatever happens to this connection, and can be followed again later. A
+                // server that rejects runs (or photos in runs) gets chat/stream instead.
+                var run: String? = null
+                var ackLost = false
+                if (agent.id !in runsUnavailable && !(images.isNotEmpty() && agent.id in imagesUnavailableInRuns)) {
+                    try {
+                        run = hermes.startRun(session, input)
+                    } catch (error: HttpError) {
+                        when {
+                            // The run may have started before the answer broke: never resend (the agent would do the
+                            // task twice), wait for the reply in the transcript.
+                            error.status >= 500 -> ackLost = true
+                            error.status in setOf(400, 404, 405, 413, 415, 422) ->
+                                if (images.isNotEmpty()) imagesUnavailableInRuns += agent.id else runsUnavailable += agent.id
+                            else -> throw error
+                        }
+                    }
+                }
+                when {
+                    ackLost -> { waitForReply(hermes, session, trimmed); finish(agent, session, finished = true) }
+                    run != null -> {
+                        runs.edit().putString(session, run).putString("sent.$session", trimmed).apply()
+                        stream(run, trimmed)
+                    }
+                    else -> {
+                        hermes.chatTurn(session, input).firstOrNull { apply(it) }
+                        finish(agent, session, finished = true)
+                    }
+                }
             } catch (error: Throwable) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
-                _state.update { it.copy(live = null, error = error, mood = Mood.IDLE) }
-                following = null
+                if (session != null && runs.getString(session, null) == null) {
+                    _state.update { it.copy(error = error) }
+                    finish(agent, session, finished = false)
+                } else {
+                    _state.update { it.copy(live = null, error = error, mood = Mood.IDLE) }
+                    following = null
+                }
             }
         }
         return true
     }
 
-    private fun follow(run: String, sent: String?) {
-        following = viewModelScope.launch { stream(run, sent) }
+    /** The POST's answer was lost: the reply shows up in the transcript (checked every 3 s, for 15 min at most). */
+    private suspend fun waitForReply(hermes: io.github.bipagents.net.Hermes, session: String, text: String) {
+        live { it.copy(interim = app.getString(io.github.bipagents.R.string.agent_working)) }
+        val until = System.currentTimeMillis() + 15 * 60_000
+        val asked = io.github.bipagents.model.SentFiles.normalized(text)
+        while (System.currentTimeMillis() < until) {
+            delay(3000)
+            val history = runCatching { hermes.messages(session) }.getOrNull() ?: continue
+            val at = history.indexOfLast { it.role == "user" && io.github.bipagents.model.SentFiles.normalized(it.text).contains(asked) }
+            if (at >= 0 && history.drop(at + 1).any { it.role == "assistant" && it.text.isNotEmpty() }) return
+        }
     }
 
-    private suspend fun stream(run: String, sent: String?) {
+    private fun follow(run: String, sent: String?, reattaching: Boolean = false) {
+        following = viewModelScope.launch { stream(run, sent, reattaching) }
+    }
+
+    /** The app went to the background: stop following, so the bridge (which pushes only when nobody follows a run)
+     *  notifies when the reply is ready. Followed again when the app comes back. */
+    fun detach() {
+        detached = true
+        if (following != null && _state.value.live?.run != null) {
+            following?.cancel()
+            following = null
+        }
+    }
+
+    fun reattach() {
+        if (!detached) return
+        detached = false
+        val session = _state.value.session ?: return
+        if (following != null) return
+        val run = runs.getString(session, null)
+        if (run != null) follow(run, _state.value.live?.sent ?: runs.getString("sent.$session", null), reattaching = true)
+        else viewModelScope.launch { load() }
+    }
+
+    private suspend fun stream(run: String, sent: String?, reattaching: Boolean = false) {
         val agent = _state.value.agent ?: return
         val session = _state.value.session
-        _state.update { it.copy(live = Live(sent ?: it.live?.sent, it.live?.items ?: emptyList(), run = run, files = it.live?.files ?: emptyList()),
+        // The message that started the run, until Hermes' history has it (stored with the reply, at the end).
+        val shown = sent?.takeUnless { text ->
+            val last = (_state.value.items ?: emptyList()).lastOrNull { it is Item.User } as? Item.User
+            val n = io.github.bipagents.model.SentFiles.normalized(text)
+            last != null && _state.value.items?.lastOrNull() !is Item.User && n.isNotEmpty() &&
+                io.github.bipagents.model.SentFiles.normalized(last.text).contains(n) && !reattaching
+        }
+        _state.update { it.copy(live = Live(shown ?: it.live?.sent, it.live?.items ?: emptyList(), run = run, files = it.live?.files ?: emptyList()),
             mood = Mood.THINKING) }
         var finished = false
         try {
             val bridge = store.bridge(agent)
-            val events = bridge?.runEvents(agent.bridgeName, run, session) ?: store.hermes(agent)!!.runEvents(run)
-            events.collect { event -> if (apply(event)) finished = true }
-        } catch (error: HttpError) {
-            if (error.status == 404) finished = true else _state.update { it.copy(error = error) }
+            val hermes = store.hermes(agent) ?: return
+            finished = if (bridge != null && agent.id !in bridgeWithoutRunEvents) {
+                followViaBridge(bridge, agent, run, session, reattaching) ?: followViaHermes(hermes, run, reattaching = true)
+            } else followViaHermes(hermes, run, reattaching)
         } catch (error: Throwable) {
             if (error is kotlinx.coroutines.CancellationException) throw error
             _state.update { it.copy(error = error) }
         }
-        if (finished && session != null) runs.edit().remove(session).apply()
+        finish(agent, session, finished)
+    }
+
+    /** The turn is over (or lost): the thread from Hermes' history, the reply read out if it came from a voice note. */
+    private suspend fun finish(agent: Agent, session: String?, finished: Boolean) {
+        if (finished && session != null) runs.edit().remove(session).remove("sent.$session").apply()
         load()
         _state.update { it.copy(live = null, approval = null, clarify = null, mood = Mood.IDLE) }
         following = null
@@ -261,6 +358,91 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
             store.noteSession(agent, Session(session, _state.value.title, System.currentTimeMillis(), (last as? Item.Reply)?.text, null))
         }
     }
+
+    /** The reply after the last message, cleared: a replayed run rebuilds it. */
+    private fun clearTurn() {
+        live { it.copy(items = emptyList(), interim = null) }
+        _state.update { it.copy(approval = null, clarify = null) }
+    }
+
+    /** Through the bridge, which replays the run from its start on each connection: reconnects (screen locked,
+     *  network waking up) with a growing delay. Null when the bridge cannot follow this run (then Hermes does). */
+    private suspend fun followViaBridge(bridge: io.github.bipagents.net.Bridge, agent: Agent, run: String, session: String?,
+                                        reattaching: Boolean): Boolean? {
+        val reconnecting = app.getString(io.github.bipagents.R.string.reconnecting)
+        val backoff = Backoff()
+        var failures = 0
+        var connections = 0
+        while (true) {
+            kotlinx.coroutines.yield()   // stops here once cancelled
+            if (connections > 0 || reattaching) { clearTurn(); showPendingApproval(agent, run) }
+            if (connections > 0) live { it.copy(interim = reconnecting) }
+            connections++
+            var lost = false
+            var over = false
+            try {
+                bridge.runEventsRaw(agent.bridgeName, run, session).firstOrNull { event ->
+                    failures = 0
+                    backoff.reset()
+                    if (_state.value.live?.interim == reconnecting) live { it.copy(interim = null) }
+                    if (event.type == "bridge.error") {
+                        // The bridge keeps retrying an unreachable Hermes; anything else: it lost the run.
+                        if (event.data.str("code") != "hermes_unreachable") lost = true
+                        return@firstOrNull lost
+                    }
+                    val e = RunEvent.of(event) ?: return@firstOrNull false
+                    over = apply(e)
+                    over
+                }
+            } catch (error: HttpError) {
+                if (error.status == 404) { bridgeWithoutRunEvents += agent.id; return null }
+                if (!retryable(error)) throw error
+                if (++failures > 12) throw error
+            }
+            if (lost) return null
+            if (over) return true
+            delay(backoff.next())
+        }
+    }
+
+    /** Straight from Hermes: its events, and the run's status when the subscription ends or drops. */
+    private suspend fun followViaHermes(hermes: io.github.bipagents.net.Hermes, run: String, reattaching: Boolean): Boolean {
+        val agent = _state.value.agent ?: return true
+        val backoff = Backoff()
+        var failures = 0
+        var attempts = 0
+        while (true) {
+            kotlinx.coroutines.yield()   // stops here once cancelled
+            if (attempts > 0 || reattaching) clearTurn()
+            attempts++
+            var over = false
+            try {
+                hermes.runEvents(run).firstOrNull { e -> apply(e).also { over = it } }
+            } catch (error: HttpError) {
+                if (error.status == 404) return true
+                if (!retryable(error)) throw error
+                if (++failures > 12) throw error
+            }
+            if (over) return true
+            val status = runCatching { hermes.run(run) }
+            if ((status.exceptionOrNull() as? HttpError)?.status == 404) return true
+            status.getOrNull()?.let { s ->
+                if (s.terminal) return true
+                if (s.approval != null && _state.value.approval == null) _state.update { it.copy(approval = s.approval, mood = Mood.ASKING) }
+            }
+            showPendingApproval(agent, run)
+            delay(backoff.next())
+        }
+    }
+
+    /** An approval the replay no longer has stays answerable (Hermes keeps it in the run's status). */
+    private suspend fun showPendingApproval(agent: Agent, run: String) {
+        if (_state.value.approval != null) return
+        val approval = runCatching { store.hermes(agent)?.run(run) }.getOrNull()?.approval ?: return
+        _state.update { it.copy(approval = approval, mood = Mood.ASKING) }
+    }
+
+    private fun retryable(error: HttpError) = error.status == 0 || error.status == 408 || error.status == 429 || error.status >= 500
 
     private fun live(change: (Live) -> Live) = _state.update { s -> s.copy(live = s.live?.let(change)) }
 
@@ -339,6 +521,18 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
+    /** The agent's thinking from its next message (the bridge sets it in Hermes); back as it was if refused. */
+    fun setThinking(level: String) {
+        val agent = _state.value.agent ?: return
+        val before = _state.value.thinking ?: return
+        _state.update { it.copy(thinking = level) }
+        viewModelScope.launch {
+            runCatching { store.bridge(agent)?.setThinking(agent.bridgeName, level) }.onFailure { e ->
+                _state.update { it.copy(thinking = before, error = e) }
+            }
+        }
+    }
+
     /** A voice note: its transcript goes as the message, its recording stays with the conversation. */
     fun sendVoice(note: RecordedNote) {
         pendingNote = note
@@ -391,6 +585,12 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
+        /** Agents whose server rejected `POST /v1/runs` (or photos in runs) during this launch. */
+        private val runsUnavailable = HashSet<String>()
+        private val imagesUnavailableInRuns = HashSet<String>()
+        /** Agents whose bridge does not follow runs (an older one). */
+        private val bridgeWithoutRunEvents = HashSet<String>()
+
         /** The bridge reads at most 20 000 characters; a reply that long is better read than heard anyway. */
         const val MAX_SPOKEN = 8000
 
@@ -464,5 +664,16 @@ object ThreadCache {
             tmp.writeText(io.github.bipagents.net.json.encodeToString(entry.copy(messages = entry.messages.takeLast(300))))
             tmp.renameTo(f)
         }
+    }
+}
+
+/** Delays between reconnections: 0.5 s doubling up to 8 s, ±20 % (HermesKit's Backoff). */
+class Backoff(private val initial: Long = 500, private val maximum: Long = 8000) {
+    private var attempt = 0
+    fun reset() { attempt = 0 }
+    fun next(): Long {
+        val base = minOf(maximum.toDouble(), initial * Math.pow(2.0, attempt.toDouble()))
+        attempt++
+        return (base * (0.8 + Math.random() * 0.4)).toLong()
     }
 }

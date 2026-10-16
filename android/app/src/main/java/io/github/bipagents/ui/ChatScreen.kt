@@ -7,6 +7,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.DocumentScanner
+import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -111,6 +115,48 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
     }
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { take(it) }
     val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { take(it) }
+    var shot by remember { mutableStateOf<Uri?>(null) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) shot?.let { take(listOf(it)) } }
+    fun photograph() {
+        val file = java.io.File(context.cacheDir, "camera/photo-${System.currentTimeMillis()}.jpg").apply { parentFile?.mkdirs() }
+        shot = MediaFiles.uri(context, file)
+        camera.launch(shot!!)
+    }
+    val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) photograph() }
+    // A document scanned with Google's scanner (edges, flattening), sent as a PDF.
+    val scanner = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val pdf = com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult.fromActivityResultIntent(result.data)?.pdf?.uri
+        if (result.resultCode == android.app.Activity.RESULT_OK && pdf != null) scope.launch {
+            val bytes = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(pdf)?.use { it.readBytes() } } ?: return@launch
+            val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
+            attachments.add(Attachment("scan-$day.pdf", "application/pdf", bytes, false))
+        }
+    }
+    val scanUnavailable = stringResource(R.string.scan_unavailable)
+    fun scan() {
+        val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }.filterIsInstance<android.app.Activity>().firstOrNull()
+            ?: return
+        val options = com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true).setPageLimit(20)
+            .setResultFormats(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+            .setScannerMode(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL).build()
+        com.google.mlkit.vision.documentscanner.GmsDocumentScanning.getClient(options).getStartScanIntent(activity)
+            .addOnSuccessListener { scanner.launch(androidx.activity.result.IntentSenderRequest.Builder(it).build()) }
+            .addOnFailureListener { android.widget.Toast.makeText(context, scanUnavailable, android.widget.Toast.LENGTH_LONG).show() }
+    }
+    // In the background the conversation stops following its turn: the bridge then sends the notification.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> model.detach()
+                androidx.lifecycle.Lifecycle.Event.ON_START -> model.reattach()
+                else -> {}
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val list = rememberLazyListState()
     // The thread sticks to its end (replies streaming, photos loading) until the person scrolls up; then a button
     // brings the end back.
@@ -295,6 +341,11 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
             onVoice = model::sendVoice,
             onPhoto = { photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onFile = { files.launch(arrayOf("*/*")) },
+            onCamera = {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED) photograph() else askCamera.launch(android.Manifest.permission.CAMERA)
+            },
+            onScan = ::scan, thinking = state.thinking, onThinking = model::setThinking,
             onSend = { if (model.send(draft, attachments.toList())) { draft = ""; Drafts.set(context, agentId, session, ""); attachments.clear() } },
             onStop = model::stop)
     }
@@ -524,11 +575,16 @@ fun Pill(text: String, dark: Boolean, onClick: () -> Unit) {
 @Composable
 private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: String, running: Boolean, ready: Boolean,
                      look: io.github.bipagents.model.Look, language: String?, onVoice: (RecordedNote) -> Unit,
-                     onPhoto: () -> Unit, onFile: () -> Unit, onSend: () -> Unit, onStop: () -> Unit) {
+                     onPhoto: () -> Unit, onFile: () -> Unit, onCamera: () -> Unit, onScan: () -> Unit, thinking: String?,
+                     onThinking: (String) -> Unit, onSend: () -> Unit, onStop: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
+    var levels by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val recorder = remember { Recorder(context.applicationContext) }
+    // A tap on the mic is not a recording: the field says how, for a moment (WhatsApp).
+    var holdHint by remember { mutableStateOf(false) }
+    LaunchedEffect(holdHint) { if (holdHint) { kotlinx.coroutines.delay(1800); holdHint = false } }
     var recording by remember { mutableStateOf<String?>(null) }   // null, "holding", "locked"
     var cancelling by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
@@ -569,18 +625,45 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: Stri
     Row(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box {
-            RoundButton(Icons.Rounded.Add, stringResource(R.string.attach), { menu = true }, size = 52.dp)
+            RoundButton(Icons.Rounded.Add, stringResource(R.string.attach), { menu = true; levels = false }, size = 52.dp)
+            // Thinking off, or deeper than usual (slower answers): shown on « + », seen before each message.
+            if (thinking == "none" || thinking == "high" || thinking == "xhigh") Box(Modifier.align(Alignment.TopEnd).size(18.dp)
+                .background(look.deep, CircleShape), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.Icon(Icons.Rounded.Lightbulb, null, Modifier.size(11.dp), tint = Bip.card)
+                if (thinking == "none") androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+                    drawLine(Bip.card, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, size.height), 2.dp.toPx())
+                }
+            }
             DropdownMenu(menu, { menu = false }, containerColor = Bip.card) {
-                DropdownMenuItem({ Text(stringResource(R.string.attach_photo), style = Bip.text(16, FontWeight.Bold)) }, { menu = false; onPhoto() },
-                    leadingIcon = { androidx.compose.material3.Icon(Icons.Rounded.Image, null) })
-                DropdownMenuItem({ Text(stringResource(R.string.attach_file), style = Bip.text(16, FontWeight.Bold)) }, { menu = false; onFile() },
-                    leadingIcon = { androidx.compose.material3.Icon(Icons.Rounded.AttachFile, null) })
+                if (!levels) {
+                    @Composable fun Entry(label: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, action: () -> Unit) =
+                        DropdownMenuItem({ Text(stringResource(label), style = Bip.text(16, FontWeight.Bold)) }, { menu = false; action() },
+                            leadingIcon = { androidx.compose.material3.Icon(icon, null) })
+                    Entry(R.string.attach_photo, Icons.Rounded.Image, onPhoto)
+                    Entry(R.string.attach_file, Icons.Rounded.AttachFile, onFile)
+                    Entry(R.string.camera, Icons.Rounded.PhotoCamera, onCamera)
+                    Entry(R.string.scan_document, Icons.Rounded.DocumentScanner, onScan)
+                    if (thinking != null) {
+                        androidx.compose.material3.HorizontalDivider(color = Bip.line)
+                        DropdownMenuItem({
+                            Column {
+                                Text(stringResource(R.string.thinking), style = Bip.text(16, FontWeight.Bold))
+                                Text(thinkingLabel(thinking), style = Bip.text(13, FontWeight.Bold, Bip.muted))
+                            }
+                        }, { levels = true }, leadingIcon = { androidx.compose.material3.Icon(Icons.Rounded.Lightbulb, null) })
+                    }
+                } else for (level in listOf("none", "low", "medium", "high", "xhigh")) DropdownMenuItem(
+                    { Text(thinkingLabel(level), style = Bip.text(16, FontWeight.Bold)) }, { menu = false; onThinking(level) },
+                    leadingIcon = { if (level == thinking) androidx.compose.material3.Icon(Icons.Rounded.Check, null, tint = look.deep) })
             }
         }
-        TextField(draft, onDraft, Modifier.weight(1f), placeholder = { Text(placeholder, style = Bip.text(16, color = Bip.muted)) },
-            textStyle = Bip.text(16), maxLines = 6, shape = RoundedCornerShape(26.dp),
+        val field = if (holdHint) Bip.danger.copy(alpha = 0.12f) else Bip.card
+        TextField(draft, onDraft, Modifier.weight(1f), placeholder = {
+            if (holdHint) Text(stringResource(R.string.hold_to_record), style = Bip.text(16, FontWeight.Bold, Bip.danger))
+            else Text(placeholder, style = Bip.text(16, color = Bip.muted))
+        }, textStyle = Bip.text(16), maxLines = 6, shape = RoundedCornerShape(26.dp),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-            colors = TextFieldDefaults.colors(focusedContainerColor = Bip.card, unfocusedContainerColor = Bip.card,
+            colors = TextFieldDefaults.colors(focusedContainerColor = field, unfocusedContainerColor = field,
                 focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
         if (running) RoundButton(Icons.Rounded.Stop, stringResource(R.string.stop), onStop, size = 52.dp, background = Bip.danger, tint = Bip.card)
         else if (recording == "locked") RoundButton(Icons.Rounded.ArrowUpward, stringResource(R.string.send), { finish(true) }, size = 52.dp,
@@ -595,6 +678,7 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: Stri
                         val down = awaitFirstDown()
                         begin()
                         var locked = false
+                        val pressed = System.currentTimeMillis()
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -604,7 +688,8 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: Stri
                             if (!locked && dy < -with(density) { 80.dp.toPx() } && recording == "holding") { locked = true; recording = "locked" }
                             if (!change.pressed) break
                         }
-                        if (!locked) finish(!cancelling)
+                        if (!locked && System.currentTimeMillis() - pressed < 300) { finish(false); holdHint = true }
+                        else if (!locked) finish(!cancelling)
                         cancelling = false
                     }
                 }, contentAlignment = Alignment.Center) {
@@ -620,3 +705,12 @@ object PendingVoice {
     fun put(agent: String, note: io.github.bipagents.voice.RecordedNote) { notes[agent] = note }
     fun take(agent: String) = notes.remove(agent)
 }
+
+@Composable
+private fun thinkingLabel(level: String): String = stringResource(when (level) {
+    "none" -> R.string.thinking_none
+    "low" -> R.string.thinking_low
+    "high" -> R.string.thinking_high
+    "xhigh" -> R.string.thinking_xhigh
+    else -> R.string.thinking_medium
+})

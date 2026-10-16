@@ -4,5 +4,6 @@
     <cache-path name="media" path="media/" />
     <cache-path name="share" path="share/" />
     <cache-path name="outbox" path="outbox/" />
+    <cache-path name="camera" path="camera/" />
     <files-path name="attachments" path="attachments/" />
 </paths>

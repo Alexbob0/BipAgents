@@ -205,4 +205,16 @@
     <string name="back_15">Back 15 seconds</string>
     <string name="forward_15">Forward 15 seconds</string>
     <string name="no_app_for_file">No app on this phone opens this file.</string>
+    <string name="agent_working">The agent is working…</string>
+    <string name="reconnecting">Reconnecting to the agent…</string>
+    <string name="camera">Camera</string>
+    <string name="scan_document">Scan a document</string>
+    <string name="scan_unavailable">The document scanner isn\'t available on this phone.</string>
+    <string name="thinking">Thinking</string>
+    <string name="thinking_none">Off</string>
+    <string name="thinking_low">Light</string>
+    <string name="thinking_medium">Normal</string>
+    <string name="thinking_high">Deep</string>
+    <string name="thinking_xhigh">Maximum</string>
+    <string name="hold_to_record">Hold the mic to record</string>
 </resources>

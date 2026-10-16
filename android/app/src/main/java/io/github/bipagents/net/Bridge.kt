@@ -28,6 +28,23 @@ class Bridge(val api: Api) {
     fun runEvents(agent: String, run: String, session: String?): Flow<RunEvent> =
         api.events("v1/runs/${Hermes.seg(run)}/events", mapOf("agent" to agent, "session_id" to session)).mapNotNull(RunEvent::of)
 
+    /** The same, raw: the bridge's own `bridge.error` events included. */
+    fun runEventsRaw(agent: String, run: String, session: String?): Flow<ServerEvent> =
+        api.events("v1/runs/${Hermes.seg(run)}/events", mapOf("agent" to agent, "session_id" to session))
+
+    /** The agent's thinking level (none, low, medium, high, xhigh), when the app may change it; else null. */
+    suspend fun thinking(agent: String): String? = try {
+        api.call("v1/agents/${Hermes.seg(agent)}/thinking").obj().str("thinking")
+    } catch (e: HttpError) {
+        if (e.status in setOf(404, 405, 409)) null else throw e
+    }
+
+    suspend fun setThinking(agent: String, level: String) {
+        api.call("v1/agents/${Hermes.seg(agent)}/thinking", "PUT", kotlinx.serialization.json.buildJsonObject {
+            put("level", kotlinx.serialization.json.JsonPrimitive(level))
+        })
+    }
+
     /** The agent's look, kept by the bridge for every app (`PUT /v1/agents/{id}/appearance`). */
     suspend fun setAppearance(agent: String, category: String, color: String?) {
         api.call("v1/agents/${Hermes.seg(agent)}/appearance", "PUT", kotlinx.serialization.json.buildJsonObject {

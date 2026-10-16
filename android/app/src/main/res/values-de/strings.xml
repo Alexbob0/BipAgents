@@ -204,4 +204,16 @@
     <string name="back_15">15 Sekunden zurück</string>
     <string name="forward_15">15 Sekunden vor</string>
     <string name="no_app_for_file">Keine App auf diesem Telefon öffnet diese Datei.</string>
+    <string name="agent_working">Der Agent arbeitet…</string>
+    <string name="reconnecting">Verbindung zum Agenten wird wiederhergestellt…</string>
+    <string name="camera">Kamera</string>
+    <string name="scan_document">Dokument scannen</string>
+    <string name="scan_unavailable">Der Dokumentenscanner ist auf diesem Telefon nicht verfügbar.</string>
+    <string name="thinking">Denken</string>
+    <string name="thinking_none">Aus</string>
+    <string name="thinking_low">Leicht</string>
+    <string name="thinking_medium">Normal</string>
+    <string name="thinking_high">Gründlich</string>
+    <string name="thinking_xhigh">Maximal</string>
+    <string name="hold_to_record">Halte das Mikro gedrückt, um aufzunehmen</string>
 </resources>

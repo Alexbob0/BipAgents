@@ -204,4 +204,16 @@
     <string name="back_15">Retroceder 15 segundos</string>
     <string name="forward_15">Avanzar 15 segundos</string>
     <string name="no_app_for_file">Ninguna app de este teléfono abre este archivo.</string>
+    <string name="agent_working">El agente está trabajando…</string>
+    <string name="reconnecting">Reconectando con el agente…</string>
+    <string name="camera">Cámara</string>
+    <string name="scan_document">Escanear un documento</string>
+    <string name="scan_unavailable">El escáner de documentos no está disponible en este teléfono.</string>
+    <string name="thinking">Razonamiento</string>
+    <string name="thinking_none">Desactivado</string>
+    <string name="thinking_low">Ligero</string>
+    <string name="thinking_medium">Normal</string>
+    <string name="thinking_high">Profundo</string>
+    <string name="thinking_xhigh">Máximo</string>
+    <string name="hold_to_record">Mantén pulsado el micro para grabar</string>
 </resources>

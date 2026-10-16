@@ -97,7 +97,8 @@ class Api(val base: String, private val key: String) {
                     while (true) {
                         val line = source.readUtf8Line() ?: break
                         if (line.isEmpty()) {
-                            ServerEvent.of(name, data.toString())?.let { trySend(it) }
+                            // Waits for a slow reader rather than dropping events (a long reply's deltas).
+                            ServerEvent.of(name, data.toString())?.let { send(it) }
                             name = null
                             data.clear()
                             continue

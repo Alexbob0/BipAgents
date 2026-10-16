@@ -60,6 +60,22 @@ data class ToolStep(
     enum class Status { STARTED, DONE, FAILED }
 }
 
+data class RunStatus(val status: String, val approval: RunEvent.Approval?) {
+    val terminal get() = status in setOf("completed", "failed", "cancelled", "canceled", "interrupted", "expired", "succeeded")
+
+    companion object {
+        fun of(o: JsonObject?, run: String): RunStatus {
+            val s = (o?.get("run") as? JsonObject) ?: o
+            val status = s.str("status")?.lowercase() ?: "unknown"
+            // Hermes keeps the approval.request in a parked run's status: a client that missed the event can still answer.
+            val approval = if (status == "waiting_for_approval") (s?.get("approval") as? JsonObject)?.let { a ->
+                RunEvent.of(ServerEvent("approval.request", JsonObject(a + ("run_id" to JsonPrimitive(run))))) as? RunEvent.Approval
+            } else null
+            return RunStatus(status, approval)
+        }
+    }
+}
+
 /** One agent's Hermes api_server (HermesKit's HermesClient), with the agent's key. */
 class Hermes(val api: Api) {
     suspend fun sessions(limit: Int = 50, offset: Int = 0): List<Session> =
@@ -106,6 +122,13 @@ class Hermes(val api: Api) {
         })
 
     fun runEvents(run: String): Flow<RunEvent> = api.events("v1/runs/${seg(run)}/events").mapNotNull(RunEvent::of)
+
+    /** A run's status (`GET /v1/runs/{id}`): `status`, and the approval it waits for. */
+    suspend fun run(run: String): RunStatus = RunStatus.of(api.call("v1/runs/${seg(run)}").obj(), run)
+
+    /** One turn streamed on the connection (`chat/stream`): for a server that rejects runs. */
+    fun chatTurn(session: String, input: JsonObject): Flow<RunEvent> =
+        api.events("api/sessions/${seg(session)}/chat/stream", body = input).mapNotNull(RunEvent::of)
 
     suspend fun stop(run: String) { api.call("v1/runs/${seg(run)}/stop", "POST", JsonObject(emptyMap())) }
 
