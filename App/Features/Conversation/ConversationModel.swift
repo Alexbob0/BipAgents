@@ -613,7 +613,7 @@ final class ConversationModel {
         }
     }
 
-    /// Hermes no longer has this conversation (deleted elsewhere, or by aibox): stop polling it and drop what the
+    /// Hermes no longer has this conversation (deleted elsewhere, or on the server): stop polling it and drop what the
     /// phone remembered of it (local copy, run to re-attach, home card preview), so nothing asks for it again.
     private func forgetDeletedSession() {
         guard let sessionID else { return }

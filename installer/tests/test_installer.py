@@ -183,7 +183,7 @@ def test_bridge_config_is_valid_for_the_bridge(tmp_path):
 
     inst = Install(repo=ROOT, home=tmp_path, ports=Ports(9200), tailnet_name="mini.tail0000.ts.net",
                    lan_address="192.168.1.20", model=hermes.Model("custom", "glm", base_url="http://192.168.1.30:8888/v1"),
-                   relay_url="https://aibox.tail0000.ts.net:8643", relay_key="r" * 40,
+                   relay_url="https://admin.tail0000.ts.net:8643", relay_key="r" * 40,
                    agents=[AgentEntry("finance", "Budget", "k" * 43)])
     config = parse_config(tomllib.loads(bridge_toml(inst)))
     agent = config.agent("finance")
@@ -191,7 +191,7 @@ def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     assert agent.public_url == "https://mini.tail0000.ts.net:9202/p/finance"
     assert config.public_url == "https://mini.tail0000.ts.net:9203" and config.port == 9203
     assert config.lan.enabled and config.lan.port == 9204 and config.lan.address == "192.168.1.20"
-    assert config.push_relay_url == "https://aibox.tail0000.ts.net:8643"
+    assert config.push_relay_url == "https://admin.tail0000.ts.net:8643"
     assert config.model_health_url == "http://192.168.1.30:8888/v1/models"
     assert config.pocket_url == "http://127.0.0.1:8098"
     assert config.hermes.enabled and config.hermes.hub_url == "http://127.0.0.1:9202"
@@ -719,10 +719,10 @@ def test_the_other_installs_of_the_machine_are_found_and_updated_after_one_sudo(
     import subprocess
     from bipinstall import upgrade
     Entry = __import__("collections").namedtuple("Entry", "pw_name pw_uid pw_dir")
-    monkeypatch.setattr(pwd, "getpwall", lambda: [Entry("root", 0, "/root"), Entry("aibox", 1000, "/home/aibox"),
+    monkeypatch.setattr(pwd, "getpwall", lambda: [Entry("root", 0, "/root"), Entry("admin", 1000, "/home/admin"),
                                                    Entry("chi", 1002, "/home/chi"), Entry("alex", 1003, "/home/alex"),
                                                    Entry("guest", 1004, "/home/guest")])
-    monkeypatch.setenv("USER", "aibox")
+    monkeypatch.setenv("USER", "admin")
     ran = []
 
     def fake_run(args, **kwargs):
@@ -734,4 +734,4 @@ def test_the_other_installs_of_the_machine_are_found_and_updated_after_one_sudo(
     upgrade.update_others(hermes.Runner())
     updates = [a[2] for a in ran if a[0] == "bash"]
     assert len(updates) == 2 and updates[0].startswith("sudo -n -u chi bash -c") and "update --auto" in updates[1]
-    assert ran[0] == ["sudo", "-v"] and not any("aibox/.config" in " ".join(a) for a in ran)   # not itself
+    assert ran[0] == ["sudo", "-v"] and not any("admin/.config" in " ".join(a) for a in ran)   # not itself

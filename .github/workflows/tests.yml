@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Bridge and installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: bridge/requirements*.txt
+      - run: pip install -r bridge/requirements-dev.txt
+      - name: Bridge
+        working-directory: bridge
+        run: python -m pytest -q
+      - name: Installer
+        run: PYTHONPATH=installer:bridge python -m pytest -q installer/tests
+
+  swift:
+    name: HermesKit and VoiceKit
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: HermesKit
+        working-directory: Packages/HermesKit
+        run: swift test
+      - name: VoiceKit
+        working-directory: Packages/VoiceKit
+        run: swift test

@@ -326,7 +326,7 @@ def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(confi
     (home / "profiles" / "vie").mkdir(parents=True)
     (home / "profiles" / "vie" / "SOUL.md").write_text("Tu es Vie.\n")
     (home / "profiles" / "vie" / "config.yaml").write_text(
-        "model:\n  provider: custom\n  default: dgx-spark\n  base_url: http://gpu:8888/v1\nagent:\n  reasoning_effort: medium\n")
+        "model:\n  provider: custom\n  default: local-model\n  base_url: http://gpu:8888/v1\nagent:\n  reasoning_effort: medium\n")
     config_dict["agents"]["vie"] = {"display_name": "Vie", "hermes_url": "http://127.0.0.1:8644", "hermes_key": "k" * 32,
                                     "isolated": True, "host_home": str(home)}
     config = parse_config(config_dict)

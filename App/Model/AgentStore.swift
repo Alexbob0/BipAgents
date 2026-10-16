@@ -200,7 +200,7 @@ final class AgentStore {
         return (all, false)
     }
 
-    /// Hermes says this session no longer exists (deleted here, elsewhere, or by aibox): its home card preview goes.
+    /// Hermes says this session no longer exists (deleted here, elsewhere, or on the server): its home card preview goes.
     func forgetSession(_ sessionID: String, for agent: AgentProfile) {
         if latestSession[agent.id]?.id == sessionID { latestSession[agent.id] = nil }
     }

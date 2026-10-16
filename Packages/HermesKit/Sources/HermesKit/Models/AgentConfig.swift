@@ -113,7 +113,7 @@ public struct AgentProvisioning: Sendable, Hashable {
         let baseURL = try url("baseURL", try required("baseURL", "base_url", "url"))
         let apiKey = try required("apiKey", "api_key", "key")
         let bridgeURL = try optional("bridgeURL", "bridge_url").map { try url("bridgeURL", $0) }
-        // `"lan": {"url": "https://192.168.8.10:8650", "fingerprint": "<sha256 hex>"}`: both or nothing.
+        // `"lan": {"url": "https://192.168.1.10:8650", "fingerprint": "<sha256 hex>"}`: both or nothing.
         let lan = fields.value(["lan"])
         let lanURL = lan?["url"]?.stringValue.flatMap(URL.init(string:)).flatMap { $0.scheme == "https" && $0.host() != nil ? $0 : nil }
         let lanFingerprint = lan?["fingerprint"]?.stringValue?.lowercased()

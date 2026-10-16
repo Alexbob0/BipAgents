@@ -1,0 +1,39 @@
+name: Bug
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where
+      options:
+        - iPhone app
+        - Installer / bipagents update
+        - Bridge
+        - Voices (Pocket or your own voice model)
+        - Agents' visible browser
+        - Web console
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Your setup
+      description: Server (Mac, Linux distribution, VPS), where the model runs, app version.
+      placeholder: Ubuntu 24.04 VPS (ARM), OpenRouter, app 1.0 (20261015.2143)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        The bridge: `journalctl --user -u bipagents-bridge -n 100` (Linux) or `~/Library/Logs/bipagents-bridge.log` (Mac); the app: Settings › Diagnostics.
+        Remove keys, addresses and anything personal before pasting.
+      render: text

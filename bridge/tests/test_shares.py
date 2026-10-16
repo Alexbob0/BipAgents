@@ -82,7 +82,7 @@ def test_routes(client):
 
 
 def test_an_agent_set_up_by_hand_mounts_its_folders_itself(setup, config_dict, tmp_path):
-    """Vie in a container of its own (aibox): the bridge writes nothing in it, its start script mounts what
+    """Vie in a container of its own: the bridge writes nothing in it, its start script mounts what
     `mounts` lists, and the administrator's command runs when that changed."""
     config, hub, run, commands, tmp = setup
     vie = config.agent("vie")

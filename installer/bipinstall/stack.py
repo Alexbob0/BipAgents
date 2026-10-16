@@ -29,7 +29,7 @@ class Install:
     repo: Path                       # the BipAgents checkout
     home: Path                       # this person's home
     ports: Ports
-    tailnet_name: Optional[str]      # e.g. "aibox.tail38a3d9.ts.net"
+    tailnet_name: Optional[str]      # e.g. "box.tail1234.ts.net"
     lan_address: Optional[str]
     agents: List[AgentEntry] = field(default_factory=list)
     model: Optional[Model] = None

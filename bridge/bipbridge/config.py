@@ -131,7 +131,7 @@ class OutboxConfig:
 @dataclass
 class HermesInstall:
     """The person's own Hermes, managed by this bridge (an install made by the installer): lets the app create
-    agents. Empty `bin` = agents are not managed here (set up by hand, like aibox's containers)."""
+    agents. Empty `bin` = agents are not managed here (set up by hand, e.g. in containers of their own)."""
     bin: str = ""
     home: str = ""
     hub_url: str = ""            # the multiplex gateway, local (http://127.0.0.1:8642)

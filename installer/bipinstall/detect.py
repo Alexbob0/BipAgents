@@ -25,7 +25,7 @@ class Machine:
     cpu: str
     gpu: Optional[str]       # "apple", "nvidia", "amd" or None
     tailscale: Optional[str] = None       # path of the CLI
-    tailnet_name: Optional[str] = None    # this machine's MagicDNS name, e.g. "aibox.tail38a3d9.ts.net"
+    tailnet_name: Optional[str] = None    # this machine's MagicDNS name, e.g. "box.tail1234.ts.net"
     lan_addresses: List[str] = field(default_factory=list)
     cloud: Optional[str] = None           # the provider of a rented server (VPS), e.g. "Hetzner"
 

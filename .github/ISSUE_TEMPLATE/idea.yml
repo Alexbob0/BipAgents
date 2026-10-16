@@ -1,0 +1,11 @@
+name: Idea
+description: Something BipAgents could do
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What you'd like to do, and why. A situation from your day helps more than a solution.
+    validations:
+      required: true
