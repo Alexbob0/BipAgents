@@ -11,10 +11,13 @@ in place.
 - **Your provider has access to the server's disk.** Conversations, the agents' memory and the vault are there (the
   vault is encrypted, but its key is on the same disk). Pick a provider you trust, in Europe if you prefer the GDPR.
 - **The model** does not run there (no GPU): it is **in the cloud** (OpenRouter, Mistral, OpenAI, Anthropic), or on
-  **a PC at home** reached through Tailscale (the installer then asks for its address on your tailnet).
+  **a PC at home** reached through Tailscale (the installer then asks for its address on your tailnet). In the cloud,
+  each message goes to the model's provider to be answered: with OpenRouter, pick providers that keep nothing in its
+  privacy settings (zero data retention).
 - **Notifications** go through Apple with a developer key, or through the relay of another BipAgents install (a
   relative's: `family add`).
-- **Cost**: a few euros a month.
+- **Cost**: the server, ≈ €7 a month (4 vCPU, 8 GB at Hetzner); the model, paid as you use it at OpenRouter. The
+  Bips' voices run on the server's CPU, at no extra cost.
 
 ## 1. Pick the server
 
@@ -65,7 +68,7 @@ first. It also offers each agent's visible browser, since podman is there. At th
 ## Afterwards
 
 - **Backups**: turn on your provider's backups or snapshots; everything is in `/home/bip`.
-- **Updates**: the system updates itself. For BipAgents: `cd ~/BipAgents && git pull` in the `bip` account, then
-  restart its services (`systemctl --user restart bipagents-bridge`).
+- **Updates**: the system updates itself. For BipAgents: `bipagents update` in the `bip` account (it restarts only
+  what changed); the first time, it offers to do it every night.
 - **Uninstall**: `bash ~/BipAgents/install.sh uninstall` in the `bip` account, then delete the server at the
   provider.

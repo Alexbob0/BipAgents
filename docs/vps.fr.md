@@ -11,10 +11,13 @@ fermer une fois Tailscale en place.
 - **Ton hébergeur a accès au disque du serveur.** Conversations, mémoire des agents et coffre y sont (le coffre est
   chiffré, mais sa clé est sur le même disque). Choisis un hébergeur de confiance, en Europe si tu préfères le RGPD.
 - **Le modèle** n'y tourne pas (pas de GPU) : il est **dans le cloud** (OpenRouter, Mistral, OpenAI, Anthropic), ou
-  sur **un PC de la maison** joint par Tailscale (l'installateur demande alors son adresse sur ton tailnet).
+  sur **un PC de la maison** joint par Tailscale (l'installateur demande alors son adresse sur ton tailnet). Dans le
+  cloud, chaque message part au fournisseur du modèle pour qu'il y réponde : avec OpenRouter, choisis dans ses réglages
+  de confidentialité des fournisseurs qui ne gardent rien (zero data retention).
 - **Les notifications** passent par Apple avec une clé de développeur, ou par le relais d'une autre installation
   BipAgents (celle d'un proche : `family add`).
-- **Le coût** : quelques euros par mois.
+- **Le coût** : le serveur, ≈ 7 € par mois (4 vCPU, 8 Go chez Hetzner) ; le modèle, payé à l'usage chez OpenRouter.
+  Les voix des Bips tournent sur le processeur du serveur, sans frais en plus.
 
 ## 1. Choisir le serveur
 
@@ -66,7 +69,7 @@ QR code dans l'app.
 ## Ensuite
 
 - **Sauvegardes** : active les sauvegardes ou instantanés de ton hébergeur. Tout est dans `/home/bip`.
-- **Mises à jour** : le système se met à jour seul. Pour BipAgents : `cd ~/BipAgents && git pull` dans le compte
-  `bip`, puis redémarre ses services (`systemctl --user restart bipagents-bridge`).
+- **Mises à jour** : le système se met à jour seul. Pour BipAgents : `bipagents update` dans le compte `bip` (il relance
+  seulement ce qui a changé) ; à la première fois, il propose de le faire chaque nuit.
 - **Désinstaller** : `bash ~/BipAgents/install.sh uninstall` dans le compte `bip`, puis supprime le serveur chez
   l'hébergeur.
