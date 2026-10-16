@@ -81,8 +81,9 @@ class Notifier(private val context: android.content.Context) {
             for ((choice, label) in listOf("once" to R.string.allow_once, "deny" to R.string.deny)) {
                 val intent = Intent(context, ApprovalReceiver::class.java).putExtra("agent", agent.id).putExtra("run", run)
                     .putExtra("request", data["request_id"]).putExtra("choice", choice).putExtra("notification", id)
-                builder.addAction(0, getString(label), PendingIntent.getBroadcast(context, "$id$choice".hashCode(), intent,
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                // From the lock screen only once the phone is unlocked (the iPhone's .authenticationRequired).
+                builder.addAction(NotificationCompat.Action.Builder(0, getString(label), PendingIntent.getBroadcast(context, "$id$choice".hashCode(), intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).setAuthenticationRequired(true).build())
             }
         }
         if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)

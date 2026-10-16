@@ -119,6 +119,8 @@
     <string name="voice_lumen_character">Clara y muy articulada, ideal para informar</string>
     <string name="voice_galet_character">Serena y nítida, una guía tranquila</string>
     <string name="voice_ours_character">Tranquilo y reconfortante, grave y suave</string>
+    <string name="unlock_desktop">Ver el escritorio de %s</string>
+    <string name="needs_screen_lock">Activa un bloqueo de pantalla en este teléfono para ver el escritorio de tus agentes.</string>
     <string name="cancel">Cancelar</string>
     <plurals name="agents_added">
         <item quantity="one">%d agente añadido</item>

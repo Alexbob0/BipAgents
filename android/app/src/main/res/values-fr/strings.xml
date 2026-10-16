@@ -123,6 +123,8 @@
     <string name="voice_lumen_character">Claire et très articulée, idéale pour les infos</string>
     <string name="voice_galet_character">Posée et nette, un guide calme</string>
     <string name="voice_ours_character">Calme et rassurant, grave et doux</string>
+    <string name="unlock_desktop">Voir le bureau de %s</string>
+    <string name="needs_screen_lock">Active un verrouillage d\'écran sur ce téléphone pour voir le bureau de tes agents.</string>
     <string name="cancel">Annuler</string>
     <string-array name="bip_hop">
         <item>Bip !</item>

@@ -55,7 +55,17 @@ fun DesktopScreen(store: AgentStore, agentId: String, onClose: () -> Unit) {
     var holding by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     val bridge = store.bridge(agent)
-    LaunchedEffect(agentId) {
+    // Its browser shows the person's accounts: the phone's lock first (DesktopView.swift's Face ID).
+    var unlocked by remember { mutableStateOf(false) }
+    var noLock by remember { mutableStateOf(false) }
+    val activity = context as? androidx.fragment.app.FragmentActivity
+    val title = stringResource(R.string.unlock_desktop, agent.name)
+    LaunchedEffect(Unit) {
+        if (activity == null || !DeviceLock.available(activity)) { noLock = true; return@LaunchedEffect }
+        DeviceLock.ask(activity, title) { ok -> if (ok) unlocked = true else onClose() }
+    }
+    LaunchedEffect(unlocked) {
+        if (!unlocked) return@LaunchedEffect
         desktop = runCatching { bridge?.desktop(agent.bridgeName) }.getOrNull()
         failed = desktop == null
         holding = desktop?.youHold == true
@@ -96,8 +106,10 @@ fun DesktopScreen(store: AgentStore, agentId: String, onClose: () -> Unit) {
                     }
                     loadUrl(d.url)
                 }
-            }, modifier = Modifier.fillMaxSize())
+            }, modifier = Modifier.fillMaxSize().safeDrawingPadding())
         }
+        if (noLock) Text(stringResource(R.string.needs_screen_lock), style = Bip.text(16, FontWeight.Bold, Color.White),
+            modifier = Modifier.align(Alignment.Center).padding(32.dp))
         if (failed) Text(stringResource(R.string.desktop_none), style = Bip.text(16, FontWeight.Bold, Color.White), modifier = Modifier.align(Alignment.Center))
         Row(Modifier.safeDrawingPadding().padding(10.dp).align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically) {

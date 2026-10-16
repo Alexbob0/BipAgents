@@ -124,6 +124,8 @@
     <string name="voice_lumen_character">Clear and crisp, made for information</string>
     <string name="voice_galet_character">Steady and clear, a calm guide</string>
     <string name="voice_ours_character">Calm and reassuring, deep and gentle</string>
+    <string name="unlock_desktop">See %s\'s desktop</string>
+    <string name="needs_screen_lock">Set a screen lock on this phone to see your agents\' desktop.</string>
     <string name="cancel">Cancel</string>
     <string-array name="bip_hop">
         <item>Bip!</item>

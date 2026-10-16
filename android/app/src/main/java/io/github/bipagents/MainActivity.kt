@@ -54,7 +54,7 @@ import io.github.bipagents.ui.AgentScreen
 import io.github.bipagents.ui.SettingsScreen
 import io.github.bipagents.ui.tap
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
     private var opened by androidx.compose.runtime.mutableStateOf<Pair<String, String?>?>(null)
 
     override fun onNewIntent(intent: android.content.Intent) {

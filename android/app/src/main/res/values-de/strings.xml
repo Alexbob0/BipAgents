@@ -119,6 +119,8 @@
     <string name="voice_lumen_character">Klar und deutlich, ideal für Infos</string>
     <string name="voice_galet_character">Ruhig und klar, ein gelassener Guide</string>
     <string name="voice_ours_character">Ruhig und beruhigend, tief und sanft</string>
+    <string name="unlock_desktop">Desktop von %s ansehen</string>
+    <string name="needs_screen_lock">Richte eine Displaysperre ein, um den Desktop deiner Agenten zu sehen.</string>
     <string name="cancel">Abbrechen</string>
     <plurals name="agents_added">
         <item quantity="one">%d Agent hinzugefügt</item>
