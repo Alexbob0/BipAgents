@@ -1,5 +1,5 @@
 From bd01be9b84d22b4b6561ddb152fbd6142ce33a4e Mon Sep 17 00:00:00 2001
-From: aibox lab <aibox@localhost>
+From: BipAgents <bipagents@localhost>
 Date: Wed, 14 Oct 2026 16:46:18 +0200
 Subject: [PATCH] fish_drama3: cut long sentences at a comma, not mid-phrase
 MIME-Version: 1.0

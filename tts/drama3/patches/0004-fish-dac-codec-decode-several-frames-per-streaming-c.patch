@@ -1,5 +1,5 @@
 From d272944de7700dbed4066283bea0b0bc89a5f390 Mon Sep 17 00:00:00 2001
-From: aibox lab <aibox@localhost>
+From: BipAgents <bipagents@localhost>
 Date: Wed, 14 Oct 2026 16:35:52 +0200
 Subject: [PATCH 4/5] fish dac codec: decode several frames per streaming call
 

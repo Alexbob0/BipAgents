@@ -121,17 +121,17 @@ def test_agents_discovery_and_install_qr(config_dict):
     from bipbridge.app import create_app
     from bipbridge.lan import install_payload
 
-    config_dict["public_url"] = "https://aibox.example.ts.net:8643"
-    config_dict["agents"]["Wellness"]["public_url"] = "https://aibox.example.ts.net:8642"
+    config_dict["public_url"] = "https://box.example.ts.net:8643"
+    config_dict["agents"]["Wellness"]["public_url"] = "https://box.example.ts.net:8642"
     config = parse_config(config_dict)
-    assert install_payload(config) == {"v": 2, "bridgeURL": "https://aibox.example.ts.net:8643", "bridgeKey": BRIDGE_KEY}
+    assert install_payload(config) == {"v": 2, "bridgeURL": "https://box.example.ts.net:8643", "bridgeKey": BRIDGE_KEY}
     app = create_app(config, transport=httpx.MockTransport(lambda r: httpx.Response(404)), start_background=False)
     with TestClient(app) as client:
         assert client.get("/v1/agents").status_code == 401
         listed = client.get("/v1/agents", headers=AUTH).json()
-    assert listed["bridge"] == {"url": "https://aibox.example.ts.net:8643", "lan": None}
+    assert listed["bridge"] == {"url": "https://box.example.ts.net:8643", "lan": None}
     wellness = next(a for a in listed["agents"] if a["id"] == "wellness")
-    assert wellness["name"] == "Wellness" and wellness["url"] == "https://aibox.example.ts.net:8642"
+    assert wellness["name"] == "Wellness" and wellness["url"] == "https://box.example.ts.net:8642"
     assert wellness["key"] == HERMES_KEY
 
 

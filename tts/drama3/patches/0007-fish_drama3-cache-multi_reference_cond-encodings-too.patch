@@ -1,5 +1,5 @@
 From cd2d130e841893b49720dbe721ee95362c65a4f2 Mon Sep 17 00:00:00 2001
-From: aibox lab <aibox@localhost>
+From: BipAgents <bipagents@localhost>
 Date: Wed, 14 Oct 2026 16:53:58 +0200
 Subject: [PATCH] fish_drama3: cache multi_reference_cond encodings too
 

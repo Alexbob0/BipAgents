@@ -1,5 +1,5 @@
 From 79b6c9eafcf89ec97794adc32eab74b516f0998e Mon Sep 17 00:00:00 2001
-From: "Claude (labo aibox)" <noreply@anthropic.com>
+From: BipAgents <bipagents@localhost>
 Date: Wed, 14 Oct 2026 21:43:37 +0200
 Subject: [PATCH] fish_drama3: do not log the spoken text unless
  DRAMA3_LOG_TEXT is set

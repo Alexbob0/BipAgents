@@ -194,6 +194,7 @@ Quelques changements dont BipAgents a besoin ne sont pas encore dans Hermes. L'i
 - `voices/` — les voix des Bips ([README](voices/README.fr.md)).
 - `installer/` — l'installateur et `bipagents update` ([README](installer/README.fr.md)) ; `browser/` — le navigateur visible des agents ([README](browser/README.md)) ; `hermes/patches/` — les patches de Hermes ([README](hermes/patches/README.md)) ; `tts/drama3/` — une recette pour Fish Audio Drama 3 comme modèle de voix.
 - `docs/` — notes d'API ([`clarify`](docs/hermes-clarify-api.fr.md), [fichiers](docs/file-uploads.fr.md)), captures, [terrain de jeu](docs/play/index.html) et bannière (`node docs/tools/banner.mjs` la régénère).
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — comment contribuer ; [`SECURITY.md`](SECURITY.md) — signaler une faille, et comment BipAgents tient les agents en respect.
 
 </details>
 
