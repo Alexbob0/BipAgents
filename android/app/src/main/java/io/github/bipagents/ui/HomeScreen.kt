@@ -105,7 +105,7 @@ private fun AgentCard(agent: Agent, latest: Session?, online: Boolean?, onAgent:
             }
             // Outside the link: tapping the Bip makes it react instead of opening the agent.
             Box(Modifier.size(92.dp, 64.dp), contentAlignment = Alignment.Center) {
-                InteractiveMascot(look, 92.dp, Modifier.requiredSize(92.dp))
+                InteractiveMascot(look, 92.dp, Modifier.requiredSize(92.dp), bubbleLeading = true)
             }
         }
         if (latest != null && latest.preview != null) {

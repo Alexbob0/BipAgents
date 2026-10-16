@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,7 +55,7 @@ import kotlin.math.sign
  * says something in a bubble, babbled in the Bip's voice.
  */
 @Composable
-fun InteractiveMascot(look: Look, size: Dp, modifier: Modifier = Modifier, baseMood: Mood = Mood.IDLE) {
+fun InteractiveMascot(look: Look, size: Dp, modifier: Modifier = Modifier, baseMood: Mood = Mood.IDLE, bubbleLeading: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var reaction by remember { mutableStateOf<Mood?>(null) }
@@ -200,8 +201,11 @@ fun InteractiveMascot(look: Look, size: Dp, modifier: Modifier = Modifier, baseM
             }
         }, mood = reaction ?: baseMood, pose = pose)
         for (p in particles) Particle(p, look)
-        AnimatedVisibility(bubble != null, Modifier.align(Alignment.TopCenter).offset(y = -size / 6), enter = fadeIn() + scaleIn(), exit = fadeOut()) {
-            Text(bubble ?: "", style = Bip.text(14, FontWeight.Black, look.deep), maxLines = 1,
+        // The bubble may be wider than the Bip: above it, or on its left when it sits at the edge (a home card).
+        val place = if (bubbleLeading) Modifier.align(Alignment.CenterEnd).wrapContentWidth(Alignment.End, unbounded = true).offset(x = -size * 0.82f)
+            else Modifier.align(Alignment.TopCenter).wrapContentWidth(unbounded = true).offset(y = -size / 6)
+        AnimatedVisibility(bubble != null, place, enter = fadeIn() + scaleIn(), exit = fadeOut()) {
+            Text(bubble ?: "", style = Bip.text(14, FontWeight.Black, look.deep), maxLines = 1, softWrap = false,
                 modifier = Modifier.background(Bip.card, RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 6.dp))
         }
     }
