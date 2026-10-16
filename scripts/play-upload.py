@@ -58,7 +58,8 @@ def main() -> int:
     parser.add_argument("--track", default="internal", choices=["internal", "alpha", "beta"])
     parser.add_argument("--key", type=Path, default=Path.home() / ".config/bipagents/play-publisher.json")
     parser.add_argument("--no-build", action="store_true")
-    parser.add_argument("--notes", default="", help="what's new, shown to testers (French)")
+    parser.add_argument("--notes", default="", help="what's new, shown to testers")
+    parser.add_argument("--lang", default="en-US", help="the notes' language: one of the app's store listing languages")
     args = parser.parse_args()
     if not args.key.exists():
         sys.exit(f"No publishing key at {args.key} (see this script's help).")
@@ -78,7 +79,7 @@ def main() -> int:
         code = bundle["versionCode"]
         release = {"versionCodes": [str(code)], "status": "completed"}
         if args.notes:
-            release["releaseNotes"] = [{"language": "fr-FR", "text": args.notes[:500]}]
+            release["releaseNotes"] = [{"language": args.lang, "text": args.notes[:500]}]
         check(http.put(f"{API}/edits/{edit}/tracks/{args.track}", json={"track": args.track, "releases": [release]}))
         check(http.post(f"{API}/edits/{edit}:commit"))
     print(f"Version {code} is on the « {args.track} » track: testers get it from the Play Store in a few minutes.")
