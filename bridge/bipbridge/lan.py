@@ -144,6 +144,10 @@ def hermes_proxy() -> APIRouter:
         if target is None or not (path.startswith(("v1/", "api/")) or path in ("health", "v1/capabilities")):
             raise HTTPException(status_code=404, detail="not found")
         headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP}
+        from .console import HEADER, is_console
+        if is_console(request):   # a web console never holds the key: the bridge adds it
+            headers = {k: v for k, v in headers.items() if k.lower() not in ("authorization", "cookie", HEADER)}
+            headers["Authorization"] = f"Bearer {target.hermes_key}"
         upstream_request = services.http.build_request(
             request.method, f"{target.hermes_url}/{path}", params=request.query_params, headers=headers,
             content=await request.body(), timeout=httpx.Timeout(30.0, read=None))  # SSE: no read timeout

@@ -27,6 +27,7 @@ from .lan import hermes_proxy, lan_info
 from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router
 from .vault import Vault, vault_router
+from .console import ConsoleStore, console_admin_router, console_files, console_router
 from .voices import relay_for, voice_for, voices_router
 from .households import Households, path_for as households_path
 from .peers import Links, family_router, household_admin_router, peer_router
@@ -206,7 +207,9 @@ def build_router() -> APIRouter:
         return {"bridge": {"url": config.public_url, "lan": lan_info(config)},
                 "agents": [{"id": a.name, "name": a.display_name, "voice": a.voice or config.default_voice,
                             "uploads": bool(a.upload_dir_host), "inbox": bool(a.ntfy_topic),
-                            "url": a.public_url, "key": a.hermes_key if a.public_url else None}
+                            "url": a.public_url,
+                            # Never to a web console: it reaches Hermes through the bridge, which adds the key.
+                            "key": a.hermes_key if a.public_url and not getattr(request.state, "console", False) else None}
                            for a in config.agents.values()],
                 # Profiles created on the server that the app could connect (POST /v1/agents/claim).
                 "unclaimed": unclaimed_profiles(config)}
@@ -528,6 +531,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app = FastAPI(title="BipAgents bridge", version=__version__, lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.config = config
+    app.state.console = ConsoleStore(os.path.join(os.path.dirname(config.outbox.db_path), "console.json"))
     app.add_middleware(UploadSizeLimit, limit_getter=lambda: config.limits.upload_max_bytes)
 
     @app.get("/health")
@@ -550,6 +554,9 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(agents_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(vault_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(console_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(console_router())   # the web console's page and login (its session then stands for the key)
+    app.mount("/console/static", console_files(), name="console")
     # The agents' Hermes through the bridge: on the LAN door, and for agents in their own space (their gateway listens
     # on a local port only). Hermes checks each agent's own key.
     app.include_router(hermes_proxy())
