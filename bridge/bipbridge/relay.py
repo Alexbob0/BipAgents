@@ -48,7 +48,7 @@ class RelayClient:
 
 
 class RelayPush(BaseModel):
-    token: str = Field(..., max_length=512)
+    token: str = Field(..., max_length=4096)
     environment: str
     payload: Dict[str, Any]
     push_type: str = "alert"
@@ -85,10 +85,14 @@ def relay_router() -> APIRouter:
         client = next((name for key, name in relay.clients.items() if key_matches(key, presented)), None)
         if client is None:
             raise HTTPException(status_code=401, detail="unauthorized", headers={"WWW-Authenticate": "Bearer"})
-        if services.apns is None:
-            raise HTTPException(status_code=503, detail="APNs not configured on the relay")
-        token = body.token.strip().lower()
-        if not DEVICE_TOKEN.match(token) or body.environment not in ("sandbox", "production") \
+        android = body.environment == "fcm"
+        sender = getattr(services, "fcm", None) if android else services.apns
+        if sender is None:
+            raise HTTPException(status_code=503, detail=("FCM" if android else "APNs") + " not configured on the relay")
+        from .fcm import FCM_TOKEN
+        token = body.token.strip() if android else body.token.strip().lower()
+        valid_token = FCM_TOKEN.match(token) if android else DEVICE_TOKEN.match(token)
+        if not valid_token or body.environment not in ("sandbox", "production", "fcm") \
                 or body.push_type not in ("alert", "background") or body.priority not in (5, 10):
             raise HTTPException(status_code=400, detail="invalid push")
         import json
@@ -96,8 +100,8 @@ def relay_router() -> APIRouter:
             raise HTTPException(status_code=413, detail="payload too large")
         if not quota.allow(client, relay.per_hour):
             raise HTTPException(status_code=429, detail="quota exceeded")
-        result = await services.apns.send(token, body.payload, environment=body.environment, push_type=body.push_type,
-                                          priority=body.priority, collapse_id=body.collapse_id)
+        result = await sender.send(token, body.payload, environment=body.environment, push_type=body.push_type,
+                                   priority=body.priority, collapse_id=body.collapse_id)
         log.info("relayed push", extra=fields(client=client, token=redact(token), status=result.status))
         return {"status": result.status, "reason": result.reason, "apns_id": result.apns_id}
 

@@ -59,5 +59,12 @@
     <string name="attach">Joindre</string>
     <string name="attach_photo">Photo</string>
     <string name="attach_file">Fichier</string>
+    <string name="channel_messages">Messages</string>
+    <string name="channel_approvals">Autorisations</string>
+    <string name="approval_needed">Approbation requise</string>
+    <string name="new_message">Nouveau message</string>
+    <string name="wants_to_run">Veut lancer : %s</string>
+    <string name="me">Moi</string>
+    <string name="notifications_off">Les notifications ne sont pas configurées dans cette version.</string>
     <string name="cancel">Annuler</string>
 </resources>

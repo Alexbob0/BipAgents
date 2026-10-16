@@ -60,6 +60,7 @@ fun AddAgentScreen(store: AgentStore, onDone: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var pasted by remember { mutableStateOf("") }
+    val unknown = stringResource(R.string.qr_unknown)
     var granted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
@@ -68,7 +69,7 @@ fun AddAgentScreen(store: AgentStore, onDone: () -> Unit) {
 
     fun use(payload: String) {
         if (busy) return
-        val pairing = Pairing.parse(payload) ?: run { message = context.getString(R.string.qr_unknown); return }
+        val pairing = Pairing.parse(payload) ?: run { message = unknown; return }
         busy = true
         message = null
         scope.launch {
@@ -107,6 +108,7 @@ fun AddAgentScreen(store: AgentStore, onDone: () -> Unit) {
 }
 
 /** The camera, reading QR codes with ML Kit (on the device). */
+@androidx.annotation.OptIn(markerClass = [androidx.camera.core.ExperimentalGetImage::class])
 @Composable
 private fun Scanner(onCode: (String) -> Unit) {
     val context = LocalContext.current

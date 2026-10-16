@@ -227,6 +227,8 @@ class Config:
     push_previews: bool = False
     watch_followed_runs: bool = True
     apns: ApnsConfig = field(default_factory=ApnsConfig)
+    # The Firebase project's service account (JSON), for the Android app's notifications.
+    fcm_service_account: Optional[str] = None
     outbox: OutboxConfig = field(default_factory=OutboxConfig)
     limits: Limits = field(default_factory=Limits)
     agents: Dict[str, AgentConfig] = field(default_factory=dict)
@@ -505,6 +507,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         push_previews=bool(push.get("previews", False)),
         watch_followed_runs=bool(push.get("watch_followed_runs", True)),
         apns=apns,
+        fcm_service_account=_expand(str((data.get("fcm") or {}).get("service_account"))) if (data.get("fcm") or {}).get("service_account") else None,
         outbox=outbox,
         limits=limits,
         agents=agents,

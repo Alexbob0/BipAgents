@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">BipAgents</string>
+    <string name="app_name" translatable="false">BipAgents</string>
     <string name="tab_agents">Agents</string>
     <string name="tab_inbox">Inbox</string>
     <string name="tab_settings">Settings</string>
@@ -60,5 +60,12 @@
     <string name="attach">Attach</string>
     <string name="attach_photo">Photo</string>
     <string name="attach_file">File</string>
+    <string name="channel_messages">Messages</string>
+    <string name="channel_approvals">Approvals</string>
+    <string name="approval_needed">Approval needed</string>
+    <string name="new_message">New message</string>
+    <string name="wants_to_run">Wants to run: %s</string>
+    <string name="me">Me</string>
+    <string name="notifications_off">Notifications aren\'t set up in this build.</string>
     <string name="cancel">Cancel</string>
 </resources>

@@ -61,7 +61,7 @@ private fun DrawScope.oval(cx: Float, cy: Float, rx: Float, ry: Float, color: Co
 private fun DrawScope.line(d: String, color: Color = INK, width: Float = 3f) =
     drawPath(svg(d), color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
 
-private fun DrawScope.bip(c: Category, mood: Mood, t: Float) {
+internal fun DrawScope.bip(c: Category, mood: Mood, t: Float) {
     val period = if (mood == Mood.SPEAKING || mood == Mood.LISTENING) 0.9f else 3f
     val bob = -2f - 2f * sin(t * 2 * PI.toFloat() / period)
     oval(60f, 113f, 32f, 4.5f, INK, 0.1f)
@@ -161,4 +161,16 @@ private fun DrawScope.face(c: Category, mood: Mood, t: Float) {
         Mood.CONTENT -> { line("M41 64q6 5 12 0M67 64q6 5 12 0"); line("M54 78q6 5 12 0") }
         Mood.IDLE -> { eyes(c, t, 5.5f, 7.5f, 64f, listOf(47f, 73f), 2f); line("M53 78q7 6 14 0") }
     }
+}
+
+/** A Bip as a bitmap, for notifications (the iPhone's avatar in its notifications). */
+fun mascotBitmap(category: Category, px: Int = 192): android.graphics.Bitmap {
+    val bitmap = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = androidx.compose.ui.graphics.Canvas(android.graphics.Canvas(bitmap))
+    androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(androidx.compose.ui.unit.Density(1f),
+        androidx.compose.ui.unit.LayoutDirection.Ltr, canvas, Size(px.toFloat(), px.toFloat())) {
+        drawCircle(category.tint)
+        scale(px / 140f, px / 140f, pivot = Offset.Zero) { translate(10f, 12f) { bip(category, Mood.IDLE, 0.5f) } }
+    }
+    return bitmap
 }

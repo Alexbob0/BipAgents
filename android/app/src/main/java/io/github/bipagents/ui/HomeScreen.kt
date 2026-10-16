@@ -57,7 +57,7 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onOpen: (String) -> Unit) {
         item {
             Row(Modifier.statusBarsPadding().padding(top = 18.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(SimpleDateFormat("EEEE d MMMM", Locale.getDefault()).format(Date()).replaceFirstChar(Char::uppercase),
+                    Text(SimpleDateFormat("EEEE d MMMM", androidx.compose.ui.platform.LocalConfiguration.current.locales[0]).format(Date()).replaceFirstChar(Char::uppercase),
                         style = Bip.text(16, FontWeight.Bold, Bip.ink2))
                     Text(stringResource(R.string.home_hello), style = Bip.text(36, FontWeight.Black))
                 }

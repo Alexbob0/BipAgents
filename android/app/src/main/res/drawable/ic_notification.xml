@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A Bip's silhouette (the egg body, its feet), for the status bar. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="120" android:viewportHeight="120">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M60 20c21 0 38 28 38 52 0 21-16 34-38 34S22 93 22 72c0-24 17-52 38-52z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M34.5 106a10.5 6.5 0 1 0 21 0a10.5 6.5 0 1 0 -21 0z M64.5 106a10.5 6.5 0 1 0 21 0a10.5 6.5 0 1 0 -21 0z" />
+</vector>

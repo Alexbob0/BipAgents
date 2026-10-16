@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,18 +48,44 @@ import io.github.bipagents.ui.SettingsScreen
 import io.github.bipagents.ui.tap
 
 class MainActivity : ComponentActivity() {
+    private var opened by androidx.compose.runtime.mutableStateOf<Pair<String, String?>?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra("agent")?.let { opened = it to intent.getStringExtra("session") }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        intent.getStringExtra("agent")?.let { opened = it to intent.getStringExtra("session") }
         enableEdgeToEdge()
         val store = (application as BipApp).store
         // Debug builds only: `adb shell am start -n io.github.bipagents/.MainActivity --es pair '<payload>'` adds an
         // install as its QR code would (the emulator's camera can't see a code on the Mac's screen).
+        // Debug builds only: `--es push '{"agent":"wellness","category":"APPROVAL","run_id":"…"}'` shows the notification
+        // a push with that data would (without a Firebase project).
+        if (BuildConfig.DEBUG) intent.getStringExtra("push")?.let { payload ->
+            val data = io.github.bipagents.net.parseJson(payload).let { it as? kotlinx.serialization.json.JsonObject }
+                ?.mapValues { (_, v) -> (v as? kotlinx.serialization.json.JsonPrimitive)?.content ?: v.toString() } ?: emptyMap()
+            lifecycleScope.launch { io.github.bipagents.push.Notifier(this@MainActivity).handle(data) }
+        }
         if (BuildConfig.DEBUG) intent.getStringExtra("pair")?.let { payload ->
             io.github.bipagents.model.Pairing.parse(payload)?.let { lifecycleScope.launch { runCatching { store.pair(it) } } }
         }
+        // Notifications: the permission (Android 13+), then this phone's token to each bridge (again when agents change).
+        if (android.os.Build.VERSION.SDK_INT >= 33 && io.github.bipagents.push.Push.configured &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+        lifecycleScope.launch { store.agents.collect { io.github.bipagents.push.Push.register(store) } }
         setContent {
             BipTheme {
                 val nav = rememberNavController()
+                // A notification tapped: its conversation.
+                androidx.compose.runtime.LaunchedEffect(opened) {
+                    opened?.let { (agent, session) -> nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: "")) }
+                    opened = null
+                }
                 val route = nav.currentBackStackEntryAsState().value?.destination?.route
                 Box(Modifier.fillMaxSize().background(Bip.ground)) {
                     NavHost(nav, startDestination = "home") {
