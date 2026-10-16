@@ -1,3 +1,5 @@
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Properties
 
 plugins {
@@ -14,7 +16,9 @@ android {
         applicationId = "io.github.bipagents"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
+        // Each build a higher number (the stores refuse the same twice): its date and hour, yyMMddHH.
+        versionCode = providers.gradleProperty("versionCode").orNull?.toInt()
+            ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyMMddHH")).toInt()
         versionName = "0.1"
         // Notifications: the publisher's Firebase project (local.properties or ~/.gradle/gradle.properties:
         // firebase.appId, firebase.apiKey, firebase.projectId, firebase.senderId). Without them, no notifications.
