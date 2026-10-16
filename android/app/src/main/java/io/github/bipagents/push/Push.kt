@@ -38,7 +38,8 @@ object Push {
     /** Tells each bridge where to reach this phone, for its agents (`POST /v1/devices`, environment `fcm`). */
     suspend fun register(store: AgentStore, token: String? = null) {
         if (!configured) return
-        val fcm = token ?: runCatching { FirebaseMessaging.getInstance().token.await() }.getOrNull() ?: return
+        val fcm = token ?: runCatching { FirebaseMessaging.getInstance().token.await() }
+            .onFailure { android.util.Log.w("BipAgents", "no FCM token: $it") }.getOrNull() ?: return
         for ((bridge, agents) in store.bridges()) {
             runCatching {
                 bridge.api.call("v1/devices", "POST", buildJsonObject {
@@ -46,7 +47,7 @@ object Push {
                     put("environment", JsonPrimitive("fcm"))
                     put("agent_ids", JsonArray(agents.map { JsonPrimitive(it.bridgeName) }))
                 })
-            }
+            }.onFailure { android.util.Log.w("BipAgents", "device not registered with ${bridge.api.base}: $it") }
         }
     }
 }
