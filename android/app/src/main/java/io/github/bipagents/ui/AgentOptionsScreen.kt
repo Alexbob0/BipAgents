@@ -19,6 +19,8 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Stop
@@ -53,7 +55,8 @@ import kotlinx.coroutines.launch
 
 /** An agent's settings (AgentOptionsView.swift): its look, language and voice, its browser, removing it. */
 @Composable
-fun AgentOptionsScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onVoice: () -> Unit, onDesktop: () -> Unit, onRemoved: () -> Unit) {
+fun AgentOptionsScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onVoice: () -> Unit, onDesktop: () -> Unit, onRemoved: () -> Unit,
+                       onRoutines: () -> Unit, onSettings: () -> Unit) {
     val agents by store.agents.collectAsState()
     val agent = agents.firstOrNull { it.id == agentId } ?: return
     val scope = rememberCoroutineScope()
@@ -62,7 +65,10 @@ fun AgentOptionsScreen(store: AgentStore, agentId: String, onBack: () -> Unit, o
     var removing by remember { mutableStateOf(false) }
     var desktop by remember { mutableStateOf<Desktop?>(null) }
     var desktopChecked by remember { mutableStateOf(false) }
+    // Personality and tools: for an agent this install manages (else it's set on the server).
+    var managed by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(agentId) {
+        launch { managed = runCatching { store.bridge(agent)?.agentSettings(agent.bridgeName) != null }.getOrDefault(false) }
         desktop = runCatching { store.bridge(agent)?.desktop(agent.bridgeName) }.getOrNull()
         desktopChecked = true
     }
@@ -100,11 +106,14 @@ fun AgentOptionsScreen(store: AgentStore, agentId: String, onBack: () -> Unit, o
                 Group {
                     OptionRow(Icons.Rounded.Palette, stringResource(R.string.appearance), stringResource(categoryLabel(agent.look.category))) { picking = true }
                     OptionRow(Icons.Rounded.Language, stringResource(R.string.language), LANGUAGES.first { it.first == language(agent) }.second) { languages = true }
-                    OptionRow(Icons.Rounded.RecordVoiceOver, stringResource(R.string.voice), voiceName(agent), onVoice)
+                    OptionRow(Icons.Rounded.RecordVoiceOver, stringResource(R.string.voice), voiceSummary(agent), onVoice)
                 }
             }
             item {
                 Group {
+                    OptionRow(Icons.Rounded.Schedule, stringResource(R.string.routines), stringResource(R.string.routines_detail, agent.name), onRoutines)
+                    if (managed == true) OptionRow(Icons.Rounded.Tune, stringResource(R.string.personality_tools),
+                        stringResource(R.string.personality_tools_detail, agent.name), onSettings)
                     when {
                         desktop != null -> OptionRow(Icons.Rounded.Web, stringResource(R.string.desktop), stringResource(R.string.desktop_help), onDesktop)
                         desktopChecked -> OptionRow(Icons.Rounded.Web, stringResource(R.string.desktop), stringResource(R.string.desktop_none), null)
@@ -112,6 +121,7 @@ fun AgentOptionsScreen(store: AgentStore, agentId: String, onBack: () -> Unit, o
                     }
                 }
             }
+            if (managed == false) item { Text(stringResource(R.string.set_by_hand_on_server, agent.name), style = Bip.text(13, color = Bip.muted)) }
             item {
                 Box(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(18.dp)).tap { removing = true }.padding(16.dp)) {
                     Text(stringResource(R.string.remove_from_phone), style = Bip.text(16, FontWeight.ExtraBold, Bip.danger))
@@ -150,6 +160,10 @@ fun voiceOf(agent: Agent) = agent.voice?.takeIf { v -> BIP_VOICES.any { it.id ==
 @Composable
 private fun voiceName(agent: Agent): String = stringResource(BIP_VOICES.first { it.id == voiceOf(agent) }.name)
 
+/** « Voice model » or « Galet »: what speaks for the agent. */
+@Composable
+private fun voiceSummary(agent: Agent): String = if (agent.serverVoice != null) stringResource(R.string.your_voice_model) else voiceName(agent)
+
 @Composable
 private fun Group(content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(18.dp)).padding(vertical = 4.dp)) { content() }
@@ -168,7 +182,8 @@ private fun OptionRow(icon: ImageVector, title: String, detail: String, onClick:
     }
 }
 
-/** « Voix de Bip » (AgentVoicePicker): the five Bips, each with its preview in the agent's language; one is checked. */
+/** « Voix » (AgentVoicePicker): the person's voice model's voices if there is one (with the Bip relaying it), and the
+ *  five Bips, each with its preview in the agent's language; one is checked. */
 @Composable
 fun VoiceScreen(store: AgentStore, agentId: String, onBack: () -> Unit) {
     val agents by store.agents.collectAsState()
@@ -176,39 +191,114 @@ fun VoiceScreen(store: AgentStore, agentId: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var playing by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf<String?>(null) }
     val player = remember { arrayOfNulls<MediaPlayer>(1) }
+    var server by remember { mutableStateOf<io.github.bipagents.net.VoiceServer?>(null) }
+    var relay by remember { mutableStateOf(false) }
+    LaunchedEffect(agentId) { server = runCatching { store.bridge(agent)?.voiceServer() }.getOrNull() }
     DisposableEffect(Unit) { onDispose { player[0]?.release() } }
-    fun preview(v: BipVoice) {
+    val lang = language(agent)
+    fun play(id: String, create: () -> MediaPlayer?) {
         player[0]?.release(); player[0] = null
-        if (playing == v.id) { playing = null; return }
-        val lang = language(agent)
+        if (playing == id) { playing = null; return }
+        player[0] = create()?.apply { setOnCompletionListener { playing = null }; start() }
+        playing = if (player[0] != null) id else null
+    }
+    fun preview(v: BipVoice) = play(v.id) {
         val name = if (lang == "fr") v.sample else "${v.sample}_$lang"
         val id = context.resources.getIdentifier(name, "raw", context.packageName).takeIf { it != 0 }
             ?: context.resources.getIdentifier(v.sample, "raw", context.packageName)
-        player[0] = MediaPlayer.create(context, id)?.apply { setOnCompletionListener { playing = null }; start() }
-        playing = v.id
+        MediaPlayer.create(context, id)
     }
+    // A voice model's voice: a sentence read by the bridge, kept for the screen.
+    fun previewServer(id: String) {
+        if (playing == id) return play(id) { null }
+        val file = java.io.File(context.cacheDir, "voice-preview-" + id.map { if (it.isLetterOrDigit()) it else '_' }.joinToString("") + "-$lang.wav")
+        if (file.exists()) return play(id) { MediaPlayer.create(context, android.net.Uri.fromFile(file)) }
+        val bridge = store.bridge(agent) ?: return
+        loading = id
+        scope.launch {
+            runCatching {
+                val wav = bridge.voicePreview(previewSentence(lang), agent.bridgeName, "server:$lang/$id")
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { file.writeBytes(wav) }
+                play(id) { MediaPlayer.create(context, android.net.Uri.fromFile(file)) }
+            }
+            loading = null
+        }
+    }
+    @Composable
+    fun PlayButton(id: String, onClick: () -> Unit) {
+        Box(Modifier.size(38.dp).background(agent.look.tint, CircleShape).tap(onClick), contentAlignment = Alignment.Center) {
+            if (loading == id) androidx.compose.material3.CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = agent.look.deep)
+            else Icon(if (playing == id) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, stringResource(R.string.listen), tint = agent.look.deep)
+        }
+    }
+    val serverVoices = server?.voices(lang) ?: emptyList()
     Column(Modifier.fillMaxSize()) {
         TopBar(stringResource(R.string.voice), onBack)
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (serverVoices.isNotEmpty()) {
+                item { Text(stringResource(R.string.your_voice_model).uppercase(), style = Bip.text(12, FontWeight.ExtraBold, Bip.muted)) }
+                item {
+                    Group {
+                        serverVoices.forEachIndexed { i, id ->
+                            Row(Modifier.fillMaxWidth().tap { scope.launch { store.setVoices(agent, voiceOf(agent), id) } }
+                                .padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                PlayButton(id) { previewServer(id) }
+                                Text(stringResource(R.string.voice_n, i + 1), style = Bip.text(16, FontWeight.ExtraBold), modifier = Modifier.weight(1f))
+                                if (agent.serverVoice == id) Icon(Icons.Rounded.Check, null, tint = Bip.accent)
+                            }
+                        }
+                    }
+                }
+                if (agent.serverVoice != null) {
+                    item { Group { OptionRow(Icons.Rounded.RecordVoiceOver, stringResource(R.string.relay), voiceName(agent)) { relay = true } } }
+                    item {
+                        val left = listOf("live" to R.string.use_live, "replies" to R.string.use_replies, "reading" to R.string.use_reading)
+                            .filter { server?.takes(it.first) == false }.map { stringResource(it.second) }
+                        Text(if (left.isEmpty()) stringResource(R.string.relay_help_all) else stringResource(R.string.relay_help, left.joinToString(", ")),
+                            style = Bip.text(13, color = Bip.muted))
+                    }
+                }
+            }
             item { Text(stringResource(R.string.bip_voices).uppercase(), style = Bip.text(12, FontWeight.ExtraBold, Bip.muted)) }
             item {
                 Group {
-                    for (v in BIP_VOICES) Row(Modifier.fillMaxWidth().tap { scope.launch { store.setVoice(agent, v.id) } }
+                    for (v in BIP_VOICES) Row(Modifier.fillMaxWidth().tap { scope.launch { store.setVoices(agent, v.id, null) } }
                         .padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(38.dp).background(agent.look.tint, CircleShape).tap { preview(v) }, contentAlignment = Alignment.Center) {
-                            Icon(if (playing == v.id) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, stringResource(R.string.listen), tint = agent.look.deep)
-                        }
+                        PlayButton(v.id) { preview(v) }
                         Column(Modifier.weight(1f)) {
                             Text(stringResource(v.name), style = Bip.text(16, FontWeight.ExtraBold))
                             Text(stringResource(v.character), style = Bip.text(13, FontWeight.Medium, Bip.ink2))
                         }
-                        if (voiceOf(agent) == v.id) Icon(Icons.Rounded.Check, null, tint = Bip.accent)
+                        if (agent.serverVoice == null && voiceOf(agent) == v.id) Icon(Icons.Rounded.Check, null, tint = Bip.accent)
                     }
                 }
             }
             item { Text(stringResource(R.string.bip_voices_help), style = Bip.text(13, color = Bip.muted)) }
         }
     }
+    // The Bip that speaks where the voice model doesn't (and when its server doesn't answer).
+    if (relay) AlertDialog(onDismissRequest = { relay = false }, containerColor = Bip.card,
+        title = { Text(stringResource(R.string.relay), style = Bip.text(20, FontWeight.Black)) },
+        text = {
+            Column {
+                for (v in BIP_VOICES) Row(Modifier.fillMaxWidth().tap { relay = false; scope.launch { store.setVoices(agent, v.id, agent.serverVoice) } }
+                    .padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PlayButton(v.id) { preview(v) }
+                    Text(stringResource(v.name), style = Bip.text(17, FontWeight.Bold), modifier = Modifier.weight(1f))
+                    if (voiceOf(agent) == v.id) Icon(Icons.Rounded.Check, null, tint = Bip.accent)
+                }
+            }
+        }, confirmButton = {})
+}
+
+/** What a voice says as its preview, in the agent's language (not the phone's). */
+private fun previewSentence(lang: String) = when (lang) {
+    "en" -> "Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon."
+    "es" -> "¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde."
+    "de" -> "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag."
+    else -> "Coucou ! J’ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi."
 }

@@ -76,6 +76,23 @@ data class RunStatus(val status: String, val approval: RunEvent.Approval?) {
     }
 }
 
+/** A Hermes scheduled task (`/api/jobs`), shown as a routine: what the agent does, and when. */
+data class Routine(val id: String, val name: String, val prompt: String, val schedule: String, val state: String, val enabled: Boolean,
+                   val nextRun: Long?, val lastStatus: String?) {
+    val paused get() = state == "paused" || !enabled
+
+    companion object {
+        fun of(o: JsonObject): Routine? {
+            val id = o.str("id") ?: return null
+            val s = o["schedule"]
+            val schedule = s.obj().str("expr", "run_at") ?: s.obj().long("minutes")?.let { "every ${it}m" } ?: s.text()
+                ?: o.str("schedule_display") ?: ""
+            return Routine(id, o.str("name") ?: id, o.str("prompt") ?: "", schedule, o.str("state") ?: "scheduled",
+                o.bool("enabled") ?: true, o.time("next_run_at"), o.str("last_status"))
+        }
+    }
+}
+
 /** One agent's Hermes api_server (HermesKit's HermesClient), with the agent's key. */
 class Hermes(val api: Api) {
     suspend fun sessions(limit: Int = 50, offset: Int = 0): List<Session> =
@@ -95,6 +112,31 @@ class Hermes(val api: Api) {
     }
 
     suspend fun session(id: String): Session? = Session.of(api.call("api/sessions/${seg(id)}").obj() ?: JsonObject(emptyMap()))
+
+    suspend fun renameSession(id: String, title: String) {
+        api.call("api/sessions/${seg(id)}", "PATCH", buildJsonObject { put("title", title) })
+    }
+
+    suspend fun deleteSession(id: String) { api.call("api/sessions/${seg(id)}", "DELETE") }
+
+    // -- routines (Hermes' scheduled tasks, `/api/jobs`) --------------------------------------------------------------
+
+    suspend fun routines(): List<Routine> =
+        api.call("api/jobs", query = mapOf("include_disabled" to "true")).list("jobs").mapNotNull(Routine::of)
+
+    /** Delivered locally: the bridge puts its report in the Inbox and notifies. */
+    suspend fun createRoutine(name: String, schedule: String, prompt: String) {
+        api.call("api/jobs", "POST", buildJsonObject { put("name", name); put("schedule", schedule); put("prompt", prompt); put("deliver", "local") })
+    }
+
+    suspend fun updateRoutine(id: String, name: String, schedule: String, prompt: String) {
+        api.call("api/jobs/${seg(id)}", "PATCH", buildJsonObject { put("name", name); put("schedule", schedule); put("prompt", prompt) })
+    }
+
+    suspend fun deleteRoutine(id: String) { api.call("api/jobs/${seg(id)}", "DELETE") }
+    suspend fun pauseRoutine(id: String, paused: Boolean) { api.call("api/jobs/${seg(id)}/${if (paused) "pause" else "resume"}", "POST", JsonObject(emptyMap())) }
+    /** Now, once, besides its schedule. */
+    suspend fun runRoutine(id: String) { api.call("api/jobs/${seg(id)}/run", "POST", JsonObject(emptyMap())) }
 
     suspend fun createSession(title: String?): Session {
         val body = buildJsonObject { if (title != null) put("title", title) }

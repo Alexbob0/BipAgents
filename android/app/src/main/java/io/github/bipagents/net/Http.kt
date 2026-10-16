@@ -25,7 +25,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /** A server's refusal (`status`), or no answer at all (`status` 0). */
-class HttpError(val status: Int, message: String?) : IOException(message ?: "HTTP $status") {
+class HttpError(val status: Int, message: String?, val raw: String? = null) : IOException(message ?: "HTTP $status") {
     val unreachable get() = status == 0
 }
 
@@ -124,7 +124,7 @@ class Api(val base: String, private val key: String) {
     private fun failure(response: Response): HttpError {
         val text = runCatching { response.peekBody(64 * 1024).string() }.getOrNull()
         val detail = parseJson(text ?: "").obj()?.let { it.str("detail", "message") ?: it["error"].obj().str("message") }
-        return HttpError(response.code, detail ?: text?.take(200))
+        return HttpError(response.code, detail ?: text?.take(200), text)
     }
 }
 

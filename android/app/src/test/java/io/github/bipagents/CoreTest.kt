@@ -109,3 +109,18 @@ class ShareTextTest {
             io.github.bipagents.ui.ShareText.whatsapp(text))
     }
 }
+
+class RoutineScheduleTest {
+    @Test fun schedulesReadAndWriteAsHermesStoresThem() {
+        val s = io.github.bipagents.ui.RoutineSchedule
+        assertEquals(io.github.bipagents.ui.RoutineSchedule.Weekdays(8, 0), s.of("0 8 * * 1-5"))
+        assertEquals(io.github.bipagents.ui.RoutineSchedule.Weekly(7, 18, 30), s.of("30 18 * * 0"))
+        assertEquals(io.github.bipagents.ui.RoutineSchedule.Monthly(15, 9, 5), s.of("5 9 15 * *"))
+        assertEquals(io.github.bipagents.ui.RoutineSchedule.EveryHours(2), s.of("every 120m"))
+        assertEquals("every 3h", io.github.bipagents.ui.RoutineSchedule.EveryHours(3).hermes)
+        assertEquals("30 18 * * 0", io.github.bipagents.ui.RoutineSchedule.Weekly(7, 18, 30).hermes)
+        assertEquals(io.github.bipagents.ui.RoutineSchedule.Custom("*/5 * * * *"), s.of("*/5 * * * *"))
+        val once = s.of("2026-10-12T08:00:00+02:00") as io.github.bipagents.ui.RoutineSchedule.Once
+        assertEquals(1791784800000L, once.at)
+    }
+}

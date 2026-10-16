@@ -169,7 +169,17 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             val agent = entry.arguments?.getString("agent") ?: return@composable
                             io.github.bipagents.ui.AgentOptionsScreen(store, agent, onBack = { nav.popBackStack() },
                                 onVoice = { nav.navigate("voice/$agent") }, onDesktop = { nav.navigate("desktop/$agent") },
-                                onRemoved = { nav.popBackStack("home", false) })
+                                onRemoved = { nav.popBackStack("home", false) },
+                                onRoutines = { nav.navigate("routines/$agent") }, onSettings = { nav.navigate("agentsettings/$agent") })
+                        }
+                        composable("routines/{agent}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                            io.github.bipagents.ui.RoutinesScreen(store, agent, onBack = { nav.popBackStack() })
+                        }
+                        composable("agentsettings/{agent}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                            io.github.bipagents.ui.AgentSettingsScreen(store, agent, onBack = { nav.popBackStack() },
+                                onDeleted = { nav.popBackStack("home", false) })
                         }
                         composable("voice/{agent}") { entry ->
                             io.github.bipagents.ui.VoiceScreen(store, entry.arguments?.getString("agent") ?: return@composable, onBack = { nav.popBackStack() })

@@ -68,7 +68,7 @@ fun Chip(text: String, dot: Color, textColor: Color = Bip.ink2, background: Colo
 @Composable
 fun relative(time: Long?): String = when {
     time == null -> ""
-    System.currentTimeMillis() - time < 60_000 -> androidx.compose.ui.res.stringResource(R.string.just_now)
+    kotlin.math.abs(System.currentTimeMillis() - time) < 60_000 -> androidx.compose.ui.res.stringResource(R.string.just_now)
     else -> DateUtils.getRelativeTimeSpanString(time, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
 }
 

@@ -33,6 +33,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -55,12 +59,38 @@ fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: 
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val agents by store.agents.collectAsState()
     val agent = agents.firstOrNull { it.id == agentId } ?: return
+    // Pages of 50; more as the list's end comes into view (scheduled tasks open a session per run).
+    var more by remember { mutableStateOf(false) }
     LaunchedEffect(agentId) {
         try {
             sessions = store.hermes(agent)?.allSessions(4) { all -> all.count { !it.isScheduled } >= 30 }
+            more = (sessions?.size ?: 0) % 50 == 0 && (sessions?.size ?: 0) > 0
         } catch (e: Throwable) {
             error = describe(context, e)
         }
+    }
+    suspend fun loadMore() {
+        val have = sessions ?: return
+        val page = runCatching { store.hermes(agent)?.sessions(50, have.size) }.getOrNull() ?: return run { more = false }
+        sessions = have + page.filter { s -> have.none { it.id == s.id } }
+        more = page.size == 50
+    }
+    var renaming by remember { mutableStateOf<Session?>(null) }
+    fun rename(session: Session, title: String) {
+        sessions = sessions?.map { if (it.id == session.id) it.copy(title = title) else it }
+        scope.launch { runCatching { store.hermes(agent)?.renameSession(session.id, title) }.onFailure { e -> error = describe(context, e) } }
+    }
+    fun delete(session: Session) {
+        sessions = sessions?.filterNot { it.id == session.id }
+        scope.launch { runCatching { store.hermes(agent)?.deleteSession(session.id) }.onFailure { e -> error = describe(context, e) } }
+    }
+    renaming?.let { session ->
+        var title by remember(session.id) { mutableStateOf(session.title ?: "") }
+        androidx.compose.material3.AlertDialog({ renaming = null }, title = { Text(stringResource(R.string.rename)) },
+            text = { Field(title, { title = it }, stringResource(R.string.untitled)) },
+            confirmButton = { androidx.compose.material3.TextButton({ renaming = null; if (title.isNotBlank()) rename(session, title.trim()) }) {
+                Text(stringResource(R.string.save)) } },
+            dismissButton = { androidx.compose.material3.TextButton({ renaming = null }) { Text(stringResource(R.string.cancel)) } })
     }
     val look = agent.look
     if (picking) LookPicker(agent, onPick = { category, color ->
@@ -101,14 +131,19 @@ fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: 
         }
         error?.let { item { Text(it, style = Bip.text(15, FontWeight.Bold, Bip.danger), modifier = Modifier.padding(horizontal = 18.dp)) } }
         if (sessions == null && error == null) item { Text(stringResource(R.string.loading), style = Bip.text(15, color = Bip.muted), modifier = Modifier.padding(18.dp)) }
-        items(all.filter { it.isBotChat }, key = { it.id }) { SessionRow(it, onOpen) }
+        items(all.filter { it.isBotChat }, key = { it.id }) { SessionRow(it, onOpen, { renaming = it }, null) }
         if (talks.isNotEmpty()) item { Header(stringResource(R.string.conversations)) }
-        items(talks, key = { it.id }) { SessionRow(it, onOpen) }
-        if (tasks.isNotEmpty()) item {
-            Text((if (showTasks) "▾ " else "▸ ") + stringResource(R.string.scheduled_tasks) + " (${tasks.size})",
-                style = Bip.text(14, FontWeight.ExtraBold, Bip.muted), modifier = Modifier.tap { showTasks = !showTasks }.padding(horizontal = 22.dp, vertical = 8.dp))
+        items(talks, key = { it.id }) { SessionRow(it, onOpen, { renaming = it }) { delete(it) } }
+        if (tasks.isNotEmpty()) item { Header(stringResource(R.string.scheduled_tasks)) }
+        items(if (showTasks) tasks else tasks.take(5), key = { it.id }) { SessionRow(it, onOpen, { renaming = it }) { delete(it) } }
+        if (!showTasks && tasks.size > 5) item {
+            Text(stringResource(R.string.show_n_others, tasks.size - 5), style = Bip.text(15, FontWeight.ExtraBold, look.deep),
+                modifier = Modifier.tap { showTasks = true }.padding(horizontal = 22.dp, vertical = 8.dp))
         }
-        if (showTasks) items(tasks, key = { it.id }) { SessionRow(it, onOpen) }
+        if (more) item(key = "more") {
+            LaunchedEffect(all.size) { loadMore() }
+            Text(stringResource(R.string.loading), style = Bip.text(14, color = Bip.muted), modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
+        }
     }
 }
 
@@ -127,13 +162,23 @@ private fun Header(text: String) =
     Text(text.uppercase(), style = Bip.text(12, FontWeight.ExtraBold, Bip.muted), modifier = Modifier.padding(top = 10.dp, start = 22.dp))
 
 @Composable
-private fun SessionRow(session: Session, onOpen: (String?) -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().background(Bip.card, RoundedCornerShape(16.dp)).tap { onOpen(session.id) }.padding(14.dp)) {
-        Row {
-            Text(if (session.isBotChat) stringResource(R.string.main_thread) else session.title ?: stringResource(R.string.untitled),
-                style = Bip.text(16, FontWeight.ExtraBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            Text(relative(session.updated), style = Bip.text(13, FontWeight.Bold, Bip.muted))
+private fun SessionRow(session: Session, onOpen: (String?) -> Unit, onRename: (Session) -> Unit, onDelete: ((Session) -> Unit)?) {
+    var menu by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box {
+        Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().background(Bip.card, RoundedCornerShape(16.dp))
+            .pointerInput(session.id) { detectTapGestures(onTap = { onOpen(session.id) }, onLongPress = { menu = true }) }.padding(14.dp)) {
+            Row {
+                Text(if (session.isBotChat) stringResource(R.string.main_thread) else session.title ?: stringResource(R.string.untitled),
+                    style = Bip.text(16, FontWeight.ExtraBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(relative(session.updated), style = Bip.text(13, FontWeight.Bold, Bip.muted))
+            }
+            session.preview?.let { Text(ChatText.preview(it), style = Bip.text(14, color = Bip.ink2), maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
-        session.preview?.let { Text(ChatText.preview(it), style = Bip.text(14, color = Bip.ink2), maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        androidx.compose.material3.DropdownMenu(menu, { menu = false }, containerColor = Bip.card) {
+            androidx.compose.material3.DropdownMenuItem({ Text(stringResource(R.string.rename), style = Bip.text(16, FontWeight.Bold)) },
+                { menu = false; onRename(session) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
+            if (onDelete != null) androidx.compose.material3.DropdownMenuItem({ Text(stringResource(R.string.delete), style = Bip.text(16, FontWeight.Bold, Bip.danger)) },
+                { menu = false; onDelete(session) }, leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null, tint = Bip.danger) })
+        }
     }
 }

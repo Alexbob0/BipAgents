@@ -63,6 +63,9 @@ class AgentStore(context: Context) {
 
     fun update(agent: Agent) = save(_agents.value.map { if (it.id == agent.id) agent else it })
 
+    /** The agent moved to its own space: its new address (through the bridge). */
+    fun relocate(agent: Agent, url: String) = save(_agents.value.map { if (it.id == agent.id) it.copy(baseUrl = url) else it })
+
     fun remove(agent: Agent) {
         secrets.setKeys(agent.id, null)
         save(_agents.value.filterNot { it.id == agent.id })
@@ -102,10 +105,13 @@ class AgentStore(context: Context) {
     }
 
     /** The agent's Bip voice, picked here: kept on this phone and by its bridge (its voice-model voice untouched). */
-    suspend fun setVoice(agent: Agent, voice: String) {
-        val changed = agent.copy(voice = voice)
+    suspend fun setVoice(agent: Agent, voice: String) = setVoices(agent, voice, agent.serverVoice)
+
+    /** Its Bip (also the relay of a voice-model voice) and its voice on the person's voice server (null: none). */
+    suspend fun setVoices(agent: Agent, voice: String, serverVoice: String?) {
+        val changed = agent.copy(voice = voice, serverVoice = serverVoice)
         update(changed)
-        runCatching { bridge(changed)?.setVoices(changed.bridgeName, spoken(voice, changed.language), changed.serverVoice) }
+        runCatching { bridge(changed)?.setVoices(changed.bridgeName, spoken(voice, changed.language), serverVoice) }
     }
 
     /** The language the agent is spoken to in (speech recognition, voices) and writes first in. */
