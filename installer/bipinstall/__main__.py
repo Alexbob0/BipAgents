@@ -308,7 +308,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         say(f"  Patches not applied to this Hermes version: {', '.join(skipped)} (the app works, without these features).")
     hub_key = hermes.setup_hub(runner, ports.hermes, model, sandbox=sandbox)
     from . import migrations
+    from .upgrade import install_command
     migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)   # a fresh install has them all already
+    install_command(runner)   # `bipagents update` later
     if plan.browser != "none" and not browser:   # the visible browser brings its own desktop
         if hermes.desktop_ready() or sandbox:
             hermes.setup_desktop(runner, plan.browser)

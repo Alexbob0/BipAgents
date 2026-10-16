@@ -94,6 +94,29 @@ def as_account(account: str, command: str) -> str:
             f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus && {command}'")
 
 
+COMMAND_HELP = """BipAgents, in this account:
+  bipagents update           bring it up to date (only what changed restarts)
+  bipagents update --check   only say what is new
+  bipagents voice            connect your own voice model (a TTS server on the network)
+  bipagents hermes-update    update Hermes and keep BipAgents working
+  bipagents family add NAME  prepare a family member's install on this server
+  bipagents uninstall        remove it"""
+
+
+def install_command(runner: hermes.Runner, home: Optional[Path] = None) -> Path:
+    """`bipagents` in ~/.local/bin: install.sh's commands (with no command, its help rather than a new install)."""
+    path = (home or Path.home()) / ".local" / "bin" / "bipagents"
+    script = (f"#!/bin/sh\n# BipAgents' commands ({REPO}/install.sh).\n"
+              f"if [ $# -eq 0 ] || [ \"$1\" = help ] || [ \"$1\" = --help ]; then\n  cat <<'HELP'\n{COMMAND_HELP}\nHELP\n"
+              f"  exit 0\nfi\nexec bash \"{REPO}/install.sh\" \"$@\"\n")
+    runner.log.append(f"write {path}")
+    if not runner.dry:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(script, encoding="utf-8")
+        path.chmod(0o755)
+    return path
+
+
 def timer_installed() -> bool:
     if platform.system() == "Darwin":
         return (Path.home() / "Library" / "LaunchAgents" / f"io.github.bipagents.update.plist").exists()
@@ -212,7 +235,7 @@ def main(argv: List[str]) -> int:
                         "--config", str(config)], cwd=REPO / "bridge")
             say(ui.done("Browsers rebuilt and restarted."))
         else:
-            commands.append(f"{REPO / 'install.sh'} update   # later, when the agents are not browsing")
+            commands.append("bipagents update   # later, when the agents are not browsing")
 
     # 3. Settings a fresh install now makes.
     for line in migrations.run(runner, own_hermes=own_hermes() or args.apply_to_my_hermes):
@@ -220,7 +243,7 @@ def main(argv: List[str]) -> int:
 
     # 4. What this account cannot do itself.
     if touched("hermes/patches/"):
-        commands.append(f"{REPO / 'install.sh'} hermes-update   # BipAgents' Hermes patches changed")
+        commands.append("bipagents hermes-update   # BipAgents' Hermes patches changed")
     members = family_members(config)
     if members and not args.auto:
         commands.append("# The family's other installs (from an account allowed to use sudo):")
@@ -231,6 +254,8 @@ def main(argv: List[str]) -> int:
         say("\nTo run yourself:")
         for line in commands:
             say(f"  {line}")
+
+    install_command(runner)
 
     # 5. Each night.
     if not args.auto and not timer_installed() and ask("Update BipAgents by itself each night (at 4:30)?"):

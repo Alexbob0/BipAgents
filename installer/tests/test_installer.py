@@ -694,6 +694,16 @@ def test_an_update_applies_the_settings_a_fresh_install_now_makes_once(tmp_path,
     assert ran == [] and all("not applied to your own Hermes" in line for line in said)
 
 
+def test_the_bipagents_command_runs_install_sh_and_shows_its_help_alone(tmp_path):
+    import subprocess
+    from bipinstall import upgrade
+    path = upgrade.install_command(hermes.Runner(), home=tmp_path)
+    assert path == tmp_path / ".local" / "bin" / "bipagents" and path.stat().st_mode & 0o111
+    shown = subprocess.run([str(path)], capture_output=True, text=True).stdout
+    assert "bipagents update" in shown and "bipagents uninstall" in shown   # no new install by mistake
+    assert f'exec bash "{upgrade.REPO}/install.sh" "$@"' in path.read_text()
+
+
 def test_a_blocked_update_says_how_to_put_local_changes_aside(monkeypatch):
     from bipinstall import upgrade
     porcelain = " M bridge/bipbridge/tts.py\n?? voices/english/galet.safetensors\n"

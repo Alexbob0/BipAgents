@@ -69,7 +69,9 @@ Hermes that serves several agents at one address (`hermes update` otherwise).
 
 ## Updating BipAgents
 
-`bash ~/BipAgents/install.sh update` brings this account's install up to date: it shows what is new, restarts only
+`bipagents update` (or `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --
+update`, the same as `bash ~/BipAgents/install.sh update`) brings this account's install up to date. `bipagents` alone
+lists its commands (update, voice, hermes-update, family add, uninstall); the installer puts it in `~/.local/bin`. It shows what is new, restarts only
 what changed (the bridge, the Bips' voices when this account runs them, the agents' browsers when their image changed:
 rebuilt, their profiles kept), and applies the settings a fresh install now makes (`installer/bipinstall/migrations.py`:
 for instance risky commands always asking you). What it cannot do from this account comes as commands to run: the
