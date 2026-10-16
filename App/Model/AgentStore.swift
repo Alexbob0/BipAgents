@@ -111,8 +111,10 @@ final class AgentStore {
                                  lanFingerprint: lanFingerprint, bridgeAgent: agent.id)
         let secrets = AgentSecrets(apiKey: agent.key, bridgeKey: bridgeKey)
         if try updateConnection(from: AgentProvisioning(config: config, secrets: secrets)) { return false }
-        let category = category ?? AgentCategory.suggest(name: agent.name)
-        var profile = AgentProfile(config: config, appearance: AgentAppearance(category: category))
+        // The look chosen in another app (kept by the bridge), else a guess from the name.
+        let category = category ?? agent.category.flatMap(AgentCategory.init(rawValue:)) ?? AgentCategory.suggest(name: agent.name)
+        let color = agent.color.flatMap { UInt32($0.dropFirst(), radix: 16) }
+        var profile = AgentProfile(config: config, appearance: AgentAppearance(category: category, customColorHex: color))
         profile.config.category = category.rawValue
         try add(profile, secrets: secrets)
         return true
@@ -234,6 +236,22 @@ final class AgentStore {
         save()
         if languageChanged { Task { await tellLanguage(of: profile) } }
         Task { await tellVoices(of: profile) }
+        Task { await tellAppearance(of: profile) }
+    }
+
+    private static let toldAppearanceKey = "toldAgentAppearance"
+
+    /// The agent's look, to its bridge: Android and the web console then show the same Bip. Once per change.
+    func tellAppearance(of agent: AgentProfile, bridge: BridgeClient? = nil) async {
+        let look = agent.appearance
+        let mark = "\(agent.id.uuidString):\(look.category.rawValue)|\(look.customColorHex.map { String($0) } ?? "")"
+        let told = UserDefaults.standard.stringArray(forKey: Self.toldAppearanceKey) ?? []
+        guard !told.contains(mark), let bridge = bridge ?? BridgeClient(agent: agent, secrets: secrets(for: agent)),
+              (try? await bridge.setAgentAppearance(agent.bridgeName, category: look.category.rawValue,
+                                                    color: look.customColorHex)) != nil
+        else { return }   // unreachable, or an older bridge: told on a later refresh
+        let others = told.filter { !$0.hasPrefix("\(agent.id.uuidString):") }
+        UserDefaults.standard.set(others + [mark], forKey: Self.toldAppearanceKey)
     }
 
     // MARK: Voices
@@ -343,6 +361,7 @@ final class AgentStore {
             await refreshLocalDoor(of: agent, secrets: secrets)
             await tellLanguage(of: agent)
             if let bridge = BridgeClient(tailnetOf: agent, secrets: secrets) {
+                await tellAppearance(of: agent, bridge: bridge)
                 if let server = try? await withTimeout(8, { try await bridge.voiceServer() }) {
                     AgentVoices.setServer(server, for: agent)
                     await tellVoices(of: agent, bridge: bridge)

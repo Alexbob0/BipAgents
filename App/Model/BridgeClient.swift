@@ -45,6 +45,9 @@ struct BridgeClient: Sendable {
         var name: String
         var url: URL
         var key: String
+        /// Its look as an app chose it (kept by the bridge so every app shows the same Bip).
+        var category: String? = nil
+        var color: String? = nil
     }
 
     /// `GET /v1/agents`: every agent of this install that the app can reach (with its tailnet address and key).
@@ -67,7 +70,8 @@ struct BridgeClient: Sendable {
         let agents: [InstallAgent] = rows.compactMap { row in
             guard let id = row["id"] as? String, let raw = row["url"] as? String, let url = URL(string: raw),
                   let key = row["key"] as? String, !key.isEmpty else { return nil }
-            return InstallAgent(id: id, name: row["name"] as? String ?? id.capitalized, url: url, key: key)
+            return InstallAgent(id: id, name: row["name"] as? String ?? id.capitalized, url: url, key: key,
+                                category: row["category"] as? String, color: row["color"] as? String)
         }
         let unclaimed: [UnclaimedProfile] = (json?["unclaimed"] as? [[String: Any]] ?? []).compactMap { row in
             guard let id = row["id"] as? String else { return nil }
@@ -630,6 +634,15 @@ struct BridgeClient: Sendable {
         var request = request("v1/voices/uses", method: "PUT")
         request.httpBody = try JSONSerialization.data(withJSONObject: uses)
         return (try JSONSerialization.jsonObject(with: try await send(request)) as? [String: Bool]) ?? uses
+    }
+
+    /// `PUT /v1/agents/{id}/appearance`: the agent's look (category, custom colour), for the other apps (Android, the
+    /// web console). 404 on an older bridge.
+    func setAgentAppearance(_ agent: String, category: String, color: UInt32?) async throws {
+        var request = request("v1/agents/\(agent)/appearance", method: "PUT")
+        let body: [String: Any] = ["category": category, "color": color.map { String(format: "#%06X", $0) } ?? NSNull()]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await send(request)
     }
 
     /// `PUT /v1/agents/{id}/voices`: the agent's Bip and server voice, as the bridge reads messages aloud with them.

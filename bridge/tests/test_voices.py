@@ -74,3 +74,15 @@ def test_the_app_sets_an_agents_voices(server_client, server_config):
 def test_without_a_voice_server(client):
     assert client.get("/v1/voices", headers=AUTH).json() == {"pocket": True, "server": None}
     assert client.put("/v1/voices/uses", headers=AUTH, json={"live": False}).status_code == 409
+
+
+def test_the_app_keeps_an_agents_look_for_the_other_apps(server_client, server_config):
+    resp = server_client.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "creative", "color": "#f2649e"})
+    assert resp.status_code == 200 and resp.json() == {"category": "creative", "color": "#F2649E"}
+    listed = {a["id"]: a for a in server_client.get("/v1/agents", headers=AUTH).json()["agents"]}
+    assert listed["wellness"]["category"] == "creative" and listed["wellness"]["color"] == "#F2649E"
+    if server_config.source_path:
+        assert 'category = "creative"' in open(server_config.source_path).read()
+    assert server_client.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "dragon"}).status_code == 400
+    assert server_client.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "tech", "color": "red"}).status_code == 422
+    assert server_client.put("/v1/agents/nobody/appearance", headers=AUTH, json={"category": "tech"}).status_code == 404

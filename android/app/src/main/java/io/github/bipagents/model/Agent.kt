@@ -14,9 +14,11 @@ data class Agent(
     /** Its id in the bridge's config (`finance`, `vie`…). */
     val bridgeAgent: String? = null,
     val category: String? = null,
+    /** A custom colour (`#RRGGBB`) chosen in an app, kept by the bridge. */
+    val color: String? = null,
     val language: String? = null,
 ) {
-    val look: Category get() = Category.of(category) ?: Category.suggest(name)
+    val look: Look get() = Look.of(Category.of(category) ?: Category.suggest(name), color)
     /** The name the bridge knows it by: given by the bridge, else derived from the name as for agents set up by hand. */
     val bridgeName: String get() = bridgeAgent ?: name.lowercase().replace(Regex("[^a-z0-9_-]"), "")
 }

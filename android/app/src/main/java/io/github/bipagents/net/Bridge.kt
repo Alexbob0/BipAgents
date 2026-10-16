@@ -6,7 +6,8 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 
-data class ListedAgent(val id: String, val name: String, val url: String?, val key: String?)
+data class ListedAgent(val id: String, val name: String, val url: String?, val key: String?,
+                       val category: String? = null, val color: String? = null)
 
 data class InboxItem(val id: String, val agent: String, val title: String?, val text: String, val time: Long?,
                      val session: String?, val hasAudio: Boolean)
@@ -15,7 +16,7 @@ data class InboxItem(val id: String, val agent: String, val title: String?, val 
 class Bridge(val api: Api) {
     suspend fun agents(): List<ListedAgent> = api.call("v1/agents").obj()?.get("agents").list().mapNotNull { o ->
         val id = o.str("id") ?: return@mapNotNull null
-        ListedAgent(id, o.str("name") ?: id.replaceFirstChar(Char::uppercase), o.str("url"), o.str("key"))
+        ListedAgent(id, o.str("name") ?: id.replaceFirstChar(Char::uppercase), o.str("url"), o.str("key"), o.str("category"), o.str("color"))
     }
 
     /** A run's events through the bridge: it holds the single Hermes subscription, replays the run from its start, and

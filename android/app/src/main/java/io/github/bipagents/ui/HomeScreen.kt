@@ -51,7 +51,10 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onOpen: (String) -> Unit, o
     val latest by store.latest.collectAsState()
     val online by store.online.collectAsState()
     val scope = rememberCoroutineScope()
-    LaunchedEffect(agents) { agents.forEach { scope.launch { store.refresh(it) } } }
+    LaunchedEffect(agents.map { it.id }) {
+        agents.forEach { scope.launch { store.refresh(it) } }
+        store.syncLooks()
+    }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -79,7 +82,7 @@ private fun AgentCard(agent: Agent, latest: Session?, online: Boolean?, onLive: 
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(agent.name, style = Bip.text(28, FontWeight.Black), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Chip(stringResource(categoryLabel(look)), look.main, look.deep, Bip.card)
+                    Chip(stringResource(categoryLabel(look.category)), look.main, look.deep, Bip.card)
                     when (online) {
                         true -> Chip(stringResource(R.string.online), Bip.online)
                         false -> Chip(stringResource(R.string.offline), Bip.muted)
@@ -124,7 +127,7 @@ private fun Welcome(onAdd: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(30.dp)).padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            listOf(Category.WELLNESS, Category.FINANCE, Category.DAILY, Category.WORK, Category.LEARNING).forEach { Mascot(it, Modifier.size(56.dp)) }
+            listOf(Category.WELLNESS, Category.FINANCE, Category.DAILY, Category.WORK, Category.LEARNING).forEach { Mascot(io.github.bipagents.model.Look.of(it), Modifier.size(56.dp)) }
         }
         Text(stringResource(R.string.welcome_title), style = Bip.text(22, FontWeight.Black))
         Text(stringResource(R.string.welcome_body), style = Bip.text(16, color = Bip.ink2))

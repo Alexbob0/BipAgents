@@ -18,7 +18,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.PathParser
-import io.github.bipagents.model.Category
+import io.github.bipagents.model.Look
 import io.github.bipagents.model.Category.Accessory
 import io.github.bipagents.model.Category.Body
 import kotlin.math.PI
@@ -41,7 +41,7 @@ private fun svg(d: String): Path = paths.getOrPut(d) { PathParser().parsePathStr
 
 /** A Bip, drawn in its 120×120 design space and animated (blink, bob, thinking bubbles), as in docs/play. */
 @Composable
-fun Mascot(category: Category, modifier: Modifier = Modifier, mood: Mood = Mood.IDLE, animated: Boolean = true) {
+fun Mascot(category: Look, modifier: Modifier = Modifier, mood: Mood = Mood.IDLE, animated: Boolean = true) {
     val t by produceState(0f, animated) {
         if (!animated) return@produceState
         val start = withFrameMillis { it }
@@ -61,7 +61,7 @@ private fun DrawScope.oval(cx: Float, cy: Float, rx: Float, ry: Float, color: Co
 private fun DrawScope.line(d: String, color: Color = INK, width: Float = 3f) =
     drawPath(svg(d), color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
 
-internal fun DrawScope.bip(c: Category, mood: Mood, t: Float) {
+internal fun DrawScope.bip(c: Look, mood: Mood, t: Float) {
     val period = if (mood == Mood.SPEAKING || mood == Mood.LISTENING) 0.9f else 3f
     val bob = -2f - 2f * sin(t * 2 * PI.toFloat() / period)
     oval(60f, 113f, 32f, 4.5f, INK, 0.1f)
@@ -80,7 +80,7 @@ internal fun DrawScope.bip(c: Category, mood: Mood, t: Float) {
     }
 }
 
-private fun DrawScope.body(c: Category) {
+private fun DrawScope.body(c: Look) {
     when (c.body) {
         Body.BLOB -> drawPath(svg("M60 24c25 0 42 17 42 43 0 25-16 39-42 39S18 92 18 67c0-26 17-43 42-43z"), c.main)
         Body.SQUIRCLE -> drawRoundRect(c.main, Offset(19f, 28f), Size(82f, 78f), androidx.compose.ui.geometry.CornerRadius(32f))
@@ -89,7 +89,7 @@ private fun DrawScope.body(c: Category) {
     }
 }
 
-private fun DrawScope.accessory(c: Category, front: Boolean, t: Float) {
+private fun DrawScope.accessory(c: Look, front: Boolean, t: Float) {
     if (!front) when (c.accessory) {
         Accessory.SPROUT -> {
             line("M60 27c0-7 1-13 3-17", c.deep, 4f)
@@ -128,13 +128,13 @@ private fun DrawScope.accessory(c: Category, front: Boolean, t: Float) {
     }
 }
 
-private fun blink(c: Category, t: Float): Float {
+private fun blink(c: Look, t: Float): Float {
     val phase = ((t + c.ordinal * 1.37f) % 4.6f) / 4.6f
     if (phase <= 0.93f) return 1f
     return max(0.1f, abs((phase - 0.93f) / 0.07f * 2 - 1))
 }
 
-private fun DrawScope.eyes(c: Category, t: Float, rx: Float, ry: Float, y: Float, xs: List<Float>, glint: Float, blinks: Boolean = true) {
+private fun DrawScope.eyes(c: Look, t: Float, rx: Float, ry: Float, y: Float, xs: List<Float>, glint: Float, blinks: Boolean = true) {
     val s = if (blinks) blink(c, t) else 1f
     for (x in xs) {
         oval(x, y, rx, ry * s, INK)
@@ -142,7 +142,7 @@ private fun DrawScope.eyes(c: Category, t: Float, rx: Float, ry: Float, y: Float
     }
 }
 
-private fun DrawScope.face(c: Category, mood: Mood, t: Float) {
+private fun DrawScope.face(c: Look, mood: Mood, t: Float) {
     when (mood) {
         Mood.LISTENING -> { eyes(c, t, 7f, 9f, 63f, listOf(46f, 74f), 2.6f); oval(60f, 81f, 3.6f, 4.2f, INK) }
         Mood.THINKING -> {
@@ -164,7 +164,7 @@ private fun DrawScope.face(c: Category, mood: Mood, t: Float) {
 }
 
 /** A Bip as a bitmap, for notifications (the iPhone's avatar in its notifications). */
-fun mascotBitmap(category: Category, px: Int = 192): android.graphics.Bitmap {
+fun mascotBitmap(category: Look, px: Int = 192): android.graphics.Bitmap {
     val bitmap = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
     val canvas = androidx.compose.ui.graphics.Canvas(android.graphics.Canvas(bitmap))
     androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(androidx.compose.ui.unit.Density(1f),

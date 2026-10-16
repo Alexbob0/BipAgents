@@ -167,7 +167,7 @@ private fun UserBubble(text: String, image: Boolean, time: String) {
 }
 
 @Composable
-private fun Reply(look: io.github.bipagents.model.Category, text: String, tools: List<String>, time: String, typing: Boolean = false,
+private fun Reply(look: io.github.bipagents.model.Look, text: String, tools: List<String>, time: String, typing: Boolean = false,
                   listen: (() -> Unit)? = null, listenKey: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (tools.isNotEmpty()) ToolsLine(tools)
@@ -184,7 +184,7 @@ private fun Reply(look: io.github.bipagents.model.Category, text: String, tools:
 
 /** « Écouter » under a reply: the Bip's voice, streamed; again to stop. */
 @Composable
-private fun ListenPill(look: io.github.bipagents.model.Category, key: String, onClick: () -> Unit) {
+private fun ListenPill(look: io.github.bipagents.model.Look, key: String, onClick: () -> Unit) {
     val now by Speaker.now.collectAsState()
     val mine = now?.key == key
     Row(Modifier.padding(start = 36.dp).background(look.tint, RoundedCornerShape(50)).tap(onClick).padding(start = 6.dp, end = 14.dp, top = 5.dp, bottom = 5.dp),
@@ -341,7 +341,7 @@ fun Pill(text: String, dark: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: String, running: Boolean, ready: Boolean,
-                     look: io.github.bipagents.model.Category, language: String?, onVoice: (RecordedNote) -> Unit,
+                     look: io.github.bipagents.model.Look, language: String?, onVoice: (RecordedNote) -> Unit,
                      onPhoto: () -> Unit, onFile: () -> Unit, onSend: () -> Unit, onStop: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val context = LocalContext.current

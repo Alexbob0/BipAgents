@@ -54,7 +54,7 @@ class AgentStore(context: Context) {
 
     fun add(agent: Agent, keys: AgentKeys) {
         val existing = _agents.value.firstOrNull { same(it, agent) }
-        val kept = existing?.let { agent.copy(id = it.id, category = it.category ?: agent.category) } ?: agent
+        val kept = existing?.let { agent.copy(id = it.id, category = agent.category ?: it.category, color = agent.color ?: it.color) } ?: agent
         secrets.setKeys(kept.id, keys)
         save(_agents.value.filterNot { it.id == kept.id } + kept)
     }
@@ -80,10 +80,24 @@ class AgentStore(context: Context) {
                 .filter { it.url != null && it.key != null && Pairing.acceptable(it.url) }
             if (listed.isEmpty()) throw HttpError(404, null)
             for (a in listed) {
-                add(Agent(name = a.name, baseUrl = a.url!!, bridgeUrl = pairing.bridgeUrl, bridgeAgent = a.id.lowercase()),
+                add(Agent(name = a.name, baseUrl = a.url!!, bridgeUrl = pairing.bridgeUrl, bridgeAgent = a.id.lowercase(),
+                    category = a.category, color = a.color),
                     AgentKeys(a.key!!, pairing.bridgeKey))
             }
             listed.size
+        }
+    }
+
+    /** The looks chosen in another app (the iPhone), kept by each bridge: the same Bips here. */
+    suspend fun syncLooks() {
+        for ((bridge, mine) in bridges()) {
+            val listed = runCatching { bridge.agents() }.getOrNull() ?: continue
+            for (agent in mine) {
+                val found = listed.firstOrNull { it.id.equals(agent.bridgeName, true) } ?: continue
+                if (found.category != null && (found.category != agent.category || found.color != agent.color)) {
+                    update(agent.copy(category = found.category, color = found.color))
+                }
+            }
         }
     }
 

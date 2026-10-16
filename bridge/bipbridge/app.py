@@ -217,6 +217,7 @@ def build_router() -> APIRouter:
         from .agents_admin import unclaimed_profiles
         return {"bridge": {"url": config.public_url, "lan": lan_info(config)},
                 "agents": [{"id": a.name, "name": a.display_name, "voice": a.voice or config.default_voice,
+                            "category": a.category, "color": a.color,
                             "uploads": bool(a.upload_dir_host), "inbox": bool(a.ntfy_topic),
                             "url": a.public_url,
                             # Never to a web console: it reaches Hermes through the bridge, which adds the key.

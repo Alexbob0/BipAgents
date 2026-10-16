@@ -43,6 +43,10 @@ class AgentConfig:
     voice: Optional[str] = None
     # Its voice on the person's own voice server (`server:<lang>/<id>`), for the uses that go there.
     server_voice: Optional[str] = None
+    # Its look in the apps (the iPhone's choice, kept here so the other apps show the same Bip): a category id and an
+    # optional custom colour (`#RRGGBB`).
+    category: Optional[str] = None
+    color: Optional[str] = None
     # The agent's Hermes address as the app reaches it on the tailnet (`tailscale serve`), for the pairing QR code.
     public_url: Optional[str] = None
     # The agent has its own space (container, sandbox): it may hold credentials from the vault. Agents of the
@@ -398,6 +402,8 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
             upload_dir_container=str(up_cont).rstrip("/") if up_cont else None,
             voice=str(table["voice"]) if table.get("voice") else None,
             server_voice=str(table["server_voice"]) if table.get("server_voice") else None,
+            category=str(table["category"]) if table.get("category") else None,
+            color=str(table["color"]) if table.get("color") else None,
             public_url=str(table["public_url"]).rstrip("/") if table.get("public_url") else None,
             isolated=bool(table.get("isolated", False)),
             python=_command(table.get("python")),

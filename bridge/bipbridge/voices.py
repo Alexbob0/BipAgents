@@ -70,6 +70,11 @@ class Uses(BaseModel):
     reading: Optional[bool] = None
 
 
+class AgentAppearance(BaseModel):
+    category: str = Field(..., max_length=20)
+    color: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
 class AgentVoices(BaseModel):
     voice: Optional[str] = Field(None, max_length=300)
     server_voice: Optional[str] = Field(None, max_length=300)
@@ -110,6 +115,22 @@ def voices_router() -> APIRouter:
         if config.source_path:
             set_section_keys(config.source_path, f"agents.{agent.name}", values)
         agent.voice, agent.server_voice = values["voice"], values["server_voice"]
+        return values
+
+    @router.put("/agents/{agent_id}/appearance")
+    async def set_agent_appearance(agent_id: str, body: AgentAppearance, request: Request) -> Dict[str, Optional[str]]:
+        """The agent's Bip as the person chose it in the app (category, custom colour): every app shows the same one."""
+        from .souls import CATEGORIES
+        config: Config = request.app.state.config
+        agent = config.agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="unknown agent")
+        if body.category not in CATEGORIES:
+            raise HTTPException(status_code=400, detail="unknown category")
+        values = {"category": body.category, "color": body.color.upper() if body.color else None}
+        if config.source_path:
+            set_section_keys(config.source_path, f"agents.{agent.name}", values)
+        agent.category, agent.color = values["category"], values["color"]
         return values
 
     return router
