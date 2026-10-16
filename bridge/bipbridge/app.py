@@ -513,8 +513,9 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         services = Services(config, transport, apns_transport)
         app.state.services = services
-        from .agents_admin import heal_thinking
+        from .agents_admin import heal_souls, heal_thinking
         heal_thinking(config)
+        heal_souls(config)
         if start_background:
             services.start_background()
         log.info("bridge started", extra=fields(version=__version__, agents=sorted(config.agents),

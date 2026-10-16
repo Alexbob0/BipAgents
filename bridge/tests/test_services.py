@@ -35,8 +35,10 @@ def test_a_service_with_a_token_needs_the_agents_own_space(setup):
     assert commands == [] and not (folder / ".env").exists()
     # Without a token and not personal: fine in the shared hub.
     asyncio.run(add(config, agent, {"catalog": "custom", "name": "Météo", "address": "https://meteo.example/mcp"}, run))
-    assert commands[-1] == ["/opt/hermes", "-p", "maison", "config", "set", "mcp_servers.meteo.url",
+    assert commands[-2] == ["/opt/hermes", "-p", "maison", "config", "set", "mcp_servers.meteo.url",
                             "https://meteo.example/mcp"]
+    # Its tools that write ask the person first (what the agent read cannot make it act through the service).
+    assert commands[-1] == ["/opt/hermes", "-p", "maison", "config", "set", "mcp_servers.meteo.trust", "untrusted"]
 
 
 def test_the_token_goes_to_the_env_file_never_on_a_command_line(setup):

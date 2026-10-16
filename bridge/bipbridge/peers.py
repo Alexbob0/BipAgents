@@ -6,6 +6,10 @@ the bridge is the only peer: each gateway gets a token of its own, which says wh
 and the bridge forwards to the target with the target's key, but only along a link the person turned on in
 the app (« Qui peut écrire à qui »). The target answers in its permanent « Bot Chat », as with any peer.
 
+A peer only reaches the target's « Bot Chat »: finding or opening it, writing in it, following or stopping a run
+there (`only_bot_chat`). Its other conversations, its approvals and its runs elsewhere stay out of reach, whatever
+an agent tricked by what it read would try with its token.
+
 Hermes delivers these messages as the gateway (`hermes -p default peer dm`): the token says which gateway
 calls, and the message's signature (« Message from … (@agent): ») which of its agents. An agent in its own
 space is alone in its gateway, so it is known for sure; in the shared hub, an agent could sign as another hub
@@ -25,7 +29,7 @@ from urllib.parse import quote, unquote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .config import AgentConfig, Config
 from .households import SEPARATOR, HouseholdError, Households, own_url, split
@@ -33,6 +37,7 @@ from .logs import fields
 
 log = logging.getLogger("bipbridge.peers")
 
+BOT_CHAT_TITLE = "Bot Chat"  # the permanent conversation where an agent gets its peers' messages (Hermes' Bot Mode)
 PEER_NAME = "bip"            # what agents see in their roster: message_agent target "bip/<agent>"
 _HOP = {"host", "content-length", "connection", "keep-alive", "transfer-encoding", "authorization", "upgrade"}
 
@@ -219,13 +224,73 @@ def manual_token(config: Config, links: Links, name: str) -> str:
     return token
 
 
+def _json(body: bytes) -> Dict[str, Any]:
+    try:
+        data = json.loads(body or b"{}")
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+async def _from_target(services, agent: AgentConfig, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+    try:
+        resp = await services.http.get(f"{agent.hermes_url}/{path}", params=params,
+                                       headers={"Authorization": f"Bearer {agent.hermes_key}"}, timeout=15.0)
+        return resp.json() if resp.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+async def bot_chat(services, agent: AgentConfig) -> Optional[Dict[str, Any]]:
+    """The target's Bot Chat, as its own Hermes lists it (hidden sessions included)."""
+    listing = await _from_target(services, agent, "api/sessions",
+                                 {"limit": 200, "title": BOT_CHAT_TITLE, "include_hidden": 1})
+    rows = listing.get("data") if isinstance(listing, dict) else None
+    return next((row for row in rows or [] if isinstance(row, dict)
+                 and str(row.get("title") or "").strip() == BOT_CHAT_TITLE), None)
+
+
+async def only_bot_chat(services, agent: AgentConfig, method: str, path: str, query: Dict[str, str],
+                        body: bytes) -> Optional[Response]:
+    """What a peer may do with `agent`: the calls of `hermes peer` (dm, send, status, stop), on its Bot Chat only.
+    Returns the answer when the bridge gives it itself (the Bot Chat's listing, never the others'), None to forward
+    the call; anything else is refused."""
+    refuse = HTTPException(status_code=403, detail=f"only {agent.name}'s Bot Chat is reachable")
+    if method == "GET" and path == "v1/capabilities":
+        return None
+    if method == "GET" and path == "api/sessions":
+        if query.get("title") != BOT_CHAT_TITLE:
+            raise refuse
+        row = await bot_chat(services, agent)
+        return JSONResponse({"object": "list", "data": [row] if row else []})
+    if method == "POST" and path == "api/sessions":
+        if _json(body).get("title") != BOT_CHAT_TITLE:
+            raise refuse
+        return None
+    chat = re.fullmatch(r"api/sessions/([^/]+)/chat", path)
+    if method == "POST" and (chat or path == "v1/runs"):
+        wanted = unquote(chat.group(1)) if chat else str(_json(body).get("session_id") or "")
+        row = await bot_chat(services, agent)
+        if not wanted or row is None or wanted != str(row.get("id") or ""):
+            raise refuse
+        return None
+    run = re.fullmatch(r"v1/runs/([^/]+)(/stop)?", path)
+    if run and (method == "GET") == (run.group(2) is None):
+        status = await _from_target(services, agent, f"v1/runs/{run.group(1)}")
+        row = await bot_chat(services, agent)
+        if not isinstance(status, dict) or row is None or str(status.get("session_id") or "") != str(row.get("id") or ""):
+            raise refuse
+        return None
+    raise refuse
+
+
 def peer_router() -> APIRouter:
     """`/peer/p/<target>/…`: Hermes' peer protocol (its sessions and runs API), for the agents."""
     router = APIRouter()
     allowed_paths = ("api/sessions", "v1/runs", "v1/capabilities")
 
     @router.api_route("/peer/p/{target}/{path:path}", methods=["GET", "POST"])
-    async def relay(target: str, path: str, request: Request) -> StreamingResponse:
+    async def relay(target: str, path: str, request: Request) -> Response:
         services = request.app.state.services
         config: Config = services.config
         token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
@@ -252,6 +317,9 @@ def peer_router() -> APIRouter:
         if not allowed:
             log.info("agent message refused", extra=fields(sender=sender or gateway, target=agent.name))
             raise HTTPException(status_code=403, detail=f"not allowed to write to {agent.name} (ask the person)")
+        answer = await only_bot_chat(services, agent, request.method, path, dict(request.query_params), body)
+        if answer is not None:
+            return answer
         headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP}
         headers["Authorization"] = f"Bearer {agent.hermes_key}"
         upstream_request = services.http.build_request(
@@ -375,7 +443,7 @@ def family_router() -> APIRouter:
                 "agents": [{"id": a.name, "name": a.display_name} for a in services.config.agents.values()]}
 
     @router.api_route("/family/p/{target}/{path:path}", methods=["GET", "POST"])
-    async def deliver(target: str, path: str, request: Request) -> StreamingResponse:
+    async def deliver(target: str, path: str, request: Request) -> Response:
         household = caller(request)
         services = request.app.state.services
         config: Config = services.config
@@ -393,6 +461,9 @@ def family_router() -> APIRouter:
             log.info("household message refused", extra=fields(sender=remote, target=agent.name))
             raise HTTPException(status_code=403, detail=f"{agent.display_name} does not take messages from {remote}")
         body = await request.body()
+        answer = await only_bot_chat(services, agent, request.method, path, dict(request.query_params), body)
+        if answer is not None:
+            return answer
         if _is_message(request, path):
             name = unquote(request.headers.get("x-bip-sender-name", "")) or sender
             body = _resign(body, sender, name, services.households.get(household)["name"])

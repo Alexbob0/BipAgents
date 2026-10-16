@@ -28,6 +28,8 @@ class Router(httpx.AsyncBaseTransport):
         host = request.url.host
         if host in self.apps:
             return await httpx.ASGITransport(app=self.apps[host]).handle_async_request(request)
+        if request.method == "GET" and request.url.path.endswith("/api/sessions"):   # the Bot Chat, looked up by the bridge
+            return httpx.Response(200, json={"data": [{"id": "bot-1", "title": "Bot Chat"}, {"id": "s9", "title": "Courses"}]})
         body = (await request.aread()).decode() or "{}"
         HERMES_RECEIVED.append((str(request.url), request.headers.get("authorization"), json.loads(body)))
         return httpx.Response(200, json={"ok": True, "url": str(request.url)})
@@ -95,7 +97,7 @@ def test_two_households_write_to_each_other_only_where_both_allowed(pair):
     data = services.links.load()
     data["tokens"]["manual:vie"] = __import__("hashlib").sha256(token.encode()).hexdigest()
     services.links.save(data)
-    message = {"message": "Message from Vie (@vie): qu'est-ce qu'on mange ce soir ?"}
+    message = {"session_id": "bot-1", "message": "Message from Vie (@vie): qu'est-ce qu'on mange ce soir ?"}
     send = lambda: a.post("/peer/p/cuisine__lea/v1/runs", headers={"Authorization": f"Bearer {token}"}, json=message)
     assert send().status_code == 403 and HERMES_RECEIVED == []
     # Léa allows « Vie (Alex) → Cuisine »: delivered to Cuisine, signed with its household and its answer address.
@@ -105,6 +107,16 @@ def test_two_households_write_to_each_other_only_where_both_allowed(pair):
     url, auth, body = HERMES_RECEIVED[-1]
     assert url == "http://b.hermes/p/cuisine/v1/runs" and auth == "Bearer cuisine-key-" + "x" * 24
     assert body["message"] == "Message from Vie (Alex) (@vie__alex): qu'est-ce qu'on mange ce soir ?"
+    # Only Cuisine's Bot Chat: not another of its conversations, nor its sessions' list or its runs' approvals.
+    other = dict(message, session_id="s9")
+    assert a.post("/peer/p/cuisine__lea/v1/runs", headers={"Authorization": f"Bearer {token}"}, json=other).status_code == 403
+    peek = a.get("/peer/p/cuisine__lea/api/sessions", headers={"Authorization": f"Bearer {token}"})
+    assert peek.status_code == 403
+    listing = a.get("/peer/p/cuisine__lea/api/sessions?title=Bot%20Chat&include_hidden=1",
+                    headers={"Authorization": f"Bearer {token}"})
+    assert listing.json()["data"] == [{"id": "bot-1", "title": "Bot Chat"}]
+    assert a.post("/peer/p/cuisine__lea/v1/runs/run-1/approval", headers={"Authorization": f"Bearer {token}"},
+                  json={"choice": "always"}).status_code == 403
     # Budget (its own gateway, not linked) cannot, nor can anything without the household's key.
     budget_token = "budget-gateway-token-" + "w" * 20
     data = services.links.load()

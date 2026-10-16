@@ -138,6 +138,10 @@ async def add(config: Config, agent: AgentConfig, body: Dict[str, Any], run: Cal
     if wanted["token"]:
         await run([hermes, "-p", agent.name, "config", "set", f"mcp_servers.{name}.headers.Authorization",
                    "Bearer ${" + env_name(name) + "}"], env)
+    if wanted["catalog"] != "home_assistant":
+        # Hermes asks the person before each of its tools that writes (sends, creates, deletes): a page or an e-mail
+        # the agent read cannot make it act through the service. Home Assistant (lights, heating) stays direct.
+        await run([hermes, "-p", agent.name, "config", "set", f"mcp_servers.{name}.trust", "untrusted"], env)
     log.info("service connected", extra=fields(agent=agent.name, service=name, catalog=wanted["catalog"]))
     return {"name": name, "url": wanted["url"], "enabled": True, "catalog": wanted["catalog"]}
 
