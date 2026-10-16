@@ -712,3 +712,26 @@ def test_a_blocked_update_says_how_to_put_local_changes_aside(monkeypatch):
     assert any("bridge/bipbridge/tts.py" in line for line in lines) and any("git stash" in line for line in lines)
     assert any("voices/english/galet.safetensors" in line for line in lines)
     assert upgrade.as_account("chi", "bash BipAgents/install.sh update --auto").startswith("sudo -u chi bash -c 'cd /home/chi")
+
+
+def test_the_other_installs_of_the_machine_are_found_and_updated_after_one_sudo(monkeypatch, capsys):
+    import pwd
+    import subprocess
+    from bipinstall import upgrade
+    Entry = __import__("collections").namedtuple("Entry", "pw_name pw_uid pw_dir")
+    monkeypatch.setattr(pwd, "getpwall", lambda: [Entry("root", 0, "/root"), Entry("aibox", 1000, "/home/aibox"),
+                                                   Entry("chi", 1002, "/home/chi"), Entry("alex", 1003, "/home/alex"),
+                                                   Entry("guest", 1004, "/home/guest")])
+    monkeypatch.setenv("USER", "aibox")
+    ran = []
+
+    def fake_run(args, **kwargs):
+        ran.append(args)
+        ok = args[:2] == ["sudo", "-v"] or (args[:3] == ["sudo", "-n", "test"] and "guest" not in args[-1])
+        return subprocess.CompletedProcess(args, 0 if ok or args[0] == "bash" else 1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    upgrade.update_others(hermes.Runner())
+    updates = [a[2] for a in ran if a[0] == "bash"]
+    assert len(updates) == 2 and updates[0].startswith("sudo -n -u chi bash -c") and "update --auto" in updates[1]
+    assert ran[0] == ["sudo", "-v"] and not any("aibox/.config" in " ".join(a) for a in ran)   # not itself

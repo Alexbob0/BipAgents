@@ -6,8 +6,8 @@ restarted.
 2. The bridge (its dependencies when they changed), the Bips' voices (Pocket) when this account runs them, the agents'
    browsers when their image changed (rebuilt, the containers started again: their profiles stay).
 3. The settings a fresh install now makes (migrations.py).
-4. What this account cannot do itself, as commands to run: another account's Pocket, the family's other installs,
-   Hermes' own update.
+4. The machine's other installs (the family's), each in its own account, after one sudo password (offered, or
+   --all). What no account here can do comes as commands: Hermes' own update, Pocket run from another account.
 5. Once, the offer to do all this each night (a timer of this account, `--auto`: no questions).
 
 `--check` only says what is new.
@@ -69,23 +69,53 @@ def own_hermes() -> bool:
         return True
 
 
-def systemd_unit_exists(name: str) -> bool:
-    return (Path.home() / ".config" / "systemd" / "user" / f"{name}.service").exists()
+def pocket_restart() -> Optional[List[str]]:
+    """The command restarting the Bips' voices when this account runs them (the installer's service, or one set up by
+    hand that runs pocket_server.py), else None."""
+    if platform.system() == "Darwin":
+        plist = Path.home() / "Library" / "LaunchAgents" / "io.github.bipagents.pocket.plist"
+        return ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/io.github.bipagents.pocket"] if plist.exists() else None
+    for unit in sorted((Path.home() / ".config" / "systemd" / "user").glob("*.service")):
+        if "pocket_server.py" in unit.read_text(errors="ignore"):
+            return ["systemctl", "--user", "restart", unit.stem]
+    return None
+
+
+def installed_accounts() -> List[str]:
+    """The machine's other accounts with a BipAgents install (looked at with sudo: their homes are private)."""
+    import pwd
+    me = os.environ.get("USER", "")
+    found = []
+    for entry in pwd.getpwall():
+        if entry.pw_uid < 1000 or entry.pw_name == me or not entry.pw_dir.startswith("/home/"):
+            continue
+        check = subprocess.run(["sudo", "-n", "test", "-f", f"{entry.pw_dir}/.config/bipagents/bridge.toml"])
+        if check.returncode == 0:
+            found.append(entry.pw_name)
+    return found
+
+
+def update_others(runner: hermes.Runner) -> None:
+    """Each other install of the machine updated in its own account (`update --auto`), after one sudo password."""
+    if subprocess.run(["sudo", "-v"]).returncode != 0:
+        say(ui.fail("sudo refused: the other installs stay as they are."))
+        return
+    accounts = installed_accounts()
+    if not accounts:
+        say(ui.note("No other BipAgents install on this machine."))
+        return
+    for account in accounts:
+        say(ui.bip("happy", f"{account}…"))
+        command = as_account(account, "bash BipAgents/install.sh update --auto").replace("sudo -u", "sudo -n -u", 1)
+        runner.log.append(command)
+        if not runner.dry:
+            subprocess.run(["bash", "-c", command])   # its output as it goes
 
 
 def pocket_owner() -> Optional[str]:
     """The account running the machine's Pocket server, if any."""
     out = subprocess.run(["ps", "-eo", "user=,args="], capture_output=True, text=True).stdout
     return next((line.split()[0] for line in out.splitlines() if "pocket_server.py" in line), None)
-
-
-def family_members(config: Path) -> List[str]:
-    try:
-        blocks = json.loads((config.parent / "family-ports.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    me = os.environ.get("USER", "")
-    return sorted(member for member in blocks if member != me)
 
 
 def as_account(account: str, command: str) -> str:
@@ -161,6 +191,7 @@ def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(prog="bipinstall update", description=__doc__.split("\n\n")[0])
     parser.add_argument("--check", action="store_true", help="only say what is new")
     parser.add_argument("--auto", action="store_true", help="no questions (the nightly timer)")
+    parser.add_argument("--all", action="store_true", help="the machine's other installs too, without asking (sudo)")
     parser.add_argument("--apply-to-my-hermes", action="store_true",
                         help="apply the new settings to a Hermes you had before BipAgents too")
     parser.add_argument("--dry-run", action="store_true")
@@ -200,33 +231,28 @@ def main(argv: List[str]) -> int:
     touched = lambda *prefixes: any(path.startswith(prefixes) for path in changed)
 
     try:
-        config = find_config(None)
+        config: Optional[Path] = find_config(None)
     except SystemExit:
-        say(ui.note("No BipAgents bridge in this account: nothing else to update here."))
-        return 0
+        config = None   # an account without its own install (an administrator's): its Pocket, the others
 
     # 2. What runs here.
-    if touched("bridge/"):
+    if config and touched("bridge/"):
         if touched("bridge/requirements.txt"):
             venv(REPO / "bridge", runner)
         runner.run(bridge_restart(), check=False)
         say(ui.done("Bridge restarted."))
-    if touched("pocket/", "voices/"):
-        if systemd_unit_exists("bipagents-pocket") or platform.system() == "Darwin":
-            if touched("pocket/requirements.txt"):
-                venv(REPO / "pocket", runner)
-            restart = (["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/io.github.bipagents.pocket"]
-                       if platform.system() == "Darwin" else ["systemctl", "--user", "restart", "bipagents-pocket"])
-            runner.run(restart, check=False)
-            say(ui.done("The Bips' voices restarted."))
-        else:
-            owner = pocket_owner()
-            if owner and owner != os.environ.get("USER"):
-                commands.append(f"# The Bips' voices run from the account {owner}: update and restart them there")
-                commands.append(f"cd ~/BipAgents && git pull --ff-only && systemctl --user list-units | grep -i pocket"
-                                f"   # as {owner}, then: systemctl --user restart <that unit>")
+    pocket = pocket_restart()
+    if touched("pocket/", "voices/") and pocket:
+        if touched("pocket/requirements.txt") and (REPO / "pocket" / ".venv").exists():
+            venv(REPO / "pocket", runner)
+        runner.run(pocket, check=False)
+        say(ui.done("The Bips' voices restarted."))
+    elif touched("pocket/", "voices/"):
+        owner = pocket_owner()
+        if owner and owner != os.environ.get("USER"):
+            commands.append(f"# The Bips' voices run from the account {owner}: there, `bipagents update` restarts them")
     browsers = sorted((Path.home() / ".config" / "systemd" / "user").glob("bipagents-browser-*.service"))
-    if touched("browser/") and browsers:
+    if config and touched("browser/") and browsers:
         if args.auto or ask("The agents' browser changed: rebuild it and restart the browsers now (a few minutes; "
                             "their profiles stay)?"):
             engine = hermes.sandbox_runtime() or "podman"
@@ -238,16 +264,18 @@ def main(argv: List[str]) -> int:
             commands.append("bipagents update   # later, when the agents are not browsing")
 
     # 3. Settings a fresh install now makes.
-    for line in migrations.run(runner, own_hermes=own_hermes() or args.apply_to_my_hermes):
-        say(ui.done(line))
+    if config:
+        for line in migrations.run(runner, own_hermes=own_hermes() or args.apply_to_my_hermes):
+            say(ui.done(line))
+    else:
+        say(ui.note("No BipAgents install of its own in this account."))
 
-    # 4. What this account cannot do itself.
+    # 4. The machine's other installs, with one sudo; what no account here can do.
+    if not args.auto and platform.system() == "Linux" and (args.all or ask(
+            "Update the other BipAgents installs of this machine too (your sudo password, asked once)?")):
+        update_others(runner)
     if touched("hermes/patches/"):
         commands.append("bipagents hermes-update   # BipAgents' Hermes patches changed")
-    members = family_members(config)
-    if members and not args.auto:
-        commands.append("# The family's other installs (from an account allowed to use sudo):")
-        commands += [as_account(member, "bash BipAgents/install.sh update --auto") for member in members]
     if touched("App/", "Packages/", "Widgets/", "NotificationService/"):
         say(ui.note("The app changed too: its new version comes through TestFlight or the App Store."))
     if commands:

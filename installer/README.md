@@ -74,8 +74,10 @@ update`, the same as `bash ~/BipAgents/install.sh update`) brings this account's
 lists its commands (update, voice, hermes-update, family add, uninstall); the installer puts it in `~/.local/bin`. It shows what is new, restarts only
 what changed (the bridge, the Bips' voices when this account runs them, the agents' browsers when their image changed:
 rebuilt, their profiles kept), and applies the settings a fresh install now makes (`installer/bipinstall/migrations.py`:
-for instance risky commands always asking you). What it cannot do from this account comes as commands to run: the
-family's other installs (with `sudo -u <account>`), the Bips' voices run from another account, Hermes' own update.
+for instance risky commands always asking you). It then offers to update the machine's other installs
+too (the family's), each in its own account, after your sudo password, asked once (`--all`: without asking); run
+from an administrator's account with no install of its own, it updates that account's Bips' voices and the others.
+What no account can do this way comes as commands to run (Hermes' own update).
 Local changes in `~/BipAgents` that block it are shown with the commands that put them aside.
 
 The first time, it offers to do this each night at 4:30 (a timer of this account, `install.sh update --auto`: no
