@@ -8,6 +8,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.layout.height
@@ -81,7 +82,7 @@ import io.github.bipagents.model.AgentStore
 import io.github.bipagents.net.RunEvent
 
 @Composable
-fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () -> Unit, onSessions: () -> Unit) {
+fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () -> Unit, onSessions: () -> Unit, onLive: (String?) -> Unit) {
     val model: ChatModel = viewModel(key = "chat-$agentId-${session ?: "main"}")
     LaunchedEffect(Unit) { model.start(agentId, session) }
     val state by model.state.collectAsState()
@@ -105,7 +106,10 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
     androidx.compose.runtime.CompositionLocalProvider(LocalBridge provides store.bridge(agent)) {
     Column(Modifier.fillMaxSize().imePadding()) {
         TopBar(agent.name, onBack, leading = { Mascot(agent.look, Modifier.size(40.dp), state.mood) },
-            actions = { RoundButton(Icons.AutoMirrored.Rounded.List, stringResource(R.string.conversations), onSessions, size = 44.dp) })
+            actions = {
+                RoundButton(Icons.Rounded.GraphicEq, stringResource(R.string.live), { onLive(state.session) }, size = 44.dp, background = agent.look.main, tint = Bip.card)
+                RoundButton(Icons.AutoMirrored.Rounded.List, stringResource(R.string.conversations), onSessions, size = 44.dp)
+            })
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (state.items?.isEmpty() == true && state.live == null) item {

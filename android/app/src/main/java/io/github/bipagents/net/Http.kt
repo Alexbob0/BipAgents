@@ -84,8 +84,9 @@ class Api(val base: String, private val key: String) {
     }
 
     /** An event stream (SSE): each event's type (a dotted name wins over a plain one) and its JSON. */
-    fun events(path: String, query: Map<String, String?> = emptyMap()): Flow<ServerEvent> = callbackFlow {
-        val call = Http.streaming.newCall(request(path, query = query, headers = mapOf("Accept" to "text/event-stream")))
+    fun events(path: String, query: Map<String, String?> = emptyMap(), body: JsonElement? = null): Flow<ServerEvent> = callbackFlow {
+        val call = Http.streaming.newCall(request(path, if (body == null) "GET" else "POST", body?.let { Http.body(it) }, query,
+            mapOf("Accept" to "text/event-stream")))
         val reader = launch(Dispatchers.IO) {
             try {
                 call.execute().use { response ->

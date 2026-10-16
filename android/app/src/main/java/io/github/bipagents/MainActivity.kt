@@ -43,6 +43,7 @@ import io.github.bipagents.ui.BipTheme
 import io.github.bipagents.ui.ChatScreen
 import io.github.bipagents.ui.HomeScreen
 import io.github.bipagents.ui.InboxScreen
+import io.github.bipagents.ui.LiveScreen
 import io.github.bipagents.ui.SessionsScreen
 import io.github.bipagents.ui.SettingsScreen
 import io.github.bipagents.ui.tap
@@ -90,7 +91,8 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize().background(Bip.ground)) {
                     NavHost(nav, startDestination = "home") {
                         composable("home") {
-                            HomeScreen(store, onAdd = { nav.navigate("add") }, onOpen = { agent -> nav.navigate("chat/$agent") })
+                            HomeScreen(store, onAdd = { nav.navigate("add") }, onOpen = { agent -> nav.navigate("chat/$agent") },
+                                onLive = { agent -> nav.navigate("live/$agent") })
                         }
                         composable("inbox") { InboxScreen(store, onOpen = { agent, session -> nav.navigate("chat/$agent?session=$session") }) }
                         composable("settings") { SettingsScreen(store, onAdd = { nav.navigate("add") }) }
@@ -98,7 +100,12 @@ class MainActivity : ComponentActivity() {
                         composable("chat/{agent}?session={session}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable
                             ChatScreen(store, agent, entry.arguments?.getString("session"), onBack = { nav.popBackStack() },
-                                onSessions = { nav.navigate("sessions/$agent") })
+                                onSessions = { nav.navigate("sessions/$agent") },
+                                onLive = { session -> nav.navigate("live/$agent" + (session?.let { "?session=$it" } ?: "")) })
+                        }
+                        composable("live/{agent}?session={session}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                            LiveScreen(store, agent, entry.arguments?.getString("session"), onEnd = { nav.popBackStack() })
                         }
                         composable("sessions/{agent}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable

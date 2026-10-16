@@ -73,6 +73,14 @@
     <string name="voice_smart">Intelligent</string>
     <string name="voice_always">Immer nach einer Sprachnachricht</string>
     <string name="voice_reply_help">„Intelligent“: laut, wenn du Kopfhörer trägst, im Auto bist oder darum bittest. „Anhören“ unter einer Antwort liest sie auf Wunsch vor.</string>
+    <string name="live">Live</string>
+    <string name="live_listening">Ich höre zu…</string>
+    <string name="live_thinking">Ich denke nach…</string>
+    <string name="live_speaking">Ich spreche</string>
+    <string name="live_tap_to_interrupt">Sprich oder tippe mich an, um mich zu unterbrechen</string>
+    <string name="hang_up">Auflegen</string>
+    <string name="live_needs_approval">Ich brauche dein OK: Schau auf den Bildschirm.</string>
+    <string name="live_failed">Tut mir leid, das hat nicht geklappt.</string>
     <string name="cancel">Abbrechen</string>
     <plurals name="agents_added">
         <item quantity="one">%d Agent hinzugefügt</item>

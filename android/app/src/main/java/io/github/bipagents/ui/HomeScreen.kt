@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,7 +46,7 @@ import java.util.Locale
 
 /** Home: one card per agent (App/Features/Agents/AgentsView.swift). */
 @Composable
-fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onOpen: (String) -> Unit) {
+fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onOpen: (String) -> Unit, onLive: (String) -> Unit) {
     val agents by store.agents.collectAsState()
     val latest by store.latest.collectAsState()
     val online by store.online.collectAsState()
@@ -65,12 +66,12 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onOpen: (String) -> Unit) {
             }
         }
         if (agents.isEmpty()) item { Welcome(onAdd) }
-        items(agents, key = { it.id }) { agent -> AgentCard(agent, latest[agent.id], online[agent.id]) { onOpen(agent.id) } }
+        items(agents, key = { it.id }) { agent -> AgentCard(agent, latest[agent.id], online[agent.id], { onLive(agent.id) }) { onOpen(agent.id) } }
     }
 }
 
 @Composable
-private fun AgentCard(agent: Agent, latest: Session?, online: Boolean?, onOpen: () -> Unit) {
+private fun AgentCard(agent: Agent, latest: Session?, online: Boolean?, onLive: () -> Unit, onOpen: () -> Unit) {
     val look = agent.look
     Column(Modifier.fillMaxWidth().background(look.tint, RoundedCornerShape(30.dp)).tap(onOpen).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -101,11 +102,19 @@ private fun AgentCard(agent: Agent, latest: Session?, online: Boolean?, onOpen: 
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(26.dp)).tap(onOpen).padding(vertical = 14.dp),
-            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Keyboard, null, tint = Bip.ink)
-            Spacer(Modifier.size(8.dp))
-            Text(stringResource(R.string.write), style = Bip.text(18, FontWeight.ExtraBold))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.weight(1f).background(Bip.card, RoundedCornerShape(26.dp)).tap(onOpen).padding(vertical = 14.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Keyboard, null, tint = Bip.ink)
+                Spacer(Modifier.size(8.dp))
+                Text(stringResource(R.string.write), style = Bip.text(18, FontWeight.ExtraBold))
+            }
+            Row(Modifier.weight(1f).background(Bip.ink, RoundedCornerShape(26.dp)).tap(onLive).padding(vertical = 14.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.GraphicEq, null, tint = Bip.card)
+                Spacer(Modifier.size(8.dp))
+                Text(stringResource(R.string.live), style = Bip.text(18, FontWeight.ExtraBold, Bip.card))
+            }
         }
     }
 }

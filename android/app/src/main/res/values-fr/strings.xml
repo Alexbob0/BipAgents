@@ -77,5 +77,13 @@
     <string name="voice_smart">Intelligent</string>
     <string name="voice_always">Toujours après un vocal</string>
     <string name="voice_reply_help">« Intelligent » : en vocal si tu as des écouteurs, es en voiture ou le demandes. « Écouter » sous une réponse la lit à la demande.</string>
+    <string name="live">Live</string>
+    <string name="live_listening">Je t\'écoute…</string>
+    <string name="live_thinking">Je réfléchis…</string>
+    <string name="live_speaking">Je parle</string>
+    <string name="live_tap_to_interrupt">Parle ou touche-moi pour m\'interrompre</string>
+    <string name="hang_up">Raccrocher</string>
+    <string name="live_needs_approval">J\'ai besoin de ton accord, regarde l\'écran.</string>
+    <string name="live_failed">Désolé, ça n\'a pas marché.</string>
     <string name="cancel">Annuler</string>
 </resources>

@@ -7,7 +7,10 @@ progress, in three phases:
    bridge, approvals and questions, the Inbox, files, notifications (FCM, with approve/deny on the notification).
 2. **Audio** (done): voice notes (hold the mic; transcribed on the phone, kept when the phone recognizes the language on
    the device), « Listen » under replies (the Bip's voice streamed from the bridge), spoken replies after a voice note.
-3. **Live**: hands-free conversation you can interrupt.
+3. **Live** (done, to tune on real phones): hands-free conversation — the phone's recognizer listens, the reply streams
+   from Hermes (`chat/stream`, thinking off) and is spoken sentence by sentence in the Bip's live voice; speaking over
+   it (the phone's echo canceller, then a voice clearly louder than the Bip's echo) or tapping the Bip interrupts it.
+   In a debug build, a long press on the Bip says « Comment mieux dormir ? » (the emulator's microphone hears nothing).
 
 ## Building
 

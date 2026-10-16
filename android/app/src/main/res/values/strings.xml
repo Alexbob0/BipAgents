@@ -78,5 +78,13 @@
     <string name="voice_smart">Smart</string>
     <string name="voice_always">Always after a voice note</string>
     <string name="voice_reply_help">« Smart »: out loud if you wear headphones, are in the car or ask for it. « Listen » under a reply reads it on demand.</string>
+    <string name="live">Live</string>
+    <string name="live_listening">I\'m listening…</string>
+    <string name="live_thinking">Thinking…</string>
+    <string name="live_speaking">Speaking</string>
+    <string name="live_tap_to_interrupt">Talk or tap me to interrupt</string>
+    <string name="hang_up">Hang up</string>
+    <string name="live_needs_approval">I need your OK: look at the screen.</string>
+    <string name="live_failed">Sorry, that didn\'t work.</string>
     <string name="cancel">Cancel</string>
 </resources>

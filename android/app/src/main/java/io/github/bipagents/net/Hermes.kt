@@ -77,6 +77,14 @@ class Hermes(val api: Api) {
         return reply.str("run_id", "id") ?: throw HttpError(502, "Run creation response has no run_id")
     }
 
+    /** One turn streamed on the connection (`chat/stream`): the Live's way, with each event's run id. Thinking off: a
+     *  spoken answer right away, whatever the agent's level in written conversations. */
+    fun chatStream(session: String, text: String): Flow<ServerEvent> = api.events("api/sessions/${seg(session)}/chat/stream",
+        body = buildJsonObject {
+            put("input", text)
+            put("model_options", buildJsonObject { put("reasoning", buildJsonObject { put("enabled", false) }) })
+        })
+
     fun runEvents(run: String): Flow<RunEvent> = api.events("v1/runs/${seg(run)}/events").mapNotNull(RunEvent::of)
 
     suspend fun stop(run: String) { api.call("v1/runs/${seg(run)}/stop", "POST", JsonObject(emptyMap())) }
