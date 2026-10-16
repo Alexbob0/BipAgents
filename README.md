@@ -30,6 +30,25 @@ Every agent is a **Bip**: a little mascot with its own color, shape, mood and **
   <img src="docs/screenshots/live.png" width="24%" alt="Live: hands-free voice conversation">
 </p>
 
+## 🚀 Get started in 4 steps
+
+1. **📱 On your iPhone**: install **BipAgents** from the App Store *(coming soon)* and
+   [**Tailscale**](https://tailscale.com/download), then sign in to Tailscale.
+2. **🖥️ Pick a machine that stays on**, where your agents will live: a Mac or a Linux PC at home, or a
+   [small rented server](docs/vps.md) from ≈ €8 a month. No GPU needed. Install Tailscale on it too, with the same
+   account.
+3. **⌨️ Paste this into its terminal**, then answer a few questions (your agents' names, and which model they use: one
+   on your network, or an OpenRouter key):
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
+   ```
+
+4. **📷 Scan the QR code** it shows at the end: in the app, **＋ › Scan QR code**. Your Bips say hello. 👋
+
+Later: `bipagents update` keeps everything up to date, `bipagents family add <name>` makes room for someone else, and
+`bipagents console` opens your agents in a computer's browser.
+
 ## 🎮 Play with the Bips
 
 The Bips aren't just decoration. In the app (and [**in your browser**](https://alexbob0.github.io/BipAgents/play/)), they react:
@@ -61,6 +80,7 @@ And they **babble**: every reaction is spoken in their "Animalese", cute gibberi
 - 📬 **The Inbox**: scheduled-task (cron) reports and replies that arrived while you were away, to listen to or pick up in Live.
 - 📎 **Any kind of file**: photos, PDFs, spreadsheets, scans… and files the agent produces (audio, documents) open right in the app.
 - 🌍 **In English, French, Spanish and German**: the app follows the iPhone's language, and each agent has its own (speech recognition and voice).
+- 💻 **On your computer too**: `bipagents console` gives a link that opens your agents, their conversations and the Inbox in a browser, no Hermes key ever reaching it.
 - 🔗 Clickable links with favicons, folded tool calls, drafts kept per conversation, day separators.
 
 <details>
@@ -112,19 +132,13 @@ flowchart LR
 - **Pocket TTS** (`pocket/`) gives the Bips their voices, on the same machine's CPU.
 - Everything stays with you: no third-party cloud except Apple for push. No secrets in this repo; keys are entered in the app (Keychain) or in the bridge config on the server.
 
-## 🚀 Getting started
+## 🛠️ More about installing
 
 **Just to have a look**, no server needed: open `BipAgents.xcodeproj`, BipAgents scheme → Arguments → `-demo`. Add `-screen conversation`, `-screen call`, `-tab inbox` or `-demoAgents 5` to land straight on a screen.
 
 **For real**: a **Mac mini**, a **VPS** or a Linux box is enough, no GPU; [Hermes Agent](https://github.com/NousResearch/hermes-agent) comes with the installer if you don't have it. Doing it by hand instead: [**Self-hosting BipAgents**](docs/self-hosting.md). No machine at home: [**BipAgents on a rented server**](docs/vps.md).
 
-**One command to install**, in your own account, no sudo:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
-```
-
-It finds or installs Hermes (or keeps yours as it is), looks for a model on your network or takes an API key, sets up
+**The install command** (step 3) runs in your own account, no sudo. It finds or installs Hermes (or keeps yours as it is), looks for a model on your network or takes an API key, sets up
 the bridge, the Bips' voices, each agent's visible browser and sandbox (podman), publishes everything on your tailnet
 and ends with a QR code to scan in the app. **One command to update**: `bipagents update` restarts only what changed,
 applies the new settings, offers to update the family's other installs with a single sudo, and can do it every night
