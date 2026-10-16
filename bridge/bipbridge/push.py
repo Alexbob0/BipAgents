@@ -1,4 +1,4 @@
-"""Push notifications to the agent's registered devices (SPEC §A6 / §C2 payloads).
+"""Push notifications to the agent's registered devices.
 
 Content travels on the tailnet, not through Apple: by default alerts carry a generic body and the
 Notification Service Extension (``mutable-content: 1``) fetches the full text from the bridge.

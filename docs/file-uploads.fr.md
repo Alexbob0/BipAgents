@@ -1,6 +1,6 @@
 [🇬🇧 English](file-uploads.md) · 🇫🇷 Français
 
-# Addendum SPEC — envoi de fichiers (PDF, Excel, texte…)
+# Envoi de fichiers (PDF, Excel, texte…)
 
 Décision du 2026-10-04 : l'app doit envoyer **tous types de fichiers**, comme Telegram aujourd'hui.
 
@@ -17,8 +17,6 @@ Décision du 2026-10-04 : l'app doit envoyer **tous types de fichiers**, comme T
    `[Pièce jointe : releve.pdf (application/pdf, 220 Ko) → /home/hermes/.hermes/profiles/vie/uploads/2026-10/…-releve.pdf]`
    Implémenté dans `HermesKit` (`MessageInput.prepared(uploader:)`, `BridgeDocumentUploader`).
 
-Le Claude du serveur ajoutera `POST /v1/files` au contrat C2 du SPEC.
-
-## À faire côté serveur (bridge, §B3)
+## Côté serveur (bridge)
 - Route `POST /v1/files` : limite de taille (ex. 50 Mo), noms de fichiers assainis, permissions 640, purge > 30 jours.
 - Les images continuent d'être envoyées en ligne (`image_url` data URI ≤ 1600 px), sans passer par le bridge.

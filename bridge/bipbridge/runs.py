@@ -6,7 +6,7 @@ The hub keeps a replay backlog so a voice client that attaches after ``POST /v1/
 hears the answer from its beginning.
 
 Followers are the voice WebSocket and the app's SSE (``GET /v1/runs/{id}/events``): while one is attached
-the user sees the run. Push rule (SPEC §B3.4): on ``approval.request`` for a *watched* run with no
+the user sees the run. Push rule: on ``approval.request`` for a *watched* run with no
 follower, push an ``APPROVAL`` notification (once per request); when such a run completes, push a
 « reply ready » alert that opens its conversation.
 """
