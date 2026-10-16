@@ -69,6 +69,21 @@ tes agents ne tournent pas dans un bac à sable, le bridge ne garde pas de mots 
 dit, sans changer leurs outils. Il faut une version d'Hermes qui sert plusieurs agents à la même adresse
 (`hermes update` sinon).
 
+## Mettre BipAgents à jour
+
+`bash ~/BipAgents/install.sh update` met à jour l'installation de ce compte : il montre ce qui est nouveau, relance
+seulement ce qui a changé (le bridge, les voix des Bips quand c'est ce compte qui les fait tourner, les navigateurs des
+agents quand leur image a changé : reconstruits, profils gardés), et applique les réglages qu'une nouvelle
+installation pose maintenant (`installer/bipinstall/migrations.py` : par exemple les commandes à risque qui te demandent
+toujours ton accord). Ce qu'il ne peut pas faire depuis ce compte arrive sous forme de commandes à lancer : les autres
+installations de la famille (avec `sudo -u <compte>`), les voix des Bips lancées depuis un autre compte, la mise à jour
+de Hermes. Des modifications locales dans `~/BipAgents` qui la bloquent sont montrées avec les commandes pour les mettre
+de côté.
+
+La première fois, il propose de le faire chaque nuit à 4 h 30 (un minuteur de ce compte, `install.sh update --auto` :
+sans questions ; `systemctl --user disable --now bipagents-update.timer` l'arrête). `--check` dit seulement ce qui est
+nouveau. Un Hermes que tu avais avant BipAgents garde ses réglages, sauf avec `--apply-to-my-hermes`.
+
 ## Mettre Hermes à jour
 
 Quand tu veux : `bash ~/BipAgents/install.sh hermes-update`. Avant de toucher à quoi que ce soit, il dit quels

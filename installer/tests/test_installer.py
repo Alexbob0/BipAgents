@@ -663,3 +663,42 @@ def test_the_voice_server_lines_go_into_the_bridge_config(tmp_path):
     config = tomllib.loads(bridge_toml(inst))
     assert config["voice_server"] == {"url": "http://gpu:8880", "model": "tts-1", "live": False, "replies": True,
                                       "reading": True}
+
+
+# -- Updates --------------------------------------------------------------------------------------------------------
+
+def test_an_update_applies_the_settings_a_fresh_install_now_makes_once(tmp_path, monkeypatch):
+    from bipinstall import migrations
+    monkeypatch.setattr(migrations, "STATE", tmp_path / "state" / "migrations.json")
+    hub = tmp_path / ".hermes"
+    (hub / "profiles" / "vie").mkdir(parents=True)
+    (hub / "config.yaml").write_text("model:\n  base_url: http://192.168.1.30:8888/v1\n")
+    (hub / "profiles" / "vie" / "config.yaml").write_text("model:\n  base_url: https://openrouter.ai/api/v1\n")
+    space = tmp_path / ".local" / "share" / "bipagents" / "spaces" / "wellness"
+    (space / "profiles" / "wellness").mkdir(parents=True)
+    (space / "profiles" / "wellness" / "config.yaml").write_text("model:\n  base_url: 'http://gpu:8888/v1'\n")
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append((dict(runner.env).get("HERMES_HOME"), list(args[1:]))) or ""
+    said = migrations.run(runner, home=tmp_path)
+    assert "2 agent(s)" in said[0] and "approvals.mode manual" in said[1]
+    assert (str(hub), ["config", "set", "compression.threshold_tokens", "100000"]) in ran
+    assert (str(space), ["-p", "wellness", "config", "set", "compression.threshold_tokens", "100000"]) in ran
+    assert (str(hub), ["-p", "vie", "config", "set", "compression.threshold_tokens", "100000"]) not in ran   # an API model
+    assert (str(hub), ["-p", "vie", "config", "set", "approvals.mode", "manual"]) in ran
+    ran.clear()
+    assert migrations.run(runner, home=tmp_path) == [] and ran == []        # once
+    monkeypatch.setattr(migrations, "STATE", tmp_path / "other.json")
+    said = migrations.run(runner, home=tmp_path, own_hermes=False)
+    assert ran == [] and all("not applied to your own Hermes" in line for line in said)
+
+
+def test_a_blocked_update_says_how_to_put_local_changes_aside(monkeypatch):
+    from bipinstall import upgrade
+    porcelain = " M bridge/bipbridge/tts.py\n?? voices/english/galet.safetensors\n"
+    monkeypatch.setattr(upgrade, "git", lambda *args: __import__("subprocess").CompletedProcess(args, 0, porcelain, ""))
+    lines = upgrade.blocked_pull()
+    assert any("bridge/bipbridge/tts.py" in line for line in lines) and any("git stash" in line for line in lines)
+    assert any("voices/english/galet.safetensors" in line for line in lines)
+    assert upgrade.as_account("chi", "bash BipAgents/install.sh update --auto").startswith("sudo -u chi bash -c 'cd /home/chi")
