@@ -93,6 +93,27 @@ class AgentStore(context: Context) {
     private fun setPending(id: String, on: Boolean) =
         prefs.edit().putStringSet("looks-pending", if (on) pending() + id else pending() - id).apply()
 
+    /** The Bip voice the bridge reads with (`pocket:en/galet` in English…), as the iPhone sends it. */
+    fun spoken(voice: String, language: String?): String {
+        val lang = language ?: java.util.Locale.getDefault().language
+        return if (lang == "fr" || !voice.startsWith("pocket:")) voice else "pocket:$lang/" + voice.removePrefix("pocket:").substringAfter('/')
+    }
+
+    /** The agent's Bip voice, picked here: kept on this phone and by its bridge (its voice-model voice untouched). */
+    suspend fun setVoice(agent: Agent, voice: String) {
+        val changed = agent.copy(voice = voice)
+        update(changed)
+        runCatching { bridge(changed)?.setVoices(changed.bridgeName, spoken(voice, changed.language), changed.serverVoice) }
+    }
+
+    /** The language the agent is spoken to in (speech recognition, voices) and writes first in. */
+    suspend fun setLanguage(agent: Agent, lang: String) {
+        val changed = agent.copy(language = lang)
+        update(changed)
+        runCatching { bridge(changed)?.setLanguage(changed.bridgeName, lang) }
+        changed.voice?.let { v -> runCatching { bridge(changed)?.setVoices(changed.bridgeName, spoken(v, lang), changed.serverVoice) } }
+    }
+
     /** The person picks the agent's look here: kept on this phone and by its bridge, for every app. */
     suspend fun setLook(agent: Agent, category: Category, color: String?) {
         val changed = agent.copy(category = category.id, color = color)
@@ -115,9 +136,11 @@ class AgentStore(context: Context) {
                     continue
                 }
                 val found = listed.firstOrNull { it.id.equals(agent.bridgeName, true) } ?: continue
-                if (found.category != null && (found.category != agent.category || found.color != agent.color)) {
-                    update(agent.copy(category = found.category, color = found.color))
-                }
+                // Its voices as the bridge has them (picked on another phone): `pocket:en/galet` is the Bip `pocket:galet`.
+                val bip = found.voice?.takeIf { it.startsWith("pocket:") }?.let { "pocket:" + it.removePrefix("pocket:").substringAfter('/') }
+                var synced = agent.copy(voice = bip ?: agent.voice, serverVoice = found.serverVoice)
+                if (found.category != null) synced = synced.copy(category = found.category, color = found.color)
+                if (synced != agent) update(synced)
             }
         }
     }

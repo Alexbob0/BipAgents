@@ -7,7 +7,9 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 
 data class ListedAgent(val id: String, val name: String, val url: String?, val key: String?,
-                       val category: String? = null, val color: String? = null)
+                       val category: String? = null, val color: String? = null, val voice: String? = null, val serverVoice: String? = null)
+
+data class Desktop(val url: String, val relayed: Boolean, val youHold: Boolean)
 
 data class InboxItem(val id: String, val agent: String, val title: String?, val text: String, val time: Long?,
                      val session: String?, val hasAudio: Boolean)
@@ -16,7 +18,8 @@ data class InboxItem(val id: String, val agent: String, val title: String?, val 
 class Bridge(val api: Api) {
     suspend fun agents(): List<ListedAgent> = api.call("v1/agents").obj()?.get("agents").list().mapNotNull { o ->
         val id = o.str("id") ?: return@mapNotNull null
-        ListedAgent(id, o.str("name") ?: id.replaceFirstChar(Char::uppercase), o.str("url"), o.str("key"), o.str("category"), o.str("color"))
+        ListedAgent(id, o.str("name") ?: id.replaceFirstChar(Char::uppercase), o.str("url"), o.str("key"), o.str("category"), o.str("color"),
+            o.str("voice"), o.str("server_voice"))
     }
 
     /** A run's events through the bridge: it holds the single Hermes subscription, replays the run from its start, and
@@ -31,6 +34,34 @@ class Bridge(val api: Api) {
             put("color", color?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
         })
     }
+
+    suspend fun setVoices(agent: String, voice: String, serverVoice: String?) {
+        api.call("v1/agents/${Hermes.seg(agent)}/voices", "PUT", kotlinx.serialization.json.buildJsonObject {
+            put("voice", kotlinx.serialization.json.JsonPrimitive(voice))
+            put("server_voice", serverVoice?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+        })
+    }
+
+    suspend fun setLanguage(agent: String, lang: String) {
+        api.call("v1/agents/${Hermes.seg(agent)}/language", "PUT", kotlinx.serialization.json.buildJsonObject {
+            put("lang", kotlinx.serialization.json.JsonPrimitive(lang))
+        })
+    }
+
+    /** `POST /v1/agents/{id}/desktop`: the page showing the agent's browser, or null when it has none running. */
+    suspend fun desktop(agent: String): Desktop? = try {
+        val o = api.call("v1/agents/${Hermes.seg(agent)}/desktop", "POST").obj()
+        when {
+            o.str("kind") == "page" -> o.str("url")?.let { Desktop(it, relayed = false, youHold = false) }
+            else -> o.str("path")?.let { Desktop(api.base.trimEnd('/') + "/" + it, relayed = true, youHold = o.bool("you_hold") ?: false) }
+        }
+    } catch (e: HttpError) { if (e.status == 404 || e.status == 409) null else throw e }
+
+    /** The person takes the agent's browser over (its tools wait) or hands it back. */
+    suspend fun controlDesktop(agent: String, take: Boolean): Boolean =
+        api.call("v1/agents/${Hermes.seg(agent)}/desktop/control", "POST", kotlinx.serialization.json.buildJsonObject {
+            put("take", kotlinx.serialization.json.JsonPrimitive(take))
+        }).obj().bool("you_hold") ?: false
 
     suspend fun inbox(limit: Int = 100): List<InboxItem> = api.call("v1/outbox", query = mapOf("limit" to "$limit")).list("items").mapNotNull { o ->
         val id = o.str("id") ?: return@mapNotNull null

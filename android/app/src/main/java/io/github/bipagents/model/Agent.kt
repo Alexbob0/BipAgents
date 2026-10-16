@@ -16,6 +16,9 @@ data class Agent(
     val category: String? = null,
     /** A custom colour (`#RRGGBB`) chosen in an app, kept by the bridge. */
     val color: String? = null,
+    /** Its Bip voice (`pocket:galet`), null for its category's; and its voice on the person's own voice server. */
+    val voice: String? = null,
+    val serverVoice: String? = null,
     val language: String? = null,
 ) {
     val look: Look get() = Look.of(Category.of(category) ?: Category.suggest(name), color)

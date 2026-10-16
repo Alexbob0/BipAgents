@@ -20,7 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Settings
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,7 +45,7 @@ import io.github.bipagents.net.Session
 /** An agent's page (SessionsView.swift): its Bip big on its colour, Live and New, then its conversations — the main
  *  thread, the others, then scheduled tasks (folded). */
 @Composable
-fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: (String?) -> Unit, onLive: () -> Unit) {
+fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: (String?) -> Unit, onLive: () -> Unit, onSettings: () -> Unit) {
     val context = LocalContext.current
     val online by store.online.collectAsState()
     var sessions by remember { mutableStateOf<List<Session>?>(null) }
@@ -79,7 +79,7 @@ fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: 
                 Row(Modifier.fillMaxWidth()) {
                     RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack, size = 48.dp)
                     Spacer(Modifier.weight(1f))
-                    RoundButton(Icons.Rounded.Palette, stringResource(R.string.appearance), { picking = true }, size = 48.dp)
+                    RoundButton(Icons.Rounded.Settings, stringResource(R.string.agent_settings), onSettings, size = 48.dp)
                     Spacer(Modifier.size(8.dp))
                     RoundButton(Icons.Rounded.EditNote, stringResource(R.string.new_conversation), { onOpen(null) }, size = 48.dp)
                 }

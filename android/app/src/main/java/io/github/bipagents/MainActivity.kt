@@ -146,7 +146,19 @@ class MainActivity : ComponentActivity() {
                             val agent = entry.arguments?.getString("agent") ?: return@composable
                             AgentScreen(store, agent, onBack = { nav.popBackStack() },
                                 onOpen = { session -> nav.navigate("chat/$agent?session=${session ?: ""}") },
-                                onLive = { nav.navigate("live/$agent") })
+                                onLive = { nav.navigate("live/$agent") }, onSettings = { nav.navigate("options/$agent") })
+                        }
+                        composable("options/{agent}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                            io.github.bipagents.ui.AgentOptionsScreen(store, agent, onBack = { nav.popBackStack() },
+                                onVoice = { nav.navigate("voice/$agent") }, onDesktop = { nav.navigate("desktop/$agent") },
+                                onRemoved = { nav.popBackStack("home", false) })
+                        }
+                        composable("voice/{agent}") { entry ->
+                            io.github.bipagents.ui.VoiceScreen(store, entry.arguments?.getString("agent") ?: return@composable, onBack = { nav.popBackStack() })
+                        }
+                        composable("desktop/{agent}") { entry ->
+                            io.github.bipagents.ui.DesktopScreen(store, entry.arguments?.getString("agent") ?: return@composable, onClose = { nav.popBackStack() })
                         }
                     }
                     // As on the iPhone: on the tabs and on an agent's page, not in a conversation or the Live.
