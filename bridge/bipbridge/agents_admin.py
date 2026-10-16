@@ -408,6 +408,20 @@ def set_thinking(config: Config, agent: AgentConfig, level: str) -> str:
     return level
 
 
+def heal_souls(config: Config) -> None:
+    """Agents whose bridge-owned block (language, what they read) an earlier bridge wrote: brought up to date, the
+    personality the person wrote untouched."""
+    for name in config.agents:
+        try:
+            agent = editable(config, name)
+            soul = read_soul(config, agent)
+            _, lang = souls.split_language(soul)
+            if lang is not None and souls.language_block(lang) not in soul:
+                (profile_folder(config, agent) / "SOUL.md").write_text(souls.with_language(soul, lang), encoding="utf-8")
+        except (LookupError, OSError):
+            continue
+
+
 def heal_thinking(config: Config) -> None:
     """Profiles set by an earlier bridge with the chat template's thinking forced on: that wins over a turn asking for
     none (Live), so it goes (their reasoning_effort stays)."""

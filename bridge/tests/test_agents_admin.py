@@ -391,3 +391,26 @@ def test_thinking_forced_on_by_an_earlier_bridge_is_healed(managed):
     heal_thinking(config)
     data = yaml.safe_load((folder / "config.yaml").read_text())
     assert "providers" not in data and read_thinking(config, agent) == "xhigh"
+
+
+def test_an_earlier_bridge_block_gets_the_rule_about_what_agents_read(managed):
+    from bipbridge import souls
+    from bipbridge.agents_admin import heal_souls, read_soul
+
+    config, _, tmp = managed
+    agent = next(iter(config.agents.values()))
+    agent.hermes_url = f"http://127.0.0.1:8642/p/{agent.name}"
+    folder = tmp / ".hermes" / "profiles" / agent.name
+    folder.mkdir(parents=True, exist_ok=True)
+    old = (f"Tu es Vie, ma personnalité à moi.\n\n{souls.BLOCK_START}\nLanguage: answer in the language your person "
+           f"writes in. When you write first (a routine, a report, a reminder), write in French.\n{souls.BLOCK_END}\n")
+    (folder / "SOUL.md").write_text(old)
+    heal_souls(config)
+    soul = read_soul(config, agent)
+    assert soul.startswith("Tu es Vie, ma personnalité à moi.") and souls.CONTENT_RULE in soul
+    assert "write in French." in soul and soul.count(souls.BLOCK_START) == 1
+    heal_souls(config)
+    assert read_soul(config, agent) == soul                       # once
+    (folder / "SOUL.md").write_text("Fait à la main, sans bloc.\n")
+    heal_souls(config)
+    assert read_soul(config, agent) == "Fait à la main, sans bloc.\n"   # a hand-made personality stays as it is
