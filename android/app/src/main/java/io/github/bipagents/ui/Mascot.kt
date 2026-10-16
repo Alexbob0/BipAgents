@@ -50,6 +50,8 @@ private fun svg(d: String): Path = paths.getOrPut(d) { PathParser().parsePathStr
 /** A Bip, drawn in its 120×120 design space and animated (blink, bob, thinking bubbles), as in docs/play. */
 @Composable
 fun Mascot(category: Look, modifier: Modifier = Modifier, mood: Mood = Mood.IDLE, animated: Boolean = true, pose: Pose = Pose.Rest) {
+    // The Hermes style: a pixel character instead of a Bip.
+    if (Bip.hermes) return PixelMascot(category, modifier)
     val t by produceState(0f, animated) {
         if (!animated) return@produceState
         val start = withFrameMillis { it }

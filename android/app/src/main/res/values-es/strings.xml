@@ -485,4 +485,6 @@
     <string name="phone_voice">Voz del teléfono</string>
     <string name="phone_voice_character">La voz de Android, directamente en el teléfono, sin servidor</string>
     <string name="phone_voice_help">Para una voz mejor, instala una en Ajustes de Android › Accesibilidad › Salida de texto a voz.</string>
+    <string name="style">Estilo</string>
+    <string name="appearance_help_hermes">Hermes: más cerca del diseño de Hermes Agent, con personajes en píxeles. « Auto » sigue el ajuste del teléfono.</string>
 </resources>

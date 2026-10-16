@@ -1,6 +1,7 @@
 package io.github.bipagents.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
@@ -100,7 +101,8 @@ private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents
                       onLive: () -> Unit, onVoice: (io.github.bipagents.voice.RecordedNote) -> Unit) {
     val look = agent.look
     val buttons = if (compact) 40.dp else 52.dp
-    Column(Modifier.fillMaxWidth().background(look.tint, RoundedCornerShape(30.dp)).padding(if (compact) 12.dp else 18.dp),
+    Column(Modifier.fillMaxWidth().background(if (Bip.hermes) Bip.card else look.tint, RoundedCornerShape(if (Bip.hermes) 16.dp else 30.dp))
+        .then(if (Bip.hermes) Modifier.border(1.dp, Bip.line, RoundedCornerShape(16.dp)) else Modifier).padding(if (compact) 12.dp else 18.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (compact) Row(Modifier.weight(1f).tap(onAgent), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +125,7 @@ private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents
         }
         if (latest != null && latest.preview != null) {
             val title = if (latest.isBotChat) stringResource(R.string.main_thread) else latest.title ?: stringResource(R.string.last_conversation)
-            if (compact) Row(Modifier.fillMaxWidth().height(38.dp).background(Bip.card, RoundedCornerShape(16.dp)).tap(onChat).padding(horizontal = 14.dp),
+            if (compact) Row(Modifier.fillMaxWidth().height(38.dp).background(Bip.onCard, RoundedCornerShape(16.dp)).tap(onChat).padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // One line: « Title · latest message », its age on the right.
                 Text(androidx.compose.ui.text.buildAnnotatedString {
@@ -133,7 +135,7 @@ private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents
                 Text(latest.updated?.let { android.text.format.DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(),
                     android.text.format.DateUtils.MINUTE_IN_MILLIS, android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE).toString() } ?: "",
                     style = Bip.text(12, FontWeight.ExtraBold, Bip.muted), maxLines = 1)
-            } else Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(18.dp)).tap(onChat)
+            } else Column(Modifier.fillMaxWidth().background(Bip.onCard, RoundedCornerShape(18.dp)).tap(onChat)
                 .padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row {
                     Text(title, style = Bip.text(12, FontWeight.ExtraBold, Bip.muted), maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -166,11 +168,11 @@ private fun ReachDot(reach: io.github.bipagents.model.AgentStore.Reach?) {
 @Composable
 private fun CardButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, dark: Boolean, modifier: Modifier, onClick: () -> Unit,
                        height: androidx.compose.ui.unit.Dp = 52.dp) {
-    Row(modifier.height(height).background(if (dark) Bip.ink else Bip.card, RoundedCornerShape(26.dp)).tap(onClick),
+    Row(modifier.height(height).background(if (dark) Bip.primary else Bip.onCard, Bip.control).tap(onClick),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(22.dp), tint = if (dark) Bip.card else Bip.ink)
+        Icon(icon, null, Modifier.size(22.dp), tint = if (dark) Bip.onPrimary else Bip.ink)
         Spacer(Modifier.size(6.dp))
-        Text(label, style = Bip.text(17, FontWeight.ExtraBold, if (dark) Bip.card else Bip.ink), maxLines = 1)
+        Text(label, style = Bip.text(17, FontWeight.ExtraBold, if (dark) Bip.onPrimary else Bip.ink), maxLines = 1)
     }
 }
 
@@ -183,7 +185,7 @@ private fun AudioHoldButton(look: io.github.bipagents.model.Look, language: Stri
     val recorder = androidx.compose.runtime.remember { io.github.bipagents.voice.Recorder(context.applicationContext) }
     var recording by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val askMic = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
-    Row(modifier.height(height).background(if (recording) Bip.danger else Bip.card, RoundedCornerShape(26.dp))
+    Row(modifier.height(height).background(if (recording) Bip.danger else Bip.onCard, Bip.control)
         .pointerInput(Unit) {
             awaitEachGesture {
                 awaitFirstDown()

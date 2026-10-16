@@ -569,9 +569,9 @@ private fun Card(border: Color? = null, content: @Composable () -> Unit) {
 
 @Composable
 fun Pill(text: String, dark: Boolean, onClick: () -> Unit) {
-    Text(text, style = Bip.text(15, FontWeight.ExtraBold, if (dark) Bip.card else Bip.ink),
-        modifier = Modifier.background(if (dark) Bip.ink else Bip.card, RoundedCornerShape(50))
-            .border(1.5.dp, if (dark) Bip.ink else Bip.line, RoundedCornerShape(50)).tap(onClick).padding(horizontal = 16.dp, vertical = 9.dp))
+    Text(text, style = Bip.text(15, FontWeight.ExtraBold, if (dark) Bip.onPrimary else Bip.ink),
+        modifier = Modifier.background(if (dark) Bip.primary else Bip.card, Bip.control)
+            .border(1.5.dp, if (dark) Bip.primary else Bip.line, Bip.control).tap(onClick).padding(horizontal = 16.dp, vertical = 9.dp))
 }
 
 @Composable

@@ -131,22 +131,35 @@ fun SettingsScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Un
         item {
             CardColumn {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.style), style = Bip.text(16, FontWeight.Bold), modifier = Modifier.weight(1f))
+                    Row(Modifier.background(Bip.ground, RoundedCornerShape(50)).padding(3.dp)) {
+                        for ((style, label) in listOf("bips" to "Bips", "hermes" to "Hermes")) {
+                            val on = Appearance.style == style
+                            Text(label, style = Bip.text(14, FontWeight.ExtraBold, if (on) Bip.onPrimary else Bip.ink2),
+                                modifier = Modifier.background(if (on) Bip.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
+                                    .tap { Appearance.setStyle(context, style) }.padding(horizontal = 12.dp, vertical = 6.dp))
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.mode), style = Bip.text(16, FontWeight.Bold), modifier = Modifier.weight(1f))
                     Row(Modifier.background(Bip.ground, RoundedCornerShape(50)).padding(3.dp)) {
                         for ((mode, label) in listOf(Appearance.SYSTEM to R.string.mode_auto, Appearance.LIGHT to R.string.mode_light,
                             Appearance.DARK to R.string.mode_dark)) {
                             val on = Appearance.mode == mode
-                            Text(stringResource(label), style = Bip.text(14, FontWeight.ExtraBold, if (on) Bip.card else Bip.ink2),
-                                modifier = Modifier.background(if (on) Bip.ink else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
+                            Text(stringResource(label), style = Bip.text(14, FontWeight.ExtraBold, if (on) Bip.onPrimary else Bip.ink2),
+                                modifier = Modifier.background(if (on) Bip.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
                                     .tap { Appearance.set(context, mode) }.padding(horizontal = 12.dp, vertical = 6.dp))
                         }
                     }
                 }
-                var sounds by remember { mutableStateOf(Babble.enabled(context)) }
-                ToggleRow(stringResource(R.string.bip_sounds), sounds, { sounds = it; Babble.setEnabled(context, it) })
+                if (!Bip.hermes) {
+                    var sounds by remember { mutableStateOf(Babble.enabled(context)) }
+                    ToggleRow(stringResource(R.string.bip_sounds), sounds, { sounds = it; Babble.setEnabled(context, it) })
+                }
             }
         }
-        item { SectionNote(stringResource(R.string.appearance_help)) }
+        item { SectionNote(stringResource(if (Bip.hermes) R.string.appearance_help_hermes else R.string.appearance_help)) }
         item { SectionTitle(stringResource(R.string.application)) }
         item {
             CardColumn {

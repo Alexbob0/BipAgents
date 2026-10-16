@@ -486,4 +486,6 @@
     <string name="phone_voice">Phone voice</string>
     <string name="phone_voice_character">Android\'s voice, right on the phone, no server</string>
     <string name="phone_voice_help">For a better voice, install one in Android Settings › Accessibility › Text-to-speech output.</string>
+    <string name="style">Style</string>
+    <string name="appearance_help_hermes">Hermes: closer to Hermes Agent\'s design, with pixel characters. « Auto » follows the phone\'s setting.</string>
 </resources>
