@@ -88,3 +88,15 @@ fun describe(context: android.content.Context, error: Throwable): String = when 
     error is HttpError -> context.getString(R.string.error_server, error.status) + (error.message?.let { " — $it" } ?: "")
     else -> error.message ?: error.toString()
 }
+
+/** How an agent answered lately (ReachabilityLabel): online, its model down, its key refused, out of reach. */
+@Composable
+fun ReachChip(reach: io.github.bipagents.model.AgentStore.Reach?) {
+    when (reach) {
+        io.github.bipagents.model.AgentStore.Reach.ONLINE -> Chip(androidx.compose.ui.res.stringResource(R.string.online), Bip.online)
+        io.github.bipagents.model.AgentStore.Reach.MODEL_DOWN -> Chip(androidx.compose.ui.res.stringResource(R.string.model_down), Color(0xFFF29A2E))
+        io.github.bipagents.model.AgentStore.Reach.UNAUTHORIZED -> Chip(androidx.compose.ui.res.stringResource(R.string.key_refused), Bip.danger)
+        io.github.bipagents.model.AgentStore.Reach.OFFLINE -> Chip(androidx.compose.ui.res.stringResource(R.string.offline), Bip.danger)
+        null -> {}
+    }
+}

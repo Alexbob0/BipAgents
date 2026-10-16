@@ -28,9 +28,31 @@ class AgentStore(context: Context) {
         prefs.getString("latest", null)?.let { runCatching { json.decodeFromString(latestSerializer, it) }.getOrNull() } ?: emptyMap())
     val latest: StateFlow<Map<String, Session>> = _latest.asStateFlow()
 
-    /** Whether each agent's Hermes answered lately (null: not asked yet). */
-    private val _online = MutableStateFlow<Map<String, Boolean>>(emptyMap())
-    val online: StateFlow<Map<String, Boolean>> = _online.asStateFlow()
+    /** How each agent answered lately (absent: not asked yet). */
+    enum class Reach { ONLINE, MODEL_DOWN, UNAUTHORIZED, OFFLINE }
+    private val _reach = MutableStateFlow<Map<String, Reach>>(emptyMap())
+    val reach: StateFlow<Map<String, Reach>> = _reach.asStateFlow()
+    /** Agents whose server doesn't answer at all (the home screen says what to do). */
+    private val _lost = MutableStateFlow<Set<String>>(emptySet())
+    val lost: StateFlow<Set<String>> = _lost.asStateFlow()
+
+    /** Something a server has that this phone doesn't, or no longer: added, connected or removed in one tap. */
+    sealed interface News {
+        val bridgeUrl: String
+        val bridgeKey: String
+        val id: String
+        data class Added(override val bridgeUrl: String, override val bridgeKey: String, val agent: io.github.bipagents.net.ListedAgent) : News {
+            override val id get() = "$bridgeUrl|added|${agent.id}"
+        }
+        data class Unclaimed(override val bridgeUrl: String, override val bridgeKey: String, val profile: io.github.bipagents.net.UnclaimedProfile) : News {
+            override val id get() = "$bridgeUrl|unclaimed|${profile.id}"
+        }
+        data class Gone(override val bridgeUrl: String, override val bridgeKey: String, val agent: Agent) : News {
+            override val id get() = "$bridgeUrl|gone|${agent.id}"
+        }
+    }
+    private val _news = MutableStateFlow<List<News>>(emptyList())
+    val news: StateFlow<List<News>> = _news.asStateFlow()
 
     private fun load(): List<Agent> =
         prefs.getString("list", null)?.let { runCatching { json.decodeFromString(serializer, it) }.getOrNull() } ?: emptyList()
@@ -156,13 +178,79 @@ class AgentStore(context: Context) {
     /** The home cards' latest conversation and « online » dot. */
     suspend fun refresh(agent: Agent) {
         val hermes = hermes(agent) ?: return
+        fun set(r: Reach) = _reach.update { it + (agent.id to r) }
         try {
             val sessions = hermes.allSessions(maxPages = 3) { all -> all.any { it.isBotChat } }
             Session.main(sessions)?.let { s -> setLatest(agent, s) }
-            _online.update { it + (agent.id to true) }
+            set(Reach.ONLINE)
+            _lost.update { it - agent.id }
+            // The agents' server answers; does the model they use (its machine off, an expired key)?
+            if (bridge(agent)?.modelUp() == false) set(Reach.MODEL_DOWN)
         } catch (error: HttpError) {
-            _online.update { it + (agent.id to (error.status != 0)) }
+            if (error.status == 401 || error.status == 403) return set(Reach.UNAUTHORIZED)
+            // Moved on the server (into its own space, from another phone): its bridge knows the new address.
+            val moved = runCatching { bridge(agent)?.agents() }.getOrNull()
+                ?.firstOrNull { it.id == agent.bridgeName && it.url != null && it.url != agent.baseUrl }
+            if (moved != null) {
+                relocate(agent, moved.url!!)
+                agent(agent.id)?.let { refresh(it) }
+                return
+            }
+            set(Reach.OFFLINE)
+            if (error.status == 0) _lost.update { it + agent.id }
         }
+    }
+
+    /** Each install this phone knows, asked what it serves now. */
+    suspend fun refreshNews() {
+        val dismissed = prefs.getStringSet("dismissed-news", emptySet()) ?: emptySet()
+        val found = mutableListOf<News>()
+        for ((bridge, here) in bridges()) {
+            val url = here.first().bridgeUrl ?: continue
+            val key = secrets.keys(here.first().id)?.bridgeKey ?: continue
+            val (listed, served, unclaimed) = runCatching { bridge.listing() }.getOrNull() ?: continue
+            for (a in listed) if (a.url != null && a.key != null && here.none { it.bridgeName == a.id.lowercase() }) found += News.Added(url, key, a)
+            for (p in unclaimed) found += News.Unclaimed(url, key, p)
+            for (mine in here) if (mine.bridgeName !in served && mine.bridgeName.lowercase() !in served) found += News.Gone(url, key, mine)
+        }
+        _news.value = found.filter { it.id !in dismissed }
+    }
+
+    /** The agent added to this phone (a profile on the server is connected first, up to a minute), or removed. */
+    suspend fun accept(news: News, name: String? = null) {
+        when (news) {
+            is News.Added -> addListed(news.agent, news.bridgeUrl, news.bridgeKey)
+            is News.Unclaimed -> addListed(Bridge(Api(news.bridgeUrl, news.bridgeKey)).claimProfile(news.profile.id, name ?: news.profile.name),
+                news.bridgeUrl, news.bridgeKey)
+            is News.Gone -> remove(news.agent)
+        }
+        _news.update { list -> list.filterNot { it.id == news.id } }
+    }
+
+    /** Not now, and not again for this one. */
+    fun dismiss(news: News) {
+        prefs.edit().putStringSet("dismissed-news", (prefs.getStringSet("dismissed-news", emptySet()) ?: emptySet()) + news.id).apply()
+        _news.update { list -> list.filterNot { it.id == news.id } }
+    }
+
+    /** An agent its bridge lists (or just created), with its keys. */
+    fun addListed(a: io.github.bipagents.net.ListedAgent, bridgeUrl: String, bridgeKey: String, category: String? = null, language: String? = null): Agent {
+        val agent = Agent(name = a.name, baseUrl = a.url ?: throw HttpError(502, "no address"), bridgeUrl = bridgeUrl,
+            bridgeAgent = a.id.lowercase(), category = category ?: a.category, color = a.color, language = language)
+        add(agent, AgentKeys(a.key ?: throw HttpError(502, "no key"), bridgeKey))
+        return agent
+    }
+
+    /** One of this phone's installs that can create agents, with the kinds it offers. */
+    data class Creatable(val bridgeUrl: String, val bridgeKey: String, val kinds: List<io.github.bipagents.net.AgentKind>)
+
+    suspend fun creatable(lang: String): Creatable? {
+        for ((bridge, here) in bridges()) {
+            val kinds = runCatching { bridge.agentKinds(lang) }.getOrNull() ?: continue
+            val key = secrets.keys(here.first().id)?.bridgeKey ?: continue
+            return Creatable(here.first().bridgeUrl!!, key, kinds)
+        }
+        return null
     }
 
     fun noteSession(agent: Agent, session: Session) = setLatest(agent, session)

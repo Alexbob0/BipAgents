@@ -56,7 +56,7 @@ import io.github.bipagents.model.AgentStore
 fun SettingsScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, onPage: (String) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val agents by store.agents.collectAsState()
-    val online by store.online.collectAsState()
+    val reach by store.reach.collectAsState()
     var removing by remember { mutableStateOf<Agent?>(null) }
     var voiceModel by remember { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(agents) {
@@ -83,11 +83,7 @@ fun SettingsScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Un
                         Text(android.net.Uri.parse(agent.baseUrl).host ?: agent.baseUrl, style = Bip.text(13, color = Bip.muted),
                             maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
                     }
-                    when (online[agent.id]) {
-                        true -> Chip(stringResource(R.string.online), Bip.online)
-                        false -> Chip(stringResource(R.string.offline), Bip.muted)
-                        null -> {}
-                    }
+                    ReachChip(reach[agent.id])
                     Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = Bip.muted)
                 }
                 // Long press: the agents' order (home and tabs), or removing one from this phone.

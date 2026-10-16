@@ -51,7 +51,7 @@ import io.github.bipagents.net.Session
 @Composable
 fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: (String?) -> Unit, onLive: () -> Unit, onSettings: () -> Unit) {
     val context = LocalContext.current
-    val online by store.online.collectAsState()
+    val reach by store.reach.collectAsState()
     var sessions by remember { mutableStateOf<List<Session>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var showTasks by remember { mutableStateOf(false) }
@@ -117,11 +117,7 @@ fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: 
                 Text(agent.name, style = Bip.text(30, FontWeight.Black), modifier = Modifier.padding(top = 4.dp))
                 Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Chip(stringResource(categoryLabel(look.category)), look.main, look.deep, Bip.card)
-                    when (online[agent.id]) {
-                        true -> Chip(stringResource(R.string.online), Bip.online)
-                        false -> Chip(stringResource(R.string.offline), Bip.muted)
-                        null -> {}
-                    }
+                    ReachChip(reach[agent.id])
                 }
                 Row(Modifier.padding(top = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PageButton(stringResource(R.string.live), Icons.Rounded.GraphicEq, dark = true, Modifier.weight(1f), onLive)

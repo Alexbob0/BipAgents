@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.QrCodeScanner
@@ -56,10 +57,13 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, 
                onLive: (String) -> Unit, onVoice: (String, io.github.bipagents.voice.RecordedNote) -> Unit) {
     val agents by store.agents.collectAsState()
     val latest by store.latest.collectAsState()
-    val online by store.online.collectAsState()
+    val reach by store.reach.collectAsState()
     val scope = rememberCoroutineScope()
+    val lost by store.lost.collectAsState()
+    val news by store.news.collectAsState()
     LaunchedEffect(agents.map { it.id }) {
         agents.forEach { scope.launch { store.refresh(it) } }
+        scope.launch { store.refreshNews() }
         store.syncLooks()
     }
 
@@ -76,8 +80,10 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, 
             }
         }
         if (agents.isEmpty()) item { Welcome(onAdd) }
+        if (lost.isNotEmpty()) item { LostServerNotice() }
+        if (news.isNotEmpty()) item { ServerNewsNotice(store, news) }
         items(agents, key = { it.id }) { agent ->
-            AgentCard(agent, latest[agent.id], online[agent.id], onAgent = { onAgent(agent.id) },
+            AgentCard(agent, latest[agent.id], reach[agent.id], onAgent = { onAgent(agent.id) },
                 onChat = { onChat(agent.id, latest[agent.id]?.id) }, onLive = { onLive(agent.id) }, onVoice = { onVoice(agent.id, it) })
         }
     }
@@ -86,7 +92,7 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, 
 /** One agent (AgentsView's card): its name opens its page, the Bip reacts, the latest message opens that conversation,
  *  and Audio (hold) / Write / Live. */
 @Composable
-private fun AgentCard(agent: Agent, latest: Session?, online: Boolean?, onAgent: () -> Unit, onChat: () -> Unit,
+private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents.model.AgentStore.Reach?, onAgent: () -> Unit, onChat: () -> Unit,
                       onLive: () -> Unit, onVoice: (io.github.bipagents.voice.RecordedNote) -> Unit) {
     val look = agent.look
     Column(Modifier.fillMaxWidth().background(look.tint, RoundedCornerShape(30.dp)).padding(18.dp),
@@ -96,11 +102,7 @@ private fun AgentCard(agent: Agent, latest: Session?, online: Boolean?, onAgent:
                 Text(agent.name, style = Bip.text(25, FontWeight.Black), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Chip(stringResource(categoryLabel(look.category)), look.main, look.deep, Bip.card)
-                    when (online) {
-                        true -> Chip(stringResource(R.string.online), Bip.online)
-                        false -> Chip(stringResource(R.string.offline), Bip.muted)
-                        null -> {}
-                    }
+                    ReachChip(reach)
                 }
             }
             // Outside the link: tapping the Bip makes it react instead of opening the agent.
@@ -194,4 +196,52 @@ fun categoryLabel(c: Category): Int = when (c) {
     Category.HOME -> R.string.cat_home
     Category.CREATIVE -> R.string.cat_creative
     Category.TECH -> R.string.cat_tech
+}
+
+/** Neither the tailnet nor anything else answers: the server may be off, or its address changed. */
+@Composable
+private fun LostServerNotice() {
+    Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(22.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("⚠  " + stringResource(R.string.server_unreachable), style = Bip.text(15, FontWeight.ExtraBold, Bip.danger))
+        Text(stringResource(R.string.server_unreachable_help), style = Bip.text(14, color = Bip.ink2))
+        Text("python -m bipbridge qr", style = Bip.text(13, color = Bip.ink).copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+            modifier = Modifier.background(Bip.ground, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp))
+    }
+}
+
+/** What changed on this phone's servers: agents to add, profiles to connect, agents gone. One tap each; ✕ hides it. */
+@Composable
+private fun ServerNewsNotice(store: AgentStore, news: List<AgentStore.News>) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var working by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var failure by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(22.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("✨  " + stringResource(R.string.server_news), style = Bip.text(15, FontWeight.ExtraBold))
+        for (n in news) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(when (n) { is AgentStore.News.Added -> n.agent.name; is AgentStore.News.Unclaimed -> n.profile.name; is AgentStore.News.Gone -> n.agent.name },
+                    style = Bip.text(15, FontWeight.ExtraBold))
+                Text(when (n) {
+                    is AgentStore.News.Added -> stringResource(R.string.news_added)
+                    is AgentStore.News.Unclaimed -> n.profile.description.ifBlank { stringResource(R.string.news_unclaimed) }
+                    is AgentStore.News.Gone -> stringResource(R.string.news_gone)
+                }, style = Bip.text(13, color = Bip.ink2))
+            }
+            if (working == n.id) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            else {
+                Pill(stringResource(when (n) { is AgentStore.News.Added -> R.string.add; is AgentStore.News.Unclaimed -> R.string.connect_profile
+                    is AgentStore.News.Gone -> R.string.remove }), dark = n !is AgentStore.News.Gone) {
+                    if (working != null) return@Pill
+                    working = n.id; failure = null
+                    scope.launch {
+                        try { store.accept(n) } catch (e: Throwable) { failure = describe(context, e) }
+                        working = null
+                    }
+                }
+                Icon(Icons.Rounded.Close, stringResource(R.string.later), Modifier.size(20.dp).tap { if (working == null) store.dismiss(n) }, tint = Bip.muted)
+            }
+        }
+        failure?.let { Text(it, style = Bip.text(13, color = Bip.danger)) }
+    }
 }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,7 +55,7 @@ import java.util.concurrent.Executors
 
 /** « + » › Scan the QR code (App/Features/Agents/AddAgentFlow.swift): an install's code adds all its agents. */
 @Composable
-fun AddAgentScreen(store: AgentStore, onDone: () -> Unit) {
+fun AddAgentScreen(store: AgentStore, onDone: () -> Unit, onCreate: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -67,8 +68,13 @@ fun AddAgentScreen(store: AgentStore, onDone: () -> Unit) {
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     LaunchedEffect(Unit) { if (!granted) ask.launch(Manifest.permission.CAMERA) }
 
+    val familyInvitation = stringResource(R.string.qr_is_family_invitation)
+    // One of this phone's servers can create agents: « Create an agent » comes first.
+    var creatable by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { creatable = store.creatable(java.util.Locale.getDefault().language) != null }
     fun use(payload: String) {
         if (busy) return
+        if (payload.contains("\"kind\"") && payload.contains("\"family\"")) { message = familyInvitation; return }
         val pairing = Pairing.parse(payload) ?: run { message = unknown; return }
         busy = true
         message = null
@@ -89,6 +95,14 @@ fun AddAgentScreen(store: AgentStore, onDone: () -> Unit) {
         TopBar(stringResource(R.string.add_agent), onDone)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (creatable) Row(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(22.dp)).tap(onCreate).padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("✨", style = Bip.text(24))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.create_agent), style = Bip.text(17, FontWeight.ExtraBold))
+                    Text(stringResource(R.string.create_agent_help), style = Bip.text(14, color = Bip.ink2))
+                }
+            }
             Text(stringResource(R.string.add_help), style = Bip.text(16, color = Bip.ink2))
             Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(28.dp)).background(Bip.ink), contentAlignment = Alignment.Center) {
                 if (granted && !busy) Scanner(onCode = ::use)
@@ -99,10 +113,19 @@ fun AddAgentScreen(store: AgentStore, onDone: () -> Unit) {
             Text(stringResource(R.string.paste_title), style = Bip.text(17, FontWeight.ExtraBold))
             OutlinedTextField(pasted, { pasted = it }, Modifier.fillMaxWidth(), placeholder = { Text("{\"v\":2, \"bridgeURL\": …}") },
                 minLines = 2, maxLines = 5, textStyle = Bip.text(14))
-            Box(Modifier.background(if (pasted.isBlank()) Bip.line else Bip.ink, RoundedCornerShape(24.dp))
-                .tap { if (pasted.isNotBlank()) use(pasted) }.padding(horizontal = 22.dp, vertical = 12.dp)) {
-                Text(stringResource(R.string.add), style = Bip.text(16, FontWeight.ExtraBold, Bip.card))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.background(if (pasted.isBlank()) Bip.line else Bip.ink, RoundedCornerShape(24.dp))
+                    .tap { if (pasted.isNotBlank()) use(pasted) }.padding(horizontal = 22.dp, vertical = 12.dp)) {
+                    Text(stringResource(R.string.add), style = Bip.text(16, FontWeight.ExtraBold, Bip.card))
+                }
+                val empty = stringResource(R.string.clipboard_empty)
+                Pill(stringResource(R.string.paste_clipboard), dark = false) {
+                    val clip = context.getSystemService(android.content.ClipboardManager::class.java).primaryClip
+                    val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+                    if (text.isNullOrBlank()) message = empty else { pasted = text; use(text) }
+                }
             }
+            ManualAgent(store, onDone)
         }
     }
 }
@@ -135,4 +158,37 @@ fun Scanner(onCode: (String) -> Unit) {
         }, ContextCompat.getMainExecutor(context))
         view
     }, modifier = Modifier.fillMaxSize())
+}
+
+/** By hand: an agent's address and key, and its bridge's (voice, files, notifications). */
+@Composable
+private fun ManualAgent(store: AgentStore, onDone: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("https://") }
+    var key by remember { mutableStateOf("") }
+    var bridge by remember { mutableStateOf("") }
+    var bridgeKey by remember { mutableStateOf("") }
+    Text((if (open) "▾  " else "▸  ") + stringResource(R.string.enter_by_hand), style = Bip.text(17, FontWeight.ExtraBold),
+        modifier = Modifier.tap { open = !open }.padding(vertical = 4.dp))
+    if (!open) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Field(name, { name = it }, stringResource(R.string.name))
+        Field(address, { address = it.trim() }, stringResource(R.string.agent_address))
+        Field(key, { key = it.trim() }, stringResource(R.string.api_key), secret = true)
+        Field(bridge, { bridge = it.trim() }, stringResource(R.string.bridge_address))
+        Field(bridgeKey, { bridgeKey = it.trim() }, stringResource(R.string.bridge_key), secret = true)
+        Text(stringResource(R.string.keys_stay_here), style = Bip.text(13, color = Bip.muted))
+        val ready = name.isNotBlank() && Pairing.acceptable(address) && android.net.Uri.parse(address).host != null && key.isNotEmpty() &&
+            (bridge.isBlank() || Pairing.acceptable(bridge))
+        Box(Modifier.background(if (ready) Bip.ink else Bip.line, RoundedCornerShape(24.dp)).tap {
+            if (!ready) return@tap
+            store.add(io.github.bipagents.model.Agent(name = name.trim(), baseUrl = address, bridgeUrl = bridge.ifBlank { null },
+                category = io.github.bipagents.model.Category.suggest(name).id),
+                io.github.bipagents.model.AgentKeys(key, bridgeKey.ifBlank { null }))
+            onDone()
+        }.padding(horizontal = 22.dp, vertical = 12.dp)) {
+            Text(stringResource(R.string.add), style = Bip.text(16, FontWeight.ExtraBold, Bip.card))
+        }
+    }
 }

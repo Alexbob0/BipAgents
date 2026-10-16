@@ -44,6 +44,11 @@ data class VaultItem(val id: String, val label: String, val origin: String, val 
 data class VaultAgent(val id: String, val name: String, val canHold: Boolean, val why: String?)
 data class Vault(val items: List<VaultItem>, val agents: List<VaultAgent>, val protected: Boolean)
 
+/** A profile created on the server (`hermes profile create`…) that no app reaches yet. */
+data class UnclaimedProfile(val id: String, val name: String, val description: String)
+/** A kind of agent the bridge can create (`custom`: « Other », described by the person). */
+data class AgentKind(val id: String, val label: String, val description: String, val custom: Boolean)
+
 /** Refused: an agent can't hold this (`needs_own_space`, `needs_sandbox`, …). */
 class CannotHold(val reasons: Map<String, String>) : Exception("cannot hold")
 
@@ -76,6 +81,52 @@ class Bridge(val api: Api) {
             put("level", kotlinx.serialization.json.JsonPrimitive(level))
         })
     }
+
+    /** `GET /v1/agents`, all of it: the agents the app can reach, every agent the bridge serves, profiles waiting. */
+    suspend fun listing(): Triple<List<ListedAgent>, Set<String>, List<UnclaimedProfile>> {
+        val o = api.call("v1/agents").obj()
+        val rows = o?.get("agents").list()
+        val agents = rows.mapNotNull { r ->
+            val id = r.str("id") ?: return@mapNotNull null
+            ListedAgent(id, r.str("name") ?: id.replaceFirstChar(Char::uppercase), r.str("url"), r.str("key"), r.str("category"), r.str("color"),
+                r.str("voice"), r.str("server_voice"))
+        }
+        val unclaimed = o?.get("unclaimed").list().mapNotNull { r ->
+            r.str("id")?.let { UnclaimedProfile(it, r.str("name") ?: it.replaceFirstChar(Char::uppercase), r.str("description") ?: "") }
+        }
+        return Triple(agents, rows.mapNotNull { it.str("id") }.toSet(), unclaimed)
+    }
+
+    /** A profile found on the server, served to the app (its key; nothing else changes). */
+    suspend fun claimProfile(id: String, name: String): ListedAgent {
+        val o = api.call("v1/agents/claim", "POST", kotlinx.serialization.json.buildJsonObject {
+            put("id", kotlinx.serialization.json.JsonPrimitive(id)); put("name", kotlinx.serialization.json.JsonPrimitive(name))
+        }).obj()
+        return ListedAgent(o.str("id") ?: throw HttpError(502, "claim"), o.str("name") ?: name, o.str("url"), o.str("key"))
+    }
+
+    /** The kinds this bridge can create, in `lang`; null when it can't create agents (set up by hand, or older). */
+    suspend fun agentKinds(lang: String): List<AgentKind>? = try {
+        val o = api.call("v1/agent-kinds", query = mapOf("lang" to lang)).obj()
+        if (o.bool("can_create") != true) null else o?.get("kinds").list().mapNotNull { r ->
+            r.str("id")?.let { AgentKind(it, r.str("label") ?: it, r.str("description") ?: "", r.bool("custom") ?: false) }
+        }
+    } catch (e: HttpError) {
+        if (e.status in setOf(404, 405)) null else throw e
+    }
+
+    /** A new agent on the server: a kind, or « Other » described by the person (role, tone, rules, language, colour). */
+    suspend fun createAgent(name: String, kind: String?, custom: Map<String, String>?, lang: String): ListedAgent {
+        val o = api.call("v1/agents", "POST", kotlinx.serialization.json.buildJsonObject {
+            put("name", kotlinx.serialization.json.JsonPrimitive(name)); put("lang", kotlinx.serialization.json.JsonPrimitive(lang))
+            kind?.let { put("kind", kotlinx.serialization.json.JsonPrimitive(it)) }
+            custom?.let { c -> put("custom", kotlinx.serialization.json.JsonObject(c.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) })) }
+        }).obj()
+        return ListedAgent(o.str("id") ?: throw HttpError(502, "creation"), o.str("name") ?: name, o.str("url"), o.str("key"))
+    }
+
+    /** Whether the agents' model answers (null when the bridge doesn't check it). */
+    suspend fun modelUp(): Boolean? = runCatching { api.call("v1/status").obj()?.get("model").obj().bool("ok") }.getOrNull()
 
     /** The agent's look, kept by the bridge for every app (`PUT /v1/agents/{id}/appearance`). */
     suspend fun setAppearance(agent: String, category: String, color: String?) {

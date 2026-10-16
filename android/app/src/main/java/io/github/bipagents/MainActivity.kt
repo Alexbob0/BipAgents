@@ -159,7 +159,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 "diagnostics" -> io.github.bipagents.ui.DiagnosticsScreen(store, back)
                             }
                         }
-                        composable("add") { AddAgentScreen(store, onDone = { nav.popBackStack() }) }
+                        composable("add") { AddAgentScreen(store, onDone = { nav.popBackStack() }, onCreate = { nav.navigate("create") }) }
+                        composable("create") {
+                            io.github.bipagents.ui.CreateAgentScreen(store, onBack = { nav.popBackStack() },
+                                onCreated = { nav.popBackStack("home", false) })
+                        }
                         composable("chat/{agent}?session={session}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable
                             ChatScreen(store, agent, entry.arguments?.getString("session"), onBack = { nav.popBackStack() },
