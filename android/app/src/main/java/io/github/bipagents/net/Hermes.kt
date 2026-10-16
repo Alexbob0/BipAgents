@@ -41,8 +41,24 @@ data class Message(
     val text: String,
     val time: Long?,
     val hasImage: Boolean,
-    val tools: List<String>,
+    val tools: List<ToolStep>,
+    val reasoning: String? = null,
 )
+
+/** A tool call (HermesKit's ToolEvent): from a run's `tool.*` events or the stored history. */
+@kotlinx.serialization.Serializable
+data class ToolStep(
+    val name: String,
+    /** Arguments (started) or a cut result (done). */
+    val preview: String? = null,
+    val status: Status = Status.DONE,
+    /** Seconds. */
+    val duration: Double? = null,
+    val error: String? = null,
+    val callId: String? = null,
+) {
+    enum class Status { STARTED, DONE, FAILED }
+}
 
 /** One agent's Hermes api_server (HermesKit's HermesClient), with the agent's key. */
 class Hermes(val api: Api) {
@@ -61,6 +77,8 @@ class Hermes(val api: Api) {
         }
         return all
     }
+
+    suspend fun session(id: String): Session? = Session.of(api.call("api/sessions/${seg(id)}").obj() ?: JsonObject(emptyMap()))
 
     suspend fun createSession(title: String?): Session {
         val body = buildJsonObject { if (title != null) put("title", title) }
@@ -130,8 +148,14 @@ class Hermes(val api: Api) {
             }.joinToString("\n")
             else -> o.str("text") ?: ""
         }
-        val tools = o["tool_calls"].arr()?.mapNotNull { call -> call.obj()?.let { it["function"].obj().str("name") ?: it.str("name") } } ?: emptyList()
-        return Message(o.str("id", "message_id") ?: "$index", role, text, o.time("created_at", "timestamp", "ts"), hasImage, tools)
+        val tools = o["tool_calls"].arr()?.mapNotNull { call ->
+            val c = call.obj() ?: return@mapNotNull null
+            val f = c["function"].obj()
+            ToolStep(f.str("name") ?: c.str("name") ?: "tool", f.str("arguments") ?: c.str("arguments"), callId = c.str("id"))
+        }.orEmpty().toMutableList()
+        if (role == "tool") o.str("tool_name", "name")?.let { tools += ToolStep(it, text.ifEmpty { null }, callId = o.str("tool_call_id")) }
+        return Message(o.str("id", "message_id") ?: "$index", role, text, o.time("created_at", "timestamp", "ts"), hasImage, tools,
+            o.str("reasoning", "reasoning_content", "thinking")?.ifEmpty { null })
     }
 
     companion object {

@@ -85,6 +85,7 @@ import io.github.bipagents.model.Look
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Reply
 import io.github.bipagents.net.RunEvent
 
 @Composable
@@ -122,12 +123,77 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
         if (last >= 0) if (shown == 0) list.scrollToItem(last) else list.animateScrollToItem(last)
         shown = count
     }
-    LaunchedEffect(state.live?.text?.length, state.approval, state.clarify) {
+    LaunchedEffect(state.live?.size, state.approval, state.clarify) {
         val last = list.layoutInfo.totalItemsCount - 1
         if (last >= 0 && !away) list.animateScrollToItem(last)
     }
     // The latest messages, « Earlier messages » for more (the iPhone's 80 per page).
     var visibleCount by rememberSaveable { mutableStateOf(80) }
+    val live = state.live
+    val thread = remember(state.items, live) {
+        (state.items ?: emptyList()) + listOfNotNull(live?.sent?.let { Item.User("live-sent", it, false, null) }) + (live?.items ?: emptyList())
+    }
+    val folds = remember(thread, live != null) { ThreadLayout.workFolds(thread, live != null) }
+    val owners = remember(thread) { ThreadLayout.exchangeOwners(thread) }
+    var showsWork by remember { mutableStateOf(WorkDetail.shown(context)) }
+    var toldWhereWork by remember { mutableStateOf(false) }
+    val openWork = remember { mutableStateMapOf<String, Boolean>() }
+    val openExchanges = remember { mutableStateMapOf<String, Boolean>() }
+    val firstUser = thread.firstOrNull { it is Item.User }?.key
+    val cron = state.session?.startsWith("cron_") == true
+
+    /** One line of the thread, as the iPhone draws it (ConversationView.row). */
+    @Composable
+    fun Line(index: Int, turnEnd: Boolean) {
+        when (val item = thread[index]) {
+            is Item.User -> {
+                val teammate = ChatText.teammate(item.text)
+                val instruction = ChatText.instruction(item.text, cron, item.key == firstUser)
+                when {
+                    teammate != null -> TeammateCard(teammate.name, teammate.body, teammateLook(store, teammate), clock(item.time))
+                    instruction != null -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        InstructionCard(instructionTitle(instruction), item.text, agent.look)
+                        if (instruction is ChatText.Instruction.Subtask) ChatText.mediaPaths(item.text).forEach { path ->
+                            Box(Modifier.fillMaxWidth()) { MediaChip(path) }
+                        }
+                        if (item.time != null) Text(clock(item.time), style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(end = 4.dp))
+                    }
+                    else -> MessageActions(item.text, agent.id, onForward) {
+                        model.notes.find(state.session, item.text)?.let { VoiceBubble(it, item.key, clock(item.time)) }
+                            ?: UserBubble(item.text, item.image, clock(item.time))
+                    }
+                }
+            }
+            is Item.Reply -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ThreadLayout.answered(thread, index)?.let { name ->
+                    Row(Modifier.padding(start = 36.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        androidx.compose.material3.Icon(Icons.AutoMirrored.Rounded.Reply, null, Modifier.size(13.dp), tint = Bip.muted)
+                        Text(stringResource(R.string.reply_to, name), style = Bip.text(13, FontWeight.ExtraBold, Bip.muted))
+                    }
+                }
+                MessageActions(item.text, agent.id, onForward) {
+                    Reply(agent.look, item.text, if (turnEnd && !item.streaming) clock(item.time) else "", streaming = item.streaming,
+                        listen = if (turnEnd && !item.streaming) ({ model.listen(item.key, item.text) }) else null, listenKey = item.key)
+                }
+                // The agent asks to pick an option: one tap answers (latest reply only).
+                if (!item.streaming && live == null && index == thread.lastIndex) {
+                    val options = remember(item.text) { ChatText.choices(item.text) }
+                    if (options.isNotEmpty()) QuickReplies(options, agent.look) { model.send(it) }
+                }
+            }
+            is Item.Reasoning -> ReasoningChip(item.text)
+            is Item.Tools -> ToolCard(item.steps, agent.look)
+            is Item.Scheduled -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val label = scheduledLabel(item.message.title, item.message.session)
+                ScheduledLabel(label, agent.look)
+                MessageActions(item.message.text, agent.id, onForward) {
+                    Reply(agent.look, item.message.text, clock(item.time),
+                        listen = if (item.message.hasAudio) ({ model.playScheduled(item.message) }) else ({ model.listen(item.key, item.message.text) }),
+                        listenKey = if (item.message.hasAudio) "outbox-${item.message.id}" else item.key)
+                }
+            }
+        }
+    }
 
     androidx.compose.runtime.CompositionLocalProvider(LocalBridge provides store.bridge(agent)) {
     Column(Modifier.fillMaxSize().imePadding()) {
@@ -152,37 +218,51 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                     Text(stringResource(R.string.empty_thread, agent.name), style = Bip.text(17, FontWeight.Bold, Bip.ink2))
                 }
             }
-            val all = state.items ?: emptyList()
+            val all = thread
             if (all.size > visibleCount) item(key = "earlier") {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Pill("↑  " + stringResource(R.string.earlier_messages), dark = false) { visibleCount += 80 }
                 }
             }
+            val first = (all.size - visibleCount).coerceAtLeast(0)
             var previousDay: Long? = null
-            for (item in all.takeLast(visibleCount)) {
-                val time = when (item) { is Item.User -> item.time; is Item.Reply -> item.time; is Item.Tools -> null }
-                if (time != null) {
+            for (index in first until all.size) {
+                val item = all[index]
+                item.time?.let { time ->
                     val day = dayOf(time)
                     if (day != previousDay) item(key = "day-${item.key}") { DaySeparator(time) }
                     previousDay = day
                 }
-                item(key = item.key) {
-                    when (item) {
-                        is Item.User -> MessageActions(item.text, agent.id, onForward) {
-                            model.notes.find(state.session, item.text)?.let { VoiceBubble(it, item.key, clock(item.time)) }
-                                ?: UserBubble(item.text, item.image, clock(item.time))
-                        }
-                        is Item.Reply -> MessageActions(item.text, agent.id, onForward) {
-                            Reply(agent.look, item.text, item.tools, clock(item.time), listen = { model.listen(item.key, item.text) },
-                                listenKey = item.key)
-                        }
-                        is Item.Tools -> ToolsLine(item.tools)
+                val owner = owners[item.key]
+                val fold = folds[item.key]
+                when {
+                    // Exchanges between agents (Bot Mode) fold into one line, like the work.
+                    owner != null -> {
+                        val teammate = (item as? Item.User)?.let { ChatText.teammate(it.text) }
+                        if (owner == item.key && teammate != null) {
+                            item(key = "x-${item.key}") {
+                                ExchangeChip(teammate.name, ThreadLayout.isRequest(all, index), teammateLook(store, teammate),
+                                    openExchanges[owner] == true) { openExchanges[owner] = openExchanges[owner] != true }
+                            }
+                            if (openExchanges[owner] == true) item(key = item.key) { Line(index, false) }
+                        } else if (openExchanges[owner] == true) item(key = item.key) { Line(index, ThreadLayout.turnEnd(all, index)) }
                     }
+                    // How the agent worked (tools, reasoning, « Je vais chercher… ») folds into one line.
+                    fold != null -> if (showsWork) {
+                        if (fold == item.key || index == first) item(key = "w-${item.key}") {
+                            WorkChip(openWork[fold] == true, { openWork[fold] = openWork[fold] != true }) {
+                                showsWork = false
+                                WorkDetail.set(context, false)
+                                toldWhereWork = true
+                            }
+                        }
+                        if (openWork[fold] == true) item(key = item.key) { Line(index, false) }
+                    }
+                    else -> item(key = item.key) { Line(index, ThreadLayout.turnEnd(all, index)) }
                 }
             }
-            state.live?.let { live ->
-                live.sent?.let { item(key = "live-sent") { UserBubble(it, false, "") } }
-                item(key = "live") { Reply(agent.look, live.text, live.tools, "", typing = live.text.isEmpty()) }
+            if (state.live != null && state.approval == null && state.clarify == null && state.live?.streaming != true) item(key = "typing") {
+                Typing(agent.look, state.live?.interim)
             }
             state.approval?.let { item(key = "approval") { ApprovalCard(agent.look, agent.name, it, model::approve) } }
             state.clarify?.let { item(key = "clarify") { ClarifyCard(agent.look, agent.name, it, model::answer) } }
@@ -214,6 +294,21 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
             onStop = model::stop)
     }
     }
+    if (toldWhereWork) androidx.compose.material3.AlertDialog({ toldWhereWork = false }, confirmButton = {
+        androidx.compose.material3.TextButton({ toldWhereWork = false }) { Text("OK") }
+    }, title = { Text(stringResource(R.string.work_hidden_title)) }, text = { Text(stringResource(R.string.work_hidden_body)) })
+}
+
+private fun teammateLook(store: AgentStore, teammate: ChatText.Teammate) = store.agents.value.firstOrNull {
+    it.bridgeName.equals(teammate.handle, ignoreCase = true) || it.name.equals(teammate.name, ignoreCase = true)
+}?.look
+
+@Composable
+private fun instructionTitle(instruction: ChatText.Instruction): String = when (instruction) {
+    is ChatText.Instruction.Scheduled -> if (instruction.skills.isEmpty()) stringResource(R.string.scheduled_brief)
+        else stringResource(R.string.scheduled_skills, instruction.skills)
+    is ChatText.Instruction.Skill -> stringResource(R.string.skill_brief, instruction.skills)
+    ChatText.Instruction.Subtask -> stringResource(R.string.subtask_result)
 }
 
 @Composable
@@ -227,16 +322,14 @@ private fun UserBubble(text: String, image: Boolean, time: String) {
 }
 
 @Composable
-private fun Reply(look: io.github.bipagents.model.Look, text: String, tools: List<String>, time: String, typing: Boolean = false,
+private fun Reply(look: io.github.bipagents.model.Look, text: String, time: String, streaming: Boolean = false,
                   listen: (() -> Unit)? = null, listenKey: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (tools.isNotEmpty()) ToolsLine(tools)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (ChatText.visible(text).isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Mascot(look, Modifier.size(28.dp), animated = false)
-            if (typing) Text("•••", style = Bip.text(20, FontWeight.Black, Bip.muted))
-            else MarkdownText(text, Modifier.weight(1f), link = look.deep)
+            MarkdownText(text, Modifier.weight(1f), link = look.deep)
         }
-        ChatText.media(text).forEach { path -> MediaChip(path) }
+        if (!streaming) ChatText.media(text).forEach { path -> MediaChip(path) }
         if (listen != null && ChatText.visible(text).isNotEmpty()) ListenPill(look, listenKey ?: "", listen)
         if (time.isNotEmpty()) Text(time, style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(start = 36.dp))
     }
@@ -334,15 +427,6 @@ private fun MediaChip(path: String) {
 
 /** The conversation's bridge, for the files its replies point to. */
 val LocalBridge = androidx.compose.runtime.staticCompositionLocalOf<io.github.bipagents.net.Bridge?> { null }
-
-@Composable
-private fun ToolsLine(tools: List<String>) {
-    Row(Modifier.padding(start = 36.dp).background(Bip.card, RoundedCornerShape(14.dp)).border(1.dp, Bip.line, RoundedCornerShape(14.dp))
-        .padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        androidx.compose.material3.Icon(Icons.Rounded.Build, null, Modifier.size(14.dp), tint = Bip.muted)
-        Text(tools.distinct().joinToString(" · "), style = Bip.text(13, FontWeight.Bold, Bip.ink2), maxLines = 2)
-    }
-}
 
 /** « I need your OK » (the iPhone's approval card): the Bip, what it wants to run, Once / This session / Deny. */
 @Composable

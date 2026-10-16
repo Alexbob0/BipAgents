@@ -8,6 +8,8 @@ import io.github.bipagents.BipApp
 import io.github.bipagents.model.Agent
 import io.github.bipagents.net.HttpError
 import io.github.bipagents.net.Message
+import io.github.bipagents.net.ToolStep
+import io.github.bipagents.net.InboxItem
 import io.github.bipagents.net.RunEvent
 import io.github.bipagents.net.Session
 import kotlinx.coroutines.Job
@@ -32,13 +34,21 @@ import kotlinx.serialization.json.buildJsonObject
 /** One line of the thread. */
 sealed interface Item {
     val key: String
-    data class User(override val key: String, val text: String, val image: Boolean, val time: Long?) : Item
-    data class Reply(override val key: String, val text: String, val tools: List<String>, val time: Long?) : Item
-    data class Tools(override val key: String, val tools: List<String>) : Item
+    val time: Long?
+    data class User(override val key: String, val text: String, val image: Boolean, override val time: Long?) : Item
+    data class Reply(override val key: String, val text: String, override val time: Long?, val streaming: Boolean = false) : Item
+    data class Reasoning(override val key: String, val text: String, override val time: Long?) : Item
+    data class Tools(override val key: String, val steps: List<ToolStep>, override val time: Long?) : Item
+    /** A scheduled task's report or a proactive message (the bridge's outbox), at its time in the Bot Chat. */
+    data class Scheduled(override val key: String, val message: InboxItem, override val time: Long?) : Item
 }
 
-/** The turn in progress: what was sent, the reply as it streams, the tools used so far. */
-data class Live(val sent: String?, val text: String = "", val tools: List<String> = emptyList(), val run: String? = null)
+/** The turn in progress: what was sent, then what the agent does as it comes (text, reasoning, tools). */
+data class Live(val sent: String?, val items: List<Item> = emptyList(), val run: String? = null, val interim: String? = null) {
+    /** Grows with every event (follows the end of the thread). */
+    val size get() = items.sumOf { when (it) { is Item.Reply -> it.text.length; is Item.Reasoning -> it.text.length; is Item.Tools -> it.steps.size; else -> 1 } }
+    val streaming get() = (items.lastOrNull() as? Item.Reply)?.streaming == true
+}
 
 data class ChatState(
     val agent: Agent? = null,
@@ -92,15 +102,44 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         val session = _state.value.session ?: return _state.update { it.copy(items = emptyList()) }
         if (_state.value.items == null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.load(app, session) }?.let { cached ->
             // Shown at once from the phone's copy; the call below only updates what changed.
-            _state.update { it.copy(items = thread(cached.messages), title = it.title ?: cached.title) }
+            _state.update { it.copy(items = thread(cached.messages, cached.outbox), title = it.title ?: cached.title) }
         }
         try {
-            val messages = store.hermes(agent)?.messages(session) ?: emptyList()
-            _state.update { it.copy(items = thread(messages), error = null) }
+            val hermes = store.hermes(agent) ?: return
+            if (_state.value.title == null) runCatching { hermes.session(session) }.getOrNull()?.title?.let { t -> _state.update { it.copy(title = t) } }
+            val messages = hermes.messages(session)
+            val outbox = if (_state.value.title.equals("Bot Chat", ignoreCase = true)) scheduled(agent) else emptyList()
+            _state.update { it.copy(items = thread(messages, outbox), error = null) }
             val title = _state.value.title
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.save(app, session, ThreadCache.Entry(title, messages)) }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.save(app, session, ThreadCache.Entry(title, messages, outbox)) }
         } catch (error: HttpError) {
             _state.update { it.copy(items = it.items ?: emptyList(), error = error) }
+        }
+    }
+
+    /** The agent's scheduled-task reports and proactive messages of the last 30 days, from its bridge. */
+    private suspend fun scheduled(agent: Agent): List<InboxItem> {
+        val bridge = store.bridge(agent) ?: return emptyList()
+        val since = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+        return runCatching { bridge.inbox() }.getOrDefault(emptyList()).filter { it.agent == agent.bridgeName && (it.time ?: 0) > since }
+    }
+
+    /** The audio of an outbox item (a podcast, or its synthesized voice), kept on the phone. */
+    fun playScheduled(item: InboxItem) {
+        if (Speaker.now.value?.key == "outbox-${item.id}") return Speaker.stop()
+        val agent = _state.value.agent ?: return
+        val bridge = store.bridge(agent) ?: return
+        val file = java.io.File(app.cacheDir, "outbox").apply { mkdirs() }.resolve(item.id.hashCode().toUInt().toString(16) + ".mp3")
+        viewModelScope.launch {
+            try {
+                if (!file.exists()) {
+                    val bytes = bridge.api.bytes("v1/outbox/${io.github.bipagents.net.Hermes.seg(item.id)}/audio")
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { file.writeBytes(bytes) }
+                }
+                Speaker.play("outbox-${item.id}", file)
+            } catch (error: Throwable) {
+                _state.update { it.copy(error = error) }
+            }
         }
     }
 
@@ -180,7 +219,7 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
     private suspend fun stream(run: String, sent: String?) {
         val agent = _state.value.agent ?: return
         val session = _state.value.session
-        _state.update { it.copy(live = Live(sent ?: it.live?.sent, run = run), mood = Mood.THINKING) }
+        _state.update { it.copy(live = Live(sent ?: it.live?.sent, it.live?.items ?: emptyList(), run = run), mood = Mood.THINKING) }
         var finished = false
         try {
             val bridge = store.bridge(agent)
@@ -205,20 +244,43 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun live(change: (Live) -> Live) = _state.update { s -> s.copy(live = s.live?.let(change)) }
+
     /** True once the run is over. */
     private fun apply(event: RunEvent): Boolean {
+        // Something else follows a text: that text is complete.
+        if (event is RunEvent.Reasoning || event is RunEvent.Tool || event is RunEvent.Approval || event is RunEvent.Clarify) live { l ->
+            l.copy(items = l.items.map { if (it is Item.Reply && it.streaming) it.copy(streaming = false) else it })
+        }
         when (event) {
-            is RunEvent.Delta -> _state.update { s -> s.copy(live = s.live?.copy(text = s.live.text + event.text), mood = Mood.SPEAKING) }
-            is RunEvent.Interim -> if (!event.alreadyStreamed && event.text.isNotBlank()) _state.update { s ->
-                s.copy(live = s.live?.copy(text = s.live.text + (if (s.live.text.isEmpty()) "" else "\n\n") + event.text + "\n\n"))
+            is RunEvent.Delta -> {
+                live { l ->
+                    val last = l.items.lastOrNull()
+                    l.copy(interim = null, items = if (last is Item.Reply && last.streaming) l.items.dropLast(1) + last.copy(text = last.text + event.text)
+                        else l.items + Item.Reply("live-${l.items.size}", event.text, null, streaming = true))
+                }
+                _state.update { it.copy(mood = Mood.SPEAKING) }
             }
-            is RunEvent.Tool -> if (event.started) _state.update { s -> s.copy(live = s.live?.copy(tools = s.live.tools + event.name), mood = Mood.THINKING) }
+            is RunEvent.Interim -> if (!event.alreadyStreamed && event.text.isNotBlank()) live { it.copy(interim = event.text.trim()) }
+            is RunEvent.Reasoning -> live { l ->
+                val last = l.items.lastOrNull()
+                l.copy(items = if (last is Item.Reasoning) l.items.dropLast(1) + last.copy(text = last.text + event.text)
+                    else l.items + Item.Reasoning("live-${l.items.size}", event.text, null))
+            }
+            is RunEvent.Tool -> {
+                live { l -> l.copy(items = upsert(l.items, event.step)) }
+                if (event.started) _state.update { it.copy(mood = Mood.THINKING) }
+            }
             is RunEvent.Approval -> _state.update { it.copy(approval = event, mood = Mood.ASKING) }
             RunEvent.ApprovalResolved -> _state.update { it.copy(approval = null, mood = Mood.THINKING) }
             is RunEvent.Clarify -> _state.update { it.copy(clarify = event, mood = Mood.ASKING) }
             RunEvent.ClarifyResolved -> _state.update { it.copy(clarify = null, mood = Mood.THINKING) }
             is RunEvent.Finished -> {
                 if (event.failed) _state.update { it.copy(error = HttpError(500, event.error)) }
+                val output = event.output
+                if (output != null) live { l ->
+                    if (l.items.any { it is Item.Reply }) l else l.copy(items = l.items + Item.Reply("live-${l.items.size}", output, null))
+                }
                 return true
             }
         }
@@ -314,24 +376,49 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         /** The bridge reads at most 20 000 characters; a reply that long is better read than heard anyway. */
         const val MAX_SPOKEN = 8000
 
-        /** The transcript as the app shows it: what the person wrote, the replies, and the tools used between them. */
-        fun thread(messages: List<Message>): List<Item> {
+        /** The thread from Hermes' stored messages (ConversationModel.items(from:)). Consecutive tool calls share one
+         *  card, and a tool's result (its own message) only completes the call already listed. Reports from the outbox go
+         *  in at their time. */
+        fun thread(messages: List<Message>, outbox: List<InboxItem> = emptyList()): List<Item> {
             val out = mutableListOf<Item>()
-            var tools = mutableListOf<String>()
-            for (m in messages) when (m.role) {
-                "assistant" -> {
-                    tools += m.tools
-                    if (ChatText.visible(m.text).isEmpty() && ChatText.media(m.text).isEmpty()) continue
-                    out += Item.Reply("r${m.id}-${out.size}", m.text, tools.toList(), m.time)
-                    tools = mutableListOf()
+            fun addTools(steps: List<ToolStep>, time: Long?, key: String) {
+                val last = out.lastOrNull()
+                if (last is Item.Tools) out[out.size - 1] = last.copy(steps = last.steps + steps) else out += Item.Tools(key, steps, time)
+            }
+            for ((i, m) in messages.withIndex()) {
+                val k = "${m.id}-$i"
+                if (m.role == "tool") {
+                    // Calls listed since the person's last message (the commentary may sit between call and result).
+                    val listed = out.subList(out.indexOfLast { it is Item.User } + 1, out.size).filterIsInstance<Item.Tools>().flatMap { it.steps }
+                    val fresh = m.tools.filter { r -> listed.none { if (it.callId != null) it.callId == r.callId else it.name == r.name } }
+                    if (fresh.isNotEmpty()) addTools(fresh, m.time, "t$k")
+                    continue
                 }
-                "user" -> {
-                    if (tools.isNotEmpty()) { out += Item.Tools("t${out.size}", tools.toList()); tools = mutableListOf() }
-                    out += Item.User("u${m.id}-${out.size}", m.text, m.hasImage, m.time)
+                m.reasoning?.let { out += Item.Reasoning("th$k", it, m.time) }
+                if (m.tools.isNotEmpty()) addTools(m.tools, m.time, "t$k")
+                when (m.role) {
+                    "user" -> out += Item.User("u$k", m.text, m.hasImage, m.time)
+                    "assistant" -> if (ChatText.visible(m.text).isNotEmpty() || ChatText.media(m.text).isNotEmpty()) out += Item.Reply("r$k", m.text, m.time)
                 }
             }
-            if (tools.isNotEmpty()) out += Item.Tools("t${out.size}", tools)
+            for (o in outbox.sortedBy { it.time ?: 0 }) {
+                val at = o.time ?: Long.MAX_VALUE
+                val index = out.indexOfFirst { (it.time ?: Long.MIN_VALUE) > at }.takeIf { it >= 0 } ?: out.size
+                out.add(index, Item.Scheduled("o${o.id}", o, o.time))
+            }
             return out
+        }
+
+        /** A tool event: completes the call already listed (same id, or same name still running), else a new line. */
+        fun upsert(items: List<Item>, step: ToolStep): List<Item> {
+            val last = items.lastOrNull()
+            if (last !is Item.Tools) return items + Item.Tools("live-${items.size}", listOf(step), null)
+            val steps = last.steps.toMutableList()
+            val index = if (step.status == ToolStep.Status.STARTED) -1 else steps.indexOfLast {
+                it.status == ToolStep.Status.STARTED && (it.callId == step.callId || (it.callId == null && it.name == step.name))
+            }
+            if (index >= 0) steps[index] = step.copy(preview = step.preview ?: steps[index].preview) else steps += step
+            return items.dropLast(1) + last.copy(steps = steps)
         }
     }
 }
@@ -339,7 +426,7 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
 /** The phone's copy of each conversation (its last 300 messages), so a thread opens at once and reads offline. */
 object ThreadCache {
     @kotlinx.serialization.Serializable
-    data class Entry(val title: String?, val messages: List<Message>)
+    data class Entry(val title: String?, val messages: List<Message>, val outbox: List<InboxItem> = emptyList())
 
     private fun file(context: Context, session: String): java.io.File {
         val key = java.security.MessageDigest.getInstance("SHA-256").digest(session.toByteArray()).take(12)

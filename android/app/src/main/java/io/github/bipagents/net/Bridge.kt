@@ -11,6 +11,7 @@ data class ListedAgent(val id: String, val name: String, val url: String?, val k
 
 data class Desktop(val url: String, val relayed: Boolean, val youHold: Boolean)
 
+@kotlinx.serialization.Serializable
 data class InboxItem(val id: String, val agent: String, val title: String?, val text: String, val time: Long?,
                      val session: String?, val hasAudio: Boolean)
 

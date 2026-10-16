@@ -3,6 +3,7 @@ package io.github.bipagents
 import io.github.bipagents.model.Category
 import io.github.bipagents.model.Pairing
 import io.github.bipagents.net.Message
+import io.github.bipagents.net.ToolStep
 import io.github.bipagents.net.RunEvent
 import io.github.bipagents.net.ServerEvent
 import io.github.bipagents.net.Session
@@ -58,12 +59,37 @@ class CoreTest {
     @Test fun theThreadFoldsToolsUnderReplies() {
         val items = ChatModel.thread(listOf(
             Message("1", "user", "Sleep?", null, false, emptyList()),
-            Message("2", "assistant", "", null, false, listOf("oura_sleep")),
-            Message("3", "tool", "{}", null, false, emptyList()),
+            Message("2", "assistant", "Je regarde.", null, false, listOf(ToolStep("oura_sleep", "{\"query\": \"nights\"}", callId = "c1"))),
+            Message("3", "tool", "{}", null, false, listOf(ToolStep("oura_sleep", "{}", callId = "c1"))),
             Message("4", "assistant", "7 h", null, false, emptyList()),
         ))
-        assertEquals(2, items.size)
-        assertEquals(listOf("oura_sleep"), (items[1] as Item.Reply).tools)
+        assertEquals(listOf("User", "Tools", "Reply", "Reply"), items.map { it::class.simpleName })
+        assertEquals(1, (items[1] as Item.Tools).steps.size)   // the result completes the call, no second line
+        // The commentary before a tool and the tool fold together; the final answer stays out.
+        val folds = io.github.bipagents.ui.ThreadLayout.workFolds(items, running = false)
+        assertEquals(setOf(items[1].key), folds.keys)
+        assertEquals(false, io.github.bipagents.ui.ThreadLayout.turnEnd(items, 2))
+        assertEquals(true, io.github.bipagents.ui.ThreadLayout.turnEnd(items, 3))
+        assertEquals("nights", io.github.bipagents.ui.ChatText.toolSummary("{\"query\": \"nights\"}"))
+        assertEquals("ls -la", io.github.bipagents.ui.ChatText.toolSummary("{\"command\": \"ls -la\", \"timeout\": 3"))
+    }
+
+    @Test fun liveToolEventsCompleteTheirCall() {
+        var items = ChatModel.upsert(emptyList(), ToolStep("terminal", "ls", ToolStep.Status.STARTED))
+        items = ChatModel.upsert(items, ToolStep("terminal", null, ToolStep.Status.DONE, 0.4))
+        val step = (items.single() as Item.Tools).steps.single()
+        assertEquals(ToolStep.Status.DONE, step.status)
+        assertEquals("ls", step.preview)
+    }
+
+    @Test fun quickRepliesAndTeammates() {
+        assertEquals(listOf("Le matin", "Le soir"), io.github.bipagents.ui.ChatText.choices("Tu préfères quand ?\n1. Le matin\n2. **Le soir**"))
+        assertEquals(emptyList<String>(), io.github.bipagents.ui.ChatText.choices("Conseils :\n1. Dormir\n2. Boire"))
+        val t = io.github.bipagents.ui.ChatText.teammate("Message from 🤖 Vie (@vie): Salut")!!
+        assertEquals(Triple("Vie", "vie", "Salut"), Triple(t.name, t.handle, t.body))
+        val items = listOf(Item.User("a", "Message from 🤖 Vie (@vie): Tu as l'heure ?", false, null), Item.Reply("b", "Oui", null))
+        assertEquals(mapOf("a" to "a", "b" to "a"), io.github.bipagents.ui.ThreadLayout.exchangeOwners(items))
+        assertEquals("Vie", io.github.bipagents.ui.ThreadLayout.answered(items, 1))
     }
 
     @Test fun theMainThreadAndCategories() {

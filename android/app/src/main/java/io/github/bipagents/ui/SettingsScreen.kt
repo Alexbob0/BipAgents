@@ -78,6 +78,7 @@ fun SettingsScreen(store: AgentStore, onAdd: () -> Unit) {
             }
         }
         item { VoiceReplySetting() }
+        item { ConversationSettings() }
     }
     removing?.let { agent ->
         AlertDialog(onDismissRequest = { removing = null },
@@ -106,5 +107,22 @@ private fun VoiceReplySetting() {
             }
         }
         Text(stringResource(R.string.voice_reply_help), style = Bip.text(13, color = Bip.muted))
+    }
+}
+
+/** « Discussions »: the agents' work folded under each reply, or hidden. */
+@Composable
+private fun ConversationSettings() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var work by remember { mutableStateOf(WorkDetail.shown(context)) }
+    Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.conversations).uppercase(), style = Bip.text(12, FontWeight.ExtraBold, Bip.muted))
+        Row(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.work_detail), style = Bip.text(16, FontWeight.Bold), modifier = Modifier.weight(1f))
+            androidx.compose.material3.Switch(work, { work = it; WorkDetail.set(context, it) },
+                colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Bip.accent))
+        }
+        Text(stringResource(R.string.work_detail_help), style = Bip.text(13, color = Bip.muted))
     }
 }

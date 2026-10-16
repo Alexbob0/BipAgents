@@ -178,4 +178,23 @@
     <string name="earlier_messages">Frühere Nachrichten</string>
     <string name="done">Fertig</string>
     <string name="latest_messages">Neueste Nachrichten</string>
+    <string name="work_detail">Arbeitsdetails</string>
+    <string name="hide_work_detail">Arbeitsdetails ausblenden</string>
+    <string name="work_hidden_title">Arbeitsdetails ausgeblendet</string>
+    <string name="work_hidden_body">Du kannst sie unter Einstellungen › Unterhaltungen wieder einblenden.</string>
+    <string name="work_detail_help">Werkzeuge, Überlegungen und Zwischenkommentare, eingeklappt unter jeder Antwort.</string>
+    <string name="reasoning">Überlegung</string>
+    <string name="more_tools">%d weitere Werkzeuge</string>
+    <string name="message_from">Nachricht von %s</string>
+    <string name="exchange_with">Austausch mit %s</string>
+    <string name="reply_from">Antwort von %s</string>
+    <string name="reply_to">Antwort an %s</string>
+    <string name="scheduled_brief">Auftrag der geplanten Aufgabe</string>
+    <string name="scheduled_skills">Geplante Aufgabe · %s</string>
+    <string name="skill_brief">Anweisung · %s</string>
+    <string name="subtask_result">Ergebnis einer Teilaufgabe</string>
+    <string name="tap_to_show">Tippen zum Anzeigen</string>
+    <string name="tap_to_fold">Tippen zum Einklappen</string>
+    <string name="scheduled_task">Geplante Aufgabe</string>
+    <string name="proactive_message">Proaktive Nachricht</string>
 </resources>

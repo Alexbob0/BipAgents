@@ -420,7 +420,11 @@ final class ConversationModel {
         for message in history {
             let date = message.createdAt
             if message.role == .tool {
-                let listed: [ToolEvent] = if case .tools(let tools)? = result.last?.kind { tools } else { [] }
+                // Calls listed since the user's last message (the agent's commentary may sit between call and result).
+                let turnStart = (result.lastIndex { if case .user = $0.kind { true } else { false } } ?? -1) + 1
+                let listed: [ToolEvent] = result[turnStart...].flatMap { item -> [ToolEvent] in
+                    if case .tools(let tools) = item.kind { tools } else { [] }
+                }
                 let fresh = message.toolEvents.filter { result in
                     !listed.contains { $0.callID != nil ? $0.callID == result.callID : $0.tool == result.tool }
                 }

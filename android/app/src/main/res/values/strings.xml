@@ -179,4 +179,23 @@
     <string name="earlier_messages">Earlier messages</string>
     <string name="done">Done</string>
     <string name="latest_messages">Latest messages</string>
+    <string name="work_detail">Work details</string>
+    <string name="hide_work_detail">Hide work details</string>
+    <string name="work_hidden_title">Work details hidden</string>
+    <string name="work_hidden_body">You can show them again in Settings › Conversations.</string>
+    <string name="work_detail_help">Tools, reasoning and running commentary, folded under each reply.</string>
+    <string name="reasoning">Reasoning</string>
+    <string name="more_tools">%d more tools</string>
+    <string name="message_from">Message from %s</string>
+    <string name="exchange_with">Exchange with %s</string>
+    <string name="reply_from">Reply from %s</string>
+    <string name="reply_to">Reply to %s</string>
+    <string name="scheduled_brief">Scheduled task brief</string>
+    <string name="scheduled_skills">Scheduled task · %s</string>
+    <string name="skill_brief">Instructions · %s</string>
+    <string name="subtask_result">Sub-task result</string>
+    <string name="tap_to_show">Tap to show</string>
+    <string name="tap_to_fold">Tap to fold</string>
+    <string name="scheduled_task">Scheduled task</string>
+    <string name="proactive_message">Proactive message</string>
 </resources>

@@ -6,7 +6,8 @@ import kotlinx.serialization.json.JsonObject
 sealed interface RunEvent {
     data class Delta(val text: String) : RunEvent
     data class Interim(val text: String, val alreadyStreamed: Boolean) : RunEvent
-    data class Tool(val name: String, val started: Boolean, val failed: Boolean) : RunEvent
+    data class Tool(val name: String, val started: Boolean, val failed: Boolean, val step: ToolStep = ToolStep(name)) : RunEvent
+    data class Reasoning(val text: String) : RunEvent
     data class Approval(val run: String, val requestId: String?, val command: String?, val description: String?,
                         val choices: List<String>) : RunEvent
     data object ApprovalResolved : RunEvent
@@ -24,9 +25,9 @@ sealed interface RunEvent {
             return when (event.type) {
                 "assistant.delta", "message.delta", "response.output_text.delta" -> Delta(text(f, "delta", "text", "content") ?: "")
                 "assistant.commentary", "message.interim" -> Interim(text(f, "text", "content", "delta") ?: "", f.bool("already_streamed") ?: false)
-                "tool.started", "tool.start", "tool.completed", "tool.complete", "tool.failed" -> Tool(
-                    f.str("tool", "name", "tool_name") ?: "tool", event.type.endsWith("start") || event.type.endsWith("started"),
-                    event.type == "tool.failed" || f.bool("error") == true)
+                "tool.started", "tool.start", "tool.completed", "tool.complete", "tool.failed" -> tool(event.type, f)
+                "reasoning.delta", "reasoning", "assistant.reasoning", "assistant.reasoning.delta", "message.reasoning",
+                "reasoning.available", "thinking.delta", "assistant.thinking" -> Reasoning(text(f, "delta", "text", "content", "reasoning") ?: "")
                 "approval.request", "approval.required" -> Approval(run, f.str("request_id", "approval_id"), f.str("command"),
                     f.str("description", "reason"),
                     f["choices"].arr()?.mapNotNull { it.text()?.lowercase() }?.ifEmpty { null } ?: listOf("once", "deny"))
@@ -36,8 +37,22 @@ sealed interface RunEvent {
                 "run.completed" -> Finished(false, null, text(f, "output", "final_response"))
                 "run.failed" -> Finished(true, f.str("error") ?: f["error"].obj().str("message"), null)
                 "run.cancelled", "run.canceled", "run.interrupted" -> Finished(false, null, null)
-                else -> null
+                else -> if (("reasoning" in event.type || "thinking" in event.type) && text(f, "delta", "text") != null)
+                    Reasoning(text(f, "delta", "text")!!) else null
             }
+        }
+
+        private fun tool(type: String, f: JsonObject): Tool {
+            val name = f.str("tool", "name", "tool_name") ?: "tool"
+            val started = type.endsWith("start") || type.endsWith("started")
+            // `error` is a flag on tool.completed, but may also carry a message.
+            val flag = f.bool("error")
+            val message = if (flag == null) f.str("error") ?: f["error"].obj().str("message") else null
+            val failed = type == "tool.failed" || flag == true || message != null
+            val duration = f.double("duration", "duration_s") ?: f.double("duration_ms")?.div(1000)
+            val status = if (started) ToolStep.Status.STARTED else if (failed) ToolStep.Status.FAILED else ToolStep.Status.DONE
+            return Tool(name, started, failed, ToolStep(name, text(f, "preview", "result_preview", "args_preview"), status, duration,
+                if (failed) message else null, f.str("tool_call_id", "call_id")))
         }
 
         private fun text(f: JsonObject, vararg keys: String): String? {

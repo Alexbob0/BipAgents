@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -91,34 +92,50 @@ object Markdown {
         return out
     }
 
-    private val inline = Regex("(`[^`\\n]+`)|(\\*\\*[^*\\n]+?\\*\\*)|(\\*[^*\\n]+?\\*|\\b_[^_\\n]+?_\\b)|(\\[[^\\]\\n]+\\]\\([^)\\s]+\\))|((?:https?://|www\\.)[^\\s<>()]+[^\\s<>().,;:!?'\"»])")
+    private val inline = Regex("(`[^`\\n]+`)|(\\*\\*[^*\\n]+?\\*\\*)|(\\*[^*\\n]+?\\*|\\b_[^_\\n]+?_\\b)|(\\[[^\\]\\n]+\\]\\([^)\\s]+\\))|((?:https?://|www\\.)[^\\s<>()]+[^\\s<>().,;:!?'\"»])" +
+        // E-mail addresses and phone numbers (+33…, 06…: 8 digits or more) open Mail and the phone app.
+        "|([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)|((?<![\\w/+])(?:\\+|0)\\d(?:[ .-]?\\d){7,13}(?![\\w/]))")
 
-    fun inline(text: String, link: Color = Bip.accent): AnnotatedString = buildAnnotatedString {
-        appendInline(text, TextLinkStyles(SpanStyle(color = link, textDecoration = TextDecoration.Underline)))
+    /** `icons`: the site's icon before each web link (the text then needs [Favicons.content]). */
+    fun inline(text: String, link: Color = Bip.accent, icons: Boolean = false): AnnotatedString = buildAnnotatedString {
+        appendInline(text, TextLinkStyles(SpanStyle(color = link, textDecoration = TextDecoration.Underline)), icons)
     }
 
-    private fun AnnotatedString.Builder.appendInline(text: String, links: TextLinkStyles) {
+    /** The web sites the text links to (for their icons). */
+    fun hosts(text: String): Set<String> = inline.findAll(text).mapNotNull { m ->
+        val (_, _, _, md, bare) = m.destructured
+        val raw = if (md.isNotEmpty()) md.substring(md.lastIndexOf("](") + 2, md.length - 1) else bare.ifEmpty { null }
+        raw?.let(ChatText::safeLink)?.takeIf { it.scheme?.startsWith("http") == true }?.host?.lowercase()
+    }.toSet()
+
+    private fun AnnotatedString.Builder.appendInline(text: String, links: TextLinkStyles, icons: Boolean) {
         var last = 0
         for (m in inline.findAll(text)) {
             append(text.substring(last, m.range.first))
             val (code, bold, italic, md, bare) = m.destructured
+            val mail = m.groupValues[6]
+            val phone = m.groupValues[7]
             when {
                 code.isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Bip.line)) { append(code.trim('`')) }
-                bold.isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.ExtraBold)) { appendInline(bold.removeSurrounding("**"), links) }
-                italic.isNotEmpty() -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendInline(italic.substring(1, italic.length - 1), links) }
+                bold.isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.ExtraBold)) { appendInline(bold.removeSurrounding("**"), links, icons) }
+                italic.isNotEmpty() -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendInline(italic.substring(1, italic.length - 1), links, icons) }
                 md.isNotEmpty() -> {
                     val split = md.lastIndexOf("](")
-                    link(md.substring(1, split), md.substring(split + 2, md.length - 1), links)
+                    link(md.substring(1, split), md.substring(split + 2, md.length - 1), links, icons)
                 }
-                else -> link(bare, bare, links)
+                bare.isNotEmpty() -> link(bare, bare, links, icons)
+                mail.isNotEmpty() -> withLink(LinkAnnotation.Url("mailto:$mail", links)) { append(mail) }
+                else -> withLink(LinkAnnotation.Url("tel:" + phone.filter { it.isDigit() || it == '+' }, links)) { append(phone) }
             }
             last = m.range.last + 1
         }
         append(text.substring(last))
     }
 
-    private fun AnnotatedString.Builder.link(label: String, raw: String, links: TextLinkStyles) {
+    private fun AnnotatedString.Builder.link(label: String, raw: String, links: TextLinkStyles, icons: Boolean) {
         val uri = ChatText.safeLink(raw) ?: return append(label)
+        val host = uri.host?.lowercase()
+        if (icons && host != null && uri.scheme?.startsWith("http") == true) appendInlineContent(Favicons.id(host), " ")
         withLink(LinkAnnotation.Url(uri.toString(), links)) { append(ChatText.label(label, uri)) }
     }
 }
@@ -128,10 +145,11 @@ object Markdown {
 fun MarkdownText(text: String, modifier: Modifier = Modifier, style: TextStyle = Bip.text(17, FontWeight.Medium, lineHeight = 24.sp),
                  link: Color = Bip.accent) {
     val blocks = remember(text) { Markdown.blocks(text) }
+    val icons = Favicons.content(remember(text) { Markdown.hosts(text) }, link)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         for (block in blocks) when (block) {
-            is Block.Table -> ChatTable(block, style, link)
-            is Block.Paragraph -> Text(Markdown.inline(block.text, link), style = style)
+            is Block.Table -> ChatTable(block, style, link, icons)
+            is Block.Paragraph -> Text(Markdown.inline(block.text, link, icons = true), style = style, inlineContent = icons)
             else -> {}
         }
     }
@@ -139,7 +157,7 @@ fun MarkdownText(text: String, modifier: Modifier = Modifier, style: TextStyle =
 
 /** A table as a grid: each column as wide as its content up to a cap, rows as tall as their tallest cell. */
 @Composable
-private fun ChatTable(table: Block.Table, style: TextStyle, link: Color) {
+private fun ChatTable(table: Block.Table, style: TextStyle, link: Color, icons: Map<String, androidx.compose.foundation.text.InlineTextContent>) {
     val columns = table.header.size
     val cellStyle = style.copy(fontSize = 14.sp)
     val shape = RoundedCornerShape(12.dp)
@@ -147,11 +165,11 @@ private fun ChatTable(table: Block.Table, style: TextStyle, link: Color) {
         .clip(shape)) {
         Layout(content = {
             table.header.forEachIndexed { c, h ->
-                Text(Markdown.inline(h, link), style = cellStyle.copy(fontWeight = FontWeight.ExtraBold, color = Bip.ink2,
+                Text(Markdown.inline(h, link, icons = true), inlineContent = icons, style = cellStyle.copy(fontWeight = FontWeight.ExtraBold, color = Bip.ink2,
                     textAlign = table.align.getOrElse(c) { TextAlign.Start }), modifier = Modifier.background(Bip.ground).padding(horizontal = 12.dp, vertical = 8.dp))
             }
             for (row in table.rows) for (c in 0 until columns) {
-                Text(Markdown.inline(row.getOrElse(c) { "" }, link), style = cellStyle.copy(textAlign = table.align.getOrElse(c) { TextAlign.Start }),
+                Text(Markdown.inline(row.getOrElse(c) { "" }, link, icons = true), inlineContent = icons, style = cellStyle.copy(textAlign = table.align.getOrElse(c) { TextAlign.Start }),
                     modifier = Modifier.background(Bip.card).padding(horizontal = 12.dp, vertical = 8.dp))
             }
         }) { measurables, constraints ->
