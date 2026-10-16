@@ -29,6 +29,13 @@ def no_voice_server_on_the_network(monkeypatch):
     monkeypatch.setattr(voice_server, "discover", nothing)
 
 
+@pytest.fixture(autouse=True)
+def no_sandbox_unless_a_test_says_so(monkeypatch):
+    """The flows don't depend on podman being installed where the tests run (CI machines have it)."""
+    from bipinstall import hermes as hermes_module
+    monkeypatch.setattr(hermes_module, "sandbox_runtime", lambda: None)
+
+
 def mac(memory, gpu="apple"):
     return Machine(system="macos", arch="arm64", memory_gib=memory, cores=10, cpu="Apple M4", gpu=gpu,
                    tailnet_name="mini.tail0000.ts.net", lan_addresses=["192.168.1.20"])

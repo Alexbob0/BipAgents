@@ -144,5 +144,5 @@ struct RunResumerTests {
 
 final class PollCounter: Sendable {
     private let count = Mutex(0)
-    func next() -> Int { count.withLock { defer { $0 += 1 }; return $0 } }
+    func next() -> Int { count.withLock { value in defer { value += 1 }; return value } }
 }
