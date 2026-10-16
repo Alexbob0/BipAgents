@@ -74,7 +74,18 @@ class Services:
         if sender is None and config.push_relay_url and config.push_relay_key:
             sender = RelayClient(config.push_relay_url, config.push_relay_key, self.http)
         self.push_mode = "apns" if apns is not None else ("relay" if sender is not None else None)
-        self.push = PushService(config, self.store, sender)
+        # Android: FCM with the Firebase project's key, else through the same relay as Apple's pushes.
+        fcm: Any = None
+        if config.fcm_service_account:
+            if os.path.exists(config.fcm_service_account):
+                from .fcm import FcmClient
+                fcm = FcmClient(config.fcm_service_account, self.http)
+            else:
+                log.warning("FCM service account missing", extra=fields(path=config.fcm_service_account))
+        self.fcm = fcm
+        android = fcm or (RelayClient(config.push_relay_url, config.push_relay_key, self.http)
+                          if config.push_relay_url and config.push_relay_key else None)
+        self.push = PushService(config, self.store, sender, android)
         self.hub = RunHub(self.hermes, self.push, watch_max_seconds=config.limits.watch_max_seconds, store=self.store)
         self.outbox = OutboxService(config, self.store, self.tts, self.push)
         self.presence = Presence()
@@ -291,16 +302,22 @@ def build_router() -> APIRouter:
     async def register_device(body: DeviceRequest, request: Request) -> Dict[str, Any]:
         services = _services(request)
         token = body.token.strip().replace(" ", "").replace("<", "").replace(">", "")
-        if not DEVICE_TOKEN.match(token):
-            raise HTTPException(status_code=400, detail="invalid device token (hex expected)")
         environment = body.environment or services.config.apns.environment
-        if environment not in ("sandbox", "production"):
-            raise HTTPException(status_code=400, detail="environment must be sandbox or production")
+        if environment == "fcm":   # the Android app (Firebase Cloud Messaging); its tokens are case-sensitive
+            from .fcm import FCM_TOKEN
+            if not FCM_TOKEN.match(token):
+                raise HTTPException(status_code=400, detail="invalid FCM token")
+        else:
+            if not DEVICE_TOKEN.match(token):
+                raise HTTPException(status_code=400, detail="invalid device token (hex expected)")
+            if environment not in ("sandbox", "production"):
+                raise HTTPException(status_code=400, detail="environment must be sandbox, production or fcm")
+            token = token.lower()
         agent_ids = [a.strip().lower() for a in body.agent_ids if a and a.strip()]
         unknown = [a for a in agent_ids if a not in services.config.agents]
         if unknown:
             raise HTTPException(status_code=400, detail={"error": "unknown agent_ids", "agent_ids": unknown})
-        device = await services.store.upsert_device(token.lower(), environment, agent_ids)
+        device = await services.store.upsert_device(token, environment, agent_ids)
         log.info("device registered", extra=fields(token=redact(token), env=environment, agents=agent_ids))
         return device
 

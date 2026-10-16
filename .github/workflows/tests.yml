@@ -50,4 +50,4 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests and debug build
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-configuration-cache
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-configuration-cache

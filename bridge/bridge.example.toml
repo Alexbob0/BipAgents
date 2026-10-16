@@ -65,6 +65,12 @@ window_hours = 12        # on first start, only tasks from the last N hours are 
 [media.roots]
 # "/home/hermes/.hermes/media" = "~/hermes-agent/hermes-home/media"
 
+[fcm]
+# The Android app's notifications: the Firebase project's service account key (JSON, mode 600), from the Firebase
+# console › Project settings › Service accounts › Generate new private key. Without it, Android devices are sent
+# through [push] relay_url like iPhones without an APNs key.
+# service_account = "~/.config/bipagents/fcm.json"
+
 [apns]
 # Leave team_id/key_id empty to disable push.
 team_id = ""                # Apple Developer Team ID (10 characters)

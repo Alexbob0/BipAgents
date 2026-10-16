@@ -137,12 +137,13 @@ def silent_payload(agent: str, reason: str, **extra: Any) -> Dict[str, Any]:
 
 
 class PushService:
-    def __init__(self, config: Config, store: Store, apns: Optional[ApnsClient]):
+    def __init__(self, config: Config, store: Store, apns: Optional[ApnsClient], android: Any = None):
         self.config = config
         self.store = store
         self.apns = apns
+        self.android = android   # FcmClient, or the relay (RelayClient) for Android devices
         if apns is None:
-            log.warning("APNs not configured: push notifications disabled")
+            log.warning("APNs not configured: iPhone push notifications disabled")
         # Texts of recent reply / question pushes, fetched by the Notification Service Extension over the
         # tailnet (GET /v1/replies/{id}): the alert shows the message, which never goes through Apple.
         self._texts: "OrderedDict[str, Tuple[float, str]]" = OrderedDict()
@@ -164,14 +165,12 @@ class PushService:
 
     async def _fanout(self, agent: str, payload: Dict[str, Any], push_type: str, priority: int,
                       collapse_id: Optional[str] = None) -> int:
-        if self.apns is None:
-            return 0
-        devices = await self.store.devices_for_agent(agent)
+        devices = [d for d in await self.store.devices_for_agent(agent) if self._sender(d) is not None]
         if not devices:
             return 0
         results = await asyncio.gather(*[
-            self.apns.send(d["token"], payload, environment=d["environment"], push_type=push_type,
-                           priority=priority, collapse_id=collapse_id)
+            self._sender(d).send(d["token"], payload, environment=d["environment"], push_type=push_type,
+                                 priority=priority, collapse_id=collapse_id)
             for d in devices], return_exceptions=True)
         sent = 0
         for device, result in zip(devices, results):
@@ -184,6 +183,9 @@ class PushService:
                 await self.store.delete_device(device["token"])
                 log.info("device token removed", extra=fields(token=redact(device["token"]), reason=result.reason))
         return sent
+
+    def _sender(self, device: Dict[str, Any]) -> Any:
+        return self.android if device["environment"] == "fcm" else self.apns
 
     async def notify_message(self, agent: str, outbox_id: str, text: str, session_id: Optional[str] = None,
                              title: Optional[str] = None) -> int:
