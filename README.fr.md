@@ -51,9 +51,11 @@ Et ils **babillent** : chaque réaction est dite dans leur « Animalese », un c
 ## ✨ Ce que sait faire l'app
 
 - 🎙️ **Voix d'abord** : notes vocales (maintenir « Audio » sur la carte d'un agent, relâcher, c'est parti), **Live** mains libres avec interruption à la voix, « Écouter » sous chaque réponse en streaming.
-- 🗣️ **Une voix par Bip** : voix mignonnes Kyutai Pocket TTS, **sur CPU, sans GPU** (≈ 50 ms avant le premier son sur un Mac mini M4), en français, anglais, espagnol et allemand. Les nombres, symboles et abréviations sont rendus prononçables dans chaque langue.
+- 🗣️ **Une voix par Bip** : voix mignonnes Kyutai Pocket TTS, **sur CPU, sans GPU** (≈ 50 ms avant le premier son sur un Mac mini M4), conçues directement en français, anglais, espagnol et allemand. Les nombres, symboles, abréviations et noms de marques sont rendus prononçables dans chaque langue. Un GPU ? Branche **ton propre modèle de voix** (Fish Audio Drama 3, Kokoro, Kyutai 1.6B…) pour le Live, les réponses vocales ou la lecture des messages ; le Bip prend le relais quand il est lent ou absent.
+- 🖥️ **Le navigateur de chaque agent**, en direct sur ton téléphone : plein écran, paysage, zoom au pincement, prise en main pour te connecter (l'agent attend), et un **coffre** qui remplit les mots de passe sans que l'agent les voie jamais.
+- 👨‍👩‍👧 **Toute la famille** : une installation par personne sur le même serveur, chacune dans son compte ; les agents ne s'écrivent (même entre foyers) que là où la personne l'a permis, et partagent des dossiers en lecture seule.
 - 🔒 **Ça continue écran verrouillé** : les messages partent en *runs* Hermes. Tu fermes l'app, l'agent finit son travail, et la réponse arrive en notification, avec l'avatar du Bip et le vrai texte.
-- ✅ **Accords depuis l'écran verrouillé** : « Wellness veut lancer `pip install openpyxl` » → Une fois / Cette session / Toujours / Refuser, sans ouvrir l'app.
+- ✅ **Accords depuis l'écran verrouillé** : « Wellness veut lancer `pip install openpyxl` » → Une fois / Cette session / Refuser, sans ouvrir l'app.
 - ❓ **L'agent peut te poser une question** (outil `clarify`) : une carte avec un bouton par choix, comme sur Hermes Desktop.
 - 🤝 **Les agents se parlent** : Vie peut consulter Wellness ; l'échange se replie en une ligne dans la conversation.
 - 📬 **La Boîte** : rapports des tâches planifiées (cron), réponses arrivées pendant ton absence, à écouter ou à relancer en Live.
@@ -70,6 +72,21 @@ Et ils **babillent** : chaque réaction est dite dans leur « Animalese », un c
   <img src="docs/screenshots/fr/settings.png" width="24%" alt="Réglages">
 </p>
 </details>
+
+## ☁️ Ton agent à toi sur un serveur à 7 €
+
+Pas de machine à la maison ? Un **petit VPS** (4 vCPU, 8 Go : ≈ 7 € par mois chez Hetzner) fait tourner Hermes, le bridge
+et les voix des Bips sur son processeur, et le modèle vient d'**OpenRouter**, payé à l'usage. Tu as un agent toujours
+disponible, dans ta poche, avec une voix, pour le prix d'un ou deux cafés par mois.
+
+- **Ce qui reste à toi** : les conversations, la mémoire des agents, tes fichiers et le coffre sont sur ton serveur, pas
+  sur une plateforme. Tu changes de modèle quand tu veux, sans rien exporter.
+- **Ce qui sort** : chaque message part au modèle choisi, pour qu'il y réponde. Choisis des fournisseurs qui ne gardent
+  rien dans les réglages de confidentialité d'OpenRouter (zero data retention), ou un modèle qui tourne chez toi, joint
+  par Tailscale.
+- **Ce que tu n'as pas à faire** : ouvrir des ports. Tout passe par Tailscale ; même SSH peut être fermé.
+
+Pas à pas, d'un cloud-init tout prêt jusqu'au QR code : [**BipAgents sur un serveur loué**](docs/vps.fr.md).
 
 ## 🧩 Comment ça marche
 
@@ -100,11 +117,53 @@ flowchart LR
 
 **Juste pour voir**, sans serveur : ouvre `BipAgents.xcodeproj`, schéma BipAgents → Arguments → `-demo`. Ajoute `-screen conversation`, `-screen call`, `-tab inbox` ou `-demoAgents 5` pour arriver directement sur un écran.
 
-**Pour de vrai** : un **Mac mini**, un **VPS** ou un serveur Linux qui fait tourner [Hermes Agent](https://github.com/NousResearch/hermes-agent) suffit, sans GPU. Le guide pas à pas : [**Héberger BipAgents chez soi**](docs/self-hosting.fr.md) (Tailscale, api_server Hermes, Pocket TTS, bridge, lancement au démarrage, notifications). Sans machine à la maison : [**BipAgents sur un serveur loué**](docs/vps.fr.md).
+**Pour de vrai** : un **Mac mini**, un **VPS** ou un serveur Linux suffit, sans GPU ; [Hermes Agent](https://github.com/NousResearch/hermes-agent) vient avec l'installateur si tu ne l'as pas. Pour tout faire à la main : [**Héberger BipAgents chez soi**](docs/self-hosting.fr.md). Sans machine à la maison : [**BipAgents sur un serveur loué**](docs/vps.fr.md).
 
-**Toute la famille sur un serveur** : une installation par personne, chacune dans son compte, préparée par l'administrateur avec `install.sh family add <prénom>` — [qui lance quoi, depuis quel compte](installer/README.fr.md#plusieurs-personnes-sur-une-machine).
+**Une commande pour installer**, dans ton propre compte, sans sudo :
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
+```
+
+Elle trouve ou installe Hermes (ou garde le tien tel quel), cherche un modèle sur ton réseau ou prend une clé d'API, met
+en place le bridge, les voix des Bips, le navigateur et le bac à sable de chaque agent (podman), publie tout sur ton
+tailnet et finit par un QR code à scanner dans l'app. **Une commande pour mettre à jour** : `bipagents update` relance
+seulement ce qui a changé, applique les nouveaux réglages, propose de mettre à jour les autres installations de la
+famille avec un seul sudo, et peut le faire chaque nuit ([détails](installer/README.fr.md#mettre-bipagents-à-jour)).
+
+**Toute la famille sur un serveur** : une installation par personne, chacune dans son compte, préparée par l'administrateur avec `bipagents family add <prénom>` — [qui lance quoi, depuis quel compte](installer/README.fr.md#plusieurs-personnes-sur-une-machine).
 
 > 🎙️ **Bonus** : avec un GPU, ton propre modèle de voix (Fish Audio Drama 3, Kokoro, Kyutai…) peut parler à la place des Bips pour le Live, les réponses vocales ou la lecture des messages. Facultatif, cf. la fin du guide.
+
+## 🧱 Ce que BipAgents ajoute à Hermes
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) fait le travail de fond : modèles, outils, mémoire,
+skills, routines. BipAgents en fait quelque chose qu'on emporte avec soi et qu'on partage à la maison :
+
+| | Hermes seul | Avec BipAgents |
+|---|---|---|
+| Lui parler | terminal, messageries, interface web | une app iPhone pensée pour la voix : notes vocales, Live mains libres, écoute de chaque réponse |
+| Voix | aucune | une voix par agent sur CPU (4 langues), ou ton propre modèle sur GPU |
+| Hors de l'app | | notifications avec la réponse, accords et questions depuis l'écran verrouillé |
+| Installation | l'installateur de Hermes, puis la config à la main | une commande : Hermes, bridge, voix, navigateurs, bacs à sable, Tailscale, QR code |
+| Mise à jour | `hermes update` | `bipagents update` : ce qui a changé, les installations de la famille avec un seul sudo, chaque nuit |
+| Navigation | un outil navigateur | le Chrome de chaque agent, regardé et pris en main depuis le téléphone, avec un coffre |
+| Plusieurs agents | des profils | une mascotte, une voix et des réglages par agent ; un espace à lui pour l'agent qui détient des secrets |
+| Plusieurs personnes | | une installation isolée par personne sur le même serveur ; des foyers reliés volontairement |
+| Injection de consignes | des accords | accords toujours demandés, agents prévenus que ce qu'ils lisent est une donnée, échanges entre agents limités à une discussion, agent en pause quand tu as son navigateur en main |
+
+## 🩹 Les patches de Hermes encore nécessaires
+
+Quelques changements dont BipAgents a besoin ne sont pas encore dans Hermes. L'installateur les applique (et
+`bipagents hermes-update` les vérifie avant de mettre Hermes à jour) ; chacun est proposé au projet. Détails dans
+[`hermes/patches/`](hermes/patches/README.md).
+
+| Patch | Pourquoi | En amont |
+|---|---|---|
+| 0001 `clarify` dans l'API des runs | l'agent peut te poser une question à choix depuis l'app | proposé dans #116259 |
+| 0004 images gardées dans la conversation | une question de suivi sur une photo voit encore la photo | #136217 |
+| 0005 remplissage du coffre après redémarrage du navigateur | les connexions marchent encore quand le navigateur de l'agent a été fermé puis rouvert | #136660 |
+| 0006 la réponse d'un autre agent revient dans l'app | quand un agent en consulte un autre, sa réponse arrive dans ta conversation | local |
 
 <details>
 <summary><b>🗂️ Le dépôt</b></summary>
@@ -119,6 +178,7 @@ flowchart LR
 - `bridge/` — le service Python côté serveur ([README](bridge/README.fr.md)).
 - `pocket/` — le serveur Pocket TTS des voix des Bips ([README](pocket/README.fr.md)).
 - `voices/` — les voix des Bips ([README](voices/README.fr.md)).
+- `installer/` — l'installateur et `bipagents update` ([README](installer/README.fr.md)) ; `browser/` — le navigateur visible des agents ([README](browser/README.md)) ; `hermes/patches/` — les patches de Hermes ([README](hermes/patches/README.md)) ; `tts/drama3/` — une recette pour Fish Audio Drama 3 comme modèle de voix.
 - `docs/` — notes d'API ([`clarify`](docs/hermes-clarify-api.fr.md), [fichiers](docs/file-uploads.fr.md)), captures, [terrain de jeu](docs/play/index.html) et bannière (`node docs/tools/banner.mjs` la régénère).
 - [`SPEC.fr.md`](SPEC.fr.md) — la spécification complète.
 
