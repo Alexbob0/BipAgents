@@ -12,6 +12,7 @@ class BipApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        io.github.bipagents.ui.Appearance.load(this)
         store = AgentStore(this)
         inbox = io.github.bipagents.model.Inbox(this)
         Push.start(this)

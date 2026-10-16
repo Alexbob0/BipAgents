@@ -142,7 +142,23 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             InboxScreen(store, onOpen = { agent, session -> nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: "")) },
                                 onLive = { agent -> nav.navigate("live/$agent") })
                         }
-                        composable("settings") { SettingsScreen(store, onAdd = { nav.navigate("add") }) }
+                        composable("settings") {
+                            SettingsScreen(store, onAdd = { nav.navigate("add") }, onAgent = { nav.navigate("options/$it") },
+                                onPage = { nav.navigate("settings/$it") })
+                        }
+                        composable("settings/{page}") { entry ->
+                            val back = { nav.popBackStack(); Unit }
+                            when (entry.arguments?.getString("page")) {
+                                "links" -> io.github.bipagents.ui.AgentLinksScreen(store, back)
+                                "shares" -> io.github.bipagents.ui.AgentSharesScreen(store, back)
+                                "family" -> io.github.bipagents.ui.FamilyScreen(store, back)
+                                "vault" -> io.github.bipagents.ui.VaultScreen(store, back)
+                                "browsers" -> io.github.bipagents.ui.ConsolesScreen(store, back)
+                                "cron" -> io.github.bipagents.ui.CronJobsScreen(store, back)
+                                "voicemodel" -> io.github.bipagents.ui.VoiceModelScreen(store, back)
+                                "diagnostics" -> io.github.bipagents.ui.DiagnosticsScreen(store, back)
+                            }
+                        }
                         composable("add") { AddAgentScreen(store, onDone = { nav.popBackStack() }) }
                         composable("chat/{agent}?session={session}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable

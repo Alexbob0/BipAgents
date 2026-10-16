@@ -33,6 +33,17 @@ data class VoiceServer(val voices: List<String>, val uses: Map<String, Boolean>)
         if (p.length < 3 || p[2] !in "-_" || p.take(2) !in setOf("fr", "en", "es", "de")) true else p.startsWith(language)
     }
 }
+data class LinkAgent(val id: String, val name: String, val managed: Boolean, val household: String?)
+data class AgentLink(val from: String, val to: String)
+data class ShareAgent(val id: String, val name: String, val whyNot: String?, val external: Boolean)
+data class ShareRead(val reader: String, val source: String)
+data class Family(val name: String, val url: String?, val households: List<Pair<String, String>>)
+data class CronJob(val agent: String, val job: String, val name: String?, val notify: Boolean, val lastSeen: Long?)
+data class ConsoleDevice(val id: String, val name: String, val seen: Long?)
+data class VaultItem(val id: String, val label: String, val origin: String, val identifier: String, val hasOtp: Boolean, val agents: List<String>)
+data class VaultAgent(val id: String, val name: String, val canHold: Boolean, val why: String?)
+data class Vault(val items: List<VaultItem>, val agents: List<VaultAgent>, val protected: Boolean)
+
 /** Refused: an agent can't hold this (`needs_own_space`, `needs_sandbox`, …). */
 class CannotHold(val reasons: Map<String, String>) : Exception("cannot hold")
 
@@ -208,6 +219,107 @@ class Bridge(val api: Api) {
             put("text", kotlinx.serialization.json.JsonPrimitive(text)); put("agent", kotlinx.serialization.json.JsonPrimitive(agent))
             put("voice", kotlinx.serialization.json.JsonPrimitive(voice)); put("format", kotlinx.serialization.json.JsonPrimitive("wav"))
         }))
+
+    // -- between agents ---------------------------------------------------------------------------------------------
+
+    /** Who may write to whom; null on an older bridge. */
+    suspend fun agentLinks(): Pair<List<LinkAgent>, Set<AgentLink>>? = orNull404 {
+        val o = api.call("v1/agent-links").obj()
+        o?.get("agents").list().mapNotNull { r -> r.str("id")?.let { LinkAgent(it, r.str("name") ?: it, r.bool("managed") ?: false, r.str("household")) } } to links(o)
+    }
+
+    /** Every allowed link; returns the agents set up by hand that still need their token. */
+    suspend fun setAgentLinks(links: Set<AgentLink>): List<String> =
+        api.call("v1/agent-links", "PUT", obj("links" to kotlinx.serialization.json.JsonArray(links.map { obj("from" to p(it.from), "to" to p(it.to)) })))
+            .obj()?.get("needs_setup").arr()?.mapNotNull { it.text() } ?: emptyList()
+
+    private fun links(o: kotlinx.serialization.json.JsonObject?) =
+        o?.get("links").list().mapNotNull { r -> r.str("from")?.let { f -> r.str("to")?.let { AgentLink(f, it) } } }.toSet()
+
+    /** Whose shared folder each agent may read; null on an older bridge. */
+    suspend fun agentShares(): Pair<List<ShareAgent>, Set<ShareRead>>? = orNull404 {
+        val o = api.call("v1/agent-shares").obj()
+        o?.get("agents").list().mapNotNull { r -> r.str("id")?.let { ShareAgent(it, r.str("name") ?: it, r.str("why_not"), r.bool("external") ?: false) } } to reads(o)
+    }
+
+    suspend fun setAgentShares(reads: Set<ShareRead>): Set<ShareRead> =
+        reads(api.call("v1/agent-shares", "PUT", obj("reads" to kotlinx.serialization.json.JsonArray(reads.map { obj("reader" to p(it.reader), "source" to p(it.source)) }))).obj())
+
+    private fun reads(o: kotlinx.serialization.json.JsonObject?) =
+        o?.get("reads").list().mapNotNull { r -> r.str("reader")?.let { a -> r.str("source")?.let { ShareRead(a, it) } } }.toSet()
+
+    /** This install as a household, and those linked to it; null on an older bridge. */
+    suspend fun family(): Family? = orNull404 {
+        val o = api.call("v1/family").obj()
+        Family(o.str("name") ?: "", o.str("url"), o?.get("households").list().mapNotNull { r -> r.str("id")?.let { it to (r.str("name") ?: it) } })
+    }
+
+    suspend fun setFamilyName(name: String) { api.call("v1/family/name", "PUT", obj("name" to p(name))) }
+
+    /** The text of the QR code another household scans (valid ten minutes, once). */
+    suspend fun familyInvitation(): String = api.bytes("v1/family/invite", "POST", Http.body(obj())).decodeToString()
+
+    /** Another household's invitation, scanned here; its name. */
+    suspend fun joinFamily(url: String, code: String): String? =
+        api.call("v1/family/join", "POST", obj("url" to p(url), "code" to p(code))).obj().str("name")
+
+    suspend fun unlinkHousehold(id: String) { api.call("v1/family/${Hermes.seg(id)}", "DELETE") }
+
+    // -- scheduled tasks, browsers, vault -----------------------------------------------------------------------------
+
+    suspend fun cronJobs(agent: String): List<CronJob> = api.call("v1/cron-jobs", query = mapOf("agent" to agent)).list("jobs").mapNotNull { r ->
+        val a = r.str("agent") ?: return@mapNotNull null
+        val j = r.str("job") ?: return@mapNotNull null
+        CronJob(a, j, r.str("name"), r.bool("notify") ?: true, r.time("last_seen"))
+    }
+
+    /** False when no console of this bridge waits with that code. */
+    suspend fun approveConsole(code: String, name: String): Boolean = try {
+        api.call("v1/console/pairings/${Hermes.seg(code)}", "POST", obj("name" to p(name))); true
+    } catch (e: HttpError) {
+        if (e.status == 404) false else throw e
+    }
+
+    /** The browsers logged in to the console; null on a bridge without it. */
+    suspend fun consoleDevices(): List<ConsoleDevice>? = orNull404 {
+        api.call("v1/console/devices").list("devices").mapNotNull { r -> r.str("id")?.let { ConsoleDevice(it, r.str("name") ?: it, r.time("seen")) } }
+    }
+
+    suspend fun revokeConsole(id: String) { api.call("v1/console/devices/${Hermes.seg(id)}", "DELETE") }
+
+    /** The agents' vault; null when this bridge has none. Passwords never come back. */
+    suspend fun vault(): Vault? = orNull404 {
+        val o = api.call("v1/vault").obj()
+        Vault(o?.get("items").list().mapNotNull(::vaultItem),
+            o?.get("agents").list().mapNotNull { r -> r.str("id")?.let { VaultAgent(it, r.str("name") ?: it, r.bool("can_hold") ?: false, r.str("why")) } },
+            o.bool("protected") ?: true)
+    }
+
+    private fun vaultItem(r: kotlinx.serialization.json.JsonObject): VaultItem? = r.str("id")?.let {
+        VaultItem(it, r.str("label") ?: "", r.str("origin") ?: "", r.str("identifier") ?: "", r.bool("has_otp") ?: false,
+            r["agents"].arr()?.mapNotNull { a -> a.text() } ?: emptyList())
+    }
+
+    /** New (`id` null) or changed; the password only when given (write-only). */
+    suspend fun saveVaultItem(id: String?, label: String, site: String, identifier: String, password: String?, otp: String?, agents: List<String>) {
+        val type = when { "@" in identifier -> "email"; identifier.all { it.isDigit() || it in "+ " } -> "phone"; else -> "username" }
+        val body = obj("kind" to p("login"), "label" to p(label), "site" to p(site), "identifier" to p(identifier), "identifier_type" to p(type),
+            "agents" to kotlinx.serialization.json.JsonArray(agents.map(::p)))
+            .let { b -> kotlinx.serialization.json.JsonObject(b + listOfNotNull(password?.takeIf { it.isNotEmpty() }?.let { "password" to p(it) },
+                otp?.let { "otp_secret" to p(it) })) }
+        try {
+            api.call(if (id == null) "v1/vault" else "v1/vault/${Hermes.seg(id)}", if (id == null) "POST" else "PATCH", body)
+        } catch (e: HttpError) {
+            if (e.status == 409) cannotHold(e)?.let { throw it }
+            throw e
+        }
+    }
+
+    suspend fun deleteVaultItem(id: String) { api.call("v1/vault/${Hermes.seg(id)}", "DELETE") }
+
+    private suspend fun <T> orNull404(block: suspend () -> T): T? = try { block() } catch (e: HttpError) { if (e.status == 404) null else throw e }
+    private fun p(value: String) = kotlinx.serialization.json.JsonPrimitive(value)
+    private fun obj(vararg pairs: Pair<String, kotlinx.serialization.json.JsonElement>) = kotlinx.serialization.json.JsonObject(pairs.toMap())
 
     suspend fun media(path: String): ByteArray = api.bytes("v1/media", query = mapOf("path" to path))
 

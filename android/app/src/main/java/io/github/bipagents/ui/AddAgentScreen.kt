@@ -110,7 +110,7 @@ fun AddAgentScreen(store: AgentStore, onDone: () -> Unit) {
 /** The camera, reading QR codes with ML Kit (on the device). */
 @androidx.annotation.OptIn(markerClass = [androidx.camera.core.ExperimentalGetImage::class])
 @Composable
-private fun Scanner(onCode: (String) -> Unit) {
+fun Scanner(onCode: (String) -> Unit) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
