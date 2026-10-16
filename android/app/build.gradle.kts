@@ -16,9 +16,10 @@ android {
         applicationId = "io.github.bipagents"
         minSdk = 29
         targetSdk = 36
-        // Each build a higher number (the stores refuse the same twice): its date and hour, yyMMddHH.
+        // Each build a higher number (the stores refuse the same twice): yy + day of the year + hour and minute
+        // (scripts/play-upload.py passes it, as Gradle's configuration cache would keep an older one).
         versionCode = providers.gradleProperty("versionCode").orNull?.toInt()
-            ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyMMddHH")).toInt()
+            ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyDDDHHmm")).toInt()
         versionName = "0.1"
         // Notifications: the publisher's Firebase project (local.properties or ~/.gradle/gradle.properties:
         // firebase.appId, firebase.apiKey, firebase.projectId, firebase.senderId). Without them, no notifications.

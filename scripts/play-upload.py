@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Builds the Android app and uploads it to a Google Play testing track (internal testing by default).
 
-The Android counterpart of testflight.sh. The version code is the date and hour (yyMMddHH), so every upload is a new
-build of the same version (versionName).
+The Android counterpart of testflight.sh. Every upload is a new build of the same version (versionName). The version code is yy + day of the year + hour and minute (yyDDDHHmm), given
+to Gradle at each build (its configuration cache would otherwise keep an older one).
 
     scripts/play-upload.py                  build the signed bundle and upload it to internal testing
     scripts/play-upload.py --track alpha    another testing track (production stays manual, in the Play Console)
@@ -47,6 +47,15 @@ def access_token(key_path: Path) -> str:
     return resp.json()["access_token"]
 
 
+def retried(send, attempts: int = 4):
+    """Google Play answers 500/503 now and then: the same request again, a little later."""
+    for attempt in range(attempts):
+        resp = send()
+        if resp.status_code < 500 or attempt == attempts - 1:
+            return resp
+        time.sleep(5 * (attempt + 1))
+
+
 def check(resp: httpx.Response) -> dict:
     if resp.status_code >= 400:
         sys.exit(f"Google Play refused ({resp.status_code}): {resp.text[:500]}")
@@ -66,22 +75,23 @@ def main() -> int:
 
     if not args.no_build:
         env = dict(os.environ, JAVA_HOME=os.environ.get("JAVA_HOME", JBR))
-        subprocess.run(["./gradlew", ":app:bundleRelease", "-q"], cwd=ANDROID, env=env, check=True)
+        code = time.strftime("%y%j%H%M")
+        subprocess.run(["./gradlew", ":app:bundleRelease", "-q", f"-PversionCode={int(code)}"], cwd=ANDROID, env=env, check=True)
     if not BUNDLE.exists():
         sys.exit(f"No bundle at {BUNDLE}.")
 
     headers = {"Authorization": f"Bearer {access_token(args.key)}"}
     with httpx.Client(headers=headers, timeout=httpx.Timeout(60, write=600)) as http:
-        edit = check(http.post(f"{API}/edits"))["id"]
+        edit = check(retried(lambda: http.post(f"{API}/edits")))["id"]
         print(f"Uploading {BUNDLE.name} ({BUNDLE.stat().st_size // 1_000_000} MB)…")
-        bundle = check(http.post(f"{UPLOAD}/edits/{edit}/bundles", params={"uploadType": "media"},
-                                 content=BUNDLE.read_bytes(), headers={"Content-Type": "application/octet-stream"}))
+        bundle = check(retried(lambda: http.post(f"{UPLOAD}/edits/{edit}/bundles", params={"uploadType": "media"},
+                                                 content=BUNDLE.read_bytes(), headers={"Content-Type": "application/octet-stream"})))
         code = bundle["versionCode"]
         release = {"versionCodes": [str(code)], "status": "completed"}
         if args.notes:
             release["releaseNotes"] = [{"language": args.lang, "text": args.notes[:500]}]
-        check(http.put(f"{API}/edits/{edit}/tracks/{args.track}", json={"track": args.track, "releases": [release]}))
-        check(http.post(f"{API}/edits/{edit}:commit"))
+        check(retried(lambda: http.put(f"{API}/edits/{edit}/tracks/{args.track}", json={"track": args.track, "releases": [release]})))
+        check(retried(lambda: http.post(f"{API}/edits/{edit}:commit")))
     print(f"Version {code} is on the « {args.track} » track: testers get it from the Play Store in a few minutes.")
     return 0
 
