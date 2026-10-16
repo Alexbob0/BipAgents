@@ -89,7 +89,8 @@ def family_members(config: Path) -> List[str]:
 
 
 def as_account(account: str, command: str) -> str:
-    return (f"sudo -u {account} bash -c 'cd /home/{account} && export XDG_RUNTIME_DIR=/run/user/$(id -u) "
+    return (f"sudo -u {account} bash -c 'cd /home/{account} && export HOME=/home/{account} "
+            f"PATH=/home/{account}/.local/bin:$PATH XDG_RUNTIME_DIR=/run/user/$(id -u) "
             f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus && {command}'")
 
 
