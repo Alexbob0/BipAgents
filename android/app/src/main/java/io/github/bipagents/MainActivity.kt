@@ -50,7 +50,7 @@ import io.github.bipagents.ui.ChatScreen
 import io.github.bipagents.ui.HomeScreen
 import io.github.bipagents.ui.InboxScreen
 import io.github.bipagents.ui.LiveScreen
-import io.github.bipagents.ui.SessionsScreen
+import io.github.bipagents.ui.AgentScreen
 import io.github.bipagents.ui.SettingsScreen
 import io.github.bipagents.ui.tap
 
@@ -120,8 +120,14 @@ class MainActivity : ComponentActivity() {
                             else slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(320))
                         }) {
                         composable("home") {
-                            HomeScreen(store, onAdd = { nav.navigate("add") }, onOpen = { agent -> nav.navigate("chat/$agent") },
-                                onLive = { agent -> nav.navigate("live/$agent") })
+                            HomeScreen(store, onAdd = { nav.navigate("add") }, onAgent = { agent -> nav.navigate("agent/$agent") },
+                                onChat = { agent, session -> nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: "")) },
+                                onLive = { agent -> nav.navigate("live/$agent") },
+                                onVoice = { agent, note ->
+                                    // A voice note from home goes to the agent's latest conversation, sent from there.
+                                    io.github.bipagents.ui.PendingVoice.put(agent, note)
+                                    nav.navigate("chat/$agent" + (store.latest.value[agent]?.id?.let { "?session=$it" } ?: ""))
+                                })
                         }
                         composable("inbox") { InboxScreen(store, onOpen = { agent, session -> nav.navigate("chat/$agent?session=$session") }) }
                         composable("settings") { SettingsScreen(store, onAdd = { nav.navigate("add") }) }
@@ -129,21 +135,22 @@ class MainActivity : ComponentActivity() {
                         composable("chat/{agent}?session={session}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable
                             ChatScreen(store, agent, entry.arguments?.getString("session"), onBack = { nav.popBackStack() },
-                                onSessions = { nav.navigate("sessions/$agent") },
+                                onAgent = { nav.navigate("agent/$agent") },
                                 onLive = { session -> nav.navigate("live/$agent" + (session?.let { "?session=$it" } ?: "")) })
                         }
                         composable("live/{agent}?session={session}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable
                             LiveScreen(store, agent, entry.arguments?.getString("session"), onEnd = { nav.popBackStack() })
                         }
-                        composable("sessions/{agent}") { entry ->
+                        composable("agent/{agent}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable
-                            SessionsScreen(store, agent, onBack = { nav.popBackStack() }, onOpen = { session ->
-                                nav.navigate("chat/$agent?session=${session ?: ""}") { popUpTo("home") }
-                            })
+                            AgentScreen(store, agent, onBack = { nav.popBackStack() },
+                                onOpen = { session -> nav.navigate("chat/$agent?session=${session ?: ""}") },
+                                onLive = { nav.navigate("live/$agent") })
                         }
                     }
-                    if (route in tabs.map { it.route }) TabBar(nav, route, Modifier.align(Alignment.BottomCenter))
+                    // As on the iPhone: on the tabs and on an agent's page, not in a conversation or the Live.
+                    if (route in tabs.map { it.route } || route == "agent/{agent}") TabBar(nav, route, Modifier.align(Alignment.BottomCenter))
                 }
             }
         }
@@ -171,9 +178,9 @@ private fun TabBar(nav: NavHostController, current: String?, modifier: Modifier)
                 val on = tab.route == current
                 Column(Modifier.background(if (on) Bip.line else Bip.card, RoundedCornerShape(30.dp))
                     .tap { if (!on) nav.navigate(tab.route) { popUpTo("home"); launchSingleTop = true } }
-                    .padding(horizontal = 22.dp, vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(tab.icon, null, Modifier.size(24.dp), tint = Bip.ink)
-                    Text(stringResource(tab.label), style = Bip.text(12, if (on) FontWeight.ExtraBold else FontWeight.SemiBold))
+                    .padding(horizontal = 30.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(tab.icon, null, Modifier.size(28.dp), tint = Bip.ink)
+                    Text(stringResource(tab.label), style = Bip.text(13, if (on) FontWeight.ExtraBold else FontWeight.SemiBold))
                 }
             }
         }

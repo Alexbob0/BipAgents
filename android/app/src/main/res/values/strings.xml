@@ -86,5 +86,58 @@
     <string name="hang_up">Hang up</string>
     <string name="live_needs_approval">I need your OK: look at the screen.</string>
     <string name="live_failed">Sorry, that didn\'t work.</string>
+    <string name="audio">Audio</string>
+    <string name="release_to_send">Release</string>
+    <string name="last_conversation">Latest conversation</string>
+    <string name="new_short">New</string>
+    <string name="agent_settings">Agent settings</string>
+    <string name="approval_subtitle">%s wants to run this command</string>
+    <string name="question_for_you">%s has a question for you</string>
+    <string name="other_answer">Other answer…</string>
+    <string name="need_your_ok">I need your OK</string>
+    <string name="once">Once</string>
+    <string name="this_session">This session</string>
     <string name="cancel">Cancel</string>
+    <string-array name="bip_hop">
+        <item>Bip!</item>
+        <item>Hi there!</item>
+        <item>Yes?</item>
+        <item>Hup!</item>
+    </string-array>
+    <string-array name="bip_wink">
+        <item>Hehe</item>
+        <item>Nice one</item>
+        <item>Still here!</item>
+    </string-array>
+    <string-array name="bip_spin">
+        <item>Wheee!</item>
+    </string-array>
+    <string-array name="bip_surprised">
+        <item>Oh!</item>
+        <item>Huh?!</item>
+        <item>What?</item>
+    </string-array>
+    <string-array name="bip_thanks">
+        <item>Thanks ♡</item>
+    </string-array>
+    <string-array name="bip_giggle">
+        <item>Teehee!</item>
+        <item>That tickles!</item>
+        <item>Stop it, hehe!</item>
+        <item>Hahaha!</item>
+    </string-array>
+    <string-array name="bip_pet">
+        <item>Mmm…</item>
+        <item>More…</item>
+        <item>Purr…</item>
+    </string-array>
+    <string-array name="bip_dizzy">
+        <item>Everything’s spinning…</item>
+    </string-array>
+    <string-array name="bip_grumpy">
+        <item>Hey! Easy now…</item>
+    </string-array>
+    <string-array name="bip_boing">
+        <item>Boing!</item>
+    </string-array>
 </resources>

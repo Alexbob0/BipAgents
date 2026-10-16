@@ -76,15 +76,23 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.bipagents.R
 import io.github.bipagents.model.AgentStore
+import io.github.bipagents.model.Look
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import io.github.bipagents.net.RunEvent
 
 @Composable
-fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () -> Unit, onSessions: () -> Unit, onLive: (String?) -> Unit) {
+fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () -> Unit, onAgent: () -> Unit, onLive: (String?) -> Unit) {
     val model: ChatModel = viewModel(key = "chat-$agentId-${session ?: "main"}")
-    LaunchedEffect(Unit) { model.start(agentId, session) }
+    LaunchedEffect(Unit) {
+        model.start(agentId, session)
+        PendingVoice.take(agentId)?.let(model::sendVoice)
+    }
     val state by model.state.collectAsState()
     val agent = state.agent ?: store.agent(agentId) ?: return
     var draft by rememberSaveable(agentId) { mutableStateOf("") }
@@ -105,11 +113,18 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
 
     androidx.compose.runtime.CompositionLocalProvider(LocalBridge provides store.bridge(agent)) {
     Column(Modifier.fillMaxSize().imePadding()) {
-        TopBar(agent.name, onBack, leading = { Mascot(agent.look, Modifier.size(40.dp), state.mood) },
-            actions = {
-                RoundButton(Icons.Rounded.GraphicEq, stringResource(R.string.live), { onLive(state.session) }, size = 44.dp, background = agent.look.main, tint = Bip.card)
-                RoundButton(Icons.AutoMirrored.Rounded.List, stringResource(R.string.conversations), onSessions, size = 44.dp)
-            })
+        // The iPhone's: back on the left, the Bip and its name in the middle (its page), Live on the right.
+        Box(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
+            RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack, size = 48.dp)
+            Row(Modifier.align(Alignment.Center).tap(onAgent), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Mascot(agent.look, Modifier.size(36.dp), state.mood)
+                Text(agent.name, style = Bip.text(17, FontWeight.ExtraBold), maxLines = 1)
+            }
+            Box(Modifier.align(Alignment.CenterEnd)) {
+                RoundButton(Icons.Rounded.GraphicEq, stringResource(R.string.live), { onLive(state.session) }, size = 48.dp, tint = agent.look.deep)
+            }
+        }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (state.items?.isEmpty() == true && state.live == null) item {
@@ -131,8 +146,8 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                 live.sent?.let { item(key = "live-sent") { UserBubble(it, false, "") } }
                 item(key = "live") { Reply(agent.look, live.text, live.tools, "", typing = live.text.isEmpty()) }
             }
-            state.approval?.let { item(key = "approval") { ApprovalCard(it, model::approve) } }
-            state.clarify?.let { item(key = "clarify") { ClarifyCard(it, model::answer) } }
+            state.approval?.let { item(key = "approval") { ApprovalCard(agent.look, agent.name, it, model::approve) } }
+            state.clarify?.let { item(key = "clarify") { ClarifyCard(agent.look, agent.name, it, model::answer) } }
         }
         state.error?.let { error ->
             Text(describe(error), style = Bip.text(14, FontWeight.Bold, Bip.danger),
@@ -159,7 +174,7 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
 @Composable
 private fun UserBubble(text: String, image: Boolean, time: String) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-        Text((if (image) "🖼️ " else "") + text, style = Bip.text(16, FontWeight.SemiBold, Bip.card),
+        Text((if (image) "🖼️ " else "") + text, style = Bip.text(17, FontWeight.SemiBold, Bip.card, lineHeight = 23.sp),
             modifier = Modifier.widthIn(max = 310.dp).background(Bip.ink, RoundedCornerShape(22.dp, 22.dp, 6.dp, 22.dp))
                 .padding(horizontal = 16.dp, vertical = 10.dp))
         if (time.isNotEmpty()) Text(time, style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(top = 3.dp, end = 4.dp))
@@ -174,7 +189,7 @@ private fun Reply(look: io.github.bipagents.model.Look, text: String, tools: Lis
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Mascot(look, Modifier.size(28.dp), animated = false)
             if (typing) Text("•••", style = Bip.text(20, FontWeight.Black, Bip.muted))
-            else MarkdownText(text, Modifier.weight(1f))
+            else MarkdownText(text, Modifier.weight(1f), link = look.deep)
         }
         ChatText.media(text).forEach { path -> MediaChip(path) }
         if (listen != null && ChatText.visible(text).isNotEmpty()) ListenPill(look, listenKey ?: "", listen)
@@ -284,52 +299,90 @@ private fun ToolsLine(tools: List<String>) {
     }
 }
 
+/** « I need your OK » (the iPhone's approval card): the Bip, what it wants to run, Once / This session / Deny. */
 @Composable
-private fun ApprovalCard(request: RunEvent.Approval, onChoose: (String) -> Unit) {
+private fun ApprovalCard(look: Look, name: String, request: RunEvent.Approval, onChoose: (String) -> Unit) {
     // « Always » is never offered from the app: risky commands keep asking.
     val choices = request.choices.filter { it != "always" }
-    Card(border = Bip.accent) {
-        Text(stringResource(R.string.approval_title), style = Bip.text(17, FontWeight.ExtraBold))
-        request.description?.let { Text(it, style = Bip.text(15, color = Bip.ink2)) }
+    Card(border = look.main) {
+        CardHeader(look, stringResource(R.string.need_your_ok), stringResource(R.string.approval_subtitle, name))
+        request.description?.takeIf { request.command == null }?.let { Text(it, style = Bip.text(15, FontWeight.Medium, Bip.ink2)) }
         request.command?.let {
             Text(it, style = Bip.text(14).copy(fontFamily = FontFamily.Monospace),
-                modifier = Modifier.fillMaxWidth().background(Bip.ground, RoundedCornerShape(10.dp)).padding(10.dp))
+                modifier = Modifier.fillMaxWidth().background(Bip.ground, RoundedCornerShape(14.dp)).padding(12.dp))
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (choice in choices) Pill(stringResource(when (choice) {
-                "once" -> R.string.allow_once; "session" -> R.string.allow_session; "deny" -> R.string.deny; else -> R.string.allow_once
-            }), dark = choice != "deny") { onChoose(choice) }
+        val first = choices.filter { it != "deny" }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            first.forEachIndexed { i, choice ->
+                ChoiceButton(stringResource(if (choice == "session") R.string.this_session else R.string.once),
+                    if (i == 0) Bip.ink else Bip.ground, if (i == 0) Bip.card else Bip.ink, Modifier.weight(1f)) { onChoose(choice) }
+            }
+        }
+        if ("deny" in choices) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChoiceButton(stringResource(R.string.deny), Color(0xFFFDE7E7), Color(0xFFC62828), Modifier.weight(1f)) { onChoose("deny") }
+            if (first.size > 1) Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+/** « Wellness has a question for you »: a tinted button per choice, then « Other answer… » and « Skip ». */
+@Composable
+private fun ClarifyCard(look: Look, name: String, request: RunEvent.Clarify, onAnswer: (Map<String, String>?) -> Unit) {
+    val answers = remember(request) { mutableStateMapOf<String, String>() }
+    var other by remember(request) { mutableStateOf(false) }
+    Card(border = look.main) {
+        CardHeader(look, stringResource(R.string.question_for_you, name), null)
+        for (q in request.questions) {
+            Text(q.text, style = Bip.text(17, FontWeight.ExtraBold))
+            for (choice in q.choices) {
+                val picked = answers[q.id] == choice
+                ChoiceButton(choice, if (picked) look.main else look.tint, if (picked) Bip.card else look.deep, Modifier.fillMaxWidth(),
+                    alignStart = true) {
+                    answers[q.id] = choice
+                    if (request.questions.size == 1) onAnswer(answers.toMap())
+                }
+            }
+            if (q.allowOther) {
+                if (other) TextField(if (answers[q.id] in q.choices) "" else answers[q.id] ?: "", { answers[q.id] = it },
+                    Modifier.fillMaxWidth(), placeholder = { Text(stringResource(R.string.your_answer)) }, textStyle = Bip.text(15),
+                    colors = TextFieldDefaults.colors(focusedContainerColor = Bip.ground, unfocusedContainerColor = Bip.ground,
+                        focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), shape = RoundedCornerShape(12.dp))
+                else Text(stringResource(R.string.other_answer), style = Bip.text(15, FontWeight.ExtraBold, look.deep), modifier = Modifier.tap { other = true })
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (other || request.questions.size > 1) ChoiceButton(stringResource(R.string.answer), Bip.ink, Bip.card, Modifier) { onAnswer(answers.toMap()) }
+            Text(stringResource(R.string.skip), style = Bip.text(14, FontWeight.ExtraBold, Bip.muted), modifier = Modifier.tap { onAnswer(null) })
         }
     }
 }
 
 @Composable
-private fun ClarifyCard(request: RunEvent.Clarify, onAnswer: (Map<String, String>?) -> Unit) {
-    val answers = remember(request) { mutableStateMapOf<String, String>() }
-    Card(border = Bip.accent) {
-        Text(stringResource(R.string.question), style = Bip.text(17, FontWeight.ExtraBold))
-        for (q in request.questions) {
-            Text(q.text, style = Bip.text(16, FontWeight.SemiBold))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (choice in q.choices) Pill(choice, dark = answers[q.id] == choice) { answers[q.id] = choice }
-            }
-            if (q.allowOther) TextField(if (answers[q.id] in q.choices) "" else answers[q.id] ?: "", { answers[q.id] = it },
-                Modifier.fillMaxWidth(), placeholder = { Text(stringResource(R.string.your_answer)) }, textStyle = Bip.text(15),
-                colors = TextFieldDefaults.colors(focusedContainerColor = Bip.ground, unfocusedContainerColor = Bip.ground,
-                    focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), shape = RoundedCornerShape(12.dp))
+private fun CardHeader(look: Look, title: String, subtitle: String?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(52.dp).background(look.tint, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
+            Mascot(look, Modifier.size(44.dp), Mood.ASKING)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(stringResource(R.string.answer), dark = true) { onAnswer(answers.toMap()) }
-            Pill(stringResource(R.string.skip), dark = false) { onAnswer(null) }
+        Column {
+            Text(title, style = Bip.text(17, FontWeight.ExtraBold))
+            subtitle?.let { Text(it, style = Bip.text(13, FontWeight.Medium, Bip.ink2)) }
         }
+    }
+}
+
+@Composable
+private fun ChoiceButton(label: String, background: Color, color: Color, modifier: Modifier, alignStart: Boolean = false, onClick: () -> Unit) {
+    Box(modifier.background(background, RoundedCornerShape(16.dp)).tap(onClick).padding(horizontal = 18.dp, vertical = 13.dp),
+        contentAlignment = if (alignStart) Alignment.CenterStart else Alignment.Center) {
+        Text(label, style = Bip.text(16, FontWeight.ExtraBold, color))
     }
 }
 
 @Composable
 private fun Card(border: Color? = null, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(20.dp))
-        .then(if (border != null) Modifier.border(2.dp, border, RoundedCornerShape(20.dp)) else Modifier).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+    Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(26.dp))
+        .then(if (border != null) Modifier.border(2.dp, border, RoundedCornerShape(26.dp)) else Modifier).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
 }
 
 @Composable
@@ -407,7 +460,7 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: Stri
         else {
             // Push-to-talk (WhatsApp, the iPhone app): hold to speak, release to send, slide left to cancel, up to lock.
             val density = androidx.compose.ui.platform.LocalDensity.current
-            Box(Modifier.size(52.dp).background(if (recording != null) Bip.danger else look.main, CircleShape)
+            Box(Modifier.size(52.dp).background(if (recording != null) Bip.danger else look.deep, CircleShape)
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
@@ -430,4 +483,11 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: Stri
             }
         }
     }
+}
+
+/** A voice note recorded on the home screen, handed to the conversation that sends it. */
+object PendingVoice {
+    private val notes = HashMap<String, io.github.bipagents.voice.RecordedNote>()
+    fun put(agent: String, note: io.github.bipagents.voice.RecordedNote) { notes[agent] = note }
+    fun take(agent: String) = notes.remove(agent)
 }

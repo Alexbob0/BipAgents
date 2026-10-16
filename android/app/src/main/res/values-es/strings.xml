@@ -81,9 +81,62 @@
     <string name="hang_up">Colgar</string>
     <string name="live_needs_approval">Necesito tu permiso: mira la pantalla.</string>
     <string name="live_failed">Lo siento, no ha funcionado.</string>
+    <string name="audio">Audio</string>
+    <string name="release_to_send">Suelta</string>
+    <string name="last_conversation">Última conversación</string>
+    <string name="new_short">Nueva</string>
+    <string name="agent_settings">Ajustes del agente</string>
+    <string name="approval_subtitle">%s quiere ejecutar este comando</string>
+    <string name="question_for_you">%s tiene una pregunta para ti</string>
+    <string name="other_answer">Otra respuesta…</string>
+    <string name="need_your_ok">Necesito tu permiso</string>
+    <string name="once">Una vez</string>
+    <string name="this_session">Esta sesión</string>
     <string name="cancel">Cancelar</string>
     <plurals name="agents_added">
         <item quantity="one">%d agente añadido</item>
         <item quantity="other">%d agentes añadidos</item>
     </plurals>
+    <string-array name="bip_hop">
+        <item>¡Bip!</item>
+        <item>¡Holi!</item>
+        <item>¿Sí?</item>
+        <item>¡Hop!</item>
+    </string-array>
+    <string-array name="bip_wink">
+        <item>Je, je</item>
+        <item>¡Bien hecho!</item>
+        <item>¡Sigo aquí!</item>
+    </string-array>
+    <string-array name="bip_spin">
+        <item>¡Yupiii!</item>
+    </string-array>
+    <string-array name="bip_surprised">
+        <item>¡Oh!</item>
+        <item>¿¡Eh!?</item>
+        <item>¿Qué?</item>
+    </string-array>
+    <string-array name="bip_thanks">
+        <item>Gracias ♡</item>
+    </string-array>
+    <string-array name="bip_giggle">
+        <item>¡Jiji!</item>
+        <item>¡Me haces cosquillas!</item>
+        <item>¡Para, jiji!</item>
+        <item>¡Jajaja!</item>
+    </string-array>
+    <string-array name="bip_pet">
+        <item>Mmm…</item>
+        <item>Más…</item>
+        <item>Rrrr…</item>
+    </string-array>
+    <string-array name="bip_dizzy">
+        <item>Todo da vueltas…</item>
+    </string-array>
+    <string-array name="bip_grumpy">
+        <item>¡Eh! Despacito…</item>
+    </string-array>
+    <string-array name="bip_boing">
+        <item>¡Boing!</item>
+    </string-array>
 </resources>

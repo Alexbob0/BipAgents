@@ -28,7 +28,13 @@ import kotlin.math.max
 import kotlin.math.sin
 
 /** What a Bip looks like doing (App/Design/MascotView.swift moods). */
-enum class Mood { IDLE, THINKING, SPEAKING, ASKING, CONTENT, LISTENING, SLEEPING }
+enum class Mood { IDLE, THINKING, SPEAKING, ASKING, CONTENT, LISTENING, SLEEPING, GIGGLING, SURPRISED, DIZZY, GRUMPY, WINKING }
+
+/** How a Bip is held (InteractiveMascot): moved, squashed, turned, looking somewhere, blushing. */
+data class Pose(val dx: Float = 0f, val dy: Float = 0f, val sx: Float = 1f, val sy: Float = 1f, val rotation: Float = 0f,
+                val gazeX: Float = 0f, val gazeY: Float = 0f, val blush: Float = 0f) {
+    companion object { val Rest = Pose() }
+}
 
 private val INK = Color(0xFF16181D)
 private val GOLD = Color(0xFFFFD84D)
@@ -41,7 +47,7 @@ private fun svg(d: String): Path = paths.getOrPut(d) { PathParser().parsePathStr
 
 /** A Bip, drawn in its 120×120 design space and animated (blink, bob, thinking bubbles), as in docs/play. */
 @Composable
-fun Mascot(category: Look, modifier: Modifier = Modifier, mood: Mood = Mood.IDLE, animated: Boolean = true) {
+fun Mascot(category: Look, modifier: Modifier = Modifier, mood: Mood = Mood.IDLE, animated: Boolean = true, pose: Pose = Pose.Rest) {
     val t by produceState(0f, animated) {
         if (!animated) return@produceState
         val start = withFrameMillis { it }
@@ -50,7 +56,7 @@ fun Mascot(category: Look, modifier: Modifier = Modifier, mood: Mood = Mood.IDLE
     Canvas(modifier) {
         val s = size.minDimension / 120f
         translate((size.width - 120f * s) / 2, (size.height - 120f * s) / 2) {
-            scale(s, s, pivot = Offset.Zero) { bip(category, mood, t) }
+            scale(s, s, pivot = Offset.Zero) { bip(category, mood, t, pose) }
         }
     }
 }
@@ -61,22 +67,29 @@ private fun DrawScope.oval(cx: Float, cy: Float, rx: Float, ry: Float, color: Co
 private fun DrawScope.line(d: String, color: Color = INK, width: Float = 3f) =
     drawPath(svg(d), color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
 
-internal fun DrawScope.bip(c: Look, mood: Mood, t: Float) {
+internal fun DrawScope.bip(c: Look, mood: Mood, t: Float, pose: Pose = Pose.Rest) {
     val period = if (mood == Mood.SPEAKING || mood == Mood.LISTENING) 0.9f else 3f
     val bob = -2f - 2f * sin(t * 2 * PI.toFloat() / period)
-    oval(60f, 113f, 32f, 4.5f, INK, 0.1f)
-    for (x in listOf(45f, 75f)) {
-        oval(x, 106f, 10.5f, 6.5f, c.deep)
-        oval(x - 3, 104.5f, 3.5f, 1.8f, Color.White, 0.25f)
-    }
-    translate(0f, bob) {
-        accessory(c, false, t)
-        body(c)
-        accessory(c, true, t)
-        rotate(-30f, Offset(43f, 44f)) { oval(43f, 44f, 12f, 7f, Color.White, 0.32f) }
-        oval(37f, 76f, 6.5f, 4f, CHEEK, 0.5f)
-        oval(83f, 76f, 6.5f, 4f, CHEEK, 0.5f)
-        face(c, mood, t)
+    val cheek = 0.5f + 0.4f * pose.blush.coerceIn(0f, 1f)
+    translate(pose.dx, pose.dy) {
+        rotate(pose.rotation, Offset(60f, 106f)) {
+            scale(pose.sx, pose.sy, Offset(60f, 106f)) {
+                oval(60f, 113f, 32f, 4.5f, INK, 0.1f)
+                for (x in listOf(45f, 75f)) {
+                    oval(x, 106f, 10.5f, 6.5f, c.deep)
+                    oval(x - 3, 104.5f, 3.5f, 1.8f, Color.White, 0.25f)
+                }
+                translate(0f, bob) {
+                    accessory(c, false, t)
+                    body(c)
+                    accessory(c, true, t)
+                    rotate(-30f, Offset(43f, 44f)) { oval(43f, 44f, 12f, 7f, Color.White, 0.32f) }
+                    oval(37f, 76f, 6.5f, 4f, CHEEK, cheek)
+                    oval(83f, 76f, 6.5f, 4f, CHEEK, cheek)
+                    face(c, mood, t, pose)
+                }
+            }
+        }
     }
 }
 
@@ -134,15 +147,33 @@ private fun blink(c: Look, t: Float): Float {
     return max(0.1f, abs((phase - 0.93f) / 0.07f * 2 - 1))
 }
 
+private var gaze = Offset.Zero
+
 private fun DrawScope.eyes(c: Look, t: Float, rx: Float, ry: Float, y: Float, xs: List<Float>, glint: Float, blinks: Boolean = true) {
     val s = if (blinks) blink(c, t) else 1f
-    for (x in xs) {
-        oval(x, y, rx, ry * s, INK)
-        if (s > 0.6f) oval(x + rx * 0.38f, y - ry * 0.4f, glint, glint, Color.White)
+    val lx = 3f * gaze.x.coerceIn(-1f, 1f)
+    val ly = 2.5f * gaze.y.coerceIn(-1f, 1f)
+    for (x0 in xs) {
+        val x = x0 + lx
+        val yy = y + ly
+        oval(x, yy, rx, ry * s, INK)
+        if (s > 0.6f) oval(x + rx * 0.38f, yy - ry * 0.4f, glint, glint, Color.White)
     }
 }
 
-private fun DrawScope.face(c: Look, mood: Mood, t: Float) {
+private fun spiral(turns: Float, radius: Float): String {
+    val d = StringBuilder()
+    for (i in 0..60) {
+        val p = i / 60f
+        val a = p * turns * 2 * PI.toFloat()
+        val r = radius * p
+        d.append(if (i == 0) "M" else "L").append("%.2f %.2f".format(java.util.Locale.ROOT, r * cos(a), r * sin(a)))
+    }
+    return d.toString()
+}
+
+private fun DrawScope.face(c: Look, mood: Mood, t: Float, pose: Pose) {
+    gaze = Offset(pose.gazeX, pose.gazeY)
     when (mood) {
         Mood.LISTENING -> { eyes(c, t, 7f, 9f, 63f, listOf(46f, 74f), 2.6f); oval(60f, 81f, 3.6f, 4.2f, INK) }
         Mood.THINKING -> {
@@ -160,6 +191,20 @@ private fun DrawScope.face(c: Look, mood: Mood, t: Float) {
         Mood.SLEEPING -> { line("M41 65q6 5 12 0M67 65q6 5 12 0"); oval(60f, 80f, 3f, 2.2f, INK) }
         Mood.CONTENT -> { line("M41 64q6 5 12 0M67 64q6 5 12 0"); line("M54 78q6 5 12 0") }
         Mood.IDLE -> { eyes(c, t, 5.5f, 7.5f, 64f, listOf(47f, 73f), 2f); line("M53 78q7 6 14 0") }
+        Mood.GIGGLING -> { line("M41 66q6-7 12 0M67 66q6-7 12 0"); drawPath(svg("M50 75q10 14 20 0z"), MOUTH); oval(60f, 82f, 4.5f, 2.2f, TONGUE) }
+        Mood.SURPRISED -> {
+            eyes(c, t, 7.5f, 8.5f, 62f, listOf(46f, 74f), 2.8f, blinks = false)
+            line("M39 50l10-2M81 50l-10-2"); oval(60f, 83f, 4.5f, 5.5f, INK)
+        }
+        Mood.DIZZY -> {
+            for (x in listOf(47f, 73f)) translate(x, 64f) { rotate((t * 6 * 180 / PI.toFloat()) % 360, Offset.Zero) { line(spiral(2.2f, 7f), INK, 2f) } }
+            line("M51 81q3-3 6 0t6 0t6 0")
+        }
+        Mood.GRUMPY -> { eyes(c, t, 5.5f, 4.5f, 66f, listOf(47f, 73f), 1.5f, blinks = false); line("M40 55l12 5M80 55l-12 5", INK, 3.5f); line("M53 83q7-6 14 0") }
+        Mood.WINKING -> {
+            line("M41 65q6-6 12 0"); oval(73f, 64f, 5.5f, 7.5f, INK); oval(75f, 61f, 2f, 2f, Color.White)
+            line("M52 77q8 8 16 0"); oval(63f, 82f, 3f, 2.4f, TONGUE)
+        }
     }
 }
 

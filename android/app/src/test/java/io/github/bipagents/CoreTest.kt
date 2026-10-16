@@ -44,15 +44,15 @@ class CoreTest {
         assertNull(ServerEvent.of(null, "[DONE]"))
     }
 
-    @Test fun repliesCutIntoBlocks() {
-        val blocks = Markdown.blocks("Hello **you**\n\n| A | B |\n|---|:-:|\n| 1 | 2 |\n\n- one\n- two\n\n```\ncode | not a table\n```\nMEDIA:/tmp/a.mp3")
+    @Test fun repliesAsTheIPhoneShowsThem() {
+        // Only tables are cut out; the rest stays as written (inline Markdown is styled when drawn).
+        val blocks = Markdown.blocks("Hello **you**\n\n| A | B |\n|---|:-:|\n| 1 | 2 |\n\n- one\n- two\n\n```\ncode | not a table\n|---|\n```\nMEDIA:/tmp/a.mp3")
         assertEquals(Block.Paragraph("Hello **you**"), blocks[0])
         val table = blocks[1] as Block.Table
         assertEquals(listOf("A", "B"), table.header)
         assertEquals(listOf(listOf("1", "2")), table.rows)
-        assertEquals(Block.Items(false, listOf("one", "two")), blocks[2])
-        assertEquals(Block.Code("code | not a table"), blocks[3])
-        assertEquals(4, blocks.size)   // the MEDIA line is not shown as text
+        assertEquals(Block.Paragraph("- one\n- two\n\n```\ncode | not a table\n|---|\n```"), blocks[2])
+        assertEquals(3, blocks.size)   // the MEDIA line is not shown as text
     }
 
     @Test fun theThreadFoldsToolsUnderReplies() {

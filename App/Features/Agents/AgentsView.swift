@@ -18,8 +18,8 @@ struct AgentsView: View {
                     } else {
                         if !store.lostAgents.isEmpty { LostServerNotice() }
                         if !store.serverNews.isEmpty { ServerNewsNotice() }
-                        // Beyond two agents the cards go compact: about four fit on a screen.
-                        let compact = store.agents.count > 2
+                        // Full cards up to five agents (the list scrolls); beyond, compact ones keep them all in view.
+                        let compact = store.agents.count > 5
                         ForEach(store.agents) { agent in
                             AgentCard(agent: agent, reachability: store.reachability[agent.id] ?? .unknown,
                                       latest: store.latestSession[agent.id], compact: compact)
