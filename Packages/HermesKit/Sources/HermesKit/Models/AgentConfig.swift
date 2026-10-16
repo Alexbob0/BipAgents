@@ -73,7 +73,7 @@ public enum AgentConfigError: Error, Sendable, Equatable {
 }
 
 /// Result of scanning a provisioning QR code:
-/// `{"name","baseURL","apiKey","voice","bridgeURL","bridgeKey"}` (SPEC §C3).
+/// `{"name","baseURL","apiKey","voice","bridgeURL","bridgeKey"}`.
 /// Config and secrets are returned separately so the caller can route secrets to the Keychain.
 public struct AgentProvisioning: Sendable, Hashable {
     public var config: AgentConfig

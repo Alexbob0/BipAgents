@@ -27,7 +27,7 @@ public struct VoiceSample: Sendable, Hashable {
 public struct EndOfUtteranceDetector: Sendable {
     public struct Configuration: Sendable, Hashable {
         public var speechThreshold: Float
-        /// Silence that ends an utterance (SPEC: ≈ 600–800 ms, adjustable).
+        /// Silence that ends an utterance (≈ 600–800 ms, adjustable).
         public var silenceDuration: TimeInterval
         public var minSpeechDuration: TimeInterval
         /// Extra wait, after the silence, for a transcript that is late (on-device STT latency).

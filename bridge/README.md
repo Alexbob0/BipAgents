@@ -3,7 +3,7 @@
 # BipAgents bridge (`bipbridge`)
 
 A small Python service (FastAPI + uvicorn) that runs on **the server** next to the Hermes gateways and
-serves the BipAgents iOS app over the tailnet (SPEC §B3, §C2, addendum `docs/file-uploads.md`):
+serves the BipAgents iOS app over the tailnet (files: `docs/file-uploads.md`):
 
 | Feature | Route | What the bridge does |
 |---|---|---|
@@ -21,7 +21,7 @@ It contains no secrets: everything lives in `~/.config/hermes-ios/` (mode 600).
 ## 1. Installation on the server (venv + systemd --user, recommended)
 
 Prerequisites: Python ≥ 3.11 (3.12 targeted), Kyutai on `:8097`, ntfy on `:8645`,
-Hermes api_server on `:8642` (wellness) and `:8644` (vie) — SPEC §B1, §B4.
+Hermes api_server on `:8642` (wellness) and `:8644` (vie).
 
 ```bash
 # 1. Code: copy the repo's bridge/ folder to ~/hermes-bridge (git clone, scp or SMB ~/Public)

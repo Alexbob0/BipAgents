@@ -123,7 +123,7 @@ These cannot be checked in the simulator: it has no AEC, no real mic or route ch
 - The IO buffer is set to 10 ms. Check what tap buffer size iOS actually delivers with voice processing on.
 
 **End-of-utterance silence**
-- Default 700 ms; the SPEC range is 600–800 ms.
+- Default 700 ms; 600–800 ms works well.
 - Check it against people who pause mid-sentence.
 
 **Voice-processing quirks**

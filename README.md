@@ -193,7 +193,6 @@ them before updating Hermes); each one is offered upstream. Details in [`hermes/
 - `voices/` — the Bips' voices ([README](voices/README.md)).
 - `installer/` — the installer and `bipagents update` ([README](installer/README.md)); `browser/` — the agents' visible browser ([README](browser/README.md)); `hermes/patches/` — the Hermes patches ([README](hermes/patches/README.md)); `tts/drama3/` — a recipe for Fish Audio Drama 3 as your own voice model.
 - `docs/` — API notes ([`clarify`](docs/hermes-clarify-api.md), [files](docs/file-uploads.md)), screenshots, [playground](docs/play/index.html) and banner (`node docs/tools/banner.mjs` rebuilds it).
-- [`SPEC.md`](SPEC.md) — the original spec.
 
 </details>
 

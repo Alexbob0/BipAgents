@@ -18,7 +18,7 @@ public struct HermesCapabilities: Sendable, Hashable {
 
     public func supports(_ feature: String) -> Bool { features[feature] ?? false }
 
-    /// Features the app relies on (SPEC §B1).
+    /// Features the app relies on.
     public static let required = ["run_submission", "run_events_sse", "run_approval"]
 
     public var missingRequiredFeatures: [String] { Self.required.filter { !supports($0) } }

@@ -1,4 +1,4 @@
-"""``WS /v1/voice``: follow a Hermes run and stream synthesized sentences (SPEC §A5, §C2).
+"""``WS /v1/voice``: follow a Hermes run and stream synthesized sentences.
 
 Client -> server (text frames, JSON):
   {"type":"follow","agent":"wellness","run_id":"run_…","voice":"5476","format":"pcm16","from_seq":0}

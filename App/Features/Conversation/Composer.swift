@@ -306,7 +306,7 @@ struct FileBadge: View {
 }
 
 enum ImageDownscaler {
-    /// Re-encodes as JPEG with the longest side ≤ `maxDimension` (SPEC §A4).
+    /// Re-encodes as JPEG with the longest side ≤ `maxDimension`.
     static func jpeg(from data: Data, maxDimension: CGFloat, quality: CGFloat = 0.82) -> Data? {
         guard let image = UIImage(data: data) else { return nil }
         let longest = max(image.size.width, image.size.height)

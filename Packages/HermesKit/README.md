@@ -49,7 +49,7 @@ Mapping is deliberately lenient. Check each point below with `curl -N` on the re
 
 1. **Event envelope**: which key carries the event name (`type` or `event`), whether the SSE `event:` line is also set,
    and whether fields are flat or nested under `data`. Also check that `run_id` is on every event, including the first one
-   of `chat/stream` (SPEC §A4).
+   of `chat/stream`.
 2. **Delta and commentary fields**: `assistant.delta` / `message.delta` text key (`delta`?), `assistant.commentary` keys, and
    the final text key of `assistant.completed`.
 3. **Reasoning**: whether `chat/stream` or `/v1/runs/{id}/events` emit reasoning deltas at all, and under which event name.
@@ -58,7 +58,7 @@ Mapping is deliberately lenient. Check each point below with `curl -N` on the re
 5. **Approval**: `approval.request` keys (`request_id`, `command`, `description`). Its `approval_data` is spread at the top level,
    so check that no field there collides with the type key.
 6. **`chat/stream` body for attachments**: does `input` accept the multimodal parts array, or is a separate `attachments` field
-   expected (SPEC §A4 mentions `"attachments"?`)? Same question for `POST /v1/runs`, which is documented as "simple `input` string".
+   expected? Same question for `POST /v1/runs`, which is documented as "simple `input` string".
 7. **Sessions API shapes**: the list wrapper key and row fields (`title`, `updated_at`/`last_active`, preview, `message_count`);
    the create and fork response (bare object or `{"session": …}`); the `messages` wrapper, content format, `tool_calls`,
    reasoning field, timestamps and ids.
@@ -66,6 +66,6 @@ Mapping is deliberately lenient. Check each point below with `curl -N` on the re
    what happens after the 5 min buffer expiry (404 or an empty stream); whether runs started by `chat/stream` are reachable on
    `/v1/runs/{id}*`; and whether `GET /v1/runs/{id}` returns 404 once the brief retention ends.
 9. ~~Artifacts upload~~: checked on the server, not usable for agent files (see above).
-10. **Bridge `POST /v1/files`** (to be built, SPEC §B3): it must store files somewhere visible inside the Hermes container
+10. **Bridge `POST /v1/files`** (to be built): it must store files somewhere visible inside the Hermes container
     (`/home/hermes/.hermes/uploads/…`) and return that in-container path.
 11. **Capabilities**: actual feature keys (`run_approval`, `session_*`) and object-valued features.

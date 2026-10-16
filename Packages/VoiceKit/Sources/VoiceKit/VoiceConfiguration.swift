@@ -2,7 +2,7 @@ import Foundation
 
 public struct VoiceConfiguration: Sendable {
     public var locale: Locale = Locale(identifier: "fr-FR")
-    /// Silence after speech that ends an utterance in a call (SPEC: ≈ 600–800 ms).
+    /// Silence after speech that ends an utterance in a call (≈ 600–800 ms).
     public var endOfUtteranceSilence: Duration = .milliseconds(700)
     public var bargeInEnabled: Bool = true
     /// Linear RMS (0…1) above which the mic counts as speech for end-of-utterance. Calibrate on device.
