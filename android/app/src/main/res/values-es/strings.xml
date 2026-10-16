@@ -62,6 +62,17 @@
     <string name="wants_to_run">Quiere ejecutar: %s</string>
     <string name="me">Yo</string>
     <string name="notifications_off">Las notificaciones no están configuradas en esta versión.</string>
+    <string name="listen">Escuchar</string>
+    <string name="mic_unavailable">El micrófono o el reconocimiento de voz no están disponibles.</string>
+    <string name="slide_to_cancel">‹ Desliza para cancelar · suelta para enviar</string>
+    <string name="release_to_cancel">Suelta para cancelar</string>
+    <string name="recording">Grabando… pulsa enviar al terminar</string>
+    <string name="hold_to_talk">Mantén pulsado para hablar</string>
+    <string name="voice_reply">Respuesta por voz</string>
+    <string name="voice_never">Nunca</string>
+    <string name="voice_smart">Inteligente</string>
+    <string name="voice_always">Siempre tras una nota de voz</string>
+    <string name="voice_reply_help">«Inteligente»: por voz si llevas auriculares, vas en coche o lo pides. «Escuchar» bajo una respuesta la lee cuando quieras.</string>
     <string name="cancel">Cancelar</string>
     <plurals name="agents_added">
         <item quantity="one">%d agente añadido</item>

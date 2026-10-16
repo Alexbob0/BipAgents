@@ -7,6 +7,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import io.github.bipagents.voice.RecordedNote
+import io.github.bipagents.voice.Recorder
+import io.github.bipagents.voice.Speaker
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.DropdownMenu
@@ -105,8 +116,10 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
             }
             items(state.items ?: emptyList(), key = { it.key }) { item ->
                 when (item) {
-                    is Item.User -> UserBubble(item.text, item.image, clock(item.time))
-                    is Item.Reply -> Reply(agent.look, item.text, item.tools, clock(item.time))
+                    is Item.User -> model.notes.find(state.session, item.text)?.let { VoiceBubble(it, item.key, clock(item.time)) }
+                        ?: UserBubble(item.text, item.image, clock(item.time))
+                    is Item.Reply -> Reply(agent.look, item.text, item.tools, clock(item.time), listen = { model.listen(item.key, item.text) },
+                        listenKey = item.key)
                     is Item.Tools -> ToolsLine(item.tools)
                 }
             }
@@ -130,7 +143,8 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
             }
         }
         Composer(draft, { draft = it }, stringResource(R.string.message_to, agent.name), running = state.live != null,
-            ready = draft.isNotBlank() || attachments.isNotEmpty(),
+            ready = draft.isNotBlank() || attachments.isNotEmpty(), look = agent.look, language = agent.language,
+            onVoice = model::sendVoice,
             onPhoto = { photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onFile = { files.launch(arrayOf("*/*")) },
             onSend = { if (model.send(draft, attachments.toList())) { draft = ""; attachments.clear() } }, onStop = model::stop)
@@ -149,7 +163,8 @@ private fun UserBubble(text: String, image: Boolean, time: String) {
 }
 
 @Composable
-private fun Reply(look: io.github.bipagents.model.Category, text: String, tools: List<String>, time: String, typing: Boolean = false) {
+private fun Reply(look: io.github.bipagents.model.Category, text: String, tools: List<String>, time: String, typing: Boolean = false,
+                  listen: (() -> Unit)? = null, listenKey: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (tools.isNotEmpty()) ToolsLine(tools)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -158,9 +173,70 @@ private fun Reply(look: io.github.bipagents.model.Category, text: String, tools:
             else MarkdownText(text, Modifier.weight(1f))
         }
         ChatText.media(text).forEach { path -> MediaChip(path) }
+        if (listen != null && ChatText.visible(text).isNotEmpty()) ListenPill(look, listenKey ?: "", listen)
         if (time.isNotEmpty()) Text(time, style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(start = 36.dp))
     }
 }
+
+/** « Écouter » under a reply: the Bip's voice, streamed; again to stop. */
+@Composable
+private fun ListenPill(look: io.github.bipagents.model.Category, key: String, onClick: () -> Unit) {
+    val now by Speaker.now.collectAsState()
+    val mine = now?.key == key
+    Row(Modifier.padding(start = 36.dp).background(look.tint, RoundedCornerShape(50)).tap(onClick).padding(start = 6.dp, end = 14.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(26.dp).background(look.deep, CircleShape), contentAlignment = Alignment.Center) {
+            when {
+                mine && now?.phase == Speaker.Phase.PREPARING -> CircularProgressIndicator(Modifier.size(14.dp), color = Bip.card, strokeWidth = 2.dp)
+                mine -> androidx.compose.material3.Icon(Icons.Rounded.Stop, null, Modifier.size(16.dp), tint = Bip.card)
+                else -> androidx.compose.material3.Icon(Icons.Rounded.PlayArrow, null, Modifier.size(18.dp), tint = Bip.card)
+            }
+        }
+        Text(stringResource(if (mine) R.string.stop else R.string.listen), style = Bip.text(15, FontWeight.ExtraBold, look.deep))
+    }
+}
+
+/** A voice note the person sent: its recording (play, waveform, length) above its transcript. */
+@Composable
+private fun VoiceBubble(note: io.github.bipagents.voice.VoiceNotes.Note, key: String, time: String) {
+    val now by Speaker.now.collectAsState()
+    val playing = now?.key == key
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+        Column(Modifier.widthIn(max = 310.dp).background(Bip.ink, RoundedCornerShape(22.dp, 22.dp, 6.dp, 22.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val audio = note.audio
+                Box(Modifier.size(34.dp).background(Bip.card, CircleShape).tap {
+                    if (audio == null) return@tap
+                    if (playing) Speaker.stop() else Speaker.play(key, audio)
+                }, contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Icon(if (audio == null) Icons.Rounded.Mic else if (playing) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
+                        null, tint = Bip.ink)
+                }
+                Waveform(note.levels, Modifier.width(150.dp).height(26.dp))
+                Text(duration(note.seconds), style = Bip.text(13, FontWeight.Bold, Bip.line))
+            }
+            Text(note.text, style = Bip.text(15, FontWeight.SemiBold, Bip.card))
+        }
+        if (time.isNotEmpty()) Text(time, style = Bip.text(12, FontWeight.Bold, Bip.muted), modifier = Modifier.padding(top = 3.dp, end = 4.dp))
+    }
+}
+
+@Composable
+private fun Waveform(levels: List<Float>, modifier: Modifier, color: Color = Bip.card) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val bars = 30
+        val values = if (levels.isEmpty()) List(bars) { 0.15f } else List(bars) { i -> levels[(i * levels.size / bars).coerceAtMost(levels.size - 1)] }
+        val step = size.width / bars
+        values.forEachIndexed { i, v ->
+            val h = (0.15f + 0.85f * v.coerceIn(0f, 1f)) * size.height
+            drawRoundRect(color, androidx.compose.ui.geometry.Offset(i * step + step * 0.2f, (size.height - h) / 2),
+                androidx.compose.ui.geometry.Size(step * 0.6f, h), androidx.compose.ui.geometry.CornerRadius(step))
+        }
+    }
+}
+
+private fun duration(seconds: Double): String { val s = seconds.toInt(); return "%d:%02d".format(s / 60, s % 60) }
 
 /** A file the agent produced (« MEDIA:<path> »): fetched from the bridge, opened in the app that reads it. */
 @Composable
@@ -261,8 +337,49 @@ fun Pill(text: String, dark: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: String, running: Boolean, ready: Boolean,
+                     look: io.github.bipagents.model.Category, language: String?, onVoice: (RecordedNote) -> Unit,
                      onPhoto: () -> Unit, onFile: () -> Unit, onSend: () -> Unit, onStop: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val recorder = remember { Recorder(context.applicationContext) }
+    var recording by remember { mutableStateOf<String?>(null) }   // null, "holding", "locked"
+    var cancelling by remember { mutableStateOf(false) }
+    var failure by remember { mutableStateOf<String?>(null) }
+    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val unavailable = stringResource(R.string.mic_unavailable)
+    fun begin() {
+        if (!recorder.allowed) { askMic.launch(android.Manifest.permission.RECORD_AUDIO); return }
+        Speaker.stop()
+        recording = "holding"
+        cancelling = false
+        failure = null
+        scope.launch { if (!recorder.start(language)) { recording = null; failure = unavailable } }
+    }
+    fun finish(send: Boolean) {
+        if (recording == null) return
+        recording = null
+        scope.launch {
+            if (!send) { recorder.cancel(); return@launch }
+            recorder.stop()?.let(onVoice)
+        }
+    }
+    failure?.let { Text(it, style = Bip.text(14, FontWeight.Bold, Bip.danger), modifier = Modifier.padding(horizontal = 18.dp)) }
+    if (recording != null) {
+        val partial by recorder.partial.collectAsState()
+        val level by recorder.level.collectAsState()
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp).background(Bip.card, RoundedCornerShape(20.dp)).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size((10 + 10 * level).dp).background(Bip.danger, CircleShape))
+                Text(stringResource(if (cancelling) R.string.release_to_cancel else if (recording == "locked") R.string.recording else R.string.slide_to_cancel),
+                    style = Bip.text(14, FontWeight.ExtraBold, if (cancelling) Bip.danger else Bip.ink2), modifier = Modifier.weight(1f))
+                if (recording == "locked") Text(stringResource(R.string.cancel), style = Bip.text(14, FontWeight.ExtraBold, Bip.danger),
+                    modifier = Modifier.tap { finish(false) })
+            }
+            if (partial.isNotEmpty()) Text(partial, style = Bip.text(16, FontWeight.SemiBold))
+        }
+    }
     Row(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box {
@@ -280,7 +397,33 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: Stri
             colors = TextFieldDefaults.colors(focusedContainerColor = Bip.card, unfocusedContainerColor = Bip.card,
                 focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
         if (running) RoundButton(Icons.Rounded.Stop, stringResource(R.string.stop), onStop, size = 52.dp, background = Bip.danger, tint = Bip.card)
-        else RoundButton(Icons.Rounded.ArrowUpward, stringResource(R.string.send), { if (ready) onSend() }, size = 52.dp,
-            background = if (ready) Bip.ink else Bip.line, tint = Bip.card)
+        else if (recording == "locked") RoundButton(Icons.Rounded.ArrowUpward, stringResource(R.string.send), { finish(true) }, size = 52.dp,
+            background = Bip.ink, tint = Bip.card)
+        else if (ready) RoundButton(Icons.Rounded.ArrowUpward, stringResource(R.string.send), onSend, size = 52.dp, background = Bip.ink, tint = Bip.card)
+        else {
+            // Push-to-talk (WhatsApp, the iPhone app): hold to speak, release to send, slide left to cancel, up to lock.
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            Box(Modifier.size(52.dp).background(if (recording != null) Bip.danger else look.main, CircleShape)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        begin()
+                        var locked = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            val dx = change.position.x - down.position.x
+                            val dy = change.position.y - down.position.y
+                            cancelling = dx < -with(density) { 90.dp.toPx() }
+                            if (!locked && dy < -with(density) { 80.dp.toPx() } && recording == "holding") { locked = true; recording = "locked" }
+                            if (!change.pressed) break
+                        }
+                        if (!locked) finish(!cancelling)
+                        cancelling = false
+                    }
+                }, contentAlignment = Alignment.Center) {
+                androidx.compose.material3.Icon(Icons.Rounded.Mic, stringResource(R.string.hold_to_talk), tint = Bip.card)
+            }
+        }
     }
 }

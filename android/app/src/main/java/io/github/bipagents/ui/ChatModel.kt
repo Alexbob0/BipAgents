@@ -22,6 +22,11 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import android.util.Base64
 import io.github.bipagents.model.Attachment
+import io.github.bipagents.voice.RecordedNote
+import io.github.bipagents.voice.Speaker
+import io.github.bipagents.voice.VoiceNotes
+import io.github.bipagents.voice.VoiceReply
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 
 /** One line of the thread. */
@@ -55,6 +60,12 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<ChatState> = _state.asStateFlow()
     private var following: Job? = null
     private var started = false
+    val notes = VoiceNotes(application)
+    private val app = application
+    /** The turn came from a voice note and the policy says to answer out loud. */
+    private var replyByVoice = false
+    /** A voice note waiting for its session (a new conversation gets one when the message goes). */
+    private var pendingNote: RecordedNote? = null
 
     fun start(agentId: String, session: String?) {
         if (started) return
@@ -117,6 +128,8 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
                     _state.update { it.copy(session = s.id, title = s.title ?: title) }
                     store.noteSession(agent, s)
                 }.id
+                pendingNote?.let { notes.add(session, it) }
+                pendingNote = null
                 // Files go to the bridge first; the message names where the agent finds them.
                 val documents = attachments.filter { !it.isImage }.map { file ->
                     val bridge = store.bridge(agent) ?: throw HttpError(404, "no bridge for files")
@@ -175,6 +188,10 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         load()
         _state.update { it.copy(live = null, approval = null, clarify = null, mood = Mood.IDLE) }
         following = null
+        if (replyByVoice) {
+            replyByVoice = false
+            speakTurn()
+        }
         if (session != null) _state.value.items?.lastOrNull()?.let { last ->
             store.noteSession(agent, Session(session, _state.value.title, System.currentTimeMillis(), (last as? Item.Reply)?.text, null))
         }
@@ -234,7 +251,61 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
+    /** A voice note: its transcript goes as the message, its recording stays with the conversation. */
+    fun sendVoice(note: RecordedNote) {
+        pendingNote = note
+        replyByVoice = VoiceReply.wanted(app, note.text)
+        if (!send(note.text)) { pendingNote = null; replyByVoice = false }
+    }
+
+    /** The turn's reply, read out: every reply after the last thing the person said, as one voice message. */
+    private fun speakTurn() {
+        val items = _state.value.items ?: return
+        val after = items.subList(items.indexOfLast { it is Item.User } + 1, items.size).filterIsInstance<Item.Reply>()
+        val last = after.lastOrNull() ?: return
+        listen(last.key, after.joinToString("\n\n") { it.text }, "replies")
+    }
+
+    /** « Listen »: the bridge reads `text` in the agent's voice for that use, streamed (first words in about a second),
+     *  and keeps it; heard before, it plays from the phone. Pressed again while it plays: stop. */
+    fun listen(key: String, text: String, use: String = "reading") {
+        if (Speaker.now.value?.key == key) return Speaker.stop()
+        val agent = _state.value.agent ?: return
+        val words = ChatText.visible(text).take(MAX_SPOKEN)
+        if (words.isEmpty()) return
+        val name = java.security.MessageDigest.getInstance("SHA-1").digest((agent.id + use + words).toByteArray())
+            .joinToString("") { "%02x".format(it) }.take(20)
+        val folder = java.io.File(app.cacheDir, "voice").apply { mkdirs() }
+        val wav = folder.resolve("$name.wav")
+        val mp3 = folder.resolve("$name.mp3")
+        when {
+            wav.exists() -> return Speaker.play(key, wav)
+            mp3.exists() -> return Speaker.play(key, mp3)
+        }
+        val bridge = store.bridge(agent) ?: return _state.update { it.copy(error = HttpError(404, null)) }
+        val body = buildJsonObject {
+            put("text", JsonPrimitive(words)); put("agent", JsonPrimitive(agent.bridgeName)); put("use", JsonPrimitive(use))
+        }
+        Speaker.stream(key, wav, open = { bridge.api.open("v1/tts/stream", body) }, onError = {
+            // An older bridge, or a voice that only makes whole files: one file for the reply instead.
+            viewModelScope.launch {
+                try {
+                    val audio = bridge.api.bytes("v1/tts/message", "POST", io.github.bipagents.net.Http.body(
+                        JsonObject(body + ("format" to JsonPrimitive("mp3")))))
+                    mp3.writeBytes(audio)
+                    Speaker.play(key, mp3)
+                } catch (error: Throwable) {
+                    Speaker.stop()
+                    _state.update { it.copy(error = error) }
+                }
+            }
+        })
+    }
+
     companion object {
+        /** The bridge reads at most 20 000 characters; a reply that long is better read than heard anyway. */
+        const val MAX_SPOKEN = 8000
+
         /** The transcript as the app shows it: what the person wrote, the replies, and the tools used between them. */
         fun thread(messages: List<Message>): List<Item> {
             val out = mutableListOf<Item>()

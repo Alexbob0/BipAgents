@@ -68,6 +68,15 @@ class Api(val base: String, private val key: String) {
         }
     }
 
+    /** A streamed body (the bridge's PCM speech), read as it arrives; closing the stream ends the call. */
+    suspend fun open(path: String, body: JsonElement): java.io.InputStream = withContext(Dispatchers.IO) {
+        val response = Http.streaming.newCall(request(path, "POST", Http.body(body))).execute()
+        if (!response.isSuccessful) { val error = failure(response); response.close(); throw error }
+        object : java.io.FilterInputStream(response.body.byteStream()) {
+            override fun close() { super.close(); response.close() }
+        }
+    }
+
     suspend fun call(path: String, method: String = "GET", body: JsonElement? = null, query: Map<String, String?> = emptyMap(),
                      headers: Map<String, String> = emptyMap()): JsonElement? {
         val bytes = bytes(path, method, body?.let { Http.body(it) }, query, headers)

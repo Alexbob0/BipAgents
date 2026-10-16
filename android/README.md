@@ -3,9 +3,10 @@
 The Android app, native (Kotlin, Jetpack Compose), talking to the same bridge and Hermes as the iPhone app. Work in
 progress, in three phases:
 
-1. **Core** (in progress): agents added with the install's QR code, conversations sent as Hermes runs and followed through
-   the bridge, approvals and questions, the Inbox, files, notifications.
-2. **Audio**: voice notes, « Listen » under replies.
+1. **Core** (done): agents added with the install's QR code, conversations sent as Hermes runs and followed through the
+   bridge, approvals and questions, the Inbox, files, notifications (FCM, with approve/deny on the notification).
+2. **Audio** (done): voice notes (hold the mic; transcribed on the phone, kept when the phone recognizes the language on
+   the device), « Listen » under replies (the Bip's voice streamed from the bridge), spoken replies after a voice note.
 3. **Live**: hands-free conversation you can interrupt.
 
 ## Building
@@ -18,6 +19,12 @@ On the emulator, a debug build can be paired without the camera:
 ```bash
 adb shell am start -n io.github.bipagents/.MainActivity --es pair '{"v":2,"bridgeURL":"https://…","bridgeKey":"…"}'
 ```
+
+`--es push '{"agent":"…","category":"APPROVAL","run_id":"…"}'` shows the notification such a push would.
+
+Notifications need the publisher's Firebase project: `firebase.appId`, `firebase.apiKey`, `firebase.projectId` and
+`firebase.senderId` in `local.properties` (from its `google-services.json`); without them the app builds without
+notifications. The bridge sends them with the project's service account (`[fcm] service_account`).
 
 Debug builds also accept plain HTTP to `10.0.2.2` (the development machine), for a bridge running there.
 

@@ -67,5 +67,16 @@
     <string name="wants_to_run">Wants to run: %s</string>
     <string name="me">Me</string>
     <string name="notifications_off">Notifications aren\'t set up in this build.</string>
+    <string name="listen">Listen</string>
+    <string name="mic_unavailable">The microphone or speech recognition isn\'t available.</string>
+    <string name="slide_to_cancel">‹ Slide to cancel · release to send</string>
+    <string name="release_to_cancel">Release to cancel</string>
+    <string name="recording">Recording… tap send when done</string>
+    <string name="hold_to_talk">Hold to talk</string>
+    <string name="voice_reply">Spoken reply</string>
+    <string name="voice_never">Never</string>
+    <string name="voice_smart">Smart</string>
+    <string name="voice_always">Always after a voice note</string>
+    <string name="voice_reply_help">« Smart »: out loud if you wear headphones, are in the car or ask for it. « Listen » under a reply reads it on demand.</string>
     <string name="cancel">Cancel</string>
 </resources>

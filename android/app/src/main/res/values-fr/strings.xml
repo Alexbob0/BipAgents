@@ -66,5 +66,16 @@
     <string name="wants_to_run">Veut lancer : %s</string>
     <string name="me">Moi</string>
     <string name="notifications_off">Les notifications ne sont pas configurées dans cette version.</string>
+    <string name="listen">Écouter</string>
+    <string name="mic_unavailable">Le micro ou la reconnaissance vocale n\'est pas disponible.</string>
+    <string name="slide_to_cancel">‹ Glisse pour annuler · relâche pour envoyer</string>
+    <string name="release_to_cancel">Relâche pour annuler</string>
+    <string name="recording">Enregistrement… touche envoyer quand tu as fini</string>
+    <string name="hold_to_talk">Maintiens pour parler</string>
+    <string name="voice_reply">Réponse vocale</string>
+    <string name="voice_never">Jamais</string>
+    <string name="voice_smart">Intelligent</string>
+    <string name="voice_always">Toujours après un vocal</string>
+    <string name="voice_reply_help">« Intelligent » : en vocal si tu as des écouteurs, es en voiture ou le demandes. « Écouter » sous une réponse la lit à la demande.</string>
     <string name="cancel">Annuler</string>
 </resources>

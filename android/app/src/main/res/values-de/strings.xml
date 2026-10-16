@@ -62,6 +62,17 @@
     <string name="wants_to_run">Möchte ausführen: %s</string>
     <string name="me">Ich</string>
     <string name="notifications_off">Benachrichtigungen sind in dieser Version nicht eingerichtet.</string>
+    <string name="listen">Anhören</string>
+    <string name="mic_unavailable">Mikrofon oder Spracherkennung nicht verfügbar.</string>
+    <string name="slide_to_cancel">‹ Zum Abbrechen wischen · loslassen zum Senden</string>
+    <string name="release_to_cancel">Loslassen zum Abbrechen</string>
+    <string name="recording">Aufnahme… zum Schluss auf Senden tippen</string>
+    <string name="hold_to_talk">Zum Sprechen halten</string>
+    <string name="voice_reply">Gesprochene Antwort</string>
+    <string name="voice_never">Nie</string>
+    <string name="voice_smart">Intelligent</string>
+    <string name="voice_always">Immer nach einer Sprachnachricht</string>
+    <string name="voice_reply_help">„Intelligent“: laut, wenn du Kopfhörer trägst, im Auto bist oder darum bittest. „Anhören“ unter einer Antwort liest sie auf Wunsch vor.</string>
     <string name="cancel">Abbrechen</string>
     <plurals name="agents_added">
         <item quantity="one">%d Agent hinzugefügt</item>

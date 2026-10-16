@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -76,6 +77,7 @@ fun SettingsScreen(store: AgentStore, onAdd: () -> Unit) {
                 Text(stringResource(R.string.add_agent), style = Bip.text(16, FontWeight.ExtraBold, Bip.accent))
             }
         }
+        item { VoiceReplySetting() }
     }
     removing?.let { agent ->
         AlertDialog(onDismissRequest = { removing = null },
@@ -83,5 +85,26 @@ fun SettingsScreen(store: AgentStore, onAdd: () -> Unit) {
             text = { Text(stringResource(R.string.remove_body)) },
             confirmButton = { TextButton({ store.remove(agent); removing = null }) { Text(stringResource(R.string.remove), color = Bip.danger) } },
             dismissButton = { TextButton({ removing = null }) { Text(stringResource(R.string.cancel)) } })
+    }
+}
+
+/** When a voice note gets a spoken answer (Réglages › Voix on the iPhone). */
+@Composable
+private fun VoiceReplySetting() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var choice by remember { mutableStateOf(io.github.bipagents.voice.VoiceReply.current(context)) }
+    Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.voice_reply).uppercase(), style = Bip.text(12, FontWeight.ExtraBold, Bip.muted))
+        Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(18.dp)).padding(vertical = 4.dp)) {
+            for ((value, label) in listOf(io.github.bipagents.voice.VoiceReply.NEVER to R.string.voice_never,
+                io.github.bipagents.voice.VoiceReply.SMART to R.string.voice_smart, io.github.bipagents.voice.VoiceReply.ALWAYS to R.string.voice_always)) {
+                Row(Modifier.fillMaxWidth().tap { choice = value; io.github.bipagents.voice.VoiceReply.set(context, value) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(label), style = Bip.text(16, FontWeight.Bold), modifier = Modifier.weight(1f))
+                    if (choice == value) Icon(androidx.compose.material.icons.Icons.Rounded.Check, null, tint = Bip.accent)
+                }
+            }
+        }
+        Text(stringResource(R.string.voice_reply_help), style = Bip.text(13, color = Bip.muted))
     }
 }
