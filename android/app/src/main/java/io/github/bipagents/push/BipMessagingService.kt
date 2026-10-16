@@ -89,11 +89,39 @@ class Notifier(private val context: android.content.Context) {
                 builder.addAction(NotificationCompat.Action.Builder(0, getString(label), PendingIntent.getBroadcast(context, "$id$choice".hashCode(), intent,
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).setAuthenticationRequired(true).build())
             }
+        } else {
+            // « Reply » right from the notification: the text goes to the conversation as a new turn (the iPhone opens
+            // the conversation for it; Android answers in place). The reply comes back as a notification.
+            val session = data["session_id"] ?: store.latest.value[agent.id]?.id
+            if (session != null) {
+                val input = androidx.core.app.RemoteInput.Builder(ReplyReceiver.KEY).setLabel(getString(R.string.message_to, agent.name)).build()
+                val intent = Intent(context, ReplyReceiver::class.java).putExtra("agent", agent.id).putExtra("session", session)
+                    .putExtra("notification", id).putExtra("text", text)
+                val pending = PendingIntent.getBroadcast(context, "$id-reply".hashCode(), intent,
+                    PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                builder.addAction(NotificationCompat.Action.Builder(0, getString(R.string.reply), pending).addRemoteInput(input)
+                    .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY).setShowsUserInterface(false)
+                    .setAllowGeneratedReplies(true).setAuthenticationRequired(true).build())
+            }
         }
         if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
             == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(context).notify(id, builder.build())
         }
+    }
+
+    /** The notification once the person replied from it: their words under the agent's, no more spinner. */
+    fun replied(agent: Agent, id: Int, text: String, reply: String) {
+        val bip = Person.Builder().setName(agent.name).setKey(agent.id).setIcon(IconCompat.createWithBitmap(mascotBitmap(agent.look))).build()
+        val me = Person.Builder().setName(getString(R.string.me)).build()
+        val open = PendingIntent.getActivity(context, id, Intent(context, MainActivity::class.java).putExtra("agent", agent.id)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val notification = NotificationCompat.Builder(context, Push.MESSAGES).setSmallIcon(R.drawable.ic_notification)
+            .setColor(agent.look.main.toArgbInt()).setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(true)
+            .setStyle(NotificationCompat.MessagingStyle(me).addMessage(text, System.currentTimeMillis() - 1, bip)
+                .addMessage(reply, System.currentTimeMillis(), null as Person?)).build()
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
+            == android.content.pm.PackageManager.PERMISSION_GRANTED) NotificationManagerCompat.from(context).notify(id, notification)
     }
 
     private fun androidx.compose.ui.graphics.Color.toArgbInt(): Int = android.graphics.Color.argb(

@@ -82,8 +82,10 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, 
         if (agents.isEmpty()) item { Welcome(onAdd) }
         if (lost.isNotEmpty()) item { LostServerNotice() }
         if (news.isNotEmpty()) item { ServerNewsNotice(store, news) }
+        // Full cards up to five agents (the list scrolls); beyond, compact ones keep them all in view.
+        val compact = agents.size > 5
         items(agents, key = { it.id }) { agent ->
-            AgentCard(agent, latest[agent.id], reach[agent.id], onAgent = { onAgent(agent.id) },
+            AgentCard(agent, latest[agent.id], reach[agent.id], compact, onAgent = { onAgent(agent.id) },
                 onChat = { onChat(agent.id, latest[agent.id]?.id, null) }, onWrite = { onChat(agent.id, latest[agent.id]?.id, "keyboard") },
                 onLive = { onLive(agent.id) }, onVoice = { onVoice(agent.id, it) })
         }
@@ -93,14 +95,20 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, 
 /** One agent (AgentsView's card): its name opens its page, the Bip reacts, the latest message opens that conversation,
  *  and Audio (hold) / Write / Live. */
 @Composable
-private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents.model.AgentStore.Reach?, onAgent: () -> Unit, onChat: () -> Unit,
+private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents.model.AgentStore.Reach?, compact: Boolean, onAgent: () -> Unit, onChat: () -> Unit,
                       onWrite: () -> Unit,
                       onLive: () -> Unit, onVoice: (io.github.bipagents.voice.RecordedNote) -> Unit) {
     val look = agent.look
-    Column(Modifier.fillMaxWidth().background(look.tint, RoundedCornerShape(30.dp)).padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val buttons = if (compact) 40.dp else 52.dp
+    Column(Modifier.fillMaxWidth().background(look.tint, RoundedCornerShape(30.dp)).padding(if (compact) 12.dp else 18.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f).tap(onAgent), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (compact) Row(Modifier.weight(1f).tap(onAgent), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // One line: name, category, state.
+                Text(agent.name, style = Bip.text(20, FontWeight.Black), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Chip(stringResource(categoryLabel(look.category)), look.main, look.deep, Bip.card)
+                ReachDot(reach)
+            } else Column(Modifier.weight(1f).tap(onAgent), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(agent.name, style = Bip.text(25, FontWeight.Black), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Chip(stringResource(categoryLabel(look.category)), look.main, look.deep, Bip.card)
@@ -108,16 +116,27 @@ private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents
                 }
             }
             // Outside the link: tapping the Bip makes it react instead of opening the agent.
-            Box(Modifier.size(92.dp, 64.dp), contentAlignment = Alignment.Center) {
-                InteractiveMascot(look, 92.dp, Modifier.requiredSize(92.dp), bubbleLeading = true)
+            val size = if (compact) 48.dp else 92.dp
+            Box(Modifier.size(size, if (compact) 36.dp else 64.dp), contentAlignment = Alignment.Center) {
+                InteractiveMascot(look, size, Modifier.requiredSize(size), bubbleLeading = true)
             }
         }
         if (latest != null && latest.preview != null) {
-            Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(18.dp)).tap(onChat)
+            val title = if (latest.isBotChat) stringResource(R.string.main_thread) else latest.title ?: stringResource(R.string.last_conversation)
+            if (compact) Row(Modifier.fillMaxWidth().height(38.dp).background(Bip.card, RoundedCornerShape(16.dp)).tap(onChat).padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // One line: « Title · latest message », its age on the right.
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    pushStyle(androidx.compose.ui.text.SpanStyle(color = Bip.muted, fontWeight = FontWeight.ExtraBold)); append("$title · "); pop()
+                    append(ChatText.preview(latest.preview))
+                }, style = Bip.text(14), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(latest.updated?.let { android.text.format.DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(),
+                    android.text.format.DateUtils.MINUTE_IN_MILLIS, android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE).toString() } ?: "",
+                    style = Bip.text(12, FontWeight.ExtraBold, Bip.muted), maxLines = 1)
+            } else Column(Modifier.fillMaxWidth().background(Bip.card, RoundedCornerShape(18.dp)).tap(onChat)
                 .padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row {
-                    Text(if (latest.isBotChat) stringResource(R.string.main_thread) else latest.title ?: stringResource(R.string.last_conversation),
-                        style = Bip.text(12, FontWeight.ExtraBold, Bip.muted), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    Text(title, style = Bip.text(12, FontWeight.ExtraBold, Bip.muted), maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f))
                     Text(relative(latest.updated), style = Bip.text(12, FontWeight.ExtraBold, Bip.muted))
                 }
@@ -125,16 +144,29 @@ private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AudioHoldButton(look, agent.language, Modifier.weight(1f), onVoice)
-            CardButton(stringResource(R.string.write), Icons.Rounded.Keyboard, dark = false, Modifier.weight(1f), onWrite)
-            CardButton(stringResource(R.string.live), Icons.Rounded.GraphicEq, dark = true, Modifier.weight(1f), onLive)
+            AudioHoldButton(look, agent.language, Modifier.weight(1f), onVoice, buttons)
+            CardButton(stringResource(R.string.write), Icons.Rounded.Keyboard, dark = false, Modifier.weight(1f), onWrite, buttons)
+            CardButton(stringResource(R.string.live), Icons.Rounded.GraphicEq, dark = true, Modifier.weight(1f), onLive, buttons)
         }
     }
 }
 
+/** The state alone, as a dot (compact cards). */
 @Composable
-private fun CardButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, dark: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Row(modifier.height(52.dp).background(if (dark) Bip.ink else Bip.card, RoundedCornerShape(26.dp)).tap(onClick),
+private fun ReachDot(reach: io.github.bipagents.model.AgentStore.Reach?) {
+    val color = when (reach) {
+        io.github.bipagents.model.AgentStore.Reach.ONLINE, io.github.bipagents.model.AgentStore.Reach.LOCAL -> Bip.online
+        io.github.bipagents.model.AgentStore.Reach.MODEL_DOWN -> androidx.compose.ui.graphics.Color(0xFFF29A2E)
+        io.github.bipagents.model.AgentStore.Reach.UNAUTHORIZED, io.github.bipagents.model.AgentStore.Reach.OFFLINE -> Bip.danger
+        null -> Bip.muted
+    }
+    Box(Modifier.size(8.dp).background(color, androidx.compose.foundation.shape.CircleShape))
+}
+
+@Composable
+private fun CardButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, dark: Boolean, modifier: Modifier, onClick: () -> Unit,
+                       height: androidx.compose.ui.unit.Dp = 52.dp) {
+    Row(modifier.height(height).background(if (dark) Bip.ink else Bip.card, RoundedCornerShape(26.dp)).tap(onClick),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, Modifier.size(22.dp), tint = if (dark) Bip.card else Bip.ink)
         Spacer(Modifier.size(6.dp))
@@ -145,13 +177,13 @@ private fun CardButton(label: String, icon: androidx.compose.ui.graphics.vector.
 /** Audio: hold to speak to the agent from home; released, the note goes to its latest conversation. */
 @Composable
 private fun AudioHoldButton(look: io.github.bipagents.model.Look, language: String?, modifier: Modifier,
-                            onVoice: (io.github.bipagents.voice.RecordedNote) -> Unit) {
+                            onVoice: (io.github.bipagents.voice.RecordedNote) -> Unit, height: androidx.compose.ui.unit.Dp = 52.dp) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val recorder = androidx.compose.runtime.remember { io.github.bipagents.voice.Recorder(context.applicationContext) }
     var recording by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val askMic = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
-    Row(modifier.height(52.dp).background(if (recording) Bip.danger else Bip.card, RoundedCornerShape(26.dp))
+    Row(modifier.height(height).background(if (recording) Bip.danger else Bip.card, RoundedCornerShape(26.dp))
         .pointerInput(Unit) {
             awaitEachGesture {
                 awaitFirstDown()

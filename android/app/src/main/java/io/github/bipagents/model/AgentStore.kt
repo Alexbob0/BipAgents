@@ -204,7 +204,12 @@ class AgentStore(context: Context) {
             val hermes = Hermes(Api(agent.baseUrl, keys.apiKey))
             val sessions = hermes.allSessions(maxPages = 3) { all -> all.any { it.isBotChat } }
             io.github.bipagents.net.LocalLink.setActive(agent.id, false)
-            Session.main(sessions)?.let { s -> setLatest(agent, s) }
+            Session.main(sessions)?.let { s ->
+                // Hermes' list preview is the session's *first* message: the card shows the latest one instead.
+                val last = runCatching { hermes.messages(s.id, latest = 4) }.getOrNull()
+                    ?.lastOrNull { (it.role == "assistant" || it.role == "user") && it.text.isNotBlank() }?.text
+                setLatest(agent, s.copy(preview = last ?: s.preview ?: _latest.value[agent.id]?.takeIf { it.id == s.id }?.preview))
+            }
             set(Reach.ONLINE)
             _lost.update { it - agent.id }
             refreshDoor(agent)

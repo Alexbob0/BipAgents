@@ -144,8 +144,10 @@ class Hermes(val api: Api) {
             ?: throw HttpError(502, "Session payload has no id")
     }
 
-    suspend fun messages(session: String): List<Message> =
-        api.call("api/sessions/${seg(session)}/messages", query = mapOf("include_compacted" to "false", "inline_images" to "false"))
+    /** `latest`: only that many of the latest messages. */
+    suspend fun messages(session: String, latest: Int? = null): List<Message> =
+        api.call("api/sessions/${seg(session)}/messages", query = mapOf("include_compacted" to "false", "inline_images" to "false",
+            "limit" to latest?.toString(), "order" to latest?.let { "latest" }))
             .list("messages").mapIndexedNotNull { index, o -> message(o, index) }
 
     /** `POST /v1/runs`: the turn runs on the server whatever happens to the phone. Returns the run's id. */

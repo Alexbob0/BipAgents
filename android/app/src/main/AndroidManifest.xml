@@ -43,6 +43,7 @@
             </intent-filter>
         </service>
         <receiver android:name=".push.ApprovalReceiver" android:exported="false" />
+        <receiver android:name=".push.ReplyReceiver" android:exported="false" />
         <!-- One agent on the home screen: its Bip, its last message, a microphone. -->
         <receiver android:name=".widget.AgentWidgetReceiver" android:exported="true" android:label="@string/widget_name">
             <intent-filter>
