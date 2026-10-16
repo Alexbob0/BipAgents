@@ -39,7 +39,7 @@ RUN git clone --quiet "$STEALTH_REPO" /opt/stealth/stealth-browser-mcp \
     && python3.11 -m venv /opt/stealth/venv \
     && /opt/stealth/venv/bin/pip install --no-cache-dir --quiet --disable-pip-version-check -r /opt/stealth/requirements.txt
 
-COPY entrypoint.sh mcp.sh devtools_relay.py /opt/stealth/
+COPY entrypoint.sh mcp.sh devtools_relay.py hold_gate.py /opt/stealth/
 # The server's code stays read-only for the user it runs as; only its output folder is theirs.
 RUN chmod 755 /opt/stealth/entrypoint.sh /opt/stealth/mcp.sh && useradd -m -u 1000 bip \
     && install -d -o bip -g bip /opt/stealth/stealth-browser-mcp/element_clones

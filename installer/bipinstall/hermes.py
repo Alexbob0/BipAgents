@@ -224,6 +224,9 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = 
     key = new_key()
     # Attachments (MEDIA:) only from the agent's own files, never from another's folder.
     _config(runner, HUB_PROFILE, "gateway.strict", "true")
+    # A risky command always asks the person: Hermes' « smart » default lets the model itself judge it, the same
+    # model a page or an e-mail it read may have steered.
+    _config(runner, HUB_PROFILE, "approvals.mode", "manual")
     if sandbox:
         # Terminal, files, code and browser in a container: an agent cannot read another's files on the host.
         _config(runner, HUB_PROFILE, "terminal.backend", "docker")

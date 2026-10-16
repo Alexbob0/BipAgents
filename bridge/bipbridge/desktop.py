@@ -610,10 +610,12 @@ def desktop_admin_router() -> APIRouter:
         if agent is None:
             raise HTTPException(status_code=404, detail="unknown agent")
         if agent.desktop_vnc:
+            from .browsers import ports_of
             ticket = services.desktop_tickets.new(agent.name)
+            # Its own browser container (browsers.py): taking over makes its tools wait. Set up by hand: it does not.
             return {"kind": "novnc", "path": f"desktop/{ticket}/", "you_hold": services.desktop_control.get(agent.name, False),
                     "holder": "human" if services.desktop_control.get(agent.name) else "agent", "reason": None,
-                    "pauses_agent": False}   # no Hermes lease there: taking over does not stop the agent
+                    "pauses_agent": ports_of(services.config, agent.name) is not None}
         if agent.desktop_url:
             return {"kind": "page", "url": agent.desktop_url}
         folder = desktop_dir(services.config, agent)
@@ -630,9 +632,14 @@ def desktop_admin_router() -> APIRouter:
         agent = services.config.agent(agent_id)
         body = await request.json()
         if agent is not None and agent.desktop_vnc:
-            # No Hermes lease on a desktop set up by hand: taking over only lets the person's input through.
-            services.desktop_control[agent.name] = bool(body.get("take"))
-            return {"holder": "human" if body.get("take") else "agent", "you_hold": bool(body.get("take"))}
+            # No Hermes lease there: taking over lets the person's input through, and in the agent's own browser
+            # container makes its tools wait (browsers.hold) until the person hands it back.
+            from .browsers import hold
+            take = bool(body.get("take"))
+            services.desktop_control[agent.name] = take
+            await hold(services.config, agent.name, take)
+            log.info("desktop control", extra=fields(agent=agent.name, holder="human" if take else "agent"))
+            return {"holder": "human" if take else "agent", "you_hold": take}
         folder = desktop_dir(services.config, agent) if agent else None
         if folder is None:
             raise HTTPException(status_code=404, detail="unknown agent")
