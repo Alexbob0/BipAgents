@@ -487,4 +487,5 @@
     <string name="phone_voice_help">Pour une meilleure voix, installe-en une dans Paramètres Android › Accessibilité › Synthèse vocale.</string>
     <string name="style">Style</string>
     <string name="appearance_help_hermes">Hermes : plus proche du design de Hermes Agent, avec des personnages en pixels. « Auto » suit le réglage du téléphone.</string>
+    <string name="back">Retour</string>
 </resources>

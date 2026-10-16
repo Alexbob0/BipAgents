@@ -487,4 +487,5 @@
     <string name="phone_voice_help">Für eine bessere Stimme installiere eine unter Android-Einstellungen › Bedienungshilfen › Sprachausgabe.</string>
     <string name="style">Stil</string>
     <string name="appearance_help_hermes">Hermes: näher am Design von Hermes Agent, mit Pixelfiguren. « Auto » folgt der Einstellung des Telefons.</string>
+    <string name="back">Zurück</string>
 </resources>

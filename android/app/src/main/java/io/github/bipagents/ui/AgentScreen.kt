@@ -107,7 +107,7 @@ fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: 
                 .statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.fillMaxWidth()) {
-                    RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack, size = 48.dp)
+                    RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, androidx.compose.ui.res.stringResource(io.github.bipagents.R.string.back), onBack, size = 48.dp)
                     Spacer(Modifier.weight(1f))
                     RoundButton(Icons.Rounded.Settings, stringResource(R.string.agent_settings), onSettings, size = 48.dp)
                     Spacer(Modifier.size(8.dp))

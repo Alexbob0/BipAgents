@@ -48,7 +48,7 @@ fun RoundButton(icon: ImageVector, label: String, onClick: () -> Unit, size: Dp 
 fun TopBar(title: String, onBack: () -> Unit, leading: @Composable () -> Unit = {}, actions: @Composable () -> Unit = {}) {
     Row(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack, size = 44.dp)
+        RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, androidx.compose.ui.res.stringResource(io.github.bipagents.R.string.back), onBack, size = 44.dp)
         leading()
         Text(title, style = Bip.text(19, FontWeight.ExtraBold), maxLines = 1, modifier = Modifier.weight(1f))
         actions()

@@ -251,7 +251,7 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, start: Stri
     Column(Modifier.fillMaxSize().imePadding()) {
         // The iPhone's: back on the left, the Bip and its name in the middle (its page), Live on the right.
         Box(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
-            RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack, size = 48.dp)
+            RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, androidx.compose.ui.res.stringResource(io.github.bipagents.R.string.back), onBack, size = 48.dp)
             Row(Modifier.align(Alignment.Center).tap(onAgent), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Mascot(agent.look, Modifier.size(36.dp), state.mood)
