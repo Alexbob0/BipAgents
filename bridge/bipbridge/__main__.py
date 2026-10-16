@@ -63,7 +63,6 @@ def main(argv=None) -> int:
         return _qr(config, args)
 
     if args.command == "peer-token":
-        import os
         from .peers import PEER_NAME, Links, manual_token, peer_url
         if not args.agent:
             print("peer-token needs --agent", file=sys.stderr)

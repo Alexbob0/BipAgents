@@ -224,13 +224,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "voice":
         from .voice_server import main as voice_main
         return voice_main(argv[1:])
+    if argv and argv[0] == "console":   # a one-time link to the web console, from the bridge
+        from .family import find_config
+        return subprocess.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "console", "--config",
+                               str(find_config(argv[2] if argv[1:2] == ["--config"] and len(argv) > 2 else None))],
+                              cwd=REPO / "bridge", check=False).returncode
     if argv and argv[0] in ("family", "famille"):   # « famille ajouter »: its first name, kept working
         from .family import main as family_main
         return family_main(argv[1:])
     parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
                                      "(`bipinstall uninstall` removes it; `bipinstall family add <name>` prepares a "
                                      "family member's install on this server; `bipinstall update` brings it up to date; `bipinstall voice` connects your own voice "
-                                     "model (a TTS server on the network); `bipinstall hermes-update` updates Hermes "
+                                     "model (a TTS server on the network); `bipinstall console` gives a link to the web "
+                                     "console; `bipinstall hermes-update` updates Hermes "
                                      "and checks the agents)")
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
     parser.add_argument("--relay-url", help="the administrator's bridge, to send notifications without an APNs key")

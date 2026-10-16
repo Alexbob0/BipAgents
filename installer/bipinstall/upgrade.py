@@ -128,6 +128,7 @@ COMMAND_HELP = """BipAgents, in this account:
   bipagents update           bring it up to date (only what changed restarts)
   bipagents update --check   only say what is new
   bipagents voice            connect your own voice model (a TTS server on the network)
+  bipagents console          a one-time link opening your agents in a computer's browser
   bipagents hermes-update    update Hermes and keep BipAgents working
   bipagents family add NAME  prepare a family member's install on this server
   bipagents uninstall        remove it"""
