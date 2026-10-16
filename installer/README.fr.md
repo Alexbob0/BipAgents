@@ -71,7 +71,9 @@ dit, sans changer leurs outils. Il faut une version d'Hermes qui sert plusieurs 
 
 ## Mettre BipAgents à jour
 
-`bash ~/BipAgents/install.sh update` met à jour l'installation de ce compte : il montre ce qui est nouveau, relance
+`bipagents update` (ou `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --
+update`, comme `bash ~/BipAgents/install.sh update`) met à jour l'installation de ce compte. `bipagents` seul liste ses
+commandes (update, voice, hermes-update, family add, uninstall) ; l'installateur le met dans `~/.local/bin`. Il montre ce qui est nouveau, relance
 seulement ce qui a changé (le bridge, les voix des Bips quand c'est ce compte qui les fait tourner, les navigateurs des
 agents quand leur image a changé : reconstruits, profils gardés), et applique les réglages qu'une nouvelle
 installation pose maintenant (`installer/bipinstall/migrations.py` : par exemple les commandes à risque qui te demandent
