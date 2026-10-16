@@ -481,7 +481,7 @@ val LocalBridge = androidx.compose.runtime.staticCompositionLocalOf<io.github.bi
 
 /** « I need your OK » (the iPhone's approval card): the Bip, what it wants to run, Once / This session / Deny. */
 @Composable
-private fun ApprovalCard(look: Look, name: String, request: RunEvent.Approval, onChoose: (String) -> Unit) {
+fun ApprovalCard(look: Look, name: String, request: RunEvent.Approval, onChoose: (String) -> Unit) {
     // « Always » is never offered from the app: risky commands keep asking.
     val choices = request.choices.filter { it != "always" }
     Card(border = look.main) {

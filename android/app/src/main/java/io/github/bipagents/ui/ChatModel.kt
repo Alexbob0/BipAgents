@@ -101,6 +101,7 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(session = id, title = main?.title, error = sessions.exceptionOrNull()) }
             }
             launch { store.bridge(agent)?.let { b -> runCatching { b.thinking(agent.bridgeName) }.getOrNull() }?.let { t -> _state.update { it.copy(thinking = t) } } }
+            _state.value.session?.let { (app as BipApp).inbox.readSession(it, store) }
             load()
             _state.value.session?.let { s -> runs.getString(s, null)?.let { follow(it, runs.getString("sent.$s", null), reattaching = true) } }
             watch()

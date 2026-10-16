@@ -44,6 +44,10 @@ class Notifier(private val context: android.content.Context) {
         val text = withTimeoutOrNull(8_000) { runCatching { fetch(agent, data, approval) }.getOrNull() }
             ?: data["body"] ?: getString(if (approval) R.string.approval_needed else R.string.new_message)
         show(agent, data, text, approval)
+        val app = context.applicationContext as BipApp
+        // A reply that finished while its conversation was closed waits in the Inbox too; the tab's count follows.
+        data["reply_id"]?.let { id -> app.inbox.addMissed(agent, data["session_id"], id, text, store) }
+        withTimeoutOrNull(5_000) { runCatching { app.inbox.refresh(store) } }
     }
 
     private suspend fun fetch(agent: Agent, data: Map<String, String>, approval: Boolean): String? {

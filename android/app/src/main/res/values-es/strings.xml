@@ -46,7 +46,7 @@
     <string name="loading">Cargando…</string>
     <string name="scheduled_tasks">Tareas programadas</string>
     <string name="untitled">Sin título</string>
-    <string name="inbox_empty">Nada por ahora: aquí llegan los informes y rutinas de tus agentes.</string>
+    <string name="inbox_empty">Los avisos y recordatorios de tus agentes llegarán aquí, con su audio, y también las respuestas terminadas mientras no estabas.</string>
     <string name="open_conversation">Abrir la conversación</string>
     <string name="remove">Quitar</string>
     <string name="remove_title">¿Quitar %s?</string>
@@ -216,4 +216,25 @@
     <string name="thinking_high">Profundo</string>
     <string name="thinking_xhigh">Máximo</string>
     <string name="hold_to_record">Mantén pulsado el micro para grabar</string>
+    <string name="inbox_overline">Mensajes de tus agentes</string>
+    <string name="filter_all">Todo</string>
+    <string name="reply">Responder</string>
+    <string name="reply_title">Respuesta</string>
+    <string name="playing">Reproduciendo…</string>
+    <string name="mute_task">No avisarme más de esta tarea</string>
+    <string name="muted_notice">Sin más avisos de « %s ». Reactívalos en Ajustes › Tareas programadas.</string>
+    <string name="this_task">esta tarea</string>
+    <string name="mute_failed">Ajuste no guardado: bridge inalcanzable.</string>
+    <string name="delete">Eliminar</string>
+    <string name="nothing_new">Nada nuevo</string>
+    <string name="some_unreachable">Algunos agentes no responden (¿Tailscale?).</string>
+    <string name="pill_listening">Escucha</string>
+    <string name="pill_thinking">Pensando</string>
+    <string name="pill_speaking">Habla</string>
+    <string name="live_hint_speaking">Habla o toca a %s para interrumpir</string>
+    <string name="live_hint_listening">Una breve pausa y se envía</string>
+    <string name="keyboard">Teclado</string>
+    <string name="interrupt">Interrumpir</string>
+    <string name="end">Terminar</string>
+    <string name="retry">Reintentar</string>
 </resources>

@@ -19,8 +19,8 @@ object ShareText {
     private val strike = Regex("~~([^~\\n]+?)~~")
     private val heading = Regex("(?m)^#{1,6}\\s+(.+)$")
 
-    /** As read on screen: no Markdown marks, no MEDIA lines. */
-    fun plain(text: String): String = ChatText.visible(text)
+    /** As read on screen: no Markdown marks, no MEDIA lines, tables as lines. */
+    fun plain(text: String): String = tables(ChatText.visible(text))
         .replace(mdLink) { link(it.groupValues[1], it.groupValues[2]) }
         .replace(bold) { it.groupValues[1].ifEmpty { it.groupValues[2] } }
         .replace(strike) { it.groupValues[1] }

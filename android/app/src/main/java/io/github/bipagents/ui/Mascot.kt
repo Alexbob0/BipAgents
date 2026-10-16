@@ -32,7 +32,9 @@ enum class Mood { IDLE, THINKING, SPEAKING, ASKING, CONTENT, LISTENING, SLEEPING
 
 /** How a Bip is held (InteractiveMascot): moved, squashed, turned, looking somewhere, blushing. */
 data class Pose(val dx: Float = 0f, val dy: Float = 0f, val sx: Float = 1f, val sy: Float = 1f, val rotation: Float = 0f,
-                val gazeX: Float = 0f, val gazeY: Float = 0f, val blush: Float = 0f) {
+                val gazeX: Float = 0f, val gazeY: Float = 0f, val blush: Float = 0f,
+                /** Speaking: how open the mouth is (0…1, the voice's level); null: it moves on its own. */
+                val mouth: Float? = null) {
     companion object { val Rest = Pose() }
 }
 
@@ -183,7 +185,7 @@ private fun DrawScope.face(c: Look, mood: Mood, t: Float, pose: Pose) {
             for ((x, y, r) in listOf(Triple(93f, 30f, 3f), Triple(101f, 21f, 4.4f), Triple(110f, 10f, 6f))) oval(x, y, r, r, c.deep, pulse)
         }
         Mood.SPEAKING -> {
-            val open = 0.3f + 0.7f * (0.5f + 0.5f * sin(t * 2 * PI.toFloat() / 0.56f))
+            val open = pose.mouth?.let { 0.2f + 0.8f * it.coerceIn(0f, 1f) } ?: (0.3f + 0.7f * (0.5f + 0.5f * sin(t * 2 * PI.toFloat() / 0.56f)))
             eyes(c, t, 5.5f, 7.5f, 64f, listOf(47f, 73f), 2f)
             translate(60f, 81f) { scale(1f, open, pivot = Offset.Zero) { oval(0f, -1f, 8f, 7f, MOUTH); oval(0f, 3f, 5f, 2.6f, TONGUE) } }
         }

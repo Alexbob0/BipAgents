@@ -7,10 +7,13 @@ import io.github.bipagents.push.Push
 class BipApp : Application() {
     lateinit var store: AgentStore
         private set
+    lateinit var inbox: io.github.bipagents.model.Inbox
+        private set
 
     override fun onCreate() {
         super.onCreate()
         store = AgentStore(this)
+        inbox = io.github.bipagents.model.Inbox(this)
         Push.start(this)
     }
 }

@@ -46,7 +46,7 @@
     <string name="loading">Wird geladen…</string>
     <string name="scheduled_tasks">Geplante Aufgaben</string>
     <string name="untitled">Ohne Titel</string>
-    <string name="inbox_empty">Noch nichts: Die Berichte und Routinen deiner Agenten landen hier.</string>
+    <string name="inbox_empty">Die Meldungen und Erinnerungen deiner Agenten kommen hier an, mit ihrem Audio, ebenso die Antworten, die fertig wurden, während du weg warst.</string>
     <string name="open_conversation">Unterhaltung öffnen</string>
     <string name="remove">Entfernen</string>
     <string name="remove_title">%s entfernen?</string>
@@ -216,4 +216,25 @@
     <string name="thinking_high">Gründlich</string>
     <string name="thinking_xhigh">Maximal</string>
     <string name="hold_to_record">Halte das Mikro gedrückt, um aufzunehmen</string>
+    <string name="inbox_overline">Nachrichten deiner Agenten</string>
+    <string name="filter_all">Alle</string>
+    <string name="reply">Antworten</string>
+    <string name="reply_title">Antwort</string>
+    <string name="playing">Wird abgespielt…</string>
+    <string name="mute_task">Für diese Aufgabe nicht mehr benachrichtigen</string>
+    <string name="muted_notice">Keine Benachrichtigungen mehr für « %s ». Wieder einschalten unter Einstellungen › Geplante Aufgaben.</string>
+    <string name="this_task">diese Aufgabe</string>
+    <string name="mute_failed">Einstellung nicht gespeichert: Bridge nicht erreichbar.</string>
+    <string name="delete">Löschen</string>
+    <string name="nothing_new">Nichts Neues</string>
+    <string name="some_unreachable">Einige Agenten sind nicht erreichbar (Tailscale?).</string>
+    <string name="pill_listening">Zuhören</string>
+    <string name="pill_thinking">Nachdenken</string>
+    <string name="pill_speaking">Sprechen</string>
+    <string name="live_hint_speaking">Sprich oder tippe auf %s, um zu unterbrechen</string>
+    <string name="live_hint_listening">Eine kurze Pause und es ist gesendet</string>
+    <string name="keyboard">Tastatur</string>
+    <string name="interrupt">Unterbrechen</string>
+    <string name="end">Beenden</string>
+    <string name="retry">Erneut versuchen</string>
 </resources>

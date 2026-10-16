@@ -60,7 +60,14 @@ class Live(private val context: Context, private val store: AgentStore, private 
         val tool: String? = null,
         val approval: RunEvent.Approval? = null,
         val error: String? = null,
+        /** The microphone's level while listening, the Bip's voice while speaking (0…1). */
+        val inputLevel: Float = 0f,
+        val outputLevel: Float = 0f,
+        val startedAt: Long = System.currentTimeMillis(),
     )
+
+    /** The conversation the Live talks in (a new one gets created on the first sentence). */
+    val conversation get() = session
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
@@ -120,6 +127,12 @@ class Live(private val context: Context, private val store: AgentStore, private 
         if (_state.value.phase != Phase.ENDED) listen()
     }
 
+    /** After an error: listens again (or starts, if the microphone was refused). */
+    fun retry() {
+        _state.update { it.copy(error = null) }
+        if (recognizer == null) start() else listen()
+    }
+
     fun approve(choice: String) {
         val request = _state.value.approval ?: return
         _state.update { it.copy(approval = null) }
@@ -130,7 +143,7 @@ class Live(private val context: Context, private val store: AgentStore, private 
 
     private fun listen() {
         if (_state.value.phase == Phase.ENDED) return
-        _state.update { it.copy(phase = Phase.LISTENING) }
+        _state.update { it.copy(phase = Phase.LISTENING, heard = "", inputLevel = 0f, outputLevel = 0f) }
         val r = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also { recognizer = it }
         r.setRecognitionListener(object : RecognitionListener {
             override fun onPartialResults(partialResults: Bundle?) {
@@ -152,7 +165,10 @@ class Live(private val context: Context, private val store: AgentStore, private 
             }
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onRmsChanged(rmsdB: Float) {
+                val level = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
+                _state.update { it.copy(inputLevel = it.inputLevel * 0.6f + level * 0.4f) }
+            }
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -258,6 +274,13 @@ class Live(private val context: Context, private val store: AgentStore, private 
                             }
                             t.write(data, 0, data.size)
                             written += data.size / 2
+                            var sum = 0.0
+                            for (i in 0 until data.size / 2) {
+                                val v = ((data[2 * i + 1].toInt() shl 8) or (data[2 * i].toInt() and 0xFF)).toShort().toDouble()
+                                sum += v * v
+                            }
+                            val level = (sqrt(sum / maxOf(1, data.size / 2)) / 5000.0).toFloat().coerceIn(0f, 1f)
+                            _state.update { it.copy(outputLevel = level) }
                         }
                     }
                 }

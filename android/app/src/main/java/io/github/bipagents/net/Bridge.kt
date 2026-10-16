@@ -87,6 +87,23 @@ class Bridge(val api: Api) {
             o.bool("has_audio") ?: false)
     }
 
+    /** Approvals the agent waits for, whatever conversation asked (`GET /v1/approvals`). */
+    suspend fun approvals(agent: String): List<Pair<RunEvent.Approval, String?>> =
+        api.call("v1/approvals", query = mapOf("agent" to agent)).list("items").mapNotNull { o ->
+            val run = o.str("run_id") ?: return@mapNotNull null
+            RunEvent.Approval(run, o.str("request_id"), o.str("command"), o.str("description"),
+                o["choices"].arr()?.mapNotNull { it.text()?.lowercase() }?.ifEmpty { null } ?: listOf("once", "deny")) to o.str("session_id")
+        }
+
+    /** A scheduled task's notifications on or off (`PUT /v1/cron-jobs/{agent}/{job}`). */
+    suspend fun setCronNotify(agent: String, job: String, notify: Boolean) {
+        api.call("v1/cron-jobs/${Hermes.seg(agent)}/${Hermes.seg(job)}", "PUT", kotlinx.serialization.json.buildJsonObject {
+            put("notify", kotlinx.serialization.json.JsonPrimitive(notify))
+        })
+    }
+
+    suspend fun outboxAudio(id: String): ByteArray = api.bytes("v1/outbox/${Hermes.seg(id)}/audio")
+
     suspend fun media(path: String): ByteArray = api.bytes("v1/media", query = mapOf("path" to path))
 
     /** A file for the agent (`POST /v1/files`): the path where the agent finds it. */

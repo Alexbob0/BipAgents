@@ -51,7 +51,7 @@
     <string name="loading">Loading…</string>
     <string name="scheduled_tasks">Scheduled tasks</string>
     <string name="untitled">Untitled</string>
-    <string name="inbox_empty">Nothing yet: your agents\' reports and routines arrive here.</string>
+    <string name="inbox_empty">Your agents\' check-ins and reminders arrive here, with their audio, and so do the replies finished while you were away.</string>
     <string name="open_conversation">Open the conversation</string>
     <string name="remove">Remove</string>
     <string name="remove_title">Remove %s?</string>
@@ -217,4 +217,25 @@
     <string name="thinking_high">Deep</string>
     <string name="thinking_xhigh">Maximum</string>
     <string name="hold_to_record">Hold the mic to record</string>
+    <string name="inbox_overline">Messages from your agents</string>
+    <string name="filter_all">All</string>
+    <string name="reply">Reply</string>
+    <string name="reply_title">Reply</string>
+    <string name="playing">Playing…</string>
+    <string name="mute_task">Stop notifying me for this task</string>
+    <string name="muted_notice">No more notifications for « %s ». Turn them back on in Settings › Scheduled tasks.</string>
+    <string name="this_task">this task</string>
+    <string name="mute_failed">Setting not saved: bridge out of reach.</string>
+    <string name="delete">Delete</string>
+    <string name="nothing_new">Nothing new</string>
+    <string name="some_unreachable">Some agents are out of reach (Tailscale?).</string>
+    <string name="pill_listening">Listening</string>
+    <string name="pill_thinking">Thinking</string>
+    <string name="pill_speaking">Speaking</string>
+    <string name="live_hint_speaking">Speak or tap %s to interrupt</string>
+    <string name="live_hint_listening">A short pause and it\'s sent</string>
+    <string name="keyboard">Keyboard</string>
+    <string name="interrupt">Interrupt</string>
+    <string name="end">End</string>
+    <string name="retry">Try again</string>
 </resources>

@@ -15,6 +15,10 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
@@ -86,6 +90,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         lifecycleScope.launch { store.agents.collect { io.github.bipagents.push.Push.register(store) } }
+        // The Inbox's count on its tab, from the start (and on each return to the app).
+        lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_START) lifecycleScope.launch { runCatching { (application as BipApp).inbox.refresh(store) } }
+        })
         setContent {
             BipTheme {
                 val nav = rememberNavController()
@@ -130,7 +138,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     nav.navigate("chat/$agent" + (store.latest.value[agent]?.id?.let { "?session=$it" } ?: ""))
                                 })
                         }
-                        composable("inbox") { InboxScreen(store, onOpen = { agent, session -> nav.navigate("chat/$agent?session=$session") }) }
+                        composable("inbox") {
+                            InboxScreen(store, onOpen = { agent, session -> nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: "")) },
+                                onLive = { agent -> nav.navigate("live/$agent") })
+                        }
                         composable("settings") { SettingsScreen(store, onAdd = { nav.navigate("add") }) }
                         composable("add") { AddAgentScreen(store, onDone = { nav.popBackStack() }) }
                         composable("chat/{agent}?session={session}") { entry ->
@@ -142,7 +153,11 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         }
                         composable("live/{agent}?session={session}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable
-                            LiveScreen(store, agent, entry.arguments?.getString("session"), onEnd = { nav.popBackStack() })
+                            LiveScreen(store, agent, entry.arguments?.getString("session"), onEnd = { nav.popBackStack() },
+                                onKeyboard = { session ->
+                                    nav.popBackStack()
+                                    nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: ""))
+                                })
                         }
                         composable("agent/{agent}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable
@@ -196,7 +211,16 @@ private fun TabBar(nav: NavHostController, current: String?, modifier: Modifier)
                 Column(Modifier.background(if (on) Bip.line else Bip.card, RoundedCornerShape(30.dp))
                     .tap { if (!on) nav.navigate(tab.route) { popUpTo("home"); launchSingleTop = true } }
                     .padding(horizontal = 30.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(tab.icon, null, Modifier.size(28.dp), tint = Bip.ink)
+                    Box {
+                        Icon(tab.icon, null, Modifier.size(28.dp), tint = Bip.ink)
+                        // What the Inbox holds that wasn't seen yet (approvals waiting included).
+                        if (tab.route == "inbox") {
+                            val unread = (LocalContext.current.applicationContext as BipApp).inbox.state.collectAsState().value.unread
+                            if (unread > 0) Text(if (unread > 9) "9+" else "$unread", style = Bip.text(11, FontWeight.Black, Bip.card),
+                                modifier = Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-4).dp).background(Bip.danger, CircleShape)
+                                    .padding(horizontal = 5.dp, vertical = 1.dp))
+                        }
+                    }
                     Text(stringResource(tab.label), style = Bip.text(13, if (on) FontWeight.ExtraBold else FontWeight.SemiBold))
                 }
             }
