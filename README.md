@@ -73,11 +73,11 @@ And they **babble**: every reaction is spoken in their "Animalese", cute gibberi
 </p>
 </details>
 
-## ☁️ Your own agent on a €7 server
+## ☁️ Your own agent on a small server, from €8 a month
 
-No machine at home? A **small VPS** (4 vCPU, 8 GB: ≈ €7 a month at Hetzner) runs Hermes, the bridge and the Bips' voices
-on its CPU, and the model comes from **OpenRouter**, paid as you use it. You get an agent that's always on, in your
-pocket, with a voice, for the price of a coffee or two a month.
+No machine at home? A **small VPS** runs Hermes, the bridge and the Bips' voices on its CPU (2 vCPU and 4 GB from
+≈ €8 a month; 4 vCPU and 8 GB, with each agent's visible browser, ≈ €15), and the model comes from **OpenRouter**, paid
+as you use it. You get an agent that's always on, in your pocket, with a voice.
 
 - **What stays yours**: the conversations, the agents' memory, your files and the vault live on your server, not on a
   platform's. Switch models whenever you want; nothing to export.
