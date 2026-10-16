@@ -6,6 +6,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -89,7 +95,30 @@ class MainActivity : ComponentActivity() {
                 }
                 val route = nav.currentBackStackEntryAsState().value?.destination?.route
                 Box(Modifier.fillMaxSize().background(Bip.ground)) {
-                    NavHost(nav, startDestination = "home") {
+                    NavHost(nav, startDestination = "home",
+                        // The iPhone's: tabs switch at once, screens slide in from the right, the Live rises from below.
+                        enterTransition = {
+                            when {
+                                isTab(initialState.destination.route) && isTab(targetState.destination.route) -> EnterTransition.None
+                                isLive(targetState.destination.route) -> slideInVertically(tween(320)) { it }
+                                else -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(320))
+                            }
+                        },
+                        exitTransition = {
+                            when {
+                                isTab(initialState.destination.route) && isTab(targetState.destination.route) -> ExitTransition.None
+                                isLive(targetState.destination.route) -> ExitTransition.None
+                                else -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(320)) { it / 4 }
+                            }
+                        },
+                        popEnterTransition = {
+                            if (isLive(initialState.destination.route)) EnterTransition.None
+                            else slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(320)) { it / 4 }
+                        },
+                        popExitTransition = {
+                            if (isLive(initialState.destination.route)) slideOutVertically(tween(320)) { it }
+                            else slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(320))
+                        }) {
                         composable("home") {
                             HomeScreen(store, onAdd = { nav.navigate("add") }, onOpen = { agent -> nav.navigate("chat/$agent") },
                                 onLive = { agent -> nav.navigate("live/$agent") })
@@ -120,6 +149,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+private fun isTab(route: String?) = route in setOf("home", "inbox", "settings")
+private fun isLive(route: String?) = route?.startsWith("live/") == true
 
 private data class Tab(val route: String, val label: Int, val icon: ImageVector)
 
