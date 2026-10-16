@@ -92,6 +92,9 @@
     <string name="need_your_ok">Necesito tu permiso</string>
     <string name="once">Una vez</string>
     <string name="this_session">Esta sesión</string>
+    <string name="appearance">Apariencia</string>
+    <string name="color">Color</string>
+    <string name="save">Guardar</string>
     <string name="cancel">Cancelar</string>
     <plurals name="agents_added">
         <item quantity="one">%d agente añadido</item>

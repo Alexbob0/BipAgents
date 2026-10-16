@@ -241,17 +241,44 @@ final class AgentStore {
 
     private static let toldAppearanceKey = "toldAgentAppearance"
 
-    /// The agent's look, to its bridge: Android and the web console then show the same Bip. Once per change.
+    /// The agent's look as last agreed with its bridge (« <agent id>:<category>|<colour> »).
+    private static func appearanceMark(_ agent: AgentProfile) -> String {
+        "\(agent.id.uuidString):\(agent.appearance.category.rawValue)|\(agent.appearance.customColorHex.map { String($0) } ?? "")"
+    }
+
+    private static func noteTold(_ mark: String, for agent: AgentProfile) {
+        let told = UserDefaults.standard.stringArray(forKey: toldAppearanceKey) ?? []
+        UserDefaults.standard.set(told.filter { !$0.hasPrefix("\(agent.id.uuidString):") } + [mark], forKey: toldAppearanceKey)
+    }
+
+    /// The agent's look, to its bridge (the shared one: Android and the web console show it too). Once per change made
+    /// here.
     func tellAppearance(of agent: AgentProfile, bridge: BridgeClient? = nil) async {
         let look = agent.appearance
-        let mark = "\(agent.id.uuidString):\(look.category.rawValue)|\(look.customColorHex.map { String($0) } ?? "")"
+        let mark = Self.appearanceMark(agent)
         let told = UserDefaults.standard.stringArray(forKey: Self.toldAppearanceKey) ?? []
         guard !told.contains(mark), let bridge = bridge ?? BridgeClient(agent: agent, secrets: secrets(for: agent)),
               (try? await bridge.setAgentAppearance(agent.bridgeName, category: look.category.rawValue,
                                                     color: look.customColorHex)) != nil
         else { return }   // unreachable, or an older bridge: told on a later refresh
-        let others = told.filter { !$0.hasPrefix("\(agent.id.uuidString):") }
-        UserDefaults.standard.set(others + [mark], forKey: Self.toldAppearanceKey)
+        Self.noteTold(mark, for: agent)
+    }
+
+    /// On each refresh: a look changed here goes to the bridge; otherwise the bridge's (changed on another phone,
+    /// Android) comes here. The last one changed wins.
+    func syncAppearance(of agent: AgentProfile, bridge: BridgeClient) async {
+        let told = UserDefaults.standard.stringArray(forKey: Self.toldAppearanceKey) ?? []
+        guard told.contains(Self.appearanceMark(agent)) else { return await tellAppearance(of: agent, bridge: bridge) }
+        guard let listing = try? await withTimeout(8, { try await bridge.serverListing() }),
+              let row = listing.agents.first(where: { $0.id == agent.bridgeName }),
+              let category = row.category.flatMap(AgentCategory.init(rawValue:)) else { return }
+        let color = row.color.flatMap { UInt32($0.dropFirst(), radix: 16) }
+        guard category != agent.appearance.category || color != agent.appearance.customColorHex,
+              var profile = agents.first(where: { $0.id == agent.id }) else { return }
+        profile.appearance = AgentAppearance(category: category, customColorHex: color)
+        profile.config.category = category.rawValue
+        Self.noteTold(Self.appearanceMark(profile), for: profile)   // the bridge's already: not sent back
+        update(profile)
     }
 
     // MARK: Voices
@@ -361,7 +388,7 @@ final class AgentStore {
             await refreshLocalDoor(of: agent, secrets: secrets)
             await tellLanguage(of: agent)
             if let bridge = BridgeClient(tailnetOf: agent, secrets: secrets) {
-                await tellAppearance(of: agent, bridge: bridge)
+                await syncAppearance(of: agent, bridge: bridge)
                 if let server = try? await withTimeout(8, { try await bridge.voiceServer() }) {
                     AgentVoices.setServer(server, for: agent)
                     await tellVoices(of: agent, bridge: bridge)

@@ -96,6 +96,9 @@
     <string name="need_your_ok">J\'ai besoin de ton accord</string>
     <string name="once">Une fois</string>
     <string name="this_session">Cette session</string>
+    <string name="appearance">Apparence</string>
+    <string name="color">Couleur</string>
+    <string name="save">Enregistrer</string>
     <string name="cancel">Annuler</string>
     <string-array name="bip_hop">
         <item>Bip !</item>

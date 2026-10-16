@@ -97,6 +97,9 @@
     <string name="need_your_ok">I need your OK</string>
     <string name="once">Once</string>
     <string name="this_session">This session</string>
+    <string name="appearance">Look</string>
+    <string name="color">Colour</string>
+    <string name="save">Save</string>
     <string name="cancel">Cancel</string>
     <string-array name="bip_hop">
         <item>Bip!</item>

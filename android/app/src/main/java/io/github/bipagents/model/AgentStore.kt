@@ -88,11 +88,32 @@ class AgentStore(context: Context) {
         }
     }
 
-    /** The looks chosen in another app (the iPhone), kept by each bridge: the same Bips here. */
+    /** Looks changed here that the bridge hasn't taken yet (offline): sent again, never overwritten by its own. */
+    private fun pending(): Set<String> = prefs.getStringSet("looks-pending", emptySet()) ?: emptySet()
+    private fun setPending(id: String, on: Boolean) =
+        prefs.edit().putStringSet("looks-pending", if (on) pending() + id else pending() - id).apply()
+
+    /** The person picks the agent's look here: kept on this phone and by its bridge, for every app. */
+    suspend fun setLook(agent: Agent, category: Category, color: String?) {
+        val changed = agent.copy(category = category.id, color = color)
+        update(changed)
+        setPending(agent.id, true)
+        if (runCatching { bridge(changed)?.setAppearance(changed.bridgeName, category.id, color) }.isSuccess && bridge(changed) != null) {
+            setPending(agent.id, false)
+        }
+    }
+
+    /** The looks kept by each bridge (chosen on the iPhone, or here before): the same Bips everywhere. The last one
+     *  changed wins; a change made here and not sent yet goes first. */
     suspend fun syncLooks() {
         for ((bridge, mine) in bridges()) {
             val listed = runCatching { bridge.agents() }.getOrNull() ?: continue
             for (agent in mine) {
+                if (agent.id in pending()) {
+                    val category = agent.category ?: agent.look.category.id
+                    if (runCatching { bridge.setAppearance(agent.bridgeName, category, agent.color) }.isSuccess) setPending(agent.id, false)
+                    continue
+                }
                 val found = listed.firstOrNull { it.id.equals(agent.bridgeName, true) } ?: continue
                 if (found.category != null && (found.category != agent.category || found.color != agent.color)) {
                     update(agent.copy(category = found.category, color = found.color))

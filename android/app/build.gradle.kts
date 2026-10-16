@@ -1,5 +1,3 @@
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.Properties
 
 plugins {
@@ -16,10 +14,9 @@ android {
         applicationId = "io.github.bipagents"
         minSdk = 29
         targetSdk = 36
-        // Each build a higher number (the stores refuse the same twice): yy + day of the year + hour and minute
-        // (scripts/play-upload.py passes it, as Gradle's configuration cache would keep an older one).
-        versionCode = providers.gradleProperty("versionCode").orNull?.toInt()
-            ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyDDDHHmm")).toInt()
+        // Store builds: yy + day of the year + hour and minute, passed by scripts/play-upload.py (a date computed here would
+        // be kept by Gradle's configuration cache). Local builds: 1.
+        versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
         versionName = "0.1"
         // Notifications: the publisher's Firebase project (local.properties or ~/.gradle/gradle.properties:
         // firebase.appId, firebase.apiKey, firebase.projectId, firebase.senderId). Without them, no notifications.

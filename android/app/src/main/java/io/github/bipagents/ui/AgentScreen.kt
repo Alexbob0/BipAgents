@@ -20,6 +20,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Palette
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,12 +46,15 @@ import io.github.bipagents.net.Session
  *  thread, the others, then scheduled tasks (folded). */
 @Composable
 fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: (String?) -> Unit, onLive: () -> Unit) {
-    val agent = store.agent(agentId) ?: return
     val context = LocalContext.current
     val online by store.online.collectAsState()
     var sessions by remember { mutableStateOf<List<Session>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var showTasks by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val agents by store.agents.collectAsState()
+    val agent = agents.firstOrNull { it.id == agentId } ?: return
     LaunchedEffect(agentId) {
         try {
             sessions = store.hermes(agent)?.allSessions(4) { all -> all.count { !it.isScheduled } >= 30 }
@@ -58,6 +63,10 @@ fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: 
         }
     }
     val look = agent.look
+    if (picking) LookPicker(agent, onPick = { category, color ->
+        picking = false
+        scope.launch { store.setLook(agent, category, color) }
+    }, onDismiss = { picking = false })
     val all = sessions ?: emptyList()
     val talks = all.filter { !it.isBotChat && !it.isScheduled }.sortedByDescending { it.updated ?: 0 }
     val tasks = all.filter { it.isScheduled }.sortedByDescending { it.updated ?: 0 }
@@ -70,6 +79,8 @@ fun AgentScreen(store: AgentStore, agentId: String, onBack: () -> Unit, onOpen: 
                 Row(Modifier.fillMaxWidth()) {
                     RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack, size = 48.dp)
                     Spacer(Modifier.weight(1f))
+                    RoundButton(Icons.Rounded.Palette, stringResource(R.string.appearance), { picking = true }, size = 48.dp)
+                    Spacer(Modifier.size(8.dp))
                     RoundButton(Icons.Rounded.EditNote, stringResource(R.string.new_conversation), { onOpen(null) }, size = 48.dp)
                 }
                 InteractiveMascot(look, 132.dp, Modifier.padding(top = 12.dp))

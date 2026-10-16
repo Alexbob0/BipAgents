@@ -24,6 +24,14 @@ class Bridge(val api: Api) {
     fun runEvents(agent: String, run: String, session: String?): Flow<RunEvent> =
         api.events("v1/runs/${Hermes.seg(run)}/events", mapOf("agent" to agent, "session_id" to session)).mapNotNull(RunEvent::of)
 
+    /** The agent's look, kept by the bridge for every app (`PUT /v1/agents/{id}/appearance`). */
+    suspend fun setAppearance(agent: String, category: String, color: String?) {
+        api.call("v1/agents/${Hermes.seg(agent)}/appearance", "PUT", kotlinx.serialization.json.buildJsonObject {
+            put("category", kotlinx.serialization.json.JsonPrimitive(category))
+            put("color", color?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+        })
+    }
+
     suspend fun inbox(limit: Int = 100): List<InboxItem> = api.call("v1/outbox", query = mapOf("limit" to "$limit")).list("items").mapNotNull { o ->
         val id = o.str("id") ?: return@mapNotNull null
         InboxItem(id, o.str("agent") ?: "", o.str("title"), o.str("text") ?: "", o.time("sent_at", "created_at"), o.str("session_id"),

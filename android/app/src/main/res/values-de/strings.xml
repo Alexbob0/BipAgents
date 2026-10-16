@@ -92,6 +92,9 @@
     <string name="need_your_ok">Ich brauche deine Freigabe</string>
     <string name="once">Einmal</string>
     <string name="this_session">Diese Sitzung</string>
+    <string name="appearance">Aussehen</string>
+    <string name="color">Farbe</string>
+    <string name="save">Speichern</string>
     <string name="cancel">Abbrechen</string>
     <plurals name="agents_added">
         <item quantity="one">%d Agent hinzugefügt</item>
