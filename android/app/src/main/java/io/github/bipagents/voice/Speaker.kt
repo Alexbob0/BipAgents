@@ -30,11 +30,23 @@ object Speaker {
     private var player: MediaPlayer? = null
 
     fun stop() {
+        PhoneVoice.stop()
         job?.cancel()
         job = null
         player?.runCatching { stop(); release() }
         player = null
         _now.value = null
+    }
+
+    /** Reads `text` with the phone's own voice (an agent whose voice is the phone's). */
+    fun system(context: android.content.Context, key: String, text: String, language: String?, onDone: () -> Unit = {}) {
+        stop()
+        AudioPlayer.pause()
+        _now.value = Now(key, Phase.PLAYING)
+        job = scope.launch {
+            PhoneVoice.say(context, text, language)
+            if (_now.value?.key == key) { _now.value = null; onDone() }
+        }
     }
 
     /** Plays `file`; `onDone` when it ends (not when stopped). */

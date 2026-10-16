@@ -112,6 +112,7 @@ class Live(private val context: Context, private val store: AgentStore, private 
 
     /** Stops the Bip mid-sentence (tap, or the person speaking) and listens again. */
     fun interrupt(stopRun: Boolean = true) {
+        PhoneVoice.stop()
         bargeIn?.cancel(); bargeIn = null
         speaker?.cancel(); speaker = null
         sentences.close()
@@ -241,6 +242,19 @@ class Live(private val context: Context, private val store: AgentStore, private 
     /** Speaks the sentences as they come, each one streamed from the bridge into a single audio track. */
     private fun startSpeaker(queue: Channel<String>) {
         val bridge = store.bridge(agent)
+        // The phone's own voice, picked as the agent's: each sentence said on the phone.
+        if (agent.voice == PhoneVoice.ID && agent.serverVoice == null) {
+            speaker = scope.launch {
+                for (sentence in queue) {
+                    onSpeaking()
+                    _state.update { it.copy(outputLevel = -1f) }   // no level from the engine: the mouth moves on its own
+                    PhoneVoice.say(context, sentence, language, voiceCall = true)
+                }
+                bargeIn?.cancel(); bargeIn = null
+                if (isActive && _state.value.phase != Phase.ENDED) listen()
+            }
+            return
+        }
         speaker = scope.launch(Dispatchers.IO) {
             val rate = 24000
             val t = AudioTrack.Builder()

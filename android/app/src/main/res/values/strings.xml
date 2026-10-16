@@ -483,4 +483,7 @@
     <string name="widget_no_agent">Add an agent in BipAgents</string>
     <string name="widget_tap_to_talk">Tap to talk</string>
     <string name="widget_choose_agent">Which agent?</string>
+    <string name="phone_voice">Phone voice</string>
+    <string name="phone_voice_character">Android\'s voice, right on the phone, no server</string>
+    <string name="phone_voice_help">For a better voice, install one in Android Settings › Accessibility › Text-to-speech output.</string>
 </resources>

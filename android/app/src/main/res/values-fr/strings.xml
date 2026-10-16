@@ -482,4 +482,7 @@
     <string name="widget_no_agent">Ajoute un agent dans BipAgents</string>
     <string name="widget_tap_to_talk">Touche pour parler</string>
     <string name="widget_choose_agent">Quel agent ?</string>
+    <string name="phone_voice">Voix du téléphone</string>
+    <string name="phone_voice_character">La voix d\'Android, directement sur le téléphone, sans serveur</string>
+    <string name="phone_voice_help">Pour une meilleure voix, installe-en une dans Paramètres Android › Accessibilité › Synthèse vocale.</string>
 </resources>

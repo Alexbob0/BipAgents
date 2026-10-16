@@ -155,10 +155,12 @@ fun defaultVoice(c: Category) = when (c) {
     Category.FINANCE, Category.HOME -> "pocket:ours"
 }
 
-fun voiceOf(agent: Agent) = agent.voice?.takeIf { v -> BIP_VOICES.any { it.id == v } } ?: defaultVoice(agent.look.category)
+fun voiceOf(agent: Agent) = agent.voice?.takeIf { v -> v == io.github.bipagents.voice.PhoneVoice.ID || BIP_VOICES.any { it.id == v } }
+    ?: defaultVoice(agent.look.category)
 
 @Composable
-private fun voiceName(agent: Agent): String = stringResource(BIP_VOICES.first { it.id == voiceOf(agent) }.name)
+private fun voiceName(agent: Agent): String = if (voiceOf(agent) == io.github.bipagents.voice.PhoneVoice.ID) stringResource(R.string.phone_voice)
+    else stringResource(BIP_VOICES.first { it.id == voiceOf(agent) }.name)
 
 /** « Voice model » or « Galet »: what speaks for the agent. */
 @Composable
@@ -278,6 +280,33 @@ fun VoiceScreen(store: AgentStore, agentId: String, onBack: () -> Unit) {
                 }
             }
             item { Text(stringResource(R.string.bip_voices_help), style = Bip.text(13, color = Bip.muted)) }
+            // The phone's own voice: no server, for everything (a voice model's voice stops being used).
+            item {
+                Group {
+                    Row(Modifier.fillMaxWidth().tap { scope.launch { store.setVoices(agent, io.github.bipagents.voice.PhoneVoice.ID, null) } }
+                        .padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PlayButton(io.github.bipagents.voice.PhoneVoice.ID) {
+                            val id = io.github.bipagents.voice.PhoneVoice.ID
+                            if (playing == id) { io.github.bipagents.voice.PhoneVoice.stop(); playing = null }
+                            else {
+                                player[0]?.release(); player[0] = null
+                                playing = id
+                                scope.launch {
+                                    io.github.bipagents.voice.PhoneVoice.say(context, previewSentence(lang), lang)
+                                    if (playing == id) playing = null
+                                }
+                            }
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.phone_voice), style = Bip.text(16, FontWeight.ExtraBold))
+                            Text(stringResource(R.string.phone_voice_character), style = Bip.text(13, FontWeight.Medium, Bip.ink2))
+                        }
+                        if (agent.serverVoice == null && voiceOf(agent) == io.github.bipagents.voice.PhoneVoice.ID) Icon(Icons.Rounded.Check, null, tint = Bip.accent)
+                    }
+                }
+            }
+            item { Text(stringResource(R.string.phone_voice_help), style = Bip.text(13, color = Bip.muted)) }
         }
     }
     // The Bip that speaks where the voice model doesn't (and when its server doesn't answer).

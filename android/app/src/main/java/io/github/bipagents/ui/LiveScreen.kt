@@ -106,7 +106,7 @@ fun LiveScreen(store: AgentStore, agentId: String, session: String?, onEnd: () -
             onLongClick = { if (io.github.bipagents.BuildConfig.DEBUG) live?.say("Comment mieux dormir ?") },
             onClick = { if (speaking || state.phase == Live.Phase.THINKING) live?.interrupt() }), contentAlignment = Alignment.Center) {
             if (state.phase == Live.Phase.LISTENING) Ripples(look.main, state.inputLevel)
-            Mascot(look, Modifier.size(200.dp), mood, pose = Pose(mouth = if (speaking) state.outputLevel else null))
+            Mascot(look, Modifier.size(200.dp), mood, pose = Pose(mouth = if (speaking && state.outputLevel >= 0f) state.outputLevel else null))
         }
         Spacer(Modifier.weight(0.4f))
         Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),

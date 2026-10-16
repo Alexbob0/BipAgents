@@ -556,6 +556,9 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
         val agent = _state.value.agent ?: return
         val words = ChatText.visible(text).take(MAX_SPOKEN)
         if (words.isEmpty()) return
+        // The phone's own voice, picked as the agent's: no server involved.
+        if (agent.voice == io.github.bipagents.voice.PhoneVoice.ID && agent.serverVoice == null)
+            return Speaker.system(app, key, ShareText.plain(words), agent.language)
         val name = java.security.MessageDigest.getInstance("SHA-1").digest((agent.id + use + words).toByteArray())
             .joinToString("") { "%02x".format(it) }.take(20)
         val folder = java.io.File(app.cacheDir, "voice").apply { mkdirs() }

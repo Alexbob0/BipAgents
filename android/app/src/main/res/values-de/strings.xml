@@ -482,4 +482,7 @@
     <string name="widget_no_agent">Füge in BipAgents einen Agenten hinzu</string>
     <string name="widget_tap_to_talk">Zum Sprechen tippen</string>
     <string name="widget_choose_agent">Welcher Agent?</string>
+    <string name="phone_voice">Telefonstimme</string>
+    <string name="phone_voice_character">Die Stimme von Android, direkt auf dem Telefon, ohne Server</string>
+    <string name="phone_voice_help">Für eine bessere Stimme installiere eine unter Android-Einstellungen › Bedienungshilfen › Sprachausgabe.</string>
 </resources>
