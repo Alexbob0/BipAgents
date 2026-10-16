@@ -124,3 +124,17 @@ class RoutineScheduleTest {
         assertEquals(1791784800000L, once.at)
     }
 }
+
+class LanDoorTest {
+    @Test fun anInstallCodeCarriesItsLocalDoor() {
+        val fp = "15".repeat(32)
+        val p = io.github.bipagents.model.Pairing.parse("""{"v":"2","bridgeURL":"https://box.ts.net:8643","bridgeKey":"k","lan":{"url":"https://192.168.1.20:8650","fingerprint":"${fp.uppercase()}"}}""")
+            as io.github.bipagents.model.Pairing.Install
+        assertEquals("https://192.168.1.20:8650", p.lanUrl)
+        assertEquals(fp, p.lanFingerprint)
+        // No fingerprint, no door: a certificate can't be trusted without it.
+        val none = io.github.bipagents.model.Pairing.parse("""{"v":"2","bridgeURL":"https://box.ts.net:8643","bridgeKey":"k","lan":{"url":"https://192.168.1.20:8650"}}""")
+            as io.github.bipagents.model.Pairing.Install
+        assertNull(none.lanUrl)
+    }
+}

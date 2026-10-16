@@ -38,13 +38,26 @@ object Http {
     /** For event streams: the server sends a keepalive every 10 s, so 45 s of silence means a dead link. */
     val streaming: OkHttpClient = client.newBuilder().readTimeout(45, TimeUnit.SECONDS).build()
 
+    /** To bridges' local-network doors: their self-signed certificate accepted only when it is the one pinned (from
+     *  the pairing QR code), nothing else. */
+    val lan: OkHttpClient by lazy {
+        val tls = javax.net.ssl.SSLContext.getInstance("TLS").apply { init(null, arrayOf(LocalLink.Trust), null) }
+        client.newBuilder().sslSocketFactory(tls.socketFactory, LocalLink.Trust)
+            .hostnameVerifier { host, _ -> LocalLink.pinned(host) }   // the certificate itself was checked against the pin
+            .connectTimeout(5, TimeUnit.SECONDS).build()
+    }
+    val lanStreaming: OkHttpClient by lazy { lan.newBuilder().readTimeout(45, TimeUnit.SECONDS).build() }
+
     private val JSON = "application/json".toMediaType()
 
     fun body(value: JsonElement): RequestBody = json.encodeToString(JsonElement.serializer(), value).toRequestBody(JSON)
 }
 
 /** One HTTP API with a base address and a bearer key (an agent's Hermes, or a bridge). */
-class Api(val base: String, private val key: String) {
+class Api(val base: String, private val key: String, private val local: Boolean = false) {
+    private val client get() = if (local) Http.lan else Http.client
+    private val streaming get() = if (local) Http.lanStreaming else Http.streaming
+
     fun url(path: String, query: Map<String, String?> = emptyMap()): HttpUrl {
         val builder = (base.trimEnd('/') + "/" + path.trimStart('/')).toHttpUrl().newBuilder()
         query.forEach { (k, v) -> if (v != null) builder.addQueryParameter(k, v) }
@@ -62,7 +75,7 @@ class Api(val base: String, private val key: String) {
     suspend fun bytes(path: String, method: String = "GET", body: RequestBody? = null, query: Map<String, String?> = emptyMap(),
                       headers: Map<String, String> = emptyMap()): ByteArray = withContext(Dispatchers.IO) {
         // The body is read here, off the main thread (Android refuses network reads there).
-        Http.client.newCall(request(path, method, body, query, headers)).await().use { response ->
+        client.newCall(request(path, method, body, query, headers)).await().use { response ->
             if (!response.isSuccessful) throw failure(response)
             response.body.bytes()
         }
@@ -70,7 +83,7 @@ class Api(val base: String, private val key: String) {
 
     /** A streamed body (the bridge's PCM speech), read as it arrives; closing the stream ends the call. */
     suspend fun open(path: String, body: JsonElement): java.io.InputStream = withContext(Dispatchers.IO) {
-        val response = Http.streaming.newCall(request(path, "POST", Http.body(body))).execute()
+        val response = streaming.newCall(request(path, "POST", Http.body(body))).execute()
         if (!response.isSuccessful) { val error = failure(response); response.close(); throw error }
         object : java.io.FilterInputStream(response.body.byteStream()) {
             override fun close() { super.close(); response.close() }
@@ -85,7 +98,7 @@ class Api(val base: String, private val key: String) {
 
     /** An event stream (SSE): each event's type (a dotted name wins over a plain one) and its JSON. */
     fun events(path: String, query: Map<String, String?> = emptyMap(), body: JsonElement? = null): Flow<ServerEvent> = callbackFlow {
-        val call = Http.streaming.newCall(request(path, if (body == null) "GET" else "POST", body?.let { Http.body(it) }, query,
+        val call = streaming.newCall(request(path, if (body == null) "GET" else "POST", body?.let { Http.body(it) }, query,
             mapOf("Accept" to "text/event-stream")))
         val reader = launch(Dispatchers.IO) {
             try {

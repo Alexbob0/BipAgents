@@ -7,6 +7,8 @@ import io.github.bipagents.net.Hermes
 import io.github.bipagents.net.HttpError
 import io.github.bipagents.net.Session
 import io.github.bipagents.net.json
+import io.github.bipagents.net.obj
+import io.github.bipagents.net.str
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,7 +31,7 @@ class AgentStore(context: Context) {
     val latest: StateFlow<Map<String, Session>> = _latest.asStateFlow()
 
     /** How each agent answered lately (absent: not asked yet). */
-    enum class Reach { ONLINE, MODEL_DOWN, UNAUTHORIZED, OFFLINE }
+    enum class Reach { ONLINE, LOCAL, MODEL_DOWN, UNAUTHORIZED, OFFLINE }
     private val _reach = MutableStateFlow<Map<String, Reach>>(emptyMap())
     val reach: StateFlow<Map<String, Reach>> = _reach.asStateFlow()
     /** Agents whose server doesn't answer at all (the home screen says what to do). */
@@ -60,16 +62,34 @@ class AgentStore(context: Context) {
     private fun save(list: List<Agent>) {
         prefs.edit().putString("list", json.encodeToString(serializer, list)).apply()
         _agents.value = list
+        pinDoors()
     }
+
+    private fun pinDoors() = io.github.bipagents.net.LocalLink.updatePins(_agents.value.mapNotNull { a ->
+        a.lanUrl?.let { u -> a.lanFingerprint?.let { u to it } } })
+
+    init { pinDoors() }
 
     fun agent(id: String): Agent? = _agents.value.firstOrNull { it.id == id }
 
-    fun hermes(agent: Agent): Hermes? = secrets.keys(agent.id)?.let { Hermes(Api(agent.baseUrl, it.apiKey)) }
+    /** Its Hermes right now: on the tailnet, or through its bridge's door on the local network. */
+    fun hermes(agent: Agent): Hermes? = secrets.keys(agent.id)?.let { keys ->
+        val door = agent.lanUrl?.takeIf { io.github.bipagents.net.LocalLink.isActive(agent.id) }
+        if (door != null) Hermes(Api(door.trimEnd('/') + "/hermes/" + agent.bridgeName, keys.apiKey, local = true))
+        else Hermes(Api(agent.baseUrl, keys.apiKey))
+    }
 
     fun bridge(agent: Agent): Bridge? {
-        val url = agent.bridgeUrl ?: return null
         val key = secrets.keys(agent.id)?.bridgeKey ?: return null
+        agent.lanUrl?.takeIf { io.github.bipagents.net.LocalLink.isActive(agent.id) }?.let { return Bridge(Api(it, key, local = true)) }
+        val url = agent.bridgeUrl ?: return null
         return Bridge(Api(url, key))
+    }
+
+    /** The bridge on the tailnet, whatever the door. */
+    private fun tailnetBridge(agent: Agent): Bridge? {
+        val key = secrets.keys(agent.id)?.bridgeKey ?: return null
+        return Bridge(Api(agent.bridgeUrl ?: return null, key))
     }
 
     /** Each bridge once (several agents share one). */
@@ -108,7 +128,7 @@ class AgentStore(context: Context) {
             if (listed.isEmpty()) throw HttpError(404, null)
             for (a in listed) {
                 add(Agent(name = a.name, baseUrl = a.url!!, bridgeUrl = pairing.bridgeUrl, bridgeAgent = a.id.lowercase(),
-                    category = a.category, color = a.color),
+                    category = a.category, color = a.color, lanUrl = pairing.lanUrl, lanFingerprint = pairing.lanFingerprint),
                     AgentKeys(a.key!!, pairing.bridgeKey))
             }
             listed.size
@@ -177,28 +197,58 @@ class AgentStore(context: Context) {
 
     /** The home cards' latest conversation and « online » dot. */
     suspend fun refresh(agent: Agent) {
-        val hermes = hermes(agent) ?: return
         fun set(r: Reach) = _reach.update { it + (agent.id to r) }
+        val keys = secrets.keys(agent.id) ?: return
         try {
+            // The tailnet first, always: the door is only for when it doesn't answer.
+            val hermes = Hermes(Api(agent.baseUrl, keys.apiKey))
             val sessions = hermes.allSessions(maxPages = 3) { all -> all.any { it.isBotChat } }
+            io.github.bipagents.net.LocalLink.setActive(agent.id, false)
             Session.main(sessions)?.let { s -> setLatest(agent, s) }
             set(Reach.ONLINE)
             _lost.update { it - agent.id }
+            refreshDoor(agent)
             // The agents' server answers; does the model they use (its machine off, an expired key)?
             if (bridge(agent)?.modelUp() == false) set(Reach.MODEL_DOWN)
         } catch (error: HttpError) {
             if (error.status == 401 || error.status == 403) return set(Reach.UNAUTHORIZED)
             // Moved on the server (into its own space, from another phone): its bridge knows the new address.
-            val moved = runCatching { bridge(agent)?.agents() }.getOrNull()
+            val moved = runCatching { tailnetBridge(agent)?.agents() }.getOrNull()
                 ?.firstOrNull { it.id == agent.bridgeName && it.url != null && it.url != agent.baseUrl }
             if (moved != null) {
                 relocate(agent, moved.url!!)
                 agent(agent.id)?.let { refresh(it) }
                 return
             }
+            // Tailscale doesn't answer: the bridge's door on the local network, if it has one.
+            val door = agent.lanUrl
+            if (door != null) {
+                val local = Hermes(Api(door.trimEnd('/') + "/hermes/" + agent.bridgeName, keys.apiKey, local = true))
+                val reached = runCatching { local.allSessions(maxPages = 1) }.getOrNull()
+                if (reached != null) {
+                    io.github.bipagents.net.LocalLink.setActive(agent.id, true)
+                    Session.main(reached)?.let { s -> setLatest(agent, s) }
+                    set(Reach.LOCAL)
+                    _lost.update { it - agent.id }
+                    return
+                }
+                io.github.bipagents.net.LocalLink.setActive(agent.id, false)
+            }
             set(Reach.OFFLINE)
             if (error.status == 0) _lost.update { it + agent.id }
         }
+    }
+
+    /** The door as the bridge sees it now (it may have moved, or been turned off). */
+    private suspend fun refreshDoor(agent: Agent) {
+        val bridge = tailnetBridge(agent) ?: return
+        val o = runCatching { bridge.api.call("v1/pairing").obj() }.getOrNull() ?: return
+        val lan = o["lan"].obj()
+        val fingerprint = lan.str("fingerprint")?.lowercase()?.takeIf { it.length == 64 }
+        val url = lan.str("url")?.takeIf { fingerprint != null }
+        if (url == agent.lanUrl && fingerprint == agent.lanFingerprint) return
+        val current = agent(agent.id) ?: return
+        save(_agents.value.map { if (it.id == current.id) it.copy(lanUrl = url, lanFingerprint = fingerprint) else it })
     }
 
     /** Each install this phone knows, asked what it serves now. */

@@ -476,4 +476,5 @@
     <string name="preparing">%s wird vorbereitet…</string>
     <string name="create_can_take">Das kann bis zu einer halben Minute dauern, bis der Server ihn gestartet hat.</string>
     <string name="create_failed">Der Server konnte diesen Agenten nicht erstellen. Versuch es gleich noch einmal.</string>
+    <string name="online_local">Online · lokales Netz</string>
 </resources>

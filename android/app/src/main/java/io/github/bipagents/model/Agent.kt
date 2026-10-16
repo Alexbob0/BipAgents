@@ -20,6 +20,10 @@ data class Agent(
     val voice: String? = null,
     val serverVoice: String? = null,
     val language: String? = null,
+    /** The bridge's door on the local network (HTTPS, its own certificate) and that certificate's SHA-256: the way when
+     *  Tailscale doesn't answer. From the install's QR code, kept up to date by the bridge. */
+    val lanUrl: String? = null,
+    val lanFingerprint: String? = null,
 ) {
     val look: Look get() = Look.of(Category.of(category) ?: Category.suggest(name), color)
     /** The name the bridge knows it by: given by the bridge, else derived from the name as for agents set up by hand. */
