@@ -20,11 +20,19 @@
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTask"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- bipagents://agent/<id>[?start=voice|keyboard]: the widget, or any shortcut, opens an agent's conversation. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bipagents" android:host="agent" />
             </intent-filter>
         </activity>
         <service
@@ -35,6 +43,18 @@
             </intent-filter>
         </service>
         <receiver android:name=".push.ApprovalReceiver" android:exported="false" />
+        <!-- One agent on the home screen: its Bip, its last message, a microphone. -->
+        <receiver android:name=".widget.AgentWidgetReceiver" android:exported="true" android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/agent_widget" />
+        </receiver>
+        <activity android:name=".widget.WidgetConfigActivity" android:exported="true" android:theme="@style/Theme.BipAgents">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
         <!-- Podcasts and other audio the agents send: playing on with the screen off, controls on the lock screen. -->
         <service
             android:name=".voice.PlaybackService"

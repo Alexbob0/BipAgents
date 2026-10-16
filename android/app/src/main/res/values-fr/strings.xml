@@ -477,4 +477,9 @@
     <string name="create_can_take">Ça peut prendre jusqu\'à une demi-minute, le temps que le serveur le démarre.</string>
     <string name="create_failed">Le serveur n\'a pas pu créer cet agent. Réessaie dans un instant.</string>
     <string name="online_local">En ligne · réseau local</string>
+    <string name="widget_name">Agent</string>
+    <string name="widget_description">Un agent, son dernier message et un micro.</string>
+    <string name="widget_no_agent">Ajoute un agent dans BipAgents</string>
+    <string name="widget_tap_to_talk">Touche pour parler</string>
+    <string name="widget_choose_agent">Quel agent ?</string>
 </resources>

@@ -111,7 +111,7 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
     private suspend fun load() {
         val agent = _state.value.agent ?: return
         val session = _state.value.session ?: return _state.update { it.copy(items = emptyList()) }
-        if (_state.value.items == null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.load(app, session) }?.let { cached ->
+        if (_state.value.items == null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.load(app, agent.id + "/" + session) }?.let { cached ->
             // Shown at once from the phone's copy; the call below only updates what changed.
             _state.update { it.copy(items = restore(thread(cached.messages, cached.outbox), session), title = it.title ?: cached.title) }
         }
@@ -122,7 +122,7 @@ class ChatModel(application: Application) : AndroidViewModel(application) {
             val outbox = if (_state.value.title.equals("Bot Chat", ignoreCase = true)) scheduled(agent) else emptyList()
             _state.update { it.copy(items = restore(thread(messages, outbox), session), error = null) }
             val title = _state.value.title
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.save(app, session, ThreadCache.Entry(title, messages, outbox)) }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ThreadCache.save(app, agent.id + "/" + session, ThreadCache.Entry(title, messages, outbox)) }
         } catch (error: HttpError) {
             _state.update { it.copy(items = it.items ?: emptyList(), error = error) }
         }

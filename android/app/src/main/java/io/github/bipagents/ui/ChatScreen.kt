@@ -77,6 +77,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -95,7 +96,8 @@ import androidx.compose.material.icons.automirrored.rounded.Reply
 import io.github.bipagents.net.RunEvent
 
 @Composable
-fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () -> Unit, onAgent: () -> Unit, onLive: (String?) -> Unit,
+fun ChatScreen(store: AgentStore, agentId: String, session: String?, start: String? = null, onBack: () -> Unit, onAgent: () -> Unit,
+               onLive: (String?) -> Unit,
                onForward: (agent: String, session: String?) -> Unit) {
     val model: ChatModel = viewModel(key = "chat-$agentId-${session ?: "main"}")
     LaunchedEffect(Unit) {
@@ -345,7 +347,7 @@ fun ChatScreen(store: AgentStore, agentId: String, session: String?, onBack: () 
                 if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED) photograph() else askCamera.launch(android.Manifest.permission.CAMERA)
             },
-            onScan = ::scan, thinking = state.thinking, onThinking = model::setThinking,
+            onScan = ::scan, thinking = state.thinking, onThinking = model::setThinking, start = start,
             onSend = { if (model.send(draft, attachments.toList())) { draft = ""; Drafts.set(context, agentId, session, ""); attachments.clear() } },
             onStop = model::stop)
     }
@@ -576,7 +578,7 @@ fun Pill(text: String, dark: Boolean, onClick: () -> Unit) {
 private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: String, running: Boolean, ready: Boolean,
                      look: io.github.bipagents.model.Look, language: String?, onVoice: (RecordedNote) -> Unit,
                      onPhoto: () -> Unit, onFile: () -> Unit, onCamera: () -> Unit, onScan: () -> Unit, thinking: String?,
-                     onThinking: (String) -> Unit, onSend: () -> Unit, onStop: () -> Unit) {
+                     onThinking: (String) -> Unit, onSend: () -> Unit, onStop: () -> Unit, start: String? = null) {
     var menu by remember { mutableStateOf(false) }
     var levels by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -605,6 +607,13 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: Stri
             if (!send) { recorder.cancel(); return@launch }
             recorder.stop()?.let(onVoice)
         }
+    }
+    // Opened to write (« Write »): the keyboard up; to speak (the widget's microphone): already recording.
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(start) {
+        if (start == "keyboard") { kotlinx.coroutines.delay(400); runCatching { focus.requestFocus(); keyboard?.show() } }
+        if (start == "voice" && recording == null) { kotlinx.coroutines.delay(350); begin(); if (recording == "holding") recording = "locked" }
     }
     failure?.let { Text(it, style = Bip.text(14, FontWeight.Bold, Bip.danger), modifier = Modifier.padding(horizontal = 18.dp)) }
     if (recording != null) {
@@ -658,7 +667,7 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, placeholder: Stri
             }
         }
         val field = if (holdHint) Bip.danger.copy(alpha = 0.12f) else Bip.card
-        TextField(draft, onDraft, Modifier.weight(1f), placeholder = {
+        TextField(draft, onDraft, Modifier.weight(1f).focusRequester(focus), placeholder = {
             if (holdHint) Text(stringResource(R.string.hold_to_record), style = Bip.text(16, FontWeight.Bold, Bip.danger))
             else Text(placeholder, style = Bip.text(16, color = Bip.muted))
         }, textStyle = Bip.text(16), maxLines = 6, shape = RoundedCornerShape(26.dp),

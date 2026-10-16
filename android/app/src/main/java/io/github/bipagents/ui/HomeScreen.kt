@@ -53,7 +53,7 @@ import java.util.Locale
 
 /** Home: one card per agent (App/Features/Agents/AgentsView.swift). */
 @Composable
-fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, onChat: (String, String?) -> Unit,
+fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, onChat: (String, String?, String?) -> Unit,
                onLive: (String) -> Unit, onVoice: (String, io.github.bipagents.voice.RecordedNote) -> Unit) {
     val agents by store.agents.collectAsState()
     val latest by store.latest.collectAsState()
@@ -84,7 +84,8 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, 
         if (news.isNotEmpty()) item { ServerNewsNotice(store, news) }
         items(agents, key = { it.id }) { agent ->
             AgentCard(agent, latest[agent.id], reach[agent.id], onAgent = { onAgent(agent.id) },
-                onChat = { onChat(agent.id, latest[agent.id]?.id) }, onLive = { onLive(agent.id) }, onVoice = { onVoice(agent.id, it) })
+                onChat = { onChat(agent.id, latest[agent.id]?.id, null) }, onWrite = { onChat(agent.id, latest[agent.id]?.id, "keyboard") },
+                onLive = { onLive(agent.id) }, onVoice = { onVoice(agent.id, it) })
         }
     }
 }
@@ -93,6 +94,7 @@ fun HomeScreen(store: AgentStore, onAdd: () -> Unit, onAgent: (String) -> Unit, 
  *  and Audio (hold) / Write / Live. */
 @Composable
 private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents.model.AgentStore.Reach?, onAgent: () -> Unit, onChat: () -> Unit,
+                      onWrite: () -> Unit,
                       onLive: () -> Unit, onVoice: (io.github.bipagents.voice.RecordedNote) -> Unit) {
     val look = agent.look
     Column(Modifier.fillMaxWidth().background(look.tint, RoundedCornerShape(30.dp)).padding(18.dp),
@@ -124,7 +126,7 @@ private fun AgentCard(agent: Agent, latest: Session?, reach: io.github.bipagents
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AudioHoldButton(look, agent.language, Modifier.weight(1f), onVoice)
-            CardButton(stringResource(R.string.write), Icons.Rounded.Keyboard, dark = false, Modifier.weight(1f), onChat)
+            CardButton(stringResource(R.string.write), Icons.Rounded.Keyboard, dark = false, Modifier.weight(1f), onWrite)
             CardButton(stringResource(R.string.live), Icons.Rounded.GraphicEq, dark = true, Modifier.weight(1f), onLive)
         }
     }

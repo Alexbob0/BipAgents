@@ -60,16 +60,29 @@ import io.github.bipagents.ui.SettingsScreen
 import io.github.bipagents.ui.tap
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
-    private var opened by androidx.compose.runtime.mutableStateOf<Pair<String, String?>?>(null)
+    /** A conversation to open: from a notification, or a link (`bipagents://agent/<id>[?start=voice|keyboard]`, the widget). */
+    private data class Open(val agent: String, val session: String?, val start: String? = null)
+    private var opened by androidx.compose.runtime.mutableStateOf<Open?>(null)
+
+    private fun read(intent: android.content.Intent) {
+        intent.getStringExtra("agent")?.let { opened = Open(it, intent.getStringExtra("session")); return }
+        val uri = intent.data ?: return
+        if (uri.scheme != "bipagents" || uri.host != "agent") return
+        val id = uri.pathSegments.firstOrNull() ?: return
+        val store = (application as BipApp).store
+        if (store.agent(id) == null) return
+        // Its ongoing conversation, as « Write » opens it.
+        opened = Open(id, store.latest.value[id]?.id, uri.getQueryParameter("start"))
+    }
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
-        intent.getStringExtra("agent")?.let { opened = it to intent.getStringExtra("session") }
+        read(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        intent.getStringExtra("agent")?.let { opened = it to intent.getStringExtra("session") }
+        read(intent)
         enableEdgeToEdge()
         val store = (application as BipApp).store
         // Debug builds only: `adb shell am start -n io.github.bipagents/.MainActivity --es pair '<payload>'` adds an
@@ -99,7 +112,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 val nav = rememberNavController()
                 // A notification tapped: its conversation.
                 androidx.compose.runtime.LaunchedEffect(opened) {
-                    opened?.let { (agent, session) -> nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: "")) }
+                    opened?.let { o -> nav.navigate(chatRoute(o.agent, o.session, o.start)) }
                     opened = null
                 }
                 val route = nav.currentBackStackEntryAsState().value?.destination?.route
@@ -130,7 +143,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         }) {
                         composable("home") {
                             HomeScreen(store, onAdd = { nav.navigate("add") }, onAgent = { agent -> nav.navigate("agent/$agent") },
-                                onChat = { agent, session -> nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: "")) },
+                                onChat = { agent, session, start -> nav.navigate(chatRoute(agent, session, start)) },
                                 onLive = { agent -> nav.navigate("live/$agent") },
                                 onVoice = { agent, note ->
                                     // A voice note from home goes to the agent's latest conversation, sent from there.
@@ -164,9 +177,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             io.github.bipagents.ui.CreateAgentScreen(store, onBack = { nav.popBackStack() },
                                 onCreated = { nav.popBackStack("home", false) })
                         }
-                        composable("chat/{agent}?session={session}") { entry ->
+                        composable("chat/{agent}?session={session}&start={start}") { entry ->
                             val agent = entry.arguments?.getString("agent") ?: return@composable
-                            ChatScreen(store, agent, entry.arguments?.getString("session"), onBack = { nav.popBackStack() },
+                            ChatScreen(store, agent, entry.arguments?.getString("session"), start = entry.arguments?.getString("start"),
+                                onBack = { nav.popBackStack() },
                                 onAgent = { nav.navigate("agent/$agent") },
                                 onLive = { session -> nav.navigate("live/$agent" + (session?.let { "?session=$it" } ?: "")) },
                                 onForward = { target, session -> nav.navigate("chat/$target" + (session?.let { "?session=$it" } ?: "")) })
@@ -257,3 +271,7 @@ private fun TabBar(nav: NavHostController, current: String?, modifier: Modifier)
         }
     }
 }
+
+/** A conversation's route: its session (none: the agent's ongoing one), and how it opens (keyboard, voice note). */
+fun chatRoute(agent: String, session: String?, start: String? = null): String =
+    "chat/$agent" + listOfNotNull(session?.let { "session=$it" }, start?.let { "start=$it" }).joinToString("&").let { if (it.isEmpty()) "" else "?$it" }
