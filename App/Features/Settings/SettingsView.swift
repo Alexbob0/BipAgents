@@ -62,10 +62,13 @@ struct SettingsView: View {
                     NavigationLink { VaultView() } label: {
                         Label("Coffre des agents", systemImage: "lock.shield")
                     }
+                    NavigationLink { ConsolesView() } label: {
+                        Label("Navigateurs", systemImage: "desktopcomputer")
+                    }
                 } header: {
                     Text("Sécurité")
                 } footer: {
-                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir.")
+                    Text("Les identifiants de sites que tes agents utilisent sans jamais les voir, et les ordinateurs qui ouvrent tes agents dans un navigateur.")
                 }
                 Section("Automatismes") {
                     NavigationLink { CronJobsView() } label: {

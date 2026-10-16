@@ -640,6 +640,50 @@ struct BridgeClient: Sendable {
         _ = try await send(request)
     }
 
+    // MARK: Web console
+
+    /// A browser logged in to this bridge's web console (`/console/`).
+    struct ConsoleDevice: Identifiable, Hashable {
+        var id: String
+        var name: String
+        var created: Date?
+        var seen: Date?
+    }
+
+    /// Lets in the browser showing `code`. False when no console of this bridge waits with it (another bridge's, or
+    /// expired).
+    func approveConsole(code: String, name: String) async throws -> Bool {
+        var request = request("v1/console/pairings/\(code)", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        do {
+            try await send(request)
+            return true
+        } catch HermesError.http(let status, _, _) where status == 404 {
+            return false
+        }
+    }
+
+    /// The browsers logged in to the console; nil on a bridge without it.
+    func consoleDevices() async throws -> [ConsoleDevice]? {
+        let data: Data
+        do {
+            data = try await send(request("v1/console/devices"))
+        } catch HermesError.http(let status, _, _) where status == 404 {
+            return nil
+        }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return (json?["devices"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let id = row["id"] as? String else { return nil }
+            return ConsoleDevice(id: id, name: row["name"] as? String ?? id,
+                                 created: (row["created"] as? Double).map { Date(timeIntervalSince1970: $0) },
+                                 seen: (row["seen"] as? Double).map { Date(timeIntervalSince1970: $0) })
+        }
+    }
+
+    func revokeConsole(_ device: String) async throws {
+        try await send(request("v1/console/devices/\(device)", method: "DELETE"))
+    }
+
     /// A short sentence in `voice`, as a WAV file (a voice server's preview).
     func voicePreview(text: String, agent: String, voice: String) async throws -> Data {
         var request = request("v1/tts/sentence", method: "POST")

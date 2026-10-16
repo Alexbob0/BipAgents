@@ -48,3 +48,36 @@ def test_the_console_reaches_hermes_without_its_key(client):
     reached = client.get("/hermes/wellness/api/sessions", headers={"X-Bip-Console": "1"})
     assert reached.status_code != 401
     assert client.get("/hermes/wellness/api/sessions").status_code == 401   # no session, no key: Hermes refuses
+
+
+def test_the_page_runs_only_its_own_scripts(client):
+    page = client.get("/console/")
+    assert page.status_code == 200 and 'src="/console/static/app.js"' in page.text
+    csp = page.headers["content-security-policy"]
+    assert "script-src 'self'" in csp and "frame-ancestors 'none'" in csp and "unsafe" not in csp
+    for name in ("app.js", "api.js", "markdown.js", "bips.js", "text.js", "style.css", "vendor/preact-htm.js"):
+        assert client.get(f"/console/static/{name}").status_code == 200, name
+    assert client.get("/console", follow_redirects=False).headers["location"] == "/console/"
+
+
+def test_the_link_command_prints_a_working_link(tmp_path, capsys):
+    import os
+    import re
+    from bipbridge.__main__ import main
+    from bipbridge.console import ConsoleStore
+    config = tmp_path / "bridge.toml"
+    config.write_text(f"""bridge_key = "{'k' * 40}"
+public_url = "https://box.tailnet.ts.net:8643"
+[pocket]
+url = "http://127.0.0.1:1"
+[outbox]
+db_path = "{tmp_path}/bridge.db"
+audio_dir = "{tmp_path}/audio"
+[agents.wellness]
+hermes_url = "http://127.0.0.1:2"
+hermes_key = "x"
+""")
+    os.chmod(config, 0o600)
+    assert main(["console", "--config", str(config)]) == 0
+    code = re.search(r"https://box\.tailnet\.ts\.net:8643/console/#([\w-]+)", capsys.readouterr().out).group(1)
+    assert ConsoleStore(str(tmp_path / "console.json")).use_link(code)
