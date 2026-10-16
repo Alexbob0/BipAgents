@@ -73,11 +73,11 @@ Et ils **babillent** : chaque réaction est dite dans leur « Animalese », un c
 </p>
 </details>
 
-## ☁️ Ton agent à toi sur un serveur à 7 €
+## ☁️ Ton agent à toi sur un petit serveur, à partir de 8 € par mois
 
-Pas de machine à la maison ? Un **petit VPS** (4 vCPU, 8 Go : ≈ 7 € par mois chez Hetzner) fait tourner Hermes, le bridge
-et les voix des Bips sur son processeur, et le modèle vient d'**OpenRouter**, payé à l'usage. Tu as un agent toujours
-disponible, dans ta poche, avec une voix, pour le prix d'un ou deux cafés par mois.
+Pas de machine à la maison ? Un **petit VPS** fait tourner Hermes, le bridge et les voix des Bips sur son processeur
+(2 vCPU et 4 Go dès ≈ 8 € par mois ; 4 vCPU et 8 Go, avec le navigateur visible de chaque agent, ≈ 15 €), et le modèle
+vient d'**OpenRouter**, payé à l'usage. Tu as un agent toujours disponible, dans ta poche, avec une voix.
 
 - **Ce qui reste à toi** : les conversations, la mémoire des agents, tes fichiers et le coffre sont sur ton serveur, pas
   sur une plateforme. Tu changes de modèle quand tu veux, sans rien exporter.

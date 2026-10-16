@@ -16,7 +16,8 @@ in place.
   privacy settings (zero data retention).
 - **Notifications** go through Apple with a developer key, or through the relay of another BipAgents install (a
   relative's: `family add`).
-- **Cost**: the server, ≈ €7 a month (4 vCPU, 8 GB at Hetzner); the model, paid as you use it at OpenRouter. The
+- **Cost**: the server, from ≈ €8 a month (2 vCPU, 4 GB) to ≈ €15 (4 vCPU, 8 GB, with the visible browsers); the
+  model, paid as you use it at OpenRouter. The
   Bips' voices run on the server's CPU, at no extra cost.
 
 ## 1. Pick the server

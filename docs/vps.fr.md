@@ -16,7 +16,8 @@ fermer une fois Tailscale en place.
   de confidentialité des fournisseurs qui ne gardent rien (zero data retention).
 - **Les notifications** passent par Apple avec une clé de développeur, ou par le relais d'une autre installation
   BipAgents (celle d'un proche : `family add`).
-- **Le coût** : le serveur, ≈ 7 € par mois (4 vCPU, 8 Go chez Hetzner) ; le modèle, payé à l'usage chez OpenRouter.
+- **Le coût** : le serveur, de ≈ 8 € par mois (2 vCPU, 4 Go) à ≈ 15 € (4 vCPU, 8 Go, avec les navigateurs visibles) ; le
+  modèle, payé à l'usage chez OpenRouter.
   Les voix des Bips tournent sur le processeur du serveur, sans frais en plus.
 
 ## 1. Choisir le serveur
