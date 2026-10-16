@@ -77,9 +77,11 @@ commandes (update, voice, hermes-update, family add, uninstall) ; l'installateur
 seulement ce qui a changé (le bridge, les voix des Bips quand c'est ce compte qui les fait tourner, les navigateurs des
 agents quand leur image a changé : reconstruits, profils gardés), et applique les réglages qu'une nouvelle
 installation pose maintenant (`installer/bipinstall/migrations.py` : par exemple les commandes à risque qui te demandent
-toujours ton accord). Ce qu'il ne peut pas faire depuis ce compte arrive sous forme de commandes à lancer : les autres
-installations de la famille (avec `sudo -u <compte>`), les voix des Bips lancées depuis un autre compte, la mise à jour
-de Hermes. Des modifications locales dans `~/BipAgents` qui la bloquent sont montrées avec les commandes pour les mettre
+toujours ton accord). Il propose ensuite de mettre à jour aussi les autres
+installations de la machine (celles de la famille), chacune dans son compte, après ton mot de passe sudo, demandé une
+seule fois (`--all` : sans demander) ; lancé depuis un compte administrateur sans installation à lui, il met à jour les
+voix des Bips de ce compte et les autres. Ce qui ne peut pas se faire ainsi arrive sous forme de commandes à lancer (la
+mise à jour de Hermes). Des modifications locales dans `~/BipAgents` qui la bloquent sont montrées avec les commandes pour les mettre
 de côté.
 
 La première fois, il propose de le faire chaque nuit à 4 h 30 (un minuteur de ce compte, `install.sh update --auto` :
