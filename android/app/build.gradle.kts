@@ -26,8 +26,21 @@ android {
         buildConfigField("String", "FIREBASE_SENDER_ID", "\"${setting("firebase.senderId")}\"")
     }
 
+    // The Play Store upload key: local.properties (upload.storeFile, upload.storePassword, upload.keyAlias,
+    // upload.keyPassword), never in the repo. Google re-signs the app with its own key (Play App Signing).
+    val local = Properties().apply { rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load) }
+    local.getProperty("upload.storeFile")?.let { store ->
+        signingConfigs.create("upload") {
+            storeFile = file(store)
+            storePassword = local.getProperty("upload.storePassword")
+            keyAlias = local.getProperty("upload.keyAlias")
+            keyPassword = local.getProperty("upload.keyPassword")
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("upload")?.let { signingConfig = it }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
