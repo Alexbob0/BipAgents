@@ -108,3 +108,24 @@ def test_only_on_linux(setup, monkeypatch):
     with pytest.raises(browsers.BrowserError):
         asyncio.run(browsers.setup(config, config.agent("budget"), run, str(hub)))
     assert commands == []
+
+
+def test_taking_over_the_browser_makes_the_agents_tools_wait(setup, monkeypatch):
+    config, hub, run, commands, tmp_path = setup
+    asyncio.run(browsers.setup(config, config.agent("budget"), run, str(hub), is_free=lambda p: True))
+    ran = []
+
+    class Done:
+        async def wait(self):
+            return 0
+
+    async def fake_exec(*args, **kwargs):
+        ran.append(list(args))
+        return Done()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    assert asyncio.run(browsers.hold(config, "budget", True)) is True
+    assert ran[-1] == ["/usr/bin/podman", "exec", "bipagents-browser-budget", "sh", "-c", "touch /tmp/bipagents-hold"]
+    asyncio.run(browsers.hold(config, "budget", False))
+    assert ran[-1][-1] == "rm -f /tmp/bipagents-hold"
+    assert asyncio.run(browsers.hold(config, "nobody", True)) is False and len(ran) == 2   # no browser of its own

@@ -177,7 +177,7 @@ final class ConversationModel {
             ChatItem(.assistant(text: "MEDIA:/home/hermes/.hermes/media/point-du-matin.mp3\n" + String(localized: "Voilà ton point du matin 🎙️"), isStreaming: false)),
             ChatItem(.user(text: String(localized: "Voilà mes nuits de septembre, tu vois une tendance ?"), attachments: [sheet])),
             ChatItem(.tools([ToolEvent(tool: "terminal", preview: "python3 analyse_sommeil.py sommeil-septembre.xlsx", status: .started)])),
-            ChatItem(.approval(ApprovalRequest(runID: "demo", requestID: "1", command: "pip install openpyxl", choices: [.once, .session, .always, .deny]), resolved: nil)),
+            ChatItem(.approval(ApprovalRequest(runID: "demo", requestID: "1", command: "pip install openpyxl", choices: [.once, .session, .deny]), resolved: nil)),
             ChatItem(.user(text: "Message from 🤖 Vie (@vie): " + String(localized: "Alex part à Bordeaux samedi, quel train est le moins fatigant vu sa semaine ?"), attachments: [])),
             ChatItem(.assistant(text: String(localized: "Celui de 9h : sa semaine est chargée, mieux vaut arriver tôt et faire une sieste l’après-midi."), isStreaming: false)),
             ChatItem(.question(ClarifyRequest(runID: "demo", requestID: "clr", questions: [

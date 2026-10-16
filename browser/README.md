@@ -59,6 +59,13 @@ commit BipAgents is tested with (`a7b9eea`, set in the `Containerfile`) and appl
   no element cloning, file extraction, network interception, raw CDP or debugging hooks) and the skill telling the
   agent how to use its browser (`bridge/bipbridge/skills/visible-browser/SKILL.md`, copied into its Hermes profile).
 
+## Taking over
+
+« Prendre la main » in the app sets a flag in the container (`/tmp/bipagents-hold`, by the bridge): until « Rendre la
+main », the agent's browser tools answer « the person has the browser, wait » (`hold_gate.py`, between Hermes and the
+MCP server) and its DevTools connections are closed (`devtools_relay.py`), so it neither clicks nor reads the page while
+the person logs in. A flag older than 15 minutes (the app closed without handing it back) no longer counts.
+
 ## Limits
 
 - Linux only (the screen is an X server in the container). On a Mac, this will come with a separate macOS account.

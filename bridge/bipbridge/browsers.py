@@ -59,6 +59,24 @@ def unit_path(agent: str) -> Path:
     return Path.home() / ".config" / "systemd" / "user" / f"{container(agent)}.service"
 
 
+HOLD_FLAG = "/tmp/bipagents-hold"   # browser/hold_gate.py: while it is there, the agent's browser tools wait
+
+
+async def hold(config: Config, agent: str, on: bool) -> bool:
+    """The person takes over the agent's browser (or hands it back): its MCP tools and its DevTools wait meanwhile.
+    Returns whether this agent has such a browser (its container, set up here)."""
+    import asyncio
+    engine = runtime(config)
+    if not engine or not ports_of(config, agent):
+        return False
+    command = f"touch {HOLD_FLAG}" if on else f"rm -f {HOLD_FLAG}"
+    process = await asyncio.create_subprocess_exec(engine, "exec", container(agent), "sh", "-c", command,
+                                                   stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+    if await process.wait() != 0:
+        log.warning("browser hold not set", extra=fields(agent=agent, on=on))
+    return True
+
+
 def ports_of(config: Config, agent: str) -> Optional[Dict[str, int]]:
     try:
         return json.loads((folder(config, agent) / "ports.json").read_text(encoding="utf-8"))

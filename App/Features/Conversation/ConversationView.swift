@@ -668,6 +668,7 @@ struct AssistantRow: View {
 
     private func format(_ source: String, size: CGFloat) -> AttributedString {
         var result = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
+        Self.checkLinks(in: &result)
         Self.linkBareURLs(in: &result)
         ChatText.linkContacts(in: &result)
         // An explicit .font on the Text would flatten **bold**/*italic*; set the font per run instead.
@@ -684,6 +685,34 @@ struct AssistantRow: View {
             }
         }
         return result
+    }
+
+    /// What a link in a reply may open: web pages, a call, an e-mail, a place. Another scheme (an app's) stays text.
+    static let openable: Set<String> = ["http", "https", "tel", "mailto", "maps"]
+
+    /// The reply's links, as a page or an e-mail the agent read may have written them: a scheme it may not open is
+    /// dropped, and a label that reads as another address (« [paypal.com](https://elsewhere) ») shows where it goes.
+    private static func checkLinks(in text: inout AttributedString) {
+        for run in text.runs.reversed() {
+            guard let link = run.link else { continue }
+            guard let scheme = link.scheme?.lowercased(), openable.contains(scheme) else {
+                text[run.range].link = nil
+                continue
+            }
+            guard scheme.hasPrefix("http"), let host = link.host()?.lowercased() else { continue }
+            let label = String(text[run.range].characters).trimmingCharacters(in: .whitespaces).lowercased()
+            let looksLikeAddress = !label.contains(" ") && label.contains(".")
+                && label.range(of: #"^[a-z0-9.-]+\.[a-z]{2,}(/|$)"#, options: .regularExpression) != nil
+                || label.hasPrefix("http") || label.hasPrefix("www.")
+            let named = label.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
+                .replacingOccurrences(of: "www.", with: "").split(separator: "/").first.map(String.init) ?? ""
+            let real = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+            if looksLikeAddress, named != real, !named.hasSuffix("." + real), !real.hasSuffix("." + named) {
+                var shown = AttributedString(shortLabel(for: link), attributes: run.attributes)
+                shown.link = link
+                text.replaceSubrange(run.range, with: shown)
+            }
+        }
     }
 
     private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
@@ -1041,7 +1070,9 @@ struct ApprovalCard: View {
                     .foregroundStyle(resolved == .deny ? Theme.danger : palette.deep)
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    ForEach(request.choices, id: \.self) { choice in
+                    // « Toujours » is left out: one tap would let every such command through from then on, also when
+                    // a page or an e-mail the agent read is what asks for it.
+                    ForEach(request.choices.filter { $0 != .always }, id: \.self) { choice in
                         Button(Self.title(for: choice)) { onChoice(choice) }
                             .buttonStyle(.pill(Self.kind(for: choice), height: 46))
                     }
