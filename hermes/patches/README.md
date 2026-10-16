@@ -19,7 +19,8 @@ wire contract as the base patches; refreshed when upstream moves past them.
 
 **Upstream.** 0005 is proposed as NousResearch/hermes-agent#136660. 0001 is offered to the open #116259 (branch
 `Alexbob0:feat/runs-api-clarify`, rebased on `97a9ae8ee`, 80 tests passing) rather than as a competing PR. 0004 is
-NousResearch/hermes-agent#136217, where the maintainer asks to choose between it and #133281.
+replaced upstream by NousResearch/hermes-agent#139873 (same replay window, using the copy Hermes already keeps of each
+image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 
 | Patch | On `517b5e10f` | On upstream `main` (`a62979dc36`) |
 |---|---|---|

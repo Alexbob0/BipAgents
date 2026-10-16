@@ -173,7 +173,7 @@ them before updating Hermes); each one is offered upstream. Details in [`hermes/
 | Patch | Why | Upstream |
 |---|---|---|
 | 0001 `clarify` in the Runs API | the agent can ask you a question with choices from the app | offered to #116259 |
-| 0004 images kept in the conversation | a follow-up question about a photo still sees the photo | #136217 |
+| 0004 images kept in the conversation | a follow-up question about a photo still sees the photo | replaced by #139873 (open) |
 | 0005 vault fills after the browser restarted | logins keep working when the agent's browser was closed and reopened | #136660 |
 | 0006 a peer's reply comes back to the app | when an agent asks another one, its answer reaches your conversation | local |
 

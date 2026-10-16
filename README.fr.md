@@ -175,7 +175,7 @@ Quelques changements dont BipAgents a besoin ne sont pas encore dans Hermes. L'i
 | Patch | Pourquoi | En amont |
 |---|---|---|
 | 0001 `clarify` dans l'API des runs | l'agent peut te poser une question à choix depuis l'app | proposé dans #116259 |
-| 0004 images gardées dans la conversation | une question de suivi sur une photo voit encore la photo | #136217 |
+| 0004 images gardées dans la conversation | une question de suivi sur une photo voit encore la photo | remplacé par #139873 (ouverte) |
 | 0005 remplissage du coffre après redémarrage du navigateur | les connexions marchent encore quand le navigateur de l'agent a été fermé puis rouvert | #136660 |
 | 0006 la réponse d'un autre agent revient dans l'app | quand un agent en consulte un autre, sa réponse arrive dans ta conversation | local |
 
