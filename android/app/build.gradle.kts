@@ -46,6 +46,14 @@ android {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        // `-PminifyDebug`: a debug build shrunk as the release is, to try it against the development servers (plain HTTP,
+        // debug hooks) and catch what R8 removes before Play does.
+        debug {
+            if (providers.gradleProperty("minifyDebug").isPresent) {
+                isMinifyEnabled = true
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            }
+        }
     }
     buildFeatures {
         compose = true
