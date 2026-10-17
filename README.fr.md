@@ -44,6 +44,13 @@ Chaque agent est un **Bip** : une petite mascotte avec sa couleur, sa forme, son
    curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
    ```
 
+   Sur un PC **Windows 11** (un RTX Spark, un PC de jeu…), dans PowerShell ouvert en administrateur : il prépare WSL2
+   et y lance la même installation ([détails](installer/README.fr.md#sur-windows)) :
+
+   ```powershell
+   irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex
+   ```
+
 4. **📷 Scanne le QR code** affiché à la fin : dans l'app, **＋ › Scanner le QR code**. Tes Bips te disent bonjour. 👋
 
 Ensuite : `bipagents update` garde tout à jour, `bipagents family add <prénom>` fait de la place pour un proche, et

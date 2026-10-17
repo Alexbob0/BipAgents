@@ -51,6 +51,39 @@ L'installateur reconnaît un serveur loué (Hetzner, OVH, Scaleway, AWS…) : pa
 modèle dans le cloud proposé en premier. Le serveur se prépare d'avance avec un fichier cloud-init : voir
 [BipAgents sur un serveur loué](../docs/vps.fr.md).
 
+## Sur Windows
+
+Windows 11 (22H2 ou plus récent), dans PowerShell ouvert en administrateur :
+
+```powershell
+irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex
+```
+
+Les agents vivent dans **WSL2** (Ubuntu), installés exactement comme sur un serveur Linux — bacs à sable, voix et
+navigateurs compris. `install.ps1` prépare ce dont Windows a besoin, chaque étape seulement si nécessaire, puis y lance
+cet installateur :
+
+- WSL2 et Ubuntu (Ubuntu demande un nom d'utilisateur et un mot de passe Linux la première fois ; Windows peut
+  demander un redémarrage : relance la commande ensuite) ;
+- le réseau de WSL est le **miroir** de celui de Windows (`networkingMode=mirrored` dans `%USERPROFILE%\.wslconfig`) :
+  le réseau local atteint la porte du bridge, et un serveur de modèle qui tourne sous Windows (LM Studio, Ollama…) est
+  trouvé sur `127.0.0.1` ;
+- dans Ubuntu : systemd, git, curl, podman, et le « linger » ;
+- le **Tailscale de Windows**, connecté (installé avec winget si tu es d'accord) : il publie les agents sur ton
+  tailnet — l'installateur le pilote depuis WSL ;
+- une **tâche « BipAgents » à l'ouverture de session** qui garde WSL éveillé (Windows l'arrête dès qu'aucune fenêtre
+  ne s'en sert).
+
+Garde le PC allumé et éveillé (Paramètres › Système › Alimentation : jamais de veille sur secteur) ; les agents
+démarrent quand tu ouvres ta session Windows. Mise à jour : `wsl -d Ubuntu-24.04 -- bash -lc 'bipagents update'`.
+Une autre distribution : `$env:BIPAGENTS_DISTRO = '…'` avant la commande. Enlever : désinstalle BipAgents dans Ubuntu
+(plus bas), puis `Unregister-ScheduledTask BipAgents` (et `wsl --unregister Ubuntu-24.04` pour supprimer Ubuntu avec
+tout ce qu'il contient).
+
+Un Hermes installé sous Windows même (l'assistant d'agents du RTX Spark, l'`install.ps1` de Hermes) n'est pas
+utilisé : ses agents tournent sans bac à sable, et le bridge ne tourne pas encore sous Windows. Il reste tel quel, à
+côté de BipAgents.
+
 ## Si tu as déjà Hermes
 
 L'installateur le voit et s'y branche **sans toucher à tes réglages** : pas de question sur le modèle, et ni ton

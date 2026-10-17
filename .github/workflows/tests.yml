@@ -26,6 +26,18 @@ jobs:
       - name: Installer
         run: PYTHONPATH=installer:bridge python -m pytest -q installer/tests
 
+  windows:
+    name: Windows install script
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.ps1 parses (Windows PowerShell 5.1, the one every PC has)
+        shell: powershell
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD\install.ps1", [ref]$null, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { Write-Error "$($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
+
   swift:
     name: HermesKit and VoiceKit
     runs-on: macos-latest

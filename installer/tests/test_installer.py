@@ -742,3 +742,14 @@ def test_the_other_installs_of_the_machine_are_found_and_updated_after_one_sudo(
     updates = [a[2] for a in ran if a[0] == "bash"]
     assert len(updates) == 2 and updates[0].startswith("sudo -n -u chi bash -c") and "update --auto" in updates[1]
     assert ran[0] == ["sudo", "-v"] and not any("admin/.config" in " ".join(a) for a in ran)   # not itself
+
+
+def test_in_wsl_windows_tailscale_publishes_the_install(monkeypatch):
+    from bipinstall import detect
+    monkeypatch.setattr(detect.shutil, "which", lambda name: None)
+    monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu-24.04")
+    monkeypatch.setattr(detect.os.path, "exists", lambda path: path == detect.TAILSCALE_WINDOWS)
+    assert detect.tailscale_cli() == detect.TAILSCALE_WINDOWS
+    monkeypatch.delenv("WSL_DISTRO_NAME")
+    monkeypatch.setattr(detect.os.path, "exists", lambda path: path == detect.TAILSCALE_WINDOWS)
+    assert detect.tailscale_cli() is None   # elsewhere, a Windows path means nothing
