@@ -20,7 +20,9 @@ def setup(config_dict, tmp_path):
                              "isolated": True}
     config_dict["outbox"] = {"db_path": str(tmp_path / "data" / "bridge.db")}
     for name in ("vie", "wellness", "budget"):
-        config_dict["agents"][name.title()] = {"hermes_url": f"http://127.0.0.1:8642/p/{name}", "hermes_key": "k" * 32}
+        uploads = str(hub / "profiles" / name / "uploads")
+        config_dict["agents"][name.title()] = {"hermes_url": f"http://127.0.0.1:8642/p/{name}", "hermes_key": "k" * 32,
+                                               "upload_dir_host": uploads, "upload_dir_container": uploads}
     config = parse_config(config_dict)
     commands = []
 
@@ -110,3 +112,38 @@ def test_a_profile_without_its_own_terminal_setting_runs_in_the_hubs_sandbox(set
     assert shares.why_not(config, config.agent("budget")) is None
     (hub / "profiles" / "budget" / ".env").write_text("TERMINAL_ENV=local\n")
     assert shares.why_not(config, config.agent("budget")) == "no_sandbox"   # the profile's own word wins
+
+
+def test_a_sandboxed_agent_opens_the_files_it_is_sent(setup):
+    from io import BytesIO
+
+    from starlette.datastructures import UploadFile
+
+    from bipbridge import agents_admin, files
+    config, hub, run, commands, tmp = setup
+    uploads = hub / "profiles" / "vie" / "uploads"
+    (uploads / "2026-10").mkdir(parents=True)
+    old = uploads / "2026-10" / "0123456789ab-avant.pdf"
+    old.write_bytes(b"%PDF")
+    old.chmod(0o640)
+    asyncio.run(agents_admin.mount_all_uploads(config, run))
+    # Its sandbox sees nothing of this machine but its mounts: the uploads join the person's own, read-only.
+    assert volumes_set(commands, "vie") == ["/home/x/photos:/photos:ro", f"{uploads}:/fichiers:ro,z"]
+    assert config.agent("vie").upload_dir_container == "/fichiers"
+    assert oct(uploads.stat().st_mode & 0o777) == "0o755" and oct(old.stat().st_mode & 0o777) == "0o644"
+    # Tools that run here: nothing to mount, the path stays the machine's.
+    assert config.agent("budget").upload_dir_container == str(hub / "profiles" / "budget" / "uploads")
+    assert not any(args[2] == "budget" for args, _ in commands)
+    # Again (each start), once Hermes holds them: nothing changes.
+    for args, _ in commands:
+        (hub / "profiles" / args[2] / "config.yaml").write_text(
+            "terminal:\n  backend: docker\n  docker_volumes: " + args[6] + "\n")
+    commands.clear()
+    asyncio.run(agents_admin.mount_all_uploads(config, run))
+    assert commands == []
+    # A file sent now: named as the sandbox sees it, readable by the sandbox's user.
+    upload = UploadFile(BytesIO(b"%PDF-1.7"), filename="statuts.pdf")
+    stored = asyncio.run(files.store_upload(config.agent("vie"), upload, config.limits))
+    assert stored["path"].startswith("/fichiers/") and stored["path"].endswith("-statuts.pdf")
+    on_disk = uploads / stored["path"].removeprefix("/fichiers/")
+    assert on_disk.read_bytes() == b"%PDF-1.7" and oct(on_disk.stat().st_mode & 0o777) == "0o644"

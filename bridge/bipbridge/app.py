@@ -25,7 +25,7 @@ from .files import UploadSizeLimit, handle_upload, purge_uploads
 from .hermes import HermesClient, HermesHTTPError
 from .lan import hermes_proxy, lan_info
 from .relay import RelayClient, relay_router
-from .agents_admin import agents_admin_router
+from .agents_admin import agents_admin_router, mount_all_uploads
 from .vault import Vault, vault_router
 from .console import ConsoleStore, console_admin_router, console_files, console_router
 from .voices import relay_for, voice_for, voices_router
@@ -110,6 +110,8 @@ class Services:
             self._tasks.append(asyncio.create_task(watcher.run()))
         self._tasks.append(asyncio.create_task(self._purge_loop()))
         self._tasks.append(asyncio.create_task(self.hub.resume(self.config.agents)))
+        if self.config.hermes.enabled:
+            self._tasks.append(asyncio.create_task(mount_all_uploads(self.config)))
 
     async def _purge_loop(self) -> None:
         await asyncio.sleep(5)

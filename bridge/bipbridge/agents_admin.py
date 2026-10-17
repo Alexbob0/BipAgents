@@ -10,6 +10,7 @@ Routes (bridge key):
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -25,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from . import browsers, shares, souls
 from .config import AgentConfig, Config
+from .files import SANDBOX_UPLOADS, open_to_sandbox
 from . import peers
 from . import services as connected
 from .spaces import SpaceError, Spaces
@@ -160,6 +162,7 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
         except (browsers.BrowserError, RuntimeError, OSError) as exc:
             # The agent works without it; `python -m bipbridge browser add <agent>` sets it up later.
             log.warning("browser not set up", extra=fields(agent=profile, error=str(exc)[-200:]))
+    agent = await mount_uploads(config, agent, run, save=False)
     if config.source_path:
         append_agent(config.source_path, agent)
     config.agents[profile] = agent
@@ -249,6 +252,7 @@ async def claim_profile(config: Config, name: str, display_name: Optional[str], 
             agent = await browsers.setup(config, agent, run, install.home or str(Path.home() / ".hermes"))
         except (browsers.BrowserError, RuntimeError, OSError) as exc:
             log.warning("browser not set up", extra=fields(agent=name, error=str(exc)[-200:]))
+    agent = await mount_uploads(config, agent, run, save=False)
     if config.source_path:
         append_agent(config.source_path, agent)
     config.agents[name] = agent
@@ -313,6 +317,41 @@ def agent_section_lines(config_path: str, name: str) -> List[str]:
         if inside and header:
             lines.append(line)
     return lines
+
+
+async def mount_uploads(config: Config, agent: AgentConfig, run: Callable[..., Any] = run_hermes,
+                        save: bool = True) -> AgentConfig:
+    """The files an agent is sent, where its tools can open them: a sandbox sees nothing of this machine but what its
+    profile mounts (`terminal.docker_volumes`), so its uploads folder is mounted there, read-only, at /fichiers, and the
+    bridge names them by that path. Agents whose tools run here, or set up by hand, are left as they are. Returns the
+    agent as the bridge now serves it (`save`: its section of the config rewritten, for an agent already there)."""
+    folder = shares.profile_dir(config, agent)
+    if (agent.shares == "external" or not agent.upload_dir_host or folder is None or not folder.is_dir()
+            or shares.terminal_backend(folder) != "docker"):
+        return agent
+    await asyncio.to_thread(open_to_sandbox, agent.upload_dir_host)
+    current = (shares.profile_config(folder).get("terminal") or {}).get("docker_volumes") or []
+    current = [str(v) for v in current] if isinstance(current, list) else []
+    volume = f"{agent.upload_dir_host}:{SANDBOX_UPLOADS}:ro,z"   # `z`: readable by the container (SELinux)
+    wanted = [v for v in current if v.split(":")[1:2] != [SANDBOX_UPLOADS]] + [volume]
+    if wanted != current:
+        await run([config.hermes.bin, "-p", agent.name, "config", "set", "terminal.docker_volumes", json.dumps(wanted)],
+                  {"HERMES_HOME": str(folder.parent.parent)})
+        log.info("uploads mounted in the sandbox", extra=fields(agent=agent.name))
+    if agent.upload_dir_container != SANDBOX_UPLOADS:
+        agent = AgentConfig(**{**agent.__dict__, "upload_dir_container": SANDBOX_UPLOADS})
+        if save:
+            save_agent(config, agent)
+    return agent
+
+
+async def mount_all_uploads(config: Config, run: Callable[..., Any] = run_hermes) -> None:
+    """At start: every sandboxed agent's uploads mounted (agents made before this, or moved since)."""
+    for agent in list(config.agents.values()):
+        try:
+            await mount_uploads(config, agent, run)
+        except (RuntimeError, OSError) as exc:
+            log.warning("uploads not mounted", extra=fields(agent=agent.name, error=str(exc)[-200:]))
 
 
 def save_agent(config: Config, agent: AgentConfig) -> None:

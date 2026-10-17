@@ -58,7 +58,7 @@ def profile_dir(config: Config, agent: AgentConfig) -> Optional[Path]:
     return Path(home) / "profiles" / agent.name
 
 
-def _profile_config(folder: Path) -> Dict[str, Any]:
+def profile_config(folder: Path) -> Dict[str, Any]:
     try:
         data = yaml.safe_load((folder / "config.yaml").read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError):
@@ -99,7 +99,7 @@ def terminal_backend(folder: Path) -> Optional[str]:
     it: such a profile runs in the hub's sandbox through the hub's environment)."""
     home = folder.parent.parent
     for config_dir in (folder, home):
-        terminal = _profile_config(config_dir).get("terminal")
+        terminal = profile_config(config_dir).get("terminal")
         if isinstance(terminal, dict) and terminal.get("backend"):
             return str(terminal["backend"])
         env = _env_value(config_dir / ".env", "TERMINAL_ENV")
@@ -155,7 +155,7 @@ async def apply(config: Config, wanted: List[Tuple[str, str]], run: Callable[...
         folder = profile_dir(config, agent) if agent else None
         if agent is None or folder is None or not folder.is_dir():
             continue
-        current = (_profile_config(folder).get("terminal") or {}).get("docker_volumes") or []
+        current = (profile_config(folder).get("terminal") or {}).get("docker_volumes") or []
         volumes = volumes_for(config, name, wanted, [str(v) for v in current] if isinstance(current, list) else [])
         home = str(folder.parent.parent)
         await run([config.hermes.bin, "-p", name, "config", "set", "terminal.docker_volumes", json.dumps(volumes)],
