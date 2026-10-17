@@ -54,7 +54,7 @@ function Install-BipAgents {
     & wsl.exe --update 2>$null | Out-Null   # the mirrored network needs WSL 2.0 or later
     $login = "$(& wsl.exe -d $distro -- id -un)".Trim()
     if (-not $login -or $login -eq 'root') {
-        return Stop-Install "$distro has no user of its own: open it once (wsl -d $distro), create one, then run this again."
+        return Stop-Install "${distro} has no user of its own: open it once (wsl -d $distro), create one, then run this again."
     }
 
     # 2. WSL's network mirrors Windows'.
@@ -108,7 +108,7 @@ fi
     }
     Invoke-Linux "loginctl enable-linger $login"
     if ($LASTEXITCODE -ne 0) {
-        return Stop-Install "systemd does not answer in $distro: run « wsl --shutdown », then this command again."
+        return Stop-Install "systemd does not answer in ${distro}: run « wsl --shutdown », then this command again."
     }
 
     # 4. Windows' Tailscale, signed in.
