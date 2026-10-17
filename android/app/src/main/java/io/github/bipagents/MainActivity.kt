@@ -118,29 +118,19 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 val route = nav.currentBackStackEntryAsState().value?.destination?.route
                 Box(Modifier.fillMaxSize().background(Bip.ground)) {
                     NavHost(nav, startDestination = "home",
-                        // The iPhone's: tabs switch at once, screens slide in from the right, the Live rises from below.
+                        // Android's standard motion (Material « shared axis X », as in the system's own apps): the new
+                        // screen slides in 30 dp while fading in, the old one fades out quickly; back reverses it, and the
+                        // back gesture previews the screen below (predictive back). Tabs switch at once.
                         enterTransition = {
-                            when {
-                                isTab(initialState.destination.route) && isTab(targetState.destination.route) -> EnterTransition.None
-                                isLive(targetState.destination.route) -> slideInVertically(tween(320)) { it }
-                                else -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(320))
-                            }
+                            if (isTab(initialState.destination.route) && isTab(targetState.destination.route)) EnterTransition.None
+                            else sharedAxisIn(forward = true)
                         },
                         exitTransition = {
-                            when {
-                                isTab(initialState.destination.route) && isTab(targetState.destination.route) -> ExitTransition.None
-                                isLive(targetState.destination.route) -> ExitTransition.None
-                                else -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(320)) { it / 4 }
-                            }
+                            if (isTab(initialState.destination.route) && isTab(targetState.destination.route)) ExitTransition.None
+                            else sharedAxisOut(forward = true)
                         },
-                        popEnterTransition = {
-                            if (isLive(initialState.destination.route)) EnterTransition.None
-                            else slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(320)) { it / 4 }
-                        },
-                        popExitTransition = {
-                            if (isLive(initialState.destination.route)) slideOutVertically(tween(320)) { it }
-                            else slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(320))
-                        }) {
+                        popEnterTransition = { sharedAxisIn(forward = false) },
+                        popExitTransition = { sharedAxisOut(forward = false) }) {
                         composable("home") {
                             HomeScreen(store, onAdd = { nav.navigate("add") }, onAgent = { agent -> nav.navigate("agent/$agent") },
                                 onChat = { agent, session, start -> nav.navigate(chatRoute(agent, session, start)) },
@@ -275,3 +265,16 @@ private fun TabBar(nav: NavHostController, current: String?, modifier: Modifier)
 /** A conversation's route: its session (none: the agent's ongoing one), and how it opens (keyboard, voice note). */
 fun chatRoute(agent: String, session: String?, start: String? = null): String =
     "chat/$agent" + listOfNotNull(session?.let { "session=$it" }, start?.let { "start=$it" }).joinToString("&").let { if (it.isEmpty()) "" else "?$it" }
+
+/** Material's shared axis X: 30 dp of travel, the incoming screen fading in after the outgoing one fades out. */
+private const val AXIS_TRAVEL = 0.08f
+private fun sharedAxisIn(forward: Boolean): EnterTransition =
+    androidx.compose.animation.fadeIn(tween(210, delayMillis = 90, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) +
+        androidx.compose.animation.slideInHorizontally(tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)) {
+            ((if (forward) 1 else -1) * it * AXIS_TRAVEL).toInt()
+        }
+private fun sharedAxisOut(forward: Boolean): ExitTransition =
+    androidx.compose.animation.fadeOut(tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing)) +
+        androidx.compose.animation.slideOutHorizontally(tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)) {
+            ((if (forward) -1 else 1) * it * AXIS_TRAVEL).toInt()
+        }
