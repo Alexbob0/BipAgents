@@ -134,17 +134,25 @@ enum SharedAgents {
     }
 
     private struct StoredAgent: Decodable {
-        struct Config: Decodable { var id: UUID; var name: String; var bridgeURL: URL? }
+        struct Config: Decodable { var id: UUID; var name: String; var bridgeURL: URL?; var bridgeAgent: String? }
         var config: Config
+
+        /// Its key in the bridge's config, the name pushes carry (as `AgentProfile.bridgeName` in the app).
+        var bridgeName: String {
+            config.bridgeAgent ?? config.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).replacing(" ", with: "-")
+        }
     }
 
     private struct StoredSecrets: Decodable { var bridgeKey: String? }
 
+    /// The agent a push names: pushes carry its key in the bridge's config (`wellness`, `vie`…), which differs from the
+    /// name shown when the agent was named otherwise in the app; the shown name is still accepted, as the app does.
     static func agent(named name: String) -> Agent? {
         guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Bundle.main.object(forInfoDictionaryKey: "BIPAppGroup") as? String ?? "group.io.github.bipagents"),
               let data = try? Data(contentsOf: container.appending(path: "agents.json")),
               let agents = try? JSONDecoder().decode([StoredAgent].self, from: data),
-              let stored = agents.first(where: { $0.config.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame })
+              let stored = agents.first(where: { $0.bridgeName == name.lowercased() })
+                ?? agents.first(where: { $0.config.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame })
         else { return nil }
         let id = stored.config.id
         let bridge = stored.config.bridgeURL.flatMap { url in bridgeKey(for: id).map { Bridge(url: url, key: $0) } }
