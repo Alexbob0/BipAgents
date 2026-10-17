@@ -17,7 +17,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security"
         android:theme="@style/Theme.BipAgents"
-        android:enableOnBackInvokedCallback="true"
+        android:enableOnBackInvokedCallback="false"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"

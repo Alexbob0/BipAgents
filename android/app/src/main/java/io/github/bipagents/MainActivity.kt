@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.bipagents.ui.AddAgentScreen
 import io.github.bipagents.ui.Bip
@@ -115,23 +114,22 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                     opened?.let { o -> nav.navigate(chatRoute(o.agent, o.session, o.start)) }
                     opened = null
                 }
-                val route = nav.currentBackStackEntryAsState().value?.destination?.route
                 Box(Modifier.fillMaxSize().background(Bip.ground)) {
                     NavHost(nav, startDestination = "home",
-                        // Android's standard motion (Material « shared axis X », as in the system's own apps): the new
-                        // screen slides in 30 dp while fading in, the old one fades out quickly; back reverses it, and the
-                        // back gesture previews the screen below (predictive back). Tabs switch at once.
+                        // As Android's own apps (the Play Store): a new screen slides in over the one it opens from, which
+                        // stays still under it; back returns to the previous screen at once. No fades: two screens never
+                        // show through each other. Tabs switch at once.
                         enterTransition = {
                             if (isTab(initialState.destination.route) && isTab(targetState.destination.route)) EnterTransition.None
-                            else sharedAxisIn(forward = true)
+                            else androidx.compose.animation.slideInHorizontally(tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it }
                         },
                         exitTransition = {
                             if (isTab(initialState.destination.route) && isTab(targetState.destination.route)) ExitTransition.None
-                            else sharedAxisOut(forward = true)
+                            else ExitTransition.KeepUntilTransitionsFinished
                         },
-                        popEnterTransition = { sharedAxisIn(forward = false) },
-                        popExitTransition = { sharedAxisOut(forward = false) }) {
-                        composable("home") {
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None }) {
+                        page("home", bar = nav) {
                             HomeScreen(store, onAdd = { nav.navigate("add") }, onAgent = { agent -> nav.navigate("agent/$agent") },
                                 onChat = { agent, session, start -> nav.navigate(chatRoute(agent, session, start)) },
                                 onLive = { agent -> nav.navigate("live/$agent") },
@@ -141,15 +139,15 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     nav.navigate("chat/$agent" + (store.latest.value[agent]?.id?.let { "?session=$it" } ?: ""))
                                 })
                         }
-                        composable("inbox") {
+                        page("inbox", bar = nav) {
                             InboxScreen(store, onOpen = { agent, session -> nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: "")) },
                                 onLive = { agent -> nav.navigate("live/$agent") })
                         }
-                        composable("settings") {
+                        page("settings", bar = nav) {
                             SettingsScreen(store, onAdd = { nav.navigate("add") }, onAgent = { nav.navigate("options/$it") },
                                 onPage = { nav.navigate("settings/$it") })
                         }
-                        composable("settings/{page}") { entry ->
+                        page("settings/{page}") { entry ->
                             val back = { nav.popBackStack(); Unit }
                             when (entry.arguments?.getString("page")) {
                                 "links" -> io.github.bipagents.ui.AgentLinksScreen(store, back)
@@ -162,60 +160,55 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 "diagnostics" -> io.github.bipagents.ui.DiagnosticsScreen(store, back)
                             }
                         }
-                        composable("add") { AddAgentScreen(store, onDone = { nav.popBackStack() }, onCreate = { nav.navigate("create") }) }
-                        composable("create") {
+                        page("add") { AddAgentScreen(store, onDone = { nav.popBackStack() }, onCreate = { nav.navigate("create") }) }
+                        page("create") {
                             io.github.bipagents.ui.CreateAgentScreen(store, onBack = { nav.popBackStack() },
                                 onCreated = { nav.popBackStack("home", false) })
                         }
-                        composable("chat/{agent}?session={session}&start={start}") { entry ->
-                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                        page("chat/{agent}?session={session}&start={start}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@page
                             ChatScreen(store, agent, entry.arguments?.getString("session"), start = entry.arguments?.getString("start"),
                                 onBack = { nav.popBackStack() },
                                 onAgent = { nav.navigate("agent/$agent") },
                                 onLive = { session -> nav.navigate("live/$agent" + (session?.let { "?session=$it" } ?: "")) },
                                 onForward = { target, session -> nav.navigate("chat/$target" + (session?.let { "?session=$it" } ?: "")) })
                         }
-                        composable("live/{agent}?session={session}") { entry ->
-                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                        page("live/{agent}?session={session}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@page
                             LiveScreen(store, agent, entry.arguments?.getString("session"), onEnd = { nav.popBackStack() },
                                 onKeyboard = { session ->
                                     nav.popBackStack()
                                     nav.navigate("chat/$agent" + (session?.let { "?session=$it" } ?: ""))
                                 })
                         }
-                        composable("agent/{agent}") { entry ->
-                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                        page("agent/{agent}", bar = nav) { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@page
                             AgentScreen(store, agent, onBack = { nav.popBackStack() },
                                 onOpen = { session -> nav.navigate("chat/$agent?session=${session ?: ""}") },
                                 onLive = { nav.navigate("live/$agent") }, onSettings = { nav.navigate("options/$agent") })
                         }
-                        composable("options/{agent}") { entry ->
-                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                        page("options/{agent}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@page
                             io.github.bipagents.ui.AgentOptionsScreen(store, agent, onBack = { nav.popBackStack() },
                                 onVoice = { nav.navigate("voice/$agent") }, onDesktop = { nav.navigate("desktop/$agent") },
                                 onRemoved = { nav.popBackStack("home", false) },
                                 onRoutines = { nav.navigate("routines/$agent") }, onSettings = { nav.navigate("agentsettings/$agent") })
                         }
-                        composable("routines/{agent}") { entry ->
-                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                        page("routines/{agent}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@page
                             io.github.bipagents.ui.RoutinesScreen(store, agent, onBack = { nav.popBackStack() })
                         }
-                        composable("agentsettings/{agent}") { entry ->
-                            val agent = entry.arguments?.getString("agent") ?: return@composable
+                        page("agentsettings/{agent}") { entry ->
+                            val agent = entry.arguments?.getString("agent") ?: return@page
                             io.github.bipagents.ui.AgentSettingsScreen(store, agent, onBack = { nav.popBackStack() },
                                 onDeleted = { nav.popBackStack("home", false) })
                         }
-                        composable("voice/{agent}") { entry ->
-                            io.github.bipagents.ui.VoiceScreen(store, entry.arguments?.getString("agent") ?: return@composable, onBack = { nav.popBackStack() })
+                        page("voice/{agent}") { entry ->
+                            io.github.bipagents.ui.VoiceScreen(store, entry.arguments?.getString("agent") ?: return@page, onBack = { nav.popBackStack() })
                         }
-                        composable("desktop/{agent}") { entry ->
-                            io.github.bipagents.ui.DesktopScreen(store, entry.arguments?.getString("agent") ?: return@composable, onClose = { nav.popBackStack() })
+                        page("desktop/{agent}") { entry ->
+                            io.github.bipagents.ui.DesktopScreen(store, entry.arguments?.getString("agent") ?: return@page, onClose = { nav.popBackStack() })
                         }
-                    }
-                    // As on the iPhone: on the tabs and on an agent's page, not in a conversation or the Live.
-                    if (route in tabs.map { it.route } || route == "agent/{agent}") Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        io.github.bipagents.ui.MiniPlayer()
-                        TabBar(nav, route, Modifier)
                     }
                 }
             }
@@ -224,7 +217,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 }
 
 private fun isTab(route: String?) = route in setOf("home", "inbox", "settings")
-private fun isLive(route: String?) = route?.startsWith("live/") == true
 
 private data class Tab(val route: String, val label: Int, val icon: ImageVector)
 
@@ -266,15 +258,17 @@ private fun TabBar(nav: NavHostController, current: String?, modifier: Modifier)
 fun chatRoute(agent: String, session: String?, start: String? = null): String =
     "chat/$agent" + listOfNotNull(session?.let { "session=$it" }, start?.let { "start=$it" }).joinToString("&").let { if (it.isEmpty()) "" else "?$it" }
 
-/** Material's shared axis X: 30 dp of travel, the incoming screen fading in after the outgoing one fades out. */
-private const val AXIS_TRAVEL = 0.08f
-private fun sharedAxisIn(forward: Boolean): EnterTransition =
-    androidx.compose.animation.fadeIn(tween(210, delayMillis = 90, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) +
-        androidx.compose.animation.slideInHorizontally(tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)) {
-            ((if (forward) 1 else -1) * it * AXIS_TRAVEL).toInt()
+/** A destination drawn on an opaque ground: during a transition, the screen underneath never shows through. [bar]: the
+ *  tab bar (and the mini player) on it — as on the iPhone, on the tabs and on an agent's page, not in a conversation or the
+ *  Live —, part of the screen so that it comes and goes with it. */
+private fun androidx.navigation.NavGraphBuilder.page(route: String, bar: NavHostController? = null,
+                                                     content: @androidx.compose.runtime.Composable (androidx.navigation.NavBackStackEntry) -> Unit) =
+    composable(route) { entry ->
+        Box(Modifier.fillMaxSize().background(Bip.ground)) {
+            content(entry)
+            if (bar != null) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                io.github.bipagents.ui.MiniPlayer()
+                TabBar(bar, route, Modifier)
+            }
         }
-private fun sharedAxisOut(forward: Boolean): ExitTransition =
-    androidx.compose.animation.fadeOut(tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing)) +
-        androidx.compose.animation.slideOutHorizontally(tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)) {
-            ((if (forward) -1 else 1) * it * AXIS_TRAVEL).toInt()
-        }
+    }
