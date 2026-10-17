@@ -1,7 +1,8 @@
 """``POST /v1/files``: store a document where the agent's container can read it.
 
 Stored at ``{upload_dir_host}/{YYYY-MM}/{id12}-{name}``; the response gives the same file as seen
-from inside the Hermes container: ``{upload_dir_container}/{YYYY-MM}/{id12}-{name}``.
+from inside the Hermes container: ``{upload_dir_container}/{YYYY-MM}/{id12}-{name}``. An agent whose tools run in a
+sandbox sees its folder there at ``/fichiers``, read-only (`agents_admin.mount_uploads`).
 """
 from __future__ import annotations
 
@@ -30,6 +31,11 @@ MONTH_DIR = re.compile(r"^\d{4}-\d{2}$")
 _UNSAFE = re.compile(r"[^\w.\-+@()\[\],]+", re.UNICODE)
 _REPEAT = re.compile(r"_{2,}")
 CHUNK = 1024 * 1024
+# Where a sandboxed agent finds the files it was sent. The sandbox's user is not this account (rootless podman maps
+# it elsewhere): its folder and files are readable by others, which only that sandbox reaches (the home is closed).
+SANDBOX_UPLOADS = "/fichiers"
+SANDBOX_DIR_MODE = 0o755
+SANDBOX_FILE_MODE = 0o644
 
 
 class BodyTooLarge(HTTPException):
@@ -105,15 +111,20 @@ async def store_upload(agent: AgentConfig, upload: UploadFile, limits: Limits,
         raise HTTPException(status_code=409, detail="uploads not configured for this agent")
     name = sanitize_filename(upload.filename)
     month = (now or datetime.now(timezone.utc)).strftime("%Y-%m")
+    sandboxed = agent.upload_dir_container == SANDBOX_UPLOADS
+    dir_mode = SANDBOX_DIR_MODE if sandboxed else limits.upload_dir_mode
+    file_mode = SANDBOX_FILE_MODE if sandboxed else limits.upload_file_mode
     host_dir = os.path.join(agent.upload_dir_host, month)
-    os.makedirs(host_dir, mode=limits.upload_dir_mode, exist_ok=True)
+    os.makedirs(host_dir, mode=dir_mode, exist_ok=True)
+    if sandboxed:
+        os.chmod(host_dir, dir_mode)   # ignore umask
     stored = f"{uuid.uuid4().hex[:12]}-{name}"
     host_path = os.path.join(host_dir, stored)
-    fd = os.open(host_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, limits.upload_file_mode)
+    fd = os.open(host_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, file_mode)
     size = 0
     try:
         with os.fdopen(fd, "wb") as out:
-            os.fchmod(out.fileno(), limits.upload_file_mode)  # ignore umask
+            os.fchmod(out.fileno(), file_mode)  # ignore umask
             while True:
                 chunk = await upload.read(CHUNK)
                 if not chunk:
@@ -154,6 +165,21 @@ async def handle_upload(request: Request) -> Dict[str, Any]:
         return await store_upload(agent, upload, config.limits)
     finally:
         await form.close()
+
+
+def open_to_sandbox(root: str) -> None:
+    """A sandboxed agent's folder, and what it already holds, readable from its sandbox."""
+    os.makedirs(root, exist_ok=True)
+    os.chmod(root, SANDBOX_DIR_MODE)
+    for month in os.listdir(root):
+        month_dir = os.path.join(root, month)
+        if not MONTH_DIR.match(month) or not os.path.isdir(month_dir) or os.path.islink(month_dir):
+            continue
+        os.chmod(month_dir, SANDBOX_DIR_MODE)
+        for entry in os.listdir(month_dir):
+            path = os.path.join(month_dir, entry)
+            if STORED_NAME.match(entry) and os.path.isfile(path) and not os.path.islink(path):
+                os.chmod(path, SANDBOX_FILE_MODE)
 
 
 def purge_uploads(root: str, retention_days: int, now: Optional[float] = None) -> int:
