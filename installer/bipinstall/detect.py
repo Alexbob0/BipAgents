@@ -14,6 +14,13 @@ from typing import List, Optional
 
 GiB = 1024 ** 3
 TAILSCALE_MAC_APP = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+# In WSL (Windows, install.ps1): Windows' own Tailscale publishes the install; WSL's network mirrors Windows', so
+# what it serves reaches the services here on 127.0.0.1.
+TAILSCALE_WINDOWS = "/mnt/c/Program Files/Tailscale/tailscale.exe"
+
+
+def in_wsl() -> bool:
+    return bool(os.environ.get("WSL_DISTRO_NAME")) or os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop")
 
 
 @dataclass
@@ -84,6 +91,8 @@ def tailscale_cli() -> Optional[str]:
     found = shutil.which("tailscale")
     if found:
         return found
+    if in_wsl() and os.path.exists(TAILSCALE_WINDOWS):
+        return TAILSCALE_WINDOWS
     return TAILSCALE_MAC_APP if os.path.exists(TAILSCALE_MAC_APP) else None
 
 

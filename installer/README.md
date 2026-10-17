@@ -50,6 +50,34 @@ The installer recognises a rented server (Hetzner, OVH, Scaleway, AWS…): no do
 in the cloud offered first. The server is prepared in advance with a cloud-init file: see
 [BipAgents on a rented server](../docs/vps.md).
 
+## On Windows
+
+Windows 11 (22H2 or later), in PowerShell opened as administrator:
+
+```powershell
+irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex
+```
+
+The agents live in **WSL2** (Ubuntu), installed exactly as on a Linux server — sandboxes, voices and browsers
+included. `install.ps1` prepares what Windows needs, each step only when needed, then runs this installer there:
+
+- WSL2 and Ubuntu (Ubuntu asks for a Linux user name and password the first time; Windows may ask for a restart:
+  run the command again afterwards);
+- WSL's network **mirrors** Windows' (`networkingMode=mirrored` in `%USERPROFILE%\.wslconfig`): the local network
+  reaches the bridge's door, and a model server running on Windows (LM Studio, Ollama…) is found at `127.0.0.1`;
+- in Ubuntu: systemd, git, curl, podman, and « linger »;
+- **Windows' Tailscale**, signed in (installed with winget if you agree): it publishes the agents on your tailnet —
+  the installer drives it from WSL;
+- a **« BipAgents » task at logon** that keeps WSL awake (Windows stops it once no window uses it).
+
+Keep the PC on and awake (Settings › System › Power: never sleep when plugged in); the agents start when you log in
+to Windows. Update: `wsl -d Ubuntu-24.04 -- bash -lc 'bipagents update'`. Another distribution:
+`$env:BIPAGENTS_DISTRO = '…'` before the command. Remove: uninstall BipAgents in Ubuntu (below), then
+`Unregister-ScheduledTask BipAgents` (and `wsl --unregister Ubuntu-24.04` to delete Ubuntu with everything in it).
+
+A Hermes installed on Windows itself (the RTX Spark's agent setup, `install.ps1` of Hermes) is not used: its agents
+run without a sandbox, and the bridge does not run on Windows yet. It stays as it is, next to BipAgents.
+
 ## If you already have Hermes
 
 The installer sees it and plugs into it **without touching your settings**: no question about the model, and your
