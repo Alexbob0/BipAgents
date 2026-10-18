@@ -1566,5 +1566,11 @@
     "en": "Oops, this phone’s text-to-speech isn’t answering: no podcast this time 😕 With your server, the Bips’ voices read it 🎙️",
     "de": "Hoppla, die Sprachausgabe dieses Telefons antwortet nicht: diesmal kein Podcast 😕 Mit deinem Server lesen ihn die Stimmen der Bips 🎙️",
     "es": "Vaya, la síntesis de voz de este teléfono no responde: esta vez no hay pódcast 😕 Con tu servidor, lo leen las voces de los Bips 🎙️"
+  },
+  "podcast_credit": {
+    "fr": "_Voix : Fish Audio Drama 3 · Built with Fish Audio_",
+    "en": "_Voices: Fish Audio Drama 3 · Built with Fish Audio_",
+    "de": "_Stimmen: Fish Audio Drama 3 · Built with Fish Audio_",
+    "es": "_Voces: Fish Audio Drama 3 · Built with Fish Audio_"
   }
 }
