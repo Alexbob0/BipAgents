@@ -27,6 +27,9 @@ fermer une fois Tailscale en place.
 | Agents, voix des Bips | 4 vCPU, 8 Go | Hetzner CAX21 (ARM), CPX31 (x86) |
 | La même chose + navigateur visible pour chaque agent | 4 à 8 vCPU, 16 Go | Hetzner CAX31 |
 
+Sur un serveur de 8 Go ou moins, l'installateur active la mémoire compressée (zram : il tient alors environ 1,5 fois
+plus), tout seul s'il peut utiliser sudo, sinon il affiche les commandes à lancer une fois.
+
 Système : **Ubuntu 24.04**. Un serveur ARM convient très bien. Son navigateur visible est alors Chromium, Google ne
 publiant pas Chrome pour Linux ARM.
 

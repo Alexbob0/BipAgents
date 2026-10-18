@@ -771,3 +771,18 @@ def test_bip_languages_put_this_machine_first():
     assert bip_languages("de_DE.UTF-8") == "de,fr,en,es"
     assert bip_languages("ja_JP.UTF-8") == "fr,en,es,de"
     assert bip_languages("") == "fr,en,es,de"
+
+
+def test_zram_for_small_rented_servers(tmp_path):
+    from bipinstall.detect import zram_active
+    from bipinstall.stack import zram_commands
+
+    swaps = tmp_path / "swaps"
+    swaps.write_text("Filename Type Size Used Priority\n/swapfile file 2097148 0 -2\n")
+    assert not zram_active(str(swaps))
+    swaps.write_text("Filename Type Size Used Priority\n/dev/zram0 partition 1990652 0 100\n")
+    assert zram_active(str(swaps))
+    assert not zram_active(str(tmp_path / "missing"))
+    commands = zram_commands("apt")
+    assert commands[0] == "apt-get install -y systemd-zram-generator" and zram_commands("dnf")[0].startswith("dnf ")
+    assert "zram-size = ram / 2" in commands[1] and commands[1].endswith("> /etc/systemd/zram-generator.conf")

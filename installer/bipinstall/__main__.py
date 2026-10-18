@@ -7,6 +7,8 @@ import argparse
 import asyncio
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -20,7 +22,7 @@ from . import hermes, models, ui
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
-from .stack import PUSH_SERVICE_URL, AgentEntry, Install, bip_languages, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
+from .stack import PUSH_SERVICE_URL, AgentEntry, Install, bip_languages, zram_commands, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "bridge"))
@@ -210,6 +212,30 @@ def wait_for(url: str, headers: Optional[dict] = None, seconds: int = 90) -> boo
     return False
 
 
+def compress_memory(machine, runner) -> None:
+    """A small rented server gets compressed memory (zram): done here when this account may (root, or sudo without a
+    password), else the commands to run once."""
+    from .detect import zram_active
+
+    if machine.memory_gib > 8.5 or zram_active():
+        return
+    manager = "apt" if shutil.which("apt-get") else "dnf" if shutil.which("dnf") else None
+    if manager is None:
+        return
+    commands = zram_commands(manager)
+    root = os.geteuid() == 0
+    try:
+        if not root:
+            runner.run("sudo -n true", shell=True)
+        for command in commands:
+            runner.run(command if root else f"sudo -n sh -c {shlex.quote(command)}", shell=True)
+        say(ui.done("Compressed memory (zram) on: this server holds about 1.5× more."))
+    except RuntimeError:
+        say(ui.note("Compressed memory (zram) lets this small server hold about 1.5× more. Run once:"))
+        for command in commands:
+            say(f"    sudo sh -c {shlex.quote(command)}")
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -265,6 +291,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                        "    everything goes through Tailscale. Your host can read the disk: encrypt what matters, and keep "
                        "the system up to date."))
         machine.lan_addresses = []
+        compress_memory(machine, runner)
     if args.no_tailscale:
         machine.tailnet_name = None
     elif not machine.tailnet_name:

@@ -27,6 +27,9 @@ in place.
 | Agents, the Bips' voices | 4 vCPU, 8 GB | Hetzner CAX21 (ARM), CPX31 (x86) |
 | The same + a visible browser for each agent | 4 to 8 vCPU, 16 GB | Hetzner CAX31 |
 
+On a server of 8 GB or less, the installer turns on compressed memory (zram: it then holds about 1.5× more), by
+itself when it may use sudo, else it shows the commands to run once.
+
 System: **Ubuntu 24.04**. An ARM server works well; its visible browser is then Chromium (Google ships no Chrome for
 Linux on ARM).
 

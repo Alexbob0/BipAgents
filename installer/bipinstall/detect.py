@@ -132,6 +132,15 @@ CLOUD_VENDORS = (("hetzner", "Hetzner"), ("digitalocean", "DigitalOcean"), ("ama
                  ("infomaniak", "Infomaniak"), ("microsoft corporation", "Azure"))
 
 
+def zram_active(swaps: str = "/proc/swaps") -> bool:
+    """Compressed memory (zram) already swaps on this machine."""
+    try:
+        with open(swaps, encoding="utf-8") as fh:
+            return any(line.startswith("/dev/zram") for line in fh)
+    except OSError:
+        return False
+
+
 def cloud_vendor(dmi: str = "/sys/class/dmi/id") -> Optional[str]:
     """The provider when this machine is a rented server (Linux reads it from the firmware), else None."""
     seen = []
