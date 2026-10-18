@@ -1,0 +1,1564 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "id": "daily",
+      "category": "daily",
+      "name": {
+        "fr": "Quotidien",
+        "en": "Daily",
+        "de": "Alltag",
+        "es": "Día a día"
+      },
+      "greeting": {
+        "fr": "Salut ! Je suis **Quotidien**, ton assistant de tous les jours. Je lis tes mails, je tiens ton agenda, je réserve, je cherche sur le web… et je peux même te faire un podcast. Choisis une suggestion en bas, ou écris-moi 👇",
+        "en": "Hi! I’m **Daily**, your everyday assistant. I read your email, keep your calendar, book things, search the web… and I can even make you a podcast. Pick a suggestion below, or just write to me 👇",
+        "de": "Hallo! Ich bin **Alltag**, dein Assistent für jeden Tag. Ich lese deine Mails, führe deinen Kalender, reserviere, suche im Web … und mache dir sogar einen Podcast. Nimm unten einen Vorschlag oder schreib mir einfach 👇",
+        "es": "¡Hola! Soy **Día a día**, tu asistente de cada día. Leo tu correo, llevo tu agenda, reservo, busco en la web… e incluso te hago un pódcast. Elige una sugerencia abajo o escríbeme 👇"
+      },
+      "scheduled": {
+        "at": "07:30",
+        "title": {
+          "fr": "Point du matin",
+          "en": "Morning briefing",
+          "de": "Morgenüberblick",
+          "es": "Resumen de la mañana"
+        },
+        "text": {
+          "fr": "☀️ Bonjour ! 3 rendez-vous aujourd’hui, pluie vers 17 h (prends un parapluie) et ton colis arrive entre 12 h et 14 h.",
+          "en": "☀️ Good morning! 3 meetings today, rain around 5 pm (take an umbrella), and your parcel arrives between 12 and 2 pm.",
+          "de": "☀️ Guten Morgen! Heute 3 Termine, gegen 17 Uhr Regen (nimm einen Schirm mit), und dein Paket kommt zwischen 12 und 14 Uhr.",
+          "es": "☀️ ¡Buenos días! Hoy tienes 3 citas, lluvia hacia las 17 h (llévate paraguas) y tu paquete llega entre las 12 y las 14 h."
+        }
+      },
+      "suggestions": [
+        "plan_day",
+        "book_table",
+        "podcast"
+      ]
+    },
+    {
+      "id": "coach",
+      "category": "wellness",
+      "name": {
+        "fr": "Coach",
+        "en": "Coach",
+        "de": "Coach",
+        "es": "Coach"
+      },
+      "greeting": {
+        "fr": "Hello, moi c’est **Coach** 💪 Je veille sur ton sommeil, ton sport et ta forme — et je parle à tes autres agents quand il faut. Essaie une suggestion 👇",
+        "en": "Hey, I’m **Coach** 💪 I keep an eye on your sleep, workouts and energy — and I talk to your other agents when needed. Try a suggestion 👇",
+        "de": "Hey, ich bin **Coach** 💪 Ich behalte deinen Schlaf, dein Training und deine Energie im Blick – und spreche bei Bedarf mit deinen anderen Agenten. Probier einen Vorschlag 👇",
+        "es": "¡Hola! Soy **Coach** 💪 Cuido tu sueño, tu deporte y tu energía, y hablo con tus otros agentes cuando hace falta. Prueba una sugerencia 👇"
+      },
+      "scheduled": {
+        "minutesAgo": 180,
+        "title": {
+          "fr": "Bilan de la semaine",
+          "en": "Weekly recap",
+          "de": "Wochenbilanz",
+          "es": "Resumen semanal"
+        },
+        "text": {
+          "fr": "📈 Bilan de la semaine : 4 séances sur 4 ✅, 7 h 12 de sommeil en moyenne (+25 min). Continue comme ça !",
+          "en": "📈 Weekly recap: 4 workouts out of 4 ✅, 7 h 12 of sleep on average (+25 min). Keep it up!",
+          "de": "📈 Wochenbilanz: 4 von 4 Trainings ✅, im Schnitt 7 h 12 Schlaf (+25 Min.). Weiter so!",
+          "es": "📈 Resumen semanal: 4 de 4 entrenamientos ✅, 7 h 12 de sueño de media (+25 min). ¡Sigue así!"
+        }
+      },
+      "suggestions": [
+        "sleep_week",
+        "run_plan",
+        "ask_budget"
+      ]
+    },
+    {
+      "id": "budget",
+      "category": "finance",
+      "name": {
+        "fr": "Budget",
+        "en": "Budget",
+        "de": "Budget",
+        "es": "Presupuesto"
+      },
+      "greeting": {
+        "fr": "Bonjour ! Je suis **Budget** 💶 Je lis tes relevés, je trouve les dépenses qui fuient et je t’aide à mettre de côté. Tout reste sur ton serveur : tes comptes ne partent chez personne. Essaie 👇",
+        "en": "Hello! I’m **Budget** 💶 I read your statements, find the spending leaks and help you save. Everything stays on your server: your accounts go to no one. Try it 👇",
+        "de": "Hallo! Ich bin **Budget** 💶 Ich lese deine Kontoauszüge, finde undichte Stellen und helfe dir beim Sparen. Alles bleibt auf deinem Server: Deine Konten gehen an niemanden. Probier’s aus 👇",
+        "es": "¡Hola! Soy **Presupuesto** 💶 Leo tus extractos, encuentro las fugas de dinero y te ayudo a ahorrar. Todo se queda en tu servidor: tus cuentas no salen de ahí. Pruébalo 👇"
+      },
+      "scheduled": {
+        "minutesAgo": 300,
+        "title": {
+          "fr": "Alerte dépense",
+          "en": "Spending alert",
+          "de": "Ausgabenalarm",
+          "es": "Alerta de gasto"
+        },
+        "text": {
+          "fr": "🔔 Prélèvement inhabituel : 49,99 € « StreamMax » ce matin. Tu le connais ? Sinon, je peux le contester.",
+          "en": "🔔 Unusual charge: €49.99 “StreamMax” this morning. Do you recognise it? If not, I can dispute it.",
+          "de": "🔔 Ungewöhnliche Abbuchung: 49,99 € „StreamMax“ heute Morgen. Kennst du die? Sonst kann ich sie anfechten.",
+          "es": "🔔 Cargo inusual: 49,99 € «StreamMax» esta mañana. ¿Lo reconoces? Si no, puedo reclamarlo."
+        }
+      },
+      "suggestions": [
+        "spending",
+        "subscriptions",
+        "weekend"
+      ]
+    },
+    {
+      "id": "home",
+      "category": "home",
+      "name": {
+        "fr": "Maison",
+        "en": "Home",
+        "de": "Zuhause",
+        "es": "Casa"
+      },
+      "greeting": {
+        "fr": "Coucou ! Ici **Maison** 🏡 Je pilote le chauffage, les lumières et les rappels de la maison, je planifie les repas et je fais la liste de courses. Essaie 👇",
+        "en": "Hi! **Home** here 🏡 I run the heating, the lights and the house reminders, plan meals and write the shopping list. Try it 👇",
+        "de": "Hallo! Hier ist **Zuhause** 🏡 Ich steuere Heizung, Licht und Erinnerungen im Haus, plane Mahlzeiten und schreibe die Einkaufsliste. Probier’s aus 👇",
+        "es": "¡Hola! Aquí **Casa** 🏡 Controlo la calefacción, las luces y los recordatorios de casa, planifico las comidas y hago la lista de la compra. Pruébalo 👇"
+      },
+      "scheduled": {
+        "minutesAgo": 50,
+        "title": {
+          "fr": "Machine à laver",
+          "en": "Washing machine",
+          "de": "Waschmaschine",
+          "es": "Lavadora"
+        },
+        "text": {
+          "fr": "🧺 La machine est terminée depuis 10 min. Pense à étendre le linge avant de sortir !",
+          "en": "🧺 The washing machine finished 10 min ago. Remember to hang the laundry before heading out!",
+          "de": "🧺 Die Waschmaschine ist seit 10 Min. fertig. Denk dran, die Wäsche aufzuhängen, bevor du gehst!",
+          "es": "🧺 La lavadora terminó hace 10 min. ¡Acuérdate de tender la ropa antes de salir!"
+        }
+      },
+      "suggestions": [
+        "heating",
+        "dinner",
+        "bins"
+      ]
+    }
+  ],
+  "scenarios": {
+    "plan_day": {
+      "prompt": {
+        "fr": "Prépare ma journée",
+        "en": "Plan my day",
+        "de": "Plan meinen Tag",
+        "es": "Organiza mi día"
+      },
+      "keywords": {
+        "fr": [
+          "journée",
+          "agenda",
+          "planning",
+          "aujourd"
+        ],
+        "en": [
+          "my day",
+          "calendar",
+          "schedule",
+          "today",
+          "agenda"
+        ],
+        "de": [
+          "tag",
+          "kalender",
+          "termine",
+          "heute"
+        ],
+        "es": [
+          "mi día",
+          "agenda",
+          "calendario",
+          "hoy"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Une vue claire de la journée : agenda, mails importants, météo. Je croise les trois et je fais ressortir ce qui demande une action.",
+            "en": "A clear view of the day: calendar, important emails, weather. I’ll cross-check all three and flag what needs action.",
+            "de": "Ein klarer Überblick über den Tag: Kalender, wichtige Mails, Wetter. Ich gleiche alles ab und hebe hervor, was zu tun ist.",
+            "es": "Una visión clara del día: agenda, correos importantes y tiempo. Cruzo las tres cosas y destaco lo que requiere acción."
+          }
+        },
+        {
+          "tool": "calendar",
+          "seconds": 1.3,
+          "preview": {
+            "fr": "Agenda · aujourd’hui",
+            "en": "Calendar · today",
+            "de": "Kalender · heute",
+            "es": "Agenda · hoy"
+          }
+        },
+        {
+          "tool": "mail_search",
+          "seconds": 1.6,
+          "preview": {
+            "fr": "Non lus · 14 mails",
+            "en": "Unread · 14 emails",
+            "de": "Ungelesen · 14 Mails",
+            "es": "No leídos · 14 correos"
+          }
+        },
+        {
+          "tool": "weather",
+          "seconds": 0.9,
+          "preview": {
+            "fr": "Météo · cet après-midi",
+            "en": "Weather · this afternoon",
+            "de": "Wetter · heute Nachmittag",
+            "es": "Tiempo · esta tarde"
+          }
+        },
+        {
+          "say": {
+            "fr": "Voilà ta journée :\n\n| Heure | Quoi |\n|---|---|\n| 9 h 30 | Point d’équipe (visio) |\n| 12 h 30 | Déjeuner avec Sam |\n| 17 h | Dentiste ☔ |\n\nPrends un **parapluie** : la pluie arrive vers 16 h 45.\n\n📬 Sur 14 mails, 2 comptent vraiment : la **facture d’électricité** (à payer avant vendredi) et la **réponse de l’agence** pour l’appartement. Le reste, c’est de la pub et des newsletters : je les ai rangées.",
+            "en": "Here’s your day:\n\n| Time | What |\n|---|---|\n| 9:30 am | Team sync (video) |\n| 12:30 pm | Lunch with Sam |\n| 5 pm | Dentist ☔ |\n\nTake an **umbrella**: rain is coming around 4:45 pm.\n\n📬 Of 14 emails, 2 really matter: the **electricity bill** (due Friday) and the **agency’s reply** about the apartment. The rest is ads and newsletters: I’ve filed them away.",
+            "de": "Hier ist dein Tag:\n\n| Uhrzeit | Was |\n|---|---|\n| 9:30 | Team-Meeting (Video) |\n| 12:30 | Mittagessen mit Sam |\n| 17:00 | Zahnarzt ☔ |\n\nNimm einen **Schirm** mit: Gegen 16:45 Uhr kommt Regen.\n\n📬 Von 14 Mails zählen nur 2: die **Stromrechnung** (fällig bis Freitag) und die **Antwort der Agentur** zur Wohnung. Der Rest ist Werbung und Newsletter: Die habe ich weggeräumt.",
+            "es": "Este es tu día:\n\n| Hora | Qué |\n|---|---|\n| 9:30 | Reunión de equipo (vídeo) |\n| 12:30 | Comida con Sam |\n| 17:00 | Dentista ☔ |\n\nLlévate **paraguas**: la lluvia llega hacia las 16:45.\n\n📬 De 14 correos, solo 2 importan: la **factura de la luz** (vence el viernes) y la **respuesta de la agencia** sobre el piso. El resto es publicidad y boletines: ya los he archivado."
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Ta journée : point d’équipe à neuf heures et demie, déjeuner avec Sam à midi et demi, et dentiste à dix-sept heures. Prends un parapluie, il va pleuvoir vers seize heures quarante-cinq. Et deux mails comptent : la facture d’électricité, et la réponse de l’agence pour l’appartement.",
+        "en": "Your day: team sync at nine thirty, lunch with Sam at twelve thirty, and the dentist at five. Take an umbrella, rain is coming around a quarter to five. And two emails matter: the electricity bill, and the agency’s reply about the apartment.",
+        "de": "Dein Tag: Team-Meeting um halb zehn, Mittagessen mit Sam um halb eins und um siebzehn Uhr der Zahnarzt. Nimm einen Schirm mit, gegen Viertel vor fünf regnet es. Und zwei Mails sind wichtig: die Stromrechnung und die Antwort der Agentur zur Wohnung.",
+        "es": "Tu día: reunión de equipo a las nueve y media, comida con Sam a las doce y media y dentista a las cinco. Llévate paraguas, lloverá hacia las cinco menos cuarto. Y dos correos importan: la factura de la luz y la respuesta de la agencia sobre el piso."
+      }
+    },
+    "book_table": {
+      "prompt": {
+        "fr": "Réserve une table vendredi soir",
+        "en": "Book a table for Friday night",
+        "de": "Reservier einen Tisch für Freitagabend",
+        "es": "Reserva una mesa el viernes por la noche"
+      },
+      "keywords": {
+        "fr": [
+          "réserv",
+          "restaurant",
+          "table",
+          "dîner"
+        ],
+        "en": [
+          "book",
+          "reserv",
+          "restaurant",
+          "table",
+          "dinner"
+        ],
+        "de": [
+          "reservier",
+          "restaurant",
+          "tisch"
+        ],
+        "es": [
+          "reserv",
+          "restaurante",
+          "mesa",
+          "cena"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "D’après ses préférences : cuisine italienne, à moins de 15 minutes, vers 20 h, pour 2. Je cherche les créneaux encore libres.",
+            "en": "From their preferences: Italian food, under 15 minutes away, around 8 pm, for 2. Looking for open slots.",
+            "de": "Laut den Vorlieben: italienische Küche, unter 15 Minuten entfernt, gegen 20 Uhr, für 2. Ich suche freie Plätze.",
+            "es": "Según sus preferencias: cocina italiana, a menos de 15 minutos, hacia las 20 h, para 2. Busco huecos libres."
+          }
+        },
+        {
+          "tool": "memory",
+          "seconds": 0.5,
+          "preview": {
+            "fr": "Préférences · restaurants",
+            "en": "Preferences · restaurants",
+            "de": "Vorlieben · Restaurants",
+            "es": "Preferencias · restaurantes"
+          }
+        },
+        {
+          "tool": "browser_navigate",
+          "seconds": 1.8,
+          "preview": {
+            "fr": "Réservation en ligne · italien · vendredi 20 h · 2 pers.",
+            "en": "Online booking · Italian · Friday 8 pm · 2 people",
+            "de": "Online-Reservierung · Italienisch · Freitag 20 Uhr · 2 Pers.",
+            "es": "Reserva online · italiano · viernes 20 h · 2 pers."
+          }
+        },
+        {
+          "tool": "browser_snapshot",
+          "seconds": 1.0,
+          "preview": {
+            "fr": "3 restaurants disponibles",
+            "en": "3 restaurants available",
+            "de": "3 Restaurants frei",
+            "es": "3 restaurantes disponibles"
+          }
+        },
+        {
+          "ask": {
+            "question": {
+              "fr": "J’en ai trouvé 3 avec de la place. Lequel je réserve ?",
+              "en": "I found 3 with tables left. Which one should I book?",
+              "de": "Ich habe 3 mit freien Tischen gefunden. Welches soll ich reservieren?",
+              "es": "He encontrado 3 con mesa libre. ¿Cuál reservo?"
+            },
+            "choices": [
+              {
+                "fr": "Da Vinci · 20 h · ★ 4,6",
+                "en": "Da Vinci · 8 pm · ★ 4.6",
+                "de": "Da Vinci · 20 Uhr · ★ 4,6",
+                "es": "Da Vinci · 20 h · ★ 4,6"
+              },
+              {
+                "fr": "Pasta Mia · 20 h 30 · ★ 4,8",
+                "en": "Pasta Mia · 8:30 pm · ★ 4.8",
+                "de": "Pasta Mia · 20:30 · ★ 4,8",
+                "es": "Pasta Mia · 20:30 · ★ 4,8"
+              },
+              {
+                "fr": "Trattoria Sole · 21 h · ★ 4,5",
+                "en": "Trattoria Sole · 9 pm · ★ 4.5",
+                "de": "Trattoria Sole · 21 Uhr · ★ 4,5",
+                "es": "Trattoria Sole · 21 h · ★ 4,5"
+              }
+            ]
+          },
+          "then": [
+            {
+              "tool": "browser_click",
+              "seconds": 1.4,
+              "preview": {
+                "fr": "{answer} · formulaire rempli",
+                "en": "{answer} · form filled in",
+                "de": "{answer} · Formular ausgefüllt",
+                "es": "{answer} · formulario rellenado"
+              }
+            },
+            {
+              "approve": {
+                "description": {
+                  "fr": "Je vais envoyer la réservation en ton nom",
+                  "en": "I’m about to send the booking in your name",
+                  "de": "Ich sende die Reservierung in deinem Namen",
+                  "es": "Voy a enviar la reserva en tu nombre"
+                },
+                "command": {
+                  "fr": "Réserver : {answer}\n2 personnes · vendredi soir",
+                  "en": "Book: {answer}\n2 people · Friday night",
+                  "de": "Reservieren: {answer}\n2 Personen · Freitagabend",
+                  "es": "Reservar: {answer}\n2 personas · viernes noche"
+                }
+              },
+              "then": [
+                {
+                  "tool": "browser_click",
+                  "seconds": 1.2,
+                  "preview": {
+                    "fr": "Confirmer",
+                    "en": "Confirm",
+                    "de": "Bestätigen",
+                    "es": "Confirmar"
+                  }
+                },
+                {
+                  "tool": "calendar",
+                  "seconds": 0.7,
+                  "preview": {
+                    "fr": "Ajouté · vendredi soir",
+                    "en": "Added · Friday night",
+                    "de": "Eingetragen · Freitagabend",
+                    "es": "Añadido · viernes noche"
+                  }
+                },
+                {
+                  "say": {
+                    "fr": "C’est réservé ✅ **{answer}**, vendredi, pour 2.\n\nJe l’ai mis dans ton agenda et je te préviens à 19 h avec l’itinéraire. Bon appétit ! 🍝",
+                    "en": "Booked ✅ **{answer}**, Friday, for 2.\n\nIt’s in your calendar, and I’ll ping you at 7 pm with directions. Enjoy! 🍝",
+                    "de": "Reserviert ✅ **{answer}**, Freitag, für 2.\n\nIch habe es in deinen Kalender eingetragen und melde mich um 19 Uhr mit der Route. Guten Appetit! 🍝",
+                    "es": "¡Reservado! ✅ **{answer}**, el viernes, para 2.\n\nLo he puesto en tu agenda y te aviso a las 19 h con la ruta. ¡Buen provecho! 🍝"
+                  }
+                }
+              ],
+              "denied": [
+                {
+                  "say": {
+                    "fr": "Pas de souci, je n’ai rien envoyé. Je garde les 3 options sous le coude si tu changes d’avis.",
+                    "en": "No problem, I didn’t send anything. I’ll keep the 3 options handy if you change your mind.",
+                    "de": "Kein Problem, ich habe nichts gesendet. Die 3 Optionen behalte ich im Blick, falls du es dir anders überlegst.",
+                    "es": "Sin problema, no he enviado nada. Guardo las 3 opciones por si cambias de idea."
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "spoken": {
+        "fr": "Pasta Mia a une table vendredi à vingt heures trente, c’est le mieux noté du coin. Ouvre la conversation : je réserve dès que tu confirmes.",
+        "en": "Pasta Mia has a table on Friday at eight thirty, the best rated nearby. Open the chat: I’ll book it as soon as you confirm.",
+        "de": "Pasta Mia hat Freitag um halb neun einen Tisch frei, das bestbewertete in der Nähe. Öffne den Chat: Ich reserviere, sobald du bestätigst.",
+        "es": "Pasta Mia tiene mesa el viernes a las ocho y media, el mejor valorado de la zona. Abre el chat: la reservo en cuanto confirmes."
+      }
+    },
+    "podcast": {
+      "prompt": {
+        "fr": "Fais-moi mon point du matin en podcast",
+        "en": "Make my morning briefing a podcast",
+        "de": "Mach mir meinen Morgenüberblick als Podcast",
+        "es": "Hazme el resumen de la mañana en pódcast"
+      },
+      "keywords": {
+        "fr": [
+          "podcast",
+          "audio",
+          "écouter"
+        ],
+        "en": [
+          "podcast",
+          "audio",
+          "listen"
+        ],
+        "de": [
+          "podcast",
+          "audio",
+          "hören"
+        ],
+        "es": [
+          "podcast",
+          "pódcast",
+          "audio",
+          "escuchar"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Un format court, deux voix qui se répondent : agenda, météo, colis, et une bonne nouvelle pour finir.",
+            "en": "Short format, two voices bouncing off each other: calendar, weather, parcel, and good news to finish.",
+            "de": "Kurzes Format, zwei Stimmen im Dialog: Kalender, Wetter, Paket und zum Schluss eine gute Nachricht.",
+            "es": "Formato corto, dos voces que dialogan: agenda, tiempo, paquete y una buena noticia para acabar."
+          }
+        },
+        {
+          "tool": "calendar",
+          "seconds": 0.8,
+          "preview": {
+            "fr": "Agenda · aujourd’hui",
+            "en": "Calendar · today",
+            "de": "Kalender · heute",
+            "es": "Agenda · hoy"
+          }
+        },
+        {
+          "tool": "write_file",
+          "seconds": 1.2,
+          "preview": {
+            "fr": "script-podcast.md · 2 voix",
+            "en": "podcast-script.md · 2 voices",
+            "de": "podcast-skript.md · 2 Stimmen",
+            "es": "guion-podcast.md · 2 voces"
+          }
+        },
+        {
+          "podcast": "morning",
+          "seconds": 2.5,
+          "preview": {
+            "fr": "2 voix · < 1 min",
+            "en": "2 voices · < 1 min",
+            "de": "2 Stimmen · < 1 Min.",
+            "es": "2 voces · < 1 min"
+          },
+          "file": {
+            "fr": "Ton-point-du-matin.m4a",
+            "en": "Your-morning-briefing.m4a",
+            "de": "Dein-Morgenüberblick.m4a",
+            "es": "Tu-resumen-de-la-mañana.m4a"
+          }
+        },
+        {
+          "say": {
+            "fr": "Ton podcast est prêt 🎙️ Deux voix, l’essentiel de ta journée en moins d’une minute. Appuie sur lecture : il continue même écran verrouillé.",
+            "en": "Your podcast is ready 🎙️ Two voices, the essentials of your day in under a minute. Hit play: it keeps going with the screen locked.",
+            "de": "Dein Podcast ist fertig 🎙️ Zwei Stimmen, das Wichtigste deines Tages in weniger als einer Minute. Drück auf Play: Er läuft auch bei gesperrtem Bildschirm weiter.",
+            "es": "Tu pódcast está listo 🎙️ Dos voces, lo esencial de tu día en menos de un minuto. Dale al play: sigue sonando con la pantalla bloqueada."
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Ton podcast du matin est prêt : deux voix, moins d’une minute. Tu le trouveras dans la conversation.",
+        "en": "Your morning podcast is ready: two voices, under a minute. You’ll find it in the chat.",
+        "de": "Dein Morgen-Podcast ist fertig: zwei Stimmen, weniger als eine Minute. Du findest ihn im Chat.",
+        "es": "Tu pódcast de la mañana está listo: dos voces, menos de un minuto. Lo encontrarás en el chat."
+      }
+    },
+    "sleep_week": {
+      "prompt": {
+        "fr": "Comment j’ai dormi cette semaine ?",
+        "en": "How did I sleep this week?",
+        "de": "Wie habe ich diese Woche geschlafen?",
+        "es": "¿Cómo he dormido esta semana?"
+      },
+      "keywords": {
+        "fr": [
+          "dormi",
+          "sommeil",
+          "nuit"
+        ],
+        "en": [
+          "sleep",
+          "slept",
+          "night"
+        ],
+        "de": [
+          "schlaf",
+          "nacht"
+        ],
+        "es": [
+          "dormido",
+          "sueño",
+          "noche"
+        ]
+      },
+      "steps": [
+        {
+          "tool": "health_read",
+          "seconds": 1.2,
+          "preview": {
+            "fr": "Sommeil · 7 dernières nuits",
+            "en": "Sleep · last 7 nights",
+            "de": "Schlaf · letzte 7 Nächte",
+            "es": "Sueño · últimas 7 noches"
+          }
+        },
+        {
+          "tool": "terminal",
+          "seconds": 1.5,
+          "preview": "python3 sleep_trends.py --days 7"
+        },
+        {
+          "chart": "sleep",
+          "file": {
+            "fr": "Sommeil-de-la-semaine.png",
+            "en": "Sleep-this-week.png",
+            "de": "Schlaf-dieser-Woche.png",
+            "es": "Sueño-de-la-semana.png"
+          }
+        },
+        {
+          "say": {
+            "fr": "Plutôt bien ! **7 h 12** en moyenne, 25 min de plus que la semaine dernière 👏\n\nLe point faible : les soirs où tu te couches **après minuit** (mardi et vendredi), tu perds plus d’une heure de sommeil.\n\nCe soir, je te propose écrans coupés à 22 h 30 et lumière tamisée. Je te le rappelle ?",
+            "en": "Pretty good! **7 h 12** on average, 25 min more than last week 👏\n\nThe weak spot: on nights you go to bed **after midnight** (Tuesday and Friday), you lose over an hour of sleep.\n\nTonight, how about screens off at 10:30 pm and dimmed lights? Shall I remind you?",
+            "de": "Ziemlich gut! Im Schnitt **7 h 12**, 25 Min. mehr als letzte Woche 👏\n\nDie Schwachstelle: Wenn du **nach Mitternacht** ins Bett gehst (Dienstag und Freitag), verlierst du über eine Stunde Schlaf.\n\nWie wäre es heute mit Bildschirm aus um 22:30 und gedimmtem Licht? Soll ich dich erinnern?",
+            "es": "¡Bastante bien! **7 h 12** de media, 25 min más que la semana pasada 👏\n\nEl punto débil: las noches que te acuestas **después de medianoche** (martes y viernes), pierdes más de una hora de sueño.\n\n¿Esta noche, pantallas fuera a las 22:30 y luz tenue? ¿Te lo recuerdo?"
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Plutôt bien : sept heures douze en moyenne, vingt-cinq minutes de plus que la semaine dernière. Le point faible, ce sont les couchers après minuit. Ce soir, écrans coupés à vingt-deux heures trente ?",
+        "en": "Pretty good: seven hours twelve on average, twenty-five minutes more than last week. The weak spot is going to bed after midnight. Tonight, screens off at ten thirty?",
+        "de": "Ziemlich gut: im Schnitt sieben Stunden zwölf, fünfundzwanzig Minuten mehr als letzte Woche. Die Schwachstelle ist das Zubettgehen nach Mitternacht. Heute Abend Bildschirm aus um halb elf?",
+        "es": "Bastante bien: siete horas y doce de media, veinticinco minutos más que la semana pasada. El punto débil es acostarte después de medianoche. ¿Esta noche, pantallas fuera a las diez y media?"
+      }
+    },
+    "run_plan": {
+      "prompt": {
+        "fr": "Prépare-moi un plan pour courir 10 km",
+        "en": "Make me a plan to run 10 km",
+        "de": "Mach mir einen Plan für 10 km Laufen",
+        "es": "Prepárame un plan para correr 10 km"
+      },
+      "keywords": {
+        "fr": [
+          "courir",
+          "course",
+          "10 km",
+          "entraînement",
+          "sport"
+        ],
+        "en": [
+          "run",
+          "10k",
+          "10 km",
+          "training",
+          "workout"
+        ],
+        "de": [
+          "lauf",
+          "10 km",
+          "training"
+        ],
+        "es": [
+          "correr",
+          "carrera",
+          "10 km",
+          "entrenamiento"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Niveau actuel : 3 sorties de 5 km par semaine. Objectif 10 km en 6 semaines, sans augmenter de plus de 10 % par semaine.",
+            "en": "Current level: three 5 km runs a week. Goal: 10 km in 6 weeks, adding no more than 10% a week.",
+            "de": "Aktuelles Niveau: dreimal 5 km pro Woche. Ziel: 10 km in 6 Wochen, höchstens 10 % mehr pro Woche.",
+            "es": "Nivel actual: 3 salidas de 5 km por semana. Objetivo: 10 km en 6 semanas, sin subir más de un 10 % por semana."
+          }
+        },
+        {
+          "tool": "health_read",
+          "seconds": 1.1,
+          "preview": {
+            "fr": "Courses · 30 derniers jours",
+            "en": "Runs · last 30 days",
+            "de": "Läufe · letzte 30 Tage",
+            "es": "Carreras · últimos 30 días"
+          }
+        },
+        {
+          "say": {
+            "fr": "Voilà ton plan sur 6 semaines 🏃\n\n| Semaine | Mardi | Jeudi | Dimanche |\n|---|---|---|---|\n| 1 | 5 km tranquille | 4 × 1 km | 6 km |\n| 2 | 5 km | 5 × 1 km | 7 km |\n| 3 | 6 km | 30 min tempo | 8 km |\n| 4 | 5 km (récup) | 4 × 1 km | 6 km |\n| 5 | 6 km | 35 min tempo | 9 km |\n| 6 | 5 km | 3 km léger | **10 km 🎉** |\n\nTu préfères courir à quel moment ?\n\n1. Le matin avant le travail\n2. Le midi\n3. Le soir après le travail",
+            "en": "Here’s your 6-week plan 🏃\n\n| Week | Tue | Thu | Sun |\n|---|---|---|---|\n| 1 | Easy 5 km | 4 × 1 km | 6 km |\n| 2 | 5 km | 5 × 1 km | 7 km |\n| 3 | 6 km | 30 min tempo | 8 km |\n| 4 | 5 km (recovery) | 4 × 1 km | 6 km |\n| 5 | 6 km | 35 min tempo | 9 km |\n| 6 | 5 km | Light 3 km | **10 km 🎉** |\n\nWhen do you prefer to run?\n\n1. In the morning before work\n2. At lunchtime\n3. In the evening after work",
+            "de": "Hier ist dein 6-Wochen-Plan 🏃\n\n| Woche | Di | Do | So |\n|---|---|---|---|\n| 1 | 5 km locker | 4 × 1 km | 6 km |\n| 2 | 5 km | 5 × 1 km | 7 km |\n| 3 | 6 km | 30 Min. Tempo | 8 km |\n| 4 | 5 km (Erholung) | 4 × 1 km | 6 km |\n| 5 | 6 km | 35 Min. Tempo | 9 km |\n| 6 | 5 km | 3 km locker | **10 km 🎉** |\n\nWann läufst du am liebsten?\n\n1. Morgens vor der Arbeit\n2. In der Mittagspause\n3. Abends nach der Arbeit",
+            "es": "Este es tu plan de 6 semanas 🏃\n\n| Semana | Mar | Jue | Dom |\n|---|---|---|---|\n| 1 | 5 km suave | 4 × 1 km | 6 km |\n| 2 | 5 km | 5 × 1 km | 7 km |\n| 3 | 6 km | 30 min a ritmo | 8 km |\n| 4 | 5 km (recuperación) | 4 × 1 km | 6 km |\n| 5 | 6 km | 35 min a ritmo | 9 km |\n| 6 | 5 km | 3 km suave | **10 km 🎉** |\n\n¿Cuándo prefieres correr?\n\n1. Por la mañana antes del trabajo\n2. A mediodía\n3. Por la tarde después del trabajo"
+          }
+        }
+      ],
+      "followup": [
+        {
+          "tool": "cronjob",
+          "seconds": 1.0,
+          "preview": {
+            "fr": "3 rappels par semaine · {answer}",
+            "en": "3 reminders a week · {answer}",
+            "de": "3 Erinnerungen pro Woche · {answer}",
+            "es": "3 recordatorios por semana · {answer}"
+          }
+        },
+        {
+          "tool": "calendar",
+          "seconds": 0.8,
+          "preview": {
+            "fr": "18 séances ajoutées",
+            "en": "18 sessions added",
+            "de": "18 Einheiten eingetragen",
+            "es": "18 sesiones añadidas"
+          }
+        },
+        {
+          "say": {
+            "fr": "C’est calé : **18 séances** dans ton agenda, et je te préviens la veille avec la météo. Si une nuit est trop courte, j’allège la séance du lendemain 💪",
+            "en": "All set: **18 sessions** in your calendar, and I’ll remind you the day before with the weather. If a night is too short, I’ll lighten the next day’s session 💪",
+            "de": "Steht: **18 Einheiten** in deinem Kalender, und ich erinnere dich am Vortag mit dem Wetter. War eine Nacht zu kurz, mache ich die nächste Einheit leichter 💪",
+            "es": "Listo: **18 sesiones** en tu agenda y te aviso el día antes con el tiempo. Si una noche duermes poco, aligero la sesión del día siguiente 💪"
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Je t’ai préparé un plan sur six semaines, trois sorties par semaine, jusqu’à dix kilomètres. Il est dans la conversation.",
+        "en": "I’ve made you a six-week plan, three runs a week, building up to ten kilometres. It’s in the chat.",
+        "de": "Ich habe dir einen Sechs-Wochen-Plan gemacht, drei Läufe pro Woche, bis zu zehn Kilometern. Er ist im Chat.",
+        "es": "Te he preparado un plan de seis semanas, tres salidas por semana, hasta diez kilómetros. Está en el chat."
+      }
+    },
+    "ask_budget": {
+      "prompt": {
+        "fr": "Demande à Budget si je peux m’offrir des chaussures de running",
+        "en": "Ask Budget if I can afford new running shoes",
+        "de": "Frag Budget, ob ich mir neue Laufschuhe leisten kann",
+        "es": "Pregunta a Presupuesto si puedo comprarme zapatillas nuevas"
+      },
+      "keywords": {
+        "fr": [
+          "budget",
+          "chaussure",
+          "running",
+          "acheter"
+        ],
+        "en": [
+          "budget",
+          "shoes",
+          "afford",
+          "buy"
+        ],
+        "de": [
+          "budget",
+          "schuhe",
+          "leisten",
+          "kaufen"
+        ],
+        "es": [
+          "presupuesto",
+          "zapatillas",
+          "comprar"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Ses chaussures ont 900 km, c’est le moment de les changer. Budget connaît les comptes : je lui pose la question directement.",
+            "en": "Their shoes have 900 km on them, time for new ones. Budget knows the accounts: I’ll ask directly.",
+            "de": "Die Schuhe haben 900 km drauf, Zeit für neue. Budget kennt die Konten: Ich frage direkt nach.",
+            "es": "Sus zapatillas llevan 900 km, toca cambiarlas. Presupuesto conoce las cuentas: se lo pregunto directamente."
+          }
+        },
+        {
+          "tool": "message_agent",
+          "seconds": 1.6,
+          "preview": {
+            "fr": "@budget · Il reste du budget pour des chaussures de running (~120 €) ?",
+            "en": "@budget · Any room in the budget for running shoes (~€120)?",
+            "de": "@budget · Ist noch Budget für Laufschuhe da (~120 €)?",
+            "es": "@budget · ¿Queda presupuesto para zapatillas de correr (~120 €)?"
+          }
+        },
+        {
+          "teammate": "budget",
+          "text": {
+            "fr": "Oui ! Le poste Sport a encore 140 € ce mois-ci. Petit conseil : les soldes commencent mercredi, −30 % sur les grandes marques.",
+            "en": "Yes! The Sports budget still has €140 left this month. Tip: the sales start Wednesday, 30% off the big brands.",
+            "de": "Ja! Im Sportbudget sind diesen Monat noch 140 € übrig. Tipp: Ab Mittwoch ist Schlussverkauf, 30 % auf die großen Marken.",
+            "es": "¡Sí! A la partida de Deporte le quedan 140 € este mes. Consejo: las rebajas empiezan el miércoles, −30 % en las grandes marcas."
+          }
+        },
+        {
+          "say": {
+            "fr": "Bonne nouvelle : **Budget dit oui** 🎉 Il reste 140 € sur le poste Sport ce mois-ci.\n\nEt attends **mercredi** : les soldes commencent, −30 % sur les grandes marques. Je te mets une alerte sur ton modèle actuel ?",
+            "en": "Good news: **Budget says yes** 🎉 There’s €140 left in the Sports budget this month.\n\nAnd wait until **Wednesday**: the sales start, 30% off the big brands. Shall I set an alert on your current model?",
+            "de": "Gute Nachricht: **Budget sagt ja** 🎉 Im Sportbudget sind diesen Monat noch 140 € übrig.\n\nUnd warte bis **Mittwoch**: Dann beginnt der Schlussverkauf, 30 % auf die großen Marken. Soll ich dir einen Alarm für dein aktuelles Modell stellen?",
+            "es": "Buena noticia: **Presupuesto dice que sí** 🎉 A la partida de Deporte le quedan 140 € este mes.\n\nY espera al **miércoles**: empiezan las rebajas, −30 % en las grandes marcas. ¿Te pongo una alerta para tu modelo actual?"
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "J’ai demandé à Budget : c’est oui, il reste cent quarante euros sur le poste sport. Mais attends mercredi, les soldes commencent.",
+        "en": "I asked Budget: it’s a yes, there’s a hundred and forty euros left for sports. But wait until Wednesday, the sales start.",
+        "de": "Ich habe Budget gefragt: Ja, für Sport sind noch hundertvierzig Euro übrig. Aber warte bis Mittwoch, dann beginnt der Schlussverkauf.",
+        "es": "Le he preguntado a Presupuesto: es que sí, quedan ciento cuarenta euros para deporte. Pero espera al miércoles, empiezan las rebajas."
+      }
+    },
+    "spending": {
+      "prompt": {
+        "fr": "Où part mon argent ce mois-ci ?",
+        "en": "Where is my money going this month?",
+        "de": "Wohin geht mein Geld diesen Monat?",
+        "es": "¿En qué se me va el dinero este mes?"
+      },
+      "keywords": {
+        "fr": [
+          "argent",
+          "dépens",
+          "mois"
+        ],
+        "en": [
+          "money",
+          "spend",
+          "spent",
+          "month"
+        ],
+        "de": [
+          "geld",
+          "ausgaben",
+          "monat"
+        ],
+        "es": [
+          "dinero",
+          "gasto",
+          "gastado",
+          "mes"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Catégoriser les opérations du mois, comparer au mois dernier, chercher ce qui a bougé.",
+            "en": "Categorise this month’s transactions, compare with last month, look for what changed.",
+            "de": "Die Umsätze des Monats kategorisieren, mit dem Vormonat vergleichen, Auffälligkeiten suchen.",
+            "es": "Clasificar los movimientos del mes, compararlos con el anterior y buscar qué ha cambiado."
+          }
+        },
+        {
+          "tool": "read_file",
+          "seconds": 0.9,
+          "preview": {
+            "fr": "releve-du-mois.csv · 86 opérations",
+            "en": "statement-this-month.csv · 86 transactions",
+            "de": "kontoauszug-monat.csv · 86 Umsätze",
+            "es": "extracto-del-mes.csv · 86 movimientos"
+          }
+        },
+        {
+          "tool": "terminal",
+          "seconds": 1.7,
+          "preview": "python3 categorise.py --compare last-month"
+        },
+        {
+          "chart": "spending",
+          "file": {
+            "fr": "Dépenses-du-mois.png",
+            "en": "Spending-this-month.png",
+            "de": "Ausgaben-des-Monats.png",
+            "es": "Gastos-del-mes.png"
+          }
+        },
+        {
+          "say": {
+            "fr": "Ce mois-ci : **1 748 €** de dépenses.\n\n| Poste | Montant | vs mois dernier |\n|---|---|---|\n| Logement | 850 € | = |\n| Courses | 412 € | −12 % ✅ |\n| Sorties | 189 € | +23 % |\n| Transports | 136 € | −5 % |\n| Autres | 97 € | +4 % |\n| Abonnements | 64 € | **+31 %** ⚠️ |\n\n💡 Les abonnements ont bondi : j’en vois **2 que tu n’as pas utilisés depuis 3 mois** (23,98 €/mois, soit 288 € par an).",
+            "en": "This month: **€1,748** spent.\n\n| Category | Amount | vs last month |\n|---|---|---|\n| Housing | €850 | = |\n| Groceries | €412 | −12% ✅ |\n| Going out | €189 | +23% |\n| Transport | €136 | −5% |\n| Other | €97 | +4% |\n| Subscriptions | €64 | **+31%** ⚠️ |\n\n💡 Subscriptions jumped: I see **2 you haven’t used in 3 months** (€23.98/month, that’s €288 a year).",
+            "de": "Diesen Monat: **1.748 €** Ausgaben.\n\n| Posten | Betrag | ggü. Vormonat |\n|---|---|---|\n| Wohnen | 850 € | = |\n| Lebensmittel | 412 € | −12 % ✅ |\n| Ausgehen | 189 € | +23 % |\n| Mobilität | 136 € | −5 % |\n| Sonstiges | 97 € | +4 % |\n| Abos | 64 € | **+31 %** ⚠️ |\n\n💡 Die Abos sind gestiegen: **2 davon hast du seit 3 Monaten nicht genutzt** (23,98 €/Monat, also 288 € im Jahr).",
+            "es": "Este mes: **1.748 €** de gasto.\n\n| Partida | Importe | vs. mes pasado |\n|---|---|---|\n| Vivienda | 850 € | = |\n| Compra | 412 € | −12 % ✅ |\n| Ocio | 189 € | +23 % |\n| Transporte | 136 € | −5 % |\n| Otros | 97 € | +4 % |\n| Suscripciones | 64 € | **+31 %** ⚠️ |\n\n💡 Las suscripciones se han disparado: veo **2 que no usas desde hace 3 meses** (23,98 €/mes, 288 € al año)."
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Ce mois-ci, mille sept cent quarante-huit euros de dépenses. Les courses baissent de douze pour cent, bravo. Mais les abonnements ont bondi : deux ne servent plus depuis trois mois.",
+        "en": "This month, one thousand seven hundred and forty-eight euros spent. Groceries are down twelve percent, well done. But subscriptions jumped: two haven’t been used in three months.",
+        "de": "Diesen Monat tausendsiebenhundertachtundvierzig Euro Ausgaben. Lebensmittel zwölf Prozent weniger, gut gemacht. Aber die Abos sind gestiegen: zwei wurden seit drei Monaten nicht genutzt.",
+        "es": "Este mes, mil setecientos cuarenta y ocho euros de gasto. La compra baja un doce por ciento, bien hecho. Pero las suscripciones se han disparado: dos no se usan desde hace tres meses."
+      }
+    },
+    "subscriptions": {
+      "prompt": {
+        "fr": "Résilie les abonnements que je n’utilise plus",
+        "en": "Cancel the subscriptions I don’t use",
+        "de": "Kündige die Abos, die ich nicht nutze",
+        "es": "Cancela las suscripciones que no uso"
+      },
+      "keywords": {
+        "fr": [
+          "abonnement",
+          "résili",
+          "resili"
+        ],
+        "en": [
+          "subscription",
+          "cancel"
+        ],
+        "de": [
+          "abo",
+          "kündig"
+        ],
+        "es": [
+          "suscrip",
+          "cancel",
+          "baja"
+        ]
+      },
+      "steps": [
+        {
+          "tool": "terminal",
+          "seconds": 1.2,
+          "preview": "python3 unused_subscriptions.py --months 3"
+        },
+        {
+          "ask": {
+            "question": {
+              "fr": "J’ai trouvé CinéPlus (13,99 €/mois, pas ouvert depuis juillet) et FitApp Premium (9,99 €/mois, dernière séance en juin). Je résilie lesquels ?",
+              "en": "I found CinePlus (€13.99/month, not opened since July) and FitApp Premium (€9.99/month, last workout in June). Which ones should I cancel?",
+              "de": "Ich habe CinePlus (13,99 €/Monat, seit Juli nicht geöffnet) und FitApp Premium (9,99 €/Monat, letztes Training im Juni) gefunden. Welche soll ich kündigen?",
+              "es": "He encontrado CinePlus (13,99 €/mes, sin abrir desde julio) y FitApp Premium (9,99 €/mes, último entreno en junio). ¿Cuáles cancelo?"
+            },
+            "choices": [
+              {
+                "fr": "CinéPlus et FitApp",
+                "en": "CinePlus and FitApp",
+                "de": "CinePlus und FitApp",
+                "es": "CinePlus y FitApp"
+              },
+              {
+                "fr": "CinéPlus seulement",
+                "en": "CinePlus only",
+                "de": "Nur CinePlus",
+                "es": "Solo CinePlus"
+              },
+              {
+                "fr": "FitApp seulement",
+                "en": "FitApp only",
+                "de": "Nur FitApp",
+                "es": "Solo FitApp"
+              }
+            ]
+          },
+          "then": [
+            {
+              "approve": {
+                "description": {
+                  "fr": "Je vais envoyer la résiliation en ton nom",
+                  "en": "I’m about to send the cancellation in your name",
+                  "de": "Ich sende die Kündigung in deinem Namen",
+                  "es": "Voy a enviar la baja en tu nombre"
+                },
+                "command": {
+                  "fr": "Résilier : {answer}\nvia l’espace client · confirmation par mail",
+                  "en": "Cancel: {answer}\nvia the account page · confirmation by email",
+                  "de": "Kündigen: {answer}\nüber das Kundenkonto · Bestätigung per Mail",
+                  "es": "Dar de baja: {answer}\ndesde el área de cliente · confirmación por correo"
+                }
+              },
+              "then": [
+                {
+                  "tool": "browser_navigate",
+                  "seconds": 1.5,
+                  "preview": {
+                    "fr": "Espace client · {answer}",
+                    "en": "Account page · {answer}",
+                    "de": "Kundenkonto · {answer}",
+                    "es": "Área de cliente · {answer}"
+                  }
+                },
+                {
+                  "tool": "browser_click",
+                  "seconds": 1.3,
+                  "preview": {
+                    "fr": "Résilier l’abonnement",
+                    "en": "Cancel subscription",
+                    "de": "Abo kündigen",
+                    "es": "Cancelar suscripción"
+                  }
+                },
+                {
+                  "tool": "mail_search",
+                  "seconds": 0.9,
+                  "preview": {
+                    "fr": "Confirmation de résiliation reçue",
+                    "en": "Cancellation confirmation received",
+                    "de": "Kündigungsbestätigung erhalten",
+                    "es": "Confirmación de baja recibida"
+                  }
+                },
+                {
+                  "say": {
+                    "fr": "C’est fait ✅ Résiliation confirmée pour **{answer}**, les mails de confirmation sont dans ton dossier Factures.\n\nÇa fait jusqu’à **288 € d’économies par an**. Je les mets de côté sur ton livret « Vacances » ? 🏖️",
+                    "en": "Done ✅ Cancellation confirmed for **{answer}**; the confirmation emails are in your Bills folder.\n\nThat’s up to **€288 saved a year**. Shall I move it to your “Holidays” savings? 🏖️",
+                    "de": "Erledigt ✅ Kündigung bestätigt für **{answer}**, die Bestätigungsmails liegen in deinem Ordner Rechnungen.\n\nDas sind bis zu **288 € Ersparnis im Jahr**. Soll ich das auf dein Sparkonto „Urlaub“ legen? 🏖️",
+                    "es": "Hecho ✅ Baja confirmada para **{answer}**; los correos de confirmación están en tu carpeta Facturas.\n\nSon hasta **288 € de ahorro al año**. ¿Lo aparto en tu cuenta «Vacaciones»? 🏖️"
+                  }
+                }
+              ],
+              "denied": [
+                {
+                  "say": {
+                    "fr": "D’accord, je ne touche à rien. Je te le reproposerai le mois prochain si tu ne les utilises toujours pas.",
+                    "en": "OK, I won’t touch anything. I’ll suggest it again next month if you still don’t use them.",
+                    "de": "Okay, ich rühre nichts an. Ich frage nächsten Monat noch mal, falls du sie weiterhin nicht nutzt.",
+                    "es": "Vale, no toco nada. Te lo volveré a proponer el mes que viene si sigues sin usarlas."
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "spoken": {
+        "fr": "Deux abonnements dorment : CinéPlus et FitApp Premium, presque vingt-quatre euros par mois. Ouvre la conversation, je les résilie dès que tu confirmes.",
+        "en": "Two subscriptions are sleeping: CinePlus and FitApp Premium, almost twenty-four euros a month. Open the chat, I’ll cancel them as soon as you confirm.",
+        "de": "Zwei Abos schlafen: CinePlus und FitApp Premium, fast vierundzwanzig Euro im Monat. Öffne den Chat, ich kündige sie, sobald du bestätigst.",
+        "es": "Dos suscripciones están dormidas: CinePlus y FitApp Premium, casi veinticuatro euros al mes. Abre el chat y las cancelo en cuanto confirmes."
+      }
+    },
+    "weekend": {
+      "prompt": {
+        "fr": "Combien je peux dépenser ce week-end ?",
+        "en": "How much can I spend this weekend?",
+        "de": "Wie viel kann ich am Wochenende ausgeben?",
+        "es": "¿Cuánto puedo gastar este fin de semana?"
+      },
+      "keywords": {
+        "fr": [
+          "week-end",
+          "weekend",
+          "combien"
+        ],
+        "en": [
+          "weekend",
+          "how much",
+          "afford"
+        ],
+        "de": [
+          "wochenende",
+          "wie viel"
+        ],
+        "es": [
+          "fin de semana",
+          "cuánto",
+          "cuanto"
+        ]
+      },
+      "steps": [
+        {
+          "tool": "memory",
+          "seconds": 0.6,
+          "preview": {
+            "fr": "Objectif épargne · 300 €/mois",
+            "en": "Savings goal · €300/month",
+            "de": "Sparziel · 300 €/Monat",
+            "es": "Objetivo de ahorro · 300 €/mes"
+          }
+        },
+        {
+          "tool": "terminal",
+          "seconds": 1.1,
+          "preview": "python3 budget_left.py --until payday"
+        },
+        {
+          "say": {
+            "fr": "Tu peux dépenser **95 €** ce week-end sans toucher à ton objectif d’épargne 👌\n\nIl reste 9 jours avant la paie et 410 € de marge, dont 315 € déjà prévus (courses, essence, parking). Astuce : le ciné est à 6 € le dimanche matin 🍿",
+            "en": "You can spend **€95** this weekend without touching your savings goal 👌\n\n9 days until payday and €410 of headroom, €315 of it already planned (groceries, fuel, parking). Tip: the cinema is €6 on Sunday morning 🍿",
+            "de": "Du kannst am Wochenende **95 €** ausgeben, ohne dein Sparziel anzutasten 👌\n\nNoch 9 Tage bis zum Gehalt und 410 € Spielraum, davon 315 € schon verplant (Lebensmittel, Tanken, Parken). Tipp: Sonntagmorgens kostet das Kino 6 € 🍿",
+            "es": "Puedes gastar **95 €** este fin de semana sin tocar tu objetivo de ahorro 👌\n\nQuedan 9 días para la nómina y 410 € de margen, de los que 315 € ya están previstos (compra, gasolina, parking). Truco: el cine cuesta 6 € el domingo por la mañana 🍿"
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Tu peux dépenser quatre-vingt-quinze euros ce week-end sans toucher à ton épargne. Et le ciné est à six euros dimanche matin.",
+        "en": "You can spend ninety-five euros this weekend without touching your savings. And the cinema is six euros on Sunday morning.",
+        "de": "Du kannst am Wochenende fünfundneunzig Euro ausgeben, ohne dein Erspartes anzutasten. Und sonntagmorgens kostet das Kino sechs Euro.",
+        "es": "Puedes gastar noventa y cinco euros este fin de semana sin tocar tus ahorros. Y el cine cuesta seis euros el domingo por la mañana."
+      }
+    },
+    "heating": {
+      "prompt": {
+        "fr": "Il fait froid dans le salon",
+        "en": "It’s cold in the living room",
+        "de": "Im Wohnzimmer ist es kalt",
+        "es": "Hace frío en el salón"
+      },
+      "keywords": {
+        "fr": [
+          "froid",
+          "chauff",
+          "salon",
+          "température"
+        ],
+        "en": [
+          "cold",
+          "heat",
+          "living room",
+          "temperature"
+        ],
+        "de": [
+          "kalt",
+          "heiz",
+          "wohnzimmer",
+          "temperatur"
+        ],
+        "es": [
+          "frío",
+          "frio",
+          "calefacción",
+          "salón",
+          "temperatura"
+        ]
+      },
+      "steps": [
+        {
+          "tool": "ha_get_state",
+          "seconds": 0.9,
+          "preview": {
+            "fr": "climate.salon · 18,5 °C",
+            "en": "climate.living_room · 18.5 °C",
+            "de": "climate.wohnzimmer · 18,5 °C",
+            "es": "climate.salon · 18,5 °C"
+          }
+        },
+        {
+          "tool": "ha_get_state",
+          "seconds": 0.6,
+          "preview": {
+            "fr": "Fenêtres · toutes fermées",
+            "en": "Windows · all closed",
+            "de": "Fenster · alle geschlossen",
+            "es": "Ventanas · todas cerradas"
+          }
+        },
+        {
+          "approve": {
+            "description": {
+              "fr": "Je vais monter le chauffage du salon",
+              "en": "I’m about to turn up the living room heating",
+              "de": "Ich drehe die Heizung im Wohnzimmer hoch",
+              "es": "Voy a subir la calefacción del salón"
+            },
+            "command": {
+              "fr": "climate.set_temperature\nclimate.salon → 21 °C",
+              "en": "climate.set_temperature\nclimate.living_room → 21 °C",
+              "de": "climate.set_temperature\nclimate.wohnzimmer → 21 °C",
+              "es": "climate.set_temperature\nclimate.salon → 21 °C"
+            }
+          },
+          "then": [
+            {
+              "tool": "ha_call_service",
+              "seconds": 0.8,
+              "preview": {
+                "fr": "climate.salon → 21 °C",
+                "en": "climate.living_room → 21 °C",
+                "de": "climate.wohnzimmer → 21 °C",
+                "es": "climate.salon → 21 °C"
+              }
+            },
+            {
+              "say": {
+                "fr": "C’est parti 🔥 Le salon passe de 18,5 °C à **21 °C**, ce sera bon dans 20 minutes environ.\n\nToutes les fenêtres sont fermées. Et je redescendrai à 18 °C à 23 h, comme d’habitude.",
+                "en": "On it 🔥 The living room goes from 18.5 °C to **21 °C**; it’ll be cosy in about 20 minutes.\n\nAll windows are closed. And I’ll bring it back down to 18 °C at 11 pm, as usual.",
+                "de": "Läuft 🔥 Das Wohnzimmer geht von 18,5 °C auf **21 °C**, in etwa 20 Minuten ist es gemütlich.\n\nAlle Fenster sind zu. Und um 23 Uhr drehe ich wie immer auf 18 °C runter.",
+                "es": "En marcha 🔥 El salón pasa de 18,5 °C a **21 °C**; en unos 20 minutos estará a gusto.\n\nTodas las ventanas están cerradas. Y a las 23 h la bajaré a 18 °C, como siempre."
+              }
+            }
+          ],
+          "denied": [
+            {
+              "say": {
+                "fr": "Ok, je laisse comme ça. Un plaid et un thé, peut-être ? ☕",
+                "en": "OK, I’ll leave it. A blanket and some tea, maybe? ☕",
+                "de": "Okay, ich lasse es so. Vielleicht eine Decke und ein Tee? ☕",
+                "es": "Vale, lo dejo así. ¿Una manta y un té, quizá? ☕"
+              }
+            }
+          ]
+        }
+      ],
+      "spoken": {
+        "fr": "Il fait dix-huit degrés et demi dans le salon et les fenêtres sont fermées. Je peux monter à vingt et un degrés : confirme dans la conversation.",
+        "en": "It’s eighteen and a half degrees in the living room and the windows are closed. I can turn it up to twenty-one: confirm in the chat.",
+        "de": "Im Wohnzimmer sind es achtzehneinhalb Grad, und die Fenster sind zu. Ich kann auf einundzwanzig Grad hochdrehen: Bestätige im Chat.",
+        "es": "Hace dieciocho grados y medio en el salón y las ventanas están cerradas. Puedo subir a veintiún grados: confírmalo en el chat."
+      }
+    },
+    "dinner": {
+      "prompt": {
+        "fr": "Qu’est-ce qu’on mange ce soir ?",
+        "en": "What’s for dinner tonight?",
+        "de": "Was essen wir heute Abend?",
+        "es": "¿Qué cenamos esta noche?"
+      },
+      "keywords": {
+        "fr": [
+          "mange",
+          "dîner",
+          "diner",
+          "recette",
+          "repas"
+        ],
+        "en": [
+          "dinner",
+          "eat",
+          "recipe",
+          "meal",
+          "cook"
+        ],
+        "de": [
+          "essen",
+          "rezept",
+          "kochen"
+        ],
+        "es": [
+          "cena",
+          "cenar",
+          "comer",
+          "receta"
+        ]
+      },
+      "steps": [
+        {
+          "tool": "memory",
+          "seconds": 0.7,
+          "preview": {
+            "fr": "Frigo · courses de mardi",
+            "en": "Fridge · Tuesday’s shopping",
+            "de": "Kühlschrank · Einkauf vom Dienstag",
+            "es": "Nevera · compra del martes"
+          }
+        },
+        {
+          "tool": "web_search",
+          "seconds": 1.4,
+          "preview": {
+            "fr": "recette rapide courgettes feta citron",
+            "en": "quick recipe courgette feta lemon",
+            "de": "schnelles Rezept Zucchini Feta Zitrone",
+            "es": "receta rápida calabacín feta limón"
+          }
+        },
+        {
+          "say": {
+            "fr": "Avec ce qu’il te reste : **pâtes courgettes, feta et citron** 🍋 — 20 minutes, pour 4.\n\n- Fais cuire 400 g de pâtes.\n- Fais revenir 2 courgettes en dés avec de l’ail.\n- Mélange avec la feta émiettée, le zeste d’un citron et du basilic.\n\nIl te manque juste du **basilic** et du **parmesan**. Je les ajoute à la liste de courses ?",
+            "en": "With what you have left: **courgette, feta & lemon pasta** 🍋 — 20 minutes, serves 4.\n\n- Cook 400 g of pasta.\n- Sauté 2 diced courgettes with garlic.\n- Toss with crumbled feta, a lemon’s zest and basil.\n\nYou’re only missing **basil** and **parmesan**. Shall I add them to the shopping list?",
+            "de": "Mit dem, was noch da ist: **Pasta mit Zucchini, Feta und Zitrone** 🍋 – 20 Minuten, für 4.\n\n- 400 g Pasta kochen.\n- 2 gewürfelte Zucchini mit Knoblauch anbraten.\n- Mit zerbröseltem Feta, Zitronenschale und Basilikum mischen.\n\nEs fehlen nur **Basilikum** und **Parmesan**. Soll ich sie auf die Einkaufsliste setzen?",
+            "es": "Con lo que te queda: **pasta con calabacín, feta y limón** 🍋 — 20 minutos, para 4.\n\n- Cuece 400 g de pasta.\n- Saltea 2 calabacines en dados con ajo.\n- Mézclalo con feta desmenuzado, ralladura de limón y albahaca.\n\nSolo te faltan **albahaca** y **parmesano**. ¿Los añado a la lista de la compra?"
+          }
+        }
+      ],
+      "followup": [
+        {
+          "tool": "todo",
+          "seconds": 0.7,
+          "preview": {
+            "fr": "Liste de courses · + basilic, parmesan",
+            "en": "Shopping list · + basil, parmesan",
+            "de": "Einkaufsliste · + Basilikum, Parmesan",
+            "es": "Lista de la compra · + albahaca, parmesano"
+          }
+        },
+        {
+          "say": {
+            "fr": "Ajoutés ✅ La liste est partagée avec toute la maison : le premier qui passe au supermarché s’en occupe 🛒",
+            "en": "Added ✅ The list is shared with the whole household: whoever passes the shop first picks them up 🛒",
+            "de": "Hinzugefügt ✅ Die Liste ist mit dem ganzen Haushalt geteilt: Wer zuerst am Supermarkt vorbeikommt, kauft ein 🛒",
+            "es": "Añadidos ✅ La lista se comparte con toda la casa: el primero que pase por el súper se encarga 🛒"
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Avec ce qu’il te reste, je te propose des pâtes courgettes, feta et citron, prêtes en vingt minutes. Il manque juste du basilic et du parmesan.",
+        "en": "With what you have left, I suggest courgette, feta and lemon pasta, ready in twenty minutes. You’re only missing basil and parmesan.",
+        "de": "Mit dem, was noch da ist, schlage ich Pasta mit Zucchini, Feta und Zitrone vor, in zwanzig Minuten fertig. Es fehlen nur Basilikum und Parmesan.",
+        "es": "Con lo que te queda, te propongo pasta con calabacín, feta y limón, lista en veinte minutos. Solo faltan albahaca y parmesano."
+      }
+    },
+    "bins": {
+      "prompt": {
+        "fr": "Rappelle-moi de sortir les poubelles chaque lundi",
+        "en": "Remind me to take the bins out every Monday",
+        "de": "Erinnere mich jeden Montag an den Müll",
+        "es": "Recuérdame sacar la basura cada lunes"
+      },
+      "keywords": {
+        "fr": [
+          "rappel",
+          "poubelle",
+          "chaque",
+          "tous les"
+        ],
+        "en": [
+          "remind",
+          "bins",
+          "trash",
+          "every"
+        ],
+        "de": [
+          "erinner",
+          "müll",
+          "jeden"
+        ],
+        "es": [
+          "recuérda",
+          "recuerda",
+          "basura",
+          "cada"
+        ]
+      },
+      "steps": [
+        {
+          "tool": "cronjob",
+          "seconds": 0.9,
+          "preview": {
+            "fr": "Chaque lundi · 19 h · Poubelles",
+            "en": "Every Monday · 7 pm · Bins",
+            "de": "Jeden Montag · 19 Uhr · Müll",
+            "es": "Cada lunes · 19 h · Basura"
+          }
+        },
+        {
+          "say": {
+            "fr": "C’est noté 🔔 **Chaque lundi à 19 h**, tu recevras une notification. Et les semaines de collecte du verre, je te le dirai aussi.\n\nTu retrouves ce rappel dans **Routines**, sur la fiche de l’agent.",
+            "en": "Got it 🔔 **Every Monday at 7 pm**, you’ll get a notification. On glass-collection weeks, I’ll mention that too.\n\nYou’ll find this reminder under **Routines**, on the agent’s page.",
+            "de": "Notiert 🔔 **Jeden Montag um 19 Uhr** bekommst du eine Benachrichtigung. In den Wochen mit Glasabholung sage ich dir auch das.\n\nDu findest die Erinnerung unter **Routinen** auf der Seite des Agenten.",
+            "es": "Apuntado 🔔 **Cada lunes a las 19 h** te llegará una notificación. Y las semanas de recogida de vidrio, también te avisaré.\n\nEncontrarás este recordatorio en **Rutinas**, en la ficha del agente."
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "C’est noté : chaque lundi à dix-neuf heures, je te rappelle de sortir les poubelles.",
+        "en": "Got it: every Monday at seven pm, I’ll remind you to take the bins out.",
+        "de": "Notiert: Jeden Montag um neunzehn Uhr erinnere ich dich an den Müll.",
+        "es": "Apuntado: cada lunes a las siete de la tarde te recordaré sacar la basura."
+      }
+    }
+  },
+  "fallback": [
+    {
+      "tool": "memory",
+      "seconds": 0.6,
+      "preview": {
+        "fr": "Ce que je sais de toi",
+        "en": "What I know about you",
+        "de": "Was ich über dich weiß",
+        "es": "Lo que sé de ti"
+      }
+    },
+    {
+      "say": {
+        "fr": "Avec un vrai serveur, je m’en occuperais pour de bon : mes outils (mails, agenda, navigateur, fichiers, maison connectée…) tournent sur **ton** serveur, et tes données y restent.\n\nIci, c’est une démo : essaie une des suggestions juste au-dessus du clavier 👇",
+        "en": "With a real server, I’d take care of it for real: my tools (email, calendar, browser, files, smart home…) run on **your** server, and your data stays there.\n\nThis is a demo, though: try one of the suggestions just above the keyboard 👇",
+        "de": "Mit einem echten Server würde ich mich wirklich darum kümmern: Meine Werkzeuge (Mails, Kalender, Browser, Dateien, Smart Home …) laufen auf **deinem** Server, und deine Daten bleiben dort.\n\nDas hier ist aber eine Demo: Probier einen der Vorschläge direkt über der Tastatur 👇",
+        "es": "Con un servidor real, me encargaría de verdad: mis herramientas (correo, agenda, navegador, archivos, casa conectada…) funcionan en **tu** servidor y tus datos se quedan ahí.\n\nPero esto es una demo: prueba una de las sugerencias justo encima del teclado 👇"
+      }
+    }
+  ],
+  "live": {
+    "greeting": {
+      "fr": "Salut, c’est {name} ! Pose-moi une question. Par exemple : {suggestion}",
+      "en": "Hi, it’s {name}! Ask me something. For example: {suggestion}",
+      "de": "Hallo, hier ist {name}! Frag mich etwas. Zum Beispiel: {suggestion}",
+      "es": "¡Hola, soy {name}! Pregúntame algo. Por ejemplo: {suggestion}"
+    },
+    "fallback": {
+      "fr": "Dans cette démo, je connais quelques histoires. Essaie par exemple : {suggestion}",
+      "en": "In this demo, I know a few stories. Try for example: {suggestion}",
+      "de": "In dieser Demo kenne ich ein paar Geschichten. Probier zum Beispiel: {suggestion}",
+      "es": "En esta demo me sé unas cuantas historias. Prueba por ejemplo: {suggestion}"
+    }
+  },
+  "podcasts": {
+    "morning": [
+      {
+        "host": 0,
+        "text": {
+          "fr": "Bonjour et bienvenue dans ton point du matin ! Je suis Quotidien.",
+          "en": "Good morning and welcome to your daily briefing! I’m Daily.",
+          "de": "Guten Morgen und willkommen zu deinem Morgenüberblick! Ich bin Alltag.",
+          "es": "¡Buenos días! Esto es tu resumen de la mañana. Soy Día a día."
+        }
+      },
+      {
+        "host": 1,
+        "text": {
+          "fr": "Et moi, c’est Bip, ton coanimateur. Alors, qu’est-ce qui nous attend aujourd’hui ?",
+          "en": "And I’m Bip, your co-host. So, what’s ahead today?",
+          "de": "Und ich bin Bip, dein Co-Moderator. Also, was steht heute an?",
+          "es": "Y yo soy Bip, tu copresentador. A ver, ¿qué nos espera hoy?"
+        }
+      },
+      {
+        "host": 0,
+        "text": {
+          "fr": "Trois rendez-vous. Le point d’équipe à neuf heures et demie, un déjeuner avec Sam, et le dentiste à dix-sept heures.",
+          "en": "Three meetings. Team sync at nine thirty, lunch with Sam, and the dentist at five.",
+          "de": "Drei Termine. Das Team-Meeting um halb zehn, Mittagessen mit Sam und um siebzehn Uhr der Zahnarzt.",
+          "es": "Tres citas. La reunión de equipo a las nueve y media, la comida con Sam y el dentista a las cinco."
+        }
+      },
+      {
+        "host": 1,
+        "text": {
+          "fr": "Le dentiste… Courage ! Et la météo ?",
+          "en": "The dentist… good luck! And the weather?",
+          "de": "Der Zahnarzt … viel Glück! Und das Wetter?",
+          "es": "El dentista… ¡ánimo! ¿Y el tiempo?"
+        }
+      },
+      {
+        "host": 0,
+        "text": {
+          "fr": "Grand soleil ce matin, mais la pluie arrive vers seize heures quarante-cinq. Donc, parapluie obligatoire.",
+          "en": "Sunny this morning, but rain is coming around a quarter to five. So, umbrella required.",
+          "de": "Heute Morgen Sonne, aber gegen Viertel vor fünf kommt Regen. Also: Schirm nicht vergessen.",
+          "es": "Sol por la mañana, pero la lluvia llega hacia las cinco menos cuarto. Así que, paraguas obligatorio."
+        }
+      },
+      {
+        "host": 1,
+        "text": {
+          "fr": "Noté. Une bonne nouvelle pour finir ?",
+          "en": "Got it. Any good news to finish?",
+          "de": "Notiert. Noch eine gute Nachricht zum Schluss?",
+          "es": "Apuntado. ¿Alguna buena noticia para terminar?"
+        }
+      },
+      {
+        "host": 0,
+        "text": {
+          "fr": "Deux, même. Ton colis arrive entre midi et quatorze heures, et tu as dépensé douze pour cent de moins en courses que le mois dernier.",
+          "en": "Two, actually. Your parcel arrives between noon and two, and you spent twelve percent less on groceries than last month.",
+          "de": "Sogar zwei. Dein Paket kommt zwischen zwölf und vierzehn Uhr, und du hast zwölf Prozent weniger für Lebensmittel ausgegeben als letzten Monat.",
+          "es": "Dos, de hecho. Tu paquete llega entre las doce y las dos, y has gastado un doce por ciento menos en la compra que el mes pasado."
+        }
+      },
+      {
+        "host": 1,
+        "text": {
+          "fr": "Bravo ! Belle journée, et à demain !",
+          "en": "Nice! Have a great day, see you tomorrow!",
+          "de": "Super! Einen schönen Tag, bis morgen!",
+          "es": "¡Genial! Que tengas un buen día, ¡hasta mañana!"
+        }
+      }
+    ]
+  },
+  "charts": {
+    "spending": {
+      "kind": "donut",
+      "title": {
+        "fr": "Dépenses du mois",
+        "en": "Spending this month",
+        "de": "Ausgaben des Monats",
+        "es": "Gastos del mes"
+      },
+      "total": {
+        "fr": "1 748 €",
+        "en": "€1,748",
+        "de": "1.748 €",
+        "es": "1.748 €"
+      },
+      "items": [
+        {
+          "label": {
+            "fr": "Logement",
+            "en": "Housing",
+            "de": "Wohnen",
+            "es": "Vivienda"
+          },
+          "value": 850,
+          "color": "#7C6CF2"
+        },
+        {
+          "label": {
+            "fr": "Courses",
+            "en": "Groceries",
+            "de": "Lebensmittel",
+            "es": "Compra"
+          },
+          "value": 412,
+          "color": "#34C38F"
+        },
+        {
+          "label": {
+            "fr": "Sorties",
+            "en": "Going out",
+            "de": "Ausgehen",
+            "es": "Ocio"
+          },
+          "value": 189,
+          "color": "#FF8A5B"
+        },
+        {
+          "label": {
+            "fr": "Transports",
+            "en": "Transport",
+            "de": "Mobilität",
+            "es": "Transporte"
+          },
+          "value": 136,
+          "color": "#4AA8FF"
+        },
+        {
+          "label": {
+            "fr": "Autres",
+            "en": "Other",
+            "de": "Sonstiges",
+            "es": "Otros"
+          },
+          "value": 97,
+          "color": "#B8BCC8"
+        },
+        {
+          "label": {
+            "fr": "Abonnements",
+            "en": "Subscriptions",
+            "de": "Abos",
+            "es": "Suscripciones"
+          },
+          "value": 64,
+          "color": "#F2557A"
+        }
+      ]
+    },
+    "sleep": {
+      "kind": "bars",
+      "title": {
+        "fr": "Sommeil · 7 dernières nuits",
+        "en": "Sleep · last 7 nights",
+        "de": "Schlaf · letzte 7 Nächte",
+        "es": "Sueño · últimas 7 noches"
+      },
+      "total": {
+        "fr": "7 h 12 en moyenne",
+        "en": "7 h 12 on average",
+        "de": "Ø 7 h 12",
+        "es": "7 h 12 de media"
+      },
+      "unit": "h",
+      "target": 7.0,
+      "color": "#7C6CF2",
+      "low": "#FF8A5B",
+      "items": [
+        {
+          "label": {
+            "fr": "Lun",
+            "en": "Mon",
+            "de": "Mo",
+            "es": "Lun"
+          },
+          "value": 7.67
+        },
+        {
+          "label": {
+            "fr": "Mar",
+            "en": "Tue",
+            "de": "Di",
+            "es": "Mar"
+          },
+          "value": 6.25
+        },
+        {
+          "label": {
+            "fr": "Mer",
+            "en": "Wed",
+            "de": "Mi",
+            "es": "Mié"
+          },
+          "value": 7.5
+        },
+        {
+          "label": {
+            "fr": "Jeu",
+            "en": "Thu",
+            "de": "Do",
+            "es": "Jue"
+          },
+          "value": 7.08
+        },
+        {
+          "label": {
+            "fr": "Ven",
+            "en": "Fri",
+            "de": "Fr",
+            "es": "Vie"
+          },
+          "value": 6.83
+        },
+        {
+          "label": {
+            "fr": "Sam",
+            "en": "Sat",
+            "de": "Sa",
+            "es": "Sáb"
+          },
+          "value": 8.17
+        },
+        {
+          "label": {
+            "fr": "Dim",
+            "en": "Sun",
+            "de": "So",
+            "es": "Dom"
+          },
+          "value": 7.08
+        }
+      ]
+    }
+  }
+}
