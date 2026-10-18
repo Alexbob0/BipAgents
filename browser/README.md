@@ -39,9 +39,16 @@ podman build -t bipagents-browser ~/BipAgents/browser
 systemctl --user restart bipagents-bridge
 ```
 
-Each agent's container runs as a systemd user unit, `bipagents-browser-<agent>`. With a GPU (`/dev/dri`), Chrome
-renders with it; otherwise in software. `[browser]` in `bridge.toml` also takes `language` (e.g. `fr-FR`), `timezone`,
-`gpu = "none"`, `first_port` (9600) and `runtime` (`podman` or `docker`).
+Each agent's container runs as a systemd user unit, `bipagents-browser-<agent>`, only while it is used: it starts at
+the agent's first browser call (a few seconds) or when you open its « Bureau », and stops after 10 minutes unused
+(nobody watching the desktop, no call, nothing connected to its DevTools). Its profile stays: logins and cookies too.
+On a machine with several agents, only the browsers in use take memory. Hermes keeps a small MCP server of ours
+connected (`bridge/bipbridge/browser_mcp.py`), which answers with the tools the browser's server listed last time and
+starts it when a tool is called. `idle_minutes = 0` in `[browser]` keeps every browser running, as before.
+
+With a GPU (`/dev/dri`), Chrome renders with it; otherwise in software. `[browser]` in `bridge.toml` also takes
+`idle_minutes` (10), `language` (e.g. `fr-FR`), `timezone`, `gpu = "none"`, `first_port` (9600) and `runtime` (`podman`
+or `docker`).
 
 ## What is ours, what is fetched
 

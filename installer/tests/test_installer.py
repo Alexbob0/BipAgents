@@ -689,7 +689,7 @@ def test_an_update_applies_the_settings_a_fresh_install_now_makes_once(tmp_path,
     ran = []
     runner.run = lambda args, **kw: ran.append((dict(runner.env).get("HERMES_HOME"), list(args[1:]))) or ""
     said = migrations.run(runner, home=tmp_path)
-    assert "2 agent(s)" in said[0] and "approvals.mode manual" in said[1]
+    assert "2 agent(s)" in said[0] and "approvals.mode manual" in said[1] and said[2] == "no agent browser here"
     assert (str(hub), ["config", "set", "compression.threshold_tokens", "100000"]) in ran
     assert (str(space), ["-p", "wellness", "config", "set", "compression.threshold_tokens", "100000"]) in ran
     assert (str(hub), ["-p", "vie", "config", "set", "compression.threshold_tokens", "100000"]) not in ran   # an API model
@@ -699,6 +699,24 @@ def test_an_update_applies_the_settings_a_fresh_install_now_makes_once(tmp_path,
     monkeypatch.setattr(migrations, "STATE", tmp_path / "other.json")
     said = migrations.run(runner, home=tmp_path, own_hermes=False)
     assert ran == [] and all("not applied to your own Hermes" in line for line in said)
+
+
+def test_an_update_makes_the_browsers_start_when_used(tmp_path, monkeypatch):
+    from bipinstall import migrations, update
+    units = tmp_path / ".config" / "systemd" / "user"
+    units.mkdir(parents=True)
+    (units / "bipagents-browser-vie.service").write_text("[Service]\n")
+    (tmp_path / ".config" / "bipagents").mkdir()
+    (tmp_path / ".config" / "bipagents" / "bridge.toml").write_text("")
+    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append(list(args)) or ""
+    said = migrations.browsers_on_demand(runner, tmp_path)
+    assert ran[0][1:] == ["-m", "bipbridge", "browser", "add", "--all", "--config",
+                          str(tmp_path / ".config" / "bipagents" / "bridge.toml")]
+    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"] and "(1)" in said
 
 
 def test_the_bipagents_command_runs_install_sh_and_shows_its_help_alone(tmp_path):

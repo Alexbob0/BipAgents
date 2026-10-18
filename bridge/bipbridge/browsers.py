@@ -3,14 +3,16 @@
 
 For an agent, this sets up:
 
-- its container, `bipagents-browser-<agent>`, kept running by a systemd user unit: its Chrome profile (cookies and
-  logins) in `<browser root>/<agent>/profile`, nothing else of the host; a page it opens (file:// included) only ever
-  sees this container;
+- its container, `bipagents-browser-<agent>`, run by a systemd user unit: its Chrome profile (cookies and logins) in
+  `<browser root>/<agent>/profile`, nothing else of the host; a page it opens (file:// included) only ever sees this
+  container. Started when the agent (or the person, in « Bureau ») uses it, stopped after `idle_minutes` unused
+  (browser_mcp.py): a machine with several agents only holds the browsers in use; `idle_minutes = 0` keeps it running;
 - two ports on 127.0.0.1, never published: Chrome's DevTools (Hermes' `browser.cdp_url`, so the vault fills in this
   browser) and the screen's VNC server, with a password of its own, which the bridge logs in to and relays to the app
   (« Bureau », behind Face ID; see desktop.py);
 - in the agent's Hermes profile, the `stealth` MCP server (`podman exec -i <container> /opt/stealth/mcp.sh`: the
-  server runs in the container, next to Chrome) and the skill that tells the agent how to use it.
+  server runs in the container, next to Chrome; behind browser_mcp.py, which starts it when used) and the skill that
+  tells the agent how to use it.
 
 Linux only: the screen is an X server in the container.
 """
@@ -25,6 +27,7 @@ import secrets
 import shutil
 import socket
 import string
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -60,6 +63,50 @@ def unit_path(agent: str) -> Path:
 
 
 HOLD_FLAG = "/tmp/bipagents-hold"   # browser/hold_gate.py: while it is there, the agent's browser tools wait
+SCREEN = "/tmp/.X11-unix/X99"       # browser/entrypoint.sh: its screen is up
+PROXY = Path(__file__).with_name("browser_mcp.py")
+
+
+def on_demand(config: Config) -> bool:
+    return config.browser.idle_minutes > 0
+
+
+def busy(config: Config, agent: str) -> None:
+    """Someone uses the agent's browser (the person watching its desktop): not stopped for `idle_minutes` from now."""
+    try:
+        (folder(config, agent) / "busy").touch()
+    except OSError:
+        pass
+
+
+async def wake(config: Config, agent: str, wait: float = 60) -> bool:
+    """The agent's browser container, started if it was stopped, its screen up. Returns whether this agent has one."""
+    import asyncio
+    import time
+    engine = runtime(config)
+    if not engine or not ports_of(config, agent):
+        return False
+    if not on_demand(config):
+        return True
+    busy(config, agent)
+
+    async def run(*args: str) -> int:
+        process = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL,
+                                                       stderr=asyncio.subprocess.DEVNULL)
+        return await process.wait()
+
+    if await run(engine, "exec", container(agent), "test", "-e", SCREEN) == 0:
+        return True
+    await run("systemctl", "--user", "start", unit_path(agent).stem)
+    deadline = time.monotonic() + wait
+    while await run(engine, "exec", container(agent), "test", "-e", SCREEN) != 0:
+        if time.monotonic() > deadline:
+            log.warning("browser did not wake", extra=fields(agent=agent))
+            break
+        await asyncio.sleep(0.5)
+    else:
+        log.info("browser woken", extra=fields(agent=agent))
+    return True
 
 
 async def hold(config: Config, agent: str, on: bool) -> bool:
@@ -69,6 +116,8 @@ async def hold(config: Config, agent: str, on: bool) -> bool:
     engine = runtime(config)
     if not engine or not ports_of(config, agent):
         return False
+    if on:
+        await wake(config, agent)
     command = f"touch {HOLD_FLAG}" if on else f"rm -f {HOLD_FLAG}"
     process = await asyncio.create_subprocess_exec(engine, "exec", container(agent), "sh", "-c", command,
                                                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
@@ -170,11 +219,28 @@ def gpu_available(config: Config) -> bool:
     return config.browser.gpu == "auto" and os.access("/dev/dri", os.R_OK) and any(Path("/dev/dri").glob("renderD*"))
 
 
-def mcp_server(engine: str, agent: str) -> Dict[str, Any]:
+def mcp_server(engine: str, agent: str, proxy: Optional[Path] = None) -> Dict[str, Any]:
+    """Hermes' `stealth` MCP server: the one in the container, or (`proxy`: its browser_mcp.py config) the one that
+    starts it when used."""
     # A call that hangs gives up after two minutes, not Hermes' five; get_instance_state hangs on some pages (the agent
     # has get_active_tab and list_tabs).
-    return {"command": engine, "args": ["exec", "-i", container(agent), "/opt/stealth/mcp.sh"], "connect_timeout": 90,
-            "timeout": 120, "tools": {"exclude": ["get_instance_state"]}}
+    command = ([sys.executable, str(PROXY), str(proxy)] if proxy
+               else [engine, "exec", "-i", container(agent), "/opt/stealth/mcp.sh"])
+    return {"command": command[0], "args": command[1:], "connect_timeout": 90, "timeout": 120,
+            "tools": {"exclude": ["get_instance_state"]}}
+
+
+def proxy_config(config: Config, agent: str, engine: str, ports: Dict[str, int]) -> Dict[str, Any]:
+    """browser_mcp.py's settings for the agent."""
+    place, unit = folder(config, agent), unit_path(agent).stem
+    systemctl = shutil.which("systemctl") or "systemctl"   # Hermes may start it with a PATH of its own
+    return {"start": [systemctl, "--user", "start", unit],
+            "ready": [engine, "exec", container(agent), "test", "-e", SCREEN],
+            "active": [systemctl, "--user", "is-active", "--quiet", unit],
+            "server": [engine, "exec", "-i", container(agent), "/opt/stealth/mcp.sh"],
+            "stop": [systemctl, "--user", "stop", unit],
+            "cache": str(place / "mcp-cache.json"), "busy": str(place / "busy"), "cdp_port": ports["cdp"],
+            "idle": config.browser.idle_minutes * 60}
 
 
 async def setup(config: Config, agent: AgentConfig, run: Callable[..., Any], home: str,
@@ -202,15 +268,24 @@ async def setup(config: Config, agent: AgentConfig, run: Callable[..., Any], hom
     changed = unit.exists() and unit.read_text() != text
     unit.write_text(text)
     await run(["systemctl", "--user", "daemon-reload"], {})
-    await run(["systemctl", "--user", "enable", "--now", unit.stem], {})
-    if changed:   # set up before with other flags: its container starts again with these (its profile stays)
-        await run(["systemctl", "--user", "restart", unit.stem], {})
+    proxy = None
+    if on_demand(config):
+        # Started by its first use (browser_mcp.py), not with the session; one running now is stopped once unused.
+        proxy = place / "mcp.json"
+        proxy.write_text(json.dumps(proxy_config(config, agent.name, engine, ports), indent=2) + "\n", encoding="utf-8")
+        await run(["systemctl", "--user", "disable", unit.stem], {})
+        if changed:   # set up before with other flags: started again with these if it runs (its profile stays)
+            await run(["systemctl", "--user", "try-restart", unit.stem], {})
+    else:
+        await run(["systemctl", "--user", "enable", "--now", unit.stem], {})
+        if changed:   # set up before with other flags: its container starts again with these (its profile stays)
+            await run(["systemctl", "--user", "restart", unit.stem], {})
 
     env = {"HERMES_HOME": home}
     hermes = config.hermes.bin
     await run([hermes, "-p", agent.name, "config", "set", "browser.cdp_url", f"http://127.0.0.1:{ports['cdp']}"], env)
-    await run([hermes, "-p", agent.name, "config", "set", "mcp_servers.stealth", json.dumps(mcp_server(engine, agent.name))],
-              env)
+    await run([hermes, "-p", agent.name, "config", "set", "mcp_servers.stealth",
+               json.dumps(mcp_server(engine, agent.name, proxy))], env)
     # The vault's tools ride with Hermes' browser toolset; they act on this Chrome through its DevTools port.
     await run([hermes, "-p", agent.name, "tools", "enable", "browser", "--platform", "api_server"], env)
     skill = Path(home) / "profiles" / agent.name / "skills" / "visible-browser" / "SKILL.md"

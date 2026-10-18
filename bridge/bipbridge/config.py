@@ -180,6 +180,7 @@ class BrowserConfig:
     gpu: str = "auto"                # "auto": /dev/dri when there is one; "none": software rendering
     language: str = ""               # e.g. "fr-FR" (default: the bridge's locale)
     timezone: str = ""               # e.g. "Europe/Paris" (default: the bridge's)
+    idle_minutes: int = 10           # started when the agent uses it, stopped after this long unused; 0: always on
 
 
 @dataclass
@@ -484,6 +485,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         gpu=str(browser_t.get("gpu", "auto")),
         language=str(browser_t.get("language", "")),
         timezone=str(browser_t.get("timezone", "")),
+        idle_minutes=max(0, int(browser_t.get("idle_minutes", 10))),
     )
     if browser.runtime not in ("", "podman", "docker") or browser.gpu not in ("auto", "none"):
         raise ConfigError("browser.runtime must be 'podman' or 'docker', browser.gpu 'auto' or 'none'")

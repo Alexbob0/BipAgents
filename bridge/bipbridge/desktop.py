@@ -26,7 +26,7 @@ import secrets
 import struct
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Set, Tuple
 
 try:
     import fcntl
@@ -339,6 +339,19 @@ async def open_vnc(agent: AgentConfig) -> Upstream:
     return up
 
 
+async def open_vnc_retrying(agent: AgentConfig, seconds: float) -> Upstream:
+    """open_vnc, again for `seconds` while it fails: a browser just woken has its VNC server up a moment after its
+    screen."""
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            return await open_vnc(agent)
+        except (OSError, ConnectionError, asyncio.IncompleteReadError, asyncio.TimeoutError):
+            if time.monotonic() >= deadline:
+                raise
+            await asyncio.sleep(0.5)
+
+
 # -- routes ------------------------------------------------------------------------------------------
 
 class Tickets:
@@ -537,9 +550,11 @@ def desktop_router() -> APIRouter:
         if agent is None or (folder is None and not agent.desktop_vnc):
             await websocket.close(code=4401)
             return
+        from .browsers import busy, wake
+        own_browser = bool(agent.desktop_vnc) and await wake(services.config, agent.name)
         try:
             if agent.desktop_vnc:
-                up = await open_vnc(agent)
+                up = await open_vnc_retrying(agent, 10 if own_browser else 0)
             else:
                 assert folder is not None
                 reader, writer, close = await open_rfb(folder)
@@ -566,10 +581,13 @@ def desktop_router() -> APIRouter:
             nonlocal last_touch
             while data := await up.read():
                 await websocket.send_bytes(data)
-                if folder is not None and time.time() - last_touch > 60:   # watched: Hermes keeps the desktop up
+                if time.time() - last_touch > 60:   # watched: Hermes keeps the desktop up, the browser stays on
                     last_touch = time.time()
-                    with contextlib.suppress(OSError):
-                        (folder / "activity").touch()
+                    if folder is not None:
+                        with contextlib.suppress(OSError):
+                            (folder / "activity").touch()
+                    elif own_browser:
+                        busy(services.config, agent.name)
 
         async def from_app() -> None:
             if app_side.buffer:
@@ -600,6 +618,9 @@ def desktop_router() -> APIRouter:
     return router
 
 
+_waking: Set[asyncio.Task] = set()
+
+
 def desktop_admin_router() -> APIRouter:
     router = APIRouter()
 
@@ -610,8 +631,12 @@ def desktop_admin_router() -> APIRouter:
         if agent is None:
             raise HTTPException(status_code=404, detail="unknown agent")
         if agent.desktop_vnc:
-            from .browsers import ports_of
+            from .browsers import ports_of, wake
             ticket = services.desktop_tickets.new(agent.name)
+            # Its browser stopped while unused: started now, while the app opens the viewer.
+            waking = asyncio.create_task(wake(services.config, agent.name))
+            _waking.add(waking)
+            waking.add_done_callback(_waking.discard)
             # Its own browser container (browsers.py): taking over makes its tools wait. Set up by hand: it does not.
             return {"kind": "novnc", "path": f"desktop/{ticket}/", "you_hold": services.desktop_control.get(agent.name, False),
                     "holder": "human" if services.desktop_control.get(agent.name) else "agent", "reason": None,

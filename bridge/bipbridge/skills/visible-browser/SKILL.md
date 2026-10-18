@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.2.0
+version: 1.3.0
 author: BipAgents
 license: MIT
 metadata:
@@ -51,4 +51,6 @@ confirmation page and tell them what is about to happen.
 
 ## 6. When you are done
 Leave the browser open if the person is likely to continue; otherwise `close_instance`. It also closes by itself after
-30 minutes without use.
+10 minutes without use (your desktop stops to free the machine's memory; your profile and logins stay). After such a
+pause, a call naming your old `instance_id` answers that it does not exist: call `spawn_browser` again and continue
+with the new id; the first call after a pause takes a few seconds longer.

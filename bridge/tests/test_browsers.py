@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sys
 
 import pytest
 
@@ -51,14 +52,22 @@ def test_an_agent_gets_its_own_browser_container_and_desktop(setup):
     assert "--userns=keep-id:uid=1000,gid=1000" in start and "--device" not in start
     assert "--accept-lang=fr-FR,fr" in start and "TZ=Europe/Paris" in start
     assert start.endswith(" bipagents-browser")
-    # Started, then the agent's Hermes pointed at it: DevTools for the vault, the MCP server inside the container.
+    # Not started with the session: the agent's Hermes pointed at it (DevTools for the vault), its MCP server behind
+    # browser_mcp.py, which starts the container at the first call and stops it after 10 minutes unused.
     ran = [c[0] for c in commands]
-    assert ["systemctl", "--user", "enable", "--now", "bipagents-browser-budget"] in ran
+    assert ["systemctl", "--user", "disable", "bipagents-browser-budget"] in ran
+    assert not any(c[:3] == ["systemctl", "--user", "enable"] or "start" in c for c in ran)
     assert ["/opt/hermes", "-p", "budget", "config", "set", "browser.cdp_url", "http://127.0.0.1:19602"] in ran
     mcp = next(c for c in ran if c[4:6] == ["set", "mcp_servers.stealth"])
-    assert json.loads(mcp[6]) == {"command": "/usr/bin/podman", "connect_timeout": 90, "timeout": 120,
-                                  "args": ["exec", "-i", "bipagents-browser-budget", "/opt/stealth/mcp.sh"],
+    place = tmp_path / "browsers" / "budget"
+    assert json.loads(mcp[6]) == {"command": sys.executable, "connect_timeout": 90, "timeout": 120,
+                                  "args": [str(browsers.PROXY), str(place / "mcp.json")],
                                   "tools": {"exclude": ["get_instance_state"]}}
+    proxy = json.loads((place / "mcp.json").read_text())
+    assert proxy["server"] == ["/usr/bin/podman", "exec", "-i", "bipagents-browser-budget", "/opt/stealth/mcp.sh"]
+    assert proxy["start"][1:] == ["--user", "start", "bipagents-browser-budget"]
+    assert proxy["stop"][1:] == ["--user", "stop", "bipagents-browser-budget"]
+    assert proxy["idle"] == 600 and proxy["cdp_port"] == 19602 and proxy["busy"] == str(place / "busy")
     assert all(env == {"HERMES_HOME": str(hub)} for args, env in commands if args[0] == "/opt/hermes")
     assert (hub / "profiles" / "budget" / "skills" / "visible-browser" / "SKILL.md").read_text().startswith("---")
     # The app's « Bureau »: the bridge logs in to its VNC server.
@@ -78,7 +87,18 @@ def test_an_agent_gets_its_own_browser_container_and_desktop(setup):
     commands.clear()
     asyncio.run(browsers.setup(config, config.agent("budget"), run, str(hub), is_free=lambda p: True))
     assert "--start-maximized" in unit_file.read_text() and "--window-size" not in unit_file.read_text()
-    assert ["systemctl", "--user", "restart", "bipagents-browser-budget"] in [c[0] for c in commands]
+    assert ["systemctl", "--user", "try-restart", "bipagents-browser-budget"] in [c[0] for c in commands]
+
+
+def test_a_browser_kept_running(setup):
+    config, hub, run, commands, tmp_path = setup
+    config.browser.idle_minutes = 0
+    asyncio.run(browsers.setup(config, config.agent("budget"), run, str(hub), is_free=lambda p: True))
+    ran = [c[0] for c in commands]
+    assert ["systemctl", "--user", "enable", "--now", "bipagents-browser-budget"] in ran
+    mcp = next(c for c in ran if c[4:6] == ["set", "mcp_servers.stealth"])
+    assert json.loads(mcp[6])["command"] == "/usr/bin/podman"
+    assert json.loads(mcp[6])["args"] == ["exec", "-i", "bipagents-browser-budget", "/opt/stealth/mcp.sh"]
 
 
 def test_deleting_the_agent_removes_its_browser(setup):
@@ -125,7 +145,36 @@ def test_taking_over_the_browser_makes_the_agents_tools_wait(setup, monkeypatch)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
     assert asyncio.run(browsers.hold(config, "budget", True)) is True
+    # Its screen checked first (a browser stopped while unused starts again), then the hold.
+    assert ran[0] == ["/usr/bin/podman", "exec", "bipagents-browser-budget", "test", "-e", "/tmp/.X11-unix/X99"]
     assert ran[-1] == ["/usr/bin/podman", "exec", "bipagents-browser-budget", "sh", "-c", "touch /tmp/bipagents-hold"]
     asyncio.run(browsers.hold(config, "budget", False))
     assert ran[-1][-1] == "rm -f /tmp/bipagents-hold"
-    assert asyncio.run(browsers.hold(config, "nobody", True)) is False and len(ran) == 2   # no browser of its own
+    assert asyncio.run(browsers.hold(config, "nobody", True)) is False and len(ran) == 3   # no browser of its own
+
+
+def test_the_desktop_wakes_a_stopped_browser(setup, monkeypatch):
+    config, hub, run, commands, tmp_path = setup
+    asyncio.run(browsers.setup(config, config.agent("budget"), run, str(hub), is_free=lambda p: True))
+    ran, screen = [], {"up": False}
+
+    class Done:
+        def __init__(self, code):
+            self.code = code
+
+        async def wait(self):
+            return self.code
+
+    async def fake_exec(*args, **kwargs):
+        ran.append(list(args))
+        if args[:3] == ("systemctl", "--user", "start"):
+            screen["up"] = True
+        return Done(0 if screen["up"] or args[0] == "systemctl" else 1)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    assert asyncio.run(browsers.wake(config, "budget")) is True
+    assert ["systemctl", "--user", "start", "bipagents-browser-budget"] in ran
+    assert (tmp_path / "browsers" / "budget" / "busy").exists()   # not stopped again right away
+    ran.clear()
+    assert asyncio.run(browsers.wake(config, "budget")) is True and len(ran) == 1   # already up: nothing started
+    assert asyncio.run(browsers.wake(config, "nobody")) is False

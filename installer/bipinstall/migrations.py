@@ -49,10 +49,30 @@ def local_compression(runner: hermes.Runner, home: Path) -> str:
     return f"discussions with a local model compressed at {hermes.LOCAL_COMPRESSION_TOKENS:,} tokens ({count} agent(s))"
 
 
+def browsers_on_demand(runner: hermes.Runner, home: Path) -> str:
+    """The agents' browsers start when used and stop after 10 minutes unused (bridge/bipbridge/browser_mcp.py): their
+    MCP server and units set up again, the gateways restarted to connect to it."""
+    units = sorted((home / ".config" / "systemd" / "user").glob("bipagents-browser-*.service"))
+    if not units:
+        return "no agent browser here"
+    configs = [home / ".config" / "bipagents" / "bridge.toml", home / ".config" / "hermes-ios" / "bridge.toml"]
+    config = next((path for path in configs if path.is_file()), None)
+    if config is None:
+        return "agents' browsers left as they are (no bridge config found)"
+    repo = Path(__file__).resolve().parents[2]
+    runner.run([str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "browser", "add", "--all",
+                "--config", str(config)], cwd=repo / "bridge")
+    from . import update
+    update.restart(runner)
+    return (f"the agents' browsers ({len(units)}) start when used and stop after 10 minutes unused; gateways "
+            "restarted")
+
+
 # In order; an id never changes once released.
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-15-local-compression", local_compression),
     ("2026-10-16-approvals-manual", approvals_manual),
+    ("2026-10-18-browsers-on-demand", browsers_on_demand),
 ]
 
 
