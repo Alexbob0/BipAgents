@@ -584,7 +584,8 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
                 "voice_server": server_ok, "drama": server_ok if drama else None, "ntfy": ntfy_ok,
                 "apns": services.apns is not None, "push": services.push_mode,
                 # The app registers with the publisher's relay and sends the relay token (environment « relay »).
-                "push_relay": services.push_service is not None, "tts_queue": services.tts.scheduler.depth}
+                "push_relay": services.push_service is not None, "fcm": services.fcm is not None,
+                "tts_queue": services.tts.scheduler.depth}
 
     app.include_router(build_router())
     app.include_router(relay_router())
