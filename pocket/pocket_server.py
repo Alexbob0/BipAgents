@@ -14,6 +14,9 @@ with erratic pauses). Here each sentence is generated on its own (very short one
 model's own leading/trailing silence is trimmed, each sentence gets a moderate level adjustment, and the pause
 after it follows the punctuation and line breaks (paragraphs, list items). ``pace: "live"`` shortens the pauses.
 
+Memory: a language's model takes ~450 MB. Only the first language (``--keep``) is loaded at start; the others load
+on their first sentence (a few seconds once) and are unloaded after ``--idle-unload`` seconds without speaking.
+
 Run: ``python pocket_server.py --voices ../voices --languages fr,en,es,de`` (listens on 127.0.0.1:8098).
 """
 from __future__ import annotations
@@ -188,23 +191,76 @@ def phrased(text: str, generate: Callable[[str], Iterable], rate: int, pace: str
 
 @dataclass
 class Engine:
-    """The loaded models and voice states. Pocket generation is not thread-safe and uses the CPU fully, so
-    one generation runs at a time (the bridge queues its requests anyway)."""
+    """The models and voice states, loaded when a language is first spoken and unloaded when it stays silent.
+    Pocket generation is not thread-safe and uses the CPU fully, so one generation runs at a time (the bridge
+    queues its requests anyway); loading and unloading happen under the same lock."""
     voices_dir: Path
+    languages: List[str] = field(default_factory=lambda: ["fr"])
     models: Dict[str, object] = field(default_factory=dict)  # code -> TTSModel
     states: Dict[Tuple[str, str], object] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # Builds a language's model (``TTSModel.load_model``; a fake in the tests).
+    loader: Optional[Callable[[str], object]] = None
+    # Never unloaded (the main language); the others go after ``idle`` seconds without speaking (0: never).
+    keep: set = field(default_factory=set)
+    idle: float = 0
+    last_used: Dict[str, float] = field(default_factory=dict)
 
     @classmethod
-    def load(cls, voices_dir: Path, languages: list[str], quantize: bool = False) -> "Engine":
-        from pocket_tts import TTSModel  # heavy import, kept out of the tests
+    def load(cls, voices_dir: Path, languages: list[str], quantize: bool = False, keep: Optional[set] = None,
+             idle: float = 0) -> "Engine":
+        def loader(code: str) -> object:
+            from pocket_tts import TTSModel  # heavy import, kept out of the tests
 
-        engine = cls(voices_dir)
-        for code in languages:
-            started = time.monotonic()
-            engine.models[code] = TTSModel.load_model(language=LANGUAGE_DIRS[code], quantize=quantize)
-            log.info("loaded %s model in %.1f s", LANGUAGE_DIRS[code], time.monotonic() - started)
+            return TTSModel.load_model(language=LANGUAGE_DIRS[code], quantize=quantize)
+
+        engine = cls(voices_dir, languages=languages, loader=loader, keep=keep or set(languages[:1]), idle=idle)
+        with engine.lock:
+            for code in engine.keep:
+                engine.model(code)
         return engine
+
+    def model(self, code: str) -> object:
+        """The language's model, loaded on its first use. Call with ``lock`` held."""
+        model = self.models.get(code)
+        if model is None:
+            if code not in self.languages or self.loader is None:
+                raise VoiceNotFound(code)
+            started = time.monotonic()
+            model = self.models[code] = self.loader(code)
+            log.info("loaded %s model in %.1f s", LANGUAGE_DIRS[code], time.monotonic() - started)
+        self.last_used[code] = time.monotonic()
+        return model
+
+    def unload_idle(self, now: Optional[float] = None) -> list[str]:
+        """Unloads the languages silent for ``idle`` seconds (not while a generation runs): their memory goes back
+        to the system. Returns the languages unloaded."""
+        if not self.idle or not self.lock.acquire(blocking=False):
+            return []
+        try:
+            now = time.monotonic() if now is None else now
+            gone = [code for code in list(self.models)
+                    if code not in self.keep and now - self.last_used.get(code, now) >= self.idle]
+            for code in gone:
+                del self.models[code]
+                for key in [key for key in self.states if key[0] == code]:
+                    del self.states[key]
+                log.info("unloaded %s model after %.0f s of silence", LANGUAGE_DIRS[code], self.idle)
+        finally:
+            self.lock.release()
+        if gone:
+            release_memory()
+        return gone
+
+    def watch_idle(self, every: float = 30) -> None:
+        """Unloads silent languages in the background."""
+        def loop() -> None:
+            while True:
+                time.sleep(every)
+                self.unload_idle()
+
+        if self.idle:
+            threading.Thread(target=loop, name="pocket-unload", daemon=True).start()
 
     @property
     def sample_rate(self) -> int:
@@ -213,27 +269,29 @@ class Engine:
 
     def available_voices(self) -> Dict[str, list[str]]:
         return {code: sorted(p.stem for p in (self.voices_dir / LANGUAGE_DIRS[code]).glob("*.safetensors"))
-                for code in self.models}
+                for code in self.languages}
 
-    def resolve(self, voice: str) -> Tuple[object, object]:
-        """``"en/colibri"`` -> (English model, colibri's English voice state)."""
+    def split(self, voice: str) -> Tuple[str, str]:
+        """``"en/colibri"`` -> ("en", "colibri"), checked against the languages served and the voices on disk."""
         code, sep, name = voice.partition("/")
         if not sep:
             code, name = "fr", voice
-        model = self.models.get(code)
-        if model is None or not VOICE_NAME.match(name):
+        if code not in self.languages or not VOICE_NAME.match(name) \
+                or not (self.voices_dir / LANGUAGE_DIRS[code] / f"{name}.safetensors").is_file():
             raise VoiceNotFound(voice)
+        return code, name
+
+    def resolve(self, voice: str) -> Tuple[object, object]:
+        """``"en/colibri"`` -> (English model, colibri's English voice state). Call with ``lock`` held."""
+        code, name = self.split(voice)
+        model = self.model(code)
         key = (code, name)
         if key not in self.states:
-            path = self.voices_dir / LANGUAGE_DIRS[code] / f"{name}.safetensors"
-            if not path.is_file():
-                raise VoiceNotFound(voice)
-            self.states[key] = model.get_state_for_audio_prompt(path)
+            self.states[key] = model.get_state_for_audio_prompt(self.voices_dir / LANGUAGE_DIRS[code] / f"{name}.safetensors")
         return model, self.states[key]
 
     def stream(self, voice: str, text: str, stop: threading.Event, pace: str = "read") -> Iterator[bytes]:
         """PCM16 chunks as Pocket decodes them, phrased sentence by sentence; ``stop`` ends the generation early."""
-        model, state = self.resolve(voice)
 
         def generate(sentence: str) -> Iterator:
             # Pocket's own end-of-speech margin (its frames_after_eos guess): forcing it short clipped endings.
@@ -243,14 +301,32 @@ class Engine:
                 yield chunk.detach().cpu().numpy()
 
         with self.lock:
-            for audio in phrased(text, generate, self.sample_rate, pace, stop):
-                if stop.is_set():
-                    break
-                if len(audio):
-                    yield to_pcm16(audio)
+            model, state = self.resolve(voice)
+            try:
+                for audio in phrased(text, generate, self.sample_rate, pace, stop):
+                    if stop.is_set():
+                        break
+                    if len(audio):
+                        yield to_pcm16(audio)
+            finally:
+                # Silence counts from the end of speech (also when the listener left mid-sentence).
+                self.last_used[self.split(voice)[0]] = time.monotonic()
 
     def synthesize(self, voice: str, text: str, pace: str = "read") -> bytes:
         return b"".join(self.stream(voice, text, threading.Event(), pace))
+
+
+def release_memory() -> None:
+    """Hands freed memory back to the system (glibc keeps it otherwise)."""
+    import gc
+
+    gc.collect()
+    try:
+        import ctypes
+
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass  # not glibc (macOS): the allocator returns large blocks by itself
 
 
 def to_pcm16(audio) -> bytes:
@@ -292,13 +368,14 @@ def create_app(engine: Engine):
         if not text.strip():
             raise HTTPException(400, "empty input")
         try:
-            engine.resolve(voice)
+            engine.split(voice)   # the voice exists; its model loads in the generation thread
         except VoiceNotFound:
             raise HTTPException(404, f"unknown voice: {voice}") from None
 
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok", "languages": list(engine.models), "voices": engine.available_voices()}
+        return {"status": "ok", "languages": list(engine.languages), "loaded": sorted(engine.models),
+                "voices": engine.available_voices()}
 
     @app.post("/v1/audio/speech")
     async def speech(body: SpeechRequest) -> Response:
@@ -348,6 +425,9 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8098)
     parser.add_argument("--quantize", action="store_true", help="int8 weights: less memory, faster on x86 CPUs")
+    parser.add_argument("--keep", default="", help="languages kept loaded (default: the first of --languages)")
+    parser.add_argument("--idle-unload", type=float, default=900,
+                        help="seconds without speaking before another language's model is unloaded (0: never)")
     parser.add_argument("--threads", type=int, default=0,
                         help="CPU threads for generation (default: PyTorch's choice); 2 leaves room for Hermes on a 4 vCPU VPS")
     args = parser.parse_args()
@@ -360,8 +440,11 @@ def main() -> None:
         import torch
 
         torch.set_num_threads(args.threads)
-    engine = Engine.load(args.voices, languages, quantize=args.quantize)
-    log.info("voices: %s", engine.available_voices())
+    keep = {code.strip() for code in args.keep.split(",") if code.strip()} or set(languages[:1])
+    engine = Engine.load(args.voices, languages, quantize=args.quantize, keep=keep & set(languages),
+                         idle=args.idle_unload)
+    engine.watch_idle()
+    log.info("voices: %s (loaded: %s)", engine.available_voices(), sorted(engine.models))
 
     import uvicorn
 

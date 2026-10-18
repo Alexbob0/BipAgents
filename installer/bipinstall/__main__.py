@@ -20,7 +20,7 @@ from . import hermes, models, ui
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
-from .stack import PUSH_SERVICE_URL, AgentEntry, Install, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
+from .stack import PUSH_SERVICE_URL, AgentEntry, Install, bip_languages, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "bridge"))
@@ -242,7 +242,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--push-service", default=PUSH_SERVICE_URL or None,
                         help="the publisher's push relay (the app's notifications without an APNs key of your own)")
     parser.add_argument("--ports", type=int, help="the first port of this install's block (default: the first free one)")
-    parser.add_argument("--languages", default="fr,en", help="voices to load: fr, en, es, de")
+    parser.add_argument("--languages", default=None,
+                        help="the Bips' languages: fr, en, es, de (default: all four, this machine's first; only the "
+                             "first stays loaded, the others load when spoken and unload when silent)")
     parser.add_argument("--voice-server", "--kyutai-url",
                         help="your own voice model: a TTS server with OpenAI's /v1/audio/speech, Kyutai's included "
                              "(default: look for one on this machine and the local network, then ask)")
@@ -482,7 +484,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         say("  already set up on this machine: I'll share it.")
     else:
         venv(REPO / "pocket", runner)
-        label, path, content = pocket_service(inst, machine.system, args.languages)
+        label, path, content = pocket_service(inst, machine.system, args.languages or bip_languages())
         write(path, content, runner)
         start_service(machine.system, label, path, runner)
 

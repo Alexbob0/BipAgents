@@ -39,14 +39,39 @@ def setup(tmp_path):
         (tmp_path / folder).mkdir()
         for name in names:
             (tmp_path / folder / f"{name}.safetensors").write_bytes(b"x")
-    engine = FakeEngine(tmp_path, models={"fr": FakeModel("fr"), "en": FakeModel("en")})
+    engine = FakeEngine(tmp_path, languages=["fr", "en"], models={"fr": FakeModel("fr"), "en": FakeModel("en")})
     return engine, TestClient(create_app(engine))
 
 
 def test_health_lists_languages_and_voices(setup):
     _, client = setup
-    assert client.get("/health").json() == {"status": "ok", "languages": ["fr", "en"],
+    assert client.get("/health").json() == {"status": "ok", "languages": ["fr", "en"], "loaded": ["en", "fr"],
                                            "voices": {"fr": ["loutre", "ours"], "en": ["loutre"]}}
+
+
+def test_languages_load_when_spoken_and_unload_when_silent(tmp_path):
+    for folder in ("french", "english"):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "loutre.safetensors").write_bytes(b"x")
+    built = []
+    engine = Engine(tmp_path, languages=["fr", "en"], loader=lambda code: built.append(code) or FakeModel(code),
+                    keep={"fr"}, idle=60)
+    client = TestClient(create_app(engine))
+    assert client.get("/health").json()["loaded"] == []
+    # The voice is checked without loading anything; English loads on its first sentence only.
+    with engine.lock:
+        engine.resolve("en/loutre")
+        engine.resolve("loutre")
+    assert built == ["en", "fr"] and sorted(engine.models) == ["en", "fr"]
+    engine.last_used["en"] -= 61
+    engine.last_used["fr"] -= 61
+    assert engine.unload_idle() == ["en"]                  # French is kept, English goes
+    assert sorted(engine.models) == ["fr"] and ("en", "loutre") not in engine.states
+    with engine.lock:                                      # and comes back when spoken again
+        engine.resolve("en/loutre")
+    assert built == ["en", "fr", "en"]
+    with engine.lock:
+        assert engine.unload_idle() == []                  # never while a generation holds the lock
 
 
 def test_voice_names_pick_the_language(setup):

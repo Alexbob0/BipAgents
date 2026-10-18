@@ -188,6 +188,16 @@ def bridge_service(inst: Install, system: str) -> tuple[str, Path, str]:
     return "bipagents-bridge", path, systemd_unit("BipAgents bridge", program, inst.repo / "bridge", env)
 
 
+def bip_languages(locale: Optional[str] = None) -> str:
+    """All four of Pocket's languages, this machine's first (the one Pocket keeps loaded): « fr,en,es,de »,
+    « en,fr,es,de »…"""
+    import os
+
+    first = (locale if locale is not None else os.environ.get("LC_ALL") or os.environ.get("LANG") or "")[:2].lower()
+    order = ["fr", "en", "es", "de"]
+    return ",".join([first] + [code for code in order if code != first] if first in order else order)
+
+
 def pocket_service(inst: Install, system: str, languages: str) -> tuple[str, Path, str]:
     python = inst.repo / "pocket" / ".venv" / "bin" / "python"
     program = [str(python), str(inst.repo / "pocket" / "pocket_server.py"), "--voices", str(inst.repo / "voices"),

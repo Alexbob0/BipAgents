@@ -31,7 +31,11 @@ curl -s http://127.0.0.1:8098/health
 Service au démarrage : `launchd/io.github.bipagents.pocket.plist` (macOS) ou `systemd/pocket-tts.service` (Linux),
 cf. [`docs/self-hosting.md`](../docs/self-hosting.fr.md). Côté bridge : `[pocket] url = "http://127.0.0.1:8098"`.
 
-Options : `--languages fr,en` (ne charger que certaines langues), `--port 8098`, `--host 127.0.0.1` (laisser en
+Mémoire : seule la première langue reste chargée (`--keep fr` pour choisir) ; les autres se chargent à leur première
+phrase (quelques secondes, une fois) et sont déchargées après 15 minutes sans parler (`--idle-unload 900`, `0` : jamais) :
+quatre langues coûtent à peu près une quand une seule est parlée.
+
+Options : `--languages fr,en` (les langues servies), `--port 8098`, `--host 127.0.0.1` (laisser en
 local : seul le bridge l'appelle), `--quantize` (poids int8 : moins de mémoire, ≈ 25 % plus rapide sur x86),
 `--threads 2` (cœurs utilisés : laisse de la place à Hermes ; même vitesse mesurée sur Apple M4).
 

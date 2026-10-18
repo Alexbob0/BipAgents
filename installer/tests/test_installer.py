@@ -762,3 +762,12 @@ def test_new_installs_send_through_the_publishers_relay_when_it_is_set(tmp_path)
     assert '[push]\nservice_url = "https://push.example"' in toml
     assert "[push]" not in bridge_toml(Install(repo=tmp_path, home=tmp_path, ports=Ports(base=9200), tailnet_name=None,
                                                lan_address=None))
+
+
+def test_bip_languages_put_this_machine_first():
+    from bipinstall.stack import bip_languages
+
+    assert bip_languages("fr_FR.UTF-8") == "fr,en,es,de"
+    assert bip_languages("de_DE.UTF-8") == "de,fr,en,es"
+    assert bip_languages("ja_JP.UTF-8") == "fr,en,es,de"
+    assert bip_languages("") == "fr,en,es,de"
