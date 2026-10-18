@@ -45,7 +45,8 @@ def test_each_agent_of_the_install_gets_the_tools_with_a_token_of_its_own(manage
     assert {args[2] for args, _ in commands} == {"vie"}
     assert all(env == {"HERMES_HOME": str(hub)} for _, env in commands)
     values = {args[5]: args[6] for args, _ in commands}
-    assert values["mcp_servers.bipagents.url"] == f"http://127.0.0.1:{config.port}/v1/agent-tools/mcp"
+    assert values["mcp_servers.bipagents.url"] == (f"http://127.0.0.1:{config.port}/v1/agent-tools/mcp"
+                                                   f"?v={agent_tools.tools_version()}")
     assert values["mcp_servers.bipagents.timeout"] == str(agent_tools.TOOL_TIMEOUT)
     token = values["mcp_servers.bipagents.headers.Authorization"].removeprefix("Bearer ")
     assert agent_tools.agent_for(config, token).name == "vie" and agent_tools.agent_for(config, "nope") is None
@@ -57,6 +58,16 @@ def test_each_agent_of_the_install_gets_the_tools_with_a_token_of_its_own(manage
     commands.clear()
     asyncio.run(agent_tools.register_all(config, run))
     assert commands == []
+    # New tools in a later version: a new entry, so Hermes fetches the list again (the token stays).
+    real = agent_tools.TOOLS
+    agent_tools.TOOLS = real + [{"name": "later_tool", "inputSchema": {"type": "object"}}]
+    try:
+        asyncio.run(agent_tools.register_all(config, run))
+    finally:
+        agent_tools.TOOLS = real
+    changed = {args[5]: args[6] for args, _ in commands}
+    assert changed["mcp_servers.bipagents.url"] != values["mcp_servers.bipagents.url"]
+    assert changed["mcp_servers.bipagents.headers.Authorization"] == f"Bearer {token}"
     # A deleted agent's token no longer opens anything.
     agent_tools.forget(config, "vie")
     assert agent_tools.agent_for(config, token) is None

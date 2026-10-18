@@ -123,12 +123,20 @@ def media_roots(config: Config) -> Dict[str, str]:
     return {**config.media_roots, MEDIA_PREFIX: str(audio_root(config))}
 
 
+def tools_version() -> str:
+    """Changes whenever the tools do: Hermes keeps the list it got when it connected, so a new tool needs a new entry."""
+    return hashlib.sha256(json.dumps(TOOLS, sort_keys=True).encode()).hexdigest()[:10]
+
+
 def tools_url(config: Config) -> str:
     """The bridge as the agents' Hermes reaches it: this machine, unless the agents' gateways run elsewhere (`peer_url`,
-    set for spaces in containers of their own)."""
+    set for spaces in containers of their own). The tools' version rides along (`?v=`), ignored by the bridge: a
+    changed entry makes Hermes connect again and fetch the new list."""
     if config.peer_url and config.peer_url.endswith("/peer"):
-        return config.peer_url[: -len("/peer")] + PATH
-    return f"http://127.0.0.1:{config.port}{PATH}"
+        base = config.peer_url[: -len("/peer")] + PATH
+    else:
+        base = f"http://127.0.0.1:{config.port}{PATH}"
+    return f"{base}?v={tools_version()}"
 
 
 def load_tokens(config: Config) -> Dict[str, str]:
