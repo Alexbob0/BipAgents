@@ -30,6 +30,7 @@ from .agent_tools import AudioMaker, agent_tools_router, media_roots, purge_audi
 from .vault import Vault, vault_router
 from .console import ConsoleStore, console_admin_router, console_files, console_router
 from .voices import relay_for, voice_for, voices_router
+from .favicons import favicons_router
 from .households import Households, path_for as households_path
 from .peers import Links, family_router, household_admin_router, peer_router
 from .desktop import Tickets, desktop_admin_router, desktop_router, static_files
@@ -592,6 +593,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(agents_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(vault_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(favicons_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(console_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(console_router())   # the web console's page and login (its session then stands for the key)
     app.mount("/console/static", console_files(), name="console")

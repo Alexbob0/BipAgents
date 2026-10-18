@@ -81,6 +81,7 @@ class FakeBackend:
         self.ntfy_lines: Dict[str, List[str]] = {}
         self.ntfy_requests: List[httpx.Request] = []
         self.release = threading.Event()  # set at teardown to end hanging streams
+        self.icon_requests: List[str] = []
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -96,6 +97,11 @@ class FakeBackend:
             return self._hermes(request)
         if base == NTFY:
             return self._ntfy(request)
+        if base == "https://icons.duckduckgo.com":
+            self.icon_requests.append(str(url))
+            if url.path == "/ip3/example.com.ico":
+                return httpx.Response(200, content=b"\x89PNG\r\n\x1a\n" + b"icon")
+            return httpx.Response(404)
         return httpx.Response(599, text="unexpected host")
 
     async def _kyutai(self, request: httpx.Request) -> httpx.Response:

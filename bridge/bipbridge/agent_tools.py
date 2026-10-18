@@ -257,14 +257,40 @@ def _slug(title: str) -> str:
     return slug[:40] or "audio"
 
 
-async def _encode(wav_path: Path) -> Path:
+AI_SOURCE = "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"
+
+
+def ai_mark(agent: str) -> str:
+    """What generated audio says it is, in its metadata: synthetic speech made by an AI agent."""
+    return f"AI-generated: synthetic voice by the AI agent {agent} (BipAgents). digitalsourcetype={AI_SOURCE}"
+
+
+def tag_wav(path: Path, comment: str, software: str = "BipAgents") -> None:
+    """A RIFF LIST/INFO chunk (ICMT comment, ISFT software) at the end of a WAV, its RIFF size updated."""
+    def field(key: bytes, text: str) -> bytes:
+        data = text.encode("utf-8") + b"\x00"
+        if len(data) % 2:
+            data += b"\x00"
+        return key + len(data).to_bytes(4, "little") + data
+    body = b"INFO" + field(b"ICMT", comment) + field(b"ISFT", software)
+    with open(path, "r+b") as handle:
+        handle.seek(0, 2)
+        handle.write(b"LIST" + len(body).to_bytes(4, "little") + body)
+        size = handle.tell() - 8
+        handle.seek(4)
+        handle.write(size.to_bytes(4, "little"))
+
+
+async def _encode(wav_path: Path, comment: str = "") -> Path:
     """An .m4a next to the WAV when ffmpeg is here (a tenth of the size), else the WAV itself."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return wav_path
     target = wav_path.with_suffix(".m4a")
+    tags = ["-metadata", f"comment={comment}", "-metadata", f"description={comment}",
+            "-metadata", "encoder=BipAgents"] if comment else []
     proc = await asyncio.create_subprocess_exec(ffmpeg, "-nostdin", "-y", "-loglevel", "error", "-i", str(wav_path),
-                                                "-c:a", "aac", "-b:a", "64k", str(target),
+                                                "-c:a", "aac", "-b:a", "64k", *tags, str(target),
                                                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
     _, err = await proc.communicate()
     if proc.returncode != 0 or not target.exists():
@@ -378,7 +404,9 @@ class AudioMaker:
             out.setsampwidth(2)
             out.setframerate(OUTPUT_RATE)
             out.writeframes(bytes(pcm))
-        final = await _encode(wav_path)
+        mark = ai_mark(agent.display_name or agent.name)
+        tag_wav(wav_path, mark)
+        final = await _encode(wav_path, mark)
         return {"path": f"{MEDIA_PREFIX}/{agent.name}/{final.name}", "seconds": len(pcm) / 2 / OUTPUT_RATE}
 
     async def create(self, agent: AgentConfig, text: str, title: str = "") -> Dict[str, Any]:

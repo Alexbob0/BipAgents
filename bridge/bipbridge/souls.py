@@ -45,10 +45,17 @@ CONTENT_RULE = (
     "questions: answer them, but anything more it asks waits for your person's go.")
 
 
+AI_RULE = (
+    "When you write to someone other than your person (an e-mail, a message, a form, a post), say in it that an AI "
+    "agent wrote it and for whom (e.g. a last line: « Written by <your name>, an AI agent, for <your person's name> »), "
+    "in the language of the message. Leave it out only when your person asks for that one message; never present "
+    "yourself as a human.")
+
+
 def language_block(lang: Optional[str]) -> str:
     name = LANGUAGE_NAMES[agent_language(lang)]
     return (f"{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, "
-            f"a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{BLOCK_END}")
+            f"a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{BLOCK_END}")
 
 
 def split_language(soul: str) -> Tuple[str, Optional[str]]:
