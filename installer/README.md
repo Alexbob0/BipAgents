@@ -99,7 +99,7 @@ Hermes that serves several agents at one address (`hermes update` otherwise).
 
 `bipagents update` (or `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --
 update`, the same as `bash ~/BipAgents/install.sh update`) brings this account's install up to date. `bipagents` alone
-lists its commands (update, voice, hermes-update, family add, uninstall); the installer puts it in `~/.local/bin`. It shows what is new, restarts only
+lists its commands (update, voice, hermes-update, family add, export, resume, uninstall); the installer puts it in `~/.local/bin`. It shows what is new, restarts only
 what changed (the bridge, the Bips' voices when this account runs them, the agents' browsers when their image changed:
 rebuilt, their profiles kept), and applies the settings a fresh install now makes (`installer/bipinstall/migrations.py`:
 for instance risky commands always asking you). It then offers to update the machine's other installs
@@ -111,6 +111,35 @@ Local changes in `~/BipAgents` that block it are shown with the commands that pu
 The first time, it offers to do this each night at 4:30 (a timer of this account, `install.sh update --auto`: no
 questions; `systemctl --user disable --now bipagents-update.timer` stops it). `--check` only says what is new. A Hermes
 you had before BipAgents keeps its settings unless you add `--apply-to-my-hermes`.
+
+## Moving to another machine
+
+From a rented server to a computer at home, from one host to a cheaper one, or the other way round: everything comes
+along. Your agents' personality, memory, skills, conversations, routines and files, Hermes' settings and your model's
+key, the phones' keys and notifications, the vault, shared data, the family's links and the browsers' logins.
+
+1. On the old machine: `bipagents export --moving`. It writes one encrypted file (`~/bipagents-<machine>-<date>.bipagents`),
+   shows its passphrase once, then stops the install there, so no routine runs twice. `bipagents resume` starts it again
+   if you change your mind.
+2. For your phones to need nothing: in Tailscale's admin, rename the old machine (`aibox-old`) and give the new one its
+   name. Same name and same ports: the app finds its agents by itself. Otherwise you scan a new QR code at the end.
+3. Copy the file to the new machine (`scp`), then run there, in the account that will hold the agents:
+   `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s -- import <file>`. It
+   asks for the passphrase and installs BipAgents and Hermes in the same versions, for this machine's processor. It
+   puts everything back with paths, ports, the tailnet name and the local network adjusted, starts it all and checks
+   the agents answer.
+4. Once everything works on the new machine, `bipagents uninstall --all` on the old one removes the old copy.
+
+The file goes from one machine to the other as you copy it: nothing passes through anyone else. Whoever has the file
+**and** its passphrase can run your agents, so keep them apart. Without `--moving`, `bipagents export` is a backup:
+the install keeps running. Left out are Hermes' code and runtimes (installed again), caches, logs and browser caches.
+
+What may need you afterwards:
+- **A model on your local network.** One the new machine cannot reach is reported at the end; choose another in the
+  app.
+- **Sites signing in again.** Some sites ask again from a new address.
+- **Losing the sandbox.** Moving to a Mac, or to a Linux without podman, leaves the agents without terminal, file
+  access, vault or browser until one is there.
 
 ## Updating Hermes
 

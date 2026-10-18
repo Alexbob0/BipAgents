@@ -15,18 +15,20 @@ from .logs import setup_logging
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="bipbridge", description="BipAgents bridge for Hermes agents")
-    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser", "shares-mounts", "console"],
+    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser", "shares-mounts", "console", "spaces"],
                         help="serve (default), check the config, print a new random bridge key, "
                              "show an agent's pairing QR code for the app, (peer-token --agent X) give an agent set "
                              "up by hand its token for messaging the others, or (browser add|remove --agent X|--all) "
                              "set up or remove agents' visible browsers, or (shares-mounts --agent X) print the "
                              "`-v` mounts an agent set up by hand needs for its shared folders, or (console) give a "
-                             "one-time link that opens the web console in a browser")
+                             "one-time link that opens the web console in a browser, or (spaces start) start again "
+                             "the agents' own spaces after an install was moved here")
     parser.add_argument("--config", help="config path (default: $BRIDGE_CONFIG or ~/.config/hermes-ios/bridge.toml)")
     parser.add_argument("--agent", help="qr: one agent's own code (default: the install's code, which adds every agent)")
     parser.add_argument("--png", help="qr: also save the QR code as a PNG (one agent)")
     parser.add_argument("--json", action="store_true", help="qr: print the payload instead of the QR code")
-    parser.add_argument("action", nargs="?", choices=["add", "remove"], help="browser: add or remove")
+    parser.add_argument("action", nargs="?", choices=["add", "remove", "start"],
+                        help="browser: add or remove; spaces: start")
     parser.add_argument("--all", action="store_true", help="browser add: every agent this install manages")
     args = parser.parse_args(argv)
 
@@ -87,6 +89,9 @@ def main(argv=None) -> int:
 
     if args.command == "browser":
         return asyncio.run(_browser(config, args))
+
+    if args.command == "spaces":
+        return asyncio.run(_spaces(config))
 
     if args.command == "console":
         from .console import LINK_MINUTES, ConsoleStore
@@ -173,6 +178,25 @@ async def _browser(config, args) -> int:
             print(f"{name}: browser {'removed' if args.action == 'remove' else 'ready'}")
         except (browsers.BrowserError, RuntimeError, OSError) as exc:
             print(f"{name}: {exc}", file=sys.stderr)
+            failed += 1
+    return 1 if failed else 0
+
+
+async def _spaces(config) -> int:
+    """Each agent with a space of its own (spaces.py) gets its gateway's service again: after `bipagents import`
+    brought the install to this machine (the spaces' folders came with it, their services did not)."""
+    from .agents_admin import run_hermes
+    from .spaces import SpaceError, Spaces
+
+    spaces, failed = Spaces(run_hermes), 0
+    for agent in config.agents.values():
+        if not agent.space:
+            continue
+        try:
+            await spaces.start(config, agent)
+            print(f"{agent.name}: space started")
+        except (SpaceError, RuntimeError, OSError) as exc:
+            print(f"{agent.name}: {exc}", file=sys.stderr)
             failed += 1
     return 1 if failed else 0
 

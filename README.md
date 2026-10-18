@@ -57,8 +57,9 @@ Every agent is a **Bip**: a little mascot with its own color, shape, mood and **
 
 4. **📷 Scan the QR code** it shows at the end: in the app, **＋ › Scan QR code**. Your Bips say hello. 👋
 
-Later: `bipagents update` keeps everything up to date, `bipagents family add <name>` makes room for someone else, and
-`bipagents console` opens your agents in a computer's browser.
+Later: `bipagents update` keeps everything up to date, `bipagents family add <name>` makes room for someone else,
+`bipagents console` opens your agents in a computer's browser, and `bipagents export --moving` takes them, memory and
+all, to another machine ([moving](installer/README.md#moving-to-another-machine)).
 
 ## 🎮 Play with the Bips
 

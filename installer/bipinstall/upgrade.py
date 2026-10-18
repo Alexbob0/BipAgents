@@ -131,6 +131,9 @@ COMMAND_HELP = """BipAgents, in this account:
   bipagents console          a one-time link opening your agents in a computer's browser
   bipagents hermes-update    update Hermes and keep BipAgents working
   bipagents family add NAME  prepare a family member's install on this server
+  bipagents export           everything your agents need in one encrypted file (a backup)
+  bipagents export --moving  the same, then stop here: to move them to another machine
+  bipagents resume           start again here after `export --moving`, if the move is called off
   bipagents uninstall        remove it"""
 
 

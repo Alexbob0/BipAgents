@@ -157,6 +157,12 @@ class Spaces:
             except RuntimeError:
                 pass
 
+    async def start(self, config: Config, agent: AgentConfig) -> None:
+        """The service of an agent that already has its space (after `bipagents import`, on another machine)."""
+        if not agent.space:
+            raise SpaceError(f"{agent.name} has no space of its own")
+        await self._service(config, agent.name, agent.space, start=True)
+
     async def move(self, config: Config, agent: AgentConfig, http: httpx.AsyncClient) -> AgentConfig:
         """The agent, from the hub into its own space. Returns its new configuration (the caller saves it)."""
         hub = Path(config.hermes.home or Path.home() / ".hermes")

@@ -106,7 +106,7 @@ dit, sans changer leurs outils. Il faut une version d'Hermes qui sert plusieurs 
 
 `bipagents update` (ou `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --
 update`, comme `bash ~/BipAgents/install.sh update`) met à jour l'installation de ce compte. `bipagents` seul liste ses
-commandes (update, voice, hermes-update, family add, uninstall) ; l'installateur le met dans `~/.local/bin`. Il montre ce qui est nouveau, relance
+commandes (update, voice, hermes-update, family add, export, resume, uninstall) ; l'installateur le met dans `~/.local/bin`. Il montre ce qui est nouveau, relance
 seulement ce qui a changé (le bridge, les voix des Bips quand c'est ce compte qui les fait tourner, les navigateurs des
 agents quand leur image a changé : reconstruits, profils gardés), et applique les réglages qu'une nouvelle
 installation pose maintenant (`installer/bipinstall/migrations.py` : par exemple les commandes à risque qui te demandent
@@ -120,6 +120,38 @@ de côté.
 La première fois, il propose de le faire chaque nuit à 4 h 30 (un minuteur de ce compte, `install.sh update --auto` :
 sans questions ; `systemctl --user disable --now bipagents-update.timer` l'arrête). `--check` dit seulement ce qui est
 nouveau. Un Hermes que tu avais avant BipAgents garde ses réglages, sauf avec `--apply-to-my-hermes`.
+
+## Déménager sur une autre machine
+
+D'un serveur loué vers un ordinateur à la maison, d'un hébergeur vers un moins cher, ou l'inverse : tout suit. Le
+caractère, la mémoire, les compétences, les conversations, les routines et les fichiers de tes agents. Les réglages de
+Hermes et la clé de ton modèle. Les clés des téléphones et les notifications. Le coffre, les données partagées, les liens
+de la famille et les connexions des navigateurs.
+
+1. Sur l'ancienne machine : `bipagents export --moving`. Il écrit un seul fichier chiffré
+   (`~/bipagents-<machine>-<date>.bipagents`), affiche une fois sa phrase secrète, puis arrête l'installation à cet
+   endroit, pour qu'aucune routine ne tourne en double. `bipagents resume` la relance si tu changes d'avis.
+2. Pour que tes téléphones n'aient rien à faire : dans l'admin de Tailscale, renomme l'ancienne machine (`aibox-old`)
+   et donne son nom à la nouvelle. Même nom et mêmes ports : l'app retrouve ses agents toute seule. Sinon, tu scannes un
+   nouveau QR code à la fin.
+3. Copie le fichier sur la nouvelle machine (`scp`), puis lance dessus, dans le compte qui gardera les agents :
+   `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s -- import <fichier>`. Il
+   demande la phrase secrète et installe BipAgents et Hermes dans les mêmes versions, pour le processeur de cette
+   machine. Il remet tout en place en ajustant les chemins, les ports, le nom sur le tailnet et le réseau local,
+   démarre tout et vérifie que les agents répondent.
+4. Une fois que tout marche sur la nouvelle machine, `bipagents uninstall --all` sur l'ancienne efface l'ancienne copie.
+
+Le fichier va d'une machine à l'autre comme tu le copies : rien ne passe par quelqu'un d'autre. Qui a le fichier **et**
+sa phrase secrète peut faire tourner tes agents : garde-les séparés. Sans `--moving`, `bipagents export` est une
+sauvegarde : l'installation continue de tourner. Ne sont pas copiés : le code et les environnements de Hermes
+(réinstallés), les caches, les journaux et les caches des navigateurs.
+
+Ce qui peut te demander quelque chose après :
+- **Un modèle sur ton réseau local.** S'il n'est pas joignable depuis la nouvelle machine, c'est signalé à la fin : choisis-en un autre dans
+  l'app.
+- **Des sites qui redemandent une connexion.** Certains le font depuis une nouvelle adresse.
+- **La perte du bac à sable.** Vers un Mac, ou un Linux sans podman, les agents n'ont plus de terminal, d'accès aux
+  fichiers, de coffre ni de navigateur tant qu'il n'y en a pas.
 
 ## Mettre Hermes à jour
 

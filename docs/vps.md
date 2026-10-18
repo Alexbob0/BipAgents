@@ -71,7 +71,10 @@ first. It also offers each agent's visible browser, since podman is there. At th
 
 ## Afterwards
 
-- **Backups**: turn on your provider's backups or snapshots; everything is in `/home/bip`.
+- **Backups**: turn on your provider's backups or snapshots; everything is in `/home/bip`. `bipagents export` also
+  writes it all into one encrypted file you can keep elsewhere.
+- **Changing host**: `bipagents export --moving`, then `install.sh import` on the new server or at home: the agents
+  come along, memory and logins included ([moving](../installer/README.md#moving-to-another-machine)).
 - **Updates**: the system updates itself. For BipAgents: `bipagents update` in the `bip` account (it restarts only
   what changed); the first time, it offers to do it every night.
 - **Uninstall**: `bash ~/BipAgents/install.sh uninstall` in the `bip` account, then delete the server at the

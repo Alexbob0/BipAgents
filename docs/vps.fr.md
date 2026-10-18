@@ -73,6 +73,9 @@ QR code dans l'app.
 ## Ensuite
 
 - **Sauvegardes** : active les sauvegardes ou instantanés de ton hébergeur. Tout est dans `/home/bip`.
+  `bipagents export` écrit aussi le tout dans un seul fichier chiffré à garder ailleurs.
+- **Changer d'hébergeur** : `bipagents export --moving`, puis `install.sh import` sur le nouveau serveur ou à la maison :
+  les agents suivent, mémoire et connexions comprises ([déménager](../installer/README.fr.md#déménager-sur-une-autre-machine)).
 - **Mises à jour** : le système se met à jour seul. Pour BipAgents : `bipagents update` dans le compte `bip` (il relance
   seulement ce qui a changé) ; à la première fois, il propose de le faire chaque nuit.
 - **Désinstaller** : `bash ~/BipAgents/install.sh uninstall` dans le compte `bip`, puis supprime le serveur chez

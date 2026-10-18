@@ -3,6 +3,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
 # Options are passed on to the installer: --dry-run, --relay-url URL --relay-key KEY, --ports 9200, --languages fr,en
 # Later: `bash ~/BipAgents/install.sh update` brings it up to date (and offers to do it each night).
+# An install exported on another machine (`bipagents export --moving`), moved here: `… | bash -s -- import <file>`.
 set -euo pipefail
 
 REPO_URL="${BIPAGENTS_REPO:-https://github.com/Alexbob0/BipAgents.git}"
@@ -32,7 +33,7 @@ fi
 
 cd "$DIR"
 # Questions are asked on the terminal even when this script comes through a pipe (curl … | bash).
-run() { env PYTHONPATH="$DIR/installer" uv run --quiet --python 3.12 --with httpx --with pyyaml python -m bipinstall "$@"; }
+run() { env PYTHONPATH="$DIR/installer" uv run --quiet --python 3.12 --with httpx --with pyyaml --with cryptography python -m bipinstall "$@"; }
 if [ ! -t 0 ] && (exec </dev/tty) 2>/dev/null; then
   run "$@" </dev/tty
 else

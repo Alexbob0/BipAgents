@@ -57,8 +57,9 @@ Chaque agent est un **Bip** : une petite mascotte avec sa couleur, sa forme, son
 
 4. **📷 Scanne le QR code** affiché à la fin : dans l'app, **＋ › Scanner le QR code**. Tes Bips te disent bonjour. 👋
 
-Ensuite : `bipagents update` garde tout à jour, `bipagents family add <prénom>` fait de la place pour un proche, et
-`bipagents console` ouvre tes agents dans le navigateur d'un ordinateur.
+Ensuite : `bipagents update` garde tout à jour, `bipagents family add <prénom>` fait de la place pour un proche,
+`bipagents console` ouvre tes agents dans le navigateur d'un ordinateur, et `bipagents export --moving` les emmène,
+mémoire comprise, sur une autre machine ([déménager](installer/README.fr.md#déménager-sur-une-autre-machine)).
 
 ## 🎮 Joue avec les Bips
 
