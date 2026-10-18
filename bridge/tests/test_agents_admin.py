@@ -235,10 +235,15 @@ def test_profiles_created_on_the_server_can_be_claimed(managed):
             return await claim_profile(config, name, title, http, run=run)
 
     jardin = asyncio.run(go("jardin", "Mon jardin"))
-    assert jardin.hermes_key == "own-key" and commands == []            # its key kept, nothing written
+    # Its key kept; the only thing written is the bridge's tools (create_audio) in its profile.
+    assert jardin.hermes_key == "own-key"
+    assert {args[5] for args in commands} == {"mcp_servers.bipagents.url", "mcp_servers.bipagents.headers.Authorization",
+                                                 "mcp_servers.bipagents.timeout"}
+    commands.clear()
     assert jardin.display_name == "Mon jardin" and jardin.public_url == "https://mini.ts.net:8642/p/jardin"
     cuisine = asyncio.run(go("cuisine", None))
-    assert commands == [["/opt/hermes", "-p", "cuisine", "config", "set", "API_SERVER_KEY", cuisine.hermes_key]]
+    assert commands[0] == ["/opt/hermes", "-p", "cuisine", "config", "set", "API_SERVER_KEY", cuisine.hermes_key]
+    assert all(args[5].startswith("mcp_servers.bipagents.") for args in commands[1:])
     assert [url for url, _ in sessions] == ["http://127.0.0.1:8642/p/jardin/api/sessions",
                                             "http://127.0.0.1:8642/p/cuisine/api/sessions"]   # their « Discussion »
     assert "hermes-bots" in (profiles / "cuisine" / "profile.yaml").read_text()          # Bot Mode

@@ -221,6 +221,18 @@ retombe pas sur Kyutai (voix française) : le bridge répond 502/503 et l'app li
   sous un dossier de `[media.roots]` et a une extension média (audio, image, PDF). Dans un message de la Boîte,
   la ligne est retirée du texte et un mp3 devient l'audio du message.
 
+### Outils des agents : `POST /v1/agent-tools/mcp` (MCP, un jeton par agent)
+
+Le bridge donne à chaque agent de l'installation un serveur MCP, `bipagents`, inscrit au démarrage dans son profil
+Hermes (`mcp_servers.bipagents` : cette adresse, `Authorization: Bearer <son propre jeton>`, `timeout`). C'est Hermes
+qui l'appelle, pas le bac à sable de l'agent : rien n'est ouvert aux conteneurs. Outil `create_audio` (`text`, `title`
+facultatif) : le texte lu avec la voix de lecture de l'agent réglée dans l'app (son modèle de voix — Drama 3, Kokoro… —
+sinon son Bip), découpé en paragraphes et en petits groupes de phrases, avec les prononciations de la personne, dans
+la file d'arrière-plan (un Live passe d'abord). Le fichier (`.m4a` si ffmpeg est installé, sinon `.wav`) est servi par
+`GET /v1/media?path=/bipagents/audio/…` ; le résultat donne à l'agent la ligne `MEDIA:` à mettre dans sa réponse. Un
+appel long répond en flux d'événements, avec un commentaire toutes les 10 s. Les fichiers sont purgés après
+`[outbox] retention_days` ; les jetons (empreintes) sont dans `agent-tools.json`.
+
 ### `WS /v1/voice`
 Client → serveur (texte JSON) :
 - `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`

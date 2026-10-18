@@ -24,7 +24,7 @@ import yaml
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import browsers, shares, souls
+from . import agent_tools, browsers, shares, souls
 from .config import AgentConfig, Config
 from .files import SANDBOX_UPLOADS, open_to_sandbox
 from . import peers
@@ -166,6 +166,7 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     if config.source_path:
         append_agent(config.source_path, agent)
     config.agents[profile] = agent
+    await give_tools(config, agent, run)
     log.info("agent created", extra=fields(agent=profile, kind=body.kind or "custom"))
     return agent
 
@@ -256,6 +257,7 @@ async def claim_profile(config: Config, name: str, display_name: Optional[str], 
     if config.source_path:
         append_agent(config.source_path, agent)
     config.agents[name] = agent
+    await give_tools(config, agent, run)
     log.info("agent claimed", extra=fields(agent=name))
     return agent
 
@@ -343,6 +345,14 @@ async def mount_uploads(config: Config, agent: AgentConfig, run: Callable[..., A
         if save:
             save_agent(config, agent)
     return agent
+
+
+async def give_tools(config: Config, agent: AgentConfig, run: Callable[..., Any] = run_hermes) -> None:
+    """The bridge's tools (`create_audio`…) in the agent's Hermes; it works without them if that fails."""
+    try:
+        await agent_tools.register(config, agent, run)
+    except (RuntimeError, OSError) as exc:
+        log.warning("agent tools not registered", extra=fields(agent=agent.name, error=str(exc)[-200:]))
 
 
 async def mount_all_uploads(config: Config, run: Callable[..., Any] = run_hermes) -> None:
@@ -524,6 +534,7 @@ async def delete_agent(config: Config, agent: AgentConfig, run: Callable[..., An
         remove_agent_section(config.source_path, agent.name)
     config.agents.pop(agent.name, None)
     await shares.forget(config, agent.name, run)
+    agent_tools.forget(config, agent.name)
     log.info("agent deleted", extra=fields(agent=agent.name))
 
 
@@ -758,6 +769,7 @@ def agents_admin_router() -> APIRouter:
                 log.warning("move into a space failed", extra=fields(agent=agent.name, error=str(exc)[-200:]))
                 raise HTTPException(status_code=502, detail="the space could not be created") from exc
             save_agent(services.config, moved)
+            await give_tools(services.config, moved, run_hermes)   # its profile is a new one, in its space
         return {"id": moved.name, "name": moved.display_name, "url": moved.public_url,
                 "key": moved.hermes_key if moved.public_url else None, "isolated": True}
 

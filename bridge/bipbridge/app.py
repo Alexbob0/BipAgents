@@ -25,7 +25,8 @@ from .files import UploadSizeLimit, handle_upload, purge_uploads
 from .hermes import HermesClient, HermesHTTPError
 from .lan import hermes_proxy, lan_info
 from .relay import RelayClient, relay_router
-from .agents_admin import agents_admin_router, mount_all_uploads
+from .agents_admin import agents_admin_router, mount_all_uploads, run_hermes
+from .agent_tools import AudioMaker, agent_tools_router, media_roots, purge_audio, register_all as register_agent_tools
 from .vault import Vault, vault_router
 from .console import ConsoleStore, console_admin_router, console_files, console_router
 from .voices import relay_for, voice_for, voices_router
@@ -62,6 +63,7 @@ class Services:
                               sentence_max_chars=config.limits.sentence_max_chars, pocket_url=config.pocket_url,
                               voice_server=config.voice_server, words=config.pronunciations)
         self.hermes = HermesClient(self.http)
+        self.audio_maker = AudioMaker(config, self.tts)
         apns = None
         if config.apns.enabled:
             if os.path.exists(config.apns.p8_path):
@@ -112,6 +114,7 @@ class Services:
         self._tasks.append(asyncio.create_task(self.hub.resume(self.config.agents)))
         if self.config.hermes.enabled:
             self._tasks.append(asyncio.create_task(mount_all_uploads(self.config)))
+            self._tasks.append(asyncio.create_task(register_agent_tools(self.config, run_hermes)))
 
     async def _purge_loop(self) -> None:
         await asyncio.sleep(5)
@@ -123,6 +126,9 @@ class Services:
                                                           self.config.limits.upload_retention_days)
                         if removed:
                             log.info("uploads purged", extra=fields(agent=agent.name, removed=removed))
+                removed = await asyncio.to_thread(purge_audio, self.config, self.config.outbox.retention_days)
+                if removed:
+                    log.info("agent audio purged", extra=fields(removed=removed))
                 removed = await self.outbox.purge()
                 if removed:
                     log.info("outbox purged", extra=fields(removed=removed))
@@ -375,7 +381,7 @@ def build_router() -> APIRouter:
     @router.get("/media")
     async def get_media(request: Request, path: str = Query(..., max_length=1024)) -> Response:
         """A file an agent pointed to with « MEDIA:<path> » (only under `[media] roots`)."""
-        host = resolve_media(path, _services(request).config.media_roots)
+        host = resolve_media(path, media_roots(_services(request).config))
         if host is None:
             raise HTTPException(status_code=404, detail="not found")
         return FileResponse(host, media_type=media_content_type(host), filename=os.path.basename(host))
@@ -581,6 +587,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     # on a local port only). Hermes checks each agent's own key.
     app.include_router(hermes_proxy())
     app.include_router(peer_router())   # agents' own tokens, checked against the links the person allowed
+    app.include_router(agent_tools_router())   # the agents' MCP tools (create_audio), each agent with its own token
     app.include_router(family_router())   # the linked households' bridges, with the key each was given
     app.include_router(household_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(desktop_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])

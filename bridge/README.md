@@ -220,6 +220,17 @@ fall back to Kyutai (a French voice): the bridge returns 502/503 and the app rea
   under a `[media.roots]` folder and has a media extension (audio, image, PDF). In an Inbox message,
   the line is removed from the text and an mp3 becomes the message's audio.
 
+### Agents' tools: `POST /v1/agent-tools/mcp` (MCP, one token per agent)
+
+The bridge gives every agent of the install an MCP server, `bipagents`, written at start into its Hermes profile
+(`mcp_servers.bipagents`: this URL, `Authorization: Bearer <its own token>`, `timeout`). Hermes calls it, not the
+agent's sandbox: nothing is opened to the containers. Tool `create_audio` (`text`, optional `title`): the text read
+aloud with the agent's reading voice from the app (its voice model — Drama 3, Kokoro… — else its Bip), cut into
+paragraphs and short groups of sentences, with the person's pronunciations, in the background queue (a Live goes
+first). The file (`.m4a` when ffmpeg is installed, else `.wav`) is served at `GET /v1/media?path=/bipagents/audio/…`;
+the result tells the agent the `MEDIA:` line to put in its reply. Long calls answer as an event stream with a comment
+every 10 s. Files are purged after `[outbox] retention_days`; tokens (digests) live in `agent-tools.json`.
+
 ### `WS /v1/voice`
 Client → server (JSON text):
 - `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`
