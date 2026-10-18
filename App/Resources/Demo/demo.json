@@ -1301,10 +1301,10 @@
     },
     {
       "say": {
-        "fr": "Avec un vrai serveur, je m’en occuperais pour de bon : mes outils (mails, agenda, navigateur, fichiers, maison connectée…) tournent sur **ton** serveur, et tes données y restent.\n\nIci, c’est une démo : essaie une des suggestions juste au-dessus du clavier 👇",
-        "en": "With a real server, I’d take care of it for real: my tools (email, calendar, browser, files, smart home…) run on **your** server, and your data stays there.\n\nThis is a demo, though: try one of the suggestions just above the keyboard 👇",
-        "de": "Mit einem echten Server würde ich mich wirklich darum kümmern: Meine Werkzeuge (Mails, Kalender, Browser, Dateien, Smart Home …) laufen auf **deinem** Server, und deine Daten bleiben dort.\n\nDas hier ist aber eine Demo: Probier einen der Vorschläge direkt über der Tastatur 👇",
-        "es": "Con un servidor real, me encargaría de verdad: mis herramientas (correo, agenda, navegador, archivos, casa conectada…) funcionan en **tu** servidor y tus datos se quedan ahí.\n\nPero esto es una demo: prueba una de las sugerencias justo encima del teclado 👇"
+        "fr": "Avec un vrai serveur, je m’en occuperais pour de bon : je tourne sur **Hermes Agent**, chez toi, avec ses outils (mails, agenda, navigateur, fichiers, maison connectée…) et le modèle de ton choix. Tes données restent sur ta machine.\n\nIci, c’est une démo : essaie une des suggestions juste au-dessus du clavier 👇",
+        "en": "With a real server, I’d take care of it for real: I run on **Hermes Agent**, at your place, with its tools (email, calendar, browser, files, smart home…) and the model of your choice. Your data stays on your machine.\n\nThis is a demo, though: try one of the suggestions just above the keyboard 👇",
+        "de": "Mit einem echten Server würde ich mich wirklich darum kümmern: Ich laufe auf **Hermes Agent**, bei dir, mit seinen Werkzeugen (Mails, Kalender, Browser, Dateien, Smart Home …) und dem Modell deiner Wahl. Deine Daten bleiben auf deinem Rechner.\n\nDas hier ist aber eine Demo: Probier einen der Vorschläge direkt über der Tastatur 👇",
+        "es": "Con un servidor real, me encargaría de verdad: funciono con **Hermes Agent**, en tu casa, con sus herramientas (correo, agenda, navegador, archivos, casa conectada…) y el modelo que elijas. Tus datos se quedan en tu máquina.\n\nPero esto es una demo: prueba una de las sugerencias justo encima del teclado 👇"
       }
     }
   ],
@@ -1560,5 +1560,11 @@
         }
       ]
     }
+  },
+  "podcast_failed": {
+    "fr": "Oups, la synthèse vocale de ce téléphone ne répond pas : pas de podcast cette fois 😕 Avec ton serveur, ce sont les voix des Bips qui le lisent 🎙️",
+    "en": "Oops, this phone’s text-to-speech isn’t answering: no podcast this time 😕 With your server, the Bips’ voices read it 🎙️",
+    "de": "Hoppla, die Sprachausgabe dieses Telefons antwortet nicht: diesmal kein Podcast 😕 Mit deinem Server lesen ihn die Stimmen der Bips 🎙️",
+    "es": "Vaya, la síntesis de voz de este teléfono no responde: esta vez no hay pódcast 😕 Con tu servidor, lo leen las voces de los Bips 🎙️"
   }
 }

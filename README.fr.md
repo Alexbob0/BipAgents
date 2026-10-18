@@ -44,6 +44,10 @@ Chaque agent est un **Bip** : une petite mascotte avec sa couleur, sa forme, son
    curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
    ```
 
+   **🧩 Tu as déjà Hermes Agent ?** La même commande, sur sa machine : elle se branche dessus **sans toucher à ton
+   modèle, tes outils, tes plateformes ni tes agents**, te demande lesquels montrer dans l'app et affiche tout ce
+   qu'elle va changer avant de commencer ([détails](installer/README.fr.md#si-tu-as-déjà-hermes)).
+
    Sur un PC **Windows 11** (un RTX Spark, un PC de jeu…), dans PowerShell ouvert en administrateur : il prépare WSL2
    et y lance la même installation ([détails](installer/README.fr.md#sur-windows)) :
 
