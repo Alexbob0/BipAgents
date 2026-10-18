@@ -1,0 +1,72 @@
+[🇬🇧 English](README.md) · 🇫🇷 Français
+
+# Relais de notifications BipAgents
+
+Chacun fait tourner BipAgents sur son propre serveur ; son bridge ne peut pas détenir la clé Apple ni le compte
+Firebase de l'éditeur. Le relais, si : il transmet leurs notifications à Apple et à Google. C'est un petit programme
+Rust (un binaire de 4,6 Mo, ~4 Mo de mémoire au repos) qui **ne stocke rien** et **ne transmet aucun contenu**.
+
+## Fonctionnement
+
+1. L'app inscrit son jeton Apple ou Firebase : `POST /v1/register` → un **jeton de relais** (`r1.…`), le jeton de
+   l'appareil chiffré avec une clé que seul le relais détient (XChaCha20-Poly1305). L'app le donne à son bridge.
+2. Le bridge envoie sa notification avec le jeton de relais : `POST /v1/relay/push` (même forme que le relais des
+   bridges). Le relais ouvre le jeton, nettoie la notification et l'envoie à Apple (HTTP/2, jeton ES256) ou à Google
+   (FCM v1).
+3. La réponse d'Apple ou de Google revient au bridge ; `status: 410` veut dire que l'appareil n'existe plus, et le
+   bridge l'oublie.
+
+Rien à sauvegarder, pas de base de données : autant d'exemplaires qu'on veut côte à côte, qui peuvent s'arrêter quand
+personne ne s'en sert.
+
+## Ce qu'il ne voit jamais, ce qu'il écarte
+
+- **Aucun texte de message.** Un bridge réglé pour afficher des aperçus met une ligne du message dans la notification ;
+  le relais remplace tout texte qui n'est pas l'un des textes génériques et traduits de l'app (`loc-key`) par
+  « Nouveau message ». À côté de `aps`, seules passent de courtes valeurs de type identifiant (agent, message,
+  conversation…). L'extension de notification de l'app va chercher le vrai texte sur le bridge de la personne.
+- **Aucun jeton d'appareil en clair**, ni stocké (il n'y a pas de stockage) ni dans les journaux (une empreinte de
+  4 octets seulement).
+- **Quotas** : par appareil (300 notifications par heure), par adresse (20 000 notifications, 60 inscriptions par heure).
+
+## API
+
+| Route | Corps | Réponse |
+| --- | --- | --- |
+| `POST /v1/register` | `{"platform": "apns"\|"fcm", "token": "…", "environment": "sandbox"\|"production"}` | `{"relay_token": "r1.…"}` |
+| `POST /v1/relay/push` (ou `/v1/push`) | `{"token": "r1.…", "payload": {…}, "push_type": "alert"\|"background", "priority": 5\|10, "collapse_id": "…"}` | `{"status": 200, "reason": null, "apns_id": "…"}` |
+| `GET /health` | | `{"status": "ok", "apns": true, "fcm": true}` |
+
+Un jeton chiffré avec une autre clé, ou altéré, répond `{"status": 410, "reason": "BadRelayToken"}` (le bridge
+l'oublie, l'app se réinscrit) ; un jeton d'appareil brut est refusé en HTTP 400 (un bridge réglé pour l'envoi direct,
+pas un appareil disparu).
+
+## Réglages (environnement seulement)
+
+| Variable | |
+| --- | --- |
+| `RELAY_SEAL_KEYS` | Obligatoire. Clés base64 de 32 octets, séparées par des virgules ; la première chiffre, toutes ouvrent (`bipagents-relay keygen`). Pour changer de clé : mettre la nouvelle en premier, garder l'ancienne quelques mois. |
+| `APNS_KEY` ou `APNS_KEY_FILE`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC` | Apple : la clé .p8 de l'équipe et l'identifiant de l'app. Sans elles, les appareils Apple sont refusés. |
+| `FCM_SERVICE_ACCOUNT` ou `FCM_SERVICE_ACCOUNT_FILE` | Google : le compte de service Firebase (JSON). Sans lui, les appareils Android sont refusés. |
+| `PORT` ou `RELAY_LISTEN` | `8080` / `0.0.0.0:8080` |
+| `RELAY_PUSHES_PER_DEVICE_HOUR`, `RELAY_PUSHES_PER_IP_HOUR`, `RELAY_REGISTRATIONS_PER_IP_HOUR` | `300`, `20000`, `60` |
+| `RELAY_TRUST_FORWARDED_FOR` | `1` derrière un proxy qui pose `X-Forwarded-For` |
+| `RUST_LOG` | `info` (lignes JSON) |
+
+## Le lancer
+
+```bash
+cargo run --release -- keygen                      # une clé de chiffrement
+RELAY_SEAL_KEYS=… APNS_KEY_FILE=AuthKey.p8 APNS_KEY_ID=… APNS_TEAM_ID=… APNS_TOPIC=io.github.bipagents \
+  cargo run --release
+```
+
+En conteneur (une image de 7,5 Mo qui ne contient que le binaire) : `podman build -t bipagents-relay relay/`.
+
+Il lui faut du HTTPS devant : une offre de conteneurs « serverless » (il démarre en quelques millisecondes et peut
+s'éteindre au repos), ou une petite VM avec Caddy. Un exemplaire suffit pour un grand nombre d'installations ; on en
+ajoute derrière la même adresse si besoin.
+
+## Développer
+
+`cargo test` (Apple et Google simulés par un serveur local), `cargo clippy --all-targets`, `cargo fmt --check`.

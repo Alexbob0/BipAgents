@@ -2,22 +2,19 @@
 
 # Notification relay (for an App Store release)
 
-Decision of 2026-10-04: **not needed as long as the app is used only by its author** (the server's bridge sends to APNs itself with the team's `.p8` key). The day the app is published on the App Store, the relay will run on **a small Hetzner VM**.
+The APNs `.p8` key and the Firebase account belong to the team publishing the app and cannot be distributed to
+users' bridges. A central service, the only holder of both, receives the bridges' notifications and forwards them to
+Apple and Google (the ntfy.sh model for self-hosted ntfy servers).
 
-## Why a relay
-The APNs `.p8` key belongs to the team publishing the app and cannot be distributed to users' bridges. A central service, the only holder of the key, receives requests from the bridges and forwards them to APNs (the ntfy.sh model for self-hosted ntfy servers).
+**Implemented in [`relay/`](../relay/README.md)** (2026-10-18), in Rust: one small binary, no database. The app
+registers its device token and gets back a *relay token* (the device token sealed with a key only the relay holds);
+its bridge sends that relay token with each notification. No message text goes through: previews are replaced by the
+generic, translated text, and the app's notification extension fetches the content from the person's own bridge.
 
-## Planned operation
-1. The app registers with the relay using its APNs device token and receives an opaque token, which it passes on to its bridge.
-2. The bridge sends the relay `{token, type: MESSAGE|APPROVAL|SILENT, ids}`: never any text (payloads are already generic by default, see `bridge/README.md`).
-3. The relay signs the ES256 JWT, sends to APNs (HTTP/2, persistent connections) and deletes tokens that APNs reports as invalid (410, `BadDeviceToken`).
-4. The Notification Service Extension fetches the content from the user's bridge, over their tailnet.
-
-Safeguards: bridge authentication by token, per-token quotas, content-free logging.
+While the app is used only by its author, the bridge can keep sending to Apple itself with the team's key (decision of
+2026-10-04); the relay is for the public release.
 
 ## Orders of magnitude (to be rechecked at launch)
-- Up to ~10,000 users: a ~€4–5/month VM is enough.
-- ~1M users: a few hundred euros per month, mostly operating costs (multi-region, monitoring, GDPR, abuse).
-
-## Code side
-Starting point: `bridge/bipbridge/apns.py` (APNs client already written). On the bridge side, add a "via relay" mode next to the current "direct APNs" mode; the app only has to send the relay token instead of the device token.
+- One copy (≈ 4 MB of memory) covers a large number of installs; it can run as a serverless container that stops
+  when idle, or on a small VM.
+- Running costs grow with the number of notifications, not with storage: there is none.

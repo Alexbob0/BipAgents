@@ -1,0 +1,34 @@
+[package]
+name = "bipagents-relay"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "BipAgents push relay: forwards content-free notifications from people's own bridges to Apple and Google."
+publish = false
+
+[dependencies]
+axum = "0.8"
+base64 = "0.22"
+chacha20poly1305 = "0.10"
+jsonwebtoken = "9"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+p256 = { version = "0.13", features = ["pkcs8", "pem"] }
+rsa = { version = "0.9", features = ["pem"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+# Tests generate RSA keys: dependencies optimised even in debug builds.
+[profile.dev.package."*"]
+opt-level = 2

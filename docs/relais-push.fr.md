@@ -1,23 +1,21 @@
 [🇬🇧 English](relais-push.md) · 🇫🇷 Français
 
-# Relais de notifications (pour une publication App Store)
+# Relais de notifications (pour une sortie sur l'App Store)
 
-Décision du 2026-10-04 : **pas nécessaire tant que l'app n'est utilisée que par son auteur** (le bridge du serveur envoie lui-même à APNs avec la clé `.p8` de l'équipe). Le jour d'une publication sur l'App Store, le relais tournera sur **une petite VM Hetzner**.
+La clé APNs `.p8` et le compte Firebase appartiennent à l'équipe qui publie l'app et ne peuvent pas être distribués
+aux bridges des utilisateurs. Un service central, seul détenteur des deux, reçoit les notifications des bridges et les
+transmet à Apple et à Google (le modèle de ntfy.sh pour les serveurs ntfy auto-hébergés).
 
-## Pourquoi un relais
-La clé APNs `.p8` appartient à l'équipe qui publie l'app et ne peut pas être distribuée aux bridges des utilisateurs. Un service central, seul détenteur de la clé, reçoit les demandes des bridges et les transmet à APNs (modèle ntfy.sh pour les serveurs ntfy auto-hébergés).
+**Réalisé dans [`relay/`](../relay/README.fr.md)** (18/10/2026), en Rust : un petit binaire, sans base de données.
+L'app inscrit son jeton d'appareil et reçoit un *jeton de relais* (le jeton d'appareil chiffré avec une clé que seul
+le relais détient) ; son bridge envoie ce jeton de relais avec chaque notification. Aucun texte de message ne passe :
+les aperçus sont remplacés par le texte générique traduit, et l'extension de notification de l'app va chercher le
+contenu sur le bridge de la personne.
 
-## Fonctionnement prévu
-1. L'app s'enregistre auprès du relais avec son device token APNs et reçoit un jeton opaque, qu'elle transmet à son bridge.
-2. Le bridge envoie au relais `{jeton, type: MESSAGE|APPROVAL|SILENT, ids}` : jamais de texte (les payloads sont déjà génériques par défaut, cf. `bridge/README.md`).
-3. Le relais signe le JWT ES256, envoie à APNs (HTTP/2, connexions persistantes) et supprime les tokens que APNs déclare invalides (410, `BadDeviceToken`).
-4. La Notification Service Extension récupère le contenu sur le bridge de l'utilisateur, via son tailnet.
-
-Garde-fous : authentification du bridge par jeton, quotas par jeton, journal sans contenu.
+Tant que l'app n'est utilisée que par son auteur, le bridge peut continuer d'envoyer lui-même à Apple avec la clé de
+l'équipe (décision du 04/10/2026) ; le relais sert à la sortie publique.
 
 ## Ordres de grandeur (à revérifier au lancement)
-- Jusqu'à ~10 000 utilisateurs : une VM ~4–5 €/mois suffit.
-- ~1 M d'utilisateurs : quelques centaines d'euros par mois, surtout du coût d'exploitation (multi-région, supervision, RGPD, abus).
-
-## Côté code
-Point de départ : `bridge/bipbridge/apns.py` (client APNs déjà écrit). Côté bridge, ajouter un mode « via relais » à côté du mode « APNs direct » actuel ; l'app n'a qu'à envoyer le jeton du relais au lieu du device token.
+- Un exemplaire (≈ 4 Mo de mémoire) couvre un grand nombre d'installations ; il peut tourner en conteneur
+  « serverless » qui s'arrête au repos, ou sur une petite VM.
+- Le coût grandit avec le nombre de notifications, pas avec le stockage : il n'y en a pas.
