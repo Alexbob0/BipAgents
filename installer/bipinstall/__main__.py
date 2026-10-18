@@ -20,7 +20,7 @@ from . import hermes, models, ui
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
-from .stack import AgentEntry, Install, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
+from .stack import PUSH_SERVICE_URL, AgentEntry, Install, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "bridge"))
@@ -239,6 +239,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
     parser.add_argument("--relay-url", help="the administrator's bridge, to send notifications without an APNs key")
     parser.add_argument("--relay-key", help="this install's relay key (given by the administrator)")
+    parser.add_argument("--push-service", default=PUSH_SERVICE_URL or None,
+                        help="the publisher's push relay (the app's notifications without an APNs key of your own)")
     parser.add_argument("--ports", type=int, help="the first port of this install's block (default: the first free one)")
     parser.add_argument("--languages", default="fr,en", help="voices to load: fr, en, es, de")
     parser.add_argument("--voice-server", "--kyutai-url",
@@ -302,7 +304,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     inst = Install(repo=REPO, home=Path.home(), ports=ports, tailnet_name=machine.tailnet_name,
                    lan_address=(machine.lan_addresses or [None])[0], model=model,
-                   relay_url=args.relay_url, relay_key=args.relay_key, isolated=bool(sandbox), browser=browser)
+                   relay_url=args.relay_url, relay_key=args.relay_key, push_service_url=args.push_service,
+                   isolated=bool(sandbox), browser=browser)
     steps = iter(range(1, 7 if browser else 6))
     total = 6 if browser else 5
     say(ui.step(next(steps), total, "Hermes, the agents' brain"))
@@ -422,7 +425,7 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
 
     inst = Install(repo=REPO, home=Path.home(), ports=ports, tailnet_name=machine.tailnet_name,
                    lan_address=(machine.lan_addresses or [None])[0], relay_url=args.relay_url, relay_key=args.relay_key,
-                   isolated=existing.protected, browser=browser, hermes_port=hub_port)
+                   push_service_url=args.push_service, isolated=existing.protected, browser=browser, hermes_port=hub_port)
     total = 6 if browser else 5
     steps = iter(range(1, total + 1))
     say(ui.step(next(steps), total, "Your Hermes"))

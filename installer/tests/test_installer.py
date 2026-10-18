@@ -753,3 +753,12 @@ def test_in_wsl_windows_tailscale_publishes_the_install(monkeypatch):
     monkeypatch.delenv("WSL_DISTRO_NAME")
     monkeypatch.setattr(detect.os.path, "exists", lambda path: path == detect.TAILSCALE_WINDOWS)
     assert detect.tailscale_cli() is None   # elsewhere, a Windows path means nothing
+
+
+def test_new_installs_send_through_the_publishers_relay_when_it_is_set(tmp_path):
+    inst = Install(repo=tmp_path, home=tmp_path, ports=Ports(base=9200), tailnet_name=None, lan_address=None,
+                   push_service_url="https://push.example")
+    toml = bridge_toml(inst)
+    assert '[push]\nservice_url = "https://push.example"' in toml
+    assert "[push]" not in bridge_toml(Install(repo=tmp_path, home=tmp_path, ports=Ports(base=9200), tailnet_name=None,
+                                               lan_address=None))

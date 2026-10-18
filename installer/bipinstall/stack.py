@@ -24,6 +24,10 @@ class AgentEntry:
     root: bool = False   # the gateway's main profile (an existing Hermes), served at its root, not /p/<name>
 
 
+# The publisher's push relay, once it is online (relay/README.md): every new install sends through it.
+PUSH_SERVICE_URL = ""
+
+
 @dataclass
 class Install:
     repo: Path                       # the BipAgents checkout
@@ -35,6 +39,8 @@ class Install:
     model: Optional[Model] = None
     relay_url: Optional[str] = None  # the administrator's bridge, when this install has no APNs key
     relay_key: Optional[str] = None
+    # The publisher's push relay (relay/): the app registers there and gives this bridge a relay token.
+    push_service_url: Optional[str] = None
     bridge_key: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     pocket_url: str = f"http://127.0.0.1:{POCKET_PORT}"
     # The person's own voice model (voice_server.py): the bridge's `[voice_server]` lines, none for the Bips only.
@@ -100,8 +106,13 @@ def bridge_toml(inst: Install) -> str:
         lines += ["", "[browser]", "enabled = true"]
     media = inst.home / ".hermes" / "media"
     lines += ["", "[media.roots]", f"{_q(str(media))} = {_q(str(media))}"]   # native Hermes: same path both sides
+    push = []
     if inst.relay_url and inst.relay_key:
-        lines += ["", "[push]", f"relay_url = {_q(inst.relay_url)}", f"relay_key = {_q(inst.relay_key)}"]
+        push += [f"relay_url = {_q(inst.relay_url)}", f"relay_key = {_q(inst.relay_key)}"]
+    if inst.push_service_url:
+        push.append(f"service_url = {_q(inst.push_service_url)}")
+    if push:
+        lines += ["", "[push]"] + push
     if inst.model and inst.model.base_url:
         lines += ["", "[model]", f"health_url = {_q(inst.model.base_url.rstrip('/') + '/models')}"]
         if inst.model.api_key:

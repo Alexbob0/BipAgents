@@ -137,11 +137,13 @@ def silent_payload(agent: str, reason: str, **extra: Any) -> Dict[str, Any]:
 
 
 class PushService:
-    def __init__(self, config: Config, store: Store, apns: Optional[ApnsClient], android: Any = None):
+    def __init__(self, config: Config, store: Store, apns: Optional[ApnsClient], android: Any = None,
+                 service: Any = None):
         self.config = config
         self.store = store
         self.apns = apns
         self.android = android   # FcmClient, or the relay (RelayClient) for Android devices
+        self.service = service   # the publisher's relay (RelayClient), for devices registered there (« relay »)
         if apns is None:
             log.warning("APNs not configured: iPhone push notifications disabled")
         # Texts of recent reply / question pushes, fetched by the Notification Service Extension over the
@@ -185,6 +187,8 @@ class PushService:
         return sent
 
     def _sender(self, device: Dict[str, Any]) -> Any:
+        if device["environment"] == "relay":
+            return self.service
         return self.android if device["environment"] == "fcm" else self.apns
 
     async def notify_message(self, agent: str, outbox_id: str, text: str, session_id: Optional[str] = None,

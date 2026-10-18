@@ -20,6 +20,8 @@ from .logs import fields, redact
 log = logging.getLogger("bipbridge.relay")
 
 DEVICE_TOKEN = re.compile(r"^[0-9a-f]{32,512}$")
+# A device token sealed by the publisher's relay (relay/): opaque to this bridge, case-sensitive.
+RELAY_TOKEN = re.compile(r"^r1\.[A-Za-z0-9_-]{40,8192}$")
 MAX_PAYLOAD_BYTES = 4096  # APNs' own limit for an alert
 
 
@@ -37,7 +39,7 @@ class RelayClient:
                 "priority": priority, "collapse_id": collapse_id}
         try:
             resp = await self.client.post(f"{self.url}/v1/relay/push", json=body, timeout=15.0,
-                                          headers={"Authorization": f"Bearer {self.key}"})
+                                          headers={"Authorization": f"Bearer {self.key}"} if self.key else {})
         except httpx.HTTPError as exc:
             log.warning("relay unreachable", extra=fields(error=type(exc).__name__))
             return ApnsResult(status=503, reason="RelayUnreachable")

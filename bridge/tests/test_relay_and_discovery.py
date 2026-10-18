@@ -154,3 +154,47 @@ def test_status_tells_server_from_model(config_dict):
         status = client.get("/v1/status", headers=AUTH).json()
     assert status["agents"]["wellness"] == {"ok": True}
     assert status["model"] == {"ok": False, "error": "ConnectError"}
+
+
+def test_devices_registered_with_the_publishers_relay_go_through_it(config_dict):
+    from fastapi.testclient import TestClient
+
+    from bipbridge.app import create_app
+
+    config_dict["push"] = {"service_url": "https://push.example/"}
+    sent = []
+
+    def backend(request):
+        if request.url.host == "push.example":
+            body = json.loads(request.content)
+            sent.append((request.url.path, dict(request.headers), body))
+            dead = body["token"].endswith("dead")
+            return httpx.Response(200, json={"status": 410 if dead else 200, "reason": "Unregistered" if dead else None})
+        return httpx.Response(404)
+
+    app = create_app(parse_config(config_dict), transport=httpx.MockTransport(backend), start_background=False)
+    live, dead = "r1." + "Ab_-" * 15, "r1." + "x" * 56 + "dead"
+    with TestClient(app) as client:
+        services = app.state.services
+        assert client.get("/health").json()["push_relay"] is True
+        for token in (live, dead):
+            device = client.post("/v1/devices", json={"token": token, "environment": "relay", "agent_ids": ["wellness"]},
+                                 headers=AUTH).json()
+            assert device["token"] == token and device["environment"] == "relay"   # kept as is: case-sensitive
+        assert client.post("/v1/devices", json={"token": TOKEN, "environment": "relay"}, headers=AUTH).status_code == 400
+        sent_count = client.portal.call(services.push.notify_message, "wellness", "out-1", "Le texte du message")
+        assert sent_count == 1
+        assert {body["token"] for _, _, body in sent} == {live, dead}
+        assert all(path == "/v1/relay/push" and "authorization" not in headers for path, headers, _ in sent)
+        # The relay said the second device is gone: forgotten here.
+        assert client.portal.call(services.store.get_device, dead) is None
+        assert client.portal.call(services.store.get_device, live) is not None
+        # The app takes it back: its relay token, as it is.
+        assert client.delete(f"/v1/devices/{live}", headers=AUTH).status_code == 204
+        assert client.portal.call(services.store.get_device, live) is None
+
+
+def test_a_bridge_without_the_relay_refuses_relay_tokens(client):
+    assert client.get("/health").json()["push_relay"] is False
+    response = client.post("/v1/devices", json={"token": "r1." + "A" * 60, "environment": "relay"}, headers=AUTH)
+    assert response.status_code == 409

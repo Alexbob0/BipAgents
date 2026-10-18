@@ -87,7 +87,9 @@ class Services:
         self.fcm = fcm
         android = fcm or (RelayClient(config.push_relay_url, config.push_relay_key, self.http)
                           if config.push_relay_url and config.push_relay_key else None)
-        self.push = PushService(config, self.store, sender, android)
+        # The publisher's relay, for the apps that registered there (any install without an Apple key of its own).
+        self.push_service = RelayClient(config.push_service_url, "", self.http) if config.push_service_url else None
+        self.push = PushService(config, self.store, sender, android, self.push_service)
         self.hub = RunHub(self.hermes, self.push, watch_max_seconds=config.limits.watch_max_seconds, store=self.store)
         self.outbox = OutboxService(config, self.store, self.tts, self.push)
         self.presence = Presence()
@@ -312,7 +314,13 @@ def build_router() -> APIRouter:
         services = _services(request)
         token = body.token.strip().replace(" ", "").replace("<", "").replace(">", "")
         environment = body.environment or services.config.apns.environment
-        if environment == "fcm":   # the Android app (Firebase Cloud Messaging); its tokens are case-sensitive
+        if environment == "relay":   # a relay token from the publisher's relay: kept as it is (case-sensitive)
+            from .relay import RELAY_TOKEN
+            if services.push_service is None:
+                raise HTTPException(status_code=409, detail="this bridge has no push relay set up")
+            if not RELAY_TOKEN.match(token):
+                raise HTTPException(status_code=400, detail="invalid relay token")
+        elif environment == "fcm":   # the Android app (Firebase Cloud Messaging); its tokens are case-sensitive
             from .fcm import FCM_TOKEN
             if not FCM_TOKEN.match(token):
                 raise HTTPException(status_code=400, detail="invalid FCM token")
@@ -333,7 +341,8 @@ def build_router() -> APIRouter:
     @router.delete("/devices/{token}", status_code=204)
     async def delete_device(token: str, request: Request) -> Response:
         services = _services(request)
-        if await services.store.delete_device(token.strip().lower()):
+        token = token.strip()
+        if await services.store.delete_device(token) or await services.store.delete_device(token.lower()):
             log.info("device removed", extra=fields(token=redact(token)))
         return Response(status_code=204)
 
@@ -573,7 +582,9 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
         drama = config.voice_server is not None and config.voice_server.model.startswith("drama")
         return {"ok": True, "version": __version__, "kyutai": kyutai_ok, "pocket": pocket_ok,
                 "voice_server": server_ok, "drama": server_ok if drama else None, "ntfy": ntfy_ok,
-                "apns": services.apns is not None, "push": services.push_mode, "tts_queue": services.tts.scheduler.depth}
+                "apns": services.apns is not None, "push": services.push_mode,
+                # The app registers with the publisher's relay and sends the relay token (environment « relay »).
+                "push_relay": services.push_service is not None, "tts_queue": services.tts.scheduler.depth}
 
     app.include_router(build_router())
     app.include_router(relay_router())

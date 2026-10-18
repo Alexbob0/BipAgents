@@ -244,6 +244,9 @@ class Config:
     # Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
     push_relay_url: Optional[str] = None
     push_relay_key: Optional[str] = None
+    # The publisher's push relay (relay/): devices registered there give this bridge a relay token instead of their
+    # own (the app does it when this bridge has no Apple key). None: off.
+    push_service_url: Optional[str] = None
     # Optional check that the model answers (`GET <url>`, e.g. its /v1/models), for « model unreachable ».
     model_health_url: Optional[str] = None
     model_health_key: Optional[str] = None
@@ -440,6 +443,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
     relay = RelayConfig(clients=clients, per_hour=int(relay_t.get("per_hour", 600)))
     push_relay_url = str(push["relay_url"]).rstrip("/") if push.get("relay_url") else None
     push_relay_key = _secret(push, "relay_key", "push", required=bool(push_relay_url))
+    push_service_url = str(push["service_url"]).rstrip("/") if push.get("service_url") else None
     model_t = data.get("model", {}) or {}
     hermes_t = data.get("hermes", {}) or {}
     hermes_install = HermesInstall(
@@ -524,6 +528,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         browser=browser,
         push_relay_url=push_relay_url,
         push_relay_key=push_relay_key,
+        push_service_url=push_service_url,
         model_health_url=str(model_t["health_url"]) if model_t.get("health_url") else None,
         model_health_key=_secret(model_t, "health_key", "model", required=False),
         public_url=str(data["public_url"]).rstrip("/") if data.get("public_url") else None,
