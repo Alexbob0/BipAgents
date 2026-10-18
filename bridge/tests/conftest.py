@@ -134,7 +134,8 @@ class FakeBackend:
     def _pocket(self, request: httpx.Request) -> httpx.Response:
         """Pocket TTS speaks the Kyutai API; its fake audio is the text reversed (tells engines apart)."""
         if request.url.path == "/health":
-            return httpx.Response(200 if self.pocket_status == 200 else 503, json={"status": "ok"})
+            return httpx.Response(200 if self.pocket_status == 200 else 503,
+                                  json={"status": "ok", "voices": {"fr": ["colibri", "galet", "lumen", "mousse", "ours"]}})
         body = json.loads(request.content)
         self.pocket_inputs.append(body)
         if self.pocket_status != 200:

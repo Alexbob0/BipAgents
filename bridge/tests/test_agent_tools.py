@@ -78,7 +78,7 @@ def test_an_agent_turns_a_text_into_audio_with_its_voice(client, config, backend
     assert init["protocolVersion"] == "2025-06-18" and init["capabilities"]["tools"] is not None
     assert _rpc(client, token, "notifications/initialized", request_id=None).status_code == 202
     tools = _rpc(client, token, "tools/list").json()["result"]["tools"]
-    assert [t["name"] for t in tools] == ["create_audio"]
+    assert [t["name"] for t in tools] == ["create_audio", "create_podcast", "list_voices"]
 
     text = "Bonjour et bienvenue dans ce podcast.\n\nVoici les nouvelles du jour."
     result = _rpc(client, token, "tools/call", {"name": "create_audio",
@@ -121,3 +121,51 @@ def test_old_audio_files_are_purged(config, tmp_path):
     os.utime(old, (1, 1))
     assert agent_tools.purge_audio(config, retention_days=30) == 1
     assert not old.exists() and new.exists()
+
+
+def test_a_podcast_gives_each_host_a_voice_of_their_own(client, config, backend):
+    token = "agent-token-for-wellness-0123456789"
+    agent_tools.save_tokens(config, {"wellness": agent_tools._digest(token)})
+    listed = _rpc(client, token, "tools/call", {"name": "list_voices", "arguments": {}}).json()["result"]
+    assert listed["content"][0]["text"].splitlines()[:2] == ["4193 (your voice)", "pocket:colibri (Bip)"]
+    turns = [{"speaker": "Max", "text": "Bonjour à tous, bienvenue."},
+             {"speaker": "Léa", "text": "Salut Max ! Alors, quoi de neuf ?"},
+             {"speaker": "Max", "text": "Trois nouvelles aujourd'hui."}]
+    result = _rpc(client, token, "tools/call", {"name": "create_podcast",
+                                                 "arguments": {"title": "Le point", "turns": turns}}).json()["result"]
+    assert result["isError"] is False
+    assert "Max: 4193" in result["content"][0]["text"] and "Léa: pocket:colibri" in result["content"][0]["text"]
+    # The first host with the agent's voice, the other with another one; turns read in order.
+    assert [body["voice"] for body in backend.kyutai_inputs] == ["4193", "4193"]
+    assert [body["voice"] for body in backend.pocket_inputs] == ["colibri"]
+    # A voice picked by the agent, from list_voices; an unknown one is refused.
+    picked = _rpc(client, token, "tools/call", {"name": "create_podcast", "arguments": {
+        "turns": turns, "voices": {"Léa": "pocket:galet"}}}).json()["result"]
+    assert picked["isError"] is False and backend.pocket_inputs[-1]["voice"] == "galet"
+    bad = _rpc(client, token, "tools/call", {"name": "create_podcast", "arguments": {
+        "turns": turns, "voices": {"Léa": "pocket:dragon"}}}).json()["result"]
+    assert bad["isError"] is True and "unknown voice" in bad["content"][0]["text"]
+    empty = _rpc(client, token, "tools/call", {"name": "create_podcast", "arguments": {"turns": [{"speaker": "Max"}]}}).json()
+    assert empty["result"]["isError"] is True
+
+
+def test_with_a_voice_model_the_hosts_get_its_natural_voices(config_dict):
+    config_dict["voice_server"] = {"url": "http://voices.test"}
+    config_dict["agents"]["Wellness"]["voice"] = "pocket:mousse"
+    config = parse_config(config_dict)
+    maker = agent_tools.AudioMaker(config, tts=None)
+
+    async def voices(agent):
+        return [{"voice": "pocket:mousse", "kind": "your voice"},
+                {"voice": "server:fr/fr-mascotte-s17", "kind": "voice model"},
+                {"voice": "server:fr/fr-naturelle-s15", "kind": "voice model"},
+                {"voice": "server:fr/fr-naturelle-s21", "kind": "voice model"},
+                {"voice": "pocket:galet", "kind": "Bip"}]
+
+    maker.voices = voices
+    cast = asyncio.run(maker.cast(config.agent("wellness"), ["Max", "Léa"], {}))
+    # The agent speaks with a Bip, but a podcast takes the model's natural voices, two different ones.
+    assert cast == {"Max": "server:fr/fr-naturelle-s15", "Léa": "server:fr/fr-naturelle-s21"}
+    config.voice_server.uses["reading"] = False   # the person keeps the voice model away from reading: Bips
+    assert asyncio.run(maker.cast(config.agent("wellness"), ["Max", "Léa"], {})) == {"Max": "pocket:mousse",
+                                                                                    "Léa": "pocket:galet"}

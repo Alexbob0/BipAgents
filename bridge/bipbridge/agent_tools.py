@@ -1,5 +1,7 @@
 """Tools the bridge gives the agents, over MCP (``/v1/agent-tools/mcp``): ``create_audio`` reads a text aloud with the
-voice the person chose for the agent in the app (its server voice for reading — Drama 3, Kokoro… — else its Bip).
+voice the person chose for the agent in the app (its server voice for reading — Drama 3, Kokoro… — else its Bip);
+``create_podcast`` makes a conversation between hosts, each with a voice of their own (the person's voice model when
+it reads, else Bips); ``list_voices`` lists the voices the agent may give them.
 
 The agent's own Hermes calls it (an MCP server entry ``bipagents`` in its profile, with a token of its own), not its
 sandbox: nothing is opened to the containers, and the voice server stays on this machine's loopback. The text is cut
@@ -24,13 +26,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple
 
+import httpx
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from . import __version__, shares
 from .config import AgentConfig, Config
 from .logs import fields
-from .tts import BACKGROUND, OUTPUT_RATE, Resampler, TtsError, mono
+from .tts import BACKGROUND, OUTPUT_RATE, Resampler, TtsError, mono, voice_language
 from .voices import relay_for, voice_for
 
 log = logging.getLogger("bipbridge.agent_tools")
@@ -40,6 +44,9 @@ PATH = "/v1/agent-tools/mcp"
 MEDIA_PREFIX = "/bipagents/audio"  # how the app asks for the files (`GET /v1/media?path=…`)
 MAX_CHARS = 20000                  # about 25 minutes of audio
 CHUNK_CHARS = 350
+MAX_TURNS = 400
+MAX_SPEAKERS = 4
+PAUSE_TURN_MS = 350
 PAUSE_SENTENCES_MS = 150
 PAUSE_PARAGRAPH_MS = 500
 TOOL_TIMEOUT = 1800                # seconds Hermes waits for a call (its default is 300: too short for a podcast)
@@ -61,6 +68,42 @@ CREATE_AUDIO = {
         "required": ["text"],
     },
 }
+
+
+CREATE_PODCAST = {
+    "name": "create_podcast",
+    "description": (
+        "Make a podcast where two or more hosts talk with each other, each with their own voice — like a radio show: "
+        "the first host speaks with your voice (or the best one of the person's voice model), the others get "
+        "different voices (or the ones you pick with list_voices). Write a real conversation: short turns, reactions, "
+        "questions, a little humour, each host with a name and a personality; no markdown, no lists, no links. It "
+        "takes about as long as the audio lasts. The result gives a MEDIA: line: put it alone on a line in your reply."),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "A short title, used for the file name.", "maxLength": 80},
+            "turns": {
+                "type": "array", "maxItems": MAX_TURNS,
+                "description": "The conversation, in order: who speaks and what they say.",
+                "items": {"type": "object", "required": ["speaker", "text"], "properties": {
+                    "speaker": {"type": "string", "description": "The host's name, the same in every turn."},
+                    "text": {"type": "string", "description": "What they say in this turn."}}},
+            },
+            "voices": {"type": "object", "additionalProperties": {"type": "string"},
+                       "description": "Optional: a voice per host name, from list_voices."},
+        },
+        "required": ["turns"],
+    },
+}
+
+LIST_VOICES = {
+    "name": "list_voices",
+    "description": "The voices create_podcast may give its hosts: yours first, then the person's voice model's, then "
+                   "the Bips (the app's mascots), in your language.",
+    "inputSchema": {"type": "object", "properties": {}},
+}
+
+TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES]
 
 
 def _digest(token: str) -> str:
@@ -231,6 +274,104 @@ class AudioMaker:
         self.config = config
         self.tts = tts
         self._locks: Dict[str, asyncio.Lock] = {}
+        self._pocket_voices: Optional[Tuple[float, Dict[str, List[str]]]] = None
+
+    async def pocket_voices(self) -> Dict[str, List[str]]:
+        """The Bips Pocket serves, by language (its `/health`), kept a few minutes."""
+        pocket = self.tts.pocket
+        if pocket is None:
+            return {}
+        now = time.monotonic()
+        if self._pocket_voices and now - self._pocket_voices[0] < 300:
+            return self._pocket_voices[1]
+        try:
+            resp = await self.tts.client.get(f"{pocket.base_url}/health", timeout=5.0)
+            found = resp.json().get("voices") if resp.status_code == 200 else None
+        except (httpx.HTTPError, ValueError, AttributeError):
+            found = None
+        voices = {str(k): [str(v) for v in names] for k, names in found.items()} if isinstance(found, dict) else {}
+        self._pocket_voices = (now, voices)
+        return voices
+
+    async def voices(self, agent: AgentConfig) -> List[Dict[str, str]]:
+        """The voices an agent may give a podcast's hosts: its own first, then its voice model's in its language,
+        then the Bips in its language."""
+        own = voice_for(self.config, agent, "reading")
+        language = voice_language(own)
+        found: List[Dict[str, str]] = [{"voice": own, "kind": "your voice"}]
+        if self.config.voice_server is not None:
+            for name in await self.tts.server_voices():
+                prefix = name.split("-", 1)[0]
+                if len(prefix) == 2 and prefix != language:
+                    continue   # « en-naturelle-s47 »: another language's voice
+                found.append({"voice": f"server:{language}/{name}", "kind": "voice model"})
+        bips = (await self.pocket_voices()).get(language, [])
+        for name in bips:
+            found.append({"voice": f"pocket:{name}" if language == "fr" else f"pocket:{language}/{name}", "kind": "Bip"})
+        seen: set = set()
+        unique = []
+        for entry in found:
+            if entry["voice"] not in seen:
+                seen.add(entry["voice"])
+                unique.append(entry)
+        return unique
+
+    async def cast(self, agent: AgentConfig, speakers: List[str], wanted: Dict[str, str]) -> Dict[str, str]:
+        """A voice per speaker, in order of appearance: the one asked for (from `voices`), else voices of the person's
+        voice model when it reads (natural voices make a better podcast than Bips), the agent's own leading, then
+        different ones of the same family first (« naturelle » with « naturelle »); without a voice model, Bips."""
+        available = await self.voices(agent)
+        allowed = {entry["voice"] for entry in available}
+        for speaker, voice in wanted.items():
+            if voice not in allowed:
+                raise ValueError(f"unknown voice for {speaker}: {voice} (see list_voices)")
+        own = available[0]["voice"]
+        server = self.config.voice_server
+        model = [e["voice"] for e in available if e["voice"].startswith("server:")]
+        if model and server is not None and server.uses.get("reading", True):
+            pool = model
+        else:
+            pool = [e["voice"] for e in available if e["voice"].split(":")[0] == own.split(":")[0]]
+        if own not in pool:   # the agent speaks with a Bip: a natural voice of the model leads, not a mascot's
+            pool = sorted(pool, key=lambda v: 0 if "natur" in v else 1)
+        lead = own if own in pool or not pool else pool[0]
+        name = lead.rsplit("/", 1)[-1]
+        family = name.split("-")[1] if name.count("-") >= 2 else ""
+        ranked = [v for v in pool if family and f"-{family}-" in v] + pool + [e["voice"] for e in available]
+        cast: Dict[str, str] = {}
+        used = set(wanted.values())
+        for speaker in speakers:
+            if speaker in wanted:
+                cast[speaker] = wanted[speaker]
+                continue
+            choice = lead if lead not in used else next((v for v in ranked if v not in used), lead)
+            cast[speaker] = choice
+            used.add(choice)
+        return cast
+
+    async def _speak(self, text: str, voice: str, relay: Optional[str]) -> bytearray:
+        """PCM16 at 24 kHz, the pieces of `text` read one after the other (no pause after the last)."""
+        chunks = split_for_speech(text)
+        pcm = bytearray()
+        for index, (piece, pause) in enumerate(chunks):
+            audio = await self.tts.synthesize(piece, voice, "pcm16", BACKGROUND, max_chars=0, relay=relay)
+            data = audio.data if audio.channels == 1 else mono(audio.data, audio.channels)
+            if audio.sample_rate != OUTPUT_RATE:
+                data = Resampler(audio.sample_rate, OUTPUT_RATE).feed(data, last=True)
+            pcm += data + (_silence(pause) if index < len(chunks) - 1 else b"")
+        return pcm
+
+    async def _save(self, agent: AgentConfig, pcm: bytes, title: str) -> Dict[str, Any]:
+        folder = audio_root(self.config) / agent.name
+        folder.mkdir(parents=True, exist_ok=True)
+        wav_path = folder / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{_slug(title)}.wav"
+        with wave.open(str(wav_path), "wb") as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(OUTPUT_RATE)
+            out.writeframes(bytes(pcm))
+        final = await _encode(wav_path)
+        return {"path": f"{MEDIA_PREFIX}/{agent.name}/{final.name}", "seconds": len(pcm) / 2 / OUTPUT_RATE}
 
     async def create(self, agent: AgentConfig, text: str, title: str = "") -> Dict[str, Any]:
         text = (text or "").strip()
@@ -238,35 +379,47 @@ class AudioMaker:
             raise ValueError("the text is empty")
         if len(text) > MAX_CHARS:
             raise ValueError(f"the text is too long ({len(text)} characters, at most {MAX_CHARS}): split it")
-        chunks = split_for_speech(text)
-        if not chunks:
+        if not split_for_speech(text):
             raise ValueError("nothing to read once MEDIA: lines are removed")
         voice = voice_for(self.config, agent, "reading")
+        async with self._locks.setdefault(agent.name, asyncio.Lock()):
+            started = time.monotonic()
+            made = await self._save(agent, await self._speak(text, voice, relay_for(agent)), title or text[:40])
+        log.info("agent audio made", extra=fields(agent=agent.name, chars=len(text), seconds=round(made["seconds"]),
+                                                  took=round(time.monotonic() - started)))
+        return made
+
+    async def podcast(self, agent: AgentConfig, turns: List[Dict[str, Any]], title: str = "",
+                      voices: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        clean: List[Tuple[str, str]] = []
+        for turn in turns:
+            speaker = " ".join(str(turn.get("speaker") or "").split())[:40] if isinstance(turn, dict) else ""
+            text = str(turn.get("text") or "").strip() if isinstance(turn, dict) else ""
+            if speaker and text and split_for_speech(text):
+                clean.append((speaker, text))
+        if not clean:
+            raise ValueError("no turn to read: each turn needs a speaker and a text")
+        if len(clean) > MAX_TURNS:
+            raise ValueError(f"too many turns ({len(clean)}, at most {MAX_TURNS}): make two episodes")
+        total = sum(len(text) for _, text in clean)
+        if total > MAX_CHARS:
+            raise ValueError(f"the podcast is too long ({total} characters, at most {MAX_CHARS}): make two episodes")
+        speakers = list(dict.fromkeys(speaker for speaker, _ in clean))
+        if len(speakers) > MAX_SPEAKERS:
+            raise ValueError(f"too many speakers ({len(speakers)}, at most {MAX_SPEAKERS})")
+        cast = await self.cast(agent, speakers, {str(k): str(v) for k, v in (voices or {}).items() if k in speakers})
         relay = relay_for(agent)
-        lock = self._locks.setdefault(agent.name, asyncio.Lock())
-        async with lock:
+        async with self._locks.setdefault(agent.name, asyncio.Lock()):
             started = time.monotonic()
             pcm = bytearray()
-            for piece, pause in chunks:
-                audio = await self.tts.synthesize(piece, voice, "pcm16", BACKGROUND, max_chars=0, relay=relay)
-                data = audio.data if audio.channels == 1 else mono(audio.data, audio.channels)
-                if audio.sample_rate != OUTPUT_RATE:
-                    data = Resampler(audio.sample_rate, OUTPUT_RATE).feed(data, last=True)
-                pcm += data + _silence(pause)
-            folder = audio_root(self.config) / agent.name
-            folder.mkdir(parents=True, exist_ok=True)
-            name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{_slug(title or text[:40])}"
-            wav_path = folder / f"{name}.wav"
-            with wave.open(str(wav_path), "wb") as out:
-                out.setnchannels(1)
-                out.setsampwidth(2)
-                out.setframerate(OUTPUT_RATE)
-                out.writeframes(bytes(pcm))
-            final = await _encode(wav_path)
-        seconds = len(pcm) / 2 / OUTPUT_RATE
-        log.info("agent audio made", extra=fields(agent=agent.name, chars=len(text), pieces=len(chunks),
-                                                  seconds=round(seconds), took=round(time.monotonic() - started)))
-        return {"path": f"{MEDIA_PREFIX}/{agent.name}/{final.name}", "seconds": seconds}
+            for index, (speaker, text) in enumerate(clean):
+                pcm += await self._speak(text, cast[speaker], relay if cast[speaker] == cast[speakers[0]] else None)
+                if index < len(clean) - 1:
+                    pcm += _silence(PAUSE_TURN_MS)
+            made = await self._save(agent, pcm, title or "podcast")
+        log.info("agent podcast made", extra=fields(agent=agent.name, turns=len(clean), speakers=len(speakers),
+                                                    seconds=round(made["seconds"]), took=round(time.monotonic() - started)))
+        return {**made, "cast": cast}
 
 
 def purge_audio(config: Config, retention_days: int, now: Optional[float] = None) -> int:
@@ -305,17 +458,27 @@ def _duration(seconds: float) -> str:
 
 
 async def call_tool(maker: AudioMaker, agent: AgentConfig, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    if name != CREATE_AUDIO["name"]:
+    if name == LIST_VOICES["name"]:
+        lines = [f"{entry['voice']} ({entry['kind']})" for entry in await maker.voices(agent)]
+        return _tool_text("\n".join(lines))
+    if name not in (CREATE_AUDIO["name"], CREATE_PODCAST["name"]):
         return _tool_text(f"unknown tool: {name}", error=True)
+    title = str(arguments.get("title") or "")
     try:
-        made = await maker.create(agent, str(arguments.get("text") or ""), str(arguments.get("title") or ""))
+        if name == CREATE_PODCAST["name"]:
+            turns = arguments.get("turns") if isinstance(arguments.get("turns"), list) else []
+            voices = arguments.get("voices") if isinstance(arguments.get("voices"), dict) else {}
+            made = await maker.podcast(agent, turns, title, voices)
+        else:
+            made = await maker.create(agent, str(arguments.get("text") or ""), title)
     except ValueError as exc:
         return _tool_text(str(exc), error=True)
     except TtsError as exc:
         log.warning("agent audio failed", extra=fields(agent=agent.name, error=str(exc)))
         return _tool_text(f"the voice failed ({exc}); try again later", error=True)
-    return _tool_text(f"Audio ready ({_duration(made['seconds'])}). To give it to the person, put this line alone at "
-                      f"the end of your reply:\nMEDIA:{made['path']}")
+    cast = "".join(f"\n- {speaker}: {voice}" for speaker, voice in (made.get("cast") or {}).items())
+    return _tool_text(f"Audio ready ({_duration(made['seconds'])}).{chr(10) + 'Voices:' + cast if cast else ''}\n"
+                      f"To give it to the person, put this line alone at the end of your reply:\nMEDIA:{made['path']}")
 
 
 def agent_tools_router() -> APIRouter:
@@ -346,11 +509,12 @@ def agent_tools_router() -> APIRouter:
                 "protocolVersion": str(params.get("protocolVersion") or "2025-06-18"),
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": SERVER_NAME, "version": __version__},
-                "instructions": "BipAgents: create_audio reads a text aloud with your voice, for the person's app."}))
+                "instructions": "BipAgents: create_audio reads a text aloud with your voice; create_podcast makes a "
+                                "conversation between hosts with different voices; both give a MEDIA: line for your reply."}))
         if method == "ping":
             return JSONResponse(_result(request_id, {}))
         if method == "tools/list":
-            return JSONResponse(_result(request_id, {"tools": [CREATE_AUDIO]}))
+            return JSONResponse(_result(request_id, {"tools": TOOLS}))
         if method != "tools/call":
             return JSONResponse(_error(request_id, -32601, f"method not found: {method}"))
         name = str(params.get("name") or "")

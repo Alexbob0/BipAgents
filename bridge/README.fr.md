@@ -225,7 +225,7 @@ retombe pas sur Kyutai (voix française) : le bridge répond 502/503 et l'app li
 
 Le bridge donne à chaque agent de l'installation un serveur MCP, `bipagents`, inscrit au démarrage dans son profil
 Hermes (`mcp_servers.bipagents` : cette adresse, `Authorization: Bearer <son propre jeton>`, `timeout`). C'est Hermes
-qui l'appelle, pas le bac à sable de l'agent : rien n'est ouvert aux conteneurs. Outil `create_audio` (`text`, `title`
+qui l'appelle, pas le bac à sable de l'agent : rien n'est ouvert aux conteneurs. Outils : `create_podcast` (`turns` : `[{speaker, text}]`, `title` et `voices` facultatifs) — une conversation entre 4 animateurs au plus, chacun avec sa voix (le modèle de voix de la personne s'il lit, voix naturelles d'abord, sinon les Bips ; l'agent peut les choisir avec `list_voices`), 350 ms entre les tours ; `create_audio` (`text`, `title`
 facultatif) : le texte lu avec la voix de lecture de l'agent réglée dans l'app (son modèle de voix — Drama 3, Kokoro… —
 sinon son Bip), découpé en paragraphes et en petits groupes de phrases, avec les prononciations de la personne, dans
 la file d'arrière-plan (un Live passe d'abord). Le fichier (`.m4a` si ffmpeg est installé, sinon `.wav`) est servi par
