@@ -54,6 +54,7 @@ class Install:
     # A server the app created (`--cloud`, cloud.py): the door on the Internet at `lan_address`:443, the pairing secret
     # and the progress the bridge shows the app until it is claimed.
     cloud: bool = False
+    door_port: int = 443
     setup_file: Optional[Path] = None
     progress_file: Optional[Path] = None
 
@@ -93,7 +94,8 @@ def bridge_toml(inst: Install) -> str:
         f"data_dir = {_q(str(inst.data_dir))}",
     ]
     if inst.cloud and inst.lan_address:
-        lines += ["cloud = true", f"public_url = {_q('https://' + inst.lan_address)}"]
+        door_url = f"https://{inst.lan_address}" + ("" if inst.door_port == 443 else f":{inst.door_port}")
+        lines += ["cloud = true", f"public_url = {_q(door_url)}"]
     elif inst.public(inst.ports.bridge):
         lines.append(f"public_url = {_q(inst.public(inst.ports.bridge))}")
     # Kyutai 1.6B is no engine of its own any more: a Kyutai server is the person's voice model, like any other.
@@ -124,7 +126,7 @@ def bridge_toml(inst: Install) -> str:
         lines += ["", "[model]", f"health_url = {_q(inst.model.base_url.rstrip('/') + '/models')}"]
         if inst.model.api_key:
             lines.append(f"health_key = {_q(inst.model.api_key)}")
-    door = 443 if inst.cloud else inst.ports.lan
+    door = inst.door_port if inst.cloud else inst.ports.lan
     lines += ["", "[lan]", f"enabled = {'true' if inst.lan_address else 'false'}", f"port = {door}"]
     if inst.lan_address:
         lines.append(f"address = {_q(inst.lan_address)}")

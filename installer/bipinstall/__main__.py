@@ -379,8 +379,8 @@ CLOUD_MODEL = "openrouter/auto"   # until the app sends the person's model and k
 
 
 def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
-    """`--cloud FILE`: a server the app created in the person's account (cloud.py), installed by cloud-init. No
-    question and no Tailscale: the bridge's door is on the Internet, and the app pairs itself, without a QR code."""
+    """`--cloud FILE`: a server of the all-included offer (cloud.py), installed at first boot. No question and no
+    Tailscale: the bridge's door is on the Internet, and the app pairs itself, without a QR code."""
     global PROGRESS
     from . import cloud, migrations
     from .upgrade import install_command
@@ -395,7 +395,8 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
             say(ui.sad("This server has no public address: the app couldn't reach it."))
             return 1
         address = "198.51.100.7"   # a dry run anywhere
-    say(ui.note(f"Server created by the app ({machine.cloud or 'cloud'}), {address}: the app pairs itself."))
+    door = address if setup.port == cloud.DOOR_PORT else f"{address}:{setup.port}"
+    say(ui.note(f"Server of the all-included offer ({machine.cloud or 'cloud'}), {door}: the app pairs itself."))
     machine.lan_addresses, machine.tailnet_name = [], None
     compress_memory(machine, runner)
     config_dir = Path.home() / ".config" / "bipagents"
@@ -409,7 +410,7 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     model = hermes.Model("openrouter", CLOUD_MODEL, base_url="https://openrouter.ai/api/v1")
     inst = Install(repo=REPO, home=Path.home(), ports=pick_block(wanted=args.ports), tailnet_name=None,
                    lan_address=address, model=model, push_service_url=args.push_service, isolated=bool(sandbox),
-                   browser=browser, cloud=True, setup_file=config_dir / "setup.json",
+                   browser=browser, cloud=True, door_port=setup.port, setup_file=config_dir / "setup.json",
                    progress_file=PROGRESS.path)
     runner.log.append(f"write {inst.setup_file}")
     if not runner.dry:

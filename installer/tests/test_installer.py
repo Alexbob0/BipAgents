@@ -856,6 +856,24 @@ def test_a_mini_server_has_no_browser_and_one_language(monkeypatch, tmp_path, ca
     assert "[4/4]" in out and "[browser]" not in out and "fr,en" not in out
 
 
+def test_the_second_seat_of_a_shared_server_has_its_door_on_444(monkeypatch, tmp_path, capsys):
+    """Two people on one server, each in an account of their own: the second one's door is on 444, and the voices
+    already running there are shared."""
+    from bipinstall import __main__ as cli, cloud
+    monkeypatch.setenv("HOME", str(tmp_path))
+    server = Machine("linux", "x86_64", 4, 2, "VPS-1", None, lan_addresses=[], cloud="OVHcloud")
+    monkeypatch.setattr(cli, "detect", lambda: server)
+    monkeypatch.setattr(cli.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
+    monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(9200))
+    monkeypatch.setattr(cli, "pocket_running", lambda: True)
+    monkeypatch.setattr(cloud, "public_address", lambda: "51.75.1.2")
+    assert cli.main(["--dry-run", "--cloud", str(_cloud_file(tmp_path, port=444))]) == 0
+    out = capsys.readouterr().out
+    assert "51.75.1.2:444: the app pairs itself" in out
+    assert 'public_url = "https://51.75.1.2:444"' in out and "[lan]\nenabled = true\nport = 444" in out
+    assert "already set up on this machine: I'll share it" in out
+
+
 def test_the_cloud_file_is_checked(tmp_path):
     from bipinstall import cloud
     with pytest.raises(cloud.CloudError):
@@ -863,7 +881,10 @@ def test_the_cloud_file_is_checked(tmp_path):
     with pytest.raises(cloud.CloudError):
         cloud.read(_cloud_file(tmp_path, v=2))
     setup = cloud.read(_cloud_file(tmp_path, language="it", profile="huge"))
-    assert (setup.language, setup.profile) == ("en", "solo")
+    assert (setup.language, setup.profile, setup.port) == ("en", "solo", 443)
+    with pytest.raises(cloud.CloudError):
+        cloud.read(_cloud_file(tmp_path, port=80))
+    assert cloud.read(_cloud_file(tmp_path, port="444")).port == 444
     assert cloud.public_address(metadata=lambda: "10.0.0.5") in (None,) or cloud._global(cloud.public_address() or "")
     progress = cloud.Progress(tmp_path / "p.json")
     progress(2, 5, "Voices")

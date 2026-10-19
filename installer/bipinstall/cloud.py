@@ -1,7 +1,7 @@
 """The installer's `--cloud FILE` mode: a server of the all-included offer (« no computer », the guichet's reserve),
 installed at first boot with nobody at the keyboard (installer/cloud/user-data.yaml).
 
-FILE, written at first boot from that setup: {"v": 1, "pair": "<base64url>", "language": "fr", "profile": "solo"}.
+FILE, written at first boot from that setup: {"v": 1, "pair": "<base64url>", "language": "fr", "profile": "solo"}, and "port" when the door isn't on 443 (a server shared by two people).
 `pair` is the one-time pairing secret the guichet hands to the app that bought the server; the profile is « mini »
 (no visible browser, for a 2 GB server) or « solo » (the default, 4 GB). No model key: the app sends it to the bridge
 once paired (bipbridge/cloud_setup.py), since the provider keeps that setup.
@@ -33,6 +33,7 @@ class CloudSetup:
     pair: str
     language: str = "en"
     profile: str = "solo"
+    port: int = DOOR_PORT    # the bridge's door; on a server shared by two people, the second one's is 444
 
 
 def read(path: Path) -> CloudSetup:
@@ -51,8 +52,14 @@ def read(path: Path) -> CloudSetup:
         raise CloudError("the pairing secret is too short")
     language = str(data.get("language") or "en")[:2].lower()
     profile = str(data.get("profile") or "solo").lower()
+    try:
+        port = int(data.get("port") or DOOR_PORT)
+    except (TypeError, ValueError) as exc:
+        raise CloudError("the door's port is not a number") from exc
+    if not DOOR_PORT <= port <= 65535:   # the server lets unprivileged accounts listen from 443 up
+        raise CloudError(f"the door's port must be {DOOR_PORT} or above")
     return CloudSetup(pair=pair, language=language if language in LANGUAGES else "en",
-                      profile=profile if profile in PROFILES else "solo")
+                      profile=profile if profile in PROFILES else "solo", port=port)
 
 
 def _global(address: str) -> bool:
