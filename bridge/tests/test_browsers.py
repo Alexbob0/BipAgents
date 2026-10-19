@@ -178,3 +178,44 @@ def test_the_desktop_wakes_a_stopped_browser(setup, monkeypatch):
     ran.clear()
     assert asyncio.run(browsers.wake(config, "budget")) is True and len(ran) == 1   # already up: nothing started
     assert asyncio.run(browsers.wake(config, "nobody")) is False
+
+
+def test_the_apps_switch_turns_the_browser_off_and_on_keeping_its_profile(setup):
+    import yaml
+
+    config, hub, run, commands, tmp_path = setup
+    agent = config.agent("budget")
+    assert browsers.state(str(hub), "budget") is None and browsers.available(config)
+    # The first time: set up (its container, its MCP server in the profile).
+    asyncio.run(browsers.switch(config, agent, True, run, str(hub)))
+    ran = [c[0] for c in commands]
+    assert any(c[4:6] == ["set", "mcp_servers.stealth"] for c in ran)
+    profile = hub / "profiles" / "budget" / "config.yaml"   # what `hermes config set` wrote
+    profile.write_text(yaml.safe_dump({"model": {"provider": "custom"}, "skills": {"disabled": ["arxiv"]},
+                                       "mcp_servers": {"stealth": {"command": "python3", "args": ["proxy"]}}}))
+    assert browsers.state(str(hub), "budget") is True
+    # Off: its tools and skill off, its Chrome stopped; its profile and its MCP entry stay.
+    commands.clear()
+    asyncio.run(browsers.switch(config, agent, False, run, str(hub)))
+    data = yaml.safe_load(profile.read_text())
+    assert data["mcp_servers"]["stealth"] == {"command": "python3", "args": ["proxy"], "enabled": False}
+    assert data["skills"]["disabled"] == ["arxiv", "visible-browser"] and data["model"] == {"provider": "custom"}
+    ran = [c[0] for c in commands]
+    assert ["/opt/hermes", "-p", "budget", "tools", "disable", "browser", "--platform", "api_server"] in ran
+    assert ["systemctl", "--user", "stop", "bipagents-browser-budget"] in ran
+    assert (tmp_path / "browsers" / "budget" / "profile").is_dir() and browsers.state(str(hub), "budget") is False
+    # On again: instant, nothing set up anew.
+    commands.clear()
+    asyncio.run(browsers.switch(config, agent, True, run, str(hub)))
+    data = yaml.safe_load(profile.read_text())
+    assert data["mcp_servers"]["stealth"]["enabled"] is True and data["skills"]["disabled"] == ["arxiv"]
+    assert [c[0] for c in commands] == [["/opt/hermes", "-p", "budget", "tools", "enable", "browser", "--platform", "api_server"]]
+
+
+def test_no_browser_to_give_without_the_installers_image(setup):
+    config, hub, run, commands, tmp_path = setup
+    config.browser.enabled = False
+    assert not browsers.available(config)
+    with pytest.raises(browsers.BrowserError):
+        asyncio.run(browsers.switch(config, config.agent("budget"), True, run, str(hub)))
+    assert commands == []

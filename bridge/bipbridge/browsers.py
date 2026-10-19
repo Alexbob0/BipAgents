@@ -298,6 +298,68 @@ async def setup(config: Config, agent: AgentConfig, run: Callable[..., Any], hom
     return agent
 
 
+def available(config: Config) -> bool:
+    """This install can give an agent its own browser from the app: Linux, a container runtime, and the image the
+    installer built (`browser.enabled`)."""
+    return config.browser.enabled and platform.system() == "Linux" and runtime(config) is not None
+
+
+def _profile_config(home: str, agent: str) -> Path:
+    return Path(home) / "profiles" / agent / "config.yaml"
+
+
+def state(home: str, agent: str) -> Optional[bool]:
+    """Whether the agent's browser is on (its MCP server enabled in its Hermes profile); None: it has none."""
+    import yaml
+    try:
+        data = yaml.safe_load(_profile_config(home, agent).read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    server = (data.get("mcp_servers") or {}).get("stealth") if isinstance(data, dict) else None
+    if not isinstance(server, dict):
+        return None
+    return str(server.get("enabled", True)).strip().lower() not in ("false", "0", "no", "off")
+
+
+def _mark(home: str, agent: str, on: bool) -> None:
+    """Its MCP server and its skill on or off in its profile, the server's entry kept (Hermes stops or starts it within
+    a minute; a request after this one already has its tools or not)."""
+    import yaml
+    path = _profile_config(home, agent)
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data["mcp_servers"]["stealth"]["enabled"] = on
+    skills = data.get("skills") if isinstance(data.get("skills"), dict) else {}
+    off = [name for name in (skills.get("disabled") or []) if name != "visible-browser"]
+    skills["disabled"] = off if on else off + ["visible-browser"]
+    data["skills"] = skills
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
+async def switch(config: Config, agent: AgentConfig, on: bool, run: Callable[..., Any], home: str) -> AgentConfig:
+    """The app's « Naviguer à ta place »: on sets the agent's browser up the first time (`setup`), then only turns it
+    back on; off turns its tools off and stops its Chrome, keeping its profile (the sites it is logged in to)."""
+    env = {"HERMES_HOME": home}
+    hermes = config.hermes.bin
+    if on:
+        if state(home, agent.name) is None or not folder(config, agent.name).exists():
+            if not available(config):
+                raise BrowserError("this install has no browser for its agents")
+            return await setup(config, agent, run, home)
+        _mark(home, agent.name, True)
+        await run([hermes, "-p", agent.name, "tools", "enable", "browser", "--platform", "api_server"], env)
+        log.info("browser on", extra=fields(agent=agent.name))
+        return agent
+    if state(home, agent.name) is not None:
+        _mark(home, agent.name, False)
+    await run([hermes, "-p", agent.name, "tools", "disable", "browser", "--platform", "api_server"], env)
+    try:
+        await run(["systemctl", "--user", "stop", unit_path(agent.name).stem], {})
+    except RuntimeError:
+        pass
+    log.info("browser off", extra=fields(agent=agent.name))
+    return agent
+
+
 async def remove(config: Config, agent: str, run: Callable[..., Any]) -> None:
     """The agent's browser stopped, its container and profile gone (its Hermes profile is the caller's)."""
     unit = unit_path(agent)

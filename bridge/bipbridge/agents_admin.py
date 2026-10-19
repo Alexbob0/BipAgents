@@ -24,7 +24,7 @@ import yaml
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import agent_tools, browsers, shares, souls
+from . import agent_tools, browsers, own_skills, shares, souls
 from .config import AgentConfig, Config
 from .files import SANDBOX_UPLOADS, open_to_sandbox
 from . import peers
@@ -270,6 +270,8 @@ class Claim(BaseModel):
 class AgentSettings(BaseModel):
     soul: Optional[str] = Field(default=None, max_length=8000)
     toolsets: Optional[Dict[str, bool]] = None
+    skills: Optional[Dict[str, bool]] = None   # the agent's own skills (own_skills.py), on or off
+    browser: Optional[bool] = None             # its own browser (browsers.switch): set up the first time
 
 
 def managed(config: Config, agent_id: str) -> AgentConfig:
@@ -501,12 +503,34 @@ async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncCli
     return {"id": agent.name, "name": agent.display_name, "soul": soul.strip(), "language": lang,
             "thinking": read_thinking(config, agent), "toolsets": toolsets, "isolated": agent.isolated,
             "protected": config.hermes.isolated,
-            "services": connected.listing(config, agent)}
+            "services": connected.listing(config, agent), "skills": own_skills.listing(profile_folder(config, agent)),
+            "browser": browser_settings(config, agent)}
+
+
+def browser_settings(config: Config, agent: AgentConfig) -> Optional[Dict[str, bool]]:
+    """« Naviguer à ta place »: its own browser, on or not (`ready`: set up before, turning it on is instant); None
+    when this install can't give it one (the app shows Hermes' own browser tool instead)."""
+    on = browsers.state(home_root(config, agent), agent.name)
+    if on is None and not browsers.available(config):
+        return None
+    return {"on": on is True, "ready": on is not None}
 
 
 async def write_settings(config: Config, agent: AgentConfig, body: AgentSettings, run: Callable[..., Any] = run_hermes) -> None:
-    if agent.host_home and body.toolsets:
+    if agent.host_home and (body.toolsets or body.skills or body.browser is not None):
         raise ValueError("the tools of an agent set up by hand are changed on its server")
+    if body.skills:
+        try:
+            own_skills.set_enabled(profile_folder(config, agent), body.skills)
+        except LookupError as exc:
+            raise ValueError(f"not one of the agent's own skills: {exc}") from exc
+    if body.browser is not None:
+        try:
+            changed = await browsers.switch(config, agent, body.browser, run, home_root(config, agent))
+        except browsers.BrowserError as exc:
+            raise ValueError(str(exc)) from exc
+        if body.browser:
+            save_agent(config, changed)   # set up the first time: its desktop in its section
     if body.soul is not None:
         # The personality the person edited, with the language block it had (they never see it).
         _, lang = souls.split_language(read_soul(config, agent))
