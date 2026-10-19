@@ -39,3 +39,4 @@ docs/store/shots/
 guichet/guichet.toml
 guichet/*.sqlite3*
 guichet/signing.key
+guichet/secrets/
