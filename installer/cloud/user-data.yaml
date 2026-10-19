@@ -29,6 +29,8 @@ packages:
   - curl
   - ufw
   - unattended-upgrades
+  # Hermes' Node.js links libatomic (its installer would ask for sudo, which `bip` hasn't got).
+  - libatomic1
 
 write_files:
   - path: /etc/bipagents/cloud.json
@@ -49,6 +51,9 @@ write_files:
 
 runcmd:
   - sysctl --system
+  # 2 GB of swap: room for an agent's browser on a 4 GB server (the providers' kernels often lack zram).
+  - test -f /swapfile || { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; }
+  - systemctl restart ssh
   - ufw default deny incoming
   - ufw default allow outgoing
   - ufw allow OpenSSH
