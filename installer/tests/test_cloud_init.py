@@ -52,3 +52,14 @@ def test_no_model_key_or_other_secret_has_a_place_in_it():
     assert "KEY" not in text.replace("SSH", "")
     assert len(render("x" * 43).encode()) < 16_000   # far under the providers' user-data limits (64 KB at DigitalOcean)
 
+
+
+def test_the_seat_script_is_ascii_and_refuses_a_wrong_call(tmp_path):
+    """add-seat.sh runs as root at first boot (the guichet's script): ASCII like user-data, and nothing done when
+    called without a seat number of 2 or more and an existing setup file."""
+    import subprocess
+    path = ROOT / "installer" / "cloud" / "add-seat.sh"
+    text = path.read_text(encoding="utf-8")
+    assert text.isascii() and "--cloud $setup" in text and 'ufw allow "$port/tcp"' in text
+    for args in ([], ["1", str(path)], ["x", str(path)], ["2", str(tmp_path / "missing.json")]):
+        assert subprocess.run(["bash", str(path), *args], capture_output=True).returncode == 2
