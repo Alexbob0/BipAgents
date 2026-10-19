@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """BipAgents: the guichet's orders for the places of this server (guichet/bipguichet/orders.py).
 
-Run as root every two minutes by bipagents-seats.timer, set up at first boot. It asks the guichet for its orders with
-the token its first boot gave it, and does an order only when the guichet's Ed25519 key signed it (checked with
+Run as root every two minutes by bipagents-seats.timer, set up at first boot. Its call to the guichet, with the token
+its first boot gave it, is the server's heartbeat (guichet/bipguichet/watch.py): it says, for each place, whether its
+bridge's door answers here and when its last backup worked -- a yes or no and a time, nothing else of anyone. The
+guichet answers with its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
 openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. The one order there is:
 install place n again for its next person -- its account bip<n> (bip for place 1), everything in it and its
 services go, then installer/cloud/add-seat.sh sets it up again with the new pairing secret. The other places are
@@ -14,6 +16,7 @@ import base64
 import json
 import os
 import pwd
+import socket
 import subprocess
 import sys
 import tempfile
@@ -25,6 +28,7 @@ PUBLIC_KEY = "/etc/bipagents/guichet.pub"
 DONE = "/var/lib/bipagents/orders-done"
 LIB = "/usr/local/lib/bipagents"
 MAX_SEATS = 8
+BACKUP_STATE = ".local/state/bipagents/backup.json"
 
 
 def log(text):
@@ -108,11 +112,46 @@ def reset(number, setup):
     subprocess.run(["bash", os.path.join(LIB, "add-seat.sh"), str(number), path])
 
 
-def call(conf, method, path):
-    request = urllib.request.Request(conf["url"].rstrip("/") + path, method=method, data=b"" if method == "POST" else None,
-                                     headers={"Authorization": "Bearer " + conf["token"]})
+def call(conf, method, path, body=None):
+    data = json.dumps(body).encode("utf-8") if body is not None else (b"" if method == "POST" else None)
+    headers = {"Authorization": "Bearer " + conf["token"]}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(conf["url"].rstrip("/") + path, method=method, data=data, headers=headers)
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8") or "{}")
+
+
+def door_open(port):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=5):
+            return True
+    except OSError:
+        return False
+
+
+def last_backup(user):
+    """The time of the place's last backup that worked (installer/bipinstall/backup.py writes it), else None."""
+    try:
+        home = pwd.getpwnam(user).pw_dir
+        with open(os.path.join(home, BACKUP_STATE)) as fh:
+            value = json.load(fh).get("last_ok")
+        return float(value) if isinstance(value, (int, float)) else None
+    except (KeyError, OSError, ValueError, AttributeError):
+        return None
+
+
+def health():
+    """Each place of this server: its door answers, its last backup."""
+    seats = {}
+    for number in range(1, MAX_SEATS + 1):
+        user = account(number)
+        try:
+            pwd.getpwnam(user)
+        except KeyError:
+            continue
+        seats[str(number)] = {"up": door_open(442 + number), "backup": last_backup(user)}
+    return seats
 
 
 def read_done():
@@ -127,7 +166,7 @@ def main():
     with open(CONF) as fh:
         conf = json.load(fh)
     try:
-        orders = call(conf, "GET", "/v1/server/orders").get("orders") or []
+        orders = call(conf, "POST", "/v1/server/beat", {"seats": health()}).get("orders") or []
     except (OSError, ValueError) as exc:
         log("guichet unreachable: %s" % exc)
         return 0

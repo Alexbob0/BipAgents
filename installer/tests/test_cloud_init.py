@@ -115,3 +115,31 @@ def test_the_seat_agent_does_only_signed_orders_for_its_server(tmp_path):
     assert not agent.verified(order["body"].replace("vps-1", "vps-2"), order["signature"], str(pub))
     assert not agent.verified(order["body"], _signed(other, body)["signature"], str(pub))
     assert not agent.verified(order["body"], "not base64!", str(pub))
+
+
+def test_the_seat_agent_s_heartbeat_says_only_up_and_a_time(tmp_path, monkeypatch):
+    """Each place: its door answers on the server, and the time of its last backup that worked (nothing else)."""
+    import pwd
+    import socket
+    agent = _seat_agent()
+    home = tmp_path / "bip"
+    (home / ".local" / "state" / "bipagents").mkdir(parents=True)
+    (home / ".local" / "state" / "bipagents" / "backup.json").write_text('{"last_ok": 1790000000.5, "note": "x"}')
+    users = {"bip": home, "bip2": tmp_path / "bip2"}
+
+    def getpwnam(name):
+        if name not in users:
+            raise KeyError(name)
+        return pwd.struct_passwd((name, "x", 1000, 1000, "", str(users[name]), "/bin/bash"))
+
+    monkeypatch.setattr(agent.pwd, "getpwnam", getpwnam)
+    listening = socket.socket()
+    listening.bind(("127.0.0.1", 0))
+    listening.listen()
+    port = listening.getsockname()[1]
+    monkeypatch.setattr(agent, "door_open", lambda p: p == 443)
+    assert agent.health() == {"1": {"up": True, "backup": 1790000000.5}, "2": {"up": False, "backup": None}}
+    monkeypatch.undo()
+    assert agent.door_open(port) is True
+    listening.close()
+    assert agent.door_open(port) is False
