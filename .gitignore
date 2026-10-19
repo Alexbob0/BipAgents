@@ -28,3 +28,6 @@ context/
 # Local signing team
 Config/Local.xcconfig
 voices/ab-test/
+
+# Built websites (python3 site/build.py)
+site/dist/

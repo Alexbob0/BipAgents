@@ -1,0 +1,90 @@
+{
+ "meta": {
+  "title": "Kerfy Studio — AI tools that stay at home",
+  "description": "Kerfy Studio is an independent French studio. Our first app, BipAgents, puts your own AI agents in your pocket."
+ },
+ "nav": {
+  "support": "Support"
+ },
+ "foot": {
+  "about": "Kerfy Studio is an independent studio making BipAgents, the app for your own AI agents.",
+  "privacy": "Privacy",
+  "terms": "Terms of use",
+  "notice": "Legal notice (French)",
+  "fine": "No cookies and no trackers on this site."
+ },
+ "home": {
+  "kicker": "Independent studio",
+  "title": "We make AI tools that stay at home.",
+  "lede": "Kerfy Studio is a small French studio. Our first app, BipAgents, puts your own AI agents in your pocket: they run on your server, with the model you choose, with no account and no tracking.",
+  "productKicker": "Our app",
+  "product": "Your AI agents, at home, in your pocket. Text them, talk to them, go Live: they act with your OK. Built on Hermes Agent.",
+  "productCta": "Discover BipAgents",
+  "values": [
+   {
+    "title": "Private by design",
+    "text": "Your data stays on your server. We don’t see your conversations, and our sites have no cookies and no trackers."
+   },
+   {
+    "title": "Open",
+    "text": "Our apps’ code is public under the MIT license: anyone can read it, check it and improve it."
+   },
+   {
+    "title": "Simple",
+    "text": "One command to install, a QR code to connect, and a demo to try it without installing anything."
+   }
+  ],
+  "contactTitle": "Let’s talk.",
+  "contactText": "A question, a partnership, an idea? We read everything."
+ },
+ "support": {
+  "kicker": "Support",
+  "title": "We’re here to help.",
+  "lede": "A question, a bug, an idea? Write to us: we answer as soon as we can, in English or French.",
+  "blocks": [
+   {
+    "title": "From the app",
+    "text": [
+     "Settings › Contact support prepares an e-mail with a diagnostic of your phone: versions and your agents’ state, with no conversation, no name, no address and no key.",
+     "You read it before sending it."
+    ]
+   },
+   {
+    "title": "A reply shocks you?",
+    "text": [
+     "In the app, long-press the reply › Report this reply. The report reaches us, with the reply’s text.",
+     "Tell your agent too, so it doesn’t do it again."
+    ]
+   },
+   {
+    "title": "Installing and troubleshooting",
+    "text": [
+     "The install guide, the commands and answers to common problems are on <a href=\"https://github.com/Alexbob0/BipAgents\">GitHub</a>.",
+     "If in doubt, write to us with the command’s output: we’ll look at it with you."
+    ]
+   },
+   {
+    "title": "Your data",
+    "text": [
+     "In the app: delete an agent, or uninstall the app to erase everything from the phone. On your server: <code>bipagents uninstall --all</code>.",
+     "For the little data we receive (e-mails, reports), write to us: we delete it."
+    ]
+   },
+   {
+    "title": "Security",
+    "text": [
+     "Found a vulnerability? Write to support@kerfystudio.com with the subject « Security »: these reports are handled first.",
+     "Our security contact is also published in <a href=\"/.well-known/security.txt\">security.txt</a>."
+    ]
+   },
+   {
+    "title": "Privacy",
+    "text": [
+     "What we receive, and above all what we don’t, is explained in the <a href=\"/en/privacy/\">privacy policy</a>."
+    ]
+   }
+  ],
+  "whoTitle": "Who we are",
+  "who": "Kerfy Studio · <mark class=\"todo\">[registered office address]</mark> · <mark class=\"todo\">[phone number]</mark> · support@kerfystudio.com"
+ }
+}

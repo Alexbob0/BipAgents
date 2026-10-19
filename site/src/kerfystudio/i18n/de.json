@@ -1,0 +1,90 @@
+{
+ "meta": {
+  "title": "Kerfy Studio — KI-Werkzeuge, die bei dir zu Hause bleiben",
+  "description": "Kerfy Studio ist ein unabhängiges französisches Studio. Unsere erste App, BipAgents, bringt deine eigenen KI-Agenten in deine Tasche."
+ },
+ "nav": {
+  "support": "Support"
+ },
+ "foot": {
+  "about": "Kerfy Studio ist ein unabhängiges Studio, das BipAgents macht, die App für deine eigenen KI-Agenten.",
+  "privacy": "Datenschutz",
+  "terms": "Nutzungsbedingungen",
+  "notice": "Impressum (Französisch)",
+  "fine": "Keine Cookies und keine Tracker auf dieser Seite."
+ },
+ "home": {
+  "kicker": "Unabhängiges Studio",
+  "title": "Wir bauen KI-Werkzeuge, die bei dir zu Hause bleiben.",
+  "lede": "Kerfy Studio ist ein kleines französisches Studio. Unsere erste App, BipAgents, bringt deine eigenen KI-Agenten in deine Tasche: Sie laufen auf deinem Server, mit dem Modell deiner Wahl, ohne Konto und ohne Tracking.",
+  "productKicker": "Unsere App",
+  "product": "Deine KI-Agenten, bei dir zu Hause, in deiner Tasche. Schreib ihnen, sprich mit ihnen, geh Live: Sie handeln mit deinem OK. Gebaut auf Hermes Agent.",
+  "productCta": "BipAgents entdecken",
+  "values": [
+   {
+    "title": "Privat von Grund auf",
+    "text": "Deine Daten bleiben auf deinem Server. Wir sehen deine Unterhaltungen nicht, und unsere Seiten haben weder Cookies noch Tracker."
+   },
+   {
+    "title": "Offen",
+    "text": "Der Code unserer Apps ist öffentlich, unter der MIT-Lizenz: Jeder kann ihn lesen, prüfen und verbessern."
+   },
+   {
+    "title": "Einfach",
+    "text": "Ein Befehl zum Installieren, ein QR-Code zum Verbinden und eine Demo zum Ausprobieren, ohne etwas zu installieren."
+   }
+  ],
+  "contactTitle": "Lass uns reden.",
+  "contactText": "Eine Frage, eine Partnerschaft, eine Idee? Wir lesen alles."
+ },
+ "support": {
+  "kicker": "Support",
+  "title": "Wir helfen dir gern.",
+  "lede": "Eine Frage, ein Fehler, eine Idee? Schreib uns: Wir antworten so schnell wie möglich, auf Englisch oder Französisch.",
+  "blocks": [
+   {
+    "title": "Aus der App",
+    "text": [
+     "Einstellungen › Support kontaktieren bereitet eine E-Mail mit einer Diagnose deines Handys vor: Versionen und Zustand deiner Agenten, ohne Unterhaltungen, Namen, Adressen oder Schlüssel.",
+     "Du liest sie, bevor du sie sendest."
+    ]
+   },
+   {
+    "title": "Eine Antwort schockiert dich?",
+    "text": [
+     "In der App: lange auf die Antwort drücken › Diese Antwort melden. Die Meldung kommt bei uns an, mit dem Text der Antwort.",
+     "Sag es auch deinem Agenten, damit er es nicht wieder tut."
+    ]
+   },
+   {
+    "title": "Installieren und Fehlerbehebung",
+    "text": [
+     "Die Installationsanleitung, die Befehle und Antworten auf häufige Probleme findest du auf <a href=\"https://github.com/Alexbob0/BipAgents\">GitHub</a>.",
+     "Im Zweifel schreib uns mit der Ausgabe des Befehls: Wir schauen es uns mit dir an."
+    ]
+   },
+   {
+    "title": "Deine Daten",
+    "text": [
+     "In der App: Lösche einen Agenten oder deinstalliere die App, um alles vom Handy zu entfernen. Auf deinem Server: <code>bipagents uninstall --all</code>.",
+     "Für die wenigen Daten, die wir erhalten (E-Mails, Meldungen), schreib uns: Wir löschen sie."
+    ]
+   },
+   {
+    "title": "Sicherheit",
+    "text": [
+     "Eine Sicherheitslücke gefunden? Schreib an support@kerfystudio.com mit dem Betreff „Security“: Diese Meldungen werden vorrangig bearbeitet.",
+     "Unser Sicherheitskontakt steht auch in der <a href=\"/.well-known/security.txt\">security.txt</a>."
+    ]
+   },
+   {
+    "title": "Datenschutz",
+    "text": [
+     "Was wir erhalten, und vor allem, was nicht, steht in der <a href=\"/de/privacy/\">Datenschutzerklärung</a>."
+    ]
+   }
+  ],
+  "whoTitle": "Wer wir sind",
+  "who": "Kerfy Studio · <mark class=\"todo\">[Anschrift des Sitzes]</mark> · <mark class=\"todo\">[Telefonnummer]</mark> · support@kerfystudio.com"
+ }
+}

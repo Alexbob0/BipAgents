@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{meta.title}}</title>
+<meta name="description" content="{{meta.description}}">
+<meta name="theme-color" content="#F6F4F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101217" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://bipagents.com{{path}}">
+{{hreflang}}
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{meta.title}}">
+<meta property="og:description" content="{{meta.description}}">
+<meta property="og:url" content="https://bipagents.com{{path}}">
+<meta property="og:image" content="https://bipagents.com/assets/og-{{lang}}.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/nunito.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="/assets/site.css?v={{version}}">
+</head>
+<body>
+<a class="skip" href="#main">{{a11y.skip}}</a>
+
+<header class="top" id="top">
+  <a class="brand" href="{{home}}" aria-label="BipAgents">
+    <span class="brand-bip" data-bip="daily" aria-hidden="true"></span>
+    <span class="brand-name">Bip<b>Agents</b></span>
+  </a>
+  <nav class="top-links" aria-label="{{a11y.nav}}">
+    <a href="#demo">{{nav.demo}}</a>
+    <a href="#privacy">{{nav.privacy}}</a>
+    <a href="#install">{{nav.install}}</a>
+    <a href="#faq">{{nav.faq}}</a>
+  </nav>
+  <div class="top-actions">
+    <details class="lang">
+      <summary aria-label="{{a11y.language}}">{{lang.short}}</summary>
+      <div class="lang-menu">{{langmenu}}</div>
+    </details>
+    <a class="pill pill-ink small" href="#get">{{nav.get}}</a>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============================================================ HERO -->
+<section class="hero">
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="hero-copy reveal">
+    <a class="badge" href="https://github.com/NousResearch/hermes-agent" rel="noopener">
+      <span class="badge-dot"></span>{{hero.badge}}
+    </a>
+    <h1>
+      <span class="h-line">{{hero.line1}}</span>
+      <span class="h-line h-mark mark-green">{{hero.line2}}</span>
+      <span class="h-line h-mark mark-coral">{{hero.line3}}</span>
+    </h1>
+    <p class="lede">{{hero.lede}}</p>
+    <div class="cta-row" id="get">
+      <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">App Store</span></span>
+      <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">Google Play</span></span>
+      <a class="pill pill-soft" href="#demo">{{hero.watch}} <span aria-hidden="true">↓</span></a>
+    </div>
+    <ul class="trust">
+      <li>{{hero.trust1}}</li><li>{{hero.trust2}}</li><li>{{hero.trust3}}</li>
+    </ul>
+  </div>
+
+  <div class="hero-stage" aria-hidden="true">
+    <div class="halo"></div>
+    <div class="phone phone-hero">
+      <div class="phone-screen"><img src="/assets/shots/home-{{lang}}.jpg" alt="" width="900" height="1957" fetchpriority="high"></div>
+    </div>
+    <div class="float-bip fb-1" data-bip="wellness" data-interactive></div>
+    <div class="float-bip fb-2" data-bip="finance" data-interactive></div>
+    <div class="float-bip fb-3" data-bip="home" data-interactive></div>
+    <div class="float-bip fb-4" data-bip="creative" data-interactive></div>
+    <div class="toasts">
+      <div class="toast" data-cat="daily"><span class="toast-bip" data-bip-static="daily"></span><span><b>{{toast.1.from}}</b><small>{{toast.now}}</small><em>{{toast.1.text}}</em></span></div>
+      <div class="toast" data-cat="finance"><span class="toast-bip" data-bip-static="finance"></span><span><b>{{toast.2.from}}</b><small>{{toast.now}}</small><em>{{toast.2.text}}</em></span></div>
+      <div class="toast" data-cat="wellness"><span class="toast-bip" data-bip-static="wellness"></span><span><b>{{toast.3.from}}</b><small>{{toast.now}}</small><em>{{toast.3.text}}</em></span></div>
+      <div class="toast" data-cat="home"><span class="toast-bip" data-bip-static="home"></span><span><b>{{toast.4.from}}</b><small>{{toast.now}}</small><em>{{toast.4.text}}</em></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ MARQUEE -->
+<div class="marquee" aria-hidden="true"><div class="marquee-track">{{marquee}}{{marquee}}</div></div>
+
+<!-- ============================================================ BIPS -->
+<section class="section bips-section" id="bips">
+  <div class="section-head reveal">
+    <p class="kicker">{{bips.kicker}}</p>
+    <h2>{{bips.title}}</h2>
+    <p class="sub">{{bips.sub}}</p>
+  </div>
+  <div class="bip-grid reveal">
+    {{bipcards}}
+  </div>
+  <p class="hint reveal">{{bips.hint}}</p>
+</section>
+
+<!-- ============================================================ DEMO -->
+<section class="section demo-section" id="demo">
+  <div class="demo-grid">
+    <div class="demo-copy reveal">
+      <p class="kicker">{{demo.kicker}}</p>
+      <h2>{{demo.title}}</h2>
+      <p class="sub">{{demo.sub}}</p>
+      <div class="tabs" role="tablist">
+        <button class="tab active" role="tab" aria-selected="true" data-scenario="book_table">
+          <span class="tab-bip" data-bip-static="daily"></span>{{demo.tab1}}</button>
+        <button class="tab" role="tab" aria-selected="false" data-scenario="heating">
+          <span class="tab-bip" data-bip-static="home"></span>{{demo.tab2}}</button>
+      </div>
+      <ul class="checks">
+        <li>{{demo.point1}}</li><li>{{demo.point2}}</li><li>{{demo.point3}}</li>
+      </ul>
+    </div>
+    <div class="chat-wrap reveal">
+      <div class="chat" aria-live="off">
+        <div class="chat-head">
+          <span class="chat-avatar" data-bip-chat></span>
+          <span class="chat-title"><span><b class="chat-name"></b> <span class="ai">{{ai}}</span></span><small>{{demo.chatSub}}</small></span>
+          <button class="replay" type="button" aria-label="{{demo.replay}}">↻</button>
+        </div>
+        <div class="chat-body"></div>
+        <div class="chat-input"><span>{{demo.placeholder}}</span><i class="mic"></i></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ PODCAST -->
+<section class="section podcast-section" id="podcast">
+  <div class="podcast reveal">
+    <div class="podcast-copy">
+      <p class="kicker light">{{podcast.kicker}}</p>
+      <h2>{{podcast.title}}</h2>
+      <p class="sub">{{podcast.sub}}</p>
+      <p class="credit">{{podcast.credit}}</p>
+    </div>
+    <div class="studio">
+      <div class="sun" aria-hidden="true"></div>
+      <div class="hosts">
+        <div class="host" data-host="0"><div class="host-bip" data-bip="daily"></div><span>{{podcast.host1}}</span></div>
+        <div class="host" data-host="1"><div class="host-bip" data-bip="wellness"></div><span>{{podcast.host2}}</span></div>
+      </div>
+      <div class="player">
+        <button class="play" type="button" aria-label="{{podcast.play}}"><span class="i-play"></span></button>
+        <div class="wave" aria-hidden="true">{{wavebars}}</div>
+        <span class="time">0:00</span>
+      </div>
+      <audio preload="none" src="/assets/media/podcast-morning-{{lang}}.m4a"></audio>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ LIVE -->
+<section class="section live-section" id="live">
+  <div class="live-grid">
+    <div class="live-stage reveal" aria-hidden="true">
+      <div class="rings"><i></i><i></i><i></i></div>
+      <div class="live-bip" data-bip="learning"></div>
+      <div class="caption-bubble you"></div>
+      <div class="caption-bubble bip"></div>
+    </div>
+    <div class="live-copy reveal">
+      <p class="kicker">{{live.kicker}}</p>
+      <h2>{{live.title}}</h2>
+      <p class="sub">{{live.sub}}</p>
+      <ul class="checks">
+        <li>{{live.point1}}</li><li>{{live.point2}}</li><li>{{live.point3}}</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ CONTROL -->
+<section class="section control-section" id="control">
+  <div class="section-head reveal">
+    <p class="kicker">{{control.kicker}}</p>
+    <h2>{{control.title}}</h2>
+    <p class="sub">{{control.sub}}</p>
+  </div>
+  <div class="cards3">
+    <article class="card-x reveal" style="--tone: var(--coral-tint)">
+      <div class="approval">
+        <p class="approval-title">{{control.approvalTitle}}</p>
+        <code>{{control.approvalCommand}}</code>
+        <div class="approval-buttons"><span class="on">{{control.once}}</span><span>{{control.session}}</span><span>{{control.deny}}</span></div>
+      </div>
+      <h3>{{control.card1.title}}</h3>
+      <p>{{control.card1.text}}</p>
+    </article>
+    <article class="card-x reveal" style="--tone: var(--blue-tint)">
+      <div class="desk">
+        <div class="desk-bar"><i></i><i></i><i></i><span>{{control.deskUrl}}</span></div>
+        <div class="desk-page"><b></b><b></b><b class="short"></b><em class="cursor"></em></div>
+        <span class="desk-take">{{control.take}}</span>
+      </div>
+      <h3>{{control.card2.title}}</h3>
+      <p>{{control.card2.text}}</p>
+    </article>
+    <article class="card-x reveal" style="--tone: var(--violet-tint)">
+      <div class="team">
+        <span class="team-bip" data-bip-static="wellness"></span>
+        <span class="team-line"><span class="team-dot"></span></span>
+        <span class="team-bip" data-bip-static="finance"></span>
+        <p>{{control.teamLine}}</p>
+      </div>
+      <h3>{{control.card3.title}}</h3>
+      <p>{{control.card3.text}}</p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ PRIVACY -->
+<section class="section privacy-section" id="privacy">
+  <div class="privacy reveal">
+    <div class="section-head left">
+      <p class="kicker light">{{privacy.kicker}}</p>
+      <h2>{{privacy.title}}</h2>
+      <p class="sub">{{privacy.sub}}</p>
+    </div>
+    <div class="flow" aria-hidden="true">
+      <div class="node node-phone"><span class="node-icon">📱</span><b>{{privacy.phone}}</b></div>
+      <div class="pipe"><span>{{privacy.link}}</span><i></i></div>
+      <div class="node node-server"><span class="node-bips"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="finance"></i></span><b>{{privacy.server}}</b><small>{{privacy.serverSub}}</small></div>
+      <div class="pipe"><span>{{privacy.model}}</span><i></i></div>
+      <div class="node node-model"><span class="node-icon">✦</span><b>{{privacy.modelName}}</b><small>{{privacy.modelSub}}</small></div>
+    </div>
+    <div class="nope"><span class="nope-x">✕</span>{{privacy.nope}}</div>
+    <ul class="chips">
+      <li>{{privacy.chip1}}</li><li>{{privacy.chip2}}</li><li>{{privacy.chip3}}</li><li>{{privacy.chip4}}</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ INSTALL -->
+<section class="section install-section" id="install">
+  <div class="section-head reveal">
+    <p class="kicker">{{install.kicker}}</p>
+    <h2>{{install.title}}</h2>
+    <p class="sub">{{install.sub}}</p>
+  </div>
+  <div class="install-grid">
+    <ol class="steps reveal">
+      <li><span class="n">1</span><div><h3>{{install.step1.title}}</h3><p>{{install.step1.text}}</p></div></li>
+      <li><span class="n">2</span><div><h3>{{install.step2.title}}</h3><p>{{install.step2.text}}</p></div></li>
+      <li><span class="n">3</span><div><h3>{{install.step3.title}}</h3><p>{{install.step3.text}}</p></div></li>
+    </ol>
+    <div class="terminal reveal">
+      <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
+      <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
+<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span><span class="out o4 qr">▄▄▄▄▄ ▄ ▄▄ ▄▄▄▄▄
+█ ▄ █ ▀█▄ █ ▄ █
+█▄▄▄█ █▀▄ █▄▄▄█  {{install.out4}}</span></code></pre>
+      <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
+    </div>
+  </div>
+  <div class="hermes-note reveal">
+    <span class="hn-icon" aria-hidden="true">🧩</span>
+    <p>{{install.hermes}}</p>
+  </div>
+  <div class="extras reveal">
+    <div class="extra"><b>{{install.extra1.title}}</b><p>{{install.extra1.text}}</p></div>
+    <div class="extra"><b>{{install.extra2.title}}</b><p>{{install.extra2.text}}</p></div>
+    <div class="extra"><b>{{install.extra3.title}}</b><p>{{install.extra3.text}}</p></div>
+  </div>
+</section>
+
+<!-- ============================================================ FAQ -->
+<section class="section faq-section" id="faq">
+  <div class="section-head reveal">
+    <p class="kicker">{{faq.kicker}}</p>
+    <h2>{{faq.title}}</h2>
+  </div>
+  <div class="faq reveal">
+    <details><summary>{{faq.1.q}}</summary><p>{{faq.1.a}}</p></details>
+    <details><summary>{{faq.2.q}}</summary><p>{{faq.2.a}}</p></details>
+    <details><summary>{{faq.3.q}}</summary><p>{{faq.3.a}}</p></details>
+    <details><summary>{{faq.4.q}}</summary><p>{{faq.4.a}}</p></details>
+    <details><summary>{{faq.5.q}}</summary><p>{{faq.5.a}}</p></details>
+    <details><summary>{{faq.6.q}}</summary><p>{{faq.6.a}}</p></details>
+    <details><summary>{{faq.7.q}}</summary><p>{{faq.7.a}}</p></details>
+  </div>
+</section>
+
+<!-- ============================================================ END -->
+<section class="section end-section">
+  <div class="end reveal">
+    <div class="end-bips" aria-hidden="true">
+      <div data-bip="daily" data-interactive></div><div data-bip="wellness" data-interactive></div>
+      <div data-bip="finance" data-interactive></div><div data-bip="home" data-interactive></div>
+      <div data-bip="learning" data-interactive></div>
+    </div>
+    <h2>{{end.title}}</h2>
+    <p class="sub">{{end.sub}}</p>
+    <div class="cta-row center">
+      <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">App Store</span></span>
+      <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">Google Play</span></span>
+      <a class="pill pill-ink" href="https://github.com/Alexbob0/BipAgents" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-grid">
+    <div>
+      <a class="brand" href="{{home}}"><span class="brand-bip" data-bip-static="daily"></span><span class="brand-name">Bip<b>Agents</b></span></a>
+      <p>{{foot.about}}</p>
+    </div>
+    <nav aria-label="{{foot.legal}}">
+      <b>{{foot.legal}}</b>
+      <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a>
+      <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a>
+      <a href="https://kerfystudio.com/mentions-legales/">{{foot.notice}}</a>
+      <a href="https://kerfystudio.com{{legalprefix}}/support/">{{foot.support}}</a>
+    </nav>
+    <nav aria-label="{{foot.more}}">
+      <b>{{foot.more}}</b>
+      <a href="https://github.com/Alexbob0/BipAgents" rel="noopener">GitHub</a>
+      <a href="/play/">{{foot.play}}</a>
+      <a href="https://github.com/NousResearch/hermes-agent" rel="noopener">Hermes Agent</a>
+    </nav>
+  </div>
+  <p class="foot-fine">{{foot.fine}}</p>
+</footer>
+
+<script type="application/json" id="site-data">{{data}}</script>
+<script type="module" src="/assets/site.js?v={{version}}"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+{
+  "lang": { "short": "ES", "name": "Español" },
+  "meta": {
+    "title": "BipAgents — tus agentes de IA, en casa, en tu bolsillo",
+    "description": "BipAgents es la app de tus propios agentes de IA, construida sobre Hermes Agent. Escríbeles, háblales o pasa a Live: trabajan en tu ordenador o servidor y te preguntan antes de actuar. Gratis, con código abierto."
+  },
+  "a11y": { "skip": "Ir al contenido", "nav": "Secciones", "language": "Idioma" },
+  "nav": { "demo": "En acción", "privacy": "Privacidad", "install": "Instalar", "faq": "Preguntas", "get": "Conseguir la app" },
+  "hero": {
+    "badge": "Construida sobre Hermes Agent",
+    "line1": "Tus agentes de IA.", "line2": "En casa.", "line3": "En tu bolsillo.",
+    "lede": "BipAgents te conecta con tus propios agentes de IA, que funcionan en tu ordenador o tu servidor. Escríbeles, mándales una nota de voz o pasa a Live: se encargan de todo y te preguntan antes de actuar.",
+    "watch": "Verlos en acción",
+    "trust1": "Gratis", "trust2": "Código abierto", "trust3": "Tus datos se quedan en casa"
+  },
+  "store": { "soon": "Muy pronto en" },
+  "toast": {
+    "now": "ahora",
+    "1": { "from": "Día a día · IA", "text": "Reservado ✅ Pasta Mia, viernes 20:30, para 2." },
+    "2": { "from": "Presupuesto · IA", "text": "Cargo inusual: 49,99 € «StreamMax». ¿Lo conoces?" },
+    "3": { "from": "Coach · IA", "text": "4 de 4 entrenamientos esta semana 💪 ¡Sigue así!" },
+    "4": { "from": "Casa · IA", "text": "La lavadora ha terminado. ¡No olvides tender la ropa!" }
+  },
+  "marquee": ["Escribe", "Habla", "Live", "Pódcasts", "Correo", "Agenda", "Casa", "Presupuesto", "Sueño", "Web", "Archivos", "Recordatorios"],
+  "bips": {
+    "kicker": "Te presentamos a los Bips",
+    "title": "Un Bip por agente. Cada uno con su voz.",
+    "sub": "En la app, cada agente es una pequeña mascota con su color, su humor y su voz. Venga, chínchalos un poco: reaccionan igual que en la app.",
+    "hint": "Toca, haz cosquillas, acaricia, mantén pulsado… y escucha sus voces.",
+    "listen": "Escuchar",
+    "cat": {
+      "daily": { "name": "Día a día", "label": "Día a día" },
+      "wellness": { "name": "Coach", "label": "Bienestar" },
+      "finance": { "name": "Presupuesto", "label": "Finanzas" },
+      "home": { "name": "Casa", "label": "Casa" },
+      "work": { "name": "Oficina", "label": "Trabajo" },
+      "learning": { "name": "Profe", "label": "Aprender" },
+      "creative": { "name": "Taller", "label": "Creativo" },
+      "tech": { "name": "Servidor", "label": "Tecnología" }
+    }
+  },
+  "demo": {
+    "kicker": "En acción",
+    "title": "Tú pides. Él se encarga. Tú decides.",
+    "sub": "Es la demo de la app, tal cual. El agente piensa, usa sus herramientas, te pregunta cuando hay algo que elegir y espera tu permiso antes de cualquier cosa importante.",
+    "tab1": "Reservar mesa", "tab2": "Hace frío",
+    "point1": "Cada paso a la vista, plegado bajo la respuesta",
+    "point2": "Preguntas con un botón por respuesta",
+    "point3": "Tu permiso antes de reservar, pagar o enviar",
+    "chatSub": "Chat", "replay": "Repetir", "placeholder": "Mensaje…"
+  },
+  "ai": "IA",
+  "podcast": {
+    "kicker": "Tu mañana, en antena",
+    "title": "Tu resumen de la mañana, en pódcast.",
+    "sub": "Tu agente lo escribe a partir de tu día — citas, tiempo, paquetes — y dos voces te lo leen con el café. Este es el de la demo, grabado en cuatro idiomas.",
+    "credit": "Voces: Fish Audio Drama 3 · Built with Fish Audio",
+    "host1": "Día a día", "host2": "Coach", "play": "Escuchar el pódcast"
+  },
+  "live": {
+    "kicker": "Pasa a Live",
+    "title": "Habla, sin más. Manos libres.",
+    "sub": "Live es una conversación de verdad con tu agente: sin botón que mantener, te responde en voz alta, y lo interrumpes simplemente hablando.",
+    "point1": "En español, inglés, francés y alemán",
+    "point2": "Cada agente habla con su propia voz de Bip",
+    "point3": "Aun así, te pide permiso en pantalla antes de actuar"
+  },
+  "liveDialog": [
+    { "you": "¿Qué tengo mañana?", "bip": "Dos citas, y lluvia hacia las 17 h. ¿Te recuerdo coger el paraguas?" },
+    { "you": "Recuérdame llamar a mamá a las 19.", "bip": "Hecho: un recordatorio a las 19 h, con su número." },
+    { "you": "¿Hace frío en el salón?", "bip": "18,5 °C. Puedo subirla a 21: confírmalo en la pantalla." }
+  ],
+  "control": {
+    "kicker": "Tú tienes el control",
+    "title": "Ellos actúan. Tú tienes las llaves.",
+    "sub": "Correo, la web, tu casa conectada: tus agentes usan las herramientas que les das, y te preguntan antes de cualquier acción delicada.",
+    "approvalTitle": "¿Enviar la reserva en tu nombre?",
+    "approvalCommand": "Reservar: Pasta Mia · viernes 20:30\n2 personas",
+    "once": "Una vez", "session": "Esta sesión", "deny": "Rechazar",
+    "card1": { "title": "Tu permiso, con un toque", "text": "Una vez, para esta sesión, o no — directamente desde la notificación." },
+    "deskUrl": "reserva.ejemplo", "take": "Tomar el control",
+    "card2": { "title": "Un navegador que ves en directo", "text": "Cada agente tiene su propio Chrome en su propio escritorio. Míralo en directo y toma el ratón para un captcha o una contraseña." },
+    "teamLine": "Coach le pregunta a Presupuesto…",
+    "card3": { "title": "Agentes que colaboran", "text": "Tus agentes se consultan — solo los que tú permites — y el intercambio se pliega en una sola línea." }
+  },
+  "privacy": {
+    "kicker": "Privada por diseño",
+    "title": "Tus datos se quedan en casa.",
+    "sub": "Tus conversaciones, tus archivos y la memoria de tus agentes están en tu ordenador o tu servidor. Tus mensajes van de tu teléfono a tu servidor y luego al modelo de IA que elegiste: una API en la nube o uno que funciona en tu casa.",
+    "phone": "Tu teléfono", "link": "Tailscale o tu wifi",
+    "server": "Tu servidor", "serverSub": "Hermes Agent + tus Bips",
+    "model": "tú eliges", "modelName": "Modelo de IA", "modelSub": "nube o local",
+    "nope": "Kerfy Studio, el editor de la app, nunca ve tus conversaciones",
+    "chip1": "Sin cuenta", "chip2": "Sin anuncios", "chip3": "Sin rastreo", "chip4": "Código abierto (MIT)"
+  },
+  "install": {
+    "kicker": "Para empezar",
+    "title": "Un comando. Y escaneas.",
+    "sub": "Elige una máquina que se quede encendida: un Mac, un PC con Linux o Windows 11, o un pequeño servidor alquilado desde unos 8 € al mes. No hace falta GPU.",
+    "step1": { "title": "Una máquina siempre encendida", "text": "Tu ordenador, un mini PC o un pequeño servidor en la nube." },
+    "step2": { "title": "Lanza el comando", "text": "Te hace unas preguntas, te enseña lo que va a instalar y lo instala todo." },
+    "step3": { "title": "Escanea el código QR", "text": "En la app: + › Escanear código QR. Tus Bips te saludan." },
+    "out1": "✓ Hermes Agent, el cerebro de los agentes", "out2": "✓ El bridge y las voces de los Bips", "out3": "✓ ¡Listo! Escanea este código en la app.", "out4": "← escanéame",
+    "copy": "Copiar", "copied": "Copiado ✓",
+    "hermes": "<b>¿Ya usas Hermes Agent?</b> El mismo comando conecta la app con él, sin tocar tu modelo, tus herramientas, tus plataformas ni tus agentes. Te enseña todo lo que va a cambiar antes de empezar.",
+    "extra1": { "title": "Toda la familia", "text": "Un servidor para todos: cada persona tiene su propia instalación, sus agentes y sus datos." },
+    "extra2": { "title": "Múdate cuando quieras", "text": "De un servidor alquilado a un ordenador en casa, o a un proveedor más barato: tus agentes se mudan con su memoria, en un comando." },
+    "extra3": { "title": "Código abierto", "text": "El código es público con licencia MIT: léelo, ejecútalo, mejóralo." }
+  },
+  "faq": {
+    "kicker": "Preguntas", "title": "Buenas preguntas.",
+    "1": { "q": "¿Es gratis?", "a": "Sí. La app es gratis, sin compras dentro de la app. Solo pagas tu servidor y tu modelo de IA, si cuestan algo." },
+    "2": { "q": "¿Necesito una GPU?", "a": "No. Los modelos en la nube funcionan muy bien en cualquier máquina. Un modelo en casa también es posible, si tienes el equipo." },
+    "3": { "q": "¿Qué modelos de IA?", "a": "Los que admite Hermes Agent: OpenRouter, OpenAI, Anthropic, Mistral, o un modelo en casa con LM Studio o cualquier servidor compatible con OpenAI." },
+    "4": { "q": "¿Quién puede leer mis conversaciones?", "a": "Tu servidor y el proveedor del modelo que elegiste. Nosotros no: Kerfy Studio nunca ve tus conversaciones, y las notificaciones pasan por nuestro relé sin el texto de tus mensajes." },
+    "5": { "q": "¿iPhone o Android?", "a": "Los dos, y también iPad. En español, inglés, francés y alemán." },
+    "6": { "q": "¿Qué es Hermes Agent?", "a": "El agente de IA de código abierto de Nous Research. BipAgents es una app independiente construida sobre él: convierte tus agentes de Hermes en Bips que llevas a todas partes." },
+    "7": { "q": "¿Puedo probarla sin servidor?", "a": "Sí: la app tiene una demo integrada con cuatro Bips, datos inventados y el pódcast de la mañana. No se envía nada a ningún sitio." }
+  },
+  "end": { "title": "Conoce a tus Bips.", "sub": "Gratis en iPhone, iPad y Android, muy pronto. Mientras tanto, el código está en GitHub." },
+  "foot": {
+    "about": "BipAgents es la app de tus propios agentes de IA, de Kerfy Studio. Construida sobre Hermes Agent, software libre de Nous Research; BipAgents es una app independiente.",
+    "legal": "Legal", "privacy": "Privacidad", "terms": "Condiciones de uso", "notice": "Aviso legal", "support": "Soporte",
+    "more": "Más", "play": "Juega con los Bips",
+    "fine": "© 2026 Kerfy Studio. El pódcast de la demo: Built with Fish Audio. Las voces de los Bips: Pocket TTS, de Kyutai. Ni cookies ni rastreadores en este sitio."
+  },
+  "lines": {
+    "hop": ["¡Bip!", "¡Hola!", "¿Sí?", "¡Hop!"], "wink": ["Je je", "Bien hecho", "¡Aquí sigo!"], "spin": ["¡Wiii!"],
+    "surprised": ["¡Oh!", "¿¡Eh!?", "¿Qué?"], "thanks": ["Gracias ♡"], "giggle": ["¡Jiji!", "¡Me haces cosquillas!", "¡Para, jiji!"],
+    "pet": ["Mmm…", "Más…", "Rrrr…"], "dizzy": ["Todo da vueltas…"], "grumpy": ["¡Eh! Con calma…"], "boing": ["¡Boing!"]
+  }
+}
