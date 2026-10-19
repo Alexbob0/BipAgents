@@ -27,6 +27,7 @@ pub struct Relay {
     per_ip_push: Quota,
     per_ip_register: Quota,
     trust_forwarded_for: bool,
+    blocked: std::collections::HashSet<String>,
 }
 
 impl Relay {
@@ -39,7 +40,19 @@ impl Relay {
             per_ip_push: Quota::new(config.pushes_per_ip_hour),
             per_ip_register: Quota::new(config.registrations_per_ip_hour),
             trust_forwarded_for: config.trust_forwarded_for,
+            blocked: config.blocked.into_iter().collect(),
         })
+    }
+
+    /// Every minute: the quotas forget what is about to be an hour old.
+    pub fn sweep(&self) {
+        self.per_device.sweep();
+        self.per_ip_push.sweep();
+        self.per_ip_register.sweep();
+    }
+
+    fn is_blocked(&self, token: &str) -> bool {
+        !self.blocked.is_empty() && self.blocked.contains(&fingerprint(token))
     }
 
     fn client_ip(&self, peer: SocketAddr, headers: &HeaderMap) -> String {
@@ -134,6 +147,9 @@ async fn register(
             Device { platform: Platform::Fcm, environment: "fcm".into(), token }
         }
     };
+    if relay.is_blocked(&device.token) {
+        return refuse(StatusCode::FORBIDDEN, "this device is blocked on the relay: write to support@kerfystudio.com");
+    }
     tracing::info!(platform = ?device.platform, device = %fingerprint(&device.token), "device registered");
     Json(json!({"relay_token": relay.sealer.seal(&device)})).into_response()
 }
@@ -177,6 +193,10 @@ async fn push(
         || body.collapse_id.as_ref().is_some_and(|c| c.len() > 64)
     {
         return refuse(StatusCode::BAD_REQUEST, "invalid push");
+    }
+    if relay.is_blocked(&device.token) {
+        tracing::info!(device = %fingerprint(&device.token), "push refused: device blocked");
+        return refuse(StatusCode::FORBIDDEN, "this device is blocked on the relay: write to support@kerfystudio.com");
     }
     if !relay.per_ip_push.allow(relay.client_ip(peer, &headers).as_bytes())
         || !relay.per_device.allow(device.token.as_bytes())

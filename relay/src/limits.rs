@@ -1,4 +1,6 @@
-//! Hourly quotas, in memory (a relay that restarts starts counting again: fine for its purpose, abuse damping).
+//! Hourly quotas, in memory (a relay that restarts starts counting again: fine for its purpose, abuse damping). Each
+//! key is a hash, forgotten within the hour: [`Quota::sweep`] runs every minute (main.rs) and drops what is older than
+//! the window less a minute, so no hash is kept an hour or more.
 
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -6,6 +8,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const WINDOW: Duration = Duration::from_secs(3600);
+pub const SWEEP_EVERY: Duration = Duration::from_secs(60);
 const SWEEP_ABOVE: usize = 100_000;
 
 pub struct Quota {
@@ -16,6 +19,15 @@ pub struct Quota {
 impl Quota {
     pub fn new(per_hour: u32) -> Self {
         Self { per_hour, seen: Mutex::new(HashMap::new()) }
+    }
+
+    /// Forgets the keys counted more than an hour ago, less the time until the next sweep.
+    pub fn sweep(&self) {
+        self.sweep_at(Instant::now());
+    }
+
+    fn sweep_at(&self, now: Instant) {
+        self.seen.lock().expect("quota lock").retain(|_, (start, _)| now.duration_since(*start) < WINDOW - SWEEP_EVERY);
     }
 
     /// Counts one more for `key` (hashed: no token or address kept as such); false past the hour's allowance.
@@ -55,5 +67,16 @@ mod tests {
         assert!(!quota.allow_at(b"a", start));
         assert!(quota.allow_at(b"b", start));
         assert!(quota.allow_at(b"a", start + WINDOW));
+    }
+
+    #[test]
+    fn nothing_is_kept_an_hour() {
+        let quota = Quota::new(2);
+        let start = Instant::now();
+        quota.allow_at(b"a", start);
+        quota.sweep_at(start + WINDOW - SWEEP_EVERY - Duration::from_secs(1));
+        assert_eq!(quota.seen.lock().unwrap().len(), 1);
+        quota.sweep_at(start + WINDOW - SWEEP_EVERY);
+        assert!(quota.seen.lock().unwrap().is_empty());
     }
 }

@@ -68,6 +68,10 @@ struct Harness {
 }
 
 async fn harness(per_device: u32) -> Harness {
+    harness_with(per_device, Vec::new(), Sealer::generate_key()).await
+}
+
+async fn harness_with(per_device: u32, blocked: Vec<String>, seal_keys: String) -> Harness {
     use p256::pkcs8::{EncodePrivateKey, LineEnding};
     let seen: Shared = Arc::default();
     let fake = Router::new()
@@ -81,7 +85,7 @@ async fn harness(per_device: u32) -> Harness {
     let google_key = rsa::pkcs8::EncodePrivateKey::to_pkcs8_pem(&google_key, rsa::pkcs8::LineEnding::LF).unwrap();
     let config = Config {
         listen: "127.0.0.1:0".parse().unwrap(),
-        seal_keys: Sealer::generate_key(),
+        seal_keys,
         apns: Some(ApnsConfig {
             key_pem: apple_key.to_string(),
             key_id: "KEY1234567".into(),
@@ -100,6 +104,7 @@ async fn harness(per_device: u32) -> Harness {
         pushes_per_ip_hour: 1000,
         registrations_per_ip_hour: 1000,
         trust_forwarded_for: false,
+        blocked,
     };
     let relay = Arc::new(Relay::new(config, reqwest::Client::new()).unwrap());
     Harness { relay: serve(router(relay)).await, seen, http: reqwest::Client::new() }
@@ -220,4 +225,29 @@ async fn quotas_and_validation_hold() {
     assert_eq!(status, 400);
     let health: Value = h.http.get(format!("{}/health", h.relay)).send().await.unwrap().json().await.unwrap();
     assert_eq!(health, json!({"status": "ok", "apns": true, "fcm": true}));
+}
+
+#[tokio::test]
+async fn a_device_blocked_for_abuse_gets_nothing() {
+    use sha2::{Digest, Sha256};
+    let device = "cd".repeat(32);
+    let fingerprint: String = Sha256::digest(device.as_bytes()).iter().take(4).map(|b| format!("{b:02x}")).collect();
+    let key = Sealer::generate_key();
+    let h = harness_with(100, vec![fingerprint], key.clone()).await;
+    let (status, body) = h.post("/v1/register", json!({"platform": "apns", "token": device})).await;
+    assert_eq!(status, 403, "{body}");
+    assert!(body["detail"].as_str().unwrap().contains("support@kerfystudio.com"));
+    // A token sealed before it was blocked: refused too, nothing reaches Apple.
+    let sealed = Sealer::from_base64_list(&key).unwrap().seal(&bipagents_relay::seal::Device {
+        platform: bipagents_relay::seal::Platform::Apns,
+        environment: "production".into(),
+        token: device,
+    });
+    let (status, _) = h.post("/v1/relay/push", json!({"token": sealed, "payload": preview("vie")})).await;
+    assert_eq!(status, 403);
+    assert!(h.seen.lock().unwrap().apple.is_empty());
+    // Others still get theirs.
+    let other = h.register("apns", &"ef".repeat(32)).await;
+    let (status, _) = h.post("/v1/relay/push", json!({"token": other, "payload": preview("vie")})).await;
+    assert_eq!(status, 200);
 }

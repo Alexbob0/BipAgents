@@ -8,6 +8,9 @@
 use serde_json::{Map, Value};
 
 pub const GENERIC_BODY: &str = "Nouveau message";
+/// The app's generic, translated texts (its string catalog's keys, bridge/bipbridge/push.py): nothing else passes.
+const GENERIC_BODIES: &[&str] =
+    &[GENERIC_BODY, "Ta réponse est prête.", "Une question pour toi", "Approbation requise", "Sous-tâche terminée"];
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 const TITLE_MAX: usize = 80;
 const VALUE_MAX: usize = 256;
@@ -38,8 +41,8 @@ fn alert(value: &Value) -> Value {
     if let Some(title) = value.get("title").and_then(Value::as_str) {
         out.insert("title".into(), Value::String(short(title, TITLE_MAX)));
     }
-    let generic = value.get("loc-key").and_then(Value::as_str).map(|k| short(k, VALUE_MAX));
-    let body = generic.unwrap_or_else(|| GENERIC_BODY.to_string());
+    let generic = value.get("loc-key").and_then(Value::as_str).filter(|k| GENERIC_BODIES.contains(k));
+    let body = generic.unwrap_or(GENERIC_BODY).to_string();
     out.insert("body".into(), Value::String(body.clone()));
     out.insert("loc-key".into(), Value::String(body));
     Value::Object(out)

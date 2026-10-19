@@ -52,6 +52,14 @@ async fn main() {
         }
     };
     tracing::info!(%listen, apns = relay.apns.is_some(), fcm = relay.fcm.is_some(), "relay listening");
+    let sweeper = relay.clone();
+    tokio::spawn(async move {
+        let mut every = tokio::time::interval(bipagents_relay::limits::SWEEP_EVERY);
+        loop {
+            every.tick().await;
+            sweeper.sweep();
+        }
+    });
     let listener = tokio::net::TcpListener::bind(listen).await.expect("listen");
     axum::serve(listener, router(relay).into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown())

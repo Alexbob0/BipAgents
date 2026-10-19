@@ -44,6 +44,12 @@ class RelayClient:
             log.warning("relay unreachable", extra=fields(error=type(exc).__name__))
             return ApnsResult(status=503, reason="RelayUnreachable")
         if resp.status_code != 200:
+            if resp.status_code == 403:   # the publisher blocked this device for abuse (terms): said in the log
+                try:
+                    detail = str(resp.json().get("detail", ""))
+                except ValueError:
+                    detail = resp.text
+                log.warning("relay refused this device", extra=fields(detail=detail[:200]))
             return ApnsResult(status=resp.status_code, reason=f"Relay{resp.status_code}")
         data = resp.json()
         return ApnsResult(status=int(data.get("status", 0)), reason=data.get("reason"), apns_id=data.get("apns_id"))

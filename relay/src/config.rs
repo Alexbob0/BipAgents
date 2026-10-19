@@ -25,6 +25,9 @@ pub struct Config {
     pub pushes_per_ip_hour: u32,
     pub registrations_per_ip_hour: u32,
     pub trust_forwarded_for: bool,
+    /// Devices refused (terms of use: abuse), by the 8-hex fingerprint the logs show: `RELAY_BLOCKED` (separated by
+    /// commas or spaces) or `RELAY_BLOCKED_FILE` (one per line, `#` comments).
+    pub blocked: Vec<String>,
 }
 
 fn var(name: &str) -> Option<String> {
@@ -77,6 +80,14 @@ impl Config {
             pushes_per_ip_hour: number("RELAY_PUSHES_PER_IP_HOUR", 20000)?,
             registrations_per_ip_hour: number("RELAY_REGISTRATIONS_PER_IP_HOUR", 60)?,
             trust_forwarded_for: var("RELAY_TRUST_FORWARDED_FOR").is_some_and(|v| v == "1" || v == "true"),
+            blocked: inline_or_file("RELAY_BLOCKED")?
+                .unwrap_or_default()
+                .lines()
+                .map(|line| line.split('#').next().unwrap_or(""))
+                .flat_map(|line| line.split([',', ' ', '\t']))
+                .map(|item| item.trim().to_ascii_lowercase())
+                .filter(|item| item.len() == 8 && item.chars().all(|c| c.is_ascii_hexdigit()))
+                .collect(),
         })
     }
 }
