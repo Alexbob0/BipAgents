@@ -9,8 +9,14 @@ app pins it. Then the app claims the server over that pinned connection: it prov
 the bridge's one-time challenge and the exact request), sends the model key and the agents to create, and receives the
 bridge key. The secret is then deleted: any later claim is refused.
 
-    GET  /v1/setup?nonce=<hex>   {state: installing | ready | claimed, step, total, label, fingerprint, challenge, proof}
+    GET  /v1/setup?nonce=<hex>   {state: installing | ready | restoring | claimed, step, total, label, error?,
+                                  fingerprint, challenge, proof}
     POST /v1/setup/claim         {challenge, mac, request: "<JSON>"}  ->  {bridgeURL, bridgeKey, fingerprint, agents}
+
+A place given to someone whose server died (the guichet moved them, guichet/bipguichet/watch.py) is claimed with
+`{"restore": {"key": …}}` instead: the backup key the person's phone kept. The installer's `restore` puts their last
+backup back (installer/bipinstall/backup.py) in a unit of its own, its steps shown as `restoring`, then restarts the
+bridge with their own keys and certificate: the app then reaches it as before, at this new address.
 """
 from __future__ import annotations
 
@@ -69,10 +75,32 @@ def secret_of(config: Config) -> Optional[bytes]:
 
 
 def progress_of(config: Config) -> Dict[str, Any]:
-    """What the installer wrote at each step (`--cloud`): step, total, label, done."""
+    """What the installer wrote at each step (`--cloud`, or a restore): step, total, label, done, restoring, error."""
     data = _read_json(config.setup_progress)
     return {"step": int(data.get("step") or 0), "total": int(data.get("total") or 0),
-            "label": str(data.get("label") or ""), "done": bool(data.get("done"))}
+            "label": str(data.get("label") or ""), "done": bool(data.get("done")),
+            "restoring": bool(data.get("restoring")), "error": data.get("error") or None}
+
+
+def restoring(config: Config) -> bool:
+    return bool(config.setup_file) and (Path(config.setup_file).parent / "restoring.json").exists()
+
+
+def start_restore(config: Config, key: str) -> None:
+    """The installer's restore, in a systemd unit of its own (restarting the bridge must not stop it); the key in a
+    file only this account reads, deleted once read."""
+    import sys
+    folder = Path(config.setup_file or "").parent
+    key_file = folder / "restore-key"
+    fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(key)
+    repo = Path(__file__).resolve().parents[2]
+    import subprocess
+    subprocess.Popen(["systemd-run", "--user", "--unit", "bipagents-restore", "--collect",
+                      f"--setenv=PYTHONPATH={repo / 'installer'}", f"--working-directory={repo}",
+                      sys.executable, "-m", "bipinstall", "restore", "--key-file", str(key_file)],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 
 class Challenges:
@@ -114,6 +142,14 @@ class ClaimRequest(BaseModel):
     model: ModelChoice
     agents: List[AgentChoice] = Field(default_factory=list, max_length=8)
     language: Optional[str] = Field(default=None, max_length=20)
+
+
+class RestoreKey(BaseModel):
+    key: str = Field(..., min_length=16, max_length=200, pattern=r"^[A-Za-z0-9_\-]+$")
+
+
+class RestoreRequest(BaseModel):
+    restore: RestoreKey
 
 
 class Claim(BaseModel):
@@ -221,9 +257,13 @@ def cloud_setup_router() -> APIRouter:
         print_fp = fingerprint(config) or ""
         step = progress_of(config)
         challenge = challenges.issue()
-        return {"state": "ready" if step["done"] else "installing", "step": step["step"], "total": step["total"],
-                "label": step["label"], "fingerprint": print_fp, "challenge": challenge,
-                "proof": proof(secret, SETUP_CONTEXT, nonce.lower(), print_fp, challenge)}
+        state = "restoring" if restoring(config) else "ready" if step["done"] or step["error"] else "installing"
+        out = {"state": state, "step": step["step"], "total": step["total"], "label": step["label"],
+               "fingerprint": print_fp, "challenge": challenge,
+               "proof": proof(secret, SETUP_CONTEXT, nonce.lower(), print_fp, challenge)}
+        if step["error"]:
+            out["error"] = step["error"]   # a restore that failed (a wrong key): the app may claim again
+        return out
 
     @router.post("/setup/claim")
     async def claim(body: Claim, request: Request) -> Dict[str, Any]:
@@ -240,8 +280,30 @@ def cloud_setup_router() -> APIRouter:
                 if guard is not None:
                     guard.fail(address_of(request), "pairing proof")
                 raise HTTPException(status_code=401, detail="wrong pairing proof")
-            if not progress_of(config)["done"]:
+            step = progress_of(config)
+            if not step["done"] and not step["error"]:
                 raise HTTPException(status_code=409, detail="still installing")
+            if restoring(config):
+                raise HTTPException(status_code=409, detail="already restoring")
+            try:
+                asked = json.loads(body.request)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid request") from exc
+            if isinstance(asked, dict) and "restore" in asked:
+                try:
+                    key = RestoreRequest.model_validate_json(body.request).restore.key
+                except ValidationError as exc:
+                    raise HTTPException(status_code=400, detail="invalid restore request") from exc
+                marker = Path(config.setup_file or "").parent / "restoring.json"
+                marker.write_text(json.dumps({"since": time.time()}), encoding="utf-8")
+                try:
+                    await asyncio.to_thread(start_restore, config, key)
+                except OSError as exc:
+                    marker.unlink(missing_ok=True)
+                    raise HTTPException(status_code=502, detail="the restore could not start: try again") from exc
+                log.info("restore started", extra=fields(address=address_of(request)))
+                from .lan import fingerprint
+                return {"restoring": True, "bridgeURL": config.public_url, "fingerprint": fingerprint(config)}
             try:
                 wanted = ClaimRequest.model_validate_json(body.request)
             except ValidationError as exc:

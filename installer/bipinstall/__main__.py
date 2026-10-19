@@ -253,6 +253,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "backup":   # backup.py: this place to the guichet, every hour
         from .backup import main as backup_main
         return backup_main(argv[1:])
+    if argv and argv[0] == "restore":   # backup.py: a place moved after an outage, from its last backup
+        from .backup import restore_main
+        return restore_main(argv[1:])
     if argv and argv[0] == "voice":
         from .voice_server import main as voice_main
         return voice_main(argv[1:])

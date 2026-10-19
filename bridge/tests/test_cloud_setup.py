@@ -180,3 +180,30 @@ def test_claiming_sets_the_model_and_creates_agents_reached_through_the_door(clo
     assert agents == [{"id": "quotidien", "name": "Quotidien"}, {"id": "maison", "name": "Maison"}]
     assert not any(c[1:3] == ["config", "set"] for c in commands)
     assert sum(1 for c in commands if c[1:3] == ["profile", "create"]) == 1
+
+
+def test_a_moved_place_is_claimed_with_the_backup_key_and_says_it_is_restoring(client, cloud, monkeypatch):
+    from bipbridge import cloud_setup
+    started = []
+    monkeypatch.setattr(cloud_setup, "start_restore", lambda config, key: started.append(key))
+    done(cloud)
+    challenge = client.get("/v1/setup", params={"nonce": NONCE}).json()["challenge"]
+    request = json.dumps({"restore": {"key": "the-key-the-phone-kept-0123456789"}})
+    answer = client.post("/v1/setup/claim", json=claim_body(challenge, request))
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["restoring"] is True and "bridgeKey" not in answer.json()   # its own key comes back
+    assert started == ["the-key-the-phone-kept-0123456789"] and client.claims == []
+    state = client.get("/v1/setup", params={"nonce": NONCE}).json()
+    assert state["state"] == "restoring" and state["proof"]                          # still proved with the secret
+    again = client.get("/v1/setup", params={"nonce": NONCE}).json()["challenge"]
+    assert client.post("/v1/setup/claim", json=claim_body(again, request)).status_code == 409   # once at a time
+    # The restore failed (a wrong key): the place says why and takes another claim.
+    (cloud_setup.Path(cloud.setup_file).parent / "restoring.json").unlink()
+    with open(cloud.setup_progress, "w") as fh:
+        json.dump({"step": 0, "total": 4, "label": "this key doesn't open these backups", "done": False,
+                   "restoring": False, "error": "this key doesn't open these backups"}, fh)
+    state = client.get("/v1/setup", params={"nonce": NONCE}).json()
+    assert state["state"] == "ready" and state["error"] == "this key doesn't open these backups"
+    bad = json.dumps({"restore": {"key": "short"}})
+    retry = client.get("/v1/setup", params={"nonce": NONCE}).json()["challenge"]
+    assert client.post("/v1/setup/claim", json=claim_body(retry, bad)).status_code == 400

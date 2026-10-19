@@ -293,6 +293,217 @@ def install_timer(runner, repo: Path, python: Path, base: Optional[Path] = None)
     runner.run(["systemctl", "--user", "enable", "--now", f"{UNIT}.timer"], check=False)
 
 
+# -- restore: a place moved after an outage gets its person's last backup back ---------------------------------------
+
+RESTORE_TMP = Path(".local") / "state" / "bipagents" / "restore"
+MARKER = Path(".config") / "bipagents" / "restoring.json"   # the bridge says « restoring » while it is here
+STEPS = ("Fetching your last backup", "Putting your agents back", "Adjusting them to this server",
+         "Restarting your agents")
+
+
+def progress(base: Path, step: int, done: bool = False, error: Optional[str] = None) -> None:
+    """What the app shows (the bridge reads the install's progress file: GET /v1/setup)."""
+    label = error or (STEPS[step - 1] if 1 <= step <= len(STEPS) else "Ready")
+    write_private(base / ".config" / "bipagents" / "setup-progress.json",
+                  {"step": step, "total": len(STEPS), "label": label, "done": done, "restoring": not done,
+                   "error": error})
+
+
+def fetch(base: Path, key: str) -> Path:
+    """The last backup, into a folder of this account, with the key the phone gave back. The key becomes this
+    place's (its backups go on into the same repository)."""
+    data = dict(settings(base), password=key)
+    if not data.get("url"):
+        raise BackupError("this place has no backups set up")
+    env = environment(data, base)
+    opened = restic(["cat", "config"], env, timeout=120)
+    if opened.returncode != 0:
+        wrong = "wrong password" in opened.stderr or opened.returncode == 12
+        raise BackupError("this key doesn't open these backups" if wrong
+                          else "the backups can't be reached: " + _short(opened.stderr))
+    restic(["unlock"], env, timeout=120)   # locks the dead server left behind
+    target = base / RESTORE_TMP
+    if target.exists():
+        import shutil
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+    got = restic(["restore", "latest", "--host", HOST, "--target", str(target)], env)
+    if got.returncode != 0:
+        raise BackupError("the last backup couldn't be fetched: " + _short(got.stderr))
+    set_password(key, base)
+    return target
+
+
+def _manifest(fetched: Path) -> Tuple[Dict, Path]:
+    found = sorted(fetched.glob("**/.local/state/bipagents/backup-stage/manifest.json"))
+    if not found:
+        raise BackupError("the backup holds no manifest")
+    return json.loads(found[0].read_text(encoding="utf-8")), found[0].parent
+
+
+def _inside(fetched: Path, path: str) -> Path:
+    return fetched / path.lstrip("/")
+
+
+def _copy(src: Path, dst: Path) -> None:
+    import shutil
+    if src.is_symlink():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.is_symlink() or dst.exists():
+            dst.unlink()
+        os.symlink(os.readlink(src), dst)
+    elif src.is_dir():
+        shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
+    elif src.is_file():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+
+
+FRESH_WINS = (("", "public_url"), ("browser", "first_port"), ("browser", "ports"), ("lan", "enabled"),
+              ("lan", "port"), ("lan", "address"), ("setup", "file"), ("setup", "progress"))
+
+
+def _toml_value(text: str, section: str, key: str) -> Optional[str]:
+    """A setting's raw value (as written) in a section ("": before the first one)."""
+    import re
+    inside = section == ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            inside = stripped == f"[{section}]"
+            continue
+        found = re.match(rf"\s*{re.escape(key)}\s*=\s*(.+?)\s*$", line) if inside else None
+        if found:
+            return found.group(1)
+    return None
+
+
+def _set_toml(text: str, section: str, key: str, value: Optional[str]) -> str:
+    from . import moving
+    if section:
+        return moving.set_in_section(text, section, key, value)
+    lines = text.splitlines()
+    end = next((i for i, line in enumerate(lines) if line.lstrip().startswith("[")), len(lines))
+    at = next((i for i in range(end) if lines[i].split("=", 1)[0].strip() == key), None)
+    if at is not None:
+        if value is None:
+            del lines[at]
+        else:
+            lines[at] = f"{key} = {value}"
+    elif value is not None:
+        lines.insert(end, f"{key} = {value}")
+    return "\n".join(lines) + "\n"
+
+
+def put_back(fetched: Path, base: Path, repo: Path, address: Optional[str]) -> Dict:
+    """The backup's files in this account, over the fresh install, then its settings moved to this place: home and
+    local ports (each port once: two blocks may overlap); this place's own door, address, browser ports, setup files
+    and backup token stay as the fresh install made them. Returns the backup's manifest."""
+    from . import moving
+    import re
+    import tomllib
+    info, stage = _manifest(fetched)
+    config = base / ".config" / "bipagents" / "bridge.toml"
+    fresh_text = config.read_text(encoding="utf-8")
+    fresh = moving.read_inventory(config, base)
+    new_ports = fresh.ports()
+    own = {(section, key): _toml_value(fresh_text, section, key) for section, key in FRESH_WINS}
+    own_backup = settings(base)
+    target = moving.Target(home=base, repo=repo, tailnet_name=None, lan_address=address)
+    for old in info["roots"].values():
+        source = _inside(fetched, old)
+        if source.exists() or source.is_symlink():
+            _copy(source, moving.rehome(old, info, target))
+    sqlite_root = _inside(fetched, info.get("stage") or str(stage)) / "sqlite"
+    if sqlite_root.is_dir():
+        for copy in sqlite_root.rglob("*"):
+            if not copy.is_file():
+                continue
+            dest = moving.rehome("/" + str(copy.relative_to(sqlite_root)), info, target)
+            for sidecar in ("-wal", "-shm", "-journal"):
+                dest.with_name(dest.name + sidecar).unlink(missing_ok=True)
+            _copy(copy, dest)
+    old_toml = tomllib.loads(config.read_text(encoding="utf-8"))
+    mapping = {int(info["ports"][k]): int(new_ports[k]) for k in ("hub", "bridge", "desk")
+               if k in info["ports"] and int(info["ports"][k]) != int(new_ports[k])}
+    roots = [moving.rehome(path, info, target) for path in info["roots"].values()]
+    marks = {old: f"BIPAGENTSPORT{i}X" for i, old in enumerate(mapping)}   # first to marks, then to the new ports
+    moving.rewrite(moving.settings_files(roots), moving.replacements(info, moving.Target(
+        home=base, repo=repo, tailnet_name=None, lan_address=address, ports=marks)))
+    moving.rewrite(moving.settings_files(roots), [(re.compile(re.escape(mark)), str(mapping[old]))
+                                                  for old, mark in marks.items()])
+    moving.adjust_bridge(config, info, target, old_toml)
+    text = config.read_text(encoding="utf-8")
+    for (section, key), value in own.items():
+        text = _set_toml(text, section, key, value)
+    config.write_text(text, encoding="utf-8")
+    os.chmod(config, 0o600)
+    if own_backup.get("url"):   # this seat's token, the person's key
+        write_private(base / SETTINGS, {**own_backup, "password": settings(base).get("password")
+                                        or own_backup.get("password")})
+    return info
+
+
+def restore(key: str, runner, base: Optional[Path] = None, repo: Optional[Path] = None,
+            address: Optional[str] = None) -> Dict:
+    """The whole restore, as the bridge starts it (a unit of its own, so restarting the bridge doesn't stop it)."""
+    from .__main__ import REPO
+    from .update import gateway_units
+    base = base or home()
+    repo = repo or REPO
+    try:
+        progress(base, 1)
+        fetched = fetch(base, key)
+        progress(base, 2)
+        for how, name in gateway_units():
+            if how == "systemd":
+                runner.run(["systemctl", "--user", "stop", name], check=False)
+        info = put_back(fetched, base, repo, address)
+        progress(base, 3)
+        from . import migrations
+        for line in migrations.run(runner):
+            runner.log.append(line)
+        progress(base, 4)
+        for how, name in gateway_units():
+            if how == "systemd":
+                runner.run(["systemctl", "--user", "start", name], check=False)
+        python = [str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge"]
+        config = base / ".config" / "bipagents" / "bridge.toml"
+        if info.get("browsers"):
+            runner.run(python + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge", check=False)
+    except BackupError as exc:
+        progress(base, 0, error=str(exc))
+        (base / MARKER).unlink(missing_ok=True)
+        raise
+    import shutil
+    shutil.rmtree(base / RESTORE_TMP, ignore_errors=True)
+    (base / ".config" / "bipagents" / "setup.json").unlink(missing_ok=True)   # claimed: the pairing secret goes
+    (base / MARKER).unlink(missing_ok=True)
+    progress(base, len(STEPS), done=True)
+    from .family import bridge_restart
+    runner.run(bridge_restart(base), check=False)   # last: it comes back with the restored keys and certificate
+    return info
+
+
+def restore_main(argv: List[str]) -> int:
+    import argparse
+    from . import cloud, hermes
+    parser = argparse.ArgumentParser(prog="bipinstall restore", description="Put this place's person's last backup "
+                                     "back here (after their server died); the bridge runs it with the key from the app")
+    parser.add_argument("--key-file", required=True, help="a file holding the backup key (deleted once read)")
+    args = parser.parse_args(argv)
+    path = Path(args.key_file)
+    key = path.read_text(encoding="utf-8").strip()
+    path.unlink(missing_ok=True)
+    try:
+        restore(key, hermes.Runner(), address=cloud.public_address())
+    except BackupError as exc:
+        print(f"Restore failed: {exc}", flush=True)
+        return 1
+    print("Restored.", flush=True)
+    return 0
+
+
 def main(argv: List[str]) -> int:
     import argparse
     parser = argparse.ArgumentParser(prog="bipinstall backup", description="Back this place up to the guichet now "
