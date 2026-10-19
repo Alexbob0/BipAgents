@@ -142,7 +142,10 @@ new IntersectionObserver(([entry]) => {
   if (!studio) return;
   const audio = $("audio", studio), button = $(".play", studio), time = $(".time", studio), bars = $$(".wave i", studio);
   const hosts = $$(".host", studio).map(h => ({ el: h, bip: bips.get($(".host-bip", h)) }));
-  let analyser, wave, freq, raf, speaker = 0, quiet = 0;
+  let analyser, wave, freq, raf, quiet = 0;
+  // Who speaks when: each turn's start, found in the recording (scripts/podcast-timeline.py), not guessed from pauses.
+  const turns = data.podcast || [[0, 0]];
+  const speakerAt = t => turns.reduce((who, [start, host]) => (t + 0.05 >= start ? host : who), turns[0][1]);
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const idle = () => {
     hosts.forEach(h => { h.bip.mood = "happy"; h.bip.level = null; h.el.classList.remove("on"); });
@@ -166,8 +169,8 @@ new IntersectionObserver(([entry]) => {
       let peak = 0;
       for (const v of wave) peak = Math.max(peak, Math.abs(v - 128));
       const level = Math.min(1, peak / 45);
-      // A dialogue: a pause of a third of a second hands the word to the other host.
-      if (level < 0.06) quiet++; else { if (quiet > 20) speaker = 1 - speaker; quiet = 0; }
+      quiet = level < 0.06 ? quiet + 1 : 0;
+      const speaker = speakerAt(audio.currentTime);
       hosts.forEach((h, i) => {
         const on = i === speaker && quiet < 20;
         h.bip.mood = on ? "speaking" : "happy"; h.bip.level = on ? level : null; h.el.classList.toggle("on", on);

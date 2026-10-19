@@ -172,6 +172,8 @@ def bipagents(version: str) -> Path:
     copy(REPO / "docs" / "play" / "index.html", out / "play" / "index.html")
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
+    # When each Bip speaks in the podcast (scripts/podcast-timeline.py).
+    timeline = json.loads((src / "podcast-timeline.json").read_text(encoding="utf-8"))
     agents = {a["id"]: a for a in demo["agents"]}
     template = (src / "index.html").read_text(encoding="utf-8")
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
@@ -207,6 +209,7 @@ def bipagents(version: str) -> Path:
             scenarios[scenario] = {"agent": localized(agents[agent]["name"], lang), "category": agents[agent]["category"],
                                    "prompt": s["prompt"], "steps": s["steps"]}
         data = {"lang": lang, "lines": t["lines"], "live": t["liveDialog"], "scenarios": scenarios,
+                "podcast": timeline.get(lang, [[0, 0]]),
                 "labels": {"once": t["control"]["once"], "session": t["control"]["session"], "deny": t["control"]["deny"]}}
         values["data"] = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
         page = fill(template, values, f"bipagents/{lang}")
