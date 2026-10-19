@@ -1,4 +1,4 @@
-// bipagents.com: the Bips, the agent at work (the app's own demo scenarios), the morning podcast, Live, the install.
+// bipagents.com: the agent at work (the app's own demo scenarios), the morning podcast, Live, the install.
 import { Bip, CATEGORIES, REDUCED, audioContext, staticBip } from "./bips.js";
 
 const data = JSON.parse(document.getElementById("site-data").textContent);
@@ -40,42 +40,6 @@ $$(".reveal").forEach(el => revealer.observe(el));
     i++;
   }
 })();
-
-// -- The Bips' voices -------------------------------------------------------------------------------------------------
-let playingVoice = null;
-for (const button of $$(".voice")) {
-  const card = button.closest(".bip-card"), bip = bips.get($(".bip", card));
-  const audio = new Audio(button.dataset.src);
-  audio.preload = "none";
-  let analyser, buffer, raf;
-  const stop = () => {
-    audio.pause(); audio.currentTime = 0; button.classList.remove("playing"); bip.mood = "happy"; bip.level = null;
-    cancelAnimationFrame(raf); if (playingVoice === stop) playingVoice = null;
-  };
-  audio.addEventListener("ended", stop);
-  button.addEventListener("click", async () => {
-    if (playingVoice === stop) { stop(); return; }
-    playingVoice?.();
-    playingVoice = stop;
-    const ctx = audioContext();
-    if (!analyser) {
-      analyser = ctx.createAnalyser(); analyser.fftSize = 512;
-      ctx.createMediaElementSource(audio).connect(analyser);
-      analyser.connect(ctx.destination);
-      buffer = new Uint8Array(analyser.fftSize);
-    }
-    button.classList.add("playing");
-    bip.mood = "speaking";
-    await audio.play().catch(stop);
-    (function level() {
-      analyser.getByteTimeDomainData(buffer);
-      let peak = 0;
-      for (const v of buffer) peak = Math.max(peak, Math.abs(v - 128));
-      bip.level = Math.min(1, peak / 50);
-      raf = requestAnimationFrame(level);
-    })();
-  });
-}
 
 // -- An agent at work: the app's demo scenarios, played in a chat --------------------------------------------------
 const chat = $(".chat"), body = $(".chat-body"), wrap = $(".chat-wrap");

@@ -30,8 +30,8 @@
   </a>
   <nav class="top-links" aria-label="{{a11y.nav}}">
     <a href="#demo">{{nav.demo}}</a>
+    <a href="#bips">{{nav.bips}}</a>
     <a href="#privacy">{{nav.privacy}}</a>
-    <a href="#install">{{nav.install}}</a>
     <a href="#faq">{{nav.faq}}</a>
   </nav>
   <div class="top-actions">
@@ -39,7 +39,7 @@
       <summary aria-label="{{a11y.language}}">{{lang.short}}</summary>
       <div class="lang-menu">{{langmenu}}</div>
     </details>
-    <a class="pill pill-ink small" href="#get">{{nav.get}}</a>
+    <a class="pill pill-ink small" href="#install">{{nav.cta}}</a>
   </div>
 </header>
 
@@ -58,7 +58,7 @@
       <span class="h-line h-mark mark-coral">{{hero.line3}}</span>
     </h1>
     <p class="lede">{{hero.lede}}</p>
-    <div class="cta-row" id="get">
+    <div class="cta-row">
       <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">App Store</span></span>
       <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">Google Play</span></span>
       <a class="pill pill-soft" href="#demo">{{hero.watch}} <span aria-hidden="true">↓</span></a>
@@ -88,19 +88,6 @@
 
 <!-- ============================================================ MARQUEE -->
 <div class="marquee" aria-hidden="true"><div class="marquee-track">{{marquee}}{{marquee}}</div></div>
-
-<!-- ============================================================ BIPS -->
-<section class="section bips-section" id="bips">
-  <div class="section-head reveal">
-    <p class="kicker">{{bips.kicker}}</p>
-    <h2>{{bips.title}}</h2>
-    <p class="sub">{{bips.sub}}</p>
-  </div>
-  <div class="bip-grid reveal">
-    {{bipcards}}
-  </div>
-  <p class="hint reveal">{{bips.hint}}</p>
-</section>
 
 <!-- ============================================================ DEMO -->
 <section class="section demo-section" id="demo">
@@ -133,6 +120,80 @@
   </div>
 </section>
 
+
+<!-- ============================================================ BIPS -->
+<section class="section bips-section" id="bips">
+  <div class="section-head reveal">
+    <p class="kicker">{{bips.kicker}}</p>
+    <h2>{{bips.title}}</h2>
+    <p class="sub">{{bips.sub}}</p>
+  </div>
+  <div class="bip-grid reveal">
+    {{bipcards}}
+  </div>
+  <p class="hint reveal">{{bips.hint}}</p>
+</section>
+
+
+<!-- ============================================================ PRIVACY -->
+<section class="section privacy-section" id="privacy">
+  <div class="privacy reveal">
+    <div class="section-head left">
+      <p class="kicker light">{{privacy.kicker}}</p>
+      <h2>{{privacy.title}}</h2>
+      <p class="sub">{{privacy.sub}}</p>
+    </div>
+    <div class="own">
+      <article class="own-card"><span class="own-icon" aria-hidden="true">☁️</span><h3>{{privacy.own1.title}} <span class="soon">{{privacy.soon}}</span></h3><p>{{privacy.own1.text}}</p></article>
+      <article class="own-card"><span class="own-icon" aria-hidden="true">🛠️</span><h3>{{privacy.own2.title}}</h3><p>{{privacy.own2.text}}</p></article>
+      <article class="own-card"><span class="own-icon" aria-hidden="true">✦</span><h3>{{privacy.own3.title}}</h3><p>{{privacy.own3.text}}</p></article>
+    </div>
+    <div class="flow" aria-hidden="true">
+      <div class="node node-phone"><span class="node-icon">📱</span><b>{{privacy.phone}}</b></div>
+      <div class="pipe"><span>{{privacy.link}}</span><i></i></div>
+      <div class="node node-server"><span class="node-bips"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="finance"></i></span><b>{{privacy.server}}</b><small>{{privacy.serverSub}}</small></div>
+      <div class="pipe"><span>{{privacy.model}}</span><i></i></div>
+      <div class="node node-model"><span class="node-icon">✦</span><b>{{privacy.modelName}}</b><small>{{privacy.modelSub}}</small></div>
+    </div>
+    <div class="nope"><span class="nope-x">✕</span>{{privacy.nope}}</div>
+    <ul class="chips">
+      <li>{{privacy.chip1}}</li><li>{{privacy.chip2}}</li><li>{{privacy.chip3}}</li><li>{{privacy.chip4}}</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ INSTALL -->
+<section class="section install-section" id="install">
+  <div class="section-head reveal">
+    <p class="kicker">{{install.kicker}}</p>
+    <h2>{{install.title}}</h2>
+    <p class="sub">{{install.sub}}</p>
+  </div>
+  <div class="terminal reveal">
+    <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
+    <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
+<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span><span class="out o4 qr">▄▄▄▄▄ ▄ ▄▄ ▄▄▄▄▄
+█ ▄ █ ▀█▄ █ ▄ █
+█▄▄▄█ █▀▄ █▄▄▄█  {{install.out4}}</span></code></pre>
+    <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
+  </div>
+  <p class="windows reveal">{{install.windows}} <code>irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex</code></p>
+  <ol class="steps reveal">
+    <li><span class="n">1</span><div><h3>{{install.step1.title}}</h3><p>{{install.step1.text}}</p></div></li>
+    <li><span class="n">2</span><div><h3>{{install.step2.title}}</h3><p>{{install.step2.text}}</p></div></li>
+    <li><span class="n">3</span><div><h3>{{install.step3.title}}</h3><p>{{install.step3.text}}</p></div></li>
+  </ol>
+  <div class="hermes-note reveal">
+    <span class="hn-icon" aria-hidden="true">🧩</span>
+    <p>{{install.hermes}}</p>
+  </div>
+  <div class="extras reveal">
+    <div class="extra"><b>{{install.extra1.title}}</b><p>{{install.extra1.text}}</p></div>
+    <div class="extra"><b>{{install.extra2.title}}</b><p>{{install.extra2.text}}</p></div>
+    <div class="extra"><b>{{install.extra3.title}}</b><p>{{install.extra3.text}}</p></div>
+  </div>
+</section>
+
 <!-- ============================================================ PODCAST -->
 <section class="section podcast-section" id="podcast">
   <div class="podcast reveal">
@@ -158,6 +219,7 @@
   </div>
 </section>
 
+
 <!-- ============================================================ LIVE -->
 <section class="section live-section" id="live">
   <div class="live-grid">
@@ -177,6 +239,7 @@
     </div>
   </div>
 </section>
+
 
 <!-- ============================================================ CONTROL -->
 <section class="section control-section" id="control">
@@ -217,60 +280,6 @@
   </div>
 </section>
 
-<!-- ============================================================ PRIVACY -->
-<section class="section privacy-section" id="privacy">
-  <div class="privacy reveal">
-    <div class="section-head left">
-      <p class="kicker light">{{privacy.kicker}}</p>
-      <h2>{{privacy.title}}</h2>
-      <p class="sub">{{privacy.sub}}</p>
-    </div>
-    <div class="flow" aria-hidden="true">
-      <div class="node node-phone"><span class="node-icon">📱</span><b>{{privacy.phone}}</b></div>
-      <div class="pipe"><span>{{privacy.link}}</span><i></i></div>
-      <div class="node node-server"><span class="node-bips"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="finance"></i></span><b>{{privacy.server}}</b><small>{{privacy.serverSub}}</small></div>
-      <div class="pipe"><span>{{privacy.model}}</span><i></i></div>
-      <div class="node node-model"><span class="node-icon">✦</span><b>{{privacy.modelName}}</b><small>{{privacy.modelSub}}</small></div>
-    </div>
-    <div class="nope"><span class="nope-x">✕</span>{{privacy.nope}}</div>
-    <ul class="chips">
-      <li>{{privacy.chip1}}</li><li>{{privacy.chip2}}</li><li>{{privacy.chip3}}</li><li>{{privacy.chip4}}</li>
-    </ul>
-  </div>
-</section>
-
-<!-- ============================================================ INSTALL -->
-<section class="section install-section" id="install">
-  <div class="section-head reveal">
-    <p class="kicker">{{install.kicker}}</p>
-    <h2>{{install.title}}</h2>
-    <p class="sub">{{install.sub}}</p>
-  </div>
-  <div class="install-grid">
-    <ol class="steps reveal">
-      <li><span class="n">1</span><div><h3>{{install.step1.title}}</h3><p>{{install.step1.text}}</p></div></li>
-      <li><span class="n">2</span><div><h3>{{install.step2.title}}</h3><p>{{install.step2.text}}</p></div></li>
-      <li><span class="n">3</span><div><h3>{{install.step3.title}}</h3><p>{{install.step3.text}}</p></div></li>
-    </ol>
-    <div class="terminal reveal">
-      <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
-      <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
-<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span><span class="out o4 qr">▄▄▄▄▄ ▄ ▄▄ ▄▄▄▄▄
-█ ▄ █ ▀█▄ █ ▄ █
-█▄▄▄█ █▀▄ █▄▄▄█  {{install.out4}}</span></code></pre>
-      <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
-    </div>
-  </div>
-  <div class="hermes-note reveal">
-    <span class="hn-icon" aria-hidden="true">🧩</span>
-    <p>{{install.hermes}}</p>
-  </div>
-  <div class="extras reveal">
-    <div class="extra"><b>{{install.extra1.title}}</b><p>{{install.extra1.text}}</p></div>
-    <div class="extra"><b>{{install.extra2.title}}</b><p>{{install.extra2.text}}</p></div>
-    <div class="extra"><b>{{install.extra3.title}}</b><p>{{install.extra3.text}}</p></div>
-  </div>
-</section>
 
 <!-- ============================================================ FAQ -->
 <section class="section faq-section" id="faq">
@@ -288,6 +297,7 @@
     <details><summary>{{faq.7.q}}</summary><p>{{faq.7.a}}</p></details>
   </div>
 </section>
+
 
 <!-- ============================================================ END -->
 <section class="section end-section">

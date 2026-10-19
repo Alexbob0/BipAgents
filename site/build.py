@@ -4,7 +4,7 @@
     python3 site/build.py --serve    # then serves site/dist/<site> on http://127.0.0.1:8770 (bipagents) and :8771 (kerfy)
 
 Standard library only (the legal texts' Markdown is converted here). Texts come from site/src/<site>/i18n/*.json, the
-demo's scenarios from App/Resources/Demo/demo.json, the voices and podcasts from the apps' own files: nothing is copied
+demo's scenarios from App/Resources/Demo/demo.json, the podcasts from the apps' own files: nothing is copied
 twice in the repository.
 """
 from __future__ import annotations
@@ -33,8 +33,12 @@ COLORS = {  # main, deep, tint variable (site.css)
     "creative": ("#F2649E", "#C23774", "pink"), "tech": ("#6B7489", "#3F4659", "blue"),
 }
 CURRENT = ' aria-current="page"'
-VOICES = {"daily": "colibri", "wellness": "mousse", "finance": "ours", "home": "ours", "work": "galet",
-          "learning": "lumen", "creative": "lumen", "tech": "galet"}
+
+
+def french_spaces(text: str) -> str:
+    """French typography: a narrow no-break space before ? ! ; : and inside « », so they stay with their word."""
+    text = re.sub(r" ([?!;:»])", "\u202f\\1", text)
+    return text.replace("« ", "«\u202f")
 
 
 def flatten(tree: Any, prefix: str = "") -> Dict[str, Any]:
@@ -165,10 +169,6 @@ def bipagents(version: str) -> Path:
     media = assets / "media"
     for lang in LANGS:
         copy(REPO / "App" / "Resources" / "Demo" / f"podcast-morning-{lang}.m4a", media / f"podcast-morning-{lang}.m4a")
-        for voice in set(VOICES.values()):
-            suffix = "" if lang == "fr" else f"_{lang}"
-            copy(REPO / "android" / "app" / "src" / "main" / "res" / "raw" / f"voice_{voice}{suffix}.m4a",
-                 media / f"voice-{voice}-{lang}.m4a")
     copy(REPO / "docs" / "play" / "index.html", out / "play" / "index.html")
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
@@ -179,6 +179,8 @@ def bipagents(version: str) -> Path:
     for lang in LANGS:
         t = texts[lang]
         values = flatten({k: v for k, v in t.items() if k not in ("marquee", "lines", "liveDialog")})
+        if lang == "fr":   # « ? », « : »… never alone at the start of a line
+            values = {k: french_spaces(v) if isinstance(v, str) else v for k, v in values.items()}
         values.update({
             "lang": lang, "path": paths[lang], "home": paths[lang], "version": version,
             "legalprefix": "" if lang == "fr" else f"/{lang}",
@@ -194,13 +196,10 @@ def bipagents(version: str) -> Path:
         for category in CATEGORY_ORDER:
             main, deep, tone = COLORS[category]
             name, label = t["bips"]["cat"][category]["name"], t["bips"]["cat"][category]["label"]
-            voice = f"/assets/media/voice-{VOICES[category]}-{lang}.m4a"
             cards.append(
                 f'<article class="bip-card" style="--main:{main};--deep:{deep};--tint:var(--{tone}-tint)">'
                 f'<div data-bip="{category}" data-interactive aria-label="{html.escape(name)}"></div>'
-                f'<h3>{html.escape(name)}</h3><span class="chip">{html.escape(label)}</span>'
-                f'<button class="voice" type="button" data-src="{voice}"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>'
-                f'{html.escape(t["bips"]["listen"])}</button></article>')
+                f'<h3>{html.escape(name)}</h3><span class="chip">{html.escape(label)}</span></article>')
         values["bipcards"] = "\n    ".join(cards)
         scenarios = {}
         for scenario, agent in (("book_table", "daily"), ("heating", "home")):

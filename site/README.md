@@ -1,8 +1,9 @@
 # The websites
 
-- **bipagents.com** — the app: what it does, the Bips (their voices), the app's own demo playing in a chat, the morning
-  podcast, Live, privacy, the install command, questions. English at `/`, French, German and Spanish at `/fr/`, `/de/`,
-  `/es/`.
+- **bipagents.com** — the app, in this order: what the agents automate (the app's own demo playing in a chat), one Bip
+  per agent, private with nothing to do (a computer of one's own at a partner host, the AI of one's choice) and right
+  below it the install command for one's own computer; then the morning podcast, Live, approvals, questions. English
+  at `/`, French, German and Spanish at `/fr/`, `/de/`, `/es/`.
 - **kerfystudio.com** — the publisher: its page, support (contact details the stores ask for), the privacy policy and
   terms in four languages and the mentions légales, rendered from [`docs/legal/`](../docs/legal/), and
   `/.well-known/security.txt`.
@@ -16,7 +17,7 @@ Python 3.12 (or the bridge's venv), Node for the Bips' still drawings (icon, Ker
 for the link previews (`og-<lang>.png`, 1200×630). Without them, the build still works, without those images.
 
 Nothing is copied twice: texts are in `src/<site>/i18n/*.json`, the demo's scenarios come from
-`App/Resources/Demo/demo.json`, the podcasts and the Bips' voices from the apps' own files, the legal texts from
+`App/Resources/Demo/demo.json`, the podcasts from the apps' own files, the legal texts from
 `docs/legal/`. The Bips are drawn by `src/shared/bips.js`, the same geometry as the apps.
 
 **Privacy**: no cookie, no tracker, no third-party request (the font, Nunito, is served from the site). So no consent
