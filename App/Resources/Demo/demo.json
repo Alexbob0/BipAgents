@@ -1310,10 +1310,10 @@
   ],
   "live": {
     "greeting": {
-      "fr": "Salut, c’est {name} ! Pose-moi une question. Par exemple : {suggestion}",
-      "en": "Hi, it’s {name}! Ask me something. For example: {suggestion}",
-      "de": "Hallo, hier ist {name}! Frag mich etwas. Zum Beispiel: {suggestion}",
-      "es": "¡Hola, soy {name}! Pregúntame algo. Por ejemplo: {suggestion}"
+      "fr": "Salut, c’est {name}, ton agent IA ! Pose-moi une question. Par exemple : {suggestion}",
+      "en": "Hi, it’s {name}, your AI agent! Ask me something. For example: {suggestion}",
+      "de": "Hallo, hier ist {name}, dein KI-Agent! Frag mich etwas. Zum Beispiel: {suggestion}",
+      "es": "¡Hola, soy {name}, tu agente de IA! Pregúntame algo. Por ejemplo: {suggestion}"
     },
     "fallback": {
       "fr": "Dans cette démo, je connais quelques histoires. Essaie par exemple : {suggestion}",
