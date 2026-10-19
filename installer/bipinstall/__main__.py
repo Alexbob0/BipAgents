@@ -250,6 +250,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] in ("export", "import", "resume"):   # moving.py: to another machine, or a backup
         from . import moving
         return {"export": moving.export_main, "import": moving.import_main, "resume": moving.resume_main}[argv[0]](argv[1:])
+    if argv and argv[0] == "backup":   # backup.py: this place to the guichet, every hour
+        from .backup import main as backup_main
+        return backup_main(argv[1:])
     if argv and argv[0] == "voice":
         from .voice_server import main as voice_main
         return voice_main(argv[1:])
@@ -415,6 +418,12 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     runner.log.append(f"write {inst.setup_file}")
     if not runner.dry:
         cloud.write_setup(inst.setup_file, setup)
+    if setup.backup:   # every hour once the app has paired it, to the guichet, encrypted with a key made here
+        from . import backup
+        runner.log.append(f"write {Path.home() / backup.SETTINGS}")
+        if not runner.dry:
+            backup.configure(setup.backup["url"], setup.backup["token"])
+        backup.install_timer(runner, REPO, REPO / "bridge" / ".venv" / "bin" / "python")
     total = 5 if browser else 4   # Hermes, voices, bridge, [browser], checks
     steps = iter(range(1, total + 1))
     step(next(steps), total, "Hermes, the agents' brain")

@@ -17,7 +17,7 @@ import os
 import socket
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 PROFILES = ("mini", "solo")
 LANGUAGES = ("fr", "en", "de", "es")
@@ -34,6 +34,7 @@ class CloudSetup:
     language: str = "en"
     profile: str = "solo"
     port: int = DOOR_PORT    # the bridge's door; on a server shared by two people, the second one's is 444
+    backup: Optional[Dict[str, str]] = None   # the guichet's backup address and this place's token (backup.py)
 
 
 def read(path: Path) -> CloudSetup:
@@ -58,8 +59,14 @@ def read(path: Path) -> CloudSetup:
         raise CloudError("the door's port is not a number") from exc
     if not DOOR_PORT <= port <= 65535:   # the server lets unprivileged accounts listen from 443 up
         raise CloudError(f"the door's port must be {DOOR_PORT} or above")
+    backup = data.get("backup")
+    if backup is not None:
+        url, token = (backup.get("url"), backup.get("token")) if isinstance(backup, dict) else (None, None)
+        if not isinstance(url, str) or not url.startswith("https://") or not isinstance(token, str) or len(token) < 16:
+            raise CloudError("the backup settings are not an https address and a token")
+        backup = {"url": url, "token": token}
     return CloudSetup(pair=pair, language=language if language in LANGUAGES else "en",
-                      profile=profile if profile in PROFILES else "solo", port=port)
+                      profile=profile if profile in PROFILES else "solo", port=port, backup=backup)
 
 
 def _global(address: str) -> bool:

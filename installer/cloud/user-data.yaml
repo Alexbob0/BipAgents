@@ -31,6 +31,8 @@ packages:
   - unattended-upgrades
   # Hermes' Node.js links libatomic (its installer would ask for sudo, which `bip` hasn't got).
   - libatomic1
+  # Each place's hourly backup to the guichet, encrypted on the place (installer/bipinstall/backup.py).
+  - restic
 
 write_files:
   - path: /etc/bipagents/cloud.json

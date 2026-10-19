@@ -134,6 +134,7 @@ COMMAND_HELP = """BipAgents, in this account:
   bipagents export           everything your agents need in one encrypted file (a backup)
   bipagents export --moving  the same, then stop here: to move them to another machine
   bipagents resume           start again here after `export --moving`, if the move is called off
+  bipagents backup           back this place up now (the all-included offer's places: every hour by themselves)
   bipagents uninstall        remove it"""
 
 

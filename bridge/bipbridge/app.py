@@ -27,6 +27,7 @@ from .lan import hermes_proxy, lan_info
 from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router, mount_all_uploads, run_hermes
 from .agent_tools import AudioMaker, agent_tools_router, media_roots, purge_audio, register_all as register_agent_tools
+from .place_backup import place_backup_router
 from .vault import Vault, vault_router
 from .cloud_setup import cloud_setup_router
 from .console import ConsoleStore, console_admin_router, console_files, console_router
@@ -617,6 +618,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(relay_router())
     app.include_router(agents_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(vault_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(place_backup_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(favicons_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     if not config.cloud:   # on the Internet (a server the app created), no web console: one door less
