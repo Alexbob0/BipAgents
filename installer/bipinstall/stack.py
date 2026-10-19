@@ -51,6 +51,11 @@ class Install:
     browser: bool = False
     # An existing Hermes keeps its own API port (default: this install's block).
     hermes_port: Optional[int] = None
+    # A server the app created (`--cloud`, cloud.py): the door on the Internet at `lan_address`:443, the pairing secret
+    # and the progress the bridge shows the app until it is claimed.
+    cloud: bool = False
+    setup_file: Optional[Path] = None
+    progress_file: Optional[Path] = None
 
     @property
     def hub_port(self) -> int:
@@ -87,7 +92,9 @@ def bridge_toml(inst: Install) -> str:
         f"port = {inst.ports.bridge}",
         f"data_dir = {_q(str(inst.data_dir))}",
     ]
-    if inst.public(inst.ports.bridge):
+    if inst.cloud and inst.lan_address:
+        lines += ["cloud = true", f"public_url = {_q('https://' + inst.lan_address)}"]
+    elif inst.public(inst.ports.bridge):
         lines.append(f"public_url = {_q(inst.public(inst.ports.bridge))}")
     # Kyutai 1.6B is no engine of its own any more: a Kyutai server is the person's voice model, like any other.
     lines += ["", "[kyutai]", "enabled = false"]
@@ -117,9 +124,12 @@ def bridge_toml(inst: Install) -> str:
         lines += ["", "[model]", f"health_url = {_q(inst.model.base_url.rstrip('/') + '/models')}"]
         if inst.model.api_key:
             lines.append(f"health_key = {_q(inst.model.api_key)}")
-    lines += ["", "[lan]", f"enabled = {'true' if inst.lan_address else 'false'}", f"port = {inst.ports.lan}"]
+    door = 443 if inst.cloud else inst.ports.lan
+    lines += ["", "[lan]", f"enabled = {'true' if inst.lan_address else 'false'}", f"port = {door}"]
     if inst.lan_address:
         lines.append(f"address = {_q(inst.lan_address)}")
+    if inst.cloud and inst.setup_file and inst.progress_file:
+        lines += ["", "[setup]", f"file = {_q(str(inst.setup_file))}", f"progress = {_q(str(inst.progress_file))}"]
     for agent in inst.agents:
         uploads = profile_dir(agent.name) / "uploads"
         local = hub_local if agent.root else agent_url(hub_local, agent.name)

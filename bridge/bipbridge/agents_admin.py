@@ -153,7 +153,7 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     seen_by_agent = f"{install.container_home}/profiles/{profile}/uploads" if install.container_home else str(uploads)
     agent = AgentConfig(name=profile, display_name=name, hermes_url=f"{install.hub_url}/p/{profile}", hermes_key=key,
                         upload_dir_host=str(uploads), upload_dir_container=seen_by_agent,
-                        public_url=f"{install.public_hub_url}/p/{profile}" if install.public_hub_url else None)
+                        public_url=public_agent_url(config, profile))
     # The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
     await wait_served(http, agent, bot_chat=True)
     if config.browser.enabled:
@@ -169,6 +169,15 @@ async def create_agent(config: Config, body: NewAgent, http: httpx.AsyncClient,
     await give_tools(config, agent, run)
     log.info("agent created", extra=fields(agent=profile, kind=body.kind or "custom"))
     return agent
+
+
+def public_agent_url(config: Config, profile: str) -> Optional[str]:
+    """Where the app reaches a new agent: through the bridge's door on a server the app created (`cloud`), else its
+    Hermes on the tailnet."""
+    if config.cloud and config.public_url:
+        return f"{config.public_url}/hermes/{profile}"
+    hub = config.hermes.public_hub_url
+    return f"{hub}/p/{profile}" if hub else None
 
 
 async def wait_served(http: httpx.AsyncClient, agent: AgentConfig, bot_chat: bool = False) -> None:
@@ -245,7 +254,7 @@ async def claim_profile(config: Config, name: str, display_name: Optional[str], 
     title = (display_name or "").strip() or name.replace("-", " ").replace("_", " ").title()
     agent = AgentConfig(name=name, display_name=title, hermes_url=f"{install.hub_url}/p/{name}", hermes_key=key,
                         upload_dir_host=str(uploads), upload_dir_container=seen_by_agent,
-                        public_url=f"{install.public_hub_url}/p/{name}" if install.public_hub_url else None)
+                        public_url=public_agent_url(config, name))
     mark_as_bot(folder)
     await wait_served(http, agent, bot_chat=True)
     if config.browser.enabled:

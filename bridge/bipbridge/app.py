@@ -28,7 +28,9 @@ from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router, mount_all_uploads, run_hermes
 from .agent_tools import AudioMaker, agent_tools_router, media_roots, purge_audio, register_all as register_agent_tools
 from .vault import Vault, vault_router
+from .cloud_setup import cloud_setup_router
 from .console import ConsoleStore, console_admin_router, console_files, console_router
+from .guard import Guard
 from .voices import relay_for, voice_for, voices_router
 from .favicons import favicons_router
 from .households import Households, path_for as households_path
@@ -567,6 +569,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app = FastAPI(title="BipAgents bridge", version=__version__, lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.config = config
+    app.state.guard = Guard()   # wrong keys counted by address (guard.py)
     app.state.console = ConsoleStore(os.path.join(os.path.dirname(config.outbox.db_path), "console.json"))
     app.add_middleware(UploadSizeLimit, limit_getter=lambda: config.limits.upload_max_bytes)
 
@@ -594,9 +597,12 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(vault_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(favicons_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
-    app.include_router(console_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
-    app.include_router(console_router())   # the web console's page and login (its session then stands for the key)
-    app.mount("/console/static", console_files(), name="console")
+    if not config.cloud:   # on the Internet (a server the app created), no web console: one door less
+        app.include_router(console_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+        app.include_router(console_router())   # the web console's page and login (its session then stands for the key)
+        app.mount("/console/static", console_files(), name="console")
+    # A server the app created, until the app claims it (its own proofs, no bridge key yet).
+    app.include_router(cloud_setup_router(), prefix="/v1")
     # The agents' Hermes through the bridge: on the LAN door, and for agents in their own space (their gateway listens
     # on a local port only). Hermes checks each agent's own key.
     app.include_router(hermes_proxy())

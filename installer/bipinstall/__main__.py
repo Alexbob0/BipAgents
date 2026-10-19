@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import httpx
 import yaml
@@ -280,6 +280,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--voice-uses", help="what it speaks for, among live, replies, reading (default: asked)")
     parser.add_argument("--no-tailscale", action="store_true",
                         help="this machine only, nothing published on a tailnet (tests, or a setup done by hand)")
+    parser.add_argument("--cloud", metavar="FILE",
+                        help="a server the app created (cloud-init writes FILE): no question, no Tailscale, the app "
+                             "pairs itself")
     args = parser.parse_args(argv)
     runner = hermes.Runner(dry=args.dry_run)
 
@@ -289,6 +292,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         from .account import ensure_user_services
         if not ensure_user_services(say):
             return 1
+    if args.cloud:
+        return cloud_install(args, runner, machine)
     if machine.cloud:
         say(ui.note(f"Server rented from {machine.cloud}: no door on a local network (it would be on the Internet),\n"
                        "    everything goes through Tailscale. Your host can read the disk: encrypt what matters, and keep "
@@ -340,7 +345,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                    isolated=bool(sandbox), browser=browser)
     steps = iter(range(1, 7 if browser else 6))
     total = 6 if browser else 5
-    say(ui.step(next(steps), total, "Hermes, the agents' brain"))
+    step(next(steps), total, "Hermes, the agents' brain")
     hermes.install(runner, browser=plan.browser != "none")
     skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches")
     if skipped:
@@ -370,6 +375,60 @@ def main(argv: Optional[List[str]] = None) -> int:
     return status
 
 
+CLOUD_MODEL = "openrouter/auto"   # until the app sends the person's model and key (bipbridge/cloud_setup.py)
+
+
+def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
+    """`--cloud FILE`: a server the app created in the person's account (cloud.py), installed by cloud-init. No
+    question and no Tailscale: the bridge's door is on the Internet, and the app pairs itself, without a QR code."""
+    global PROGRESS
+    from . import cloud, migrations
+    from .upgrade import install_command
+    try:
+        setup = cloud.read(Path(args.cloud))
+    except cloud.CloudError as exc:
+        say(ui.sad(str(exc)))
+        return 1
+    address = cloud.public_address()
+    if not address:
+        if not runner.dry:
+            say(ui.sad("This server has no public address: the app couldn't reach it."))
+            return 1
+        address = "198.51.100.7"   # a dry run anywhere
+    say(ui.note(f"Server created by the app ({machine.cloud or 'cloud'}), {address}: the app pairs itself."))
+    machine.lan_addresses, machine.tailnet_name = [], None
+    compress_memory(machine, runner)
+    config_dir = Path.home() / ".config" / "bipagents"
+    PROGRESS = cloud.Progress(config_dir / "setup-progress.json", dry=runner.dry)
+    sandbox = hermes.sandbox_runtime()
+    # « Solo » (4 GB): one visible browser at a time, started when an agent browses and stopped when idle.
+    browser = bool(sandbox) and setup.profile != "mini" and machine.memory_gib >= 3.5
+    if not args.languages:   # the Bips in the person's language first; the others load only when spoken
+        others = [lang for lang in cloud.LANGUAGES if lang != setup.language]
+        args.languages = ",".join([setup.language] + ([] if setup.profile == "mini" else others))
+    model = hermes.Model("openrouter", CLOUD_MODEL, base_url="https://openrouter.ai/api/v1")
+    inst = Install(repo=REPO, home=Path.home(), ports=pick_block(wanted=args.ports), tailnet_name=None,
+                   lan_address=address, model=model, push_service_url=args.push_service, isolated=bool(sandbox),
+                   browser=browser, cloud=True, setup_file=config_dir / "setup.json",
+                   progress_file=PROGRESS.path)
+    runner.log.append(f"write {inst.setup_file}")
+    if not runner.dry:
+        cloud.write_setup(inst.setup_file, setup)
+    total = 5 if browser else 4   # Hermes, voices, bridge, [browser], checks
+    steps = iter(range(1, total + 1))
+    step(next(steps), total, "Hermes, the agents' brain")
+    hermes.install(runner, browser=browser)
+    hermes.apply_patches(runner, REPO / "hermes" / "patches")
+    hermes.setup_hub(runner, inst.ports.hermes, model, sandbox=sandbox)
+    migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)
+    install_command(runner)
+    gateway_service(inst, machine, runner)
+    status = finish(inst, machine, runner, args, steps, total, sandbox)
+    if status == 0 and not runner.dry:
+        (hermes.hermes_home() / hermes.UNFINISHED).unlink(missing_ok=True)
+    return status
+
+
 def gateway_service(inst: Install, machine: Machine, runner: hermes.Runner) -> None:
     try:
         hermes.install_service(runner)
@@ -379,6 +438,16 @@ def gateway_service(inst: Install, machine: Machine, runner: hermes.Runner) -> N
         label, path, content = hermes_service(inst, machine.system, hermes.hermes_bin(), hermes.hermes_home())
         write(path, content, runner)
         start_service(machine.system, label, path, runner)
+
+
+# Where each step is also written (`--cloud`: the bridge shows it to the app), or None.
+PROGRESS: Optional[Callable[..., None]] = None
+
+
+def step(number: int, total: int, label: str) -> None:
+    say(ui.step(number, total, label))
+    if PROGRESS is not None:
+        PROGRESS(number, total, label)
 
 
 def yes(answer: str) -> bool:
@@ -460,7 +529,7 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
                    push_service_url=args.push_service, isolated=existing.protected, browser=browser, hermes_port=hub_port)
     total = 6 if browser else 5
     steps = iter(range(1, total + 1))
-    say(ui.step(next(steps), total, "Your Hermes"))
+    step(next(steps), total, "Your Hermes")
     patched: List[str] = []
     if patch:
         skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches", applied=patched)
@@ -509,7 +578,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
            desk: bool = False, bot_chat: bool = True) -> int:
     """What every install ends with: the voices, the bridge, the visible browser when chosen, Tailscale, the checks
     and the QR code."""
-    say(ui.step(next(steps), total, "The Bips' voices"))
+    step(next(steps), total, "The Bips' voices")
     if pocket_running():
         say("  already set up on this machine: I'll share it.")
     else:
@@ -522,7 +591,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
     if machine.system == "macos":
         say("  macOS may ask whether Python can reach devices on the local network: allow it, or the agents\n"
                "  and the bridge won't reach a model installed on another machine at home.")
-    say(ui.step(next(steps), total, "The bridge, which links the app to your agents"))
+    step(next(steps), total, "The bridge, which links the app to your agents")
     venv(REPO / "bridge", runner)
     write(inst.bridge_config, bridge_toml(inst), runner, mode=0o600)
     label, path, content = bridge_service(inst, machine.system)
@@ -531,7 +600,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
 
     say(ui.done("Bridge started."))
     if inst.browser:
-        say(ui.step(next(steps), total, "Your agents' visible browser"))
+        step(next(steps), total, "Your agents' visible browser")
         say(ui.note("Preparing its image: Chrome, its desktop and the server that drives it (stealth-browser-mcp, fetched "
                        "from its repository).\n    Allow a few minutes the first time."))
         try:
@@ -549,7 +618,14 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
             say(f"    {sandbox} build -t {hermes.BROWSER_IMAGE} {REPO / 'browser'}")
             say(f"    cd {REPO / 'bridge'} && .venv/bin/python -m bipbridge browser add --all --config {inst.bridge_config}")
             say(f"    systemctl --user restart {label}")
-    say(ui.step(next(steps), total, "Tailscale, to reach your agents from anywhere"))
+    if not inst.cloud:
+        publish_on_tailnet(inst, machine, runner, args, steps, total, desk)
+    return checks_and_end(inst, runner, args, steps, total, bot_chat)
+
+
+def publish_on_tailnet(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, total: int,
+                       desk: bool) -> None:
+    step(next(steps), total, "Tailscale, to reach your agents from anywhere")
     commands = [] if args.no_tailscale else None
     if commands is None:
         commands = tailscale_commands(machine.tailscale or "tailscale", inst.ports, desk=desk, hermes_port=inst.hermes_port)
@@ -564,7 +640,9 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         for command in commands:
             say(f"    sudo {command}")
 
-    say(ui.step(next(steps), total, "Checks"))
+
+def checks_and_end(inst: Install, runner: hermes.Runner, args, steps, total: int, bot_chat: bool) -> int:
+    step(next(steps), total, "Checks")
     if not runner.dry:
         hub = f"http://127.0.0.1:{inst.hub_port}"
         for agent in inst.agents:
@@ -583,6 +661,11 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
             say(f"  $ {re.sub(r'(_KEY )[^ ]+', lambda m: m.group(1) + hidden, line)}")
         say("\n--- bridge.toml ---")
         say(re.sub(r'(_key = )"[^"]*"', lambda m: f'{m.group(1)}"{hidden}"', bridge_toml(inst)))
+        return 0
+    if inst.cloud:
+        if PROGRESS is not None:
+            PROGRESS(total, total, "Ready", done=True)
+        say(ui.finale("It's ready: the app pairs itself with this server."))
         return 0
     if args.no_tailscale:
         say(ui.finale("It's ready, on this machine only."))

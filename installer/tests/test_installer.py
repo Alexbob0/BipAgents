@@ -804,3 +804,67 @@ def test_zram_for_small_rented_servers(tmp_path):
     commands = zram_commands("apt")
     assert commands[0] == "apt-get install -y systemd-zram-generator" and zram_commands("dnf")[0].startswith("dnf ")
     assert "zram-size = ram / 2" in commands[1] and commands[1].endswith("> /etc/systemd/zram-generator.conf")
+
+
+def _cloud_file(tmp_path, **values):
+    import base64
+    data = {"v": 1, "pair": base64.urlsafe_b64encode(bytes(32)).decode().rstrip("="), "language": "de", "profile": "solo"}
+    data.update(values)
+    path = tmp_path / "cloud.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_a_server_the_app_created_installs_without_a_question(monkeypatch, tmp_path, capsys):
+    """`--cloud`: no question, no Tailscale, the bridge's door on the Internet (443, its address), the pairing secret
+    and the progress for the app, the Bips in the person's language first, the model left for the app to send."""
+    from bipinstall import __main__ as cli, cloud
+    monkeypatch.setenv("HOME", str(tmp_path))
+    droplet = Machine("linux", "x86_64", 4, 2, "DO-Premium-Intel", None, lan_addresses=["10.110.0.2"], cloud="DigitalOcean")
+    monkeypatch.setattr(cli, "detect", lambda: droplet)
+    monkeypatch.setattr(cli.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
+    monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(8640))
+    monkeypatch.setattr(cli, "pocket_running", lambda: False)
+    monkeypatch.setattr(cloud, "public_address", lambda: "164.90.10.20")
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail(f"asked: {prompt}"))
+    languages = []
+    real_pocket = cli.pocket_service
+    monkeypatch.setattr(cli, "pocket_service", lambda inst, system, langs: languages.append(langs) or real_pocket(inst, system, langs))
+    assert cli.main(["--dry-run", "--cloud", str(_cloud_file(tmp_path))]) == 0
+    out = capsys.readouterr().out
+    assert "164.90.10.20: the app pairs itself" in out and "[5/5]" in out and "Tailscale" not in out
+    assert 'cloud = true\npublic_url = "https://164.90.10.20"' in out
+    assert '[lan]\nenabled = true\nport = 443\naddress = "164.90.10.20"' in out
+    assert f'[setup]\nfile = "{tmp_path}/.config/bipagents/setup.json"' in out
+    assert "config set model.provider openrouter" in out and "OPENROUTER_API_KEY" not in out
+    assert "profile create" not in out   # the agents come with the app's claim
+    assert languages == ["de,fr,en,es"]
+    assert "[browser]\nenabled = true" in out and "Scan this code" not in out
+
+
+def test_a_mini_server_has_no_browser_and_one_language(monkeypatch, tmp_path, capsys):
+    from bipinstall import __main__ as cli, cloud
+    monkeypatch.setenv("HOME", str(tmp_path))
+    droplet = Machine("linux", "x86_64", 2, 1, "DO-Regular", None, lan_addresses=[], cloud="DigitalOcean")
+    monkeypatch.setattr(cli, "detect", lambda: droplet)
+    monkeypatch.setattr(cli.hermes, "sandbox_runtime", lambda: "/usr/bin/podman")
+    monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(8640))
+    monkeypatch.setattr(cli, "pocket_running", lambda: False)
+    monkeypatch.setattr(cloud, "public_address", lambda: "164.90.10.21")
+    assert cli.main(["--dry-run", "--cloud", str(_cloud_file(tmp_path, profile="mini", language="fr"))]) == 0
+    out = capsys.readouterr().out
+    assert "[4/4]" in out and "[browser]" not in out and "fr,en" not in out
+
+
+def test_the_cloud_file_is_checked(tmp_path):
+    from bipinstall import cloud
+    with pytest.raises(cloud.CloudError):
+        cloud.read(_cloud_file(tmp_path, pair="c2hvcnQ"))   # 5 bytes
+    with pytest.raises(cloud.CloudError):
+        cloud.read(_cloud_file(tmp_path, v=2))
+    setup = cloud.read(_cloud_file(tmp_path, language="it", profile="huge"))
+    assert (setup.language, setup.profile) == ("en", "solo")
+    assert cloud.public_address(metadata=lambda: "10.0.0.5") in (None,) or cloud._global(cloud.public_address() or "")
+    progress = cloud.Progress(tmp_path / "p.json")
+    progress(2, 5, "Voices")
+    assert json.loads((tmp_path / "p.json").read_text()) == {"step": 2, "total": 5, "label": "Voices", "done": False}

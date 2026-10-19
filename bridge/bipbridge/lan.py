@@ -140,6 +140,10 @@ def hermes_proxy() -> APIRouter:
     @router.api_route("/hermes/{agent}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     async def relay(agent: str, path: str, request: Request) -> StreamingResponse:
         services = request.app.state.services
+        guard = getattr(request.app.state, "guard", None)
+        address = request.client.host if request.client else None
+        if guard is not None and guard.blocked(address):
+            raise HTTPException(status_code=429, detail="too many wrong keys, try again later")
         target = services.config.agent(agent)
         if target is None or not (path.startswith(("v1/", "api/")) or path in ("health", "v1/capabilities")):
             raise HTTPException(status_code=404, detail="not found")
@@ -156,6 +160,8 @@ def hermes_proxy() -> APIRouter:
         except httpx.HTTPError as exc:
             log.info("LAN relay failed", extra=fields(agent=target.name, error=type(exc).__name__))
             raise HTTPException(status_code=502, detail="Hermes unreachable") from exc
+        if upstream.status_code == 401 and guard is not None:   # a wrong agent key, through the door
+            guard.fail(address, "agent key")
 
         async def body() -> AsyncIterator[bytes]:
             try:

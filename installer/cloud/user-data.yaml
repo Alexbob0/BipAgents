@@ -1,0 +1,64 @@
+#cloud-config
+# BipAgents on a server the app created in the person's own account (« no computer »: DigitalOcean, OVHcloud).
+# The app fills in {{pair}} (its one-time pairing secret, base64url), {{language}} (fr, en, de, es) and {{profile}}
+# (solo, mini); nothing else secret is ever here, since the provider keeps user-data. The model key goes from the phone
+# to the bridge once paired (bridge/bipbridge/cloud_setup.py).
+#
+# It creates the `bip` account (BipAgents and its agents, without sudo: an agent that got out of its sandbox would not
+# be root), lets in only the bridge's door (443) and SSH by key, turns on security updates, then runs the installer in
+# `--cloud` mode as `bip` (installer/bipinstall/cloud.py). Its log: /var/log/bipagents-install.log.
+#
+# The apps carry this same text (App/Features/Cloud/CloudInit.swift, android/…/cloud/CloudInit.kt):
+# installer/tests/test_cloud_init.py checks this one, change them together.
+
+users:
+  - default
+  - name: bip
+    shell: /bin/bash
+    lock_passwd: true
+
+package_update: true
+package_upgrade: true
+packages:
+  - podman
+  - uidmap
+  - slirp4netns
+  - passt
+  - git
+  - curl
+  - ufw
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/bipagents/cloud.json
+    permissions: "0600"
+    content: |
+      {"v": 1, "pair": "{{pair}}", "language": "{{language}}", "profile": "{{profile}}"}
+  - path: /etc/sysctl.d/60-bipagents.conf
+    content: |
+      # The bridge's door listens on 443 without being root.
+      net.ipv4.ip_unprivileged_port_start = 443
+  - path: /etc/ssh/sshd_config.d/10-bipagents.conf
+    content: |
+      PasswordAuthentication no
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+runcmd:
+  - sysctl --system
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow OpenSSH
+  - ufw allow 443/tcp
+  - ufw --force enable
+  # The agents' sandboxes (rootless podman) need the account's own range of user ids.
+  - grep -q '^bip:' /etc/subuid || usermod --add-subuids 200000-265535 --add-subgids 200000-265535 bip
+  - chown bip:bip /etc/bipagents/cloud.json
+  # BipAgents' services run when nobody is logged in.
+  - loginctl enable-linger bip
+  - systemctl start "user@$(id -u bip).service"
+  - sudo -iu bip bash -c 'curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s -- --cloud /etc/bipagents/cloud.json' > /var/log/bipagents-install.log 2>&1
+  # The installer kept the secret for the bridge (deleted once the app has paired); this copy goes.
+  - shred -u /etc/bipagents/cloud.json || rm -f /etc/bipagents/cloud.json

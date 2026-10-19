@@ -256,6 +256,12 @@ class Config:
     # The bridge as the agents reach it, for messages between agents (peers.py). Default: http://127.0.0.1:<port>/peer;
     # e.g. http://host.containers.internal:8643/peer for agents in containers.
     peer_url: Optional[str] = None
+    # A server the app created in the person's own account (« no computer »): the door is on the Internet, the agents
+    # are reached through it (/hermes/<agent>/), the web console is off and wrong keys are limited (guard.py).
+    cloud: bool = False
+    # Until the app claims that server (cloud_setup.py): the one-time pairing secret, and the installer's progress.
+    setup_file: Optional[str] = None
+    setup_progress: Optional[str] = None
     source_path: Optional[str] = None
 
     def agent(self, name: Optional[str]) -> Optional[AgentConfig]:
@@ -491,6 +497,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         raise ConfigError("browser.runtime must be 'podman' or 'docker', browser.gpu 'auto' or 'none'")
 
     lan_t = data.get("lan", {}) or {}
+    setup_t = data.get("setup", {}) or {}
     lan = LanConfig(
         enabled=bool(lan_t.get("enabled", False)),
         host=str(lan_t.get("host", "0.0.0.0")),
@@ -535,6 +542,9 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         model_health_key=_secret(model_t, "health_key", "model", required=False),
         public_url=str(data["public_url"]).rstrip("/") if data.get("public_url") else None,
         peer_url=str(data["peer_url"]).rstrip("/") if data.get("peer_url") else None,
+        cloud=bool(data.get("cloud", False)),
+        setup_file=_expand(str(setup_t["file"])) if setup_t.get("file") else None,
+        setup_progress=_expand(str(setup_t["progress"])) if setup_t.get("progress") else None,
         source_path=source_path,
     )
 
