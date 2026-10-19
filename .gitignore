@@ -31,3 +31,6 @@ voices/ab-test/
 
 # Built websites (python3 site/build.py)
 site/dist/
+
+# Store screenshots (scripts/store-shots.py)
+docs/store/shots/
