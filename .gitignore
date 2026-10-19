@@ -38,3 +38,4 @@ docs/store/shots/
 # Guichet (its settings and state stay on Kerfy Studio's machine)
 guichet/guichet.toml
 guichet/*.sqlite3*
+guichet/signing.key
