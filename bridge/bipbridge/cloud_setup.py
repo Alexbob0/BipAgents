@@ -1,8 +1,8 @@
-"""The app's « no computer » path: a server the app created in the person's own account (DigitalOcean, OVHcloud), set
-up by cloud-init with the installer's `--cloud` mode, then paired with the app without a QR code.
+"""« No computer »: a server of the all-included offer, from the guichet's reserve (guichet/), set up at first boot by
+the installer's `--cloud` mode, then paired with the person's app without a QR code.
 
-The app made a one-time secret (`pair`, 32 random bytes) and put it in the server's user-data, and nothing else secret:
-no model key, since the provider keeps user-data. The bridge's door is on the Internet with its own self-signed
+The guichet made a one-time secret (`pair`, 32 random bytes), put it in the server's first-boot setup and hands it to
+the app that bought the server; nothing else secret is there, no model key, since the provider keeps that setup. The bridge's door is on the Internet with its own self-signed
 certificate (lan.py). First the app learns that this certificate is really its server's: the bridge proves it knows
 `pair` with an HMAC over the app's nonce and the certificate's fingerprint, which nobody in between can forge, and the
 app pins it. Then the app claims the server over that pinned connection: it proves it knows `pair` too (an HMAC over

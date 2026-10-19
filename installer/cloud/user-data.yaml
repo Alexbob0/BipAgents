@@ -1,16 +1,16 @@
 #cloud-config
-# BipAgents on a server the app created in the person's own account ("no computer": DigitalOcean, OVHcloud).
-# The app fills in {{pair}} (its one-time pairing secret, base64url), {{language}} (fr, en, de, es) and {{profile}}
-# (solo, mini); nothing else secret is ever here, since the provider keeps user-data. The model key goes from the phone
-# to the bridge once paired (bridge/bipbridge/cloud_setup.py).
+# BipAgents on a server of the all-included offer ("no computer"), or any server set up with cloud-init.
+# Whoever creates the server fills in {{pair}} (a one-time pairing secret, base64url), {{language}} (fr, en, de, es)
+# and {{profile}} (solo, mini); nothing else secret is ever here, since the provider keeps it. The model key goes from
+# the phone to the bridge once paired (bridge/bipbridge/cloud_setup.py).
 #
 # It creates the `bip` account (BipAgents and its agents, without sudo: an agent that got out of its sandbox would not
 # be root), lets in only the bridge's door (443) and SSH by key, turns on security updates, then runs the installer in
 # `--cloud` mode as `bip` (installer/bipinstall/cloud.py). Its log: /var/log/bipagents-install.log.
 #
-# The apps carry this same text (App/Features/Cloud/CloudInit.swift, android/.../cloud/CloudInit.kt):
-# installer/tests/test_cloud_init.py checks this one, change them together. ASCII only: DigitalOcean ignores the
-# whole user-data when it holds anything else (checked on a droplet, 2026-10-19).
+# The guichet turns this text into the first-boot script of its reserve's servers (guichet/bipguichet/bootstrap.py):
+# OVHcloud's VPS take a shell script, not cloud-config. ASCII only: DigitalOcean ignored the whole user-data when it
+# held anything else (checked on a droplet, 2026-10-19), and installer/tests/test_cloud_init.py refuses it.
 
 users:
   - default

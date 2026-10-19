@@ -52,15 +52,3 @@ def test_no_model_key_or_other_secret_has_a_place_in_it():
     assert "KEY" not in text.replace("SSH", "")
     assert len(render("x" * 43).encode()) < 16_000   # far under the providers' user-data limits (64 KB at DigitalOcean)
 
-
-def test_the_apps_carry_the_same_user_data():
-    """The apps build the user-data themselves (no server of ours in between): their copy is this file, to the byte."""
-    import re
-    expected = TEMPLATE.read_text(encoding="utf-8").rstrip("\n")
-    swift = (ROOT / "App" / "Features" / "Cloud" / "CloudInit.swift").read_text(encoding="utf-8")
-    found = re.search(r'static let template = #"""\n(.*?)\n"""#', swift, re.S)
-    assert found and found.group(1) == expected, "App/Features/Cloud/CloudInit.swift differs from installer/cloud/user-data.yaml"
-    kotlin = ROOT / "android" / "app" / "src" / "main" / "java" / "io" / "github" / "bipagents" / "cloud" / "CloudInit.kt"
-    if kotlin.exists():
-        found = re.search(r'val TEMPLATE = """\n(.*?)\n"""\.trimIndent\(\)', kotlin.read_text(encoding="utf-8"), re.S)
-        assert found and found.group(1).replace("${'$'}", "$") == expected, f"{kotlin.name} differs from user-data.yaml"
