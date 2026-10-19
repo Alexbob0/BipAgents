@@ -209,6 +209,13 @@ them before updating Hermes); each one is offered upstream. Details in [`hermes/
 
 </details>
 
+## 📜 License
+
+The **code** is free software under the [MIT license](LICENSE): use it, change it, build on it. The **Bips themselves**
+(their drawings, the app's icon, their babble and voices, the demo's recordings and the screenshots) are not:
+[LICENSE-ASSETS](LICENSE-ASSETS) lets you show them and build BipAgents with them, not put them in another app. A fork
+you publish brings its own name and its own characters. Contributing: see the [contribution terms](CONTRIBUTING.md#contribution-terms).
+
 ## 💬 Who's behind it
 
 A personal project by **Bob**, who digs into AI every day: agents, voices, self-hosting.
@@ -216,4 +223,4 @@ Behind the scenes, the struggles and the next Bips are on X: **[@Bob_AI_Digger](
 
 Built with [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research, [Kyutai](https://kyutai.org)'s voices, and many sessions with Claude.
 
-<p align="center"><sub>MIT · Made with ♥ and Bips</sub></p>
+<p align="center"><sub>Code under MIT · the Bips are reserved (LICENSE-ASSETS) · Made with ♥ and Bips</sub></p>

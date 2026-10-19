@@ -32,6 +32,19 @@ Open `BipAgents.xcodeproj`, scheme BipAgents › Run › Arguments: `-demo`. Add
 - **Tests** come with a change to the bridge or the installer; CI runs them on every pull request.
 - **Commits** in English, saying what changes for the person using it.
 
-## License
+## Contribution terms
 
-By contributing, you agree that your contribution is released under the [MIT license](LICENSE).
+BipAgents' code is under the [MIT license](LICENSE); the Bips' drawings, the app's icon, the Bips' babble, their
+voices, the recordings and the screenshots are not ([LICENSE-ASSETS](LICENSE-ASSETS)). By submitting a contribution
+(a pull request, a patch, a file in an issue), you agree that:
+
+1. **it is released under the same terms**: the MIT license for code, LICENSE-ASSETS for drawings, icons, sounds,
+   voices and recordings;
+2. **Kerfy Studio**, the publisher of BipAgents (a French SAS being registered), and its successors may use, modify
+   and distribute it under any license, including another license than MIT for later versions. This right is
+   worldwide, free, perpetual and irrevocable;
+3. **you wrote it, or have the right to contribute it**, and it holds no secret, no personal data and nothing under a
+   license that forbids this.
+
+Your contribution stays yours: you keep every right to use it elsewhere. The pull request template asks you to
+confirm these terms.

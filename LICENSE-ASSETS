@@ -1,0 +1,53 @@
+BipAgents' look and sounds — not under the MIT license
+=======================================================
+
+BipAgents' code is under the MIT license (LICENSE). The files listed below are not: they are the Bips themselves
+and what makes BipAgents recognizable. Copyright (c) 2026 the BipAgents authors. All rights reserved, except the
+permissions given below.
+
+What is covered
+---------------
+
+- The Bips' drawings, wherever they are drawn, code included:
+  App/Design/MascotView.swift, App/Design/PixelMascot.swift, App/Design/InteractiveMascot.swift,
+  App/Design/AgentAvatars.swift, android/app/src/main/java/io/github/bipagents/ui/Mascot.kt,
+  android/app/src/main/java/io/github/bipagents/ui/PixelMascot.kt,
+  android/app/src/main/java/io/github/bipagents/ui/InteractiveMascot.kt, docs/bips.svg, docs/play/,
+  docs/tools/banner.mjs.
+- The app's icon: App/Assets.xcassets/AppIcon.appiconset/, android/app/src/main/res/mipmap-*/.
+- The Bips' babble (its sound design): App/Design/BipBabble.swift,
+  android/app/src/main/java/io/github/bipagents/ui/Babble.kt.
+- The Bips' voices and their samples: voices/, App/Resources/Voices/, android/app/src/main/res/raw/. They were made
+  with Kyutai's Pocket TTS (CC-BY-4.0 weights, by Kyutai) from Qwen3-TTS VoiceDesign clips (Apache-2.0): those licenses
+  cover the models, not these voices.
+- The recordings: App/Resources/Demo/*.m4a (the demo's podcast, built with Fish Audio) and voices/drama/.
+- The screenshots: docs/screenshots/.
+
+What you may do
+---------------
+
+- Show them as they are in this repository: its README, its docs, its playground page.
+- Show them when presenting or writing about BipAgents (articles, reviews, videos, talks), as long as it is clear
+  they are BipAgents'.
+- Build and run BipAgents from this repository with them, including a fork made to contribute or for your own use.
+
+What you may not do
+-------------------
+
+- Use them, or characters, an icon, sounds or voices derived from them, in another app, product, service or brand.
+- Publish an app with them, on a store or elsewhere, modified or not, other than BipAgents as published by its
+  publisher. A fork you publish needs its own name, its own characters, icon, sounds and voices.
+
+For anything else, write to support@kerfystudio.com.
+
+
+L'apparence et les sons de BipAgents — hors licence MIT (résumé en français)
+-----------------------------------------------------------------------------
+
+Le code de BipAgents est sous licence MIT (LICENSE). Les fichiers listés ci-dessus ne le sont pas : les dessins des
+Bips (même dessinés en code), l'icône de l'app, leur babil, leurs voix, les enregistrements et les captures d'écran.
+Tous droits réservés, sauf ce qui suit. Tu peux les montrer tels quels dans ce dépôt et pour présenter BipAgents,
+et compiler BipAgents avec eux depuis ce dépôt, y compris dans un fork pour contribuer ou pour ton propre usage. Tu
+ne peux pas t'en servir, ni de personnages, d'icône, de sons ou de voix qui en dérivent, dans une autre app, un
+autre produit, service ou marque, ni publier une app qui les utilise, en dehors de BipAgents publiée par son
+éditeur. Pour le reste : support@kerfystudio.com.

@@ -1,3 +1,4 @@
+// Not under the MIT license: the Bips' drawings and sounds are reserved (LICENSE-ASSETS).
 // Builds docs/bips.svg, the animated README banner, from the drawing code of docs/play/index.html.
 // CSS animations only (GitHub shows SVG through <img>, scripts never run). Run: node docs/tools/banner.mjs
 import { readFileSync, writeFileSync } from "node:fs";

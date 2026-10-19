@@ -210,6 +210,14 @@ Quelques changements dont BipAgents a besoin ne sont pas encore dans Hermes. L'i
 
 </details>
 
+## 📜 Licence
+
+Le **code** est un logiciel libre sous [licence MIT](LICENSE) : utilise-le, modifie-le, construis dessus. Les **Bips
+eux-mêmes** (leurs dessins, l'icône de l'app, leur babil et leurs voix, les enregistrements de la démo et les captures)
+ne le sont pas : [LICENSE-ASSETS](LICENSE-ASSETS) permet de les montrer et de compiler BipAgents avec eux, pas de les
+mettre dans une autre app. Un fork que tu publies a son propre nom et ses propres personnages. Contribuer : voir les
+[conditions de contribution](CONTRIBUTING.md#contribution-terms).
+
 ## 💬 Qui est derrière
 
 Un projet perso de **Bob**, qui creuse l'IA au quotidien : agents, voix, auto-hébergement.
@@ -217,4 +225,4 @@ Les coulisses, les galères et les prochains Bips sont sur X : **[@Bob_AI_Digger
 
 Construit avec [Hermes Agent](https://github.com/NousResearch/hermes-agent) de Nous Research, les voix [Kyutai](https://kyutai.org), et beaucoup de sessions avec Claude.
 
-<p align="center"><sub>MIT · Fait avec ♥ et des Bips</sub></p>
+<p align="center"><sub>Code sous MIT · les Bips sont réservés (LICENSE-ASSETS) · Fait avec ♥ et des Bips</sub></p>

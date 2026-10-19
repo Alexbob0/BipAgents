@@ -61,8 +61,12 @@ anunciará como se prevé en la sección 19.
 - El **código fuente** de BipAgents se publica con **licencia MIT**: [URL del repositorio]. Puedes usarlo, copiarlo,
   modificarlo y redistribuirlo según esa licencia, que prevalece sobre estas condiciones en todo lo relativo al código
   fuente.
-- Los componentes de terceros (Hermes Agent, voces, tipografías, la grabación del pódcast de la demo realizada con
-  Fish Audio Drama 3 — «Built with Fish Audio»…) siguen bajo su propia licencia, indicada en el repositorio.
+- Los **Bips en sí** no están bajo licencia MIT: sus dibujos, el icono de la app, su balbuceo, sus voces, las
+  grabaciones de la demo (el pódcast, grabado con Fish Audio Drama 3 — «Built with Fish Audio») y las capturas de
+  pantalla. Puedes mostrarlos para presentar BipAgents y compilar BipAgents con ellos, no reutilizarlos en otra app u
+  otro producto (archivo LICENSE-ASSETS del repositorio).
+- Los componentes de terceros (Hermes Agent, tipografías, modelos de voz de Kyutai…) siguen bajo su propia licencia,
+  indicada en el repositorio.
 - La licencia MIT se refiere al código; no te da derecho a usar los nombres «BipAgents» y «Kerfy Studio» para
   presentar otro producto como el nuestro.
 - **Versión descargada del App Store**: el contrato de licencia estándar de Apple para apps («Licensed Application End
