@@ -69,6 +69,7 @@
       },
       "suggestions": [
         "sleep_week",
+        "blood_tests",
         "run_plan",
         "ask_budget"
       ]
@@ -1286,6 +1287,97 @@
         "de": "Notiert: Jeden Montag um neunzehn Uhr erinnere ich dich an den Müll.",
         "es": "Apuntado: cada lunes a las siete de la tarde te recordaré sacar la basura."
       }
+    },
+    "blood_tests": {
+      "prompt": {
+        "fr": "Fais-moi un tableau de bord de mes prises de sang",
+        "en": "Make me a dashboard of my blood tests",
+        "de": "Mach mir ein Dashboard meiner Blutwerte",
+        "es": "Hazme un panel con mis análisis de sangre"
+      },
+      "keywords": {
+        "fr": [
+          "prise de sang",
+          "prises de sang",
+          "analyse",
+          "tableau de bord",
+          "bilan"
+        ],
+        "en": [
+          "blood",
+          "dashboard",
+          "lab",
+          "test results"
+        ],
+        "de": [
+          "blut",
+          "dashboard",
+          "laborwerte",
+          "befund"
+        ],
+        "es": [
+          "sangre",
+          "análisis",
+          "analisis",
+          "panel",
+          "analítica"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Trois bilans en PDF dans ses fichiers. J’en sors les valeurs, je les mets face aux normes du labo, et j’en fais une page claire à suivre dans le temps.",
+            "en": "Three PDF lab reports in their files. I’ll pull out the values, set them against the lab’s ranges, and build a clear page to follow over time.",
+            "de": "Drei Laborbefunde als PDF in den Dateien. Ich ziehe die Werte heraus, stelle sie den Normwerten gegenüber und baue eine übersichtliche Seite für den Verlauf.",
+            "es": "Tres analíticas en PDF en sus archivos. Saco los valores, los comparo con los rangos del laboratorio y preparo una página clara para seguirlos en el tiempo."
+          }
+        },
+        {
+          "tool": "read_file",
+          "seconds": 1.0,
+          "preview": {
+            "fr": "fichiers/bilan-2026-09-15.pdf",
+            "en": "files/lab-report-2026-09-15.pdf",
+            "de": "dateien/befund-2026-09-15.pdf",
+            "es": "archivos/analitica-2026-09-15.pdf"
+          }
+        },
+        {
+          "tool": "terminal",
+          "seconds": 1.2,
+          "preview": "python3 extract_results.py *.pdf"
+        },
+        {
+          "page": "blood",
+          "seconds": 2.0,
+          "preview": {
+            "fr": "Mes prises de sang",
+            "en": "My blood tests",
+            "de": "Meine Blutwerte",
+            "es": "Mis análisis de sangre"
+          },
+          "file": {
+            "fr": "mes-prises-de-sang.html",
+            "en": "my-blood-tests.html",
+            "de": "meine-blutwerte.html",
+            "es": "mis-analisis-de-sangre.html"
+          }
+        },
+        {
+          "say": {
+            "fr": "Voilà ton tableau de bord 🩸 Bonne nouvelle : la **ferritine** remonte et le **cholestérol** est repassé sous 2 g/L.\n\nÀ surveiller : la **vitamine D** (27 ng/mL) reste un peu basse, parles-en à ton médecin au prochain rendez-vous.\n\nEnvoie-moi ton prochain bilan : je mettrai la page à jour.",
+            "en": "Here’s your dashboard 🩸 Good news: your **ferritin** is going up and your **cholesterol** is back under 2 g/L.\n\nOne to watch: **vitamin D** (27 ng/mL) is still a bit low, mention it to your doctor at your next visit.\n\nSend me your next report and I’ll update the page.",
+            "de": "Hier ist dein Dashboard 🩸 Gute Nachricht: Dein **Ferritin** steigt und dein **Cholesterin** liegt wieder unter 2 g/L.\n\nIm Blick behalten: **Vitamin D** (27 ng/mL) ist noch etwas niedrig, sprich beim nächsten Termin mit deiner Ärztin oder deinem Arzt darüber.\n\nSchick mir deinen nächsten Befund, dann aktualisiere ich die Seite.",
+            "es": "Aquí tienes tu panel 🩸 Buena noticia: tu **ferritina** sube y tu **colesterol** vuelve a estar por debajo de 2 g/L.\n\nA vigilar: la **vitamina D** (27 ng/mL) sigue algo baja, coméntalo con tu médico en la próxima consulta.\n\nMándame tu próxima analítica y actualizaré la página."
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Voilà ton tableau de bord. La ferritine remonte et le cholestérol est repassé sous deux grammes. La vitamine D reste un peu basse : parles-en à ton médecin.",
+        "en": "Here’s your dashboard. Your ferritin is going up and your cholesterol is back under two grams. Vitamin D is still a bit low: mention it to your doctor.",
+        "de": "Hier ist dein Dashboard. Dein Ferritin steigt und dein Cholesterin liegt wieder unter zwei Gramm. Vitamin D ist noch etwas niedrig: sprich mit deiner Ärztin oder deinem Arzt darüber.",
+        "es": "Aquí tienes tu panel. Tu ferritina sube y tu colesterol vuelve a estar por debajo de dos gramos. La vitamina D sigue algo baja: coméntalo con tu médico."
+      }
     }
   },
   "fallback": [
@@ -1572,5 +1664,72 @@
     "en": "_Voices: Fish Audio Drama 3 · Built with Fish Audio_",
     "de": "_Stimmen: Fish Audio Drama 3 · Built with Fish Audio_",
     "es": "_Voces: Fish Audio Drama 3 · Built with Fish Audio_"
+  },
+  "pages": {
+    "blood": {
+      "template": "<!doctype html>\n<html lang=\"{{lang}}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{{title}}</title>\n<style>\n:root{--bg:#f6f7fb;--card:#fff;--ink:#17171a;--muted:#6b6e78;--ok:#2fb36b;--warn:#f08a24;--band:#2fb36b1f;--line:#7c6cf2}\n@media (prefers-color-scheme:dark){:root{--bg:#0f1012;--card:#1a1d24;--ink:#f2f3f7;--muted:#9aa0ae;--band:#2fb36b2e;--line:#a99ff7}}\n*{box-sizing:border-box}\nbody{margin:0;padding:18px 16px 28px;font:15px -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--ink)}\nh1{font-size:23px;margin:0}\n.sub{color:var(--muted);font-size:13px;margin:4px 0 16px}\n.card{background:var(--card);border-radius:18px;padding:14px 14px 8px;margin-bottom:12px}\n.top{display:flex;justify-content:space-between;align-items:center;gap:8px}\n.name{font-weight:700}\n.tag{font-size:12px;font-weight:700;color:#fff;border-radius:99px;padding:3px 10px;white-space:nowrap}\n.v{font-size:27px;font-weight:800;margin-top:4px}\n.u,.range{font-size:12.5px;color:var(--muted);font-weight:600}\n.row{display:flex;justify-content:space-between;align-items:baseline}\nsvg{width:100%;height:74px;display:block;margin-top:4px;overflow:visible}\n.d{font-size:10px;fill:var(--muted)}\n</style></head><body>\n<h1>🩸 {{title}}</h1>\n<div class=\"sub\">{{subtitle}}</div>\n<div id=\"list\"></div>\n<script>\nconst words = {ok: \"{{normal}}\", low: \"{{low}}\", high: \"{{high}}\", range: \"{{range}}\"};\nconst tests = [\n  [\"{{ferritin}}\", \"µg/L\", 30, 300, [[\"2025-10-14\", 34], [\"2026-03-02\", 41], [\"2026-09-15\", 58]]],\n  [\"{{vitd}}\", \"ng/mL\", 30, 100, [[\"2025-10-14\", 21], [\"2026-03-02\", 18], [\"2026-09-15\", 27]]],\n  [\"{{chol}}\", \"g/L\", 0, 2, [[\"2025-10-14\", 2.12], [\"2026-03-02\", 1.96], [\"2026-09-15\", 1.84]]],\n  [\"{{glucose}}\", \"g/L\", 0.7, 1.1, [[\"2025-10-14\", 0.90], [\"2026-03-02\", 0.92], [\"2026-09-15\", 0.95]]]\n];\nconst day = d => new Date(d).toLocaleDateString(\"{{lang}}\", {month: \"short\", year: \"2-digit\"});\nconst number = n => n.toLocaleString(\"{{lang}}\");\nfor (const [name, unit, min, max, points] of tests) {\n  const last = points[points.length - 1][1];\n  const state = last < min ? \"low\" : last > max ? \"high\" : \"ok\";\n  // The values' own scale, reaching the range's edge when they are all outside it.\n  const values = points.map(p => p[1]);\n  if (Math.max(...values) < min) values.push(min);\n  if (Math.min(...values) > max) values.push(max);\n  const span = (Math.max(...values) - Math.min(...values)) || 1;\n  const lo = Math.min(...values) - span * 0.25, hi = Math.max(...values) + span * 0.25;\n  const x = i => 12 + i * (276 / (points.length - 1)), y = v => Math.max(0, Math.min(58, 56 - (v - lo) / (hi - lo) * 52));\n  const line = points.map((p, i) => `${x(i)},${y(p[1])}`).join(\" \");\n  const dots = points.map((p, i) => `<circle cx=\"${x(i)}\" cy=\"${y(p[1])}\" r=\"3.5\" fill=\"var(--line)\"/>` +\n    `<text class=\"d\" x=\"${x(i)}\" y=\"72\" text-anchor=\"middle\">${day(p[0])}</text>`).join(\"\");\n  const card = document.createElement(\"div\");\n  card.className = \"card\";\n  card.innerHTML = `<div class=\"top\"><span class=\"name\">${name}</span>` +\n    `<span class=\"tag\" style=\"background:var(--${state === \"ok\" ? \"ok\" : \"warn\"})\">${words[state]}</span></div>` +\n    `<div class=\"row\"><span class=\"v\">${number(last)} <span class=\"u\">${unit}</span></span>` +\n    `<span class=\"range\">${words.range} ${number(min)}–${number(max)}</span></div>` +\n    `<svg viewBox=\"0 0 300 74\"><rect x=\"0\" y=\"${y(max)}\" width=\"300\" height=\"${Math.max(0, y(min) - y(max))}\" fill=\"var(--band)\" rx=\"6\"/>` +\n    `<polyline points=\"${line}\" fill=\"none\" stroke=\"var(--line)\" stroke-width=\"2.5\" stroke-linejoin=\"round\"/>${dots}</svg>`;\n  document.getElementById(\"list\").append(card);\n}\n</script></body></html>\n",
+      "values": {
+        "title": {
+          "fr": "Mes prises de sang",
+          "en": "My blood tests",
+          "de": "Meine Blutwerte",
+          "es": "Mis análisis de sangre"
+        },
+        "subtitle": {
+          "fr": "3 bilans du labo, d’octobre 2025 à septembre 2026",
+          "en": "3 lab reports, October 2025 to September 2026",
+          "de": "3 Laborbefunde, Oktober 2025 bis September 2026",
+          "es": "3 analíticas del laboratorio, de octubre de 2025 a septiembre de 2026"
+        },
+        "normal": {
+          "fr": "normal",
+          "en": "normal",
+          "de": "normal",
+          "es": "normal"
+        },
+        "low": {
+          "fr": "un peu bas",
+          "en": "a bit low",
+          "de": "etwas niedrig",
+          "es": "algo bajo"
+        },
+        "high": {
+          "fr": "un peu haut",
+          "en": "a bit high",
+          "de": "etwas hoch",
+          "es": "algo alto"
+        },
+        "range": {
+          "fr": "norme",
+          "en": "range",
+          "de": "Norm",
+          "es": "rango"
+        },
+        "ferritin": {
+          "fr": "Ferritine",
+          "en": "Ferritin",
+          "de": "Ferritin",
+          "es": "Ferritina"
+        },
+        "vitd": {
+          "fr": "Vitamine D",
+          "en": "Vitamin D",
+          "de": "Vitamin D",
+          "es": "Vitamina D"
+        },
+        "chol": {
+          "fr": "Cholestérol total",
+          "en": "Total cholesterol",
+          "de": "Gesamtcholesterin",
+          "es": "Colesterol total"
+        },
+        "glucose": {
+          "fr": "Glycémie à jeun",
+          "en": "Fasting glucose",
+          "de": "Nüchternzucker",
+          "es": "Glucosa en ayunas"
+        }
+      }
+    }
   }
 }
