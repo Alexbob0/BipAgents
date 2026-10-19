@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 import httpx
-import jwt
 
 from .config import ApnsConfig
 from .logs import fields, redact
@@ -58,6 +57,8 @@ class ApnsClient:
     def provider_token(self, force: bool = False) -> str:
         now = self.clock()
         if force or self._token is None or now - self._token_iat >= TOKEN_TTL_SECONDS:
+            import jwt  # here, not at start: a bridge that pushes through the relay never signs (~15 MB less)
+
             iat = int(now)
             self._token = jwt.encode({"iss": self.config.team_id, "iat": iat}, self._signing_key(),
                                      algorithm="ES256", headers={"kid": self.config.key_id})

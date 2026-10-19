@@ -14,7 +14,6 @@ import time
 from typing import Any, Callable, Dict, Optional
 
 import httpx
-import jwt
 
 from .apns import ApnsResult
 from .logs import fields, redact
@@ -65,6 +64,8 @@ class FcmClient:
     async def access_token(self, force: bool = False) -> str:
         now = self.clock()
         if force or self._access is None or now - self._access_at >= ACCESS_TTL_SECONDS:
+            import jwt  # here, not at start: a bridge that pushes through the relay never signs (~15 MB less)
+
             assertion = jwt.encode({"iss": self.email, "scope": SCOPE, "aud": self.token_uri, "iat": int(now),
                                     "exp": int(now) + 3600}, self.key, algorithm="RS256")
             resp = await self.client.post(self.token_uri, data={
