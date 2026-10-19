@@ -61,6 +61,11 @@ class AgentThinking(BaseModel):
     level: str = Field(..., pattern="^(none|low|medium|high|xhigh)$")
 
 
+class AgentModel(BaseModel):
+    name: str = Field(..., pattern=r"^[A-Za-z0-9._:/@+-]{1,120}$")   # the router's id of the model
+    vision: Optional[bool] = None
+
+
 Runner = Callable[[Sequence[str]], "asyncio.Future[str]"]
 
 
@@ -468,6 +473,38 @@ def set_thinking(config: Config, agent: AgentConfig, level: str) -> str:
     return level
 
 
+def read_model(config: Config, agent: AgentConfig) -> Optional[Dict[str, Any]]:
+    """The agent's model (its id at the router, whether it sees images), or None when the bridge can't switch it
+    (an agent set up by hand, a provider without a model id)."""
+    if agent.host_home:
+        return None
+    try:
+        data = yaml.safe_load(_profile_config(config, agent).read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    model = data.get("model") if isinstance(data, dict) else None
+    if not isinstance(model, dict) or model.get("provider") not in ("custom", "openrouter") or not model.get("default"):
+        return None
+    return {"name": str(model["default"]), "vision": bool(model.get("supports_vision", False))}
+
+
+def set_model(config: Config, agent: AgentConfig, name: str, vision: Optional[bool]) -> Dict[str, Any]:
+    """Another model for this agent, from its next message, with the same router and key (the all-included offer's
+    key works with any model of its router; the person's own key with any of theirs)."""
+    if read_model(config, agent) is None:
+        raise LookupError(agent.name)
+    path = _profile_config(config, agent)
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data["model"]["default"] = name
+    if vision is not None:
+        data["model"]["supports_vision"] = vision
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    shutil.copymode(path, temporary)
+    os.replace(temporary, path)   # never a half-written config for a gateway reading it
+    return read_model(config, agent) or {}
+
+
 def heal_souls(config: Config) -> None:
     """Agents whose bridge-owned block (language, what they read) an earlier bridge wrote: brought up to date, the
     personality the person wrote untouched."""
@@ -502,7 +539,8 @@ async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncCli
     soul, lang = souls.split_language(read_soul(config, agent))
     if agent.host_home:   # set up by hand: its tools are its administrator's
         return {"id": agent.name, "name": agent.display_name, "soul": soul.strip(), "language": lang,
-                "thinking": read_thinking(config, agent), "by_hand": True, "toolsets": [], "isolated": agent.isolated,
+                "thinking": read_thinking(config, agent), "model": None, "by_hand": True, "toolsets": [],
+                "isolated": agent.isolated,
                 "protected": True, "services": []}
     resp = await http.get(f"{agent.hermes_url}/v1/toolsets", headers={"Authorization": f"Bearer {agent.hermes_key}"},
                           timeout=10)
@@ -510,7 +548,8 @@ async def read_settings(config: Config, agent: AgentConfig, http: httpx.AsyncCli
     toolsets = [{k: t.get(k) for k in ("name", "label", "description", "enabled", "configured")}
                 for t in resp.json().get("data", []) if isinstance(t, dict) and t.get("name")]
     return {"id": agent.name, "name": agent.display_name, "soul": soul.strip(), "language": lang,
-            "thinking": read_thinking(config, agent), "toolsets": toolsets, "isolated": agent.isolated,
+            "thinking": read_thinking(config, agent), "model": read_model(config, agent), "toolsets": toolsets,
+            "isolated": agent.isolated,
             "protected": config.hermes.isolated,
             "services": connected.listing(config, agent), "skills": own_skills.listing(profile_folder(config, agent)),
             "browser": browser_settings(config, agent)}
@@ -660,6 +699,22 @@ def agents_admin_router() -> APIRouter:
                 return {"id": agent.name, "thinking": set_thinking(services.config, agent, body.level)}
             except LookupError as exc:
                 raise HTTPException(status_code=409, detail="this agent's model can't be switched from here") from exc
+
+    @router.put("/agents/{agent_id}/model")
+    async def put_model(agent_id: str, body: AgentModel, request: Request) -> Dict[str, Any]:
+        """Another model for the agent, from the app, between two messages."""
+        services = request.app.state.services
+        try:
+            agent = editable(services.config, agent_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        async with lock:
+            try:
+                model = set_model(services.config, agent, body.name, body.vision)
+            except LookupError as exc:
+                raise HTTPException(status_code=409, detail="this agent's model can't be switched from here") from exc
+        log.info("agent model changed", extra=fields(agent=agent.name, model=body.name))
+        return {"id": agent.name, "model": model}
 
     @router.patch("/agents/{agent_id}/settings")
     async def patch_settings(agent_id: str, body: AgentSettings, request: Request) -> Dict[str, Any]:

@@ -419,3 +419,26 @@ def test_an_earlier_bridge_block_gets_the_rule_about_what_agents_read(managed):
     (folder / "SOUL.md").write_text("Fait à la main, sans bloc.\n")
     heal_souls(config)
     assert read_soul(config, agent) == "Fait à la main, sans bloc.\n"   # a hand-made personality stays as it is
+
+
+def test_the_agents_model_is_switched_in_its_config(managed):
+    """The app's model picker: another model id for this agent, same router and key, its vision too; nothing for a
+    model the bridge didn't set up."""
+    from bipbridge.agents_admin import read_model, set_model
+
+    config, _, tmp = managed
+    agent = next(iter(config.agents.values()))
+    folder = tmp / ".hermes" / "profiles" / agent.name
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "config.yaml").write_text("model:\n  provider: anthropic\n")
+    assert read_model(config, agent) is None
+    with pytest.raises(LookupError):
+        set_model(config, agent, "glm-5.3-flash", True)
+    (folder / "config.yaml").write_text("model:\n  provider: custom\n  default: glm-5.3-flash\n"
+                                        "  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\n"
+                                        "agent:\n  max_turns: 60\n")
+    assert read_model(config, agent) == {"name": "glm-5.3-flash", "vision": True}
+    assert set_model(config, agent, "deepseek-v4-flash-0731", False) == {"name": "deepseek-v4-flash-0731", "vision": False}
+    data = yaml.safe_load((folder / "config.yaml").read_text())
+    assert data["model"]["base_url"] == "https://api.eurouter.ai/api/v1" and data["agent"] == {"max_turns": 60}
+    assert set_model(config, agent, "minimax-m3", None)["vision"] is False   # vision unsaid: kept
