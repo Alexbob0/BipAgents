@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import socket
 from dataclasses import dataclass
-from typing import Callable, Iterable, Optional
+from typing import Callable, Iterable, Optional, Tuple
 
 FIRST_BLOCK = 8640          # the first install keeps the familiar 864x ports
 NEXT_BLOCKS = 9200          # the others: 9200, 9210, 9220…
 BLOCK = 10
+# The agents' browsers (two ports each: DevTools and VNC): the first install keeps 9600 and up; each other one gets a
+# range of its own, so two installs on one machine (a family, a shared server) never hand out the same ports.
+BROWSERS_FIRST, BROWSERS_FIRST_COUNT = 9600, 400
+BROWSERS_NEXT, BROWSERS_NEXT_COUNT = 20000, 40
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,13 @@ class Ports:
     def tailnet(self) -> Iterable[int]:
         """What is published on the tailnet (`tailscale serve`); the LAN door stays on the local network."""
         return (self.hermes, self.bridge, self.desk)
+
+
+def browser_ports(base: int) -> Tuple[int, int]:
+    """(first port, how many) for the agents' browsers of the install whose block starts at `base`."""
+    if base == FIRST_BLOCK or base < NEXT_BLOCKS:
+        return BROWSERS_FIRST, BROWSERS_FIRST_COUNT
+    return BROWSERS_NEXT + (base - NEXT_BLOCKS) // BLOCK * BROWSERS_NEXT_COUNT, BROWSERS_NEXT_COUNT
 
 
 def port_free(port: int, host: str = "127.0.0.1") -> bool:

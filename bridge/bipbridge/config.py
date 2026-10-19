@@ -176,6 +176,7 @@ class BrowserConfig:
     runtime: str = ""                # "podman" or "docker" (default: the one found)
     image: str = "bipagents-browser"
     first_port: int = 9600           # its DevTools and VNC ports, on 127.0.0.1 only
+    ports: int = 400                 # how many from first_port: this install's own range (others on the machine have theirs)
     root: str = DEFAULT_DATA_DIR + "/browsers"
     gpu: str = "auto"                # "auto": /dev/dri when there is one; "none": software rendering
     language: str = ""               # e.g. "fr-FR" (default: the bridge's locale)
@@ -487,6 +488,7 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         runtime=str(browser_t.get("runtime", "")),
         image=str(browser_t.get("image", "bipagents-browser")),
         first_port=int(browser_t.get("first_port", 9600)),
+        ports=max(2, int(browser_t.get("ports", 400))),
         root=_expand(str(browser_t.get("root", os.path.join(data_dir, "browsers")))),
         gpu=str(browser_t.get("gpu", "auto")),
         language=str(browser_t.get("language", "")),

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
 from .hermes import Model, agent_url, profile_dir
-from .ports import Ports
+from .ports import Ports, browser_ports
 
 POCKET_PORT = 8098
 
@@ -112,7 +112,8 @@ def bridge_toml(inst: Install) -> str:
     if inst.isolated:
         lines.append("isolated = true")
     if inst.browser:
-        lines += ["", "[browser]", "enabled = true"]
+        first, count = browser_ports(inst.ports.base)
+        lines += ["", "[browser]", "enabled = true", f"first_port = {first}", f"ports = {count}"]
     media = inst.home / ".hermes" / "media"
     lines += ["", "[media.roots]", f"{_q(str(media))} = {_q(str(media))}"]   # native Hermes: same path both sides
     push = []

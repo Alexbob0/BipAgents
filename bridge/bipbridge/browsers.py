@@ -138,14 +138,21 @@ def _free(port: int) -> bool:
         return probe.connect_ex(("127.0.0.1", port)) != 0
 
 
+def in_range(config: Config, ports: Dict[str, int]) -> bool:
+    """The ports are this install's own (first_port and the `ports` after it): another install on the machine never
+    hands them out, even while its browsers are stopped."""
+    first = config.browser.first_port
+    return all(first <= port < first + config.browser.ports for port in ports.values())
+
+
 def pick_ports(config: Config, is_free: Callable[[int], bool] = _free) -> Dict[str, int]:
-    """Two ports in a row, from `first_port`, that no other agent's browser has and nothing listens on."""
+    """Two ports in a row, in this install's range, that no other agent's browser has and nothing listens on."""
     taken = set()
     root = Path(config.browser.root)
     for other in root.iterdir() if root.is_dir() else []:
         taken.update((ports_of(config, other.name) or {}).values())
     port = config.browser.first_port
-    while port < config.browser.first_port + 400:
+    while port + 1 < config.browser.first_port + config.browser.ports:
         if port not in taken and port + 1 not in taken and is_free(port) and is_free(port + 1):
             return {"cdp": port, "vnc": port + 1}
         port += 2
@@ -253,7 +260,9 @@ async def setup(config: Config, agent: AgentConfig, run: Callable[..., Any], hom
     if not engine:
         raise BrowserError("the visible browser needs podman (or docker)")
     place = folder(config, agent.name)
-    ports = ports_of(config, agent.name) or pick_ports(config, is_free)
+    ports = ports_of(config, agent.name)
+    if not ports or not in_range(config, ports):   # none yet, or from before this install had a range of its own
+        ports = pick_ports(config, is_free)
     (place / "profile").mkdir(parents=True, exist_ok=True)
     os.chmod(place, 0o700)
     password = place / "vnc.pass"

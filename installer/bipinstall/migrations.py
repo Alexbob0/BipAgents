@@ -68,11 +68,53 @@ def browsers_on_demand(runner: hermes.Runner, home: Path) -> str:
             "restarted")
 
 
+def _bridge_config(home: Path) -> Optional[Path]:
+    configs = [home / ".config" / "bipagents" / "bridge.toml", home / ".config" / "hermes-ios" / "bridge.toml"]
+    return next((path for path in configs if path.is_file()), None)
+
+
+def with_browser_range(text: str, first: int, count: int) -> str:
+    """The bridge config with its [browser] section handing out `count` ports from `first` (the rest kept)."""
+    keys = f"first_port = {first}\nports = {count}\n"
+    found = re.search(r"^\[browser\]\n((?:(?!\[).*\n?)*)", text, re.M)
+    if not found:
+        return text.rstrip("\n") + "\n\n[browser]\nenabled = true\n" + keys
+    body = re.sub(r"^(first_port|ports)\s*=.*\n?", "", found.group(1), flags=re.M)
+    return text[:found.start(1)] + keys + body + text[found.end(1):]
+
+
+def browser_ports(runner: hermes.Runner, home: Path) -> str:
+    """Each install of the machine hands its agents' browsers ports of its own range (ports.browser_ports): two
+    accounts (a family, a shared server) gave their first browsers the same ones, and only one could run at a time.
+    The range is written in the bridge's config, the browsers set up again (moved into it, their profiles kept) and
+    the gateways restarted."""
+    from .ports import browser_ports as range_of
+    units = sorted((home / ".config" / "systemd" / "user").glob("bipagents-browser-*.service"))
+    config = _bridge_config(home)
+    if not units or config is None:
+        return "no agent browser here"
+    text = config.read_text(encoding="utf-8")
+    port = re.search(r"^port\s*=\s*(\d+)", text.split("\n[", 1)[0], re.M)   # the bridge's own: its block + 3
+    if not port:
+        return "agents' browsers left as they are (no bridge port in its config)"
+    first, count = range_of(int(port.group(1)) - 3)
+    runner.log.append(f"write {config}")
+    if not runner.dry:
+        config.write_text(with_browser_range(text, first, count), encoding="utf-8")
+    repo = Path(__file__).resolve().parents[2]
+    runner.run([str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "browser", "add", "--all",
+                "--config", str(config)], cwd=repo / "bridge")
+    from . import update
+    update.restart(runner)
+    return f"the agents' browsers ({len(units)}) use ports {first} to {first + count - 1}, of this install only"
+
+
 # In order; an id never changes once released.
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-15-local-compression", local_compression),
     ("2026-10-16-approvals-manual", approvals_manual),
     ("2026-10-18-browsers-on-demand", browsers_on_demand),
+    ("2026-10-19-browser-ports", browser_ports),
 ]
 
 

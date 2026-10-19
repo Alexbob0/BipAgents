@@ -719,6 +719,40 @@ def test_an_update_makes_the_browsers_start_when_used(tmp_path, monkeypatch):
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"] and "(1)" in said
 
 
+def test_each_install_of_a_machine_hands_out_browser_ports_of_its_own():
+    from bipinstall.ports import browser_ports
+    assert browser_ports(8640) == (9600, 400)       # the first install keeps its ports
+    assert browser_ports(9200) == (20000, 40) and browser_ports(9210) == (20040, 40) and browser_ports(9230) == (20120, 40)
+    inst = Install(repo=Path("/r"), home=Path("/home/bip2"), ports=Ports(9210), tailnet_name=None, lan_address=None,
+                   browser=True)
+    assert "[browser]\nenabled = true\nfirst_port = 20040\nports = 40" in bridge_toml(inst)
+
+
+def test_an_update_moves_the_browsers_into_the_install_s_own_ports(tmp_path, monkeypatch):
+    """Two accounts on one machine gave their first browsers 9600 and 9601: only one could run. The update writes
+    this install's range and sets the browsers up again in it (their profiles kept)."""
+    from bipinstall import migrations, update
+    units = tmp_path / ".config" / "systemd" / "user"
+    units.mkdir(parents=True)
+    (units / "bipagents-browser-daily.service").write_text("[Service]\n")
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir()
+    config.write_text('bridge_key = "k"\nport = 9213\n\n[browser]\nenabled = true\nidle_minutes = 10\n\n'
+                      '[agents.daily]\nport = 1\n')
+    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append(list(args)) or ""
+    said = migrations.browser_ports(runner, tmp_path)
+    text = config.read_text()
+    assert "[browser]\nfirst_port = 20040\nports = 40\nenabled = true\nidle_minutes = 10\n" in text
+    assert "[agents.daily]\nport = 1" in text and text.count("first_port") == 1
+    assert ran[0][1:5] == ["-m", "bipbridge", "browser", "add"] and "20040 to 20079" in said
+    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
+    assert migrations.with_browser_range(text, 20040, 40) == text     # again: nothing changes
+
+
 def test_the_bipagents_command_runs_install_sh_and_shows_its_help_alone(tmp_path):
     import subprocess
     from bipinstall import upgrade

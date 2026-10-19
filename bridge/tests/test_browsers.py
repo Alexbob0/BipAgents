@@ -32,6 +32,27 @@ def setup(config_dict, tmp_path, monkeypatch):
     return config, hub, run, commands, tmp_path
 
 
+def test_an_install_hands_out_only_its_own_range_and_moves_a_browser_from_outside_it(setup):
+    """Two installs on one machine each have a range (installer/bipinstall/ports.py): a browser set up before it
+    existed, on ports outside it, gets ports of its own range when it is set up again; its profile stays."""
+    config, hub, run, commands, tmp_path = setup
+    config.browser.ports = 4
+    place = tmp_path / "browsers" / "budget"
+    (place / "profile").mkdir(parents=True)
+    (place / "profile" / "Cookies").write_text("kept")
+    (place / "ports.json").write_text(json.dumps({"cdp": 9600, "vnc": 9601}))
+    assert not browsers.in_range(config, {"cdp": 9600, "vnc": 9601})
+    agent = asyncio.run(browsers.setup(config, config.agent("budget"), run, str(hub), is_free=lambda p: True))
+    assert json.loads((place / "ports.json").read_text()) == {"cdp": 19600, "vnc": 19601}
+    assert agent.desktop_vnc == "tcp://127.0.0.1:19601" and (place / "profile" / "Cookies").read_text() == "kept"
+    assert ["/opt/hermes", "-p", "budget", "config", "set", "browser.cdp_url", "http://127.0.0.1:19600"] in \
+        [c[0] for c in commands]
+    (tmp_path / "browsers" / "other").mkdir()
+    (tmp_path / "browsers" / "other" / "ports.json").write_text(json.dumps({"cdp": 19602, "vnc": 19603}))
+    with pytest.raises(browsers.BrowserError):   # 19600-19603 all handed out: the range is full
+        browsers.pick_ports(config, is_free=lambda p: True)
+
+
 def test_an_agent_gets_its_own_browser_container_and_desktop(setup):
     from bipbridge.agents_admin import save_agent
 
