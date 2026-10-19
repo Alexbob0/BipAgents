@@ -17,6 +17,7 @@ CONTENT_TYPES = {
     ".opus": "audio/ogg", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
     ".webp": "image/webp", ".heic": "image/heic", ".pdf": "application/pdf",
     ".mp4": "video/mp4", ".m4v": "video/x-m4v", ".mov": "video/quicktime", ".webm": "video/webm",
+    ".html": "text/html; charset=utf-8",   # a page an agent made (pages.py): the apps show it locked
 }
 
 

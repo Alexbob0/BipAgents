@@ -233,6 +233,18 @@ la file d'arrière-plan (un Live passe d'abord). Le fichier (`.m4a` si ffmpeg es
 appel long répond en flux d'événements, avec un commentaire toutes les 10 s. Les fichiers sont purgés après
 `[outbox] retention_days` ; les jetons (empreintes) sont dans `agent-tools.json`.
 
+Pages : `create_page` (`html`, `title`, `page` facultatif pour en mettre une à jour) garde une petite page web faite
+par l'agent pour la personne — un tableau de bord de ses prises de sang, un suivi, un graphique, un quiz, sur
+n'importe quel sujet — en un seul fichier HTML où tout est inclus, dans `agent-pages/<agent>/` (1 Mo de HTML au plus,
+100 pages par agent, gardées jusqu'à leur suppression, et supprimées avec l'agent). Elle est verrouillée avant d'être
+gardée : une Content-Security-Policy en tête de son head (pas de réseau, pas de formulaires, pas de cadres), et
+`<script src="chart.js">` (ou le Chart.js d'un CDN) devient le Chart.js 4 fourni, inclus dans la page (`static/vendor`,
+MIT) ; l'agent apprend ce que sa page demande d'autre au réseau. `GET /v1/media?path=/bipagents/pages/<agent>/<id>.html`
+la sert avec `Content-Security-Policy: sandbox allow-scripts; …` et `Cache-Control: no-store` (une mise à jour garde
+l'adresse) ; les apps l'affichent dans une vue sans issue. `list_pages`, `read_page` (la source de l'agent, gardée à
+côté et jamais servie) et `delete_page` complètent ; les apps les listent par `GET /v1/pages?agent=` et en suppriment
+une par `DELETE /v1/pages/{id}?agent=`.
+
 ### `WS /v1/voice`
 Client → serveur (texte JSON) :
 - `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`

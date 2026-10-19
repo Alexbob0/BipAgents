@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import __version__
+from . import __version__, pages
 from .apns import ApnsClient
 from .auth import require_bridge_key
 from .config import Config
@@ -396,7 +396,29 @@ def build_router() -> APIRouter:
         host = resolve_media(path, media_roots(_services(request).config))
         if host is None:
             raise HTTPException(status_code=404, detail="not found")
-        return FileResponse(host, media_type=media_content_type(host), filename=os.path.basename(host))
+        headers = {"X-Content-Type-Options": "nosniff"}
+        if host.lower().endswith(".html"):
+            # A page an agent made: never a document of this origin, even opened by hand; a new version each time.
+            headers.update({"Content-Security-Policy": f"sandbox allow-scripts; {pages.POLICY}", "Cache-Control": "no-store"})
+        return FileResponse(host, media_type=media_content_type(host), filename=os.path.basename(host), headers=headers)
+
+    @router.get("/pages")
+    async def list_pages(request: Request, agent: str = Query(...)) -> Dict[str, Any]:
+        """The pages an agent made (each one's `path` is for `/v1/media`), the last changed first."""
+        config = _services(request).config
+        agent_cfg = _agent_or_404(config, agent)
+        found = await asyncio.to_thread(pages.list_pages, config, agent_cfg.name)
+        return {"pages": [{k: p.get(k) for k in ("page", "path", "title", "created", "updated", "version", "bytes")}
+                          for p in found]}
+
+    @router.delete("/pages/{page}")
+    async def delete_page(page: str, request: Request, agent: str = Query(...)) -> Dict[str, Any]:
+        config = _services(request).config
+        agent_cfg = _agent_or_404(config, agent)
+        if not await asyncio.to_thread(pages.delete, config, agent_cfg.name, page):
+            raise HTTPException(status_code=404, detail="not found")
+        log.info("agent page deleted", extra=fields(agent=agent_cfg.name, page=page))
+        return {"deleted": page}
 
     @router.get("/sessions/{session_id}/state")
     async def session_state(session_id: str, request: Request, agent: str = Query(...)) -> Dict[str, Any]:

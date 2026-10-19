@@ -89,7 +89,7 @@ def test_an_agent_turns_a_text_into_audio_with_its_voice(client, config, backend
     assert init["protocolVersion"] == "2025-06-18" and init["capabilities"]["tools"] is not None
     assert _rpc(client, token, "notifications/initialized", request_id=None).status_code == 202
     tools = _rpc(client, token, "tools/list").json()["result"]["tools"]
-    assert [t["name"] for t in tools] == ["create_audio", "create_podcast", "list_voices"]
+    assert [t["name"] for t in tools][:3] == ["create_audio", "create_podcast", "list_voices"]
 
     text = "Bonjour et bienvenue dans ce podcast.\n\nVoici les nouvelles du jour."
     result = _rpc(client, token, "tools/call", {"name": "create_audio",

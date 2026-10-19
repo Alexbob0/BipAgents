@@ -1,7 +1,8 @@
 """Tools the bridge gives the agents, over MCP (``/v1/agent-tools/mcp``): ``create_audio`` reads a text aloud with the
 voice the person chose for the agent in the app (its server voice for reading — Drama 3, Kokoro… — else its Bip);
 ``create_podcast`` makes a conversation between hosts, each with a voice of their own (the person's voice model when
-it reads, else Bips); ``list_voices`` lists the voices the agent may give them.
+it reads, else Bips); ``list_voices`` lists the voices the agent may give them; ``create_page`` and its kin keep the
+small web pages the agent makes for the person (pages.py).
 
 The agent's own Hermes calls it (an MCP server entry ``bipagents`` in its profile, with a token of its own), not its
 sandbox: nothing is opened to the containers, and the voice server stays on this machine's loopback. The text is cut
@@ -31,7 +32,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from . import __version__, shares
+from . import __version__, pages, shares
 from .config import AgentConfig, Config
 from .logs import fields
 from .tts import BACKGROUND, OUTPUT_RATE, Resampler, TtsError, mono, voice_language
@@ -103,7 +104,52 @@ LIST_VOICES = {
     "inputSchema": {"type": "object", "properties": {}},
 }
 
-TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES]
+CREATE_PAGE = {
+    "name": "create_page",
+    "description": (
+        "Make a small web page for the person, on any subject they ask: a dashboard following their blood tests, a "
+        "tracker, a chart, a comparison, a calculator, a quiz, a checklist, a little game. Write ONE complete HTML "
+        "file: the CSS in <style>, the JavaScript in <script>, the data inline in the script (for example a JSON "
+        "object). It opens in the BipAgents app in a locked view with no network at all: no CDN, no fetch, no "
+        "external images or fonts (use emoji, inline SVG, CSS or data: URIs). For charts, <script src=\"chart.js\">"
+        "</script> gives Chart.js 4 (bundled). Design it for a phone first (it also opens on a tablet), readable in "
+        "light and dark (prefers-color-scheme), with a clear title and the date of the data. Nothing typed in the "
+        "page is kept (no storage): what must last goes in its data, through you. Say where the numbers come from "
+        "(which document, which date). To change a page later (new results, a fix), call again with its page id: "
+        "the person's link shows the new version. The result gives a MEDIA: line: put it alone on a line in your reply."),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "html": {"type": "string", "description": "The whole page: one HTML file with everything inline."},
+            "title": {"type": "string", "description": "A short title, shown on the page's card.", "maxLength": 80},
+            "page": {"type": "string", "description": "To update a page: its id (from a previous result or list_pages)."},
+        },
+        "required": ["html", "title"],
+    },
+}
+
+LIST_PAGES = {
+    "name": "list_pages",
+    "description": "The pages you made for the person (id, title, last change), the last changed first.",
+    "inputSchema": {"type": "object", "properties": {}},
+}
+
+READ_PAGE = {
+    "name": "read_page",
+    "description": "The HTML of one of your pages as you wrote it, to update it with create_page.",
+    "inputSchema": {"type": "object", "properties": {"page": {"type": "string", "description": "The page id."}},
+                    "required": ["page"]},
+}
+
+DELETE_PAGE = {
+    "name": "delete_page",
+    "description": "Delete one of your pages, when the person asks for it.",
+    "inputSchema": {"type": "object", "properties": {"page": {"type": "string", "description": "The page id."}},
+                    "required": ["page"]},
+}
+
+TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES, CREATE_PAGE, LIST_PAGES, READ_PAGE, DELETE_PAGE]
+PAGE_TOOLS = {CREATE_PAGE["name"], LIST_PAGES["name"], READ_PAGE["name"], DELETE_PAGE["name"]}
 
 
 def _digest(token: str) -> str:
@@ -119,8 +165,8 @@ def audio_root(config: Config) -> Path:
 
 
 def media_roots(config: Config) -> Dict[str, str]:
-    """`[media] roots` plus the agents' audio files."""
-    return {**config.media_roots, MEDIA_PREFIX: str(audio_root(config))}
+    """`[media] roots` plus the agents' audio files and pages."""
+    return {**config.media_roots, MEDIA_PREFIX: str(audio_root(config)), pages.PREFIX: str(pages.root(config))}
 
 
 def tools_version() -> str:
@@ -201,7 +247,8 @@ async def register_all(config: Config, run: Callable[..., Any]) -> None:
 
 
 def forget(config: Config, name: str) -> None:
-    """A deleted agent: its token goes."""
+    """A deleted agent: its token goes, and its pages."""
+    pages.forget(config, name)
     tokens = load_tokens(config)
     if tokens.pop(name, None) is not None:
         save_tokens(config, tokens)
@@ -493,7 +540,40 @@ def _duration(seconds: float) -> str:
     return f"{minutes} min {rest:02d} s" if minutes else f"{rest} s"
 
 
+def page_tool(config: Config, agent: AgentConfig, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    page = str(arguments.get("page") or "").strip()
+    try:
+        if name == LIST_PAGES["name"]:
+            found = pages.list_pages(config, agent.name)
+            if not found:
+                return _tool_text("No page yet.")
+            return _tool_text("\n".join(f"{p['page']}: {p.get('title') or ''} (changed {pages.age(p)} ago, "
+                                         f"version {p.get('version')})" for p in found))
+        if name == READ_PAGE["name"]:
+            return _tool_text(pages.source(config, agent.name, page))
+        if name == DELETE_PAGE["name"]:
+            if not pages.delete(config, agent.name, page):
+                return _tool_text(f"unknown page id: {page} (see list_pages)", error=True)
+            log.info("agent page deleted", extra=fields(agent=agent.name, page=page))
+            return _tool_text(f"Page {page} deleted.")
+        made = pages.save(config, agent.name, str(arguments.get("html") or ""), str(arguments.get("title") or ""),
+                          page or None)
+    except ValueError as exc:
+        return _tool_text(str(exc), error=True)
+    log.info("agent page made", extra=fields(agent=agent.name, page=made["page"], version=made["version"],
+                                             bytes=made["bytes"]))
+    warning = ""
+    if made["outside"]:
+        warning = ("\nWarning: the page asks for things on the network, which will not load (it runs offline): "
+                   + ", ".join(made["outside"][:5]) + ". Put them inline, or do without, and update the page.")
+    return _tool_text(f"Page {'updated' if made['version'] > 1 else 'ready'}: id {made['page']}, "
+                      f"version {made['version']}.{warning}\n"
+                      f"To give it to the person, put this line alone at the end of your reply:\nMEDIA:{made['path']}")
+
+
 async def call_tool(maker: AudioMaker, agent: AgentConfig, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    if name in PAGE_TOOLS:
+        return await asyncio.to_thread(page_tool, maker.config, agent, name, arguments)
     if name == LIST_VOICES["name"]:
         lines = [f"{entry['voice']} ({entry['kind']})" for entry in await maker.voices(agent)]
         return _tool_text("\n".join(lines))
@@ -546,7 +626,9 @@ def agent_tools_router() -> APIRouter:
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": SERVER_NAME, "version": __version__},
                 "instructions": "BipAgents: create_audio reads a text aloud with your voice; create_podcast makes a "
-                                "conversation between hosts with different voices; both give a MEDIA: line for your reply."}))
+                                "conversation between hosts with different voices; create_page makes a small web page "
+                                "(a dashboard, a tracker, a chart, a tool) on any subject, shown in the app; each "
+                                "gives a MEDIA: line for your reply."}))
         if method == "ping":
             return JSONResponse(_result(request_id, {}))
         if method == "tools/list":

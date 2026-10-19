@@ -231,6 +231,17 @@ first). The file (`.m4a` when ffmpeg is installed, else `.wav`) is served at `GE
 the result tells the agent the `MEDIA:` line to put in its reply. Long calls answer as an event stream with a comment
 every 10 s. Files are purged after `[outbox] retention_days`; tokens (digests) live in `agent-tools.json`.
 
+Pages: `create_page` (`html`, `title`, optional `page` to update one) keeps a small web page the agent made for the
+person — a dashboard on their blood tests, a tracker, a chart, a quiz, any subject — as one HTML file with everything
+inline, in `agent-pages/<agent>/` (at most 1 MB of HTML, 100 pages per agent, kept until deleted, and gone with the
+agent). It is locked before it is kept: a Content-Security-Policy first in its head (no network, no forms, no frames),
+and `<script src="chart.js">` (or a CDN's Chart.js) becomes the bundled Chart.js 4 inline (`static/vendor`, MIT);
+the agent hears what else its page asks from the network. `GET /v1/media?path=/bipagents/pages/<agent>/<id>.html`
+serves it with `Content-Security-Policy: sandbox allow-scripts; …` and `Cache-Control: no-store` (an update keeps the
+path); the apps show it in a view with no way out. `list_pages`, `read_page` (the agent's source, kept beside it and
+never served) and `delete_page` complete it; the apps list them with `GET /v1/pages?agent=` and delete one with
+`DELETE /v1/pages/{id}?agent=`.
+
 ### `WS /v1/voice`
 Client → server (JSON text):
 - `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`
