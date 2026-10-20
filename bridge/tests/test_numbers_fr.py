@@ -66,6 +66,9 @@ def test_prepare_for_synthesis(text, spoken):
      "Environ un millimètre, trois mètres de haut, deux cent cinquante grammes de farine, un litre d'eau, cinquante "
      "centilitres, deux gigaoctets, cinq cents mégaoctets, un kilowattheure, douze mètres carrés."),
     ("Ils sont 3 l'ont vu, 5 m'a dit.", "Ils sont trois l'ont vu, cinq m'a dit."),
+    # « @ »: « à » outside an address, a mention not read, an address as it is.
+    ("RDV @ 14h avec @Léa @ la maison, prix@10 €, écris à alex.martin+bip@example.co.uk.",
+     "rendez-vous à quatorze heures avec Léa à la maison, prix à dix euros, écris à alex.martin+bip@example.co.uk."),
     ("RDV avec Mme Martin et M. Durand, Dr Lopez absent.", "rendez-vous avec Madame Martin et Monsieur Durand, Docteur Lopez absent."),
     ("Comptez env. 2 h, p. ex. le matin, c.-à-d. tôt.", "Comptez environ deux heures, par exemple le matin, c'est-à-dire tôt."),
     ("Pommes, poires, etc. Puis le dessert.", "Pommes, poires, et cetera, Puis le dessert."),

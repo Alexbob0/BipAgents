@@ -19,6 +19,7 @@ def test_voice_language(voice, language):
     ("es", "3 m de alto, 250 g de harina, 1 l de agua. Lluvia -> cancelado.",
      "tres metros de alto, doscientos cincuenta gramos de harina, un litro de agua. Lluvia, cancelado."),
     ("de", "Etwa 1 mm, 250 g Mehl, 1 kWh.\n-> Regen", "Etwa ein Millimeter, zweihundertfünfzig Gramm Mehl, eine Kilowattstunde.\nRegen"),
+    ("en", "Meet @ the station with @Bob, mail bob@example.com", "Meet at the station with Bob, mail bob@example.com"),
     ("en", "You spent $420.50 (12% less) in 2026.", "You spent four hundred and twenty dollars and fifty cents, twelve percent less, in twenty twenty-six."),
     ("en", "1,250 steps vs 1 h on the 3rd day.", "one thousand two hundred and fifty steps versus one hour on the third day."),
     ("en", "Garmin/Oura e.g. OpenAI", "Garmin or Oura for example Open AI"),

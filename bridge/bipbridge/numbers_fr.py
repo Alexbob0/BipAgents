@@ -233,6 +233,10 @@ def _split_camel(match: re.Match) -> str:
     return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", match.group(0))
 
 
+# « @ » outside an e-mail address (« RDV @ 14h », « prix@10 € »): a word of the language; before a name, a mention
+# (« avec @Léa »): not read; an address stays as it is.
+MENTION_AT = r"(?<![\w.+-])@(?=[^\W\d_])"
+NOT_EMAIL_AT = r"\s*(?:(?<![\w.+-])@|@(?![\w-]+(?:\.[\w-]+)+))\s*"
 # Symbols and abbreviations a TTS engine would read letter by letter or skip. Add entries here as they come up.
 _CAP = r"(?=[ -]?[A-ZÀ-Ý])"  # followed by a capitalized name
 _LEXICON = [
@@ -247,7 +251,7 @@ _LEXICON = [
     (r"\bcf\.", "voir"), (r"\bvs\.?(?= )", "contre"), (r"\b[nN]°\s?", "numéro "), (r"\bRDV\b|\brdv\b", "rendez-vous"),
     (r"\bsvp\b|\bSVP\b", "s'il vous plaît"), (r"\btél\.", "téléphone"), (r"\s+&\s+", " et "),
     (r"\s+\+\s+", " plus "), (r"(?<=\d)\s?[~∼]\s?(?=\d)", " à "), (r"\s*(?<!~)[~∼≈≃](?!~)\s*", " environ "), (r"(?<!\w)≥\s?", "au moins "),
-    (r"(?<!\w)≤\s?", "au plus "), (r"(?<=\d)\s?×\s?(?=\d)", " fois "), (r"\s@\s", " arobase "),
+    (r"(?<!\w)≤\s?", "au plus "), (r"(?<=\d)\s?×\s?(?=\d)", " fois "), (MENTION_AT, ""), (NOT_EMAIL_AT, " à "),
 ]
 # English words common in the agents' replies, respelled so a French voice says them right
 # (singular, plural). Tuned by ear: adjust the spelling when one still sounds off.
