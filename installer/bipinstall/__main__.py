@@ -18,7 +18,7 @@ from typing import Callable, List, Optional
 import httpx
 import yaml
 
-from . import hermes, models, ui
+from . import hermes, models, ui, voices
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
@@ -191,13 +191,13 @@ def start_service(system: str, label: str, path: Path, runner: hermes.Runner) ->
         runner.run(["systemctl", "--user", "enable", "--now", label])
 
 
-def venv(folder: Path, runner: hermes.Runner) -> None:
+def venv(folder: Path, runner: hermes.Runner, requirements: str = "requirements.txt") -> None:
     """The folder's Python environment, with its requirements as they are now (a new one after an update is
     installed; nothing happens when they are all there)."""
     if runner.dry or not (folder / ".venv" / "bin" / "python").exists():
         runner.run(["uv", "venv", "--python", "3.12", str(folder / ".venv")])
     runner.run(["uv", "pip", "install", "--quiet", "--python", str(folder / ".venv" / "bin" / "python"), "-r",
-                str(folder / "requirements.txt")])
+                str(folder / requirements)])
 
 
 def wait_for(url: str, headers: Optional[dict] = None, seconds: int = 90) -> bool:
@@ -280,6 +280,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--languages", default=None,
                         help="the Bips' languages: fr, en, es, de (default: all four, this machine's first; only the "
                              "first stays loaded, the others load when spoken and unload when silent)")
+    parser.add_argument("--light-voices", action="store_true",
+                        help="the Bips' voices as the phones have them (8-bit, no PyTorch), loaded only while they "
+                             "speak: for a small server (the default of --cloud)")
     parser.add_argument("--voice-server", "--kyutai-url",
                         help="your own voice model: a TTS server with OpenAI's /v1/audio/speech, Kyutai's included "
                              "(default: look for one on this machine and the local network, then ask)")
@@ -595,8 +598,14 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
     if pocket_running():
         say("  already set up on this machine: I'll share it.")
     else:
-        venv(REPO / "pocket", runner)
-        label, path, content = pocket_service(inst, machine.system, args.languages or bip_languages())
+        languages = args.languages or bip_languages()
+        # A place of the all-included offer (or --light-voices): the phones' 8-bit voices, loaded only while they
+        # speak, without PyTorch; Pocket's own models when they can't be had.
+        packages = None
+        if getattr(args, "cloud", None) or getattr(args, "light_voices", False):
+            packages = voices.install(languages.split(","), inst.home, runner, say)
+        venv(REPO / "pocket", runner, "requirements-onnx.txt" if packages else "requirements.txt")
+        label, path, content = pocket_service(inst, machine.system, languages, packages=packages)
         write(path, content, runner)
         start_service(machine.system, label, path, runner)
 

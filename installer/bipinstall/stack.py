@@ -220,10 +220,16 @@ def bip_languages(locale: Optional[str] = None) -> str:
     return ",".join([first] + [code for code in order if code != first] if first in order else order)
 
 
-def pocket_service(inst: Install, system: str, languages: str) -> tuple[str, Path, str]:
+def pocket_service(inst: Install, system: str, languages: str, packages: Optional[Path] = None) -> tuple[str, Path, str]:
+    """The Bips' voices: Pocket's own models, or with `packages` the phones' 8-bit ones (voices.py), loaded only while
+    they speak (a podcast, an audio file, a reply for a phone that can't speak itself)."""
     python = inst.repo / "pocket" / ".venv" / "bin" / "python"
-    program = [str(python), str(inst.repo / "pocket" / "pocket_server.py"), "--voices", str(inst.repo / "voices"),
-               "--languages", languages, "--port", str(POCKET_PORT)]
+    if packages is not None:
+        program = [str(python), str(inst.repo / "pocket" / "pocket_server.py"), "--onnx", str(packages),
+                   "--keep", "none", "--idle-unload", "120", "--threads", "2", "--port", str(POCKET_PORT)]
+    else:
+        program = [str(python), str(inst.repo / "pocket" / "pocket_server.py"), "--voices", str(inst.repo / "voices"),
+                   "--languages", languages, "--port", str(POCKET_PORT)]
     env = {"PYTHONUNBUFFERED": "1"}
     if system == "macos":
         path = inst.home / "Library" / "LaunchAgents" / "io.github.bipagents.pocket.plist"

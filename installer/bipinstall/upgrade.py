@@ -81,6 +81,14 @@ def pocket_restart() -> Optional[List[str]]:
     return None
 
 
+def pocket_light() -> bool:
+    """Whether this account's voices are the light ones (pocket_server.py --onnx, without PyTorch)."""
+    places = [Path.home() / "Library" / "LaunchAgents" / "io.github.bipagents.pocket.plist",
+              *sorted((Path.home() / ".config" / "systemd" / "user").glob("*.service"))]
+    return any("pocket_server.py" in text and "--onnx" in text
+               for text in (p.read_text(errors="ignore") for p in places if p.is_file()))
+
+
 def installed_accounts() -> List[str]:
     """The machine's other accounts with a BipAgents install (looked at with sudo: their homes are private)."""
     import pwd
@@ -248,8 +256,10 @@ def main(argv: List[str]) -> int:
         say(ui.done("Bridge restarted."))
     pocket = pocket_restart()
     if touched("pocket/", "voices/") and pocket:
-        if touched("pocket/requirements.txt") and (REPO / "pocket" / ".venv").exists():
-            venv(REPO / "pocket", runner)
+        # The light voices (--onnx: the phones' packages) keep their own requirements, PyTorch never comes back.
+        requirements = "requirements-onnx.txt" if pocket_light() else "requirements.txt"
+        if touched(f"pocket/{requirements}") and (REPO / "pocket" / ".venv").exists():
+            venv(REPO / "pocket", runner, requirements)
         runner.run(pocket, check=False)
         say(ui.done("The Bips' voices restarted."))
     elif touched("pocket/", "voices/"):
