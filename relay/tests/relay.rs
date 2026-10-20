@@ -20,6 +20,7 @@ struct Seen {
     apple: Vec<(String, HeaderMap, Value)>,
     google: Vec<(HeaderMap, Value)>,
     google_tokens: usize,
+    reports: Vec<(HeaderMap, Value)>,
 }
 
 type Shared = Arc<Mutex<Seen>>;
@@ -52,6 +53,11 @@ async fn google_send(State(seen): State<Shared>, headers: HeaderMap, Json(body):
     Json(json!({"name": "projects/bip/messages/42"})).into_response()
 }
 
+async fn reports(State(seen): State<Shared>, headers: HeaderMap, Json(body): Json<Value>) -> Json<Value> {
+    seen.lock().unwrap().reports.push((headers, body));
+    Json(json!({"ok": true}))
+}
+
 async fn serve(app: Router) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -78,8 +84,10 @@ async fn harness_with(per_device: u32, blocked: Vec<String>, seal_keys: String) 
         .route("/3/device/{device}", post(apple))
         .route("/token", post(google_token))
         .route("/v1/projects/{project}/messages:send", post(google_send))
+        .route("/reports", post(reports))
         .with_state(seen.clone());
     let fake = serve(fake).await;
+    let fake_reports = fake.clone();
     let apple_key = p256::SecretKey::random(&mut rand::rngs::OsRng).to_pkcs8_pem(LineEnding::LF).unwrap();
     let google_key = rsa::RsaPrivateKey::new(&mut rand::rngs::OsRng, 2048).unwrap();
     let google_key = rsa::pkcs8::EncodePrivateKey::to_pkcs8_pem(&google_key, rsa::pkcs8::LineEnding::LF).unwrap();
@@ -104,6 +112,9 @@ async fn harness_with(per_device: u32, blocked: Vec<String>, seal_keys: String) 
         pushes_per_ip_hour: 1000,
         registrations_per_ip_hour: 1000,
         trust_forwarded_for: false,
+        report_url: Some(format!("{fake_reports}/reports")),
+        report_secret: Some("relay-report-secret".into()),
+        reports_per_ip_hour: 2,
         blocked,
     };
     let relay = Arc::new(Relay::new(config, reqwest::Client::new()).unwrap());
@@ -250,4 +261,26 @@ async fn a_device_blocked_for_abuse_gets_nothing() {
     let other = h.register("apns", &"ef".repeat(32)).await;
     let (status, _) = h.post("/v1/relay/push", json!({"token": other, "payload": preview("vie")})).await;
     assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn a_report_of_a_reply_is_passed_on_with_the_secret_and_kept_nowhere() {
+    let h = harness(100).await;
+    let report = json!({"reason": "Faux ou dangereux", "comment": "", "text": "Une réponse", "category": "wellness",
+                        "app": "1.0 (12)", "model": "iPhone17,1", "platform": "ios", "lang": "fr"});
+    let (status, body) = h.post("/v1/report", report.clone()).await;
+    assert_eq!(status, 202, "{body}");
+    {
+        let seen = h.seen.lock().unwrap();
+        let (headers, sent) = &seen.reports[0];
+        assert_eq!(headers["x-relay-secret"], "relay-report-secret");
+        assert_eq!(sent, &report);
+    }
+    let (status, _) = h.post("/v1/report", json!({"reason": "x", "text": "", "platform": "ios"})).await;
+    assert_eq!(status, 400);
+    let (status, _) = h.post("/v1/report", json!({"reason": "x", "text": "y", "platform": "windows"})).await;
+    assert_eq!(status, 400);
+    h.post("/v1/report", report.clone()).await;
+    let (status, _) = h.post("/v1/report", report).await;
+    assert_eq!(status, 429, "two reports an hour per address in this test");
 }

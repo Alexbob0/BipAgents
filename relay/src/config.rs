@@ -25,6 +25,10 @@ pub struct Config {
     pub pushes_per_ip_hour: u32,
     pub registrations_per_ip_hour: u32,
     pub trust_forwarded_for: bool,
+    /// Where « Report this reply » goes on (the guichet's /v1/reports), with the secret it checks; none: refused.
+    pub report_url: Option<String>,
+    pub report_secret: Option<String>,
+    pub reports_per_ip_hour: u32,
     /// Devices refused (terms of use: abuse), by the 8-hex fingerprint the logs show: `RELAY_BLOCKED` (separated by
     /// commas or spaces) or `RELAY_BLOCKED_FILE` (one per line, `#` comments).
     pub blocked: Vec<String>,
@@ -80,6 +84,9 @@ impl Config {
             pushes_per_ip_hour: number("RELAY_PUSHES_PER_IP_HOUR", 20000)?,
             registrations_per_ip_hour: number("RELAY_REGISTRATIONS_PER_IP_HOUR", 60)?,
             trust_forwarded_for: var("RELAY_TRUST_FORWARDED_FOR").is_some_and(|v| v == "1" || v == "true"),
+            report_url: var("RELAY_REPORT_URL"),
+            report_secret: inline_or_file("RELAY_REPORT_SECRET")?.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            reports_per_ip_hour: number("RELAY_REPORTS_PER_IP_HOUR", 20)?,
             blocked: inline_or_file("RELAY_BLOCKED")?
                 .unwrap_or_default()
                 .lines()

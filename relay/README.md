@@ -33,6 +33,7 @@ Nothing to back up, no database: any number of copies can run side by side, and 
 | --- | --- | --- |
 | `POST /v1/register` | `{"platform": "apns"\|"fcm", "token": "…", "environment": "sandbox"\|"production"}` | `{"relay_token": "r1.…"}` |
 | `POST /v1/relay/push` (or `/v1/push`) | `{"token": "r1.…", "payload": {…}, "push_type": "alert"\|"background", "priority": 5\|10, "collapse_id": "…"}` | `{"status": 200, "reason": null, "apns_id": "…"}` |
+| `POST /v1/report` | `{"reason", "comment", "text", "category", "app", "model", "platform": "ios"\|"android", "lang"}` | `202 {"ok": true}`: « Report this reply » passed on to `RELAY_REPORT_URL` with the secret, kept nowhere; 503 when not set up, 502 when it couldn't go (the app then offers an e-mail) |
 | `GET /health` | | `{"status": "ok", "apns": true, "fcm": true}` |
 
 A token sealed by another key, or altered, answers `{"status": 410, "reason": "BadRelayToken"}` (the bridge forgets
@@ -49,6 +50,7 @@ a dead device).
 | `PORT` or `RELAY_LISTEN` | `8080` / `0.0.0.0:8080` |
 | `RELAY_PUSHES_PER_DEVICE_HOUR`, `RELAY_PUSHES_PER_IP_HOUR`, `RELAY_REGISTRATIONS_PER_IP_HOUR` | `300`, `20000`, `60` |
 | `RELAY_TRUST_FORWARDED_FOR` | `1` behind a proxy that sets `X-Forwarded-For` |
+| `RELAY_REPORT_URL`, `RELAY_REPORT_SECRET` or `RELAY_REPORT_SECRET_FILE`, `RELAY_REPORTS_PER_IP_HOUR` | where reports go (the guichet's `/v1/reports`), the secret it checks (its `secrets/relay-report.secret`), `20` |
 | `RELAY_BLOCKED` or `RELAY_BLOCKED_FILE` | devices refused for abuse (terms of use), by the 8-hex fingerprint the logs show; restart to apply |
 | `RUST_LOG` | `info` (JSON lines) |
 

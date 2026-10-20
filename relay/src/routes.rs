@@ -1,4 +1,5 @@
-//! The relay's three routes.
+//! The relay's routes: registering a device, relaying a push, and passing on « Report this reply » to Kerfy Studio
+//! (kept nowhere here; the phone's address only counted, hashed in memory, against abuse).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -26,6 +27,10 @@ pub struct Relay {
     per_device: Quota,
     per_ip_push: Quota,
     per_ip_register: Quota,
+    per_ip_report: Quota,
+    report_url: Option<String>,
+    report_secret: Option<String>,
+    http: reqwest::Client,
     trust_forwarded_for: bool,
     blocked: std::collections::HashSet<String>,
 }
@@ -39,6 +44,10 @@ impl Relay {
             per_device: Quota::new(config.pushes_per_device_hour),
             per_ip_push: Quota::new(config.pushes_per_ip_hour),
             per_ip_register: Quota::new(config.registrations_per_ip_hour),
+            per_ip_report: Quota::new(config.reports_per_ip_hour),
+            report_url: config.report_url,
+            report_secret: config.report_secret,
+            http,
             trust_forwarded_for: config.trust_forwarded_for,
             blocked: config.blocked.into_iter().collect(),
         })
@@ -49,6 +58,7 @@ impl Relay {
         self.per_device.sweep();
         self.per_ip_push.sweep();
         self.per_ip_register.sweep();
+        self.per_ip_report.sweep();
     }
 
     fn is_blocked(&self, token: &str) -> bool {
@@ -77,7 +87,8 @@ pub fn router(relay: Arc<Relay>) -> Router {
         .route("/v1/register", post(register))
         .route("/v1/relay/push", post(push))
         .route("/v1/push", post(push))
-        .layer(DefaultBodyLimit::max(16 * 1024))
+        .route("/v1/report", post(report))
+        .layer(DefaultBodyLimit::max(32 * 1024))
         .with_state(relay)
 }
 
@@ -226,4 +237,68 @@ async fn push(
     tracing::info!(platform = ?device.platform, device = %fingerprint(&device.token), status = outcome.status,
                    reason = outcome.reason.as_deref().unwrap_or(""), "push relayed");
     Json(json!({"status": outcome.status, "reason": outcome.reason, "apns_id": outcome.id})).into_response()
+}
+
+/// « Report this reply » from the app: the reason, the person's words, the reply's text, the agent's kind, the app's
+/// version and the phone's model; never an address or a name. Passed on to Kerfy Studio as is, kept nowhere here.
+#[derive(Deserialize, serde::Serialize)]
+struct Report {
+    reason: String,
+    #[serde(default)]
+    comment: String,
+    text: String,
+    #[serde(default)]
+    category: String,
+    #[serde(default)]
+    app: String,
+    #[serde(default)]
+    model: String,
+    platform: String,
+    #[serde(default)]
+    lang: String,
+}
+
+impl Report {
+    fn valid(&self) -> bool {
+        let short = |v: &str, max: usize| v.chars().count() <= max;
+        !self.reason.trim().is_empty()
+            && !self.text.trim().is_empty()
+            && short(&self.reason, 60)
+            && short(&self.comment, 2000)
+            && short(&self.text, 8000)
+            && short(&self.category, 30)
+            && short(&self.app, 40)
+            && short(&self.model, 60)
+            && matches!(self.platform.as_str(), "ios" | "android")
+            && short(&self.lang, 8)
+    }
+}
+
+async fn report(
+    State(relay): State<Arc<Relay>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<Report>,
+) -> Response {
+    if !body.valid() {
+        return refuse(StatusCode::BAD_REQUEST, "invalid report");
+    }
+    let (Some(url), Some(secret)) = (&relay.report_url, &relay.report_secret) else {
+        return refuse(StatusCode::SERVICE_UNAVAILABLE, "reports are not set up on this relay: the app sends an e-mail");
+    };
+    if !relay.per_ip_report.allow(relay.client_ip(peer, &headers).as_bytes()) {
+        return refuse(StatusCode::TOO_MANY_REQUESTS, "quota exceeded");
+    }
+    let sent = relay.http.post(url).header("x-relay-secret", secret).json(&body).send().await;
+    match sent {
+        Ok(resp) if resp.status().is_success() => {
+            tracing::info!(platform = %body.platform, "report passed on");
+            (StatusCode::ACCEPTED, Json(json!({"ok": true}))).into_response()
+        }
+        Ok(resp) => {
+            tracing::warn!(status = resp.status().as_u16(), "report refused downstream");
+            refuse(StatusCode::BAD_GATEWAY, "the report could not be passed on: the app sends an e-mail")
+        }
+        Err(_) => refuse(StatusCode::BAD_GATEWAY, "the report could not be passed on: the app sends an e-mail"),
+    }
 }
