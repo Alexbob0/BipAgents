@@ -26,7 +26,7 @@ from .config import VoiceServerConfig
 from .logs import fields
 from . import pronunciations, speech_intl
 from .numbers_fr import prepare_for_synthesis
-from .textproc import normalize_for_speech
+from .textproc import normalize_for_speech, strip_emoji
 
 log = logging.getLogger("bipbridge.tts")
 
@@ -350,6 +350,7 @@ class TtsService:
 
     def _prepare(self, text: str, normalized: bool, max_chars: Optional[int], language: str = "fr",
                  paragraphs: bool = False) -> str:
+        text = strip_emoji(text)   # never read out, and Pocket stumbles on them
         clean = text.strip() if normalized else normalize_for_speech(text, self.sentence_max_chars, paragraphs)
         clean = self.words.apply(clean, language)   # « Garmin » as it is said, before numbers and CamelCase
         # numbers in words, CamelCase split, parentheses as pauses

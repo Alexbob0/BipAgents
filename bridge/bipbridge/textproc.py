@@ -258,6 +258,24 @@ _FENCE = re.compile(r"```.*?(?:```|$)", re.S)
 _BLOCKS = re.compile(r"\n\s*\n|\n(?=[ \t]*(?:[-*•+]|\d{1,2}[.)])[ \t])")
 
 
+# Emoji and pictographs: a voice reads them out (« visage souriant ») or stumbles on them (Pocket, Alex). The same
+# ranges as VoiceKit's SpeechNormalizer and Android's Emoji.
+_EMOJI = re.compile(
+    "[\U0001F000-\U0001FAFF\u2600-\u27BF\u231A\u231B\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA"
+    "\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2934\u2935"
+    "\u3030\u303D\u3297\u3299\uFE0E\uFE0F\u200D\u20E3\U000E0020-\U000E007F]+")
+
+
+def strip_emoji(text: str) -> str:
+    """Without emoji (« Bravo 🎉 ! » → « Bravo ! »), the spaces they leave tidied."""
+    if not _EMOJI.search(text):
+        return text
+    text = re.sub(r"[ \t]*" + _EMOJI.pattern + r"(?=[.,])", "", text)   # « Super 👍. » → « Super. »
+    text = _EMOJI.sub(" ", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return "\n".join(line.strip() for line in text.split("\n"))
+
+
 def normalize_for_speech(text: str, max_chars: int = 180, paragraphs: bool = False) -> str:
     """Whole-text normalization (used for outbox audio): sentences joined by spaces. ``paragraphs``: one line
     per paragraph or list item, so the reader (Pocket) breathes between them instead of running on."""

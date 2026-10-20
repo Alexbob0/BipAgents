@@ -1,4 +1,6 @@
-from bipbridge.textproc import SentenceSplitter, normalize_for_speech, normalize_segment, split_sentences
+import pytest
+
+from bipbridge.textproc import SentenceSplitter, normalize_for_speech, normalize_segment, split_sentences, strip_emoji
 
 
 def stream(text: str, step: int = 1, max_chars: int = 180):
@@ -103,3 +105,16 @@ def test_paragraphs_are_kept_for_a_phrasing_reader():
     assert normalize_for_speech(text, 180, paragraphs=True).split("\n") == [
         "Intro courte :", "Premier point.", "Second point.", "Fin ?"]  # items get their full stop
     assert "\n" not in normalize_for_speech(text, 180)
+
+
+@pytest.mark.parametrize("text, spoken", [
+    ("Bravo 🎉 !", "Bravo !"),
+    ("Super 👍.", "Super."),
+    ("🎧 Podcast du matin", "Podcast du matin"),
+    ("Ta nuit : 7 h 😴 bien dormi ✅", "Ta nuit : 7 h bien dormi"),   # French spacing before « : » kept
+    ("Famille 👨‍👩‍👧 ok", "Famille ok"),                            # a whole ZWJ sequence
+    ("Note 1️⃣ ici", "Note 1 ici"),
+    ("Rien à enlever, 3 → 4.", "Rien à enlever, 3 → 4."),
+])
+def test_emoji_are_never_read(text, spoken):
+    assert strip_emoji(text) == spoken
