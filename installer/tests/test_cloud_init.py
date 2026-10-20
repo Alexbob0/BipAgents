@@ -122,20 +122,25 @@ def test_the_seat_agent_does_only_signed_orders_for_its_server(tmp_path):
     assert not agent.verified(order["body"], "not base64!", str(pub))
 
 
-def test_the_seat_agent_s_heartbeat_says_only_up_and_a_time(tmp_path, monkeypatch):
-    """Each place: its door answers on the server, and the time of its last backup that worked (nothing else)."""
+def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_numbers(tmp_path, monkeypatch):
+    """Each place: its door answers on the server, its Hermes runs, the BipAgents commit it runs, the time of its last
+    backup that worked; the server: memory, swap, disk, load. Nothing else."""
+    import os
     import pwd
     import socket
     agent = _seat_agent()
     home = tmp_path / "bip"
     (home / ".local" / "state" / "bipagents").mkdir(parents=True)
     (home / ".local" / "state" / "bipagents" / "backup.json").write_text('{"last_ok": 1790000000.5, "note": "x"}')
-    users = {"bip": home, "bip2": tmp_path / "bip2"}
+    (home / "BipAgents" / ".git").mkdir(parents=True)
+    (home / "BipAgents" / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    (home / "BipAgents" / ".git" / "packed-refs").write_text("# pack-refs\n0123456789abcdef0123 refs/heads/main\n")
+    users = {"bip": (home, 1000), "bip2": (tmp_path / "bip2", 1001)}
 
     def getpwnam(name):
         if name not in users:
             raise KeyError(name)
-        return pwd.struct_passwd((name, "x", 1000, 1000, "", str(users[name]), "/bin/bash"))
+        return pwd.struct_passwd((name, "x", users[name][1], users[name][1], "", str(users[name][0]), "/bin/bash"))
 
     monkeypatch.setattr(agent.pwd, "getpwnam", getpwnam)
     listening = socket.socket()
@@ -143,8 +148,24 @@ def test_the_seat_agent_s_heartbeat_says_only_up_and_a_time(tmp_path, monkeypatc
     listening.listen()
     port = listening.getsockname()[1]
     monkeypatch.setattr(agent, "door_open", lambda p: p == 443)
-    assert agent.health() == {"1": {"up": True, "backup": 1790000000.5}, "2": {"up": False, "backup": None}}
+    monkeypatch.setattr(agent, "running", lambda uid, words: uid == 1000 and words == ("hermes", "gateway"))
+    assert agent.health() == {"1": {"up": True, "hermes": True, "version": "0123456789ab", "backup": 1790000000.5},
+                              "2": {"up": False, "hermes": False, "version": None, "backup": None}}
     monkeypatch.undo()
     assert agent.door_open(port) is True
     listening.close()
     assert agent.door_open(port) is False
+    # What runs is found by its command line, for the account only.
+    proc = tmp_path / "proc"
+    (proc / "123").mkdir(parents=True)
+    (proc / "123" / "cmdline").write_bytes(b"/home/bip/.hermes/venv/bin/python\0-m\0hermes\0gateway\0run\0")
+    (proc / "self").mkdir()
+    assert agent.running(os.getuid(), ("hermes", "gateway"), proc=str(proc))
+    assert not agent.running(os.getuid(), ("bipbridge",), proc=str(proc))
+    assert not agent.running(os.getuid() + 1, ("hermes",), proc=str(proc))
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal:        8000000 kB\nMemAvailable:    3000000 kB\nSwapTotal:       2097148 kB\n"
+                       "SwapFree:        1048576 kB\nHugePages_Total:       0\n")
+    numbers = agent.vitals(str(meminfo), str(tmp_path))
+    assert set(numbers) == {"memory_mb", "available_mb", "swap_mb", "swap_used_mb", "disk_gb", "disk_free_gb", "load"}
+    assert numbers["memory_mb"] == 7812 and numbers["available_mb"] == 2929 and numbers["swap_used_mb"] == 1023

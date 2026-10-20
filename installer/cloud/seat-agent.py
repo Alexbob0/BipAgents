@@ -3,7 +3,8 @@
 
 Run as root every two minutes by bipagents-seats.timer, set up at first boot. Its call to the guichet, with the token
 its first boot gave it, is the server's heartbeat (guichet/bipguichet/watch.py): it says, for each place, whether its
-bridge's door answers here and when its last backup worked -- a yes or no and a time, nothing else of anyone. The
+bridge's door answers here, whether its Hermes runs, the BipAgents version it runs and when its last backup worked,
+and for the server its memory, swap, disk and load -- yes or no, a version, a time and numbers, nothing of anyone. The
 guichet answers with its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
 openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. The one order there is:
 install place n again for its next person -- its account bip<n> (bip for place 1), everything in it and its
@@ -16,6 +17,7 @@ import base64
 import json
 import os
 import pwd
+import shutil
 import socket
 import subprocess
 import sys
@@ -141,16 +143,74 @@ def last_backup(user):
         return None
 
 
+def running(uid, words, proc="/proc"):
+    """A process of this account whose command line holds all `words` (what runs, never what it does)."""
+    for pid in os.listdir(proc):
+        if not pid.isdigit():
+            continue
+        try:
+            if os.stat(os.path.join(proc, pid)).st_uid != uid:
+                continue
+            with open(os.path.join(proc, pid, "cmdline"), "rb") as fh:
+                command = fh.read().replace(b"\0", b" ").decode("utf-8", "replace")
+        except OSError:
+            continue
+        if all(word in command for word in words):
+            return True
+    return False
+
+
+def version(home):
+    """The BipAgents commit the place runs (its repository's HEAD, read without git), else None."""
+    git = os.path.join(home, "BipAgents", ".git")
+    try:
+        with open(os.path.join(git, "HEAD")) as fh:
+            head = fh.read().strip()
+        if not head.startswith("ref: "):
+            return head[:12] or None
+        ref = head[5:]
+        if os.path.exists(os.path.join(git, ref)):
+            with open(os.path.join(git, ref)) as fh:
+                return fh.read().strip()[:12] or None
+        with open(os.path.join(git, "packed-refs")) as fh:
+            for line in fh:
+                if line.strip().endswith(" " + ref):
+                    return line.split()[0][:12]
+    except OSError:
+        pass
+    return None
+
+
+def vitals(meminfo="/proc/meminfo", root="/"):
+    """The server's own numbers: memory, swap and disk in MB and GB, the load."""
+    info = {}
+    try:
+        with open(meminfo) as fh:
+            for line in fh:
+                key, _, value = line.partition(":")
+                if value.split():
+                    info[key] = int(value.split()[0]) // 1024
+    except (OSError, ValueError):
+        pass
+    disk = shutil.disk_usage(root)
+    load = os.getloadavg()
+    return {"memory_mb": info.get("MemTotal"), "available_mb": info.get("MemAvailable"),
+            "swap_mb": info.get("SwapTotal"), "swap_used_mb": info.get("SwapTotal", 0) - info.get("SwapFree", 0),
+            "disk_gb": round(disk.total / 1e9, 1), "disk_free_gb": round(disk.free / 1e9, 1),
+            "load": [round(load[0], 2), round(load[1], 2)]}
+
+
 def health():
-    """Each place of this server: its door answers, its last backup."""
+    """Each place of this server: its door answers, its Hermes runs, its version, its last backup."""
     seats = {}
     for number in range(1, MAX_SEATS + 1):
         user = account(number)
         try:
-            pwd.getpwnam(user)
+            entry = pwd.getpwnam(user)
         except KeyError:
             continue
-        seats[str(number)] = {"up": door_open(442 + number), "backup": last_backup(user)}
+        seats[str(number)] = {"up": door_open(442 + number), "hermes": running(entry.pw_uid, ("hermes", "gateway")),
+                              "version": version(entry.pw_dir), "backup": last_backup(user)}
     return seats
 
 
@@ -166,7 +226,7 @@ def main():
     with open(CONF) as fh:
         conf = json.load(fh)
     try:
-        orders = call(conf, "POST", "/v1/server/beat", {"seats": health()}).get("orders") or []
+        orders = call(conf, "POST", "/v1/server/beat", {"seats": health(), "server": vitals()}).get("orders") or []
     except (OSError, ValueError) as exc:
         log("guichet unreachable: %s" % exc)
         return 0
