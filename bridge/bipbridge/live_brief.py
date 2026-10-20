@@ -50,7 +50,7 @@ CALL_CHARS = 2500
 POINTS_TITLE = "BipAgents · notes"
 LIVE_TITLE = "Live"
 # What the apps put in a message for the agent only (a call's opening, a call's recap): never shown to the person.
-HIDDEN = re.compile(r"<!--bip:.*?-->", re.S)
+HIDDEN = re.compile(r"<!--\s*bip:.*?-->", re.S)
 
 POINTS_REQUEST = """<!--bip:notes-->[Request from the BipAgents app, not from the person. Use no tool and save nothing to \
 memory: only answer with the text asked for.]
