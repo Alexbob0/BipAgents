@@ -219,6 +219,13 @@ class PushService:
                                 self.remember(line) if line else None, fallback=SUBTASK_BODY)
         return await self._fanout(agent, payload, "alert", 10, collapse_id=f"subtask:{session_id}")
 
+    async def notify_scan(self, agent: str, line: str) -> int:
+        """A step of a mailbox scan ended (mail_scan.py): its line when previews are on, else « Sous-tâche terminée »;
+        tapping opens the agent."""
+        preview = line if self.config.push_previews else None
+        payload = reply_payload(agent, self._title(agent), "session:scan", None, preview, None, fallback=SUBTASK_BODY)
+        return await self._fanout(agent, payload, "alert", 10, collapse_id=f"scan:{agent}")
+
     async def notify_question(self, agent: str, run_id: str, request_id: Optional[str], question: Optional[str],
                               session_id: Optional[str] = None) -> int:
         preview = _preview(question) if self.config.push_previews and question else None

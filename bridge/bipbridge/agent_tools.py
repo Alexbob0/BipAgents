@@ -149,9 +149,58 @@ DELETE_PAGE = {
                     "required": ["page"]},
 }
 
+KNOWLEDGE_READ = {
+    "name": "knowledge_read",
+    "description": ("Read one of your knowledge pages (for instance mail/index.md: what the scan of the person's mailbox "
+                    "wrote, then the pages it links to). Without a path: the list of your pages."),
+    "inputSchema": {"type": "object", "properties": {"path": {"type": "string", "description": "e.g. mail/index.md"}}},
+}
+KNOWLEDGE_SEARCH = {
+    "name": "knowledge_search",
+    "description": "Search your knowledge pages for words; returns the matching lines with their page.",
+    "inputSchema": {"type": "object", "properties": {"words": {"type": "string"}}, "required": ["words"]},
+}
+KNOWLEDGE_TOOLS = {KNOWLEDGE_READ["name"], KNOWLEDGE_SEARCH["name"]}
+
+
+def knowledge_tool(config: Config, agent: AgentConfig, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """An agent's own knowledge pages (memory_edit.py: knowledge/ in its profile, its person sees and edits them)."""
+    from .agents_admin import profile_folder
+    from .memory_edit import _page_path, pages as listed
+    folder = profile_folder(config, agent)
+    if name == KNOWLEDGE_READ["name"]:
+        path = str(arguments.get("path") or "").strip().lstrip("/")
+        if not path:
+            found = listed(folder)
+            return _tool_text("\n".join(p["path"] for p in found) if found else "No knowledge page yet.")
+        try:
+            return _tool_text(_page_path(folder, path).read_text(encoding="utf-8")[:20000])
+        except (HTTPException, OSError):
+            return _tool_text(f"no page {path} (knowledge_read without a path lists them)", error=True)
+    words = [w.lower() for w in str(arguments.get("words") or "").split() if len(w) > 1][:8]
+    if not words:
+        return _tool_text("give some words to search", error=True)
+    hits = []
+    for page in listed(folder):
+        try:
+            text = _page_path(folder, page["path"]).read_text(encoding="utf-8")
+        except (HTTPException, OSError):
+            continue
+        for line in text.splitlines():
+            low = line.lower()
+            if all(w in low for w in words):
+                hits.append(f"{page['path']}: {line.strip()[:240]}")
+                if len(hits) >= 40:
+                    break
+        if len(hits) >= 40:
+            break
+    return _tool_text("\n".join(hits) if hits else "Nothing found.")
+
+
 # The mail tools are listed for every agent (Hermes reads the list once, when its gateway starts): an agent the person
 # gave no mailbox is told so when it tries one.
-TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES, CREATE_PAGE, LIST_PAGES, READ_PAGE, DELETE_PAGE] + mailbox.MAIL_TOOLS
+TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES, CREATE_PAGE, LIST_PAGES, READ_PAGE, DELETE_PAGE] + mailbox.MAIL_TOOLS \
+    + [KNOWLEDGE_READ, KNOWLEDGE_SEARCH]
 PAGE_TOOLS = {CREATE_PAGE["name"], LIST_PAGES["name"], READ_PAGE["name"], DELETE_PAGE["name"]}
 
 
@@ -579,6 +628,8 @@ async def call_tool(maker: AudioMaker, agent: AgentConfig, name: str, arguments:
         return await asyncio.to_thread(page_tool, maker.config, agent, name, arguments)
     if name in mailbox.MAIL_TOOL_NAMES:
         return await asyncio.to_thread(mailbox.call, maker.config, agent.name, name, arguments)
+    if name in KNOWLEDGE_TOOLS:
+        return await asyncio.to_thread(knowledge_tool, maker.config, agent, name, arguments)
     if name == LIST_VOICES["name"]:
         lines = [f"{entry['voice']} ({entry['kind']})" for entry in await maker.voices(agent)]
         return _tool_text("\n".join(lines))
