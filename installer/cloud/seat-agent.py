@@ -6,10 +6,11 @@ its first boot gave it, is the server's heartbeat (guichet/bipguichet/watch.py):
 bridge's door answers here, whether its Hermes runs, the BipAgents version it runs and when its last backup worked,
 and for the server its memory, swap, disk and load -- yes or no, a version, a time and numbers, nothing of anyone. The
 guichet answers with its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
-openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. The one order there is:
+openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. There are two orders:
 install place n again for its next person -- its account bip<n> (bip for place 1), everything in it and its
-services go, then installer/cloud/add-seat.sh sets it up again with the new pairing secret. The other places are
-not touched, and nothing is ever read or sent back: only "done".
+services go, then installer/cloud/add-seat.sh sets it up again with the new pairing secret; and bring place n to a
+given BipAgents version (the guichet's update waves, or their way back), which its own updater does. The other places
+are not touched, and nothing is ever read or sent back: only "done".
 
 ASCII only, like user-data.yaml and add-seat.sh (installer/tests/test_cloud_init.py checks it).
 """
@@ -59,10 +60,17 @@ def accepted(order, server, done, now):
     try:
         body = json.loads(order["body"])
         number = int(body["seat"])
-        setup = body["setup"]
-        ok = (body.get("action") == "reset" and body.get("server") == server and int(body["order"]) == int(order["id"])
-              and 1 <= number <= MAX_SEATS and int(body["expires"]) > now and isinstance(setup, dict)
-              and isinstance(setup.get("pair"), str) and int(setup.get("port", 0)) == 442 + number)
+        ok = (body.get("server") == server and int(body["order"]) == int(order["id"]) and 1 <= number <= MAX_SEATS
+              and int(body["expires"]) > now)
+        if body.get("action") == "reset":
+            setup = body["setup"]
+            ok = ok and isinstance(setup, dict) and isinstance(setup.get("pair"), str) \
+                and int(setup.get("port", 0)) == 442 + number
+        elif body.get("action") == "update":
+            commit = body["commit"]
+            ok = ok and isinstance(commit, str) and len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)
+        else:
+            ok = False
     except (KeyError, TypeError, ValueError):
         ok = False
     if not ok:
@@ -112,6 +120,20 @@ def reset(number, setup):
     with os.fdopen(fd, "w") as fh:
         json.dump(setup, fh)
     subprocess.run(["bash", os.path.join(LIB, "add-seat.sh"), str(number), path])
+
+
+def update(number, commit):
+    """Place n brought to BipAgents `commit` by its own updater, as its account (what changed restarts)."""
+    user = account(number)
+    try:
+        uid = pwd.getpwnam(user).pw_uid
+    except KeyError:
+        return
+    log("place %d (%s): BipAgents %s" % (number, user, commit[:12]))
+    with open("/var/log/bipagents-update%d.log" % number, "a") as out:
+        subprocess.run(["sudo", "-iu", user, "env", "XDG_RUNTIME_DIR=/run/user/%d" % uid,
+                        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus" % uid, "BIPAGENTS_TO=" + commit,
+                        "bash", "BipAgents/install.sh", "update", "--auto"], stdout=out, stderr=out, timeout=3600)
 
 
 def call(conf, method, path, body=None):
@@ -241,7 +263,13 @@ def main():
             body = accepted(order, conf["server"], done, time.time())
             if body is None:
                 continue
-            reset(int(body["seat"]), body["setup"])
+            if body["action"] == "update":
+                try:
+                    update(int(body["seat"]), body["commit"])
+                except (OSError, subprocess.SubprocessError) as exc:
+                    log("update of place %s stopped: %s" % (body["seat"], exc))
+            else:
+                reset(int(body["seat"]), body["setup"])
             os.makedirs(os.path.dirname(DONE), exist_ok=True)
             with open(DONE, "a") as fh:
                 fh.write("%d\n" % int(order["id"]))

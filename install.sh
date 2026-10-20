@@ -19,16 +19,28 @@ if ! command -v uv >/dev/null 2>&1; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
+# BIPAGENTS_TO=<commit> (its 40 characters): that version rather than the latest, ahead or back (a server of the
+# all-included offer, by the guichet's waves: guichet/bipguichet/waves.py).
+to_version() {
+  git -C "$DIR" fetch --depth 1 --quiet origin "$BIPAGENTS_TO" && git -C "$DIR" checkout --quiet -B main FETCH_HEAD
+}
+
 if [ -d "$DIR/.git" ]; then
   # The version before, for `install.sh update` (what changed); a pull that cannot go on is explained by it.
   export BIPAGENTS_BEFORE="$(git -C "$DIR" rev-parse HEAD)"
-  if ! git -C "$DIR" pull --ff-only --quiet; then
+  if [ -n "${BIPAGENTS_TO:-}" ]; then
+    if ! to_version; then
+      [ "${1:-}" = "update" ] || exit 1
+      export BIPAGENTS_PULL_FAILED=1
+    fi
+  elif ! git -C "$DIR" pull --ff-only --quiet; then
     [ "${1:-}" = "update" ] || exit 1
     export BIPAGENTS_PULL_FAILED=1
   fi
 else
   echo "Downloading BipAgents into $DIR…"
   git clone --depth 1 --quiet "$REPO_URL" "$DIR"
+  if [ -n "${BIPAGENTS_TO:-}" ]; then to_version; fi
 fi
 
 cd "$DIR"
