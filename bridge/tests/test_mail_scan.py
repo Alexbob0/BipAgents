@@ -167,9 +167,7 @@ def test_a_step_stops_at_its_budget_and_resumes_where_it_was(config_dict, tmp_pa
             job = mail_scan.load(config, "coach")
             assert job["state"] == "paused" and job["error"] == "budget" and job["processed"] == 1
             calls = len(seen)
-            job["step"]["max_tokens"] = 100_000
-            mail_scan.save(config, job)
-            scans.resume(config, agent)
+            scans.resume(config, agent, max_tokens=100_000)
             await scans.tasks["coach"]
             job = mail_scan.load(config, "coach")
             assert job["state"] == "done" and job["processed"] == 2 and len(seen) == calls + 1   # not read twice

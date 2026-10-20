@@ -15,7 +15,7 @@ Bodies are never kept: only the facts (raw/facts.jsonl) and the pages. The end o
     GET    /v1/agents/{id}/mail-scan                 the job: inventory, steps proposed, progress, tokens
     POST   /v1/agents/{id}/mail-scan                 {account}   a new job (its inventory starts)
     POST   /v1/agents/{id}/mail-scan/step            {since, until, max_tokens}
-    POST   /v1/agents/{id}/mail-scan/pause | resume
+    POST   /v1/agents/{id}/mail-scan/pause | resume      resume: {max_tokens?} a bigger budget
     DELETE /v1/agents/{id}/mail-scan                 the job forgotten (its pages stay)
 """
 from __future__ import annotations
@@ -464,10 +464,13 @@ class Scans:
         self.tasks[agent.name] = asyncio.create_task(self._run(config, agent))
         return self.view(config, agent.name)
 
-    def resume(self, config: Config, agent: AgentConfig) -> Dict[str, Any]:
+    def resume(self, config: Config, agent: AgentConfig, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+        """The step paused goes on (with a bigger budget when the person gave one)."""
         job = load(config, agent.name)
         if job is None or not job.get("step") or self.running(agent.name):
             raise ScanError("nothing to resume")
+        if max_tokens:
+            job["step"]["max_tokens"] = max_tokens
         job.update(state="running", error=None)
         save(config, job)
         self.tasks[agent.name] = asyncio.create_task(self._run(config, agent))
@@ -607,6 +610,10 @@ class NewScan(BaseModel):
     account: str = Field(..., max_length=40)
 
 
+class Resume(BaseModel):
+    max_tokens: Optional[int] = Field(default=None, ge=1000, le=200_000_000)
+
+
 class Step(BaseModel):
     since: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     until: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
@@ -659,10 +666,10 @@ def mail_scan_router() -> APIRouter:
         return scans.pause(config, agent.name)
 
     @router.post("/agents/{agent_id}/mail-scan/resume")
-    async def resume(agent_id: str, request: Request) -> Dict[str, Any]:
+    async def resume(agent_id: str, request: Request, body: Optional[Resume] = None) -> Dict[str, Any]:
         config, agent, scans = setup(request, agent_id)
         try:
-            return scans.resume(config, agent)
+            return scans.resume(config, agent, body.max_tokens if body else None)
         except ScanError as exc:
             raise refused(exc) from exc
 
