@@ -29,7 +29,9 @@ social en [dirección del domicilio social], inscrita en el RCS de [ciudad del r
 («Kerfy Studio», «nosotros»). Contacto: **support@kerfystudio.com**.
 
 Kerfy Studio no ha designado un delegado de protección de datos: no es obligatorio para su actividad (artículo 37 del
-RGPD). Para cualquier pregunta sobre tus datos: support@kerfystudio.com.
+RGPD). Para cualquier pregunta sobre tus datos: support@kerfystudio.com. Para la ley de Singapur (Personal Data
+Protection Act), que exige una persona encargada de la protección de datos, es el presidente de Kerfy Studio,
+[nombre y apellidos], a quien puedes contactar en la misma dirección.
 
 Kerfy Studio es responsable de los tratamientos que la app realiza para funcionar, tal como Kerfy Studio los ha
 diseñado (secciones 3, 4 y 7), incluso cuando se quedan en tu teléfono y Kerfy Studio no tiene acceso a ellos, y de
@@ -215,24 +217,29 @@ soporte). El servicio de Kerfy Studio que gestiona las cuentas, las suscripcione
 ### 5.2 Tu cuenta
 
 **Datos.** El identificador que te da Apple o Google y tu dirección de correo (con Apple, puede ser una dirección de
-reenvío); o, con una dirección de correo, los códigos de un solo uso que se te envían y la clave pública de tu llave
-de acceso (passkey). La lista de tus dispositivos aprobados y sus tokens de notificación, sellados por el relé
+reenvío); o, con una dirección de correo, los códigos de un solo uso que se te envían. La lista de tus dispositivos
+aprobados, la clave pública de cada uno (lo que otro de tus dispositivos le envía va sellado para él) y sus tokens de
+notificación, sellados por el relé
 (sección 4.1): Kerfy Studio nunca los ve en claro. Las invitaciones que envías (la dirección de correo de la persona
 invitada y su estado). Una solicitud de recuperación en curso. La copia de tu clave de copia de seguridad, cifrada con
-tu código de recuperación, que Kerfy Studio no puede leer. Ni tu nombre, ni tu foto, nunca las claves de tu plaza.
+tu código de recuperación, que Kerfy Studio no puede leer. El crédito de IA comprado y conservado para una próxima
+suscripción (un importe). La fecha de eliminación de la cuenta, si la has solicitado. Ni tu nombre, ni tu foto, nunca
+las claves de tu plaza.
 
 **Finalidades.** Iniciar tu sesión, vincular tu suscripción y tus plazas, aprobar tus dispositivos, recuperar tu
-cuenta, enviarte los códigos de inicio de sesión y los avisos de seguridad (dispositivo nuevo, recuperación en curso),
-gestionar las invitaciones. Ningún correo publicitario.
+cuenta, enviarte los códigos de inicio de sesión, los avisos de seguridad (dispositivo nuevo, recuperación en curso),
+la confirmación de tu compra, el acuse de recibo de un desistimiento y los avisos de eliminación, gestionar las
+invitaciones. Ningún correo publicitario: un mensaje comercial solo se enviaría si das tu acuerdo marcando una casilla.
 **Base jurídica.** Ejecución del contrato (artículo 6.1.b del RGPD).
-**Plazo.** Mientras exista tu cuenta. Cuando la eliminas (al final del periodo pagado si hay una suscripción en curso),
-estos datos se borran, salvo lo que la ley obliga a conservar: como proveedor de alojamiento, Kerfy Studio conserva
-aparte, y solo para responder a las autoridades judiciales, tu dirección de correo 5 años y tu identificador de cuenta
-1 año después del fin del contrato (ley francesa para la confianza en la economía digital, artículo 6, II; decreto
-n.º 2021-1362, artículos 2, 3 y 8). Códigos de un solo uso: el tiempo de su validez. Invitaciones: [por completar:
-plazo de conservación de una invitación no aceptada].
-**Eliminar tu cuenta.** En la app, [por completar: ruta en la app], o en [por completar: dirección de la página web de
-eliminación] si ya no tienes la app.
+**Plazo.** Mientras exista tu cuenta. Cuando la eliminas, se borra **30 días** después de tu solicitud (tus plazas se
+detienen desde la solicitud, y puedes cambiar de opinión hasta entonces), con sus plazas y sus copias de seguridad,
+salvo lo que la ley obliga a conservar: como proveedor de alojamiento, Kerfy Studio conserva aparte, y solo para
+responder a las autoridades judiciales, tu dirección de correo 5 años y tu identificador de Apple o de Google 1 año
+después del fin del contrato (ley francesa para la confianza en la economía digital, artículo 6, II; decreto
+n.º 2021-1362, artículos 2, 3 y 8). Códigos de un solo uso: el tiempo de su validez. Invitación no aceptada: 30 días.
+**Eliminar tu cuenta.** En la app, Ajustes › Cuenta › Eliminar mi cuenta, o, si ya no tienes la app, en la página
+https://guichet.kerfystudio.com/account/delete con un código enviado a tu dirección de correo. Las personas con las que
+compartes tu plan reciben un aviso por correo: sus plazas se detienen el día en que se borra tu cuenta.
 
 ### 5.3 Tu suscripción, tus compras y la semana gratis
 
@@ -240,7 +247,11 @@ eliminación] si ya no tienes la app.
 Google (Google Play, notificaciones en tiempo real): el identificador de tu suscripción en la tienda, el plan, la
 región, su estado (semana gratis, activa, suspendida, terminada, reembolsada), el final del periodo pagado, si la
 renovación está desactivada y, para el crédito de IA que compras, el identificador de cada compra y su importe.
-**Nunca tus medios de pago**, que solo conoce la tienda.
+**Nunca tus medios de pago**, que solo conoce la tienda. El país de tu cuenta de la tienda, que la app envía para
+saber si la oferta se vende allí (no se conserva).
+
+**Tu contrato.** La fecha de inicio, la del correo de confirmación y, si desistes del contrato, la fecha y la hora de
+tu desistimiento.
 
 **Crédito de IA usado.** El importe que la clave de IA de cada plaza ha gastado en el mes, consultado en el enrutador
 de IA una vez por minuto como máximo, y el crédito traspasado: un importe, nunca tus mensajes.
@@ -265,26 +276,25 @@ servicio a un periodo limitado (artículo 82 de la ley francesa de protección d
 n.º 2020-091, artículo 5). Conservar la prueba del contrato: interés legítimo de Kerfy Studio en poder defender sus
 derechos.
 **Plazo.** Datos de suscripción y de compra: durante la suscripción y después 5 años archivados, como prueba del
-contrato (artículo 2224 del Código Civil francés). Huella del dispositivo Android: [por completar: 24 meses, por
-confirmar]. Dirección IP: 15 minutos como máximo. Los bits de DeviceCheck los guarda Apple.
+contrato (artículo 2224 del Código Civil francés). Huella del dispositivo Android: 24 meses. Dirección IP: 15 minutos
+como máximo. Los bits de DeviceCheck los guarda Apple.
 
 ### 5.4 Tu plaza y el modelo de IA
 
-**Dónde.** En un servidor alquilado a OVHcloud (centros de datos en la Unión Europea o en el Reino Unido) o a Hetzner
-(Alemania o Finlandia). Para las personas en Estados Unidos: [por completar: proveedor de alojamiento y ubicación de
-los servidores].
+**Dónde.** En un servidor alquilado a OVHcloud (centros de datos en la Unión Europea) o a Hetzner (Alemania o
+Finlandia), para todas las personas de la oferta, también las que viven fuera de la Unión.
 
 **Lo que hay.** Lo que describe la sección 5.1, y las claves SSH públicas que añades desde la app. El guichet de Kerfy
 Studio (el servicio que gestiona las plazas) conoce la dirección de tu plaza y la huella de su certificado, para que tu
 teléfono se conecte a ella y para trasladarla en caso de avería.
 
 **El modelo de IA.** Los mensajes que tus agentes envían al modelo (con los archivos y las fotos que le muestran)
-pasan por un enrutador de IA, **EUrouter** (EUrouter B.V., Ámsterdam, Países Bajos) o, para las personas en Estados
-Unidos, **OpenRouter** (OpenRouter, Inc., Estados Unidos), y después por el proveedor que hace funcionar el modelo
-elegido: [por completar: proveedores de los modelos ofrecidos y países donde funcionan]. EUrouter indica que por
-defecto no guarda ni las solicitudes ni las respuestas, y que guarda sus metadatos (hora, modelo, número de tokens,
-coste, dirección IP) hasta 12 meses. OpenRouter: [por completar: ajustes de conservación y de entrenamiento de la cuenta
-de Kerfy Studio en OpenRouter y en los proveedores]. Actúan por cuenta de Kerfy Studio.
+pasan por un enrutador de IA, **EUrouter** (EUrouter B.V., Ámsterdam, Países Bajos), para todas las personas de la
+oferta, y después por el proveedor que hace funcionar el modelo elegido: [por completar: proveedores de los modelos
+ofrecidos y países donde funcionan]. EUrouter indica que por defecto no guarda ni las solicitudes ni las respuestas, y
+que guarda sus metadatos (hora, modelo, número de tokens, coste, dirección IP) hasta 12 meses. Actúan por cuenta de
+Kerfy Studio. **Antes del primer mensaje, la app nombra el enrutador y el fabricante del modelo y te pide tu
+acuerdo**; la lista de modelos indica el fabricante de cada uno.
 
 **El reposo.** Tu plaza anota ella misma la última solicitud de la app; el guichet solo sabe que duerme.
 
@@ -319,8 +329,7 @@ tu plaza.
 
 **Base jurídica.** Ejecución del contrato (artículo 6.1.b del RGPD).
 **Plazo.** Solo se guardan los últimos valores, sustituidos en cada envío. Registro de eventos (averías, traslados,
-actualizaciones): [por completar: plazo de conservación del registro del guichet]. Tokens sellados: mientras el
-dispositivo esté vinculado a tu plaza.
+actualizaciones): 12 meses. Tokens sellados: mientras el dispositivo esté vinculado a tu plaza.
 
 ### 5.7 Las denuncias de abusos y las solicitudes de las autoridades
 
@@ -336,14 +345,13 @@ legítimo de Kerfy Studio en proteger su servicio y a sus clientes (artículo 6.
 
 | Prestador | Papel | Datos | Dónde |
 |---|---|---|---|
-| OVHcloud (OVH SAS, Roubaix, Francia) | Aloja los servidores de las plazas; imagen diaria de cada servidor | Contenido de las plazas | Unión Europea o Reino Unido |
+| OVHcloud (OVH SAS, Roubaix, Francia) | Aloja los servidores de las plazas; imagen diaria de cada servidor | Contenido de las plazas | Unión Europea |
 | Hetzner Online GmbH (Gunzenhausen, Alemania) | Aloja parte de los servidores de las plazas | Contenido de las plazas | Alemania, Finlandia |
 | EUrouter B.V. (Ámsterdam, Países Bajos) | Enrutador de IA | Mensajes enviados al modelo, metadatos | Unión Europea |
-| OpenRouter, Inc. (Estados Unidos) | Enrutador de IA para las personas en Estados Unidos | Mensajes enviados al modelo, metadatos | Estados Unidos |
 | Proveedores de los modelos: [por completar] | Hacen funcionar el modelo elegido | Mensajes enviados al modelo | [por completar] |
 | [por completar: proveedor de alojamiento de las copias de seguridad] | Guarda las copias de seguridad | Copias de seguridad cifradas, ilegibles para él y para Kerfy Studio | [por completar] |
 | [proveedor de alojamiento del relé] | Aloja el guichet y el relé | Cuenta, suscripción, datos técnicos | Unión Europea |
-| [por completar: proveedor de envío de correos] | Envía los códigos, los avisos de seguridad y las invitaciones | Dirección de correo, contenido de esos correos | [por completar] |
+| [por completar: proveedor de envío de correos] | Envía los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación | Dirección de correo, contenido de esos correos | [por completar] |
 
 Están vinculados a Kerfy Studio por un contrato conforme al artículo 28 del RGPD. Apple (DeviceCheck, App Store) y
 Google (Play Integrity, Google Play) también intervienen, como dice la sección 5.3; «Iniciar sesión con Apple» y el
@@ -426,14 +434,15 @@ Estados Unidos:
 - Apple indica que enmarca las transferencias desde el Espacio Económico Europeo con las cláusulas contractuales tipo
   adoptadas por la Comisión Europea.
 
-**La oferta todo incluido.** Los servidores de las plazas están en la Unión Europea o en el Reino Unido, que cuenta
-con una decisión de adecuación de la Comisión Europea (Decisión de Ejecución (UE) 2025/2574, de 19 de diciembre de
-2025). EUrouter trata los mensajes en la Unión Europea [por completar: países donde funcionan los modelos ofrecidos, y
-la garantía si alguno está fuera de la Unión]. Para las personas en Estados Unidos, OpenRouter, Inc. trata los
-mensajes en Estados Unidos: Kerfy Studio enmarca esta transferencia con las cláusulas contractuales tipo de la
-Comisión Europea [por completar: por confirmar con el contrato firmado con OpenRouter]. Apple y Google (inicio de
-sesión, tiendas, DeviceCheck, Play Integrity) pueden tratar datos en Estados Unidos, con las garantías indicadas
-arriba.
+**La oferta todo incluido.** Los servidores de las plazas están en la Unión Europea, para todas las personas de la
+oferta. EUrouter trata los mensajes en la Unión Europea [por completar: países donde funcionan los modelos ofrecidos, y
+la garantía si alguno está fuera de la Unión]. Apple y Google (inicio de sesión, tiendas, DeviceCheck, Play Integrity)
+pueden tratar datos en Estados Unidos, con las garantías indicadas arriba.
+
+**Si vives fuera de la Unión Europea** (Estados Unidos, Reino Unido, Israel, Singapur), tus datos vienen a la Unión
+Europea, donde Kerfy Studio los trata conforme al RGPD, que se aplica a todos sus tratamientos. El Reino Unido e Israel
+reconocen que la Unión Europea ofrece una protección adecuada; para Singapur, ese nivel de protección y nuestros
+contratos con nuestros prestadores dan la protección comparable que exige la ley de Singapur.
 
 Proveedor de correo: [país; garantía]. Proveedor de envío de correos y proveedor de alojamiento de las copias de
 seguridad: [por completar: país; garantía]. Puedes pedirnos una copia de las garantías aplicables.
@@ -449,16 +458,17 @@ seguridad: [por completar: país; garantía]. Puedes pedirnos una copia de las g
 | Correos de soporte | 2 años después del último intercambio |
 | Denuncias | 1 año después de su tramitación |
 | Informes de fallos | 1 año después de su recepción (en Kerfy Studio) |
-| Cuenta de la oferta (identificadores, correo, dispositivos, invitaciones) | Mientras exista la cuenta |
+| Cuenta de la oferta (identificadores, correo, dispositivos, invitaciones, crédito conservado) | Mientras exista la cuenta; se borra 30 días después de una solicitud de eliminación |
+| Invitación no aceptada | 30 días |
 | Dirección de correo e identificador de cuenta después del fin del contrato (obligación de los proveedores de alojamiento) | 5 años para el correo, 1 año para el identificador, conservados aparte |
 | Suscripción y compras | Durante la suscripción y después 5 años archivados |
-| Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | [por completar: 24 meses, por confirmar] |
+| Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses |
 | Dirección IP al reservar una semana gratis | 15 minutos como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
 | Copias de seguridad | 48 horas (por hora), 30 días (diarias), 12 semanas (semanales); se borran con la plaza |
 | Imagen diaria de OVHcloud | Un punto por día, sustituido en un día aproximadamente después de reinstalar la plaza |
 | Datos técnicos de los servidores | Solo los últimos valores |
-| Registro de eventos del guichet | [por completar] |
+| Registro de eventos del guichet | 12 meses |
 | Metadatos en EUrouter | Hasta 12 meses, según EUrouter |
 | Denuncias de abusos | 1 año después de su tramitación |
 
@@ -474,6 +484,10 @@ Con la oferta todo incluido, cada plaza es una cuenta separada del servidor, sin
 Studio no tiene ninguna clave SSH en los servidores, y un servidor solo ejecuta órdenes firmadas por el guichet. La app
 se conecta a tu plaza en HTTPS y comprueba su certificado. Las copias de seguridad se cifran en la plaza antes de
 salir.
+
+**En caso de violación de datos**, Kerfy Studio avisa a la CNIL en un plazo de 72 horas (artículo 33 del RGPD) y a las
+personas afectadas cuando el riesgo para ellas es alto (artículo 34); para las personas en Singapur, a la Personal
+Data Protection Commission en un plazo de 3 días cuando la ley de Singapur lo exige.
 
 ## 14. Tus derechos
 
@@ -496,11 +510,20 @@ alojamiento, dirígete a ellos.
 borrarlos. Al contenido de tu plaza accedes tú mismo, por la app o por SSH, y puedes copiarlo en cualquier momento.
 Para eliminar tu cuenta: sección 5.2.
 
+**Si vives en California o en otro lugar de Estados Unidos.** Kerfy Studio no vende ni comparte tus datos personales
+en el sentido de la ley californiana (California Consumer Privacy Act) y no hace ninguna publicidad dirigida. La app y
+nuestros sitios no te rastrean de un sitio a otro: por eso una señal «Do Not Track» de tu navegador no cambia nada de
+lo que hacemos (California Online Privacy Protection Act). Puedes ejercer los derechos de esta sección escribiendo a
+support@kerfystudio.com.
+
 ## 15. Reclamación
 
 Si consideras que no se respetan tus derechos, puedes presentar una reclamación ante la autoridad francesa de
 protección de datos, la **CNIL** (3 place de Fontenoy, TSA 80715, 75334 Paris Cedex 07, Francia —
-https://www.cnil.fr/fr/plaintes), o ante la autoridad de protección de datos de tu país.
+https://www.cnil.fr/fr/plaintes), o ante la autoridad de protección de datos de tu país: en el Reino Unido, la
+Information Commissioner's Office (https://ico.org.uk); en Israel, la Privacy Protection Authority
+(https://www.gov.il/en/departments/the_privacy_protection_authority); en Singapur, la Personal Data Protection
+Commission (https://www.pdpc.gov.sg).
 
 ## 16. Menores
 
@@ -517,7 +540,9 @@ borremos su mensaje.
 
 **Oferta todo incluido**: la contrata un adulto, o se contrata con el acuerdo de uno de los padres. Una persona
 invitada debe tener al menos 16 años; antes de los 16 años, una plaza solo puede usarse si uno de los padres o un
-adulto a cargo del menor la ha preparado y la supervisa ([condiciones de la oferta](offer.es.md), sección 7).
+adulto a cargo del menor la ha preparado y la supervisa ([condiciones de la oferta](offer.es.md), sección 7). **En
+Estados Unidos, ninguna persona menor de 13 años puede usar una plaza**, y Kerfy Studio no recoge a sabiendas ningún
+dato de un menor de 13 años (Children's Online Privacy Protection Act); si ha ocurrido, escríbenos y lo borramos.
 
 ## 17. Cambios
 

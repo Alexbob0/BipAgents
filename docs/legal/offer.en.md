@@ -13,9 +13,11 @@ happens to your data. For the all-included offer, these terms prevail over the t
 other.
 
 Before the purchase, the app shows you the plan, what it includes, its price, the free week if there is one and the
-price that follows it, with a link to these terms. **You accept them by confirming your purchase.** You then receive
-the confirmation of the contract and these terms on a durable medium [to be completed: by email to your account's
-address] (article L221-13 of the French Consumer Code). They remain available in Settings › About.
+price that follows it, the 14-day period to withdraw from the contract, and links to these terms, the acceptable use
+policy, the terms of use and the privacy policy. **You accept them by confirming your purchase.** You then receive the
+confirmation of the contract by email, at your account's address: the plan, the start date, the end of the free week
+if there is one, the links to these terms, how to cancel, the deadline to withdraw from the contract and the withdrawal
+form (article L221-13 of the French Consumer Code). These terms remain available in Settings › About.
 
 Using BipAgents with your own computer or your own server stays free and is not covered by these terms.
 
@@ -51,10 +53,13 @@ For each person in the plan:
 - **SSH access** to their place's account, from a computer whose key was added in the app (Settings › All-included plan
   › SSH access), without administrator (root) rights.
 
-**Where.** The servers are rented from OVHcloud first (data centres in the European Union or in the United Kingdom),
-then from Hetzner (Germany or Finland), then from OVHcloud for smaller servers, depending on what is available. For
-people in the United States: [to be completed: hosting provider and location of the servers], and the AI goes through
-OpenRouter.
+**Where.** The servers are rented from OVHcloud first (data centres in the European Union), then from Hetzner (Germany
+or Finland), then from OVHcloud for smaller servers, depending on what is available. They are all in the European
+Union, including for people who live outside the Union.
+
+**In which countries.** The offer is available when your store account is in the European Union, the United States,
+the United Kingdom, Israel or Singapore. Elsewhere, the app does not offer it; BipAgents can still be used with your
+own server. The rules specific to people who live outside the Union are in section 17.
 
 **What is not included**: your phone and your Internet access; AI model use beyond your credit (you can add some,
 section 6); the services you connect to your agents and their own subscriptions.
@@ -92,19 +97,21 @@ section 6); the services you connect to your agents and their own subscriptions.
   cost of a message depends on its length, on the attached files and on the model.
 - **Carry-over**: the plan's credit you did not use carries over to the next month, for one more month at most.
 - **Extra credit**: you can buy some in the app (Settings › All-included plan › Add AI credit), €2.99 VAT included for
-  €2 of credit. It is added to the place of the person who subscribed to the plan. It does not expire as long as the
-  subscription goes on; **it is lost when the subscription ends**.
+  €2 of credit. It is added to the place of the person who subscribed to the plan. **It never expires**: if some is
+  left when the subscription ends, it is kept on your account and comes back with your next subscription. It is only
+  lost if you delete your account.
 - **Credit used up**: your agents no longer call the AI model until the next month or until you add credit. Your
   place, your files and your backups go on; the app tells you.
 - The credit is not money: it can only be used for AI model use within the offer, cannot be transferred and is not
   refunded, subject to the rights the law gives you (sections 12 and 13).
 - **The model**: you pick it from a list (GLM-5.3 Flash by default, others such as DeepSeek), with its price per
   million tokens. A more expensive model uses up the credit faster. The list may change, for instance when a provider
-  withdraws a model or a new one arrives; if yours is no longer offered, the app tells you and you pick another one
-  [to be completed: model used in the meantime].
-- The messages your agents send to the model go through an AI router, **EUrouter** (European Union) or, in the United
-  States, **OpenRouter**, then through the provider that runs the chosen model. They process them to answer
-  ([privacy policy](privacy.en.md), section 5.4).
+  withdraws a model or a new one arrives; if yours is no longer offered, the app tells you and offers you DeepSeek
+  V4.1 Flash until you pick another one.
+- The messages your agents send to the model go through an AI router, **EUrouter** (European Union), then through the
+  provider that runs the chosen model, for everyone in the offer, wherever they live. They process them to answer
+  ([privacy policy](privacy.en.md), section 5.4). **Before the first message, the app names the router and the
+  model's maker and asks for your agreement.**
 
 ## 7. Who can subscribe, and your account
 
@@ -112,21 +119,28 @@ section 6); the services you connect to your agents and their own subscriptions.
   purchase). Anyone who uses a place must be at least 16, as for the app; between 16 and 18, with a parent's agreement.
   A child under 16 may only use a place that a parent or an adult in charge of the child has set up and supervises:
   that adult accepts these terms for the child and remains responsible for the child's use (terms of use, section 4).
-- **Your account**: you create it with "Sign in with Apple", with Google or with an email address (a one-time code or a
-  passkey). It holds your identity (Apple or Google identifier, email address), the link with your subscription, the
+  **In the United States, nobody under 13 may use a place**, even supervised.
+- **Your account**: you create it with "Sign in with Apple", with Google or with an email address (a one-time code sent to
+  that address). It holds your identity (Apple or Google identifier, email address), the link with your subscription, the
   list of your devices and your invitations. **It never holds the keys to your place**: they stay on your devices.
 - **New device**: you approve it from a device you already have.
 - **No device left**: you get your account back after **24 hours**, and your old devices and your email address are
-  told about it; or **at once** with your **recovery code**, given at purchase. This code also opens the copy of your
-  backup key that Kerfy Studio keeps encrypted and cannot read without it. **Keep it somewhere safe**: Kerfy Studio
-  does not know it and cannot recover it. With no device and no recovery code, nobody can open your backups.
+  told about it; or **at once** with your **recovery code**, which the app suggests you create right after the
+  purchase. This code also opens the copy of your backup key that Kerfy Studio keeps encrypted and cannot read without
+  it. **Keep it somewhere safe**: Kerfy Studio does not know it and cannot recover it. With no device and no recovery
+  code, nobody can open your backups.
 - You are responsible for the security of your devices, of your Apple, Google or email account, and of your recovery
   code.
-- **Deleting your account**: in the app, [to be completed: path in the app, for instance Settings › Account › Delete
-  my account], or at [to be completed: address of the web deletion page]. A running subscription is cancelled in the
-  store: Kerfy Studio cannot do it for you. At the end of the paid period, your place and its backups are erased, then
-  your account (the [privacy policy](privacy.en.md) says what the law requires us to keep). [To be completed: what
-  happens to the place of an invited person who deletes their account.]
+- **Deleting your account**: in the app, Settings › Account › Delete my account, or on the page
+  https://guichet.kerfystudio.com/account/delete, with a code sent to your email address. Your account is erased
+  **30 days** after your request. Until then, your agents are stopped, you can still get your data back and you can
+  change your mind (Settings › Account › Keep my account). After the 30 days, your place and its backups are erased,
+  then your account (the [privacy policy](privacy.en.md) says what the law requires us to keep).
+- **Deleting your account does not cancel your subscription**: cancel it in the store (section 11). On Google Play,
+  Kerfy Studio also stops its renewal on the day of the erasure; the App Store does not allow this.
+- **If you share your plan**, the invited people are told by email: their places stop on the day your account is
+  erased. **If you are an invited person**, your place is erased at the end of the 30 days, and the person who pays
+  gets a new one, which they can offer to someone else.
 
 ## 8. Duo and Family: invited people
 
@@ -135,7 +149,8 @@ section 6); the services you connect to your agents and their own subscriptions.
   Kerfy Studio can read their agents or their conversations.**
 - The person who subscribes remains the store's only customer: they pay, change plan or cancel. The invited people's
   places depend on their subscription: if it ends, they follow the same rules as theirs (section 11), and the app
-  tells them. Tell the people you invite.
+  tells them. If the person who subscribes deletes their account, the invited people's places stop 30 days later and
+  they are told by email (section 7). Tell the people you invite.
 - **Moving to a smaller plan**: at your renewal, the extra places stop, then they are erased with their backups 30 days
   later, unless you go back to the bigger plan before. The app shows which ones and on which date.
 - Each invited person accepts the app's terms of use and the acceptable use policy, and these terms for what concerns
@@ -182,13 +197,13 @@ under the conditions of that policy.
 
 - **Cancelling**: at any time, at no cost, in the store's subscription settings: on iPhone, Settings › your name ›
   Subscriptions; on Android, Play Store › profile picture › Payments & subscriptions › Subscriptions. The app also
-  takes you there directly: Settings › All-included plan › Manage my subscription. The cancellation takes effect at the
+  takes you there directly: Settings › All-included plan › Cancel my subscription. The cancellation takes effect at the
   end of the month already paid: you keep everything until then. The store confirms the cancellation and its date to
   you (article L215-1-1 of the French Consumer Code).
 - **When the subscription ends** (cancelled or not renewed): your place is **suspended for 30 days**. Your agents no
   longer call the AI model, nothing is erased, you can still open your conversations and get your files back, and you
-  can come back by subscribing again. After 30 days, your place and its backups are erased. The AI credit left is
-  lost.
+  can come back by subscribing again. After 30 days, your place and its backups are erased. The AI credit you bought
+  and did not use is kept on your account (section 6).
 - **After a free week you did not continue**: 3 days instead of 30.
 - **Refund by the store**: your place is suspended at once, then erased with its backups after 30 days.
 - **Reminders**: when you turn off the renewal, the app reminds you to use your remaining credit. If you have not
@@ -202,27 +217,29 @@ under the conditions of that policy.
 
 ## 12. Right of withdrawal
 
-If you are a consumer, you have **14 days to withdraw** from the subscription, without giving any reason (article
-L221-18 of the French Consumer Code). With a free week, these 14 days start at the beginning of the free week: the
-price that follows is shown to you clearly before the purchase, so there is only one right of withdrawal for the
-subscription (Court of Justice of the European Union, 5 October 2023, C-565/22).
+If you are a consumer, you have **14 days to withdraw from the contract**, starting when you subscribe, without giving
+any reason (article L221-18 of the French Consumer Code). With a free week, these 14 days start at the beginning of
+the free week: the price that follows is shown to you clearly before the purchase, so there is only one right of
+withdrawal for the subscription (Court of Justice of the European Union, 5 October 2023, C-565/22).
 
-**Your service starts at once, at your request.** By buying, you ask for your place to be prepared and for the service
-to start before the end of the withdrawal period. You keep your right to withdraw, as the service is never fully
-provided before the end of the period (article L221-28, 1°). But if you withdraw after the end of the free week, you
-owe an amount in proportion to the service provided until your withdrawal (article L221-25); the free week costs
-nothing. The same goes for the AI credit you bought: what you used of it remains due.
+**Your service starts at once, at your request**, and you keep your right to withdraw from the contract. **If you
+withdraw, you are refunded in full**, even after the end of the free week: Kerfy Studio asks nothing of you for the
+service already provided. The extra AI credit you bought is refunded under the store's rules.
 
-**How.** As the store collected the price, the store refunds:
+**How.** In the app: Settings › All-included plan › **Withdraw from the contract here**, during the 14 days (articles
+L221-21 and D221-5 of the French Consumer Code). You immediately receive an acknowledgement of receipt by email, with
+the date and time of your decision.
 
-- **App Store**: from your Apple account (purchase history) or with Apple's withdrawal form, under Apple's Media
-  Services Terms;
-- **Google Play**: with the "Request a refund" page or Google's withdrawal form, under Google Play's refund policies.
+- **Google Play**: Kerfy Studio has Google refund the subscription in full, and your place stops at once.
+- **App Store**: Apple collected the price and only Apple can refund it. Apple's refund window opens in the app:
+  complete the request, or make it on reportaproblem.apple.com. Your place stops as soon as Apple has refunded you.
+- **During the free week**, nothing has been paid: your place stops at once. On iPhone, the app also opens your
+  subscriptions so that you turn off the renewal; otherwise Apple would charge the first month.
 
-You can also tell Kerfy Studio of your decision with any clear statement: an email to support@kerfystudio.com, the
-form in the annex, [to be completed: or the app's "Withdraw from contract here" function (articles L221-21 and D221-5
-of the French Consumer Code)]. We acknowledge receipt and help you get from the store the refund you are owed. Once
-you are refunded, your place is suspended at once, then erased with its backups after 30 days (section 11).
+You can also withdraw from the contract with any clear statement: an email to support@kerfystudio.com or the form in
+the annex; or ask the store for the refund directly (App Store: your Apple account's purchase history; Google Play:
+the "Request a refund" page). In every case, your place is kept for 30 days so that you can get your data back, then
+it is erased with its backups (section 11).
 
 ## 13. Legal guarantee of conformity and updates
 
@@ -273,9 +290,51 @@ paid. If you do not agree, you can cancel at no cost before it applies.
   of your written complaint (articles L612-1, L612-2, L616-1 and R616-1 of the French Consumer Code).
 - These terms are governed by **French law**. If you are a consumer living in another country of the European Union,
   you also keep the protection of that country's mandatory rules. The competent courts are those stated in the terms
-  of use (section 20).
+  of use (section 20). If you live outside the European Union, section 17 also applies.
 
-## 17. Contact
+## 17. If you live outside the European Union
+
+These rules add to the previous sections for people whose store account is in these countries. They take away no
+right that the law of your country gives you and that a contract cannot set aside.
+
+**United States**
+
+- **Prices and taxes**: prices are shown before tax; the store calculates and collects your state's sales tax.
+- **Automatic renewal**: the subscription renews each month, at the price shown, until you cancel it in the store or
+  in the app (section 11). These terms, the price and how to cancel are given to you before the purchase and confirmed
+  by email (section 1). You can withdraw from the contract as set out in section 12.
+- **Age**: nobody under 13 may use a place (section 7).
+- **Individual arbitration**: any dispute between you and Kerfy Studio related to the offer is settled by **final,
+  individual arbitration**, administered by [to be completed: arbitration body and its consumer rules], and not in
+  court. You can always go to your county's small claims court for a claim within its jurisdiction. Kerfy Studio pays
+  the arbitration body's fees beyond what you would pay to go to court. **You waive the right to act in a class
+  action** or a class arbitration, as a party or as a member. You can opt out of this arbitration clause by writing to
+  support@kerfystudio.com within 30 days of subscribing; the rest of the contract does not change.
+- **Liability**: to the extent the law of your state allows, Kerfy Studio's total liability to you is limited to the
+  amount you paid for the offer during the 12 months before the event in question, and Kerfy Studio is not liable for
+  indirect damage; for you, this rule replaces the sentence of section 14 saying that its liability is not capped.
+- **Governing law**: French law, together with the consumer protection rules of your state that are mandatory.
+
+**United Kingdom**
+
+- You have the rights UK law gives you, including under the Consumer Rights Act 2015 and the Consumer Contracts
+  Regulations 2013: in particular 14 days to withdraw from the contract, which the function in section 12 lets you
+  exercise.
+- The courts of the place where you live (England and Wales, Scotland or Northern Ireland) remain competent.
+
+**Israel**
+
+- You can cancel at any time (section 11); the monthly renewal, its price and how to cancel are shown to you before
+  the purchase and confirmed by email. Israeli consumer protection law applies to the extent it is mandatory.
+
+**Singapore**
+
+- Singapore law applies to the extent it is mandatory. For your data, see the privacy policy (section 11).
+
+**Everywhere**: if a person seems to be in danger, their agents give them their country's helpline number (988 in the
+United States, 116 123 in the United Kingdom, 1201 in Israel, 1767 in Singapore, 3114 in France).
+
+## 18. Contact
 
 Kerfy Studio — [registered office address] — [phone number] — **support@kerfystudio.com** — abuse:
 **abuse@kerfystudio.com**

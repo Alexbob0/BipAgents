@@ -13,9 +13,12 @@ describe qué pasa con tus datos. Para la oferta todo incluido, estas condicione
 uso si se contradicen.
 
 Antes de la compra, la app te muestra el plan, lo que incluye, su precio, la semana gratis si la hay y el precio que
-la sigue, con un enlace a estas condiciones. **Las aceptas al confirmar tu compra.** Después recibes la confirmación
-del contrato y estas condiciones en un soporte duradero [por completar: por correo a la dirección de tu cuenta]
-(artículo L221-13 del Código de Consumo francés). Siguen disponibles en Ajustes › Acerca de.
+la sigue, el plazo de 14 días para desistir del contrato, y enlaces a estas condiciones, a la política de uso
+aceptable, a las condiciones de uso y a la política de privacidad. **Las aceptas al confirmar tu compra.** Después
+recibes la confirmación del contrato por correo, en la dirección de tu cuenta: el plan, la fecha de inicio, el final
+de la semana gratis si la hay, los enlaces a estas condiciones, cómo cancelar, la fecha límite para desistir del
+contrato y el formulario de desistimiento (artículo L221-13 del Código de Consumo francés). Estas condiciones siguen
+disponibles en Ajustes › Acerca de.
 
 Usar BipAgents con tu propio ordenador o tu propio servidor sigue siendo gratis y no está cubierto por estas
 condiciones.
@@ -52,10 +55,13 @@ Para cada persona del plan:
 - **Un acceso SSH** a la cuenta de su plaza, desde un ordenador cuya clave se haya añadido en la app (Ajustes › Plan
   todo incluido › Acceso SSH), sin derechos de administrador (root).
 
-**Dónde.** Los servidores se alquilan primero a OVHcloud (centros de datos en la Unión Europea o en el Reino Unido),
-después a Hetzner (Alemania o Finlandia) y después a OVHcloud para servidores más pequeños, según lo que esté
-disponible. Para las personas en Estados Unidos: [por completar: proveedor de alojamiento y ubicación de los
-servidores], y la IA pasa por OpenRouter.
+**Dónde.** Los servidores se alquilan primero a OVHcloud (centros de datos en la Unión Europea), después a Hetzner
+(Alemania o Finlandia) y después a OVHcloud para servidores más pequeños, según lo que esté disponible. Todos están en
+la Unión Europea, también para las personas que viven fuera de la Unión.
+
+**En qué países.** La oferta se propone cuando tu cuenta de la tienda está en la Unión Europea, en Estados Unidos, en
+el Reino Unido, en Israel o en Singapur. En otros países, la app no la propone; BipAgents se sigue pudiendo usar con tu
+propio servidor. Las reglas propias de las personas que viven fuera de la Unión están en la sección 17.
 
 **Lo que no está incluido**: tu teléfono y tu acceso a Internet; el uso del modelo de IA más allá de tu crédito
 (puedes añadir más, sección 6); los servicios que conectas a tus agentes y sus propias suscripciones.
@@ -95,19 +101,21 @@ servidores], y la IA pasa por OpenRouter.
   estimación: el coste de un mensaje depende de su longitud, de los archivos adjuntos y del modelo.
 - **Traspaso**: el crédito del plan que no has usado pasa al mes siguiente, por un mes más como máximo.
 - **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), 2,99 € IVA
-  incluido por 2 € de crédito. Se añade a la plaza de la persona que contrató el plan. No caduca mientras la
-  suscripción continúe; **se pierde cuando la suscripción termina**.
+  incluido por 2 € de crédito. Se añade a la plaza de la persona que contrató el plan. **Nunca caduca**: si queda
+  cuando la suscripción termina, se conserva en tu cuenta y vuelve con tu próxima suscripción. Solo se pierde si
+  eliminas tu cuenta.
 - **Crédito agotado**: tus agentes dejan de llamar al modelo de IA hasta el mes siguiente o hasta que añadas crédito.
   Tu plaza, tus archivos y tus copias de seguridad siguen; la app te avisa.
 - El crédito no es dinero: solo sirve para usar el modelo de IA dentro de la oferta, no se transfiere y no se
   reembolsa, sin perjuicio de los derechos que te da la ley (secciones 12 y 13).
 - **El modelo**: lo eliges de una lista (GLM-5.3 Flash por defecto, otros como DeepSeek), con su precio por millón de
   tokens. Un modelo más caro gasta el crédito más deprisa. La lista puede cambiar, por ejemplo cuando un proveedor
-  retira un modelo o llega uno nuevo; si el tuyo deja de ofrecerse, la app te lo dice y eliges otro [por completar:
-  modelo usado mientras tanto].
-- Los mensajes que tus agentes envían al modelo pasan por un enrutador de IA, **EUrouter** (Unión Europea) o, en
-  Estados Unidos, **OpenRouter**, y después por el proveedor que hace funcionar el modelo elegido. Lo tratan para
-  responder ([política de privacidad](privacy.es.md), sección 5.4).
+  retira un modelo o llega uno nuevo; si el tuyo deja de ofrecerse, la app te lo dice y te propone DeepSeek V4.1
+  Flash hasta que elijas otro.
+- Los mensajes que tus agentes envían al modelo pasan por un enrutador de IA, **EUrouter** (Unión Europea), y después
+  por el proveedor que hace funcionar el modelo elegido, para todas las personas de la oferta, vivan donde vivan. Los
+  tratan para responder ([política de privacidad](privacy.es.md), sección 5.4). **Antes del primer mensaje, la app
+  nombra el enrutador y el fabricante del modelo y te pide tu acuerdo.**
 
 ## 7. Quién puede contratar, y tu cuenta
 
@@ -115,24 +123,31 @@ servidores], y la IA pasa por OpenRouter.
   acuerdo antes de la compra). Toda persona que usa una plaza debe tener al menos 16 años, como para la app; entre los
   16 y los 18 años, con el acuerdo de uno de sus padres. Un menor de 16 años solo puede usar una plaza que uno de sus
   padres o un adulto a su cargo haya preparado y supervise: ese adulto acepta estas condiciones por el menor y sigue
-  siendo responsable de su uso (condiciones de uso, sección 4).
+  siendo responsable de su uso (condiciones de uso, sección 4). **En Estados Unidos, ninguna persona menor de 13 años
+  puede usar una plaza**, ni siquiera supervisada.
 - **Tu cuenta**: la creas con «Iniciar sesión con Apple», con Google o con una dirección de correo (un código de un
-  solo uso o una llave de acceso, «passkey»). Contiene tu identidad (identificador de Apple o de Google, dirección de
+  solo uso enviado a esa dirección). Contiene tu identidad (identificador de Apple o de Google, dirección de
   correo), el vínculo con tu suscripción, la lista de tus dispositivos y tus invitaciones. **Nunca contiene las claves
   de tu plaza**: se quedan en tus dispositivos.
 - **Dispositivo nuevo**: lo apruebas desde un dispositivo que ya tienes.
 - **Ningún dispositivo**: recuperas tu cuenta al cabo de **24 horas**, y se avisa a tus antiguos dispositivos y a tu
-  dirección de correo; o **enseguida** con tu **código de recuperación**, que recibes al comprar. Ese código abre
-  también la copia de tu clave de copia de seguridad que Kerfy Studio guarda cifrada y no puede leer sin él.
-  **Guárdalo en un lugar seguro**: Kerfy Studio no lo conoce y no puede recuperarlo. Sin dispositivo ni código de
-  recuperación, nadie puede abrir tus copias de seguridad.
+  dirección de correo; o **enseguida** con tu **código de recuperación**, que la app te propone crear justo después
+  de la compra. Ese código abre también la copia de tu clave de copia de seguridad que Kerfy Studio guarda cifrada y
+  no puede leer sin él. **Guárdalo en un lugar seguro**: Kerfy Studio no lo conoce y no puede recuperarlo. Sin
+  dispositivo ni código de recuperación, nadie puede abrir tus copias de seguridad.
 - Eres responsable de la seguridad de tus dispositivos, de tu cuenta de Apple, de Google o de correo, y de tu código
   de recuperación.
-- **Eliminar tu cuenta**: en la app, [por completar: ruta en la app, por ejemplo Ajustes › Cuenta › Eliminar mi
-  cuenta], o en [por completar: dirección de la página web de eliminación]. Una suscripción en curso se cancela en la
-  tienda: Kerfy Studio no puede hacerlo por ti. Al final del periodo pagado, se borran tu plaza y sus copias de
-  seguridad, y después tu cuenta (la [política de privacidad](privacy.es.md) dice lo que la ley obliga a conservar).
-  [Por completar: qué pasa con la plaza de una persona invitada que elimina su cuenta.]
+- **Eliminar tu cuenta**: en la app, Ajustes › Cuenta › Eliminar mi cuenta, o en la página
+  https://guichet.kerfystudio.com/account/delete, con un código enviado a tu dirección de correo. Tu cuenta se borra
+  **30 días** después de tu solicitud. Hasta entonces, tus agentes están detenidos, todavía puedes recuperar tus datos
+  y puedes cambiar de opinión (Ajustes › Cuenta › Mantener mi cuenta). Al cabo de los 30 días, se borran tu plaza y
+  sus copias de seguridad, y después tu cuenta (la [política de privacidad](privacy.es.md) dice lo que la ley obliga a
+  conservar).
+- **Eliminar tu cuenta no cancela tu suscripción**: cancélala en la tienda (sección 11). En Google Play, Kerfy Studio
+  también detiene su renovación el día del borrado; el App Store no lo permite.
+- **Si compartes tu plan**, las personas invitadas reciben un aviso por correo: sus plazas se detienen el día en que
+  se borra tu cuenta. **Si eres una persona invitada**, tu plaza se borra al final de los 30 días, y la persona que
+  paga recibe una nueva, que puede ofrecer a otra persona.
 
 ## 8. Duo y Familia: las personas invitadas
 
@@ -141,7 +156,8 @@ servidores], y la IA pasa por OpenRouter.
   Studio pueden leer sus agentes ni sus conversaciones.**
 - La persona que contrata sigue siendo la única clienta de la tienda: paga, cambia de plan o cancela. Las plazas de las
   personas invitadas dependen de su suscripción: si termina, siguen las mismas reglas que la suya (sección 11), y la
-  app las avisa. Díselo a las personas que invitas.
+  app las avisa. Si elimina su cuenta, sus plazas se detienen 30 días después y reciben un aviso por correo
+  (sección 7). Díselo a las personas que invitas.
 - **Pasar a un plan más pequeño**: en tu renovación, las plazas de más se detienen y se borran con sus copias de
   seguridad 30 días después, salvo que vuelvas antes al plan más grande. La app indica cuáles y en qué fecha.
 - Cada persona invitada acepta las condiciones de uso de la app y la política de uso aceptable, y estas condiciones en
@@ -190,13 +206,13 @@ política.
 
 - **Cancelar**: en cualquier momento, sin coste, en los ajustes de suscripción de la tienda: en iPhone, Ajustes › tu
   nombre › Suscripciones; en Android, Play Store › foto de perfil › Pagos y suscripciones › Suscripciones. La app
-  también te lleva directamente: Ajustes › Plan todo incluido › Gestionar mi suscripción. La cancelación surte efecto
+  también te lleva directamente: Ajustes › Plan todo incluido › Cancelar mi suscripción. La cancelación surte efecto
   al final del mes ya pagado: lo conservas todo hasta entonces. La tienda te confirma la cancelación y su fecha
   (artículo L215-1-1 del Código de Consumo francés).
 - **Cuando la suscripción termina** (cancelada o no renovada): tu plaza queda **suspendida durante 30 días**. Tus
   agentes dejan de llamar al modelo de IA, no se borra nada, todavía puedes abrir tus conversaciones y recuperar tus
   archivos, y puedes volver contratando de nuevo una suscripción. Al cabo de 30 días, se borran tu plaza y sus copias de
-  seguridad. El crédito de IA restante se pierde.
+  seguridad. El crédito de IA comprado y no usado se conserva en tu cuenta (sección 6).
 - **Después de una semana gratis que no continuaste**: 3 días en lugar de 30.
 - **Reembolso por la tienda**: tu plaza queda suspendida enseguida y se borra con sus copias de seguridad al cabo de
   30 días.
@@ -212,29 +228,29 @@ política.
 
 ## 12. Derecho de desistimiento
 
-Si eres consumidor, tienes **14 días para desistir** de la suscripción desde su contratación, sin tener que justificarte
+Si eres consumidor, tienes **14 días para desistir del contrato** desde su contratación, sin tener que justificarte
 (artículo L221-18 del Código de Consumo francés). Con una semana gratis, estos 14 días empiezan al principio de la
 semana gratis: el precio que la sigue se te indica claramente antes de la compra, de modo que solo hay un derecho de
 desistimiento para la suscripción (Tribunal de Justicia de la Unión Europea, 5 de octubre de 2023, C-565/22).
 
-**Tu servicio empieza enseguida, a petición tuya.** Al comprar, pides que tu plaza se prepare y que el servicio empiece
-antes del final del plazo de desistimiento. Conservas tu derecho a desistir, porque el servicio nunca se presta por
-completo antes del final del plazo (artículo L221-28, 1.º). Pero si desistes después del final de la semana gratis,
-debes un importe proporcional al servicio prestado hasta tu desistimiento (artículo L221-25); la semana gratis no
-cuesta nada. Lo mismo vale para el crédito de IA comprado: lo que hayas usado sigue debiéndose.
+**Tu servicio empieza enseguida, a petición tuya**, y conservas tu derecho a desistir del contrato. **Si desistes, se te
+reembolsa todo**, incluso después del final de la semana gratis: Kerfy Studio no te pide nada por el servicio ya
+prestado. El crédito de IA adicional se reembolsa según las reglas de la tienda.
 
-**Cómo.** Como la tienda cobró el precio, es la tienda la que reembolsa:
+**Cómo.** En la app: Ajustes › Plan todo incluido › **Desistir del contrato aquí**, durante los 14 días (artículos
+L221-21 y D221-5 del Código de Consumo francés). Recibes enseguida un acuse de recibo por correo, con la fecha y la
+hora de tu decisión.
 
-- **App Store**: desde tu cuenta de Apple (historial de compras) o con el formulario de desistimiento de Apple, según
-  los términos y condiciones de los servicios multimedia de Apple;
-- **Google Play**: con la página «Solicitar un reembolso» o el formulario de desistimiento de Google, según las
-  políticas de reembolso de Google Play.
+- **Google Play**: Kerfy Studio hace que Google reembolse la suscripción entera, y tu plaza se detiene enseguida.
+- **App Store**: Apple cobró el precio y solo Apple puede reembolsarlo. La ventana de reembolso de Apple se abre en la
+  app: termina la solicitud, o hazla en reportaproblem.apple.com. Tu plaza se detiene en cuanto Apple te reembolsa.
+- **Durante la semana gratis**, no se ha pagado nada: tu plaza se detiene enseguida. En iPhone, la app también abre tus
+  suscripciones para que desactives la renovación; si no, Apple cobraría el primer mes.
 
-También puedes comunicar tu decisión a Kerfy Studio con cualquier declaración clara: un correo a
-support@kerfystudio.com, el formulario del anexo, [por completar: o la función «Desistir del contrato aquí» de la app
-(artículos L221-21 y D221-5 del Código de Consumo francés)]. Acusamos recibo y te ayudamos a obtener de la tienda el
-reembolso que te corresponde. Una vez reembolsado, tu plaza queda suspendida enseguida y se borra con sus copias de
-seguridad al cabo de 30 días (sección 11).
+También puedes desistir del contrato con cualquier declaración clara: un correo a support@kerfystudio.com o el
+formulario del anexo; o pedir directamente el reembolso a la tienda (App Store: historial de compras de tu cuenta de
+Apple; Google Play: página «Solicitar un reembolso»). En todos los casos, tu plaza se conserva 30 días para que
+recuperes tus datos, y después se borra con sus copias de seguridad (sección 11).
 
 ## 13. Garantía legal de conformidad y actualizaciones
 
@@ -285,9 +301,58 @@ estás de acuerdo, puedes cancelar sin coste antes de que se aplique.
   reclamación escrita (artículos L612-1, L612-2, L616-1 y R616-1 del Código de Consumo francés).
 - Estas condiciones se rigen por el **derecho francés**. Si eres consumidor y resides en otro país de la Unión
   Europea, conservas además la protección de las normas imperativas de ese país. Los tribunales competentes son los
-  indicados en las condiciones de uso (sección 20).
+  indicados en las condiciones de uso (sección 20). Si vives fuera de la Unión Europea, también se aplica la
+  sección 17.
 
-## 17. Contacto
+## 17. Si vives fuera de la Unión Europea
+
+Estas reglas se añaden a las secciones anteriores para las personas cuya cuenta de la tienda está en estos países. No
+te quitan ningún derecho que te conceda la ley de tu país y que un contrato no pueda excluir.
+
+**Estados Unidos**
+
+- **Precios e impuestos**: los precios se muestran sin impuestos; la tienda calcula y cobra el impuesto sobre las
+  ventas de tu estado.
+- **Renovación automática**: la suscripción se renueva cada mes, al precio mostrado, hasta que la canceles en la tienda
+  o en la app (sección 11). Estas condiciones, el precio y cómo cancelar se te dan antes de la compra y se te confirman
+  por correo (sección 1). Puedes desistir del contrato como se indica en la sección 12.
+- **Edad**: ninguna persona menor de 13 años puede usar una plaza (sección 7).
+- **Arbitraje individual**: todo litigio entre tú y Kerfy Studio relacionado con la oferta se resuelve mediante un
+  **arbitraje individual y definitivo**, administrado por [por completar: organismo de arbitraje y sus reglas para los
+  consumidores], y no ante un tribunal. Siempre puedes acudir al tribunal de reclamaciones menores (small claims court)
+  de tu condado para una demanda que sea de su competencia. Kerfy Studio asume los gastos del organismo de arbitraje
+  por encima de lo que pagarías por acudir a un tribunal. **Renuncias a actuar en el marco de una acción colectiva**
+  (class action) o de un arbitraje colectivo, como parte o como miembro. Puedes rechazar esta cláusula de arbitraje
+  escribiendo a support@kerfystudio.com en los 30 días siguientes a tu contratación; el resto del contrato no cambia.
+- **Responsabilidad**: en la medida en que lo permita la ley de tu estado, la responsabilidad total de Kerfy Studio
+  frente a ti se limita al importe que hayas pagado por la oferta durante los 12 meses anteriores al hecho en cuestión,
+  y Kerfy Studio no responde de los daños indirectos; para ti, esta regla sustituye a la frase de la sección 14 sobre
+  la ausencia de límite máximo.
+- **Ley aplicable**: el derecho francés, con las normas de protección de los consumidores de tu estado que sean
+  imperativas.
+
+**Reino Unido**
+
+- Tienes los derechos que te da la ley británica, entre ellos el Consumer Rights Act 2015 y las Consumer Contracts
+  Regulations 2013: en particular, 14 días para desistir del contrato, que puedes ejercer con la función de la
+  sección 12.
+- Los tribunales de tu lugar de residencia (Inglaterra y Gales, Escocia o Irlanda del Norte) siguen siendo
+  competentes.
+
+**Israel**
+
+- Puedes cancelar en cualquier momento (sección 11); la renovación mensual, su precio y cómo cancelar se te indican
+  antes de la compra y se te confirman por correo. La ley israelí de protección del consumidor se aplica en lo que
+  impone.
+
+**Singapur**
+
+- La ley de Singapur se aplica en lo que impone. Para tus datos, consulta la política de privacidad (sección 11).
+
+**En todas partes**: si una persona parece estar en peligro, sus agentes le dan el número de ayuda de su país (988 en
+Estados Unidos, 116 123 en el Reino Unido, 1201 en Israel, 1767 en Singapur, 3114 en Francia).
+
+## 18. Contacto
 
 Kerfy Studio — [dirección del domicilio social] — [número de teléfono] — **support@kerfystudio.com** — abusos:
 **abuse@kerfystudio.com**

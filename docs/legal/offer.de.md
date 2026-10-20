@@ -13,10 +13,12 @@ die weiter gelten, und die [Richtlinie zur zulässigen Nutzung](acceptable-use.d
 diese Bedingungen den Nutzungsbedingungen vor, wenn sie sich widersprechen.
 
 Vor dem Kauf zeigt dir die App den Tarif, was er umfasst, seinen Preis, die kostenlose Woche, falls es eine gibt, und
-den Preis danach, mit einem Link zu diesen Bedingungen. **Du akzeptierst sie, indem du deinen Kauf bestätigst.**
-Danach erhältst du die Bestätigung des Vertrags und diese Bedingungen auf einem dauerhaften Datenträger [zu ergänzen:
-per E-Mail an die Adresse deines Kontos] (Art. L221-13 des französischen Verbrauchergesetzbuchs). Sie bleiben unter
-Einstellungen › Über abrufbar.
+den Preis danach, die Frist von 14 Tagen, um den Vertrag zu widerrufen, und Links zu diesen Bedingungen, zur Richtlinie
+zur zulässigen Nutzung, zu den Nutzungsbedingungen und zur Datenschutzerklärung. **Du akzeptierst sie, indem du deinen
+Kauf bestätigst.** Danach erhältst du die Bestätigung des Vertrags per E-Mail an die Adresse deines Kontos: den Tarif,
+das Datum des Beginns, das Ende der kostenlosen Woche, falls es eine gibt, die Links zu diesen Bedingungen, wie du
+kündigst, das Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular (Art. L221-13 des
+französischen Verbrauchergesetzbuchs). Diese Bedingungen bleiben unter Einstellungen › Über abrufbar.
 
 BipAgents mit deinem eigenen Computer oder deinem eigenen Server zu nutzen, bleibt kostenlos und fällt nicht unter
 diese Bedingungen.
@@ -54,10 +56,13 @@ Für jede Person des Tarifs:
 - **Ein SSH-Zugang** zum Konto ihres Platzes, von einem Computer aus, dessen Schlüssel in der App hinzugefügt wurde
   (Einstellungen › Alles-inklusive-Angebot › SSH-Zugang), ohne Administratorrechte (root).
 
-**Wo.** Die Server werden zuerst bei OVHcloud gemietet (Rechenzentren in der Europäischen Union oder im Vereinigten
-Königreich), dann bei Hetzner (Deutschland oder Finnland), dann bei OVHcloud für kleinere Server, je nachdem, was
-verfügbar ist. Für Personen in den USA: [zu ergänzen: Hoster und Standort der Server], und die KI läuft über
-OpenRouter.
+**Wo.** Die Server werden zuerst bei OVHcloud gemietet (Rechenzentren in der Europäischen Union), dann bei Hetzner
+(Deutschland oder Finnland), dann bei OVHcloud für kleinere Server, je nachdem, was verfügbar ist. Sie stehen alle in
+der Europäischen Union, auch für Personen, die außerhalb der Union leben.
+
+**In welchen Ländern.** Das Angebot ist erhältlich, wenn dein Store-Konto in der Europäischen Union, in den USA, im
+Vereinigten Königreich, in Israel oder in Singapur ist. Anderswo bietet die App es nicht an; BipAgents bleibt mit deinem
+eigenen Server nutzbar. Die besonderen Regeln für Personen, die außerhalb der Union leben, stehen in Abschnitt 17.
 
 **Nicht enthalten**: dein Telefon und dein Internetzugang; die Nutzung des KI-Modells über dein Guthaben hinaus (du
 kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten verbindest, und deren eigene Abos.
@@ -101,18 +106,20 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   einen Monat mehr.
 - **Zusätzliches Guthaben**: Du kannst in der App welches kaufen (Einstellungen › Alles-inklusive-Angebot ›
   KI-Guthaben hinzufügen), 2,99 € inkl. MwSt. für 2 € Guthaben. Es wird dem Platz der Person gutgeschrieben, die den
-  Tarif abgeschlossen hat. Es verfällt nicht, solange das Abo weiterläuft; **es geht verloren, wenn das Abo endet**.
+  Tarif abgeschlossen hat. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
+  und kommt mit deinem nächsten Abo zurück. Es geht nur verloren, wenn du dein Konto löschst.
 - **Guthaben aufgebraucht**: Deine Agenten rufen das KI-Modell nicht mehr auf, bis zum nächsten Monat oder bis du
   Guthaben hinzufügst. Dein Platz, deine Dateien und deine Sicherungen laufen weiter; die App sagt es dir.
 - Das Guthaben ist kein Geld: Es dient nur der Nutzung des KI-Modells im Angebot, ist nicht übertragbar und wird nicht
   erstattet, vorbehaltlich der Rechte, die dir das Gesetz gibt (Abschnitte 12 und 13).
 - **Das Modell**: Du wählst es aus einer Liste (standardmäßig GLM-5.3 Flash, andere wie DeepSeek), mit seinem Preis pro
   Million Tokens. Ein teureres Modell verbraucht das Guthaben schneller. Die Liste kann sich ändern, zum Beispiel wenn
-  ein Anbieter ein Modell zurückzieht oder ein neues hinzukommt; wird deins nicht mehr angeboten, sagt es dir die App,
-  und du wählst ein anderes [zu ergänzen: Modell, das bis dahin genutzt wird].
+  ein Anbieter ein Modell zurückzieht oder ein neues hinzukommt; wird deins nicht mehr angeboten, sagt es dir die App
+  und schlägt dir DeepSeek V4.1 Flash vor, bis du ein anderes wählst.
 - Die Nachrichten, die deine Agenten an das Modell schicken, laufen über einen KI-Router, **EUrouter** (Europäische
-  Union) oder in den USA **OpenRouter**, dann über den Anbieter, der das gewählte Modell betreibt. Sie verarbeiten sie,
-  um zu antworten ([Datenschutzerklärung](privacy.de.md), Abschnitt 5.4).
+  Union), dann über den Anbieter, der das gewählte Modell betreibt, für alle Personen des Angebots, wo auch immer sie
+  leben. Sie verarbeiten sie, um zu antworten ([Datenschutzerklärung](privacy.de.md), Abschnitt 5.4). **Vor der ersten
+  Nachricht nennt dir die App den Router und den Hersteller des Modells und fragt nach deinem Einverständnis.**
 
 ## 7. Wer abschließen kann, und dein Konto
 
@@ -121,24 +128,31 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   für die App; zwischen 16 und 18 Jahren mit dem Einverständnis eines Elternteils. Ein Kind unter 16 Jahren darf einen
   Platz nur nutzen, wenn ein Elternteil oder ein für das Kind verantwortlicher Erwachsener ihn eingerichtet hat und
   beaufsichtigt: Dieser Erwachsene akzeptiert diese Bedingungen für das Kind und bleibt für dessen Nutzung
-  verantwortlich (Nutzungsbedingungen, Abschnitt 4).
-- **Dein Konto**: Du erstellst es mit „Mit Apple anmelden“, mit Google oder mit einer E-Mail-Adresse (ein Einmalcode
-  oder ein Passkey). Es enthält deine Identität (Apple- oder Google-Kennung, E-Mail-Adresse), die Verbindung zu deinem
+  verantwortlich (Nutzungsbedingungen, Abschnitt 4). **In den USA darf keine Person unter 13 Jahren einen Platz
+  nutzen**, auch nicht unter Aufsicht.
+- **Dein Konto**: Du erstellst es mit „Mit Apple anmelden“, mit Google oder mit einer E-Mail-Adresse (ein Einmalcode,
+  der an diese Adresse geht). Es enthält deine Identität (Apple- oder Google-Kennung, E-Mail-Adresse), die Verbindung zu deinem
   Abo, die Liste deiner Geräte und deine Einladungen. **Es enthält nie die Schlüssel zu deinem Platz**: Sie bleiben auf
   deinen Geräten.
 - **Neues Gerät**: Du gibst es von einem Gerät aus frei, das du schon hast.
 - **Kein Gerät mehr**: Du bekommst dein Konto nach **24 Stunden** zurück, und deine alten Geräte und deine
-  E-Mail-Adresse werden darüber informiert; oder **sofort** mit deinem **Wiederherstellungscode**, den du beim Kauf
-  erhältst. Dieser Code öffnet auch die Kopie deines Sicherungsschlüssels, die Kerfy Studio verschlüsselt aufbewahrt
-  und ohne ihn nicht lesen kann. **Bewahre ihn sicher auf**: Kerfy Studio kennt ihn nicht und kann ihn nicht
-  wiederherstellen. Ohne Gerät und ohne Wiederherstellungscode kann niemand deine Sicherungen öffnen.
+  E-Mail-Adresse werden darüber informiert; oder **sofort** mit deinem **Wiederherstellungscode**, dessen Erstellung dir
+  die App direkt nach dem Kauf anbietet. Dieser Code öffnet auch die Kopie deines Sicherungsschlüssels, die Kerfy Studio
+  verschlüsselt aufbewahrt und ohne ihn nicht lesen kann. **Bewahre ihn sicher auf**: Kerfy Studio kennt ihn nicht und
+  kann ihn nicht wiederherstellen. Ohne Gerät und ohne Wiederherstellungscode kann niemand deine Sicherungen öffnen.
 - Du bist verantwortlich für die Sicherheit deiner Geräte, deines Apple-, Google- oder E-Mail-Kontos und deines
   Wiederherstellungscodes.
-- **Dein Konto löschen**: in der App, [zu ergänzen: Pfad in der App, zum Beispiel Einstellungen › Konto › Mein Konto
-  löschen], oder unter [zu ergänzen: Adresse der Webseite zum Löschen]. Ein laufendes Abo wird im Store gekündigt:
-  Kerfy Studio kann das nicht für dich tun. Am Ende des bezahlten Zeitraums werden dein Platz und seine Sicherungen
-  gelöscht, dann dein Konto (die [Datenschutzerklärung](privacy.de.md) sagt, was das Gesetz aufzubewahren verlangt).
-  [Zu ergänzen: was mit dem Platz einer eingeladenen Person geschieht, die ihr Konto löscht.]
+- **Dein Konto löschen**: in der App, Einstellungen › Konto › Mein Konto löschen, oder auf der Seite
+  https://guichet.kerfystudio.com/account/delete, mit einem Code, der an deine E-Mail-Adresse geschickt wird. Dein Konto
+  wird **30 Tage** nach deinem Antrag gelöscht. Bis dahin sind deine Agenten angehalten, du kannst deine Daten noch
+  herunterladen und es dir anders überlegen (Einstellungen › Konto › Konto behalten). Nach den 30 Tagen werden dein
+  Platz und seine Sicherungen gelöscht, dann dein Konto (die [Datenschutzerklärung](privacy.de.md) sagt, was das Gesetz
+  aufzubewahren verlangt).
+- **Dein Konto zu löschen kündigt dein Abo nicht**: Kündige es im Store (Abschnitt 11). Bei Google Play beendet Kerfy
+  Studio außerdem seine Verlängerung am Tag der Löschung; der App Store erlaubt das nicht.
+- **Wenn du deinen Tarif teilst**, werden die eingeladenen Personen per E-Mail informiert: Ihre Plätze halten an dem Tag
+  an, an dem dein Konto gelöscht wird. **Wenn du eine eingeladene Person bist**, wird dein Platz am Ende der 30 Tage
+  gelöscht, und die Person, die zahlt, bekommt einen neuen, den sie jemand anderem anbieten kann.
 
 ## 8. Duo und Familie: eingeladene Personen
 
@@ -147,7 +161,9 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   **Weder die Person, die zahlt, noch Kerfy Studio können ihre Agenten oder ihre Unterhaltungen lesen.**
 - Die Person, die abschließt, bleibt die einzige Kundin des Stores: Sie zahlt, wechselt den Tarif oder kündigt. Die
   Plätze der eingeladenen Personen hängen von ihrem Abo ab: Endet es, folgen sie denselben Regeln wie ihr eigener
-  (Abschnitt 11), und die App informiert sie. Sag es den Personen, die du einlädst.
+  (Abschnitt 11), und die App informiert sie. Löscht die Person, die abschließt, ihr Konto, halten die Plätze der
+  eingeladenen Personen 30 Tage später an, und diese werden per E-Mail informiert (Abschnitt 7). Sag es den Personen,
+  die du einlädst.
 - **Wechsel zu einem kleineren Tarif**: Bei deiner Verlängerung halten die überzähligen Plätze an und werden 30 Tage
   später mit ihren Sicherungen gelöscht, außer du wechselst vorher zurück zum größeren Tarif. Die App zeigt, welche und
   an welchem Datum.
@@ -199,13 +215,13 @@ Studio den KI-Schlüssel eines Platzes abschalten und ihn sofort sperren, zu den
 
 - **Kündigen**: jederzeit, kostenlos, in den Abo-Einstellungen des Stores: auf dem iPhone Einstellungen › dein Name ›
   Abonnements; auf Android Play Store › Profilbild › Zahlungen und Abos › Abos. Die App führt dich auch direkt dorthin:
-  Einstellungen › Alles-inklusive-Angebot › Mein Abo verwalten. Die Kündigung wirkt zum Ende des schon bezahlten
+  Einstellungen › Alles-inklusive-Angebot › Mein Abo kündigen. Die Kündigung wirkt zum Ende des schon bezahlten
   Monats: Bis dahin behältst du alles. Der Store bestätigt dir die Kündigung und ihr Datum (Art. L215-1-1 des
   französischen Verbrauchergesetzbuchs).
 - **Wenn das Abo endet** (gekündigt oder nicht verlängert): Dein Platz wird **30 Tage lang gesperrt**. Deine Agenten
   rufen das KI-Modell nicht mehr auf, nichts wird gelöscht, du kannst deine Unterhaltungen noch öffnen und deine
   Dateien herunterladen, und du kannst zurückkommen, indem du wieder ein Abo abschließt. Nach 30 Tagen werden dein
-  Platz und seine Sicherungen gelöscht. Das restliche KI-Guthaben geht verloren.
+  Platz und seine Sicherungen gelöscht. Gekauftes und nicht genutztes KI-Guthaben bleibt auf deinem Konto (Abschnitt 6).
 - **Nach einer kostenlosen Woche, die du nicht fortgesetzt hast**: 3 Tage statt 30.
 - **Erstattung durch den Store**: Dein Platz wird sofort gesperrt und nach 30 Tagen mit seinen Sicherungen gelöscht.
 - **Erinnerungen**: Wenn du die Verlängerung ausschaltest, erinnert dich die App daran, dein restliches Guthaben zu
@@ -221,29 +237,30 @@ Studio den KI-Schlüssel eines Platzes abschalten und ihn sofort sperren, zu den
 
 ## 12. Widerrufsrecht
 
-Wenn du Verbraucher bist, hast du **14 Tage, um das Abo zu widerrufen**, ab dem Abschluss und ohne Angabe von Gründen
-(Art. L221-18 des französischen Verbrauchergesetzbuchs). Mit einer kostenlosen Woche beginnen diese 14 Tage mit dem
-Anfang der kostenlosen Woche: Der Preis danach wird dir vor dem Kauf klar angezeigt, sodass es für das Abo nur ein
+Wenn du Verbraucher bist, hast du **14 Tage, um den Vertrag zu widerrufen**, ab dem Abschluss und ohne Angabe von
+Gründen (Art. L221-18 des französischen Verbrauchergesetzbuchs). Mit einer kostenlosen Woche beginnen diese 14 Tage mit
+dem Anfang der kostenlosen Woche: Der Preis danach wird dir vor dem Kauf klar angezeigt, sodass es für das Abo nur ein
 einziges Widerrufsrecht gibt (Gerichtshof der Europäischen Union, 5. Oktober 2023, C-565/22).
 
-**Dein Dienst beginnt sofort, auf deinen Wunsch.** Mit dem Kauf verlangst du, dass dein Platz vorbereitet wird und der
-Dienst vor dem Ende der Widerrufsfrist beginnt. Du behältst dein Widerrufsrecht, denn der Dienst ist vor dem Ende der
-Frist nie vollständig erbracht (Art. L221-28 Nr. 1). Widerrufst du aber nach dem Ende der kostenlosen Woche, schuldest
-du einen Betrag, der dem bis zu deinem Widerruf erbrachten Dienst entspricht (Art. L221-25); die kostenlose Woche
-kostet nichts. Dasselbe gilt für gekauftes KI-Guthaben: Was du davon genutzt hast, bleibt geschuldet.
+**Dein Dienst beginnt sofort, auf deinen Wunsch**, und du behältst dein Recht, den Vertrag zu widerrufen. **Widerrufst
+du, wird dir alles erstattet**, auch nach dem Ende der kostenlosen Woche: Kerfy Studio verlangt nichts für den schon
+erbrachten Dienst. Zusätzlich gekauftes KI-Guthaben wird nach den Regeln des Stores erstattet.
 
-**Wie.** Da der Store den Preis kassiert hat, erstattet der Store:
+**Wie.** In der App: Einstellungen › Alles-inklusive-Angebot › **Vertrag hier widerrufen**, während der 14 Tage
+(Art. L221-21 und D221-5 des französischen Verbrauchergesetzbuchs). Du erhältst sofort eine Eingangsbestätigung per
+E-Mail, mit Datum und Uhrzeit deiner Entscheidung.
 
-- **App Store**: über dein Apple-Konto (Kaufhistorie) oder mit dem Widerrufsformular von Apple, nach den
-  Geschäftsbedingungen für Apple Medienservices;
-- **Google Play**: über die Seite „Erstattung beantragen“ oder das Widerrufsformular von Google, nach den
-  Erstattungsrichtlinien von Google Play.
+- **Google Play**: Kerfy Studio lässt Google das Abo vollständig erstatten, und dein Platz hält sofort an.
+- **App Store**: Apple hat den Preis kassiert, und nur Apple kann erstatten. Das Erstattungsfenster von Apple öffnet
+  sich in der App: Schließ den Antrag ab oder stell ihn unter reportaproblem.apple.com. Dein Platz hält an, sobald Apple
+  erstattet hat.
+- **Während der kostenlosen Woche** wurde nichts bezahlt: Dein Platz hält sofort an. Auf dem iPhone öffnet die App
+  außerdem deine Abos, damit du die Verlängerung ausschaltest, sonst würde Apple den ersten Monat abbuchen.
 
-Du kannst Kerfy Studio deine Entscheidung auch mit jeder eindeutigen Erklärung mitteilen: einer E-Mail an
-support@kerfystudio.com, dem Formular im Anhang, [zu ergänzen: oder der Funktion „Vertrag hier widerrufen“ der App
-(Art. L221-21 und D221-5 des französischen Verbrauchergesetzbuchs)]. Wir bestätigen den Eingang und helfen dir, beim
-Store die Erstattung zu bekommen, die dir zusteht. Sobald du erstattet wurdest, wird dein Platz sofort gesperrt und
-nach 30 Tagen mit seinen Sicherungen gelöscht (Abschnitt 11).
+Du kannst den Vertrag auch mit jeder eindeutigen Erklärung widerrufen: einer E-Mail an support@kerfystudio.com oder dem
+Formular im Anhang; oder die Erstattung direkt beim Store beantragen (App Store: Kaufhistorie deines Apple-Kontos;
+Google Play: Seite „Erstattung beantragen“). In jedem Fall wird dein Platz 30 Tage aufbewahrt, damit du deine Daten
+herunterladen kannst, und dann mit seinen Sicherungen gelöscht (Abschnitt 11).
 
 ## 13. Gesetzliche Gewährleistung der Vertragsmäßigkeit und Updates
 
@@ -297,9 +314,57 @@ Inkrafttreten kostenlos kündigen.
   und R616-1 des französischen Verbrauchergesetzbuchs).
 - Diese Bedingungen unterliegen **französischem Recht**. Wenn du Verbraucher bist und in einem anderen Land der
   Europäischen Union wohnst, behältst du zusätzlich den Schutz der zwingenden Vorschriften dieses Landes. Zuständig sind
-  die Gerichte, die in den Nutzungsbedingungen genannt sind (Abschnitt 20).
+  die Gerichte, die in den Nutzungsbedingungen genannt sind (Abschnitt 20). Wenn du außerhalb der Europäischen Union
+  lebst, gilt außerdem Abschnitt 17.
 
-## 17. Kontakt
+## 17. Wenn du außerhalb der Europäischen Union lebst
+
+Diese Regeln ergänzen die vorigen Abschnitte für Personen, deren Store-Konto in diesen Ländern ist. Sie nehmen dir kein
+Recht, das dir das Gesetz deines Landes gibt und das ein Vertrag nicht ausschließen kann.
+
+**USA**
+
+- **Preise und Steuern**: Die Preise werden ohne Steuern angezeigt; der Store berechnet und kassiert die Verkaufssteuer
+  deines Bundesstaats.
+- **Automatische Verlängerung**: Das Abo verlängert sich jeden Monat zum angezeigten Preis, bis du es im Store oder in
+  der App kündigst (Abschnitt 11). Diese Bedingungen, der Preis und wie du kündigst, werden dir vor dem Kauf genannt und
+  per E-Mail bestätigt (Abschnitt 1). Du kannst den Vertrag widerrufen, wie in Abschnitt 12 beschrieben.
+- **Alter**: Keine Person unter 13 Jahren darf einen Platz nutzen (Abschnitt 7).
+- **Individuelles Schiedsverfahren**: Jeder Streit zwischen dir und Kerfy Studio im Zusammenhang mit dem Angebot wird
+  durch ein **individuelles und endgültiges Schiedsverfahren** beigelegt, durchgeführt von [zu ergänzen: Schiedsstelle
+  und ihre Regeln für Verbraucher], und nicht vor einem Gericht. Du kannst dich immer an das Gericht für geringfügige
+  Forderungen (small claims court) deines Countys wenden, wenn dein Anspruch dorthin gehört. Kerfy Studio trägt die
+  Gebühren der Schiedsstelle, soweit sie über das hinausgehen, was du für die Anrufung eines Gerichts zahlen würdest.
+  **Du verzichtest auf jede Sammelklage** (class action) und jedes Sammelschiedsverfahren, als Partei oder als Mitglied.
+  Du kannst diese Schiedsklausel ablehnen, indem du innerhalb von 30 Tagen nach deinem Abschluss an
+  support@kerfystudio.com schreibst; der Rest des Vertrags ändert sich nicht.
+- **Haftung**: Soweit das Recht deines Bundesstaats es erlaubt, ist die gesamte Haftung von Kerfy Studio dir gegenüber
+  auf den Betrag begrenzt, den du in den 12 Monaten vor dem betreffenden Ereignis für das Angebot bezahlt hast, und
+  Kerfy Studio haftet nicht für indirekte Schäden; diese Regel ersetzt für dich den Satz in Abschnitt 14, nach dem die
+  Haftung nicht begrenzt ist.
+- **Anwendbares Recht**: französisches Recht, mit den Verbraucherschutzvorschriften deines Bundesstaats, die zwingend
+  gelten.
+
+**Vereinigtes Königreich**
+
+- Du hast die Rechte, die dir das britische Recht gibt, darunter der Consumer Rights Act 2015 und die Consumer Contracts
+  Regulations 2013: insbesondere 14 Tage, um den Vertrag zu widerrufen, was du mit der Funktion aus Abschnitt 12 tun
+  kannst.
+- Die Gerichte deines Wohnorts (England und Wales, Schottland oder Nordirland) bleiben zuständig.
+
+**Israel**
+
+- Du kannst jederzeit kündigen (Abschnitt 11); die monatliche Verlängerung, ihr Preis und wie du kündigst, werden dir
+  vor dem Kauf genannt und per E-Mail bestätigt. Das israelische Verbraucherschutzgesetz gilt, soweit es zwingend ist.
+
+**Singapur**
+
+- Das Recht von Singapur gilt, soweit es zwingend ist. Zu deinen Daten siehe die Datenschutzerklärung (Abschnitt 11).
+
+**Überall**: Wenn eine Person in Gefahr zu sein scheint, geben ihr ihre Agenten die Hilfenummer ihres Landes (988 in den
+USA, 116 123 im Vereinigten Königreich, 1201 in Israel, 1767 in Singapur, 3114 in Frankreich).
+
+## 18. Kontakt
 
 Kerfy Studio — [Adresse des Sitzes] — [Telefonnummer] — **support@kerfystudio.com** — Missbrauch:
 **abuse@kerfystudio.com**

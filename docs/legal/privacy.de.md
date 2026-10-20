@@ -29,7 +29,9 @@
 Kontakt: **support@kerfystudio.com**.
 
 Kerfy Studio hat keinen Datenschutzbeauftragten benannt: Für seine Tätigkeit ist das nicht vorgeschrieben (Art. 37
-DSGVO). Für alle Fragen zu deinen Daten: support@kerfystudio.com.
+DSGVO). Für alle Fragen zu deinen Daten: support@kerfystudio.com. Für das Recht von Singapur (Personal Data Protection
+Act), das eine für den Datenschutz zuständige Person verlangt, ist das der Präsident von Kerfy Studio, [Vorname Name],
+erreichbar unter derselben Adresse.
 
 Kerfy Studio ist Verantwortlicher für die Verarbeitungen, die die App durchführt, um zu funktionieren, so wie Kerfy
 Studio sie gestaltet hat (Abschnitte 3, 4 und 7), auch wenn sie auf deinem Telefon bleiben und Kerfy Studio keinen
@@ -226,25 +228,30 @@ Support). Der Dienst von Kerfy Studio, der Konten, Abos und Plätze verwaltet, h
 ### 5.2 Dein Konto
 
 **Daten.** Die Kennung, die dir Apple oder Google gibt, und deine E-Mail-Adresse (bei Apple kann es eine
-Weiterleitungsadresse sein); oder, mit einer E-Mail-Adresse, die Einmalcodes, die dir geschickt werden, und der
-öffentliche Schlüssel deines Passkeys. Die Liste deiner freigegebenen Geräte und ihre Benachrichtigungstokens, vom
+Weiterleitungsadresse sein); oder, mit einer E-Mail-Adresse, die Einmalcodes, die dir geschickt werden. Die Liste
+deiner freigegebenen Geräte, der öffentliche Schlüssel jedes Geräts (was ein anderes deiner Geräte ihm schickt, ist
+für es versiegelt) und ihre Benachrichtigungstokens, vom
 Relay versiegelt (Abschnitt 4.1): Kerfy Studio sieht sie nie im Klartext. Die Einladungen, die du verschickst (die
 E-Mail-Adresse der eingeladenen Person und ihr Status). Eine laufende Wiederherstellungsanfrage. Die Kopie deines
-Sicherungsschlüssels, mit deinem Wiederherstellungscode verschlüsselt, die Kerfy Studio nicht lesen kann. Nicht dein
-Name, nicht dein Foto, nie die Schlüssel zu deinem Platz.
+Sicherungsschlüssels, mit deinem Wiederherstellungscode verschlüsselt, die Kerfy Studio nicht lesen kann. Gekauftes
+KI-Guthaben, das für ein nächstes Abo aufbewahrt wird (ein Betrag). Das Datum der Löschung des Kontos, wenn du sie
+beantragt hast. Nicht dein Name, nicht dein Foto, nie die Schlüssel zu deinem Platz.
 
-**Zwecke.** Dich anmelden, dein Abo und deine Plätze verbinden, deine Geräte freigeben, dein Konto wiederherstellen,
-dir Anmeldecodes und Sicherheitshinweise schicken (neues Gerät, laufende Wiederherstellung), die Einladungen
-verwalten. Keine Werbe-E-Mails.
+**Zwecke.** Dich anmelden, dein Abo und deine Plätze verbinden, deine Geräte freigeben, dein Konto wiederherstellen, dir
+Anmeldecodes, Sicherheitshinweise (neues Gerät, laufende Wiederherstellung), die Bestätigung deines Kaufs, die
+Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung schicken, die Einladungen verwalten. Keine
+Werbe-E-Mails: Eine kommerzielle Nachricht würde nur verschickt, wenn du dein Einverständnis angekreuzt hast.
 **Rechtsgrundlage.** Erfüllung des Vertrags (Art. 6 Abs. 1 lit. b DSGVO).
-**Dauer.** Solange dein Konto besteht. Wenn du es löschst (am Ende des bezahlten Zeitraums, wenn ein Abo läuft), werden
-diese Daten gelöscht, außer dem, was das Gesetz aufzubewahren verlangt: Als Hoster bewahrt Kerfy Studio getrennt, und
-nur um Justizbehörden zu antworten, deine E-Mail-Adresse 5 Jahre und deine Kontokennung 1 Jahr nach dem Ende des
+**Dauer.** Solange dein Konto besteht. Wenn du seine Löschung beantragst, wird es **30 Tage** danach gelöscht (deine
+Plätze halten ab dem Antrag an, und bis dahin kannst du es dir anders überlegen), mit seinen Plätzen und ihren
+Sicherungen, außer dem, was das Gesetz aufzubewahren verlangt: Als Hoster bewahrt Kerfy Studio getrennt, und nur um
+Justizbehörden zu antworten, deine E-Mail-Adresse 5 Jahre und deine Apple- oder Google-Kennung 1 Jahr nach dem Ende des
 Vertrags auf (französisches Gesetz über das Vertrauen in die digitale Wirtschaft, Art. 6 II; Dekret Nr. 2021-1362,
-Art. 2, 3 und 8). Einmalcodes: solange sie gültig sind. Einladungen: [zu ergänzen: wie lange eine nicht angenommene
-Einladung aufbewahrt wird].
-**Dein Konto löschen.** In der App, [zu ergänzen: Pfad in der App], oder unter [zu ergänzen: Adresse der Webseite zum
-Löschen], wenn du die App nicht mehr hast.
+Art. 2, 3 und 8). Einmalcodes: solange sie gültig sind. Nicht angenommene Einladung: 30 Tage.
+**Dein Konto löschen.** In der App, Einstellungen › Konto › Mein Konto löschen, oder, wenn du die App nicht mehr hast,
+auf der Seite https://guichet.kerfystudio.com/account/delete mit einem Code, der an deine E-Mail-Adresse geschickt wird.
+Die Personen, mit denen du deinen Tarif teilst, werden per E-Mail informiert: Ihre Plätze halten an dem Tag an, an dem
+dein Konto gelöscht wird.
 
 ### 5.3 Dein Abo, deine Käufe und die kostenlose Woche
 
@@ -252,7 +259,11 @@ Löschen], wenn du die App nicht mehr hast.
 Play, Echtzeitbenachrichtigungen): die Kennung deines Abos beim Store, der Tarif, die Region, sein Status (kostenlose
 Woche, aktiv, gesperrt, beendet, erstattet), das Ende des bezahlten Zeitraums, ob die Verlängerung ausgeschaltet ist,
 und für gekauftes KI-Guthaben die Kennung jedes Kaufs und sein Betrag. **Nie deine Zahlungsdaten**, die nur der Store
-kennt.
+kennt. Das Land deines Store-Kontos, das die App schickt, um zu erfahren, ob das Angebot dort verkauft wird (es wird
+nicht aufbewahrt).
+
+**Dein Vertrag.** Das Datum des Beginns, das Datum der Bestätigungs-E-Mail und, wenn du den Vertrag widerrufst, Datum
+und Uhrzeit deines Widerrufs.
 
 **Genutztes KI-Guthaben.** Der Betrag, den der KI-Schlüssel jedes Platzes im Monat ausgegeben hat, höchstens einmal
 pro Minute beim KI-Router abgefragt, und das übertragene Guthaben: ein Betrag, nie deine Nachrichten.
@@ -277,26 +288,25 @@ denn es dient nur dazu, den kostenlosen Zugang zum Dienst auf einen begrenzten Z
 französischen Datenschutzgesetzes; CNIL, Beschluss Nr. 2020-091, Art. 5). Den Nachweis des Vertrags aufbewahren:
 berechtigtes Interesse von Kerfy Studio, seine Rechte verteidigen zu können.
 **Dauer.** Abo- und Kaufdaten: während des Abos, dann 5 Jahre im Archiv, als Nachweis des Vertrags (Art. 2224 des
-französischen Zivilgesetzbuchs). Fingerabdruck des Android-Geräts: [zu ergänzen: 24 Monate, zu bestätigen].
-IP-Adresse: höchstens 15 Minuten. Die DeviceCheck-Bits bewahrt Apple auf.
+französischen Zivilgesetzbuchs). Fingerabdruck des Android-Geräts: 24 Monate. IP-Adresse: höchstens 15 Minuten. Die
+DeviceCheck-Bits bewahrt Apple auf.
 
 ### 5.4 Dein Platz und das KI-Modell
 
-**Wo.** Auf einem Server, der bei OVHcloud (Rechenzentren in der Europäischen Union oder im Vereinigten Königreich)
-oder bei Hetzner (Deutschland oder Finnland) gemietet ist. Für Personen in den USA: [zu ergänzen: Hoster und Standort
-der Server].
+**Wo.** Auf einem Server, der bei OVHcloud (Rechenzentren in der Europäischen Union) oder bei Hetzner (Deutschland oder
+Finnland) gemietet ist, für alle Personen des Angebots, auch für die, die außerhalb der Union leben.
 
 **Was dort liegt.** Was Abschnitt 5.1 beschreibt, und die öffentlichen SSH-Schlüssel, die du in der App hinzufügst. Der
 Guichet von Kerfy Studio (der Dienst, der die Plätze verwaltet) kennt die Adresse deines Platzes und den Fingerabdruck
 seines Zertifikats, damit sich dein Telefon damit verbinden kann und um ihn bei einem Ausfall zu verlegen.
 
 **Das KI-Modell.** Die Nachrichten, die deine Agenten an das Modell schicken (mit den Dateien und Fotos, die sie ihm
-zeigen), laufen über einen KI-Router, **EUrouter** (EUrouter B.V., Amsterdam, Niederlande) oder für Personen in den
-USA **OpenRouter** (OpenRouter, Inc., USA), dann über den Anbieter, der das gewählte Modell betreibt: [zu ergänzen:
-Anbieter der angebotenen Modelle und Länder, in denen sie laufen]. EUrouter gibt an, standardmäßig weder die Anfragen
-noch die Antworten aufzubewahren und ihre Metadaten (Uhrzeit, Modell, Zahl der Tokens, Kosten, IP-Adresse) bis zu
-12 Monate aufzubewahren. OpenRouter: [zu ergänzen: Einstellungen zu Aufbewahrung und Training des Kontos von Kerfy
-Studio bei OpenRouter und bei den Anbietern]. Sie handeln im Auftrag von Kerfy Studio.
+zeigen), laufen über einen KI-Router, **EUrouter** (EUrouter B.V., Amsterdam, Niederlande), für alle Personen des
+Angebots, dann über den Anbieter, der das gewählte Modell betreibt: [zu ergänzen: Anbieter der angebotenen Modelle und
+Länder, in denen sie laufen]. EUrouter gibt an, standardmäßig weder die Anfragen noch die Antworten aufzubewahren und
+ihre Metadaten (Uhrzeit, Modell, Zahl der Tokens, Kosten, IP-Adresse) bis zu 12 Monate aufzubewahren. Sie handeln im
+Auftrag von Kerfy Studio. **Vor der ersten Nachricht nennt dir die App den Router und den Hersteller des Modells und
+fragt nach deinem Einverständnis**; die Liste der Modelle nennt den Hersteller jedes Modells.
 
 **Der Ruhezustand.** Dein Platz notiert selbst die letzte Anfrage der App; der Guichet weiß nur, dass er schläft.
 
@@ -332,8 +342,7 @@ Telefone auf, mit deinem Platz verbunden.
 
 **Rechtsgrundlage.** Erfüllung des Vertrags (Art. 6 Abs. 1 lit. b DSGVO).
 **Dauer.** Nur die letzten Werte werden aufbewahrt und bei jeder Meldung ersetzt. Ereignisprotokoll (Ausfälle,
-Verlegungen, Updates): [zu ergänzen: wie lange das Protokoll des Guichet aufbewahrt wird]. Versiegelte Tokens: solange
-das Gerät mit deinem Platz verbunden ist.
+Verlegungen, Updates): 12 Monate. Versiegelte Tokens: solange das Gerät mit deinem Platz verbunden ist.
 
 ### 5.7 Missbrauchsmeldungen und Anfragen von Behörden
 
@@ -349,14 +358,13 @@ und berechtigtes Interesse von Kerfy Studio, seinen Dienst und seine Kunden zu s
 
 | Dienstleister | Rolle | Daten | Wo |
 |---|---|---|---|
-| OVHcloud (OVH SAS, Roubaix, Frankreich) | Hostet die Server der Plätze; tägliches Abbild jedes Servers | Inhalt der Plätze | Europäische Union oder Vereinigtes Königreich |
+| OVHcloud (OVH SAS, Roubaix, Frankreich) | Hostet die Server der Plätze; tägliches Abbild jedes Servers | Inhalt der Plätze | Europäische Union |
 | Hetzner Online GmbH (Gunzenhausen, Deutschland) | Hostet einen Teil der Server der Plätze | Inhalt der Plätze | Deutschland, Finnland |
 | EUrouter B.V. (Amsterdam, Niederlande) | KI-Router | An das Modell geschickte Nachrichten, Metadaten | Europäische Union |
-| OpenRouter, Inc. (USA) | KI-Router für Personen in den USA | An das Modell geschickte Nachrichten, Metadaten | USA |
 | Anbieter der Modelle: [zu ergänzen] | Betreiben das gewählte Modell | An das Modell geschickte Nachrichten | [zu ergänzen] |
 | [zu ergänzen: Hoster der Sicherungen] | Bewahrt die Sicherungen auf | Verschlüsselte Sicherungen, für ihn und für Kerfy Studio unlesbar | [zu ergänzen] |
 | [Hoster des Relays] | Hostet den Guichet und das Relay | Konto, Abo, technische Daten | Europäische Union |
-| [zu ergänzen: Anbieter für den E-Mail-Versand] | Verschickt die Codes, die Sicherheitshinweise und die Einladungen | E-Mail-Adresse, Inhalt dieser E-Mails | [zu ergänzen] |
+| [zu ergänzen: Anbieter für den E-Mail-Versand] | Verschickt die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung | E-Mail-Adresse, Inhalt dieser E-Mails | [zu ergänzen] |
 
 Sie sind mit Kerfy Studio durch einen Vertrag nach Art. 28 DSGVO verbunden. Apple (DeviceCheck, App Store) und Google
 (Play Integrity, Google Play) sind ebenfalls beteiligt, wie in Abschnitt 5.3 beschrieben; „Mit Apple anmelden“ und die
@@ -442,14 +450,16 @@ insbesondere in den USA:
 - Apple gibt an, Übermittlungen aus dem Europäischen Wirtschaftsraum durch die von der Europäischen Kommission
   erlassenen Standardvertragsklauseln abzusichern.
 
-**Das Alles-inklusive-Angebot.** Die Server der Plätze stehen in der Europäischen Union oder im Vereinigten
-Königreich, für das ein Angemessenheitsbeschluss der Europäischen Kommission gilt (Durchführungsbeschluss (EU)
-2025/2574 vom 19. Dezember 2025). EUrouter verarbeitet die Nachrichten in der Europäischen Union [zu ergänzen: Länder,
-in denen die angebotenen Modelle laufen, und die Garantie, falls eines außerhalb der Union liegt]. Für Personen in den
-USA verarbeitet OpenRouter, Inc. die Nachrichten in den USA: Kerfy Studio sichert diese Übermittlung durch die
-Standardvertragsklauseln der Europäischen Kommission ab [zu ergänzen: mit dem mit OpenRouter geschlossenen Vertrag zu
-bestätigen]. Apple und Google (Anmeldung, Stores, DeviceCheck, Play Integrity) können Daten in den USA verarbeiten, mit
-den oben genannten Garantien.
+**Das Alles-inklusive-Angebot.** Die Server der Plätze stehen in der Europäischen Union, für alle Personen des Angebots.
+EUrouter verarbeitet die Nachrichten in der Europäischen Union [zu ergänzen: Länder, in denen die angebotenen Modelle
+laufen, und die Garantie, falls eines außerhalb der Union liegt]. Apple und Google (Anmeldung, Stores, DeviceCheck, Play
+Integrity) können Daten in den USA verarbeiten, mit den oben genannten Garantien.
+
+**Wenn du außerhalb der Europäischen Union lebst** (USA, Vereinigtes Königreich, Israel, Singapur), kommen deine Daten
+in die Europäische Union, wo Kerfy Studio sie nach der DSGVO verarbeitet, die für alle seine Verarbeitungen gilt. Das
+Vereinigte Königreich und Israel erkennen an, dass die Europäische Union ein angemessenes Schutzniveau bietet; für
+Singapur sorgen dieses Schutzniveau und unsere Verträge mit unseren Dienstleistern für den vergleichbaren Schutz, den
+das Recht von Singapur verlangt.
 
 E-Mail-Anbieter: [Land; Garantie]. Anbieter für den E-Mail-Versand und Hoster der Sicherungen: [zu ergänzen: Land;
 Garantie]. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
@@ -465,16 +475,17 @@ Garantie]. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
 | Support-E-Mails | 2 Jahre nach dem letzten Austausch |
 | Meldungen | 1 Jahr nach ihrer Bearbeitung |
 | Absturzberichte | 1 Jahr nach Eingang (bei Kerfy Studio) |
-| Konto des Angebots (Kennungen, E-Mail, Geräte, Einladungen) | Solange das Konto besteht |
+| Konto des Angebots (Kennungen, E-Mail, Geräte, Einladungen, aufbewahrtes Guthaben) | Solange das Konto besteht; 30 Tage nach einem Löschantrag gelöscht |
+| Nicht angenommene Einladung | 30 Tage |
 | E-Mail-Adresse und Kontokennung nach dem Ende des Vertrags (Pflicht der Hoster) | 5 Jahre für die E-Mail, 1 Jahr für die Kennung, getrennt aufbewahrt |
 | Abo und Käufe | Während des Abos, dann 5 Jahre im Archiv |
-| Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | [zu ergänzen: 24 Monate, zu bestätigen] |
+| Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Höchstens 15 Minuten |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
 | Sicherungen | 48 Stunden (stündlich), 30 Tage (täglich), 12 Wochen (wöchentlich); mit dem Platz gelöscht |
 | Tägliches Abbild von OVHcloud | Ein Punkt pro Tag, innerhalb von etwa einem Tag nach der Neuinstallation des Platzes ersetzt |
 | Technische Daten der Server | Nur die letzten Werte |
-| Ereignisprotokoll des Guichet | [zu ergänzen] |
+| Ereignisprotokoll des Guichet | 12 Monate |
 | Metadaten bei EUrouter | Bis zu 12 Monate, laut EUrouter |
 | Missbrauchsmeldungen | 1 Jahr nach ihrer Bearbeitung |
 
@@ -491,6 +502,10 @@ Mit dem Alles-inklusive-Angebot ist jeder Platz ein eigenes Konto auf dem Server
 Studio hat keinen SSH-Schlüssel auf den Servern, und ein Server führt nur Befehle aus, die der Guichet signiert hat.
 Die App verbindet sich per HTTPS mit deinem Platz und prüft sein Zertifikat. Die Sicherungen werden auf dem Platz
 verschlüsselt, bevor sie ihn verlassen.
+
+**Bei einer Datenschutzverletzung** informiert Kerfy Studio die CNIL innerhalb von 72 Stunden (Art. 33 DSGVO) und die
+betroffenen Personen, wenn das Risiko für sie hoch ist (Art. 34); für Personen in Singapur die Personal Data Protection
+Commission innerhalb von 3 Tagen, wenn das Recht von Singapur es verlangt.
 
 ## 14. Deine Rechte
 
@@ -514,11 +529,20 @@ Modellanbieter oder deinem Hoster wende dich an sie.
 berichtigen oder löschen. Auf den Inhalt deines Platzes greifst du selbst zu, über die App oder per SSH, und du kannst
 ihn jederzeit kopieren. Um dein Konto zu löschen: Abschnitt 5.2.
 
+**Wenn du in Kalifornien oder anderswo in den USA lebst.** Kerfy Studio verkauft und teilt deine personenbezogenen Daten
+nicht im Sinne des kalifornischen Rechts (California Consumer Privacy Act) und macht keine zielgerichtete Werbung. Die
+App und unsere Websites verfolgen dich nicht von einer Website zur anderen: Ein „Do Not Track“-Signal deines Browsers
+ändert daher nichts an dem, was wir tun (California Online Privacy Protection Act). Die Rechte aus diesem Abschnitt übst
+du unter support@kerfystudio.com aus.
+
 ## 15. Beschwerde
 
 Wenn du meinst, dass deine Rechte nicht beachtet werden, kannst du dich bei der französischen Datenschutzbehörde
 **CNIL** (3 place de Fontenoy, TSA 80715, 75334 Paris Cedex 07, Frankreich — https://www.cnil.fr/fr/plaintes) oder
-bei der Datenschutzbehörde deines Landes beschweren.
+bei der Datenschutzbehörde deines Landes beschweren: im Vereinigten Königreich beim Information Commissioner's Office
+(https://ico.org.uk); in Israel bei der Privacy Protection Authority
+(https://www.gov.il/en/departments/the_privacy_protection_authority); in Singapur bei der Personal Data Protection
+Commission (https://www.pdpc.gov.sg).
 
 ## 16. Kinder
 
@@ -536,7 +560,9 @@ ein Kind uns geschrieben hat, kann ein Elternteil verlangen, dass wir die Nachri
 **Alles-inklusive-Angebot**: Es wird von einem Erwachsenen abgeschlossen oder mit dem Einverständnis eines Elternteils.
 Eine eingeladene Person muss mindestens 16 Jahre alt sein; unter 16 Jahren darf ein Platz nur genutzt werden, wenn ein
 Elternteil oder ein für das Kind verantwortlicher Erwachsener ihn eingerichtet hat und beaufsichtigt
-([Bedingungen des Angebots](offer.de.md), Abschnitt 7).
+([Bedingungen des Angebots](offer.de.md), Abschnitt 7). **In den USA darf keine Person unter 13 Jahren einen Platz
+nutzen**, und Kerfy Studio erhebt wissentlich keine Daten eines Kindes unter 13 Jahren (Children's Online Privacy
+Protection Act); falls es doch geschehen ist, schreib uns, und wir löschen sie.
 
 ## 17. Änderungen
 

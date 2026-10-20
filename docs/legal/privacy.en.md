@@ -27,7 +27,9 @@ registered with the RCS of [registry city] under number [SIREN] ("Kerfy Studio",
 **support@kerfystudio.com**.
 
 Kerfy Studio has not appointed a data protection officer: its activity does not require one (GDPR article 37). For
-any question about your data: support@kerfystudio.com.
+any question about your data: support@kerfystudio.com. For Singapore's law (Personal Data Protection Act), which
+requires a person in charge of data protection, this is Kerfy Studio's president, [first and last name], reachable
+at the same address.
 
 Kerfy Studio is the controller of the processing the app performs in order to work, as Kerfy Studio designed it
 (sections 3, 4 and 7), even when it stays on your phone and Kerfy Studio has no access to it, and of the processing of
@@ -208,24 +210,27 @@ subscriptions and places is called the guichet.
 ### 5.2 Your account
 
 **Data.** The identifier Apple or Google gives you and your email address (with Apple, it may be a relay address); or,
-with an email address, the one-time codes sent to you and the public key of your passkey. The list of your approved
-devices and their notification tokens, sealed by the relay (section 4.1): Kerfy Studio never sees them in clear. The
+with an email address, the one-time codes sent to you. The list of your approved devices, the public key of each
+(what another of your devices sends it is sealed for it) and their notification tokens, sealed by the relay (section 4.1): Kerfy Studio never sees them in clear. The
 invitations you send (the invited person's email address and their status). A recovery request in progress. The copy
-of your backup key, encrypted with your recovery code, which Kerfy Studio cannot read. Not your name, not your photo,
+of your backup key, encrypted with your recovery code, which Kerfy Studio cannot read. The AI credit bought and kept
+for a future subscription (an amount). The account deletion date, if you asked for it. Not your name, not your photo,
 never the keys to your place.
 
 **Purposes.** Signing you in, linking your subscription and your places, approving your devices, recovering your
-account, sending you sign-in codes and security notices (new device, recovery in progress), handling invitations. No
-promotional email.
+account, sending you sign-in codes, security notices (new device, recovery in progress), the confirmation of your
+purchase, the acknowledgement of a withdrawal and the deletion notices, handling invitations. No promotional email: a
+commercial message would only be sent if you ticked a box to agree to it.
 **Legal basis.** Performance of the contract (GDPR article 6(1)(b)).
-**Retention.** As long as your account exists. When you delete it (at the end of the paid period if a subscription is
-running), this data is erased, except what the law requires us to keep: as a hosting provider, Kerfy Studio keeps
-apart, and only to answer judicial authorities, your email address for 5 years and your account identifier for 1 year
-after the end of the contract (French law on confidence in the digital economy, article 6, II; decree no. 2021-1362,
-articles 2, 3 and 8). One-time codes: as long as they are valid. Invitations: [to be completed: how long an invitation
-that was not accepted is kept].
-**Deleting your account.** In the app, [to be completed: path in the app], or at [to be completed: address of the web
-deletion page] if you no longer have the app.
+**Retention.** As long as your account exists. When you delete it, it is erased **30 days** after your request (your
+places stop as soon as you ask, and you can change your mind until then), with its places and their backups, except
+what the law requires us to keep: as a hosting provider, Kerfy Studio keeps apart, and only to answer judicial
+authorities, your email address for 5 years and your Apple or Google identifier for 1 year after the end of the
+contract (French law on confidence in the digital economy, article 6, II; decree no. 2021-1362, articles 2, 3 and 8).
+One-time codes: as long as they are valid. Invitation not accepted: 30 days.
+**Deleting your account.** In the app, Settings › Account › Delete my account, or, if you no longer have the app, on
+the page https://guichet.kerfystudio.com/account/delete with a code sent to your email address. The people you share
+your plan with are told by email: their places stop on the day your account is erased.
 
 ### 5.3 Your subscription, your purchases and the free week
 
@@ -233,7 +238,11 @@ deletion page] if you no longer have the app.
 Play real-time notifications): the identifier of your subscription at the store, the plan, the region, its state (free
 week, active, suspended, ended, refunded), the end of the paid period, whether the renewal is turned off, and for the
 AI credit you buy, the identifier of each purchase and its amount. **Never your payment details**, which only the
-store knows.
+store knows. Your store account's country, which the app sends to find out whether the offer is sold there (it is not
+kept).
+
+**Your contract.** The start date, the date of the confirmation email and, if you withdraw from the contract, the date
+and time of your withdrawal.
 
 **AI credit used.** The amount each place's AI key spent in the month, read from the AI router once a minute at most,
 and the credit carried over: an amount, never your messages.
@@ -257,26 +266,25 @@ the device's identifier does not require your consent, as it only serves to limi
 limited period (article 82 of the French Data Protection Act; CNIL, deliberation no. 2020-091, article 5). Keeping
 proof of the contract: Kerfy Studio's legitimate interest in being able to defend its rights.
 **Retention.** Subscription and purchase data: during the subscription, then 5 years in archive, as proof of the
-contract (article 2224 of the French Civil Code). Android device fingerprint: [to be completed: 24 months, to be
-confirmed]. IP address: 15 minutes at most. The DeviceCheck bits are kept by Apple.
+contract (article 2224 of the French Civil Code). Android device fingerprint: 24 months. IP address: 15 minutes at
+most. The DeviceCheck bits are kept by Apple.
 
 ### 5.4 Your place and the AI model
 
-**Where.** On a server rented from OVHcloud (data centres in the European Union or in the United Kingdom) or from
-Hetzner (Germany or Finland). For people in the United States: [to be completed: hosting provider and location of the
-servers].
+**Where.** On a server rented from OVHcloud (data centres in the European Union) or from Hetzner (Germany or Finland),
+for everyone in the offer, including people who live outside the Union.
 
 **What is there.** What section 5.1 describes, and the public SSH keys you add from the app. Kerfy Studio's guichet
 (the service that manages the places) knows your place's address and its certificate's fingerprint, so that your phone
 can connect to it and so that it can be moved in case of an outage.
 
 **The AI model.** The messages your agents send to the model (with the files and photos they show it) go through an
-AI router, **EUrouter** (EUrouter B.V., Amsterdam, Netherlands) or, for people in the United States, **OpenRouter**
-(OpenRouter, Inc., United States), then through the provider that runs the chosen model: [to be completed: providers
-of the models offered and the countries where they run]. EUrouter states that by default it keeps neither the requests
-nor the replies, and keeps their metadata (time, model, number of tokens, cost, IP address) for up to 12 months.
-OpenRouter: [to be completed: retention and training settings of Kerfy Studio's account at OpenRouter and at the
-providers]. They act on Kerfy Studio's behalf.
+AI router, **EUrouter** (EUrouter B.V., Amsterdam, Netherlands), for everyone in the offer, then through the provider
+that runs the chosen model: [to be completed: providers of the models offered and the countries where they run].
+EUrouter states that by default it keeps neither the requests nor the replies, and keeps their metadata (time, model,
+number of tokens, cost, IP address) for up to 12 months. They act on Kerfy Studio's behalf. **Before the first
+message, the app names the router and the model's maker and asks for your agreement**; the list of models shows each
+one's maker.
 
 **Sleep.** Your place itself notes the app's latest request; the guichet only knows that it is asleep.
 
@@ -309,8 +317,8 @@ When your place's server goes down, is moved or comes back, your phones are told
 a generic text: for this, the guichet keeps your phones' sealed tokens linked to your place.
 
 **Legal basis.** Performance of the contract (GDPR article 6(1)(b)).
-**Retention.** Only the latest values are kept, replaced with each report. Event log (outages, moves, updates): [to be
-completed: how long the guichet's log is kept]. Sealed tokens: as long as the device is linked to your place.
+**Retention.** Only the latest values are kept, replaced with each report. Event log (outages, moves, updates):
+12 months. Sealed tokens: as long as the device is linked to your place.
 
 ### 5.7 Abuse reports and requests from authorities
 
@@ -326,14 +334,13 @@ Studio's legitimate interest in protecting its service and its customers (articl
 
 | Provider | Role | Data | Where |
 |---|---|---|---|
-| OVHcloud (OVH SAS, Roubaix, France) | Hosts the places' servers; daily image of each server | Content of the places | European Union or United Kingdom |
+| OVHcloud (OVH SAS, Roubaix, France) | Hosts the places' servers; daily image of each server | Content of the places | European Union |
 | Hetzner Online GmbH (Gunzenhausen, Germany) | Hosts some of the places' servers | Content of the places | Germany, Finland |
 | EUrouter B.V. (Amsterdam, Netherlands) | AI router | Messages sent to the model, metadata | European Union |
-| OpenRouter, Inc. (United States) | AI router for people in the United States | Messages sent to the model, metadata | United States |
 | Model providers: [to be completed] | Run the chosen model | Messages sent to the model | [to be completed] |
 | [to be completed: backup hosting provider] | Keeps the backups | Encrypted backups, unreadable for it and for Kerfy Studio | [to be completed] |
 | [relay hosting provider] | Hosts the guichet and the relay | Account, subscription, technical data | European Union |
-| [to be completed: email sending provider] | Sends the codes, the security notices and the invitations | Email address, content of these emails | [to be completed] |
+| [to be completed: email sending provider] | Sends the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices | Email address, content of these emails | [to be completed] |
 
 They are bound to Kerfy Studio by a contract that complies with GDPR article 28. Apple (DeviceCheck, App Store) and
 Google (Play Integrity, Google Play) are also involved, as section 5.3 says; "Sign in with Apple" and signing in with
@@ -411,13 +418,15 @@ Google may process the token and the notification outside the European Union, no
 - Apple states that it covers transfers from the European Economic Area with the standard contractual clauses adopted
   by the European Commission.
 
-**The all-included offer.** The places' servers are in the European Union or in the United Kingdom, which benefits
-from an adequacy decision of the European Commission (Commission Implementing Decision (EU) 2025/2574 of 19 December
-2025). EUrouter processes the messages in the European Union [to be completed: countries where the models offered
-run, and the safeguard if one is outside the Union]. For people in the United States, OpenRouter, Inc. processes the
-messages in the United States: Kerfy Studio covers this transfer with the standard contractual clauses of the European
-Commission [to be completed: to be confirmed with the contract signed with OpenRouter]. Apple and Google (sign-in,
-stores, DeviceCheck, Play Integrity) may process data in the United States, with the safeguards stated above.
+**The all-included offer.** The places' servers are in the European Union, for everyone in the offer. EUrouter
+processes the messages in the European Union [to be completed: countries where the models offered run, and the
+safeguard if one is outside the Union]. Apple and Google (sign-in, stores, DeviceCheck, Play Integrity) may process
+data in the United States, with the safeguards stated above.
+
+**If you live outside the European Union** (United States, United Kingdom, Israel, Singapore), your data comes to the
+European Union, where Kerfy Studio processes it under the GDPR, which applies to all its processing. The United
+Kingdom and Israel recognise the European Union as providing adequate protection; for Singapore, this level of
+protection and our contracts with our service providers give the comparable protection that Singapore's law requires.
 
 Email provider: [country; safeguard]. Email sending provider and backup hosting provider: [to be completed: country;
 safeguard]. You can ask us for a copy of the applicable safeguards.
@@ -433,16 +442,17 @@ safeguard]. You can ask us for a copy of the applicable safeguards.
 | Support emails | 2 years after the last exchange |
 | Reports | 1 year after they were handled |
 | Crash reports | 1 year after receipt (at Kerfy Studio) |
-| Account of the offer (identifiers, email, devices, invitations) | As long as the account exists |
+| Account of the offer (identifiers, email, devices, invitations, kept credit) | As long as the account exists; erased 30 days after a deletion request |
+| Invitation not accepted | 30 days |
 | Email address and account identifier after the end of the contract (obligation of hosting providers) | 5 years for the email, 1 year for the identifier, kept apart |
 | Subscription and purchases | During the subscription, then 5 years in archive |
-| Keyed fingerprint of the Android device (free week) | [to be completed: 24 months, to be confirmed] |
+| Keyed fingerprint of the Android device (free week) | 24 months |
 | IP address when a free week is reserved | 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
 | Backups | 48 hours (hourly), 30 days (daily), 12 weeks (weekly); erased with the place |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
 | Servers' technical data | Latest values only |
-| The guichet's event log | [to be completed] |
+| The guichet's event log | 12 months |
 | Metadata at EUrouter | Up to 12 months, according to EUrouter |
 | Abuse reports | 1 year after they were handled |
 
@@ -457,6 +467,10 @@ security flaw: **support@kerfystudio.com** (see the SECURITY.md file in the repo
 With the all-included offer, each place is a separate account on the server, without administrator rights; Kerfy
 Studio has no SSH key on the servers, and a server only carries out orders signed by the guichet. The app connects to
 your place over HTTPS and checks its certificate. Backups are encrypted on the place before they leave.
+
+**In case of a data breach**, Kerfy Studio notifies the CNIL within 72 hours (GDPR article 33) and the people
+concerned when the risk to them is high (article 34); for people in Singapore, the Personal Data Protection Commission
+within 3 days when Singapore's law requires it.
 
 ## 14. Your rights
 
@@ -477,11 +491,19 @@ your server yourself; for the data held by your model provider or your hosting p
 erase it. You access the content of your place yourself, through the app or over SSH, and you can copy it at any time.
 To delete your account: section 5.2.
 
+**If you live in California or elsewhere in the United States.** Kerfy Studio does not sell or share your personal
+data within the meaning of California law (California Consumer Privacy Act) and does no targeted advertising. The app
+and our websites do not track you from one site to another: a "Do Not Track" signal from your browser therefore
+changes nothing in what we do (California Online Privacy Protection Act). You exercise the rights in this section at
+support@kerfystudio.com.
+
 ## 15. Complaints
 
 If you believe your rights are not respected, you can lodge a complaint with the **CNIL** (3 place de Fontenoy,
 TSA 80715, 75334 Paris Cedex 07, France — https://www.cnil.fr/fr/plaintes) or with the data protection authority of
-your country.
+your country: in the United Kingdom, the Information Commissioner's Office (https://ico.org.uk); in Israel, the
+Privacy Protection Authority (https://www.gov.il/en/departments/the_privacy_protection_authority); in Singapore, the
+Personal Data Protection Commission (https://www.pdpc.gov.sg).
 
 ## 16. Children
 
@@ -496,7 +518,9 @@ up the install gives it together with the child. If a child wrote to us, a paren
 
 **All-included offer**: it is subscribed by an adult, or with a parent's agreement. An invited person must be at least
 16; under 16, a place may only be used if a parent or an adult in charge of the child has set it up and supervises it
-([terms of the offer](offer.en.md), section 7).
+([terms of the offer](offer.en.md), section 7). **In the United States, nobody under 13 may use a place**, and Kerfy
+Studio does not knowingly collect any data from a child under 13 (Children's Online Privacy Protection Act); if that
+happened, write to us and we will erase it.
 
 ## 17. Changes
 
