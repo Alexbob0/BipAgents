@@ -125,6 +125,11 @@ def test_the_seat_agent_does_only_signed_orders_for_its_server(tmp_path):
     for change in ({"commit": "0123456"}, {"commit": "main"}, {"commit": "0123456789abcdef0123456789abcdef0123456; rm"},
                    {"commit": None}):
         assert agent.accepted(_signed(key, {**update, **change}), "vps-1", set(), now) is None
+    # A place pairing again: a pairing secret, nothing else.
+    again = {"order": 10, "server": "vps-1", "seat": 1, "action": "reopen", "expires": int(now + 3600), "pair": "q" * 43}
+    assert agent.accepted(_signed(key, again), "vps-1", set(), now) == again
+    for change in ({"pair": "short"}, {"pair": "q" * 42 + "/"}, {"pair": None}, {"pair": "a\nb" * 20}):
+        assert agent.accepted(_signed(key, {**again, **change}), "vps-1", set(), now) is None
     assert agent.account(1) == "bip" and agent.account(3) == "bip3"
     probe = subprocess.run(["openssl", "pkeyutl", "-help"], capture_output=True, text=True)
     if shutil.which("openssl") is None or "-rawin" not in probe.stdout + probe.stderr:

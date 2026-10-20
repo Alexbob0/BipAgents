@@ -6,10 +6,11 @@ its first boot gave it, is the server's heartbeat (guichet/bipguichet/watch.py):
 bridge's door answers here, whether its Hermes runs (or sleeps), the BipAgents version it runs and when its last backup worked,
 and for the server its memory, swap, disk and load -- yes or no, a version, a time and numbers, nothing of anyone. The
 guichet answers with its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
-openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. There are two orders:
+openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. There are three orders:
 install place n again for its next person -- its account bip<n> (bip for place 1), everything in it and its
-services go, then installer/cloud/add-seat.sh sets it up again with the new pairing secret; and bring place n to a
-given BipAgents version (the guichet's update waves, or their way back), which its own updater does. The other places
+services go, then installer/cloud/add-seat.sh sets it up again with the new pairing secret; bring place n to a
+given BipAgents version (the guichet's update waves, or their way back), which its own updater does; and let place n
+pair again with a new secret (its person recovered their account without any of their devices). The other places
 are not touched, and nothing is ever read or sent back: only "done".
 
 ASCII only, like user-data.yaml and add-seat.sh (installer/tests/test_cloud_init.py checks it).
@@ -33,6 +34,8 @@ LIB = "/usr/local/lib/bipagents"
 MAX_SEATS = 8
 BACKUP_STATE = ".local/state/bipagents/backup.json"
 ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge/bipbridge/sleep.py)
+SETUP = ".config/bipagents/setup.json"     # its bridge's pairing secret while it waits for an app (cloud_setup.py)
+PAIR_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
 
 def log(text):
@@ -70,6 +73,9 @@ def accepted(order, server, done, now):
         elif body.get("action") == "update":
             commit = body["commit"]
             ok = ok and isinstance(commit, str) and len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)
+        elif body.get("action") == "reopen":
+            pair = body["pair"]
+            ok = ok and isinstance(pair, str) and 40 <= len(pair) <= 64 and all(c in PAIR_CHARS for c in pair)
         else:
             ok = False
     except (KeyError, TypeError, ValueError):
@@ -135,6 +141,24 @@ def update(number, commit):
         subprocess.run(["sudo", "-iu", user, "env", "XDG_RUNTIME_DIR=/run/user/%d" % uid,
                         "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus" % uid, "BIPAGENTS_TO=" + commit,
                         "bash", "BipAgents/install.sh", "update", "--auto"], stdout=out, stderr=out, timeout=3600)
+
+
+def reopen(number, pair, home=None):
+    """Place n pairs again with `pair` (its person recovered their account without any of their devices): its bridge
+    reads the secret, gives the device that proves it a new key and drops the others. Nothing else is touched."""
+    user = account(number)
+    try:
+        entry = pwd.getpwnam(user)
+    except KeyError:
+        return
+    log("place %d (%s): pairing reopened" % (number, user))
+    path = os.path.join(home or entry.pw_dir, SETUP)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump({"pair": pair, "reopen": True}, fh)
+    os.chown(path + ".tmp", entry.pw_uid, entry.pw_gid)
+    os.replace(path + ".tmp", path)
 
 
 def call(conf, method, path, body=None):
@@ -270,6 +294,11 @@ def main():
                     update(int(body["seat"]), body["commit"])
                 except (OSError, subprocess.SubprocessError) as exc:
                     log("update of place %s stopped: %s" % (body["seat"], exc))
+            elif body["action"] == "reopen":
+                try:
+                    reopen(int(body["seat"]), body["pair"])
+                except OSError as exc:
+                    log("reopening place %s stopped: %s" % (body["seat"], exc))
             else:
                 reset(int(body["seat"]), body["setup"])
             os.makedirs(os.path.dirname(DONE), exist_ok=True)

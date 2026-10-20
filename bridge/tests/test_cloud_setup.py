@@ -207,3 +207,42 @@ def test_a_moved_place_is_claimed_with_the_backup_key_and_says_it_is_restoring(c
     bad = json.dumps({"restore": {"key": "short"}})
     retry = client.get("/v1/setup", params={"nonce": NONCE}).json()["challenge"]
     assert client.post("/v1/setup/claim", json=claim_body(retry, bad)).status_code == 400
+
+
+def test_a_device_key_opens_the_bridge_and_a_reopen_leaves_only_the_recovering_device(client, cloud):
+    """Accounts (guichet/bipguichet/accounts.py): each device its own key; after a recovery without any device, the
+    guichet's order reopens the pairing and only the device that proves the new secret comes in."""
+    from bipbridge.guard import Guard
+    from bipbridge.lan import fingerprint
+
+    client.app.state.guard = Guard(limit=10)   # the refusals below aren't someone guessing
+    owner = {"Authorization": f"Bearer {BRIDGE_KEY}"}
+    made = client.post("/v1/device-keys", json={"name": "iPad  d'Alex"}, headers=owner)
+    assert made.status_code == 200, made.text
+    made = made.json()
+    ipad = {"Authorization": f"Bearer {made['key']}"}
+    listed = client.get("/v1/device-keys", headers=ipad).json()["devices"]
+    assert [(d["name"], d["me"]) for d in listed] == [("iPad d'Alex", True)]
+    assert client.get("/v1/backup", headers=ipad).status_code == 200            # any route, as with the bridge key
+    stored = (cloud.outbox.db_path.rsplit("/", 1)[0] + "/device-keys.json")
+    assert made["key"] not in open(stored).read()                               # its hash only
+    other = client.post("/v1/device-keys", json={"name": "Pixel"}, headers=owner).json()
+    assert client.delete(f"/v1/device-keys/{other['id']}", headers=ipad).json() == {"ok": True}
+    assert client.get("/v1/device-keys", headers={"Authorization": f"Bearer {other['key']}"}).status_code == 401
+
+    # The seat agent wrote a new secret (installer/cloud/seat-agent.py): the place is claimed again.
+    new_secret = bytes(range(32, 64))
+    with open(cloud.setup_file, "w") as fh:
+        json.dump({"pair": base64.urlsafe_b64encode(new_secret).decode().rstrip("="), "reopen": True}, fh)
+    done(cloud)
+    challenge = client.get("/v1/setup", params={"nonce": NONCE}).json()["challenge"]
+    request = json.dumps({"reopen": {"name": "Nouvel iPhone"}})
+    again = client.post("/v1/setup/claim", json=claim_body(challenge, request, secret=new_secret)).json()
+    assert again["reopened"] and again["fingerprint"] == fingerprint(cloud) and again["bridgeKey"] != BRIDGE_KEY
+    assert client.get("/v1/device-keys", headers=owner).status_code == 401           # the old bridge key: gone
+    assert client.get("/v1/device-keys", headers=ipad).status_code == 401            # the other devices: gone
+    mine = {"Authorization": f"Bearer {again['bridgeKey']}"}
+    assert [d["name"] for d in client.get("/v1/device-keys", headers=mine).json()["devices"]] == ["Nouvel iPhone"]
+    assert "bridge_key = " in open(cloud.source_path).read() and BRIDGE_KEY not in open(cloud.source_path).read()
+    assert client.get("/v1/setup", params={"nonce": NONCE}).json() == {"state": "claimed"}
+    assert client.claims == []

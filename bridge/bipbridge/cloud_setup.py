@@ -13,6 +13,10 @@ bridge key. The secret is then deleted: any later claim is refused.
                                   fingerprint, challenge, proof}
     POST /v1/setup/claim         {challenge, mac, request: "<JSON>"}  ->  {bridgeURL, bridgeKey, fingerprint, agents}
 
+A place whose person recovered their account without any of their devices (guichet/bipguichet/accounts.py) gets a
+new secret from the guichet's signed order and is claimed with `{"reopen": {"name": …}}`: the bridge key changes and
+every device key goes (device_keys.py); the device gets a key of its own.
+
 A place given to someone whose server died (the guichet moved them, guichet/bipguichet/watch.py) is claimed with
 `{"restore": {"key": …}}` instead: the backup key the person's phone kept. The installer's `restore` puts their last
 backup back (installer/bipinstall/backup.py) in a unit of its own, its steps shown as `restoring`, then restarts the
@@ -103,6 +107,32 @@ def start_restore(config: Config, key: str) -> None:
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 
+def reopen(request: Request, config: Config, name: str) -> str:
+    """The person recovered their account without any of their devices (the guichet's signed order put a new pairing
+    secret here): every device key and web console goes, the bridge key changes (nobody has the new one), and the
+    device that proved the secret gets a key of its own. Returns it."""
+    import re
+
+    from .device_keys import of
+    keys = of(config)
+    keys.clear()
+    _, key = keys.mint(name)
+    new = secrets.token_urlsafe(32)
+    if config.source_path:
+        path = Path(config.source_path)
+        line = f"bridge_key = {json.dumps(new)}"
+        text, found = re.subn(r"(?m)^bridge_key\s*=.*$", lambda _: line, path.read_text(encoding="utf-8"), count=1)
+        path.write_text(text if found else f"{line}\n{text}", encoding="utf-8")
+        os.chmod(path, 0o600)
+    for holder in {id(c): c for c in (config, getattr(request.app.state, "config", None)) if c is not None}.values():
+        holder.bridge_key = new
+    console = getattr(request.app.state, "console", None)   # the web consoles opened from the old devices too
+    if console is not None:
+        for session in console.devices():
+            console.revoke(session.get("id"))
+    return key
+
+
 class Challenges:
     """The bridge's one-time challenges for a claim: each one used once, within ten minutes."""
 
@@ -150,6 +180,14 @@ class RestoreKey(BaseModel):
 
 class RestoreRequest(BaseModel):
     restore: RestoreKey
+
+
+class ReopenDevice(BaseModel):
+    name: str = Field(..., min_length=1, max_length=60)
+
+
+class ReopenRequest(BaseModel):
+    reopen: ReopenDevice
 
 
 class Claim(BaseModel):
@@ -289,6 +327,18 @@ def cloud_setup_router() -> APIRouter:
                 asked = json.loads(body.request)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail="invalid request") from exc
+            if isinstance(asked, dict) and "reopen" in asked:
+                try:
+                    device = ReopenRequest.model_validate_json(body.request).reopen
+                except ValidationError as exc:
+                    raise HTTPException(status_code=400, detail="invalid reopen request") from exc
+                key = await asyncio.to_thread(reopen, request, config, device.name)
+                Path(config.setup_file or "").unlink(missing_ok=True)
+                log.info("pairing reopened", extra=fields(address=address_of(request)))
+                from .lan import fingerprint
+                return {"bridgeURL": config.public_url, "bridgeKey": key, "fingerprint": fingerprint(config),
+                        "agents": [{"id": a.name, "name": a.display_name} for a in config.agents.values()],
+                        "reopened": True}
             if isinstance(asked, dict) and "restore" in asked:
                 try:
                     key = RestoreRequest.model_validate_json(body.request).restore.key

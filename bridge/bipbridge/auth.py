@@ -1,4 +1,5 @@
-"""Single bearer "bridge key" authentication (constant-time comparison)."""
+"""Bearer authentication: the bridge key, or a key of one of the person's devices (device_keys.py); constant-time
+comparisons."""
 from __future__ import annotations
 
 import hmac
@@ -37,6 +38,18 @@ async def _awake(request: Request) -> None:
         await services.sleep.awake()
 
 
+def _device(scope, presented: Optional[str]) -> bool:
+    """A key one of the person's devices was given (device_keys.py): which one, noted on the request."""
+    services = getattr(scope.app.state, "services", None)
+    if services is None or not presented:
+        return False
+    from .device_keys import of
+    device = of(services.config).match(presented)
+    if device is not None:
+        scope.state.device = device
+    return device is not None
+
+
 async def require_bridge_key(request: Request) -> None:
     """The bridge key (the app), or a web console's session (console.py; `request.state.console` then says so). An
     address that kept presenting wrong keys is refused for a while (guard.py)."""
@@ -45,7 +58,7 @@ async def require_bridge_key(request: Request) -> None:
         raise HTTPException(status_code=429, detail="too many wrong keys, try again later")
     expected = request.app.state.config.bridge_key
     presented = _extract_bearer(request.headers.get("authorization"))
-    if key_matches(expected, presented):
+    if key_matches(expected, presented) or _device(request, presented):
         request.state.console = False
         await _awake(request)
         return
@@ -63,7 +76,7 @@ def websocket_authorized(websocket: WebSocket) -> bool:
     if guard is not None and guard.blocked(address_of(websocket)):
         return False
     presented = _extract_bearer(websocket.headers.get("authorization"))
-    if key_matches(websocket.app.state.config.bridge_key, presented):
+    if key_matches(websocket.app.state.config.bridge_key, presented) or _device(websocket, presented):
         return True
     if guard is not None and presented:
         guard.fail(address_of(websocket), "bridge key")
