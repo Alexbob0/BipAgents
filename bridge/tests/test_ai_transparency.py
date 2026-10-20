@@ -30,6 +30,15 @@ def test_agents_say_they_are_ai_when_they_write_to_others():
     assert souls.split_language(soul) == ("Tu es Vie.\n", "fr")
 
 
+def test_every_agent_gives_the_crisis_line_of_the_person_s_country():
+    block = souls.language_block("en")
+    assert souls.CARE_RULE in block
+    for line in ("988", "3114", "116 123", "1201", "1767", "112"):
+        assert line in souls.CARE_RULE
+    old = souls.with_language("You are Max.", "en").replace(souls.CARE_RULE + "\n", "")   # an earlier bridge's block
+    assert souls.CARE_RULE not in old and souls.CARE_RULE in souls.with_language(old, "en")
+
+
 def test_generated_audio_says_what_it_is(tmp_path):
     path = tmp_path / "podcast.wav"
     with wave.open(str(path), "wb") as out:
