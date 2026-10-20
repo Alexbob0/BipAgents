@@ -20,6 +20,16 @@ fi
 user="bip$n"
 [ "$n" -eq 1 ] && user="bip"
 port=$(python3 -c 'import json, sys; print(int(json.load(open(sys.argv[1])).get("port") or 443))' "$setup") || exit 1
+# The BipAgents version the guichet wants installed (a commit's 40 characters; none: the latest).
+version=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("version") or "")' "$setup") || exit 1
+pin=""
+if [ -n "$version" ]; then
+    case "$version" in
+        *[!0-9a-f]*) echo "add-seat.sh: a version is a commit's 40 characters" >&2; exit 2 ;;
+    esac
+    [ "${#version}" -eq 40 ] || { echo "add-seat.sh: a version is a commit's 40 characters" >&2; exit 2; }
+    pin="BIPAGENTS_TO=$version "
+fi
 
 id -u "$user" >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$user"
 passwd --lock "$user" >/dev/null
@@ -33,7 +43,7 @@ ufw allow "$port/tcp" >/dev/null
 # Its services run when nobody is logged in.
 loginctl enable-linger "$user"
 systemctl start "user@$(id -u "$user").service"
-sudo -iu "$user" bash -c "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s -- --cloud $setup" \
+sudo -iu "$user" bash -c "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | ${pin}bash -s -- --cloud $setup" \
     > "/var/log/bipagents-install$n.log" 2>&1
 # The installer kept the secret for the bridge (deleted once the app has paired); this copy goes.
 shred -u "$setup" 2>/dev/null || rm -f "$setup"

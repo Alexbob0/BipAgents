@@ -69,6 +69,12 @@ def test_the_seat_script_is_ascii_and_refuses_a_wrong_call(tmp_path):
     assert '[ "$n" -eq 1 ] && user="bip"' in text
     for args in ([], ["0", str(path)], ["x", str(path)], ["2", str(tmp_path / "missing.json")]):
         assert subprocess.run(["bash", str(path), *args], capture_output=True).returncode == 2
+    # A version the guichet pins is a commit's 40 characters, nothing else (checked before anything is done).
+    assert 'BIPAGENTS_TO=$version' in text and "${pin}bash -s -- --cloud $setup" in text
+    for version in ("main", "x" * 40, "0123abc", "a" * 40 + "; rm -rf /"):
+        setup = tmp_path / "setup.json"
+        setup.write_text(json.dumps({"v": 1, "port": 444, "version": version}))
+        assert subprocess.run(["bash", str(path), "2", str(setup)], capture_output=True).returncode == 2
 
 
 def _seat_agent():
