@@ -1,0 +1,7 @@
+# pocket_server.py --onnx: the phones' 8-bit voice packages (voices/onnx/build.py), without PyTorch (5.5 GB less).
+# Python >= 3.10. Tested on macOS (Apple M4) with these versions.
+onnxruntime==1.31.0
+numpy>=2.0
+lameenc==1.8.4
+fastapi>=0.110
+uvicorn>=0.30

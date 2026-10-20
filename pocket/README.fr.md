@@ -47,6 +47,20 @@ Les voix des Bips sont des états pré-calculés (`voices/<langue>/<voix>.safete
 modèle public `kyutai/pocket-tts-without-voice-cloning`, téléchargé automatiquement. Le modèle de clonage (accès
 Hugging Face à demander) ne sert qu'à **fabriquer** de nouvelles voix, cf. [`voices/README.md`](../voices/README.fr.md).
 
+**Sans PyTorch** (`--onnx`) : les paquets de voix des téléphones (8 bits, faits par
+[`voices/onnx/build.py`](../voices/onnx/README.fr.md) : `index.json`, un dossier par langue, le décodeur commun)
+derrière la même API, avec ONNX Runtime et numpy seulement (`requirements-onnx.txt`, sans les 5,5 Go de PyTorch) :
+
+```bash
+.venv/bin/pip install -r requirements-onnx.txt
+.venv/bin/python pocket_server.py --onnx ~/.local/share/bipagents/voices --keep none --idle-unload 120
+```
+
+Les langues sont celles dont le paquet est dans le dossier. Avec `--keep none --idle-unload 120`, un serveur qui ne
+fait que des podcasts et des fichiers audio charge une langue le temps de les faire et la libère deux minutes après :
+environ 300 Mo pendant qu'il parle, rien sinon. Mesuré sur Apple M4, 2 cœurs : 41 s de français en 6,1 s (6,7 fois
+le temps réel).
+
 ## API (celle de Kyutai, utilisée par le bridge)
 
 - `GET /health` → `{"status": "ok", "languages": ["fr", "en", …], "voices": {"fr": ["colibri", …], …}}`

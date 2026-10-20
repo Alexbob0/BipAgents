@@ -163,3 +163,23 @@ def test_trailing_off_sentences_keep_more_tail():
     plain = [a for a in phrased("Une phrase assez longue pour elle seule.", generate, rate, jitter=0)]
     trailing = [a for a in phrased("Une phrase assez longue pour elle seule…", generate, rate, jitter=0)]
     assert len(trailing[-2]) - len(plain[-2]) == 120  # 200 ms kept after the voice instead of 80
+
+
+BUILT = Path(__file__).resolve().parents[2] / "build" / "voices"
+
+
+@pytest.mark.skipif(not (BUILT / "index.json").is_file(), reason="no voice packages built (voices/onnx/build.py)")
+def test_the_phones_voice_packages_speak_through_the_same_api():
+    """--onnx: the phones' 8-bit packages behind the same routes (podcasts on a server without PyTorch), loaded at the
+    first sentence and unloaded once silent."""
+    pytest.importorskip("onnxruntime")
+    engine = Engine.load_onnx(BUILT, keep=set(), idle=60)
+    assert "fr" in engine.languages and "colibri" in engine.available_voices()["fr"] and not engine.models
+    client = TestClient(create_app(engine))
+    assert client.post("/v1/audio/speech", json={"input": "Bonjour.", "voice": "fr/nobody"}).status_code == 404
+    response = client.post("/v1/audio/speech", json={"input": "Bonjour, voici ton podcast du matin.", "voice": "colibri"})
+    assert response.status_code == 200
+    with wave.open(io.BytesIO(response.content)) as wav:
+        assert wav.getframerate() == 24000 and wav.getnframes() > 24000      # more than a second of speech
+    assert "fr" in engine.models
+    assert engine.unload_idle(now=engine.last_used["fr"] + 61) == ["fr"] and not engine.models

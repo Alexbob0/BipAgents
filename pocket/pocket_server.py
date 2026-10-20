@@ -17,16 +17,24 @@ after it follows the punctuation and line breaks (paragraphs, list items). ``pac
 Memory: a language's model takes ~450 MB. Only the first language (``--keep``) is loaded at start; the others load
 on their first sentence (a few seconds once) and are unloaded after ``--idle-unload`` seconds without speaking.
 
-Run: ``python pocket_server.py --voices ../voices --languages fr,en,es,de`` (listens on 127.0.0.1:8098).
+``--onnx <folder>``: the phones' voice packages instead (voices/onnx/build.py: ``index.json``, one folder per language
+and the shared decoder): the same Bips, 8-bit, ~250 MB a language while it speaks, with ONNX Runtime and numpy only
+(no PyTorch, 5.5 GB less on disk). With ``--keep none --idle-unload 120``, a server's podcasts and audio files load
+the model only while they are made.
+
+Run: ``python pocket_server.py --voices ../voices --languages fr,en,es,de`` (listens on 127.0.0.1:8098), or
+``python pocket_server.py --onnx ~/.local/share/bipagents/voices --keep none --idle-unload 120``.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import io
+import json
 import logging
 import random
 import re
+import sys
 import threading
 import time
 import wave
@@ -205,6 +213,8 @@ class Engine:
     keep: set = field(default_factory=set)
     idle: float = 0
     last_used: Dict[str, float] = field(default_factory=dict)
+    # The phones' voice packages (--onnx): voices are the packages' Bips, not voices_dir's .safetensors.
+    onnx: Optional[Path] = None
 
     @classmethod
     def load(cls, voices_dir: Path, languages: list[str], quantize: bool = False, keep: Optional[set] = None,
@@ -214,7 +224,8 @@ class Engine:
 
             return TTSModel.load_model(language=LANGUAGE_DIRS[code], quantize=quantize)
 
-        engine = cls(voices_dir, languages=languages, loader=loader, keep=keep or set(languages[:1]), idle=idle)
+        engine = cls(voices_dir, languages=languages, loader=loader, keep=keep if keep is not None else set(languages[:1]),
+                     idle=idle)
         with engine.lock:
             for code in engine.keep:
                 engine.model(code)
@@ -267,7 +278,20 @@ class Engine:
         model = next(iter(self.models.values()), None)
         return getattr(model, "sample_rate", 24000)
 
+    @classmethod
+    def load_onnx(cls, packages: Path, keep: Optional[set] = None, idle: float = 0, threads: int = 2) -> "Engine":
+        """The phones' voice packages instead of Pocket's models: the languages are those whose package is there."""
+        languages = sorted(onnx_voices(packages))
+        engine = cls(packages, languages=languages, loader=lambda code: OnnxModel(packages, code, threads),
+                     keep=keep if keep is not None else set(languages[:1]), idle=idle, onnx=packages)
+        with engine.lock:
+            for code in engine.keep & set(languages):
+                engine.model(code)
+        return engine
+
     def available_voices(self) -> Dict[str, list[str]]:
+        if self.onnx is not None:
+            return {code: names for code, names in onnx_voices(self.onnx).items() if code in self.languages}
         return {code: sorted(p.stem for p in (self.voices_dir / LANGUAGE_DIRS[code]).glob("*.safetensors"))
                 for code in self.languages}
 
@@ -276,8 +300,12 @@ class Engine:
         code, sep, name = voice.partition("/")
         if not sep:
             code, name = "fr", voice
-        if code not in self.languages or not VOICE_NAME.match(name) \
-                or not (self.voices_dir / LANGUAGE_DIRS[code] / f"{name}.safetensors").is_file():
+        if code not in self.languages or not VOICE_NAME.match(name):
+            raise VoiceNotFound(voice)
+        if self.onnx is not None:
+            if name not in self.available_voices().get(code, []):
+                raise VoiceNotFound(voice)
+        elif not (self.voices_dir / LANGUAGE_DIRS[code] / f"{name}.safetensors").is_file():
             raise VoiceNotFound(voice)
         return code, name
 
@@ -287,7 +315,8 @@ class Engine:
         model = self.model(code)
         key = (code, name)
         if key not in self.states:
-            self.states[key] = model.get_state_for_audio_prompt(self.voices_dir / LANGUAGE_DIRS[code] / f"{name}.safetensors")
+            prompt = name if self.onnx is not None else self.voices_dir / LANGUAGE_DIRS[code] / f"{name}.safetensors"
+            self.states[key] = model.get_state_for_audio_prompt(prompt)
         return model, self.states[key]
 
     def stream(self, voice: str, text: str, stop: threading.Event, pace: str = "read") -> Iterator[bytes]:
@@ -298,7 +327,7 @@ class Engine:
             # A trailing-off « … » gets more room (6 frames, ~0.5 s) to fade out by itself.
             extra = {"frames_after_eos": 6} if trails_off(sentence) else {}
             for chunk in model.generate_audio_stream(state, sentence, stop=stop, **extra):
-                yield chunk.detach().cpu().numpy()
+                yield chunk.detach().cpu().numpy() if hasattr(chunk, "detach") else chunk   # Pocket's torch, or numpy
 
         with self.lock:
             model, state = self.resolve(voice)
@@ -314,6 +343,44 @@ class Engine:
 
     def synthesize(self, voice: str, text: str, pace: str = "read") -> bytes:
         return b"".join(self.stream(voice, text, threading.Event(), pace))
+
+
+class OnnxModel:
+    """A language's voice package (voices/onnx/reference.py's loop, as the apps speak) behind the Pocket model's
+    interface: the Bips' voices are the package's, the state of one is its name."""
+    sample_rate = 24000
+
+    def __init__(self, packages: Path, code: str, threads: int = 2):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "voices" / "onnx"))
+        from reference import Package  # numpy + ONNX Runtime only
+
+        index = json.loads((packages / "index.json").read_text(encoding="utf-8"))
+        self.package = Package(packages / index["languages"][LANGUAGE_DIRS[code]]["folder"],
+                               packages / index["mimi"]["folder"], threads=threads)
+
+    def get_state_for_audio_prompt(self, name: object) -> str:
+        return str(name)
+
+    def generate_audio_stream(self, state: str, text: str, stop: Optional[threading.Event] = None, **_) -> Iterator:
+        for chunk in self.package.speak(text, state):
+            if stop is not None and stop.is_set():
+                return
+            yield chunk
+
+
+def onnx_voices(packages: Path) -> Dict[str, list[str]]:
+    """The Bips of each language whose package is there, by language code."""
+    try:
+        index = json.loads((packages / "index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    found: Dict[str, list[str]] = {}
+    for code, name in LANGUAGE_DIRS.items():
+        entry = index.get("languages", {}).get(name)
+        manifest = packages / str((entry or {}).get("folder", "")) / "manifest.json"
+        if entry and manifest.is_file():
+            found[code] = sorted(json.loads(manifest.read_text(encoding="utf-8")).get("voices", {}))
+    return found
 
 
 def release_memory() -> None:
@@ -425,9 +492,11 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8098)
     parser.add_argument("--quantize", action="store_true", help="int8 weights: less memory, faster on x86 CPUs")
-    parser.add_argument("--keep", default="", help="languages kept loaded (default: the first of --languages)")
+    parser.add_argument("--keep", default="", help="languages kept loaded (default: the first of --languages; none: none)")
     parser.add_argument("--idle-unload", type=float, default=900,
                         help="seconds without speaking before another language's model is unloaded (0: never)")
+    parser.add_argument("--onnx", type=Path, default=None,
+                        help="the phones' voice packages (index.json and its folders) instead of Pocket's models")
     parser.add_argument("--threads", type=int, default=0,
                         help="CPU threads for generation (default: PyTorch's choice); 2 leaves room for Hermes on a 4 vCPU VPS")
     args = parser.parse_args()
@@ -436,13 +505,18 @@ def main() -> None:
     unknown = [code for code in languages if code not in LANGUAGE_DIRS]
     if unknown:
         parser.error(f"unknown language(s): {', '.join(unknown)} (use {', '.join(LANGUAGE_DIRS)})")
-    if args.threads > 0:
-        import torch
+    keep = {code.strip() for code in args.keep.split(",") if code.strip() and code.strip() != "none"}
+    if args.keep.strip() != "none" and not keep:
+        keep = set(languages[:1])
+    if args.onnx is not None:
+        engine = Engine.load_onnx(args.onnx.expanduser(), keep=keep, idle=args.idle_unload, threads=args.threads or 2)
+    else:
+        if args.threads > 0:
+            import torch
 
-        torch.set_num_threads(args.threads)
-    keep = {code.strip() for code in args.keep.split(",") if code.strip()} or set(languages[:1])
-    engine = Engine.load(args.voices, languages, quantize=args.quantize, keep=keep & set(languages),
-                         idle=args.idle_unload)
+            torch.set_num_threads(args.threads)
+        engine = Engine.load(args.voices, languages, quantize=args.quantize, keep=keep & set(languages),
+                             idle=args.idle_unload)
     engine.watch_idle()
     log.info("voices: %s (loaded: %s)", engine.available_voices(), sorted(engine.models))
 

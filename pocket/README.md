@@ -43,6 +43,19 @@ Measure: `python3 bench.py` (first audio and speed, no dependencies). On an x86 
 PyTorch before the rest (`pip install torch --index-url https://download.pytorch.org/whl/cpu`), otherwise pip pulls
 the CUDA libraries (several GB). VPS tips: [`docs/self-hosting.md`](../docs/self-hosting.md#on-a-vps).
 
+**Without PyTorch** (`--onnx`): the phones' voice packages (8-bit, built by
+[`voices/onnx/build.py`](../voices/onnx/README.md): `index.json`, one folder per language, the shared decoder) behind
+the same API, with ONNX Runtime and numpy only (`requirements-onnx.txt`, no 5.5 GB PyTorch install):
+
+```bash
+.venv/bin/pip install -r requirements-onnx.txt
+.venv/bin/python pocket_server.py --onnx ~/.local/share/bipagents/voices --keep none --idle-unload 120
+```
+
+The languages are those whose package is in the folder. With `--keep none --idle-unload 120`, a server that only
+makes podcasts and audio files loads a language for that and frees it two minutes later: about 300 MB while it speaks,
+nothing otherwise. Measured on Apple M4, 2 threads: 41 s of French in 6.1 s (6.7× real time).
+
 The Bips' voices are precomputed states (`voices/<language>/<voice>.safetensors`): reading them only requires the
 public model `kyutai/pocket-tts-without-voice-cloning`, downloaded automatically. The cloning model (Hugging Face
 access must be requested) is only needed to **create** new voices, see [`voices/README.md`](../voices/README.md).
