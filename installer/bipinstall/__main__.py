@@ -445,6 +445,23 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     return status
 
 
+def tidy(runner: hermes.Runner) -> None:
+    """A server's place, once installed: the download caches go (uv's, npm's, pip's) and the images' leftover layers
+    (podman keeps the images in use); an update fetches again what it needs. Never fails the install."""
+    home = Path.home()
+    uv = shutil.which("uv") or str(home / ".local" / "bin" / "uv")
+    npm = shutil.which("npm") or str(hermes.hermes_home() / "node" / "bin" / "npm")
+    for command in ([uv, "cache", "clean"], [npm, "cache", "clean", "--force"]):
+        if runner.dry or Path(command[0]).exists():
+            runner.run(command, check=False)
+    engine = hermes.sandbox_runtime()
+    if engine:
+        runner.run([engine, "image", "prune", "--force"], check=False)
+    runner.log.append(f"remove {home / '.cache' / 'pip'}")
+    if not runner.dry:
+        shutil.rmtree(home / ".cache" / "pip", ignore_errors=True)
+
+
 def gateway_service(inst: Install, machine: Machine, runner: hermes.Runner) -> None:
     try:
         hermes.install_service(runner)
@@ -676,6 +693,8 @@ def checks_and_end(inst: Install, runner: hermes.Runner, args, steps, total: int
                 httpx.post(f"{url}/api/sessions", json={"title": "Bot Chat"},
                            headers={"Authorization": f"Bearer {agent.key}"}, timeout=10)
         wait_for(f"http://127.0.0.1:{inst.ports.bridge}/health")
+    if inst.cloud:
+        tidy(runner)
     if args.dry_run:
         say("\nDry run: here is what would have been done.")
         hidden = "<key>"

@@ -42,6 +42,11 @@ def test_the_user_data_the_apps_send_sets_up_the_server_and_runs_the_cloud_insta
     assert install.startswith("sudo -iu bip ") and "--cloud /etc/bipagents/cloud.json" in install
     assert commands.index(install) < next(i for i, c in enumerate(commands) if c.startswith("shred"))
     assert commands.index("loginctl enable-linger bip") < commands.index(install)
+    # Compressed memory ahead of the swap file when the kernel has it (never failing the boot); logs kept small.
+    zram = next(c for c in commands if "zram" in c)
+    assert zram.startswith("modprobe zram && ") and zram.endswith("|| true")
+    assert commands.index(zram) < next(i for i, c in enumerate(commands) if "/swapfile" in c) < commands.index(install)
+    assert "SystemMaxUse=200M" in files["/etc/systemd/journald.conf.d/60-bipagents.conf"]["content"]
 
 
 def test_no_model_key_or_other_secret_has_a_place_in_it():

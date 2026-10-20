@@ -46,6 +46,11 @@ write_files:
   - path: /etc/ssh/sshd_config.d/10-bipagents.conf
     content: |
       PasswordAuthentication no
+  - path: /etc/systemd/journald.conf.d/60-bipagents.conf
+    content: |
+      # The logs of all the server's places stay under 200 MB together.
+      [Journal]
+      SystemMaxUse=200M
   - path: /etc/apt/apt.conf.d/20auto-upgrades
     content: |
       APT::Periodic::Update-Package-Lists "1";
@@ -53,7 +58,11 @@ write_files:
 
 runcmd:
   - sysctl --system
-  # 2 GB of swap: room for an agent's browser on a 4 GB server (the providers' kernels often lack zram).
+  - systemctl restart systemd-journald
+  # Compressed memory (zram: half the memory, zstd) ahead of the swap file, when the provider's kernel has it: the
+  # server holds about 1.5x more before slowing down (the places' installs then leave it as it is).
+  - modprobe zram && apt-get install -y systemd-zram-generator && printf '[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\n' > /etc/systemd/zram-generator.conf && systemctl daemon-reload && systemctl start systemd-zram-setup@zram0 || true
+  # 2 GB of swap: room for an agent's browser on a 4 GB server.
   - test -f /swapfile || { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; }
   - systemctl restart ssh
   - ufw default deny incoming
