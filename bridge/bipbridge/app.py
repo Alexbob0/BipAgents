@@ -29,6 +29,7 @@ from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router, mount_all_uploads, run_hermes
 from .agent_tools import AudioMaker, agent_tools_router, media_roots, purge_audio, register_all as register_agent_tools
 from .place_backup import place_backup_router
+from .place_import import place_import_routers
 from .sleep import Sleep
 from .ssh_keys import ssh_router
 from .vault import Vault, vault_router
@@ -660,6 +661,9 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(agents_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(vault_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(place_backup_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    import_admin, import_open = place_import_routers()
+    app.include_router(import_admin, prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(import_open, prefix="/v1")   # a computer sending its agents: the app's one-time code instead
     app.include_router(ssh_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(live_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])

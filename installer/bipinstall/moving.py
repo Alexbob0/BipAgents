@@ -302,8 +302,10 @@ def add_tree(tar: tarfile.TarFile, inv: Inventory, name: str, root: Path, tally:
             tally.skipped.append(str(path))   # e.g. written by a sandbox under another user id
 
 
-def export(inv: Inventory, out: Path, passphrase: str, machine: Any) -> Tuple[Dict[str, Any], Tally]:
-    info = manifest(inv, machine)
+def export(inv: Inventory, out: Path, passphrase: str, machine: Any,
+           extra: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], Tally]:
+    """`extra`: more in the manifest (an export for a place says so: to_place.py)."""
+    info = {**manifest(inv, machine), **(extra or {})}
     tally = Tally()
     out.parent.mkdir(parents=True, exist_ok=True)
     partial = out.with_name(out.name + ".part")

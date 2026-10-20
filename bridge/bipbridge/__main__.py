@@ -15,14 +15,15 @@ from .logs import setup_logging
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="bipbridge", description="BipAgents bridge for Hermes agents")
-    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser", "shares-mounts", "console", "spaces"],
+    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "genkey", "qr", "peer-token", "browser", "shares-mounts", "console", "spaces", "adopt"],
                         help="serve (default), check the config, print a new random bridge key, "
                              "show an agent's pairing QR code for the app, (peer-token --agent X) give an agent set "
                              "up by hand its token for messaging the others, or (browser add|remove --agent X|--all) "
                              "set up or remove agents' visible browsers, or (shares-mounts --agent X) print the "
                              "`-v` mounts an agent set up by hand needs for its shared folders, or (console) give a "
                              "one-time link that opens the web console in a browser, or (spaces start) start again "
-                             "the agents' own spaces after an install was moved here")
+                             "the agents' own spaces after an install was moved here, or (adopt) serve the agents "
+                             "an export brought to a place as its own (bipinstall import-place)")
     parser.add_argument("--config", help="config path (default: $BRIDGE_CONFIG or ~/.config/hermes-ios/bridge.toml)")
     parser.add_argument("--agent", help="qr: one agent's own code (default: the install's code, which adds every agent)")
     parser.add_argument("--png", help="qr: also save the QR code as a PNG (one agent)")
@@ -92,6 +93,9 @@ def main(argv=None) -> int:
 
     if args.command == "spaces":
         return asyncio.run(_spaces(config))
+
+    if args.command == "adopt":
+        return asyncio.run(_adopt(config))
 
     if args.command == "console":
         from .console import LINK_MINUTES, ConsoleStore
@@ -179,6 +183,45 @@ async def _browser(config, args) -> int:
         except (browsers.BrowserError, RuntimeError, OSError) as exc:
             print(f"{name}: {exc}", file=sys.stderr)
             failed += 1
+    return 1 if failed else 0
+
+
+async def _adopt(config) -> int:
+    """After an export was put into this place (installer/bipinstall/to_place.py): each agent it brought served as
+    the place's own are (Bot Mode, its files where its sandbox sees them, the bridge's tools), and each profile no
+    agent serves yet (a Hermes alone's) claimed. Run it with the gateway up and the bridge stopped, or restart the
+    bridge after: it rewrites the agents' sections of the config file."""
+    import httpx
+
+    from . import shares
+    from .agents_admin import (claim_profile, give_tools, managed, mark_as_bot, mount_uploads, run_hermes,
+                               unclaimed_profiles)
+
+    failed = 0
+    for agent in list(config.agents.values()):
+        try:
+            managed(config, agent.name)
+        except LookupError:
+            continue
+        try:
+            folder = shares.profile_dir(config, agent)
+            if folder is not None and folder.is_dir():
+                mark_as_bot(folder)
+            agent = await mount_uploads(config, agent, run_hermes, save=True)
+            config.agents[agent.name] = agent
+            await give_tools(config, agent, run_hermes)
+            print(f"{agent.name}: ready")
+        except (RuntimeError, OSError) as exc:
+            print(f"{agent.name}: {exc}", file=sys.stderr)
+            failed += 1
+    async with httpx.AsyncClient(timeout=30) as http:
+        for profile in unclaimed_profiles(config):
+            try:
+                agent = await claim_profile(config, profile["id"], None, http)
+                print(f"{agent.name}: claimed")
+            except (LookupError, RuntimeError, OSError, httpx.HTTPError, asyncio.TimeoutError) as exc:
+                print(f"{profile['id']}: {exc}", file=sys.stderr)
+                failed += 1
     return 1 if failed else 0
 
 
