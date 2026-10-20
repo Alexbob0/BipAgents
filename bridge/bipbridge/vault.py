@@ -21,14 +21,16 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from urllib.parse import urlsplit
 
-from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, HTTPException, Request
 
 from .config import AgentConfig, Config
 from .logs import fields
+
+if TYPE_CHECKING:
+    from cryptography.fernet import Fernet
 
 log = logging.getLogger("bipbridge.vault")
 
@@ -163,6 +165,7 @@ class Vault:
     # -- storage ---------------------------------------------------------------------------------------
 
     def _fernet(self) -> Fernet:
+        from cryptography.fernet import Fernet   # here, not at start: ~8 MB a bridge without vault items doesn't hold
         self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         if not self.key_path.exists():
             fd = os.open(self.key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -173,6 +176,7 @@ class Vault:
     def _read(self) -> List[Dict[str, Any]]:
         if not self.path.exists():
             return []
+        from cryptography.fernet import InvalidToken
         try:
             return json.loads(self._fernet().decrypt(self.path.read_bytes()))
         except InvalidToken as exc:

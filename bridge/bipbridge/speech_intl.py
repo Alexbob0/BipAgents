@@ -12,19 +12,31 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from . import numbers_fr as fr
 
-try:  # LGPL, optional: without it numbers are left as digits
-    from num2words import num2words as _num2words
-except ImportError:  # pragma: no cover - depends on the deployment
-    _num2words = None
+_num2words: Optional[Callable[..., str]] = None
+_loaded = False
 
 LANGUAGES = ("en", "es", "de")
 
 
+def _speller() -> Optional[Callable[..., str]]:
+    """num2words, loaded with the first number spoken (~3 MB a bridge that never speaks doesn't hold). LGPL, optional:
+    without it numbers are left as digits."""
+    global _num2words, _loaded
+    if not _loaded:
+        _loaded = True
+        try:
+            from num2words import num2words as _num2words
+        except ImportError:  # pragma: no cover - depends on the deployment
+            _num2words = None
+    return _num2words
+
+
 def spell(n: int, lang: str, to: str = "cardinal") -> str:
-    if _num2words is None or abs(n) >= 10 ** 12:
+    speller = _speller()
+    if speller is None or abs(n) >= 10 ** 12:
         return str(n)
     try:
-        return _num2words(n, lang=lang, to=to).replace(",", "")
+        return speller(n, lang=lang, to=to).replace(",", "")
     except (NotImplementedError, OverflowError, ValueError):
         return str(n)
 
