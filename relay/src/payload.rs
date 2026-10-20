@@ -8,9 +8,18 @@
 use serde_json::{Map, Value};
 
 pub const GENERIC_BODY: &str = "Nouveau message";
-/// The app's generic, translated texts (its string catalog's keys, bridge/bipbridge/push.py): nothing else passes.
-const GENERIC_BODIES: &[&str] =
-    &[GENERIC_BODY, "Ta réponse est prête.", "Une question pour toi", "Approbation requise", "Sous-tâche terminée"];
+/// The app's generic, translated texts (its string catalog's keys, bridge/bipbridge/push.py, and the guichet's
+/// word on a server of the all-included offer, guichet/bipguichet/phones.py): nothing else passes.
+const GENERIC_BODIES: &[&str] = &[
+    GENERIC_BODY,
+    "Ta réponse est prête.",
+    "Une question pour toi",
+    "Approbation requise",
+    "Sous-tâche terminée",
+    "Ton serveur ne répond plus : on s’en occupe.",
+    "Tes agents ont une nouvelle place : ouvre l’app pour les y remettre.",
+    "Ton serveur répond de nouveau.",
+];
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 const TITLE_MAX: usize = 80;
 const VALUE_MAX: usize = 256;
@@ -154,6 +163,12 @@ mod tests {
         assert_eq!(scrub(&generic).unwrap()["aps"]["alert"]["body"], "Approbation requise");
         let plain = json!({"aps": {"alert": "Un texte entier"}});
         assert_eq!(scrub(&plain).unwrap()["aps"]["alert"]["body"], GENERIC_BODY);
+        // The guichet's word on a server of the all-included offer.
+        let down = "Ton serveur ne répond plus : on s’en occupe.";
+        let server = json!({"aps": {"alert": {"title": "BipAgents", "body": down, "loc-key": down}}, "kind": "server"});
+        let clean = scrub(&server).unwrap();
+        assert_eq!(clean["aps"]["alert"]["body"], down);
+        assert_eq!(clean["kind"], "server");
     }
 
     #[test]
