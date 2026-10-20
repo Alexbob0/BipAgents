@@ -2,7 +2,8 @@
 voice the person chose for the agent in the app (its server voice for reading — Drama 3, Kokoro… — else its Bip);
 ``create_podcast`` makes a conversation between hosts, each with a voice of their own (the person's voice model when
 it reads, else Bips); ``list_voices`` lists the voices the agent may give them; ``create_page`` and its kin keep the
-small web pages the agent makes for the person (pages.py).
+small web pages the agent makes for the person (pages.py); ``mail_search``, ``mail_read`` and ``mail_draft`` reach
+the mailboxes the person connected for it (mailbox.py).
 
 The agent's own Hermes calls it (an MCP server entry ``bipagents`` in its profile, with a token of its own), not its
 sandbox: nothing is opened to the containers, and the voice server stays on this machine's loopback. The text is cut
@@ -32,7 +33,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from . import __version__, pages, shares
+from . import __version__, mailbox, pages, shares
 from .config import AgentConfig, Config
 from .logs import fields
 from .tts import BACKGROUND, OUTPUT_RATE, Resampler, TtsError, mono, voice_language
@@ -148,7 +149,9 @@ DELETE_PAGE = {
                     "required": ["page"]},
 }
 
-TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES, CREATE_PAGE, LIST_PAGES, READ_PAGE, DELETE_PAGE]
+# The mail tools are listed for every agent (Hermes reads the list once, when its gateway starts): an agent the person
+# gave no mailbox is told so when it tries one.
+TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES, CREATE_PAGE, LIST_PAGES, READ_PAGE, DELETE_PAGE] + mailbox.MAIL_TOOLS
 PAGE_TOOLS = {CREATE_PAGE["name"], LIST_PAGES["name"], READ_PAGE["name"], DELETE_PAGE["name"]}
 
 
@@ -574,6 +577,8 @@ def page_tool(config: Config, agent: AgentConfig, name: str, arguments: Dict[str
 async def call_tool(maker: AudioMaker, agent: AgentConfig, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     if name in PAGE_TOOLS:
         return await asyncio.to_thread(page_tool, maker.config, agent, name, arguments)
+    if name in mailbox.MAIL_TOOL_NAMES:
+        return await asyncio.to_thread(mailbox.call, maker.config, agent.name, name, arguments)
     if name == LIST_VOICES["name"]:
         lines = [f"{entry['voice']} ({entry['kind']})" for entry in await maker.voices(agent)]
         return _tool_text("\n".join(lines))
@@ -628,7 +633,8 @@ def agent_tools_router() -> APIRouter:
                 "instructions": "BipAgents: create_audio reads a text aloud with your voice; create_podcast makes a "
                                 "conversation between hosts with different voices; create_page makes a small web page "
                                 "(a dashboard, a tracker, a chart, a tool) on any subject, shown in the app; each "
-                                "gives a MEDIA: line for your reply."}))
+                                "gives a MEDIA: line for your reply. mail_search, mail_read and mail_draft reach the "
+                                "mailboxes the person connected for you (drafts only: you never send)."}))
         if method == "ping":
             return JSONResponse(_result(request_id, {}))
         if method == "tools/list":
