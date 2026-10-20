@@ -40,3 +40,6 @@ guichet/guichet.toml
 guichet/*.sqlite3*
 guichet/signing.key
 guichet/secrets/
+guichet/db-backups/
+guichet/voices/
+guichet/backups/
