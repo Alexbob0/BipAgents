@@ -57,11 +57,12 @@ class Package:
     def _mimi_start(self) -> List[np.ndarray]:
         return [np.zeros(i.shape, dtype=np.float32) for i in self.mimi_inputs[2:]]
 
-    def speak(self, text: str, voice: str, seed: Optional[int] = None) -> Iterator[np.ndarray]:
-        """The audio, 1920 samples at a time."""
+    def speak(self, text: str, voice: str, seed: Optional[int] = None,
+              temperature: Optional[float] = None) -> Iterator[np.ndarray]:
+        """The audio, 1920 samples at a time. `temperature` 0: no noise, the same audio every time (tests)."""
         gen = self.manifest["generation"]
         rng = np.random.default_rng(seed)
-        scale = float(np.sqrt(gen["temperature"]))
+        scale = float(np.sqrt(gen["temperature"] if temperature is None else temperature))
         cache = self.voice(voice)
         names = [i.name for i in self.mimi_inputs]
         for chunk in textprep.chunks(self.tokenizer, text, self.manifest["language"]):

@@ -112,7 +112,7 @@ def export_mimi(model, path: Path) -> List[str]:
     torch.onnx.export(step, (torch.randn(1, 1, 32), torch.tensor([0]), *states), str(path), dynamo=True,
                       input_names=["frame", "pos"] + names, output_names=["audio"] + [n + "_out" for n in names],
                       external_data=False, optimize=True)
-    return names
+    return [{"name": n, "shape": list(s.shape)} for n, s in zip(names, states)]
 
 
 def check_flow(model, onnx_path: Path, tolerance: float) -> float:
@@ -244,8 +244,10 @@ def main(argv=None) -> int:
             index["languages"][language] = {"folder": target.name, "manifest_sha256": sha256(target / "manifest.json"),
                                             "bytes": sum(p.stat().st_size for p in target.rglob("*") if p.is_file())}
         mimi_dir = mimi["dir"]
+        names = [state["name"] for state in mimi["states"]]
         manifest = {"format": 1, "engine": "pocket-tts 3.3.0", "credit": CREDIT, "weights_sha256": mimi["weights"],
-                    "inputs": ["frame", "pos"] + mimi["states"], "outputs": ["audio"] + [n + "_out" for n in mimi["states"]],
+                    "inputs": ["frame", "pos"] + names, "outputs": ["audio"] + [n + "_out" for n in names],
+                    "states": mimi["states"],   # each state's name and shape (float32 zeros at the start of a chunk)
                     "files": {"mimi.onnx": {"bytes": (mimi_dir / "mimi.onnx").stat().st_size,
                                             "sha256": sha256(mimi_dir / "mimi.onnx")}}}
         (mimi_dir / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
