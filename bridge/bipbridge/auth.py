@@ -30,6 +30,13 @@ def address_of(request) -> Optional[str]:
     return request.client.host if request.client else None
 
 
+async def _awake(request: Request) -> None:
+    """A request from an app: a place asleep (sleep.py) wakes its Hermes first."""
+    services = getattr(request.app.state, "services", None)
+    if services is not None and getattr(services, "sleep", None) is not None:
+        await services.sleep.awake()
+
+
 async def require_bridge_key(request: Request) -> None:
     """The bridge key (the app), or a web console's session (console.py; `request.state.console` then says so). An
     address that kept presenting wrong keys is refused for a while (guard.py)."""
@@ -40,6 +47,7 @@ async def require_bridge_key(request: Request) -> None:
     presented = _extract_bearer(request.headers.get("authorization"))
     if key_matches(expected, presented):
         request.state.console = False
+        await _awake(request)
         return
     from .console import is_console
     if is_console(request):

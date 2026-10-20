@@ -162,8 +162,11 @@ def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_number
     port = listening.getsockname()[1]
     monkeypatch.setattr(agent, "door_open", lambda p: p == 443)
     monkeypatch.setattr(agent, "running", lambda uid, words: uid == 1000 and words == ("hermes", "gateway"))
-    assert agent.health() == {"1": {"up": True, "hermes": True, "version": "0123456789ab", "backup": 1790000000.5},
-                              "2": {"up": False, "hermes": False, "version": None, "backup": None}}
+    (tmp_path / "bip2" / ".local" / "state" / "bipagents").mkdir(parents=True)
+    (tmp_path / "bip2" / ".local" / "state" / "bipagents" / "asleep").write_text("1790000000")
+    assert agent.health() == {"1": {"up": True, "hermes": True, "asleep": False, "version": "0123456789ab",
+                                    "backup": 1790000000.5},
+                              "2": {"up": False, "hermes": False, "asleep": True, "version": None, "backup": None}}
     monkeypatch.undo()
     assert agent.door_open(port) is True
     listening.close()

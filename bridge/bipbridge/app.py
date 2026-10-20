@@ -29,6 +29,7 @@ from .relay import RelayClient, relay_router
 from .agents_admin import agents_admin_router, mount_all_uploads, run_hermes
 from .agent_tools import AudioMaker, agent_tools_router, media_roots, purge_audio, register_all as register_agent_tools
 from .place_backup import place_backup_router
+from .sleep import Sleep
 from .ssh_keys import ssh_router
 from .vault import Vault, vault_router
 from .cloud_setup import cloud_setup_router
@@ -70,6 +71,7 @@ class Services:
                               voice_server=config.voice_server, words=config.pronunciations)
         self.hermes = HermesClient(self.http)
         self.briefs = Briefs(os.path.join(os.path.dirname(config.outbox.db_path), "briefs"), self.hermes, config.agents)
+        self.sleep = Sleep(config, routines=self._routines, hermes_up=self._hermes_up)
         self.audio_maker = AudioMaker(config, self.tts)
         apns = None
         if config.apns.enabled:
@@ -121,10 +123,26 @@ class Services:
             self._tasks.append(asyncio.create_task(watcher.run()))
         self._tasks.append(asyncio.create_task(self._purge_loop()))
         self._tasks.append(asyncio.create_task(self.briefs.run()))
+        if self.sleep.enabled:
+            self._tasks.append(asyncio.create_task(self.sleep.run_forever()))
         self._tasks.append(asyncio.create_task(self.hub.resume(self.config.agents)))
         if self.config.hermes.enabled:
             self._tasks.append(asyncio.create_task(mount_all_uploads(self.config)))
             self._tasks.append(asyncio.create_task(register_agent_tools(self.config, run_hermes)))
+
+    async def _routines(self) -> List[str]:
+        """When each scheduled task last ran (sleep.py: a place with routines stays up)."""
+        return [str(row["last_seen"]) for row in await self.store.cron_jobs() if row.get("last_seen")]
+
+    async def _hermes_up(self) -> bool:
+        agent = next(iter(self.config.agents.values()), None)
+        if agent is None:
+            return True
+        try:
+            await self.hermes.capabilities(agent)
+            return True
+        except Exception:
+            return False
 
     async def _purge_loop(self) -> None:
         await asyncio.sleep(5)

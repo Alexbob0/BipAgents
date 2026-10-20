@@ -3,7 +3,7 @@
 
 Run as root every two minutes by bipagents-seats.timer, set up at first boot. Its call to the guichet, with the token
 its first boot gave it, is the server's heartbeat (guichet/bipguichet/watch.py): it says, for each place, whether its
-bridge's door answers here, whether its Hermes runs, the BipAgents version it runs and when its last backup worked,
+bridge's door answers here, whether its Hermes runs (or sleeps), the BipAgents version it runs and when its last backup worked,
 and for the server its memory, swap, disk and load -- yes or no, a version, a time and numbers, nothing of anyone. The
 guichet answers with its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
 openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. There are two orders:
@@ -32,6 +32,7 @@ DONE = "/var/lib/bipagents/orders-done"
 LIB = "/usr/local/lib/bipagents"
 MAX_SEATS = 8
 BACKUP_STATE = ".local/state/bipagents/backup.json"
+ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge/bipbridge/sleep.py)
 
 
 def log(text):
@@ -232,6 +233,7 @@ def health():
         except KeyError:
             continue
         seats[str(number)] = {"up": door_open(442 + number), "hermes": running(entry.pw_uid, ("hermes", "gateway")),
+                              "asleep": os.path.exists(os.path.join(entry.pw_dir, ASLEEP)),
                               "version": version(entry.pw_dir), "backup": last_backup(user)}
     return seats
 
