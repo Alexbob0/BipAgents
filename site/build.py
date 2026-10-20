@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -217,11 +218,33 @@ def bipagents(version: str) -> Path:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(page, encoding="utf-8")
         og_image(t, lang, assets / f"og-{lang}.png")
+    links(src, out)
     (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {BIPAGENTS}/sitemap.xml\n", encoding="utf-8")
     (out / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
                                      + "".join(f"  <url><loc>{BIPAGENTS}{paths[l]}</loc></url>\n" for l in LANGS)
                                      + "</urlset>\n", encoding="utf-8")
     return out
+
+
+def links(src: Path, out: Path) -> None:
+    """The links that open the app: https://bipagents.com/p#… (a shared place), with the files that let iOS and Android
+    open them in the app (universal links, App Links), and the page shown where it isn't installed. BIP_TEAM_ID (the
+    Apple team) and BIP_PLAY_SHA256 (Google Play's app signing certificate) come from the environment."""
+    team = os.environ.get("BIP_TEAM_ID", "TEAMID")
+    play = os.environ.get("BIP_PLAY_SHA256", "PLAY:APP:SIGNING:SHA256")
+    if team == "TEAMID" or play.startswith("PLAY:"):
+        print("links: BIP_TEAM_ID / BIP_PLAY_SHA256 not set, placeholders written (set them before publishing)")
+    known = out / ".well-known"
+    known.mkdir(parents=True, exist_ok=True)
+    (known / "apple-app-site-association").write_text(json.dumps({"applinks": {"details": [{
+        "appIDs": [f"{team}.io.github.bipagents"],
+        "components": [{"/": "/p", "#": "*", "comment": "a place of a Duo or a family, shared with this person"}]}]}},
+        indent=2) + "\n", encoding="utf-8")
+    (known / "assetlinks.json").write_text(json.dumps([{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {"namespace": "android_app", "package_name": "io.github.bipagents",
+                   "sha256_cert_fingerprints": [play]}}], indent=2) + "\n", encoding="utf-8")
+    copy(src / "links" / "p.html", out / "p" / "index.html")
 
 
 def main(argv: List[str]) -> int:

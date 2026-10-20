@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>BipAgents</title>
+<link rel="icon" href="/assets/favicon.svg">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+  main { max-width: 480px; margin: 12vh auto; padding: 0 16px; text-align: center; }
+  .stores { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 24px 0; }
+  .stores a, .open { display: inline-block; padding: 14px 22px; border-radius: 999px; font-weight: 800; text-decoration: none; }
+  .stores a { background: var(--card, #fff); border: 1px solid var(--line, #ddd); color: inherit; }
+  .open { background: var(--ink, #222); color: var(--bg, #fff); }
+</style>
+</head>
+<body>
+<main>
+  <h1 data-t="title">Your BipAgents place is waiting</h1>
+  <p data-t="body">Install BipAgents on this phone, then come back here and tap « Open in the app ».</p>
+  <div class="stores">
+    <a href="https://apps.apple.com/app/bipagents/idAPPSTOREID">App Store</a>
+    <a href="https://play.google.com/store/apps/details?id=io.github.bipagents">Google Play</a>
+  </div>
+  <a class="open" id="open" href="#" data-t="open">Open in the app</a>
+  <p><small data-t="note">The part of this link after « # » never reaches this site: only your app reads it.</small></p>
+</main>
+<script>
+  // The place's details are after « # »: the browser never sends them; the app gets them through its own link.
+  document.getElementById("open").href = "bipagents://place" + location.hash;
+  var texts = {
+    fr: {title: "Ta place BipAgents t’attend", body: "Installe BipAgents sur ce téléphone, puis reviens ici et touche « Ouvrir dans l’app ».",
+         open: "Ouvrir dans l’app", note: "La partie de ce lien après « # » n’arrive jamais sur ce site : seule ton app la lit."},
+    de: {title: "Dein BipAgents-Platz wartet auf dich", body: "Installiere BipAgents auf diesem Telefon, komm dann hierher zurück und tippe auf « In der App öffnen ».",
+         open: "In der App öffnen", note: "Der Teil dieses Links nach « # » erreicht diese Seite nie: Nur deine App liest ihn."},
+    es: {title: "Tu plaza de BipAgents te espera", body: "Instala BipAgents en este teléfono, luego vuelve aquí y toca « Abrir en la app ».",
+         open: "Abrir en la app", note: "La parte de este enlace después de « # » nunca llega a este sitio: solo tu app la lee."}
+  };
+  var lang = (navigator.language || "en").slice(0, 2), t = texts[lang];
+  if (t) {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-t]").forEach(function (el) { el.textContent = t[el.dataset.t]; });
+  }
+</script>
+</body>
+</html>
