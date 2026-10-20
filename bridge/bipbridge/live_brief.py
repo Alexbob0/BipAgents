@@ -13,6 +13,9 @@ the same text at every turn of the call so that the model server's cache holds.
 
     GET  /v1/live/brief?agent=&session=   {session, text, points_at}   (without a session: the agent's latest one)
     POST /v1/live/calls                   {agent, session, live_session}   a call that just ended
+    POST /v1/live/recaps                  {agent, session, recap}   what the call said, for the next written message
+    POST /v1/live/recaps/take             {agent, session} -> {recap}   taken by the device that writes it (any of
+                                          the person's: the recap waits here, not on the phone that made the call)
 
 Messages and points stay on this server (data folder « briefs », one file per conversation)."""
 from __future__ import annotations
@@ -22,6 +25,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +42,9 @@ from .logs import fields
 log = logging.getLogger("bipbridge.live_brief")
 
 RECENT_MESSAGES = 8
+RECAPS_MAX = 8000          # characters of call recaps waiting for one conversation
+RECAP_SEPARATOR = "\x1e"       # between two calls' recaps in their file (a recap holds line breaks)
+RECAP_LOCK = threading.Lock()
 MESSAGE_CHARS = 700
 RECENT_CHARS = 6000
 POINTS_EVERY = 6            # new messages before the key points are written again
@@ -127,6 +134,39 @@ class Briefs:
     def _path(self, agent: str, session: str) -> Path:
         safe = re.sub(r"[^\w.-]", "_", session)[:120]
         return self.folder / re.sub(r"[^\w.-]", "_", agent) / f"{safe}.json"
+
+    def _recaps(self, agent: str, session: str) -> Path:
+        safe = re.sub(r"[^\w.-]", "_", session)[:120]
+        return self.folder.with_name("call-recaps") / re.sub(r"[^\w.-]", "_", agent) / f"{safe}.txt"
+
+    def keep_recap(self, agent: str, session: str, recap: str) -> None:
+        """A call's recap waits for the next message written in `session` (several calls: one after the other, the
+        oldest dropped beyond RECAPS_MAX characters)."""
+        path = self._recaps(agent, session)
+        with RECAP_LOCK:
+            try:
+                kept = path.read_text(encoding="utf-8").split(RECAP_SEPARATOR)
+            except OSError:
+                kept = []
+            kept.append(recap)
+            while len(kept) > 1 and sum(len(r) for r in kept) > RECAPS_MAX:
+                kept.pop(0)
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(RECAP_SEPARATOR.join(kept))
+            os.replace(temporary, path)
+
+    def take_recap(self, agent: str, session: str) -> Optional[str]:
+        path = self._recaps(agent, session)
+        with RECAP_LOCK:
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                return None
+            path.unlink(missing_ok=True)
+        return "\n".join(r for r in text.split(RECAP_SEPARATOR) if r) or None
 
     def load(self, agent: str, session: str) -> Dict[str, Any]:
         try:
@@ -272,6 +312,17 @@ class CallEnded(BaseModel):
     live_session: str = Field(max_length=300)
 
 
+class CallRecap(BaseModel):
+    agent: str = Field(max_length=200)
+    session: str = Field(max_length=300)
+    recap: str = Field(min_length=1, max_length=4000)
+
+
+class RecapTaken(BaseModel):
+    agent: str = Field(max_length=200)
+    session: str = Field(max_length=300)
+
+
 def live_router() -> APIRouter:
     router = APIRouter()
 
@@ -298,5 +349,16 @@ def live_router() -> APIRouter:
         briefs, agent = setup(request, body.agent)
         briefs.note_call(agent.name, body.session, body.live_session)
         return {"ok": True}
+
+    @router.post("/live/recaps")
+    async def keep_recap(body: CallRecap, request: Request) -> Dict[str, Any]:
+        briefs, agent = setup(request, body.agent)
+        await asyncio.to_thread(briefs.keep_recap, agent.name, body.session, body.recap)
+        return {"ok": True}
+
+    @router.post("/live/recaps/take")
+    async def take_recap(body: RecapTaken, request: Request) -> Dict[str, Any]:
+        briefs, agent = setup(request, body.agent)
+        return {"recap": await asyncio.to_thread(briefs.take_recap, agent.name, body.session)}
 
     return router

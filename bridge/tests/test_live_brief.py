@@ -186,3 +186,14 @@ def test_routes(client, tmp_path, config, hermes):
                        headers=auth)
     assert done.json() == {"ok": True}
     assert services.briefs.load(config.agent("Wellness").name, "api_old")["calls"][0]["live_session"] == "Live"
+    # What the call said waits here for the next written message, whichever device writes it, then is gone.
+    first = "<!--bip:call\nVoice call of 10:05 in between:\nThe person: je pars à Lyon\nYou: Bon voyage\n-->"
+    second = "<!--bip:call\nVoice call of 18:40 in between:\nThe person: je suis rentré\nYou: Super\n-->"
+    for recap in (first, second):
+        assert client.post("/v1/live/recaps", json={"agent": "Wellness", "session": "api_old", "recap": recap},
+                           headers=auth).json() == {"ok": True}
+    taken = client.post("/v1/live/recaps/take", json={"agent": "Wellness", "session": "api_old"}, headers=auth).json()
+    assert taken == {"recap": first + "\n" + second}
+    assert client.post("/v1/live/recaps/take", json={"agent": "Wellness", "session": "api_old"},
+                       headers=auth).json() == {"recap": None}
+    assert client.post("/v1/live/recaps", json={"agent": "Wellness", "session": "api_old", "recap": "x"}).status_code == 401
