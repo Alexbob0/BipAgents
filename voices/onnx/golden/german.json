@@ -1,0 +1,1628 @@
+{
+ "language": "german",
+ "max_tokens": 50,
+ "cases": [
+  {
+   "text": "Bonjour",
+   "chunks": [
+    {
+     "text": "Bonjour.",
+     "ids": [
+      1592,
+      270,
+      968,
+      451,
+      490,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 50
+    }
+   ]
+  },
+  {
+   "text": "ok",
+   "chunks": [
+    {
+     "text": "Ok.",
+     "ids": [
+      512,
+      375,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 38
+    }
+   ]
+  },
+  {
+   "text": "  deux  espaces  ",
+   "chunks": [
+    {
+     "text": "Deux espaces.",
+     "ids": [
+      1598,
+      457,
+      857,
+      293,
+      1048,
+      743,
+      295,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 59
+    }
+   ]
+  },
+  {
+   "text": "Tab\tici et là",
+   "chunks": [
+    {
+     "text": "Tab ici et là.",
+     "ids": [
+      432,
+      751,
+      260,
+      2290,
+      505,
+      260,
+      397,
+      260,
+      355,
+      199,
+      164,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 75
+    }
+   ]
+  },
+  {
+   "text": "ligne\nsuivante\r\nfin",
+   "chunks": [
+    {
+     "text": "Ligne suivante fin.",
+     "ids": [
+      671,
+      361,
+      270,
+      263,
+      260,
+      265,
+      457,
+      1385,
+      744,
+      263,
+      260,
+      352,
+      366,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 84
+    }
+   ]
+  },
+  {
+   "text": "Il fait 3.5 degrés. Puis 18,5 demain.",
+   "chunks": [
+    {
+     "text": "Il fait 3.5 degrés. Puis 18,5 demain.",
+     "ids": [
+      964,
+      355,
+      260,
+      865,
+      605,
+      260,
+      55,
+      269,
+      57,
+      260,
+      507,
+      1552,
+      199,
+      173,
+      265,
+      269,
+      2010,
+      587,
+      260,
+      53,
+      60,
+      261,
+      57,
+      288,
+      516,
+      366,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 138
+    }
+   ]
+  },
+  {
+   "text": "Version 2.0.1 sortie… enfin !",
+   "chunks": [
+    {
+     "text": "Version 2.0.1 sortie… enfin !",
+     "ids": [
+      330,
+      265,
+      852,
+      260,
+      54,
+      269,
+      52,
+      269,
+      53,
+      289,
+      304,
+      273,
+      602,
+      230,
+      132,
+      170,
+      260,
+      262,
+      352,
+      366,
+      260,
+      324
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 117
+    }
+   ]
+  },
+  {
+   "text": "9h30, 14h45 et 18h.",
+   "chunks": [
+    {
+     "text": "9h30, 14h45 et 18h.",
+     "ids": [
+      260,
+      61,
+      312,
+      55,
+      52,
+      261,
+      260,
+      53,
+      56,
+      312,
+      56,
+      57,
+      260,
+      397,
+      260,
+      53,
+      60,
+      312,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 105
+    }
+   ]
+  },
+  {
+   "text": "Emoji 🎉 et 漢字 ici",
+   "chunks": [
+    {
+     "text": "Emoji 🎉 et 漢字 ici.",
+     "ids": [
+      677,
+      1266,
+      968,
+      505,
+      260,
+      244,
+      163,
+      146,
+      141,
+      260,
+      397,
+      260,
+      234,
+      192,
+      166,
+      233,
+      177,
+      155,
+      260,
+      2290,
+      505,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 117
+    }
+   ]
+  },
+  {
+   "text": "Literal <s> and </s> tokens",
+   "chunks": [
+    {
+     "text": "Literal and tokens.",
+     "ids": [
+      3585,
+      424,
+      260,
+      1101,
+      260,
+      1323,
+      1016,
+      265,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 63
+    }
+   ]
+  },
+  {
+   "text": "a<0x41>b",
+   "chunks": [
+    {
+     "text": "AAb.",
+     "ids": [
+      437,
+      1823,
+      331,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 42
+    }
+   ]
+  },
+  {
+   "text": "UPPER lower Mixed",
+   "chunks": [
+    {
+     "text": "UPPER lower Mixed.",
+     "ids": [
+      260,
+      1828,
+      3993,
+      3993,
+      2157,
+      260,
+      777,
+      425,
+      268,
+      1174,
+      857,
+      263,
+      328,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 84
+    }
+   ]
+  },
+  {
+   "text": "Fin sans point",
+   "chunks": [
+    {
+     "text": "Fin sans point.",
+     "ids": [
+      400,
+      366,
+      260,
+      265,
+      472,
+      265,
+      260,
+      1047,
+      366,
+      273,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 71
+    }
+   ]
+  },
+  {
+   "text": "Fin avec virgule,",
+   "chunks": [
+    {
+     "text": "Fin avec virgule.",
+     "ids": [
+      400,
+      366,
+      260,
+      516,
+      753,
+      263,
+      743,
+      260,
+      1067,
+      304,
+      2055,
+      521,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 80
+    }
+   ]
+  },
+  {
+   "text": "Fin avec deux-points :",
+   "chunks": [
+    {
+     "text": "Fin avec deux-points.",
+     "ids": [
+      400,
+      366,
+      260,
+      516,
+      753,
+      263,
+      743,
+      260,
+      507,
+      457,
+      857,
+      49,
+      1047,
+      366,
+      273,
+      265,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 96
+    }
+   ]
+  },
+  {
+   "text": "Un tiret —",
+   "chunks": [
+    {
+     "text": "Un tiret.",
+     "ids": [
+      498,
+      260,
+      273,
+      778,
+      397,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 50
+    }
+   ]
+  },
+  {
+   "text": "« Guillemets » et \"doubles\"",
+   "chunks": [
+    {
+     "text": "Guillemets et doubles.",
+     "ids": [
+      514,
+      457,
+      1049,
+      369,
+      397,
+      265,
+      260,
+      397,
+      260,
+      2178,
+      786,
+      521,
+      265,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 84
+    }
+   ]
+  },
+  {
+   "text": "(parenthèses) et [crochets]",
+   "chunks": [
+    {
+     "text": "Parenthèses et crochets.",
+     "ids": [
+      2521,
+      262,
+      273,
+      312,
+      199,
+      172,
+      265,
+      295,
+      260,
+      397,
+      260,
+      743,
+      616,
+      1389,
+      273,
+      265,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 96
+    }
+   ]
+  },
+  {
+   "text": "Point-virgule; ici; là",
+   "chunks": [
+    {
+     "text": "Point-virgule, ici, là.",
+     "ids": [
+      1833,
+      366,
+      273,
+      49,
+      1067,
+      304,
+      2055,
+      521,
+      261,
+      260,
+      2290,
+      505,
+      261,
+      260,
+      355,
+      199,
+      164,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 100
+    }
+   ]
+  },
+  {
+   "text": "Question ? Réponse ! Suite...",
+   "chunks": [
+    {
+     "text": "Question ? Réponse ! Suite...",
+     "ids": [
+      260,
+      85,
+      1182,
+      306,
+      852,
+      260,
+      348,
+      572,
+      199,
+      173,
+      1047,
+      270,
+      265,
+      263,
+      260,
+      324,
+      376,
+      1678,
+      287,
+      269,
+      269,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 117
+    }
+   ]
+  },
+  {
+   "text": "e-mail: alex@example.com, site https://example.com/a?b=c",
+   "chunks": [
+    {
+     "text": "E-mail: alex@example. com, site https://example. com/a? b=c.",
+     "ids": [
+      677,
+      49,
+      729,
+      628,
+      323,
+      260,
+      424,
+      263,
+      857,
+      68,
+      263,
+      857,
+      662,
+      414,
+      521,
+      269,
+      260,
+      1944,
+      339,
+      261,
+      260,
+      265,
+      605,
+      263,
+      703,
+      273,
+      273,
+      414,
+      265,
+      323,
+      51,
+      51,
+      263,
+      857,
+      662,
+      414,
+      521,
+      269,
+      260,
+      1944,
+      339,
+      51,
+      516,
+      348,
+      260,
+      331,
+      65,
+      743,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 230
+    }
+   ]
+  },
+  {
+   "text": "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag.",
+   "chunks": [
+    {
+     "text": "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag.",
+     "ids": [
+      2342,
+      2448,
+      324,
+      337,
+      408,
+      321,
+      650,
+      262,
+      685,
+      537,
+      601,
+      323,
+      675,
+      432,
+      268,
+      339,
+      1223,
+      264,
+      280,
+      456,
+      854,
+      428,
+      344,
+      345,
+      3621,
+      268,
+      1008,
+      1029,
+      529,
+      2244,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 155
+    }
+   ]
+  },
+  {
+   "text": "Vergiss nicht: Pixels Tierarzt ist am Donnerstag um 17 Uhr.",
+   "chunks": [
+    {
+     "text": "Vergiss nicht: Pixels Tierarzt ist am Donnerstag um 17 Uhr.",
+     "ids": [
+      330,
+      1285,
+      265,
+      265,
+      277,
+      323,
+      3092,
+      857,
+      383,
+      265,
+      1724,
+      525,
+      374,
+      273,
+      303,
+      438,
+      260,
+      3403,
+      265,
+      1304,
+      319,
+      260,
+      53,
+      59,
+      1712,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 134
+    }
+   ]
+  },
+  {
+   "text": "Das kostet 12,50 €; notiert.",
+   "chunks": [
+    {
+     "text": "Das kostet 12,50 €, notiert.",
+     "ids": [
+      410,
+      260,
+      3593,
+      260,
+      53,
+      54,
+      261,
+      57,
+      52,
+      260,
+      230,
+      134,
+      176,
+      261,
+      2115,
+      905,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 96
+    }
+   ]
+  },
+  {
+   "text": "ja",
+   "chunks": [
+    {
+     "text": "Ja.",
+     "ids": [
+      658,
+      269
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 34
+    }
+   ]
+  },
+  {
+   "text": "Größe, Straße, Übermaß. Alles klar!",
+   "chunks": [
+    {
+     "text": "Größe, Straße, Übermaß. Alles klar!",
+     "ids": [
+      3188,
+      261,
+      260,
+      2103,
+      261,
+      260,
+      199,
+      160,
+      590,
+      2348,
+      269,
+      1476,
+      1641,
+      324
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 84
+    }
+   ]
+  },
+  {
+   "text": "Morgen früh hast du drei Termine: den ersten um halb zehn mit dem Produktteam, den zweiten um elf beim Zahnarzt und den dritten per Video um fünfzehn Uhr, dann sagt der Wetterbericht achtzehn Grad, etwas Regen am späten Nachmittag, leichten Westwind und Aufheiterungen am Abend voraus, also denk an den Schirm und lade dein Fahrrad, bevor du losfährst.",
+   "chunks": [
+    {
+     "text": "Morgen früh hast du drei Termine: den ersten um halb zehn mit dem Produktteam.",
+     "ids": [
+      260,
+      876,
+      1499,
+      825,
+      349,
+      675,
+      432,
+      268,
+      339,
+      1223,
+      323,
+      275,
+      567,
+      262,
+      319,
+      884,
+      1766,
+      283,
+      288,
+      951,
+      2555,
+      770,
+      287,
+      662,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 130
+    },
+    {
+     "text": "Den zweiten um elf beim Zahnarzt und den dritten per Video um fünfzehn Uhr, dann sagt der Wetterbericht achtzehn Grad, etwas Regen am späten Nachmittag.",
+     "ids": [
+      1095,
+      1636,
+      262,
+      319,
+      260,
+      383,
+      352,
+      1099,
+      654,
+      1159,
+      525,
+      374,
+      273,
+      264,
+      275,
+      1882,
+      262,
+      958,
+      268,
+      2151,
+      507,
+      451,
+      319,
+      1391,
+      1661,
+      1712,
+      261,
+      416,
+      1355,
+      267,
+      260,
+      2754,
+      448,
+      502,
+      1474,
+      1661,
+      2989,
+      261,
+      484,
+      1998,
+      438,
+      2188,
+      262,
+      529,
+      2244,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 217
+    },
+    {
+     "text": "Leichten Westwind und Aufheiterungen am Abend voraus, also denk an den Schirm und lade dein Fahrrad, bevor du losfährst.",
+     "ids": [
+      2259,
+      316,
+      2732,
+      1112,
+      264,
+      486,
+      371,
+      268,
+      435,
+      438,
+      807,
+      260,
+      2571,
+      261,
+      791,
+      275,
+      375,
+      294,
+      275,
+      317,
+      778,
+      339,
+      264,
+      260,
+      565,
+      507,
+      650,
+      2194,
+      478,
+      328,
+      261,
+      2461,
+      349,
+      260,
+      508,
+      352,
+      966,
+      304,
+      306,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 192
+    }
+   ]
+  }
+ ],
+ "tokens": [
+  {
+   "text": "Bonjour",
+   "ids": [
+    1592,
+    270,
+    968,
+    451,
+    490
+   ],
+   "decoded": "Bonjour"
+  },
+  {
+   "text": "ok",
+   "ids": [
+    260,
+    451,
+    375
+   ],
+   "decoded": "ok"
+  },
+  {
+   "text": "  deux  espaces  ",
+   "ids": [
+    260,
+    260,
+    260,
+    507,
+    457,
+    857,
+    260,
+    293,
+    1048,
+    743,
+    295,
+    260,
+    260
+   ],
+   "decoded": "  deux  espaces  "
+  },
+  {
+   "text": "Tab\tici et là",
+   "ids": [
+    432,
+    751,
+    13,
+    2290,
+    505,
+    260,
+    397,
+    198,
+    164,
+    355,
+    199,
+    164
+   ],
+   "decoded": "Tab\tici et là"
+  },
+  {
+   "text": "ligne\nsuivante\r\nfin",
+   "ids": [
+    260,
+    355,
+    361,
+    270,
+    263,
+    14,
+    265,
+    457,
+    1385,
+    744,
+    263,
+    17,
+    14,
+    352,
+    366
+   ],
+   "decoded": "ligne\nsuivante\r\nfin"
+  },
+  {
+   "text": "Il fait 3.5 degrés. Puis 18,5 demain.",
+   "ids": [
+    964,
+    355,
+    260,
+    865,
+    605,
+    260,
+    55,
+    269,
+    57,
+    260,
+    507,
+    1552,
+    199,
+    173,
+    265,
+    269,
+    2010,
+    587,
+    260,
+    53,
+    60,
+    261,
+    57,
+    288,
+    516,
+    366,
+    269
+   ],
+   "decoded": "Il fait 3.5 degrés. Puis 18,5 demain."
+  },
+  {
+   "text": "Version 2.0.1 sortie… enfin !",
+   "ids": [
+    330,
+    265,
+    852,
+    260,
+    54,
+    269,
+    52,
+    269,
+    53,
+    289,
+    304,
+    273,
+    602,
+    230,
+    132,
+    170,
+    260,
+    262,
+    352,
+    366,
+    260,
+    324
+   ],
+   "decoded": "Version 2.0.1 sortie… enfin !"
+  },
+  {
+   "text": "9h30, 14h45 et 18h.",
+   "ids": [
+    260,
+    61,
+    312,
+    55,
+    52,
+    261,
+    260,
+    53,
+    56,
+    312,
+    56,
+    57,
+    260,
+    397,
+    260,
+    53,
+    60,
+    312,
+    269
+   ],
+   "decoded": "9h30, 14h45 et 18h."
+  },
+  {
+   "text": "Emoji 🎉 et 漢字 ici",
+   "ids": [
+    677,
+    1266,
+    968,
+    505,
+    260,
+    244,
+    163,
+    146,
+    141,
+    260,
+    397,
+    260,
+    234,
+    192,
+    166,
+    233,
+    177,
+    155,
+    260,
+    2290,
+    505
+   ],
+   "decoded": "Emoji 🎉 et 漢字 ici"
+  },
+  {
+   "text": "Literal <s> and </s> tokens",
+   "ids": [
+    3585,
+    424,
+    260,
+    1,
+    260,
+    260,
+    1101,
+    260,
+    2,
+    260,
+    260,
+    1323,
+    1016,
+    265
+   ],
+   "decoded": "Literal   and   tokens"
+  },
+  {
+   "text": "a<0x41>b",
+   "ids": [
+    260,
+    516,
+    69,
+    331
+   ],
+   "decoded": "aAb"
+  },
+  {
+   "text": "UPPER lower Mixed",
+   "ids": [
+    260,
+    1828,
+    3993,
+    3993,
+    2157,
+    260,
+    777,
+    425,
+    268,
+    1174,
+    857,
+    263,
+    328
+   ],
+   "decoded": "UPPER lower Mixed"
+  },
+  {
+   "text": "Fin sans point",
+   "ids": [
+    400,
+    366,
+    260,
+    265,
+    472,
+    265,
+    260,
+    1047,
+    366,
+    273
+   ],
+   "decoded": "Fin sans point"
+  },
+  {
+   "text": "Fin avec virgule,",
+   "ids": [
+    400,
+    366,
+    260,
+    516,
+    753,
+    263,
+    743,
+    260,
+    1067,
+    304,
+    2055,
+    521,
+    261
+   ],
+   "decoded": "Fin avec virgule,"
+  },
+  {
+   "text": "Fin avec deux-points :",
+   "ids": [
+    400,
+    366,
+    260,
+    516,
+    753,
+    263,
+    743,
+    260,
+    507,
+    457,
+    857,
+    49,
+    1047,
+    366,
+    273,
+    265,
+    260,
+    323
+   ],
+   "decoded": "Fin avec deux-points :"
+  },
+  {
+   "text": "Un tiret —",
+   "ids": [
+    498,
+    260,
+    273,
+    778,
+    397,
+    260,
+    230,
+    132,
+    152
+   ],
+   "decoded": "Un tiret —"
+  },
+  {
+   "text": "« Guillemets » et \"doubles\"",
+   "ids": [
+    260,
+    198,
+    175,
+    514,
+    457,
+    1049,
+    369,
+    397,
+    265,
+    260,
+    198,
+    191,
+    260,
+    397,
+    260,
+    38,
+    2178,
+    786,
+    521,
+    265,
+    38
+   ],
+   "decoded": "« Guillemets » et \"doubles\""
+  },
+  {
+   "text": "(parenthèses) et [crochets]",
+   "ids": [
+    260,
+    44,
+    1910,
+    262,
+    273,
+    312,
+    199,
+    172,
+    265,
+    295,
+    45,
+    260,
+    397,
+    260,
+    95,
+    743,
+    616,
+    1389,
+    273,
+    265,
+    97
+   ],
+   "decoded": "(parenthèses) et [crochets]"
+  },
+  {
+   "text": "Point-virgule; ici; là",
+   "ids": [
+    1833,
+    366,
+    273,
+    49,
+    1067,
+    304,
+    2055,
+    521,
+    300,
+    260,
+    2290,
+    505,
+    300,
+    260,
+    355,
+    199,
+    164
+   ],
+   "decoded": "Point-virgule; ici; là"
+  },
+  {
+   "text": "Question ? Réponse ! Suite...",
+   "ids": [
+    260,
+    85,
+    1182,
+    306,
+    852,
+    260,
+    348,
+    572,
+    199,
+    173,
+    1047,
+    270,
+    265,
+    263,
+    260,
+    324,
+    376,
+    1678,
+    287,
+    269,
+    269,
+    269
+   ],
+   "decoded": "Question ? Réponse ! Suite..."
+  },
+  {
+   "text": "e-mail: alex@example.com, site https://example.com/a?b=c",
+   "ids": [
+    260,
+    263,
+    49,
+    729,
+    628,
+    323,
+    260,
+    424,
+    263,
+    857,
+    68,
+    263,
+    857,
+    662,
+    414,
+    521,
+    269,
+    1944,
+    339,
+    261,
+    260,
+    265,
+    605,
+    263,
+    703,
+    273,
+    273,
+    414,
+    265,
+    323,
+    51,
+    51,
+    263,
+    857,
+    662,
+    414,
+    521,
+    269,
+    1944,
+    339,
+    51,
+    516,
+    348,
+    331,
+    65,
+    743
+   ],
+   "decoded": "e-mail: alex@example.com, site https://example.com/a?b=c"
+  },
+  {
+   "text": "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag.",
+   "ids": [
+    2342,
+    2448,
+    324,
+    337,
+    408,
+    321,
+    650,
+    262,
+    685,
+    537,
+    601,
+    323,
+    675,
+    432,
+    268,
+    339,
+    1223,
+    264,
+    280,
+    456,
+    854,
+    428,
+    344,
+    345,
+    3621,
+    268,
+    1008,
+    1029,
+    529,
+    2244,
+    269
+   ],
+   "decoded": "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag."
+  },
+  {
+   "text": "Vergiss nicht: Pixels Tierarzt ist am Donnerstag um 17 Uhr.",
+   "ids": [
+    330,
+    1285,
+    265,
+    265,
+    277,
+    323,
+    3092,
+    857,
+    383,
+    265,
+    1724,
+    525,
+    374,
+    273,
+    303,
+    438,
+    260,
+    3403,
+    265,
+    1304,
+    319,
+    260,
+    53,
+    59,
+    1712,
+    269
+   ],
+   "decoded": "Vergiss nicht: Pixels Tierarzt ist am Donnerstag um 17 Uhr."
+  },
+  {
+   "text": "Das kostet 12,50 €; notiert.",
+   "ids": [
+    410,
+    260,
+    3593,
+    260,
+    53,
+    54,
+    261,
+    57,
+    52,
+    260,
+    230,
+    134,
+    176,
+    300,
+    2115,
+    905,
+    269
+   ],
+   "decoded": "Das kostet 12,50 €; notiert."
+  },
+  {
+   "text": "ja",
+   "ids": [
+    503
+   ],
+   "decoded": "ja"
+  },
+  {
+   "text": "Größe, Straße, Übermaß. Alles klar!",
+   "ids": [
+    3188,
+    261,
+    260,
+    2103,
+    261,
+    260,
+    199,
+    160,
+    590,
+    2348,
+    269,
+    1476,
+    1641,
+    324
+   ],
+   "decoded": "Größe, Straße, Übermaß. Alles klar!"
+  },
+  {
+   "text": "Morgen früh hast du drei Termine: den ersten um halb zehn mit dem Produktteam, den zweiten um elf beim Zahnarzt und den dritten per Video um fünfzehn Uhr, dann sagt der Wetterbericht achtzehn Grad, etwas Regen am späten Nachmittag, leichten Westwind und Aufheiterungen am Abend voraus, also denk an den Schirm und lade dein Fahrrad, bevor du losfährst.",
+   "ids": [
+    260,
+    876,
+    1499,
+    825,
+    349,
+    675,
+    432,
+    268,
+    339,
+    1223,
+    323,
+    275,
+    567,
+    262,
+    319,
+    884,
+    1766,
+    283,
+    288,
+    951,
+    2555,
+    770,
+    287,
+    662,
+    261,
+    275,
+    1636,
+    262,
+    319,
+    260,
+    383,
+    352,
+    1099,
+    654,
+    1159,
+    525,
+    374,
+    273,
+    264,
+    275,
+    1882,
+    262,
+    958,
+    268,
+    2151,
+    507,
+    451,
+    319,
+    1391,
+    1661,
+    1712,
+    261,
+    416,
+    1355,
+    267,
+    260,
+    2754,
+    448,
+    502,
+    1474,
+    1661,
+    2989,
+    261,
+    484,
+    1998,
+    438,
+    2188,
+    262,
+    529,
+    2244,
+    261,
+    260,
+    501,
+    262,
+    2732,
+    1112,
+    264,
+    486,
+    371,
+    268,
+    435,
+    438,
+    807,
+    260,
+    2571,
+    261,
+    791,
+    275,
+    375,
+    294,
+    275,
+    317,
+    778,
+    339,
+    264,
+    260,
+    565,
+    507,
+    650,
+    2194,
+    478,
+    328,
+    261,
+    2461,
+    349,
+    260,
+    508,
+    352,
+    966,
+    304,
+    306,
+    269
+   ],
+   "decoded": "Morgen früh hast du drei Termine: den ersten um halb zehn mit dem Produktteam, den zweiten um elf beim Zahnarzt und den dritten per Video um fünfzehn Uhr, dann sagt der Wetterbericht achtzehn Grad, etwas Regen am späten Nachmittag, leichten Westwind und Aufheiterungen am Abend voraus, also denk an den Schirm und lade dein Fahrrad, bevor du losfährst."
+  },
+  {
+   "text": null,
+   "ids": [
+    1,
+    260,
+    260
+   ],
+   "decoded": " "
+  },
+  {
+   "text": null,
+   "ids": [
+    4,
+    260,
+    69
+   ],
+   "decoded": "\u0000 A"
+  },
+  {
+   "text": null,
+   "ids": [
+    0,
+    2,
+    3,
+    300
+   ],
+   "decoded": ";"
+  },
+  {
+   "text": null,
+   "ids": [
+    234,
+    192
+   ],
+   "decoded": "��"
+  },
+  {
+   "text": null,
+   "ids": [
+    234,
+    192,
+    166,
+    260
+   ],
+   "decoded": "漢 "
+  }
+ ]
+}

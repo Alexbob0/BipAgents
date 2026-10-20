@@ -1,0 +1,29 @@
+[🇬🇧 English](README.md) · 🇫🇷 Français
+
+# Les voix des Bips sur le téléphone
+
+Les apps parlent avec les voix des Bips sur le téléphone lui-même, sans le serveur : Pocket TTS 3.3.0 de Kyutai
+converti en ONNX (le modèle de langue en 8 bits), exécuté par ONNX Runtime. Un paquet par langue (environ 105 à 125 Mo,
+téléchargé au premier usage) et le décodeur audio qu'ils partagent (40 Mo).
+
+| Fichier | Rôle |
+|---|---|
+| `build.py` | fabrique les paquets dans `build/voices/` (ignoré par git), vérifie les graphes contre pocket et fait parler un échantillon par langue dans `build/voices/samples/` |
+| `wrappers.py` | les étapes de pocket réécrites pour l'export, chaque état en entrée et en sortie |
+| `reference.py` | parle avec un paquet comme les apps : la boucle que leurs moteurs suivent |
+| `textprep.py` | le texte tel que pocket le prépare, tokeniseur compris, sans pocket : ce que les apps recopient |
+| `golden.py`, `golden/` | des exemples écrits par pocket lui-même ; `test_textprep.py` et les tests des apps s'y comparent |
+| `tokenizers/` | le tokenizer.json de chaque langue (Kyutai, CC-BY-4.0) |
+
+```bash
+uv venv --python 3.12 voices/onnx/.venv && uv pip install --python voices/onnx/.venv/bin/python -r voices/onnx/requirements.txt
+voices/onnx/.venv/bin/python voices/onnx/build.py
+```
+
+Mesuré sur un Mac M4, un seul fil (20 octobre 2026) : un paquet en 10 à 15 s ; la voix 6 à 8 fois plus vite que le
+temps réel ; le graphe en 32 bits à 6e-6 de pocket, en 8 bits à 2 à 5 % sur une étape ; Whisper transcrit juste les
+quatre échantillons. Reste à mesurer sur un vrai iPhone et un Android de milieu de gamme.
+
+Crédit, livré dans le manifeste de chaque paquet : Pocket TTS de Kyutai (https://github.com/kyutai-labs/pocket-tts),
+poids sous CC-BY-4.0, convertis en ONNX et quantifiés en 8 bits. Les voix des Bips sont synthétiques (Qwen3-TTS,
+Apache-2.0, puis Pocket TTS). Les voix de Kyutai sous CC BY-NC ne sont jamais livrées.

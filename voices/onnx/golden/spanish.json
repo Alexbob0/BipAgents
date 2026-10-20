@@ -1,0 +1,1567 @@
+{
+ "language": "spanish",
+ "max_tokens": 50,
+ "cases": [
+  {
+   "text": "Bonjour",
+   "chunks": [
+    {
+     "text": "Bonjour.",
+     "ids": [
+      1947,
+      285,
+      615,
+      658,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 46
+    }
+   ]
+  },
+  {
+   "text": "ok",
+   "chunks": [
+    {
+     "text": "Ok.",
+     "ids": [
+      587,
+      111,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 38
+    }
+   ]
+  },
+  {
+   "text": "  deux  espaces  ",
+   "chunks": [
+    {
+     "text": "Deux espaces.",
+     "ids": [
+      428,
+      334,
+      972,
+      782,
+      274,
+      806,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 55
+    }
+   ]
+  },
+  {
+   "text": "Tab\tici et là",
+   "chunks": [
+    {
+     "text": "Tab ici et là.",
+     "ids": [
+      724,
+      274,
+      372,
+      260,
+      353,
+      407,
+      260,
+      1318,
+      260,
+      310,
+      199,
+      164,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 80
+    }
+   ]
+  },
+  {
+   "text": "ligne\nsuivante\r\nfin",
+   "chunks": [
+    {
+     "text": "Ligne suivante fin.",
+     "ids": [
+      1542,
+      364,
+      568,
+      276,
+      353,
+      646,
+      357,
+      498,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 63
+    }
+   ]
+  },
+  {
+   "text": "Il fait 3.5 degrés. Puis 18,5 demain.",
+   "chunks": [
+    {
+     "text": "Il fait 3.5 degrés. Puis 18,5 demain.",
+     "ids": [
+      860,
+      310,
+      766,
+      1470,
+      260,
+      55,
+      270,
+      57,
+      262,
+      364,
+      718,
+      263,
+      270,
+      2218,
+      458,
+      260,
+      53,
+      60,
+      261,
+      57,
+      262,
+      451,
+      798,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 125
+    }
+   ]
+  },
+  {
+   "text": "Version 2.0.1 sortie… enfin !",
+   "chunks": [
+    {
+     "text": "Version 2.0.1 sortie… enfin !",
+     "ids": [
+      1438,
+      286,
+      1234,
+      260,
+      54,
+      270,
+      52,
+      270,
+      53,
+      260,
+      1305,
+      393,
+      297,
+      230,
+      132,
+      170,
+      267,
+      559,
+      285,
+      260,
+      600
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 113
+    }
+   ]
+  },
+  {
+   "text": "9h30, 14h45 et 18h.",
+   "chunks": [
+    {
+     "text": "9h30, 14h45 et 18h.",
+     "ids": [
+      260,
+      61,
+      778,
+      55,
+      52,
+      261,
+      260,
+      53,
+      56,
+      778,
+      56,
+      57,
+      260,
+      1318,
+      260,
+      53,
+      60,
+      778,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 105
+    }
+   ]
+  },
+  {
+   "text": "Emoji 🎉 et 漢字 ici",
+   "chunks": [
+    {
+     "text": "Emoji 🎉 et 漢字 ici.",
+     "ids": [
+      609,
+      436,
+      1588,
+      260,
+      244,
+      163,
+      146,
+      141,
+      260,
+      1318,
+      260,
+      234,
+      192,
+      166,
+      233,
+      177,
+      155,
+      260,
+      353,
+      407,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 113
+    }
+   ]
+  },
+  {
+   "text": "Literal <s> and </s> tokens",
+   "chunks": [
+    {
+     "text": "Literal and tokens.",
+     "ids": [
+      1542,
+      730,
+      370,
+      260,
+      320,
+      340,
+      260,
+      325,
+      111,
+      360,
+      263,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 75
+    }
+   ]
+  },
+  {
+   "text": "a<0x41>b",
+   "chunks": [
+    {
+     "text": "AAb.",
+     "ids": [
+      327,
+      959,
+      372,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 42
+    }
+   ]
+  },
+  {
+   "text": "UPPER lower Mixed",
+   "chunks": [
+    {
+     "text": "UPPER lower Mixed.",
+     "ids": [
+      260,
+      1418,
+      2329,
+      2329,
+      3966,
+      290,
+      123,
+      366,
+      630,
+      972,
+      1433,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 75
+    }
+   ]
+  },
+  {
+   "text": "Fin sans point",
+   "chunks": [
+    {
+     "text": "Fin sans point.",
+     "ids": [
+      2379,
+      285,
+      1422,
+      263,
+      800,
+      798,
+      389,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 59
+    }
+   ]
+  },
+  {
+   "text": "Fin avec virgule,",
+   "chunks": [
+    {
+     "text": "Fin avec virgule.",
+     "ids": [
+      2379,
+      285,
+      1778,
+      348,
+      464,
+      286,
+      551,
+      321,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 63
+    }
+   ]
+  },
+  {
+   "text": "Fin avec deux-points :",
+   "chunks": [
+    {
+     "text": "Fin avec deux-points.",
+     "ids": [
+      2379,
+      285,
+      1778,
+      348,
+      262,
+      334,
+      972,
+      632,
+      685,
+      798,
+      389,
+      263,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 80
+    }
+   ]
+  },
+  {
+   "text": "Un tiret —",
+   "chunks": [
+    {
+     "text": "Un tiret.",
+     "ids": [
+      889,
+      1369,
+      1318,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 42
+    }
+   ]
+  },
+  {
+   "text": "« Guillemets » et \"doubles\"",
+   "chunks": [
+    {
+     "text": "Guillemets et doubles.",
+     "ids": [
+      1812,
+      936,
+      321,
+      345,
+      389,
+      263,
+      260,
+      1318,
+      260,
+      298,
+      334,
+      862,
+      263,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 84
+    }
+   ]
+  },
+  {
+   "text": "(parenthèses) et [crochets]",
+   "chunks": [
+    {
+     "text": "Parenthèses et crochets.",
+     "ids": [
+      2125,
+      360,
+      1311,
+      199,
+      172,
+      263,
+      284,
+      260,
+      1318,
+      343,
+      315,
+      847,
+      389,
+      263,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 88
+    }
+   ]
+  },
+  {
+   "text": "Point-virgule; ici; là",
+   "chunks": [
+    {
+     "text": "Point-virgule; ici; là.",
+     "ids": [
+      1646,
+      798,
+      389,
+      632,
+      473,
+      286,
+      551,
+      321,
+      283,
+      260,
+      353,
+      407,
+      283,
+      260,
+      310,
+      199,
+      164,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 100
+    }
+   ]
+  },
+  {
+   "text": "Question ? Réponse ! Suite...",
+   "chunks": [
+    {
+     "text": "Question ? Réponse ! Suite...",
+     "ids": [
+      894,
+      263,
+      393,
+      543,
+      260,
+      67,
+      260,
+      1112,
+      331,
+      685,
+      285,
+      311,
+      260,
+      600,
+      617,
+      353,
+      339,
+      270,
+      270,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 109
+    }
+   ]
+  },
+  {
+   "text": "e-mail: alex@example.com, site https://example.com/a?b=c",
+   "chunks": [
+    {
+     "text": "E-mail: alex@example. com, site https://example. com/a? b=c.",
+     "ids": [
+      609,
+      632,
+      451,
+      936,
+      305,
+      268,
+      321,
+      972,
+      68,
+      297,
+      972,
+      274,
+      865,
+      321,
+      270,
+      514,
+      261,
+      313,
+      339,
+      1293,
+      389,
+      389,
+      406,
+      263,
+      305,
+      51,
+      51,
+      297,
+      972,
+      274,
+      865,
+      321,
+      270,
+      514,
+      51,
+      274,
+      67,
+      1007,
+      65,
+      348,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 196
+    }
+   ]
+  },
+  {
+   "text": "¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde.",
+   "chunks": [
+    {
+     "text": "Holi! He mirado tu día: tres citas y un rato para caminar esta tarde.",
+     "ids": [
+      1878,
+      435,
+      600,
+      855,
+      1284,
+      295,
+      418,
+      470,
+      305,
+      569,
+      260,
+      1906,
+      263,
+      264,
+      280,
+      1446,
+      299,
+      1553,
+      293,
+      351,
+      898,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 117
+    }
+   ]
+  },
+  {
+   "text": "No olvides: el veterinario de Pixel es el jueves a las 17 h.",
+   "chunks": [
+    {
+     "text": "No olvides: el veterinario de Pixel es el jueves a las 17 h.",
+     "ids": [
+      395,
+      1133,
+      284,
+      305,
+      269,
+      666,
+      730,
+      819,
+      642,
+      262,
+      1983,
+      972,
+      624,
+      288,
+      269,
+      887,
+      297,
+      673,
+      263,
+      268,
+      282,
+      260,
+      53,
+      59,
+      1293,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 134
+    }
+   ]
+  },
+  {
+   "text": "¿Cuánto cuesta? 12,50 €.",
+   "chunks": [
+    {
+     "text": "Cuánto cuesta? 12,50 €.",
+     "ids": [
+      1407,
+      497,
+      325,
+      260,
+      3829,
+      67,
+      260,
+      53,
+      54,
+      261,
+      57,
+      52,
+      260,
+      230,
+      134,
+      176,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 96
+    }
+   ]
+  },
+  {
+   "text": "sí",
+   "chunks": [
+    {
+     "text": "Sí.",
+     "ids": [
+      869,
+      382,
+      270
+     ],
+     "frames_after_eos": 5,
+     "max_gen_len": 38
+    }
+   ]
+  },
+  {
+   "text": "¡Vale! Me encargo. ¡Hasta luego!",
+   "chunks": [
+    {
+     "text": "Vale! Me encargo. Hasta luego!",
+     "ids": [
+      2009,
+      297,
+      600,
+      687,
+      260,
+      2222,
+      277,
+      270,
+      2943,
+      638,
+      600
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 71
+    }
+   ]
+  },
+  {
+   "text": "Mañana por la mañana tienes tres citas: la primera a las nueve y media con el equipo de producto, la segunda a las once en el dentista y la tercera por vídeo a las tres, luego el pronóstico anuncia dieciocho grados, algo de lluvia a última hora de la tarde, un viento suave del oeste y claros por la noche, así que no olvides el paraguas y carga tu bici antes de salir.",
+   "chunks": [
+    {
+     "text": "Mañana por la mañana tienes tres citas: la primera a las nueve y media con el equipo de producto.",
+     "ids": [
+      784,
+      516,
+      326,
+      278,
+      266,
+      260,
+      863,
+      595,
+      263,
+      569,
+      260,
+      1906,
+      263,
+      305,
+      266,
+      544,
+      292,
+      268,
+      282,
+      2971,
+      264,
+      973,
+      271,
+      269,
+      421,
+      555,
+      685,
+      262,
+      409,
+      3082,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 155
+    },
+    {
+     "text": "La segunda a las once en el dentista y la tercera por vídeo a las tres, luego el pronóstico anuncia dieciocho grados.",
+     "ids": [
+      383,
+      988,
+      317,
+      268,
+      282,
+      3708,
+      267,
+      269,
+      262,
+      285,
+      389,
+      1277,
+      264,
+      266,
+      1985,
+      292,
+      278,
+      260,
+      1530,
+      423,
+      277,
+      268,
+      282,
+      569,
+      261,
+      638,
+      269,
+      409,
+      285,
+      300,
+      263,
+      1373,
+      268,
+      1956,
+      397,
+      297,
+      809,
+      618,
+      2613,
+      263,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 196
+    },
+    {
+     "text": "Algo de lluvia a última hora de la tarde, un viento suave del oeste y claros por la noche, así que no olvides el paraguas y carga tu bici antes de salir.",
+     "ids": [
+      519,
+      365,
+      262,
+      260,
+      2855,
+      268,
+      260,
+      1632,
+      901,
+      262,
+      266,
+      898,
+      261,
+      280,
+      260,
+      1190,
+      2263,
+      281,
+      329,
+      284,
+      339,
+      264,
+      1978,
+      263,
+      278,
+      266,
+      488,
+      261,
+      469,
+      265,
+      275,
+      1133,
+      284,
+      269,
+      299,
+      1598,
+      263,
+      264,
+      1459,
+      418,
+      260,
+      536,
+      407,
+      589,
+      262,
+      993,
+      270
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 221
+    }
+   ]
+  }
+ ],
+ "tokens": [
+  {
+   "text": "Bonjour",
+   "ids": [
+    1947,
+    285,
+    615,
+    658
+   ],
+   "decoded": "Bonjour"
+  },
+  {
+   "text": "ok",
+   "ids": [
+    329,
+    111
+   ],
+   "decoded": "ok"
+  },
+  {
+   "text": "  deux  espaces  ",
+   "ids": [
+    260,
+    260,
+    262,
+    334,
+    972,
+    260,
+    782,
+    274,
+    806,
+    260,
+    260
+   ],
+   "decoded": "  deux  espaces  "
+  },
+  {
+   "text": "Tab\tici et là",
+   "ids": [
+    724,
+    274,
+    372,
+    13,
+    353,
+    407,
+    260,
+    1318,
+    198,
+    164,
+    310,
+    199,
+    164
+   ],
+   "decoded": "Tab\tici et là"
+  },
+  {
+   "text": "ligne\nsuivante\r\nfin",
+   "ids": [
+    1135,
+    364,
+    568,
+    14,
+    263,
+    334,
+    353,
+    646,
+    357,
+    17,
+    14,
+    559,
+    285
+   ],
+   "decoded": "ligne\nsuivante\r\nfin"
+  },
+  {
+   "text": "Il fait 3.5 degrés. Puis 18,5 demain.",
+   "ids": [
+    860,
+    310,
+    766,
+    1470,
+    260,
+    55,
+    270,
+    57,
+    262,
+    364,
+    718,
+    263,
+    270,
+    2218,
+    458,
+    260,
+    53,
+    60,
+    261,
+    57,
+    262,
+    451,
+    798,
+    270
+   ],
+   "decoded": "Il fait 3.5 degrés. Puis 18,5 demain."
+  },
+  {
+   "text": "Version 2.0.1 sortie… enfin !",
+   "ids": [
+    1438,
+    286,
+    1234,
+    260,
+    54,
+    270,
+    52,
+    270,
+    53,
+    260,
+    1305,
+    393,
+    297,
+    230,
+    132,
+    170,
+    267,
+    559,
+    285,
+    260,
+    600
+   ],
+   "decoded": "Version 2.0.1 sortie… enfin !"
+  },
+  {
+   "text": "9h30, 14h45 et 18h.",
+   "ids": [
+    260,
+    61,
+    778,
+    55,
+    52,
+    261,
+    260,
+    53,
+    56,
+    778,
+    56,
+    57,
+    260,
+    1318,
+    260,
+    53,
+    60,
+    778,
+    270
+   ],
+   "decoded": "9h30, 14h45 et 18h."
+  },
+  {
+   "text": "Emoji 🎉 et 漢字 ici",
+   "ids": [
+    609,
+    436,
+    1588,
+    260,
+    244,
+    163,
+    146,
+    141,
+    260,
+    1318,
+    260,
+    234,
+    192,
+    166,
+    233,
+    177,
+    155,
+    260,
+    353,
+    407
+   ],
+   "decoded": "Emoji 🎉 et 漢字 ici"
+  },
+  {
+   "text": "Literal <s> and </s> tokens",
+   "ids": [
+    1542,
+    730,
+    370,
+    260,
+    1,
+    260,
+    260,
+    320,
+    340,
+    260,
+    2,
+    260,
+    260,
+    325,
+    111,
+    360,
+    263
+   ],
+   "decoded": "Literal   and   tokens"
+  },
+  {
+   "text": "a<0x41>b",
+   "ids": [
+    268,
+    69,
+    372
+   ],
+   "decoded": "aAb"
+  },
+  {
+   "text": "UPPER lower Mixed",
+   "ids": [
+    260,
+    1418,
+    2329,
+    2329,
+    3966,
+    290,
+    123,
+    366,
+    630,
+    972,
+    1433
+   ],
+   "decoded": "UPPER lower Mixed"
+  },
+  {
+   "text": "Fin sans point",
+   "ids": [
+    2379,
+    285,
+    1422,
+    263,
+    800,
+    798,
+    389
+   ],
+   "decoded": "Fin sans point"
+  },
+  {
+   "text": "Fin avec virgule,",
+   "ids": [
+    2379,
+    285,
+    1778,
+    348,
+    464,
+    286,
+    551,
+    321,
+    261
+   ],
+   "decoded": "Fin avec virgule,"
+  },
+  {
+   "text": "Fin avec deux-points :",
+   "ids": [
+    2379,
+    285,
+    1778,
+    348,
+    262,
+    334,
+    972,
+    632,
+    685,
+    798,
+    389,
+    263,
+    260,
+    305
+   ],
+   "decoded": "Fin avec deux-points :"
+  },
+  {
+   "text": "Un tiret —",
+   "ids": [
+    889,
+    1369,
+    1318,
+    522
+   ],
+   "decoded": "Un tiret —"
+  },
+  {
+   "text": "« Guillemets » et \"doubles\"",
+   "ids": [
+    260,
+    198,
+    175,
+    1812,
+    936,
+    321,
+    345,
+    389,
+    263,
+    260,
+    198,
+    191,
+    260,
+    1318,
+    260,
+    38,
+    298,
+    334,
+    862,
+    263,
+    38
+   ],
+   "decoded": "« Guillemets » et \"doubles\""
+  },
+  {
+   "text": "(parenthèses) et [crochets]",
+   "ids": [
+    260,
+    44,
+    3944,
+    778,
+    199,
+    172,
+    263,
+    284,
+    45,
+    260,
+    1318,
+    260,
+    95,
+    348,
+    315,
+    847,
+    389,
+    263,
+    97
+   ],
+   "decoded": "(parenthèses) et [crochets]"
+  },
+  {
+   "text": "Point-virgule; ici; là",
+   "ids": [
+    1646,
+    798,
+    389,
+    632,
+    473,
+    286,
+    551,
+    321,
+    283,
+    260,
+    353,
+    407,
+    283,
+    260,
+    310,
+    199,
+    164
+   ],
+   "decoded": "Point-virgule; ici; là"
+  },
+  {
+   "text": "Question ? Réponse ! Suite...",
+   "ids": [
+    894,
+    263,
+    393,
+    543,
+    260,
+    67,
+    260,
+    1112,
+    331,
+    685,
+    285,
+    311,
+    260,
+    600,
+    617,
+    353,
+    339,
+    270,
+    270,
+    270
+   ],
+   "decoded": "Question ? Réponse ! Suite..."
+  },
+  {
+   "text": "e-mail: alex@example.com, site https://example.com/a?b=c",
+   "ids": [
+    421,
+    632,
+    451,
+    936,
+    305,
+    268,
+    321,
+    972,
+    68,
+    297,
+    972,
+    274,
+    865,
+    321,
+    270,
+    431,
+    352,
+    261,
+    313,
+    339,
+    1293,
+    389,
+    389,
+    406,
+    263,
+    305,
+    51,
+    51,
+    297,
+    972,
+    274,
+    865,
+    321,
+    270,
+    431,
+    352,
+    51,
+    274,
+    67,
+    372,
+    65,
+    348
+   ],
+   "decoded": "e-mail: alex@example.com, site https://example.com/a?b=c"
+  },
+  {
+   "text": "¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde.",
+   "ids": [
+    260,
+    198,
+    165,
+    3137,
+    277,
+    435,
+    600,
+    855,
+    1284,
+    295,
+    418,
+    470,
+    305,
+    569,
+    260,
+    1906,
+    263,
+    264,
+    280,
+    1446,
+    299,
+    1553,
+    293,
+    351,
+    898,
+    270
+   ],
+   "decoded": "¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde."
+  },
+  {
+   "text": "No olvides: el veterinario de Pixel es el jueves a las 17 h.",
+   "ids": [
+    395,
+    1133,
+    284,
+    305,
+    269,
+    666,
+    730,
+    819,
+    642,
+    262,
+    1983,
+    972,
+    624,
+    288,
+    269,
+    887,
+    297,
+    673,
+    263,
+    268,
+    282,
+    260,
+    53,
+    59,
+    1293,
+    270
+   ],
+   "decoded": "No olvides: el veterinario de Pixel es el jueves a las 17 h."
+  },
+  {
+   "text": "¿Cuánto cuesta? 12,50 €.",
+   "ids": [
+    260,
+    198,
+    195,
+    1794,
+    334,
+    497,
+    325,
+    260,
+    3829,
+    67,
+    260,
+    53,
+    54,
+    261,
+    57,
+    52,
+    260,
+    230,
+    134,
+    176,
+    270
+   ],
+   "decoded": "¿Cuánto cuesta? 12,50 €."
+  },
+  {
+   "text": "sí",
+   "ids": [
+    607
+   ],
+   "decoded": "sí"
+  },
+  {
+   "text": "¡Vale! Me encargo. ¡Hasta luego!",
+   "ids": [
+    260,
+    198,
+    165,
+    2270,
+    274,
+    321,
+    600,
+    687,
+    260,
+    2222,
+    277,
+    270,
+    260,
+    198,
+    165,
+    3137,
+    314,
+    316,
+    638,
+    600
+   ],
+   "decoded": "¡Vale! Me encargo. ¡Hasta luego!"
+  },
+  {
+   "text": "Mañana por la mañana tienes tres citas: la primera a las nueve y media con el equipo de producto, la segunda a las once en el dentista y la tercera por vídeo a las tres, luego el pronóstico anuncia dieciocho grados, algo de lluvia a última hora de la tarde, un viento suave del oeste y claros por la noche, así que no olvides el paraguas y carga tu bici antes de salir.",
+   "ids": [
+    784,
+    516,
+    326,
+    278,
+    266,
+    260,
+    863,
+    595,
+    263,
+    569,
+    260,
+    1906,
+    263,
+    305,
+    266,
+    544,
+    292,
+    268,
+    282,
+    2971,
+    264,
+    973,
+    271,
+    269,
+    421,
+    555,
+    685,
+    262,
+    409,
+    3082,
+    261,
+    266,
+    988,
+    317,
+    268,
+    282,
+    3708,
+    267,
+    269,
+    262,
+    285,
+    389,
+    1277,
+    264,
+    266,
+    1985,
+    292,
+    278,
+    260,
+    1530,
+    423,
+    277,
+    268,
+    282,
+    569,
+    261,
+    638,
+    269,
+    409,
+    285,
+    300,
+    263,
+    1373,
+    268,
+    1956,
+    397,
+    297,
+    809,
+    618,
+    2613,
+    263,
+    261,
+    740,
+    262,
+    260,
+    2855,
+    268,
+    260,
+    1632,
+    901,
+    262,
+    266,
+    898,
+    261,
+    280,
+    260,
+    1190,
+    2263,
+    281,
+    329,
+    284,
+    339,
+    264,
+    1978,
+    263,
+    278,
+    266,
+    488,
+    261,
+    469,
+    265,
+    275,
+    1133,
+    284,
+    269,
+    299,
+    1598,
+    263,
+    264,
+    1459,
+    418,
+    260,
+    536,
+    407,
+    589,
+    262,
+    993,
+    270
+   ],
+   "decoded": "Mañana por la mañana tienes tres citas: la primera a las nueve y media con el equipo de producto, la segunda a las once en el dentista y la tercera por vídeo a las tres, luego el pronóstico anuncia dieciocho grados, algo de lluvia a última hora de la tarde, un viento suave del oeste y claros por la noche, así que no olvides el paraguas y carga tu bici antes de salir."
+  },
+  {
+   "text": null,
+   "ids": [
+    1,
+    260,
+    260
+   ],
+   "decoded": " "
+  },
+  {
+   "text": null,
+   "ids": [
+    4,
+    260,
+    69
+   ],
+   "decoded": "\u0000 A"
+  },
+  {
+   "text": null,
+   "ids": [
+    0,
+    2,
+    3,
+    300
+   ],
+   "decoded": "ó"
+  },
+  {
+   "text": null,
+   "ids": [
+    234,
+    192
+   ],
+   "decoded": "��"
+  },
+  {
+   "text": null,
+   "ids": [
+    234,
+    192,
+    166,
+    260
+   ],
+   "decoded": "漢 "
+  }
+ ]
+}
