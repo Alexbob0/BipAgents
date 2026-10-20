@@ -10,15 +10,17 @@ Estas condiciones regulan el uso de la aplicación **BipAgents** para iPhone, iP
 Kerfy Studio. **Aceptas estas condiciones al confirmar la pantalla de la primera apertura** (botón «Acepto»), que
 resume lo esencial (tus agentes son IA, actúan con tu acuerdo, adónde van tus datos, cómo denunciar una respuesta) y
 da acceso a su texto completo y a la política de privacidad. Con «Solo la demo», solo pruebas la demo integrada
-(sección 12), sin conectar ningún agente. Estas condiciones, la política de privacidad y el aviso legal siguen
-disponibles en Ajustes › Acerca de.
+(sección 12), sin conectar ningún agente. Si contratas la oferta todo incluido, se aplican además sus
+[condiciones generales de venta](offer.es.md) y su [política de uso aceptable](acceptable-use.es.md). Estos textos, la
+política de privacidad y el aviso legal siguen disponibles en Ajustes › Acerca de.
 
 ## 2. Editor
 
 **Kerfy Studio**, SAS (sociedad por acciones simplificada francesa) con un capital de [capital] €, domicilio social:
 [dirección del domicilio social], inscrita en el RCS de [ciudad del registro] con el número [SIREN], teléfono:
 [número de teléfono], director de la publicación: [Nombre Apellido], presidente. Contacto:
-**support@kerfystudio.com**. Consulta también el [aviso legal](mentions-legales.fr.md) (en francés).
+**support@kerfystudio.com**; denuncia de abusos: **abuse@kerfystudio.com**. Consulta también el
+[aviso legal](mentions-legales.fr.md) (en francés).
 
 ## 3. Qué hace BipAgents
 
@@ -29,12 +31,17 @@ disponibles en Ajustes › Acerca de.
   Studio no responde de Hermes Agent en sí, solo de las modificaciones que le aplica el instalador de BipAgents.
   BipAgents es una aplicación independiente: no está editada, aprobada ni patrocinada por Nous Research, y no tiene
   ningún vínculo con los titulares de marcas homónimas.
-- Tus agentes funcionan **en tu ordenador o tu servidor**, que instalas y gestionas tú mismo, y usan el **modelo de IA
-  que has elegido** (una API en la nube o un modelo local). La app se conecta a ellos a través de Tailscale o de tu
-  red local.
-- **Kerfy Studio no aloja tus agentes, no proporciona el modelo de IA y no tiene acceso a tus conversaciones.** Su
-  papel se limita a publicar la app y a hacer funcionar un relé hacia Apple y Google para las notificaciones (consulta
-  la sección 13 y la [política de privacidad](privacy.es.md)).
+- Tus agentes funcionan de una de estas dos formas:
+  - **en tu ordenador o tu servidor**, que instalas y gestionas tú mismo, con el **modelo de IA que has elegido** (una
+    API en la nube o un modelo local); la app se conecta a ellos a través de Tailscale o de tu red local;
+  - con la **oferta todo incluido**, de pago, en **tu plaza**, una cuenta en un servidor que Kerfy Studio alquila a un
+    proveedor de alojamiento socio, con crédito de IA incluido; se rige por sus
+    [condiciones generales de venta](offer.es.md).
+- **Con tu propio servidor, Kerfy Studio no aloja tus agentes, no proporciona el modelo de IA y no tiene acceso a tus
+  conversaciones.** Su papel se limita entonces a publicar la app y a hacer funcionar un relé hacia Apple y Google para
+  las notificaciones (consulta la sección 13 y la [política de privacidad](privacy.es.md)). **Con la oferta todo
+  incluido**, Kerfy Studio aloja tu plaza y te da acceso al modelo de IA, sin acceder al contenido de tu plaza
+  (condiciones de la oferta, sección 9).
 
 ## 4. Edad mínima
 
@@ -42,13 +49,18 @@ Para usar BipAgents, debes tener **al menos 16 años**. Entre los 16 y los 18 a�
 padres, y la edad mínima fijada por tu proveedor de modelos se aplica a ti. Un menor de 16 años solo puede usar la
 app en una instalación preparada y supervisada por uno de los padres o un adulto a cargo del menor (función familia):
 ese adulto acepta estas condiciones por el menor y sigue siendo responsable de su uso. Esta edad sigue la
-clasificación de la app en el App Store (16+), debida al acceso libre a la web de la vista Escritorio.
+clasificación de la app en el App Store (16+), debida al acceso libre a la web de la vista Escritorio. Para la oferta
+todo incluido, consulta también sus condiciones (sección 7).
 
-## 5. Gratuidad
+## 5. Precio
 
-La app es **gratuita**, sin compras integradas ni publicidad. Lo que necesitas para usarla corre de tu cuenta: tu
-ordenador o tu servidor, su alojamiento, tu proveedor de modelos, tu acceso a Internet y, en su caso, tu cuenta de
-Tailscale. Si algún día Kerfy Studio ofrece servicios de pago, tendrán información y condiciones propias.
+La app es **gratuita** para descargarla y usarla con tu propio ordenador o servidor, sin publicidad. Lo que necesitas
+entonces para usarla corre de tu cuenta: tu ordenador o tu servidor, su alojamiento, tu proveedor de modelos, tu acceso
+a Internet y, en su caso, tu cuenta de Tailscale.
+
+Kerfy Studio ofrece también una **oferta de pago**, la oferta todo incluido (planes Solo, Duo y Familia, y crédito de
+IA adicional), que se vende por suscripción en la app, en el App Store y en Google Play. Sus precios y sus reglas están
+en sus [condiciones generales de venta](offer.es.md).
 
 **Enlaces de socios (más adelante).** Si algún día la app o el sitio kerfystudio.com proponen proveedores de
 alojamiento mediante enlaces de socios, estos enlaces se señalarán con la mención «Enlace de socio»: si contratas,
@@ -77,7 +89,7 @@ anunciará como se prevé en la sección 19.
 
 ## 7. Tu servidor, tu modelo, tus cuentas
 
-Eres responsable:
+Si usas tu propio ordenador o servidor, eres responsable:
 
 - de la instalación, la seguridad, las actualizaciones y las **copias de seguridad** de tu servidor, y de la elección
   de su proveedor de alojamiento;
@@ -88,6 +100,11 @@ Eres responsable:
 - si administras un servidor para otras personas (función familia), de las instalaciones que creas para ellas: diles
   lo que puedes ver o hacer en el servidor, no leas sus conversaciones sin su acuerdo y, para un menor, adapta los
   agentes, sus accesos (correo, navegación, compras) y el modelo a su edad.
+
+Con la oferta todo incluido, Kerfy Studio se ocupa del servidor, de sus actualizaciones y de las copias de seguridad
+de tu plaza; sigues siendo responsable de tus dispositivos, de tu código de recuperación, del respeto de las
+condiciones de los servicios que conectas a tus agentes y de lo que haces por SSH
+([condiciones de la oferta](offer.es.md)).
 
 ## 8. Lo que la IA puede y no puede hacer
 
@@ -142,6 +159,9 @@ Eres responsable de lo que pides a tus agentes y de lo que hacen con tu acuerdo.
 profesional, se te aplican las obligaciones del «responsable del despliegue» previstas por el reglamento europeo de
 IA, en particular para las ultrasuplantaciones.
 
+Con la oferta todo incluido, la [política de uso aceptable](acceptable-use.es.md) precisa estas reglas para tu plaza
+(spam, ataques, minería de criptomonedas, reventa…) y dice cómo denunciar un abuso: **abuse@kerfystudio.com**.
+
 ## 11. Denunciar un contenido
 
 - En la app: **mantén pulsada una respuesta › Denunciar esta respuesta**. La denuncia sale desde la app, a través del
@@ -149,9 +169,9 @@ IA, en particular para las ultrasuplantaciones.
   enviarla por correo. Díselo también a tu agente para que no vuelva a hacerlo.
 - O escribe a **support@kerfystudio.com**.
 
-Las respuestas de tus agentes se producen en tu servidor con el modelo que has elegido: Kerfy Studio no las aloja y no
-puede borrarlas. Las denuncias nos sirven para mejorar la app, sus ajustes por defecto y su documentación, y para
-avisar a los proyectos afectados cuando es útil.
+Las respuestas de tus agentes se producen en tu servidor, o en tu plaza con la oferta todo incluido, con el modelo
+elegido: Kerfy Studio no las lee y no interviene en ellas. Las denuncias nos sirven para mejorar la app, sus ajustes por
+defecto y su documentación, y para avisar a los proyectos afectados cuando es útil.
 
 ## 12. La demo
 
@@ -174,7 +194,8 @@ app (sección 11).
   contacto.
 - **Puntos de contacto** (artículos 11 y 12 del reglamento): para las autoridades y para los usuarios,
   **support@kerfystudio.com** o por correo postal a Kerfy Studio, [dirección del domicilio social]. Idiomas: francés,
-  inglés.
+  inglés. Para denunciar un abuso que sale de un servidor de la oferta todo incluido: **abuse@kerfystudio.com**
+  ([política de uso aceptable](acceptable-use.es.md)).
 
 El relé se ofrece **lo mejor posible**. Depende de Apple y de Google y puede interrumpirse, en particular por
 mantenimiento o en caso de abuso. No cuentes con una notificación para una alerta vital.
@@ -186,19 +207,22 @@ técnicos, de seguridad o de compatibilidad, sin coste para ti. Si una evolució
 Kerfy Studio deja de distribuir la app o de hacer funcionar el relé, se te informa en la app al menos 30 días antes,
 salvo urgencia de seguridad, decisión de Apple o de Google u obligación legal. La compatibilidad se comprueba con la
 versión de Hermes Agent probada por el instalador de BipAgents. El código fuente sigue disponible con licencia MIT.
+Para la oferta todo incluido, consulta también sus condiciones (secciones 11 y 13).
 
 ## 15. Tus contenidos
 
 Tus mensajes, archivos y grabaciones te pertenecen. Kerfy Studio no reivindica ningún derecho sobre ellos y no los
-recibe, salvo lo que decidas enviarnos (correo al soporte, denuncia).
+recibe, salvo lo que decidas enviarnos (correo al soporte, denuncia). Con la oferta todo incluido, están en tu plaza,
+que Kerfy Studio aloja sin acceder a ella.
 
 ## 16. Garantía
 
-La app es gratuita. Kerfy Studio se esfuerza por mantenerla en funcionamiento, sin garantizar que funcionará sin
+La app en sí es gratuita. Kerfy Studio se esfuerza por mantenerla en funcionamiento, sin garantizar que funcionará sin
 interrupciones ni errores, que será compatible con cualquier configuración de servidor o cualquier modelo, ni que las
 respuestas de los agentes serán exactas: las produce el modelo que has elegido. Conservas los derechos que la ley te
 concede como consumidor, en particular, si se aplican, los de la garantía legal de conformidad de los contenidos y
-servicios digitales (artículos L224-25-12 y siguientes del Código de Consumo francés).
+servicios digitales (artículos L224-25-12 y siguientes del Código de Consumo francés). La garantía de la oferta todo
+incluido se describe en sus condiciones (sección 13).
 
 ## 17. Responsabilidad
 
@@ -208,15 +232,20 @@ común. No responde de lo que no depende de él, en particular:
 - de los contenidos producidos por el modelo de IA que has elegido;
 - de las acciones de tus agentes que has aprobado o que tu configuración de Hermes Agent autoriza, salvo si se deben a
   un defecto de la app;
-- de tu servidor, de su proveedor de alojamiento, de tu proveedor de modelos, de Tailscale, de Apple, de Google o de
-  los servicios conectados a tus agentes;
+- si usas tu propio servidor, de ese servidor, de su proveedor de alojamiento, de tu proveedor de modelos y de
+  Tailscale;
+- de Apple, de Google o de los servicios conectados a tus agentes;
 - de la pérdida de datos en tu servidor o tu teléfono que no se deba a un defecto de la app.
+
+Para la oferta todo incluido, la responsabilidad de Kerfy Studio se describe en sus condiciones (sección 14).
 
 ## 18. Duración y fin
 
 Estas condiciones se aplican mientras uses la app. Puedes ponerles fin en cualquier momento, retirando tu aceptación
 en Ajustes o desinstalando la app. Kerfy Studio puede rechazar en el relé las notificaciones de un dispositivo o de un
-servidor que no respete la sección 10; salvo urgencia, te informa de ello y puedes impugnarlo (sección 13).
+servidor que no respete la sección 10; salvo urgencia, te informa de ello y puedes impugnarlo (sección 13). Retirar
+tu aceptación o desinstalar la app no cancela una suscripción a la oferta todo incluido: se cancela en la tienda
+([condiciones de la oferta](offer.es.md), sección 11).
 
 ## 19. Cambios
 
@@ -232,9 +261,11 @@ conservas además la protección de las normas imperativas de ese país. En caso
 support@kerfystudio.com para buscar una solución amistosa. Si eres consumidor, puedes acudir, a tu elección, al
 tribunal de tu lugar de residencia o al del domicilio social de Kerfy Studio (en Francia, también al del lugar donde
 vivías al aceptar estas condiciones o cuando se produjo el hecho dañoso); Kerfy Studio solo puede actuar contra ti
-ante el tribunal de tu lugar de residencia. Como la app es gratuita, la mediación de consumo de los artículos L611-1 y
-siguientes del Código de Consumo francés, reservada a los contratos celebrados a cambio de un precio, no se aplica.
+ante el tribunal de tu lugar de residencia. Para el uso gratuito de la app, la mediación de consumo de los artículos
+L611-1 y siguientes del Código de Consumo francés, reservada a los contratos celebrados a cambio de un precio, no se
+aplica; para la oferta todo incluido, sus condiciones indican el mediador de consumo (sección 16).
 
 ## 21. Contacto
 
-Kerfy Studio — [dirección del domicilio social] — [número de teléfono] — **support@kerfystudio.com**
+Kerfy Studio — [dirección del domicilio social] — [número de teléfono] — **support@kerfystudio.com** — abusos:
+**abuse@kerfystudio.com**

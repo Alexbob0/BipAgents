@@ -6,15 +6,19 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 ## In short
 
-- BipAgents connects your phone to **your own AI agents**, which run on your computer or server with Hermes Agent.
-  Your conversations, files, voice and your agents' memory stay on your server and with the AI model provider **you**
-  chose. **Kerfy Studio, the app's publisher, does not see them.**
-- No account, no ads, no usage analytics, no tracking.
-- Kerfy Studio can receive only three things:
+- BipAgents connects your phone to **your own AI agents**, built on Hermes Agent. They run either **on your computer
+  or server**, or, with the **all-included offer**, on **your place**, an account on a server that Kerfy Studio rents
+  from a hosting partner. Your conversations, files, voice and your agents' memory stay on that server and with the AI
+  model provider that answers them. **Kerfy Studio, the app's publisher, does not read them.**
+- No ads, no usage analytics, no tracking. No account with your own server; an account for the all-included offer.
+- With your own server, Kerfy Studio can receive only three things:
   1. what it takes to deliver your **notifications** through its relay: a sealed device token, never the text of your
      messages;
   2. what you choose to send us: an **email** to support, or a **report** of a reply from the app;
   3. **crash reports**, only if you turned on sharing them in your phone's settings.
+- With the all-included offer, Kerfy Studio also processes your account, the state of your subscription, technical
+  data about your place (never its content) and your backups, encrypted with a key it does not have; it hosts your
+  place without accessing it (section 5).
 
 ## 1. Who is responsible
 
@@ -26,10 +30,13 @@ Kerfy Studio has not appointed a data protection officer: its activity does not 
 any question about your data: support@kerfystudio.com.
 
 Kerfy Studio is the controller of the processing the app performs in order to work, as Kerfy Studio designed it
-(sections 3, 4 and 6), even when it stays on your phone and Kerfy Studio has no access to it. It is neither the
-controller nor a processor of the data handled by your server, your agents and your model provider (section 2).
+(sections 3, 4 and 7), even when it stays on your phone and Kerfy Studio has no access to it, and of the processing of
+the all-included offer (section 5). When you use your own server, it is neither the controller nor a processor of the
+data handled by that server, your agents and your model provider (section 2).
 
 ## 2. How BipAgents works, and who sees what
+
+With your own computer or your own server:
 
 | Where | What is there | Who decides |
 |---|---|---|
@@ -52,6 +59,9 @@ controller nor a processor of the data handled by your server, your agents and y
   them, under their own rules.
 - **Several people on one server** (the family feature): each person has their own install, separate from the
   others. Whoever administers the server is responsible towards the others.
+
+**With the all-included offer**, your place takes the place of your server, and Kerfy Studio chooses the hosting
+provider and the AI router: section 5 says who sees what.
 
 ## 3. What the app keeps on your phone
 
@@ -106,7 +116,8 @@ everything.
   (any other text is replaced) and **technical identifiers** (agent, conversation, task, notification type).
   **Never the text of your messages**: the app fetches it from your server itself.
 
-**What is kept.** The relay has no database. The sealed token is kept on your phone and on your server, not with us.
+**What is kept.** The relay has no database. The sealed token is kept on your phone and on your server; with the
+all-included offer, Kerfy Studio's guichet keeps it too, still sealed (section 5.6).
 The relay's technical logs contain the platform, a 4-byte fingerprint of the token and Apple's or Google's answer;
 they are kept for **6 months at most**. The relay's hosting provider may log the IP addresses of requests: [what the
 relay's hosting provider logs, and for how long].
@@ -170,14 +181,172 @@ collect them under their own responsibility.
 Apple and Google give Kerfy Studio statistics about the app (downloads, countries, versions). Apple and Google produce
 them under their own responsibility and give them to us aggregated: they do not let us identify you.
 
-## 5. What Kerfy Studio does not do
+## 5. The all-included offer
 
-- No account, no ads, no analytics tool, no tracking across apps or websites.
+This section is about people who use the all-included offer ([terms of the offer](offer.en.md)): a place on a server
+that Kerfy Studio rents from a hosting partner, an AI credit, backups and an account. The rest of this policy also
+applies (the app on your phone, notifications, support). Kerfy Studio's service that manages accounts,
+subscriptions and places is called the guichet.
+
+### 5.1 Who is responsible for what
+
+- **Kerfy Studio is the controller** of the processing the offer requires: your account, the state of your
+  subscription, the hosting of your place, sending your messages to the AI model, the backups, technical monitoring
+  and handling abuse.
+- **The content of your place** (your agents, your conversations, your files, their memory, their routines, the
+  password vault): you decide what you put there. Kerfy Studio hosts it and has it processed by the AI model only to
+  provide you with the service (GDPR article 6(1)(b)), **without accessing it**: its software does not read it
+  (the only orders a server carries out are to reinstall a place, update it to a published version of BipAgents' open source code, or reopen it, and none of them reads its content). Access to Kerfy Studio's accounts at the hosting providers is restricted to the company. The content of a
+  place would only be accessed to meet a legal obligation (a court order, for instance), and you would be told when
+  the law allows it. Like any hosting provider, OVHcloud and Hetzner have physical access to their servers. If you put
+  sensitive data there (your health, for instance), it is only processed to carry out what you ask your agents to do.
+- **Apple and Google** are responsible for their own processing when you sign in with them and when you pay in their
+  store.
+- **Your agents are AIs and say so**: the "AI" badge, a notice at the start of each Live session, a mention in
+  notifications and in the messages they send to other people (Regulation (EU) 2024/1689, article 50).
+
+### 5.2 Your account
+
+**Data.** The identifier Apple or Google gives you and your email address (with Apple, it may be a relay address); or,
+with an email address, the one-time codes sent to you and the public key of your passkey. The list of your approved
+devices and their notification tokens, sealed by the relay (section 4.1): Kerfy Studio never sees them in clear. The
+invitations you send (the invited person's email address and their status). A recovery request in progress. The copy
+of your backup key, encrypted with your recovery code, which Kerfy Studio cannot read. Not your name, not your photo,
+never the keys to your place.
+
+**Purposes.** Signing you in, linking your subscription and your places, approving your devices, recovering your
+account, sending you sign-in codes and security notices (new device, recovery in progress), handling invitations. No
+promotional email.
+**Legal basis.** Performance of the contract (GDPR article 6(1)(b)).
+**Retention.** As long as your account exists. When you delete it (at the end of the paid period if a subscription is
+running), this data is erased, except what the law requires us to keep: as a hosting provider, Kerfy Studio keeps
+apart, and only to answer judicial authorities, your email address for 5 years and your account identifier for 1 year
+after the end of the contract (French law on confidence in the digital economy, article 6, II; decree no. 2021-1362,
+articles 2, 3 and 8). One-time codes: as long as they are valid. Invitations: [to be completed: how long an invitation
+that was not accepted is kept].
+**Deleting your account.** In the app, [to be completed: path in the app], or at [to be completed: address of the web
+deletion page] if you no longer have the app.
+
+### 5.3 Your subscription, your purchases and the free week
+
+**Data received from the stores.** Through Apple's notifications (App Store Server Notifications) and Google's (Google
+Play real-time notifications): the identifier of your subscription at the store, the plan, the region, its state (free
+week, active, suspended, ended, refunded), the end of the paid period, whether the renewal is turned off, and for the
+AI credit you buy, the identifier of each purchase and its amount. **Never your payment details**, which only the
+store knows.
+
+**AI credit used.** The amount each place's AI key spent in the month, read from the AI router once a minute at most,
+and the credit carried over: an amount, never your messages.
+
+**Only one free week per device.**
+
+- **On iPhone**, the app uses Apple's DeviceCheck: Apple keeps two bits per device for Kerfy Studio ("already had a
+  free week"). Kerfy Studio receives no identifier of the device: the app gives it a single-use token that it passes
+  on to Apple.
+- **On Android**, the app sends a Google Play Integrity token (Google confirms that the app is genuine and runs on a
+  real device) and a fingerprint of the device's Android identifier, computed on the phone (SHA-256), then hashed again
+  by the guichet with a secret key before being stored. Kerfy Studio only keeps this keyed fingerprint, and only for
+  this limit.
+- **The IP address** of your phone is kept for as long as a trial place is reserved (15 minutes at most), to limit the
+  number of reservations per address.
+
+**Purposes and legal bases.** Providing and managing your subscription, your places and your credit: performance of
+the contract (GDPR article 6(1)(b)). Preventing the same person from chaining free weeks: Kerfy Studio's legitimate
+interest in preventing fraud and in being able to keep offering a free week (article 6(1)(f) and recital 47). Reading
+the device's identifier does not require your consent, as it only serves to limit free access to the service to a
+limited period (article 82 of the French Data Protection Act; CNIL, deliberation no. 2020-091, article 5). Keeping
+proof of the contract: Kerfy Studio's legitimate interest in being able to defend its rights.
+**Retention.** Subscription and purchase data: during the subscription, then 5 years in archive, as proof of the
+contract (article 2224 of the French Civil Code). Android device fingerprint: [to be completed: 24 months, to be
+confirmed]. IP address: 15 minutes at most. The DeviceCheck bits are kept by Apple.
+
+### 5.4 Your place and the AI model
+
+**Where.** On a server rented from OVHcloud (data centres in the European Union or in the United Kingdom) or from
+Hetzner (Germany or Finland). For people in the United States: [to be completed: hosting provider and location of the
+servers].
+
+**What is there.** What section 5.1 describes, and the public SSH keys you add from the app. Kerfy Studio's guichet
+(the service that manages the places) knows your place's address and its certificate's fingerprint, so that your phone
+can connect to it and so that it can be moved in case of an outage.
+
+**The AI model.** The messages your agents send to the model (with the files and photos they show it) go through an
+AI router, **EUrouter** (EUrouter B.V., Amsterdam, Netherlands) or, for people in the United States, **OpenRouter**
+(OpenRouter, Inc., United States), then through the provider that runs the chosen model: [to be completed: providers
+of the models offered and the countries where they run]. EUrouter states that by default it keeps neither the requests
+nor the replies, and keeps their metadata (time, model, number of tokens, cost, IP address) for up to 12 months.
+OpenRouter: [to be completed: retention and training settings of Kerfy Studio's account at OpenRouter and at the
+providers]. They act on Kerfy Studio's behalf.
+
+**Sleep.** Your place itself notes the app's latest request; the guichet only knows that it is asleep.
+
+**Legal basis.** Performance of the contract (GDPR article 6(1)(b)).
+**Retention.** During the subscription. When it ends, your place is kept for 30 days (3 days after a free week that
+was not continued), then its account is erased and reinstalled for someone else. The extra places of a reduced plan
+are erased 30 days after they stopped.
+
+### 5.5 Backups
+
+Your place backs itself up every hour. The backup is **encrypted on the place**, before it leaves, with a key that only
+your devices hold, plus a copy of this key encrypted with your recovery code (section 5.2). Kerfy Studio keeps these
+backups at [to be completed: backup hosting provider] without being able to read them: one per hour for 48 hours, one
+per day for 30 days, one per week for 12 weeks. They are erased with your place.
+
+**OVHcloud's daily image.** On its servers, OVHcloud also makes a daily image of the whole server, which it keeps on
+its premises: one restore point per day, not encrypted by Kerfy Studio. When a place is reinstalled for someone else,
+the image that held it is replaced within about a day.
+
+**Legal basis.** Performance of the contract (GDPR article 6(1)(b)).
+
+### 5.6 Technical monitoring and outages
+
+Every two minutes, each server sends the guichet: its memory, its disk and its load, and for each place, whether its
+bridge answers, whether its Hermes Agent runs or sleeps, its BipAgents version and the time of its latest successful
+backup. **Never any content.** This data is used to spot an outage, move places, roll out updates in waves and alert
+Kerfy Studio.
+
+When your place's server goes down, is moved or comes back, your phones are told through the notification relay, with
+a generic text: for this, the guichet keeps your phones' sealed tokens linked to your place.
+
+**Legal basis.** Performance of the contract (GDPR article 6(1)(b)).
+**Retention.** Only the latest values are kept, replaced with each report. Event log (outages, moves, updates): [to be
+completed: how long the guichet's log is kept]. Sealed tokens: as long as the device is linked to your place.
+
+### 5.7 Abuse reports and requests from authorities
+
+**Data.** The report (who sends it and how to reach them, the facts, the IP address and the time), the place
+concerned, our decision and its reasons, our exchanges with you.
+**Purposes.** Handling reports ([acceptable use policy](acceptable-use.en.md)), protecting the servers and the other
+people, answering authorities.
+**Legal bases.** Legal obligation (GDPR article 6(1)(c); Regulation (EU) 2022/2065, articles 16 to 18) and Kerfy
+Studio's legitimate interest in protecting its service and its customers (article 6(1)(f)).
+**Retention.** 1 year after they were handled, longer if a dispute or proceedings require it.
+
+### 5.8 The offer's service providers
+
+| Provider | Role | Data | Where |
+|---|---|---|---|
+| OVHcloud (OVH SAS, Roubaix, France) | Hosts the places' servers; daily image of each server | Content of the places | European Union or United Kingdom |
+| Hetzner Online GmbH (Gunzenhausen, Germany) | Hosts some of the places' servers | Content of the places | Germany, Finland |
+| EUrouter B.V. (Amsterdam, Netherlands) | AI router | Messages sent to the model, metadata | European Union |
+| OpenRouter, Inc. (United States) | AI router for people in the United States | Messages sent to the model, metadata | United States |
+| Model providers: [to be completed] | Run the chosen model | Messages sent to the model | [to be completed] |
+| [to be completed: backup hosting provider] | Keeps the backups | Encrypted backups, unreadable for it and for Kerfy Studio | [to be completed] |
+| [relay hosting provider] | Hosts the guichet and the relay | Account, subscription, technical data | European Union |
+| [to be completed: email sending provider] | Sends the codes, the security notices and the invitations | Email address, content of these emails | [to be completed] |
+
+They are bound to Kerfy Studio by a contract that complies with GDPR article 28. Apple (DeviceCheck, App Store) and
+Google (Play Integrity, Google Play) are also involved, as section 5.3 says; "Sign in with Apple" and signing in with
+Google fall under their own responsibility.
+
+## 6. What Kerfy Studio does not do
+
+- No ads, no analytics tool, no tracking across apps or websites. No account, except for the all-included offer.
 - No selling or renting of data.
-- No training of AI models on your data: we don't have it.
-- No access to your server, your conversations or your files.
+- No training of AI models on your data by Kerfy Studio.
+- No access to your server, to the content of your place, to your conversations or to your files.
 
-## 6. Other services the app relies on
+## 7. Other services the app relies on
 
 Besides your server, the app relies on these services, which apply their own rules. Kerfy Studio receives nothing
 from these exchanges. It chose to have the app use them and is answerable for what leaves your phone; each service is
@@ -203,19 +372,21 @@ then responsible for what it does with it.
 - **Tailscale**, if you use it: a separate app, with its own account and its own privacy policy.
 - **Links you open** (websites your agents mention, the Hermes Agent page) open in your browser.
 
-## 7. The demo
+## 8. The demo
 
 The built-in demo runs entirely on your phone: invented agents and data, no account, no server, and nothing is sent
 to Kerfy Studio. You can open it from the first launch, with "Demo only". Its podcast is an audio file recorded in
 advance and bundled with the app (voices: Fish Audio Drama 3, "Built with Fish Audio"). If you talk to the demo, the
-phone's speech recognition applies (section 6).
+phone's speech recognition applies (section 7).
 
-## 8. Voices
+## 9. Voices
 
-The Bips' voices are synthesized **on your server**: the text to read goes to your server, not to us. If you plug in
-your own voice model, it is a server you run yourself. Kerfy Studio receives nothing.
+The Bips' voices are synthesized **on your phone** when it can: the app downloads the voices of your language from
+the App Store or Google Play, and your server (or your place) sends it the text to read, prepared. Otherwise, they are
+synthesized on your server or on your place. If you plug in your own voice model, it is a server you run yourself.
+Kerfy Studio receives nothing of what the voices read.
 
-## 9. Partner links (hosting, later)
+## 10. Partner links (hosting, later)
 
 The app or the kerfystudio.com website may later suggest hosting providers through partner (affiliate) links. If so:
 
@@ -228,9 +399,9 @@ The app or the kerfystudio.com website may later suggest hosting providers throu
   privacy policy.
 
 Before the first partner link, this section will state what Kerfy Studio receives from partners, and this change will
-be announced as described in section 16.
+be announced as described in section 17.
 
-## 10. Transfers outside the European Union
+## 11. Transfers outside the European Union
 
 The notification relay is hosted in the European Union ([relay hosting provider]). To deliver notifications, Apple and
 Google may process the token and the notification outside the European Union, notably in the United States:
@@ -240,21 +411,42 @@ Google may process the token and the notification outside the European Union, no
 - Apple states that it covers transfers from the European Economic Area with the standard contractual clauses adopted
   by the European Commission.
 
-Email provider: [country; safeguard]. You can ask us for a copy of the applicable safeguards.
+**The all-included offer.** The places' servers are in the European Union or in the United Kingdom, which benefits
+from an adequacy decision of the European Commission (Commission Implementing Decision (EU) 2025/2574 of 19 December
+2025). EUrouter processes the messages in the European Union [to be completed: countries where the models offered
+run, and the safeguard if one is outside the Union]. For people in the United States, OpenRouter, Inc. processes the
+messages in the United States: Kerfy Studio covers this transfer with the standard contractual clauses of the European
+Commission [to be completed: to be confirmed with the contract signed with OpenRouter]. Apple and Google (sign-in,
+stores, DeviceCheck, Play Integrity) may process data in the United States, with the safeguards stated above.
 
-## 11. Retention periods
+Email provider: [country; safeguard]. Email sending provider and backup hosting provider: [to be completed: country;
+safeguard]. You can ask us for a copy of the applicable safeguards.
+
+## 12. Retention periods
 
 | Data | Retention |
 |---|---|
 | The app's data on your phone | Until you remove the agent or the app |
-| Device token at the relay | Not kept: it only exists sealed, on your phone and your server |
+| Device token at the relay | Not kept: it only exists sealed, on your phone and your server (and at the guichet with the all-included offer, as long as the device is linked to your place) |
 | IP address at the relay | In memory, one hour at most, as a fingerprint |
 | Relay technical logs | 6 months at most |
 | Support emails | 2 years after the last exchange |
 | Reports | 1 year after they were handled |
 | Crash reports | 1 year after receipt (at Kerfy Studio) |
+| Account of the offer (identifiers, email, devices, invitations) | As long as the account exists |
+| Email address and account identifier after the end of the contract (obligation of hosting providers) | 5 years for the email, 1 year for the identifier, kept apart |
+| Subscription and purchases | During the subscription, then 5 years in archive |
+| Keyed fingerprint of the Android device (free week) | [to be completed: 24 months, to be confirmed] |
+| IP address when a free week is reserved | 15 minutes at most |
+| Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
+| Backups | 48 hours (hourly), 30 days (daily), 12 weeks (weekly); erased with the place |
+| OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
+| Servers' technical data | Latest values only |
+| The guichet's event log | [to be completed] |
+| Metadata at EUrouter | Up to 12 months, according to EUrouter |
+| Abuse reports | 1 year after they were handled |
 
-## 12. Security
+## 13. Security
 
 The relay only accepts encrypted connections (HTTPS), seals tokens (XChaCha20-Poly1305), has no database and never
 writes a token in clear. In the app, your agents' keys are protected by the Keychain or the Keystore, and the
@@ -262,28 +454,36 @@ connection to your server goes through Tailscale or through an HTTPS door on you
 server's certificate. The code of the app, the server side and the relay is public: [repository URL]. To report a
 security flaw: **support@kerfystudio.com** (see the SECURITY.md file in the repository).
 
-## 13. Your rights
+With the all-included offer, each place is a separate account on the server, without administrator rights; Kerfy
+Studio has no SSH key on the servers, and a server only carries out orders signed by the guichet. The app connects to
+your place over HTTPS and checks its certificate. Backups are encrypted on the place before they leave.
+
+## 14. Your rights
 
 You can ask for access to your data, its correction, its erasure, the restriction of its processing and its
 portability, and give instructions about your data after your death (French law).
 
 **Right to object.** You can object at any time, on grounds relating to your particular situation, to processing
-based on our legitimate interest (limiting abuse, emails, reports, crash reports).
+based on our legitimate interest (limiting abuse, emails, reports, crash reports, limiting free weeks).
 
 Write to **support@kerfystudio.com**. We answer within one month, which can be extended by two months for a complex
 request; we may ask for what we need to check your identity.
 
-Since we keep nothing that links a notification token or a report to a person, we usually cannot find this data
-about you: to stop notifications, turn them off or uninstall the app. You manage the data on your server yourself;
-for the data held by your model provider or your hosting provider, contact them.
+With your own server, since we keep nothing that links a notification token or a report to a person, we usually
+cannot find this data about you: to stop notifications, turn them off or uninstall the app. You manage the data on
+your server yourself; for the data held by your model provider or your hosting provider, contact them.
 
-## 14. Complaints
+**With the all-included offer**, your account links this data to you: we can give you access to it, correct it or
+erase it. You access the content of your place yourself, through the app or over SSH, and you can copy it at any time.
+To delete your account: section 5.2.
+
+## 15. Complaints
 
 If you believe your rights are not respected, you can lodge a complaint with the **CNIL** (3 place de Fontenoy,
 TSA 80715, 75334 Paris Cedex 07, France — https://www.cnil.fr/fr/plaintes) or with the data protection authority of
 your country.
 
-## 15. Children
+## 16. Children
 
 BipAgents is meant for people **aged 16 and over**. Between 16 and 18, use it with a parent's agreement and respect
 your model provider's minimum age (often 18). **Under 16, the app may only be used on an install set up and
@@ -291,16 +491,22 @@ supervised by a parent or an adult in charge of the child** (the family feature)
 their access and the model, accepts the terms of use for the child and remains responsible for their use.
 
 Kerfy Studio does not ask for anyone's age and none of its processing relies on consent. Only Android's document
-scanner asks for an agreement, for what Google receives from it (section 6): for a child under 15, the adult who set
+scanner asks for an agreement, for what Google receives from it (section 7): for a child under 15, the adult who set
 up the install gives it together with the child. If a child wrote to us, a parent can ask us to delete the message.
 
-## 16. Changes
+**All-included offer**: it is subscribed by an adult, or with a parent's agreement. An invited person must be at least
+16; under 16, a place may only be used if a parent or an adult in charge of the child has set it up and supervises it
+([terms of the offer](offer.en.md), section 7).
+
+## 17. Changes
 
 We may change this policy, in particular before offering partner links. The date at the top changes each time. A
 significant change is announced in the app at least 30 days before it applies.
 
-## 17. Contact
+## 18. Contact
 
-Kerfy Studio — [registered office address] — **support@kerfystudio.com**
+Kerfy Studio — [registered office address] — **support@kerfystudio.com** — abuse: **abuse@kerfystudio.com**
 
-This policy, the terms of use and the mentions légales (legal notice) are also in the app: Settings › About.
+This policy, the terms of use, the [terms of the all-included offer](offer.en.md), the
+[acceptable use policy](acceptable-use.en.md) and the mentions légales (legal notice) are also in the app: Settings ›
+About.

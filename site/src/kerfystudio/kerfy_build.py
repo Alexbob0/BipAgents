@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 
 LANGS = ["fr", "en", "de", "es"]
 SITE = "https://kerfystudio.com"
-LEGAL = ("privacy", "terms")
+LEGAL = ("privacy", "terms", "offer", "acceptable-use")
 
 
 def prefix(lang: str) -> str:
@@ -174,6 +174,8 @@ def shell(t: Dict, lang: str, title: str, body: str, path: str, version: str, al
   <nav>
     <a href="{p}/privacy/">{t['foot']['privacy']}</a>
     <a href="{p}/terms/">{t['foot']['terms']}</a>
+    <a href="{p}/offer/">{t['foot']['offer']}</a>
+    <a href="{p}/acceptable-use/">{t['foot']['acceptableUse']}</a>
     <a href="/mentions-legales/">{t['foot']['notice']}</a>
     <a href="{p}/support/">{t['nav']['support']}</a>
   </nav>
