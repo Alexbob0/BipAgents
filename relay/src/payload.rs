@@ -19,6 +19,7 @@ const GENERIC_BODIES: &[&str] = &[
     "Ton serveur ne répond plus : on s’en occupe.",
     "Tes agents ont une nouvelle place : ouvre l’app pour les y remettre.",
     "Ton serveur répond de nouveau.",
+    "Ton abonnement ne sera pas renouvelé : pense à utiliser ton crédit d’IA.",
 ];
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 const TITLE_MAX: usize = 80;
