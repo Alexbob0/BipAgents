@@ -35,6 +35,7 @@ from .memory_edit import memory_router
 from .mailbox import mail_router
 from .mail_scan import mail_scan_router
 from .notes_import import notes_router
+from .reminders import reminders_router
 from .sleep import Sleep
 from .ssh_keys import ssh_router
 from .vault import Vault, vault_router
@@ -675,6 +676,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(mail_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(mail_scan_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(notes_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(reminders_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(live_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(favicons_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])

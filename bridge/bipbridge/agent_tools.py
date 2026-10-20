@@ -33,7 +33,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from . import __version__, mailbox, pages, shares
+from . import __version__, mailbox, pages, reminders, shares
 from .config import AgentConfig, Config
 from .logs import fields
 from .tts import BACKGROUND, OUTPUT_RATE, Resampler, TtsError, mono, voice_language
@@ -200,7 +200,7 @@ def knowledge_tool(config: Config, agent: AgentConfig, name: str, arguments: Dic
 # The mail tools are listed for every agent (Hermes reads the list once, when its gateway starts): an agent the person
 # gave no mailbox is told so when it tries one.
 TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES, CREATE_PAGE, LIST_PAGES, READ_PAGE, DELETE_PAGE] + mailbox.MAIL_TOOLS \
-    + [KNOWLEDGE_READ, KNOWLEDGE_SEARCH]
+    + [KNOWLEDGE_READ, KNOWLEDGE_SEARCH] + reminders.REMINDER_TOOLS
 PAGE_TOOLS = {CREATE_PAGE["name"], LIST_PAGES["name"], READ_PAGE["name"], DELETE_PAGE["name"]}
 
 
@@ -623,13 +623,20 @@ def page_tool(config: Config, agent: AgentConfig, name: str, arguments: Dict[str
                       f"To give it to the person, put this line alone at the end of your reply:\nMEDIA:{made['path']}")
 
 
-async def call_tool(maker: AudioMaker, agent: AgentConfig, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def call_tool(maker: AudioMaker, agent: AgentConfig, name: str, arguments: Dict[str, Any],
+                    push: Any = None) -> Dict[str, Any]:
     if name in PAGE_TOOLS:
         return await asyncio.to_thread(page_tool, maker.config, agent, name, arguments)
     if name in mailbox.MAIL_TOOL_NAMES:
         return await asyncio.to_thread(mailbox.call, maker.config, agent.name, name, arguments)
     if name in KNOWLEDGE_TOOLS:
         return await asyncio.to_thread(knowledge_tool, maker.config, agent, name, arguments)
+    if name in reminders.REMINDER_TOOL_NAMES:
+        result = await asyncio.to_thread(reminders.call, maker.config, agent.name, name, arguments)
+        if push is not None and name != reminders.REMINDERS_LIST["name"] and not result.get("isError"):
+            # The person's iPhone woken to do it now (a silent push; else when the app opens).
+            asyncio.create_task(push.notify_silent(agent.name, "reminders"))
+        return result
     if name == LIST_VOICES["name"]:
         lines = [f"{entry['voice']} ({entry['kind']})" for entry in await maker.voices(agent)]
         return _tool_text("\n".join(lines))
@@ -694,7 +701,7 @@ def agent_tools_router() -> APIRouter:
             return JSONResponse(_error(request_id, -32601, f"method not found: {method}"))
         name = str(params.get("name") or "")
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-        work = asyncio.create_task(call_tool(services.audio_maker, agent, name, arguments))
+        work = asyncio.create_task(call_tool(services.audio_maker, agent, name, arguments, getattr(services, "push", None)))
         if "text/event-stream" not in request.headers.get("accept", ""):
             return JSONResponse(_result(request_id, await work))
 
