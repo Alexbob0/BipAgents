@@ -168,6 +168,42 @@ class HermesClient:
         items = data.get("messages", data.get("data", data.get("items"))) if isinstance(data, dict) else data
         return [item for item in items or [] if isinstance(item, dict)]
 
+    async def _send(self, agent: AgentConfig, method: str, path: str, body: Optional[Dict[str, Any]] = None,
+                    timeout: float = 15.0) -> Any:
+        resp = await self.client.request(method, f"{agent.hermes_url}{path}", json=body, headers=self._headers(agent),
+                                         timeout=timeout)
+        if resp.status_code not in (200, 201, 204):
+            raise HermesHTTPError(resp.status_code, resp.text[:500])
+        try:
+            return resp.json()
+        except ValueError:
+            return {}
+
+    async def create_session(self, agent: AgentConfig, title: str) -> str:
+        """``POST /api/sessions``: the new session's id."""
+        data = await self._send(agent, "POST", "/api/sessions", {"title": title})
+        inner = data.get("session") if isinstance(data, dict) and isinstance(data.get("session"), dict) else data
+        session_id = inner.get("id") if isinstance(inner, dict) else None
+        if not isinstance(session_id, str):
+            raise HermesHTTPError(502, "no session id")
+        return session_id
+
+    async def update_session(self, agent: AgentConfig, session_id: str, **fields: Any) -> None:
+        """``PATCH /api/sessions/{id}`` (title, hidden, archived…)."""
+        await self._send(agent, "PATCH", f"/api/sessions/{session_id}", fields)
+
+    async def delete_session(self, agent: AgentConfig, session_id: str) -> None:
+        await self._send(agent, "DELETE", f"/api/sessions/{session_id}")
+
+    async def session_chat(self, agent: AgentConfig, session_id: str, message: str,
+                           extra: Optional[Dict[str, Any]] = None, timeout: float = 240.0) -> str:
+        """``POST /api/sessions/{id}/chat``: one turn, its reply's text."""
+        data = await self._send(agent, "POST", f"/api/sessions/{session_id}/chat",
+                                {"message": message, **(extra or {})}, timeout=timeout)
+        reply = data.get("message") if isinstance(data, dict) else None
+        content = reply.get("content") if isinstance(reply, dict) else None
+        return content if isinstance(content, str) else ""
+
     async def run_events(self, agent: AgentConfig, run_id: str) -> AsyncIterator[SSEEvent]:
         """Yield events of ``GET /v1/runs/{run_id}/events`` until the server closes the stream.
         Raises :class:`HermesHTTPError` on a non-200 answer."""

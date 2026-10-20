@@ -20,6 +20,7 @@ from .apns import ApnsClient
 from .auth import require_bridge_key
 from .config import Config
 from .cronwatch import CronWatcher, Presence
+from .live_brief import Briefs, live_router
 from .media import content_type as media_content_type, resolve as resolve_media
 from .files import UploadSizeLimit, handle_upload, purge_uploads
 from .hermes import HermesClient, HermesHTTPError
@@ -67,6 +68,7 @@ class Services:
                               sentence_max_chars=config.limits.sentence_max_chars, pocket_url=config.pocket_url,
                               voice_server=config.voice_server, words=config.pronunciations)
         self.hermes = HermesClient(self.http)
+        self.briefs = Briefs(os.path.join(os.path.dirname(config.outbox.db_path), "briefs"), self.hermes, config.agents)
         self.audio_maker = AudioMaker(config, self.tts)
         apns = None
         if config.apns.enabled:
@@ -117,6 +119,7 @@ class Services:
                                   presence=self.presence)
             self._tasks.append(asyncio.create_task(watcher.run()))
         self._tasks.append(asyncio.create_task(self._purge_loop()))
+        self._tasks.append(asyncio.create_task(self.briefs.run()))
         self._tasks.append(asyncio.create_task(self.hub.resume(self.config.agents)))
         if self.config.hermes.enabled:
             self._tasks.append(asyncio.create_task(mount_all_uploads(self.config)))
@@ -639,6 +642,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(vault_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(place_backup_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(live_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(favicons_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     if not config.cloud:   # on the Internet (a server the app created), no web console: one door less
         app.include_router(console_admin_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
