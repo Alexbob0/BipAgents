@@ -19,7 +19,7 @@ def packages_server(tamper=False):
              "mimi": {"folder": "mimi-1", "bytes": 7}}
 
     def handle(request):
-        path = request.url.path.removeprefix("/v1/")
+        path = request.url.path.removeprefix("/v1/").removeprefix("voices/")   # an address of its own, or the guichet
         if path == "index.json":
             return httpx.Response(200, json=index)
         folder, _, name = path.partition("/")
@@ -54,6 +54,27 @@ def test_a_bad_file_or_no_server_falls_back_to_pockets_models(tmp_path):
     down = httpx.MockTransport(lambda request: httpx.Response(503))
     assert voices.install(["fr"], tmp_path, hermes.Runner(dry=False), said.append, base="https://voices.test/v1/",
                           transport=down) is None
+
+
+def test_a_place_of_the_offer_fetches_them_from_its_guichet_with_its_token(tmp_path):
+    from bipinstall import backup
+    assert voices.source(tmp_path) == (None, None)                           # someone's own computer: no address
+    said = []
+    assert voices.install(["fr"], tmp_path, hermes.Runner(dry=False), said.append) is None
+    assert "guichet only" in said[-1]
+    backup.configure("https://guichet.test/v1/backup/", "t" * 24, base=tmp_path)
+    assert voices.source(tmp_path) == ("https://guichet.test/v1/voices/", "t" * 24)
+    seen = []
+    served = packages_server()
+
+    def guichet(request):
+        seen.append((request.url.host, request.headers.get("authorization")))
+        if request.headers.get("authorization") != "Bearer " + "t" * 24:
+            return httpx.Response(401)
+        return served.handle_request(request)
+
+    assert voices.install(["fr"], tmp_path, hermes.Runner(dry=False), said.append, transport=httpx.MockTransport(guichet))
+    assert seen and all(host == "guichet.test" and auth == "Bearer " + "t" * 24 for host, auth in seen)
 
 
 def test_an_update_keeps_the_light_voices_light(monkeypatch, tmp_path):

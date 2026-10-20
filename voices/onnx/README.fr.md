@@ -14,10 +14,19 @@ téléchargé au premier usage) et le décodeur audio qu'ils partagent (40 Mo).
 | `textprep.py` | le texte tel que pocket le prépare, tokeniseur compris, sans pocket : ce que les apps recopient |
 | `golden.py`, `golden/` | des exemples écrits par pocket lui-même ; `test_textprep.py` et les tests des apps s'y comparent |
 | `tokenizers/` | le tokenizer.json de chaque langue (Kyutai, CC-BY-4.0) |
+| `store_packs.py` | les paquets comme les stores les livrent : paquets hébergés par Apple (`build/voices-store/apple/*.aar`) et paquets à la demande de Google Play (`android/voicepacks/`) |
 
 ```bash
 uv venv --python 3.12 voices/onnx/.venv && uv pip install --python voices/onnx/.venv/bin/python -r voices/onnx/requirements.txt
 voices/onnx/.venv/bin/python voices/onnx/build.py
+```
+
+Les paquets ne sont jamais à une adresse publique. Les apps les reçoivent de l'App Store (envoyer les `.aar` sur App
+Store Connect avec Transporter, puis les soumettre avec la version) et de Google Play (`scripts/play-upload.py` les met
+dans le bundle) ; les serveurs de l'offre les reçoivent de leur guichet (copier `build/voices` dans son dossier `voices`).
+
+```bash
+voices/onnx/.venv/bin/python voices/onnx/store_packs.py          # les deux stores ; --apple ou --android pour un seul
 ```
 
 Mesuré sur un Mac M4, un seul fil (20 octobre 2026) : un paquet en 10 à 15 s ; la voix 6 à 8 fois plus vite que le

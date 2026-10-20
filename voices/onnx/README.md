@@ -14,10 +14,19 @@ first use) and the audio decoder they share (40 MB).
 | `textprep.py` | the text as pocket prepares it, its tokenizer included, without pocket: what the apps' ports copy |
 | `golden.py`, `golden/` | examples written by pocket itself; `test_textprep.py` and the apps' tests check against them |
 | `tokenizers/` | each language's tokenizer.json (Kyutai, CC-BY-4.0) |
+| `store_packs.py` | the packages as the stores deliver them: Apple-hosted asset packs (`build/voices-store/apple/*.aar`) and Google Play's on-demand asset packs (`android/voicepacks/`) |
 
 ```bash
 uv venv --python 3.12 voices/onnx/.venv && uv pip install --python voices/onnx/.venv/bin/python -r voices/onnx/requirements.txt
 voices/onnx/.venv/bin/python voices/onnx/build.py
+```
+
+The packages are never at a public address. The apps get them from the App Store (upload the `.aar` files to App
+Store Connect with Transporter, then submit them with the build) and from Google Play (`scripts/play-upload.py` puts
+them in the bundle); the offer's servers get them from their guichet (copy `build/voices` to its `voices` folder).
+
+```bash
+voices/onnx/.venv/bin/python voices/onnx/store_packs.py          # both stores; --apple or --android for one
 ```
 
 Measured on a Mac M4, one thread (2026-10-20): a package in 10 to 15 s; speech 6 to 8 times faster than real time;
