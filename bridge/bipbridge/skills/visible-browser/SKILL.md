@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.3.0
+version: 1.4.0
 author: BipAgents
 license: MIT
 metadata:
@@ -29,6 +29,15 @@ browser while one runs: reuse the instance (`list_instances` tells you if one is
 ## 3. A captcha, a slider or « verify you are human »
 Do not try to solve it. Ask the person: « A check needs you: open my Bureau in the BipAgents app, take over, complete
 it, then tell me "ok". » Wait for their answer, then read the page again. Do not reload in a loop.
+
+## 3b. A site that refuses to serve this browser
+Some sites refuse every visitor coming from a server, whatever you do: « Access denied », « 403 », « Request blocked »,
+« unusual traffic from your network », a block page from Cloudflare, Akamai or DataDome, or a page that stays empty
+while it loads elsewhere. That is not a check the person can pass for you, and trying again changes nothing. Do not
+retry more than once, and do not pretend you read the page. Tell the person plainly, in their language: « This site
+refuses visitors that come from a server like mine, so I can't open it from here. You can do it yourself on your
+phone, or send me what you see (a screenshot, a copy of the text) and I'll take it from there. » Then offer what you
+can still do (another site with the same information, a search).
 
 ## 4. Logging in with the vault
 The vault fills a password without you ever seeing it, on the exact site it was saved for:
