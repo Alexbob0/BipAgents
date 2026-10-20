@@ -105,11 +105,18 @@ _GROUPED = re.compile(r"(?<![\d,.])(\d{1,3}(?:[   ]\d{3})+)(?![\d]|[,.]\d)")
 _ORDINAL = re.compile(r"\b(\d+)(er|re|ère|ème|eme|e)\b")
 _TIME_H = re.compile(r"\b([01]?\d|2[0-3]) ?[hH](?: ?([0-5]\d))?\b")
 _TIME_COLON = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b")
+# A unit of one letter only when it stands alone (« 3 l'ont », « 5 m'a » aren't litres or metres); the longer ones first.
+_ALONE = r"(?![\w'’])"
 _UNIT_WORDS = [
     (r"%", "pour cent"), (r"€|EUR\b|euros?\b", "euros"), (r"\$|USD\b|dollars?\b", "dollars"),
-    (r"°C\b|° ?C\b|°", "degrés"), (r"km/h\b", "kilomètres heure"), (r"km\b", "kilomètres"), (r"kg\b", "kilos"),
-    (r"cm\b", "centimètres"), (r"ms\b", "millisecondes"), (r"min\b", "minutes"), (r"bpm\b", "battements par minute"),
+    (r"°C\b|° ?C\b|°", "degrés"), (r"km/h\b", "kilomètres heure"), (r"km²", "kilomètres carrés"), (r"km\b", "kilomètres"),
+    (r"kg\b", "kilos"), (r"kWh\b", "kilowattheures"), (r"kW\b", "kilowatts"), (r"cm\b", "centimètres"),
+    (r"mm\b", "millimètres"), (r"m²", "mètres carrés"), (r"m³", "mètres cubes"), (r"ms\b", "millisecondes"),
+    (r"mg\b", "milligrammes"), (r"m[lL]\b", "millilitres"), (r"min\b", "minutes"), (r"bpm\b", "battements par minute"),
+    (r"c[lL]\b", "centilitres"), (r"[TG]o\b|[TG]B\b", "gigaoctets"), (r"[MK]o\b|[MK]B\b", "mégaoctets"),
+    (r"g" + _ALONE, "grammes"), (r"[lL]" + _ALONE, "litres"), (r"m" + _ALONE, "mètres"), (r"W" + _ALONE, "watts"),
 ]
+_BYTES = {"To": "téraoctets", "TB": "téraoctets", "Ko": "kilooctets", "KB": "kilooctets"}
 _WITH_UNIT = re.compile(r"(?<![\w,.])(-?" + _NUM + r") ?(" + "|".join(p for p, _ in _UNIT_WORDS) + r")")
 _DECIMAL = re.compile(r"(?<![\w.,])(\d+)[,.](\d+)(?![\d.,]*\d)")
 _INTEGER = re.compile(r"(?<![\w.,])(\d+)(?![\w]|[.,]\d)")
@@ -127,6 +134,8 @@ def _number(text: str) -> str:
 
 
 def _unit_word(symbol: str) -> str:
+    if symbol in _BYTES:
+        return _BYTES[symbol]
     for pattern, word in _UNIT_WORDS:
         if re.fullmatch(pattern, symbol):
             return word
@@ -137,11 +146,9 @@ def _with_unit(match: re.Match) -> str:
     value, symbol = match.group(1), match.group(2)
     word = _unit_word(symbol)
     spoken = _number(value)
-    if value.lstrip("-") in ("0", "1") and word.endswith("s") and word not in ("pour cent",):
-        word = {"euros": "euro", "dollars": "dollar", "degrés": "degré", "kilomètres": "kilomètre",
-                "kilos": "kilo", "centimètres": "centimètre", "millisecondes": "milliseconde",
-                "minutes": "minute"}.get(word, word)
-        if word in ("minute", "milliseconde") and value.lstrip("-") == "1":
+    if value.lstrip("-") in ("0", "1"):   # « un kilomètre », « une minute », « zéro degré »
+        word = " ".join(w[:-1] if w.endswith("s") and w != "pour" else w for w in word.split())
+        if word.split()[0] in ("minute", "milliseconde") and value.lstrip("-") == "1":
             spoken = _feminine(spoken)
     return f"{spoken} {word}"
 
@@ -229,7 +236,8 @@ def _split_camel(match: re.Match) -> str:
 # Symbols and abbreviations a TTS engine would read letter by letter or skip. Add entries here as they come up.
 _CAP = r"(?=[ -]?[A-ZÀ-Ý])"  # followed by a capitalized name
 _LEXICON = [
-    (r"\s*(?:→|->|⟶|⇒|=>)\s*", " vers "), (r"\s*(?:←|<-)\s*", " depuis "),
+    # An arrow is as often « then » or « so » as « to »: a pause, and nothing at the start of a line (a bullet).
+    (r"(?m)^[ \t]*(?:→|->|⟶|⇒|=>)[ \t]*", ""), (r"\s*(?:→|->|⟶|⇒|=>)\s*", ", "), (r"\s*(?:←|<-)\s*", ", "),
     (r"\bSt(?=[- ][A-ZÀ-Ý])", "Saint"), (r"\bSte(?=[- ][A-ZÀ-Ý])", "Sainte"),
     (r"\bM\.(?= [A-ZÀ-Ý])", "Monsieur"), (r"\bMM\.(?= [A-ZÀ-Ý])", "Messieurs"), (r"\bMme\b\.?", "Madame"),
     (r"\bMmes\b\.?", "Mesdames"), (r"\bMlle\b\.?", "Mademoiselle"), (r"\bDr\b\.?" + _CAP, "Docteur"),

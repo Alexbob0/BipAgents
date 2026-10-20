@@ -58,7 +58,14 @@ def test_prepare_for_synthesis(text, spoken):
 
 @pytest.mark.parametrize("text, spoken", [
     ("Bordeaux St-Jean → Paris Montparnasse le 03/02/2027 : 19 €.",
-     "Bordeaux Saint-Jean vers Paris Montparnasse le trois février deux mille vingt-sept : dix-neuf euros."),
+     "Bordeaux Saint-Jean, Paris Montparnasse le trois février deux mille vingt-sept : dix-neuf euros."),
+    # An arrow is a pause (« then », « so » as often as « to »); at the start of a line, a bullet.
+    ("Pluie -> annulation => on reste au chaud.\n→ Premier point", "Pluie, annulation, on reste au chaud.\nPremier point"),
+    # Units the voice would guess (« 1 mm » was « un mai »); one letter only when it stands alone.
+    ("Environ 1 mm, 3 m de haut, 250 g de farine, 1 L d'eau, 50 cl, 2 Go, 500 Mo, 1 kWh, 12 m².",
+     "Environ un millimètre, trois mètres de haut, deux cent cinquante grammes de farine, un litre d'eau, cinquante "
+     "centilitres, deux gigaoctets, cinq cents mégaoctets, un kilowattheure, douze mètres carrés."),
+    ("Ils sont 3 l'ont vu, 5 m'a dit.", "Ils sont trois l'ont vu, cinq m'a dit."),
     ("RDV avec Mme Martin et M. Durand, Dr Lopez absent.", "rendez-vous avec Madame Martin et Monsieur Durand, Docteur Lopez absent."),
     ("Comptez env. 2 h, p. ex. le matin, c.-à-d. tôt.", "Comptez environ deux heures, par exemple le matin, c'est-à-dire tôt."),
     ("Pommes, poires, etc. Puis le dessert.", "Pommes, poires, et cetera, Puis le dessert."),
