@@ -259,6 +259,25 @@ def build_router() -> APIRouter:
             headers["X-Sample-Format"] = "s16le"
         return Response(content=audio.data, media_type=audio.content_type, headers=headers)
 
+    @router.post("/tts/prepare")
+    async def tts_prepare(body: TtsRequest, request: Request) -> Dict[str, Any]:
+        """The text a Bip says, prepared as this bridge would for Pocket (numbers in words, respellings, pauses), for a
+        phone that speaks with the Bips' voices itself (voices/onnx/). `local: false`: not a Bip's voice, the phone
+        asks for the audio as before."""
+        services = _services(request)
+        agent = services.config.agent(body.agent) if body.agent else None
+        if body.agent and agent is None:
+            raise HTTPException(status_code=404, detail="unknown agent")
+        voice = body.voice or voice_for(services.config, agent, body.use)
+        try:
+            prepared = services.tts.for_phone(body.text, voice, max_chars=MESSAGE_MAX_CHARS)
+        except TtsError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+        if prepared is None:
+            return {"local": False, "voice": voice}
+        text, language, bip = prepared
+        return {"local": True, "voice": voice, "text": text, "language": language, "bip": bip}
+
     @router.post("/tts/message")
     async def tts_message(body: TtsRequest, request: Request) -> Response:
         """A whole reply as one audio file (voice-message mode). Kyutai gets the full text at once, so it

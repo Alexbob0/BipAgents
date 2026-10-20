@@ -361,6 +361,17 @@ class TtsService:
             raise TtsError(f"text too long ({len(clean)} > {limit} chars)", status=413)
         return clean
 
+    def for_phone(self, text: str, voice: Optional[str] = None,
+                  max_chars: Optional[int] = None) -> Optional[Tuple[str, str, str]]:
+        """A Bip's text as the phone speaks it itself (its own Pocket, the Bips' voices on the phone): (the text
+        prepared as for this server's Pocket, its language code, the Bip). None for a voice that isn't a Bip's."""
+        voice = voice or self.default_voice
+        if not voice.startswith(POCKET_PREFIX):
+            return None
+        language = voice_language(voice)
+        bip = voice[len(POCKET_PREFIX):].rsplit("/", 1)[-1]
+        return self._prepare(text, False, max_chars, language, paragraphs=True), language, bip
+
     def _server_deadline(self, text: str, priority: int) -> Optional[float]:
         """Seconds an interactive request waits for the voice server's first sound once it is sent (not its turn in
         the queue: the earlier sentences of a Live are not the server's slowness); background ones (the outbox's

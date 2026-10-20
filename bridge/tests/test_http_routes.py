@@ -69,6 +69,21 @@ def test_tts_sentence_agent_voice_and_formats(client):
     assert client.post("/v1/tts/sentence", headers=AUTH, json={"text": "---"}).status_code == 400
 
 
+def test_a_bip_s_text_is_prepared_for_the_phone_to_speak_it(client):
+    """The Bips' voices on the phone (voices/onnx/): the bridge prepares the text as for its Pocket, the phone speaks."""
+    resp = client.post("/v1/tts/prepare", headers=AUTH, json={"text": "Rendez-vous à 9h30 avec *Garmin* (le RDV).",
+                                                                "voice": "pocket:galet"})
+    data = resp.json()
+    assert resp.status_code == 200 and data["local"] is True and data["language"] == "fr" and data["bip"] == "galet"
+    assert "neuf" in data["text"] and "*" not in data["text"]
+    english = client.post("/v1/tts/prepare", headers=AUTH, json={"text": "See you at 5.", "voice": "pocket:en/lumen"})
+    assert english.json()["language"] == "en" and english.json()["bip"] == "lumen"
+    kyutai = client.post("/v1/tts/prepare", headers=AUTH, json={"text": "Salut.", "agent": "wellness"})
+    assert kyutai.json() == {"local": False, "voice": "4193"}                  # not a Bip: audio from the bridge
+    assert client.post("/v1/tts/prepare", headers=AUTH, json={"text": "---", "voice": "pocket:galet"}).status_code == 400
+    assert client.post("/v1/tts/prepare", json={"text": "x"}).status_code == 401
+
+
 # -- files -----------------------------------------------------------------------------------------
 
 def test_upload_maps_path_into_container(client, config):
