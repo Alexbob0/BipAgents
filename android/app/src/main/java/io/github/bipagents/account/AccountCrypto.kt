@@ -3,6 +3,7 @@ package io.github.bipagents.account
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
+import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.SecureRandom
 import java.security.interfaces.ECPrivateKey
@@ -26,7 +27,9 @@ import javax.crypto.spec.SecretKeySpec
  *      box     ephemeral public key (65) · nonce (12) · AES-256-GCM ciphertext · tag, base64; its key is HKDF-SHA256
  *              over the ECDH secret, salt = ephemeral key · recipient's key, info « bipagents-box-v1 »
  *      code    24 characters of Crockford's alphabet; the guichet keeps a verifier of it, and the escrow (the places'
- *              backup keys) sealed with another key drawn from it */
+ *              backup keys) sealed with another key drawn from it
+ *      check   a device's comparison code (deviceCode): the waiting device shows it from its own key, the approving one
+ *              from the key the guichet gave; the same on both, or the guichet handed another key */
 object AccountCrypto {
     const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     private val random = SecureRandom()
@@ -99,6 +102,27 @@ object AccountCrypto {
         val spec = java.security.spec.ECPrivateKeySpec(BigInteger(privateHex, 16), params())
         val private = KeyFactory.getInstance("EC").generatePrivate(spec) as ECPrivateKey
         return DeviceKey(private, Base64.getDecoder().decode(publicB64))
+    }
+
+    // -- the comparison code -----------------------------------------------------------------------------------------
+
+    private const val CODE_ROUNDS = 10_000
+
+    /** The code a person compares between their waiting device and the one approving it, like messaging apps' safety
+     *  numbers: SHA-256 over « bipagents-device-code-v1 » · 0x00 · the device's id at the guichet (UTF-8) · 0x00 · its
+     *  public key (65 bytes, uncompressed), hashed again 9,999 times (SHA-256 of the previous 32 bytes); the first 8
+     *  bytes, big-endian, modulo 10¹² give 12 digits, shown « 123 456 789 012 ». Twelve digits and the repeated hash,
+     *  because a dishonest guichet knows the real key and could otherwise try keys of its own until one gives the same
+     *  code. Null for a key that is not one. */
+    fun deviceCode(device: String, key: String): String? {
+        val raw = runCatching { Base64.getDecoder().decode(key) }.getOrNull()
+            ?.takeIf { it.size == 65 && it[0] == 4.toByte() } ?: return null
+        val sha = MessageDigest.getInstance("SHA-256")
+        var digest = sha.digest("bipagents-device-code-v1".toByteArray() + byteArrayOf(0) + device.toByteArray() + byteArrayOf(0) + raw)
+        repeat(CODE_ROUNDS - 1) { digest = sha.digest(digest) }
+        val number = digest.copyOfRange(0, 8).fold(BigInteger.ZERO) { acc, b -> acc.shiftLeft(8).or(BigInteger.valueOf((b.toInt() and 0xff).toLong())) }
+            .mod(BigInteger.TEN.pow(12))
+        return number.toString().padStart(12, '0').chunked(3).joinToString(" ")
     }
 
     // -- the recovery code --------------------------------------------------------------------------------------------
