@@ -59,6 +59,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      # The newest Xcode on the runner: the voices' packages use the iOS SDK's latest asset-pack API.
+      - name: Newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)" && xcodebuild -version
       - name: HermesKit
         working-directory: Packages/HermesKit
         run: swift test
