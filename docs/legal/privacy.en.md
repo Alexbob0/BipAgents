@@ -113,6 +113,19 @@ on and allowing it in Apple Health or Health Connect. **Stopping**: turn Health 
 kept on your server are deleted. They also go with the agent, with your place, or when you withdraw the permission in
 Apple Health or Health Connect (nothing more is sent).
 
+**Your calendar, if you share it (« Calendrier », Calendar).** For each agent, you can turn on Calendar in its
+tools. With your permission (Calendars on the iPhone, Calendar on Android), the app reads your phone's calendars,
+including the accounts added to it (Google, Outlook…), and sends a copy of their events, from a week before to two
+months after today (title, times, place, notes), **only to your server** (or to your place with the all-included
+offer), when the app opens. The copy stays there, replaced at each sending. Only the agents you chose read it; when
+they ask to add, change or delete an event, your phone does it. The agent's AI model receives the events the agent
+reads to answer you. Kerfy Studio does not receive them. **Legal basis**: your consent (GDPR article 6.1.a), which you
+give by turning Calendar on and allowing it on your phone. **Stopping**: turn Calendar off for the agent, or remove the
+permission in the phone's settings (nothing more is sent). For a mailbox you connected, you can also turn on « Use its
+calendar too »: your server then reads that account's calendars (CalDAV, with the mailbox's credentials, which stay
+encrypted on your server) when one of the mailbox's agents looks at them, and adds or deletes the events it asks for;
+nothing of them is kept apart from the list of those calendars. Turn it off to stop.
+
 ## 4. What Kerfy Studio may receive
 
 ### 4.1 Notifications, through Kerfy Studio's relay

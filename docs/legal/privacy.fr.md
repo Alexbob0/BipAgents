@@ -119,6 +119,20 @@ désactive « Santé » ; quand plus aucun agent ne l'a, les journées gardées 
 aussi avec l'agent, avec ta place, ou en retirant l'autorisation dans Apple Santé ou Health Connect (plus rien n'est
 envoyé).
 
+**Ton agenda, si tu le partages (« Calendrier »).** Pour chaque agent, tu peux activer « Calendrier » dans ses
+outils. Avec ton autorisation (Calendriers sur l'iPhone, Agenda sur Android), l'app lit les agendas de ton téléphone,
+y compris les comptes ajoutés dessus (Google, Outlook…), et envoie une copie de leurs rendez-vous, d'une semaine avant
+à deux mois après aujourd'hui (titre, horaires, lieu, notes), **uniquement à ton serveur** (ou à ta place avec l'offre
+tout compris), quand l'app s'ouvre. Cette copie y reste, remplacée à chaque envoi. Seuls les agents que tu as choisis
+la lisent ; quand ils te demandent d'ajouter, de modifier ou de supprimer un rendez-vous, c'est ton téléphone qui le
+fait. Le modèle d'IA de l'agent reçoit les rendez-vous que l'agent lit pour te répondre. Kerfy Studio ne les reçoit
+pas. **Base légale** : ton consentement (article 6.1.a du RGPD), que tu donnes en activant « Calendrier » et en
+l'autorisant sur ton téléphone. **Arrêter** : désactive « Calendrier » pour l'agent, ou retire l'autorisation dans les
+réglages du téléphone (plus rien n'est envoyé). Pour une boîte mail que tu as connectée, tu peux aussi activer
+« Utiliser aussi son agenda » : ton serveur lit alors les agendas de ce compte (CalDAV, avec les identifiants de la
+boîte, qui restent chiffrés sur ton serveur) quand un agent de cette boîte les consulte, et y ajoute ou supprime les
+rendez-vous qu'il demande ; rien n'en est gardé à part la liste de ces agendas. Désactive-le pour arrêter.
+
 ## 4. Ce que Kerfy Studio peut recevoir
 
 ### 4.1 Les notifications, par le relais de Kerfy Studio

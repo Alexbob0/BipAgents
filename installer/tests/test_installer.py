@@ -233,6 +233,10 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.2, vision=True)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
     monkeypatch.setattr(cli, "voice_engine_answers", lambda url: False)
+    # The machine is a Mac whatever runs the test (CI: Linux), and its binaries come from the release.
+    from bipinstall import rustbridge
+    monkeypatch.setattr(rustbridge, "asset", lambda system=None, machine=None: "bipbridge-macos-universal.tar.gz")
+    monkeypatch.delenv(rustbridge.BUILD, raising=False)
     answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     assert cli.main(["--dry-run"]) == 0
