@@ -627,7 +627,7 @@ async fn routes_for_settings_thinking_and_model() {
         "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu/v1\n",
     )
     .unwrap();
-    let app = TestApp::new(config);
+    let app = TestApp::new(config.clone());
     let (k, v) = auth();
     let h = [(k, v.as_str())];
     let got = app.get("/v1/agents/wellness/settings", &h).await;
@@ -647,11 +647,23 @@ async fn routes_for_settings_thinking_and_model() {
             "protected",
             "services",
             "skills",
-            "browser"
+            "browser",
+            "health"
         ]
     );
     assert_eq!(got.json()["soul"], "Tu es Wellness.");
     assert_eq!(got.json()["language"], "fr");
+    assert_eq!(got.json()["health"], json!({"on": false}));
+    // « Santé » on: the rule goes in its personality, which the person still sees as they wrote it.
+    let on = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &json!({"health": true})).await.json();
+    assert_eq!((&on["health"], &on["soul"]), (&json!({"on": true}), &json!("Tu es Wellness.")));
+    assert!(std::fs::read_to_string(folder.join("SOUL.md")).unwrap().contains(souls::HEALTH_RULE));
+    let edited = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &json!({"soul": "Tu es Vie."})).await;
+    assert_eq!(edited.json()["soul"], "Tu es Vie.");
+    let soul = std::fs::read_to_string(folder.join("SOUL.md")).unwrap();
+    assert!(soul.contains(souls::HEALTH_RULE) && soul.contains("write in French"));
+    std::fs::write(folder.join("SOUL.md"), souls::with_language("Tu es Wellness.\n", Some("fr"))).unwrap();
+    bipbridge::health::set_enabled(&config, "wellness", false).unwrap();
     assert_eq!(
         app.get("/v1/agents/nobody/settings", &h).await.json(),
         json!({"detail": "not an agent this install manages"})

@@ -98,6 +98,21 @@ erase what is on your server.
 **Shares you start.** The diagnostic report (Settings › Diagnostics and latency › Export report) contains your
 agents' names and addresses; it only goes to the app or person you pick in the share sheet.
 
+**Your health, if you turn it on (« Santé », Health).** For each agent, you can turn on Health in its tools. With
+your permission in Apple Health (iPhone, including your Apple Watch's data) or Health Connect (Android), the app reads,
+without ever writing anything there, a summary of each day: your sleep (time asleep, time in bed, bedtime and wake-up
+time), your steps, active energy, exercise minutes, resting heart rate, heart rate variability, weight and workouts
+(type, duration, distance, energy). It sends the last 30 days the first time, then the days that changed, **only to
+your server** (or to your place with the all-included offer), where they are kept one file per day, 400 days at most.
+Only the agents you turned Health on for read them, to help you with your sleep, activity and training; they do not
+diagnose. The agent's AI model receives what the agent reads to answer you: with the all-included offer, Health is
+only possible with a model that runs in the European Union. The phone keeps only the dates and a fingerprint of what it
+already sent, never the values, and nothing in iCloud. Kerfy Studio does not receive them; nothing is sold or used for
+advertising. **Legal basis**: your explicit consent (GDPR articles 6.1.a and 9.2.a), which you give by turning Health
+on and allowing it in Apple Health or Health Connect. **Stopping**: turn Health off; once no agent has it, the days
+kept on your server are deleted. They also go with the agent, with your place, or when you withdraw the permission in
+Apple Health or Health Connect (nothing more is sent).
+
 ## 4. What Kerfy Studio may receive
 
 ### 4.1 Notifications, through Kerfy Studio's relay
@@ -448,6 +463,7 @@ safeguard]. You can ask us for a copy of the applicable safeguards.
 | Data | Retention |
 |---|---|
 | The app's data on your phone | Until you remove the agent or the app |
+| Health data (« Santé ») on your server or place | 400 days at most; deleted once no agent has Health, with the agent or with the place |
 | Device token at the relay | Not kept: it only exists sealed, on your phone and your server (and at the guichet with the all-included offer, as long as the device is linked to your place) |
 | IP address at the relay | In memory, one hour at most, as a fingerprint |
 | Relay technical logs | 6 months at most |

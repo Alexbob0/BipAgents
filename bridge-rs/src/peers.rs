@@ -781,12 +781,23 @@ fn body_str(body: &Value, key: &str) -> ApiResult<String> {
     }
 }
 
+/// A household linked or unlinked: the agents get the family's tools, or lose them (agent_tools.rs `tools_for`).
+fn family_tools_changed(state: &AppState) {
+    let config = state.config();
+    if config.hermes.enabled() {
+        state.spawn(crate::agent_tools::register_all(state.config.clone(), crate::agents_admin::default_run()));
+    }
+}
+
 async fn family_accept(State(state): State<AppState>, request: Request) -> ApiResult<Response> {
     let body = request_json(request).await?;
     let (code, name, url, key) =
         (body_str(&body, "code")?, body_str(&body, "name")?, body_str(&body, "url")?, body_str(&body, "key")?);
     match state.households.accept(&code, &name, &url, &key) {
-        Ok(answer) => Ok(web::ok(Value::Object(answer))),
+        Ok(answer) => {
+            family_tools_changed(&state);
+            Ok(web::ok(Value::Object(answer)))
+        }
         Err(HouseholdError(message)) => Err(HttpError::new(403, message)),
     }
 }
@@ -896,12 +907,19 @@ async fn set_name(State(state): State<AppState>, request: Request) -> ApiResult<
     Ok(web::ok(json!({"name": state.households.name()})))
 }
 
-async fn invite(State(state): State<AppState>) -> ApiResult<Response> {
+/// `{days?}`: an invitation sent through the person's account (« Inviter par son compte ») waits longer than a QR
+/// code shown in the same room (ten minutes): up to a week.
+async fn invite(State(state): State<AppState>, request: Request) -> ApiResult<Response> {
+    let bytes = axum::body::to_bytes(request.into_body(), 64 * 1024)
+        .await
+        .map_err(|_| HttpError::new(400, "There was an error parsing the body"))?;
+    let days = serde_json::from_slice::<Value>(&bytes).ok().and_then(|b| b.get("days").and_then(Value::as_f64));
+    let seconds = days.map(|d| d.clamp(0.0, 7.0) * 86400.0).filter(|s| *s > 0.0);
     let config = state.config();
     let Some(url) = own_url(&config).filter(|u| !u.is_empty()) else {
         return Err(HttpError::new(409, "this bridge has no address on the tailnet (public_url)"));
     };
-    let code = match state.households.invite() {
+    let code = match state.households.invite_for(seconds.unwrap_or(crate::households::INVITE_SECONDS)) {
         Ok(code) => code,
         Err(exc) => {
             return match exc.downcast_ref::<HouseholdError>() {
@@ -942,7 +960,10 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
     let name = body_str(&answer, "name")?;
     let key_in = body_str(&answer, "key")?;
     let household = match state.households.joined(&name, &url, &key, &key_in) {
-        Ok(h) => h,
+        Ok(h) => {
+            family_tools_changed(&state);
+            h
+        }
         Err(exc) => {
             return match exc.downcast_ref::<HouseholdError>() {
                 Some(e) => Err(HttpError::new(409, e.0.clone())),
@@ -963,6 +984,7 @@ async fn unlink(state: &AppState, household: &str) -> ApiResult<Response> {
         links_of(&data).into_iter().filter(|(s, t)| !s.ends_with(&suffix) && !t.ends_with(&suffix)).collect();
     data.insert("links".into(), pairs_value(&kept));
     state.links.save(&data)?;
+    family_tools_changed(state);
     Ok(web::no_content())
 }
 

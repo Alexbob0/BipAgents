@@ -4,7 +4,8 @@
 //! it reads, else Bips); `list_voices` lists the voices the agent may give them; `create_page` and its kin keep the
 //! small web pages the agent makes for the person (pages.py); `mail_search`, `mail_read` and `mail_draft` reach
 //! the mailboxes the person connected for it (mailbox.py); `propose_task` proposes a background task the person starts
-//! in the app (jobs.py).
+//! in the app (jobs.py); `tell_family` proposes to pass something on to the family's agents, which the person sends
+//! or not from the app (family_news.rs, only for an install with a linked household).
 //!
 //! The agent's own Hermes calls it (an MCP server entry `bipagents` in its profile, with a token of its own), not its
 //! sandbox: nothing is opened to the containers, and the voice server stays on this machine's loopback. The text is cut
@@ -250,6 +251,22 @@ pub fn tools() -> &'static [Value] {
     &TOOL_LIST
 }
 
+/// The tools with the family's (`tell_family`, `family_members`: only for an install with a linked household).
+static FAMILY_TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
+    let mut tools = TOOL_LIST.clone();
+    tools.extend(crate::family_news::tools());
+    tools
+});
+
+/// The tools every agent of this install gets (the family's once a household is linked).
+pub fn install_tools(config: &Config) -> &'static [Value] {
+    if crate::family_news::has_family(config) {
+        &FAMILY_TOOL_LIST
+    } else {
+        &TOOL_LIST
+    }
+}
+
 /// An agent's own knowledge pages (memory_edit.py: knowledge/ in its profile, its person sees and edits them).
 /// Err: a page that is not UTF-8 (Python's UnicodeDecodeError, which it lets through).
 pub fn knowledge_tool(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) -> anyhow::Result<Dict> {
@@ -336,6 +353,15 @@ pub fn version_of(tools: &[Value]) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))[..10].to_string()
 }
 
+/// The tools of `agent`: the install's, and `health` when the person gave it their health data.
+pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
+    let mut tools = install_tools(config).to_vec();
+    if crate::health::enabled(config, &agent.name) {
+        tools.push(crate::health::health_tool());
+    }
+    tools
+}
+
 /// Changes whenever the tools do: Hermes keeps the list it got when it connected, so a new tool needs a new entry.
 pub fn tools_version() -> String {
     static VERSION: LazyLock<String> = LazyLock::new(|| version_of(tools()));
@@ -346,7 +372,10 @@ pub fn tools_version() -> String {
 /// set for spaces in containers of their own). The tools' version rides along (`?v=`), ignored by the bridge: a
 /// changed entry makes Hermes connect again and fetch the new list.
 pub fn tools_url(config: &Config) -> String {
-    url_with(config, &tools_version())
+    // A household linked or unlinked changes the list (the family's tools): a new version, so Hermes fetches it.
+    let version =
+        if crate::family_news::has_family(config) { version_of(install_tools(config)) } else { tools_version() };
+    url_with(config, &version)
 }
 
 /// `tools_url` for a given tools version.
@@ -394,7 +423,12 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// hand are left as they are. Returns whether the profile was changed (a new conversation picks it up). Err: a
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
-    register_at(config, agent, run, &tools_url(config)).await
+    let url = if crate::health::enabled(config, &agent.name) {
+        url_with(config, &version_of(&tools_for(config, agent)))
+    } else {
+        tools_url(config)
+    };
+    register_at(config, agent, run, &url).await
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).
@@ -1116,6 +1150,19 @@ pub async fn call_tool(
     }
     let config = maker.config.get();
     let (agent_c, name_c, arguments_c) = (agent.clone(), name.to_string(), arguments.clone());
+    if name == crate::health::TOOL_NAME {
+        return blocking(move || {
+            if !crate::health::enabled(&config, &agent_c.name) {
+                return Ok(tool_text(
+                    "The person hasn't shared their health data with you: they switch « Santé » on in your page of \
+the BipAgents app.",
+                    true,
+                ));
+            }
+            Ok(crate::health::call(&config, &arguments_c))
+        })
+        .await;
+    }
     if PAGE_TOOLS.contains(&name) {
         return blocking(move || page_tool(&config, &agent_c, &name_c, &arguments_c)).await;
     }
@@ -1267,7 +1314,10 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, json!({}))));
     }
     if method_name == "tools/list" {
-        return Ok(crate::web::json_response(200, &rpc_result(&request_id, json!({"tools": tools()}))));
+        return Ok(crate::web::json_response(
+            200,
+            &rpc_result(&request_id, json!({"tools": tools_for(&state.config(), &agent)})),
+        ));
     }
     if method_name != "tools/call" {
         let shown = if method.is_null() { "None".to_string() } else { py::py_str(&method) };
@@ -1281,6 +1331,10 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         Some(Value::Object(map)) => map.clone(),
         _ => Dict::new(),
     };
+    if crate::family_news::TOOL_NAMES.contains(&name.as_str()) {
+        let result = crate::family_news::call_tool(&state.http, &state.config(), &agent, &name, &arguments).await?;
+        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+    }
     let jobs = crate::jobs::jobs_of(&state);
     let push = state.push.clone();
     let maker = state.audio_maker.clone();
