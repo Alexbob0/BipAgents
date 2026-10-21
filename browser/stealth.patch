@@ -2,7 +2,7 @@ diff --git a/src/browser_manager.py b/src/browser_manager.py
 index a614108..6df82ad 100644
 --- a/src/browser_manager.py
 +++ b/src/browser_manager.py
-@@ -56,6 +56,69 @@ def _parse_nonnegative_int_env(
+@@ -56,6 +56,81 @@ def _parse_nonnegative_int_env(
      return parsed
  
  
@@ -27,7 +27,19 @@ index a614108..6df82ad 100644
 +            return False
 +
 +
++def _patient_connection(config) -> None:
++    """STEALTH_CONNECT_SECONDS (default 45): how long nodriver waits for a starting Chrome's DevTools. Its own default,
++    10 tries 0.25 s apart, gives up after about 3 s: on a loaded server (several browsers starting, memory in swap) a
++    cold Chrome takes far longer, so the first spawn_browser failed and the agent tried again, each try another Chrome."""
++    raw = os.environ.get("STEALTH_CONNECT_SECONDS", "").strip()
++    seconds = float(raw) if raw.replace(".", "", 1).isdigit() else 45.0
++    if hasattr(config, "browser_connection_max_tries"):
++        config.browser_connection_timeout = 0.5
++        config.browser_connection_max_tries = max(1, int(seconds / 0.5))
++
++
 +async def _start_on_fixed_port(config):
++    _patient_connection(config)
 +    raw = os.environ.get("STEALTH_CDP_PORT", "").strip()
 +    if not raw.isdigit():
 +        return await uc.start(config=config)
@@ -72,7 +84,7 @@ index a614108..6df82ad 100644
  class BrowserManager:
      """Manages multiple browser instances."""
  
-@@ -266,6 +329,7 @@ class BrowserManager:
+@@ -266,6 +341,7 @@ class BrowserManager:
              BrowserInstance: The spawned browser instance.
          """
          instance_id = str(uuid.uuid4())
@@ -80,7 +92,7 @@ index a614108..6df82ad 100644
  
          instance = BrowserInstance(
              instance_id=instance_id,
-@@ -321,7 +385,7 @@ class BrowserManager:
+@@ -321,7 +397,7 @@ class BrowserManager:
                  caller_args,
                  launch_proxy_server,
              )
@@ -89,7 +101,7 @@ index a614108..6df82ad 100644
              
              config = uc.Config(
                  headless=options.headless,
-@@ -331,7 +395,7 @@ class BrowserManager:
+@@ -331,7 +407,7 @@ class BrowserManager:
                  browser_args=launch_args
              )
  

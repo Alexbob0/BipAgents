@@ -17,6 +17,11 @@
 //! `cache` (the file keeping the real server's answers), `busy` (a file), `cdp_port`, `idle` (seconds). Standard
 //! library only: Hermes runs it with the bridge's Python, from anywhere.
 //!
+//! Rust only: `shared_cache` (the answers any agent's server gave: the same image serves the same tools, so a new
+//! agent's Hermes connects without starting anything), `ready_seconds` (how long its container may take to start),
+//! and `unit` (`{path, text}`), `profile` and `reload`: the container's systemd unit and its Chrome profile folder,
+//! written at the first start rather than with the agent (browsers.rs), then `reload` run once.
+//!
 //! Port of `bridge/bipbridge/browser_mcp.py` (owner group: browsers-places).
 
 use std::collections::HashMap;
@@ -36,7 +41,9 @@ use crate::Dict;
 pub const LISTS: [&str; 4] = ["tools/list", "resources/list", "resources/templates/list", "prompts/list"];
 /// A screenshot comes back as one JSON line.
 pub const LINE_LIMIT: usize = 64 * 1024 * 1024;
-pub const READY_SECONDS: u64 = 60;
+/// How long a container may take to show its screen, by default: a cold start on a loaded server (several browsers
+/// at once, memory in swap) takes far longer than the few seconds of an idle one.
+pub const READY_SECONDS: u64 = 90;
 pub const TCP_TABLES: [&str; 2] = ["/proc/net/tcp", "/proc/net/tcp6"];
 
 /// What Hermes asks while connecting, answered without starting anything once the real server has said it (the
@@ -169,11 +176,13 @@ impl Proxy {
     pub fn new(config: Dict, output: Box<dyn Write + Send>) -> Arc<Proxy> {
         let idle = config.get("idle").and_then(|v| crate::py::py_float(v).ok()).unwrap_or(600.0);
         let cache_path = PathBuf::from(config.get("cache").map(crate::py::py_str).unwrap_or_default());
-        let cache = match std::fs::read_to_string(&cache_path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        {
-            Some(Value::Object(map)) => map,
-            _ => Dict::new(),
-        };
+        let mut cache = read_cache(&cache_path);
+        if !cache.contains_key("initialize") {
+            // never started yet: what another agent's server said (the same image), so connecting starts nothing
+            if let Some(shared) = config.get("shared_cache").map(crate::py::py_str).filter(|p| !p.is_empty()) {
+                cache = read_cache(Path::new(&shared));
+            }
+        }
         Arc::new(Proxy {
             config,
             idle,
@@ -319,20 +328,19 @@ impl Proxy {
 
     pub fn remember(&self, key: &str, value: Value) {
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        if cache.get(key) == Some(&value) {
+        let own = read_cache(&self.cache_path);
+        if cache.get(key) == Some(&value) && own.get(key) == Some(&value) {
             return;
         }
         cache.insert(key.to_string(), value);
-        let saved: std::io::Result<()> = (|| {
-            if let Some(parent) = self.cache_path.parent() {
-                std::fs::create_dir_all(parent)?;
+        let mut paths = vec![self.cache_path.clone()];
+        if let Some(shared) = self.config.get("shared_cache").map(crate::py::py_str).filter(|p| !p.is_empty()) {
+            paths.push(PathBuf::from(shared));
+        }
+        for path in paths {
+            if let Err(exc) = write_cache(&path, &cache) {
+                log(&format!("cache not saved: {exc}"));
             }
-            let partial = self.cache_path.with_extension("part");
-            std::fs::write(&partial, crate::py::dumps(&Value::Object(cache.clone())))?;
-            std::fs::rename(&partial, &self.cache_path)
-        })();
-        if let Err(exc) = saved {
-            log(&format!("cache not saved: {exc}"));
         }
     }
 
@@ -377,15 +385,22 @@ impl Proxy {
 
     async fn start_server(self: &Arc<Self>) -> Result<(), String> {
         let started = crate::py::monotonic();
+        if write_unit(&self.config)? {
+            // its first use: the container's unit was only written now
+            run(&self.command("reload"), true).await?;
+            log("container set up");
+        }
         run(&self.command("start"), true).await?;
+        let patience =
+            self.config.get("ready_seconds").and_then(|v| crate::py::py_float(v).ok()).unwrap_or(READY_SECONDS as f64);
         loop {
             match run(&self.command("ready"), false).await {
                 Ok(0) => break,
                 Ok(_) => {}
                 Err(e) => return Err(e),
             }
-            if crate::py::monotonic() - started > READY_SECONDS as f64 {
-                return Err("its container did not start".into());
+            if crate::py::monotonic() - started > patience {
+                return Err(format!("its container did not start within {patience:.0} s"));
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
@@ -531,6 +546,46 @@ impl Proxy {
         // Hermes gone: its server too. The browser stays for whoever else uses it, until it is unused.
         self.stop_child().await;
     }
+}
+
+fn read_cache(path: &Path) -> Dict {
+    match std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        Some(Value::Object(map)) => map,
+        _ => Dict::new(),
+    }
+}
+
+fn write_cache(path: &Path, cache: &Dict) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // a name of its own: two agents' proxies may write the shared one at once
+    let partial = path.with_extension(format!("part{}", std::process::id()));
+    std::fs::write(&partial, crate::py::dumps(&Value::Object(cache.clone())))?;
+    std::fs::rename(&partial, path)
+}
+
+/// The container's systemd unit (and its Chrome profile folder), written if it is not there yet: an agent's browser
+/// is set up at its first use, not with the agent. Returns whether it was written (`reload` is then due).
+pub fn write_unit(config: &Dict) -> Result<bool, String> {
+    let Some(unit) = config.get("unit").and_then(Value::as_object) else { return Ok(false) };
+    let path = PathBuf::from(unit.get("path").map(crate::py::py_str).unwrap_or_default());
+    if path.as_os_str().is_empty() || path.exists() {
+        return Ok(false);
+    }
+    let text = unit.get("text").map(crate::py::py_str).unwrap_or_default();
+    let written: std::io::Result<()> = (|| {
+        if let Some(profile) = config.get("profile").map(crate::py::py_str).filter(|p| !p.is_empty()) {
+            std::fs::create_dir_all(profile)?;
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let partial = path.with_extension("part");
+        std::fs::write(&partial, text)?;
+        std::fs::rename(&partial, &path)
+    })();
+    written.map(|_| true).map_err(|e| format!("its container could not be set up: {e}"))
 }
 
 async fn read_server(proxy: Arc<Proxy>, server: Arc<Server>, stdout: tokio::process::ChildStdout) {

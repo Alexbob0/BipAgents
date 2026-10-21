@@ -77,6 +77,12 @@ impl Setup {
     }
 }
 
+/// The browser's first use (bip-browser-mcp's first start): its container's unit and Chrome profile written.
+fn first_use(s: &Setup) -> bool {
+    let settings = read_json(&s.tmp.join("browsers/budget/mcp.json"));
+    bipbridge::browser_mcp::write_unit(settings.as_object().unwrap()).unwrap()
+}
+
 fn v(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
@@ -130,9 +136,13 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     let password = place.join("vnc.pass");
     assert_eq!(std::fs::read_to_string(&password).unwrap().trim().len(), 8);
     assert_eq!(std::fs::metadata(&password).unwrap().permissions().mode() & 0o777, 0o600);
+    // Its container and Chrome profile are only set up at its first use (bip-browser-mcp), not with the agent.
+    let unit_file = s.tmp.join("units").join("bipagents-browser-budget.service");
+    assert!(!place.join("profile").exists() && !unit_file.exists());
+    assert!(!s.ran().iter().any(|c| c[0] == "systemctl"));
+    assert!(first_use(&s) && !first_use(&s)); // written once
     assert!(place.join("profile").is_dir());
     // The container: nothing of the host but its profile and password, ports on 127.0.0.1 only.
-    let unit_file = s.tmp.join("units").join("bipagents-browser-budget.service");
     let unit = std::fs::read_to_string(&unit_file).unwrap();
     let start = unit.lines().find(|l| l.starts_with("ExecStart=")).unwrap();
     assert!(start.contains("--name bipagents-browser-budget") && start.contains("--cap-drop ALL"));
@@ -143,7 +153,6 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     assert!(start.ends_with(" bipagents-browser"));
     // Not started with the session: the agent's Hermes pointed at it, its MCP server behind bip-browser-mcp.
     let ran = s.ran();
-    assert!(ran.contains(&v(&["systemctl", "--user", "disable", "bipagents-browser-budget"])));
     assert!(!ran
         .iter()
         .any(|c| c[..3] == v(&["systemctl", "--user", "enable"])[..] || c.contains(&"start".to_string())));
@@ -181,6 +190,10 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     assert_eq!(proxy["idle"], 600);
     assert_eq!(proxy["cdp_port"], 19602);
     assert_eq!(proxy["busy"], json!(place.join("busy").to_string_lossy()));
+    assert_eq!(proxy["unit"]["path"], json!(unit_file.to_string_lossy()));
+    assert_eq!(proxy["unit"]["text"], json!(unit));
+    assert_eq!(proxy["reload"].as_array().unwrap()[1..], json!(["--user", "daemon-reload"]).as_array().unwrap()[..]);
+    assert_eq!(proxy["shared_cache"], json!(s.tmp.join("browsers/mcp-cache.json").to_string_lossy()));
     for (args, env) in s.commands.lock().unwrap().iter() {
         if args[0] == "/opt/hermes" {
             assert_eq!(env, &BTreeMap::from([("HERMES_HOME".to_string(), s.home())]));
@@ -197,6 +210,7 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     s.clear();
     s.setup_budget(&s.host).await;
     assert_eq!(read_json(&place.join("ports.json")), ports);
+    assert!(s.ran().contains(&v(&["systemctl", "--user", "disable", "bipagents-browser-budget"])));
     assert!(!s.ran().contains(&v(&["systemctl", "--user", "restart", "bipagents-browser-budget"])));
     // A unit written by an earlier bridge (a 1600×900 window): rewritten, and its container restarted with these flags.
     std::fs::write(
@@ -228,6 +242,7 @@ async fn a_browser_kept_running() {
 async fn deleting_the_agent_removes_its_browser() {
     let s = setup();
     s.setup_budget(&s.host).await;
+    first_use(&s);
     s.clear();
     browsers::remove_with(&s.host, &s.config, "budget", &s.run).await.unwrap();
     let ran = s.ran();
@@ -281,10 +296,13 @@ async fn taking_over_the_browser_makes_the_agents_tools_wait() {
     let (exec, ran) = recording_exec(Arc::new(Mutex::new(true)));
     let host = Host { exec, ..s.host.clone() };
     assert!(browsers::hold_with(&host, &s.config, "budget", true).await);
-    // Its screen checked first (a browser stopped while unused starts again), then the hold.
+    // Never used: its container set up first. Then its screen checked (a browser stopped while unused starts
+    // again), then the hold.
     let done = ran.lock().unwrap().clone();
+    assert_eq!(done[0], v(&["systemctl", "--user", "daemon-reload"]));
+    assert!(s.tmp.join("units").join("bipagents-browser-budget.service").exists());
     assert_eq!(
-        done[0],
+        done[1],
         v(&["/usr/bin/podman", "exec", "bipagents-browser-budget", "test", "-e", "/tmp/.X11-unix/X99"])
     );
     assert_eq!(
@@ -294,7 +312,7 @@ async fn taking_over_the_browser_makes_the_agents_tools_wait() {
     browsers::hold_with(&host, &s.config, "budget", false).await;
     assert_eq!(ran.lock().unwrap().last().unwrap().last().unwrap(), "rm -f /tmp/bipagents-hold");
     assert!(!browsers::hold_with(&host, &s.config, "nobody", true).await); // no browser of its own
-    assert_eq!(ran.lock().unwrap().len(), 3);
+    assert_eq!(ran.lock().unwrap().len(), 4);
 }
 
 #[tokio::test]
@@ -322,6 +340,7 @@ async fn the_apps_switch_turns_the_browser_off_and_on_keeping_its_profile() {
     // The first time: set up (its container, its MCP server in the profile).
     browsers::switch_with(&s.host, &s.config, &agent, true, &s.run, &home).await.unwrap();
     assert!(s.ran().iter().any(|c| c.len() > 6 && c[4..6] == v(&["set", "mcp_servers.stealth"])[..]));
+    first_use(&s);
     let profile = s.hub.join("profiles/budget/config.yaml"); // what `hermes config set` wrote
     std::fs::write(&profile, "model:\n  provider: custom\nskills:\n  disabled:\n  - arxiv\nmcp_servers:\n  stealth:\n    command: python3\n    args:\n    - proxy\n").unwrap();
     assert_eq!(browsers::state(&home, "budget"), Some(true));

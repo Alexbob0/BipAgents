@@ -14,6 +14,10 @@
 //!   server runs in the container, next to Chrome; behind browser_mcp.py, which starts it when used) and the skill that
 //!   tells the agent how to use it.
 //!
+//! With `idle_minutes`, the container's unit and its Chrome profile folder are only written at the browser's first
+//! use (bip-browser-mcp's first start, or the person's « Bureau »): an agent that never browses costs nothing, and
+//! creating one is a few file writes.
+//!
 //! Linux only: the screen is an X server in the container.
 //!
 //! Port of `bridge/bipbridge/browsers.py` (owner group: browsers-places).
@@ -170,6 +174,7 @@ pub async fn wake_with(host: &Host, config: &Config, agent: &str, wait: f64) -> 
         return true;
     }
     busy(config, agent);
+    install_unit(host, config, agent).await;
     let screen_up = || {
         (host.exec)(vec![engine.clone(), "exec".into(), container(agent), "test".into(), "-e".into(), SCREEN.into()])
     };
@@ -190,6 +195,24 @@ pub async fn wake_with(host: &Host, config: &Config, agent: &str, wait: f64) -> 
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     true
+}
+
+/// The container's unit, written now if it was left for the browser's first use (see `setup`).
+async fn install_unit(host: &Host, config: &Config, agent: &str) {
+    let path = folder(config, agent).join("mcp.json");
+    let Some(Value::Object(settings)) =
+        std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok())
+    else {
+        return;
+    };
+    match crate::browser_mcp::write_unit(&settings) {
+        Ok(true) => {
+            (host.exec)(vec!["systemctl".into(), "--user".into(), "daemon-reload".into()]).await;
+            tracing::info!(agent = %agent, "browser container set up");
+        }
+        Ok(false) => {}
+        Err(exc) => tracing::warn!(agent = %agent, error = %exc, "browser container not set up"),
+    }
 }
 
 /// The person takes over the agent's browser (or hands it back): its MCP tools and its DevTools wait meanwhile.
@@ -471,6 +494,8 @@ pub fn proxy_config(config: &Config, agent: &str, engine: &str, ports: &IndexMap
         "cache": place.join("mcp-cache.json").to_string_lossy(), "busy": place.join("busy").to_string_lossy(),
         "cdp_port": ports.get("cdp").copied().unwrap_or(0),
         "idle": config.browser.idle_minutes as u64 * 60,
+        "shared_cache": PathBuf::from(&config.browser.root).join("mcp-cache.json").to_string_lossy(),
+        "ready_seconds": crate::browser_mcp::READY_SECONDS,
     })
 }
 
@@ -512,7 +537,10 @@ pub async fn setup_with(
         Some(p) if !p.is_empty() && in_range(config, &p) => p,
         _ => pick_ports(config, &*host.is_free)?,
     };
-    std::fs::create_dir_all(place.join("profile"))?;
+    let unit = host.unit_path(name);
+    // With `idle_minutes`, a container never set up is left for its first use (bip-browser-mcp writes its unit).
+    let deferred = on_demand(config) && !unit.exists();
+    std::fs::create_dir_all(if deferred { place.clone() } else { place.join("profile") })?;
     crate::py::chmod(&place.to_string_lossy(), 0o700)?;
     let password = place.join("vnc.pass");
     if !password.exists() {
@@ -522,22 +550,29 @@ pub async fn setup_with(
     let ports_value = Value::Object(ports.iter().map(|(k, v)| (k.clone(), json!(v))).collect());
     std::fs::write(place.join("ports.json"), format!("{}\n", crate::py::dumps(&ports_value)))?;
 
-    let unit = host.unit_path(name);
-    if let Some(parent) = unit.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let text = systemd_unit(name, &engine, &run_args(config, name, &ports, &engine, gpu_available(config)));
     let changed = unit.exists() && std::fs::read_to_string(&unit).map(|t| t != text).unwrap_or(true);
-    std::fs::write(&unit, &text)?;
+    if !deferred {
+        if let Some(parent) = unit.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&unit, &text)?;
+        run(args(&["systemctl", "--user", "daemon-reload"]), no_env()).await?;
+    }
     let stem = container(name);
-    run(args(&["systemctl", "--user", "daemon-reload"]), no_env()).await?;
     let mut proxy = None;
     if on_demand(config) {
         // Started by its first use (bip-browser-mcp), not with the session; one running now is stopped once unused.
         let path = place.join("mcp.json");
-        let settings = proxy_config(config, name, &engine, &ports);
+        let mut settings = proxy_config(config, name, &engine, &ports);
+        let systemctl = pyx::which("systemctl").unwrap_or_else(|| "systemctl".into());
+        settings["unit"] = json!({"path": unit.to_string_lossy(), "text": text});
+        settings["profile"] = json!(place.join("profile").to_string_lossy());
+        settings["reload"] = json!([systemctl, "--user", "daemon-reload"]);
         std::fs::write(&path, format!("{}\n", crate::py::Dumps::new().indent(2).dumps(&settings)))?;
-        run(args(&["systemctl", "--user", "disable", &stem]), no_env()).await?;
+        if !deferred {
+            run(args(&["systemctl", "--user", "disable", &stem]), no_env()).await?;
+        }
         if changed {
             // set up before with other flags: started again with these if it runs (its profile stays)
             run(args(&["systemctl", "--user", "try-restart", &stem]), no_env()).await?;
