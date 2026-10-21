@@ -353,11 +353,15 @@ pub fn version_of(tools: &[Value]) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))[..10].to_string()
 }
 
-/// The tools of `agent`: the install's, and `health` when the person gave it their health data.
+/// The tools of `agent`: the install's, `health` when the person gave it their health data, the calendar's when they
+/// shared their calendar with it.
 pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     let mut tools = install_tools(config).to_vec();
     if crate::health::enabled(config, &agent.name) {
         tools.push(crate::health::health_tool());
+    }
+    if crate::calendar::enabled(config, &agent.name) {
+        tools.extend(crate::calendar::tools());
     }
     tools
 }
@@ -423,7 +427,7 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// hand are left as they are. Returns whether the profile was changed (a new conversation picks it up). Err: a
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
-    let url = if crate::health::enabled(config, &agent.name) {
+    let url = if crate::health::enabled(config, &agent.name) || crate::calendar::enabled(config, &agent.name) {
         url_with(config, &version_of(&tools_for(config, agent)))
     } else {
         tools_url(config)
@@ -1185,6 +1189,20 @@ the BipAgents app.",
                 let agent_name = agent.name.clone();
                 tokio::spawn(async move {
                     push.notify_silent(&agent_name, "reminders", Dict::new()).await;
+                });
+            }
+        }
+        return Ok(result);
+    }
+    if crate::calendar::TOOL_NAMES.contains(&name) {
+        let result = blocking(move || crate::calendar::call(&config, &agent_c.name, &name_c, &arguments_c, None)).await?;
+        let failed = result.get("isError").map(py::truthy).unwrap_or(false);
+        if let Some(push) = push {
+            if name != "calendar_list" && !failed {
+                // The person's phone woken to do it now (a silent push; else when the app opens).
+                let agent_name = agent.name.clone();
+                tokio::spawn(async move {
+                    push.notify_silent(&agent_name, "calendar", Dict::new()).await;
                 });
             }
         }

@@ -115,6 +115,16 @@ explícito (artículos 6.1.a y 9.2.a del RGPD), que das al activar Salud y permi
 **Dejarlo**: desactiva Salud; cuando ya ningún agente la tiene, los días guardados en tu servidor se borran. También se
 borran con el agente, con tu plaza, o al retirar el permiso en Apple Salud o Health Connect (ya no se envía nada).
 
+**Tu agenda, si la compartes (« Calendrier », Calendario).** Para cada agente, puedes activar Calendario en sus
+herramientas. Con tu permiso (Calendarios en el iPhone, Calendario en Android), la app lee las agendas de tu teléfono,
+incluidas las cuentas añadidas en él (Google, Outlook…), y envía una copia de sus citas, desde una semana antes hasta
+dos meses después de hoy (título, horas, lugar, notas), **solo a tu servidor** (o a tu plaza con la oferta todo
+incluido), cuando se abre la app. La copia se queda allí y se sustituye en cada envío. Solo la leen los agentes que
+elegiste; cuando piden añadir, cambiar o borrar una cita, lo hace tu teléfono. El modelo de IA del agente recibe las
+citas que el agente lee para responderte. Kerfy Studio no las recibe. **Base jurídica**: tu consentimiento (artículo
+6.1.a del RGPD), que das al activar Calendario y permitirlo en tu teléfono. **Dejarlo**: desactiva Calendario para el
+agente, o retira el permiso en los ajustes del teléfono (ya no se envía nada).
+
 ## 4. Lo que Kerfy Studio puede recibir
 
 ### 4.1 Las notificaciones, a través del relé de Kerfy Studio

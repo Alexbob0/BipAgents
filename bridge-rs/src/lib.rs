@@ -90,6 +90,7 @@ pub mod tools_knowledge; // the group's private helpers (pub for its golden test
 // -- browsers-places -------------------------------------------------------------------------------
 pub mod browser_mcp;
 pub mod browsers;
+pub mod calendar;
 pub mod cloud_setup;
 pub mod console;
 pub mod desktop;

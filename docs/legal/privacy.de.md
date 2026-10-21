@@ -120,6 +120,17 @@ Agent es mehr hat, werden die auf deinem Server gespeicherten Tage gelöscht. Si
 deinem Platz, oder wenn du die Erlaubnis in Apple Health oder Health Connect entziehst (dann wird nichts mehr
 gesendet).
 
+**Dein Kalender, wenn du ihn teilst (« Calendrier », Kalender).** Für jeden Agenten kannst du Kalender in seinen
+Werkzeugen einschalten. Mit deiner Erlaubnis (Kalender auf dem iPhone und auf Android) liest die App die Kalender
+deines Telefons, auch die darauf hinzugefügten Konten (Google, Outlook…), und sendet eine Kopie ihrer Termine, von
+einer Woche vor bis zwei Monate nach heute (Titel, Zeiten, Ort, Notizen), **nur an deinen Server** (oder an deinen
+Platz beim Rundum-Angebot), wenn die App geöffnet wird. Die Kopie bleibt dort und wird bei jedem Senden ersetzt. Nur
+die Agenten, die du gewählt hast, lesen sie; wenn sie einen Termin eintragen, ändern oder löschen möchten, erledigt
+das dein Telefon. Das KI-Modell des Agenten erhält die Termine, die der Agent liest, um dir zu antworten. Kerfy Studio
+erhält sie nicht. **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du gibst, indem du Kalender
+einschaltest und es auf deinem Telefon erlaubst. **Beenden**: schalte Kalender für den Agenten aus oder entziehe die
+Erlaubnis in den Einstellungen des Telefons (dann wird nichts mehr gesendet).
+
 ## 4. Was Kerfy Studio erhalten kann
 
 ### 4.1 Benachrichtigungen über das Relay von Kerfy Studio
