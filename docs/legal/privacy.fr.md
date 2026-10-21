@@ -249,7 +249,7 @@ partages ton forfait sont prévenues par e-mail : leurs places s'arrêtent le jo
 
 **Données reçues des stores.** Par les notifications d'Apple (App Store Server Notifications) et de Google (Google Play,
 notifications en temps réel) : l'identifiant de ton abonnement chez le store, le forfait, la région, son état (semaine
-gratuite, actif, suspendu, terminé, remboursé), la fin de la période payée, si le renouvellement est coupé, et pour le
+gratuite, actif, suspendu, terminé, remboursé), la fin de la période payée, la monnaie et le prix mensuel du forfait, si le renouvellement est coupé, et pour le
 crédit d'IA acheté, l'identifiant de chaque achat et son montant. **Jamais tes moyens de paiement**, que seul le store
 connaît. Le pays du compte de ton store, que l'app envoie pour savoir si l'offre y est vendue (il n'est pas gardé).
 

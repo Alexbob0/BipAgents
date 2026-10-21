@@ -238,7 +238,7 @@ your plan with are told by email: their places stop on the day your account is e
 
 **Data received from the stores.** Through Apple's notifications (App Store Server Notifications) and Google's (Google
 Play real-time notifications): the identifier of your subscription at the store, the plan, the region, its state (free
-week, active, suspended, ended, refunded), the end of the paid period, whether the renewal is turned off, and for the
+week, active, suspended, ended, refunded), the end of the paid period, the plan's currency and monthly price, whether the renewal is turned off, and for the
 AI credit you buy, the identifier of each purchase and its amount. **Never your payment details**, which only the
 store knows. Your store account's country, which the app sends to find out whether the offer is sold there (it is not
 kept).

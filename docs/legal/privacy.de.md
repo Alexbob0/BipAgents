@@ -257,7 +257,7 @@ dein Konto gelöscht wird.
 
 **Daten von den Stores.** Über die Benachrichtigungen von Apple (App Store Server Notifications) und von Google (Google
 Play, Echtzeitbenachrichtigungen): die Kennung deines Abos beim Store, der Tarif, die Region, sein Status (kostenlose
-Woche, aktiv, gesperrt, beendet, erstattet), das Ende des bezahlten Zeitraums, ob die Verlängerung ausgeschaltet ist,
+Woche, aktiv, gesperrt, beendet, erstattet), das Ende des bezahlten Zeitraums, die Währung und den Monatspreis des Tarifs, ob die Verlängerung ausgeschaltet ist,
 und für gekauftes KI-Guthaben die Kennung jedes Kaufs und sein Betrag. **Nie deine Zahlungsdaten**, die nur der Store
 kennt. Das Land deines Store-Kontos, das die App schickt, um zu erfahren, ob das Angebot dort verkauft wird (es wird
 nicht aufbewahrt).
