@@ -190,8 +190,8 @@ WantedBy=default.target
 
 def bridge_service(inst: Install, system: str) -> tuple[str, Path, str]:
     """(file name, path, content) of the bridge's service for this person."""
-    python = inst.repo / "bridge" / ".venv" / "bin" / "python"
-    program = [str(python), "-m", "bipbridge", "serve"]
+    from .rustbridge import program as bridge_program
+    program = bridge_program(inst.home, inst.repo)   # the Rust bridge when this account chose it (rustbridge.py)
     env = {"BRIDGE_CONFIG": str(inst.bridge_config), "PYTHONUNBUFFERED": "1"}
     if system == "macos":
         path = inst.home / "Library" / "LaunchAgents" / "io.github.bipagents.bridge.plist"
