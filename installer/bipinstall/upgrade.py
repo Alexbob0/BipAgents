@@ -211,6 +211,10 @@ def main(argv: List[str]) -> int:
                         help="apply the new settings to a Hermes you had before BipAgents too")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+    if platform.system() == "Linux" and not os.environ.get("XDG_RUNTIME_DIR"):
+        # From `sudo -iu <account>`: its own systemd found all the same (the bridge, Pocket and the browsers' units).
+        from .account import session_env
+        os.environ.update(session_env(os.getuid()))
     runner = hermes.Runner(dry=args.dry_run)
     ask = (lambda question: False) if args.auto else confirm
     commands: List[str] = []
