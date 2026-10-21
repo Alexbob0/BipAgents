@@ -174,7 +174,7 @@ async fn a_task_runs_in_its_own_conversation_and_ends_with_its_report() {
             "Tâche de fond terminée".into()
         )]
     );
-    let listed = board.list();
+    let listed = board.list(None);
     assert_eq!(listed[0]["id"], json!(id_of(&job)));
     assert!(!listed[0].contains_key("base") && !listed[0].contains_key("run_id"));
 }
@@ -250,7 +250,7 @@ async fn an_agent_proposes_a_task_the_person_starts() {
     assert_eq!(result["isError"], false);
     assert!(result["content"][0]["text"].as_str().unwrap().contains("Tâches de fond"));
     assert!(result["content"][0]["text"].as_str().unwrap().contains("300,000"));
-    let proposed = board.list()[0].clone();
+    let proposed = board.list(None)[0].clone();
     assert_eq!((proposed["state"].as_str(), proposed["proposed_by"].as_str()), (Some("proposed"), Some("agent")));
     assert_eq!(proposed["max_tokens"], 300_000);
     assert!(!fake.lock().unwrap().requests.iter().any(|(_, p, _)| p.ends_with("/v1/runs"))); // nothing spent before the go
@@ -303,7 +303,7 @@ async fn mail_scans_are_listed_and_controlled_with_the_tasks() {
         None,
         Some(scans),
     );
-    let listed: Vec<Value> = board.list().into_iter().map(Value::Object).collect();
+    let listed: Vec<Value> = board.list(None).into_iter().map(Value::Object).collect();
     assert_eq!(
         Value::Array(listed),
         json!([{"id": "mail-scan:coach", "kind": "mail_scan", "agent": "coach", "title": "Gmail",

@@ -176,3 +176,22 @@ def test_the_routes_need_the_bridge_key_and_check_what_they_get(bridge, fakes):
     refused = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json=TASK)
     assert refused.status_code == 409 and refused.json() == {"detail": "the agent refused the task (401)"}
     assert bridge.get("/v1/jobs", headers=AUTH).json()["jobs"] == []
+
+
+@pytest.mark.slow
+def test_a_running_task_says_what_it_does_now_and_jobs_list_by_agent(bridges, fakes):
+    from bbkit.common import sse
+
+    bridge = bridges.new().start()
+    fakes.hermes.rounds = 1000
+    fakes.hermes.runs["r1"] = [sse("tool.started", tool="web_search", preview="mutuelle famille 4")]
+    job = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json=TASK).json()
+
+    def activity():
+        jobs = bridge.get("/v1/jobs?agent=wellness", headers=AUTH).json()["jobs"]
+        return jobs[0].get("activity") if jobs else None
+
+    assert wait_until(lambda: activity() == {"tool": "web_search", "preview": "mutuelle famille 4"}, timeout=15)
+    missing = bridge.get("/v1/jobs?agent=nobody", headers=AUTH)
+    assert missing.status_code == 404 and missing.json() == {"detail": "unknown agent"}
+    assert bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH).status_code == 200

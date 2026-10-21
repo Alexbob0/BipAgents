@@ -323,11 +323,22 @@ impl Jobs {
 
     // -- the list ------------------------------------------------------------------------------------------------------
 
-    pub fn list(&self) -> Vec<Dict> {
+    /// Every job, or one agent's (a conversation asks for its agent's only).
+    pub fn list(&self, agent: Option<&str>) -> Vec<Dict> {
         let config = self.config.get();
-        let mut out: Vec<Dict> =
-            tasks(&config).iter().filter(|job| config.agent(Some(&agent_of(job))).is_some()).map(task_view).collect();
-        for name in config.agents.keys() {
+        let mut out: Vec<Dict> = tasks(&config)
+            .iter()
+            .filter(|job| {
+                let owner = agent_of(job);
+                config.agent(Some(&owner)).is_some() && agent.is_none_or(|name| name == owner)
+            })
+            .map(|job| self.view_of(job))
+            .collect();
+        let names: Vec<String> = match agent {
+            Some(name) => vec![name.to_string()],
+            None => config.agents.keys().cloned().collect(),
+        };
+        for name in &names {
             if let Some(scan) = mail_scan::load(&config, name) {
                 let running = self.scans.as_ref().is_some_and(|s| s.running(name));
                 out.push(scan_view(&scan, running));
@@ -349,7 +360,45 @@ impl Jobs {
     }
 
     pub fn view(&self, job_id: &str) -> Result<Dict, JobError> {
-        load(&self.config.get(), job_id).map(|job| task_view(&job)).ok_or_else(|| JobError("unknown job".into()))
+        load(&self.config.get(), job_id).map(|job| self.view_of(&job)).ok_or_else(|| JobError("unknown job".into()))
+    }
+
+    fn view_of(&self, job: &Dict) -> Dict {
+        let mut view = task_view(job);
+        let state = state_of(job);
+        if state == "running" || state == "stopping" {
+            let run_id = job.get("run_id").and_then(Value::as_str);
+            view.insert("activity".into(), self.activity(&agent_of(job), run_id));
+        }
+        view
+    }
+
+    /// What the task does right now: its run's last tool step (or sub-agent), from the events the hub follows.
+    pub fn activity(&self, agent: &str, run_id: Option<&str>) -> Value {
+        let (Some(hub), Some(run_id)) = (self.hub.as_ref(), run_id) else { return Value::Null };
+        let Some(sub) = hub.subscription(agent, run_id) else { return Value::Null };
+        let state = sub.state.lock().unwrap_or_else(|e| e.into_inner());
+        // str(value or "") as Python writes it; the preview cut to 160 characters, the tool's name whole.
+        let text = |value: Option<&Value>| -> String {
+            match value {
+                None | Some(Value::Null) | Some(Value::Bool(false)) => String::new(),
+                Some(Value::String(s)) => s.clone(),
+                Some(other) => py::py_str(other),
+            }
+        };
+        let cut = |value: Option<&Value>| -> String { text(value).chars().take(160).collect() };
+        for event in state.backlog.iter().rev() {
+            match event.r#type.as_str() {
+                "tool.started" => {
+                    return json!({"tool": text(event.data.get("tool")), "preview": cut(event.data.get("preview"))});
+                }
+                "subagent.start" | "subagent.started" => {
+                    return json!({"tool": "delegate_task", "preview": cut(event.data.get("goal"))});
+                }
+                _ => {}
+            }
+        }
+        Value::Null
     }
 
     fn agent(&self, name: &str) -> Result<AgentConfig, JobError> {
@@ -957,8 +1006,19 @@ fn refused(err: anyhow::Error) -> HttpError {
     }
 }
 
-async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
-    let jobs = jobs_of(&state).list();
+async fn listing(State(state): State<AppState>, q: web::QueryMap) -> ApiResult<Response> {
+    let agent = web::query_str(&q, "agent", false, Some(80))?;
+    let name = match agent {
+        Some(id) => Some(
+            state
+                .config()
+                .agent(Some(&id))
+                .map(|a| a.name.clone())
+                .ok_or_else(|| HttpError::new(404, "unknown agent"))?,
+        ),
+        None => None,
+    };
+    let jobs = jobs_of(&state).list(name.as_deref());
     Ok(web::ok(json!({"jobs": jobs, "budgets": budgets()})))
 }
 

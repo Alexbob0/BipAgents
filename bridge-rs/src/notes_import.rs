@@ -271,6 +271,7 @@ async fn import_notes(
 ) -> ApiResult<Response> {
     let config = state.config();
     let agent = editable(&config, &agent_id).map_err(|_| HttpError::new(404, "not an agent this install manages"))?;
+    crate::place_backup::refuse_when_full().await?; // an offer's place with its 5 GB used up
     let raw = b64decode(&body.data).ok_or_else(|| HttpError::new(400, "not base64"))?;
     if raw.len() > MAX_BYTES {
         return Err(HttpError::new(413, "60 MB at most"));

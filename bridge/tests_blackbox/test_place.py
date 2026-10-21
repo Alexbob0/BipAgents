@@ -102,18 +102,34 @@ def test_the_app_gets_the_key_and_when_the_last_backup_worked(bridge):
     settings = bridge.home / ".config" / "bipagents" / "backup.json"
     settings.parent.mkdir(parents=True)
     settings.write_text(json.dumps({"url": "https://g.test/v1/backup/", "token": "t", "password": "the-key"}))
-    assert bridge.get("/v1/backup", headers=AUTH).json() == {"enabled": True, "key": "the-key"}
+    five_gb = 5 * 2**30
+    assert bridge.get("/v1/backup", headers=AUTH).json() == {"enabled": True, "key": "the-key", "allowance_bytes": five_gb}
     state = bridge.home / ".local" / "state" / "bipagents" / "backup.json"
     state.parent.mkdir(parents=True)
     state.write_text(json.dumps({"last_ok": 1790000000.0, "snapshot": "abc", "last_error": None,
                                  "failed_at": 1789990000.0}))
     status = bridge.get("/v1/backup", headers=AUTH).json()
-    assert status == {"enabled": True, "key": "the-key", "last_ok": 1790000000.0, "failed_at": 1789990000.0}
+    assert status == {"enabled": True, "key": "the-key", "last_ok": 1790000000.0, "failed_at": 1789990000.0,
+                      "allowance_bytes": five_gb}
     started = bridge.post("/v1/backup/now", headers=AUTH)
     assert started.json() == {"started": True}
     assert bridge.commands.of("systemctl") == [["--user", "start", "--no-block", "bipagents-backup.service"]]
     bridge.commands.rule("systemctl", ["--user", "start"], exit=1)
     assert bridge.post("/v1/backup/now", headers=AUTH).json() == {"started": False}
+
+
+def test_a_place_with_its_5_gb_used_up_refuses_files_and_notes(bridge):
+    settings = bridge.home / ".config" / "bipagents" / "backup.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"url": "https://g.test/v1/backup/", "token": "t", "password": "the-key"}))
+    state = bridge.home / ".local" / "state" / "bipagents" / "backup.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({"last_ok": 1790000000.0, "bytes": 1_288_490_189}))
+    assert bridge.get("/v1/backup", headers=AUTH).json()["used_bytes"] == 1_288_490_189
+    state.write_text(json.dumps({"last_ok": 1790000000.0, "bytes": 5 * 2**30}))
+    full = bridge.post("/v1/files", headers=AUTH, data={"agent": "wellness"},
+                       files={"file": ("a.pdf", b"%PDF-1.4", "application/pdf")})
+    assert full.status_code == 507 and full.json() == {"detail": "storage full: this place's 5 GB are used up"}
 
 
 # -- one's own Hermes, sent in -----------------------------------------------------------------------------------------

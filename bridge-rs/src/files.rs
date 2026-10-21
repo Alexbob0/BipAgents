@@ -309,6 +309,7 @@ async fn read_form(request: Request) -> Result<Vec<(String, FormItem)>, FormErro
 /// sees it.
 pub async fn handle_upload(state: AppState, request: Request) -> ApiResult<Value> {
     let config = state.config();
+    crate::place_backup::refuse_when_full().await?; // an offer's place with its 5 GB used up
     let form = match read_form(request).await {
         Ok(form) => form,
         Err(FormError::TooLarge(max)) => return Err(body_too_large(max)),

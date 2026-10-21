@@ -216,7 +216,21 @@ def main(argv: List[str]) -> int:
         print(ui.fail("I can't find the bridge's service in this account."))
         return 1
     restart(home)
+    browsers_follow(home)
     print(ui.done(f"The bridge now runs in {'Rust' if choice == 'rust' else 'Python'}."
                   + ("  Back: bipagents bridge python" if choice == "rust" else "")))
     return 0
+
+
+def browsers_follow(home: Path) -> None:
+    """Each agent's browser tools (its `stealth` MCP entry) run the helper of the bridge that runs: the Rust bridge's
+    bip-browser-mcp, or Python's browser_mcp.py. Written again by the bridge's own `browser add --all`."""
+    from .family import find_config
+    if not list((home / ".config" / "systemd" / "user").glob("bipagents-browser-*.service")) and sys.platform != "darwin":
+        return   # no agent browser here
+    try:
+        config = find_config(None)
+    except SystemExit:
+        return
+    subprocess.run(cli(home) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge", check=False)
 
