@@ -166,6 +166,9 @@ def rewrite_service(home: Path, run: List[str]) -> Optional[Path]:
 def restart(home: Path) -> None:
     from .family import bridge_restart
     if sys.platform != "darwin":
+        if not os.environ.get("XDG_RUNTIME_DIR"):   # from `sudo -u`: the account's own systemd is still reachable
+            from .account import session_env
+            os.environ.update(session_env(os.getuid()))
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
     else:   # launchd reads the plist again only when loaded again
         for plist in sorted((home / "Library" / "LaunchAgents").glob("*.plist")):
