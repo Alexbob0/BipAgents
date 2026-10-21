@@ -250,6 +250,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "bridge":   # rustbridge.py: the bridge in Rust or in Python
         from .rustbridge import main as bridge_main
         return bridge_main(argv[1:])
+    if argv and argv[0] == "qr":   # the code to scan in the app again, from the bridge that runs (Rust or Python)
+        return qr_main(argv[1:])
     if argv and argv[0] in ("export", "import", "resume"):   # moving.py: to another machine, or a backup
         from . import moving
         return {"export": moving.export_main, "import": moving.import_main, "resume": moving.resume_main}[argv[0]](argv[1:])
@@ -723,6 +725,20 @@ def checks_and_end(inst: Install, runner: hermes.Runner, args, steps, total: int
     subprocess.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "qr", "--config",
                     str(inst.bridge_config)], cwd=REPO / "bridge", check=False)
     return 0
+
+
+def qr_main(argv: List[str]) -> int:
+    from . import rustbridge
+
+    # The bridge's own options pass through (`--agent vie`, `--png vie.png`).
+    _, rest = argparse.ArgumentParser(prog="bipagents qr", description="Show the code to scan in the BipAgents app again").parse_known_args(argv)
+    config = Path.home() / ".config" / "bipagents" / "bridge.toml"
+    if not config.exists():
+        say(f"No BipAgents install in this account ({config} is missing): run this command in the account it was installed in.")
+        return 1
+    say("In the BipAgents app: \"+\" › Scan QR code.")
+    return subprocess.run(rustbridge.cli(Path.home()) + ["qr", "--config", str(config)] + rest, cwd=REPO / "bridge",
+                          check=False).returncode
 
 
 def uninstall_main(argv: List[str]) -> int:

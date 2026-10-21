@@ -168,7 +168,7 @@ stays local, only the bridge calls it.
   Xcode creates them on the first build (*Automatically manage signing*). Use the same identifier in the bridge's
   `[apns] bundle_id`.
 - In the app: Settings › Add an agent → **Scan the QR code**. On the server, fill in `public_url` (the bridge's
-  and each agent's tailnet address) in `bridge.toml`, then show the code with `python -m bipbridge qr` (one per
+  and each agent's tailnet address) in `bridge.toml`, then show the code with `bipagents qr` (one per
   agent, `--agent vie` for one only, `--png vie.png` to save it). It holds the agent's keys: show it only to your
   own phone. Without it: address `https://mamachine.tailnet.ts.net:8642`, api_server key, bridge address
   `https://mamachine.tailnet.ts.net:8643` and its key. Pick your language and your Bip.
