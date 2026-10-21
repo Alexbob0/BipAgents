@@ -39,9 +39,9 @@ conditions.
 
 | Forfait | Personnes | Serveur | Prix par mois, TTC |
 |---|---|---|---|
-| Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 5,99 € |
-| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 9,99 € |
-| Famille | jusqu'à 4 | un serveur rien qu'à vous | 17,99 € |
+| Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 6,99 € |
+| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 11,99 € |
+| Famille | jusqu'à 6 | un serveur rien qu'à vous | 19,99 € |
 
 Pour chaque personne du forfait :
 

@@ -39,9 +39,9 @@ diese Bedingungen.
 
 | Tarif | Personen | Server | Preis pro Monat, inkl. MwSt. |
 |---|---|---|---|
-| Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 5,99 € |
-| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 9,99 € |
-| Familie | bis zu 4 | ein Server nur für euch | 17,99 € |
+| Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 6,99 € |
+| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 11,99 € |
+| Familie | bis zu 6 | ein Server nur für euch | 19,99 € |
 
 Für jede Person des Tarifs:
 

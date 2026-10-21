@@ -39,9 +39,9 @@ condiciones.
 
 | Plan | Personas | Servidor | Precio al mes, IVA incluido |
 |---|---|---|---|
-| Solo | 1 | una plaza en un servidor compartido con otros suscriptores | 5,99 € |
-| Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 9,99 € |
-| Familia | hasta 4 | un servidor solo para vosotros | 17,99 € |
+| Solo | 1 | una plaza en un servidor compartido con otros suscriptores | 6,99 € |
+| Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 11,99 € |
+| Familia | hasta 6 | un servidor solo para vosotros | 19,99 € |
 
 Para cada persona del plan:
 

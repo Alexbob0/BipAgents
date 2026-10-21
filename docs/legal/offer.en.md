@@ -37,9 +37,9 @@ Using BipAgents with your own computer or your own server stays free and is not 
 
 | Plan | People | Server | Price per month, VAT included |
 |---|---|---|---|
-| Solo | 1 | a place on a server shared with other subscribers | €5.99 |
-| Duo | 2 | two places on one server, shared with other subscribers | €9.99 |
-| Family | up to 4 | a server of your own | €17.99 |
+| Solo | 1 | a place on a server shared with other subscribers | €6.99 |
+| Duo | 2 | two places on one server, shared with other subscribers | €11.99 |
+| Family | up to 6 | a server of your own | €19.99 |
 
 For each person in the plan:
 
