@@ -1,29 +1,29 @@
 # The bridge's black-box suite
 
-This suite decides whether the Rust bridge (`bridge-rs/`) may replace the Python one (`bridge/bipbridge/`). It runs the
-bridge as a separate process and talks to it the way the apps, the agents, other bridges and the administrator do:
-over HTTP, SSE, WebSocket and the command line. It reads and writes nothing of the bridge's code. The only Python it
-imports is its own harness (`bbkit/`), so the same tests run against both implementations.
+This suite is the bridge's HTTP contract. It was written to decide whether the Rust bridge (`bridge-rs/`) could
+replace the Python one (`bridge/bipbridge/`, retired on 2026-10-21, in the history), and now guards the Rust one. It
+runs the bridge as a separate process and talks to it the way the apps, the agents, other bridges and the
+administrator do: over HTTP, SSE, WebSocket and the command line. It reads and writes nothing of the bridge's code.
+The only Python it imports is its own harness (`bbkit/`).
 
-All 246 tests pass against the Python bridge. The full run takes about 10 minutes.
+All 254 tests pass against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
 
 ## Running it
 
-From `bridge/`, with a Python that has pytest, httpx, websockets, uvicorn, starlette, cryptography, PyJWT and PyYAML.
-The main checkout's virtualenv has all of them.
+From `bridge/`, with a Python that has the harness' packages (`tests_blackbox/requirements.txt`: pytest, httpx,
+websockets, uvicorn, starlette, cryptography, PyJWT and PyYAML), after `cargo build --release` in `bridge-rs/`.
 
 ```sh
-# Against the Python bridge (the default: this Python's `-m bipbridge serve`, run from bridge/)
-.venv/bin/python -m pytest tests_blackbox -q -p no:cacheprovider
+# Against the release build (the default: bridge-rs/target/release/bipbridge serve, or $CARGO_TARGET_DIR/release/)
+python -m pytest tests_blackbox -q -p no:cacheprovider
 
-# Against the Rust bridge
-BRIDGE_CMD="../bridge-rs/target/release/bipbridge serve" \
-  .venv/bin/python -m pytest tests_blackbox -q -p no:cacheprovider
+# Against another binary (BRIDGE_SWITCH_CMD: the one test_switch.py hands the data to, e.g. an earlier release)
+BRIDGE_CMD="/path/to/bipbridge serve" python -m pytest tests_blackbox -q -p no:cacheprovider
 
 # One file, or one test, with the bridge's log when it fails (printed under « Captured stdout teardown »)
 ... -m pytest tests_blackbox/test_voice_and_approvals.py -q -k follow
 
-# Without the 11 tests that wait for the bridge's own timers (jobs' 10 s polls, the cron watcher, keepalives…): ~4 min
+# Without the 11 tests that wait for the bridge's own timers (jobs' 10 s polls, the cron watcher, keepalives…)
 ... -m pytest tests_blackbox -q -p no:cacheprovider -m "not slow"
 ```
 

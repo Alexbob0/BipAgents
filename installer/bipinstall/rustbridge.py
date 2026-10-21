@@ -1,18 +1,21 @@
-"""The bridge in Rust (bridge-rs/, decided 2026-10-21): the same routes, files and settings as the Python one
-(bridge/bipbridge), in far less memory. GitHub Actions builds its binaries (.github/workflows/bridge-release.yml) for
-Linux x86_64 and ARM — Windows runs BipAgents in WSL2, so Linux too — and for macOS, and publishes them as the release
-`bridge-<key>`. The key is a hash of the sources they were built from (bridge-rs/ and what it embeds, bridge/bipbridge/),
-so a checkout knows which release is its own without asking anyone.
+"""The bridge (bridge-rs/, in Rust since 2026-10-21; the Python one it replaced stays in the history). GitHub Actions
+builds its binaries (.github/workflows/bridge-release.yml) for Linux x86_64 and ARM — Windows runs BipAgents in WSL2,
+so Linux too — and for macOS, and publishes them as the release `bridge-<key>`. The key is a hash of the sources they
+were built from (the tree of bridge-rs/, which holds everything the binary embeds: bridge-rs/assets/), so a checkout
+knows which release is its own without asking anyone.
 
-The engine is each account's choice: ~/.config/bipagents/bridge-engine says « rust » or « python » (none: python, until
-the Rust one has passed its tests on real installs).
+    bipagents bridge           which version runs, and whether its binaries are here
+    bipagents bridge rust      this checkout's binaries again (checked against the release's SHA256SUMS, into
+                               ~/.local/share/bipagents/bridge/<key>/), the service put back on them, restarted
+    bipagents bridge browser add --agent vie
+                               the bridge's own command line (check, qr, peer-token, browser, spaces…), on this
+                               account's config
 
-    bipagents bridge rust      this checkout's binaries, checked against the release's SHA256SUMS, into
-                               ~/.local/share/bipagents/bridge/<key>/; the service then runs them
-    bipagents bridge python    back to the Python bridge (the binaries stay, for a later switch)
-    bipagents bridge           which one runs, and whether this version's binaries are out yet
+A machine with no build of ours (another processor, another system) can run binaries built on it (`cargo build
+--release` in bridge-rs/): BIPAGENTS_BRIDGE_BUILD=<their folder> for the install or `bipagents bridge rust`.
 
-`bipagents update` keeps the binaries in step with the code: a new key, its binaries, a restart.
+`bipagents update` keeps the binaries in step with the code: a new key, its binaries, a restart. An install still on
+the Python bridge is moved to them by its first update (migrations.py, rust-bridge).
 """
 from __future__ import annotations
 
@@ -32,10 +35,14 @@ from typing import Callable, List, Optional
 
 REPO = Path(__file__).resolve().parents[2]
 SLUG = "Alexbob0/BipAgents"
-ENGINE = Path(".config") / "bipagents" / "bridge-engine"
+ENGINE = Path(".config") / "bipagents" / "bridge-engine"   # « rust » or « python » while both existed; removed now
 BINARIES = Path(".local") / "share" / "bipagents" / "bridge"
 KEEP = 2                     # binaries kept: this version's and the one before (a quick way back)
 SUMS = "SHA256SUMS"
+BUILD = "BIPAGENTS_BRIDGE_BUILD"   # a folder of binaries built on this machine, for one with no build of ours
+PROGRAMS = ("bipbridge", "bip-browser-mcp")
+# The bridge's own subcommands, passed on by `bipagents bridge <command> …` (bridge-rs/src/main_cli.rs).
+COMMANDS = ("check", "genkey", "qr", "peer-token", "browser", "shares-mounts", "console", "spaces", "adopt")
 
 Opener = Callable[[str], bytes]
 
@@ -45,14 +52,13 @@ class RustBridgeError(Exception):
 
 
 def key(repo: Path = REPO) -> Optional[str]:
-    """This checkout's release key: the same hash the workflow computes (None without bridge-rs/)."""
-    trees = []
-    for path in ("bridge-rs", "bridge/bipbridge"):
-        done = subprocess.run(["git", "-C", str(repo), "rev-parse", f"HEAD:{path}"], capture_output=True, text=True)
-        if done.returncode != 0:
-            return None
-        trees.append(done.stdout.strip())
-    return hashlib.sha256(" ".join(trees).encode()).hexdigest()[:12]
+    """This checkout's release key, the same hash the workflow computes: sha256 of the tree id of bridge-rs/ (the
+    binaries are built from that folder alone, their embedded files in bridge-rs/assets/), 12 characters. None
+    without bridge-rs/ (or outside a git checkout)."""
+    done = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD:bridge-rs"], capture_output=True, text=True)
+    if done.returncode != 0:
+        return None
+    return hashlib.sha256(done.stdout.strip().encode()).hexdigest()[:12]
 
 
 def asset(system: Optional[str] = None, machine: Optional[str] = None) -> Optional[str]:
@@ -68,20 +74,6 @@ def asset(system: Optional[str] = None, machine: Optional[str] = None) -> Option
     return None
 
 
-def engine(home: Optional[Path] = None) -> str:
-    try:
-        value = ((home or Path.home()) / ENGINE).read_text(encoding="utf-8").strip()
-    except OSError:
-        return "python"
-    return value if value in ("rust", "python") else "python"
-
-
-def set_engine(home: Path, value: str) -> None:
-    path = home / ENGINE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(value + "\n", encoding="utf-8")
-
-
 def binary(home: Path, release: str) -> Path:
     return home / BINARIES / release / "bipbridge"
 
@@ -89,6 +81,14 @@ def binary(home: Path, release: str) -> Path:
 def _download(url: str) -> bytes:
     with urllib.request.urlopen(url, timeout=120) as resp:   # GitHub answers with a redirect to its file store
         return resp.read()
+
+
+def _prune(folder: Path) -> None:
+    kept = sorted((p for p in folder.parent.iterdir() if p.is_dir() and not p.name.startswith(".")),
+                  key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in kept[KEEP:]:
+        if old != folder:
+            shutil.rmtree(old, ignore_errors=True)
 
 
 def fetch(home: Path, release: str, name: str, opener: Opener = _download) -> Path:
@@ -101,8 +101,8 @@ def fetch(home: Path, release: str, name: str, opener: Opener = _download) -> Pa
         sums = opener(f"{base}/{SUMS}").decode()
         archive = opener(f"{base}/{name}")
     except Exception as exc:   # noqa: BLE001 - 404 while the workflow still builds, or no network
-        raise RustBridgeError(f"the Rust bridge of this version isn't out yet ({type(exc).__name__}); "
-                              "`bipagents update` again in a few minutes") from exc
+        raise RustBridgeError(f"the bridge of this version isn't out yet ({type(exc).__name__}); "
+                              "try again in a few minutes") from exc
     expected = next((line.split()[0] for line in sums.splitlines() if line.strip().endswith(name)), None)
     if expected is None or hashlib.sha256(archive).hexdigest() != expected:
         raise RustBridgeError(f"{name} doesn't match the release's {SUMS}: not installed")
@@ -112,7 +112,7 @@ def fetch(home: Path, release: str, name: str, opener: Opener = _download) -> Pa
     try:
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
             for member in tar.getmembers():
-                if member.name not in ("bipbridge", "bip-browser-mcp") or not member.isfile():
+                if member.name not in PROGRAMS or not member.isfile():
                     continue   # only the two programs, nothing else written anywhere
                 data = tar.extractfile(member)
                 (staging / member.name).write_bytes(data.read() if data else b"")
@@ -122,26 +122,72 @@ def fetch(home: Path, release: str, name: str, opener: Opener = _download) -> Pa
         os.replace(staging, folder)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    kept = sorted((p for p in folder.parent.iterdir() if p.is_dir() and not p.name.startswith(".")),
-                  key=lambda p: p.stat().st_mtime, reverse=True)
-    for old in kept[KEEP:]:
-        if old != folder:
-            shutil.rmtree(old, ignore_errors=True)
+    _prune(folder)
     return target
 
 
+def local_build(home: Path, release: str, folder: Path) -> Path:
+    """Binaries built on this machine (BIPAGENTS_BRIDGE_BUILD), copied where the release's would go."""
+    if not (folder / "bipbridge").is_file():
+        raise RustBridgeError(f"{folder} holds no bipbridge program ({BUILD})")
+    target = binary(home, release)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    for name in PROGRAMS:
+        if (folder / name).is_file():
+            shutil.copy2(folder / name, target.parent / name)
+            (target.parent / name).chmod(0o755)
+    _prune(target.parent)
+    return target
+
+
+def unsupported(system: Optional[str] = None, machine: Optional[str] = None) -> str:
+    """What a machine with no build of ours is told."""
+    system, machine = system or platform.system(), machine or platform.machine()
+    return (f"BipAgents' bridge has ready-made builds for Linux (x86_64, ARM64), Windows through WSL2 and macOS, "
+            f"not for this machine ({system} {machine}). It can be built on it (Rust: `cargo build --release` in "
+            f"{REPO / 'bridge-rs'}), then this run again with {BUILD}={REPO / 'bridge-rs' / 'target' / 'release'}.")
+
+
+def ensure(home: Path, repo: Path = REPO, runner=None) -> Path:
+    """This checkout's bridge binaries in place (downloaded, or BIPAGENTS_BRIDGE_BUILD's): their path. With a
+    runner, the step is logged (and only logged on a dry run). Raises RustBridgeError, safe to show, when there are
+    none for this machine or this version."""
+    release, name, built = key(repo), asset(), os.environ.get(BUILD)
+    if not release:
+        raise RustBridgeError(f"{repo} isn't a git checkout of BipAgents with bridge-rs/: I can't tell which bridge "
+                              "it needs")
+    target = binary(home, release)
+    if runner is not None:
+        source = built or f"https://github.com/{SLUG}/releases/download/bridge-{release}/{name or '?'}"
+        runner.log.append(f"fetch the bridge {release} from {source} into {target.parent}")
+        if runner.dry:
+            return target
+    if built:
+        return local_build(home, release, Path(built).expanduser())
+    if not name:
+        raise RustBridgeError(unsupported())
+    return fetch(home, release, name)
+
+
 def program(home: Path, repo: Path = REPO) -> List[str]:
-    """What the bridge's service runs: the Rust binary of this checkout when chosen and there, else Python."""
-    release = key(repo)
-    if engine(home) == "rust" and release and binary(home, release).exists():
-        return [str(binary(home, release)), "serve"]
-    return [str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "serve"]
+    """What the bridge's service runs: the binary of this checkout's release (there once `ensure` has fetched it)."""
+    return [str(binary(home, key(repo) or "unknown")), "serve"]
 
 
 def cli(home: Path, repo: Path = REPO) -> List[str]:
-    """The bridge's own command line (`browser add --all`, `qr`…), from the engine that runs."""
-    run = program(home, repo)
-    return run[:-1]
+    """The bridge's own command line (`browser add --all`, `qr`, `spaces start`…)."""
+    return program(home, repo)[:-1]
+
+
+def python_service(home: Path) -> bool:
+    """Whether the bridge's service still runs the Python bridge (an install made before 2026-10-21)."""
+    if sys.platform == "darwin":
+        files = sorted((home / "Library" / "LaunchAgents").glob("*.plist"))
+        pattern = r"<string>-m</string>\s*<string>bipbridge</string>"
+    else:
+        files = sorted((home / ".config" / "systemd" / "user").glob("*.service"))
+        pattern = r"^ExecStart=\S*python\S* -m bipbridge"
+    return any(re.search(pattern, path.read_text(errors="ignore"), flags=re.M) for path in files)
 
 
 def rewrite_service(home: Path, run: List[str]) -> Optional[Path]:
@@ -180,54 +226,62 @@ def restart(home: Path) -> None:
 
 
 def keep_in_step(home: Path, repo: Path = REPO) -> Optional[str]:
-    """After a pull (`bipagents update`): this version's binaries for a Rust bridge, the service on them. Says what it
-    did, or why it kept the previous ones (None: the Python bridge runs, nothing to do)."""
-    if engine(home) != "rust":
+    """After a pull (`bipagents update`): this version's binaries, the service on them. Says what it did, or why it
+    kept the previous ones (None: the service still runs the Python bridge, which the migration rust-bridge moves)."""
+    if python_service(home):
         return None
-    release, name = key(repo), asset()
-    if not release or not name:
-        return "The Rust bridge has no build for this machine: the previous one keeps running."
     try:
-        fetch(home, release, name)
+        ensure(home, repo)
     except RustBridgeError as exc:
-        return str(exc)
+        return f"{exc}: the previous bridge keeps running."
     rewrite_service(home, program(home, repo))
-    return f"Rust bridge {release} in place."
+    return f"Bridge {key(repo)} in place."
+
+
+def switch(home: Path, repo: Path = REPO) -> str:
+    """The bridge's service on this checkout's binaries (fetched first), restarted, the agents' browser tools on its
+    helper. Raises RustBridgeError, nothing changed, when there are no binaries for this machine or this version."""
+    ensure(home, repo)
+    if rewrite_service(home, program(home, repo)) is None:
+        raise RustBridgeError("I can't find the bridge's service in this account.")
+    (home / ENGINE).unlink(missing_ok=True)   # there is only one bridge now
+    restart(home)
+    browsers_follow(home)
+    return f"The bridge {key(repo)} runs."
 
 
 def main(argv: List[str]) -> int:
     from . import ui
     home = Path.home()
     choice = argv[0] if argv else ""
-    release, name = key(), asset()
-    if choice not in ("rust", "python"):
-        print(f"Bridge: {engine(home)}" + (f" (Rust {release}, {'downloaded' if release and binary(home, release).exists() else 'not downloaded'})"
-                                         if release else " (this version has no Rust bridge)"))
-        print("Change it: bipagents bridge rust | bipagents bridge python")
+    if choice in COMMANDS:   # the bridge's own command line, on this account's config unless another is given
+        from .family import find_config
+        rest = list(argv)
+        if choice != "genkey" and "--config" not in rest:
+            rest += ["--config", str(find_config(None))]
+        return subprocess.run(cli(home) + rest, check=False).returncode
+    if choice == "python":
+        print(ui.fail("The Python bridge was retired on 2026-10-21 (it stays in BipAgents' history): the bridge is "
+                      "the Rust one now."))
+        return 2
+    if choice != "rust":
+        release = key()
+        here = bool(release) and binary(home, release).exists()
+        print(f"Bridge: {release or 'unknown version'} ({'downloaded' if here else 'not downloaded'})"
+              + (" — its service still runs the Python bridge: `bipagents update` moves it" if python_service(home) else ""))
+        print("Fetch it again and restart it: bipagents bridge rust")
         return 0 if not choice else 2
-    if choice == "rust":
-        if not release or not name:
-            print(ui.fail("No Rust bridge for this machine or this version."))
-            return 1
-        try:
-            fetch(home, release, name)
-        except RustBridgeError as exc:
-            print(ui.fail(str(exc)))
-            return 1
-    set_engine(home, choice)
-    if rewrite_service(home, program(home)) is None:
-        print(ui.fail("I can't find the bridge's service in this account."))
+    try:
+        print(ui.done(switch(home)))
+    except RustBridgeError as exc:
+        print(ui.fail(str(exc)))
         return 1
-    restart(home)
-    browsers_follow(home)
-    print(ui.done(f"The bridge now runs in {'Rust' if choice == 'rust' else 'Python'}."
-                  + ("  Back: bipagents bridge python" if choice == "rust" else "")))
     return 0
 
 
 def browsers_follow(home: Path) -> None:
-    """Each agent's browser tools (its `stealth` MCP entry) run the helper of the bridge that runs: the Rust bridge's
-    bip-browser-mcp, or Python's browser_mcp.py. Written again by the bridge's own `browser add --all`."""
+    """Each agent's browser tools (its `stealth` MCP entry) run the helper next to the bridge's binary,
+    bip-browser-mcp (the Python bridge's browser_mcp.py before). Written again by the bridge's own `browser add --all`."""
     from .family import find_config
     if not list((home / ".config" / "systemd" / "user").glob("bipagents-browser-*.service")) and sys.platform != "darwin":
         return   # no agent browser here
@@ -236,4 +290,3 @@ def browsers_follow(home: Path) -> None:
     except SystemExit:
         return
     subprocess.run(cli(home) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge", check=False)
-

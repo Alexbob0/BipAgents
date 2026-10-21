@@ -627,13 +627,8 @@ impl Tickets {
     }
 }
 
-/// The viewer page (desktop.py's `PAGE`, read from the Python source: one copy of it).
-pub static PAGE: LazyLock<String> = LazyLock::new(|| {
-    let source = include_str!("../../bridge/bipbridge/desktop.py");
-    let start = source.find("PAGE = r\"\"\"").map(|i| i + "PAGE = r\"\"\"".len()).unwrap_or(0);
-    let end = source[start..].find("\"\"\"").map(|i| start + i).unwrap_or(start);
-    source[start..end].to_string()
-});
+/// The viewer page (`assets/desktop.html`, once desktop.py's `PAGE`).
+pub static PAGE: LazyLock<String> = LazyLock::new(|| include_str!("../assets/desktop.html").to_string());
 
 fn control_of(state: &AppState, agent: &str) -> Option<bool> {
     state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).get(agent).copied()
@@ -877,7 +872,7 @@ pub fn desktop_admin_router() -> Router<AppState> {
 /// noVNC (`static/novnc`, embedded), mounted at /desktop/static/novnc.
 pub fn static_files() -> Router<AppState> {
     let dir: &'static include_dir::Dir<'static> =
-        crate::assets::STATIC.get_dir("novnc").expect("bipbridge/static/novnc is embedded");
+        crate::assets::STATIC.get_dir("novnc").expect("assets/static/novnc is embedded");
     crate::assets::static_router(dir)
 }
 

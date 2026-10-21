@@ -1,5 +1,6 @@
 # ~/.config/systemd/user/hermes-bridge.service  (systemd --user)
-# Installation: see bridge/README.md. Code in ~/hermes-bridge (copy of bridge/), venv in ~/hermes-bridge/.venv
+# Installation: see bridge/README.md. The bridge binary (a release's bipbridge, or cargo build --release in
+# bridge-rs/) in ~/.local/bin.
 [Unit]
 Description=BipAgents bridge (per-sentence TTS, voice WS, files, APNs push, ntfy outbox) on 127.0.0.1:8643
 After=network-online.target kyutai-tts.service ntfy.service
@@ -7,12 +8,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/hermes-bridge
+WorkingDirectory=%h
 Environment=BRIDGE_CONFIG=%h/.config/hermes-ios/bridge.toml
-Environment=PYTHONUNBUFFERED=1
 Environment=TZ=Europe/Paris
-ExecStartPre=%h/hermes-bridge/.venv/bin/python -m bipbridge check
-ExecStart=%h/hermes-bridge/.venv/bin/python -m bipbridge serve
+ExecStartPre=%h/.local/bin/bipbridge check
+ExecStart=%h/.local/bin/bipbridge serve
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15

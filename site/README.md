@@ -13,7 +13,7 @@ python3 site/build.py           # builds site/dist/bipagents.com and site/dist/k
 python3 site/build.py --serve   # and serves them: http://127.0.0.1:8770 (BipAgents), :8771 (Kerfy Studio)
 ```
 
-Python 3.12 (or the bridge's venv), Node for the Bips' still drawings (icon, Kerfy Studio's page), and Chrome or Brave
+Python 3.12, Node for the Bips' still drawings (icon, Kerfy Studio's page), and Chrome or Brave
 for the link previews (`og-<lang>.png`, 1200×630). Without them, the build still works, without those images.
 
 Nothing is copied twice: texts are in `src/<site>/i18n/*.json`, the demo's scenarios come from

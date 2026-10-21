@@ -1,0 +1,5 @@
+# What the installer needs to run on its own (its timers, the bridge's `place import` and restores): its own
+# environment, installer/.venv. `install.sh` runs it with uv and these same packages.
+httpx==0.28.1
+PyYAML==6.0.3
+cryptography==50.0.2

@@ -1976,7 +1976,7 @@
     }
    }
   },
-  "error": "relay: client keys must be at least 32 characters (python -m bipbridge genkey)"
+  "error": "relay: client keys must be at least 32 characters (bipbridge genkey)"
  },
  {
   "input": {

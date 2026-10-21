@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -8,10 +10,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "installer"))
-sys.path.insert(0, str(ROOT / "bridge"))
 
-from bipinstall import hermes, models, ui  # noqa: E402
-from bipbridge import souls  # noqa: E402
+from bipinstall import hermes, models, souls, ui  # noqa: E402
 from bipinstall.detect import Machine  # noqa: E402
 from bipinstall.plan import make_plan  # noqa: E402
 from bipinstall.ports import Ports, pick_block  # noqa: E402
@@ -181,33 +181,41 @@ def test_bot_mode_marker(tmp_path):
     assert yaml.safe_load((tmp_path / "profile.yaml").read_text()) == {"description": "Budget", "ui_meta": {"hermes-bots": {}}}
 
 
-def test_bridge_config_is_valid_for_the_bridge(tmp_path):
-    from bipbridge.config import parse_config
-    try:
-        import tomllib
-    except ImportError:  # pragma: no cover
-        import tomli as tomllib
+def bridge_check(tmp_path: Path, text: str) -> str:
+    """The bridge's own reading of a config (`bipbridge check`, the Rust release build: $CARGO_TARGET_DIR or
+    bridge-rs/target); skipped without one."""
+    binary = Path(os.environ.get("CARGO_TARGET_DIR") or ROOT / "bridge-rs" / "target") / "release" / "bipbridge"
+    if not binary.is_file():
+        pytest.skip(f"no bridge build at {binary} (cargo build --release in bridge-rs/)")
+    path = tmp_path / "check.toml"
+    path.write_text(text)
+    path.chmod(0o600)
+    done = subprocess.run([str(binary), "--config", str(path), "check"], capture_output=True, text=True,
+                          env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"})
+    assert done.returncode == 0, done.stderr
+    return done.stdout
 
+
+def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     inst = Install(repo=ROOT, home=tmp_path, ports=Ports(9200), tailnet_name="mini.tail0000.ts.net",
                    lan_address="192.168.1.20", model=hermes.Model("custom", "glm", base_url="http://192.168.1.30:8888/v1"),
                    relay_url="https://admin.tail0000.ts.net:8643", relay_key="r" * 40,
                    agents=[AgentEntry("finance", "Budget", "k" * 43)])
-    config = parse_config(tomllib.loads(bridge_toml(inst)))
-    agent = config.agent("finance")
-    assert agent.hermes_url == "http://127.0.0.1:9202/p/finance"
-    assert agent.public_url == "https://mini.tail0000.ts.net:9202/p/finance"
-    assert config.public_url == "https://mini.tail0000.ts.net:9203" and config.port == 9203
-    assert config.lan.enabled and config.lan.port == 9204 and config.lan.address == "192.168.1.20"
-    assert config.push_relay_url == "https://admin.tail0000.ts.net:8643"
-    assert config.model_health_url == "http://192.168.1.30:8888/v1/models"
-    assert config.pocket_url == "http://127.0.0.1:8098"
-    assert config.hermes.enabled and config.hermes.hub_url == "http://127.0.0.1:9202"
-    assert config.hermes.public_hub_url == "https://mini.tail0000.ts.net:9202"
-    assert config.hermes.isolated is False             # no sandbox: the bridge keeps no credentials
-    assert config.browser.enabled is False
+    shown = bridge_check(tmp_path, bridge_toml(inst))
+    assert "agent finance: hermes=http://127.0.0.1:9202/p/finance " in shown
+    assert "listen      127.0.0.1:9203" in shown and "lan         off" not in shown
+    assert "pocket      http://127.0.0.1:8098" in shown
+    import tomllib
+    config = tomllib.loads(bridge_toml(inst))
+    assert config["push"]["relay_url"] == "https://admin.tail0000.ts.net:8643"
+    assert config["model"]["health_url"] == "http://192.168.1.30:8888/v1/models"
+    assert config["hermes"]["hub_url"] == "http://127.0.0.1:9202"
+    assert config["hermes"]["public_hub_url"] == "https://mini.tail0000.ts.net:9202"
+    assert not config["hermes"].get("isolated")             # no sandbox: the bridge keeps no credentials
+    assert not config.get("browser", {}).get("enabled")
     inst.isolated = inst.browser = True
-    config = parse_config(tomllib.loads(bridge_toml(inst)))
-    assert config.hermes.isolated is True and config.browser.enabled is True
+    config = tomllib.loads(bridge_check(tmp_path, bridge_toml(inst)) and bridge_toml(inst))
+    assert config["hermes"]["isolated"] is True and config["browser"]["enabled"] is True
     assert tailscale_commands("tailscale", inst.ports)[0] == "tailscale serve --bg --https=9202 http://127.0.0.1:9202"
     label, path, content = bridge_service(inst, "macos")
     assert path.name == "io.github.bipagents.bridge.plist" and str(inst.bridge_config) in content
@@ -233,6 +241,9 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
     assert "API_SERVER_KEY <key>" in out
     assert "[kyutai]\nenabled = false" in out
+    # The bridge: this version's Rust binaries, nothing of Python's (no venv, no `-m bipbridge`).
+    assert "fetch the bridge " in out and "bipbridge-macos-universal.tar.gz" in out
+    assert "bridge/.venv" not in out and "-m bipbridge" not in out and "bridge/requirements" not in out
 
 
 def test_the_agents_get_their_language_from_the_app(monkeypatch, tmp_path, capsys):
@@ -308,9 +319,8 @@ def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, cap
     out = capsys.readouterr().out
     assert "visible browser" in out and "[6/6]" in out
     assert "/usr/bin/podman build -t bipagents-browser -f " in out and "/browser/Containerfile" in out
-    assert "-m bipbridge browser add --all --config" in out and "systemctl --user restart bipagents-bridge" in out
-    line = out.split("-m bipbridge browser add")[0].splitlines()[-1]
-    assert line.strip().startswith("$ cd ") and "/bridge" in line.split("&&")[0]   # where `bipbridge` is
+    assert "/bipbridge browser add --all --config" in out and "systemctl --user restart bipagents-bridge" in out
+    assert "fetch the bridge " in out and "bridge/.venv" not in out and "bridge/requirements" not in out
     assert "[browser]\nenabled = true" in out and "isolated = true" in out
     assert "config set HERMES_DOCKER_BINARY /usr/bin/podman" in out   # not a root docker found first
     assert "registries.conf.d/50-bipagents.conf" in out                # its sandbox image by its full name
@@ -504,15 +514,9 @@ def test_family_member_gets_a_relay_key_and_a_block_of_ports(tmp_path):
     assert second["ports"].base == 9210                     # reserved blocks are not handed out twice
     with pytest.raises(SystemExit):
         family.add("Léa", str(config), is_free=lambda port: True)
-    # The bridge reads the relay keys back as `name key` lines.
-    from bipbridge.config import parse_config
-    try:
-        import tomllib
-    except ImportError:  # pragma: no cover
-        import tomli as tomllib
-    data = tomllib.loads(config.read_text())
-    data.update({"bridge_key": "x" * 40, "pocket": {"url": "http://p"}})
-    assert set(parse_config(data).relay.clients.values()) == {"lea", "chloe"}
+    # The bridge reads the relay keys back as `name key` lines (its check fails on a bad clients file).
+    text = config.read_text().replace('bridge_key = "k"', 'bridge_key = "' + "x" * 40 + '"')
+    bridge_check(tmp_path, text + '\n[pocket]\nurl = "http://p"\n' if "[pocket]" not in text else text)
 
 
 
@@ -688,8 +692,10 @@ def test_an_update_applies_the_settings_a_fresh_install_now_makes_once(tmp_path,
     runner.dry = False
     ran = []
     runner.run = lambda args, **kw: ran.append((dict(runner.env).get("HERMES_HOME"), list(args[1:]))) or ""
+    monkeypatch.setattr(migrations, "REPO", tmp_path / "BipAgents")
     said = migrations.run(runner, home=tmp_path)
-    assert "2 agent(s)" in said[0] and "approvals.mode manual" in said[1] and said[2] == "no agent browser here"
+    assert said[0] == "the bridge already ran in Rust"
+    assert "2 agent(s)" in said[1] and "approvals.mode manual" in said[2] and said[3] == "no agent browser here"
     assert (str(hub), ["config", "set", "compression.threshold_tokens", "100000"]) in ran
     assert (str(space), ["-p", "wellness", "config", "set", "compression.threshold_tokens", "100000"]) in ran
     assert (str(hub), ["-p", "vie", "config", "set", "compression.threshold_tokens", "100000"]) not in ran   # an API model
@@ -714,8 +720,8 @@ def test_an_update_makes_the_browsers_start_when_used(tmp_path, monkeypatch):
     ran = []
     runner.run = lambda args, **kw: ran.append(list(args)) or ""
     said = migrations.browsers_on_demand(runner, tmp_path)
-    assert ran[0][1:] == ["-m", "bipbridge", "browser", "add", "--all", "--config",
-                          str(tmp_path / ".config" / "bipagents" / "bridge.toml")]
+    assert ran[0][0].endswith("/bipbridge") and ran[0][1:] == ["browser", "add", "--all", "--config",
+                                                               str(tmp_path / ".config" / "bipagents" / "bridge.toml")]
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"] and "(1)" in said
 
 
@@ -748,7 +754,7 @@ def test_an_update_moves_the_browsers_into_the_install_s_own_ports(tmp_path, mon
     text = config.read_text()
     assert "[browser]\nfirst_port = 20040\nports = 40\nenabled = true\nidle_minutes = 10\n" in text
     assert "[agents.daily]\nport = 1" in text and text.count("first_port") == 1
-    assert ran[0][1:5] == ["-m", "bipbridge", "browser", "add"] and "20040 to 20079" in said
+    assert ran[0][0].endswith("/bipbridge") and ran[0][1:3] == ["browser", "add"] and "20040 to 20079" in said
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert migrations.with_browser_range(text, 20040, 40) == text     # again: nothing changes
 
@@ -765,10 +771,10 @@ def test_the_bipagents_command_runs_install_sh_and_shows_its_help_alone(tmp_path
 
 def test_a_blocked_update_says_how_to_put_local_changes_aside(monkeypatch):
     from bipinstall import upgrade
-    porcelain = " M bridge/bipbridge/tts.py\n?? voices/english/galet.safetensors\n"
+    porcelain = " M bridge-rs/src/tts.rs\n?? voices/english/galet.safetensors\n"
     monkeypatch.setattr(upgrade, "git", lambda *args: __import__("subprocess").CompletedProcess(args, 0, porcelain, ""))
     lines = upgrade.blocked_pull()
-    assert any("bridge/bipbridge/tts.py" in line for line in lines) and any("git stash" in line for line in lines)
+    assert any("bridge-rs/src/tts.rs" in line for line in lines) and any("git stash" in line for line in lines)
     assert any("voices/english/galet.safetensors" in line for line in lines)
     assert upgrade.as_account("chi", "bash BipAgents/install.sh update --auto").startswith("sudo -u chi bash -c 'cd /home/chi")
 

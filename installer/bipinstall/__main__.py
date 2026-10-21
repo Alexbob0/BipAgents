@@ -19,15 +19,15 @@ from typing import Callable, List, Optional
 import httpx
 import yaml
 
-from . import hermes, models, ui, voices
+from . import hermes, models, rustbridge, souls, ui, voices
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
 from .stack import PUSH_SERVICE_URL, AgentEntry, Install, bip_languages, zram_commands, bridge_service, bridge_toml, hermes_service, pocket_service, tailscale_commands
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "bridge"))
-from bipbridge import souls  # noqa: E402  (kinds of agents, shared with the bridge)
+# The installer's own environment (installer/requirements.txt): what its timers and the bridge run it with.
+INSTALLER_PYTHON = REPO / "installer" / ".venv" / "bin" / "python"
 
 
 def templates() -> List[dict]:
@@ -248,10 +248,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "update":
         from .upgrade import main as upgrade_main
         return upgrade_main(argv[1:])
-    if argv and argv[0] == "bridge":   # rustbridge.py: the bridge in Rust or in Python
+    if argv and argv[0] == "bridge":   # rustbridge.py: which bridge runs, its binaries fetched again
         from .rustbridge import main as bridge_main
         return bridge_main(argv[1:])
-    if argv and argv[0] == "qr":   # the code to scan in the app again, from the bridge that runs (Rust or Python)
+    if argv and argv[0] == "qr":   # the code to scan in the app again, from the bridge
         return qr_main(argv[1:])
     if argv and argv[0] in ("export", "import", "resume"):   # moving.py: to another machine, or a backup
         from . import moving
@@ -309,6 +309,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if machine.system == "linux" and not args.dry_run:
         from .account import ensure_user_services
         if not ensure_user_services(say):
+            return 1
+    if not rustbridge.asset() and not os.environ.get(rustbridge.BUILD):
+        say(ui.fail(rustbridge.unsupported()))   # before anything is changed
+        if not args.dry_run:
             return 1
     if args.cloud:
         return cloud_install(args, runner, machine)
@@ -393,7 +397,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     return status
 
 
-CLOUD_MODEL = "openrouter/auto"   # until the app sends the person's model and key (bipbridge/cloud_setup.py)
+CLOUD_MODEL = "openrouter/auto"   # until the app sends the person's model and key (bridge-rs/src/cloud_setup.rs)
 
 
 def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
@@ -438,7 +442,8 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
         runner.log.append(f"write {Path.home() / backup.SETTINGS}")
         if not runner.dry:
             backup.configure(setup.backup["url"], setup.backup["token"])
-        backup.install_timer(runner, REPO, REPO / "bridge" / ".venv" / "bin" / "python")
+        venv(REPO / "installer", runner)
+        backup.install_timer(runner, REPO, INSTALLER_PYTHON)
     total = 5 if browser else 4   # Hermes, voices, bridge, [browser], checks
     steps = iter(range(1, total + 1))
     step(next(steps), total, "Hermes, the agents' brain")
@@ -637,10 +642,16 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
 
     inst.voice_server = own_voice_model(args, machine)
     if machine.system == "macos":
-        say("  macOS may ask whether Python can reach devices on the local network: allow it, or the agents\n"
+        say("  macOS may ask whether Python and bipbridge can reach devices on the local network: allow them, or the agents\n"
                "  and the bridge won't reach a model installed on another machine at home.")
     step(next(steps), total, "The bridge, which links the app to your agents")
-    venv(REPO / "bridge", runner)
+    try:
+        rustbridge.ensure(inst.home, REPO, runner)   # this version's binaries (bridge-rs/, built by GitHub Actions)
+    except rustbridge.RustBridgeError as exc:
+        say(ui.fail(f"The bridge couldn't be installed: {exc}"))
+        say(ui.note("Your agents are set up; run this installer again to finish."))
+        return 1
+    venv(REPO / "installer", runner)   # what the bridge runs the installer with (`place import`, restores)
     write(inst.bridge_config, bridge_toml(inst), runner, mode=0o600)
     label, path, content = bridge_service(inst, machine.system)
     write(path, content, runner)
@@ -653,9 +664,8 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
                        "from its repository).\n    Allow a few minutes the first time."))
         try:
             hermes.build_browser(runner, sandbox, REPO)
-            # From the bridge's folder: `bipbridge` is a folder there, not a package installed in its venv.
-            runner.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "browser", "add", "--all",
-                        "--config", str(inst.bridge_config)], cwd=REPO / "bridge")
+            runner.run(rustbridge.cli(inst.home, REPO) + ["browser", "add", "--all", "--config", str(inst.bridge_config)],
+                       cwd=REPO / "bridge")
             if machine.system == "linux":
                 runner.run(["systemctl", "--user", "restart", label])   # the bridge reads the agents' desktops
             say(ui.done("Each agent has its browser, on its own desktop."))
@@ -664,7 +674,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
             say(ui.note(str(exc)[-300:]))
             say(ui.note("To try again later:"))
             say(f"    {sandbox} build -t {hermes.BROWSER_IMAGE} {REPO / 'browser'}")
-            say(f"    cd {REPO / 'bridge'} && .venv/bin/python -m bipbridge browser add --all --config {inst.bridge_config}")
+            say(f"    {shlex.join(rustbridge.cli(inst.home, REPO))} browser add --all --config {inst.bridge_config}")
             say(f"    systemctl --user restart {label}")
     if not inst.cloud:
         publish_on_tailnet(inst, machine, runner, args, steps, total, desk)
@@ -723,14 +733,12 @@ def checks_and_end(inst: Install, runner: hermes.Runner, args, steps, total: int
         return 0
     say(ui.finale("It's ready! Scan this code in the app."))
     say("In the BipAgents app: \"+\" › Scan QR code.")
-    subprocess.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "qr", "--config",
-                    str(inst.bridge_config)], cwd=REPO / "bridge", check=False)
+    subprocess.run(rustbridge.cli(inst.home, REPO) + ["qr", "--config", str(inst.bridge_config)], cwd=REPO / "bridge",
+                   check=False)
     return 0
 
 
 def qr_main(argv: List[str]) -> int:
-    from . import rustbridge
-
     parser = argparse.ArgumentParser(prog="bipagents qr", description="Show the code to scan in the BipAgents app again")
     parser.add_argument("account", nargs="?", help="another account's install, from an account with sudo (e.g. a family member's)")
     # The bridge's own options pass through (`--agent vie`, `--png vie.png`).

@@ -139,6 +139,8 @@ COMMAND_HELP = """BipAgents, in this account:
   bipagents voice            connect your own voice model (a TTS server on the network)
   bipagents console          a one-time link opening your agents in a computer's browser
   bipagents hermes-update    update Hermes and keep BipAgents working
+  bipagents bridge [CMD …]   which bridge version runs; `bridge rust` fetches it again; `bridge check`, `bridge
+                             browser add --all`…: the bridge's own commands
   bipagents family add NAME  prepare a family member's install on this server
   bipagents export           everything your agents need in one encrypted file (a backup)
   bipagents export --moving  the same, then stop here: to move them to another machine
@@ -255,9 +257,9 @@ def main(argv: List[str]) -> int:
         config = None   # an account without its own install (an administrator's): its Pocket, the others
 
     # 2. What runs here.
-    if config and touched("bridge/", "bridge-rs/"):
-        if touched("bridge/requirements.txt"):
-            venv(REPO / "bridge", runner)
+    if config and touched("bridge-rs/") and rustbridge.python_service(Path.home()):
+        pass   # the Python bridge left the code: the migration rust-bridge (step 3) moves its service to Rust
+    elif config and touched("bridge-rs/"):
         rust = rustbridge.keep_in_step(Path.home()) if not runner.dry else None   # its binaries for this version
         if rust:
             say(ui.note(rust))
@@ -265,6 +267,8 @@ def main(argv: List[str]) -> int:
         else:
             runner.run(bridge_restart(), check=False)
         say(ui.done("Bridge restarted."))
+    if touched("installer/requirements.txt") and (REPO / "installer" / ".venv").exists():
+        venv(REPO / "installer", runner)   # what the timers and the bridge run the installer with
     pocket = pocket_restart()
     if touched("pocket/", "voices/") and pocket:
         # The light voices (--onnx: the phones' packages) keep their own requirements, PyTorch never comes back.

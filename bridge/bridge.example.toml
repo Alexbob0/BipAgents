@@ -5,7 +5,7 @@
 # Each secret can be given inline (`bridge_key = "…"`) or via a file
 # (`bridge_key_file = "~/.config/hermes-ios/bridge.key"`); same for `hermes_key(_file)` and `ntfy_token(_file)`.
 
-bridge_key = "CHANGE-ME-run-python-m-bipbridge-genkey"
+bridge_key = "CHANGE-ME-run-bipbridge-genkey"
 host = "127.0.0.1"          # exposed on the tailnet via `tailscale serve`, never directly
 port = 8643
 log_level = "info"

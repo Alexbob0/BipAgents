@@ -854,7 +854,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         }
     }
     if clients.keys().any(|k| k.chars().count() < 32) {
-        return Err(ConfigError::new("relay: client keys must be at least 32 characters (python -m bipbridge genkey)"));
+        return Err(ConfigError::new("relay: client keys must be at least 32 characters (bipbridge genkey)"));
     }
     let relay = RelayConfig { clients, per_hour: i(relay_t, "per_hour", 600)? };
     let push_relay_url = opt_s(push, "relay_url").map(|u| py::rstrip_slash(&u));

@@ -33,7 +33,7 @@ DONE = "/var/lib/bipagents/orders-done"
 LIB = "/usr/local/lib/bipagents"
 MAX_SEATS = 8
 BACKUP_STATE = ".local/state/bipagents/backup.json"
-ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge/bipbridge/sleep.py)
+ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge-rs/src/sleep.rs)
 SETUP = ".config/bipagents/setup.json"     # its bridge's pairing secret while it waits for an app (cloud_setup.py)
 PAIR_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 

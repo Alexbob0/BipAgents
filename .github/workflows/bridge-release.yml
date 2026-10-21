@@ -1,6 +1,7 @@
-# The bridge in Rust (bridge-rs/): its binaries for each machine, published as the release `bridge-<key>`.
-# The key is a hash of the sources they come from (bridge-rs/ and what it embeds, bridge/bipbridge/), computed the same
-# way by the installer (installer/bipinstall/rustbridge.py): a checkout finds its own binaries without asking anyone.
+# The bridge (bridge-rs/, in Rust): its binaries for each machine, published as the release `bridge-<key>`.
+# The key is a hash of the sources they come from: the tree of bridge-rs/, which holds everything the build reads (its
+# embedded files in bridge-rs/assets/). Computed the same way by the installer (installer/bipinstall/rustbridge.py):
+# sha256 of `git rev-parse HEAD:bridge-rs`, 12 characters. A checkout finds its own binaries without asking anyone.
 #   Linux x86_64    servers, PCs, and Windows (BipAgents runs there in WSL2)
 #   Linux aarch64   ARM servers (Hetzner CAX, Netcup…), Raspberry Pi, Windows on ARM
 #   macOS           one universal binary (Apple Silicon and Intel)
@@ -10,7 +11,7 @@ name: Bridge binaries (Rust)
 on:
   push:
     branches: [main, rust-bridge]
-    paths: ["bridge-rs/**", "bridge/bipbridge/**", ".github/workflows/bridge-release.yml"]
+    paths: ["bridge-rs/**", ".github/workflows/bridge-release.yml"]
   workflow_dispatch:
 
 permissions:
@@ -33,7 +34,7 @@ jobs:
       - id: key
         run: |
           test -d bridge-rs || { echo "key=" >> "$GITHUB_OUTPUT"; exit 0; }
-          echo "key=$(printf '%s %s' "$(git rev-parse HEAD:bridge-rs)" "$(git rev-parse HEAD:bridge/bipbridge)" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          echo "key=$(printf '%s' "$(git rev-parse HEAD:bridge-rs)" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
       - id: exists
         env:
           GH_TOKEN: ${{ github.token }}
@@ -128,5 +129,5 @@ jobs:
           sha256sum bipbridge-*.tar.gz > SHA256SUMS
           gh release create "bridge-${{ needs.key.outputs.key }}" bipbridge-*.tar.gz SHA256SUMS \
             -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "Bridge (Rust) ${{ needs.key.outputs.key }}" \
-            --notes "The bridge in Rust, built from ${GITHUB_SHA::12} (${GITHUB_REF_NAME}). Installs pick it with \`bipagents bridge rust\`; \`bipagents bridge python\` goes back."
+            --title "Bridge ${{ needs.key.outputs.key }}" \
+            --notes "The bridge in Rust, built from ${GITHUB_SHA::12} (${GITHUB_REF_NAME}). Installs of this version fetch it by themselves (\`bipagents update\`, \`bipagents bridge rust\` again)."

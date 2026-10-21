@@ -2,8 +2,12 @@
 
 # Bridge BipAgents (`bipbridge`)
 
-Petit service Python (FastAPI + uvicorn) qui tourne sur le **serveur** à côté des gateways Hermes et
-sert l'app iOS BipAgents sur le tailnet (fichiers : `docs/file-uploads.md`) :
+Un seul programme, écrit en Rust (`bridge-rs/`), qui tourne sur le **serveur** à côté des gateways Hermes et sert
+les apps BipAgents sur le tailnet (fichiers : `docs/file-uploads.md`). Il a remplacé le bridge Python
+(`bridge/bipbridge`) le 2026-10-21, avec les mêmes routes, fichiers et réglages ; celui-ci reste dans l'historique du
+dépôt. Ce dossier contient ce qui va avec : l'exemple de config (`bridge.example.toml`), les fichiers de service pour
+une installation à la main (`systemd/`, `launchd/`) et la suite boîte noire qui fixe son contrat HTTP
+(`tests_blackbox/`).
 
 | Fonction | Route | Ce que fait le bridge |
 |---|---|---|
@@ -18,51 +22,52 @@ sert l'app iOS BipAgents sur le tailnet (fichiers : `docs/file-uploads.md`) :
 Le bridge écoute **uniquement sur `127.0.0.1:8643`** ; l'exposition HTTPS se fait par `tailscale serve`.
 Il ne contient aucun secret : tout est dans `~/.config/hermes-ios/` (mode 600).
 
-## 1. Installation sur le serveur (venv + systemd --user, recommandé)
+## 1. Installation sur le serveur (à la main ; l'installateur fait tout cela lui-même)
 
-Prérequis : Python ≥ 3.11 (3.12 visé), Kyutai sur `:8097`, ntfy sur `:8645`,
-api_server Hermes sur `:8642` (wellness) et `:8644` (vie).
+L'installateur (`install.sh`, `installer/bipinstall/rustbridge.py`) télécharge les binaires de la version du dépôt
+depuis la release GitHub `bridge-<clé>` (clé : les 12 premiers caractères du SHA-256 de
+`git rev-parse HEAD:bridge-rs`), les vérifie avec son `SHA256SUMS` et les lance en service ; `bipagents update` les
+tient à jour. Il existe des binaires pour Linux x86_64 et aarch64 (glibc ≥ 2.28 ; Windows via WSL2) et macOS
+(universel). À la main, prérequis : Pocket sur `:8098` (ou Kyutai sur `:8097`), api_server Hermes sur `:8642`
+(wellness) et `:8644` (vie).
 
 ```bash
-# 1. Code : copier le dossier bridge/ du dépôt vers ~/hermes-bridge (git clone, scp ou SMB ~/Public)
-mkdir -p ~/hermes-bridge && cp -r <dépôt>/bridge/. ~/hermes-bridge/
-cd ~/hermes-bridge
+# 1. Le programme : l'archive d'une release, ou compilé ici (Rust stable)
+cd <dépôt>
+key=$(printf '%s' "$(git rev-parse HEAD:bridge-rs)" | sha256sum | cut -c1-12)   # macOS : shasum -a 256
+curl -fsSL "https://github.com/Alexbob0/BipAgents/releases/download/bridge-$key/bipbridge-linux-x86_64.tar.gz" \
+  | tar -xz -C ~/.local/bin bipbridge bip-browser-mcp
+# ou : (cd bridge-rs && cargo build --release && cp target/release/{bipbridge,bip-browser-mcp} ~/.local/bin/)
 
-# 2. venv (python3.12 si installé, sinon python3 du système s'il est >= 3.11)
-python3.12 -m venv .venv || python3 -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements.txt
-
-# 3. Configuration
+# 2. Configuration
 mkdir -p ~/.config/hermes-ios && chmod 700 ~/.config/hermes-ios
-cp bridge.example.toml ~/.config/hermes-ios/bridge.toml
+cp bridge/bridge.example.toml ~/.config/hermes-ios/bridge.toml
 chmod 600 ~/.config/hermes-ios/bridge.toml
-.venv/bin/python -m bipbridge genkey          # -> à mettre dans bridge_key (et à donner à l'app)
+~/.local/bin/bipbridge genkey                  # -> à mettre dans bridge_key (et à donner à l'app)
 $EDITOR ~/.config/hermes-ios/bridge.toml       # clés Hermes, jetons ntfy, APNs, dossiers d'upload
-.venv/bin/python -m bipbridge check            # valide la config (refuse les valeurs CHANGE-ME)
+~/.local/bin/bipbridge check                   # valide la config (refuse les valeurs CHANGE-ME)
 
-# 4. Dossiers d'upload visibles par les agents (home Hermes monté dans les conteneurs)
+# 3. Dossiers d'upload visibles par les agents (home Hermes monté dans les conteneurs)
 mkdir -p ~/hermes-agent/hermes-home/profiles/{wellness,vie}/uploads
 
-# 5. Unité systemd utilisateur
+# 4. Unité systemd utilisateur
 mkdir -p ~/.config/systemd/user
-cp systemd/hermes-bridge.service ~/.config/systemd/user/
+cp bridge/systemd/hermes-bridge.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now hermes-bridge
 journalctl --user -u hermes-bridge -f          # journaux JSON
 
-# 6. Vérifications locales
+# 5. Vérifications locales
 curl -s http://127.0.0.1:8643/health
 curl -s -H "Authorization: Bearer $BRIDGE_KEY" http://127.0.0.1:8643/v1/agents
 
-# 7. Exposition sur le tailnet (HTTPS, certificat réel, rien sur Internet)
+# 6. Exposition sur le tailnet (HTTPS, certificat réel, rien sur Internet)
 sudo tailscale serve --bg --https=8643 http://127.0.0.1:8643
 # depuis le Mac ou l'iPhone :
 curl https://server.example.ts.net:8643/health
 ```
 
-Mise à jour : recopier `bipbridge/` (et `requirements.txt`), `pip install -r requirements.txt`,
-`systemctl --user restart hermes-bridge`. Le redémarrage du bridge n'affecte pas Hermes (aucun tour en cours n'est tué) ;
+Mise à jour : les binaires de la nouvelle version (étape 1 à nouveau), `systemctl --user restart hermes-bridge`. Le redémarrage du bridge n'affecte pas Hermes (aucun tour en cours n'est tué) ;
 une conversation vocale en cours est simplement coupée et l'app peut refaire `follow` avec `from_seq`.
 
 ### Droits sur les fichiers déposés (à vérifier une fois)
@@ -102,21 +107,6 @@ Dans Apple Developer : *Keys* → nouvelle clé avec *Apple Push Notifications s
 qui n'en précisent pas : `sandbox` pour une app lancée depuis Xcode, `production` pour TestFlight/App Store
 (l'app envoie le sien à l'enregistrement). Sans `[apns]` rempli, le bridge tourne sans push.
 
-### Option : conteneur podman
-
-```bash
-podman build -t localhost/hermes-bridge:0.1.0 -f Containerfile .
-podman run -d --name hermes-bridge --network=host --userns=keep-id \
-  -v ~/.config/hermes-ios:$HOME/.config/hermes-ios:ro -e BRIDGE_CONFIG=$HOME/.config/hermes-ios/bridge.toml \
-  -v ~/.local/share/hermes-bridge:$HOME/.local/share/hermes-bridge \
-  -v ~/hermes-agent/hermes-home/profiles:$HOME/hermes-agent/hermes-home/profiles \
-  -e HOME=$HOME localhost/hermes-bridge:0.1.0
-```
-
-`--network=host` est nécessaire pour joindre Kyutai/ntfy/Hermes sur 127.0.0.1 ; les dossiers sont montés **au même
-chemin** que sur l'hôte pour que la config reste identique. Pas de `:Z` sur `hermes-home` (le relabel casserait
-l'accès des conteneurs Hermes). Dans `bridge.toml`, `p8_path` doit alors pointer sous `/config/`.
-
 ## 2. Configuration (`~/.config/hermes-ios/bridge.toml`)
 
 Voir `bridge.example.toml` (commenté). Chemin modifiable par `BRIDGE_CONFIG`. Un avertissement est journalisé si le
@@ -124,7 +114,7 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 
 | Clé | Défaut | Rôle |
 |---|---|---|
-| `bridge_key` | — (obligatoire) | clé Bearer unique de l'app (≥ 32 car., `python -m bipbridge genkey`) |
+| `bridge_key` | — (obligatoire) | clé Bearer unique de l'app (≥ 32 car., `bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | écoute locale |
 | `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | TTS Kyutai 1.6B (GPU) ; `enabled = false` : Pocket seul |
 | `[pocket] url`, `default_voice` | absent (désactivé), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` sert quand Kyutai est désactivé |
@@ -203,7 +193,7 @@ ancienne app (`drama:<id>`) y vont aussi.
 
 Autres langues : `pocket:<langue>/<nom>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, cf.
 `voices/english|spanish|german/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =
-`en/colibri`. Le texte est préparé dans la langue de la voix (`bipbridge/speech_intl.py`, nombres via `num2words` :
+`en/colibri`. Le texte est préparé dans la langue de la voix (`bridge-rs/src/speech_intl.rs`, nombres via `num2words` :
 « $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Hors français, un échec de Pocket ne
 retombe pas sur Kyutai (voix française) : le bridge répond 502/503 et l'app lit le texte avec la voix de l'iPhone.
 
@@ -348,7 +338,7 @@ contient un extrait du texte (ou de la commande).
 - **SSE tolérant** : type lu dans le JSON (`type` ou `event`) sinon la ligne `event:` ; `: keepalive` ignoré ;
   texte pris dans `delta` / `text` / `content`. Événements de texte : `message.delta`, `assistant.delta`.
 - **Journaux** : JSON sur stdout (journald), jamais de secret ni de texte de message ; tokens d'appareil tronqués ;
-  pas de journal d'accès uvicorn (les chemins contiennent des tokens).
+  pas de journal d'accès (les chemins contiennent des tokens).
 
 Limites connues : `WS /v1/stt` (STT serveur, v2) n'est pas implémenté. Si la connexion locale bridge → Hermes coupe
 au milieu d'un run et que Hermes rejoue les événements à la réabonnement, une phrase pourrait être répétée
@@ -357,12 +347,13 @@ au milieu d'un run et que Hermes rejoue les événements à la réabonnement, un
 ## 6. Développement et tests
 
 ```bash
-cd bridge
-python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q
+cd bridge-rs && cargo test && cargo clippy --all-targets -- -D warnings     # ses propres tests
+cargo build --release && cd ../bridge
+pip install -r tests_blackbox/requirements.txt                              # Python 3.12, le banc seulement
+python -m pytest tests_blackbox -q -p no:cacheprovider                      # le contrat HTTP (tests_blackbox/README.md)
 ```
 
-Les tests n'appellent aucun service réel : Kyutai, Hermes (SSE des runs, approbation), ntfy et APNs sont simulés
-par `httpx.MockTransport` (`tests/conftest.py`). Ils couvrent l'authentification, l'ordre FIFO du TTS, le découpage en
-phrases, `/v1/files` (chemin, taille, noms), les appareils, l'ingestion ntfy → outbox → push, la décision de push
-d'approbation, `/v1/approve`, le client APNs (JWT, renouvellement) et le WebSocket vocal (suivi, annulation, erreurs).
+Aucun n'appelle de service réel : Hermes, les moteurs de voix, ntfy, APNs et FCM sont simulés
+(`bridge-rs/tests/common/`, `tests_blackbox/bbkit/`). Les tests Rust ont été portés depuis ceux du bridge Python, et
+ses fixtures dorées (`bridge-rs/tests/golden/`) faites en lançant le code Python : leurs `gen_*.py` ont besoin de ce
+bridge, depuis l'historique.

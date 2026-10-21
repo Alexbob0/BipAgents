@@ -13,6 +13,11 @@ from typing import Callable, List, Optional, Tuple
 from . import hermes
 
 STATE = Path.home() / ".local" / "share" / "bipagents" / "migrations.json"
+REPO = Path(__file__).resolve().parents[2]
+
+
+class NotYet(Exception):
+    """A migration that couldn't be applied this time (safe to show): not marked done, tried at the next update."""
 
 
 def hermes_configs(home: Path) -> List[Tuple[Path, Optional[str]]]:
@@ -50,7 +55,7 @@ def local_compression(runner: hermes.Runner, home: Path) -> str:
 
 
 def browsers_on_demand(runner: hermes.Runner, home: Path) -> str:
-    """The agents' browsers start when used and stop after 10 minutes unused (bridge/bipbridge/browser_mcp.py): their
+    """The agents' browsers start when used and stop after 10 minutes unused (bridge-rs/src/browser_mcp.rs): their
     MCP server and units set up again, the gateways restarted to connect to it."""
     units = sorted((home / ".config" / "systemd" / "user").glob("bipagents-browser-*.service"))
     if not units:
@@ -59,9 +64,8 @@ def browsers_on_demand(runner: hermes.Runner, home: Path) -> str:
     config = next((path for path in configs if path.is_file()), None)
     if config is None:
         return "agents' browsers left as they are (no bridge config found)"
-    repo = Path(__file__).resolve().parents[2]
-    runner.run([str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "browser", "add", "--all",
-                "--config", str(config)], cwd=repo / "bridge")
+    from .rustbridge import cli
+    runner.run(cli(home, REPO) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
     from . import update
     update.restart(runner)
     return (f"the agents' browsers ({len(units)}) start when used and stop after 10 minutes unused; gateways "
@@ -101,16 +105,53 @@ def browser_ports(runner: hermes.Runner, home: Path) -> str:
     runner.log.append(f"write {config}")
     if not runner.dry:
         config.write_text(with_browser_range(text, first, count), encoding="utf-8")
-    repo = Path(__file__).resolve().parents[2]
-    runner.run([str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "browser", "add", "--all",
-                "--config", str(config)], cwd=repo / "bridge")
+    from .rustbridge import cli
+    runner.run(cli(home, REPO) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
     from . import update
     update.restart(runner)
     return f"the agents' browsers ({len(units)}) use ports {first} to {first + count - 1}, of this install only"
 
 
-# In order; an id never changes once released.
+def rust_bridge(runner: hermes.Runner, home: Path) -> str:
+    """The bridge in Rust only (2026-10-21): the Python bridge left the code with this update, so a service still
+    running it is put on this version's binaries (rustbridge.py), restarted, and the agents' browser tools moved to
+    its helper. The installer gets its own environment (installer/.venv: the backup timer and the bridge run it with
+    that), and the Python bridge's (bridge/.venv) goes. No binaries yet (the release still building, no network):
+    nothing changes, the next update tries again. The way back is the Python bridge of BipAgents' history."""
+    from . import rustbridge
+    from .__main__ import INSTALLER_PYTHON, venv
+    said = []
+    if rustbridge.python_service(home):
+        try:
+            rustbridge.ensure(home, REPO, runner)
+        except rustbridge.RustBridgeError as exc:
+            raise NotYet(f"the bridge stays on Python for now ({exc}); `bipagents update` tries again") from exc
+        runner.log.append(f"put the bridge's service on {rustbridge.program(home, REPO)[0]}, restart it")
+        if not runner.dry:
+            rustbridge.rewrite_service(home, rustbridge.program(home, REPO))
+            rustbridge.restart(home)
+            rustbridge.browsers_follow(home)
+        said.append(f"the bridge now runs in Rust ({rustbridge.key(REPO)})")
+    else:
+        said.append("the bridge already ran in Rust")
+    venv(REPO / "installer", runner)
+    backup_unit = home / ".config" / "systemd" / "user" / "bipagents-backup.service"
+    if backup_unit.is_file() and "bridge/.venv" in backup_unit.read_text(encoding="utf-8", errors="ignore"):
+        from . import backup
+        backup.install_timer(runner, REPO, INSTALLER_PYTHON, home)
+        said.append("backups run with the installer's own Python")
+    old = REPO / "bridge" / ".venv"
+    runner.log.append(f"remove {old} and {home / rustbridge.ENGINE}")
+    if not runner.dry:
+        import shutil
+        shutil.rmtree(old, ignore_errors=True)
+        (home / rustbridge.ENGINE).unlink(missing_ok=True)
+    return "; ".join(said)
+
+
+# In order; an id never changes once released. rust-bridge comes first: the others run the bridge's command line.
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
+    ("2026-10-21-rust-bridge", rust_bridge),
     ("2026-10-15-local-compression", local_compression),
     ("2026-10-16-approvals-manual", approvals_manual),
     ("2026-10-18-browsers-on-demand", browsers_on_demand),
@@ -149,6 +190,10 @@ def run(runner: hermes.Runner, home: Optional[Path] = None, own_hermes: bool = T
             said.append(f"{mid}: not applied to your own Hermes (run `install.sh update --apply-to-my-hermes` "
                         "to apply it)")
             continue
-        said.append(apply(runner, home))
+        try:
+            said.append(apply(runner, home))
+        except NotYet as exc:
+            said.append(f"{mid}: {exc}")
+            continue
         mark([mid], runner)
     return said

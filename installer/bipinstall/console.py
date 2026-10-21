@@ -17,8 +17,14 @@ from .upgrade import REPO, as_account, installed_accounts
 say = print
 
 
-def bridge_command(repo: Path, config: str) -> List[str]:
-    return [str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "console", "--config", config]
+def bridge_command(repo: Path, config: str, home: Optional[Path] = None) -> List[str]:
+    from .rustbridge import cli
+    return cli(home or Path.home(), repo) + ["console", "--config", config]
+
+
+# Another account's bridge, from its shell: the binaries fetched last (rustbridge.py keeps this version's and the one
+# before), so its checkout needn't be read from here.
+OTHER_BRIDGE = '"$(ls -td $HOME/.local/share/bipagents/bridge/*/ | head -1)bipbridge"'
 
 
 def own_config(given: Optional[str]) -> Optional[Path]:
@@ -47,7 +53,7 @@ def main(argv: List[str]) -> int:
     args = parser.parse_args(argv)
 
     config = None if args.account else own_config(args.config)
-    if config is not None and (REPO / "bridge" / ".venv" / "bin" / "python").exists():
+    if config is not None and Path(bridge_command(REPO, str(config))[0]).exists():
         return subprocess.run(bridge_command(REPO, str(config)), cwd=REPO / "bridge", check=False).returncode
 
     say(ui.note("No BipAgents install in this account: looking for the machine's installs (sudo)."))
@@ -60,5 +66,5 @@ def main(argv: List[str]) -> int:
         say(ui.fail("No BipAgents install found on this machine." if not accounts else "Unknown install."))
         return 1
     home = Path("/home") / account
-    command = " ".join(shlex.quote(part) for part in bridge_command(home / "BipAgents", str(home / ".config" / "bipagents" / "bridge.toml")))
-    return subprocess.run(["bash", "-c", as_account(account, f"cd BipAgents/bridge && {command}")], check=False).returncode
+    command = f"{OTHER_BRIDGE} console --config {shlex.quote(str(home / '.config' / 'bipagents' / 'bridge.toml'))}"
+    return subprocess.run(["bash", "-c", as_account(account, command)], check=False).returncode

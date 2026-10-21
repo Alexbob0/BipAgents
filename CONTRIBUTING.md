@@ -9,12 +9,14 @@ Thanks for wanting to help! BipAgents is a small project: an issue before a big 
 | iPhone app (SwiftUI, iOS 18+, Swift 6) | `App/`, `NotificationService/`, `Widgets/` | Xcode, scheme BipAgents |
 | Hermes client | `Packages/HermesKit` | `swift test` |
 | Voice (capture, transcription, playback) | `Packages/VoiceKit` | `swift test` |
-| Bridge (Python, FastAPI) and web console | `bridge/` | `python -m pytest -q` in `bridge/` |
-| Installer and `bipagents` | `installer/`, `install.sh` | `PYTHONPATH=installer:bridge python -m pytest -q installer/tests` |
+| Bridge (Rust) and web console | `bridge-rs/` | `cargo test` and `cargo clippy --all-targets` in `bridge-rs/` |
+| Bridge's HTTP contract (black-box suite) | `bridge/tests_blackbox/` | `python -m pytest tests_blackbox -q` in `bridge/`, after `cargo build --release` |
+| Installer and `bipagents` | `installer/`, `install.sh` | `PYTHONPATH=installer python -m pytest -q installer/tests` |
 | Agents' visible browser | `browser/` | see its README |
 | Hermes patches | `hermes/patches/` | see its README |
 
-The bridge's dependencies: `python3.12 -m venv bridge/.venv && bridge/.venv/bin/pip install -r bridge/requirements-dev.txt`.
+The Python tests' dependencies: `pip install -r installer/requirements.txt -r bridge/tests_blackbox/requirements.txt`
+(Python 3.12). The bridge itself needs stable Rust; the Python bridge it replaced (2026-10-21) is in the history.
 
 ## Trying the app without a server
 

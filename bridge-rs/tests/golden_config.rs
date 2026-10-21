@@ -53,7 +53,7 @@ fn example_config_parses_but_refuses_placeholders() {
 
 #[test]
 fn example_config_with_real_values() {
-    let mut text = EXAMPLE.replace("\"CHANGE-ME-run-python-m-bipbridge-genkey\"", &format!("\"k{}\"", "x".repeat(40)));
+    let mut text = EXAMPLE.replace("\"CHANGE-ME-run-bipbridge-genkey\"", &format!("\"k{}\"", "x".repeat(40)));
     for name in ["wellness", "vie"] {
         text = text.replace(&format!("\"CHANGE-ME-API_SERVER_KEY-of-{name}\""), &format!("\"key-{name}\""));
     }

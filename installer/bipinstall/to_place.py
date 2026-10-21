@@ -3,7 +3,7 @@ BipAgents, or a Hermes alone) replace the place's, with their memory, conversati
 place keeps what makes it a place: its door and certificate, its bridge key (the phones paired with it keep working),
 its backups, and the offer's model (its AI credit) and sandbox for every agent.
 
-The app asks the place's bridge for a one-time code (bipbridge/place_import.py: an hour, one use) and shows
+The app asks the place's bridge for a one-time code (bridge-rs/src/place_import.rs: an hour, one use) and shows
 
     bipagents send <address> <code>                                     a computer with BipAgents
     curl -fsSL …/install.sh | bash -s -- send <address> <code>          a Hermes alone
@@ -44,7 +44,7 @@ CODE_LENGTH = 16                                # 80 bits: no guessing, even off
 ROOT_AGENT = "hermes"                           # the main profile of a Hermes alone, as one of the place's agents
 FOLDER = Path(".local") / "state" / "bipagents" / "import"
 STEPS = ("Opening your export", "Putting your agents in", "Adjusting them to this server", "Restarting your agents")
-MODEL_KEYS = ("OPENROUTER_API_KEY", "CUSTOM_MODEL_API_KEY")   # the offer's model key (bipbridge/cloud_setup.py)
+MODEL_KEYS = ("OPENROUTER_API_KEY", "CUSTOM_MODEL_API_KEY")   # the offer's model key (bridge-rs/src/cloud_setup.rs)
 HUB_SERVER = ("API_SERVER_ENABLED", "API_SERVER_HOST", "API_SERVER_PORT")
 PLACE_DATA = {"sleep.json"}   # the place's own in its data folder (with its door's certificate)
 
@@ -507,7 +507,8 @@ def bring_in(archive: Path, passphrase: str, runner: hermes.Runner, base: Option
     hub_yaml, hub_env = read_yaml(hub_home / "config.yaml"), read_env(hub_home / ".env")
     from .update import gateway_units
 
-    python = [str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge"]
+    from .rustbridge import cli
+    bridge = cli(base, repo)
     browsers = bool((place.toml.get("browser") or {}).get("enabled"))
 
     progress(base, 1)
@@ -523,7 +524,7 @@ def bring_in(archive: Path, passphrase: str, runner: hermes.Runner, base: Option
             if how == "systemd":
                 runner.run(["systemctl", "--user", "stop", name], check=False)
         if browsers:   # the place's agents' browsers (services, containers) go with them
-            runner.run(python + ["browser", "remove", "--all", "--config", str(config)], cwd=repo / "bridge",
+            runner.run(bridge + ["browser", "remove", "--all", "--config", str(config)], cwd=repo / "bridge",
                        check=False)
             place_text = config.read_text(encoding="utf-8")
         _remove(scratch)
@@ -594,9 +595,9 @@ def bring_in(archive: Path, passphrase: str, runner: hermes.Runner, base: Option
                 runner.run(["systemctl", "--user", "start", name], check=False)
         # Every profile served to the app as the place's agents are (its key, uploads in the sandbox, the bridge's
         # tools, Bot Mode; those of a Hermes alone claimed), then their browsers from the place's own ports.
-        runner.run(python + ["adopt", "--config", str(config)], cwd=repo / "bridge", check=False)
+        runner.run(bridge + ["adopt", "--config", str(config)], cwd=repo / "bridge", check=False)
         if browsers:
-            runner.run(python + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge", check=False)
+            runner.run(bridge + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge", check=False)
     except BaseException:
         aside.put_back()
         if config.read_text(encoding="utf-8") != place_text:
@@ -606,7 +607,7 @@ def bring_in(archive: Path, passphrase: str, runner: hermes.Runner, base: Option
             if how == "systemd":
                 runner.run(["systemctl", "--user", "start", name], check=False)
         if browsers:
-            runner.run(python + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge", check=False)
+            runner.run(bridge + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge", check=False)
         raise
     finally:
         tar.close()

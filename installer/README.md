@@ -34,9 +34,14 @@ Add `--dry-run` to see every step and command without changing anything.
    agent is a profile reached at `/p/<agent>/` with its own key. New agents are picked up without a restart.
 5. **Creates the first agents**, named by the person, from kinds (Everyday, Wellness, Finances, Home, Work, Learn, Creative, Tech) or a custom « Other » (its role, tone, rules, language and colour, described by the person),
    each with a starting personality (`SOUL.md`) and joined to Bot Mode so they can talk to each other.
-6. **Sets up the voices** (Pocket TTS, one server per machine, shared by everyone) and **the bridge** (its config in
-   `~/.config/bipagents/bridge.toml`, keys generated, its local-network door), as services that start on their own:
-   launchd on macOS, systemd user units on Linux.
+6. **Sets up the voices** (Pocket TTS, one server per machine, shared by everyone) and **the bridge** (one program in
+   Rust: this version's binaries downloaded from the GitHub release `bridge-<key>` and checked against its
+   `SHA256SUMS`, into `~/.local/share/bipagents/bridge/<key>/`; its config in `~/.config/bipagents/bridge.toml`, keys
+   generated, its local-network door), as services that start on their own: launchd on macOS, systemd user units on
+   Linux. Builds exist for Linux x86_64 and ARM64 (Windows runs BipAgents in WSL2) and macOS; on any other machine
+   the installer stops before changing anything, and runs a bridge built there with
+   `BIPAGENTS_BRIDGE_BUILD=<folder of bipbridge and bip-browser-mcp>` (`cargo build --release` in `bridge-rs/`).
+   `bipagents bridge` says which version runs; `bipagents bridge rust` fetches it again and restarts it.
 7. **Gives each agent its visible browser** (Linux with podman, if you want it): a real Chrome on a desktop of its
    own, which you watch live and take over from the app (Bureau, behind Face ID), and in which the vault fills
    passwords without the agent seeing them. See [`browser/`](../browser/README.md).
@@ -214,7 +219,7 @@ Run it **in the administrator's terminal**. It shows each step as `[n/5]`:
    3. once the Tailscale app lists the server: the BipAgents app (TestFlight or App Store) › « + » › Scan QR code.
 
    Simpler, but their iPhone is then one of your devices: sign Tailscale in with your own account. The QR code again:
-   `sudo -iu lea bash -c 'cd ~/BipAgents/bridge && .venv/bin/python -m bipbridge qr --config ~/.config/bipagents/bridge.toml'`.
+   `bipagents qr lea`.
 
 The installer speaks English. Agents answer in the language they are written to; the one they write first in
 (routines, reports) is set per agent in the app, the iPhone's by default.
@@ -224,8 +229,10 @@ run while the account is logged in (automatic login on a Mac mini used as a serv
 
 ## Files
 
-- `install.sh` (repository root): fetches the repository and Python (uv), then runs the installer.
+- `install.sh` (repository root): fetches the repository and Python (uv), then runs the installer. The installer's
+  own environment (`installer/.venv`, `installer/requirements.txt`) is what its timers and the bridge run it with.
 - `bipinstall/`: `detect.py` (the machine), `models.py` (finding and checking the model), `plan.py` (the profile and
   its memory), `ports.py`, `hermes.py` (Hermes through its own commands), `stack.py` (bridge, voices, services),
-  agent kinds in `bridge/bipbridge/agent_templates.yaml` (shared with the bridge).
+  `rustbridge.py` (the bridge's binaries), agent kinds in `bridge-rs/assets/agent_templates.yaml` (read by
+  `souls.py`, embedded in the bridge).
 - Tests: `python -m pytest installer/tests` (no network, nothing installed).
