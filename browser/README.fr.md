@@ -36,7 +36,7 @@ ont un aussi). À la main :
 
 ```bash
 podman build -t bipagents-browser ~/BipAgents/browser
-~/BipAgents/bridge/.venv/bin/python -m bipbridge browser add --agent <agent>   # ou --all ; `remove` pour retirer
+bipagents bridge browser add --agent <agent>   # ou --all ; `remove` pour retirer
 systemctl --user restart bipagents-bridge
 ```
 
@@ -44,7 +44,7 @@ Le conteneur de chaque agent tourne en service utilisateur systemd, `bipagents-b
 sert : il démarre au premier appel de l'agent à son navigateur (quelques secondes) ou quand tu ouvres son « Bureau », et
 s'arrête après 10 minutes sans usage (personne ne regarde le bureau, aucun appel, rien de connecté à ses DevTools). Son
 profil reste, connexions et cookies compris. Sur une machine à plusieurs agents, seuls les navigateurs en service
-prennent de la mémoire. Hermes garde branché un petit serveur MCP à nous (`bridge/bipbridge/browser_mcp.py`), qui
+prennent de la mémoire. Hermes garde branché un petit serveur MCP à nous (`bip-browser-mcp`, à côté du bridge : `bridge-rs/src/browser_mcp.rs`), qui
 répond avec les outils que le serveur du navigateur a listés la dernière fois et le démarre quand un outil est appelé.
 `idle_minutes = 0` dans `[browser]` laisse tous les navigateurs tourner, comme avant.
 
@@ -66,7 +66,7 @@ au commit testé avec BipAgents (`a7b9eea`, fixé dans le `Containerfile`), et a
 - `entrypoint.sh` (l'écran, le serveur VNC), `devtools_relay.py` (les DevTools de Chrome depuis l'hôte, à une adresse
   qui survit aux redémarrages de Chrome), `mcp.sh` (le serveur avec seulement ce qu'il faut pour naviguer : ni copie
   d'éléments, ni extraction de fichiers, ni interception réseau, ni CDP brut, ni crochets de débogage) et la consigne
-  qui explique à l'agent son navigateur (`bridge/bipbridge/skills/visible-browser/SKILL.md`, copiée dans son profil Hermes).
+  qui explique à l'agent son navigateur (`bridge-rs/assets/skills/visible-browser/SKILL.md`, copiée dans son profil Hermes).
 
 ## Limites
 

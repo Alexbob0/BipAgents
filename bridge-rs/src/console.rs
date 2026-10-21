@@ -2,7 +2,7 @@
 //! by this bridge. The page (`console/`) is static; it uses the same routes as the iPhone app, with a session instead of
 //! the bridge key:
 //!
-//! - **Logging in**: a one-time link (`python -m bipbridge console`, valid 10 minutes, its code in the link's `#` so it
+//! - **Logging in**: a one-time link (`bipbridge console`, valid 10 minutes, its code in the link's `#` so it
 //!   never reaches a log) or a code the console shows and the person approves in the iPhone app
 //!   (`POST /v1/console/pairings/{code}`). Either gives a session cookie: HttpOnly (no script reads it), Secure, SameSite
 //!   Strict, 30 days, listed and revocable (`/v1/console/devices`).
@@ -475,7 +475,7 @@ pub fn console_admin_router() -> Router<AppState> {
 /// The console's scripts and styles (`console/static`, embedded), mounted at /console/static.
 pub fn console_files() -> Router<AppState> {
     let dir: &'static include_dir::Dir<'static> =
-        crate::assets::CONSOLE.get_dir("static").expect("bipbridge/console/static is embedded");
+        crate::assets::CONSOLE.get_dir("static").expect("assets/console/static is embedded");
     crate::assets::static_router(dir)
 }
 

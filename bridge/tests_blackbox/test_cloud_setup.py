@@ -12,7 +12,6 @@ import time
 import tomllib
 
 import httpx
-import pytest
 import yaml
 
 from bbkit.common import AUTH, BRIDGE_KEY, REMOTE
@@ -224,8 +223,7 @@ def test_a_place_of_the_reserve_is_claimed_in_seconds_its_first_agent_made_befor
     units.mkdir(parents=True)
     (units / "hermes-gateway.service").write_text("[Service]\n")
     bridge.start()
-    if "prepared" not in bridge.get("/v1/setup", params={"nonce": NONCE}).json():
-        pytest.skip("the Python bridge makes every agent at the claim")
+    assert "prepared" in bridge.get("/v1/setup", params={"nonce": NONCE}).json()
     cloud.done()
     assert wait_until(lambda: bridge.get("/v1/setup", params={"nonce": NONCE}).json()["prepared"], timeout=30)
     assert ["profile", "create", "agent", "--clone-from", "default", "--no-alias"] == \

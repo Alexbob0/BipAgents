@@ -47,7 +47,7 @@ class Install:
     voice_server: List[str] = field(default_factory=list)
     # The agents' tools run in a sandbox: they cannot read the bridge's files, so it may keep credentials.
     isolated: bool = False
-    # Each agent gets a visible browser of its own, in a container (browser/, bipbridge/browsers.py).
+    # Each agent gets a visible browser of its own, in a container (browser/, bridge-rs/src/browsers.rs).
     browser: bool = False
     # An existing Hermes keeps its own API port (default: this install's block).
     hermes_port: Optional[int] = None
@@ -191,8 +191,9 @@ WantedBy=default.target
 def bridge_service(inst: Install, system: str) -> tuple[str, Path, str]:
     """(file name, path, content) of the bridge's service for this person."""
     from .rustbridge import program as bridge_program
-    program = bridge_program(inst.home, inst.repo)   # the Rust bridge when this account chose it (rustbridge.py)
-    env = {"BRIDGE_CONFIG": str(inst.bridge_config), "PYTHONUNBUFFERED": "1"}
+    program = bridge_program(inst.home, inst.repo)   # this checkout's binary (rustbridge.py)
+    # BIPAGENTS_REPO: the checkout whose installer the bridge runs (`place import`, restores), its binary being elsewhere.
+    env = {"BRIDGE_CONFIG": str(inst.bridge_config), "BIPAGENTS_REPO": str(inst.repo)}
     if system == "macos":
         path = inst.home / "Library" / "LaunchAgents" / "io.github.bipagents.bridge.plist"
         return "io.github.bipagents.bridge", path, launchd_plist(

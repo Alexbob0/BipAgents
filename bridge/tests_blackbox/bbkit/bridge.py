@@ -1,6 +1,6 @@
 """The bridge under test, as a separate process: its config written as TOML in a folder of its own, started with
-`BRIDGE_CMD` (default: this Python's `-m bipbridge serve`, run from bridge/), waited for on `/health`, talked to over
-HTTP only, stopped with SIGTERM.
+`BRIDGE_CMD` (default: the Rust bridge's release build, `bridge-rs/target/release/bipbridge serve`, or the one in
+`$CARGO_TARGET_DIR/release/`), run from bridge/, waited for on `/health`, talked to over HTTP only, stopped with SIGTERM.
 
 Its environment is small and fixed: `HOME` is the test's own folder (nothing of this machine's), `PATH` starts with
 the fake executables, `BRIDGE_CONFIG` names the config, `TZ=UTC`."""
@@ -12,7 +12,6 @@ import shlex
 import signal
 import sqlite3
 import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -27,10 +26,23 @@ from .servers import free_port
 BRIDGE_DIR = Path(__file__).resolve().parents[2]
 
 
+def built_bridge() -> Path:
+    """The Rust bridge's release build: `$CARGO_TARGET_DIR/release/bipbridge` when that is set, else bridge-rs/'s."""
+    target = os.environ.get("CARGO_TARGET_DIR", "").strip()
+    folder = Path(target) if target else BRIDGE_DIR.parent / "bridge-rs" / "target"
+    return folder / "release" / "bipbridge"
+
+
 def bridge_command() -> List[str]:
-    """`BRIDGE_CMD` split (it ends with `serve`), or this Python's `-m bipbridge serve`."""
+    """`BRIDGE_CMD` split (it ends with `serve`), or the Rust bridge's release build with `serve`."""
     raw = os.environ.get("BRIDGE_CMD", "").strip()
-    return shlex.split(raw) if raw else [sys.executable, "-m", "bipbridge", "serve"]
+    if raw:
+        return shlex.split(raw)
+    built = built_bridge()
+    if not built.is_file():
+        raise RuntimeError(f"no bridge to test: build it (`cargo build --release` in bridge-rs/, {built}) or set "
+                           "BRIDGE_CMD")
+    return [str(built), "serve"]
 
 
 def cli_command() -> List[str]:
@@ -39,8 +51,8 @@ def cli_command() -> List[str]:
     return command[:-1] if command and command[-1] == "serve" else command
 
 
-# The outbox database as the Python bridge creates it (bipbridge/store.py): a Rust bridge must open such a file as
-# it is, so tests create some before the bridge starts.
+# The outbox database as the Python bridge created it (once bridge/bipbridge/store.py): the bridge must open such a
+# file as it is, so tests create some before the bridge starts.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS devices (
     token TEXT PRIMARY KEY,

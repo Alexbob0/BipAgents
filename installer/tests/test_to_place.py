@@ -185,7 +185,7 @@ def export(inv, tmp_path, lone=False):
 
 
 def test_the_code_s_proofs_are_the_bridge_s():
-    # bridge/bipbridge/place_import.py computes the same (bridge/tests/test_place_import.py checks it there).
+    # bridge-rs/src/place_import.rs computes the same (bridge-rs/tests/browsers-places_place_import.rs checks it there).
     assert to_place.normalize_code("k7qf-9xz2-ma4d-0n8h") == CODE
     assert to_place.normalize_code("K7QF 9XZ2 MA4D ON8H") == CODE              # O read as 0
     assert to_place.proof(CODE, "a", "b") == __import__("hmac").new(

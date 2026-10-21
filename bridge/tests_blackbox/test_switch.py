@@ -3,8 +3,8 @@ and audio, an agent created in the app, console session, device key, vault item,
 links, a proposed job, a call's brief, a page, a watched run waiting for an approval, the agents' tool tokens), stops;
 the other implementation starts on the same config and data and must show the same; then the first one again.
 
-The other implementation is `BRIDGE_SWITCH_CMD` (e.g. the Python bridge when `BRIDGE_CMD` is the Rust one); without
-it, the same command is restarted (persistence across a restart)."""
+The other implementation is `BRIDGE_SWITCH_CMD` (e.g. an earlier release's binary); without it, the same command is
+restarted (persistence across a restart)."""
 import json
 import os
 import shlex

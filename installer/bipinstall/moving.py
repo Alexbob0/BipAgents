@@ -623,6 +623,10 @@ def import_main(argv: List[str]) -> int:
     if (hermes.hermes_home() / "config.yaml").exists() and not (hermes.hermes_home() / hermes.UNFINISHED).exists():
         say(ui.fail(f"This account already has a Hermes ({hermes.hermes_home()}): import into an account without one."))
         return 1
+    from . import rustbridge
+    if not rustbridge.asset() and not os.environ.get(rustbridge.BUILD):
+        say(ui.fail(rustbridge.unsupported()))   # before anything is changed
+        return 1
 
     if args.passphrase_file:
         passphrase = Path(args.passphrase_file).expanduser().read_text(encoding="utf-8").strip()
@@ -741,7 +745,13 @@ def import_main(argv: List[str]) -> int:
     base = (mapping.get(ports["bridge"], ports["bridge"])) - 3
     inst = Install(repo=REPO, home=home, ports=Ports(base), tailnet_name=target.tailnet_name,
                    lan_address=target.lan_address)
-    venv(REPO / "bridge", runner)   # the agents' MCP servers run with it (their browser's, among others)
+    try:   # the bridge's binaries for this machine (their helper runs the agents' browser tools)
+        rustbridge.ensure(home, REPO, runner)
+    except rustbridge.RustBridgeError as exc:
+        say(ui.fail(f"The bridge couldn't be installed: {exc}"))
+        say(ui.note("Try the import again in a few minutes (`bipagents uninstall --all` first if it finds BipAgents here)."))
+        return 1
+    venv(REPO / "installer", runner)   # what the bridge runs the installer with (`place import`, restores)
     gateway_service(inst, machine, runner)
     from .__main__ import pocket_running
     if not pocket_running():
@@ -756,9 +766,9 @@ def import_main(argv: List[str]) -> int:
     label, path, content = bridge_service(inst, machine.system)
     write(path, content, runner)
     start_service(machine.system, label, path, runner)
-    python = [str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge"]
+    bridge = rustbridge.cli(home, REPO)
     if any(a.get("space") for a in info["agents"]):
-        runner.run(python + ["spaces", "start", "--config", str(config)], cwd=REPO / "bridge", check=False)
+        runner.run(bridge + ["spaces", "start", "--config", str(config)], cwd=REPO / "bridge", check=False)
     if info.get("browsers") and target.sandbox:
         say(ui.step(next(steps), total, "Your agents' visible browsers"))
         for agent in info["agents"]:
@@ -771,7 +781,7 @@ def import_main(argv: List[str]) -> int:
                 ports_file.unlink()   # others are picked
         try:
             hermes.build_browser(runner, target.sandbox, REPO)
-            runner.run(python + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
+            runner.run(bridge + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
             if machine.system == "linux":
                 runner.run(["systemctl", "--user", "restart", label], check=False)
             say(ui.done("Their browsers are back, logins included (some sites may ask again from a new address)."))
@@ -800,7 +810,7 @@ def import_main(argv: List[str]) -> int:
         say(ui.finale("Moved! Your phones find their agents by themselves."))
     else:
         say(ui.finale("Moved! On each phone, scan this code (then delete the old agents in the app)."))
-        subprocess.run(python + ["qr", "--config", str(config)], cwd=REPO / "bridge", check=False)
+        subprocess.run(bridge + ["qr", "--config", str(config)], cwd=REPO / "bridge", check=False)
     if info.get("model_url") and not _reachable(info["model_url"]):
         say(ui.note(f"The model at {info['model_url']} doesn't answer from here: choose another one in the app "
                     "(an agent › Model) or with `hermes model`."))

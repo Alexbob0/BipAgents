@@ -35,7 +35,7 @@ hand:
 
 ```bash
 podman build -t bipagents-browser ~/BipAgents/browser
-~/BipAgents/bridge/.venv/bin/python -m bipbridge browser add --agent <agent>   # or --all; `remove` undoes it
+bipagents bridge browser add --agent <agent>   # or --all; `remove` undoes it
 systemctl --user restart bipagents-bridge
 ```
 
@@ -43,7 +43,7 @@ Each agent's container runs as a systemd user unit, `bipagents-browser-<agent>`,
 the agent's first browser call (a few seconds) or when you open its « Bureau », and stops after 10 minutes unused
 (nobody watching the desktop, no call, nothing connected to its DevTools). Its profile stays: logins and cookies too.
 On a machine with several agents, only the browsers in use take memory. Hermes keeps a small MCP server of ours
-connected (`bridge/bipbridge/browser_mcp.py`), which answers with the tools the browser's server listed last time and
+connected (`bip-browser-mcp`, next to the bridge: `bridge-rs/src/browser_mcp.rs`), which answers with the tools the browser's server listed last time and
 starts it when a tool is called. `idle_minutes = 0` in `[browser]` keeps every browser running, as before.
 
 With a GPU (`/dev/dri`), Chrome renders with it; otherwise in software. `[browser]` in `bridge.toml` also takes
@@ -64,7 +64,7 @@ commit BipAgents is tested with (`a7b9eea`, set in the `Containerfile`) and appl
 - `entrypoint.sh` (the screen, the VNC server), `devtools_relay.py` (Chrome's DevTools from the host, at an address
   that outlives Chrome's restarts), `mcp.sh` (the server with only what browsing needs:
   no element cloning, file extraction, network interception, raw CDP or debugging hooks) and the skill telling the
-  agent how to use its browser (`bridge/bipbridge/skills/visible-browser/SKILL.md`, copied into its Hermes profile).
+  agent how to use its browser (`bridge-rs/assets/skills/visible-browser/SKILL.md`, copied into its Hermes profile).
 
 ## Taking over
 

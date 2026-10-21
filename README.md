@@ -129,7 +129,7 @@ flowchart LR
   end
   subgraph Server["Your server (Tailscale)"]
     H[Hermes Agent<br/>api_server · runs · Bot Mode]
-    B[bipbridge<br/>FastAPI]
+    B[bipbridge<br/>Rust]
     K[Pocket TTS<br/>Bip voices, CPU]
   end
   A -- "text, files, runs (SSE)" --> H
@@ -140,7 +140,7 @@ flowchart LR
 ```
 
 - **The app** talks straight to the Hermes api_server (sessions, runs, approvals, questions) and to the **bridge** for everything else.
-- **The bridge** (`bridge/`, Python) prepares and synthesizes speech, serves files, relays runs so no event gets lost, watches scheduled tasks and sends push notifications.
+- **The bridge** (`bridge-rs/`, Rust: one program) prepares and synthesizes speech, serves files, relays runs so no event gets lost, watches scheduled tasks and sends push notifications.
 - **Pocket TTS** (`pocket/`) gives the Bips their voices, on the same machine's CPU.
 - Everything stays with you: no third-party cloud except Apple for push. No secrets in this repo; keys are entered in the app (Keychain) or in the bridge config on the server.
 
@@ -197,7 +197,7 @@ them before updating Hermes); each one is offered upstream. Details in [`hermes/
   (`App/Features/Account/AccountCrypto.swift`, `android/…/account/AccountCrypto.kt`, with its test vectors); a page listing
   everything the apps send, and to whom, follows. The demo's scenarios and recordings are in
   `App/Resources/Demo/` (the site uses them).
-- `bridge/` and `bridge-rs/` — the server-side bridge, in Python and in Rust ([README](bridge/README.md)).
+- `bridge-rs/` — the server-side bridge, in Rust; `bridge/` — its config example, service files and black-box test suite ([README](bridge/README.md)).
 - `pocket/` — the Pocket TTS server for the Bips' voices ([README](pocket/README.md)).
 - `voices/` — the Bips' voices ([README](voices/README.md)).
 - `installer/` — the installer and `bipagents update` ([README](installer/README.md)); `browser/` — the agents' visible browser ([README](browser/README.md)); `hermes/patches/` — the Hermes patches ([README](hermes/patches/README.md)); `tts/drama3/` — a recipe for Fish Audio Drama 3 as your own voice model.

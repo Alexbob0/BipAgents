@@ -467,10 +467,11 @@ def restore(key: str, runner, base: Optional[Path] = None, repo: Optional[Path] 
         for how, name in gateway_units():
             if how == "systemd":
                 runner.run(["systemctl", "--user", "start", name], check=False)
-        python = [str(repo / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge"]
+        from .rustbridge import cli
         config = base / ".config" / "bipagents" / "bridge.toml"
         if info.get("browsers"):
-            runner.run(python + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge", check=False)
+            runner.run(cli(base, repo) + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge",
+                       check=False)
     except BackupError as exc:
         progress(base, 0, error=str(exc))
         (base / MARKER).unlink(missing_ok=True)

@@ -4,7 +4,7 @@ installed at first boot with nobody at the keyboard (installer/cloud/user-data.y
 FILE, written at first boot from that setup: {"v": 1, "pair": "<base64url>", "language": "fr", "profile": "solo"}, and "port" when the door isn't on 443 (a server shared by two people).
 `pair` is the one-time pairing secret the guichet hands to the app that bought the server; the profile is « mini »
 (no visible browser, for a 2 GB server) or « solo » (the default, 4 GB). No model key: the app sends it to the bridge
-once paired (bipbridge/cloud_setup.py), since the provider keeps that setup.
+once paired (bridge-rs/src/cloud_setup.rs), since the provider keeps that setup.
 
 The bridge's door is then on the Internet, on port 443 with its own certificate, the app pinning it; nothing else
 listens outside 127.0.0.1. Each step is written to a progress file the bridge shows the app until it is done."""

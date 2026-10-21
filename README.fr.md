@@ -130,7 +130,7 @@ flowchart LR
   end
   subgraph Serveur["Ton serveur (Tailscale)"]
     H[Hermes Agent<br/>api_server · runs · Bot Mode]
-    B[bipbridge<br/>FastAPI]
+    B[bipbridge<br/>Rust]
     K[Pocket TTS<br/>voix des Bips, CPU]
   end
   A -- "texte, fichiers, runs (SSE)" --> H
@@ -141,7 +141,7 @@ flowchart LR
 ```
 
 - **L'app** parle directement à l'api_server Hermes (sessions, runs, accords, questions) et au **bridge** pour tout le reste.
-- **Le bridge** (`bridge/`, Python) prépare et fait synthétiser les voix, sert les fichiers, relaie les runs pour qu'aucun événement ne se perde, surveille les tâches planifiées et envoie les notifications push.
+- **Le bridge** (`bridge-rs/`, Rust : un seul programme) prépare et fait synthétiser les voix, sert les fichiers, relaie les runs pour qu'aucun événement ne se perde, surveille les tâches planifiées et envoie les notifications push.
 - **Pocket TTS** (`pocket/`) donne leur voix aux Bips, sur le CPU de la même machine.
 - Tout reste chez toi : aucun cloud tiers à part Apple pour les push. Aucun secret dans ce dépôt ; les clés sont saisies dans l'app (Trousseau) ou dans la config du bridge sur le serveur.
 
@@ -199,7 +199,7 @@ Quelques changements dont BipAgents a besoin ne sont pas encore dans Hermes. L'i
   apps (`App/Features/Account/AccountCrypto.swift`, `android/…/account/AccountCrypto.kt`, avec ses vecteurs de test) ;
   une page listant tout ce que les apps envoient, et à qui, suivra. Les scénarios et enregistrements de la démo sont
   dans `App/Resources/Demo/` (le site s'en sert).
-- `bridge/` et `bridge-rs/` — le bridge côté serveur, en Python et en Rust ([README](bridge/README.fr.md)).
+- `bridge-rs/` — le bridge côté serveur, en Rust ; `bridge/` — son exemple de config, ses fichiers de service et sa suite de tests boîte noire ([README](bridge/README.fr.md)).
 - `pocket/` — le serveur Pocket TTS des voix des Bips ([README](pocket/README.fr.md)).
 - `voices/` — les voix des Bips ([README](voices/README.fr.md)).
 - `installer/` — l'installateur et `bipagents update` ([README](installer/README.fr.md)) ; `browser/` — le navigateur visible des agents ([README](browser/README.md)) ; `hermes/patches/` — les patches de Hermes ([README](hermes/patches/README.md)) ; `tts/drama3/` — une recette pour Fish Audio Drama 3 comme modèle de voix.

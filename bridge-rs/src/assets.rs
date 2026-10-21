@@ -1,4 +1,4 @@
-//! The Python package's data files, embedded from `../bridge/bipbridge` (one source of truth): the web console's
+//! The bridge's data files, embedded from `assets/` (one source of truth): the web console's
 //! page and scripts, noVNC and the vendored Chart.js, the agents' skills, and the YAML catalogs. Plus
 //! [`static_router`], Starlette's `StaticFiles` for an embedded folder.
 //!
@@ -14,16 +14,16 @@ use sha2::{Digest, Sha256};
 
 use crate::app::AppState;
 
-/// `bipbridge/console/` (index.html, static/…).
-pub static CONSOLE: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../bridge/bipbridge/console");
-/// `bipbridge/static/` (novnc/, vendor/chart.umd.min.js).
-pub static STATIC: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../bridge/bipbridge/static");
-/// `bipbridge/skills/` (visible-browser/SKILL.md, shared-data/SKILL.md).
-pub static SKILLS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../bridge/bipbridge/skills");
-/// `bipbridge/agent_templates.yaml` (souls.py).
-pub const AGENT_TEMPLATES_YAML: &str = include_str!("../../bridge/bipbridge/agent_templates.yaml");
-/// `bipbridge/tool_catalog.yaml` (services.py).
-pub const TOOL_CATALOG_YAML: &str = include_str!("../../bridge/bipbridge/tool_catalog.yaml");
+/// `assets/console/` (index.html, static/…).
+pub static CONSOLE: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets/console");
+/// `assets/static/` (novnc/, vendor/chart.umd.min.js).
+pub static STATIC: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets/static");
+/// `assets/skills/` (visible-browser/SKILL.md, shared-data/SKILL.md).
+pub static SKILLS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets/skills");
+/// `assets/agent_templates.yaml` (souls.rs; the installer reads it too).
+pub const AGENT_TEMPLATES_YAML: &str = include_str!("../assets/agent_templates.yaml");
+/// `assets/tool_catalog.yaml` (services.rs).
+pub const TOOL_CATALOG_YAML: &str = include_str!("../assets/tool_catalog.yaml");
 
 /// A file of an embedded folder (`"core/rfb.js"`), as bytes.
 pub fn file<'a>(dir: &'a Dir<'static>, path: &str) -> Option<&'a [u8]> {

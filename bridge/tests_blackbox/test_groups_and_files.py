@@ -1,6 +1,5 @@
 """The person's groups of agents (`PUT /v1/agents/{id}/group`, `group` in the listing and at creation) and how long
-the files sent to the agents are kept (`/v1/files/settings`, used by the purge). Rust only: skipped when `/health`
-does not list the feature (the Python bridge)."""
+the files sent to the agents are kept (`/v1/files/settings`, used by the purge). `/health` lists both features."""
 import os
 import time
 
@@ -14,8 +13,7 @@ FIVE_GB = 5 * (1 << 30)
 
 
 def offers(bridge, feature):
-    if feature not in bridge.get("/health").json().get("features", []):
-        pytest.skip(f"this bridge has no {feature}")
+    assert feature in bridge.get("/health").json().get("features", []), f"this bridge has no {feature}"
 
 
 def groups_of(bridge):

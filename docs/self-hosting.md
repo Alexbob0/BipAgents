@@ -84,13 +84,22 @@ startup (`--languages fr`). Details: [`pocket/README.md`](../pocket/README.md).
 
 ## 4. The bridge
 
+The bridge is a single program, written in Rust (`bridge-rs/`). Each version of the repository has its binaries in
+the GitHub release `bridge-<key>`, where the key is the first 12 characters of the SHA-256 of the `bridge-rs/` tree:
+
 ```bash
-cd ~/BipAgents/bridge
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt    # Python ≥ 3.11 recommended
+cd ~/BipAgents
+key=$(printf '%s' "$(git rev-parse HEAD:bridge-rs)" | sha256sum | cut -c1-12)    # macOS: shasum -a 256
+asset=bipbridge-linux-x86_64.tar.gz    # bipbridge-linux-aarch64.tar.gz (ARM), bipbridge-macos-universal.tar.gz (Mac)
+mkdir -p ~/.local/bin
+curl -fsSL "https://github.com/Alexbob0/BipAgents/releases/download/bridge-$key/$asset" | tar -xz -C ~/.local/bin bipbridge bip-browser-mcp
+# Or build it (stable Rust): cd bridge-rs && cargo build --release && cp target/release/{bipbridge,bip-browser-mcp} ~/.local/bin/
 mkdir -p ~/.config/hermes-ios && chmod 700 ~/.config/hermes-ios
-cp bridge.example.toml ~/.config/hermes-ios/bridge.toml && chmod 600 ~/.config/hermes-ios/bridge.toml
-.venv/bin/python -m bipbridge genkey      # → bridge_key (also enter it in the app)
+cp bridge/bridge.example.toml ~/.config/hermes-ios/bridge.toml && chmod 600 ~/.config/hermes-ios/bridge.toml
+~/.local/bin/bipbridge genkey      # → bridge_key (also enter it in the app)
 ```
+
+The release's `SHA256SUMS` lists each archive's checksum.
 
 In `~/.config/hermes-ios/bridge.toml`, for a machine without a GPU:
 
@@ -111,7 +120,7 @@ upload_dir_container = "/home/hermes/.hermes/profiles/wellness/uploads"   # the 
 ```
 
 The `[ntfy]` sections and `ntfy_topic` / `ntfy_token` are optional (legacy proactive messages). Hermes' scheduled
-tasks reach the Inbox without them (`[cron]`). Then run `.venv/bin/python -m bipbridge check`.
+tasks reach the Inbox without them (`[cron]`). Then run `~/.local/bin/bipbridge check --config ~/.config/hermes-ios/bridge.toml`.
 
 All options: [`bridge/README.md`](../bridge/README.md).
 
@@ -135,12 +144,13 @@ To stop them: `launchctl bootout gui/$(id -u)/io.github.bipagents.pocket` (same 
 ```bash
 mkdir -p ~/.config/systemd/user
 cp ~/BipAgents/pocket/systemd/pocket-tts.service ~/.config/systemd/user/
-cp ~/BipAgents/bridge/systemd/hermes-bridge.service ~/.config/systemd/user/   # adjust WorkingDirectory/ExecStart to ~/BipAgents/bridge
+cp ~/BipAgents/bridge/systemd/hermes-bridge.service ~/.config/systemd/user/   # runs ~/.local/bin/bipbridge
 systemctl --user daemon-reload && systemctl --user enable --now pocket-tts hermes-bridge
 sudo loginctl enable-linger $USER     # services keep running without an open session
 ```
 
-Updating: `git pull`, `pip install -r requirements.txt` in each venv, restart both services.
+Updating: `git pull`, `pip install -r requirements.txt` in Pocket's venv, the bridge binary of the new key (same
+commands as above, when `bridge-rs/` changed), restart both services.
 
 ## 6. Open on the tailnet
 

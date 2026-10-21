@@ -86,9 +86,10 @@ fn float_of(value: Option<&Value>) -> f64 {
     }
 }
 
-/// The installer's checkout (the folder with `installer/bipinstall`) and the Python that runs it: Python's
-/// `Path(__file__).resolve().parents[2]` and `sys.executable`. `BIPAGENTS_REPO` says where it is; else the folders
-/// above this program, else `~/BipAgents`.
+/// The installer's checkout (the folder with `installer/bipinstall`) and the Python that runs it: the installer's own
+/// environment (`installer/.venv`, made by the installer), else the Python bridge's of an install not updated since
+/// (`bridge/.venv`), else `python3`. `BIPAGENTS_REPO` says where the checkout is; else the folders above this
+/// program, else `~/BipAgents`.
 pub fn repo_and_python() -> (PathBuf, String) {
     let has_installer = |p: &Path| p.join("installer").join("bipinstall").is_dir();
     let mut repo = std::env::var("BIPAGENTS_REPO").ok().filter(|r| !r.is_empty()).map(PathBuf::from);
@@ -98,8 +99,12 @@ pub fn repo_and_python() -> (PathBuf, String) {
         }
     }
     let repo = repo.unwrap_or_else(|| pyx::home().join("BipAgents"));
-    let venv = repo.join("bridge").join(".venv").join("bin").join("python");
-    let python = if venv.exists() { venv.to_string_lossy().into_owned() } else { "python3".to_string() };
+    let python = ["installer", "bridge"]
+        .iter()
+        .map(|folder| repo.join(folder).join(".venv").join("bin").join("python"))
+        .find(|venv| venv.exists())
+        .map(|venv| venv.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "python3".to_string());
     (repo, python)
 }
 

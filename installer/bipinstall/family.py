@@ -190,8 +190,7 @@ def main(argv: List[str]) -> int:
     for line in iphone_steps(args.name, result["relay_url"]):
         print(line)
     if linux:
-        qr = "cd ~/BipAgents/bridge && .venv/bin/python -m bipbridge qr --config ~/.config/bipagents/bridge.toml"
-        print(f"To show their QR code again:\n  {shlex.join(['sudo', '-iu', login, 'bash', '-c', qr])}")
+        print(f"To show their QR code again:\n  bipagents qr {login}")
     return 0
 
 
