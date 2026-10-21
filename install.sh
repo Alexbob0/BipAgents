@@ -26,6 +26,13 @@ to_version() {
   git -C "$DIR" fetch --depth 1 --quiet origin "$BIPAGENTS_TO" && git -C "$DIR" checkout --quiet -B main FETCH_HEAD
 }
 
+# The published history rewritten (it was once, when the guichet left this repository): the latest version is taken
+# as it is, but only when nothing in this copy was changed by hand (a change is never overwritten).
+resync() {
+  git -C "$DIR" diff --quiet HEAD -- 2>/dev/null || return 1
+  git -C "$DIR" fetch --depth 1 --quiet origin main && git -C "$DIR" checkout --quiet -B main FETCH_HEAD
+}
+
 if [ -d "$DIR/.git" ]; then
   # The version before, for `install.sh update` (what changed); a pull that cannot go on is explained by it.
   export BIPAGENTS_BEFORE="$(git -C "$DIR" rev-parse HEAD)"
@@ -34,7 +41,8 @@ if [ -d "$DIR/.git" ]; then
       [ "${1:-}" = "update" ] || exit 1
       export BIPAGENTS_PULL_FAILED=1
     fi
-  elif ! git -C "$DIR" pull --ff-only --quiet; then
+  elif ! pulled="$(git -C "$DIR" pull --ff-only --quiet 2>&1)" && ! resync; then
+    [ -n "$pulled" ] && echo "$pulled" >&2
     [ "${1:-}" = "update" ] || exit 1
     export BIPAGENTS_PULL_FAILED=1
   fi
