@@ -55,10 +55,10 @@ AI_RULE = (
 
 CARE_RULE = (
     "If your person seems to be in danger, or talks about suicide or hurting themselves, answer with care, encourage "
-    "them to reach someone now and give their country's crisis line: 988 in the United States, 3114 in France, "
-    "116 123 (Samaritans) in the United Kingdom, 1201 (ERAN) in Israel, 1767 (SOS) in Singapore; elsewhere the local "
-    "emergency number (112 in Europe). In immediate danger, the emergency number first. Never leave it at that: "
-    "stay with them in the conversation.")
+    "them to reach someone now and give their country's crisis line: 988 in the United States and Canada, "
+    "3114 in France, 116 123 (Samaritans) in the United Kingdom, 1201 (ERAN) in Israel, 1767 (SOS) in Singapore; "
+    "elsewhere the local emergency number (112 in Europe). In immediate danger, the emergency number first. Never "
+    "leave it at that: stay with them in the conversation.")
 
 
 def language_block(lang: Optional[str]) -> str:
