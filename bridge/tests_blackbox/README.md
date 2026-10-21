@@ -14,11 +14,11 @@ The main checkout's virtualenv has all of them.
 
 ```sh
 # Against the Python bridge (the default: this Python's `-m bipbridge serve`, run from bridge/)
-"~/BipAgents/bridge/.venv/bin/python" -m pytest tests_blackbox -q -p no:cacheprovider
+.venv/bin/python -m pytest tests_blackbox -q -p no:cacheprovider
 
 # Against the Rust bridge
-BRIDGE_CMD="~/Projects/bipagents-rust/target-integrate/release/bipbridge serve" \
-  "~/BipAgents/bridge/.venv/bin/python" -m pytest tests_blackbox -q -p no:cacheprovider
+BRIDGE_CMD="../bridge-rs/target/release/bipbridge serve" \
+  .venv/bin/python -m pytest tests_blackbox -q -p no:cacheprovider
 
 # One file, or one test, with the bridge's log when it fails (printed under « Captured stdout teardown »)
 ... -m pytest tests_blackbox/test_voice_and_approvals.py -q -k follow

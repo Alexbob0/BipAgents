@@ -194,14 +194,12 @@ Quelques changements dont BipAgents a besoin ne sont pas encore dans Hermes. L'i
 <details>
 <summary><b>🗂️ Le dépôt</b></summary>
 
-- `App/` — l'app SwiftUI (iOS 18+, Swift 6).
-  - `Design/` — thème, catégories, mascottes vectorielles (`MascotView`), interactions (`InteractiveMascot`), babillage (`BipBabble`), voix des agents.
-  - `Model/` — `AgentStore` (agents dans l'App Group, clés dans le Trousseau), `BridgeClient`, `Router`.
-  - `Features/` — Agents, Sessions, Conversation, Live, Boîte, Réglages, Diagnostics, notifications.
-- `NotificationService/` — extension qui met le texte complet, l'avatar du Bip et l'audio dans les notifications.
-- `Packages/HermesKit` — client de l'api_server Hermes (SSE, sessions, runs, accords, `clarify`, pièces jointes).
-- `Packages/VoiceKit` — capture, transcription sur l'iPhone, TTS en flux PCM, interruption à la voix.
-- `bridge/` — le service Python côté serveur ([README](bridge/README.fr.md)).
+- Les apps (iPhone, iPad, Android) appartiennent à Kerfy Studio et leur code est privé. Publié ici, pour que chacun
+  puisse vérifier leurs promesses de confidentialité : le chiffrement de bout en bout du compte, le même dans les deux
+  apps (`App/Features/Account/AccountCrypto.swift`, `android/…/account/AccountCrypto.kt`, avec ses vecteurs de test),
+  et [tout ce que les apps envoient, et à qui](docs/app-data.fr.md). Les scénarios et enregistrements de la démo sont
+  dans `App/Resources/Demo/` (le site s'en sert).
+- `bridge/` et `bridge-rs/` — le bridge côté serveur, en Python et en Rust ([README](bridge/README.fr.md)).
 - `pocket/` — le serveur Pocket TTS des voix des Bips ([README](pocket/README.fr.md)).
 - `voices/` — les voix des Bips ([README](voices/README.fr.md)).
 - `installer/` — l'installateur et `bipagents update` ([README](installer/README.fr.md)) ; `browser/` — le navigateur visible des agents ([README](browser/README.md)) ; `hermes/patches/` — les patches de Hermes ([README](hermes/patches/README.md)) ; `tts/drama3/` — une recette pour Fish Audio Drama 3 comme modèle de voix.

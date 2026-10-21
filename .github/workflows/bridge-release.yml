@@ -23,6 +23,7 @@ concurrency:
 jobs:
   key:
     name: Release key
+    if: github.repository == 'Alexbob0/BipAgents'   # installs download from the public repository
     runs-on: ubuntu-latest
     outputs:
       key: ${{ steps.key.outputs.key }}

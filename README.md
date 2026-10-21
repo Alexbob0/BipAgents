@@ -192,15 +192,12 @@ them before updating Hermes); each one is offered upstream. Details in [`hermes/
 <details>
 <summary><b>🗂️ The repo</b></summary>
 
-- `App/` — the SwiftUI app (iOS 18+, Swift 6).
-  - `Design/` — theme, categories, vector mascots (`MascotView`), interactions (`InteractiveMascot`), babbling (`BipBabble`), agent voices.
-  - `Model/` — `AgentStore` (agents in the App Group, keys in the Keychain), `BridgeClient`, `Router`.
-  - `Features/` — Agents, Sessions, Conversation, Live, Inbox, Settings, Diagnostics, notifications.
-  - `Resources/` — string catalogs (English, French, Spanish, German) and voice previews.
-- `NotificationService/` — extension that puts the full text, the Bip's avatar and the audio into notifications.
-- `Packages/HermesKit` — Hermes api_server client (SSE, sessions, runs, approvals, `clarify`, attachments).
-- `Packages/VoiceKit` — capture, on-device transcription, streamed PCM TTS, voice barge-in.
-- `bridge/` — the server-side Python service ([README](bridge/README.md)).
+- The apps (iPhone, iPad, Android) are Kerfy Studio's and their source is private. Published here, so anyone can check
+  their privacy promises: the account's end-to-end encryption, the same in both apps
+  (`App/Features/Account/AccountCrypto.swift`, `android/…/account/AccountCrypto.kt`, with its test vectors), and
+  [everything the apps send, and to whom](docs/app-data.md). The demo's scenarios and recordings are in
+  `App/Resources/Demo/` (the site uses them).
+- `bridge/` and `bridge-rs/` — the server-side bridge, in Python and in Rust ([README](bridge/README.md)).
 - `pocket/` — the Pocket TTS server for the Bips' voices ([README](pocket/README.md)).
 - `voices/` — the Bips' voices ([README](voices/README.md)).
 - `installer/` — the installer and `bipagents update` ([README](installer/README.md)); `browser/` — the agents' visible browser ([README](browser/README.md)); `hermes/patches/` — the Hermes patches ([README](hermes/patches/README.md)); `tts/drama3/` — a recipe for Fish Audio Drama 3 as your own voice model.

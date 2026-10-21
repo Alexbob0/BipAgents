@@ -2,7 +2,7 @@
 //! for Hermes agents (see ../README.md).
 //!
 //! Rust port of `bridge/bipbridge` (Python): the same routes, JSON, files on disk, config and CLI. One Rust module
-//! per Python module, same name; see PORTING.md for the layout, the owners and the conventions.
+//! per Python module, same name.
 
 pub const VERSION: &str = "0.1.0";
 
