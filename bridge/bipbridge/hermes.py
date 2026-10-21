@@ -172,7 +172,7 @@ class HermesClient:
                     timeout: float = 15.0) -> Any:
         resp = await self.client.request(method, f"{agent.hermes_url}{path}", json=body, headers=self._headers(agent),
                                          timeout=timeout)
-        if resp.status_code not in (200, 201, 204):
+        if resp.status_code not in (200, 201, 202, 204):
             raise HermesHTTPError(resp.status_code, resp.text[:500])
         try:
             return resp.json()
@@ -203,6 +203,21 @@ class HermesClient:
         reply = data.get("message") if isinstance(data, dict) else None
         content = reply.get("content") if isinstance(reply, dict) else None
         return content if isinstance(content, str) else ""
+
+    async def start_run(self, agent: AgentConfig, text: str, session_id: str, instructions: Optional[str] = None) -> str:
+        """``POST /v1/runs`` in a conversation: the run's id (it goes on in Hermes; follow it with ``run``)."""
+        body: Dict[str, Any] = {"input": text, "session_id": session_id}
+        if instructions:
+            body["instructions"] = instructions   # Hermes adds them to its system prompt for this run only
+        data = await self._send(agent, "POST", "/v1/runs", body)
+        run_id = data.get("run_id") if isinstance(data, dict) else None
+        if not isinstance(run_id, str):
+            raise HermesHTTPError(502, "no run id")
+        return run_id
+
+    async def stop_run(self, agent: AgentConfig, run_id: str) -> None:
+        """``POST /v1/runs/{id}/stop``: Hermes interrupts the run (its status then turns to cancelled)."""
+        await self._send(agent, "POST", f"/v1/runs/{run_id}/stop")
 
     async def run_events(self, agent: AgentConfig, run_id: str) -> AsyncIterator[SSEEvent]:
         """Yield events of ``GET /v1/runs/{run_id}/events`` until the server closes the stream.

@@ -620,6 +620,16 @@ class Step(BaseModel):
     max_tokens: int = Field(..., ge=1000, le=200_000_000)
 
 
+def scans_of(services: Any) -> Scans:
+    """The bridge's scans (one object, made the first time: the routes here and the background jobs' list share it)."""
+    if getattr(services, "scans", None) is None:
+        push = getattr(services, "push", None)
+        services.scans = Scans(http=getattr(services, "http", None),
+                               notify=(lambda name, line: push.notify_scan(name, line)) if push is not None
+                               and hasattr(push, "notify_scan") else None)
+    return services.scans
+
+
 def mail_scan_router() -> APIRouter:
     router = APIRouter()
 
@@ -629,12 +639,7 @@ def mail_scan_router() -> APIRouter:
             agent = editable(services.config, agent_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
-        if getattr(services, "scans", None) is None:
-            push = getattr(services, "push", None)
-            services.scans = Scans(http=getattr(services, "http", None),
-                                   notify=(lambda name, line: push.notify_scan(name, line)) if push is not None
-                                   and hasattr(push, "notify_scan") else None)
-        return services.config, agent, services.scans
+        return services.config, agent, scans_of(services)
 
     def refused(exc: Exception) -> HTTPException:
         return HTTPException(status_code=409, detail=str(exc))

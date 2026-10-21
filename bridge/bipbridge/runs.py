@@ -103,6 +103,7 @@ class RunSubscription:
         self.pushed: Set[str] = set()
         self.session_id: Optional[str] = None  # for the « reply ready » push
         self.output: Optional[str] = None  # the run's final text (run.completed), to recognise its reply
+        self.end_push = True  # « reply ready » at its end (a background task tells its own end: jobs.py)
 
     @property
     def key(self) -> Key:
@@ -140,9 +141,14 @@ class RunHub:
         sub.listeners.add(listener)
         return listener
 
-    def watch(self, agent: AgentConfig, run_id: str, session_id: Optional[str] = None) -> RunSubscription:
+    def watch(self, agent: AgentConfig, run_id: str, session_id: Optional[str] = None,
+              end_push: bool = True) -> RunSubscription:
+        """Approvals and questions nobody sees are pushed; so is the end, unless `end_push` is False (never set back
+        to True by a later watch: a restart's resume() watches again the runs a background task follows)."""
         sub = self._get_or_start(agent, run_id)
         sub.watched = True
+        if not end_push:
+            sub.end_push = False
         if session_id and not sub.session_id:
             sub.session_id = session_id
         if self.store is not None and not sub.finished:
@@ -349,7 +355,7 @@ class RunHub:
             self.forget_approval(sub.agent.name, sub.run_id)
             if self.store is not None:
                 self._spawn(self.store.forget_run(sub.agent.name, sub.run_id))
-            if sub.watched and sub.followers == 0 and self.push is not None:
+            if sub.watched and sub.end_push and sub.followers == 0 and self.push is not None:
                 output = event.data.get("output") if isinstance(event.data.get("output"), str) else None
                 if event.type == "run.completed" and output:
                     log.info("reply push", extra=fields(agent=sub.agent.name, run_id=sub.run_id))

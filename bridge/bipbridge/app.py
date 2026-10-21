@@ -33,6 +33,7 @@ from .place_import import place_import_routers
 from .device_keys import device_keys_router
 from .memory_edit import memory_router
 from .mailbox import mail_router
+from .jobs import jobs_of, jobs_router
 from .mail_scan import mail_scan_router
 from .notes_import import notes_router
 from .reminders import reminders_router
@@ -115,6 +116,8 @@ class Services:
         self.desktop_tickets = Tickets()
         self.desktop_control: Dict[str, bool] = {}   # desktops set up by hand: the person took over (input passes)
         self.subscribers: List[NtfySubscriber] = []
+        self.scans: Any = None   # mail scans and background jobs, made at first use (mail_scan.scans_of, jobs.jobs_of)
+        self.jobs: Any = None
         self._tasks: List["asyncio.Task[Any]"] = []
 
     def start_background(self) -> None:
@@ -133,6 +136,7 @@ class Services:
         if self.sleep.enabled:
             self._tasks.append(asyncio.create_task(self.sleep.run_forever()))
         self._tasks.append(asyncio.create_task(self.hub.resume(self.config.agents)))
+        self._tasks.append(asyncio.create_task(jobs_of(self).resume_following()))
         if self.config.hermes.enabled:
             self._tasks.append(asyncio.create_task(mount_all_uploads(self.config)))
             self._tasks.append(asyncio.create_task(register_agent_tools(self.config, run_hermes)))
@@ -172,7 +176,8 @@ class Services:
             await asyncio.sleep(self.config.limits.purge_interval_seconds)
 
     async def stop(self) -> None:
-        for task in self._tasks:
+        followers = list(self.jobs.followers.values()) if self.jobs is not None else []
+        for task in self._tasks + followers:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         await self.hub.close()
@@ -675,6 +680,7 @@ def create_app(config: Config, *, transport: Optional[httpx.AsyncBaseTransport] 
     app.include_router(memory_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(mail_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(mail_scan_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
+    app.include_router(jobs_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(notes_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(reminders_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])
     app.include_router(voices_router(), prefix="/v1", dependencies=[Depends(require_bridge_key)])

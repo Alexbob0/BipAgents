@@ -226,6 +226,15 @@ class PushService:
         payload = reply_payload(agent, self._title(agent), "session:scan", None, preview, None, fallback=SUBTASK_BODY)
         return await self._fanout(agent, payload, "alert", 10, collapse_id=f"scan:{agent}")
 
+    async def notify_job(self, agent: str, session_id: Optional[str], line: str, job_id: str, body: str) -> int:
+        """A background task ended, paused at its budget, or was proposed by the agent (jobs.py): its line when
+        previews are on, else `body`; tapping opens the task's conversation (the agent for a proposal)."""
+        preview = line if self.config.push_previews else None
+        payload = reply_payload(agent, self._title(agent), f"session:{session_id or 'job'}", session_id, preview, None,
+                                fallback=body)
+        payload["job_id"] = job_id
+        return await self._fanout(agent, payload, "alert", 10, collapse_id=f"job:{job_id}")
+
     async def notify_question(self, agent: str, run_id: str, request_id: Optional[str], question: Optional[str],
                               session_id: Optional[str] = None) -> int:
         preview = _preview(question) if self.config.push_previews and question else None

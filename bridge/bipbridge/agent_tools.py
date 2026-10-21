@@ -3,7 +3,8 @@ voice the person chose for the agent in the app (its server voice for reading �
 ``create_podcast`` makes a conversation between hosts, each with a voice of their own (the person's voice model when
 it reads, else Bips); ``list_voices`` lists the voices the agent may give them; ``create_page`` and its kin keep the
 small web pages the agent makes for the person (pages.py); ``mail_search``, ``mail_read`` and ``mail_draft`` reach
-the mailboxes the person connected for it (mailbox.py).
+the mailboxes the person connected for it (mailbox.py); ``propose_task`` proposes a background task the person starts
+in the app (jobs.py).
 
 The agent's own Hermes calls it (an MCP server entry ``bipagents`` in its profile, with a token of its own), not its
 sandbox: nothing is opened to the containers, and the voice server stays on this machine's loopback. The text is cut
@@ -199,8 +200,26 @@ def knowledge_tool(config: Config, agent: AgentConfig, name: str, arguments: Dic
 
 # The mail tools are listed for every agent (Hermes reads the list once, when its gateway starts): an agent the person
 # gave no mailbox is told so when it tries one.
+PROPOSE_TASK = {
+    "name": "propose_task",
+    "description": (
+        "Propose a background task to the person: long work (a deep research, a file to prepare, many pages or "
+        "mails to go through) that would take far more than a reply. It does not start: the person sees it in the "
+        "app's « Tâches de fond » with its cost and starts it, then you do it in a conversation of its own and your "
+        "report is sent to them. Use it when the person asks for something that big; then tell them in your reply "
+        "that it waits for their go in « Tâches de fond »."),
+    "inputSchema": {"type": "object", "properties": {
+        "title": {"type": "string", "description": "a few words, in the person's language"},
+        "prompt": {"type": "string", "description": "everything needed to do the task without this conversation: "
+                                                    "the goal, what the person said, where to look, what to make"},
+        "budget": {"type": "string", "enum": ["small", "medium", "large"],
+                   "description": "small: a few searches; medium: a real research or file; large: hundreds of "
+                                  "pages or documents"}},
+        "required": ["title", "prompt"]},
+}
+
 TOOLS = [CREATE_AUDIO, CREATE_PODCAST, LIST_VOICES, CREATE_PAGE, LIST_PAGES, READ_PAGE, DELETE_PAGE] + mailbox.MAIL_TOOLS \
-    + [KNOWLEDGE_READ, KNOWLEDGE_SEARCH] + reminders.REMINDER_TOOLS
+    + [KNOWLEDGE_READ, KNOWLEDGE_SEARCH] + reminders.REMINDER_TOOLS + [PROPOSE_TASK]
 PAGE_TOOLS = {CREATE_PAGE["name"], LIST_PAGES["name"], READ_PAGE["name"], DELETE_PAGE["name"]}
 
 
@@ -624,7 +643,10 @@ def page_tool(config: Config, agent: AgentConfig, name: str, arguments: Dict[str
 
 
 async def call_tool(maker: AudioMaker, agent: AgentConfig, name: str, arguments: Dict[str, Any],
-                    push: Any = None) -> Dict[str, Any]:
+                    push: Any = None, jobs: Any = None) -> Dict[str, Any]:
+    if name == PROPOSE_TASK["name"]:
+        from .jobs import propose_tool   # jobs.py reaches agent_tools through mail_scan and agents_admin
+        return await propose_tool(jobs, agent, arguments)
     if name in PAGE_TOOLS:
         return await asyncio.to_thread(page_tool, maker.config, agent, name, arguments)
     if name in mailbox.MAIL_TOOL_NAMES:
@@ -658,6 +680,11 @@ async def call_tool(maker: AudioMaker, agent: AgentConfig, name: str, arguments:
     cast = "".join(f"\n- {speaker}: {voice}" for speaker, voice in (made.get("cast") or {}).items())
     return _tool_text(f"Audio ready ({_duration(made['seconds'])}).{chr(10) + 'Voices:' + cast if cast else ''}\n"
                       f"To give it to the person, put this line alone at the end of your reply:\nMEDIA:{made['path']}")
+
+
+def _jobs(services: Any) -> Any:
+    from .jobs import jobs_of
+    return jobs_of(services) if hasattr(services, "hermes") else None
 
 
 def agent_tools_router() -> APIRouter:
@@ -701,7 +728,8 @@ def agent_tools_router() -> APIRouter:
             return JSONResponse(_error(request_id, -32601, f"method not found: {method}"))
         name = str(params.get("name") or "")
         arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-        work = asyncio.create_task(call_tool(services.audio_maker, agent, name, arguments, getattr(services, "push", None)))
+        work = asyncio.create_task(call_tool(services.audio_maker, agent, name, arguments, getattr(services, "push", None),
+                                             _jobs(services)))
         if "text/event-stream" not in request.headers.get("accept", ""):
             return JSONResponse(_result(request_id, await work))
 
