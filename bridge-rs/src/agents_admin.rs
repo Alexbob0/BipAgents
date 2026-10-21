@@ -101,7 +101,7 @@ fn hermes_env(config: &Config) -> BTreeMap<String, String> {
 }
 
 /// `install.home or Path.home() / ".hermes"`.
-fn install_home(config: &Config) -> String {
+pub fn install_home(config: &Config) -> String {
     if config.hermes.home.is_empty() {
         crate::py::join(&crate::py::expanduser("~"), ".hermes")
     } else {
@@ -400,15 +400,17 @@ pub fn append_agent(config_path: &str, agent: &AgentConfig, kept: &[String]) -> 
     fh.write_all((lines.join("\n") + "\n").as_bytes())
 }
 
-/// A new agent in the person's hub (its profile, key, personality, tools); added to the configuration.
-pub async fn create_agent(
-    shared: &SharedConfig,
-    body: &NewAgent,
-    http: &reqwest::Client,
-    run: &Run,
-) -> anyhow::Result<AgentConfig> {
-    let config = shared.get();
-    let install = &config.hermes;
+/// What a new agent will be (nothing written yet): its profile id, the name the person gave, its personality and its
+/// profile's description.
+#[derive(Debug, Clone)]
+pub struct PlannedAgent {
+    pub profile: String,
+    pub name: String,
+    pub soul: String,
+    pub description: String,
+}
+
+pub fn plan_agent(config: &Config, body: &NewAgent) -> anyhow::Result<PlannedAgent> {
     let name = body.name.trim().to_string();
     let lang = match body.lang.as_deref().filter(|l| !l.is_empty()) {
         Some(lang) => lang.to_string(),
@@ -435,27 +437,93 @@ pub async fn create_agent(
     };
     let taken: Vec<String> = config.agents.keys().cloned().collect();
     let profile = crate::souls::profile_name(&name, &taken);
+    Ok(PlannedAgent { profile, name, soul, description })
+}
+
+/// The agent as this bridge serves it, in the hub, with its key (its profile may not exist yet).
+pub fn hub_agent(config: &Config, profile: &str, display_name: &str, key: &str) -> AgentConfig {
+    let install = &config.hermes;
+    let folder = PathBuf::from(install_home(config)).join("profiles").join(profile);
+    let uploads = folder.join("uploads").to_string_lossy().into_owned();
+    let seen_by_agent = if install.container_home.is_empty() {
+        uploads.clone()
+    } else {
+        format!("{}/profiles/{profile}/uploads", install.container_home)
+    };
+    AgentConfig {
+        name: profile.to_string(),
+        display_name: display_name.to_string(),
+        hermes_url: format!("{}/p/{profile}", install.hub_url),
+        hermes_key: key.to_string(),
+        upload_dir_host: Some(uploads),
+        upload_dir_container: Some(seen_by_agent),
+        public_url: public_agent_url(config, profile),
+        ..AgentConfig::default()
+    }
+}
+
+/// An agent listed (in the bridge's config, so the app gets it) before its profile is made (`make_profile`).
+pub fn reserve_agent(shared: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<()> {
+    if let Some(path) = shared.get().source_path.as_deref() {
+        append_agent(path, agent, &[])?;
+    }
+    shared.put_agent(agent.clone());
+    Ok(())
+}
+
+/// A new agent in the person's hub (its profile, key, personality, tools); added to the configuration.
+pub async fn create_agent(
+    shared: &SharedConfig,
+    body: &NewAgent,
+    http: &reqwest::Client,
+    run: &Run,
+) -> anyhow::Result<AgentConfig> {
+    let config = shared.get();
+    let planned = plan_agent(&config, body)?;
+    let agent = hub_agent(&config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
+    let agent = make_profile(shared, &planned, agent, http, run, false).await?;
+    tracing::info!(target: "bipbridge::agents", agent = %agent.name, kind = %body.kind.as_deref().filter(|k| !k.is_empty()).unwrap_or("custom"), "agent created");
+    Ok(agent)
+}
+
+/// The hub profile of a planned agent: made, given its key and personality, served, then saved in the bridge's
+/// config (its section rewritten when it was reserved there first). `resume`: a profile already made by an attempt
+/// cut short is kept, not made again.
+pub async fn make_profile(
+    shared: &SharedConfig,
+    planned: &PlannedAgent,
+    agent: AgentConfig,
+    http: &reqwest::Client,
+    run: &Run,
+    resume: bool,
+) -> anyhow::Result<AgentConfig> {
+    let config = shared.get();
+    let install = &config.hermes;
+    let profile = planned.profile.clone();
     let env = hermes_env(&config);
     let hermes = install.bin.clone();
+    let folder = PathBuf::from(install_home(&config)).join("profiles").join(&profile);
+    let made = resume && folder.join("config.yaml").is_file();
     // The hub's (default profile's) model and settings, never another agent's: cloning the active profile would copy
     // its MCP servers and peer keys. Its own key, its personality.
-    run(
-        strings(&[
-            &hermes,
-            "profile",
-            "create",
-            &profile,
-            "--clone-from",
-            "default",
-            "--no-alias",
-            "--description",
-            &description,
-        ]),
-        env.clone(),
-    )
-    .await?;
-    let key = crate::py::token_urlsafe(32);
-    run(strings(&[&hermes, "-p", &profile, "config", "set", "API_SERVER_KEY", &key]), env.clone()).await?;
+    if !made {
+        run(
+            strings(&[
+                &hermes,
+                "profile",
+                "create",
+                &profile,
+                "--clone-from",
+                "default",
+                "--no-alias",
+                "--description",
+                &planned.description,
+            ]),
+            env.clone(),
+        )
+        .await?;
+    }
+    run(strings(&[&hermes, "-p", &profile, "config", "set", "API_SERVER_KEY", &agent.hermes_key]), env.clone()).await?;
     if !install.isolated {
         // Same account as this bridge and no sandbox: nothing that reads the disk until the person turns it on.
         let mut args = strings(&[&hermes, "-p", &profile, "tools", "disable"]);
@@ -463,36 +531,19 @@ pub async fn create_agent(
         args.extend(strings(&["--platform", "api_server"]));
         run(args, env.clone()).await?;
     }
-    let folder = PathBuf::from(install_home(&config)).join("profiles").join(&profile);
     std::fs::create_dir_all(&folder)?;
-    std::fs::write(folder.join("SOUL.md"), &soul)?;
+    std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
     mark_as_bot(&folder)?;
-    let uploads = folder.join("uploads").to_string_lossy().into_owned();
-    let seen_by_agent = if install.container_home.is_empty() {
-        uploads.clone()
-    } else {
-        format!("{}/profiles/{profile}/uploads", install.container_home)
-    };
-    let mut agent = AgentConfig {
-        name: profile.clone(),
-        display_name: name.clone(),
-        hermes_url: format!("{}/p/{profile}", install.hub_url),
-        hermes_key: key,
-        upload_dir_host: Some(uploads),
-        upload_dir_container: Some(seen_by_agent),
-        public_url: public_agent_url(&config, &profile),
-        ..AgentConfig::default()
-    };
     // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
     wait_served(http, &agent, true).await?;
-    agent = with_browser(&config, agent, run).await;
+    let mut agent = with_browser(&config, agent, run).await;
     agent = mount_uploads(shared, &agent, run, false).await?;
-    if let Some(path) = config.source_path.as_deref() {
-        append_agent(path, &agent, &[])?;
+    if shared.get().agents.contains_key(&profile) {
+        save_agent(shared, &agent)?;
+    } else {
+        reserve_agent(shared, &agent)?;
     }
-    shared.put_agent(agent.clone());
     give_tools(&shared.get(), &agent, run).await?;
-    tracing::info!(target: "bipbridge::agents", agent = %profile, kind = %body.kind.as_deref().filter(|k| !k.is_empty()).unwrap_or("custom"), "agent created");
     Ok(agent)
 }
 
@@ -881,13 +932,13 @@ fn profile_config_path(config: &Config, agent: &AgentConfig) -> PathBuf {
 }
 
 /// `yaml.safe_load(path.read_text()) or {}`.
-fn load_or_empty(path: &Path) -> anyhow::Result<Yaml> {
+pub fn load_or_empty(path: &Path) -> anyhow::Result<Yaml> {
     let data = load_yaml_file(path)?;
     Ok(if data.truthy() { data } else { Yaml::map() })
 }
 
 /// Written next to it then moved over it: never a half-written config for a gateway reading it.
-fn replace_yaml(path: &Path, data: &Yaml) -> anyhow::Result<()> {
+pub fn replace_yaml(path: &Path, data: &Yaml) -> anyhow::Result<()> {
     let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
     name.push(".tmp");
     let temporary = path.with_file_name(name);

@@ -361,6 +361,8 @@ pub fn run_args(config: &Config, agent: &str, ports: &IndexMap<String, u16>, eng
         engine.into(),
         "run".into(),
         "--rm".into(),
+        // the installer's own image, never looked for on a registry (a missing one fails at once, not after a search)
+        "--pull=never".into(),
         "--name".into(),
         container(agent),
         "--hostname".into(),

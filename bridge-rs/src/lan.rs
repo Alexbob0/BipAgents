@@ -207,6 +207,8 @@ async fn relay(
         Some(t) if allowed => t.clone(),
         _ => return Err(HttpError::new(404, "not found")),
     };
+    // Just claimed: its gateway restarting, or the agent still being made (cloud_setup.rs). Waited for, not failed.
+    crate::cloud_setup::READINESS.wait(&target.name, crate::cloud_setup::READY_WAIT).await;
     // dict(request.headers): one value per name (the last), hop-by-hop ones dropped. Accept-Encoding is left to
     // the client here, which decodes the body (httpx does too: content-encoding is not passed on).
     let mut forwarded: Vec<(HeaderName, HeaderValue)> = Vec::new();

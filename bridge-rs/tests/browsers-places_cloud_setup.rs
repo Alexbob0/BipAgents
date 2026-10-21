@@ -121,8 +121,9 @@ async fn the_server_proves_its_certificate_before_anything() {
     assert_ne!(state["proof"], cloud_setup::proof(&[b'x'; 32], &[SETUP_CONTEXT, NONCE, &print, challenge]));
     assert_eq!(
         state.as_object().unwrap().keys().collect::<Vec<_>>(),
-        ["state", "step", "total", "label", "fingerprint", "challenge", "proof"]
+        ["state", "step", "total", "label", "fingerprint", "challenge", "proof", "prepared"]
     );
+    assert_eq!(state["prepared"], false); // its agents are made at the claim (the fixture's place has some)
     done(&config, true);
     assert_eq!(client.setup().await["state"], "ready");
     let short = send(&client.router, "GET", "/v1/setup?nonce=short", &[], None).await;
@@ -386,4 +387,135 @@ async fn claiming_sets_the_model_and_creates_agents_reached_through_the_door() {
         ran.iter().filter(|c| c.get(1..3) == Some(&["profile".to_string(), "create".to_string()][..])).count(),
         1
     );
+}
+
+/// A fake `hermes`: `profile create` clones the hub's folder, `config set` of a variable writes the profile's .env.
+fn fake_hermes(home: std::path::PathBuf, commands: Arc<Mutex<Vec<Vec<String>>>>) -> bipbridge::agents_admin::Run {
+    Arc::new(move |args: Vec<String>, _env| {
+        commands.lock().unwrap().push(args.clone());
+        if args.get(1..3) == Some(&["profile".to_string(), "create".to_string()][..]) {
+            let folder = home.join("profiles").join(&args[3]);
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::copy(home.join("config.yaml"), folder.join("config.yaml")).unwrap();
+            std::fs::copy(home.join(".env"), folder.join(".env")).unwrap();
+        }
+        if args.len() == 7 && args[1] == "-p" && args[3..5] == ["config".to_string(), "set".to_string()] {
+            let env = home.join("profiles").join(&args[2]).join(".env");
+            let text = std::fs::read_to_string(&env).unwrap_or_default();
+            std::fs::write(&env, format!("{text}{}={}\n", args[5], args[6])).unwrap();
+        }
+        Box::pin(async { Ok(String::new()) })
+    })
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_after() {
+    use axum::routing::{any, get};
+    let gateway = common::spawn_fake(
+        Router::new()
+            .route("/p/{profile}/v1/capabilities", get(|| async { axum::Json(json!({})) }))
+            .fallback(any(|| async { (axum::http::StatusCode::CREATED, axum::Json(json!({"id": "s1"}))) })),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = cloud(dir.path());
+    config.hermes.hub_url = gateway.clone();
+    config.agents.clear(); // a place of the reserve: no agent yet
+    let home = dir.path().join(".hermes");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("config.yaml"), "model:\n  provider: openrouter\n  default: openrouter/auto\n").unwrap();
+    std::fs::write(home.join(".env"), "# Hermes\nAPI_SERVER_ENABLED=true\n").unwrap();
+    let shared = bipbridge::config::SharedConfig::new(config.clone());
+    let commands: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+    let run = fake_hermes(home.clone(), commands.clone());
+    let http = reqwest::Client::new();
+    // Still installing: nothing prepared yet. Once done: its first agent, under a neutral id.
+    done(&config, false);
+    assert_eq!(cloud_setup::prepare_place(&shared, &http, Some(run.clone())).await.unwrap(), Some("agent".into()));
+    assert_eq!(cloud_setup::prepared_of(&shared.get()).as_deref(), Some("agent"));
+    assert!(commands
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|c| c.get(1..4) == Some(&["profile".to_string(), "create".to_string(), "agent".to_string()][..])));
+    assert_eq!(shared.get().agents["agent"].display_name, "Agent");
+    commands.lock().unwrap().clear();
+
+    // The claim: files written, no `hermes` command before the answer.
+    let wanted = ClaimRequest::from_value(&json!({
+        "model": {"provider": "custom", "name": "glm-5.3", "key": "sk-eu-0123456789", "base_url": "https://api.eurouter.example/v1"},
+        "agents": [{"name": "Quotidien", "kind": "daily"}, {"name": "Maison", "kind": "home"}], "language": "en"}))
+    .unwrap();
+    let started = std::time::Instant::now();
+    let agents = cloud_setup::claim_server(&shared, &wanted, &http, Some(run.clone())).await.unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+    assert_eq!(agents, vec![json!({"id": "agent", "name": "Quotidien"}), json!({"id": "maison", "name": "Maison"})]);
+    for folder in [home.clone(), home.join("profiles/agent")] {
+        let yaml = std::fs::read_to_string(folder.join("config.yaml")).unwrap();
+        let data = bipbridge::agents_admin::pyyaml::to_json(&bipbridge::agents_admin::pyyaml::load(&yaml).unwrap());
+        assert_eq!(
+            data["model"],
+            json!({"provider": "custom", "default": "glm-5.3", "base_url": "https://api.eurouter.example/v1",
+                   "key_env": "CUSTOM_MODEL_API_KEY", "supports_vision": false})
+        );
+        let env = std::fs::read_to_string(folder.join(".env")).unwrap();
+        assert!(env.contains("CUSTOM_MODEL_API_KEY=sk-eu-0123456789\n"), "{env}");
+    }
+    let key = shared.get().agents["agent"].hermes_key.clone();
+    assert!(std::fs::read_to_string(home.join("profiles/agent/.env"))
+        .unwrap()
+        .contains(&format!("API_SERVER_KEY={key}")));
+    assert!(std::fs::read_to_string(home.join("profiles/agent/SOUL.md")).unwrap().contains("Quotidien"));
+    let toml = std::fs::read_to_string(config.source_path.clone().unwrap()).unwrap();
+    assert!(toml.contains("display_name = \"Quotidien\"") && toml.contains("[agents.maison]"), "{toml}");
+    // Maison is listed at once (the app adds it), made right after: once the gateway restarted directly.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    while std::fs::read_dir(dir.path()).unwrap().flatten().any(|e| e.file_name() == "claim-pending.json") {
+        assert!(std::time::Instant::now() < deadline, "Maison not made");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let ran = commands.lock().unwrap().clone();
+    let restart = ran.iter().position(|c| {
+        c.ends_with(&["gateway".into(), "restart".into()])
+            || c.get(..3) == Some(&["systemctl".to_string(), "--user".to_string(), "restart".to_string()][..])
+    });
+    let create = ran
+        .iter()
+        .position(|c| c.get(1..4) == Some(&["profile".to_string(), "create".to_string(), "maison".to_string()][..]));
+    assert!(restart.unwrap() < create.unwrap(), "{ran:?}");
+    assert!(!ran.iter().any(|c| c.len() > 4 && c[1..3] == ["config", "set"]));
+    let maison = shared.get().agents["maison"].clone();
+    assert!(ran.contains(&vec![
+        "/opt/hermes".into(),
+        "-p".into(),
+        "maison".into(),
+        "config".into(),
+        "set".into(),
+        "API_SERVER_KEY".into(),
+        maison.hermes_key.clone()
+    ]));
+    let started = std::time::Instant::now();
+    cloud_setup::READINESS.wait("maison", std::time::Duration::from_secs(5)).await;
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[tokio::test]
+async fn requests_through_the_door_wait_for_an_agent_the_claim_makes_ready() {
+    let readiness = Arc::new(cloud_setup::Readiness::default());
+    readiness.hold("lent");
+    let r = readiness.clone();
+    let waiter = tokio::spawn(async move {
+        let started = std::time::Instant::now();
+        r.wait("lent", std::time::Duration::from_secs(5)).await;
+        started.elapsed()
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    readiness.release("lent");
+    let waited = waiter.await.unwrap();
+    assert!(waited >= std::time::Duration::from_millis(250) && waited < std::time::Duration::from_secs(2));
+    // never longer than its limit
+    readiness.hold(cloud_setup::GATEWAY);
+    let started = std::time::Instant::now();
+    readiness.wait("other", std::time::Duration::from_millis(200)).await;
+    assert!(started.elapsed() >= std::time::Duration::from_millis(200));
 }

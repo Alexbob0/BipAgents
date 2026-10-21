@@ -331,6 +331,16 @@ impl AppState {
         if config.hermes.enabled() {
             self.spawn(agents_admin::mount_all_uploads(self.config.clone(), agents_admin::default_run()));
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
+            if config.cloud {
+                // a place of the reserve: its first agent made before its claim; what a claim left, finished
+                self.spawn(crate::cloud_setup::prepare_when_installed(self.config.clone(), self.http.clone()));
+                if crate::cloud_setup::has_pending(&config) {
+                    let (shared, http) = (self.config.clone(), self.http.clone());
+                    self.spawn(async move {
+                        crate::cloud_setup::finish_pending(&shared, &http, &agents_admin::default_run()).await;
+                    });
+                }
+            }
         }
     }
 }
