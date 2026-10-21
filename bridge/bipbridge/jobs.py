@@ -11,7 +11,8 @@ and cancel, and a notification when it ends. Two kinds:
 An agent may propose a task (MCP ``propose_task`` in agent_tools.py, for work too long for a reply): it waits, budget and all, until the
 person starts it in the app. An agent never starts paid work by itself.
 
-    GET    /v1/jobs                        every job of every agent: proposals first, then the newest
+    GET    /v1/jobs[?agent=]               every job (or one agent's): proposals first, then the newest; a running
+                                           task says what it does now (« activity »: its last tool step)
     POST   /v1/agents/{id}/jobs            {title, prompt, max_tokens, template?}   a task started now
     POST   /v1/jobs/{id}/start             {max_tokens?}       a proposed task started
     POST   /v1/jobs/{id}/pause
@@ -34,7 +35,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from . import mail_scan
@@ -160,9 +161,11 @@ class Jobs:
 
     # -- the list ------------------------------------------------------------------------------------------------------
 
-    def list(self) -> List[Dict[str, Any]]:
-        out = [task_view(job) for job in tasks(self.config) if self.config.agent(job["agent"]) is not None]
-        for name in self.config.agents:
+    def list(self, agent: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Every job, or one agent's (a conversation asks for its agent's only)."""
+        out = [self._view(job) for job in tasks(self.config)
+               if self.config.agent(job["agent"]) is not None and agent in (None, job["agent"])]
+        for name in self.config.agents if agent is None else [agent]:
             scan = mail_scan.load(self.config, name)
             if scan is not None:
                 running = self.scans is not None and self.scans.running(name)
@@ -175,7 +178,23 @@ class Jobs:
         job = load(self.config, job_id)
         if job is None:
             raise JobError("unknown job")
-        return task_view(job)
+        return self._view(job)
+
+    def _view(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        view = task_view(job)
+        if job["state"] in ("running", "stopping"):
+            view["activity"] = self.activity(job["agent"], job.get("run_id"))
+        return view
+
+    def activity(self, agent: str, run_id: Optional[str]) -> Optional[Dict[str, str]]:
+        """What the task does right now: its run's last tool step (or sub-agent), from the events the hub follows."""
+        sub = self.hub.subscription(agent, run_id) if self.hub is not None and run_id else None
+        for event in reversed(sub.backlog if sub is not None else []):
+            if event.type == "tool.started":
+                return {"tool": str(event.data.get("tool") or ""), "preview": str(event.data.get("preview") or "")[:160]}
+            if event.type in ("subagent.start", "subagent.started"):
+                return {"tool": "delegate_task", "preview": str(event.data.get("goal") or "")[:160]}
+        return None
 
     def _agent(self, name: str) -> AgentConfig:
         agent = self.config.agent(name)
@@ -494,8 +513,12 @@ def jobs_router() -> APIRouter:
         return HTTPException(status_code=404 if str(exc) == "unknown job" else 409, detail=str(exc))
 
     @router.get("/jobs")
-    async def listing(request: Request) -> Dict[str, Any]:
-        return {"jobs": jobs_of(request.app.state.services).list(), "budgets": BUDGETS}
+    async def listing(request: Request, agent: Optional[str] = Query(None, max_length=80)) -> Dict[str, Any]:
+        services = request.app.state.services
+        if agent is not None and services.config.agent(agent) is None:
+            raise HTTPException(status_code=404, detail="unknown agent")
+        name = services.config.agent(agent).name if agent is not None else None
+        return {"jobs": jobs_of(services).list(name), "budgets": BUDGETS}
 
     @router.post("/agents/{agent_id}/jobs")
     async def create(agent_id: str, body: NewTask, request: Request) -> Dict[str, Any]:

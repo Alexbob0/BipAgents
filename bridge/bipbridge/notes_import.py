@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from .agents_admin import editable, profile_folder
 from .mail_scan import slug
+from .place_backup import refuse_when_full
 from .mailbox import html_text
 
 MAX_BYTES = 60 * 2**20
@@ -148,6 +149,7 @@ def notes_router() -> APIRouter:
             agent = editable(config, agent_id)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="not an agent this install manages") from exc
+        await asyncio.to_thread(refuse_when_full)   # an offer's place with its 5 GB used up
         try:
             raw = base64.b64decode(body.data, validate=True)
         except (binascii.Error, ValueError) as exc:

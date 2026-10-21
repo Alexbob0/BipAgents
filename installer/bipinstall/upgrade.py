@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
-from . import hermes, migrations, ui
+from . import hermes, migrations, rustbridge, ui
 from .existing import RECORD
 
 REPO = Path(__file__).resolve().parents[2]
@@ -250,10 +250,15 @@ def main(argv: List[str]) -> int:
         config = None   # an account without its own install (an administrator's): its Pocket, the others
 
     # 2. What runs here.
-    if config and touched("bridge/"):
+    if config and touched("bridge/", "bridge-rs/"):
         if touched("bridge/requirements.txt"):
             venv(REPO / "bridge", runner)
-        runner.run(bridge_restart(), check=False)
+        rust = rustbridge.keep_in_step(Path.home()) if not runner.dry else None   # its binaries for this version
+        if rust:
+            say(ui.note(rust))
+            rustbridge.restart(Path.home())   # the service may name new binaries: read again, then restarted
+        else:
+            runner.run(bridge_restart(), check=False)
         say(ui.done("Bridge restarted."))
     pocket = pocket_restart()
     if touched("pocket/", "voices/") and pocket:
@@ -274,8 +279,8 @@ def main(argv: List[str]) -> int:
                             "their profiles stay)?"):
             engine = hermes.sandbox_runtime() or "podman"
             hermes.build_browser(runner, engine, REPO)
-            runner.run([str(REPO / "bridge" / ".venv" / "bin" / "python"), "-m", "bipbridge", "browser", "add", "--all",
-                        "--config", str(config)], cwd=REPO / "bridge")
+            runner.run(rustbridge.cli(Path.home()) + ["browser", "add", "--all", "--config", str(config)],
+                       cwd=REPO / "bridge")
             say(ui.done("Browsers rebuilt and restarted."))
         else:
             commands.append("bipagents update   # later, when the agents are not browsing")

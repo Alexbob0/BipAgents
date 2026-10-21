@@ -249,3 +249,32 @@ def test_the_routes_need_the_bridge_key_and_list_the_jobs(client):
     assert answer.status_code == 200 and answer.json() == {"jobs": [], "budgets": jobs.BUDGETS}
     missing = client.post("/v1/jobs/t000000000000/pause", headers={"Authorization": f"Bearer {BRIDGE_KEY}"})
     assert missing.status_code == 404
+
+
+def test_a_running_task_says_what_it_does_now(config_dict, tmp_path):
+    from bipbridge.hermes import SSEEvent
+
+    config, agent = setup(config_dict, tmp_path)
+    hermes = FakeHermes(rounds=1000, step=10)
+
+    class Sub:
+        backlog = [SSEEvent("tool.started", {"tool": "web_search", "preview": "mutuelle famille 4"}),
+                   SSEEvent("message.delta", {"delta": "…"})]
+
+    class Hub:
+        def watch(self, agent, run_id, session_id=None, end_push=True):
+            pass
+
+        def subscription(self, agent, run_id):
+            return Sub() if run_id == "r1" else None
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=hermes.transport()) as http:
+            board = jobs.Jobs(config, HermesClient(http), hub=Hub(), poll=0.01)
+            job = await board.create(agent, "Mutuelles", "Compare.", 1_000_000)
+            listed = board.list("coach")
+            assert listed[0]["activity"] == {"tool": "web_search", "preview": "mutuelle famille 4"}
+            assert board.list("other") == []
+            await board.forget(job["id"])
+
+    run(scenario)

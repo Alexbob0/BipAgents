@@ -247,6 +247,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "update":
         from .upgrade import main as upgrade_main
         return upgrade_main(argv[1:])
+    if argv and argv[0] == "bridge":   # rustbridge.py: the bridge in Rust or in Python
+        from .rustbridge import main as bridge_main
+        return bridge_main(argv[1:])
     if argv and argv[0] in ("export", "import", "resume"):   # moving.py: to another machine, or a backup
         from . import moving
         return {"export": moving.export_main, "import": moving.import_main, "resume": moving.resume_main}[argv[0]](argv[1:])
