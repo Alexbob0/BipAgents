@@ -530,6 +530,7 @@ pub async fn claim_server(
             kind: Some(choice.kind.clone().filter(|k| !k.is_empty()).unwrap_or_else(|| "daily".into())),
             lang: request.language.clone(),
             custom: None,
+            group: None,
         };
         let agent = create_agent(config, &body, http, &run).await?;
         created.insert(index.to_string(), json!(agent.name));

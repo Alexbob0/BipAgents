@@ -648,7 +648,8 @@ async fn routes_for_settings_thinking_and_model() {
             "services",
             "skills",
             "browser",
-            "health"
+            "health",
+            "group"
         ]
     );
     assert_eq!(got.json()["soul"], "Tu es Wellness.");

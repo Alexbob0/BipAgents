@@ -342,7 +342,10 @@ async fn purge_loop(state: AppState) {
         let result: anyhow::Result<()> = async {
             for agent in config.agents.values() {
                 if let Some(root) = agent.upload_dir_host.clone().filter(|r| !r.is_empty()) {
-                    let days = config.limits.upload_retention_days;
+                    let days = crate::files_kept::kept_days(&config);
+                    if days <= 0 {
+                        continue; // kept always: the person's choice
+                    }
                     let removed =
                         tokio::task::spawn_blocking(move || crate::files::purge_uploads(&root, days, None)).await?;
                     if removed > 0 {
@@ -518,6 +521,15 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
         })
         .collect();
     let unclaimed = agents_admin::unclaimed_profiles(&config);
+    let groups = crate::agent_groups::all(&config);
+    let agents: Vec<Value> = agents
+        .into_iter()
+        .map(|mut a| {
+            let group = a["id"].as_str().and_then(|id| groups.get(id)).cloned().unwrap_or_else(|| json!(""));
+            a["group"] = group;
+            a
+        })
+        .collect();
     Ok(web::ok(
         json!({"bridge": {"url": config.public_url, "lan": lan_info(&config)}, "agents": agents, "unclaimed": unclaimed}),
     ))
@@ -1045,6 +1057,8 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         // The app registers with the publisher's relay and sends the relay token (environment « relay »).
         "push_relay": state.push_service.is_some(), "fcm": state.fcm.is_some(),
         "tts_queue": tts.scheduler.depth(),
+        // What this bridge offers that the Python one doesn't (the apps hide the rest).
+        "features": ["agent_groups", "files_kept"],
     })))
 }
 
@@ -1341,6 +1355,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
     let mut authed = Router::new()
         .merge(build_router())
         .merge(agents_admin::router())
+        .merge(crate::agent_groups::router())
+        .merge(crate::files_kept::router())
         .merge(crate::vault::router())
         .merge(crate::place_backup::router())
         .merge(import_admin)

@@ -17,6 +17,7 @@ def test_health_is_public_and_reports_reachability(bridge):
     body = resp.json()
     assert body["ok"] is True and body["kyutai"] is True and body["ntfy"] is True and body["apns"] is True
     assert "version" in body
+    assert body.pop("features", []) in ([], ["agent_groups", "files_kept"])   # the Rust bridge's own
     assert body == {"ok": True, "version": body["version"], "kyutai": True, "pocket": True, "voice_server": None,
                     "drama": None, "ntfy": True, "apns": True, "push": "apns", "push_relay": False, "fcm": False,
                     "tts_queue": 0}
@@ -49,7 +50,9 @@ def test_websocket_requires_bridge_key(bridge):
 
 def test_agents_listing(bridge):
     resp = bridge.get("/v1/agents", headers=AUTH)
-    assert resp.json() == {"bridge": {"url": None, "lan": None},
+    listing = resp.json()
+    assert all(a.pop("group", "") == "" for a in listing["agents"])   # agent groups: Rust only
+    assert listing == {"bridge": {"url": None, "lan": None},
                            "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "server_voice": None,
                                        "category": None, "color": None, "uploads": True,
                                        "inbox": True, "url": None, "key": None}],

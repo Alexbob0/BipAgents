@@ -198,12 +198,16 @@ pub struct NewAgent {
     pub lang: Option<String>,
     #[serde(default)]
     pub custom: Option<CustomAgent>,
+    /// Its group on the home screen (agent_groups.rs), none when empty.
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 impl Validate for NewAgent {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         check_min_len(errors, "name", Some(&self.name), 1);
         check_max_len(errors, "name", Some(&self.name), 40);
+        check_max_len(errors, "group", self.group.as_deref().map(str::trim), crate::agent_groups::MAX_LEN);
         if let Some(c) = &self.custom {
             nested(errors, "custom", |errors| {
                 check_min_len(errors, "role", Some(&c.role), 3);
@@ -491,6 +495,9 @@ pub async fn create_agent(
         append_agent(path, &agent, &[])?;
     }
     shared.put_agent(agent.clone());
+    if let Some(group) = body.group.as_deref().filter(|g| !g.trim().is_empty()) {
+        crate::agent_groups::set_group(&config, &agent.name, group)?;
+    }
     give_tools(&shared.get(), &agent, run).await?;
     tracing::info!(target: "bipbridge::agents", agent = %profile, kind = %body.kind.as_deref().filter(|k| !k.is_empty()).unwrap_or("custom"), "agent created");
     Ok(agent)
@@ -1068,7 +1075,8 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "protected": config.hermes.isolated,
               "services": crate::services::listing(config, agent), "skills": crate::own_skills::listing(&profile_folder(config, agent)),
               "browser": browser_settings(config, agent),
-              "health": {"on": crate::health::enabled(config, agent.name.as_str())}}))
+              "health": {"on": crate::health::enabled(config, agent.name.as_str())},
+              "group": crate::agent_groups::group_of(config, &agent.name)}))
 }
 
 /// « Naviguer à ta place »: its own browser, on or not (`ready`: set up before, turning it on is instant); None
@@ -1242,10 +1250,11 @@ fn links_json(links: &Dict) -> Vec<Value> {
     }
 }
 
-fn created(agent: &AgentConfig) -> Value {
+fn created(config: &Config, agent: &AgentConfig) -> Value {
     let has_url = agent.public_url.as_deref().is_some_and(|u| !u.is_empty());
     json!({"id": agent.name, "name": agent.display_name, "url": agent.public_url,
-           "key": if has_url { Some(agent.hermes_key.clone()) } else { None }})
+           "key": if has_url { Some(agent.hermes_key.clone()) } else { None },
+           "group": crate::agent_groups::group_of(config, &agent.name)})
 }
 
 async fn kinds(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -1279,7 +1288,7 @@ async fn new_agent(State(state): State<AppState>, Json(body): Json<NewAgent>) ->
             return Err(HttpError::new(502, "Hermes could not create the agent"));
         }
     };
-    Ok(web::json_response(201, &created(&agent)))
+    Ok(web::json_response(201, &created(&state.config(), &agent)))
 }
 
 /// A profile created on the server (listed under `unclaimed` by GET /v1/agents), served to the app.
@@ -1298,7 +1307,7 @@ async fn claim(State(state): State<AppState>, Json(body): Json<Claim>) -> ApiRes
             return Err(HttpError::new(502, "Hermes did not serve the agent"));
         }
     };
-    Ok(web::json_response(201, &created(&agent)))
+    Ok(web::json_response(201, &created(&state.config(), &agent)))
 }
 
 async fn get_settings(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
@@ -1605,6 +1614,7 @@ async fn remove_agent(state: AppState, agent_id: String) -> ApiResult<Response> 
     let _guard = LOCK.lock().await;
     let result = async {
         delete_agent(&state.config, &agent, &default_run()).await?;
+        crate::agent_groups::set_group(&state.config(), &agent.name, "")?;
         state.vault.forget_agent(&state.config(), &agent.name).await
     }
     .await;

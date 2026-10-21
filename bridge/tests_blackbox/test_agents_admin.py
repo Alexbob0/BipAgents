@@ -44,6 +44,7 @@ def test_create_custom_agent(bridges, fakes):
     assert resp.status_code == 201, resp.text
     created = resp.json()
     key = created["key"]
+    assert created.pop("group", "") == ""   # agent groups: Rust only
     assert created == {"id": "fougere", "name": "Fougère", "url": "https://mini.ts.net:8642/p/fougere", "key": key}
     commands = hermes_args(bridge)
     assert commands[0] == ["profile", "create", "fougere", "--clone-from", "default", "--no-alias", "--description",
@@ -168,8 +169,8 @@ def test_settings_and_delete(bridges, fakes):
     assert data["toolsets"] == [{"name": "web", "label": "Web", "description": "Search", "enabled": True, "configured": True}]
     assert data["id"] == "budget" and data["name"] == "Budget" and data["thinking"] is None and data["model"] is None
     assert data["isolated"] is False and data["protected"] is False and data["skills"] == []
-    assert set(data) == {"id", "name", "soul", "language", "thinking", "model", "toolsets", "isolated", "protected",
-                         "services", "skills", "browser"}
+    assert set(data) - {"health", "group"} == {"id", "name", "soul", "language", "thinking", "model", "toolsets",
+                                               "isolated", "protected", "services", "skills", "browser"}   # Rust: +2
     assert fakes.hermes.seen("/p/budget/v1/toolsets")
     bridge.commands.clear()
     patched = bridge.patch("/v1/agents/budget/settings", headers=AUTH,
@@ -233,8 +234,9 @@ def test_profiles_created_on_the_server_can_be_claimed(bridges, fakes):
     jardin = bridge.post("/v1/agents/claim", headers=AUTH, json={"id": "jardin", "name": "Mon jardin"})
     assert jardin.status_code == 201, jardin.text
     # Its key kept; the only thing written is the bridge's tools (create_audio) in its profile.
-    assert jardin.json() == {"id": "jardin", "name": "Mon jardin", "url": "https://mini.ts.net:8642/p/jardin",
-                             "key": "own-key"}
+    claimed = jardin.json()
+    assert claimed.pop("group", "") == ""   # agent groups: Rust only
+    assert claimed == {"id": "jardin", "name": "Mon jardin", "url": "https://mini.ts.net:8642/p/jardin", "key": "own-key"}
     assert {args[4] for args in hermes_args(bridge)} == {"mcp_servers.bipagents.url",
                                                          "mcp_servers.bipagents.headers.Authorization",
                                                          "mcp_servers.bipagents.timeout"}

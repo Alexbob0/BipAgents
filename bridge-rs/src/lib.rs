@@ -58,10 +58,12 @@ pub mod voice_ws;
 pub mod voices;
 
 // -- agents ----------------------------------------------------------------------------------------
+pub mod agent_groups;
 pub mod agents_admin;
 pub mod device_keys;
 pub mod family_news;
 pub mod files;
+pub mod files_kept;
 pub mod households;
 pub mod own_skills;
 pub mod peers;
