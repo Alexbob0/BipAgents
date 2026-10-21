@@ -73,6 +73,7 @@ pub mod ssh_keys;
 // -- tools-knowledge -------------------------------------------------------------------------------
 pub mod agent_tools;
 pub mod favicons;
+pub mod health;
 pub mod jobs;
 pub mod mail_scan;
 pub mod mailbox;

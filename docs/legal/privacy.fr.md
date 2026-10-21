@@ -102,6 +102,23 @@ qui se trouve sur ton serveur.
 contient le nom et l'adresse de tes agents ; il ne part que vers l'app ou la personne que tu choisis dans la feuille
 de partage.
 
+**Ta santé, si tu l'actives (« Santé »).** Pour chaque agent, tu peux activer « Santé » dans ses outils. Avec ton
+autorisation dans Apple Santé (iPhone, y compris les données de ton Apple Watch) ou Health Connect (Android), l'app
+lit, sans jamais rien y écrire, un résumé de chaque journée : ton sommeil (temps endormi, temps au lit, heures de
+coucher et de lever), tes pas, ton énergie active, tes minutes d'exercice, ta fréquence cardiaque au repos, ta
+variabilité cardiaque, ton poids et tes séances de sport (type, durée, distance, énergie). Elle envoie les 30 derniers
+jours la première fois, puis les jours qui ont changé, **uniquement à ton serveur** (ou à ta place avec l'offre tout
+compris), où ils sont gardés un fichier par jour, 400 jours au plus. Seuls les agents pour lesquels tu as activé
+« Santé » les lisent, pour t'aider sur ton sommeil, ton activité et ton entraînement ; ils ne posent pas de
+diagnostic. Le modèle d'IA de l'agent reçoit ce que l'agent lit pour te répondre : avec l'offre tout compris, « Santé »
+n'est possible qu'avec un modèle qui tourne dans l'Union européenne. Le téléphone ne garde que les dates et une
+empreinte de ce qu'il a déjà envoyé, jamais les valeurs, et rien dans iCloud. Kerfy Studio ne les reçoit pas ; rien
+n'est vendu ni utilisé pour de la publicité. **Base légale** : ton consentement explicite (articles 6.1.a et 9.2.a du
+RGPD), que tu donnes en activant « Santé » et en l'autorisant dans Apple Santé ou Health Connect. **Arrêter** :
+désactive « Santé » ; quand plus aucun agent ne l'a, les journées gardées sur ton serveur sont effacées. Elles le sont
+aussi avec l'agent, avec ta place, ou en retirant l'autorisation dans Apple Santé ou Health Connect (plus rien n'est
+envoyé).
+
 ## 4. Ce que Kerfy Studio peut recevoir
 
 ### 4.1 Les notifications, par le relais de Kerfy Studio
@@ -468,6 +485,7 @@ compléter : pays ; garantie]. Tu peux nous demander une copie des garanties app
 | Données | Durée |
 |---|---|
 | Données de l'app sur ton téléphone | Jusqu'à ce que tu supprimes l'agent ou l'app |
+| Données de santé (« Santé ») sur ton serveur ou ta place | 400 jours au plus ; effacées quand plus aucun agent n'a « Santé », avec l'agent ou avec la place |
 | Jeton d'appareil au relais | Aucune conservation : il n'existe que scellé, sur ton téléphone et ton serveur (et au guichet avec l'offre tout compris, tant que l'appareil est relié à ta place) |
 | Adresse IP au relais | En mémoire, une heure au plus, sous forme d'empreinte |
 | Journaux techniques du relais | 6 mois au plus |

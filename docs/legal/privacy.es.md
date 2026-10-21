@@ -100,6 +100,21 @@ está en tu servidor.
 **Lo que compartes tú.** El informe de diagnóstico (Ajustes › Diagnóstico y latencias › Exportar el informe) contiene
 el nombre y la dirección de tus agentes; solo va a la app o a la persona que eliges en la hoja para compartir.
 
+**Tu salud, si la activas (« Santé », Salud).** Para cada agente, puedes activar Salud en sus herramientas. Con tu
+permiso en Apple Salud (iPhone, incluidos los datos de tu Apple Watch) o Health Connect (Android), la app lee, sin
+escribir nunca nada allí, un resumen de cada día: tu sueño (tiempo dormido, tiempo en la cama, hora de acostarte y de
+levantarte), tus pasos, tu energía activa, tus minutos de ejercicio, tu frecuencia cardíaca en reposo, tu
+variabilidad cardíaca, tu peso y tus sesiones de deporte (tipo, duración, distancia, energía). Envía los últimos 30
+días la primera vez y luego los días que cambiaron, **solo a tu servidor** (o a tu plaza con la oferta todo incluido),
+donde se guardan en un archivo por día, 400 días como máximo. Solo los agentes para los que activaste Salud los leen,
+para ayudarte con tu sueño, tu actividad y tu entrenamiento; no hacen diagnósticos. El modelo de IA del agente recibe
+lo que el agente lee para responderte: con la oferta todo incluido, Salud solo es posible con un modelo que funciona en
+la Unión Europea. El teléfono solo guarda las fechas y una huella de lo que ya envió, nunca los valores, y nada en
+iCloud. Kerfy Studio no los recibe; nada se vende ni se usa para publicidad. **Base jurídica**: tu consentimiento
+explícito (artículos 6.1.a y 9.2.a del RGPD), que das al activar Salud y permitirlo en Apple Salud o Health Connect.
+**Dejarlo**: desactiva Salud; cuando ya ningún agente la tiene, los días guardados en tu servidor se borran. También se
+borran con el agente, con tu plaza, o al retirar el permiso en Apple Salud o Health Connect (ya no se envía nada).
+
 ## 4. Lo que Kerfy Studio puede recibir
 
 ### 4.1 Las notificaciones, a través del relé de Kerfy Studio
@@ -452,6 +467,7 @@ seguridad: [por completar: país; garantía]. Puedes pedirnos una copia de las g
 | Datos | Plazo |
 |---|---|
 | Datos de la app en tu teléfono | Hasta que elimines el agente o la app |
+| Datos de salud (« Santé ») en tu servidor o tu plaza | 400 días como máximo; se borran cuando ningún agente tiene Salud, con el agente o con la plaza |
 | Token de dispositivo en el relé | Ninguna conservación: solo existe sellado, en tu teléfono y tu servidor (y en el guichet con la oferta todo incluido, mientras el dispositivo esté vinculado a tu plaza) |
 | Dirección IP en el relé | En memoria, una hora como máximo, en forma de huella |
 | Registros técnicos del relé | 6 meses como máximo |

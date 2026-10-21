@@ -284,6 +284,9 @@ pub struct AgentSettings {
     /// Its own browser (browsers::switch): set up the first time.
     #[serde(default, deserialize_with = "web::lax::opt_bool")]
     pub browser: Option<bool>,
+    /// « Santé »: the person's health data and the `health` tool (health.rs).
+    #[serde(default, deserialize_with = "web::lax::opt_bool")]
+    pub health: Option<bool>,
 }
 
 impl Validate for AgentSettings {
@@ -1023,6 +1026,7 @@ pub fn heal_thinking(config: &Config) {
 pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest::Client) -> anyhow::Result<Value> {
     // The language block is the bridge's: shown and changed as « language », never in the editable personality.
     let (soul, lang) = crate::souls::split_language(&read_soul(config, agent)?);
+    let (soul, _) = crate::souls::split_health(&soul);
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         // set up by hand: its tools are its administrator's
         return Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
@@ -1063,7 +1067,8 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "isolated": agent.isolated,
               "protected": config.hermes.isolated,
               "services": crate::services::listing(config, agent), "skills": crate::own_skills::listing(&profile_folder(config, agent)),
-              "browser": browser_settings(config, agent)}))
+              "browser": browser_settings(config, agent),
+              "health": {"on": crate::health::enabled(config, agent.name.as_str())}}))
 }
 
 /// « Naviguer à ta place »: its own browser, on or not (`ready`: set up before, turning it on is instant); None
@@ -1086,7 +1091,7 @@ pub async fn write_settings(
     let toolsets = lax_map(&body.toolsets);
     let skills = lax_map(&body.skills);
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty())
-        && (!toolsets.is_empty() || !skills.is_empty() || body.browser.is_some())
+        && (!toolsets.is_empty() || !skills.is_empty() || body.browser.is_some() || body.health.is_some())
     {
         return Err(AgentError("the tools of an agent set up by hand are changed on its server".into()).into());
     }
@@ -1120,7 +1125,11 @@ pub async fn write_settings(
             Some(lang) if !lang.is_empty() => crate::souls::with_language(&text, Some(lang)),
             _ => text,
         };
+        let text = crate::souls::with_health(&text, crate::health::enabled(&config, &agent.name));
         std::fs::write(profile_folder(&config, agent).join("SOUL.md"), text)?;
+    }
+    if let Some(on) = body.health {
+        set_health(&config, agent, on, run).await?;
     }
     let env = env_of(&[("HERMES_HOME", &home_root(&config, agent))]);
     for action in ["enable", "disable"] {
@@ -1137,6 +1146,23 @@ pub async fn write_settings(
             run(args, env.clone()).await?;
         }
     }
+    Ok(())
+}
+
+/// « Santé » on or off: the switch, the rule in its personality, and its tools' entry (the `health` tool listed or
+/// not: a changed entry makes its Hermes fetch the list again).
+pub async fn set_health(config: &Config, agent: &AgentConfig, on: bool, run: &Run) -> anyhow::Result<()> {
+    crate::health::set_enabled(config, &agent.name, on)?;
+    let soul = read_soul(config, agent)?;
+    let changed = crate::souls::with_health(&soul, on);
+    if changed != soul {
+        std::fs::write(profile_folder(config, agent).join("SOUL.md"), changed)?;
+    }
+    if let Err(exc) = crate::agent_tools::register(config, agent, run).await {
+        let error = tail(&exc.to_string(), 200);
+        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %error, "agent tools not registered");
+    }
+    tracing::info!(target: "bipbridge::agents", agent = %agent.name, on = on, "health switched");
     Ok(())
 }
 
@@ -1159,6 +1185,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     let config = shared.get();
     crate::shares::forget(&config, &agent.name, run).await?;
     crate::agent_tools::forget(&config, &agent.name);
+    crate::health::forget(&config, &agent.name);
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, "agent deleted");
     Ok(())
 }
