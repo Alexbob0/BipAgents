@@ -670,9 +670,71 @@ pub async fn prepare_place(
     planned.profile = crate::souls::profile_name(PREPARED_NAME, &taken);
     let agent = hub_agent(&snapshot, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
     let agent = make_profile(config, &planned, agent, http, &run, false).await?;
+    if let Err(exc) = warm_browser(&config.get(), &agent.name, &run).await {
+        tracing::warn!(agent = %agent.name, error = %pyx::tail(&format!("{exc:#}"), 300), "browser not warmed up");
+    }
     remember(&config.get(), &[("prepared", json!(agent.name))])?;
     tracing::info!(agent = %agent.name, seconds = format!("{:.1}", crate::py::monotonic() - started), "place prepared for its claim");
     Ok(Some(agent.name))
+}
+
+/// Before the claim: the prepared agent's browser started once through its bip-browser-mcp and asked what it serves.
+/// The claim's gateway restart then finds those answers cached (nothing starts for Hermes to connect), and the
+/// account's first container (rootless podman sets its storage up then: ~40 s measured on a loaded server) is made
+/// while no one waits. The browser is stopped after.
+async fn warm_browser(config: &Config, agent: &str, run: &Run) -> anyhow::Result<()> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let settings = crate::browsers::folder(config, agent).join("mcp.json");
+    if !config.browser.enabled || !settings.is_file() {
+        return Ok(());
+    }
+    let started = crate::py::monotonic();
+    let mut child = tokio::process::Command::new(crate::browsers::proxy_binary())
+        .arg(&settings)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()?;
+    let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
+    let mut lines = BufReader::new(child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?).lines();
+    let mut messages = vec![
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18",
+               "capabilities": {}, "clientInfo": {"name": "bipbridge-warm-up", "version": "1"}}}),
+        json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+    ];
+    for (id, method) in crate::browser_mcp::LISTS.iter().enumerate() {
+        messages.push(json!({"jsonrpc": "2.0", "id": id + 2, "method": method}));
+    }
+    for message in &messages {
+        stdin.write_all(format!("{message}\n").as_bytes()).await?;
+    }
+    stdin.flush().await?;
+    let wanted = crate::browser_mcp::LISTS.len() + 1;
+    let answered = tokio::time::timeout(std::time::Duration::from_secs(240), async {
+        let mut seen = 0;
+        while let Ok(Some(line)) = lines.next_line().await {
+            if serde_json::from_str::<Value>(&line).ok().is_some_and(|v| v.get("id").is_some_and(|i| !i.is_null())) {
+                seen += 1;
+                if seen == wanted {
+                    break;
+                }
+            }
+        }
+        seen
+    })
+    .await
+    .unwrap_or(0);
+    drop(stdin); // its Hermes gone: the helper stops its server and leaves
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(30), child.wait()).await;
+    let _ = run(
+        vec!["systemctl".into(), "--user".into(), "stop".into(), crate::browsers::container(agent)],
+        BTreeMap::new(),
+    )
+    .await;
+    tracing::info!(agent = %agent, answers = answered, seconds = format!("{:.1}", crate::py::monotonic() - started),
+                   "browser warmed up for the claim");
+    Ok(())
 }
 
 /// At start: once the installer is done, a place of the reserve prepares its first agent.
