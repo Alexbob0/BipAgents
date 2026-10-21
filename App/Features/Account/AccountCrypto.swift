@@ -9,6 +9,8 @@ import Foundation
 ///             over the ECDH secret, salt = ephemeral key · recipient's key, info « bipagents-box-v1 »
 ///     code    24 characters of Crockford's alphabet, shown in groups of four; the guichet keeps only a verifier of it,
 ///             and the escrow (the places' backup keys) sealed with another key drawn from it
+///     check   a device's comparison code (deviceCode): the waiting device shows it from its own key, the approving one
+///             from the key the guichet gave; the same on both, or the guichet handed another key
 nonisolated enum AccountCrypto {
     static let alphabet = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
 
@@ -64,6 +66,44 @@ nonisolated enum AccountCrypto {
         shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: ephemeral + recipient,
                                        sharedInfo: Data("bipagents-box-v1".utf8), outputByteCount: 32)
     }
+
+    // MARK: comparison code
+
+    /// The code a person compares between their waiting device and the one approving it, like messaging apps' safety
+    /// numbers: SHA-256 over « bipagents-device-code-v1 » · 0x00 · the device's id at the guichet (UTF-8) · 0x00 · its
+    /// public key (65 bytes, uncompressed), hashed again 9,999 times (SHA-256 of the previous 32 bytes); the first 8
+    /// bytes, big-endian, modulo 10¹² give 12 digits, shown « 123 456 789 012 ». Twelve digits and the repeated hash,
+    /// because a dishonest guichet knows the real key and could otherwise try keys of its own until one gives the same
+    /// code. Nil for a key that is not one.
+    static func deviceCode(device: String, key: String) -> String? {
+        #if DEBUG
+        _ = checkedDeviceCode
+        #endif
+        return comparisonCode(device: device, key: key)
+    }
+
+    private static func comparisonCode(device: String, key: String) -> String? {
+        guard let raw = Data(base64Encoded: key), raw.count == 65, raw.first == 4 else { return nil }
+        var digest = Data(SHA256.hash(data: Data("bipagents-device-code-v1".utf8) + [0] + Data(device.utf8) + [0] + raw))
+        for _ in 1..<codeRounds { digest = Data(SHA256.hash(data: digest)) }
+        let number = digest.prefix(8).reduce(UInt64(0)) { $0 << 8 | UInt64($1) } % 1_000_000_000_000
+        let digits = String(format: "%012llu", number)
+        return stride(from: 0, to: 12, by: 3).map { start in
+            String(digits.dropFirst(start).prefix(3))
+        }.joined(separator: " ")
+    }
+
+    private static let codeRounds = 10_000
+
+    #if DEBUG
+    /// The reference vector (AccountCryptoTest.kt checks the same; the app has no test target, so it is checked here,
+    /// once, in debug builds).
+    static let checkedDeviceCode: Void = {
+        assert(comparisonCode(device: "dev-0123456789abcdef",
+                          key: "BHeqNMs8tXzTJn4Kw8cAyxqlV64VcJz2XVJu2fKK4sZVkUzGEnG+4Vu/NIcI5+OUSaiJKrA19Uc8DQa+uka81Tw=")
+               == "559 268 487 813", "AccountCrypto.deviceCode differs from its reference vector")
+    }()
+    #endif
 
     // MARK: recovery code
 

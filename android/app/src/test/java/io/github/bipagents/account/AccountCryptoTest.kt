@@ -1,10 +1,11 @@
 package io.github.bipagents.account
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 /** The reference vectors of guichet/tests/test_account_crypto.py: a box sealed there opens here, the code gives the
- *  same verifier and escrow key (AccountCrypto.swift is checked against the same). */
+ *  same verifier and escrow key (AccountCrypto.swift is checked against the same); and the comparison code's. */
 class AccountCryptoTest {
     private val mine = AccountCrypto.keyOf("02a1f3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f80",
         "BHeqNMs8tXzTJn4Kw8cAyxqlV64VcJz2XVJu2fKK4sZVkUzGEnG+4Vu/NIcI5+OUSaiJKrA19Uc8DQa+uka81Tw=")
@@ -31,5 +32,12 @@ class AccountCryptoTest {
         assertEquals(code, AccountCrypto.normalize("k7qf-9xz2-ma4d-on8h-pqrs-2345"))
         assertEquals("K7QF-9XZ2-MA4D-0N8H-PQRS-2345", AccountCrypto.shown(code))
         assertEquals(24, AccountCrypto.newRecoveryCode().length)
+    }
+
+    /** The comparison code's vector (AccountCrypto.swift asserts the same in debug builds). */
+    @Test fun theComparisonCodeGivesTheReferenceDigits() {
+        assertEquals("559 268 487 813", AccountCrypto.deviceCode("dev-0123456789abcdef", mine.public))
+        assertNotEquals("559 268 487 813", AccountCrypto.deviceCode("dev-0123456789abcdeg", mine.public))
+        assertEquals(null, AccountCrypto.deviceCode("dev-0123456789abcdef", "AAAA"))
     }
 }
