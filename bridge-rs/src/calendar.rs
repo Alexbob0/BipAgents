@@ -12,6 +12,8 @@
 //!     calendar_delete   an event deleted, the same way
 //!
 //! Repeating events are listed (each occurrence) but not changed or deleted here: the person does it on the phone.
+//! The calendars of the agent's mailboxes, read by CalDAV (caldav.rs), come in the same tools: listed with their
+//! source, and written there directly when `calendar_add` names one of them.
 //! The tools are listed only for the agents allowed (as `health`): the tools' entry of an agent changes when it is
 //! allowed or not, so its Hermes fetches the list again.
 //!
@@ -66,8 +68,8 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": "calendar_list",
             "description": "The events of the person's phone calendar (its own and the accounts synced on it, Google's \
-    included) as their phone last shared them: by default the next 7 days. from/to: dates (YYYY-MM-DD); calendar: a \
-    calendar's name. The copy covers about a week back to two months ahead.",
+        included) as their phone last shared them: by default the next 7 days. from/to: dates (YYYY-MM-DD); calendar: a \
+        calendar's name. The copy covers about a week back to two months ahead.",
             "inputSchema": {"type": "object", "properties": {
                 "from": {"type": "string", "description": "first day, YYYY-MM-DD (default: today)"},
                 "to": {"type": "string", "description": "last day, YYYY-MM-DD (default: 7 days after from)"},
@@ -76,8 +78,8 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": "calendar_add",
             "description": "Add an event to the person's phone calendar (it appears when their phone next syncs, usually \
-    within minutes). start: an ISO date-time in the person's local time (2026-10-30T10:00), or a date for an all-day \
-    event; end, or duration_minutes (default 60); calendar: a calendar's name (default: the phone's default one).",
+        within minutes). start: an ISO date-time in the person's local time (2026-10-30T10:00), or a date for an all-day \
+        event; end, or duration_minutes (default 60); calendar: a calendar's name (default: the phone's default one).",
             "inputSchema": {"type": "object", "properties": {
                 "title": {"type": "string"}, "start": {"type": "string"}, "end": {"type": "string"},
                 "duration_minutes": {"type": "integer"}, "calendar": {"type": "string"},
@@ -87,7 +89,7 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": "calendar_update",
             "description": "Change one of the person's events (its id from calendar_list): only the fields given. Not for \
-    a repeating event (the person changes those on their phone).",
+        a repeating event (the person changes those on their phone).",
             "inputSchema": {"type": "object", "properties": {
                 "id": {"type": "string"}, "title": {"type": "string"}, "start": {"type": "string"},
                 "end": {"type": "string"}, "location": {"type": "string"}, "notes": {"type": "string"}},
@@ -96,7 +98,7 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": "calendar_delete",
             "description": "Delete one of the person's events (its id from calendar_list). Only when the person asked for \
-    it. Not for a repeating event.",
+        it. Not for a repeating event.",
             "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
         }),
     ]
@@ -161,14 +163,14 @@ fn text(item: &Value, key: &str) -> String {
 
 /// A moment as an agent or the phone writes it.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Moment {
+pub enum Moment {
     Day(NaiveDate),
     Local(NaiveDateTime),
     Zoned(DateTime<FixedOffset>),
 }
 
 impl Moment {
-    fn parse(value: &str) -> Option<Moment> {
+    pub fn parse(value: &str) -> Option<Moment> {
         let value = value.trim();
         if let Ok(day) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
             return Some(Moment::Day(day));
@@ -193,7 +195,7 @@ impl Moment {
         None
     }
 
-    fn plus(self, minutes: i64) -> Moment {
+    pub fn plus(self, minutes: i64) -> Moment {
         match self {
             Moment::Day(day) => Moment::Day(day + Duration::days((minutes / 1440).max(0))),
             Moment::Local(local) => Moment::Local(local + Duration::minutes(minutes)),
@@ -201,7 +203,7 @@ impl Moment {
         }
     }
 
-    fn write(self) -> String {
+    pub fn write(self) -> String {
         match self {
             Moment::Day(day) => day.format("%Y-%m-%d").to_string(),
             Moment::Local(local) => local.format("%Y-%m-%dT%H:%M:%S").to_string(),
@@ -210,7 +212,7 @@ impl Moment {
     }
 
     /// Comparable across the kinds as wall-clock times (an offset as the phone's own is assumed).
-    fn wall(self) -> NaiveDateTime {
+    pub fn wall(self) -> NaiveDateTime {
         match self {
             Moment::Day(day) => day.and_hms_opt(0, 0, 0).unwrap_or_default(),
             Moment::Local(local) => local,
@@ -255,60 +257,146 @@ fn today(now: f64) -> NaiveDate {
     DateTime::from_timestamp(now as i64, 0).map(|d| d.with_timezone(&chrono::Local).date_naive()).unwrap_or_default()
 }
 
-/// One of the calendar tools, for `agent`. Err: a file that cannot be written.
-pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, now: Option<f64>) -> anyhow::Result<Dict> {
+/// The period `calendar_list` reads: from/to (dates), by default today and the next 7 days. Err: why not.
+pub fn range(arguments: &Dict, now: Option<f64>) -> Result<(NaiveDate, NaiveDate), String> {
+    let arg = |k: &str| tk::strip(&tk::str_or_empty(arguments.get(k))).to_string();
+    let from = match arg("from") {
+        f if f.is_empty() => today(now_or(now)),
+        f => day_of(&f).ok_or("from: a date, YYYY-MM-DD")?,
+    };
+    let to = match arg("to") {
+        t if t.is_empty() => from + Duration::days(DEFAULT_DAYS),
+        t => day_of(&t).ok_or("to: a date, YYYY-MM-DD")?,
+    };
+    Ok((from, to))
+}
+
+/// `calendar_add`'s arguments checked: {title, start, end, all_day, calendar, location, notes}. Err: why not.
+pub fn new_event(arguments: &Dict) -> Result<Value, String> {
+    let arg = |k: &str| tk::strip(&tk::str_or_empty(arguments.get(k))).to_string();
+    let title = arg("title");
+    if title.is_empty() {
+        return Err("a title is needed".into());
+    }
+    let start =
+        Moment::parse(&arg("start")).ok_or("start: an ISO date-time (2026-10-30T10:00) or a date (2026-10-30)")?;
+    let end = match arg("end") {
+        e if e.is_empty() => {
+            let minutes = arguments.get("duration_minutes").and_then(|v| py::py_float(v).ok()).map(|m| m as i64);
+            match (start, minutes) {
+                (Moment::Day(_), None) => start,
+                (_, Some(m)) if m <= 0 || m > 60 * 24 * 31 => return Err("duration_minutes: from 1 to 44640".into()),
+                (_, m) => start.plus(m.unwrap_or(DEFAULT_MINUTES)),
+            }
+        }
+        e => Moment::parse(&e).ok_or("end: an ISO date-time or a date")?,
+    };
+    if end.wall() < start.wall() || (end.wall() == start.wall() && !matches!(start, Moment::Day(_))) {
+        return Err("the end must come after the start".into());
+    }
+    Ok(json!({"title": tk::head(&title, 300), "start": start.write(), "end": end.write(),
+              "all_day": matches!(start, Moment::Day(_)),
+              "calendar": tk::head(&arg("calendar"), 120), "location": tk::head(&arg("location"), 300),
+              "notes": tk::head(&arg("notes"), 2000)}))
+}
+
+/// One of the calendar tools, for `agent`: the phone's copy (when the person shared it with the agent) and its
+/// mailboxes' calendars (`remote`, read by caldav.rs). The phone's requests go to its queue. Err: a file that cannot
+/// be written.
+pub fn call(
+    config: &Config,
+    agent: &str,
+    name: &str,
+    arguments: &Dict,
+    now: Option<f64>,
+    remote: &crate::caldav::Remote,
+) -> anyhow::Result<Dict> {
     let now = now_or(now);
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut data = read(config);
-    if !tk::py_in(agent, data.get("agents").unwrap_or(&json!([]))) {
+    let phone = tk::py_in(agent, data.get("agents").unwrap_or(&json!([])));
+    if !phone && !remote.any {
         return Ok(tool_text(
             "The person hasn't shared their phone calendar with you: they switch « Calendrier » on in your page of the \
 BipAgents app.",
             true,
         ));
     }
-    let calendars = list_of(&data, "calendars");
-    let title_of = |id: &str| -> String {
-        calendars.iter().rev().find(|c| text(c, "id") == id).map(|c| text(c, "title")).unwrap_or_else(|| "?".into())
+    let mut calendars: Vec<Value> = if phone {
+        list_of(&data, "calendars")
+            .into_iter()
+            .map(|mut c| {
+                c["source"] = json!("phone");
+                c
+            })
+            .collect()
+    } else {
+        Vec::new()
     };
-    let events = list_of(&data, "events");
+    calendars.extend(remote.calendars.iter().cloned());
+    let title_of = |id: &str| -> (String, String) {
+        calendars
+            .iter()
+            .rev()
+            .find(|c| text(c, "id") == id)
+            .map(|c| (text(c, "title"), text(c, "source")))
+            .unwrap_or_else(|| ("?".into(), String::new()))
+    };
+    let shown = |id: &str| -> String {
+        match title_of(id) {
+            (title, source) if source.is_empty() => title,
+            (title, source) => format!("{title} ({source})"),
+        }
+    };
+    let events = if phone { list_of(&data, "events") } else { Vec::new() };
     let arg = |k: &str| tk::strip(&tk::str_or_empty(arguments.get(k))).to_string();
     if name == "calendar_list" {
-        let from = match arg("from") {
-            f if f.is_empty() => today(now),
-            f => match day_of(&f) {
-                Some(day) => day,
-                None => return Ok(tool_text("from: a date, YYYY-MM-DD", true)),
-            },
-        };
-        let to = match arg("to") {
-            t if t.is_empty() => from + Duration::days(DEFAULT_DAYS),
-            t => match day_of(&t) {
-                Some(day) => day,
-                None => return Ok(tool_text("to: a date, YYYY-MM-DD", true)),
-            },
+        let (from, to) = match range(arguments, Some(now)) {
+            Ok(range) => range,
+            Err(why) => return Ok(tool_text(&why, true)),
         };
         let wanted = arg("calendar").to_lowercase();
         let mut rows: Vec<&Value> = events
             .iter()
+            .chain(remote.events.iter())
             .filter(|e| {
                 let Some(start) = day_of(&text(e, "start")) else { return false };
                 let end = day_of(&text(e, "end")).unwrap_or(start).max(start);
-                start <= to && end >= from && (wanted.is_empty() || title_of(&text(e, "calendar")).to_lowercase() == wanted)
+                let calendar = text(e, "calendar");
+                start <= to
+                    && end >= from
+                    && (wanted.is_empty()
+                        || title_of(&calendar).0.to_lowercase() == wanted
+                        || shown(&calendar).to_lowercase() == wanted)
             })
             .collect();
         rows.sort_by_key(|e| Moment::parse(&text(e, "start")).map(Moment::wall));
-        let at = data.get("at").and_then(Value::as_f64);
-        let since = match at {
-            Some(at) => format!("as the phone shared it {} ago", age(now - at)),
-            None => "the phone hasn't shared it yet".to_string(),
-        };
-        let held = match (data.get("from").and_then(Value::as_str), data.get("to").and_then(Value::as_str)) {
-            (Some(f), Some(t)) if !f.is_empty() && !t.is_empty() => format!(", for {f} to {t}"),
-            _ => String::new(),
+        let mut sources = Vec::new();
+        if phone {
+            let at = data.get("at").and_then(Value::as_f64);
+            let held = match (data.get("from").and_then(Value::as_str), data.get("to").and_then(Value::as_str)) {
+                (Some(f), Some(t)) if !f.is_empty() && !t.is_empty() => format!(", for {f} to {t}"),
+                _ => String::new(),
+            };
+            sources.push(match at {
+                Some(at) => format!("as the phone shared it {} ago{held}", age(now - at)),
+                None => "the phone hasn't shared it yet".to_string(),
+            });
+        }
+        let mut labels: Vec<String> =
+            remote.calendars.iter().map(|c| text(c, "source")).filter(|s| !s.is_empty()).collect();
+        labels.dedup();
+        if !labels.is_empty() {
+            sources.push(format!("read now from {}", labels.join(", ")));
+        }
+        let since = sources.join("; ");
+        let failed = if remote.failed.is_empty() {
+            String::new()
+        } else {
+            format!("\n(Not reached: {}.)", remote.failed.join("; "))
         };
         if rows.is_empty() {
-            return Ok(tool_text(&format!("No event from {from} to {to} ({since}{held})."), false));
+            return Ok(tool_text(&format!("No event from {from} to {to} ({since}).{failed}"), false));
         }
         let lines: Vec<String> = rows
             .iter()
@@ -317,7 +405,7 @@ BipAgents app.",
                 let mut line = format!(
                     "- id {} · {} · {} · {}",
                     text(e, "id"),
-                    title_of(&text(e, "calendar")),
+                    shown(&text(e, "calendar")),
                     when(e),
                     text(e, "title")
                 );
@@ -333,46 +421,28 @@ BipAgents app.",
                 line
             })
             .collect();
-        let more = if rows.len() > MAX_LISTED { format!("\n({} more: ask for a shorter period)", rows.len() - MAX_LISTED) } else { String::new() };
-        return Ok(tool_text(
-            &format!("From {from} to {to}, {since}{held}:\n{}{more}", lines.join("\n")),
-            false,
-        ));
+        let more = if rows.len() > MAX_LISTED {
+            format!("\n({} more: ask for a shorter period)", rows.len() - MAX_LISTED)
+        } else {
+            String::new()
+        };
+        return Ok(tool_text(&format!("From {from} to {to}, {since}:\n{}{more}{failed}", lines.join("\n")), false));
+    }
+    if !phone {
+        // The mailboxes' calendars are written by caldav.rs: what reaches here is not theirs.
+        return Ok(match name {
+            "calendar_add" | "calendar_update" | "calendar_delete" => {
+                tool_text("unknown event id (see calendar_list)", true)
+            }
+            _ => tool_text(&format!("unknown tool: {name}"), true),
+        });
     }
     let known = |id: &str| events.iter().find(|e| text(e, "id") == id);
     let op = match name {
-        "calendar_add" => {
-            let title = arg("title");
-            if title.is_empty() {
-                return Ok(tool_text("a title is needed", true));
-            }
-            let Some(start) = Moment::parse(&arg("start")) else {
-                return Ok(tool_text("start: an ISO date-time (2026-10-30T10:00) or a date (2026-10-30)", true));
-            };
-            let end = match arg("end") {
-                e if e.is_empty() => {
-                    let minutes = arguments.get("duration_minutes").and_then(|v| py::py_float(v).ok()).map(|m| m as i64);
-                    match (start, minutes) {
-                        (Moment::Day(_), None) => start,
-                        (_, Some(m)) if m <= 0 || m > 60 * 24 * 31 => {
-                            return Ok(tool_text("duration_minutes: from 1 to 44640", true))
-                        }
-                        (_, m) => start.plus(m.unwrap_or(DEFAULT_MINUTES)),
-                    }
-                }
-                e => match Moment::parse(&e) {
-                    Some(end) => end,
-                    None => return Ok(tool_text("end: an ISO date-time or a date", true)),
-                },
-            };
-            if end.wall() < start.wall() || (end.wall() == start.wall() && !matches!(start, Moment::Day(_))) {
-                return Ok(tool_text("the end must come after the start", true));
-            }
-            json!({"title": tk::head(&title, 300), "start": start.write(), "end": end.write(),
-                   "all_day": matches!(start, Moment::Day(_)),
-                   "calendar": tk::head(&arg("calendar"), 120), "location": tk::head(&arg("location"), 300),
-                   "notes": tk::head(&arg("notes"), 2000)})
-        }
+        "calendar_add" => match new_event(arguments) {
+            Ok(event) => event,
+            Err(why) => return Ok(tool_text(&why, true)),
+        },
         "calendar_update" | "calendar_delete" => {
             let id = arg("id");
             let Some(event) = known(&id) else {
@@ -404,8 +474,13 @@ BipAgents app.",
                     };
                     args.insert(key.into(), json!(moment.write()));
                 }
-                let start = args.get("start").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| text(event, "start"));
-                let end = args.get("end").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| text(event, "end"));
+                let start = args
+                    .get("start")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| text(event, "start"));
+                let end =
+                    args.get("end").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| text(event, "end"));
                 if let (Some(s), Some(e)) = (Moment::parse(&start), Moment::parse(&end)) {
                     if e.wall() < s.wall() {
                         return Ok(tool_text("the end must come after the start", true));
@@ -425,19 +500,25 @@ BipAgents app.",
                       "args": op}));
     data.insert("queue".into(), Value::Array(queue));
     write(config, &data)?;
-    Ok(tool_text(
-        "Asked: the person's phone does it at its next sync (usually within minutes, or when the app opens).",
-        false,
-    ))
+    Ok(tool_text(ASKED, false))
 }
+
+/// What a request queued for the phone answers (the phone is woken when it starts so).
+pub const ASKED: &str =
+    "Asked: the person's phone does it at its next sync (usually within minutes, or when the app opens).";
 
 // -- the app's routes --------------------------------------------------------------------------------------------------
 
 fn nested_max_len(errors: &mut Vec<FieldError>, loc: Vec<Value>, value: &str, max: usize) {
     if value.chars().count() > max {
         errors.push(
-            FieldError::new("string_too_long", loc, format!("String should have at most {max} characters"), json!(value))
-                .with_ctx(json!({"max_length": max})),
+            FieldError::new(
+                "string_too_long",
+                loc,
+                format!("String should have at most {max} characters"),
+                json!(value),
+            )
+            .with_ctx(json!({"max_length": max})),
         );
     }
 }
@@ -673,7 +754,10 @@ mod tests {
     #[test]
     fn moments_as_agents_write_them() {
         assert_eq!(Moment::parse("2026-10-30").map(|m| m.write()).as_deref(), Some("2026-10-30"));
-        assert_eq!(Moment::parse("2026-10-30T10:00").map(|m| m.plus(90).write()).as_deref(), Some("2026-10-30T11:30:00"));
+        assert_eq!(
+            Moment::parse("2026-10-30T10:00").map(|m| m.plus(90).write()).as_deref(),
+            Some("2026-10-30T11:30:00")
+        );
         assert_eq!(
             Moment::parse("2026-10-30T10:00:00+02:00").map(|m| m.plus(60).write()).as_deref(),
             Some("2026-10-30T11:00:00+02:00")

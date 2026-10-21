@@ -129,7 +129,11 @@ die Agenten, die du gewählt hast, lesen sie; wenn sie einen Termin eintragen, �
 das dein Telefon. Das KI-Modell des Agenten erhält die Termine, die der Agent liest, um dir zu antworten. Kerfy Studio
 erhält sie nicht. **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du gibst, indem du Kalender
 einschaltest und es auf deinem Telefon erlaubst. **Beenden**: schalte Kalender für den Agenten aus oder entziehe die
-Erlaubnis in den Einstellungen des Telefons (dann wird nichts mehr gesendet).
+Erlaubnis in den Einstellungen des Telefons (dann wird nichts mehr gesendet). Für ein verbundenes Postfach kannst du
+auch « Auch seinen Kalender nutzen » einschalten: Dein Server liest dann die Kalender dieses Kontos (CalDAV, mit den
+Zugangsdaten des Postfachs, die verschlüsselt auf deinem Server bleiben), wenn ein Agent dieses Postfachs sie abruft,
+und trägt die Termine ein oder löscht sie, um die er bittet; davon wird nichts behalten außer der Liste dieser
+Kalender. Schalte es aus, um aufzuhören.
 
 ## 4. Was Kerfy Studio erhalten kann
 

@@ -12,7 +12,10 @@
 //!     GET    /v1/mail/providers                 the presets
 //!     GET    /v1/mail/accounts                  [{id, provider, label, username, agents, last_ok, last_error}]
 //!     POST   /v1/mail/accounts                  {provider, username, password, host?, port?, label?, agents}  (tried first)
-//!     PATCH  /v1/mail/accounts/{id}             {agents?, label?, password?}
+//!     PATCH  /v1/mail/accounts/{id}             {agents?, label?, password?, calendar?, calendar_url?}
+//!
+//! `calendar`: « Utiliser aussi son agenda », the mailbox's calendars by CalDAV for its agents (caldav.rs; found and
+//! tried when switched on; Rust only). An account with it on lists `calendar: {calendars: [titles]}`.
 //!     DELETE /v1/mail/accounts/{id}
 //!
 //!     data_dir/mail/accounts.json.enc, mail.key   (chmod 600)
@@ -162,6 +165,10 @@ pub fn public(account: &Dict) -> Dict {
     let mut out = Dict::new();
     for k in ["id", "provider", "label", "username", "host", "agents", "last_ok", "last_error"] {
         out.insert(k.into(), account.get(k).cloned().unwrap_or(Value::Null));
+    }
+    if let Some(calendars) = crate::caldav::calendars_of(account) {
+        let titles: Vec<String> = calendars.into_iter().map(|c| c.title).collect();
+        out.insert("calendar".into(), json!({"calendars": titles}));
     }
     out
 }
@@ -689,10 +696,17 @@ pub struct AccountChange {
     pub label: Option<String>,
     #[serde(default)]
     pub password: Option<String>,
+    /// Its calendars too, by CalDAV (caldav.rs).
+    #[serde(default)]
+    pub calendar: Option<bool>,
+    /// The CalDAV server's address, when it isn't found from the mail address.
+    #[serde(default)]
+    pub calendar_url: Option<String>,
 }
 
 impl Validate for AccountChange {
     fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "calendar_url", self.calendar_url.as_deref(), 300);
         check_max_items(errors, "agents", self.agents.as_deref(), 50);
         check_max_len(errors, "label", self.label.as_deref(), 60);
         check_min_len(errors, "password", self.password.as_deref(), 1);
@@ -838,6 +852,13 @@ async fn change(
     let Some(index) = found.iter().position(|a| field(a, "id") == account_id) else {
         return Err(HttpError::new(404, "no such mailbox"));
     };
+    let agents_of = |a: &Dict| -> Vec<String> {
+        a.get("agents")
+            .and_then(Value::as_array)
+            .map(|v| v.iter().filter_map(|n| n.as_str().map(str::to_string)).collect())
+            .unwrap_or_default()
+    };
+    let (agents_before, calendar_before) = (agents_of(&found[index]), found[index].contains_key("calendar"));
     if let Some(agents) = &body.agents {
         if agents.iter().any(|a| config.agent(Some(a)).is_none()) {
             return Err(HttpError::new(400, "unknown agent"));
@@ -860,8 +881,47 @@ async fn change(
         account.insert("last_ok".into(), json!(py::time_time()));
         account.insert("last_error".into(), Value::Null);
     }
+    match body.calendar {
+        Some(true) => {
+            let account = &found[index];
+            let (home, calendars) = crate::caldav::discover(
+                &field(account, "username"),
+                &field(account, "host"),
+                &field(account, "password"),
+                body.calendar_url.as_deref(),
+            )
+            .await
+            .map_err(|why| HttpError::new(400, why))?;
+            found[index].insert("calendar".into(), crate::caldav::entry(&home, &calendars));
+        }
+        Some(false) => {
+            found[index].remove("calendar");
+        }
+        None => {}
+    }
     let account = found[index].clone();
     tokio::task::spawn_blocking(move || store.write(&found)).await.map_err(anyhow::Error::from)??;
+    // Its agents' tools: the calendar's listed or not (a changed entry makes their Hermes fetch the list again).
+    let calendar_after = account.contains_key("calendar");
+    if calendar_before || calendar_after {
+        let agents_after = agents_of(&account);
+        let mut touched: Vec<&String> = Vec::new();
+        if calendar_before != calendar_after {
+            touched.extend(agents_before.iter().chain(agents_after.iter()));
+        } else {
+            touched.extend(agents_before.iter().filter(|a| !agents_after.contains(a)));
+            touched.extend(agents_after.iter().filter(|a| !agents_before.contains(a)));
+        }
+        touched.dedup();
+        let run = crate::agents_admin::default_run();
+        for name in touched {
+            if let Some(agent) = config.agent(Some(name)) {
+                if let Err(exc) = crate::agent_tools::register(&config, agent, &run).await {
+                    tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
+                }
+            }
+        }
+    }
     Ok(web::ok(Value::Object(public(&account))))
 }
 

@@ -128,7 +128,10 @@ la lisent ; quand ils te demandent d'ajouter, de modifier ou de supprimer un ren
 fait. Le modèle d'IA de l'agent reçoit les rendez-vous que l'agent lit pour te répondre. Kerfy Studio ne les reçoit
 pas. **Base légale** : ton consentement (article 6.1.a du RGPD), que tu donnes en activant « Calendrier » et en
 l'autorisant sur ton téléphone. **Arrêter** : désactive « Calendrier » pour l'agent, ou retire l'autorisation dans les
-réglages du téléphone (plus rien n'est envoyé).
+réglages du téléphone (plus rien n'est envoyé). Pour une boîte mail que tu as connectée, tu peux aussi activer
+« Utiliser aussi son agenda » : ton serveur lit alors les agendas de ce compte (CalDAV, avec les identifiants de la
+boîte, qui restent chiffrés sur ton serveur) quand un agent de cette boîte les consulte, et y ajoute ou supprime les
+rendez-vous qu'il demande ; rien n'en est gardé à part la liste de ces agendas. Désactive-le pour arrêter.
 
 ## 4. Ce que Kerfy Studio peut recevoir
 

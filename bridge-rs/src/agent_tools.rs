@@ -360,10 +360,15 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if crate::health::enabled(config, &agent.name) {
         tools.push(crate::health::health_tool());
     }
-    if crate::calendar::enabled(config, &agent.name) {
+    if calendar_on(config, &agent.name) {
         tools.extend(crate::calendar::tools());
     }
     tools
+}
+
+/// Whether `agent` reads a calendar: the phone's, or one of its mailboxes' (caldav.rs).
+pub fn calendar_on(config: &Config, agent: &str) -> bool {
+    crate::calendar::enabled(config, agent) || crate::caldav::shared_with(config, agent)
 }
 
 /// Changes whenever the tools do: Hermes keeps the list it got when it connected, so a new tool needs a new entry.
@@ -427,7 +432,7 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// hand are left as they are. Returns whether the profile was changed (a new conversation picks it up). Err: a
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
-    let url = if crate::health::enabled(config, &agent.name) || crate::calendar::enabled(config, &agent.name) {
+    let url = if crate::health::enabled(config, &agent.name) || calendar_on(config, &agent.name) {
         url_with(config, &version_of(&tools_for(config, agent)))
     } else {
         tools_url(config)
@@ -1195,10 +1200,23 @@ the BipAgents app.",
         return Ok(result);
     }
     if crate::calendar::TOOL_NAMES.contains(&name) {
-        let result = blocking(move || crate::calendar::call(&config, &agent_c.name, &name_c, &arguments_c, None)).await?;
-        let failed = result.get("isError").map(py::truthy).unwrap_or(false);
+        let (config_s, agent_s) = (config.clone(), agent.name.clone());
+        let sources = tokio::task::spawn_blocking(move || crate::caldav::sources(&config_s, &agent_s)).await?;
+        let phone = crate::calendar::enabled(&config, &agent.name);
+        if let Some(done) = crate::caldav::handle(name, arguments, &sources, phone).await {
+            return Ok(done);
+        }
+        let remote = match crate::calendar::range(arguments, None) {
+            Ok((from, to)) if name == "calendar_list" => crate::caldav::listed(&sources, from, to).await,
+            _ => crate::caldav::Remote::of(&sources),
+        };
+        let result =
+            blocking(move || crate::calendar::call(&config, &agent_c.name, &name_c, &arguments_c, None, &remote))
+                .await?;
+        let asked = result.get("content").and_then(|c| c.get(0)).and_then(|c| c.get("text")).and_then(Value::as_str)
+            == Some(crate::calendar::ASKED);
         if let Some(push) = push {
-            if name != "calendar_list" && !failed {
+            if asked {
                 // The person's phone woken to do it now (a silent push; else when the app opens).
                 let agent_name = agent.name.clone();
                 tokio::spawn(async move {

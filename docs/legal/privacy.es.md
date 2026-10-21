@@ -123,7 +123,10 @@ incluido), cuando se abre la app. La copia se queda allí y se sustituye en cada
 elegiste; cuando piden añadir, cambiar o borrar una cita, lo hace tu teléfono. El modelo de IA del agente recibe las
 citas que el agente lee para responderte. Kerfy Studio no las recibe. **Base jurídica**: tu consentimiento (artículo
 6.1.a del RGPD), que das al activar Calendario y permitirlo en tu teléfono. **Dejarlo**: desactiva Calendario para el
-agente, o retira el permiso en los ajustes del teléfono (ya no se envía nada).
+agente, o retira el permiso en los ajustes del teléfono (ya no se envía nada). Para un buzón que conectaste, también puedes activar
+« Usar también su agenda »: tu servidor lee entonces los calendarios de esa cuenta (CalDAV, con las credenciales del
+buzón, que quedan cifradas en tu servidor) cuando un agente de ese buzón los consulta, y añade o borra las citas que
+pide; no se guarda nada salvo la lista de esos calendarios. Desactívalo para dejarlo.
 
 ## 4. Lo que Kerfy Studio puede recibir
 
