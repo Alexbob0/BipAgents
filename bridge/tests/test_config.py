@@ -85,3 +85,35 @@ def test_the_voice_server_is_optional_and_an_earlier_drama_section_is_one():
                                                     "voices": ["af_bella"]}}).voice_server
     assert server.model == "kokoro" and server.stream_rate is None and server.voices == ["af_bella"]
     assert server.uses == {"live": False, "replies": True, "reading": True}
+
+
+def test_push_hosts_can_be_replaced_for_tests(config_dict):
+    """`[apns] base_url` (both environments) and `sandbox_url`, `[fcm] base_url` and `token_url`: Apple's and
+    Google's by default, a local fake in the black-box suite (tests_blackbox/)."""
+    import asyncio
+
+    import httpx
+
+    from bipbridge.apns import ApnsClient
+
+    default = parse_config(config_dict)
+    assert (default.apns.base_url, default.apns.sandbox_url) == ("", "")
+    assert default.fcm_base_url == "https://fcm.googleapis.com" and default.fcm_token_url is None
+    config_dict["apns"].update(base_url="http://127.0.0.1:9/prod/", sandbox_url="http://127.0.0.1:9/sandbox")
+    config_dict["fcm"] = {"base_url": "http://127.0.0.1:9/", "token_url": "http://127.0.0.1:9/token"}
+    config = parse_config(config_dict)
+    assert config.apns.base_url == "http://127.0.0.1:9/prod" and config.fcm_base_url == "http://127.0.0.1:9"
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        return httpx.Response(200)
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            apns = ApnsClient(config.apns, http)
+            await apns.send("ab" * 32, {"aps": {}}, environment="sandbox")
+            await apns.send("ab" * 32, {"aps": {}}, environment="production")
+
+    asyncio.run(go())
+    assert seen == [f"http://127.0.0.1:9/sandbox/3/device/{'ab' * 32}", f"http://127.0.0.1:9/prod/3/device/{'ab' * 32}"]

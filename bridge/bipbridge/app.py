@@ -98,7 +98,8 @@ class Services:
         if config.fcm_service_account:
             if os.path.exists(config.fcm_service_account):
                 from .fcm import FcmClient
-                fcm = FcmClient(config.fcm_service_account, self.http)
+                fcm = FcmClient(config.fcm_service_account, self.http, base_url=config.fcm_base_url,
+                                token_url=config.fcm_token_url)
             else:
                 log.warning("FCM service account missing", extra=fields(path=config.fcm_service_account))
         self.fcm = fcm

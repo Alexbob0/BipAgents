@@ -1,0 +1,1060 @@
+{
+ "sse": [
+  {
+   "input": ": keepalive\n\nevent: message.delta\ndata: {\"event\": \"message.delta\", \"run_id\": \"r1\", \"delta\": \"Bon\"}\n\ndata: {\"type\": \"assistant.delta\", \"delta\": \"jour\"}\n\nevent: run.completed\ndata: {\"run_id\": \"r1\"}\n\n",
+   "output": [
+    {
+     "type": "message.delta",
+     "data": {
+      "event": "message.delta",
+      "run_id": "r1",
+      "delta": "Bon"
+     },
+     "raw": "{\"event\": \"message.delta\", \"run_id\": \"r1\", \"delta\": \"Bon\"}",
+     "text": "Bon",
+     "final_text": ""
+    },
+    {
+     "type": "assistant.delta",
+     "data": {
+      "type": "assistant.delta",
+      "delta": "jour"
+     },
+     "raw": "{\"type\": \"assistant.delta\", \"delta\": \"jour\"}",
+     "text": "jour",
+     "final_text": ""
+    },
+    {
+     "type": "run.completed",
+     "data": {
+      "run_id": "r1"
+     },
+     "raw": "{\"run_id\": \"r1\"}",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": ": keepalive\n\n: keepalive\n\n",
+   "output": []
+  },
+  {
+   "input": "data: {\"type\": \"x\",\ndata:  \"delta\": \"a\"}\n\ndata: [DONE]\n\n",
+   "output": [
+    {
+     "type": "x",
+     "data": {
+      "type": "x",
+      "delta": "a"
+     },
+     "raw": "{\"type\": \"x\",\n \"delta\": \"a\"}",
+     "text": "a",
+     "final_text": ""
+    },
+    {
+     "type": "done",
+     "data": {},
+     "raw": "[DONE]",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "{\"type\": \"message.delta\", \"delta\": \"hi\"}\nevent: note\ndata: plain words\n\n",
+   "output": [
+    {
+     "type": "message.delta",
+     "data": {
+      "type": "message.delta",
+      "delta": "hi"
+     },
+     "raw": "{\"type\": \"message.delta\", \"delta\": \"hi\"}",
+     "text": "hi",
+     "final_text": ""
+    },
+    {
+     "type": "note",
+     "data": {
+      "text": "plain words"
+     },
+     "raw": "plain words",
+     "text": "plain words",
+     "final_text": "plain words"
+    }
+   ]
+  },
+  {
+   "input": "data: {\"type\": \"message.delta\", \"delta\": {\"content\": \"x\"}}\n\ndata: {\"type\": \"run.completed\", \"output\": \"Réponse finale.\"}\n\n",
+   "output": [
+    {
+     "type": "message.delta",
+     "data": {
+      "type": "message.delta",
+      "delta": {
+       "content": "x"
+      }
+     },
+     "raw": "{\"type\": \"message.delta\", \"delta\": {\"content\": \"x\"}}",
+     "text": "x",
+     "final_text": ""
+    },
+    {
+     "type": "run.completed",
+     "data": {
+      "type": "run.completed",
+      "output": "Réponse finale."
+     },
+     "raw": "{\"type\": \"run.completed\", \"output\": \"Réponse finale.\"}",
+     "text": "",
+     "final_text": "Réponse finale."
+    }
+   ]
+  },
+  {
+   "input": "data: {\"type\": \"\", \"event\": \"e\"}\n\ndata: {\"type\": 0, \"event\": false}\n\ndata: {\"type\": true}\n\n",
+   "output": [
+    {
+     "type": "e",
+     "data": {
+      "type": "",
+      "event": "e"
+     },
+     "raw": "{\"type\": \"\", \"event\": \"e\"}",
+     "text": "",
+     "final_text": ""
+    },
+    {
+     "type": "message",
+     "data": {
+      "type": 0,
+      "event": false
+     },
+     "raw": "{\"type\": 0, \"event\": false}",
+     "text": "",
+     "final_text": ""
+    },
+    {
+     "type": "True",
+     "data": {
+      "type": true
+     },
+     "raw": "{\"type\": true}",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "data: [1, 2]\n\ndata: \"str\"\n\ndata: 5\n\ndata: null\n\n",
+   "output": [
+    {
+     "type": "message",
+     "data": {
+      "value": [
+       1,
+       2
+      ]
+     },
+     "raw": "[1, 2]",
+     "text": "",
+     "final_text": ""
+    },
+    {
+     "type": "message",
+     "data": {
+      "value": "str"
+     },
+     "raw": "\"str\"",
+     "text": "",
+     "final_text": ""
+    },
+    {
+     "type": "message",
+     "data": {
+      "value": 5
+     },
+     "raw": "5",
+     "text": "",
+     "final_text": ""
+    },
+    {
+     "type": "message",
+     "data": {
+      "value": null
+     },
+     "raw": "null",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "event:\ndata: x\n\nevent:   spaced  \n\nid: 7\nretry: 100\nfoo: bar\n\n",
+   "output": [
+    {
+     "type": "message",
+     "data": {
+      "text": "x"
+     },
+     "raw": "x",
+     "text": "x",
+     "final_text": "x"
+    },
+    {
+     "type": "spaced",
+     "data": {},
+     "raw": "",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "data:nospace\n\ndata:  two spaces\n\ndata\n\n",
+   "output": [
+    {
+     "type": "message",
+     "data": {
+      "text": "nospace"
+     },
+     "raw": "nospace",
+     "text": "nospace",
+     "final_text": "nospace"
+    },
+    {
+     "type": "message",
+     "data": {
+      "text": " two spaces"
+     },
+     "raw": " two spaces",
+     "text": " two spaces",
+     "final_text": " two spaces"
+    },
+    {
+     "type": "message",
+     "data": {},
+     "raw": "",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "event: run.failed\ndata: {\"error\": \"boom\", \"text\": \"  \"}",
+   "output": [
+    {
+     "type": "run.failed",
+     "data": {
+      "error": "boom",
+      "text": "  "
+     },
+     "raw": "{\"error\": \"boom\", \"text\": \"  \"}",
+     "text": "  ",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "   {\"type\": \"indented\"}  \ndata: {\"type\": \"after\"}\n\n",
+   "output": [
+    {
+     "type": "indented",
+     "data": {
+      "type": "indented"
+     },
+     "raw": "{\"type\": \"indented\"}",
+     "text": "",
+     "final_text": ""
+    },
+    {
+     "type": "after",
+     "data": {
+      "type": "after"
+     },
+     "raw": "{\"type\": \"after\"}",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "event: a\n{\"type\": \"not bare\"}\n\n",
+   "output": [
+    {
+     "type": "a",
+     "data": {},
+     "raw": "",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "data: {\"delta\": {\"text\": \"t\", \"content\": \"\"}, \"text\": 5}\n\ndata: {\"content\": {\"text\": 1}, \"result\": \"r\"}\n\n",
+   "output": [
+    {
+     "type": "message",
+     "data": {
+      "delta": {
+       "text": "t",
+       "content": ""
+      },
+      "text": 5
+     },
+     "raw": "{\"delta\": {\"text\": \"t\", \"content\": \"\"}, \"text\": 5}",
+     "text": "t",
+     "final_text": ""
+    },
+    {
+     "type": "message",
+     "data": {
+      "content": {
+       "text": 1
+      },
+      "result": "r"
+     },
+     "raw": "{\"content\": {\"text\": 1}, \"result\": \"r\"}",
+     "text": "",
+     "final_text": "r"
+    }
+   ]
+  },
+  {
+   "input": "data: {\"final_output\": \"  \", \"response\": \"resp\"}\n\ndata:  [DONE] \n\n",
+   "output": [
+    {
+     "type": "message",
+     "data": {
+      "final_output": "  ",
+      "response": "resp"
+     },
+     "raw": "{\"final_output\": \"  \", \"response\": \"resp\"}",
+     "text": "",
+     "final_text": "resp"
+    },
+    {
+     "type": "done",
+     "data": {},
+     "raw": " [DONE] ",
+     "text": "",
+     "final_text": ""
+    }
+   ]
+  },
+  {
+   "input": "data: line1\r\ndata: line2\r\n\r\n",
+   "output": [
+    {
+     "type": "message",
+     "data": {
+      "text": "line1\nline2"
+     },
+     "raw": "line1\nline2",
+     "text": "line1\nline2",
+     "final_text": "line1\nline2"
+    }
+   ]
+  }
+ ],
+ "lines": [
+  {
+   "input": [
+    "a\r",
+    "\nb\n\nc"
+   ],
+   "output": [
+    "a",
+    "b",
+    "",
+    "c"
+   ]
+  },
+  {
+   "input": [
+    "x\r",
+    "y"
+   ],
+   "output": [
+    "x",
+    "y"
+   ]
+  },
+  {
+   "input": [
+    "one\ntwo\n"
+   ],
+   "output": [
+    "one",
+    "two"
+   ]
+  },
+  {
+   "input": [
+    "no newline"
+   ],
+   "output": [
+    "no newline"
+   ]
+  },
+  {
+   "input": [
+    "\n",
+    "\n",
+    "a"
+   ],
+   "output": [
+    "",
+    "",
+    "a"
+   ]
+  },
+  {
+   "input": [
+    "a b\u000bc\fd\u001cef",
+    "\r\n"
+   ],
+   "output": [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f"
+   ]
+  },
+  {
+   "input": [
+    "split ",
+    "across ",
+    "chunks\n",
+    "end"
+   ],
+   "output": [
+    "split across chunks",
+    "end"
+   ]
+  },
+  {
+   "input": [
+    "\r",
+    "\r",
+    "\n"
+   ],
+   "output": [
+    "",
+    ""
+   ]
+  },
+  {
+   "input": [
+    "trailing\r"
+   ],
+   "output": [
+    "trailing"
+   ]
+  },
+  {
+   "input": [
+    ""
+   ],
+   "output": []
+  }
+ ],
+ "iso": [
+  {
+   "input": [
+    2026,
+    10,
+    4,
+    8,
+    15,
+    0,
+    123999,
+    0
+   ],
+   "output": "2026-10-04T08:15:00.123Z"
+  },
+  {
+   "input": [
+    2026,
+    10,
+    4,
+    10,
+    15,
+    0,
+    5000,
+    120
+   ],
+   "output": "2026-10-04T08:15:00.005Z"
+  }
+ ],
+ "parse_since": [
+  {
+   "input": "2026-10-04T08:15:00.123Z",
+   "output": "2026-10-04T08:15:00.123Z"
+  },
+  {
+   "input": "2026-10-04T10:15:00+02:00",
+   "output": "2026-10-04T08:15:00.000Z"
+  },
+  {
+   "input": "2026-10-04T08:15:00",
+   "output": "2026-10-04T08:15:00.000Z"
+  },
+  {
+   "input": "2026-10-04",
+   "output": "2026-10-04T00:00:00.000Z"
+  },
+  {
+   "input": " 0 ",
+   "output": "1970-01-01T00:00:00.000Z"
+  },
+  {
+   "input": "1.5",
+   "output": "1970-01-01T00:00:01.500Z"
+  },
+  {
+   "input": "1759565700",
+   "output": "2025-10-04T08:15:00.000Z"
+  },
+  {
+   "input": "2026-10-04 08:15:00.5-01:30",
+   "output": "2026-10-04T09:45:00.500Z"
+  },
+  {
+   "input": "20261004T081500",
+   "output": "2026-10-04T08:15:00.000Z"
+  },
+  {
+   "input": "2026-10-04T08:15Z",
+   "output": "2026-10-04T08:15:00.000Z"
+  },
+  {
+   "input": "2026-10-04T08",
+   "output": "2026-10-04T08:00:00.000Z"
+  },
+  {
+   "input": "yesterday",
+   "error": "ValueError"
+  },
+  {
+   "input": "",
+   "error": "ValueError"
+  },
+  {
+   "input": "2026-13-01",
+   "error": "ValueError"
+  },
+  {
+   "input": "-5",
+   "output": "1969-12-31T23:59:55.000Z"
+  },
+  {
+   "input": "1e3",
+   "output": "1970-01-01T00:16:40.000Z"
+  },
+  {
+   "input": "2026-10-04T08:15:00.123456789Z",
+   "output": "2026-10-04T08:15:00.123Z"
+  }
+ ],
+ "redact": [
+  {
+   "input": null,
+   "output": ""
+  },
+  {
+   "input": "",
+   "output": ""
+  },
+  {
+   "input": "abc",
+   "output": "…"
+  },
+  {
+   "input": "abcdef",
+   "output": "…"
+  },
+  {
+   "input": "abcdefg",
+   "output": "abcdef…"
+  },
+  {
+   "input": "éééééééé",
+   "output": "éééééé…"
+  }
+ ],
+ "bearer": [
+  {
+   "input": null,
+   "output": null
+  },
+  {
+   "input": "",
+   "output": null
+  },
+  {
+   "input": "Bearer abc",
+   "output": "abc"
+  },
+  {
+   "input": "bearer  abc ",
+   "output": "abc"
+  },
+  {
+   "input": "BEARER x y",
+   "output": "x y"
+  },
+  {
+   "input": "Basic abc",
+   "output": null
+  },
+  {
+   "input": "abc",
+   "output": null
+  },
+  {
+   "input": "Bearer ",
+   "output": null
+  },
+  {
+   "input": "Bearer\tabc",
+   "output": null
+  }
+ ],
+ "forwarded": [
+  {
+   "input": "100.64.0.7",
+   "output": [
+    "100.64.0.7",
+    0
+   ]
+  },
+  {
+   "input": "100.64.0.7, 127.0.0.1",
+   "output": [
+    "100.64.0.7",
+    0
+   ]
+  },
+  {
+   "input": "127.0.0.1",
+   "output": [
+    "127.0.0.1",
+    0
+   ]
+  },
+  {
+   "input": "1.1.1.1, 2.2.2.2",
+   "output": [
+    "2.2.2.2",
+    0
+   ]
+  },
+  {
+   "input": " 3.3.3.3 ",
+   "output": [
+    "3.3.3.3",
+    0
+   ]
+  },
+  {
+   "input": "",
+   "output": [
+    "",
+    0
+   ]
+  },
+  {
+   "input": "a,,b",
+   "output": [
+    "b",
+    0
+   ]
+  },
+  {
+   "input": "100.64.0.7:5000",
+   "output": [
+    "100.64.0.7",
+    5000
+   ]
+  },
+  {
+   "input": "[fd7a::1]:443",
+   "output": [
+    "fd7a::1",
+    443
+   ]
+  },
+  {
+   "input": "[fd7a::1]",
+   "output": [
+    "fd7a::1",
+    0
+   ]
+  },
+  {
+   "input": "fd7a::1",
+   "output": [
+    "fd7a::1",
+    0
+   ]
+  },
+  {
+   "input": "127.0.0.1, 127.0.0.1",
+   "output": [
+    "127.0.0.1",
+    0
+   ]
+  },
+  {
+   "input": "x:y",
+   "output": [
+    "x:y",
+    0
+   ]
+  },
+  {
+   "input": "[bad",
+   "output": [
+    "[bad",
+    0
+   ]
+  }
+ ],
+ "log_line": {
+  "line_without_ts": "{\"level\": \"warning\", \"logger\": \"bipbridge.guard\", \"msg\": \"wrong key\", \"address\": \"203.0.113.9\", \"what\": \"bridge key\", \"count\": 3, \"agents\": [\"a\", \"b\"], \"ok\": true, \"ratio\": 0.5}",
+  "keys": [
+   "ts",
+   "level",
+   "logger",
+   "msg",
+   "address",
+   "what",
+   "count",
+   "agents",
+   "ok",
+   "ratio"
+  ]
+ },
+ "dumps": [
+  {
+   "input": [
+    "b",
+    "a"
+   ],
+   "default": "[\"b\", \"a\"]",
+   "indent1": "[\n \"b\",\n \"a\"\n]",
+   "compact_unicode": "[\"b\",\"a\"]",
+   "sorted": "[\"b\", \"a\"]"
+  },
+  {
+   "input": {
+    "a": 1,
+    "b": [
+     true,
+     null
+    ],
+    "c": "é"
+   },
+   "default": "{\"a\": 1, \"b\": [true, null], \"c\": \"\\u00e9\"}",
+   "indent1": "{\n \"a\": 1,\n \"b\": [\n  true,\n  null\n ],\n \"c\": \"\\u00e9\"\n}",
+   "compact_unicode": "{\"a\":1,\"b\":[true,null],\"c\":\"é\"}",
+   "sorted": "{\"a\": 1, \"b\": [true, null], \"c\": \"\\u00e9\"}"
+  },
+  {
+   "input": "😀",
+   "default": "\"\\ud83d\\ude00\"",
+   "indent1": "\"\\ud83d\\ude00\"",
+   "compact_unicode": "\"😀\"",
+   "sorted": "\"\\ud83d\\ude00\""
+  },
+  {
+   "input": {
+    "t": {
+     "a": [
+      1
+     ]
+    }
+   },
+   "default": "{\"t\": {\"a\": [1]}}",
+   "indent1": "{\n \"t\": {\n  \"a\": [\n   1\n  ]\n }\n}",
+   "compact_unicode": "{\"t\":{\"a\":[1]}}",
+   "sorted": "{\"t\": {\"a\": [1]}}"
+  },
+  {
+   "input": {},
+   "default": "{}",
+   "indent1": "{}",
+   "compact_unicode": "{}",
+   "sorted": "{}"
+  },
+  {
+   "input": [],
+   "default": "[]",
+   "indent1": "[]",
+   "compact_unicode": "[]",
+   "sorted": "[]"
+  },
+  {
+   "input": "\u0000\u001f \"\\",
+   "default": "\"\\u0000\\u001f\\u007f\\u2028\\\"\\\\\"",
+   "indent1": "\"\\u0000\\u001f\\u007f\\u2028\\\"\\\\\"",
+   "compact_unicode": "\"\\u0000\\u001f \\\"\\\\\"",
+   "sorted": "\"\\u0000\\u001f\\u007f\\u2028\\\"\\\\\""
+  },
+  {
+   "input": 1.0,
+   "default": "1.0",
+   "indent1": "1.0",
+   "compact_unicode": "1.0",
+   "sorted": "1.0"
+  },
+  {
+   "input": 0.1,
+   "default": "0.1",
+   "indent1": "0.1",
+   "compact_unicode": "0.1",
+   "sorted": "0.1"
+  },
+  {
+   "input": 1e+16,
+   "default": "1e+16",
+   "indent1": "1e+16",
+   "compact_unicode": "1e+16",
+   "sorted": "1e+16"
+  },
+  {
+   "input": 1.5e-07,
+   "default": "1.5e-07",
+   "indent1": "1.5e-07",
+   "compact_unicode": "1.5e-07",
+   "sorted": "1.5e-07"
+  },
+  {
+   "input": 123456.789,
+   "default": "123456.789",
+   "indent1": "123456.789",
+   "compact_unicode": "123456.789",
+   "sorted": "123456.789"
+  },
+  {
+   "input": 0.0001,
+   "default": "0.0001",
+   "indent1": "0.0001",
+   "compact_unicode": "0.0001",
+   "sorted": "0.0001"
+  },
+  {
+   "input": -2.5,
+   "default": "-2.5",
+   "indent1": "-2.5",
+   "compact_unicode": "-2.5",
+   "sorted": "-2.5"
+  },
+  {
+   "input": 1000000000000000.0,
+   "default": "1000000000000000.0",
+   "indent1": "1000000000000000.0",
+   "compact_unicode": "1000000000000000.0",
+   "sorted": "1000000000000000.0"
+  },
+  {
+   "input": 3,
+   "default": "3",
+   "indent1": "3",
+   "compact_unicode": "3",
+   "sorted": "3"
+  },
+  {
+   "input": -7,
+   "default": "-7",
+   "indent1": "-7",
+   "compact_unicode": "-7",
+   "sorted": "-7"
+  },
+  {
+   "input": {
+    "k": 1.25e-05
+   },
+   "default": "{\"k\": 1.25e-05}",
+   "indent1": "{\n \"k\": 1.25e-05\n}",
+   "compact_unicode": "{\"k\":1.25e-05}",
+   "sorted": "{\"k\": 1.25e-05}"
+  }
+ ],
+ "float_repr": [
+  {
+   "input": 1.0,
+   "output": "1.0"
+  },
+  {
+   "input": 0.1,
+   "output": "0.1"
+  },
+  {
+   "input": 1e+16,
+   "output": "1e+16"
+  },
+  {
+   "input": 1.5e-07,
+   "output": "1.5e-07"
+  },
+  {
+   "input": 123456.789,
+   "output": "123456.789"
+  },
+  {
+   "input": 0.0001,
+   "output": "0.0001"
+  },
+  {
+   "input": -2.5,
+   "output": "-2.5"
+  },
+  {
+   "input": 1000000000000000.0,
+   "output": "1000000000000000.0"
+  },
+  {
+   "input": 1.152921504606847e+18,
+   "output": "1.152921504606847e+18"
+  },
+  {
+   "input": 5e-324,
+   "output": "5e-324"
+  },
+  {
+   "input": 1.7976931348623157e+308,
+   "output": "1.7976931348623157e+308"
+  },
+  {
+   "input": 100.0,
+   "output": "100.0"
+  },
+  {
+   "input": 1e+22,
+   "output": "1e+22"
+  },
+  {
+   "input": 1.2345678901234568e+16,
+   "output": "1.2345678901234568e+16"
+  }
+ ],
+ "int": [
+  {
+   "input": "1_000",
+   "output": 1000
+  },
+  {
+   "input": " 7 ",
+   "output": 7
+  },
+  {
+   "input": "+3",
+   "output": 3
+  },
+  {
+   "input": "-4",
+   "output": -4
+  },
+  {
+   "input": "x",
+   "error": true
+  },
+  {
+   "input": "",
+   "error": true
+  },
+  {
+   "input": "1__0",
+   "error": true
+  },
+  {
+   "input": "_1",
+   "error": true
+  },
+  {
+   "input": "1.5",
+   "error": true
+  },
+  {
+   "input": 2.9,
+   "output": 2
+  },
+  {
+   "input": -2.9,
+   "output": -2
+  },
+  {
+   "input": true,
+   "output": 1
+  },
+  {
+   "input": null,
+   "error": true
+  },
+  {
+   "input": [
+    1
+   ],
+   "error": true
+  }
+ ],
+ "str": [
+  {
+   "input": true,
+   "output": "True"
+  },
+  {
+   "input": false,
+   "output": "False"
+  },
+  {
+   "input": null,
+   "output": "None"
+  },
+  {
+   "input": 1,
+   "output": "1"
+  },
+  {
+   "input": 1.0,
+   "output": "1.0"
+  },
+  {
+   "input": 2.5,
+   "output": "2.5"
+  },
+  {
+   "input": "s",
+   "output": "s"
+  },
+  {
+   "input": [
+    "a",
+    1,
+    null,
+    true
+   ],
+   "output": "['a', 1, None, True]"
+  },
+  {
+   "input": {
+    "k": "v",
+    "n": 1.5
+   },
+   "output": "{'k': 'v', 'n': 1.5}"
+  },
+  {
+   "input": "it's",
+   "output": "it's"
+  },
+  {
+   "input": "say \"hi\"",
+   "output": "say \"hi\""
+  }
+ ]
+}

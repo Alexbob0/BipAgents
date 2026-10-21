@@ -21,6 +21,7 @@ from .logs import fields, redact
 log = logging.getLogger("bipbridge.fcm")
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"
+BASE_URL = "https://fcm.googleapis.com"
 SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
 ACCESS_TTL_SECONDS = 50 * 60
 # An FCM registration token: base64url with a colon, ~150–200 characters.
@@ -49,13 +50,15 @@ def data_message(payload: Dict[str, Any]) -> Dict[str, str]:
 
 
 class FcmClient:
-    def __init__(self, service_account_path: str, client: httpx.AsyncClient, clock: Callable[[], float] = time.time):
+    def __init__(self, service_account_path: str, client: httpx.AsyncClient, clock: Callable[[], float] = time.time,
+                 base_url: str = BASE_URL, token_url: Optional[str] = None):
         with open(service_account_path, "r", encoding="utf-8") as fh:
             account = json.load(fh)
         self.project = account["project_id"]
         self.email = account["client_email"]
         self.key = account["private_key"]
-        self.token_uri = account.get("token_uri") or TOKEN_URL
+        self.token_uri = token_url or account.get("token_uri") or TOKEN_URL
+        self.base_url = (base_url or BASE_URL).rstrip("/")
         self.client = client
         self.clock = clock
         self._access: Optional[str] = None
@@ -95,7 +98,7 @@ class FcmClient:
     async def _post(self, message: Dict[str, Any], force: bool) -> ApnsResult:
         try:
             token = await self.access_token(force=force)
-            resp = await self.client.post(f"https://fcm.googleapis.com/v1/projects/{self.project}/messages:send",
+            resp = await self.client.post(f"{self.base_url}/v1/projects/{self.project}/messages:send",
                                           json={"message": message}, timeout=15.0,
                                           headers={"Authorization": f"Bearer {token}"})
         except httpx.HTTPError as exc:

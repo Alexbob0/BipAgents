@@ -1,0 +1,2598 @@
+[
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "port": "9000",
+   "host": "0.0.0.0",
+   "log_level": "DEBUG",
+   "data_dir": "/srv/bip/data"
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "0.0.0.0",
+   "port": 9000,
+   "log_level": "debug",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "/srv/bip/data/bridge.db",
+    "audio_dir": "/srv/bip/data/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "/srv/bip/data/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "/srv/bip/data/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "/srv/bip/data/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "kyutai": {
+    "enabled": false
+   },
+   "pocket": {
+    "url": "http://127.0.0.1:8098/"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": null,
+   "kyutai_timeout": 120.0,
+   "default_voice": "pocket:colibri",
+   "pocket_url": "http://127.0.0.1:8098",
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "kyutai": {
+    "url": ""
+   },
+   "pocket": {
+    "url": "http://p",
+    "default_voice": "pocket:ours"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": null,
+   "kyutai_timeout": 120.0,
+   "default_voice": "pocket:ours",
+   "pocket_url": "http://p",
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "kyutai": {
+    "enabled": false
+   }
+  },
+  "error": "no TTS engine: set [pocket] url, or [kyutai] url"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "pocket": {
+    "url": "http://p"
+   },
+   "drama": {
+    "url": "http://127.0.0.1:8099/"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": "http://p",
+   "voice_server": {
+    "url": "http://127.0.0.1:8099",
+    "model": "drama-3",
+    "stream_rate": 44100,
+    "voices": [],
+    "uses": {
+     "live": true,
+     "replies": true,
+     "reading": true
+    },
+    "first_audio_seconds": 5.0
+   },
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "pocket": {
+    "url": "http://p"
+   },
+   "drama": {
+    "url": "http://127.0.0.1:8099",
+    "enabled": false
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": "http://p",
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "voice_server": {
+    "url": "http://gpu:8880/",
+    "model": "kokoro",
+    "live": false,
+    "voices": [
+     "af_bella",
+     3
+    ],
+    "stream_rate": "24000",
+    "first_audio_seconds": 2
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": {
+    "url": "http://gpu:8880",
+    "model": "kokoro",
+    "stream_rate": 24000,
+    "voices": [
+     "af_bella",
+     "3"
+    ],
+    "uses": {
+     "live": false,
+     "replies": true,
+     "reading": true
+    },
+    "first_audio_seconds": 2.0
+   },
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "voice_server": {
+    "url": "http://gpu:8880",
+    "enabled": false
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "kyutai": {
+    "url": "http://gpu:8097/",
+    "default_voice": 7,
+    "timeout_seconds": "30"
+   },
+   "cron": {
+    "watch": 0,
+    "interval_seconds": 5,
+    "window_hours": "1.5"
+   },
+   "ntfy": {
+    "url": "http://ntfy/"
+   },
+   "push": {
+    "previews": "yes",
+    "watch_followed_runs": false,
+    "relay_url": "http://relay/",
+    "relay_key": "rkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrk",
+    "service_url": "https://push.example/"
+   },
+   "model": {
+    "health_url": "http://model/v1/models",
+    "health_key": "mk"
+   },
+   "public_url": "https://box.ts.net/",
+   "peer_url": "http://host.containers.internal:8643/peer/",
+   "cloud": 1,
+   "setup": {
+    "file": "/srv/setup.json",
+    "progress": "/srv/progress.json"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://gpu:8097",
+   "kyutai_timeout": 30.0,
+   "default_voice": "7",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": false,
+   "cron_interval_seconds": 5.0,
+   "cron_window_hours": 1.5,
+   "media_roots": {},
+   "ntfy_url": "http://ntfy",
+   "push_previews": true,
+   "watch_followed_runs": false,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": "http://relay",
+   "push_relay_key": "rkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrk",
+   "push_service_url": "https://push.example",
+   "model_health_url": "http://model/v1/models",
+   "model_health_key": "mk",
+   "public_url": "https://box.ts.net",
+   "peer_url": "http://host.containers.internal:8643/peer",
+   "cloud": true,
+   "setup_file": "/srv/setup.json",
+   "setup_progress": "/srv/progress.json",
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "apns": {
+    "team_id": "T",
+    "key_id": "K",
+    "p8_path": "/keys/a.p8",
+    "environment": "sandbox",
+    "base_url": "http://127.0.0.1:1/",
+    "sandbox_url": ""
+   },
+   "fcm": {
+    "service_account": "/keys/fcm.json",
+    "base_url": "http://127.0.0.1:2/",
+    "token_url": "http://127.0.0.1:3/t"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "T",
+    "key_id": "K",
+    "p8_path": "/keys/a.p8",
+    "bundle_id": "io.github.bipagents",
+    "environment": "sandbox",
+    "base_url": "http://127.0.0.1:1",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": "/keys/fcm.json",
+   "fcm_base_url": "http://127.0.0.1:2",
+   "fcm_token_url": "http://127.0.0.1:3/t",
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "apns": {
+    "environment": "dev"
+   }
+  },
+  "error": "apns.environment must be 'sandbox' or 'production'"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "outbox": {
+    "db_path": "/srv/db/bridge.db",
+    "audio_dir": "/srv/audio",
+    "retention_days": "30",
+    "audio_max_chars": 100,
+    "audio_wait_seconds": 2
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "/srv/db/bridge.db",
+    "audio_dir": "/srv/audio",
+    "retention_days": 30,
+    "audio_max_chars": 100,
+    "audio_wait_seconds": 2.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "limits": {
+    "upload_max_mb": 1.5,
+    "upload_retention_days": 7,
+    "upload_file_mode": "0644",
+    "upload_dir_mode": 448,
+    "sentence_max_chars": "200",
+    "tts_max_chars": 500,
+    "tts_cache_entries": 0,
+    "watch_max_minutes": 30,
+    "purge_interval_hours": 0.5
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 1572864,
+    "upload_retention_days": 7,
+    "upload_file_mode": 420,
+    "upload_dir_mode": 448,
+    "sentence_max_chars": 200,
+    "tts_max_chars": 500,
+    "tts_cache_entries": 0,
+    "watch_max_seconds": 1800,
+    "purge_interval_seconds": 1800
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "agents": {
+    "Vie": {
+     "hermes_url": "http://127.0.0.1:8644/",
+     "hermes_key": " key-vie ",
+     "ntfy_topic": "t",
+     "ntfy_token": "tk",
+     "upload_dir_host": "/srv/up/vie/",
+     "upload_dir_container": "/home/h/up/",
+     "voice": "pocket:colibri",
+     "server_voice": "server:fr/x",
+     "category": "wellness",
+     "color": "#FF0000",
+     "public_url": "https://box:8644/",
+     "isolated": true,
+     "python": "podman exec -i hermes-vie python",
+     "hermes_home": "/home/hermes/.hermes/",
+     "hermes_root": "/opt/hermes/",
+     "space": "/srv/spaces/vie",
+     "sandboxed": 1,
+     "desktop_url": "https://box/vnc",
+     "desktop_vnc": "tcp://127.0.0.1:5900",
+     "desktop_vnc_password_file": "/srv/vnc.pw",
+     "shares": "external",
+     "shares_apply": "systemctl restart x",
+     "host_home": "/srv/hermes"
+    },
+    " Wellness ": {
+     "display_name": "Bien-être",
+     "hermes_url": "http://w",
+     "hermes_key": "kw",
+     "python": [
+      "/usr/bin/python3",
+      "-I"
+     ]
+    },
+    "mON-coach": {
+     "hermes_url": "http://c",
+     "hermes_key": "kc",
+     "display_name": ""
+    }
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {
+    "vie": {
+     "name": "vie",
+     "display_name": "Vie",
+     "hermes_url": "http://127.0.0.1:8644",
+     "hermes_key": "key-vie",
+     "ntfy_topic": "t",
+     "ntfy_token": "tk",
+     "upload_dir_host": "/srv/up/vie",
+     "upload_dir_container": "/home/h/up",
+     "voice": "pocket:colibri",
+     "server_voice": "server:fr/x",
+     "category": "wellness",
+     "color": "#FF0000",
+     "public_url": "https://box:8644",
+     "isolated": true,
+     "python": [
+      "podman",
+      "exec",
+      "-i",
+      "hermes-vie",
+      "python"
+     ],
+     "hermes_home": "/home/hermes/.hermes",
+     "hermes_root": "/opt/hermes",
+     "space": "/srv/spaces/vie",
+     "sandboxed": true,
+     "desktop_url": "https://box/vnc",
+     "desktop_vnc": "tcp://127.0.0.1:5900",
+     "desktop_vnc_password_file": "/srv/vnc.pw",
+     "shares": "external",
+     "shares_apply": "systemctl restart x",
+     "host_home": "/srv/hermes"
+    },
+    "wellness": {
+     "name": "wellness",
+     "display_name": "Bien-être",
+     "hermes_url": "http://w",
+     "hermes_key": "kw",
+     "ntfy_topic": null,
+     "ntfy_token": null,
+     "upload_dir_host": null,
+     "upload_dir_container": null,
+     "voice": null,
+     "server_voice": null,
+     "category": null,
+     "color": null,
+     "public_url": null,
+     "isolated": false,
+     "python": [
+      "/usr/bin/python3",
+      "-I"
+     ],
+     "hermes_home": null,
+     "hermes_root": null,
+     "space": null,
+     "sandboxed": false,
+     "desktop_url": null,
+     "desktop_vnc": null,
+     "desktop_vnc_password_file": null,
+     "shares": "",
+     "shares_apply": null,
+     "host_home": null
+    },
+    "mon-coach": {
+     "name": "mon-coach",
+     "display_name": "Mon-coach",
+     "hermes_url": "http://c",
+     "hermes_key": "kc",
+     "ntfy_topic": null,
+     "ntfy_token": null,
+     "upload_dir_host": null,
+     "upload_dir_container": null,
+     "voice": null,
+     "server_voice": null,
+     "category": null,
+     "color": null,
+     "public_url": null,
+     "isolated": false,
+     "python": [],
+     "hermes_home": null,
+     "hermes_root": null,
+     "space": null,
+     "sandboxed": false,
+     "desktop_url": null,
+     "desktop_vnc": null,
+     "desktop_vnc_password_file": null,
+     "shares": "",
+     "shares_apply": null,
+     "host_home": null
+    }
+   },
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "agents": {
+    "a": {
+     "hermes_key": "k"
+    }
+   }
+  },
+  "error": "agents.a.hermes_url is required"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "agents": {
+    "a": {
+     "hermes_url": "http://h"
+    }
+   }
+  },
+  "error": "agents.a.hermes_key (or hermes_key_file) is required"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "agents": {
+    "a": {
+     "hermes_url": "http://h",
+     "hermes_key": "k",
+     "upload_dir_host": "/tmp/x"
+    }
+   }
+  },
+  "error": "agents.a: upload_dir_host and upload_dir_container go together"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "agents": {
+    "a": "not a table"
+   }
+  },
+  "error": "agents.a must be a table"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "agents": {
+    "a": {
+     "hermes_url": "http://h",
+     "hermes_key": "CHANGE-ME-key"
+    }
+   }
+  },
+  "error": "agents.a.hermes_key still holds a placeholder value"
+ },
+ {
+  "input": {
+   "bridge_key": "CHANGE-ME-run-python-m-bipbridge-genkey"
+  },
+  "error": "bridge.bridge_key still holds a placeholder value"
+ },
+ {
+  "input": {
+   "bridge_key": "<your key>"
+  },
+  "error": "bridge.bridge_key still holds a placeholder value"
+ },
+ {
+  "input": {},
+  "error": "bridge.bridge_key (or bridge_key_file) is required"
+ },
+ {
+  "input": {
+   "bridge_key": "short"
+  },
+  "config": {
+   "bridge_key": "short",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "relay": {
+    "clients": {
+     "chi": "cccccccccccccccccccccccccccccccccccccccc",
+     "empty": "  "
+    },
+    "per_hour": "60"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {
+     "cccccccccccccccccccccccccccccccccccccccc": "chi"
+    },
+    "per_hour": 60
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "relay": {
+    "clients": {
+     "chi": "short"
+    }
+   }
+  },
+  "error": "relay: client keys must be at least 32 characters (python -m bipbridge genkey)"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "hermes": {
+    "bin": "/opt/hermes/bin/hermes",
+    "home": "/srv/no-such-hermes-home",
+    "hub_url": "http://127.0.0.1:8642/",
+    "public_hub_url": "https://box:8642/",
+    "container_home": "/home/hermes/.hermes/",
+    "python": "podman exec -i hermes python",
+    "root": "/opt/hermes",
+    "isolated": true
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "/opt/hermes/bin/hermes",
+    "home": "/srv/no-such-hermes-home",
+    "hub_url": "http://127.0.0.1:8642",
+    "public_hub_url": "https://box:8642",
+    "container_home": "/home/hermes/.hermes",
+    "python": [
+     "podman",
+     "exec",
+     "-i",
+     "hermes",
+     "python"
+    ],
+    "root": "/opt/hermes",
+    "isolated": true
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "spaces": {
+    "root": "/srv/spaces",
+    "first_port": "8700",
+    "sandbox": "none",
+    "start": "x {agent}",
+    "stop": "y {home}",
+    "container_home": "/home/h/"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "/srv/spaces",
+    "first_port": 8700,
+    "sandbox": "none",
+    "start": "x {agent}",
+    "stop": "y {home}",
+    "container_home": "/home/h"
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "spaces": {
+    "sandbox": "always"
+   }
+  },
+  "error": "spaces.sandbox must be 'auto' or 'none'"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "browser": {
+    "enabled": true,
+    "runtime": "podman",
+    "image": "img",
+    "first_port": 9700,
+    "ports": 1,
+    "root": "/srv/browsers",
+    "gpu": "none",
+    "language": "fr-FR",
+    "timezone": "Europe/Paris",
+    "idle_minutes": -3
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": true,
+    "runtime": "podman",
+    "image": "img",
+    "first_port": 9700,
+    "ports": 2,
+    "root": "/srv/browsers",
+    "gpu": "none",
+    "language": "fr-FR",
+    "timezone": "Europe/Paris",
+    "idle_minutes": 0
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "browser": {
+    "runtime": "lxc"
+   }
+  },
+  "error": "browser.runtime must be 'podman' or 'docker', browser.gpu 'auto' or 'none'"
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "lan": {
+    "enabled": true,
+    "host": "192.168.1.2",
+    "port": "8651",
+    "address": " 192.168.1.177 ",
+    "cert_dir": "/srv/lan"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {},
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {},
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": true,
+    "host": "192.168.1.2",
+    "port": 8651,
+    "address": "192.168.1.177",
+    "cert_dir": "/srv/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ },
+ {
+  "input": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "media": {
+    "roots": {
+     "/home/hermes/media": "/srv/media",
+     "/x": "/y/"
+    }
+   },
+   "pronunciations": {
+    "fr": {
+     "Garmin": "Garmine",
+     "n": 5
+    },
+    "en": "not a table"
+   }
+  },
+  "config": {
+   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "host": "127.0.0.1",
+   "port": 8643,
+   "log_level": "info",
+   "kyutai_url": "http://127.0.0.1:8097",
+   "kyutai_timeout": 120.0,
+   "default_voice": "5476",
+   "pocket_url": null,
+   "voice_server": null,
+   "pronunciations": {
+    "fr": {
+     "Garmin": "Garmine",
+     "n": "5"
+    }
+   },
+   "cron_watch": true,
+   "cron_interval_seconds": 30.0,
+   "cron_window_hours": 12.0,
+   "media_roots": {
+    "/home/hermes/media": "/srv/media",
+    "/x": "/y"
+   },
+   "ntfy_url": "http://127.0.0.1:8645",
+   "push_previews": false,
+   "watch_followed_runs": true,
+   "apns": {
+    "team_id": "",
+    "key_id": "",
+    "p8_path": "",
+    "bundle_id": "io.github.bipagents",
+    "environment": "production",
+    "base_url": "",
+    "sandbox_url": ""
+   },
+   "fcm_service_account": null,
+   "fcm_base_url": "https://fcm.googleapis.com",
+   "fcm_token_url": null,
+   "outbox": {
+    "db_path": "$HOME/.local/share/hermes-bridge/bridge.db",
+    "audio_dir": "$HOME/.local/share/hermes-bridge/audio",
+    "retention_days": 90,
+    "audio_max_chars": 2000,
+    "audio_wait_seconds": 8.0
+   },
+   "limits": {
+    "upload_max_bytes": 52428800,
+    "upload_retention_days": 30,
+    "upload_file_mode": 416,
+    "upload_dir_mode": 488,
+    "sentence_max_chars": 180,
+    "tts_max_chars": 1000,
+    "tts_cache_entries": 256,
+    "watch_max_seconds": 7200,
+    "purge_interval_seconds": 21600
+   },
+   "agents": {},
+   "lan": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8650,
+    "address": null,
+    "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
+   },
+   "relay": {
+    "clients": {},
+    "per_hour": 600
+   },
+   "hermes": {
+    "bin": "",
+    "home": "",
+    "hub_url": "",
+    "public_hub_url": "",
+    "container_home": "",
+    "python": [],
+    "root": "",
+    "isolated": false
+   },
+   "spaces": {
+    "root": "$HOME/.local/share/hermes-bridge/spaces",
+    "first_port": 8660,
+    "sandbox": "auto",
+    "start": null,
+    "stop": null,
+    "container_home": ""
+   },
+   "browser": {
+    "enabled": false,
+    "runtime": "",
+    "image": "bipagents-browser",
+    "first_port": 9600,
+    "ports": 400,
+    "root": "$HOME/.local/share/hermes-bridge/browsers",
+    "gpu": "auto",
+    "language": "",
+    "timezone": "",
+    "idle_minutes": 10
+   },
+   "push_relay_url": null,
+   "push_relay_key": null,
+   "push_service_url": null,
+   "model_health_url": null,
+   "model_health_key": null,
+   "public_url": null,
+   "peer_url": null,
+   "cloud": false,
+   "setup_file": null,
+   "setup_progress": null,
+   "source_path": null
+  }
+ }
+]

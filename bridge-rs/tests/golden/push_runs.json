@@ -1,0 +1,2842 @@
+[
+ {
+  "fn": "message_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "o1",
+   null,
+   null
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Nouveau message",
+     "loc-key": "Nouveau message"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "outbox_id": "o1",
+   "agent": "vie"
+  }
+ },
+ {
+  "fn": "message_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "o1",
+   "s1",
+   "Prévu à 9 h"
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Prévu à 9 h"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "outbox_id": "o1",
+   "agent": "vie",
+   "session_id": "s1"
+  }
+ },
+ {
+  "fn": "message_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "o1",
+   "",
+   ""
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Nouveau message",
+     "loc-key": "Nouveau message"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "outbox_id": "o1",
+   "agent": "vie"
+  }
+ },
+ {
+  "fn": "message_payload",
+  "input": [
+   "wellness",
+   "Wellness",
+   "abc",
+   "sess_42",
+   null
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Wellness",
+     "body": "Nouveau message",
+     "loc-key": "Nouveau message"
+    },
+    "thread-id": "wellness",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "outbox_id": "abc",
+   "agent": "wellness",
+   "session_id": "sess_42"
+  }
+ },
+ {
+  "fn": "approval_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_1",
+   "req_9",
+   [
+    "once",
+    "deny"
+   ],
+   null,
+   null
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Approbation requise",
+     "loc-key": "Approbation requise"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "APPROVAL",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_1",
+   "request_id": "req_9",
+   "choices": [
+    "once",
+    "deny"
+   ]
+  }
+ },
+ {
+  "fn": "approval_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_1",
+   null,
+   null,
+   null,
+   null
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Approbation requise",
+     "loc-key": "Approbation requise"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "APPROVAL",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_1"
+  }
+ },
+ {
+  "fn": "approval_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_1",
+   "",
+   [],
+   "",
+   ""
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Approbation requise",
+     "loc-key": "Approbation requise"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "APPROVAL",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_1"
+  }
+ },
+ {
+  "fn": "approval_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_1",
+   "req",
+   [
+    "once",
+    "session",
+    "deny"
+   ],
+   "Approbation requise : rm -rf build/",
+   "api_9"
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Approbation requise : rm -rf build/"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "APPROVAL",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_1",
+   "request_id": "req",
+   "choices": [
+    "once",
+    "session",
+    "deny"
+   ],
+   "session_id": "api_9"
+  }
+ },
+ {
+  "fn": "approval_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_1",
+   "req",
+   [
+    1,
+    {
+     "x": 2
+    }
+   ],
+   null,
+   "s"
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Approbation requise",
+     "loc-key": "Approbation requise"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "APPROVAL",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_1",
+   "request_id": "req",
+   "choices": [
+    1,
+    {
+     "x": 2
+    }
+   ],
+   "session_id": "s"
+  }
+ },
+ {
+  "fn": "reply_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_2",
+   null,
+   null,
+   null,
+   "Ta réponse est prête."
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Ta réponse est prête.",
+     "loc-key": "Ta réponse est prête."
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_2",
+   "kind": "reply"
+  }
+ },
+ {
+  "fn": "reply_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_2",
+   "api_1",
+   "Le train de 9h est à 19 €.",
+   "abc",
+   "Ta réponse est prête."
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Le train de 9h est à 19 €."
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_2",
+   "kind": "reply",
+   "session_id": "api_1",
+   "reply_id": "abc"
+  }
+ },
+ {
+  "fn": "reply_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "session:api_1",
+   "api_1",
+   null,
+   null,
+   "Sous-tâche terminée"
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Sous-tâche terminée",
+     "loc-key": "Sous-tâche terminée"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "session:api_1",
+   "kind": "reply",
+   "session_id": "api_1"
+  }
+ },
+ {
+  "fn": "reply_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "session:scan",
+   null,
+   "",
+   null,
+   "Sous-tâche terminée"
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Sous-tâche terminée",
+     "loc-key": "Sous-tâche terminée"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "session:scan",
+   "kind": "reply"
+  }
+ },
+ {
+  "fn": "reply_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "session:job",
+   "",
+   "Ligne",
+   "",
+   "Tâche terminée"
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Ligne"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "session:job",
+   "kind": "reply"
+  }
+ },
+ {
+  "fn": "question_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_q",
+   "clr_1",
+   "api_7",
+   null,
+   "rid"
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Une question pour toi",
+     "loc-key": "Une question pour toi"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_q",
+   "kind": "question",
+   "request_id": "clr_1",
+   "session_id": "api_7",
+   "reply_id": "rid"
+  }
+ },
+ {
+  "fn": "question_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_q",
+   null,
+   null,
+   "Quel train ?",
+   null
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Quel train ?"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_q",
+   "kind": "question"
+  }
+ },
+ {
+  "fn": "question_payload",
+  "input": [
+   "vie",
+   "Vie",
+   "run_q",
+   "",
+   "",
+   "",
+   ""
+  ],
+  "output": {
+   "aps": {
+    "alert": {
+     "title": "Vie",
+     "body": "Une question pour toi",
+     "loc-key": "Une question pour toi"
+    },
+    "thread-id": "vie",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default"
+   },
+   "agent": "vie",
+   "run_id": "run_q",
+   "kind": "question"
+  }
+ },
+ {
+  "fn": "silent_payload",
+  "input": [
+   "vie",
+   "run_finished",
+   {
+    "run_id": "r",
+    "status": "run.completed",
+    "gone": null
+   }
+  ],
+  "output": {
+   "aps": {
+    "content-available": 1
+   },
+   "agent": "vie",
+   "reason": "run_finished",
+   "run_id": "r",
+   "status": "run.completed"
+  }
+ },
+ {
+  "fn": "silent_payload",
+  "input": [
+   "vie",
+   "test",
+   {}
+  ],
+  "output": {
+   "aps": {
+    "content-available": 1
+   },
+   "agent": "vie",
+   "reason": "test"
+  }
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "Bonjour",
+   160
+  ],
+  "output": "Bonjour"
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "  a \n\t b  ",
+   160
+  ],
+  "output": "a b"
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   160
+  ],
+  "output": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "abcd efgh",
+   6
+  ],
+  "output": "abcd…"
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "éééééééééééééééééééééééééééééé",
+   10
+  ],
+  "output": "ééééééééé…"
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "mot\u001cmot mot​mot",
+   160
+  ],
+  "output": "mot mot mot​mot"
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b",
+   160
+  ],
+  "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "",
+   160
+  ],
+  "output": ""
+ },
+ {
+  "fn": "preview",
+  "input": [
+   "Une  phrase   assez longue pour être coupée quelque part",
+   20
+  ],
+  "output": "Une phrase assez lo…"
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": {
+     "alert": {
+      "title": "Wellness",
+      "body": "Approbation requise",
+      "loc-key": "Approbation requise"
+     },
+     "thread-id": "wellness",
+     "mutable-content": 1,
+     "category": "APPROVAL",
+     "sound": "default"
+    },
+    "agent": "wellness",
+    "run_id": "run_1",
+    "request_id": "req_1",
+    "choices": [
+     "once",
+     "deny"
+    ],
+    "session_id": "s1"
+   }
+  ],
+  "output": {
+   "title": "Wellness",
+   "body": "Approbation requise",
+   "category": "APPROVAL",
+   "agent": "wellness",
+   "run_id": "run_1",
+   "request_id": "req_1",
+   "choices": "[\"once\", \"deny\"]",
+   "session_id": "s1"
+  }
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": {
+     "alert": {
+      "title": "Vie",
+      "body": "Ta réponse est prête.",
+      "loc-key": "Ta réponse est prête."
+     },
+     "thread-id": "vie",
+     "mutable-content": 1,
+     "category": "MESSAGE",
+     "sound": "default"
+    },
+    "agent": "vie",
+    "run_id": "run_2",
+    "kind": "reply",
+    "reply_id": "abc"
+   }
+  ],
+  "output": {
+   "title": "Vie",
+   "body": "Ta réponse est prête.",
+   "category": "MESSAGE",
+   "agent": "vie",
+   "run_id": "run_2",
+   "kind": "reply",
+   "reply_id": "abc"
+  }
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": {
+     "alert": {
+      "title": "Vie",
+      "body": "Aperçu é"
+     },
+     "thread-id": "vie",
+     "mutable-content": 1,
+     "category": "MESSAGE",
+     "sound": "default"
+    },
+    "outbox_id": "o1",
+    "agent": "vie",
+    "session_id": "s1"
+   }
+  ],
+  "output": {
+   "title": "Vie",
+   "body": "Aperçu é",
+   "category": "MESSAGE",
+   "outbox_id": "o1",
+   "agent": "vie",
+   "session_id": "s1"
+  }
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": {
+     "content-available": 1
+    },
+    "agent": "vie",
+    "reason": "run_finished",
+    "run_id": "r",
+    "status": "run.completed"
+   }
+  ],
+  "output": {
+   "silent": "1",
+   "agent": "vie",
+   "reason": "run_finished",
+   "run_id": "r",
+   "status": "run.completed"
+  }
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": {
+     "content-available": 1
+    },
+    "agent": "a",
+    "n": 5,
+    "f": 1.5,
+    "b": true,
+    "l": [
+     1,
+     "é"
+    ],
+    "d": {
+     "k": "v"
+    },
+    "none": null
+   }
+  ],
+  "output": {
+   "silent": "1",
+   "agent": "a",
+   "n": "5",
+   "f": "1.5",
+   "b": "true",
+   "l": "[1, \"é\"]",
+   "d": "{\"k\": \"v\"}"
+  }
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": {
+     "alert": "string alert",
+     "category": "X",
+     "content-available": 1
+    }
+   }
+  ],
+  "output": {
+   "category": "X"
+  }
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": {
+     "alert": {
+      "title": 5,
+      "body": ""
+     },
+     "category": ""
+    },
+    "title": "override"
+   }
+  ],
+  "output": {
+   "title": "override"
+  }
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": {}
+   }
+  ],
+  "output": {}
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {}
+  ],
+  "output": {}
+ },
+ {
+  "fn": "data_message",
+  "input": [
+   {
+    "aps": null,
+    "x": "y"
+   }
+  ],
+  "output": {
+   "x": "y"
+  }
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   "Cronjob Response: test-push-bipagents (job_id: 0681ac73805e)\n-------------\n\nBonjour Alex, ceci est un test.\n\nNote: The agent cannot see this message, and therefore cannot respond to it."
+  ],
+  "output": [
+   "test-push-bipagents",
+   "Bonjour Alex, ceci est un test."
+  ]
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   "Cronjob Response: Morning feeds\n-------------\n\nLe point du matin."
+  ],
+  "output": [
+   "Morning feeds",
+   "Le point du matin."
+  ]
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   "  Un message normal.  "
+  ],
+  "output": [
+   null,
+   "Un message normal."
+  ]
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   "Cronjob Response: Test push propre (job_id: 1a2b3c4d5e6f)\n-------------\n\nCoucou, test réussi.\n\nTo stop or manage this job, send me a new message (e.g. \"stop reminder Test push propre\").\n\nNote: The agent cannot see this message, and therefore cannot respond to it."
+  ],
+  "output": [
+   "Test push propre",
+   "Coucou, test réussi."
+  ]
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   "Cronjob Response:  (job_id: abc)\n---\nCorps"
+  ],
+  "output": [
+   null,
+   "Corps"
+  ]
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   "Cronjob Response: X\n--\nPas un en-tête"
+  ],
+  "output": [
+   null,
+   "Cronjob Response: X\n--\nPas un en-tête"
+  ]
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   "Cronjob Response: Job\n-----\n\nLigne 1\nNote: The agent cannot see this message here\nLigne 3"
+  ],
+  "output": [
+   "Job",
+   "Ligne 1\nNote: The agent cannot see this message here\nLigne 3"
+  ]
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   "Cronjob Response: Job\n-----\n"
+  ],
+  "output": [
+   "Job",
+   ""
+  ]
+ },
+ {
+  "fn": "unwrap_cron",
+  "input": [
+   ""
+  ],
+  "output": [
+   null,
+   ""
+  ]
+ },
+ {
+  "fn": "auth_header",
+  "input": [
+   null
+  ],
+  "output": {}
+ },
+ {
+  "fn": "auth_header",
+  "input": [
+   ""
+  ],
+  "output": {}
+ },
+ {
+  "fn": "auth_header",
+  "input": [
+   "tk_abc"
+  ],
+  "output": {
+   "Authorization": "Bearer tk_abc"
+  }
+ },
+ {
+  "fn": "auth_header",
+  "input": [
+   "tk_a:b"
+  ],
+  "output": {
+   "Authorization": "Bearer tk_a:b"
+  }
+ },
+ {
+  "fn": "auth_header",
+  "input": [
+   "user:pass"
+  ],
+  "output": {
+   "Authorization": "Basic dXNlcjpwYXNz"
+  }
+ },
+ {
+  "fn": "auth_header",
+  "input": [
+   "plain-token"
+  ],
+  "output": {
+   "Authorization": "Bearer plain-token"
+  }
+ },
+ {
+  "fn": "auth_header",
+  "input": [
+   "üser:pässe"
+  ],
+  "output": {
+   "Authorization": "Basic w7xzZXI6cMOkc3Nl"
+  }
+ },
+ {
+  "fn": "extract_media",
+  "input": [
+   "MEDIA:/home/hermes/simplex-files/point.mp3\n\n🎙️ Point du matin — lundi 5 octobre"
+  ],
+  "output": [
+   "🎙️ Point du matin — lundi 5 octobre",
+   [
+    "/home/hermes/simplex-files/point.mp3"
+   ]
+  ]
+ },
+ {
+  "fn": "extract_media",
+  "input": [
+   "Voici :\n  MEDIA: /a/b.png  \n\n\n\nFin\nMEDIA:/c/d.mp3"
+  ],
+  "output": [
+   "Voici :\n\nFin",
+   [
+    "/a/b.png",
+    "/c/d.mp3"
+   ]
+  ]
+ },
+ {
+  "fn": "extract_media",
+  "input": [
+   "pas de média ici"
+  ],
+  "output": [
+   "pas de média ici",
+   []
+  ]
+ },
+ {
+  "fn": "extract_media",
+  "input": [
+   "texte MEDIA:/x.mp3 au milieu"
+  ],
+  "output": [
+   "texte MEDIA:/x.mp3 au milieu",
+   []
+  ]
+ },
+ {
+  "fn": "extract_media",
+  "input": [
+   "MEDIA:/x.mp3\r\nSuite"
+  ],
+  "output": [
+   "MEDIA:/x.mp3\r\nSuite",
+   []
+  ]
+ },
+ {
+  "fn": "extract_media",
+  "input": [
+   "MEDIA:/only.mp3"
+  ],
+  "output": [
+   "",
+   [
+    "/only.mp3"
+   ]
+  ]
+ },
+ {
+  "fn": "extract_media",
+  "input": [
+   "\n\nMEDIA:/a.mp3\n\n\n\nMEDIA:/b.mp3\n\n"
+  ],
+  "output": [
+   "",
+   [
+    "/a.mp3",
+    "/b.mp3"
+   ]
+  ]
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "cron_fc344ed09026_20261005_075008"
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "cron_fc344ed09026_20261005_075008"
+   }
+  ],
+  "output": "2026-10-05T07:50:08"
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "api_1791112967_496e4649"
+   }
+  ],
+  "output": false
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "api_1791112967_496e4649"
+   }
+  ],
+  "output": null
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "session_id": "cron_x_1"
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "session_id": "cron_x_1"
+   }
+  ],
+  "output": null
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "x",
+    "source": "Cron"
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "x",
+    "source": "Cron"
+   }
+  ],
+  "output": null
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "",
+    "session_id": "cron_a_20261005_060000"
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "",
+    "session_id": "cron_a_20261005_060000"
+   }
+  ],
+  "output": "2026-10-05T06:00:00"
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {}
+  ],
+  "output": false
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {}
+  ],
+  "output": null
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "cron_a_b_20261005_060000"
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "cron_a_b_20261005_060000"
+   }
+  ],
+  "output": "2026-10-05T06:00:00"
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "cron_a_20261399_060000",
+    "started_at": "2026-10-05T07:00:00"
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "cron_a_20261399_060000",
+    "started_at": "2026-10-05T07:00:00"
+   }
+  ],
+  "output": "2026-10-05T07:00:00"
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "api_1",
+    "started_at": "2026-10-05T07:50:08"
+   }
+  ],
+  "output": false
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "api_1",
+    "started_at": "2026-10-05T07:50:08"
+   }
+  ],
+  "output": "2026-10-05T07:50:08"
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "api_1",
+    "created_at": "pas une date",
+    "created": "2026-10-04"
+   }
+  ],
+  "output": false
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "api_1",
+    "created_at": "pas une date",
+    "created": "2026-10-04"
+   }
+  ],
+  "output": "2026-10-04T00:00:00"
+ },
+ {
+  "fn": "is_cron_session",
+  "input": [
+   {
+    "id": "cron_x_20261005_075008\n"
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "session_started",
+  "input": [
+   {
+    "id": "cron_x_20261005_075008\n"
+   }
+  ],
+  "output": "2026-10-05T07:50:08"
+ },
+ {
+  "fn": "job_id",
+  "input": [
+   "cron_fc344ed09026_20261005_075008"
+  ],
+  "output": "fc344ed09026"
+ },
+ {
+  "fn": "job_id",
+  "input": [
+   "api_123"
+  ],
+  "output": null
+ },
+ {
+  "fn": "job_id",
+  "input": [
+   "cron_a_b_c_20261005_075008"
+  ],
+  "output": "a_b_c"
+ },
+ {
+  "fn": "job_id",
+  "input": [
+   "cron__20261005_075008"
+  ],
+  "output": null
+ },
+ {
+  "fn": "job_name",
+  "input": [
+   null
+  ],
+  "output": null
+ },
+ {
+  "fn": "job_name",
+  "input": [
+   ""
+  ],
+  "output": null
+ },
+ {
+  "fn": "job_name",
+  "input": [
+   "Podcast du matin · Oct 05 07:53"
+  ],
+  "output": "Podcast du matin"
+ },
+ {
+  "fn": "job_name",
+  "input": [
+   " · x"
+  ],
+  "output": null
+ },
+ {
+  "fn": "job_name",
+  "input": [
+   "Simple"
+  ],
+  "output": "Simple"
+ },
+ {
+  "fn": "job_name",
+  "input": [
+   "  Espaces  · y"
+  ],
+  "output": "Espaces"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "prompt"
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Voilà le point."
+      }
+     ]
+    }
+   ]
+  ],
+  "output": "Voilà le point."
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "prompt"
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Voilà le point."
+      }
+     ]
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "prompt"
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Voilà le point."
+      }
+     ]
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "prompt"
+   }
+  ],
+  "output": "prompt"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "Voilà le point."
+     }
+    ]
+   }
+  ],
+  "output": "Voilà le point."
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": "…"
+    },
+    {
+     "role": "user",
+     "content": "encore"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": "…"
+    },
+    {
+     "role": "user",
+     "content": "encore"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": "…"
+    },
+    {
+     "role": "user",
+     "content": "encore"
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "…"
+   }
+  ],
+  "output": "…"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "encore"
+   }
+  ],
+  "output": "encore"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "  Fin  "
+    },
+    {
+     "role": "assistant",
+     "content": ""
+    }
+   ]
+  ],
+  "output": "Fin"
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "  Fin  "
+    },
+    {
+     "role": "assistant",
+     "content": ""
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "  Fin  "
+    },
+    {
+     "role": "assistant",
+     "content": ""
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "p"
+   }
+  ],
+  "output": "p"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "  Fin  "
+   }
+  ],
+  "output": "Fin"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": ""
+   }
+  ],
+  "output": ""
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "c",
+     "tool_calls": [
+      {
+       "x": 1
+      }
+     ]
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "c",
+     "tool_calls": [
+      {
+       "x": 1
+      }
+     ]
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "c",
+     "tool_calls": [
+      {
+       "x": 1
+      }
+     ]
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "p"
+   }
+  ],
+  "output": "p"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "c",
+    "tool_calls": [
+     {
+      "x": 1
+     }
+    ]
+   }
+  ],
+  "output": "c"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "c",
+     "tool_calls": []
+    }
+   ]
+  ],
+  "output": "c"
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "c",
+     "tool_calls": []
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "p"
+    },
+    {
+     "role": "assistant",
+     "content": "c",
+     "tool_calls": []
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "p"
+   }
+  ],
+  "output": "p"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "c",
+    "tool_calls": []
+   }
+  ],
+  "output": "c"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "Assistant",
+     "text": "Par text"
+    }
+   ]
+  ],
+  "output": "Par text"
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "Assistant",
+     "text": "Par text"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "Assistant",
+     "text": "Par text"
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "Assistant",
+    "text": "Par text"
+   }
+  ],
+  "output": "Par text"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": null,
+     "text": "ignored"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": null,
+     "text": "ignored"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": null,
+     "text": "ignored"
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": null,
+    "text": "ignored"
+   }
+  ],
+  "output": ""
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "output_text",
+       "text": "A"
+      },
+      {
+       "type": "image",
+       "text": "B"
+      },
+      "x",
+      {
+       "type": "text",
+       "text": "C"
+      }
+     ]
+    }
+   ]
+  ],
+  "output": "AC"
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "output_text",
+       "text": "A"
+      },
+      {
+       "type": "image",
+       "text": "B"
+      },
+      "x",
+      {
+       "type": "text",
+       "text": "C"
+      }
+     ]
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "output_text",
+       "text": "A"
+      },
+      {
+       "type": "image",
+       "text": "B"
+      },
+      "x",
+      {
+       "type": "text",
+       "text": "C"
+      }
+     ]
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "output_text",
+      "text": "A"
+     },
+     {
+      "type": "image",
+      "text": "B"
+     },
+     "x",
+     {
+      "type": "text",
+      "text": "C"
+     }
+    ]
+   }
+  ],
+  "output": "AC"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "tool",
+     "content": "ok"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "tool",
+     "content": "ok"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "tool",
+     "content": "ok"
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "tool",
+    "content": "ok"
+   }
+  ],
+  "output": "ok"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   []
+  ],
+  "output": null
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   []
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   []
+  ],
+  "output": false
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": "Relancé"
+    },
+    {
+     "role": "user",
+     "content": "[ASYNC DELEGATION BATCH COMPLETE — d] ok"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": "Relancé"
+    },
+    {
+     "role": "user",
+     "content": "[ASYNC DELEGATION BATCH COMPLETE — d] ok"
+    }
+   ]
+  ],
+  "output": "[ASYNC DELEGATION BATCH COMPLETE — d] ok"
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "assistant",
+     "content": "Relancé"
+    },
+    {
+     "role": "user",
+     "content": "[ASYNC DELEGATION BATCH COMPLETE — d] ok"
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "Relancé"
+   }
+  ],
+  "output": "Relancé"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "[ASYNC DELEGATION BATCH COMPLETE — d] ok"
+   }
+  ],
+  "output": "[ASYNC DELEGATION BATCH COMPLETE — d] ok"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "  [SUBAGENT done]"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "  [SUBAGENT done]"
+    }
+   ]
+  ],
+  "output": "[SUBAGENT done]"
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "  [SUBAGENT done]"
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "  [SUBAGENT done]"
+   }
+  ],
+  "output": "[SUBAGENT done]"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "[DELEGATION x]"
+    },
+    {
+     "role": "assistant",
+     "content": "Voilà"
+    }
+   ]
+  ],
+  "output": "Voilà"
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "[DELEGATION x]"
+    },
+    {
+     "role": "assistant",
+     "content": "Voilà"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "[DELEGATION x]"
+    },
+    {
+     "role": "assistant",
+     "content": "Voilà"
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "[DELEGATION x]"
+   }
+  ],
+  "output": "[DELEGATION x]"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "Voilà"
+   }
+  ],
+  "output": "Voilà"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from 🤖 Vie (@vie): Comment était la nuit ?"
+    },
+    {
+     "role": "assistant",
+     "content": "Correcte."
+    }
+   ]
+  ],
+  "output": "Correcte."
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from 🤖 Vie (@vie): Comment était la nuit ?"
+    },
+    {
+     "role": "assistant",
+     "content": "Correcte."
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from 🤖 Vie (@vie): Comment était la nuit ?"
+    },
+    {
+     "role": "assistant",
+     "content": "Correcte."
+    }
+   ]
+  ],
+  "output": true
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "Message from 🤖 Vie (@vie): Comment était la nuit ?"
+   }
+  ],
+  "output": "Message from 🤖 Vie (@vie): Comment était la nuit ?"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "Correcte."
+   }
+  ],
+  "output": "Correcte."
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Demande à Wellness"
+    },
+    {
+     "role": "assistant",
+     "content": "Je demande.",
+     "tool_calls": [
+      {
+       "function": {
+        "name": "message_agent",
+        "arguments": "{\"target\": \"wellness\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "Message from 🤖 Wellness (@wellness): Nuit correcte."
+    },
+    {
+     "role": "assistant",
+     "content": "Wellness dit : nuit correcte."
+    }
+   ]
+  ],
+  "output": "Wellness dit : nuit correcte."
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Demande à Wellness"
+    },
+    {
+     "role": "assistant",
+     "content": "Je demande.",
+     "tool_calls": [
+      {
+       "function": {
+        "name": "message_agent",
+        "arguments": "{\"target\": \"wellness\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "Message from 🤖 Wellness (@wellness): Nuit correcte."
+    },
+    {
+     "role": "assistant",
+     "content": "Wellness dit : nuit correcte."
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Demande à Wellness"
+    },
+    {
+     "role": "assistant",
+     "content": "Je demande.",
+     "tool_calls": [
+      {
+       "function": {
+        "name": "message_agent",
+        "arguments": "{\"target\": \"wellness\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "Message from 🤖 Wellness (@wellness): Nuit correcte."
+    },
+    {
+     "role": "assistant",
+     "content": "Wellness dit : nuit correcte."
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "Demande à Wellness"
+   }
+  ],
+  "output": "Demande à Wellness"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "Je demande.",
+    "tool_calls": [
+     {
+      "function": {
+       "name": "message_agent",
+       "arguments": "{\"target\": \"wellness\"}"
+      }
+     }
+    ]
+   }
+  ],
+  "output": "Je demande."
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "Message from 🤖 Wellness (@wellness): Nuit correcte."
+   }
+  ],
+  "output": "Message from 🤖 Wellness (@wellness): Nuit correcte."
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "Wellness dit : nuit correcte."
+   }
+  ],
+  "output": "Wellness dit : nuit correcte."
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from Bob (@bob.b-1): hello"
+    },
+    {
+     "role": "assistant",
+     "content": "hi"
+    }
+   ]
+  ],
+  "output": "hi"
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from Bob (@bob.b-1): hello"
+    },
+    {
+     "role": "assistant",
+     "content": "hi"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from Bob (@bob.b-1): hello"
+    },
+    {
+     "role": "assistant",
+     "content": "hi"
+    }
+   ]
+  ],
+  "output": true
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "Message from Bob (@bob.b-1): hello"
+   }
+  ],
+  "output": "Message from Bob (@bob.b-1): hello"
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "assistant",
+    "content": "hi"
+   }
+  ],
+  "output": "hi"
+ },
+ {
+  "fn": "final_reply",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from (@x): sans nom"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "subtask_report",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from (@x): sans nom"
+    }
+   ]
+  ],
+  "output": null
+ },
+ {
+  "fn": "answers_another_agent",
+  "input": [
+   [
+    {
+     "role": "user",
+     "content": "Message from (@x): sans nom"
+    }
+   ]
+  ],
+  "output": false
+ },
+ {
+  "fn": "message_text",
+  "input": [
+   {
+    "role": "user",
+    "content": "Message from (@x): sans nom"
+   }
+  ],
+  "output": "Message from (@x): sans nom"
+ },
+ {
+  "fn": "report_line",
+  "input": [
+   "[ASYNC DELEGATION BATCH COMPLETE — deleg_1194136c]\n\nTask 1 (completed): mini podcast generated, saved to /home/hermes/.hermes/media/podcast_jeudi0810.mp3 (58 s)."
+  ],
+  "output": "🎧 Podcast jeudi0810"
+ },
+ {
+  "fn": "report_line",
+  "input": [
+   "[ASYNC DELEGATION BATCH COMPLETE — x] see /srv/media/chart-sleep.png"
+  ],
+  "output": "🖼️ Chart sleep"
+ },
+ {
+  "fn": "report_line",
+  "input": [
+   "[ASYNC DELEGATION BATCH COMPLETE — x] done, nothing saved"
+  ],
+  "output": null
+ },
+ {
+  "fn": "report_line",
+  "input": [
+   "see /a/media/b/clip__final--v2.MOV and /a/media/c.mp3"
+  ],
+  "output": "🎧 C"
+ },
+ {
+  "fn": "report_line",
+  "input": [
+   "/media/x.mp3"
+  ],
+  "output": null
+ },
+ {
+  "fn": "report_line",
+  "input": [
+   "/x/media/noext.mp3x"
+  ],
+  "output": null
+ },
+ {
+  "fn": "report_line",
+  "input": [
+   "/x/media/émission_spéciale.ogg"
+  ],
+  "output": "🎧 Émission spéciale"
+ },
+ {
+  "fn": "report_line",
+  "input": [
+   "/x/media/.mp3"
+  ],
+  "output": null
+ },
+ {
+  "fn": "is_bot_chat",
+  "input": [
+   {
+    "title": "Bot Chat"
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "is_bot_chat",
+  "input": [
+   {
+    "title": " bot chat "
+   }
+  ],
+  "output": true
+ },
+ {
+  "fn": "is_bot_chat",
+  "input": [
+   {
+    "title": "Chat"
+   }
+  ],
+  "output": false
+ },
+ {
+  "fn": "is_bot_chat",
+  "input": [
+   {
+    "title": null
+   }
+  ],
+  "output": false
+ },
+ {
+  "fn": "is_bot_chat",
+  "input": [
+   {}
+  ],
+  "output": false
+ },
+ {
+  "fn": "is_bot_chat",
+  "input": [
+   {
+    "title": 5
+   }
+  ],
+  "output": false
+ },
+ {
+  "fn": "append_to_backlog",
+  "input": [
+   [
+    [
+     "message.delta",
+     {
+      "delta": "Bon"
+     },
+     "{\"event\": \"message.delta\", \"delta\": \"Bon\"}"
+    ],
+    [
+     "message.delta",
+     {
+      "delta": "jour é"
+     },
+     "{\"event\": \"message.delta\", \"delta\": \"jour \\u00e9\"}"
+    ],
+    [
+     "tool.started",
+     {
+      "tool": "x"
+     },
+     "{\"event\": \"tool.started\", \"tool\": \"x\"}"
+    ],
+    [
+     "message.delta",
+     {
+      "delta": "a"
+     },
+     "{\"event\": \"message.delta\", \"delta\": \"a\"}"
+    ],
+    [
+     "assistant.delta",
+     {
+      "delta": "b"
+     },
+     "{\"event\": \"assistant.delta\", \"delta\": \"b\"}"
+    ],
+    [
+     "assistant.delta",
+     {
+      "delta": "c",
+      "extra": 1
+     },
+     "{\"event\": \"assistant.delta\", \"delta\": \"c\", \"extra\": 1}"
+    ]
+   ]
+  ],
+  "output": [
+   [
+    "message.delta",
+    {
+     "delta": "Bonjour é"
+    },
+    "{\"delta\": \"Bonjour é\"}"
+   ],
+   [
+    "tool.started",
+    {
+     "tool": "x"
+    },
+    "{\"event\": \"tool.started\", \"tool\": \"x\"}"
+   ],
+   [
+    "message.delta",
+    {
+     "delta": "a"
+    },
+    "{\"event\": \"message.delta\", \"delta\": \"a\"}"
+   ],
+   [
+    "assistant.delta",
+    {
+     "delta": "bc"
+    },
+    "{\"delta\": \"bc\"}"
+   ]
+  ]
+ },
+ {
+  "fn": "append_to_backlog",
+  "input": [
+   [
+    [
+     "message.delta",
+     {
+      "delta": 5
+     },
+     "{\"event\": \"message.delta\", \"delta\": 5}"
+    ],
+    [
+     "message.delta",
+     {
+      "delta": "x"
+     },
+     "{\"event\": \"message.delta\", \"delta\": \"x\"}"
+    ],
+    [
+     "message.delta",
+     {
+      "delta": "y"
+     },
+     "{\"event\": \"message.delta\", \"delta\": \"y\"}"
+    ]
+   ]
+  ],
+  "output": [
+   [
+    "message.delta",
+    {
+     "delta": 5
+    },
+    "{\"event\": \"message.delta\", \"delta\": 5}"
+   ],
+   [
+    "message.delta",
+    {
+     "delta": "xy"
+    },
+    "{\"delta\": \"xy\"}"
+   ]
+  ]
+ },
+ {
+  "fn": "append_to_backlog",
+  "input": [
+   [
+    [
+     "response.output_text.delta",
+     {
+      "delta": "a",
+      "run_id": "r"
+     },
+     ""
+    ],
+    [
+     "response.output_text.delta",
+     {
+      "delta": "b"
+     },
+     "{\"event\": \"response.output_text.delta\", \"delta\": \"b\"}"
+    ]
+   ]
+  ],
+  "output": [
+   [
+    "response.output_text.delta",
+    {
+     "delta": "ab",
+     "run_id": "r"
+    },
+    "{\"delta\": \"ab\", \"run_id\": \"r\"}"
+   ]
+  ]
+ },
+ {
+  "fn": "append_to_backlog",
+  "input": [
+   [
+    [
+     "run.completed",
+     {
+      "output": "x"
+     },
+     "{\"event\": \"run.completed\", \"output\": \"x\"}"
+    ],
+    [
+     "run.completed",
+     {
+      "output": "y"
+     },
+     "{\"event\": \"run.completed\", \"output\": \"y\"}"
+    ]
+   ]
+  ],
+  "output": [
+   [
+    "run.completed",
+    {
+     "output": "x"
+    },
+    "{\"event\": \"run.completed\", \"output\": \"x\"}"
+   ],
+   [
+    "run.completed",
+    {
+     "output": "y"
+    },
+    "{\"event\": \"run.completed\", \"output\": \"y\"}"
+   ]
+  ]
+ },
+ {
+  "fn": "clarify_id",
+  "input": [
+   {
+    "request_id": "r",
+    "clarify_id": "c"
+   }
+  ],
+  "output": "r"
+ },
+ {
+  "fn": "clarify_id",
+  "input": [
+   {
+    "clarify_id": "c"
+   }
+  ],
+  "output": "c"
+ },
+ {
+  "fn": "clarify_id",
+  "input": [
+   {
+    "request_id": 5,
+    "clarify_id": "c"
+   }
+  ],
+  "output": "c"
+ },
+ {
+  "fn": "clarify_id",
+  "input": [
+   {}
+  ],
+  "output": null
+ },
+ {
+  "fn": "clarify_id",
+  "input": [
+   {
+    "request_id": ""
+   }
+  ],
+  "output": ""
+ }
+]

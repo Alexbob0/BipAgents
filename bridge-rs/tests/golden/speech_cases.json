@@ -1,0 +1,429 @@
+{
+ "numbers_fr": {
+  "test_lexicon": [
+   [
+    "Bordeaux St-Jean → Paris Montparnasse le 03/02/2027 : 19 €.",
+    "Bordeaux Saint-Jean, Paris Montparnasse le trois février deux mille vingt-sept : dix-neuf euros."
+   ],
+   [
+    "Pluie -> annulation => on reste au chaud.\n→ Premier point",
+    "Pluie, annulation, on reste au chaud.\nPremier point"
+   ],
+   [
+    "Environ 1 mm, 3 m de haut, 250 g de farine, 1 L d'eau, 50 cl, 2 Go, 500 Mo, 1 kWh, 12 m².",
+    "Environ un millimètre, trois mètres de haut, deux cent cinquante grammes de farine, un litre d'eau, cinquante centilitres, deux gigaoctets, cinq cents mégaoctets, un kilowattheure, douze mètres carrés."
+   ],
+   [
+    "Ils sont 3 l'ont vu, 5 m'a dit.",
+    "Ils sont trois l'ont vu, cinq m'a dit."
+   ],
+   [
+    "RDV @ 14h avec @Léa @ la maison, prix@10 €, écris à alex.martin+bip@example.co.uk.",
+    "rendez-vous à quatorze heures avec Léa à la maison, prix à dix euros, écris à alex.martin+bip@example.co.uk."
+   ],
+   [
+    "RDV avec Mme Martin et M. Durand, Dr Lopez absent.",
+    "rendez-vous avec Madame Martin et Monsieur Durand, Docteur Lopez absent."
+   ],
+   [
+    "Comptez env. 2 h, p. ex. le matin, c.-à-d. tôt.",
+    "Comptez environ deux heures, par exemple le matin, c'est-à-dire tôt."
+   ],
+   [
+    "Pommes, poires, etc. Puis le dessert.",
+    "Pommes, poires, et cetera, Puis le dessert."
+   ],
+   [
+    "Ligne n°4, Sainte-Anne & Ste Marie, ≈ 30 min, ≥ 5 km.",
+    "Ligne numéro quatre, Sainte-Anne et Sainte Marie, environ trente minutes, au moins cinq kilomètres."
+   ],
+   [
+    "Wellness + Vie, 3 × 10 reps, PSG vs OM.",
+    "ouèlnesse plus Vie, trois fois dix reps, PSG contre OM."
+   ]
+  ],
+  "test_prepare_for_synthesis": [
+   [
+    "Cherche sur DuckDuckGo ou YouTube.",
+    "Cherche sur Duck Duck Go ou YouTube."
+   ],
+   [
+    "Selon OpenAI, iPhone et SNCF restent tels quels.",
+    "Selon Open AI, iPhone et SNCF restent tels quels."
+   ],
+   [
+    "Le train (TGV) part à 9h.",
+    "Le train, TGV, part à neuf heures."
+   ],
+   [
+    "Deux options (la seconde est moins chère).",
+    "Deux options, la seconde est moins chère."
+   ],
+   [
+    "Prends le bus — ou marche [si beau temps].",
+    "Prends le bus, ou marche, si beau temps."
+   ],
+   [
+    "Sommeil noté 8/10, 3/4 du trajet, 1/2 litre.",
+    "Sommeil noté huit sur dix, trois quarts du trajet, un demi litre."
+   ],
+   [
+    "Ouvert 7j/7 et 24h/24.",
+    "Ouvert sept jours sur sept et vingt-quatre heures sur vingt-quatre."
+   ],
+   [
+    "Rendez-vous le 04/10/2026, rappel le 01/11.",
+    "Rendez-vous le quatre octobre deux mille vingt-six, rappel le premier novembre."
+   ],
+   [
+    "Données Garmin/Oura, billet aller/retour, A/R, et/ou à 50 km/h.",
+    "Données Garmine ou Oûra, billet aller-retour, aller-retour, et ou à cinquante kilomètres heure."
+   ]
+  ],
+  "test_ranges_and_dashed_dates": [
+   [
+    "Entre 42-46% des cas.",
+    "Entre quarante-deux à quarante-six pour cent des cas."
+   ],
+   [
+    "Entre 42–46 % des cas.",
+    "Entre quarante-deux à quarante-six pour cent des cas."
+   ],
+   [
+    "De 9-12h",
+    "De neuf à douze heures"
+   ],
+   [
+    "le 12-10-2026",
+    "le douze octobre deux mille vingt-six"
+   ],
+   [
+    "le 2026-10-12",
+    "le douze octobre deux mille vingt-six"
+   ],
+   [
+    "Il fait -5 °C",
+    "Il fait moins cinq degrés"
+   ]
+  ],
+  "test_spell_int": [
+   [
+    0,
+    "zéro"
+   ],
+   [
+    1,
+    "un"
+   ],
+   [
+    16,
+    "seize"
+   ],
+   [
+    17,
+    "dix-sept"
+   ],
+   [
+    21,
+    "vingt et un"
+   ],
+   [
+    22,
+    "vingt-deux"
+   ],
+   [
+    70,
+    "soixante-dix"
+   ],
+   [
+    71,
+    "soixante et onze"
+   ],
+   [
+    77,
+    "soixante-dix-sept"
+   ],
+   [
+    80,
+    "quatre-vingts"
+   ],
+   [
+    81,
+    "quatre-vingt-un"
+   ],
+   [
+    91,
+    "quatre-vingt-onze"
+   ],
+   [
+    99,
+    "quatre-vingt-dix-neuf"
+   ],
+   [
+    100,
+    "cent"
+   ],
+   [
+    101,
+    "cent un"
+   ],
+   [
+    200,
+    "deux cents"
+   ],
+   [
+    201,
+    "deux cent un"
+   ],
+   [
+    1000,
+    "mille"
+   ],
+   [
+    1990,
+    "mille neuf cent quatre-vingt-dix"
+   ],
+   [
+    2026,
+    "deux mille vingt-six"
+   ],
+   [
+    80000,
+    "quatre-vingt mille"
+   ],
+   [
+    200000,
+    "deux cent mille"
+   ],
+   [
+    1000000,
+    "un million"
+   ],
+   [
+    2500000,
+    "deux millions cinq cent mille"
+   ],
+   [
+    80000000,
+    "quatre-vingts millions"
+   ]
+  ],
+  "test_spell_numbers": [
+   [
+    "Ta fréquence moyenne était de 91.",
+    "Ta fréquence moyenne était de quatre-vingt-onze."
+   ],
+   [
+    "Rendez-vous à 14h30, puis à 9h.",
+    "Rendez-vous à quatorze heures trente, puis à neuf heures."
+   ],
+   [
+    "Réveil à 07:05 et 1h de marche.",
+    "Réveil à sept heures cinq et une heure de marche."
+   ],
+   [
+    "Ça fait 3,5 % de plus.",
+    "Ça fait trois virgule cinq pour cent de plus."
+   ],
+   [
+    "Le billet coûte 1 200 € ou 1 € de frais.",
+    "Le billet coûte mille deux cents euros ou un euro de frais."
+   ],
+   [
+    "Il fera 18 °C demain, -2° la nuit.",
+    "Il fera dix-huit degrés demain, moins deux degrés la nuit."
+   ],
+   [
+    "Le 1er octobre, la 1re séance, le 21e jour.",
+    "Le premier octobre, la première séance, le vingt et unième jour."
+   ],
+   [
+    "Tu as couru 10 km en 52 min, à 145 bpm.",
+    "Tu as couru dix kilomètres en cinquante-deux minutes, à cent quarante-cinq battements par minute."
+   ],
+   [
+    "Ta VFC est de 45 ms.",
+    "Ta VFC est de quarante-cinq millisecondes."
+   ],
+   [
+    "Appelle le 06 12 34.",
+    "Appelle le zéro six douze trente-quatre."
+   ],
+   [
+    "Version 3.3.0 sans chiffres lus.",
+    "Version 3.3.0 sans chiffres lus."
+   ],
+   [
+    "Entre 10-12 personnes.",
+    "Entre dix à douze personnes."
+   ],
+   [
+    "Rien à lire ici.",
+    "Rien à lire ici."
+   ]
+  ],
+  "test_spell_ordinal": [
+   [
+    1,
+    "premier"
+   ],
+   [
+    2,
+    "deuxième"
+   ],
+   [
+    5,
+    "cinquième"
+   ],
+   [
+    9,
+    "neuvième"
+   ],
+   [
+    21,
+    "vingt et unième"
+   ],
+   [
+    80,
+    "quatre-vingtième"
+   ],
+   [
+    1000,
+    "millième"
+   ]
+  ],
+  "test_tilde_and_english_words": [
+   [
+    "Ça prend ~15 min, soit ~ une heure en tout, ou 2~3 jours.",
+    "Ça prend environ quinze minutes, soit environ une heure en tout, ou deux à trois jours."
+   ],
+   [
+    "Les runs Hermes et le cron du matin.",
+    "Les reunes Hermes et le crone du matin."
+   ],
+   [
+    "Lance un Live avec Wellness, puis check tes emails.",
+    "Lance un laïve avec ouèlnesse, puis tchèque tes emails."
+   ],
+   [
+    "Rien d'anglais dans « il court » ni « livret ».",
+    "Rien d'anglais dans « il court » ni « livret »."
+   ]
+  ]
+ },
+ "speech_intl": {
+  "test_prepare_for_synthesis": [
+   [
+    "en",
+    "Bed at 11:15, 64 °F.",
+    "Bed at eleven fifteen, sixty-four degrees Fahrenheit."
+   ],
+   [
+    "en",
+    "About 1 mm, 250 g of flour, 1 L of water, 2 GB, the 1990s. Rain -> cancel.",
+    "About one millimeter, two hundred and fifty grams of flour, one liter of water, two gigabytes, the 1990s. Rain, cancel."
+   ],
+   [
+    "es",
+    "3 m de alto, 250 g de harina, 1 l de agua. Lluvia -> cancelado.",
+    "tres metros de alto, doscientos cincuenta gramos de harina, un litro de agua. Lluvia, cancelado."
+   ],
+   [
+    "de",
+    "Etwa 1 mm, 250 g Mehl, 1 kWh.\n-> Regen",
+    "Etwa ein Millimeter, zweihundertfünfzig Gramm Mehl, eine Kilowattstunde.\nRegen"
+   ],
+   [
+    "en",
+    "Meet @ the station with @Bob, mail bob@example.com",
+    "Meet at the station with Bob, mail bob@example.com"
+   ],
+   [
+    "en",
+    "You spent $420.50 (12% less) in 2026.",
+    "You spent four hundred and twenty dollars and fifty cents, twelve percent less, in twenty twenty-six."
+   ],
+   [
+    "en",
+    "1,250 steps vs 1 h on the 3rd day.",
+    "one thousand two hundred and fifty steps versus one hour on the third day."
+   ],
+   [
+    "en",
+    "Garmin/Oura e.g. OpenAI",
+    "Garmin or Oura for example Open AI"
+   ],
+   [
+    "es",
+    "A las 23:15, 18 °C.",
+    "A las veintitrés y quince, dieciocho grados."
+   ],
+   [
+    "es",
+    "Gastaste 420,50 € el 3º día.",
+    "Gastaste cuatrocientos veinte euros con cincuenta el tercer día."
+   ],
+   [
+    "es",
+    "1 día, 1 semana, 1.250 pasos, 3,5 km.",
+    "un día, una semana, mil doscientos cincuenta pasos, tres coma cinco kilómetros."
+   ],
+   [
+    "de",
+    "Um 23:15 Uhr, 18 °C.",
+    "Um dreiundzwanzig Uhr fünfzehn, achtzehn Grad."
+   ],
+   [
+    "de",
+    "420,50 € am 3. Oktober 2026.",
+    "vierhundertzwanzig Euro fünfzig am dritten Oktober zweitausendsechsundzwanzig."
+   ],
+   [
+    "en",
+    "Due 2026-10-12.",
+    "Due October twelfth, twenty twenty-six."
+   ],
+   [
+    "es",
+    "Para el 2026-10-12.",
+    "Para el doce de octubre de dos mil veintiséis."
+   ],
+   [
+    "de",
+    "Bis 2026-10-12.",
+    "Bis zwölften Oktober zweitausendsechsundzwanzig."
+   ],
+   [
+    "de",
+    "1 Tag, 1 Woche, 1.250 Schritte, z. B. 1999",
+    "ein Tag, eine Woche, eintausendzweihundertfünfzig Schritte, zum Beispiel neunzehnhundertneunundneunzig"
+   ]
+  ],
+  "test_voice_language": [
+   [
+    "pocket:loutre",
+    "fr"
+   ],
+   [
+    "5476",
+    "fr"
+   ],
+   [
+    "pocket:en/loutre",
+    "en"
+   ],
+   [
+    "pocket:es/ours",
+    "es"
+   ],
+   [
+    "pocket:de/lutin",
+    "de"
+   ],
+   [
+    "pocket:xx/lutin",
+    "fr"
+   ]
+  ]
+ }
+}
