@@ -407,6 +407,11 @@ impl HermesError {
 pub type EventStream = Pin<Box<dyn Stream<Item = Result<SSEEvent, HermesError>> + Send>>;
 
 /// The first `n` characters (Python's `text[:n]`).
+/// Just claimed (cloud_setup.rs): the gateway restarting, or the agent still being made, is waited for.
+async fn ready(agent: &AgentConfig) {
+    crate::cloud_setup::READINESS.wait(&agent.name, crate::cloud_setup::READY_WAIT).await;
+}
+
 pub fn head(text: &str, n: usize) -> String {
     text.chars().take(n).collect()
 }
@@ -433,6 +438,7 @@ impl HermesClient {
     }
 
     async fn get_json(&self, agent: &AgentConfig, path: &str, params: &[(&str, String)]) -> Result<Value, HermesError> {
+        ready(agent).await;
         let resp = self
             .client
             .get(format!("{}{}", agent.hermes_url, path))
@@ -532,6 +538,7 @@ impl HermesClient {
         body: Option<Value>,
         timeout: f64,
     ) -> Result<Value, HermesError> {
+        ready(agent).await;
         let mut request = self
             .client
             .request(method, format!("{}{}", agent.hermes_url, path))
@@ -644,6 +651,7 @@ impl HermesClient {
     /// `HermesError::Http` on a non-200 answer (before any event), with a transport error when unreachable.
     /// Timeouts as in Python: 5 s to connect, 60 s between two reads (Hermes sends keepalives every 10 s).
     pub async fn run_events(&self, agent: &AgentConfig, run_id: &str) -> Result<EventStream, HermesError> {
+        ready(agent).await;
         let url = format!("{}/v1/runs/{run_id}/events", agent.hermes_url);
         let request = self.client.get(url).headers(Self::headers(agent, "text/event-stream")).send();
         let resp = match tokio::time::timeout(Duration::from_secs(65), request).await {
@@ -667,6 +675,7 @@ impl HermesClient {
         choice: &str,
         request_id: Option<&str>,
     ) -> Result<(u16, Value), HermesError> {
+        ready(agent).await;
         let mut body = Map::new();
         body.insert("choice".into(), Value::String(choice.to_string()));
         if let Some(rid) = request_id.filter(|r| !r.is_empty()) {

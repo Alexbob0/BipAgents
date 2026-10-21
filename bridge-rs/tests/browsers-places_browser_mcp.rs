@@ -222,6 +222,80 @@ async fn a_browser_that_cannot_start_is_said_to_the_agent() {
     assert_eq!(proxy.calls.load(Ordering::SeqCst), 0);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_agent_connects_from_what_another_agents_server_said_and_its_container_is_set_up_at_first_use() {
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let log = tmp.join("log").to_string_lossy().into_owned();
+    let mut config = config(tmp);
+    let shared = tmp.join("mcp-cache.json");
+    let unit = tmp.join("units").join("bipagents-browser-new.service");
+    config.insert("shared_cache".into(), json!(shared.to_string_lossy()));
+    config.insert("unit".into(), json!({"path": unit.to_string_lossy(), "text": "[Unit]\n"}));
+    config.insert("profile".into(), json!(tmp.join("profile").to_string_lossy()));
+    config.insert("reload".into(), json!(["sh", "-c", format!("echo reload >> {log}")]));
+    // Another agent's server, seen once: its answers kept for every agent.
+    std::fs::write(
+        &shared,
+        json!({"initialize": {"serverInfo": {"name": "stealth"}}, "tools/list": {"tools": [{"name": "spawn_browser"}]}})
+            .to_string(),
+    )
+    .unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config.clone(), Box::new(out.clone()));
+    proxy.handle(init()).await;
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})).await;
+    assert_eq!(out.messages()[0]["result"]["serverInfo"]["name"], "stealth");
+    assert_eq!(out.messages()[1]["result"]["tools"][0]["name"], "spawn_browser");
+    // Nothing set up nor started for an agent that never browses.
+    assert!(ran(tmp).is_empty() && !unit.exists() && !tmp.join("profile").exists());
+    // Its first tool call: its unit and profile written, systemd told, then started.
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "spawn_browser"}})).await;
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did spawn_browser");
+    assert_eq!(ran(tmp), vec!["reload", "start"]);
+    assert_eq!(std::fs::read_to_string(&unit).unwrap(), "[Unit]\n");
+    assert!(tmp.join("profile").is_dir());
+    // What its own server said is now its own too.
+    assert!(tmp.join("cache.json").exists());
+    proxy.stop_child().await;
+    // Started again later: set up once only.
+    let proxy = Proxy::new(config, Box::new(Out::default()));
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "navigate"}})).await;
+    assert_eq!(ran(tmp), vec!["reload", "start", "start"]);
+    proxy.stop_child().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_cold_start_is_waited_for_and_the_first_call_succeeds() {
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let mut config = config(tmp);
+    // Its screen shows up 2 s after the start (a loaded server): the call waits, it is not failed for a retry.
+    let screen = tmp.join("screen").to_string_lossy().into_owned();
+    config.insert("start".into(), json!(["sh", "-c", format!("(sleep 2; touch {screen}) >/dev/null 2>&1 &")]));
+    config.insert("ready".into(), json!(["test", "-e", screen]));
+    std::fs::write(tmp.join("cache.json"), json!({"initialize": {"serverInfo": {"name": "stealth"}}}).to_string())
+        .unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config.clone(), Box::new(out.clone()));
+    proxy.handle(init()).await;
+    let started = std::time::Instant::now();
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "spawn_browser"}})).await;
+    assert!(started.elapsed() >= Duration::from_secs(2));
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did spawn_browser");
+    proxy.stop_child().await;
+    // One that never shows its screen: a clear error once its deadline is over, not before.
+    config.insert("ready".into(), json!(["false"]));
+    config.insert("ready_seconds".into(), json!(1));
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    let started = std::time::Instant::now();
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate"}})).await;
+    assert!(started.elapsed() >= Duration::from_secs(1));
+    let message = out.messages().last().unwrap()["error"]["message"].as_str().unwrap().to_string();
+    assert!(message.contains("did not start within 1 s"), "{message}");
+}
+
 #[test]
 fn hermes_runs_it_over_stdio() {
     let dir = tempfile::tempdir().unwrap();

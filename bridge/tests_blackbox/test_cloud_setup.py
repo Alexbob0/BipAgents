@@ -8,9 +8,12 @@ import json
 import os
 import ssl
 import stat
+import time
 import tomllib
 
 import httpx
+import pytest
+import yaml
 
 from bbkit.common import AUTH, BRIDGE_KEY, REMOTE
 from bbkit.servers import free_port, wait_until
@@ -75,7 +78,8 @@ def test_the_server_proves_its_certificate_before_anything(bridges, fakes):
     bridge, cloud = cloud_bridge(bridges, fakes)
     state = bridge.get("/v1/setup", params={"nonce": NONCE}).json()
     assert state["state"] == "installing" and state["fingerprint"] == cloud.fingerprint()
-    assert set(state) == {"state", "step", "total", "label", "fingerprint", "challenge", "proof"}
+    # `prepared`: the Rust bridge's (its first agent made before the claim)
+    assert set(state) - {"prepared"} == {"state", "step", "total", "label", "fingerprint", "challenge", "proof"}
     assert len(state["challenge"]) == 32
     # Only a server that knows the secret from the user-data can make this proof for this certificate.
     assert state["proof"] == proof(SECRET, SETUP_CONTEXT, NONCE, state["fingerprint"], state["challenge"])
@@ -208,6 +212,47 @@ def test_claiming_sets_the_model_once_and_creates_the_agents_left(bridges, fakes
     again = bridge.commands.of("hermes")
     assert not any(c[:2] == ["config", "set"] for c in again)
     assert sum(1 for c in again if c[:2] == ["profile", "create"]) == 1
+
+
+def test_a_place_of_the_reserve_is_claimed_in_seconds_its_first_agent_made_before(bridges, fakes):
+    """A place with no agent yet makes its first one once installed (the Rust bridge says it: `prepared`); the claim
+    then writes files only, answers at once, and restarts the gateway by its unit; the other agents come right after."""
+    bridge, cloud = cloud_bridge(bridges, fakes, start=False)
+    bridge.config["agents"] = {}
+    (bridge.root / ".hermes" / "config.yaml").write_text("model:\n  provider: openrouter\n  default: openrouter/auto\n")
+    units = bridge.home / ".config" / "systemd" / "user"
+    units.mkdir(parents=True)
+    (units / "hermes-gateway.service").write_text("[Service]\n")
+    bridge.start()
+    if "prepared" not in bridge.get("/v1/setup", params={"nonce": NONCE}).json():
+        pytest.skip("the Python bridge makes every agent at the claim")
+    cloud.done()
+    assert wait_until(lambda: bridge.get("/v1/setup", params={"nonce": NONCE}).json()["prepared"], timeout=30)
+    assert ["profile", "create", "agent", "--clone-from", "default", "--no-alias"] == \
+        next(c for c in bridge.commands.of("hermes") if c[:2] == ["profile", "create"])[:6]
+    bridge.commands.clear()
+    wanted = json.dumps({"model": {"provider": "openrouter", "name": "z-ai/glm-5.3", "key": "sk-or-0123456789"},
+                         "agents": [{"name": "Quotidien", "kind": "daily"}, {"name": "Maison", "kind": "home"}],
+                         "language": "fr"})
+    started = time.monotonic()
+    claimed = bridge.post("/v1/setup/claim", json=claim_body(cloud.challenge(), wanted))
+    assert claimed.status_code == 200, claimed.text
+    assert time.monotonic() - started < 2
+    assert claimed.json()["agents"] == [{"id": "agent", "name": "Quotidien"}, {"id": "maison", "name": "Maison"}]
+    for folder in (bridge.root / ".hermes", bridge.root / ".hermes" / "profiles" / "agent"):
+        model = yaml.safe_load((folder / "config.yaml").read_text())["model"]
+        assert model == {"provider": "openrouter", "default": "z-ai/glm-5.3",
+                         "base_url": "https://openrouter.ai/api/v1", "supports_vision": False}
+        assert "OPENROUTER_API_KEY=sk-or-0123456789\n" in (folder / ".env").read_text()
+    assert "Quotidien" in (bridge.root / ".hermes" / "profiles" / "agent" / "SOUL.md").read_text()
+    assert cloud.setup_file.exists() is False                    # paired: the secret is gone
+    assert wait_until(lambda: ["--user", "restart", "hermes-gateway"] in bridge.commands.of("systemctl"), timeout=10)
+    assert wait_until(lambda: any(c[:3] == ["profile", "create", "maison"] for c in bridge.commands.of("hermes")),
+                      timeout=20)
+    assert not any(c[:2] == ["config", "set"] for c in bridge.commands.of("hermes"))   # no model through the CLI
+    assert ["gateway", "restart"] not in bridge.commands.of("hermes")
+    listed = bridge.get("/v1/agents", headers=AUTH).json()["agents"]
+    assert {a["id"] for a in listed} >= {"agent", "maison"}
 
 
 def test_a_moved_place_is_claimed_with_the_backup_key_and_says_it_is_restoring(bridges, fakes):
