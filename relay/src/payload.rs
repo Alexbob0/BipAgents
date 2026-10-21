@@ -22,6 +22,8 @@ const GENERIC_BODIES: &[&str] = &[
     "Ton abonnement ne sera pas renouvelé : pense à utiliser ton crédit d’IA.",
     "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.",
     "Ton compte est en cours de récupération sur un autre appareil : si ce n’est pas toi, arrête-la dans l’app.",
+    "Message de ta famille",
+    "Quelqu’un de ta famille veut relier ses agents aux tiens : accepte ou refuse dans l’app.",
 ];
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 const TITLE_MAX: usize = 80;

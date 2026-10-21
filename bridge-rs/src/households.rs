@@ -141,13 +141,18 @@ impl Households {
 
     /// A one-time code for the other household's bridge (ten minutes).
     pub fn invite(&self) -> anyhow::Result<String> {
+        self.invite_for(INVITE_SECONDS)
+    }
+
+    /// A one-time code valid `seconds`.
+    pub fn invite_for(&self, seconds: f64) -> anyhow::Result<String> {
         if self.name().is_empty() {
             return Err(HouseholdError("set this household's name first".into()).into());
         }
         let code = crate::py::token_urlsafe(24);
         let mut data = self.load();
         if let Some(Value::Object(invites)) = data.get_mut("invites") {
-            invites.insert(digest(&code), json!(crate::py::time_time() + INVITE_SECONDS));
+            invites.insert(digest(&code), json!(crate::py::time_time() + seconds));
         }
         self.save(&data)?;
         Ok(code)

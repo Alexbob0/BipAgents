@@ -614,7 +614,17 @@ async fn keep_recap(State(state): State<AppState>, Json(body): Json<CallRecap>) 
 async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>) -> ApiResult<Response> {
     let agent = setup(&state, &body.agent)?;
     let briefs = state.briefs.clone();
-    let recap = blocking(move || Ok(briefs.take_recap(&agent.name, &body.session))).await?;
+    let config = state.config();
+    let recap = blocking(move || {
+        // The family news waiting for the agent (family_news.rs) joins the same message, the same way.
+        let parts: Vec<String> =
+            [briefs.take_recap(&agent.name, &body.session), crate::family_news::take_notes(&config, &agent.name)]
+                .into_iter()
+                .flatten()
+                .collect();
+        Ok((!parts.is_empty()).then(|| parts.join("\n")))
+    })
+    .await?;
     Ok(web::ok(json!({"recap": recap})))
 }
 
