@@ -29,7 +29,9 @@ registered with the RCS of [registry city] under number [SIREN] ("Kerfy Studio",
 Kerfy Studio has not appointed a data protection officer: its activity does not require one (GDPR article 37). For
 any question about your data: support@kerfystudio.com. For Singapore's law (Personal Data Protection Act), which
 requires a person in charge of data protection, this is Kerfy Studio's president, [first and last name], reachable
-at the same address.
+at the same address. He is also the person in charge of the protection of personal information under Quebec's law,
+and the individual accountable for compliance with Canada's law (Personal Information Protection and Electronic
+Documents Act), at the same address.
 
 Kerfy Studio is the controller of the processing the app performs in order to work, as Kerfy Studio designed it
 (sections 3, 4 and 7), even when it stays on your phone and Kerfy Studio has no access to it, and of the processing of
@@ -236,7 +238,7 @@ your plan with are told by email: their places stop on the day your account is e
 
 **Data received from the stores.** Through Apple's notifications (App Store Server Notifications) and Google's (Google
 Play real-time notifications): the identifier of your subscription at the store, the plan, the region, its state (free
-week, active, suspended, ended, refunded), the end of the paid period, whether the renewal is turned off, and for the
+week, active, suspended, ended, refunded), the end of the paid period, the plan's currency and monthly price, whether the renewal is turned off, and for the
 AI credit you buy, the identifier of each purchase and its amount. **Never your payment details**, which only the
 store knows. Your store account's country, which the app sends to find out whether the offer is sold there (it is not
 kept).
@@ -423,10 +425,20 @@ processes the messages in the European Union [to be completed: countries where t
 safeguard if one is outside the Union]. Apple and Google (sign-in, stores, DeviceCheck, Play Integrity) may process
 data in the United States, with the safeguards stated above.
 
-**If you live outside the European Union** (United States, United Kingdom, Israel, Singapore), your data comes to the
-European Union, where Kerfy Studio processes it under the GDPR, which applies to all its processing. The United
-Kingdom and Israel recognise the European Union as providing adequate protection; for Singapore, this level of
+**If you live outside the European Union** (United States, United Kingdom, Israel, Singapore, Canada), your data
+comes to the European Union, where Kerfy Studio processes it under the GDPR, which applies to all its processing. The
+United Kingdom and Israel recognise the European Union as providing adequate protection; for Singapore, this level of
 protection and our contracts with our service providers give the comparable protection that Singapore's law requires.
+
+**If you live in Canada**, your data is therefore stored and processed outside Canada, and outside Quebec if you live
+there: in the European Union for your place, its backups and your account, and at the service providers named in this
+section. It is subject there to the laws of those countries, and their courts and authorities may access it in the
+cases their laws provide for. Kerfy Studio remains responsible for your data at its service providers and binds them
+by contract. For people in Quebec, Kerfy Studio assesses the privacy-related factors before this transfer (the
+sensitivity of the data, the purposes, the protection measures, including contractual ones, and the legal framework
+of the country of destination) and makes the transfer only if this assessment shows adequate protection (section 17
+of the Act respecting the protection of personal information in the private sector). You can ask us for a summary of
+this assessment.
 
 Email provider: [country; safeguard]. Email sending provider and backup hosting provider: [to be completed: country;
 safeguard]. You can ask us for a copy of the applicable safeguards.
@@ -470,7 +482,10 @@ your place over HTTPS and checks its certificate. Backups are encrypted on the p
 
 **In case of a data breach**, Kerfy Studio notifies the CNIL within 72 hours (GDPR article 33) and the people
 concerned when the risk to them is high (article 34); for people in Singapore, the Personal Data Protection Commission
-within 3 days when Singapore's law requires it.
+within 3 days when Singapore's law requires it; for people in Canada, the Office of the Privacy Commissioner of Canada
+and the people concerned as soon as feasible when there is a real risk of significant harm, and, for people in
+Quebec, the Commission d'accès à l'information and the people concerned promptly when the incident presents a risk of
+serious injury. Kerfy Studio keeps a record of every breach.
 
 ## 14. Your rights
 
@@ -497,13 +512,22 @@ and our websites do not track you from one site to another: a "Do Not Track" sig
 changes nothing in what we do (California Online Privacy Protection Act). You exercise the rights in this section at
 support@kerfystudio.com.
 
+**If you live in Canada.** Canadian laws rest on consent: by using the app and subscribing after seeing this policy,
+you consent to the processing it describes, for the purposes it states. You have the rights of access and correction
+of Canada's law and, in Quebec, those of Quebec's law: to receive your computerised data in a structured, commonly
+used format, to withdraw your consent (which ends the service where it needs that data to work), and to be informed
+when a decision is made solely by automated processing (Kerfy Studio makes none about you). For you, we answer within
+30 days. Kerfy Studio does not sell your data and does no targeted advertising.
+
 ## 15. Complaints
 
 If you believe your rights are not respected, you can lodge a complaint with the **CNIL** (3 place de Fontenoy,
 TSA 80715, 75334 Paris Cedex 07, France — https://www.cnil.fr/fr/plaintes) or with the data protection authority of
 your country: in the United Kingdom, the Information Commissioner's Office (https://ico.org.uk); in Israel, the
 Privacy Protection Authority (https://www.gov.il/en/departments/the_privacy_protection_authority); in Singapore, the
-Personal Data Protection Commission (https://www.pdpc.gov.sg).
+Personal Data Protection Commission (https://www.pdpc.gov.sg); in Canada, the Office of the Privacy Commissioner of
+Canada (https://www.priv.gc.ca, 1-800-282-1376); in Quebec, the Commission d'accès à l'information
+(https://www.cai.gouv.qc.ca, 1 888 528-7741).
 
 ## 16. Children
 
@@ -520,7 +544,9 @@ up the install gives it together with the child. If a child wrote to us, a paren
 16; under 16, a place may only be used if a parent or an adult in charge of the child has set it up and supervises it
 ([terms of the offer](offer.en.md), section 7). **In the United States, nobody under 13 may use a place**, and Kerfy
 Studio does not knowingly collect any data from a child under 13 (Children's Online Privacy Protection Act); if that
-happened, write to us and we will erase it.
+happened, write to us and we will erase it. **In Quebec**, the data of a child under 14 is only collected with the
+consent of a parent or tutor: the adult who sets up and supervises the child's place gives it for the child
+(sections 4.1 and 14 of Quebec's law).
 
 ## 17. Changes
 

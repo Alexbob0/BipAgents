@@ -70,6 +70,7 @@ window_hours = 12        # on first start, only tasks from the last N hours are 
 # console › Project settings › Service accounts › Generate new private key. Without it, Android devices are sent
 # through [push] relay_url like iPhones without an APNs key.
 # service_account = "~/.config/bipagents/fcm.json"
+# base_url = "https://fcm.googleapis.com"   # tests only, with token_url (default: the service account's token_uri)
 
 [apns]
 # Leave team_id/key_id empty to disable push.
@@ -78,6 +79,7 @@ key_id = ""                 # Key ID of the APNs .p8 key
 p8_path = "~/.config/hermes-ios/AuthKey_KEYID.p8"   # mode 600
 bundle_id = "io.github.bipagents"   # = the app's BIP_BUNDLE_ID (Config/Local.xcconfig) if you changed it
 environment = "sandbox"     # default for devices that don't specify one: sandbox (Xcode) | production (TestFlight/App Store)
+# base_url = ""             # tests only: another host instead of Apple's (both environments); sandbox_url: the sandbox's
 
 [push]
 previews = false            # false: generic push body, the content is fetched over the tailnet by the extension

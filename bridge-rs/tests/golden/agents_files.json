@@ -1,0 +1,238 @@
+[
+ {
+  "fn": "mark_as_bot",
+  "input": null,
+  "output": "ui_meta:\n  hermes-bots: {}\n"
+ },
+ {
+  "fn": "mark_as_bot",
+  "input": "",
+  "output": "ui_meta:\n  hermes-bots: {}\n"
+ },
+ {
+  "fn": "mark_as_bot",
+  "input": "description: Recettes et menus\n",
+  "output": "description: Recettes et menus\nui_meta:\n  hermes-bots: {}\n"
+ },
+ {
+  "fn": "mark_as_bot",
+  "input": "name: cuisine\nui_meta:\n  color: '#ffaa00'\n",
+  "output": "name: cuisine\nui_meta:\n  color: '#ffaa00'\n  hermes-bots: {}\n"
+ },
+ {
+  "fn": "mark_as_bot",
+  "input": "ui_meta:\n  hermes-bots:\n    since: 2026-10-01\n",
+  "output": "ui_meta:\n  hermes-bots:\n    since: 2026-10-01\n"
+ },
+ {
+  "fn": "mark_as_bot",
+  "input": "description: \"Une description très longue qui dépasse la largeur de quatre-vingts colonnes pour voir le pliage\"\nyes: no\n",
+  "output": "description: Une description très longue qui dépasse la largeur de quatre-vingts colonnes\n  pour voir le pliage\ntrue: false\nui_meta:\n  hermes-bots: {}\n"
+ },
+ {
+  "fn": "mark_as_bot",
+  "input": "- not a dict\n",
+  "output": "ui_meta:\n  hermes-bots: {}\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n",
+  "arg": "none",
+  "output": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n  reasoning_effort: none\nproviders:\n  bipagents-thinking:\n    api: http://gpu:8888/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n",
+  "arg": "low",
+  "output": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n  reasoning_effort: low\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n",
+  "arg": "xhigh",
+  "output": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n  reasoning_effort: xhigh\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
+  "arg": "none",
+  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: none\nproviders:\n  other:\n    api: http://x\n  bipagents-thinking:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
+  "arg": "low",
+  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: low\nproviders:\n  other:\n    api: http://x\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
+  "arg": "xhigh",
+  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: xhigh\nproviders:\n  other:\n    api: http://x\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "# a comment Hermes wrote\nmodel:\n  provider: custom\n  base_url: \"http://gpu:8888/v1\"\n  default: 'qwen3:32b'\ntoolsets:\n- web\n- terminal\nterminal:\n  backend: docker\n  docker_volumes: [\"/a:/b:ro\"]\nproviders:\n  bipagents-thinking:\n    api: http://gpu:8888/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: true\ndisplay:\n  personality: \"Café — été\"\n  empty: ''\n  n: 0755\n  on: on\n",
+  "arg": "none",
+  "output": "model:\n  provider: custom\n  base_url: http://gpu:8888/v1\n  default: qwen3:32b\ntoolsets:\n- web\n- terminal\nterminal:\n  backend: docker\n  docker_volumes:\n  - /a:/b:ro\nproviders:\n  bipagents-thinking:\n    api: http://gpu:8888/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\ndisplay:\n  personality: Café — été\n  empty: ''\n  n: 493\n  true: true\nagent:\n  reasoning_effort: none\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "# a comment Hermes wrote\nmodel:\n  provider: custom\n  base_url: \"http://gpu:8888/v1\"\n  default: 'qwen3:32b'\ntoolsets:\n- web\n- terminal\nterminal:\n  backend: docker\n  docker_volumes: [\"/a:/b:ro\"]\nproviders:\n  bipagents-thinking:\n    api: http://gpu:8888/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: true\ndisplay:\n  personality: \"Café — été\"\n  empty: ''\n  n: 0755\n  on: on\n",
+  "arg": "low",
+  "output": "model:\n  provider: custom\n  base_url: http://gpu:8888/v1\n  default: qwen3:32b\ntoolsets:\n- web\n- terminal\nterminal:\n  backend: docker\n  docker_volumes:\n  - /a:/b:ro\ndisplay:\n  personality: Café — été\n  empty: ''\n  n: 493\n  true: true\nagent:\n  reasoning_effort: low\n"
+ },
+ {
+  "fn": "set_thinking",
+  "input": "# a comment Hermes wrote\nmodel:\n  provider: custom\n  base_url: \"http://gpu:8888/v1\"\n  default: 'qwen3:32b'\ntoolsets:\n- web\n- terminal\nterminal:\n  backend: docker\n  docker_volumes: [\"/a:/b:ro\"]\nproviders:\n  bipagents-thinking:\n    api: http://gpu:8888/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: true\ndisplay:\n  personality: \"Café — été\"\n  empty: ''\n  n: 0755\n  on: on\n",
+  "arg": "xhigh",
+  "output": "model:\n  provider: custom\n  base_url: http://gpu:8888/v1\n  default: qwen3:32b\ntoolsets:\n- web\n- terminal\nterminal:\n  backend: docker\n  docker_volumes:\n  - /a:/b:ro\ndisplay:\n  personality: Café — été\n  empty: ''\n  n: 493\n  true: true\nagent:\n  reasoning_effort: xhigh\n"
+ },
+ {
+  "fn": "set_model",
+  "input": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n",
+  "arg": [
+   "deepseek-v4",
+   false
+  ],
+  "output": "model:\n  provider: custom\n  default: deepseek-v4\n  base_url: http://gpu:8888/v1\n  supports_vision: false\nagent:\n  max_turns: 60\n"
+ },
+ {
+  "fn": "set_model",
+  "input": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n",
+  "arg": [
+   "z-ai/glm-5.3:free",
+   null
+  ],
+  "output": "model:\n  provider: custom\n  default: z-ai/glm-5.3:free\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n"
+ },
+ {
+  "fn": "set_model",
+  "input": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n",
+  "arg": [
+   "é",
+   true
+  ],
+  "output": "model:\n  provider: custom\n  default: é\n  base_url: http://gpu:8888/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n"
+ },
+ {
+  "fn": "set_model",
+  "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
+  "arg": [
+   "deepseek-v4",
+   false
+  ],
+  "output": "model:\n  provider: custom\n  default: deepseek-v4\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: false\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n"
+ },
+ {
+  "fn": "set_model",
+  "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
+  "arg": [
+   "z-ai/glm-5.3:free",
+   null
+  ],
+  "output": "model:\n  provider: custom\n  default: z-ai/glm-5.3:free\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n"
+ },
+ {
+  "fn": "set_model",
+  "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
+  "arg": [
+   "é",
+   true
+  ],
+  "output": "model:\n  provider: custom\n  default: é\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n"
+ },
+ {
+  "fn": "set_enabled",
+  "input": "model:\n  provider: custom\nskills:\n  disabled: [plant-care, arxiv]\n  external_dirs: []\n",
+  "arg": {
+   "plant-care": true,
+   "monthly-budget": false
+  },
+  "output": "model:\n  provider: custom\nskills:\n  disabled:\n  - arxiv\n  - monthly-budget\n  external_dirs: []\n"
+ },
+ {
+  "fn": "set_enabled",
+  "input": "model:\n  provider: custom\nskills:\n  disabled: [plant-care, arxiv]\n  external_dirs: []\n",
+  "arg": {
+   "monthly-budget": true
+  },
+  "output": "model:\n  provider: custom\nskills:\n  disabled:\n  - plant-care\n  - arxiv\n  external_dirs: []\n"
+ },
+ {
+  "fn": "set_enabled",
+  "input": "model:\n  provider: custom\nskills:\n  disabled: [plant-care, arxiv]\n  external_dirs: []\n",
+  "arg": {
+   "plant-care": false,
+   "monthly-budget": false
+  },
+  "output": "model:\n  provider: custom\nskills:\n  disabled:\n  - plant-care\n  - arxiv\n  - monthly-budget\n  external_dirs: []\n"
+ },
+ {
+  "fn": "save_agent",
+  "input": "bridge_key = \"x\"\n\n[agents.vie]\ndisplay_name = \"Vie\"\nhermes_url = \"http://old\"\nhermes_key_file = \"/k\"\n# her voice\nvoice = \"pocket:colibri\"\nspace = \"/old\"\n\n[agents.other]\ndisplay_name = \"O\"\n\n\n",
+  "arg": {
+   "name": "vie",
+   "display_name": "Vie \"la\" \\ grande",
+   "hermes_url": "http://127.0.0.1:8660/p/vie",
+   "hermes_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "ntfy_topic": null,
+   "ntfy_token": null,
+   "upload_dir_host": "/s/u",
+   "upload_dir_container": "/fichiers",
+   "voice": null,
+   "server_voice": null,
+   "category": null,
+   "color": null,
+   "public_url": "https://x/hermes/vie",
+   "isolated": true,
+   "python": [
+    "/opt/py",
+    "-I"
+   ],
+   "hermes_home": "/s/vie",
+   "hermes_root": null,
+   "space": "/s",
+   "sandboxed": true,
+   "desktop_url": null,
+   "desktop_vnc": "ws://v",
+   "desktop_vnc_password_file": null,
+   "shares": "",
+   "shares_apply": null,
+   "host_home": null
+  },
+  "output": "bridge_key = \"x\"\n\n[agents.other]\ndisplay_name = \"O\"\n\n[agents.vie]\ndisplay_name = \"Vie \\\"la\\\" \\\\ grande\"\nhermes_url = \"http://127.0.0.1:8660/p/vie\"\npublic_url = \"https://x/hermes/vie\"\nupload_dir_host = \"/s/u\"\nupload_dir_container = \"/fichiers\"\nisolated = true\nsandboxed = true\npython = [\"/opt/py\", \"-I\"]\nhermes_home = \"/s/vie\"\nspace = \"/s\"\ndesktop_vnc = \"ws://v\"\nhermes_key_file = \"/k\"\nvoice = \"pocket:colibri\"\n"
+ },
+ {
+  "fn": "save_agent",
+  "input": "bridge_key = \"x\"\n\n[agents.vie]\ndisplay_name = \"Vie\"\nhermes_url = \"http://old\"\nhermes_key_file = \"/k\"\n# her voice\nvoice = \"pocket:colibri\"\nspace = \"/old\"\n\n[agents.other]\ndisplay_name = \"O\"\n\n\n",
+  "arg": {
+   "name": "vie",
+   "display_name": "Vie",
+   "hermes_url": "http://h",
+   "hermes_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "ntfy_topic": null,
+   "ntfy_token": null,
+   "upload_dir_host": null,
+   "upload_dir_container": null,
+   "voice": null,
+   "server_voice": null,
+   "category": null,
+   "color": null,
+   "public_url": null,
+   "isolated": false,
+   "python": [],
+   "hermes_home": null,
+   "hermes_root": null,
+   "space": null,
+   "sandboxed": false,
+   "desktop_url": null,
+   "desktop_vnc": null,
+   "desktop_vnc_password_file": null,
+   "shares": "",
+   "shares_apply": null,
+   "host_home": null
+  },
+  "output": "bridge_key = \"x\"\n\n[agents.other]\ndisplay_name = \"O\"\n\n[agents.vie]\ndisplay_name = \"Vie\"\nhermes_url = \"http://h\"\nhermes_key_file = \"/k\"\nvoice = \"pocket:colibri\"\n"
+ }
+]

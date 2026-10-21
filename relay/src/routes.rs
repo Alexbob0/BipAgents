@@ -284,7 +284,10 @@ async fn report(
         return refuse(StatusCode::BAD_REQUEST, "invalid report");
     }
     let (Some(url), Some(secret)) = (&relay.report_url, &relay.report_secret) else {
-        return refuse(StatusCode::SERVICE_UNAVAILABLE, "reports are not set up on this relay: the app sends an e-mail");
+        return refuse(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "reports are not set up on this relay: the app sends an e-mail",
+        );
     };
     if !relay.per_ip_report.allow(relay.client_ip(peer, &headers).as_bytes()) {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "quota exceeded");

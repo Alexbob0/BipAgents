@@ -68,7 +68,8 @@ class ApnsClient:
     async def send(self, device_token: str, payload: Dict[str, Any], *, environment: str,
                    push_type: str = "alert", priority: int = 10, collapse_id: Optional[str] = None,
                    expiration: Optional[int] = None) -> ApnsResult:
-        host = HOSTS.get(environment, HOSTS["production"])
+        host = ((self.config.sandbox_url if environment == "sandbox" else "") or self.config.base_url
+                or HOSTS.get(environment, HOSTS["production"]))
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         result = await self._post(host, device_token, body, push_type, priority, collapse_id, expiration, False)
         if result.status == 403 and result.reason in ("ExpiredProviderToken", "InvalidProviderToken"):

@@ -58,8 +58,8 @@ or Finland), then from OVHcloud for smaller servers, depending on what is availa
 Union, including for people who live outside the Union.
 
 **In which countries.** The offer is available when your store account is in the European Union, the United States,
-the United Kingdom, Israel or Singapore. Elsewhere, the app does not offer it; BipAgents can still be used with your
-own server. The rules specific to people who live outside the Union are in section 17.
+the United Kingdom, Israel, Singapore or Canada. Elsewhere, the app does not offer it; BipAgents can still be used
+with your own server. The rules specific to people who live outside the Union are in section 17.
 
 **What is not included**: your phone and your Internet access; AI model use beyond your credit (you can add some,
 section 6); the services you connect to your agents and their own subscriptions.
@@ -331,8 +331,32 @@ right that the law of your country gives you and that a contract cannot set asid
 
 - Singapore law applies to the extent it is mandatory. For your data, see the privacy policy (section 11).
 
+**Canada**
+
+- **Prices and taxes**: prices are shown before tax; the store calculates and collects the GST or HST and, in Quebec,
+  the QST.
+- **Before the purchase**: the app shows you the plan, what it includes, its monthly price and currency, the free week
+  if there is one and the price that follows it, how to cancel and these terms, which you can save and print; you can
+  accept, correct or decline before you confirm. The confirmation of the contract is emailed to you at the purchase
+  (section 1), and in any case within 15 days.
+- **Renewal and cancellation**: the subscription renews each month, at the price shown, until you cancel it. You can
+  cancel at any time, free of charge, in the store or directly from the app (Settings › All-included plan › Cancel my
+  subscription, section 11). With a free week, the confirmation email reminds you of its end date and of the price
+  that will apply afterwards.
+- **Withdrawing from the contract**: the function in section 12 remains available to you. It adds to the cancellation
+  rights the law of your province gives you (in Quebec, those of the Consumer Protection Act for distance contracts).
+- **Courts**: the arbitration clause, the class action waiver and the liability cap set out for the United States do
+  not apply to you. You can go to the courts of your province, including as part of a class action.
+- **Governing law**: French law, together with the consumer protection rules of your province that are mandatory. If
+  you live in Quebec, those Quebec rules apply and you can go to the courts of Quebec.
+- **Language**: these terms exist in French and English. In Quebec, the French version is given to you first; you can
+  then choose to be bound by the English version (Charter of the French language, section 55).
+- **Age**: in Quebec, the data of a child under 14 is only collected with the consent of a parent or tutor: the adult
+  who sets up and supervises the child's place (section 7) gives it.
+- For your data, see the privacy policy (sections 1, 11, 13 and 15).
+
 **Everywhere**: if a person seems to be in danger, their agents give them their country's helpline number (988 in the
-United States, 116 123 in the United Kingdom, 1201 in Israel, 1767 in Singapore, 3114 in France).
+United States and Canada, 116 123 in the United Kingdom, 1201 in Israel, 1767 in Singapore, 3114 in France).
 
 ## 18. Contact
 

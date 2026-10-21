@@ -1,0 +1,541 @@
+[
+ {
+  "kind": "text",
+  "input": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n",
+  "json": {
+   "model": {
+    "provider": "custom",
+    "default": "glm",
+    "base_url": "http://gpu:8888/v1"
+   },
+   "agent": {
+    "max_turns": 60
+   }
+  },
+  "output": "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n"
+ },
+ {
+  "kind": "text",
+  "input": "a: yes\nb: off\nc: 0755\nd: 1:30\ne: 1_000\nf: 2026-10-21\ng: ~\nh: '0755'\ni: 1.5\nj: .inf\nk: 0x1F\nl: -.5\nm: 1e5\n",
+  "json": {
+   "a": true,
+   "b": false,
+   "c": 493,
+   "d": 90,
+   "e": 1000,
+   "f": "2026-10-21",
+   "g": null,
+   "h": "0755",
+   "i": 1.5,
+   "j": null,
+   "k": 31,
+   "l": "-.5",
+   "m": "1e5"
+  },
+  "output": "a: true\nb: false\nc: 493\nd: 90\ne: 1000\nf: 2026-10-21\ng: null\nh: '0755'\ni: 1.5\nj: .inf\nk: 31\nl: -.5\nm: 1e5\n"
+ },
+ {
+  "kind": "text",
+  "input": "when: 2026-10-21T08:15:00Z\nlater: 2026-10-21 08:15:00.25 +02:00\nlocal: 2026-1-2 3:04:05\n",
+  "json": {
+   "when": "2026-10-21 08:15:00+00:00",
+   "later": "2026-10-21 08:15:00.250000+02:00",
+   "local": "2026-01-02 03:04:05"
+  },
+  "output": "when: 2026-10-21 08:15:00+00:00\nlater: 2026-10-21 08:15:00.250000+02:00\nlocal: 2026-01-02 03:04:05\n"
+ },
+ {
+  "kind": "text",
+  "input": "skills:\n  disabled: [plant-care, arxiv]\nmodel: {provider: custom}\n",
+  "json": {
+   "skills": {
+    "disabled": [
+     "plant-care",
+     "arxiv"
+    ]
+   },
+   "model": {
+    "provider": "custom"
+   }
+  },
+  "output": "skills:\n  disabled:\n  - plant-care\n  - arxiv\nmodel:\n  provider: custom\n"
+ },
+ {
+  "kind": "text",
+  "input": "terminal:\n  backend: docker\n  docker_volumes:\n    - \"/home/x/photos:/photos:ro\"\n",
+  "json": {
+   "terminal": {
+    "backend": "docker",
+    "docker_volumes": [
+     "/home/x/photos:/photos:ro"
+    ]
+   }
+  },
+  "output": "terminal:\n  backend: docker\n  docker_volumes:\n  - /home/x/photos:/photos:ro\n"
+ },
+ {
+  "kind": "text",
+  "input": "base: &b\n  x: 1\n  y: 2\nchild:\n  <<: *b\n  y: 3\n  z: 4\n",
+  "json": {
+   "base": {
+    "x": 1,
+    "y": 2
+   },
+   "child": {
+    "x": 1,
+    "y": 3,
+    "z": 4
+   }
+  },
+  "output": "base:\n  x: 1\n  y: 2\nchild:\n  x: 1\n  y: 3\n  z: 4\n"
+ },
+ {
+  "kind": "text",
+  "input": "list:\n- - 1\n  - 2\n- a: 1\n  b: [x]\n- {}\n- []\n",
+  "json": {
+   "list": [
+    [
+     1,
+     2
+    ],
+    {
+     "a": 1,
+     "b": [
+      "x"
+     ]
+    },
+    {},
+    []
+   ]
+  },
+  "output": "list:\n- - 1\n  - 2\n- a: 1\n  b:\n  - x\n- {}\n- []\n"
+ },
+ {
+  "kind": "text",
+  "input": "description: Recettes et menus\nui_meta:\n  hermes-bots: {}\n",
+  "json": {
+   "description": "Recettes et menus",
+   "ui_meta": {
+    "hermes-bots": {}
+   }
+  },
+  "output": "description: Recettes et menus\nui_meta:\n  hermes-bots: {}\n"
+ },
+ {
+  "kind": "text",
+  "input": "1: one\ntrue: yes\nnull: x\n3.5: f\n",
+  "json": {
+   "1": true,
+   "None": "x",
+   "3.5": "f"
+  },
+  "output": "1: true\nnull: x\n3.5: f\n"
+ },
+ {
+  "kind": "text",
+  "input": "text: |\n  line one\n  line two\nfolded: >\n  a\n  b\n",
+  "json": {
+   "text": "line one\nline two\n",
+   "folded": "a b\n"
+  },
+  "output": "text: 'line one\n\n  line two\n\n  '\nfolded: 'a b\n\n  '\n"
+ },
+ {
+  "kind": "text",
+  "input": "quoted: \"tab\\there\"\nsingle: 'it''s'\nempty: ''\nspaces: '  lead'\n",
+  "json": {
+   "quoted": "tab\there",
+   "single": "it's",
+   "empty": "",
+   "spaces": "  lead"
+  },
+  "output": "quoted: \"tab\\there\"\nsingle: it's\nempty: ''\nspaces: '  lead'\n"
+ },
+ {
+  "kind": "text",
+  "input": "",
+  "json": null,
+  "output": "null\n...\n"
+ },
+ {
+  "kind": "text",
+  "input": "# only a comment\n",
+  "json": null,
+  "output": "null\n...\n"
+ },
+ {
+  "kind": "text",
+  "input": "- a\n- b\n",
+  "json": [
+   "a",
+   "b"
+  ],
+  "output": "- a\n- b\n"
+ },
+ {
+  "kind": "text",
+  "input": "just a string\n",
+  "json": "just a string",
+  "output": "just a string\n...\n"
+ },
+ {
+  "kind": "text",
+  "input": "mcp_servers:\n  bipagents:\n    url: http://127.0.0.1:8643/mcp\n    headers:\n      Authorization: Bearer abc\n    timeout: 120\n",
+  "json": {
+   "mcp_servers": {
+    "bipagents": {
+     "url": "http://127.0.0.1:8643/mcp",
+     "headers": {
+      "Authorization": "Bearer abc"
+     },
+     "timeout": 120
+    }
+   }
+  },
+  "output": "mcp_servers:\n  bipagents:\n    url: http://127.0.0.1:8643/mcp\n    headers:\n      Authorization: Bearer abc\n    timeout: 120\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "ui_meta": {
+    "hermes-bots": {}
+   }
+  },
+  "output": "ui_meta:\n  hermes-bots: {}\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "description": "You are Max, your user's money agent: spending, budget, subscriptions, savings. You are precise, careful and direct; you show the numbers and where they come from."
+  },
+  "output": "description: 'You are Max, your user''s money agent: spending, budget, subscriptions,\n  savings. You are precise, careful and direct; you show the numbers and where they\n  come from.'\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "description": "Tu es Fougère, l'agent du quotidien — très « concret », avec des émojis 🌱 et des accents."
+  },
+  "output": "description: Tu es Fougère, l'agent du quotidien — très « concret », avec des émojis\n  🌱 et des accents.\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "You  are  Max,  your  user's  money  agent:  spending,  budget,  subscriptions,  savings.  You  are  precise,  careful  and  direct;  you  show  the  numbers  and  where  they  come  from."
+  },
+  "output": "k: 'You  are  Max,  your  user''s  money  agent:  spending,  budget,  subscriptions,  savings.  You  are  precise,  careful  and  direct;  you  show  the  numbers  and  where  they  come  from.'\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbb"
+  },
+  "output": "k: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n  bbbbbbbbbb\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x "
+  },
+  "output": "k: 'x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x\n  x x x x x x x x x x x x x x x x x x x x x '\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "line one\nline two"
+  },
+  "output": "k: 'line one\n\n  line two'\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "line one\n\nline two\n"
+  },
+  "output": "k: 'line one\n\n\n  line two\n\n  '\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "trailing space "
+  },
+  "output": "k: 'trailing space '\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": " leading"
+  },
+  "output": "k: ' leading'\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "tab\there and a \"quote\" and a \\ backslash zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+  },
+  "output": "k: \"tab\\there and a \\\"quote\\\" and a \\\\ backslash zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\"\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "it's 'quoted' it's 'quoted' it's 'quoted' it's 'quoted' it's 'quoted' it's 'quoted' it's 'quoted' it's 'quoted' "
+  },
+  "output": "k: 'it''s ''quoted'' it''s ''quoted'' it''s ''quoted'' it''s ''quoted'' it''s ''quoted''\n  it''s ''quoted'' it''s ''quoted'' it''s ''quoted'' '\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "keys": {
+    "yes": 1,
+    "no": 2,
+    "on": "off",
+    "null": null,
+    "~": "~",
+    "": "",
+    "-": "-",
+    "- x": "?",
+    "? x": ":",
+    ": x": "a #b",
+    "a#b": "#c",
+    "x: y": "[a]",
+    "{a}": "&x",
+    "*x": "!x",
+    "%x": "@x",
+    "`x": "|x",
+    ">x": "'x"
+   }
+  },
+  "output": "keys:\n  'yes': 1\n  'no': 2\n  'on': 'off'\n  'null': null\n  '~': '~'\n  ? ''\n  : ''\n  '-': '-'\n  '- x': '?'\n  '? x': ':'\n  ': x': 'a #b'\n  a#b: '#c'\n  'x: y': '[a]'\n  '{a}': '&x'\n  '*x': '!x'\n  '%x': '@x'\n  '`x': '|x'\n  '>x': '''x'\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "numbers": [
+    "1",
+    "1.5",
+    "0755",
+    "0x1F",
+    "1:30",
+    "1e5",
+    "1.0e+5",
+    ".5",
+    "-1",
+    "+1",
+    "1_000",
+    "0b101",
+    ".inf",
+    ".nan",
+    "2026-10-21",
+    "2026-10-21 08:00:00",
+    "=",
+    "<<",
+    "---",
+    "...",
+    "--- x",
+    "... x",
+    "a,b",
+    "a[b]",
+    "a{b}"
+   ]
+  },
+  "output": "numbers:\n- '1'\n- '1.5'\n- '0755'\n- '0x1F'\n- '1:30'\n- 1e5\n- '1.0e+5'\n- '.5'\n- '-1'\n- '+1'\n- '1_000'\n- '0b101'\n- '.inf'\n- '.nan'\n- '2026-10-21'\n- '2026-10-21 08:00:00'\n- '='\n- '<<'\n- '---'\n- '...'\n- '--- x'\n- '... x'\n- a,b\n- a[b]\n- a{b}\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "floats": [
+    1.0,
+    0.1,
+    1e+17,
+    1.5e-07,
+    -2.25,
+    100.0,
+    1e+16,
+    123456789.123
+   ]
+  },
+  "output": "floats:\n- 1.0\n- 0.1\n- 1.0e+17\n- 1.5e-07\n- -2.25\n- 100.0\n- 1.0e+16\n- 123456789.123\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "ints": [
+    0,
+    -1,
+    1099511627776,
+    7
+   ]
+  },
+  "output": "ints:\n- 0\n- -1\n- 1099511627776\n- 7\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "bools": [
+    true,
+    false,
+    null
+   ]
+  },
+  "output": "bools:\n- true\n- false\n- null\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "nested": [
+    [
+     1,
+     [
+      2,
+      []
+     ]
+    ],
+    {
+     "a": {
+      "b": {
+       "c": [
+        {
+         "d": 1,
+         "e": [
+          1,
+          2
+         ]
+        }
+       ]
+      }
+     }
+    },
+    [
+     {
+      "x": {}
+     }
+    ]
+   ]
+  },
+  "output": "nested:\n- - 1\n  - - 2\n    - []\n- a:\n    b:\n      c:\n      - d: 1\n        e:\n        - 1\n        - 2\n- - x: {}\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "agent": {
+    "max_turns": 60,
+    "reasoning_effort": "xhigh"
+   },
+   "providers": {
+    "bipagents-thinking": {
+     "api": "http://gpu:8888/v1",
+     "extra_body": {
+      "chat_template_kwargs": {
+       "enable_thinking": false
+      }
+     }
+    }
+   }
+  },
+  "output": "agent:\n  max_turns: 60\n  reasoning_effort: xhigh\nproviders:\n  bipagents-thinking:\n    api: http://gpu:8888/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "skills": {
+    "disabled": [
+     "arxiv",
+     "monthly-budget"
+    ]
+   }
+  },
+  "output": "skills:\n  disabled:\n  - arxiv\n  - monthly-budget\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": "a long key"
+  },
+  "output": "? kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\n: a long key\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "emoji 🎉": "value 🎉 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+  },
+  "output": "emoji 🎉: value 🎉 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "ctl": "a\u0007b\u001bc de f﻿g"
+  },
+  "output": "ctl: \"a\\ab\\ec d\\Ne\\Lf\\uFEFFg\"\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé èèèèè"
+  },
+  "output": "k: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\n  èèèèè\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "k": "word word word xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx end"
+  },
+  "output": "k: word word word xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n  end\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "url": "http://example.org/a#b",
+   "comment": "a #b",
+   "colon": "a:b",
+   "colon_space": "a: b",
+   "dash": "-a",
+   "q": "?a"
+  },
+  "output": "url: http://example.org/a#b\ncomment: 'a #b'\ncolon: a:b\ncolon_space: 'a: b'\ndash: -a\nq: ?a\n"
+ },
+ {
+  "kind": "value",
+  "input": [
+   "top",
+   "level"
+  ],
+  "output": "- top\n- level\n"
+ },
+ {
+  "kind": "value",
+  "input": "a root string",
+  "output": "a root string\n...\n"
+ },
+ {
+  "kind": "value",
+  "input": "",
+  "output": "''\n"
+ },
+ {
+  "kind": "value",
+  "input": null,
+  "output": "null\n...\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "multi": "first line that is quite long, really quite long, longer than eighty columns for sure\nsecond"
+  },
+  "output": "multi: 'first line that is quite long, really quite long, longer than eighty columns\n  for sure\n\n  second'\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "spaced": "a  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    d"
+  },
+  "output": "spaced: a  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    da  b   c    d\n"
+ },
+ {
+  "kind": "value",
+  "input": {
+   "lead_break": "\nx",
+   "trail_break": "x\n",
+   "break_space": "a\n b",
+   "space_break": "a \nb"
+  },
+  "output": "lead_break: '\n\n  x'\ntrail_break: 'x\n\n  '\nbreak_space: \"a\\n b\"\nspace_break: \"a \\nb\"\n"
+ }
+]

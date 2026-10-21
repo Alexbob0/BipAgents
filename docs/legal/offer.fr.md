@@ -61,8 +61,8 @@ Pour chaque personne du forfait :
 dans l'Union européenne, y compris pour les personnes qui vivent hors de l'Union.
 
 **Dans quels pays.** L'offre est proposée quand le compte de ton store est dans l'Union européenne, aux États-Unis, au
-Royaume-Uni, en Israël ou à Singapour. Ailleurs, l'app ne la propose pas ; BipAgents reste utilisable avec ton propre
-serveur. Les règles propres aux personnes qui vivent hors de l'Union sont à la section 17.
+Royaume-Uni, en Israël, à Singapour ou au Canada. Ailleurs, l'app ne la propose pas ; BipAgents reste utilisable avec
+ton propre serveur. Les règles propres aux personnes qui vivent hors de l'Union sont à la section 17.
 
 **Ce qui n'est pas compris** : ton téléphone et ton accès à Internet ; l'utilisation du modèle d'IA au-delà de ton
 crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agents et leurs propres abonnements.
@@ -348,8 +348,34 @@ retirent aucun droit que la loi de ton pays t'accorde et qu'un contrat ne peut p
 - La loi de Singapour s'applique pour ce qu'elle impose. Pour tes données, voir la politique de confidentialité
   (section 11).
 
+**Canada**
+
+- **Prix et taxes** : les prix sont affichés hors taxes ; le store calcule et encaisse la TPS ou la TVH et, au Québec,
+  la TVQ.
+- **Avant l'achat** : l'app te montre le forfait, ce qu'il comprend, son prix par mois et sa monnaie, la semaine
+  gratuite s'il y en a une et le prix qui la suivra, la façon de résilier et ces conditions, que tu peux enregistrer et
+  imprimer ; tu peux accepter, corriger ou refuser avant de confirmer. La confirmation du contrat t'est envoyée par
+  e-mail dès l'achat (section 1), et au plus tard dans les 15 jours.
+- **Renouvellement et résiliation** : l'abonnement se renouvelle chaque mois, au prix affiché, jusqu'à ce que tu le
+  résilies. Tu peux résilier à tout moment, sans frais, dans le store ou directement depuis l'app (Réglages › Offre tout
+  compris › Résilier mon abonnement, section 11). Avec une semaine gratuite, l'e-mail de confirmation te rappelle sa
+  date de fin et le prix qui s'appliquera ensuite.
+- **Renoncer au contrat** : la fonction de la section 12 reste à ta disposition. Elle s'ajoute aux droits d'annulation
+  que te donne la loi de ta province (au Québec, ceux de la Loi sur la protection du consommateur pour les contrats
+  conclus à distance).
+- **Tribunaux** : la clause d'arbitrage, la renonciation aux actions collectives et le plafond de responsabilité
+  prévus pour les États-Unis ne s'appliquent pas à toi. Tu peux saisir les tribunaux de ta province, y compris dans le
+  cadre d'une action collective.
+- **Droit applicable** : le droit français, avec les règles de protection du consommateur de ta province qui
+  s'imposent. Si tu vis au Québec, ces règles du Québec s'appliquent et tu peux saisir les tribunaux du Québec.
+- **Langue** : ces conditions existent en français et en anglais. Au Québec, la version française t'est remise d'abord ;
+  tu peux ensuite choisir d'être lié par la version anglaise (Charte de la langue française, article 55).
+- **Âge** : au Québec, les données d'un enfant de moins de 14 ans ne sont recueillies qu'avec le consentement d'un
+  parent ou du tuteur : c'est l'adulte qui prépare et supervise sa place (section 7) qui le donne.
+- Pour tes données, voir la politique de confidentialité (sections 1, 11, 13 et 15).
+
 **Partout** : si une personne semble en danger, ses agents lui donnent le numéro d'aide de son pays (988 aux
-États-Unis, 116 123 au Royaume-Uni, 1201 en Israël, 1767 à Singapour, 3114 en France).
+États-Unis et au Canada, 116 123 au Royaume-Uni, 1201 en Israël, 1767 à Singapour, 3114 en France).
 
 ## 18. Contact
 

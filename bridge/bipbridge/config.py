@@ -104,6 +104,10 @@ class ApnsConfig:
     p8_path: str = ""
     bundle_id: str = "io.github.bipagents"
     environment: str = "production"  # default for devices registered without one
+    # Tests only: another host instead of Apple's (`base_url`: both environments; `sandbox_url`: the sandbox's, before
+    # `base_url`). Empty: Apple's (apns.HOSTS).
+    base_url: str = ""
+    sandbox_url: str = ""
 
     @property
     def enabled(self) -> bool:
@@ -235,6 +239,10 @@ class Config:
     apns: ApnsConfig = field(default_factory=ApnsConfig)
     # The Firebase project's service account (JSON), for the Android app's notifications.
     fcm_service_account: Optional[str] = None
+    # Tests only: Google's FCM API and OAuth token endpoint replaced (`[fcm] base_url`, `[fcm] token_url`; without
+    # `token_url`, the service account's `token_uri`, else Google's).
+    fcm_base_url: str = "https://fcm.googleapis.com"
+    fcm_token_url: Optional[str] = None
     outbox: OutboxConfig = field(default_factory=OutboxConfig)
     limits: Limits = field(default_factory=Limits)
     agents: Dict[str, AgentConfig] = field(default_factory=dict)
@@ -365,6 +373,8 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         p8_path=_expand(str(apns_t["p8_path"])) if apns_t.get("p8_path") else "",
         bundle_id=str(apns_t.get("bundle_id", "io.github.bipagents")),
         environment=str(apns_t.get("environment", "production")),
+        base_url=str(apns_t.get("base_url", "") or "").rstrip("/"),
+        sandbox_url=str(apns_t.get("sandbox_url", "") or "").rstrip("/"),
     )
     if apns.environment not in ("sandbox", "production"):
         raise ConfigError("apns.environment must be 'sandbox' or 'production'")
@@ -529,6 +539,8 @@ def parse_config(data: Dict[str, Any], source_path: Optional[str] = None) -> Con
         watch_followed_runs=bool(push.get("watch_followed_runs", True)),
         apns=apns,
         fcm_service_account=_expand(str((data.get("fcm") or {}).get("service_account"))) if (data.get("fcm") or {}).get("service_account") else None,
+        fcm_base_url=str((data.get("fcm") or {}).get("base_url") or "https://fcm.googleapis.com").rstrip("/"),
+        fcm_token_url=str((data.get("fcm") or {})["token_url"]) if (data.get("fcm") or {}).get("token_url") else None,
         outbox=outbox,
         limits=limits,
         agents=agents,

@@ -44,7 +44,9 @@ guichet/db-backups/
 guichet/voices/
 guichet/backups/
 
-# The Rust guichet: the shared test PostgreSQL cluster (guichet-rs/scripts/test-db.sh) and per-agent target dirs
-/.pgtest/
+# Rust builds (bridge-rs, relay, guichet-rs): per-agent target dirs at the root
 /target-*/
+bridge-rs/target/
 /guichet-rs/target/
+# The Rust guichet's shared test PostgreSQL cluster (guichet-rs/scripts/test-db.sh)
+/.pgtest/

@@ -245,7 +245,7 @@ compartes tu plan reciben un aviso por correo: sus plazas se detienen el día en
 
 **Datos recibidos de las tiendas.** A través de las notificaciones de Apple (App Store Server Notifications) y de
 Google (Google Play, notificaciones en tiempo real): el identificador de tu suscripción en la tienda, el plan, la
-región, su estado (semana gratis, activa, suspendida, terminada, reembolsada), el final del periodo pagado, si la
+región, su estado (semana gratis, activa, suspendida, terminada, reembolsada), el final del periodo pagado, la moneda y el precio mensual del plan, si la
 renovación está desactivada y, para el crédito de IA que compras, el identificador de cada compra y su importe.
 **Nunca tus medios de pago**, que solo conoce la tienda. El país de tu cuenta de la tienda, que la app envía para
 saber si la oferta se vende allí (no se conserva).

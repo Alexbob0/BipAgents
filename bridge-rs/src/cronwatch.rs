@@ -1,0 +1,642 @@
+//! Scheduled-task replies → Boîte + push, whatever the job's delivery settings; and turns an agent takes
+//! on its own in its « Bot Chat » (a teammate's answer, a routine) → push.
+//!
+//! Hermes cron jobs deliver where their `deliver` says (SimpleX, Telegram…), but every run also leaves a
+//! session (`cron_<job>_<YYYYMMDD>_<HHMMSS>`). The watcher polls each agent's recent sessions and puts the
+//! final reply of each finished cron run into the outbox — which stores it, pre-synthesizes its audio and
+//! pushes it like an ntfy message — so nothing a job says is missed in the app.
+//!
+//! - A reply is taken once it stopped changing between two polls (the run is over).
+//! - `[SILENT]` (nothing new to report) is skipped.
+//! - Only runs from the last `window_hours` count, so a first start does not replay old history;
+//!   each session is stored once (`ntfy_id = hermes-session:<id>`), so restarts never duplicate.
+//!
+//! Bot Chat (Hermes Bot Mode): a new final reply that the app did not follow (`RunHub.followed_recently`)
+//! and that nobody is looking at (`Presence`, refreshed by the open conversation) is pushed as « reply
+//! ready ». Its baseline is taken at the first poll, so a restart pushes nothing old.
+//!
+//! Sub-task reports, in any conversation: when a background `delegate_task` finishes in an api_server session,
+//! Hermes stores its report as a user turn and does not wake the agent, so no reply follows. A report still last
+//! one poll later is pushed (« 🎧 Podcast jeudi » for the file it names); an agent Hermes does wake replies
+//! within that minute, and its reply is pushed instead.
+//!
+//! Port of `bridge/bipbridge/cronwatch.py` (owner group: push-runs).
+
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
+use std::time::Duration;
+
+use chrono::{Local, NaiveDateTime, TimeZone};
+use regex::Regex;
+use serde_json::{json, Map, Value};
+
+use crate::config::{AgentConfig, SharedConfig};
+use crate::hermes::HermesClient;
+use crate::ntfy::OutboxService;
+use crate::push::pyx;
+use crate::push::PushService;
+use crate::runs::RunHub;
+use crate::store::Store;
+use crate::Dict;
+
+pub const SILENT: &str = "[SILENT]";
+pub const REPORT_PREFIXES: [&str; 3] = ["[ASYNC DELEGATION", "[DELEGATION", "[SUBAGENT"];
+
+/// `^cron_(?P<job>.+?)_(?P<date>\d{8})_(?P<time>\d{6})$` (Python's `$` also matches before a final newline).
+static CRON_ID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^cron_(?P<job>.+?)_(?P<date>\d{8})_(?P<time>\d{6})\n?\z").expect("valid regex"));
+static REPORT_MEDIA: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"/[\w./-]*/media/[\w./-]+\.(?:mp3|m4a|wav|ogg|opus|png|jpe?g|gif|webp|heic|mp4|m4v|mov)\b")
+        .expect("valid regex")
+});
+/// `^\s*Message from \S*\s*.+? \(@([\w.-]+)\):`.
+pub static TEAMMATE_PREFIX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*Message from \S*\s*.+? \(@([\w.-]+)\):").expect("valid regex"));
+const MEDIA_ICONS: [(&str, &str); 8] = [
+    ("mp3", "🎧"),
+    ("m4a", "🎧"),
+    ("wav", "🎧"),
+    ("ogg", "🎧"),
+    ("opus", "🎧"),
+    ("mp4", "🎬"),
+    ("m4v", "🎬"),
+    ("mov", "🎬"),
+];
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// `str(session.get("id") or session.get("session_id") or "")`.
+fn session_key(session: &Dict) -> String {
+    for key in ["id", "session_id"] {
+        if let Some(v) = session.get(key).filter(|v| crate::py::truthy(v)) {
+            return crate::py::py_str(v);
+        }
+    }
+    String::new()
+}
+
+/// `str(message.get(key) or "").lower()`.
+fn lowered(map: &Dict, key: &str) -> String {
+    map.get(key).filter(|v| crate::py::truthy(v)).map(crate::py::py_str).unwrap_or_default().to_lowercase()
+}
+
+pub fn is_cron_session(session: &Dict) -> bool {
+    session_key(session).starts_with("cron_") || lowered(session, "source") == "cron"
+}
+
+/// `datetime.fromtimestamp(value)`: local time, naive.
+fn local_from_timestamp(seconds: f64) -> Option<NaiveDateTime> {
+    let secs = seconds.floor();
+    let nanos = ((seconds - secs) * 1e9).round().min(999_999_999.0) as u32;
+    Local.timestamp_opt(secs as i64, nanos).single().map(|dt| dt.naive_local())
+}
+
+/// `datetime.fromisoformat(value).astimezone().replace(tzinfo=None)`: an aware time in local time, a naive one as it is.
+fn local_from_iso(text: &str) -> Option<NaiveDateTime> {
+    let utc = crate::store::fromisoformat(text)?;
+    let chars: Vec<char> = text.chars().collect();
+    let date_len = if chars.len() >= 10 && chars[4] == '-' && chars[7] == '-' { 10 } else { 8 };
+    let time_part: String = chars.iter().skip(date_len + 1).collect();
+    if time_part.contains('+') || time_part.contains('-') {
+        Some(Local.from_utc_datetime(&utc.naive_utc()).naive_local())
+    } else {
+        Some(utc.naive_utc())
+    }
+}
+
+/// Local time the run started: from the id (`cron_<job>_20261005_075008`), else a timestamp field.
+pub fn session_started(session: &Dict) -> Option<NaiveDateTime> {
+    let sid = session_key(session);
+    if let Some(caps) = CRON_ID.captures(&sid) {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(&format!("{}{}", &caps["date"], &caps["time"]), "%Y%m%d%H%M%S") {
+            return Some(dt);
+        }
+    }
+    for key in ["started_at", "created_at", "created"] {
+        match session.get(key) {
+            Some(Value::Number(n)) => return n.as_f64().and_then(local_from_timestamp),
+            Some(Value::Bool(b)) => return local_from_timestamp(*b as i64 as f64),
+            Some(Value::String(s)) => {
+                if let Some(dt) = local_from_iso(&s.replace('Z', "+00:00")) {
+                    return Some(dt);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+pub fn job_id(session_id: &str) -> Option<String> {
+    CRON_ID.captures(session_id).map(|c| c["job"].to_string())
+}
+
+/// « Podcast du matin · Oct 05 07:53 » → « Podcast du matin ».
+pub fn job_name(title: Option<&str>) -> Option<String> {
+    let title = title.filter(|t| !t.is_empty())?;
+    let name = pyx::strip(title.split(" · ").next().unwrap_or("")).to_string();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+pub fn message_text(message: &Dict) -> String {
+    let content = if message.contains_key("content") { message.get("content") } else { message.get("text") };
+    match content {
+        Some(Value::String(s)) => pyx::strip(s).to_string(),
+        Some(Value::Array(parts)) => {
+            let text: String = parts
+                .iter()
+                .filter_map(Value::as_object)
+                .filter(|p| matches!(p.get("type").and_then(Value::as_str), Some("text") | Some("output_text")))
+                .map(|p| match p.get("text") {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(other) => crate::py::py_str(other),
+                    None => String::new(),
+                })
+                .collect();
+            pyx::strip(&text).to_string()
+        }
+        _ => String::new(),
+    }
+}
+
+/// The run's final answer: the last message is the assistant's, with text and no tool call.
+///
+/// Anything else means the run is still going: a tool result (the agent will continue), or an assistant
+/// message calling a tool, even with a comment ("je passe par terminal…") while a long tool runs (the
+/// podcast's synthesis takes minutes, so such a comment would otherwise look final).
+pub fn final_reply(messages: &[Dict]) -> Option<String> {
+    for message in messages.iter().rev() {
+        if lowered(message, "role") == "assistant" {
+            if message.get("tool_calls").map(crate::py::truthy).unwrap_or(false) {
+                return None;
+            }
+            let text = message_text(message);
+            if !text.is_empty() {
+                return Some(text);
+            }
+            continue; // empty assistant message
+        }
+        return None; // a tool result or the prompt: still running
+    }
+    None
+}
+
+/// The sub-task report Hermes left as the conversation's last message, if any.
+pub fn subtask_report(messages: &[Dict]) -> Option<String> {
+    let last = messages.last()?;
+    if lowered(last, "role") != "user" {
+        return None;
+    }
+    let text = message_text(last);
+    if REPORT_PREFIXES.iter().any(|p| text.starts_with(p)) {
+        Some(text)
+    } else {
+        None
+    }
+}
+
+/// « 🎧 Podcast jeudi0810 » for the first file a report names (as the app's previews), None without one.
+pub fn report_line(report: &str) -> Option<String> {
+    let found = REPORT_MEDIA.find(report)?.as_str();
+    let file = found.rsplit('/').next().unwrap_or(found);
+    let (stem, ext) = match file.rfind('.') {
+        Some(i) => (&file[..i], &file[i + 1..]),
+        None => ("", file),
+    };
+    let words = pyx::split(&stem.replace(['_', '-'], " ")).join(" ");
+    let icon = MEDIA_ICONS.iter().find(|(e, _)| *e == ext.to_lowercase()).map(|(_, i)| *i).unwrap_or("🖼️");
+    let mut chars = words.chars();
+    let first: String = chars.next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+    Some(format!("{icon} {first}{}", chars.as_str()))
+}
+
+/// Conversations open on the phone right now (the app polls their state while one is on screen).
+pub struct Presence {
+    pub ttl: f64,
+    seen: Mutex<HashMap<String, f64>>,
+}
+
+impl Default for Presence {
+    fn default() -> Self {
+        Presence::new(45.0)
+    }
+}
+
+impl Presence {
+    pub fn new(ttl_seconds: f64) -> Self {
+        Presence { ttl: ttl_seconds, seen: Mutex::new(HashMap::new()) }
+    }
+
+    pub fn touch(&self, agent: &str, session_id: &str) {
+        self.seen
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(format!("{agent}/{session_id}"), crate::py::monotonic());
+    }
+
+    pub fn viewing(&self, agent: &str, session_id: &str) -> bool {
+        let seen = self.seen.lock().unwrap_or_else(|e| e.into_inner()).get(&format!("{agent}/{session_id}")).copied();
+        seen.map(|t| crate::py::monotonic() - t < self.ttl).unwrap_or(false)
+    }
+}
+
+pub fn is_bot_chat(session: &Dict) -> bool {
+    let title = session.get("title").filter(|t| crate::py::truthy(t)).map(crate::py::py_str).unwrap_or_default();
+    pyx::strip(&title).to_lowercase() == "bot chat"
+}
+
+/// The last turn was started by another agent's request (« Message from 🤖 Vie (@vie): … », Bot Mode
+/// message_agent), not by an answer to a request this agent sent: the requester reports back to the user.
+/// Both directions look alike; an answer follows this agent's own message_agent call to that handle.
+pub fn answers_another_agent(messages: &[Dict]) -> bool {
+    for index in (0..messages.len()).rev() {
+        if lowered(&messages[index], "role") != "user" {
+            continue;
+        }
+        let text = message_text(&messages[index]);
+        let Some(caps) = TEAMMATE_PREFIX.captures(&text) else {
+            return false; // the user, a routine…
+        };
+        let handle = caps[1].to_lowercase();
+        for earlier in messages[index.saturating_sub(40)..index].iter().rev() {
+            let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(earlier.clone())).to_lowercase();
+            if raw.contains("message_agent") && raw.contains(&handle) {
+                return false; // the answer to our own request: worth a notification
+            }
+        }
+        return true;
+    }
+    false
+}
+
+/// `session.get("message_count", session.get("messages"))` when it is an int (a bool is one in Python).
+fn message_count(session: &Dict) -> Option<i64> {
+    let count =
+        if session.contains_key("message_count") { session.get("message_count") } else { session.get("messages") };
+    match count {
+        Some(Value::Number(n)) if n.is_i64() || n.is_u64() => n.as_i64(),
+        Some(Value::Bool(b)) => Some(*b as i64),
+        _ => None,
+    }
+}
+
+#[derive(Default)]
+struct WatchState {
+    /// Bot Chat (or conversation) key -> message count at the last poll.
+    bot_count: HashMap<String, Option<i64>>,
+    /// Bot Chat key -> unsent reply seen at the previous poll.
+    bot_candidate: HashMap<String, String>,
+    /// Bot Chat key -> last reply handled.
+    bot_last: HashMap<String, String>,
+    /// Session key -> sub-task report last at the previous poll.
+    report_candidate: HashMap<String, String>,
+    /// Session key -> last report handled.
+    report_last: HashMap<String, String>,
+    /// Session ids already stored or skipped.
+    done: HashSet<String>,
+    /// Session id -> reply seen at the previous poll.
+    candidate: HashMap<String, String>,
+}
+
+pub struct CronWatcher {
+    pub config: SharedConfig,
+    pub hermes: HermesClient,
+    pub outbox: Arc<OutboxService>,
+    pub interval: f64,
+    pub window_hours: f64,
+    pub store: Option<Store>,
+    pub hub: Option<Arc<RunHub>>,
+    pub push: Option<Arc<PushService>>,
+    pub presence: Option<Arc<Presence>>,
+    state: Mutex<WatchState>,
+}
+
+impl CronWatcher {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        config: SharedConfig,
+        hermes: HermesClient,
+        outbox: Arc<OutboxService>,
+        interval_seconds: f64,
+        window_hours: f64,
+        store: Option<Store>,
+        hub: Option<Arc<RunHub>>,
+        push: Option<Arc<PushService>>,
+        presence: Option<Arc<Presence>>,
+    ) -> Self {
+        CronWatcher {
+            config,
+            hermes,
+            outbox,
+            interval: interval_seconds,
+            window_hours,
+            store,
+            hub,
+            push,
+            presence,
+            state: Mutex::new(WatchState::default()),
+        }
+    }
+
+    pub async fn run(self: Arc<Self>) {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        loop {
+            let config = self.config.get();
+            for agent in config.agents.values() {
+                // network, Hermes restarting… try again next round
+                if let Err(exc) = self.poll(agent, None).await {
+                    tracing::info!(agent = %agent.name, error = pyx::error_name(&exc), "cron watch poll failed");
+                }
+            }
+            tokio::time::sleep(Duration::from_secs_f64(self.interval.max(0.0))).await;
+        }
+    }
+
+    /// One round for one agent; returns how many replies were stored. `now`: local time, naive (Python's
+    /// `datetime.now()`).
+    pub async fn poll(&self, agent: &AgentConfig, now: Option<NaiveDateTime>) -> anyhow::Result<usize> {
+        let now = now.unwrap_or_else(|| Local::now().naive_local());
+        let window = chrono::Duration::microseconds((self.window_hours * 3600.0 * 1e6) as i64);
+        let mut stored = 0;
+        for session in self.hermes.list_sessions(agent, 20).await? {
+            let sid = session_key(&session);
+            let key = format!("{}/{sid}", agent.name);
+            if !sid.is_empty() && is_bot_chat(&session) {
+                self.poll_bot_chat(agent, &sid, &session).await?;
+                continue;
+            }
+            if !sid.is_empty() && !is_cron_session(&session) {
+                self.poll_thread(agent, &sid, &session).await?;
+                continue;
+            }
+            if sid.is_empty() || lock(&self.state).done.contains(&key) || !is_cron_session(&session) {
+                continue;
+            }
+            let started = session_started(&session);
+            if started.map(|s| now - s > window).unwrap_or(true) {
+                lock(&self.state).done.insert(key);
+                continue;
+            }
+            let Some(reply) = final_reply(&self.hermes.session_messages(agent, &sid).await?) else { continue };
+            {
+                let mut st = lock(&self.state);
+                if pyx::strip(&reply) == SILENT {
+                    st.done.insert(key);
+                    continue;
+                }
+                if st.candidate.get(&key) != Some(&reply) {
+                    st.candidate.insert(key, reply); // take it once it stops changing
+                    continue;
+                }
+                st.candidate.remove(&key);
+                st.done.insert(key);
+            }
+            let mut title = match session.get("title") {
+                Some(Value::String(t)) => Some(t.clone()),
+                _ => None,
+            };
+            let notify = self.note_job(agent, &sid, title.as_deref()).await?;
+            if let (None, Some(store), Some(job)) =
+                (title.as_deref().filter(|t| !t.is_empty()), &self.store, job_id(&sid))
+            {
+                title = store.cron_job_name(&agent.name, &job).await?;
+            }
+            // replace: a reply stored too early (older bridge) is corrected instead of dropped as a duplicate
+            let mut message = Map::new();
+            message.insert("message".into(), json!(reply));
+            message.insert("title".into(), json!(title));
+            message.insert("id".into(), json!(format!("hermes-session:{sid}")));
+            message.insert("tags".into(), json!([format!("session:{sid}")]));
+            if self.outbox.ingest(agent, &message, notify, true).await?.is_some() {
+                stored += 1;
+                tracing::info!(agent = %agent.name, session = %sid, chars = pyx::len(&reply), "cron reply stored");
+            }
+        }
+        Ok(stored)
+    }
+
+    async fn poll_bot_chat(&self, agent: &AgentConfig, sid: &str, session: &Dict) -> anyhow::Result<()> {
+        let key = format!("{}/{sid}", agent.name);
+        let count = message_count(session);
+        let first = {
+            let mut st = lock(&self.state);
+            let first = !st.bot_count.contains_key(&key);
+            if !first
+                && count.is_some()
+                && st.bot_count.get(&key) == Some(&count)
+                && !st.bot_candidate.contains_key(&key)
+                && !st.report_candidate.contains_key(&key)
+            {
+                return Ok(()); // nothing new since the last poll
+            }
+            st.bot_count.insert(key.clone(), count);
+            first
+        };
+        let messages = self.hermes.session_messages(agent, sid).await?;
+        self.check_report(agent, sid, &messages, first).await;
+        let reply = final_reply(&messages);
+        {
+            let mut st = lock(&self.state);
+            let Some(reply) = reply.clone().filter(|_| !first) else {
+                if let Some(reply) = reply {
+                    st.bot_last.insert(key, reply); // baseline: what is already there was seen (or is old)
+                }
+                return Ok(());
+            };
+            if st.bot_last.get(&key) == Some(&reply) {
+                st.bot_candidate.remove(&key);
+                return Ok(());
+            }
+            if st.bot_candidate.get(&key) != Some(&reply) {
+                st.bot_candidate.insert(key, reply); // take it once it stops changing
+                return Ok(());
+            }
+            st.bot_candidate.remove(&key);
+            st.bot_last.insert(key, reply);
+        }
+        let reply = reply.unwrap_or_default();
+        if let Some(hub) = &self.hub {
+            if hub.followed_recently(&agent.name, sid, Some(&reply), 600.0) {
+                return Ok(()); // the app followed this turn: shown live or pushed as « reply ready »
+            }
+        }
+        if let Some(presence) = &self.presence {
+            if presence.viewing(&agent.name, sid) {
+                return Ok(()); // on screen right now
+            }
+        }
+        if answers_another_agent(&messages) {
+            return Ok(()); // an answer to another agent: that agent reports back to the user, one notification
+        }
+        if let (Some(push), true) = (&self.push, pyx::strip(&reply) != SILENT) {
+            tracing::info!(agent = %agent.name, session = %sid, chars = pyx::len(&reply), "bot chat push");
+            push.notify_reply(&agent.name, &format!("session:{sid}"), &reply, Some(sid)).await;
+        }
+        Ok(())
+    }
+
+    /// Another conversation: fetched only when its message count moves, for sub-task reports.
+    async fn poll_thread(&self, agent: &AgentConfig, sid: &str, session: &Dict) -> anyhow::Result<()> {
+        let key = format!("{}/{sid}", agent.name);
+        let Some(count) = message_count(session) else {
+            return Ok(()); // can't tell what changed without fetching every conversation each round
+        };
+        {
+            let mut st = lock(&self.state);
+            let first = !st.bot_count.contains_key(&key);
+            if first || (st.bot_count.get(&key) == Some(&Some(count)) && !st.report_candidate.contains_key(&key)) {
+                st.bot_count.insert(key, Some(count)); // first sight: what is there is old
+                return Ok(());
+            }
+            st.bot_count.insert(key, Some(count));
+        }
+        let messages = self.hermes.session_messages(agent, sid).await?;
+        self.check_report(agent, sid, &messages, false).await;
+        Ok(())
+    }
+
+    async fn check_report(&self, agent: &AgentConfig, sid: &str, messages: &[Dict], first: bool) {
+        let key = format!("{}/{sid}", agent.name);
+        let report = subtask_report(messages);
+        {
+            let mut st = lock(&self.state);
+            let Some(report) = report.clone() else {
+                st.report_candidate.remove(&key); // nothing, or the agent woke up and replied
+                return;
+            };
+            if first {
+                st.report_last.insert(key, report);
+                return;
+            }
+            if st.report_last.get(&key) == Some(&report) {
+                st.report_candidate.remove(&key);
+                return;
+            }
+            if st.report_candidate.get(&key) != Some(&report) {
+                st.report_candidate.insert(key, report); // still last at the next poll: nobody woke the agent
+                return;
+            }
+            st.report_candidate.remove(&key);
+            st.report_last.insert(key, report);
+        }
+        if let Some(presence) = &self.presence {
+            if presence.viewing(&agent.name, sid) {
+                return; // on screen: the report card shows it
+            }
+        }
+        if let Some(push) = &self.push {
+            let line = report_line(&report.unwrap_or_default());
+            tracing::info!(agent = %agent.name, session = %sid, media = line.is_some(), "subtask report push");
+            push.notify_subtask(&agent.name, sid, line.as_deref()).await;
+        }
+    }
+
+    /// Remembers the job (for the app's « Tâches planifiées » settings); false if it is muted.
+    async fn note_job(&self, agent: &AgentConfig, session_id: &str, title: Option<&str>) -> anyhow::Result<bool> {
+        let (Some(job), Some(store)) = (job_id(session_id), &self.store) else {
+            return Ok(true);
+        };
+        store.note_cron_job(&agent.name, &job, job_name(title).as_deref()).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dict(value: Value) -> Dict {
+        value.as_object().cloned().unwrap()
+    }
+
+    fn msgs(value: Value) -> Vec<Dict> {
+        value.as_array().unwrap().iter().map(|m| m.as_object().cloned().unwrap()).collect()
+    }
+
+    #[test]
+    fn cron_session_helpers() {
+        assert!(is_cron_session(&dict(json!({"id": "cron_fc344ed09026_20261005_075008"}))));
+        assert!(!is_cron_session(&dict(json!({"id": "api_1791112967_496e4649"}))));
+        assert!(is_cron_session(&dict(json!({"id": "x", "source": "Cron"}))));
+        let started = session_started(&dict(json!({"id": "cron_abc_20261005_075008"})));
+        assert_eq!(started, NaiveDateTime::parse_from_str("2026-10-05 07:50:08", "%Y-%m-%d %H:%M:%S").ok());
+        let naive = session_started(&dict(json!({"id": "api_1", "started_at": "2026-10-05T07:50:08"})));
+        assert_eq!(naive, NaiveDateTime::parse_from_str("2026-10-05 07:50:08", "%Y-%m-%d %H:%M:%S").ok());
+        assert_eq!(session_started(&dict(json!({"id": "api_1"}))), None);
+        assert_eq!(
+            final_reply(&msgs(json!([{"role": "user", "content": "prompt"},
+                {"role": "assistant", "content": [{"type": "text", "text": "Voilà le point."}]}]))),
+            Some("Voilà le point.".into())
+        );
+        assert_eq!(
+            final_reply(&msgs(json!([{"role": "assistant", "content": "…"}, {"role": "user", "content": "encore"}]))),
+            None
+        );
+        assert_eq!(job_id("cron_fc344ed09026_20261005_075008").as_deref(), Some("fc344ed09026"));
+        assert_eq!(job_id("api_123"), None);
+        assert_eq!(job_name(Some("Podcast du matin · Oct 05 07:53")).as_deref(), Some("Podcast du matin"));
+    }
+
+    #[test]
+    fn a_comment_before_a_running_tool_is_not_the_final_reply() {
+        let calling = json!({"role": "assistant", "content": "execute_code est bloqué en cron — je passe par terminal.",
+                             "tool_calls": [{"function": {"name": "terminal", "arguments": "{}"}}]});
+        let prompt = json!({"role": "user", "content": "Produis le podcast"});
+        assert_eq!(final_reply(&msgs(json!([prompt, calling]))), None);
+        assert_eq!(final_reply(&msgs(json!([prompt, calling, {"role": "tool", "content": "ok"}]))), None);
+        assert_eq!(
+            final_reply(&msgs(json!([prompt, calling, {"role": "tool", "content": "ok"},
+                {"role": "assistant", "content": "MEDIA:/m/podcast.mp3\n🎙️ Point du matin"}]))),
+            Some("MEDIA:/m/podcast.mp3\n🎙️ Point du matin".into())
+        );
+    }
+
+    const REPORT: &str =
+        "[ASYNC DELEGATION BATCH COMPLETE — deleg_1194136c]\n\nTask 1 (completed): mini podcast generated, \
+                          saved to /home/hermes/.hermes/media/podcast_jeudi0810.mp3 (58 s).";
+
+    #[test]
+    fn report_helpers() {
+        assert_eq!(
+            subtask_report(&msgs(
+                json!([{"role": "assistant", "content": "Relancé"}, {"role": "user", "content": REPORT}])
+            )),
+            Some(REPORT.into())
+        );
+        assert_eq!(
+            subtask_report(&msgs(
+                json!([{"role": "user", "content": REPORT}, {"role": "assistant", "content": "Voilà"}])
+            )),
+            None
+        );
+        assert_eq!(subtask_report(&msgs(json!([{"role": "user", "content": "Salut"}]))), None);
+        assert_eq!(report_line(REPORT).as_deref(), Some("🎧 Podcast jeudi0810"));
+        assert_eq!(
+            report_line("[ASYNC DELEGATION BATCH COMPLETE — x] see /srv/media/chart-sleep.png").as_deref(),
+            Some("🖼️ Chart sleep")
+        );
+        assert_eq!(report_line("[ASYNC DELEGATION BATCH COMPLETE — x] done, nothing saved"), None);
+    }
+
+    #[test]
+    fn teammates() {
+        let theirs = msgs(json!([{"role": "user", "content": "Message from 🤖 Vie (@vie): Comment était la nuit ?"},
+                                 {"role": "assistant", "content": "Nuit correcte."}]));
+        assert!(answers_another_agent(&theirs));
+        let ours = msgs(json!([
+            {"role": "user", "content": "Demande à Wellness"},
+            {"role": "assistant", "content": "Je demande.", "tool_calls": [{"function": {"name": "message_agent", "arguments": "{\"target\": \"wellness\"}"}}]},
+            {"role": "user", "content": "Message from 🤖 Wellness (@wellness): Nuit correcte."},
+            {"role": "assistant", "content": "Wellness dit : nuit correcte."}
+        ]));
+        assert!(!answers_another_agent(&ours));
+        assert!(!answers_another_agent(&msgs(json!([{"role": "user", "content": "Salut"}]))));
+        assert!(is_bot_chat(&dict(json!({"title": " Bot Chat "}))));
+        assert!(!is_bot_chat(&dict(json!({"title": "Chat"}))));
+    }
+}

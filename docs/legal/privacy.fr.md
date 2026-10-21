@@ -30,7 +30,9 @@
 Kerfy Studio n'a pas désigné de délégué à la protection des données : ce n'est pas obligatoire pour son activité
 (article 37 du RGPD). Pour toute question sur tes données : support@kerfystudio.com. Pour la loi de Singapour (Personal
 Data Protection Act), qui demande une personne chargée de la protection des données, c'est le président de Kerfy
-Studio, [Prénom Nom], joignable à la même adresse.
+Studio, [Prénom Nom], joignable à la même adresse. Il est aussi la personne responsable de la protection des
+renseignements personnels au sens de la loi du Québec, et la personne chargée de veiller au respect de la loi
+canadienne (Loi sur la protection des renseignements personnels et les documents électroniques), à la même adresse.
 
 Kerfy Studio est responsable des traitements que l'app réalise pour fonctionner, tels qu'il les a conçus
 (sections 3, 4 et 7), même lorsqu'ils restent sur ton téléphone et qu'il n'y a pas accès, et de ceux de l'offre tout
@@ -247,7 +249,7 @@ partages ton forfait sont prévenues par e-mail : leurs places s'arrêtent le jo
 
 **Données reçues des stores.** Par les notifications d'Apple (App Store Server Notifications) et de Google (Google Play,
 notifications en temps réel) : l'identifiant de ton abonnement chez le store, le forfait, la région, son état (semaine
-gratuite, actif, suspendu, terminé, remboursé), la fin de la période payée, si le renouvellement est coupé, et pour le
+gratuite, actif, suspendu, terminé, remboursé), la fin de la période payée, la monnaie et le prix mensuel du forfait, si le renouvellement est coupé, et pour le
 crédit d'IA acheté, l'identifiant de chaque achat et son montant. **Jamais tes moyens de paiement**, que seul le store
 connaît. Le pays du compte de ton store, que l'app envoie pour savoir si l'offre y est vendue (il n'est pas gardé).
 
@@ -442,10 +444,21 @@ EUrouter traite les messages dans l'Union européenne [à compléter : pays où 
 si l'un est hors de l'Union]. Apple et Google (connexion, stores, DeviceCheck, Play Integrity) peuvent traiter des
 données aux États-Unis, avec les garanties indiquées ci-dessus.
 
-**Si tu vis hors de l'Union européenne** (États-Unis, Royaume-Uni, Israël, Singapour), tes données viennent dans
-l'Union européenne, où Kerfy Studio les traite selon le RGPD, qui s'applique à tous ses traitements. Le Royaume-Uni et
-Israël reconnaissent l'Union européenne comme offrant une protection adéquate ; pour Singapour, ce niveau de protection
-et nos contrats avec nos prestataires donnent la protection comparable que demande la loi de Singapour.
+**Si tu vis hors de l'Union européenne** (États-Unis, Royaume-Uni, Israël, Singapour, Canada), tes données viennent
+dans l'Union européenne, où Kerfy Studio les traite selon le RGPD, qui s'applique à tous ses traitements. Le
+Royaume-Uni et Israël reconnaissent l'Union européenne comme offrant une protection adéquate ; pour Singapour, ce
+niveau de protection et nos contrats avec nos prestataires donnent la protection comparable que demande la loi de
+Singapour.
+
+**Si tu vis au Canada**, tes données sont donc conservées et traitées hors du Canada, et hors du Québec si tu y vis :
+dans l'Union européenne pour ta place, ses sauvegardes et ton compte, et chez les prestataires nommés dans cette
+section. Elles y sont soumises aux lois de ces pays, et les tribunaux et autorités de ces pays peuvent y avoir accès
+dans les cas que leurs lois prévoient. Kerfy Studio reste responsable de tes données chez ses prestataires et les
+encadre par contrat. Pour les personnes au Québec, Kerfy Studio évalue avant ce transfert les facteurs relatifs à la
+vie privée (sensibilité des données, finalités, mesures de protection, y compris contractuelles, et régime juridique
+du pays de destination) et ne fait le transfert que si cette évaluation montre une protection adéquate (article 17 de
+la Loi sur la protection des renseignements personnels dans le secteur privé). Tu peux nous demander un résumé de
+cette évaluation.
 
 Prestataire de messagerie : [pays ; garantie]. Prestataire d'envoi des e-mails et hébergeur des sauvegardes : [à
 compléter : pays ; garantie]. Tu peux nous demander une copie des garanties applicables.
@@ -489,7 +502,11 @@ ta place en HTTPS et vérifie son certificat. Les sauvegardes sont chiffrées su
 
 **En cas de violation de données**, Kerfy Studio prévient la CNIL dans les 72 heures (article 33 du RGPD) et les
 personnes concernées quand le risque pour elles est élevé (article 34) ; pour les personnes à Singapour, la Personal
-Data Protection Commission dans les 3 jours quand la loi de Singapour le demande.
+Data Protection Commission dans les 3 jours quand la loi de Singapour le demande ; pour les personnes au Canada, le
+Commissariat à la protection de la vie privée du Canada et les personnes concernées dès que possible quand il y a un
+risque réel de préjudice grave, et, pour les personnes au Québec, la Commission d'accès à l'information et les
+personnes concernées avec diligence quand l'incident présente un risque de préjudice sérieux. Kerfy Studio tient un
+registre de chaque violation.
 
 ## 14. Tes droits
 
@@ -517,13 +534,23 @@ sens de la loi californienne (California Consumer Privacy Act) et ne fait aucune
 ne te suivent pas d'un site à l'autre : un signal « Do Not Track » de ton navigateur ne change donc rien à ce que nous
 faisons (California Online Privacy Protection Act). Tu exerces les droits de cette section à support@kerfystudio.com.
 
+**Si tu vis au Canada.** Les lois canadiennes reposent sur le consentement : en utilisant l'app et en souscrivant
+après avoir vu cette politique, tu consens aux traitements qu'elle décrit, pour les fins qu'elle indique. Tu as les
+droits d'accès et de rectification de la loi canadienne et, au Québec, ceux de la
+loi du Québec : recevoir tes données informatisées dans un format structuré et couramment utilisé, retirer ton
+consentement (ce qui met fin au service quand il en a besoin pour fonctionner), et être informé quand une décision
+est prise uniquement par un traitement automatisé (Kerfy Studio n'en prend aucune à ton sujet). Pour toi, nous
+répondons dans les 30 jours. Kerfy Studio ne vend pas tes données et ne fait aucune publicité ciblée.
+
 ## 15. Réclamation
 
 Si tu estimes que tes droits ne sont pas respectés, tu peux saisir la **CNIL** (3 place de Fontenoy, TSA 80715,
 75334 Paris Cedex 07 — https://www.cnil.fr/fr/plaintes) ou l'autorité de protection des données de ton pays : au
 Royaume-Uni, l'Information Commissioner's Office (https://ico.org.uk) ; en Israël, la Privacy Protection Authority
 (https://www.gov.il/en/departments/the_privacy_protection_authority) ; à Singapour, la Personal Data Protection
-Commission (https://www.pdpc.gov.sg).
+Commission (https://www.pdpc.gov.sg) ; au Canada, le Commissariat à la protection de la vie privée du Canada
+(https://www.priv.gc.ca, 1-800-282-1376) ; au Québec, la Commission d'accès à l'information
+(https://www.cai.gouv.qc.ca, 1 888 528-7741).
 
 ## 16. Enfants
 
@@ -542,7 +569,9 @@ d'effacer son message.
 avoir au moins 16 ans ; avant 16 ans, une place ne peut être utilisée que préparée et supervisée par un parent ou un
 adulte qui en a la charge ([conditions de l'offre](offer.fr.md), section 7). **Aux États-Unis, aucune personne de moins
 de 13 ans ne peut utiliser une place**, et Kerfy Studio ne collecte sciemment aucune donnée d'un enfant de moins de
-13 ans (Children's Online Privacy Protection Act) ; si c'est arrivé, écris-nous et nous l'effaçons.
+13 ans (Children's Online Privacy Protection Act) ; si c'est arrivé, écris-nous et nous l'effaçons. **Au Québec**, les
+données d'un enfant de moins de 14 ans ne sont recueillies qu'avec le consentement d'un parent ou du tuteur : l'adulte
+qui prépare et supervise sa place le donne pour lui (articles 4.1 et 14 de la loi du Québec).
 
 ## 17. Modifications
 
