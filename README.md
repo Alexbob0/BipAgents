@@ -194,8 +194,8 @@ them before updating Hermes); each one is offered upstream. Details in [`hermes/
 
 - The apps (iPhone, iPad, Android) are Kerfy Studio's and their source is private. Published here, so anyone can check
   their privacy promises: the account's end-to-end encryption, the same in both apps
-  (`App/Features/Account/AccountCrypto.swift`, `android/…/account/AccountCrypto.kt`, with its test vectors); a page listing
-  everything the apps send, and to whom, follows. The demo's scenarios and recordings are in
+  (`App/Features/Account/AccountCrypto.swift`, `android/…/account/AccountCrypto.kt`, with its test vectors); and
+  [a page listing everything the apps send, and to whom](docs/app-data.md). The demo's scenarios and recordings are in
   `App/Resources/Demo/` (the site uses them).
 - `bridge/` and `bridge-rs/` — the server-side bridge, in Python and in Rust ([README](bridge/README.md)).
 - `pocket/` — the Pocket TTS server for the Bips' voices ([README](pocket/README.md)).

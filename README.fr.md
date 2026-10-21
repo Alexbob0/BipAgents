@@ -197,7 +197,7 @@ Quelques changements dont BipAgents a besoin ne sont pas encore dans Hermes. L'i
 - Les apps (iPhone, iPad, Android) appartiennent à Kerfy Studio et leur code est privé. Publié ici, pour que chacun
   puisse vérifier leurs promesses de confidentialité : le chiffrement de bout en bout du compte, le même dans les deux
   apps (`App/Features/Account/AccountCrypto.swift`, `android/…/account/AccountCrypto.kt`, avec ses vecteurs de test) ;
-  une page listant tout ce que les apps envoient, et à qui, suivra. Les scénarios et enregistrements de la démo sont
+  [une page listant tout ce que les apps envoient, et à qui](docs/app-data.fr.md). Les scénarios et enregistrements de la démo sont
   dans `App/Resources/Demo/` (le site s'en sert).
 - `bridge/` et `bridge-rs/` — le bridge côté serveur, en Python et en Rust ([README](bridge/README.fr.md)).
 - `pocket/` — le serveur Pocket TTS des voix des Bips ([README](pocket/README.fr.md)).
