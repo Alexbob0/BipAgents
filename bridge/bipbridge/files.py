@@ -6,6 +6,8 @@ sandbox sees its folder there at ``/fichiers``, read-only (`agents_admin.mount_u
 """
 from __future__ import annotations
 
+import asyncio
+
 import logging
 import os
 import posixpath
@@ -147,6 +149,8 @@ async def store_upload(agent: AgentConfig, upload: UploadFile, limits: Limits,
 
 async def handle_upload(request: Request) -> Dict[str, Any]:
     config = request.app.state.config
+    from .place_backup import refuse_when_full
+    await asyncio.to_thread(refuse_when_full)   # an offer's place with its 5 GB used up
     try:
         form = await request.form(max_files=1, max_fields=8)
     except BodyTooLarge:
