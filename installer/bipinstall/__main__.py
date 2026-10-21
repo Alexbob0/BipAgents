@@ -4,6 +4,7 @@ QR code to scan in the app. `--dry-run` shows every step and command without cha
 from __future__ import annotations
 
 import argparse
+import getpass
 import asyncio
 import os
 import re
@@ -730,8 +731,13 @@ def checks_and_end(inst: Install, runner: hermes.Runner, args, steps, total: int
 def qr_main(argv: List[str]) -> int:
     from . import rustbridge
 
+    parser = argparse.ArgumentParser(prog="bipagents qr", description="Show the code to scan in the BipAgents app again")
+    parser.add_argument("account", nargs="?", help="another account's install, from an account with sudo (e.g. a family member's)")
     # The bridge's own options pass through (`--agent vie`, `--png vie.png`).
-    _, rest = argparse.ArgumentParser(prog="bipagents qr", description="Show the code to scan in the BipAgents app again").parse_known_args(argv)
+    args, rest = parser.parse_known_args(argv)
+    if args.account and args.account != getpass.getuser():
+        command = f"$HOME/.local/bin/bipagents qr {' '.join(shlex.quote(a) for a in rest)}".strip()
+        return subprocess.run(["sudo", "-iu", args.account, "sh", "-c", command], check=False).returncode
     config = Path.home() / ".config" / "bipagents" / "bridge.toml"
     if not config.exists():
         say(f"No BipAgents install in this account ({config} is missing): run this command in the account it was installed in.")

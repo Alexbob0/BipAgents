@@ -135,7 +135,7 @@ def as_account(account: str, command: str) -> str:
 COMMAND_HELP = """BipAgents, in this account:
   bipagents update           bring it up to date (only what changed restarts)
   bipagents update --check   only say what is new
-  bipagents qr               show the code to scan in the app again
+  bipagents qr [ACCOUNT]     show the code to scan in the app again (ACCOUNT: another install, with sudo)
   bipagents voice            connect your own voice model (a TTS server on the network)
   bipagents console          a one-time link opening your agents in a computer's browser
   bipagents hermes-update    update Hermes and keep BipAgents working
