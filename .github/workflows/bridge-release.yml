@@ -28,7 +28,7 @@ jobs:
       key: ${{ steps.key.outputs.key }}
       exists: ${{ steps.exists.outputs.exists }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: key
         run: |
           test -d bridge-rs || { echo "key=" >> "$GITHUB_OUTPUT"; exit 0; }
@@ -52,7 +52,7 @@ jobs:
       run:
         working-directory: bridge-rs
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup toolchain install stable --profile minimal -c clippy && rustup default stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -68,7 +68,7 @@ jobs:
       matrix:
         arch: [x86_64, aarch64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup toolchain install stable --profile minimal && rustup default stable && rustup target add ${{ matrix.arch }}-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
         with:
@@ -82,7 +82,7 @@ jobs:
         run: |
           out=bridge-rs/target/${{ matrix.arch }}-unknown-linux-gnu/release
           tar -C "$out" -czf bipbridge-linux-${{ matrix.arch }}.tar.gz bipbridge bip-browser-mcp
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
           path: bipbridge-linux-${{ matrix.arch }}.tar.gz
@@ -92,7 +92,7 @@ jobs:
     needs: [key, test]
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup toolchain install stable --profile minimal && rustup default stable && rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
@@ -107,7 +107,7 @@ jobs:
             lipo -create -output universal/$bin target/aarch64-apple-darwin/release/$bin target/x86_64-apple-darwin/release/$bin
           done
           tar -C universal -czf ../bipbridge-macos-universal.tar.gz bipbridge bip-browser-mcp
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: bipbridge-macos-universal.tar.gz
@@ -117,7 +117,7 @@ jobs:
     needs: [key, linux, macos]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
       - name: Publish

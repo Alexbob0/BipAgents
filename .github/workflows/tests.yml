@@ -13,8 +13,8 @@ jobs:
     name: Bridge and installer
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -33,7 +33,7 @@ jobs:
       run:
         working-directory: relay
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: rustup toolchain install stable --profile minimal -c clippy,rustfmt && rustup default stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -46,7 +46,7 @@ jobs:
     name: Windows install script
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: install.ps1 parses (Windows PowerShell 5.1, the one every PC has)
         shell: powershell
         run: |
@@ -58,7 +58,7 @@ jobs:
     name: HermesKit and VoiceKit
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The newest Xcode on the runner: the voices' packages use the iOS SDK's latest asset-pack API.
       - name: Newest Xcode
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)" && xcodebuild -version
@@ -73,12 +73,12 @@ jobs:
     name: Android app
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Unit tests and debug build
         working-directory: android
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-configuration-cache
