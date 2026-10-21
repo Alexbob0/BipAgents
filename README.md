@@ -216,6 +216,9 @@ The **code** is free software under the [MIT license](LICENSE): use it, change i
 [LICENSE-ASSETS](LICENSE-ASSETS) lets you show them and build BipAgents with them, not put them in another app. A fork
 you publish brings its own name and its own characters. Contributing: see the [contribution terms](CONTRIBUTING.md#contribution-terms).
 
+The **guichet**, the server of the all-included offer (subscriptions, the servers' reserve, backups), is Kerfy Studio's
+and not part of this repository. The apps, the bridge, the installer (the places' side included) and the push relay are.
+
 ## 💬 Who's behind it
 
 A personal project by **Bob**, who digs into AI every day: agents, voices, self-hosting.

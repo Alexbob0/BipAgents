@@ -218,6 +218,10 @@ ne le sont pas : [LICENSE-ASSETS](LICENSE-ASSETS) permet de les montrer et de co
 mettre dans une autre app. Un fork que tu publies a son propre nom et ses propres personnages. Contribuer : voir les
 [conditions de contribution](CONTRIBUTING.md#contribution-terms).
 
+Le **guichet**, le serveur de l'offre tout compris (abonnements, réserve de serveurs, sauvegardes), appartient à Kerfy
+Studio et ne fait pas partie de ce dépôt. Les apps, le bridge, l'installateur (côté places compris) et le relais de
+notifications, si.
+
 ## 💬 Qui est derrière
 
 Un projet perso de **Bob**, qui creuse l'IA au quotidien : agents, voix, auto-hébergement.
