@@ -670,6 +670,13 @@ impl Jobs {
                     return;
                 }
             }
+            // The person paused (or the task was stopped) while this round waited on Hermes: their change stands,
+            // the counters come again next round.
+            let changed = load(&config, job_id)
+                .is_some_and(|latest| state_of(&latest) != state || latest.get("stop_asked") != job.get("stop_asked"));
+            if changed && state_of(&job) == state {
+                continue;
+            }
             let _ = save(&config, &job);
         }
     }
