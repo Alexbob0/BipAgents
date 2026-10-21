@@ -336,6 +336,15 @@ pub fn version_of(tools: &[Value]) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))[..10].to_string()
 }
 
+/// The tools of `agent`: everyone's, and `health` when the person gave it their health data.
+pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
+    let mut tools = tools().to_vec();
+    if crate::health::enabled(config, &agent.name) {
+        tools.push(crate::health::health_tool());
+    }
+    tools
+}
+
 /// Changes whenever the tools do: Hermes keeps the list it got when it connected, so a new tool needs a new entry.
 pub fn tools_version() -> String {
     static VERSION: LazyLock<String> = LazyLock::new(|| version_of(tools()));
@@ -394,7 +403,12 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// hand are left as they are. Returns whether the profile was changed (a new conversation picks it up). Err: a
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
-    register_at(config, agent, run, &tools_url(config)).await
+    let url = if crate::health::enabled(config, &agent.name) {
+        url_with(config, &version_of(&tools_for(config, agent)))
+    } else {
+        tools_url(config)
+    };
+    register_at(config, agent, run, &url).await
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).
@@ -1116,6 +1130,19 @@ pub async fn call_tool(
     }
     let config = maker.config.get();
     let (agent_c, name_c, arguments_c) = (agent.clone(), name.to_string(), arguments.clone());
+    if name == crate::health::TOOL_NAME {
+        return blocking(move || {
+            if !crate::health::enabled(&config, &agent_c.name) {
+                return Ok(tool_text(
+                    "The person hasn't shared their health data with you: they switch « Santé » on in your page of \
+the BipAgents app.",
+                    true,
+                ));
+            }
+            Ok(crate::health::call(&config, &arguments_c))
+        })
+        .await;
+    }
     if PAGE_TOOLS.contains(&name) {
         return blocking(move || page_tool(&config, &agent_c, &name_c, &arguments_c)).await;
     }
@@ -1267,7 +1294,10 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, json!({}))));
     }
     if method_name == "tools/list" {
-        return Ok(crate::web::json_response(200, &rpc_result(&request_id, json!({"tools": tools()}))));
+        return Ok(crate::web::json_response(
+            200,
+            &rpc_result(&request_id, json!({"tools": tools_for(&state.config(), &agent)})),
+        ));
     }
     if method_name != "tools/call" {
         let shown = if method.is_null() { "None".to_string() } else { py::py_str(&method) };

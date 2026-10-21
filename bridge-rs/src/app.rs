@@ -1222,6 +1222,8 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/reminders/agents", "PUT"),
     ("/v1/reminders/queue", "GET"),
     ("/v1/reminders/queue/{op_id}", "POST"),
+    ("/v1/health-data", "GET"),
+    ("/v1/health-data/days", "PUT"),
     ("/v1/voices", "GET"),
     ("/v1/voices/uses", "PUT"),
     ("/v1/agents/{agent_id}/voices", "PUT"),
@@ -1345,6 +1347,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::jobs::router())
         .merge(crate::notes_import::router())
         .merge(crate::reminders::router())
+        .merge(crate::health::router())
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())
         .merge(crate::favicons::router());

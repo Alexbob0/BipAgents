@@ -102,6 +102,24 @@ nicht, was sich auf deinem Server befindet.
 **Was du selbst teilst.** Der Diagnosebericht (Einstellungen › Diagnose und Latenzen › Bericht exportieren) enthält
 den Namen und die Adresse deiner Agenten; er geht nur an die App oder Person, die du im Teilen-Menü auswählst.
 
+**Deine Gesundheit, wenn du sie einschaltest (« Santé », Gesundheit).** Für jeden Agenten kannst du Gesundheit in
+seinen Werkzeugen einschalten. Mit deiner Erlaubnis in Apple Health (iPhone, einschließlich der Daten deiner Apple
+Watch) oder Health Connect (Android) liest die App, ohne dort je etwas zu schreiben, eine Zusammenfassung jedes Tages:
+deinen Schlaf (Schlafdauer, Zeit im Bett, Zubettgeh- und Aufstehzeit), deine Schritte, aktive Energie,
+Trainingsminuten, Ruhepuls, Herzfrequenzvariabilität, dein Gewicht und deine Trainingseinheiten (Art, Dauer, Strecke,
+Energie). Sie sendet beim ersten Mal die letzten 30 Tage, danach die Tage, die sich geändert haben, **nur an deinen
+Server** (oder an deinen Platz beim Komplettangebot), wo sie als eine Datei pro Tag gespeichert werden, höchstens 400
+Tage. Nur die Agenten, für die du Gesundheit eingeschaltet hast, lesen sie, um dir bei Schlaf, Aktivität und Training
+zu helfen; sie stellen keine Diagnosen. Das KI-Modell des Agenten erhält, was der Agent liest, um dir zu antworten:
+beim Komplettangebot ist Gesundheit nur mit einem Modell möglich, das in der Europäischen Union läuft. Das Telefon
+speichert nur die Daten und einen Fingerabdruck dessen, was es schon gesendet hat, nie die Werte, und nichts in
+iCloud. Kerfy Studio erhält sie nicht; nichts wird verkauft oder für Werbung genutzt. **Rechtsgrundlage**: deine
+ausdrückliche Einwilligung (Art. 6 Abs. 1 lit. a und Art. 9 Abs. 2 lit. a DSGVO), die du gibst, indem du Gesundheit
+einschaltest und es in Apple Health oder Health Connect erlaubst. **Beenden**: schalte Gesundheit aus; sobald kein
+Agent es mehr hat, werden die auf deinem Server gespeicherten Tage gelöscht. Sie gehen auch mit dem Agenten, mit
+deinem Platz, oder wenn du die Erlaubnis in Apple Health oder Health Connect entziehst (dann wird nichts mehr
+gesendet).
+
 ## 4. Was Kerfy Studio erhalten kann
 
 ### 4.1 Benachrichtigungen über das Relay von Kerfy Studio
@@ -469,6 +487,7 @@ Garantie]. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
 | Daten | Dauer |
 |---|---|
 | Daten der App auf deinem Telefon | Bis du den Agenten oder die App löschst |
+| Gesundheitsdaten (« Santé ») auf deinem Server oder Platz | Höchstens 400 Tage; gelöscht, sobald kein Agent Gesundheit mehr hat, mit dem Agenten oder mit dem Platz |
 | Gerätetoken beim Relay | Keine Speicherung: Es existiert nur versiegelt, auf deinem Telefon und deinem Server (und beim Guichet mit dem Alles-inklusive-Angebot, solange das Gerät mit deinem Platz verbunden ist) |
 | IP-Adresse beim Relay | Im Arbeitsspeicher, höchstens eine Stunde, als Fingerabdruck |
 | Technische Protokolle des Relays | Höchstens 6 Monate |
