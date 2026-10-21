@@ -1254,6 +1254,11 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/family/invite", "POST"),
     ("/v1/family/join", "POST"),
     ("/v1/family/{household}", "DELETE"),
+    ("/family/tell", "POST"),
+    ("/v1/family/news", "GET"),
+    ("/v1/family/proposals/{id}/send", "POST"),
+    ("/v1/family/proposals/{id}", "DELETE"),
+    ("/v1/family/received/{id}/seen", "POST"),
     ("/v1/agents/{agent_id}/desktop", "POST"),
     ("/v1/agents/{agent_id}/desktop/control", "POST"),
     ("/desktop/{ticket}/", "GET"),
@@ -1351,7 +1356,10 @@ fn assemble(state: &AppState, config: &Config) -> Router {
     if !config.cloud {
         authed = authed.merge(crate::console::console_admin_router());
     }
-    authed = authed.merge(crate::peers::household_admin_router()).merge(crate::desktop::desktop_admin_router());
+    authed = authed
+        .merge(crate::peers::household_admin_router())
+        .merge(crate::family_news::router())
+        .merge(crate::desktop::desktop_admin_router());
     // Under /v1 without the bridge key: a computer sending its agents (the app's one-time code instead), and a
     // server the app created until the app claims it (its own proofs).
     let open = Router::new().merge(import_open).merge(crate::cloud_setup::router());
@@ -1372,6 +1380,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::peers::peer_router()) // agents' own tokens, checked against the links the person allowed
         .merge(crate::agent_tools::router()) // the agents' MCP tools (create_audio), each agent with its own token
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
+        .merge(crate::family_news::household_router()) // their family news, the same key
         .nest("/desktop/static/novnc", crate::desktop::static_files())
         .merge(crate::desktop::desktop_router()) // the page and its stream: a short-lived ticket from the route above
         .route("/v1/voice", get(crate::voice_ws::voice_endpoint));

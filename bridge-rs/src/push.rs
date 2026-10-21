@@ -30,6 +30,7 @@ pub const REPLY_BODY: &str = "Ta réponse est prête.";
 pub const QUESTION_BODY: &str = "Une question pour toi";
 pub const APPROVAL_BODY: &str = "Approbation requise";
 pub const SUBTASK_BODY: &str = "Sous-tâche terminée";
+pub const FAMILY_BODY: &str = "Message de ta famille";
 
 /// Python's truthiness of an optional str (`if x:`).
 fn given(value: Option<&str>) -> Option<&str> {
@@ -487,6 +488,19 @@ impl PushService {
         );
         let collapse = given(request_id).unwrap_or(run_id).to_string();
         self.fanout(agent, payload, "alert", 10, Some(collapse)).await
+    }
+
+    /// Someone of the family passed something on to this agent (family_news.rs): « Alex : je rentre tard ce soir »
+    /// when previews are on, else « Message de ta famille » (the extension fetches the line on the device); tapping
+    /// opens the agent.
+    pub async fn notify_family(&self, agent: &str, line: &str, note_id: &str) -> usize {
+        let short = preview(line, 160);
+        let shown = if self.previews() { Some(short.as_str()) } else { None };
+        let reply_id = self.remember(line);
+        let mut payload =
+            reply_payload(agent, &self.title(agent), "session:family", None, shown, Some(&reply_id), FAMILY_BODY);
+        payload.insert("family".into(), json!(note_id));
+        self.fanout(agent, payload, "alert", 10, Some(format!("family:{note_id}"))).await
     }
 
     /// `notify_silent(agent, reason, **extra)`.
