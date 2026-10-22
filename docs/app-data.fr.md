@@ -7,7 +7,8 @@ agents ne vont qu’au serveur de la personne (son bridge et Hermes). Les servic
 de compte, d’achat et d’acheminement des notifications, ainsi que des paquets scellés qu’ils ne peuvent pas ouvrir. Les
 apps n’intègrent aucun SDK de mesure d’audience ni de rapport de plantage. Apple et Google reçoivent ce qu’exigent leurs
 boutiques, la connexion et les notifications, et la voix pour la dictée seulement si la personne a accepté la dictée en
-ligne.
+ligne. Avec l’offre tout compris, l’adresse e-mail propre d’un agent garde ses e-mails sur le
+serveur de messagerie de Kerfy Studio ; c’est le bridge de la place qui parle à ce serveur, pas l’app.
 
 Cette page a été écrite à partir du code de l’app iPhone/iPad (`App/`, `Widgets/`, `NotificationService/`,
 `BipVoices/`, `Packages/`) et de l’app Android (`android/`), dans l’état du 21/10/2026 (après le commit `4b6eb92`).
@@ -17,7 +18,8 @@ l’installateur ([`installer/`](../installer/)), le relais de notifications ([`
 chiffrement du compte ([`App/Features/Account/AccountCrypto.swift`](../App/Features/Account/AccountCrypto.swift),
 [`android/…/account/AccountCrypto.kt`](../android/app/src/main/java/io/github/bipagents/account/AccountCrypto.kt) et
 son test, [`AccountCryptoTest.kt`](../android/app/src/test/java/io/github/bipagents/account/AccountCryptoTest.kt)).
-C’est une lecture du code, pas une capture du trafic réseau.
+C’est une lecture du code, pas une capture du trafic réseau. L’adresse e-mail d’agent (§1) a été ajoutée le 22/10/2026
+d’après le contrat d’interface du bridge, avant le code des apps qui s’en sert.
 
 ## 0. Bibliothèques : aucun traceur
 
@@ -52,8 +54,9 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   WebSocket.
 - **Agents :** réglages, modèle, langue, apparence, outils, services connectés, pages de mémoire (lues et modifiées),
   import de notes, pages, tâches de fond, tâches planifiées, partages entre agents, liens familiaux (`/v1/family/*`).
-- **Secrets saisis par la personne :** mots de passe des boîtes mail (`/v1/mail/accounts`), éléments du coffre
-  (`/v1/vault`), clés SSH publiques (`/v1/ssh/keys`), réglages d’un serveur de voix.
+- **Secrets saisis par la personne :** mots de passe des boîtes mail (`/v1/mail/accounts`, et la boîte propre d’un
+  agent chez le fournisseur de la personne dans `/v1/agents/{id}/email`), éléments du coffre (`/v1/vault`), clés SSH
+  publiques (`/v1/ssh/keys`), réglages d’un serveur de voix.
 - **Santé** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`) : un résumé par jour,
   envoyé par `PUT /v1/health-data/days` à chaque bridge dont au moins un agent a « Santé » activé, avec seulement les
   données des catégories que lisent les agents de ce bridge (`shared` dans `GET /v1/health-data` ; la liste de chaque
@@ -93,6 +96,14 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   contact ajouté ou modifié, jamais supprimé). Le bridge ne garde que ce que le choix couvre et efface la copie quand
   plus aucun agent ne peut la lire (`bridge-rs/src/contacts.rs`). Sur l’iPhone, les notes ne sont jamais lues (il
   faudrait une autorisation spéciale d’Apple que l’app n’a pas).
+- **L’adresse e-mail d’un agent** (`GET/POST/PATCH/DELETE /v1/agents/{id}/email`,
+  `POST /v1/agents/{id}/email/held/{mail}`) : l’activer (une adresse de Kerfy Studio sur une place de l’offre, ou la boîte
+  de la personne chez son fournisseur, avec son adresse, son mot de passe et ses serveurs IMAP/SMTP), les adresses
+  autorisées, la limite par jour, et approuver ou abandonner un e-mail que l’agent veut envoyer à une nouvelle adresse
+  (l’app affiche ses destinataires et son objet). Pour une adresse de Kerfy Studio, c’est le bridge de la place qui
+  demande lui-même la boîte au guichet, avec le jeton de sauvegarde de la place ; le guichet donne le mot de passe une
+  seule fois au bridge, qui le garde dans les réglages de l’agent : **le téléphone ne le voit jamais**. Un e-mail en
+  attente déclenche une notification (`email_held`).
 - **Inscription aux notifications :** le jeton APNs ou Firebase (ou, à la place, un jeton de relais, voir §3), avec les
   identifiants des agents (`/v1/devices`). L’extension de notification (`NotificationService/NotificationService.swift`)
   et le service Android (`push/BipMessagingService.kt`) vont ensuite chercher sur le bridge le texte de la réponse, la
@@ -163,7 +174,8 @@ P-256 valable n’a ni code ni bouton « Approuver ». Un vecteur de référence
 (`AccountCryptoTest.kt`, et une assertion des versions de débogage dans `AccountCrypto.swift`).
 
 **Jamais envoyé au guichet** (aucun appel de ce type n’existe dans le code) : conversations, fichiers, mémoire, données
-de santé, rappels, contacts, clés de bridge en clair, le code de récupération lui-même.
+de santé, rappels, contacts, clés de bridge en clair, le code de récupération lui-même. Les boîtes e-mail des agents
+sont demandées par le bridge de la place, pas par les apps (§1).
 
 ## 3. Le relais de notifications de Kerfy Studio (public : `relay/`)
 
@@ -299,6 +311,11 @@ téléphone).
 - **« Santé » et le modèle :** la vérification « hébergé dans l’UE » est faite par les apps et repose sur la marque
   `eu_hosted` du guichet. Elle a lieu quand on active l’interrupteur et quand on change le modèle dans l’app ; le bridge
   ne la fait pas, donc un modèle changé autrement ne désactive pas « Santé ».
+- **L’adresse e-mail de Kerfy Studio d’un agent** garde ses e-mails sur le serveur de messagerie de Kerfy Studio (un
+  serveur chez Hetzner, à part des places), stockés comme sur tout serveur de messagerie, sans chiffrement pour la
+  personne : celui qui exploite ce serveur peut les lire. Les e-mails sont effacés au bout de 90 jours, et la boîte
+  entière quand l’adresse disparaît. Entre serveurs de messagerie, un e-mail n’est chiffré pendant le trajet que si
+  l’autre serveur le permet.
 - **Le code du guichet est privé.** Ce qu’il garde et fait de ce qu’il reçoit ne peut pas être vérifié dans un code
   public. Le relais et le bridge sont publics.
 - **Le code des apps est privé lui aussi :** cette page et les fichiers publics `AccountCrypto` sont ce qui peut être

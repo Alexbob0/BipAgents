@@ -20,7 +20,8 @@
   3. **Absturzberichte**, nur wenn du ihre Weitergabe in den Einstellungen deines Telefons eingeschaltet hast.
 - Mit dem Alles-inklusive-Angebot verarbeitet Kerfy Studio außerdem dein Konto, den Status deines Abos, technische
   Daten über deinen Platz (nie seinen Inhalt) und deine Sicherungen, verschlüsselt mit einem Schlüssel, den es nicht
-  hat; es hostet deinen Platz, ohne darauf zuzugreifen (Abschnitt 5).
+  hat; es hostet deinen Platz, ohne darauf zuzugreifen (Abschnitt 5). Wenn du einem Agenten eine eigene E-Mail-Adresse
+  gibst, bewahrt Kerfy Studio außerdem die E-Mails dieser Adresse auf seinem Mailserver auf (Abschnitt 5.8).
 
 ## 1. Wer verantwortlich ist
 
@@ -62,6 +63,10 @@ Mit deinem eigenen Computer oder deinem eigenen Server:
   retention“): Das entscheidest du. Mit einem Modell, das bei dir läuft, verlässt nichts dein Netz.
 - **Die Dienste, die du mit deinen Agenten verbindest** (E-Mail, Kalender, Websites, Smart Home …), erhalten, was
   deine Agenten ihnen schicken, nach ihren eigenen Regeln.
+- **Eine E-Mail-Adresse für einen Agenten.** Auf deinem eigenen Server kannst du einem Agenten ein Postfach bei deinem
+  eigenen E-Mail-Anbieter geben. Sein Passwort bleibt auf deinem Server; der Agent liest nur die E-Mails der Adressen,
+  die du erlaubt hast, und fragt nach deiner Freigabe, bevor er an eine neue schreibt. Es gelten die Bedingungen
+  dieses Anbieters, und Kerfy Studio bewahrt nichts davon auf.
 - **Mehrere Personen auf einem Server** (Familienfunktion): Jede Person hat ihre eigene Installation, getrennt von den
   anderen. Wer den Server verwaltet, ist den anderen gegenüber dafür verantwortlich.
 
@@ -280,9 +285,10 @@ Support). Der Dienst von Kerfy Studio, der Konten, Abos und Plätze verwaltet, h
 
 ### 5.1 Wer wofür verantwortlich ist
 
-- **Kerfy Studio ist Verantwortlicher** für die Verarbeitungen, die das Angebot erfordert: dein Konto, den Status deines
-  Abos, das Hosting deines Platzes, das Senden deiner Nachrichten an das KI-Modell, die Sicherungen, die technische
-  Überwachung und die Bearbeitung von Missbrauch.
+- **Kerfy Studio ist Verantwortlicher** für die Verarbeitungen, die das Angebot erfordert: dein Konto, den Status
+  deines Abos, das Hosting deines Platzes, das Senden deiner Nachrichten an das KI-Modell, die Sicherungen, die
+  E-Mail-Adressen deiner Agenten, wenn du sie einschaltest, die technische Überwachung und die Bearbeitung von
+  Missbrauch.
 - **Der Inhalt deines Platzes** (deine Agenten, deine Unterhaltungen, deine Dateien, ihr Gedächtnis, ihre Routinen, der
   Passworttresor): Du entscheidest, was du dort ablegst. Kerfy Studio hostet ihn und lässt ihn vom KI-Modell nur
   verarbeiten, um dir den Dienst bereitzustellen (Art. 6 Abs. 1 lit. b DSGVO), **ohne darauf zuzugreifen**: Seine
@@ -431,12 +437,60 @@ Personen schützen, Behörden antworten.
 und berechtigtes Interesse von Kerfy Studio, seinen Dienst und seine Kunden zu schützen (Art. 6 Abs. 1 lit. f DSGVO).
 **Dauer.** 1 Jahr nach ihrer Bearbeitung, länger, wenn ein Rechtsstreit oder ein Verfahren es erfordert.
 
-### 5.8 Die Dienstleister des Angebots
+### 5.8 Die E-Mail-Adressen deiner Agenten
+
+**Was das ist.** Du kannst einem Agenten deiner Wahl eine eigene E-Mail-Adresse geben, zum Beispiel
+`lea.k7m2@a.bipagents.com`. Sie ist standardmäßig ausgeschaltet: Du schaltest sie für diesen Agenten in der App ein
+und kannst sie jederzeit entfernen.
+
+**Wo.** Das Postfach liegt auf dem eigenen Mailserver von Kerfy Studio, einem dedizierten Server, der bei Hetzner
+(Deutschland oder Finnland) gemietet ist, getrennt von den Servern der Plätze.
+
+**Daten.** Die Adresse selbst, die der Guichet mit deinem Platz verbindet. Die E-Mails, die diese Adresse empfängt und
+verschickt: ihre Kopfzeilen (Absender, Empfänger, Datum, Betreff), ihr Inhalt und ihre Anhänge. Das Passwort der
+Adresse wird auf dem Server von Kerfy Studio erzeugt und einmalig an deinen Platz übergeben, wo es mit den
+Einstellungen des Agenten aufbewahrt wird; der Mailserver bewahrt nur eine gehashte Form davon auf, und der Guichet
+bewahrt es nicht auf. Die Adressen, an die dein Agent schreiben darf, sein Tageslimit und die E-Mails, die auf deine
+Freigabe warten, werden auf deinem Platz aufbewahrt.
+
+**Wer deinem Agenten schreiben kann.** Der Agent liest nur die E-Mails der Adressen, die du erlaubt hast, wenn ihr
+Absender geprüft ist (die üblichen Prüfungen gegen gefälschte Absender). E-Mails von allen anderen liest er nicht und
+beantwortet sie nicht: Sie bleiben im Postfach, bis sie mit den anderen gelöscht werden (siehe unten). Eine E-Mail
+schreibt jemand anderes: Der Agent behandelt ihren Inhalt als Information, nie als Anweisung, die er befolgen müsste.
+
+**Was dein Agent verschicken kann.** Er antwortet den Adressen, die du erlaubt hast. Um an eine neue Adresse zu
+schreiben, braucht er deine Freigabe in der App: Die E-Mail wartet, bis du sie freigibst (die Adresse ist dann
+erlaubt) oder verwirfst. Er verschickt höchstens so viele E-Mails pro Tag, wie du in der App einstellst (standardmäßig
+20).
+
+**Spam und Sicherheit.** Der Mailserver filtert Spam und bewahrt Sicherheitsprotokolle (die IP-Adressen der sendenden
+Server, die Zustellung jeder E-Mail, die Verbindungen zum Postfach) **30 Tage** auf, um die E-Mails zuzustellen, Spam
+und Missbrauch abzuwehren und einen Vorfall zu untersuchen.
+
+**Zugriff.** Wie beim Inhalt deines Platzes (Abschnitt 5.1) liest Kerfy Studio diese E-Mails nicht: Seine Software
+stellt sie nur zu, filtert Spam und löscht sie, wenn ihre Zeit abgelaufen ist. Zwischen Mailservern werden E-Mails
+unterwegs verschlüsselt, wenn der andere Server das erlaubt; eine E-Mail ist nicht Ende-zu-Ende-verschlüsselt.
+
+**Zwecke und Rechtsgrundlagen.** Deinem Agenten eine Adresse geben, um die E-Mails der Personen zu empfangen, die du
+erlaubst, und ihnen zu antworten: Erfüllung des Vertrags (Art. 6 Abs. 1 lit. b DSGVO). Spamfilter und
+Sicherheitsprotokolle: berechtigtes Interesse von Kerfy Studio, seinen Dienst und die Personen, die ihn nutzen, zu
+schützen (Art. 6 Abs. 1 lit. f DSGVO).
+
+**Dauer.** Empfangene und verschickte E-Mails werden nach **90 Tagen** gelöscht. Diese Dauer ist eine Einstellung des
+Angebots: Sie kann verkürzt werden und wird nie verlängert, ohne dass du vorher informiert wirst. Das ganze Postfach
+wird auf einmal gelöscht, wenn du die Adresse oder den Agenten entfernst, wenn dein Platz gelöscht wird (Abschnitt
+5.4) und wenn dein Konto gelöscht wird (Abschnitt 5.2). Sicherheitsprotokolle: 30 Tage.
+
+**Stattdessen dein eigenes Postfach.** Auf deinem eigenen Server kannst du stattdessen ein Postfach bei deinem eigenen
+E-Mail-Anbieter verbinden (Abschnitt 2): Seine Zugangsdaten bleiben auf deinem Server, es gelten die Bedingungen
+dieses Anbieters, BipAgents löscht darin nichts, und Kerfy Studio bewahrt nichts davon auf.
+
+### 5.9 Die Dienstleister des Angebots
 
 | Dienstleister | Rolle | Daten | Wo |
 |---|---|---|---|
 | OVHcloud (OVH SAS, Roubaix, Frankreich) | Hostet die Server der Plätze; tägliches Abbild jedes Servers | Inhalt der Plätze | Europäische Union |
-| Hetzner Online GmbH (Gunzenhausen, Deutschland) | Hostet einen Teil der Server der Plätze | Inhalt der Plätze | Deutschland, Finnland |
+| Hetzner Online GmbH (Gunzenhausen, Deutschland) | Hostet einen Teil der Server der Plätze und den Mailserver der Agenten | Inhalt der Plätze; Postfächer der Agenten und Sicherheitsprotokolle des Mailservers | Deutschland, Finnland |
 | EUrouter B.V. (Amsterdam, Niederlande) | KI-Router | An das Modell geschickte Nachrichten, Metadaten | Europäische Union |
 | Anbieter der Modelle: [zu ergänzen] | Betreiben das gewählte Modell | An das Modell geschickte Nachrichten | [zu ergänzen] |
 | [zu ergänzen: Hoster der Sicherungen] | Bewahrt die Sicherungen auf | Verschlüsselte Sicherungen, für ihn und für Kerfy Studio unlesbar | [zu ergänzen] |
@@ -535,10 +589,11 @@ insbesondere in den USA:
 - Apple gibt an, Übermittlungen aus dem Europäischen Wirtschaftsraum durch die von der Europäischen Kommission
   erlassenen Standardvertragsklauseln abzusichern.
 
-**Das Alles-inklusive-Angebot.** Die Server der Plätze stehen in der Europäischen Union, für alle Personen des Angebots.
-EUrouter verarbeitet die Nachrichten in der Europäischen Union [zu ergänzen: Länder, in denen die angebotenen Modelle
-laufen, und die Garantie, falls eines außerhalb der Union liegt]. Apple und Google (Anmeldung, Stores, DeviceCheck, Play
-Integrity) können Daten in den USA verarbeiten, mit den oben genannten Garantien.
+**Das Alles-inklusive-Angebot.** Die Server der Plätze und der Mailserver der Agenten stehen in der Europäischen
+Union, für alle Personen des Angebots. EUrouter verarbeitet die Nachrichten in der Europäischen Union [zu ergänzen:
+Länder, in denen die angebotenen Modelle laufen, und die Garantie, falls eines außerhalb der Union liegt]. Apple und
+Google (Anmeldung, Stores, DeviceCheck, Play Integrity) können Daten in den USA verarbeiten, mit den oben genannten
+Garantien.
 
 **Wenn du außerhalb der Europäischen Union lebst** (USA, Vereinigtes Königreich, Israel, Singapur), kommen deine Daten
 in die Europäische Union, wo Kerfy Studio sie nach der DSGVO verarbeitet, die für alle seine Verarbeitungen gilt. Das
@@ -573,6 +628,8 @@ Garantie]. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
 | Technische Daten der Server | Nur die letzten Werte |
 | Ereignisprotokoll des Guichet | 12 Monate |
 | Metadaten bei EUrouter | Bis zu 12 Monate, laut EUrouter |
+| E-Mails deiner Agenten (Alles-inklusive-Angebot) | 90 Tage pro E-Mail (kann verkürzt werden); das ganze Postfach auf einmal, wenn du die Adresse oder den Agenten entfernst, wenn der Platz gelöscht wird oder wenn das Konto gelöscht wird |
+| Sicherheitsprotokolle des Mailservers der Agenten | 30 Tage |
 | Missbrauchsmeldungen | 1 Jahr nach ihrer Bearbeitung |
 
 ## 13. Sicherheit
@@ -587,7 +644,9 @@ Serverseite und des Relays ist öffentlich: [URL des Repositorys]. Um eine Siche
 Mit dem Alles-inklusive-Angebot ist jeder Platz ein eigenes Konto auf dem Server, ohne Administratorrechte; Kerfy
 Studio hat keinen SSH-Schlüssel auf den Servern, und ein Server führt nur Befehle aus, die der Guichet signiert hat.
 Die App verbindet sich per HTTPS mit deinem Platz und prüft sein Zertifikat. Die Sicherungen werden auf dem Platz
-verschlüsselt, bevor sie ihn verlassen.
+verschlüsselt, bevor sie ihn verlassen. Der Mailserver der Agenten ist ein eigener Server, den Kerfy Studio betreibt:
+Die Plätze verbinden sich verschlüsselt mit ihm, und ein Agent verschickt E-Mails nur über eine Sperre auf seinem
+Platz, die die erlaubten Adressen, deine Freigaben und das Tageslimit anwendet.
 
 **Bei einer Datenschutzverletzung** informiert Kerfy Studio die CNIL innerhalb von 72 Stunden (Art. 33 DSGVO) und die
 betroffenen Personen, wenn das Risiko für sie hoch ist (Art. 34); für Personen in Singapur die Personal Data Protection

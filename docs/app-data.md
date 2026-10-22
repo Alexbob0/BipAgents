@@ -5,7 +5,9 @@
 **In short:** conversations, files, voice-note transcripts, health data, reminders, contacts and the agents' memory go only to the
 person's own server (their bridge and Hermes). Kerfy Studio's services get account, purchase and push-routing data,
 plus sealed boxes they cannot open. There are no analytics or crash SDKs. Apple and Google get what their stores,
-sign-in and push need, and the voice for dictation only where the person agreed to online dictation.
+sign-in and push need, and the voice for dictation only where the person agreed to online dictation. With the
+all-included offer, an agent's own e-mail address keeps its mail on Kerfy Studio's mail server; the place's bridge
+talks to that server, not the app.
 
 This page was written from the source of the iPhone/iPad app (`App/`, `Widgets/`, `NotificationService/`,
 `BipVoices/`, `Packages/`) and of the Android app (`android/`) as of 2026-10-21 (after commit `4b6eb92`). **The apps'
@@ -15,7 +17,8 @@ relay ([`relay/`](../relay/)) and the account encryption code
 ([`App/Features/Account/AccountCrypto.swift`](../App/Features/Account/AccountCrypto.swift),
 [`android/…/account/AccountCrypto.kt`](../android/app/src/main/java/io/github/bipagents/account/AccountCrypto.kt) and
 its test, [`AccountCryptoTest.kt`](../android/app/src/test/java/io/github/bipagents/account/AccountCryptoTest.kt)). It
-is a reading of the code, not a capture of network traffic.
+is a reading of the code, not a capture of network traffic. The agent e-mail address (§1) was added on 2026-10-22 from
+the bridge's interface contract, before the apps' code for it.
 
 ## 0. Libraries: no trackers
 
@@ -48,8 +51,9 @@ their place on the all-included offer. Everything personal goes here, with that 
   **The audio of a voice note stays on the phone.** The apps do not use WebSockets.
 - **Agents:** settings, model, language, appearance, tools, connected services, memory pages (read and edited), notes
   import, pages, background jobs, scheduled tasks, shares between agents, family links (`/v1/family/*`).
-- **Secrets the person enters:** e-mail account passwords (`/v1/mail/accounts`), vault items (`/v1/vault`), SSH public
-  keys (`/v1/ssh/keys`), voice server settings.
+- **Secrets the person enters:** e-mail account passwords (`/v1/mail/accounts`, and an agent's own mailbox at the
+  person's provider in `/v1/agents/{id}/email`), vault items (`/v1/vault`), SSH public keys (`/v1/ssh/keys`), voice
+  server settings.
 - **Health ("Santé")** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`): one summary a
   day, sent with `PUT /v1/health-data/days` to every bridge where at least one agent has "Santé" turned on, with only
   the figures of the categories the agents of that bridge read (`shared` in `GET /v1/health-data`; each agent's own
@@ -85,6 +89,13 @@ their place on the all-included offer. Everything personal goes here, with that 
   ticked; no photos), and the requests the agents queued (a contact added or changed, never deleted) are carried out.
   The bridge keeps only what the choice covers and drops the copy when no agent may read it (`bridge-rs/src/contacts.rs`).
   On the iPhone the notes are never read (they need an Apple entitlement the app doesn't have).
+- **An agent's e-mail address** (`GET/POST/PATCH/DELETE /v1/agents/{id}/email`,
+  `POST /v1/agents/{id}/email/held/{mail}`): turning it on (a Kerfy Studio address on a place of the offer, or the person's
+  own mailbox with its address, password and IMAP/SMTP servers), the allowed addresses, the daily limit, and approving
+  or dropping a mail the agent wants to send to a new address (the app shows its recipients and subject). For a Kerfy
+  Studio address, the place's bridge itself asks the guichet for the mailbox, with the place's backup token; the
+  guichet gives the password once to the bridge, which keeps it in the agent's settings: **the phone never sees it**.
+  A held mail triggers a notification (`email_held`).
 - **Push registration:** the APNs or Firebase token (or a relay token instead, see §3), with the agents' ids
   (`/v1/devices`). The notification extension (`NotificationService/NotificationService.swift`) and the Android
   service (`push/BipMessagingService.kt`) then fetch the reply text, the approval command and the audio from the bridge
@@ -152,7 +163,8 @@ checked in both apps (`AccountCryptoTest.kt`, and a debug-build assertion in `Ac
 
 **Never sent to the guichet** (no such call exists in the code): conversations, files, memory, health data, reminders,
 contacts,
-bridge keys in clear, the recovery code itself.
+bridge keys in clear, the recovery code itself. The agents' mailboxes are asked for by the place's bridge, not by the
+apps (§1).
 
 ## 3. Kerfy Studio's push relay (public: `relay/`)
 
@@ -272,6 +284,10 @@ store alone (StoreKit products and storefront, Play Billing products and country
 - **"Santé" and the model:** the EU-hosted check is in the apps and relies on the guichet's `eu_hosted` mark. It runs
   when the switch is turned on and when the model is changed in the app; the bridge does not check it, so a model
   changed another way does not turn "Santé" off.
+- **An agent's Kerfy Studio e-mail address** keeps its mail on Kerfy Studio's mail server (a Hetzner server, apart
+  from the places), stored as any mail server stores mail, not encrypted for the person: whoever runs that server can
+  read it. Mails are deleted after 90 days, and the whole mailbox when the address goes. Between mail servers, mail is
+  encrypted in transit only when the other server supports it.
 - **The guichet's code is private.** What it keeps and does with what it receives cannot be checked from public code.
   The relay and the bridge are public.
 - **The apps' code is private too:** this page and the public `AccountCrypto` files are what can be checked; the rest is

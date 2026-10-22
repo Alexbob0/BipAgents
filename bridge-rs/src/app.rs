@@ -315,6 +315,7 @@ impl AppState {
             self.spawn(watcher.run());
         }
         self.spawn(purge_loop(self.clone()));
+        crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
         if self.sleep.enabled() {
             self.spawn(self.sleep.clone().run_forever());
@@ -1374,6 +1375,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::device_keys::router())
         .merge(crate::memory_edit::router())
         .merge(crate::mailbox::router())
+        .merge(crate::agent_email::router())
         .merge(crate::mail_scan::router())
         .merge(crate::jobs::router())
         .merge(crate::notes_import::router())
