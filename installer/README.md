@@ -121,6 +121,10 @@ The first time, it offers to do this each night at 4:30 (a timer of this account
 questions; `systemctl --user disable --now bipagents-update.timer` stops it). `--check` only says what is new. A Hermes
 you had before BipAgents keeps its settings unless you add `--apply-to-my-hermes`.
 
+The agents' browser does not wait for these updates: each night a timer of its own (`bipagents-browser-refresh`) checks
+whether Chrome or the image's packages have security fixes and, only then, builds the image again and swaps it in
+without interrupting a browser in use (`browser/README.md`, « Staying up to date »). The offer's places get it too.
+
 ## Moving to another machine
 
 From a rented server to a computer at home, from one host to a cheaper one, or the other way round: everything comes

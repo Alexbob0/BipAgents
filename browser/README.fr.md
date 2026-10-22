@@ -52,6 +52,22 @@ Avec un GPU (`/dev/dri`), Chrome s'en sert ; sinon, rendu logiciel. `[browser]` 
 `idle_minutes` (10), `language` (ex. `fr-FR`), `timezone`, `gpu = "none"`, `first_port` (9600) et `runtime` (`podman`
 ou `docker`).
 
+## Rester à jour
+
+Chrome reçoit des correctifs de sécurité toutes les une ou deux semaines, et une image garde le Chrome avec lequel elle
+a été construite. Chaque installation qui a des navigateurs vérifie donc chaque nuit, entre 1 h et 3 h, à part des
+mises à jour de BipAgents (un minuteur utilisateur, `bipagents-browser-refresh` ;
+`installer/bipinstall/browser_refresh.py`) : dnf, dans un conteneur jetable de l'image, dit si Chrome (Chromium sur
+ARM) a une version plus récente ou si les paquets de l'image ont des mises à jour de sécurité. Sinon, rien ne se passe.
+Si oui, l'image est reconstruite à côté, avec les paquets du jour et stealth-browser-mcp à la même version épinglée ;
+elle ne remplace l'actuelle qu'une fois son Chrome démarré. Un navigateur en service n'est jamais interrompu : il
+démarre sur la nouvelle image la fois suivante (celui qui ne s'arrête jamais, `idle_minutes = 0`, est redémarré après
+30 minutes sans usage), profil et connexions gardés. Une nuit ratée (pas de réseau, dépôt de Google en panne) garde
+l'image actuelle et réessaie la suivante. Les installations d'un serveur passent chacune leur tour, en priorité la plus
+basse, et les anciennes images sont supprimées. `journalctl --user -u bipagents-browser-refresh` dit ce qu'il a fait ;
+`bipagents browser-refresh` le fait tout de suite (`--force` : même sans nouveauté ; `--version` : quel Chrome a le
+navigateur).
+
 ## Ce qui est à nous, ce qui est récupéré
 
 Rien de stealth-browser-mcp n'est gardé dans ce dépôt. La construction de l'image le récupère sur son propre dépôt,

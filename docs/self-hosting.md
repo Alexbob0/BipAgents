@@ -150,7 +150,9 @@ sudo loginctl enable-linger $USER     # services keep running without an open se
 ```
 
 Updating: `git pull`, `pip install -r requirements.txt` in Pocket's venv, the bridge binary of the new key (same
-commands as above, when `bridge-rs/` changed), restart both services.
+commands as above, when `bridge-rs/` changed), restart both services. If you added the agents' browser by hand
+(`browser/README.md`), `bipagents browser-refresh` keeps its Chrome up to date: run it from a nightly timer
+(`installer/bipinstall/browser_refresh.py` writes one: « Staying up to date » there).
 
 ## 6. Open on the tailnet
 

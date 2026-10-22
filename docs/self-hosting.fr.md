@@ -150,7 +150,9 @@ sudo loginctl enable-linger $USER     # services actifs sans session ouverte
 ```
 
 Mise à jour : `git pull`, `pip install -r requirements.txt` dans le venv de Pocket, le binaire du bridge de la
-nouvelle clé (mêmes commandes que plus haut, quand `bridge-rs/` a changé), redémarrer les deux services.
+nouvelle clé (mêmes commandes que plus haut, quand `bridge-rs/` a changé), redémarrer les deux services. Si tu as
+ajouté le navigateur des agents à la main (`browser/README.fr.md`), `bipagents browser-refresh` garde son Chrome à jour :
+lance-le depuis un minuteur de nuit (`installer/bipinstall/browser_refresh.py` en écrit un : « Rester à jour » là-bas).
 
 ## 6. Ouvrir sur le tailnet
 
