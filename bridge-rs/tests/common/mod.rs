@@ -68,6 +68,8 @@ pub fn config_dict(dir: &Path, urls: &Urls) -> Value {
                  "bundle_id": "io.github.bipagents", "environment": "sandbox"},
         "outbox": {"audio_wait_seconds": 2},
         "limits": {"upload_max_mb": 1, "purge_interval_hours": 1000},
+        // Never isolated by default: `auto` would isolate the sandboxes on Linux with podman (CI); sandbox tests say on.
+        "sandbox": {"isolate": "off"},
         "agents": {
             "Wellness": {
                 "display_name": "Wellness", "hermes_url": urls.hermes, "hermes_key": HERMES_KEY,
