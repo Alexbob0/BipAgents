@@ -87,8 +87,16 @@ def test_the_app_reads_searches_edits_and_restores(bridge):
                                    "facts": ["Devis accepté avec [[Marco]]"]})
     home = bridge.get("/v1/notebook", headers=AUTH).json()
     counts = {s["kind"]: s["count"] for s in home["sections"]}
-    assert counts == {"person": 1, "subject": 1, "area": 0, "tasks": 0, "documents": 0}
-    assert [s["title"] for s in home["sections"]][:3] == ["Personnes", "Sujets", "Domaines"]
+    assert counts == {"self": 0, "person": 1, "subject": 1, "area": 0, "tasks": 0, "documents": 0}
+    assert [s["title"] for s in home["sections"]][:4] == ["Toi", "Personnes", "Sujets", "Domaines"]
+    # The person themself: their own « Toi » page, never among « Personnes ».
+    me = call(bridge, "notebook_note", {"page": "moi", "facts": ["Veut courir un marathon"]})
+    assert text_of(me).startswith("Filed in the Carnet: Toi (new page, Toi.md), 1 fact(s). Under: Objectifs.")
+    with_me = bridge.get("/v1/notebook", headers=AUTH).json()
+    assert with_me["sections"][0] == {"kind": "self", "title": "Toi", "count": 1, "path": "Toi.md"}
+    assert with_me["sections"][1]["count"] == 1
+    assert [s["id"] for s in bridge.get("/v1/notebook/page", params={"path": "Toi.md"}, headers=AUTH).json()["outline"]] == [
+        "about", "family", "work", "habits", "goals", "agents", "other"]
     recent = home["recent"][0]
     assert recent["title"] == "Rénovation cuisine" and recent["name"] == "Wellness" and recent["agent"] == "wellness"
     assert recent["action"] == "create" and recent["summary"] == "Devis accepté avec [[Marco]]"
@@ -141,7 +149,7 @@ def test_the_app_reads_searches_edits_and_restores(bridge):
     assert export.status_code == 200 and export.headers["content-type"] == "application/zip"
     assert export.headers["content-disposition"] == 'attachment; filename="Carnet.zip"'
     names = sorted(zipfile.ZipFile(io.BytesIO(export.content)).namelist())
-    assert names == ["Documents.md", "Personnes/Marc Dupont.md", "Sujets/Rénovation cuisine.md"]
+    assert names == ["Documents.md", "Personnes/Marc Dupont.md", "Sujets/Rénovation cuisine.md", "Toi.md"]
     deleted = bridge.delete("/v1/notebook/page", params={"path": "Sujets/Rénovation cuisine.md"}, headers=AUTH)
     assert deleted.status_code == 200 and not (notebook(bridge) / "carnet" / "Sujets" / "Rénovation cuisine.md").exists()
     assert bridge.get("/v1/notebook", headers=AUTH).status_code == 200
@@ -199,7 +207,7 @@ def test_tasks_stay_few_and_follow_the_phone_reminders(bridge):
     assert again["isError"] and "doesn't want proposals of this kind" in text_of(again)
     listed = bridge.get("/v1/notebook/proposals", headers=AUTH).json()
     assert listed["declined"] == ["birthday"] and listed["proposals"][0]["state"] == "declined"
-    assert (notebook(bridge) / "carnet" / "Domaines" / "Préférences.md").exists()
+    assert "## Ce que tes agents doivent savoir\n- Pas de propositions" in (notebook(bridge) / "carnet" / "Toi.md").read_text()
 
 
 def test_dates_to_come_are_facts_of_close_people(bridge):
@@ -383,7 +391,7 @@ def test_the_health_agents_web_pages_stay_in_the_private_part(bridge):
     made = call(bridge, "create_page", {"html": "<p>Ferritine</p>", "title": "Prises de sang", "notebook": "Domaines/Santé"})
     assert "Linked to the Carnet page Santé (Domaines/Santé.md)." in text_of(made)
     assert bridge.get("/v1/notebook/documents", headers=AUTH).json()["documents"] == []
-    assert bridge.get("/v1/notebook", headers=AUTH).json()["sections"][4] == {"kind": "documents", "title": "Documents", "count": 0}
+    assert bridge.get("/v1/notebook", headers=AUTH).json()["sections"][5] == {"kind": "documents", "title": "Documents", "count": 0}
     private = bridge.get("/v1/notebook/documents", params={"private": 1}, headers=AUTH).json()["documents"]
     assert [(d["page"], d["linked"]["path"]) for d in private] == [("prises-de-sang", "Domaines/Santé.md")]
     view = bridge.get("/v1/notebook/page", params={"path": "Domaines/Santé.md", "private": 1}, headers=AUTH).json()

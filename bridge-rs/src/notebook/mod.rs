@@ -92,6 +92,8 @@ pub struct Words {
     pub preferences: &'static str,
     /// The nightly pass and the re-filing, in the history (« rangement »).
     pub tidy: &'static str,
+    /// The person's own page (« Toi »), at the vault's root, never among « Personnes ».
+    pub me: &'static str,
 }
 
 pub const WORDS: [Words; 4] = [
@@ -111,6 +113,7 @@ pub const WORDS: [Words; 4] = [
         archived: "Archivées",
         preferences: "Préférences",
         tidy: "rangement",
+        me: "Toi",
     },
     Words {
         lang: "en",
@@ -128,6 +131,7 @@ pub const WORDS: [Words; 4] = [
         archived: "Archived",
         preferences: "Preferences",
         tidy: "tidying",
+        me: "You",
     },
     Words {
         lang: "de",
@@ -145,6 +149,7 @@ pub const WORDS: [Words; 4] = [
         archived: "Archiviert",
         preferences: "Vorlieben",
         tidy: "Aufräumen",
+        me: "Du",
     },
     Words {
         lang: "es",
@@ -162,6 +167,7 @@ pub const WORDS: [Words; 4] = [
         archived: "Archivadas",
         preferences: "Preferencias",
         tidy: "orden",
+        me: "Tú",
     },
 ];
 
@@ -170,7 +176,7 @@ pub fn words(lang: &str) -> &'static Words {
 }
 
 /// The kinds of pages an agent writes, in the frontmatter's `type`.
-pub const KINDS: [&str; 3] = ["person", "subject", "area"];
+pub const KINDS: [&str; 4] = ["person", "subject", "area", "self"];
 
 impl Words {
     pub fn folder(&self, kind: &str) -> Option<&'static str> {
@@ -198,6 +204,43 @@ impl Words {
     pub fn inbox_path(&self) -> String {
         format!("{}.md", self.inbox)
     }
+
+    /// `Toi.md`: the person's own page.
+    pub fn self_path(&self) -> String {
+        format!("{}.md", self.me)
+    }
+}
+
+/// The words an agent may use for the person themself (« moi », « l'utilisateur »…), folded.
+const SELF_WORDS: [&str; 22] = [
+    "moi",
+    "toi",
+    "moi meme",
+    "l utilisateur",
+    "utilisatrice",
+    "me",
+    "myself",
+    "you",
+    "yourself",
+    "the user",
+    "user",
+    "ich",
+    "mich",
+    "du",
+    "nutzer",
+    "benutzer",
+    "yo",
+    "tu",
+    "mi",
+    "usuario",
+    "usuaria",
+    "el usuario",
+];
+
+/// Whether a page name means the person themself (their « Toi » page).
+pub fn self_word(name: &str) -> bool {
+    let n = fold(name);
+    !n.is_empty() && (SELF_WORDS.contains(&n.as_str()) || WORDS.iter().any(|w| fold(w.me) == n))
 }
 
 // -- where it lives ------------------------------------------------------------------------------------------------
@@ -1186,22 +1229,29 @@ pub(crate) fn note_locked(
     if title.is_empty() {
         return refuse("give the page's name (the person's, the subject's or the area's)");
     }
-    let found = find(config, &[part], &title).or_else(|| {
-        let contact = contact.trim();
-        if contact.is_empty() {
-            None
-        } else {
-            find(config, &[part], contact)
-        }
-    });
+    // the person themself: their one « Toi » page, whatever name the agent gives it
+    let is_self = kind == "self" || self_word(&title);
+    let found = if is_self {
+        find(config, &[part], &w.self_path())
+    } else {
+        find(config, &[part], &title).or_else(|| {
+            let contact = contact.trim();
+            if contact.is_empty() {
+                None
+            } else {
+                find(config, &[part], contact)
+            }
+        })
+    };
     let (path, before, mut page, created) = match found {
         Some(f) => {
             let before = read_page_text(config, part, &f.path);
             (f.path, before, f.page, false)
         }
+        None if is_self => (w.self_path(), None, Page::new("self", w.me), true),
         None => {
             let Some(folder) = w.folder(kind).filter(|_| KINDS.contains(&kind)) else {
-                return refuse("kind is person, subject or area");
+                return refuse("kind is person, subject, area or self");
             };
             let mut path = format!("{folder}/{}.md", file_name(&title));
             let mut n = 2;
@@ -1215,7 +1265,7 @@ pub(crate) fn note_locked(
     page.ensure_id();
     let mut names = page.aliases();
     names.extend(aliases.iter().cloned());
-    if !created && fold(&title) != fold(&page.title) && !page.named(&title) {
+    if fold(&title) != fold(&page.title) && !page.named(&title) && !self_word(&title) {
         names.push(title.clone());
     }
     page.set_aliases(&names);
@@ -1513,7 +1563,7 @@ pub fn refile_existing(config: &Config) -> anyhow::Result<usize> {
     let lang = language(config);
     let w = words(&lang);
     let who = Who::tidy(config);
-    let mut done = 0;
+    let mut done = merge_self_locked(config, &who)?;
     for part in [Part::Main, Part::Health] {
         for (path, mut page) in all_pages(config, part) {
             if !KINDS.contains(&page.kind().as_str()) {
@@ -1538,6 +1588,73 @@ pub fn refile_existing(config: &Config) -> anyhow::Result<usize> {
         tracing::info!(pages = done, "notebook pages put in their outline");
     }
     Ok(done)
+}
+
+static INTRODUCED: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^(?:je m'appelle |je suis |my name is |i am |i'm |ich heiße |ich bin |me llamo |soy )?(\p{Lu}[\p{L}'-]+(?: \p{Lu}[\p{L}'-]+)?)\s*(?:,|:| est | is | ist | es | vit | lives | wohnt | vive )",
+    )
+    .expect("valid regex")
+});
+
+/// The person's names as their agents know them: the « Toi » page's aliases, and the name their memory of the person
+/// (USER.md) starts with (« Alex, vit à Lyon »).
+fn self_names(config: &Config) -> Vec<String> {
+    let w = words(&language(config));
+    let mut names: Vec<String> =
+        read_page_text(config, Part::Main, &w.self_path()).map(|t| Page::parse(&t, w.me).aliases()).unwrap_or_default();
+    for agent in config.agents.values() {
+        let folder = crate::agents_admin::profile_folder(config, agent);
+        let Ok(found) = crate::memory_edit::read_entries(&folder, "user") else { continue };
+        for entry in strings(found.get("entries")).iter().take(3) {
+            let first = entry.trim().to_lowercase();
+            let Some(c) = INTRODUCED.captures(entry.trim()) else { continue };
+            let name = c[1].to_string();
+            let generic = ["name", "nom", "user", "utilisateur", "the user", "name ist", "nombre"];
+            if (first.starts_with(&name.to_lowercase()) || c.get(0).map(|m| m.start()) == Some(0))
+                && !generic.contains(&fold(&name).as_str())
+                && !names.iter().any(|n| fold(n) == fold(&name))
+            {
+                names.push(name);
+            }
+        }
+    }
+    names
+}
+
+/// The person pages that are the person themself (named « moi », or with their name as their agents know it)
+/// merged into their « Toi » page (made if missing): facts with their attribution and dates, aliases (so links to the
+/// old name still lead there), the old page's history kept. Once (state `self_merged`). Returns the pages merged.
+fn merge_self_locked(config: &Config, who: &Who) -> anyhow::Result<usize> {
+    if read_state(config).get("self_merged").map(py::truthy).unwrap_or(false) {
+        return Ok(0);
+    }
+    let w = words(&language(config));
+    let names = self_names(config);
+    let mine: Vec<String> = all_pages(config, Part::Main)
+        .into_iter()
+        .filter(|(_, p)| p.kind() == "person")
+        .filter(|(_, p)| {
+            self_word(&p.title)
+                || p.aliases().iter().any(|a| self_word(a))
+                || names.iter().any(|n| p.named(n) || fold(&p.title) == fold(n))
+        })
+        .map(|(path, _)| path)
+        .collect();
+    let mut merged = 0;
+    for path in mine {
+        if read_page_text(config, Part::Main, &w.self_path()).is_none() {
+            let page = Page::new("self", w.me);
+            commit(config, Part::Main, &w.self_path(), None, Some(&page.render()), who, "create", "")?;
+        }
+        if merge_locked(config, Part::Main, &path, &w.self_path(), who)?.is_some() {
+            merged += 1;
+        }
+    }
+    update_state(config, |s| {
+        s.insert("self_merged".into(), json!(true));
+    })?;
+    Ok(merged)
 }
 
 /// A line of « Autres » waiting for its section: (page title, kind, the fact without its attribution).
@@ -2114,7 +2231,7 @@ pub fn decline(config: &Config, proposal: &str, never: bool, who: &Who) -> anyho
     let lang = language(config);
     let fact = no_proposals_fact(&lang, &kind);
     let w = words(&lang);
-    note_locked(config, Part::Main, "area", w.preferences, "habits", std::slice::from_ref(&fact), &[], "", "", who)?;
+    note_locked(config, Part::Main, "self", w.me, "agents", std::slice::from_ref(&fact), &[], "", "", who)?;
     Ok(Some(fact))
 }
 
@@ -2985,6 +3102,46 @@ mod tests {
     }
 
     #[test]
+    fn the_person_themself_has_their_own_page() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        let who = lea();
+        // a person page an agent made about the person themself, before « Toi »
+        let old = "---\nid: p0000000002\ntype: person\naliases: []\n---\n# Moi\n\n## Infos\n- Court le dimanche — *Léa, 2026-10-01*\n";
+        write_file(&part_root(&config, Part::Main).join("Personnes/Moi.md"), old).unwrap();
+        write_file(&part_root(&config, Part::Main).join("Personnes/Zoé.md"), "---\ntype: person\n---\n# Zoé\n")
+            .unwrap();
+        refile_existing(&config).unwrap();
+        assert!(read_page_text(&config, Part::Main, "Personnes/Moi.md").is_none());
+        let text = read_page_text(&config, Part::Main, "Toi.md").unwrap();
+        assert!(text.contains("type: self") && text.contains("  - Moi\n"), "{text}");
+        assert!(text.contains("## Goûts et habitudes\n- Court le dimanche — *Léa, 2026-10-01*"), "{text}");
+        assert!(read_page_text(&config, Part::Main, "Personnes/Zoé.md").is_some());
+        // the agents' facts about the person go there, whatever name they give it
+        let written =
+            note(&config, Part::Main, "self", "Alex", "", &["Veut courir un marathon".into()], &[], "", "", &who)
+                .unwrap();
+        assert_eq!((written.path.as_str(), written.sections.clone()), ("Toi.md", vec!["Objectifs".to_string()]));
+        let again =
+            note(&config, Part::Main, "person", "Alex", "work", &["Développeur".into()], &[], "", "", &who).unwrap();
+        assert_eq!(again.path, "Toi.md"); // « Alex » is now one of the page's names
+        let text = read_page_text(&config, Part::Main, "Toi.md").unwrap();
+        let order: Vec<usize> =
+            ["## Travail", "## Goûts et habitudes", "## Objectifs"].iter().map(|t| text.find(t).unwrap()).collect();
+        assert!(order.windows(2).all(|p| p[0] < p[1]), "{text}");
+        // how the agents should behave goes there too
+        let q = propose(&config, "lea", "birthday", "Anniversaire de Zoé", "").unwrap();
+        decline(&config, &q, true, &who).unwrap();
+        let text = read_page_text(&config, Part::Main, "Toi.md").unwrap();
+        assert!(text
+            .contains("## Ce que tes agents doivent savoir\n- Pas de propositions de tâches pour les anniversaires"));
+    }
+
+    #[test]
     fn close_people_dates_tasks_and_proposals() {
         let dir = tempfile::tempdir().unwrap();
         let config = config_in(dir.path());
@@ -3036,7 +3193,7 @@ mod tests {
             "Pas de propositions de tâches pour les anniversaires"
         );
         assert!(propose(&config, "lea", "birthday", "x", "").is_err());
-        assert!(find(&config, &[Part::Main], "Préférences")
+        assert!(find(&config, &[Part::Main], "Toi")
             .unwrap()
             .page
             .body

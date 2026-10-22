@@ -452,6 +452,119 @@ pub const AREA: [Section; 5] = [
     OTHER,
 ];
 
+/// The person themself (« Toi »): one page per Carnet, never among « Personnes ». Health stays in the private part.
+pub const SELF: [Section; 7] = [
+    Section {
+        id: "about",
+        titles: ["Qui tu es", "Who you are", "Wer du bist", "Quién eres"],
+        aliases: &[
+            "qui tu es",
+            "qui",
+            "moi",
+            "identite",
+            "coordonnees",
+            "who",
+            "who you are",
+            "about",
+            "about me",
+            "wer",
+            "wer du bist",
+            "uber mich",
+            "quien eres",
+            "sobre mi",
+            "quien",
+            "who they are",
+            "qui c est",
+        ],
+    },
+    Section {
+        id: "family",
+        titles: ["Famille", "Family", "Familie", "Familia"],
+        aliases: &[
+            "famille",
+            "proches",
+            "famille et proches",
+            "family",
+            "familie",
+            "familia",
+            "kinder",
+            "enfants",
+            "children",
+        ],
+    },
+    Section {
+        id: "work",
+        titles: ["Travail", "Work", "Arbeit", "Trabajo"],
+        aliases: &[
+            "pro",
+            "professionnel",
+            "metier",
+            "boulot",
+            "emploi",
+            "job",
+            "career",
+            "beruf",
+            "profesion",
+            "empleo",
+        ],
+    },
+    Section {
+        id: "habits",
+        titles: ["Goûts et habitudes", "Likes and habits", "Vorlieben und Gewohnheiten", "Gustos y hábitos"],
+        aliases: &[
+            "gouts",
+            "habitudes",
+            "gouts et habitudes",
+            "preferences",
+            "gouts et preferences",
+            "routines",
+            "likes",
+            "habits",
+            "tastes",
+            "likes and habits",
+            "vorlieben",
+            "gewohnheiten",
+            "gustos",
+            "habitos",
+            "preferencias",
+        ],
+    },
+    Section {
+        id: "goals",
+        titles: ["Objectifs", "Goals", "Ziele", "Objetivos"],
+        aliases: &[
+            "objectif", "buts", "projets", "envies", "goal", "aims", "plans", "ziel", "plane", "objetivo", "metas",
+        ],
+    },
+    Section {
+        id: "agents",
+        titles: [
+            "Ce que tes agents doivent savoir",
+            "What your agents should know",
+            "Was deine Agenten wissen sollten",
+            "Lo que tus agentes deben saber",
+        ],
+        aliases: &[
+            "ce que tes agents doivent savoir",
+            "agents",
+            "consignes",
+            "pour les agents",
+            "regles",
+            "instructions",
+            "what your agents should know",
+            "for the agents",
+            "rules",
+            "anweisungen",
+            "regeln",
+            "fur die agenten",
+            "instrucciones",
+            "reglas",
+            "para los agentes",
+        ],
+    },
+    OTHER,
+];
+
 /// The names that say nothing about where a fact goes (an agent's « Infos », a hand-made « Notes »): each fact is
 /// placed by its own words.
 const GENERIC: [&str; 14] = [
@@ -485,6 +598,7 @@ pub fn outline(kind: &str) -> &'static [Section] {
         "person" => &PERSON,
         "subject" => &SUBJECT,
         "area" => &AREA,
+        "self" => &SELF,
         _ => &[],
     }
 }
@@ -533,6 +647,16 @@ fn cross(kind: &str, id: &str) -> Option<&'static str> {
             ("matters", "status"),
             ("remember", "status"),
         ],
+        "self" => &[
+            ("who", "about"),
+            ("dates", "about"),
+            ("tastes", "habits"),
+            ("matters", "goals"),
+            ("ongoing", "goals"),
+            ("next", "goals"),
+            ("remember", "agents"),
+            ("people", "family"),
+        ],
         "area" => &[
             ("who", "contacts"),
             ("people", "contacts"),
@@ -567,7 +691,7 @@ pub fn resolve(kind: &str, name: &str) -> Option<&'static str> {
     if let Some(s) = outline(kind).iter().find(|s| matches(s)) {
         return Some(s.id);
     }
-    for other in ["person", "subject", "area"] {
+    for other in ["person", "subject", "area", "self"] {
         if other == kind {
             continue;
         }
@@ -590,6 +714,203 @@ static STARTS_DATED: LazyLock<Regex> = LazyLock::new(|| {
 /// are tried: the first that matches wins (« Idée cadeau : il aime le jazz » is a gift, not a taste).
 fn keywords(kind: &str) -> &'static [(&'static str, &'static [&'static str])] {
     match kind {
+        "self" => &[
+            (
+                "agents",
+                &[
+                    "propos*",
+                    "rappel*",
+                    "tutoie*",
+                    "vouvoie*",
+                    "reponds",
+                    "reponse*",
+                    "previens",
+                    "ne me",
+                    "agent*",
+                    "suggest*",
+                    "remind*",
+                    "reminder*",
+                    "answer*",
+                    "reply",
+                    "vorschl*",
+                    "erinner*",
+                    "antworte*",
+                    "duzen",
+                    "siezen",
+                    "propuest*",
+                    "recordatorio*",
+                    "responde*",
+                    "tutea*",
+                ],
+            ),
+            (
+                "goals",
+                &[
+                    "objectif*",
+                    "voudrais",
+                    "voudrait",
+                    "veux",
+                    "veut",
+                    "souhaite*",
+                    "wants to",
+                    "aimerait",
+                    "aimerais",
+                    "envie de",
+                    "projet de",
+                    "goal*",
+                    "want to",
+                    "would like",
+                    "plan to",
+                    "ziel*",
+                    "mochte",
+                    "will",
+                    "objetivo*",
+                    "quiero",
+                    "quisiera",
+                    "me gustaria",
+                ],
+            ),
+            (
+                "family",
+                &[
+                    "frere*",
+                    "soeur*",
+                    "femme",
+                    "mari",
+                    "epouse",
+                    "epoux",
+                    "fils",
+                    "fille",
+                    "filles",
+                    "enfant*",
+                    "mere",
+                    "pere",
+                    "parents",
+                    "conjoint*",
+                    "compagne",
+                    "compagnon",
+                    "brother*",
+                    "sister*",
+                    "wife",
+                    "husband",
+                    "my son",
+                    "daughter*",
+                    "child*",
+                    "kids",
+                    "mother",
+                    "father",
+                    "partner",
+                    "bruder",
+                    "schwester",
+                    "ehefrau",
+                    "ehemann",
+                    "sohn",
+                    "tochter",
+                    "kinder",
+                    "mutter",
+                    "vater",
+                    "hermano*",
+                    "hermana*",
+                    "esposa",
+                    "esposo",
+                    "marido",
+                    "hijo*",
+                    "hija*",
+                    "madre",
+                    "padre",
+                ],
+            ),
+            (
+                "work",
+                &[
+                    "travaille",
+                    "travail",
+                    "boulot",
+                    "metier",
+                    "poste",
+                    "entreprise",
+                    "collegue*",
+                    "bureau",
+                    "job",
+                    "work",
+                    "works",
+                    "company",
+                    "colleague*",
+                    "office",
+                    "arbeite",
+                    "arbeit",
+                    "firma",
+                    "kollege*",
+                    "beruf",
+                    "trabajo",
+                    "trabajo",
+                    "empresa",
+                    "oficina",
+                ],
+            ),
+            (
+                "habits",
+                &[
+                    "aime",
+                    "adore",
+                    "deteste",
+                    "prefere",
+                    "allergi*",
+                    "vegetarien*",
+                    "vegan*",
+                    "toujours",
+                    "chaque",
+                    "tous les",
+                    "habitude*",
+                    "court",
+                    "likes",
+                    "love",
+                    "loves",
+                    "hate",
+                    "prefer*",
+                    "always",
+                    "every",
+                    "usually",
+                    "mag",
+                    "liebe",
+                    "hasse",
+                    "immer",
+                    "jeden",
+                    "gusta",
+                    "encanta",
+                    "odio",
+                    "siempre",
+                    "cada",
+                ],
+            ),
+            (
+                "about",
+                &[
+                    "habite",
+                    "vit a",
+                    "ne le",
+                    "nee le",
+                    "anniv*",
+                    "ans",
+                    "adresse",
+                    "lives",
+                    "live in",
+                    "born",
+                    "birthday",
+                    "years old",
+                    "address",
+                    "wohne",
+                    "geboren",
+                    "geburtstag",
+                    "jahre",
+                    "vivo",
+                    "naci",
+                    "cumpleanos",
+                    "anos",
+                    "direccion",
+                ],
+            ),
+        ],
         "person" => &[
             (
                 "gifts",
@@ -1274,18 +1595,19 @@ pub fn described() -> String {
     format!(
         "the page's section, by its id. person: {} (who: how they relate to the person, how they met, contact details \
 if useful; dates: birthday, name day, important dates; tastes: likes, dislikes, food allergies as everyday facts; \
-agreed: promises, loans, appointments; exchanges: short dated lines, the latest few). subject: {}. area: {}. other \
-only when nothing fits.",
+agreed: promises, loans, appointments; exchanges: short dated lines, the latest few). subject: {}. area: {}. \
+self (your person themself): {} (agents: how their agents should behave with them). other only when nothing fits.",
         list("person"),
         list("subject"),
-        list("area")
+        list("area"),
+        list("self")
     )
 }
 
 /// Every section id, for the tool's enum.
 pub fn all_ids() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
-    for kind in ["person", "subject", "area"] {
+    for kind in ["person", "subject", "area", "self"] {
         for id in ids(kind) {
             if !out.contains(&id) {
                 out.push(id);

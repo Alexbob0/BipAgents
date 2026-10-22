@@ -47,10 +47,11 @@ anything the person asked not to keep. Use an existing page's exact name when th
 short (one fact an item), in the person's language. Never file health facts. Every page has fixed sections, named by \
 id: person: who (how they relate, how they met, contact details), dates, family, work, tastes (likes, dislikes, food \
 allergies), gifts, agreed (promises, loans, appointments), exchanges (short dated lines), remember; subject: status, \
-decisions, next, people, budget, documents, history; area: matters, habits, contacts, ongoing; other only when \
-nothing fits. You may also get lines filed under « other »: move each to its section when one clearly fits. Answer \
+decisions, next, people, budget, documents, history; area: matters, habits, contacts, ongoing; self (the person \
+themself, kind self, their one page « Toi »): about, family, work, habits, goals, agents (how their agents should \
+behave with them); other only when nothing fits. You may also get lines filed under « other »: move each to its section when one clearly fits. Answer \
 with JSON lines only, one per line, nothing else:
-{\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area\", \"page\": \"<name>\", \"section\": \"<section id>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
+{\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area|self\", \"page\": \"<name>\", \"section\": \"<section id>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
 {\"op\": \"refile\", \"page\": \"<name>\", \"fact\": \"<the line, exactly>\", \"section\": \"<section id>\"}
 {\"op\": \"task\", \"agent\": \"<agent id>\", \"origin\": \"asked|own\", \"title\": \"...\", \"due\": \"YYYY-MM-DD\", \"page\": \"<name, optional>\"}
 {\"op\": \"merge\", \"from\": \"<page name>\", \"into\": \"<page name>\"}   (two pages about the same person or subject)

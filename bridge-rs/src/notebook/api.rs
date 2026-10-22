@@ -72,7 +72,7 @@ fn change_view(config: &Config, entry: &Dict) -> Value {
 fn section_of(w: &super::Words, page: &super::Page, path: &str) -> String {
     let kind = page.kind();
     match kind.as_str() {
-        "person" | "subject" | "area" | "tasks" => kind,
+        "person" | "subject" | "area" | "self" | "tasks" => kind,
         _ if path == w.inbox_path() => "inbox".into(),
         _ => "other".into(),
     }
@@ -84,7 +84,10 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         let lang = super::language(&config);
         let w = super::words(&lang);
         let pages = super::all_pages(&config, Part::Main);
-        let mut sections = Vec::new();
+        // the person's own page first (« Toi »: one page, its own card), then the sections
+        let mine = pages.iter().find(|(_, p)| p.kind() == "self").map(|(path, _)| path.clone());
+        let mut sections = vec![json!({"kind": "self", "title": w.me, "count": usize::from(mine.is_some()),
+                                       "path": mine.unwrap_or_else(|| w.self_path())})];
         for (kind, folder) in [("person", w.people), ("subject", w.subjects), ("area", w.areas)] {
             let count = pages.iter().filter(|(_, p)| p.kind() == kind).count();
             sections.push(json!({"kind": kind, "title": folder, "count": count}));

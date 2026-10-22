@@ -52,8 +52,9 @@ pub fn tools(health: bool) -> Vec<Value> {
         }),
         json!({
             "name": NOTE,
-            "description": "File durable facts in the Carnet: about a person (birthday, family, preferences, what was agreed, \
-        recent exchanges), a subject or project (decisions, status, next steps, people involved) or an area of life (home, \
+            "description": "File durable facts in the Carnet: about your person themself (kind self: their « Toi » page; who \
+        they are, family, work, likes and habits, goals, how their agents should behave with them), a person (birthday, \
+        family, preferences, what was agreed, recent exchanges), a subject or project (decisions, status, next steps, people involved) or an area of life (home, \
         money, work, family…). The page is found by its name, a nickname or the contact's id, and made if it doesn't exist. \
         Facts already there are not repeated. Every page has the same fixed sections for its kind: give the section \
         the facts belong to (one call per section); one short fact per item. Write each fact short and dated when it matters (« Anniversaire : 14 novembre », \
@@ -62,7 +63,7 @@ pub fn tools(health: bool) -> Vec<Value> {
         the person asked not to keep.",
             "inputSchema": {"type": "object", "properties": {
                 "page": {"type": "string", "description": "the person's, subject's or area's name (« Marc Dupont », « Rénovation cuisine », « Maison »)"},
-                "kind": {"type": "string", "enum": ["person", "subject", "area"], "description": "for a new page"},
+                "kind": {"type": "string", "enum": ["person", "subject", "area", "self"], "description": "for a new page; self: your person themself (their « Toi » page, one per Carnet)"},
                 "facts": {"type": "array", "items": {"type": "string"}, "maxItems": 20, "description": "short facts, one per item"},
                 "section": {"type": "string", "enum": super::template::all_ids(), "description": super::template::described()},
                 "summary": {"type": "string", "description": "the page's new « En bref », 2–3 short lines (when what matters most changes)"},
