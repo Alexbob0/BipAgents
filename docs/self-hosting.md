@@ -124,6 +124,24 @@ tasks reach the Inbox without them (`[cron]`). Then run `~/.local/bin/bipbridge 
 
 All options: [`bridge/README.md`](../bridge/README.md).
 
+### The agents' sandboxes (Linux with podman)
+
+When the agents' tools run in Hermes' sandbox (`terminal.backend: docker`, with rootless podman), the bridge keeps
+that sandbox isolated, so Hermes runs harmless work there (`python -c`, `execute_code`, `pip install`) without asking
+you each time:
+
+- **no folder of this machine inside**: the files you send an agent are copied into a podman volume of its own
+  (`bipagents-files-<agent>`, read-only at `/fichiers`); folders shared between agents go through the bridge's
+  `shared_files_*` tools, and you approve each write or delete from the app;
+- **no internet but the package registries**: the sandbox sits on `bipagents-sandbox`, a podman network without a
+  route out, and reaches PyPI, npm, crates.io, Go, RubyGems and Debian only, through a small proxy container
+  (`bipagents-egress`, `podman logs bipagents-egress` shows what it let through or blocked). Web search and the
+  agent's own visible browser are separate tools and keep working.
+
+Existing agents switch at the bridge's next start (`bipbridge sandbox` does it now and prints what each one got). The
+`[sandbox]` section of `bridge.example.toml` lists the settings. On macOS, or with docker instead of podman, the
+sandboxes stay as they were (folders mounted, Hermes asks before risky commands).
+
 ## 5. Start at boot
 
 **macOS (Mac mini)**: two LaunchAgents.

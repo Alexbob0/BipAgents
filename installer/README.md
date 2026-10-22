@@ -32,6 +32,12 @@ Add `--dry-run` to see every step and command without changing anything.
 4. **Installs Hermes** with its official installer, at the version tested with BipAgents (`517b5e10f`), applies the
    patches of `hermes/patches/` (the agent's questions in the app, photos kept for follow-up questions), as **one gateway per person** (Hermes' multiplex mode): every
    agent is a profile reached at `/p/<agent>/` with its own key. New agents are picked up without a restart.
+   On Linux with podman, each agent's tools run in a sandbox the bridge keeps isolated: no folder of the machine
+   inside (the files sent to the agent are copied into a podman volume of its own; shared folders go through the
+   bridge's tools, writes approved by the person) and no internet but the package registries (PyPI, npm, crates.io,
+   Go, RubyGems, Debian), through the `bipagents-egress` proxy on a network without a route out. Hermes then runs
+   harmless work there without asking each time. `bipagents update` switches existing installs
+   (`2026-10-22-isolated-sandboxes`).
 5. **Creates the first agents**, named by the person, from kinds (Everyday, Wellness, Finances, Home, Work, Learn, Creative, Tech) or a custom « Other » (its role, tone, rules, language and colour, described by the person),
    each with a starting personality (`SOUL.md`) and joined to Bot Mode so they can talk to each other.
 6. **Sets up the voices** (Pocket TTS, one server per machine, shared by everyone) and **the bridge** (one program in

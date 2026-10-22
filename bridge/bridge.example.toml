@@ -145,6 +145,17 @@ port = 8650
 # stop = "podman rm -f hermes-space-{agent}"
 # container_home = "/home/hermes/.hermes"   # the space's HERMES_HOME inside that container (attachments)
 
+# The agents' sandboxes (Hermes' docker backend with podman), isolated: no folder of this machine mounted in them
+# (the files the person sends are copied into a podman volume of the agent's own, read-only at /fichiers; shared
+# folders go through the bridge's shared_files_* tools, writes and deletes approved by the person), and no internet but
+# the package registries, through a small proxy container (bipagents-egress) on a network without a route out
+# (bipagents-sandbox). Hermes then runs harmless work there (python -c, execute_code, pip install) without asking.
+# [sandbox]
+# isolate = "auto"            # Linux with podman; "off": the folders mounted as before (Hermes asks before risky commands)
+# subnet = "10.233.80.0/24"   # the sandboxes' network; the proxy takes its .2
+# registries = ["pypi.org", "files.pythonhosted.org", "registry.npmjs.org"]   # default: PyPI, npm, crates.io, Go, RubyGems, Debian
+# image = ""                  # the proxy's image (default: the agents' sandbox image)
+
 [agents.wellness]
 display_name = "Wellness"
 hermes_url = "http://127.0.0.1:8642"
