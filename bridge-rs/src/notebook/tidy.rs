@@ -44,8 +44,7 @@ steps), an area of life. A fact is not a task: a birthday or someone else's dead
 Add a task only when the person asked for it (« remind me… », « I have to… »: origin asked) or stated their own \
 commitment with a deadline (origin own); never invent one. Skip small talk, one-off questions, passwords and codes, and \
 anything the person asked not to keep. Use an existing page's exact name when the fact is about it. Write each fact \
-short, in the person's language. Health facts: only from turns marked (health agent), with \"private\": true; never \
-otherwise. Answer with JSON lines only, one per line, nothing else:
+short, in the person's language. Never file health facts. Answer with JSON lines only, one per line, nothing else:
 {\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area\", \"page\": \"<name>\", \"section\": \"<section>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
 {\"op\": \"task\", \"agent\": \"<agent id>\", \"origin\": \"asked|own\", \"title\": \"...\", \"due\": \"YYYY-MM-DD\", \"page\": \"<name, optional>\"}
 {\"op\": \"merge\", \"from\": \"<page name>\", \"into\": \"<page name>\"}   (two pages about the same person or subject)
@@ -364,7 +363,9 @@ async fn run_inner(
     let mut gathered: Vec<Gathered> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     for agent in config.agents.values() {
-        if !super::enabled(config, &agent.name) {
+        // The agents the person gave their health to are left out: their conversations may hold health data, which
+        // only goes to a model the person accepted for it (an EU one with the offer), not to the pass's small model.
+        if !super::enabled(config, &agent.name) || super::health_agent(config, &agent.name) {
             continue;
         }
         match gather(hermes, config, agent, since).await {
@@ -428,9 +429,8 @@ async fn run_inner(
     let mut blocks: Vec<String> = Vec::new();
     for g in &gathered {
         for turn in &g.kept {
-            let mark = if g.health { " (health agent)" } else { "" };
             blocks.push(format!(
-                "[agent {}{mark}]\nPerson: {}\nAgent: {}",
+                "[agent {}]\nPerson: {}\nAgent: {}",
                 g.agent.name,
                 clip(&turn.person, TURN_CHARS),
                 clip(&turn.reply, TURN_CHARS / 2)
@@ -559,16 +559,14 @@ pub fn apply(
         if config.agent(Some(&agent)).is_none() {
             agent = fallback.to_string();
         }
-        let health = agents.iter().any(|(a, h)| *a == agent && *h) || super::health_agent(config, &agent);
         let who = Who::nightly(config, &agent);
         let private = op.get("private").map(py::truthy).unwrap_or(false);
         let w = super::words(&super::language(config));
         let page = s("page");
-        let health_page = super::fold(&page) == super::fold(w.health);
-        if (private || health_page) && !health {
-            continue; // health facts only from the health agent, only in the private part
+        if private || super::fold(&page) == super::fold(w.health) || agents.iter().any(|(a, h)| *a == agent && *h) {
+            continue; // never health: that stays with the health agent, in the private part
         }
-        let part = if private || health_page { Part::Health } else { Part::Main };
+        let part = Part::Main;
         let result: anyhow::Result<bool> = match s("op").as_str() {
             "note" => {
                 let facts: Vec<String> = match op.get("facts") {

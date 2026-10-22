@@ -2395,7 +2395,8 @@ pub fn seed(config: &Config) -> anyhow::Result<usize> {
         if seeded.contains(&agent.name) || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
             continue;
         }
-        if !enabled(config, &agent.name) {
+        // a health agent's memory may hold health data: not copied where the nightly pass's model would read it
+        if !enabled(config, &agent.name) || health_agent(config, &agent.name) {
             continue;
         }
         let folder = crate::agents_admin::profile_folder(config, agent);

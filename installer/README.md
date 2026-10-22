@@ -110,6 +110,13 @@ takes the patches off. `--all` never removes a Hermes that was there before BipA
 run in a sandbox, the bridge keeps no passwords (no vault): it tells you so, without changing their tools. It needs a
 Hermes that serves several agents at one address (`hermes update` otherwise).
 
+## The Carnet
+
+Every agent files what matters in the person's Carnet, kept by the bridge as Markdown pages under its data dir
+(`notebook/carnet/`, exportable to Obsidian from the app). A nightly sorting with a small model catches what the agents
+missed, only when there is something to sort and under a monthly cap (`[notebook] monthly_cap`, 0.10 € by default);
+see docs/self-hosting.md.
+
 ## Updating BipAgents
 
 `bipagents update` (or `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --

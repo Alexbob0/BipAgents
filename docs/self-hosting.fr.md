@@ -143,6 +143,16 @@ dit ce que chacun a reçu). La section `[sandbox]` de `bridge.example.toml` list
 docker au lieu de podman, les bacs à sable restent comme avant (dossiers montés, Hermes demande avant les commandes
 risquées).
 
+### Le Carnet (le carnet des agents)
+
+Le bridge garde le Carnet de la personne dans son dossier de données (`notebook/carnet/`, du Markdown simple qui
+s'ouvre dans Obsidian ; `notebook/private/` pour la santé ; `notebook/history/` pour chaque changement). Son rangement
+de nuit appelle un petit modèle une fois par nuit au plus, seulement quand les conversations du jour contiennent
+quelque chose que les agents n'ont pas noté, sous un plafond mensuel : `[notebook] model` (par défaut
+`mistral-small-latest` chez le fournisseur des agents), `base_url` et `key` pour une autre API compatible OpenAI,
+`price_in`/`price_out` (€ par million de tokens), `monthly_cap` (€, 0,10 par défaut) et `hour` (3 par défaut). Chaque
+passage écrit `notebook pass` dans le journal avec ses tokens et son coût ; `GET /v1/notebook/runs` montre le mois.
+
 ## 5. Lancer au démarrage
 
 **macOS (Mac mini)** : deux LaunchAgents.

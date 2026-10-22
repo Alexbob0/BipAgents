@@ -148,6 +148,18 @@ Zugangsdaten des Postfachs, die verschlüsselt auf deinem Server bleiben), wenn 
 und trägt die Termine ein oder löscht sie, um die er bittet; davon wird nichts behalten außer der Liste dieser
 Kalender. Schalte es aus, um aufzuhören.
 
+**Dein Notizbuch (« Carnet »).** Deine Agenten führen ein Notizbuch mit dem, was du ihnen sagst und was wichtig
+bleibt (die Menschen in deinem Leben, deine Projekte, wichtige Daten, die Aufgaben, um die du bittest), als Textseiten
+**nur auf deinem Server** (oder deinem Platz), geteilt von allen deinen Agenten; du liest, korrigierst, machst
+Änderungen rückgängig und exportierst es in der App. Einmal pro Nacht (oder Woche, oder nie: deine Wahl in der App)
+sucht dein Server in den Gesprächen des Tages, was die Agenten nicht notiert haben: Nur die Stellen, die solche Fakten
+zu enthalten scheinen, werden einmal an ein KI-Modell deines Modellanbieters geschickt, ein kleines, über denselben
+Router wie deine Agenten, um sie einzuordnen, mit einem kleinen Monatsbudget; die Seiten werden auf deinem Server
+geschrieben. Gesundheitsangaben kommen nur in einen privaten Teil, den nur der für deine Gesundheit gewählte Agent und
+du lesen können; die Gespräche dieses Agenten gehen nie an das
+nächtliche Einordnen. Kerfy Studio erhält nichts davon. **Beenden**: « Carnet » für einen Agenten ausschalten, « nie » für
+das nächtliche Einordnen wählen, Seiten in der App löschen; alles geht mit deinem Platz.
+
 **Deine Kontakte, wenn du sie teilst (« Contacts », Kontakte).** Für jeden Agenten kannst du Kontakte in seinen
 Werkzeugen einschalten. Mit deiner Erlaubnis (Kontakte auf dem iPhone und auf Android) liest die App das Adressbuch
 deines Telefons, auch die darauf hinzugefügten Konten (iCloud, Google…), und sendet eine Kopie **nur an deinen

@@ -141,6 +141,17 @@ agente, o retira el permiso en los ajustes del teléfono (ya no se envía nada).
 buzón, que quedan cifradas en tu servidor) cuando un agente de ese buzón los consulta, y añade o borra las citas que
 pide; no se guarda nada salvo la lista de esos calendarios. Desactívalo para dejarlo.
 
+**Tu Cuaderno (« Carnet »).** Tus agentes llevan un cuaderno con lo que les cuentas que seguirá importando (las
+personas de tu vida, tus proyectos, las fechas importantes, las tareas que pides), en páginas de texto **solo en tu
+servidor** (o tu plaza), compartido por todos tus agentes; lo lees, lo corriges, deshaces cambios y lo exportas desde
+la app. Una vez por noche (o por semana, o nunca: lo eliges en la app), tu servidor revisa las conversaciones del día
+en busca de lo que los agentes no anotaron: solo los pasajes que parecen contener esos datos se envían, una vez, a un
+modelo de IA de tu proveedor de modelos, uno pequeño, por el mismo enrutador que tus agentes, para ordenarlos, con un
+pequeño presupuesto mensual; las páginas se escriben en tu servidor. Los datos de salud van solo a una parte privada
+que solo el agente elegido para tu salud y tú podéis leer; las conversaciones de ese agente nunca van al orden
+nocturno. Kerfy Studio no recibe nada de ello. **Parar**: desactiva
+« Carnet » para un agente, elige « nunca » para el orden nocturno, borra páginas en la app; todo se va con tu plaza.
+
 **Tus contactos, si los compartes (« Contacts », Contactos).** Para cada agente, puedes activar Contactos en sus
 herramientas. Con tu permiso (Contactos en el iPhone y en Android), la app lee la libreta de direcciones de tu
 teléfono, incluidas las cuentas añadidas en él (iCloud, Google…), y envía una copia **solo a tu servidor** (o a tu

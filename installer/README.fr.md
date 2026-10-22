@@ -113,6 +113,13 @@ tes agents ne tournent pas dans un bac à sable, le bridge ne garde pas de mots 
 dit, sans changer leurs outils. Il faut une version d'Hermes qui sert plusieurs agents à la même adresse
 (`hermes update` sinon).
 
+## Le Carnet
+
+Chaque agent note ce qui compte dans le Carnet de la personne, gardé par le bridge en pages Markdown dans son dossier de
+données (`notebook/carnet/`, exportable vers Obsidian depuis l'app). Un rangement de nuit avec un petit modèle rattrape
+ce que les agents ont manqué, seulement quand il y a quelque chose à ranger et sous un plafond mensuel
+(`[notebook] monthly_cap`, 0,10 € par défaut) ; voir docs/self-hosting.fr.md.
+
 ## Mettre BipAgents à jour
 
 `bipagents update` (ou `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --

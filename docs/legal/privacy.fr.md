@@ -145,6 +145,18 @@ réglages du téléphone (plus rien n'est envoyé). Pour une boîte mail que tu 
 boîte, qui restent chiffrés sur ton serveur) quand un agent de cette boîte les consulte, et y ajoute ou supprime les
 rendez-vous qu'il demande ; rien n'en est gardé à part la liste de ces agendas. Désactive-le pour arrêter.
 
+**Ton Carnet.** Tes agents tiennent un carnet de ce que tu leur dis qui comptera encore (les personnes de ta vie,
+tes projets, les dates importantes, les tâches que tu demandes), en pages de texte **uniquement sur ton serveur** (ou
+ta place), partagé par tous tes agents ; tu le lis, le corriges, annules un changement et l'exportes depuis l'app. Une
+fois par nuit (ou par semaine, ou jamais : ton choix dans l'app), ton serveur regarde les conversations du jour pour ce
+que les agents n'ont pas noté : seuls les passages qui semblent contenir de tels faits sont envoyés, une fois, à un
+modèle d'IA de ton fournisseur de modèle, un petit modèle, par le même routeur que tes agents, pour être rangés, dans
+un petit budget mensuel ; les pages sont écrites sur ton serveur. Les informations de santé vont uniquement dans une
+partie privée que seuls l'agent choisi pour ta santé et toi pouvez lire ; les conversations de cet agent ne vont
+jamais au rangement de nuit. Kerfy Studio n'en reçoit rien. **Arrêter** :
+désactive « Carnet » pour un agent, choisis « jamais » pour le rangement de nuit, supprime des pages dans l'app ; tout
+part avec ta place.
+
 **Tes contacts, si tu les partages (« Contacts »).** Pour chaque agent, tu peux activer « Contacts » dans ses outils.
 Avec ton autorisation (Contacts sur l'iPhone et sur Android), l'app lit le carnet d'adresses de ton téléphone, y
 compris les comptes ajoutés dessus (iCloud, Google…), et en envoie une copie **uniquement à ton serveur** (ou à ta

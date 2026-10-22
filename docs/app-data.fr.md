@@ -242,6 +242,12 @@ un modèle qui ne l’est pas, elle désactive aussitôt « Santé » sur le bri
 `AgentSettingsScreen.kt`, `health/HealthSync.kt`).
 La clé d’IA d’une place de l’offre est créée par le guichet et passe par le téléphone pour aller au bridge (§1).
 
+**Le rangement de nuit du Carnet** (bridge, `notebook/tidy.rs`) : une fois par nuit au plus, le bridge de la personne
+envoie les passages des conversations du jour que son pré-filtre gratuit a gardés (ceux que les agents n’ont pas notés et
+qui semblent contenir des faits datés ou personnels), avec les noms des pages du Carnet, à un petit modèle chez le
+fournisseur des agents (ou `[notebook] base_url`), sous un plafond mensuel. Jamais les conversations d’un agent qui a
+« Santé », ni sa mémoire. Les apps n’y jouent aucun rôle.
+
 ## 6. Le reste
 
 - **Liens touchés par la personne :** liens des réponses, textes juridiques

@@ -203,7 +203,7 @@ def test_dates_to_come_are_facts_of_close_people(bridge):
     assert bridge.get("/v1/notebook/dates", headers=AUTH).json()["dates"] == []
 
 
-def test_the_health_part_is_private_to_the_health_agent_and_the_person(bridge):
+def test_the_health_part_is_private_to_the_health_agent_and_the_person(bridge, fakes):
     health = bridge.state_dir / "health" / "agents.json"
     health.parent.mkdir(parents=True, exist_ok=True)
     health.write_text(json.dumps({"agents": ["wellness"], "categories": {"wellness": ["sleep"]}}))
@@ -225,6 +225,11 @@ def test_the_health_part_is_private_to_the_health_agent_and_the_person(bridge):
     assert not any("Santé" in n for n in export)
     with_health = bridge.get("/v1/notebook/export", params={"health": 1}, headers=AUTH).content
     assert "Santé (privé)/Domaines/Santé.md" in zipfile.ZipFile(io.BytesIO(with_health)).namelist()
+    # The health agent's conversations never go to the nightly pass's model.
+    fakes.hermes.add_session("s1", [{"role": "user", "content": "Mon cardiologue Dr Martin me revoit le 12 décembre"},
+                                    {"role": "assistant", "content": "Noté."}], last_active=time.time())
+    run = bridge.post("/v1/notebook/tidy", headers=AUTH).json()["run"]
+    assert run["turns_seen"] == 0 and run["model_called"] is False and fakes.model.chats == []
 
 
 def nightly(bridges, fakes, **notebook_config):

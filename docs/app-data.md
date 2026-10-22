@@ -224,6 +224,12 @@ as `eu_hosted`, and when the agent's model is changed in the app to one that is 
 bridge at once and says so (`AgentSettingsView.swift`, `AgentSettingsScreen.kt`, `health/HealthSync.kt`). The AI key of an offer place is created by the
 guichet and goes through the phone to the bridge (§1).
 
+**The Carnet's nightly sorting** (bridge, `notebook/tidy.rs`): once a night at most, the person's own bridge sends
+the day's conversation passages that its free pre-filter kept (those the agents did not file and that look like they
+hold dated or personal facts), with the Carnet's page names, to a small model at the agents' own provider (or
+`[notebook] base_url`), under a monthly cap. Never the conversations of an agent with « Santé », never its memory.
+The apps play no part in it.
+
 ## 6. Anything else
 
 - **Links the person taps:** links in replies, the legal texts (`github.com/Alexbob0/BipAgents/blob/main/docs/legal/…`),

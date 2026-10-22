@@ -137,6 +137,17 @@ calendar too »: your server then reads that account's calendars (CalDAV, with t
 encrypted on your server) when one of the mailbox's agents looks at them, and adds or deletes the events it asks for;
 nothing of them is kept apart from the list of those calendars. Turn it off to stop.
 
+**Your Carnet (Notebook).** Your agents keep a notebook of what you tell them that will still matter (the people
+in your life, your projects, important dates, the tasks you ask for), as text pages **only on your server** (or your
+place), shared by all your agents; you read, correct, undo and export it from the app. Once a night (or a week, or
+never: your choice in the app), your server looks at the day's conversations for what the agents did not note: only
+the passages that seem to hold such facts are sent, once, to an AI model of your model provider, a small one, through
+the same router as your agents, to be sorted, under a small monthly budget; the pages are written on your server.
+Health facts go only to a private part that only the agent you chose for your health and you can read; that agent's
+conversations are never sent to the nightly sorting. Kerfy Studio
+does not receive any of it. **Stopping**: turn « Carnet » off for an agent, choose « never » for the nightly sorting,
+delete pages in the app; it all goes with your place.
+
 **Your contacts, if you share them (« Contacts »).** For each agent, you can turn on Contacts in its tools. With your
 permission (Contacts on the iPhone and on Android), the app reads your phone's address book, including the accounts
 added to it (iCloud, Google…), and sends a copy, **only to your server** (or to your place with the all-included
