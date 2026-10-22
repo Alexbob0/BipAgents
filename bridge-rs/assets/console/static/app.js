@@ -248,14 +248,15 @@ function Listen({ agent, text }) {
   return html`<button class="tiny" onClick=${listen} title=${T.listen}>${state === "loading" ? "…" : state === "playing" ? "■ " + T.stop : state === "error" ? "⚠︎ " + T.listen : "▶︎ " + T.listen}</button>`;
 }
 
-function MediaFile({ path }) {
+function MediaFile({ path, agent }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
   const name = path.split("/").pop();
   const ext = (name.split(".").pop() || "").toLowerCase();
   const kind = ["mp3", "m4a", "wav", "ogg", "opus", "aac", "flac"].includes(ext) ? "audio" : ["png", "jpg", "jpeg", "gif", "webp"].includes(ext) ? "image" : ["mp4", "m4v", "mov", "webm"].includes(ext) ? "video" : "file";
   async function open() {
-    try { setUrl(await blobURL(`/v1/media?path=${encodeURIComponent(path)}`)); } catch { setFailed(true); }
+    const of = agent ? `&agent=${encodeURIComponent(agent)}` : "";  // a file in that agent's own places (/envoi…)
+    try { setUrl(await blobURL(`/v1/media?path=${encodeURIComponent(path)}${of}`)); } catch { setFailed(true); }
   }
   useEffect(() => { if (kind === "image") open(); }, [path]);
   if (failed) return html`<p class="media muted">📎 ${name} · ${T.fileUnavailable}</p>`;
@@ -495,7 +496,7 @@ function Conversation({ agent, sessionId, onSessionChange, onMood }) {
     return html`<div key=${it.id} class="msg agent">
       ${it.tools?.length > 0 && html`<p class="tools">🔧 ${[...new Set(it.tools)].join(" · ")}</p>`}
       <div class="bubble md">${markdown(it.text)}</div>
-      ${media(it.text).map(p => html`<${MediaFile} key=${p} path=${p}/>`)}
+      ${media(it.text).map(p => html`<${MediaFile} key=${p} path=${p} agent=${agent.id}/>`)}
       <div class="meta">${it.at && html`<span>${when(it.at)}</span>`}${visible(it.text) && html`<${Listen} agent=${agent} text=${it.text}/>`}</div>
     </div>`;
   };
@@ -542,7 +543,7 @@ function Inbox({ agents, onOpen }) {
       return html`<article key=${it.id} class="card inbox-item">
         <header><${Bip} agent=${agent} size=${36}/><div><strong>${it.title || agent.name}</strong><span class="muted small"> · ${it.title ? `${agent.name} · ` : ""}${when(it.sent_at || it.created_at)}</span></div></header>
         <div class="md">${markdown(it.text)}</div>
-        ${media(it.text).map(p => html`<${MediaFile} key=${p} path=${p}/>`)}
+        ${media(it.text).map(p => html`<${MediaFile} key=${p} path=${p} agent=${agent.id}/>`)}
         <div class="meta">
           <${InboxAudio} item=${it}/>
           ${it.session_id && byId[it.agent] && html`<button class="tiny" onClick=${() => onOpen(it.agent, it.session_id)}>${T.openConversation}</button>`}

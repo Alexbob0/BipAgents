@@ -1326,6 +1326,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     let config = shared.get();
     crate::shares::forget(&config, &agent.name, run).await?;
     crate::sandbox::forget(&config, &agent.name, run).await;
+    crate::sent_files::forget(&config, &agent.name);
     crate::agent_tools::forget(&config, &agent.name);
     crate::health::forget(&config, &agent.name);
     crate::weather::forget(&config, &agent.name);

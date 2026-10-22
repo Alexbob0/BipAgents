@@ -144,7 +144,8 @@ fn create_page_tool() -> Value {
     json!({
         "name": "create_page",
         "description": "Make a small web page for the person, on any subject they ask: a dashboard following their blood tests, a \
-    tracker, a chart, a comparison, a calculator, a quiz, a checklist, a little game. Write ONE complete HTML \
+    tracker, a chart, an infographic, a comparison, a calculator, a quiz, a checklist, a little game. Always use \
+    this for a page (never an .html file of your own: it would not open). Write ONE complete HTML \
     file: the CSS in <style>, the JavaScript in <script>, the data inline in the script (for example a JSON \
     object). It opens in the BipAgents app in a locked view with no network at all: no CDN, no fetch, no \
     external images or fonts (use emoji, inline SVG, CSS or data: URIs). For charts, <script src=\"chart.js\">\
@@ -340,12 +341,18 @@ pub fn audio_root(config: &Config) -> PathBuf {
     PathBuf::from(config.data_dir()).join("agent-audio")
 }
 
-/// `[media] roots` plus the agents' audio files and pages.
+/// The agents' audio files and pages (the bridge's own folders).
 pub fn media_roots(config: &Config) -> IndexMap<String, String> {
-    let mut roots = config.media_roots.clone();
+    let mut roots = IndexMap::new();
     roots.insert(MEDIA_PREFIX.into(), audio_root(config).to_string_lossy().into_owned());
     roots.insert(pages::PREFIX.into(), pages::root(config).to_string_lossy().into_owned());
     roots
+}
+
+/// The host file of a `MEDIA:` path under `[media] roots` (media and documents) or the bridge's own folders (media
+/// only: a page's record and source beside it are never served).
+pub fn served_media(config: &Config, path: &str) -> Option<String> {
+    crate::media::resolve(path, &config.media_roots).or_else(|| crate::media::resolve_media(path, &media_roots(config)))
 }
 
 /// `tools_version()` of a tool list: the first 10 hex digits of the SHA-256 of `json.dumps(tools, sort_keys=True)`.
@@ -1408,7 +1415,9 @@ impl Drop for AbortOnDrop {
 const INSTRUCTIONS: &str = "BipAgents: create_audio reads a text aloud with your voice; create_podcast makes a \
 conversation between hosts with different voices; create_page makes a small web page \
 (a dashboard, a tracker, a chart, a tool) on any subject, shown in the app; each \
-gives a MEDIA: line for your reply. mail_search, mail_read and mail_draft reach the \
+gives a MEDIA: line for your reply. Any other file you made (a spreadsheet, a document, a picture) reaches \
+the person when you save it in /envoi (or /workspace when your sandbox has no /envoi) and end your reply with a \
+line MEDIA:/envoi/<name>. mail_search, mail_read and mail_draft reach the \
 mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
 another of your person's agents (it can't see your files).";
 

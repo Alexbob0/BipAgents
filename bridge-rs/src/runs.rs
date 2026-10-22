@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::config::AgentConfig;
+use crate::config::{AgentConfig, SharedConfig};
 use crate::hermes::{is_delta, is_terminal, HermesClient, HermesError, SSEEvent};
 use crate::push::PushService;
 use crate::store::Store;
@@ -250,6 +250,8 @@ pub struct RunHub {
     pub store: Option<Store>,
     pub watch_max_seconds: u64,
     pub retention_seconds: f64,
+    /// For the files a reply hands the person (`MEDIA:` lines), kept when the run ends (sent_files.rs).
+    pub config: Option<SharedConfig>,
     inner: Mutex<HubInner>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
     next_id: AtomicU64,
@@ -275,10 +277,16 @@ impl RunHub {
             store,
             watch_max_seconds,
             retention_seconds: FINISHED_RETENTION_SECONDS,
+            config: None,
             inner: Mutex::new(HubInner::default()),
             tasks: Mutex::new(Vec::new()),
             next_id: AtomicU64::new(1),
         }
+    }
+
+    pub fn with_config(mut self, config: SharedConfig) -> Self {
+        self.config = Some(config);
+        self
     }
 
     // -- public API ------------------------------------------------------------------------------
@@ -705,6 +713,19 @@ impl RunHub {
                 st.output = output.clone();
             }
             Self::forget_pending(&mut inner, &sub.agent.name, &sub.run_id, None);
+            if let (Some(shared), Some(text)) =
+                (self.config.clone(), output.clone().filter(|o| kind == "run.completed" && o.contains("MEDIA:")))
+            {
+                let agent = sub.agent.clone();
+                self.spawn(async move {
+                    let config = shared.get();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        let agent = config.agent(Some(&agent.name)).cloned().unwrap_or(agent);
+                        crate::sent_files::capture_reply(&config, &agent, &text);
+                    })
+                    .await;
+                });
+            }
             if let Some(store) = self.store.clone() {
                 let (agent, run_id) = sub.key();
                 self.spawn(async move {
