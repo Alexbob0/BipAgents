@@ -465,3 +465,47 @@ h1 { font-size: clamp(46px, 5.6vw, 84px); line-height: .96; letter-spacing: -.04
 .foot nav a { text-decoration: none; font-weight: 800; color: var(--ink2); }
 .foot nav a:hover { color: var(--ink); }
 .foot-fine { margin-top: 40px; color: var(--muted); font-size: 13.5px; font-weight: 700; line-height: 1.6; }
+
+/* Why it's private: a usual assistant above BipAgents (the apps' PrivacyDiagram). */
+.compare { max-width: 720px; margin: 0 auto; display: grid; gap: 14px; }
+.cmp-row { border-radius: 26px; padding: 16px; background: var(--card); border: 1px solid var(--line); }
+.cmp-bip { background: var(--green-tint); border: 1.5px solid rgba(60, 195, 122, .5); }
+.cmp-title { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 16px; margin: 0 0 12px; }
+.cmp-dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; color: #fff; }
+.cmp-grey { background: #6B7489; } .cmp-green { background: var(--green); }
+.cmp-flow { display: flex; align-items: flex-start; }
+.cmp-node { display: grid; justify-items: center; text-align: center; gap: 4px; }
+.cmp-node > :first-child { height: 62px; display: grid; place-items: center; }
+.cmp-node b { font-size: 13.5px; font-weight: 1000; }
+.cmp-node small { font-size: 12px; font-weight: 700; color: var(--ink2); line-height: 1.25; }
+.cmp-small { width: 54px; flex: none; } .cmp-wide { flex: 1; min-width: 0; } .cmp-side { width: 92px; flex: none; }
+.cmp-pic { display: block; margin: auto; max-width: 100%; }
+.cmp-badge { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; }
+.cmp-violet { background: var(--violet-tint); border: 2.5px solid var(--violet); }
+.cmp-pink { background: var(--pink-tint); border: 2.5px solid var(--pink); color: #C23774; font-weight: 900; }
+.cmp-house { position: relative; width: 70px; }
+.cmp-house svg { position: absolute; left: 0; top: 2px; }
+.cmp-house i { position: absolute; left: 15px; top: 22px; width: 34px; height: 34px; }
+.cmp-house i svg { position: static; width: 100%; height: 100%; }
+.cmp-house em { position: absolute; right: -2px; bottom: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--gold-deep); font-size: 10px; display: grid; place-items: center; font-style: normal; border: 2px solid var(--card); }
+/* An arrow: its line, its head (and a second one when there and back), a dot running along it. */
+.cmp-arrow { flex: none; width: 30px; height: 62px; position: relative; }
+.cmp-arrow::before { content: ""; position: absolute; left: 4px; right: 4px; top: 30px; height: 2.5px; border-radius: 2px; background: currentColor; opacity: .75; }
+.cmp-arrow::after { content: ""; position: absolute; right: 4px; top: 27px; width: 7px; height: 7px; border-top: 2.5px solid currentColor; border-right: 2.5px solid currentColor; transform: rotate(45deg); }
+.cmp-both i::before { content: ""; position: absolute; left: 4px; top: 27px; width: 7px; height: 7px; border-bottom: 2.5px solid currentColor; border-left: 2.5px solid currentColor; transform: rotate(45deg); }
+.cmp-arrow i { position: absolute; inset: 0; }
+.cmp-arrow i::after { content: ""; position: absolute; top: 28px; left: 4px; width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: cmp-run 1.8s linear infinite; }
+.cmp-both i::after { animation: cmp-back 3.6s linear infinite; }
+.cmp-arrow-grey { color: #6B7489; } .cmp-arrow-green { color: var(--green-deep); } .cmp-arrow-pink { color: #C23774; }
+.cmp-arrow-pink::before { height: 1.6px; }
+@keyframes cmp-run { from { left: 4px; } to { left: calc(100% - 11px); } }
+@keyframes cmp-back { 0%, 100% { left: 4px; } 50% { left: calc(100% - 11px); } }
+@media (prefers-reduced-motion: reduce) { .cmp-arrow i::after { display: none; } }
+@media (prefers-color-scheme: dark) { .cmp-arrow-green { color: var(--green); } .cmp-arrow-pink, .cmp-pink { color: var(--pink); } }
+.cmp-kerfy { margin: 12px 0 0; padding: 8px 12px; border: 1.2px dashed rgba(127, 133, 150, .5); border-radius: 14px; font-size: 13px; font-weight: 700; color: var(--ink2); }
+.cmp-kerfy b { font-weight: 1000; }
+.cmp-lines { list-style: none; max-width: 720px; margin: 26px auto 0; padding: 0; display: grid; gap: 12px; }
+.cmp-lines li { display: flex; align-items: flex-start; gap: 12px; font-weight: 800; font-size: 16.5px; line-height: 1.45; }
+.cmp-lines span { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--card); font-size: 15px; }
+.cmp-note { max-width: 720px; margin: 18px auto 0; font-size: 13.5px; color: var(--muted); font-weight: 700; line-height: 1.5; }
+.cmp-note a { color: var(--ink); font-weight: 900; }

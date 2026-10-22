@@ -176,6 +176,28 @@
       "text": "Tus agentes se consultan — solo los que tú permites — y el intercambio se pliega en una sola línea."
     }
   },
+  "compare": {
+    "kicker": "Por qué es privado",
+    "title": "Tuyo. No de todos.",
+    "a11y": "Un asistente clásico: tus mensajes van a los servidores de la empresa, con las conversaciones de todo el mundo, y pueden servir para entrenar su IA. BipAgents: tus mensajes van a tu espacio, solo tuyo; la IA los lee para responderte; Kerfy Studio guarda tu cuenta y tu suscripción, no tus conversaciones.",
+    "usual": "Un asistente clásico",
+    "you": "Tú",
+    "theirServers": "Sus servidores",
+    "everyones": "las conversaciones de todo el mundo",
+    "theirAi": "Su IA",
+    "mayTrain": "puede entrenarse con ellas",
+    "yourPlace": "Tu espacio",
+    "yoursAlone": "solo tuyo",
+    "theAi": "La IA",
+    "readsToAnswer": "lee para responderte",
+    "kerfy": "tu cuenta y tu suscripción, no tus conversaciones",
+    "line1": "Tus conversaciones y la memoria de tus agentes viven en tu espacio, separado del de los demás.",
+    "line2": "No las leemos ni entrenamos ninguna IA con ellas. La IA solo las lee para responderte.",
+    "line3": "Guardamos tu cuenta, no tus conversaciones. Puedes llevártelo todo e irte.",
+    "note": "«Un asistente clásico»: lo que hacen por defecto las ofertas para particulares de asistentes como ChatGPT o Gemini, según sus propias páginas en octubre de 2026. Con la oferta todo incluido, Kerfy Studio alquila el servidor de tu espacio: no lo leemos, pero no prometemos lo imposible.",
+    "more": "La comparación, sus fuentes y nuestros límites →",
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
+  },
   "privacy": {
     "kicker": "Privado y sin hacer nada",
     "title": "Tu propio ordenador. Sin instalar nada.",
@@ -187,7 +209,7 @@
     "model": "tú eliges",
     "modelName": "Modelo de IA",
     "modelSub": "nube o local",
-    "nope": "Kerfy Studio, el editor de la app, nunca ve tus conversaciones",
+    "nope": "Kerfy Studio, el editor de la app, no lee tus conversaciones",
     "chip1": "Sin cuenta",
     "chip2": "Sin anuncios",
     "chip3": "Sin rastreo",
