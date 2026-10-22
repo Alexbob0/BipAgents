@@ -169,8 +169,8 @@ def test_settings_and_delete(bridges, fakes):
     assert data["toolsets"] == [{"name": "web", "label": "Web", "description": "Search", "enabled": True, "configured": True}]
     assert data["id"] == "budget" and data["name"] == "Budget" and data["thinking"] is None and data["model"] is None
     assert data["isolated"] is False and data["protected"] is False and data["skills"] == []
-    assert set(data) - {"health", "group"} == {"id", "name", "soul", "language", "thinking", "model", "toolsets",
-                                               "isolated", "protected", "services", "skills", "browser"}   # Rust: +2
+    assert set(data) - {"health", "weather", "group"} == {"id", "name", "soul", "language", "thinking", "model", "toolsets",
+                                               "isolated", "protected", "services", "skills", "browser"}   # Rust: +3
     assert fakes.hermes.seen("/p/budget/v1/toolsets")
     bridge.commands.clear()
     patched = bridge.patch("/v1/agents/budget/settings", headers=AUTH,

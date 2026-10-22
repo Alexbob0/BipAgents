@@ -564,6 +564,43 @@ class FakeAdminRelay(Fake):
         return JSONResponse({"status": 200, "reason": None, "apns_id": "relayed"})
 
 
+# -- the weather and route tools' services ---------------------------------------------------------------------------
+
+class FakeMaps(Fake):
+    """MET Norway's Locationforecast (`/weatherapi/locationforecast/2.0/complete`: hourly from the current hour for
+    48 hours, rain in the 3rd and 4th, `Expires` an hour on), OpenStreetMap's Nominatim (`/search`: « Lyon », nothing
+    for a query with « Nowhere ») and Google's Routes API (`/directions/v2:computeRoutes`, key `test-maps-key`)."""
+    name = "maps"
+
+    async def handle(self, seen: Seen) -> Response:
+        if seen.path == "/weatherapi/locationforecast/2.0/complete":
+            start = int(time.time()) // 3600 * 3600
+            series = []
+            for h in range(48):
+                at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start + h * 3600))
+                rainy = h in (2, 3)
+                series.append({"time": at, "data": {
+                    "instant": {"details": {"air_temperature": 12.0, "wind_speed": 4.0, "relative_humidity": 80.0}},
+                    "next_1_hours": {"summary": {"symbol_code": "rain" if rainy else "cloudy"},
+                                     "details": {"precipitation_amount": 1.5 if rainy else 0.0}}}})
+            body = {"type": "Feature", "properties": {"meta": {"updated_at": series[0]["time"]}, "timeseries": series}}
+            expires = time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(time.time() + 3600))
+            return JSONResponse(body, headers={"Expires": expires,
+                                               "Last-Modified": time.strftime("%a, %d %b %Y %H:%M:%S GMT",
+                                                                              time.gmtime(start))})
+        if seen.path == "/search":
+            if "Nowhere" in seen.params.get("q", ""):
+                return JSONResponse([])
+            return JSONResponse([{"lat": "45.7578", "lon": "4.8320", "name": "Lyon", "display_name": "Lyon, France",
+                                  "address": {"state": "Auvergne-Rhône-Alpes", "country": "France",
+                                              "country_code": "fr"}}])
+        if seen.path == "/directions/v2:computeRoutes":
+            if seen.header("x-goog-api-key") != "test-maps-key":
+                return JSONResponse({"error": {"status": "PERMISSION_DENIED"}}, status_code=403)
+            return JSONResponse({"routes": [{"duration": "2700s", "distanceMeters": 3400}]})
+        return Response(status_code=404)
+
+
 class Fakes:
     """Every fake, started once."""
 
@@ -579,8 +616,9 @@ class Fakes:
         self.fcm = FakeFcm()
         self.push_service = FakePushService()
         self.admin_relay = FakeAdminRelay()
+        self.maps = FakeMaps()
         self.all: List[Fake] = [self.hermes, self.kyutai, self.pocket, self.voices, self.ntfy, self.model, self.apns,
-                                self.fcm, self.push_service, self.admin_relay]
+                                self.fcm, self.push_service, self.admin_relay, self.maps]
         self.down = Dropper()
         from .imap import FakeImap
         self.imap = FakeImap()

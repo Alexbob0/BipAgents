@@ -431,6 +431,13 @@ then responsible for what it does with it.
   icons, and your server fetches them from DuckDuckGo (icons.duckduckgo.com): DuckDuckGo receives the **website's
   name** (for instance "example.com") and sees your server's address, not your phone's. It does not receive the
   message.
+- **Weather and routes.** When an agent has « Weather » and you ask it about the weather, your server (or your
+  place) asks OpenStreetMap (Nominatim, to find the town) for the place, then the Norwegian Meteorological Institute
+  (MET Norway) for the forecast: they receive **only the place's name and its rounded coordinates** (about 1 km), and
+  see your server's address, not your phone's nor your message. A route is a link that opens Apple Maps (iPhone) or
+  Google Maps (Android) on your phone, under their own rules. If your server has a Google Maps key (not the
+  all-included offer for now), the route's places and time also go to Google (Google LLC, possibly in the United
+  States, certified under the EU-U.S. Data Privacy Framework) to work out its duration; nothing of it is kept.
 - **Speech recognition.** Voice notes and Live use your phone's speech recognition. The app asks for on-device
   recognition when your phone offers it for your language. Otherwise, Apple or Google (on Android, the system's
   recognition service, often Google's) process the audio on their servers, under their own responsibility. It is the

@@ -441,6 +441,14 @@ cada servicio es responsable de lo que hace con ello.
 - **Iconos de los sitios.** Para mostrar el pequeño icono de los sitios citados en las respuestas, la app pide estos
   iconos a tu servidor, que los obtiene de DuckDuckGo (icons.duckduckgo.com): DuckDuckGo recibe el **nombre del
   sitio** (por ejemplo «ejemplo.es») y ve la dirección de tu servidor, no la de tu teléfono. No recibe el mensaje.
+- **Tiempo e itinerarios.** Cuando un agente tiene « Tiempo » y le preguntas qué tiempo hará, tu servidor (o tu
+  plaza) pide el lugar a OpenStreetMap (Nominatim, para encontrar la ciudad) y luego el pronóstico al Instituto
+  Meteorológico Noruego (MET Norway): reciben **solo el nombre del lugar y sus coordenadas redondeadas** (unos 1 km), y
+  ven la dirección de tu servidor, no la de tu teléfono ni tu mensaje. Un itinerario es un enlace que abre Mapas
+  (iPhone) o Google Maps (Android) en tu teléfono, con sus propias reglas. Si tu servidor tiene una clave de Google
+  Maps (de momento no en la oferta todo incluido), los lugares y la hora del itinerario también van a Google (Google
+  LLC, posiblemente en Estados Unidos, certificada en el EU-U.S. Data Privacy Framework) para calcular su duración; no
+  se guarda nada.
 - **Reconocimiento de voz.** Las notas de voz y Live usan el reconocimiento de voz de tu teléfono. La app pide el
   reconocimiento en el dispositivo cuando tu teléfono lo ofrece para tu idioma. Si no, Apple o Google (en Android, el
   servicio de reconocimiento del sistema, a menudo el de Google) tratan el audio en sus servidores, bajo su propia

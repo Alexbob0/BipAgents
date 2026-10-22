@@ -102,6 +102,13 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   pas lui-même.
 - **Icônes des sites** devant les liens : demandées au bridge (`/v1/favicon/<hôte>`), qui interroge le service d’icônes
   de DuckDuckGo. Le téléphone ne contacte jamais ce service ni le site.
+- **Météo et itinéraires** (`bridge-rs/src/weather.rs`, `routes.rs`) : l’interrupteur « Météo » est un réglage de
+  l’agent (`PATCH /v1/agents/{id}/settings {"weather": bool}`). C’est le bridge, pas le téléphone, qui demande le lieu
+  à Nominatim (OpenStreetMap) et les prévisions à MET Norway, avec seulement le nom du lieu et ses coordonnées
+  arrondies à 2 décimales. Un itinéraire est un lien Google Maps dans la réponse ; l’app iPhone l’ouvre comme un lien
+  Plans (`ChatText.appleMaps`), l’app Android dans Google Maps. Avec `[maps] google_key` sur le bridge, les lieux, le
+  mode et les heures de l’itinéraire partent vers l’API Routes de Google pour sa durée et sa distance ; rien n’en est
+  gardé.
 - **Le navigateur visible de l’agent** (`App/Features/Agents/DesktopView.swift`) : une vue web de la page de
   visualisation du bridge, sans données de site conservées.
 - **Appairage d’une place de l’offre** (`App/Features/Cloud/CloudPairing.swift`, `android/.../cloud/CloudPairing.kt`) :
