@@ -262,7 +262,10 @@ async fn each_agent_reads_only_its_categories() {
     health::set_enabled(&config, "vie", false).unwrap();
     let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(kept, json!({"date": date, "steps": 9000.0, "flights": 8.0}));
-    // Back on: the defaults again, not what it had.
+    // Back on: the defaults again, not what it had; switched on again while on: its choice stays, even none.
     health::set_enabled(&config, "vie", true).unwrap();
     assert_eq!(health::categories(&config, "vie"), vec!["activity", "sleep", "heart"]);
+    health::set_categories::<&str>(&config, "vie", &[]).unwrap();
+    health::set_enabled(&config, "vie", true).unwrap();
+    assert!(health::categories(&config, "vie").is_empty() && health::enabled(&config, "vie"));
 }

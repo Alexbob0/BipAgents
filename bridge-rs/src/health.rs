@@ -217,8 +217,10 @@ pub fn set_enabled(config: &Config, agent: &str, on: bool) -> std::io::Result<bo
     categories.remove(agent);
     if on {
         names.push(agent.to_string());
-        let kept = categories_in(&state, agent);
-        categories.insert(agent.into(), json!(if kept.is_empty() { DEFAULT_CATEGORIES.to_vec() } else { kept }));
+        // Already on: its choice stays (even none); newly on: the defaults.
+        let was_on = agents_of(&state).iter().any(|a| a == agent);
+        let kept = if was_on { categories_in(&state, agent) } else { DEFAULT_CATEGORIES.to_vec() };
+        categories.insert(agent.into(), json!(kept));
     }
     let changed = names.len() != before;
     save_state(config, state, names, categories)?;
