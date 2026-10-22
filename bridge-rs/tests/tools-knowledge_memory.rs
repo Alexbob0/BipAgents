@@ -240,4 +240,21 @@ async fn the_iphone_shares_its_reminders_and_does_what_the_agents_ask() {
     assert_eq!((&seen["agents"], &seen["items"], &seen["pending"]), (&json!(["coach"]), &json!(3), &json!(1)));
     assert_eq!(call(&config, "vie", "reminders_add", json!({"title": "x"}))["isError"], true);
     // another agent: not shared
+
+    // A reminder by place: the phone gets the place's name to look up, the side and the circle, as strings.
+    let by_place = call(
+        &config,
+        "coach",
+        "reminders_add",
+        json!({"title": "Acheter du lait", "place": "Monoprix République", "when": "arriving"}),
+    );
+    assert_eq!(by_place["isError"], false);
+    let queue = app.get("/v1/reminders/queue", &h).await.json()["queue"].clone();
+    let args = &queue.as_array().unwrap().last().unwrap()["args"];
+    assert_eq!(
+        (&args["place"], &args["when"], &args["radius"], args.get("latitude")),
+        (&json!("Monoprix République"), &json!("arriving"), &json!("150"), None)
+    );
+    let wrong = call(&config, "coach", "reminders_add", json!({"title": "x", "place": "Gare", "when": "soon"}));
+    assert_eq!(wrong["isError"], true);
 }

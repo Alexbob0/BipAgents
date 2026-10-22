@@ -135,6 +135,23 @@ Zugangsdaten des Postfachs, die verschlüsselt auf deinem Server bleiben), wenn 
 und trägt die Termine ein oder löscht sie, um die er bittet; davon wird nichts behalten außer der Liste dieser
 Kalender. Schalte es aus, um aufzuhören.
 
+**Erinnerungen an Orten und dein Standort.** Wenn du einen Agenten bittest „erinnere mich an die Milch, wenn ich im
+Supermarkt bin“, fordert er eine Erinnerung mit dem Namen des Ortes (oder seinen Koordinaten) an. Auf dem iPhone
+überwacht Apples Erinnerungen-App den Ort: BipAgents hat keinen Zugriff auf deinen Standort; der Name des Ortes wird in
+Apple Karten gesucht, um seine Koordinaten zu finden. Auf Android, das keine Erinnerungen-App hat, verwaltet BipAgents
+diese Erinnerungen selbst: Es fragt nach der Standortberechtigung (auch im Hintergrund) erst, wenn ein Agent eine
+angelegt hat, sucht den Ort mit dem Geocoding-Dienst des Telefons und übergibt den Kreis um den Ort den
+Standortdiensten von Google Play auf dem Telefon (Geofencing). Dein Standort bleibt auf dem Telefon: Er wird weder an
+deinen Server noch an den Agenten noch an Kerfy Studio gesendet und dient nur dazu, dich beim Ankommen oder Verlassen
+zu erinnern. **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du gibst, indem du den
+Standort erlaubst. **Beenden**: lösche die Erinnerung (Einstellungen › Erinnerungen an Orten) oder entziehe die
+Standortberechtigung in den Einstellungen des Telefons.
+
+**Was du mit der App teilst.** Wenn du eine Nachricht oder einen Screenshot mit BipAgents teilst (aus WhatsApp,
+Signal, Nachrichten …), geht sie an den Agenten, den du wählst, auf deinem Server, als Anhang, den du selbst sendest;
+sie kann Worte anderer Personen enthalten, teile also nur, was du brauchst. Den Antwortentwurf des Agenten sendet die
+App nie: „Senden mit …“ öffnet die App deiner Wahl, und du sendest selbst.
+
 ## 4. Was Kerfy Studio erhalten kann
 
 ### 4.1 Benachrichtigungen über das Relay von Kerfy Studio
