@@ -87,6 +87,17 @@ def test_the_service_runs_this_checkout_s_binary(tmp_path, monkeypatch):
     assert f"ExecStart={binary} serve\n" in unit.read_text() and "Restart=on-failure" in unit.read_text()
 
 
+def test_an_update_before_the_release_is_seen_as_missed(tmp_path, monkeypatch):
+    monkeypatch.setattr(rustbridge, "key", lambda repo=None: "abc123def456")
+    assert rustbridge.missed(tmp_path, tmp_path)   # `bipagents update` fetches it at its next run, even with no news
+    binary = rustbridge.binary(tmp_path, "abc123def456")
+    binary.parent.mkdir(parents=True)
+    binary.write_text("")
+    assert not rustbridge.missed(tmp_path, tmp_path)
+    monkeypatch.setattr(rustbridge, "key", lambda repo=None: None)
+    assert not rustbridge.missed(tmp_path, tmp_path)
+
+
 def test_ensure_fetches_or_says_why_not(tmp_path, monkeypatch):
     from bipinstall import hermes
     monkeypatch.setattr(rustbridge, "key", lambda repo=None: "abc123def456")

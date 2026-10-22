@@ -260,10 +260,11 @@ def main(argv: List[str]) -> int:
     except SystemExit:
         config = None   # an account without its own install (an administrator's): its Pocket, the others
 
-    # 2. What runs here.
-    if config and touched("bridge-rs/") and rustbridge.python_service(Path.home()):
+    # 2. What runs here (the bridge also when an earlier update ran before its release was out).
+    bridge = bool(config) and (touched("bridge-rs/") or rustbridge.missed(Path.home()))
+    if bridge and rustbridge.python_service(Path.home()):
         pass   # the Python bridge left the code: the migration rust-bridge (step 3) moves its service to Rust
-    elif config and touched("bridge-rs/"):
+    elif bridge:
         rust = rustbridge.keep_in_step(Path.home()) if not runner.dry else None   # its binaries for this version
         if rust:
             say(ui.note(rust))

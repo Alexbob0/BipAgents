@@ -78,6 +78,12 @@ def binary(home: Path, release: str) -> Path:
     return home / BINARIES / release / "bipbridge"
 
 
+def missed(home: Path, repo: Path = REPO) -> bool:
+    """This checkout's binaries were never fetched: an update ran before the bridge's release was out."""
+    release = key(repo)
+    return bool(release) and not binary(home, release).exists()
+
+
 def _download(url: str) -> bytes:
     with urllib.request.urlopen(url, timeout=120) as resp:   # GitHub answers with a redirect to its file store
         return resp.read()

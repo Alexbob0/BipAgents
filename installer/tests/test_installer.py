@@ -170,7 +170,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
     assert [line.rsplit("/", 1)[-1].strip("'") for line in applied] == ["0001-api-server-clarify.patch",
                                                             "0004-image-store-replay-recent-images.patch",
                                                             "0005-vault-fill-reattach-supervisor.patch",
-                                                            "0006-bot-mode-sync-peer-reply.patch"]
+                                                            "0006-bot-mode-sync-peer-reply.patch",
+                                                            "0007-browser-vault-only.patch"]
 
 
 def test_bot_mode_marker(tmp_path):
