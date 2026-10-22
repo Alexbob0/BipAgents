@@ -2,7 +2,7 @@
 
 # What the BipAgents apps send over the network
 
-**In short:** conversations, files, voice-note transcripts, health data, reminders and the agents' memory go only to the
+**In short:** conversations, files, voice-note transcripts, health data, reminders, contacts and the agents' memory go only to the
 person's own server (their bridge and Hermes). Kerfy Studio's services get account, purchase and push-routing data,
 plus sealed boxes they cannot open. There are no analytics or crash SDKs. Apple and Google get what their stores,
 sign-in and push need, and the voice for dictation only where the person agreed to online dictation.
@@ -79,6 +79,12 @@ their place on the all-included offer. Everything personal goes here, with that 
   conversation, sent only when the person taps Send. The iOS share extension writes them to the App Group
   (`share/<id>/`, deleted when opened, or after an hour). A reply the agent drafts (a ```draft block) gets « Envoyer
   avec… », the system share sheet: the app never sends it.
+- **Contacts** (`App/Features/Settings/ContactsSync.swift`, `android/.../contacts/ContactsSync.kt`): a copy of the
+  address book (`PUT /v1/contacts`) goes to every bridge where at least one agent may read it, narrowed to what the
+  person chose for that bridge (`PUT /v1/contacts/scope`: the whole address book or some groups, the notes only when
+  ticked; no photos), and the requests the agents queued (a contact added or changed, never deleted) are carried out.
+  The bridge keeps only what the choice covers and drops the copy when no agent may read it (`bridge-rs/src/contacts.rs`).
+  On the iPhone the notes are never read (they need an Apple entitlement the app doesn't have).
 - **Push registration:** the APNs or Firebase token (or a relay token instead, see §3), with the agents' ids
   (`/v1/devices`). The notification extension (`NotificationService/NotificationService.swift`) and the Android
   service (`push/BipMessagingService.kt`) then fetch the reply text, the approval command and the audio from the bridge
@@ -139,6 +145,7 @@ public key; the device that approves it shows the code of the key the guichet ha
 checked in both apps (`AccountCryptoTest.kt`, and a debug-build assertion in `AccountCrypto.swift`).
 
 **Never sent to the guichet** (no such call exists in the code): conversations, files, memory, health data, reminders,
+contacts,
 bridge keys in clear, the recovery code itself.
 
 ## 3. Kerfy Studio's push relay (public: `relay/`)

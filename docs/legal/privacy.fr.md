@@ -140,6 +140,22 @@ réglages du téléphone (plus rien n'est envoyé). Pour une boîte mail que tu 
 boîte, qui restent chiffrés sur ton serveur) quand un agent de cette boîte les consulte, et y ajoute ou supprime les
 rendez-vous qu'il demande ; rien n'en est gardé à part la liste de ces agendas. Désactive-le pour arrêter.
 
+**Tes contacts, si tu les partages (« Contacts »).** Pour chaque agent, tu peux activer « Contacts » dans ses outils.
+Avec ton autorisation (Contacts sur l'iPhone et sur Android), l'app lit le carnet d'adresses de ton téléphone, y
+compris les comptes ajoutés dessus (iCloud, Google…), et en envoie une copie **uniquement à ton serveur** (ou à ta
+place avec l'offre tout compris), quand l'app s'ouvre : tout le carnet ou seulement les groupes (libellés) que tu
+choisis pour ce serveur, avec pour chaque contact son nom, son surnom, ses numéros, ses adresses e-mail et postales,
+son anniversaire, son entreprise et son poste, les personnes qui lui sont liées, ses groupes, et ses notes seulement si
+tu coches « notes » (désactivé par défaut). Les photos ne sont jamais envoyées. Cette copie y reste, remplacée à chaque
+envoi ; ce que ton choix ne couvre plus en est retiré aussitôt, et toute la copie est effacée quand plus aucun agent ne
+peut la lire. Seuls les agents que tu as choisis la lisent ; quand ils te demandent d'ajouter ou de modifier un
+contact, c'est ton téléphone qui le fait (rien n'est supprimé de cette façon). Le modèle d'IA de l'agent reçoit les
+contacts que l'agent lit pour te répondre. Kerfy Studio ne les reçoit pas. **Tes contacts sont d'autres personnes** :
+les agents ont pour consigne de ne jamais leur écrire, les appeler ou transmettre leurs coordonnées sans ton accord, et
+tu restes responsable de l'usage que tu en fais. **Base légale** : ton consentement (article 6.1.a du RGPD), que tu
+donnes en activant « Contacts » et en l'autorisant sur ton téléphone. **Arrêter** : désactive « Contacts » pour
+l'agent, ou retire l'autorisation dans les réglages du téléphone (plus rien n'est envoyé).
+
 **Les rappels par lieu et ta position.** Quand tu demandes à un agent « rappelle-moi le lait en arrivant au
 supermarché », il demande un rappel avec le nom du lieu (ou ses coordonnées). Sur l'iPhone, c'est l'app Rappels
 d'Apple qui surveille le lieu : BipAgents n'a pas accès à ta position ; le nom du lieu est cherché dans Plans d'Apple

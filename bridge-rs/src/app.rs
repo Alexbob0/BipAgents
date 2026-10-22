@@ -1068,7 +1068,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         "push_relay": state.push_service.is_some(), "fcm": state.fcm.is_some(),
         "tts_queue": tts.scheduler.depth(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
-        "features": ["agent_groups", "files_kept", "calendar", "health_categories"],
+        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts"],
     })))
 }
 
@@ -1379,6 +1379,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::notes_import::router())
         .merge(crate::reminders::router())
         .merge(crate::calendar::router())
+        .merge(crate::contacts::router())
         .merge(crate::health::router())
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())

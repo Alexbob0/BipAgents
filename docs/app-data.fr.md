@@ -2,7 +2,7 @@
 
 # Ce que les apps BipAgents envoient sur le réseau
 
-**En bref :** les conversations, fichiers, transcriptions de notes vocales, données de santé, rappels et la mémoire des
+**En bref :** les conversations, fichiers, transcriptions de notes vocales, données de santé, rappels, contacts et la mémoire des
 agents ne vont qu’au serveur de la personne (son bridge et Hermes). Les services de Kerfy Studio reçoivent des données
 de compte, d’achat et d’acheminement des notifications, ainsi que des paquets scellés qu’ils ne peuvent pas ouvrir. Les
 apps n’intègrent aucun SDK de mesure d’audience ni de rapport de plantage. Apple et Google reçoivent ce qu’exigent leurs
@@ -86,6 +86,13 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   conversation, envoyés seulement quand elle touche Envoyer. L’extension de partage iOS les écrit dans l’App Group
   (`share/<id>/`, effacé à l’ouverture, ou au bout d’une heure). Une réponse que l’agent rédige (un bloc ```draft) a
   « Envoyer avec… », la feuille de partage du système : l’app ne l’envoie jamais.
+- **Contacts** (`App/Features/Settings/ContactsSync.swift`, `android/.../contacts/ContactsSync.kt`) : une copie du
+  carnet d’adresses (`PUT /v1/contacts`) part à chaque bridge où au moins un agent peut le lire, réduite à ce que la
+  personne a choisi pour ce bridge (`PUT /v1/contacts/scope` : tout le carnet ou certains groupes, les notes seulement
+  si elles sont cochées ; jamais de photos), et l’app exécute les demandes que les agents ont mises en attente (un
+  contact ajouté ou modifié, jamais supprimé). Le bridge ne garde que ce que le choix couvre et efface la copie quand
+  plus aucun agent ne peut la lire (`bridge-rs/src/contacts.rs`). Sur l’iPhone, les notes ne sont jamais lues (il
+  faudrait une autorisation spéciale d’Apple que l’app n’a pas).
 - **Inscription aux notifications :** le jeton APNs ou Firebase (ou, à la place, un jeton de relais, voir §3), avec les
   identifiants des agents (`/v1/devices`). L’extension de notification (`NotificationService/NotificationService.swift`)
   et le service Android (`push/BipMessagingService.kt`) vont ensuite chercher sur le bridge le texte de la réponse, la
@@ -149,7 +156,7 @@ P-256 valable n’a ni code ni bouton « Approuver ». Un vecteur de référence
 (`AccountCryptoTest.kt`, et une assertion des versions de débogage dans `AccountCrypto.swift`).
 
 **Jamais envoyé au guichet** (aucun appel de ce type n’existe dans le code) : conversations, fichiers, mémoire, données
-de santé, rappels, clés de bridge en clair, le code de récupération lui-même.
+de santé, rappels, contacts, clés de bridge en clair, le code de récupération lui-même.
 
 ## 3. Le relais de notifications de Kerfy Studio (public : `relay/`)
 
