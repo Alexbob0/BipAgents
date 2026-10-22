@@ -18,9 +18,10 @@
      messages ;
   2. ce que tu choisis de nous envoyer : un **e-mail** au support, ou le **signalement** d'une réponse depuis l'app ;
   3. des **rapports de plantage**, seulement si tu as activé leur partage dans les réglages de ton téléphone.
-- Avec l'offre tout compris, Kerfy Studio traite aussi ton compte, l'état de ton abonnement, des données techniques sur
-  ta place (jamais son contenu) et tes sauvegardes, chiffrées avec une clé qu'il n'a pas ; il héberge ta place sans y
-  accéder (section 5).
+- Avec l'offre tout compris, Kerfy Studio traite aussi ton compte, l'état de ton abonnement, des données techniques
+  sur ta place (jamais son contenu) et tes sauvegardes, chiffrées avec une clé qu'il n'a pas ; il héberge ta place
+  sans y accéder (section 5). Si tu donnes à un agent sa propre adresse e-mail, Kerfy Studio garde aussi les e-mails
+  de cette adresse sur son serveur de messagerie (section 5.8).
 
 ## 1. Qui est responsable
 
@@ -62,6 +63,10 @@ Avec ton propre ordinateur ou ton propre serveur :
   à toi de le choisir. Avec un modèle qui tourne chez toi, rien ne sort de ton réseau.
 - **Les services que tu relies à tes agents** (messagerie, agenda, sites web, maison connectée…) reçoivent ce que tes
   agents leur envoient, selon leurs propres règles.
+- **Une adresse e-mail pour un agent.** Sur ton propre serveur, tu peux donner à un agent une boîte chez ton propre
+  fournisseur de messagerie. Son mot de passe reste sur ton serveur ; l'agent ne lit que les e-mails des adresses que
+  tu as autorisées et te demande ton accord avant d'écrire à une nouvelle. Les conditions de ce fournisseur
+  s'appliquent, et Kerfy Studio n'en garde rien.
 - **Plusieurs personnes sur un même serveur** (fonction famille) : chaque personne a sa propre installation, séparée
   des autres. La personne qui administre le serveur en est responsable vis-à-vis des autres.
 
@@ -242,8 +247,8 @@ Kerfy Studio qui gère les comptes, les abonnements et les places s'appelle le g
 ### 5.1 Qui est responsable de quoi
 
 - **Kerfy Studio est responsable** des traitements que demande l'offre : ton compte, l'état de ton abonnement,
-  l'hébergement de ta place, l'envoi de tes messages au modèle d'IA, les sauvegardes, la surveillance technique et le
-  traitement des abus.
+  l'hébergement de ta place, l'envoi de tes messages au modèle d'IA, les sauvegardes, les adresses e-mail de tes
+  agents si tu les actives, la surveillance technique et le traitement des abus.
 - **Le contenu de ta place** (tes agents, tes conversations, tes fichiers, leur mémoire, leurs routines, le coffre à
   mots de passe) : c'est toi qui décides de ce que tu y mets. Kerfy Studio l'héberge et le fait traiter par le modèle
   d'IA uniquement pour te fournir le service (article 6.1.b du RGPD), **sans y accéder** : son logiciel ne le lit pas (les seuls ordres qu'un serveur exécute sont réinstaller une place, la mettre à jour vers une version publiée du code source ouvert de BipAgents, ou la rouvrir, et aucun ne lit son contenu). L'accès aux comptes de Kerfy Studio chez les hébergeurs est réservé à la société. Un
@@ -383,12 +388,59 @@ les autres personnes, répondre aux autorités.
 légitime de Kerfy Studio à protéger son service et ses clients (article 6.1.f).
 **Durée.** 1 an après leur traitement, plus longtemps si un litige ou une procédure l'exige.
 
-### 5.8 Les prestataires de l'offre
+### 5.8 Les adresses e-mail de tes agents
+
+**Ce que c'est.** Tu peux donner à un agent de ton choix sa propre adresse e-mail, par exemple
+`lea.k7m2@a.bipagents.com`. Elle est désactivée par défaut : tu l'actives pour cet agent dans l'app, et tu peux la
+supprimer à tout moment.
+
+**Où.** La boîte est gardée sur le serveur de messagerie de Kerfy Studio, un serveur dédié loué à Hetzner (Allemagne
+ou Finlande), à part des serveurs des places.
+
+**Données.** L'adresse elle-même, que le guichet relie à ta place. Les e-mails reçus et envoyés par cette adresse :
+leurs en-têtes (expéditeurs, destinataires, dates, objets), leur contenu et leurs pièces jointes. Le mot de passe de
+l'adresse est créé sur le serveur de Kerfy Studio et donné une seule fois à ta place, où il est gardé avec les
+réglages de l'agent ; le serveur de messagerie n'en garde qu'une forme hachée, et le guichet ne le garde pas. Les
+adresses auxquelles ton agent peut écrire, sa limite par jour et les e-mails qui attendent ton accord sont gardés sur
+ta place.
+
+**Qui peut écrire à ton agent.** L'agent ne lit que les e-mails des adresses que tu as autorisées, quand leur
+expéditeur est vérifié (les contrôles habituels contre les expéditeurs usurpés). Il ne lit pas les e-mails des autres
+et n'y répond pas : ils restent dans la boîte jusqu'à ce qu'ils soient effacés avec les autres (ci-dessous). Un e-mail
+est écrit par quelqu'un d'autre : l'agent prend ce qu'il dit comme une information, jamais comme une consigne à
+suivre.
+
+**Ce que ton agent peut envoyer.** Il répond aux adresses que tu as autorisées. Pour écrire à une nouvelle adresse, il
+lui faut ton accord dans l'app : l'e-mail attend que tu l'approuves (l'adresse est alors autorisée) ou que tu
+l'abandonnes. Il envoie au plus le nombre d'e-mails par jour que tu règles dans l'app (20 par défaut).
+
+**Spam et sécurité.** Le serveur de messagerie filtre le spam et garde des journaux de sécurité (adresses IP des
+serveurs qui envoient, remise de chaque e-mail, connexions à la boîte) pendant **30 jours**, pour acheminer les
+e-mails, bloquer le spam et les abus, et enquêter sur un incident.
+
+**Accès.** Comme pour le contenu de ta place (section 5.1), Kerfy Studio ne lit pas ces e-mails : son logiciel ne fait
+que les acheminer, filtrer le spam et les effacer quand leur durée est passée. Entre serveurs de messagerie, les
+e-mails sont chiffrés pendant le trajet quand l'autre serveur le permet ; un e-mail n'est pas chiffré de bout en bout.
+
+**Finalités et bases légales.** Donner à ton agent une adresse pour recevoir les e-mails des personnes que tu
+autorises et leur répondre : exécution du contrat (article 6.1.b du RGPD). Filtrage du spam et journaux de sécurité :
+intérêt légitime de Kerfy Studio à protéger son service et les personnes qui l'utilisent (article 6.1.f).
+
+**Durée.** Les e-mails reçus et envoyés sont effacés au bout de **90 jours**. Cette durée est un réglage de l'offre :
+elle peut être raccourcie, et elle n'est jamais allongée sans t'avoir prévenu avant. La boîte entière est effacée d'un
+coup quand tu supprimes l'adresse ou l'agent, quand ta place est effacée (section 5.4) et quand ton compte est effacé
+(section 5.2). Journaux de sécurité : 30 jours.
+
+**Ta propre boîte à la place.** Sur ton propre serveur, tu peux plutôt relier une boîte chez ton propre fournisseur de
+messagerie (section 2) : ses identifiants restent sur ton serveur, les conditions de ce fournisseur s'appliquent,
+BipAgents n'y efface rien et Kerfy Studio n'en garde rien.
+
+### 5.9 Les prestataires de l'offre
 
 | Prestataire | Rôle | Données | Où |
 |---|---|---|---|
 | OVHcloud (OVH SAS, Roubaix, France) | Héberge les serveurs des places ; image quotidienne de chaque serveur | Contenu des places | Union européenne |
-| Hetzner Online GmbH (Gunzenhausen, Allemagne) | Héberge des serveurs de places | Contenu des places | Allemagne, Finlande |
+| Hetzner Online GmbH (Gunzenhausen, Allemagne) | Héberge des serveurs de places et le serveur de messagerie des agents | Contenu des places ; boîtes e-mail des agents et journaux de sécurité du serveur de messagerie | Allemagne, Finlande |
 | EUrouter B.V. (Amsterdam, Pays-Bas) | Routeur d'IA | Messages envoyés au modèle, métadonnées | Union européenne |
 | Fournisseurs des modèles : [à compléter] | Font tourner le modèle choisi | Messages envoyés au modèle | [à compléter] |
 | [à compléter : hébergeur des sauvegardes] | Garde les sauvegardes | Sauvegardes chiffrées, illisibles pour lui et pour Kerfy Studio | [à compléter] |
@@ -477,10 +529,10 @@ notifications, Apple et Google peuvent traiter le jeton et la notification hors 
 - Apple indique encadrer les transferts depuis l'Espace économique européen par les clauses contractuelles types
   adoptées par la Commission européenne.
 
-**L'offre tout compris.** Les serveurs des places sont dans l'Union européenne, pour toutes les personnes de l'offre.
-EUrouter traite les messages dans l'Union européenne [à compléter : pays où tournent les modèles proposés, et garantie
-si l'un est hors de l'Union]. Apple et Google (connexion, stores, DeviceCheck, Play Integrity) peuvent traiter des
-données aux États-Unis, avec les garanties indiquées ci-dessus.
+**L'offre tout compris.** Les serveurs des places et le serveur de messagerie des agents sont dans l'Union européenne,
+pour toutes les personnes de l'offre. EUrouter traite les messages dans l'Union européenne [à compléter : pays où
+tournent les modèles proposés, et garantie si l'un est hors de l'Union]. Apple et Google (connexion, stores,
+DeviceCheck, Play Integrity) peuvent traiter des données aux États-Unis, avec les garanties indiquées ci-dessus.
 
 **Si tu vis hors de l'Union européenne** (États-Unis, Royaume-Uni, Israël, Singapour, Canada), tes données viennent
 dans l'Union européenne, où Kerfy Studio les traite selon le RGPD, qui s'applique à tous ses traitements. Le
@@ -489,14 +541,14 @@ niveau de protection et nos contrats avec nos prestataires donnent la protection
 Singapour.
 
 **Si tu vis au Canada**, tes données sont donc conservées et traitées hors du Canada, et hors du Québec si tu y vis :
-dans l'Union européenne pour ta place, ses sauvegardes et ton compte, et chez les prestataires nommés dans cette
-section. Elles y sont soumises aux lois de ces pays, et les tribunaux et autorités de ces pays peuvent y avoir accès
-dans les cas que leurs lois prévoient. Kerfy Studio reste responsable de tes données chez ses prestataires et les
-encadre par contrat. Pour les personnes au Québec, Kerfy Studio évalue avant ce transfert les facteurs relatifs à la
-vie privée (sensibilité des données, finalités, mesures de protection, y compris contractuelles, et régime juridique
-du pays de destination) et ne fait le transfert que si cette évaluation montre une protection adéquate (article 17 de
-la Loi sur la protection des renseignements personnels dans le secteur privé). Tu peux nous demander un résumé de
-cette évaluation.
+dans l'Union européenne pour ta place, ses sauvegardes, les boîtes e-mail de tes agents et ton compte, et chez les
+prestataires nommés dans cette section. Elles y sont soumises aux lois de ces pays, et les tribunaux et autorités de
+ces pays peuvent y avoir accès dans les cas que leurs lois prévoient. Kerfy Studio reste responsable de tes données
+chez ses prestataires et les encadre par contrat. Pour les personnes au Québec, Kerfy Studio évalue avant ce transfert
+les facteurs relatifs à la vie privée (sensibilité des données, finalités, mesures de protection, y compris
+contractuelles, et régime juridique du pays de destination) et ne fait le transfert que si cette évaluation montre une
+protection adéquate (article 17 de la Loi sur la protection des renseignements personnels dans le secteur privé). Tu
+peux nous demander un résumé de cette évaluation.
 
 Prestataire de messagerie : [pays ; garantie]. Prestataire d'envoi des e-mails et hébergeur des sauvegardes : [à
 compléter : pays ; garantie]. Tu peux nous demander une copie des garanties applicables.
@@ -525,6 +577,8 @@ compléter : pays ; garantie]. Tu peux nous demander une copie des garanties app
 | Données techniques des serveurs | Dernières valeurs seulement |
 | Journal des événements du guichet | 12 mois |
 | Métadonnées chez EUrouter | Jusqu'à 12 mois, selon EUrouter |
+| E-mails de tes agents (offre tout compris) | 90 jours par e-mail (durée qui peut être raccourcie) ; la boîte entière d'un coup quand tu supprimes l'adresse ou l'agent, quand la place est effacée ou quand le compte est effacé |
+| Journaux de sécurité du serveur de messagerie des agents | 30 jours |
 | Signalements d'abus | 1 an après leur traitement |
 
 ## 13. Sécurité
@@ -537,7 +591,10 @@ Pour signaler une faille de sécurité : **support@kerfystudio.com** (voir le fi
 
 Avec l'offre tout compris, chaque place est un compte séparé du serveur, sans droits d'administrateur ; Kerfy Studio
 n'a pas de clé SSH sur les serveurs, et un serveur n'exécute que des ordres signés par le guichet. L'app se connecte à
-ta place en HTTPS et vérifie son certificat. Les sauvegardes sont chiffrées sur la place avant de partir.
+ta place en HTTPS et vérifie son certificat. Les sauvegardes sont chiffrées sur la place avant de partir. Le serveur
+de messagerie des agents est un serveur à part, géré par Kerfy Studio : les places s'y connectent par des connexions
+chiffrées, et un agent n'envoie d'e-mail qu'à travers un garde-fou sur sa place, qui applique les adresses autorisées,
+tes accords et la limite par jour.
 
 **En cas de violation de données**, Kerfy Studio prévient la CNIL dans les 72 heures (article 33 du RGPD) et les
 personnes concernées quand le risque pour elles est élevé (article 34) ; pour les personnes à Singapour, la Personal
