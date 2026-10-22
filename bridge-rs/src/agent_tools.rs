@@ -373,6 +373,9 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if crate::contacts::enabled(config, &agent.name) {
         tools.extend(crate::contacts::tools());
     }
+    if crate::agent_files::offered(config, &agent.name) {
+        tools.push(crate::agent_files::tool());
+    }
     tools
 }
 
@@ -1220,6 +1223,15 @@ the BipAgents app.",
     if PAGE_TOOLS.contains(&name) {
         return blocking(move || page_tool(&config, &agent_c, &name_c, &arguments_c)).await;
     }
+    if name == crate::agent_files::TOOL_NAME {
+        if crate::place_backup::refuse_when_full().await.is_err() {
+            return Ok(tk::tool_failure(
+                "This place has no room left for files.",
+                "There's no room left for files here: delete some in « Fichiers », or choose to keep them for less time.",
+            ));
+        }
+        return blocking(move || Ok(crate::agent_files::call(&config, &agent_c, &arguments_c))).await;
+    }
     if mailbox::MAIL_TOOL_NAMES.contains(&name) {
         return blocking(move || {
             mailbox::call(&config, &agent_c.name, &name_c, &arguments_c, &mailbox::default_connect())
@@ -1391,7 +1403,8 @@ const INSTRUCTIONS: &str = "BipAgents: create_audio reads a text aloud with your
 conversation between hosts with different voices; create_page makes a small web page \
 (a dashboard, a tracker, a chart, a tool) on any subject, shown in the app; each \
 gives a MEDIA: line for your reply. mail_search, mail_read and mail_draft reach the \
-mailboxes the person connected for you (drafts only: you never send).";
+mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
+another of your person's agents (it can't see your files).";
 
 async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
     let agent = agent_of(&state, &headers)?;

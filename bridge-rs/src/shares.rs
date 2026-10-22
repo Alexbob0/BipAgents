@@ -272,9 +272,33 @@ pub async fn apply(config: &Config, wanted: &[(String, String)], run: &Run) -> a
 /// What an agent set up by hand mounts (`podman run -v …`): its shared folder when another agent reads it, and what
 /// it may read, read-only. `bipbridge shares-mounts --agent <name>` prints them.
 pub fn mounts(config: &Config, agent: &str, reads: Option<&[(String, String)]>) -> Vec<String> {
-    match reads {
+    let mut volumes = match reads {
         Some(reads) => volumes_for(config, agent, reads, &[]),
         None => volumes_for(config, agent, &load(config), &[]),
+    };
+    // Its outbox: what it puts there, send_files_to_agent gives to another agent (agent_files.rs).
+    if config.agent(Some(agent)).is_some_and(|a| a.shares == "external") {
+        volumes.push(format!(
+            "{}:{}:z",
+            crate::agent_files::external_outbox(config, agent).display(),
+            crate::sandbox::OUTBOX
+        ));
+    }
+    volumes
+}
+
+/// At start: each agent's `shared-data` skill, where it has one, as this bridge writes it (an agent set up by hand
+/// too, when the bridge was given its HERMES_HOME): its words may have changed with an update.
+pub fn heal_skills(config: &Config) {
+    for name in config.agents.keys() {
+        let Ok(agent) = crate::agents_admin::editable(config, name) else { continue };
+        let path =
+            crate::agents_admin::profile_folder(config, &agent).join("skills").join("shared-data").join("SKILL.md");
+        let Ok(current) = std::fs::read_to_string(&path) else { continue };
+        let wanted = if crate::sandbox::isolates(config, &agent) { crate::sandbox::skill() } else { skill() };
+        if current != wanted && std::fs::write(&path, wanted).is_err() {
+            tracing::warn!(agent = %agent.name, "shared-data skill not updated");
+        }
     }
 }
 

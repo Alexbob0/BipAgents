@@ -315,7 +315,8 @@ def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(bridg
                                       "hermes_key": "k" * 32, "isolated": True, "host_home": str(home)}
     bridge.start()
     settings = bridge.get("/v1/agents/vie/settings", headers=AUTH)
-    assert settings.json() == {"id": "vie", "name": "Vie", "soul": "Tu es Vie.", "language": None, "thinking": "medium",
+    # its personality got the bridge's rules at start (every agent talks plainly), in the place's language
+    assert settings.json() == {"id": "vie", "name": "Vie", "soul": "Tu es Vie.", "language": "en", "thinking": "medium",
                                "model": None, "by_hand": True, "toolsets": [], "isolated": True, "protected": True,
                                "services": []}
     assert not fakes.hermes.seen("/p/vie/v1/toolsets")   # its gateway isn't asked for its tools
@@ -388,9 +389,12 @@ def test_an_earlier_bridge_block_gets_the_rule_about_what_agents_read(bridges, f
     soul = (home / "profiles" / "vie" / "SOUL.md").read_text()
     assert soul.startswith("Tu es Vie, ma personnalité à moi.") and CONTENT_RULE in soul
     assert "write in French." in soul and soul.count(SOUL_BLOCK) == 1
-    assert (home / "profiles" / "main" / "SOUL.md").read_text() == "Fait à la main, sans bloc.\n"   # hand-made stays
+    # written by hand: kept, with the block added (every agent talks plainly, owner 2026-10-22)
+    main = (home / "profiles" / "main" / "SOUL.md").read_text()
+    assert main.startswith("Fait à la main, sans bloc.\n\n") and main.count(SOUL_BLOCK) == 1
     bridge.restart()
     assert (home / "profiles" / "vie" / "SOUL.md").read_text() == soul                              # once
+    assert (home / "profiles" / "main" / "SOUL.md").read_text() == main
 
 
 def test_the_agents_model_is_switched_in_its_config(bridges, fakes):

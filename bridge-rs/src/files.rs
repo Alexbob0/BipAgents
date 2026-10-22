@@ -350,6 +350,19 @@ pub fn store_upload(
     limits: &Limits,
     now: Option<chrono::DateTime<chrono::Utc>>,
 ) -> ApiResult<Value> {
+    store_upload_from(agent, &mut || std::fs::File::open(source), filename, content_type, limits, now)
+}
+
+/// `store_upload` from what `open` gives (called once the folder is ready): a file of another agent the bridge
+/// opened itself, never through a link (agent_files.rs), or a text.
+pub fn store_upload_from<R: Read>(
+    agent: &AgentConfig,
+    open: &mut dyn FnMut() -> std::io::Result<R>,
+    filename: &str,
+    content_type: Option<&str>,
+    limits: &Limits,
+    now: Option<chrono::DateTime<chrono::Utc>>,
+) -> ApiResult<Value> {
     let (Some(host_root), Some(container_root)) = (
         agent.upload_dir_host.as_deref().filter(|s| !s.is_empty()),
         agent.upload_dir_container.as_deref().filter(|s| !s.is_empty()),
@@ -377,7 +390,7 @@ pub fn store_upload(
             .open(&host_path)
             .map_err(anyhow::Error::from)?;
         out.set_permissions(std::fs::Permissions::from_mode(file_mode)).map_err(anyhow::Error::from)?; // ignore umask
-        let mut input = std::fs::File::open(source).map_err(anyhow::Error::from)?;
+        let mut input = open().map_err(anyhow::Error::from)?;
         let mut buffer = vec![0u8; CHUNK];
         let mut size: u64 = 0;
         loop {

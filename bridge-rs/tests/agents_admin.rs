@@ -575,9 +575,17 @@ fn an_earlier_bridge_block_gets_the_rule_about_what_agents_read() {
     assert!(soul.contains("write in French.") && soul.matches(souls::BLOCK_START).count() == 1);
     heal_souls(&c);
     assert_eq!(read_soul(&c, &agent).unwrap(), soul); // once
+                                                      // A personality written by hand gets the block too (owner 2026-10-22: every agent talks plainly), in the place's
+                                                      // language; the person's words are kept.
     std::fs::write(folder.join("SOUL.md"), "Fait à la main, sans bloc.\n").unwrap();
     heal_souls(&c);
-    assert_eq!(read_soul(&c, &agent).unwrap(), "Fait à la main, sans bloc.\n"); // a hand-made personality stays as it is
+    let healed = read_soul(&c, &agent).unwrap();
+    assert!(healed.starts_with("Fait à la main, sans bloc.\n\n") && healed.contains(souls::PLAIN_RULE));
+    heal_souls(&c);
+    assert_eq!(read_soul(&c, &agent).unwrap(), healed);
+    std::fs::write(folder.join("SOUL.md"), "").unwrap();
+    heal_souls(&c);
+    assert_eq!(read_soul(&c, &agent).unwrap(), ""); // none at all: Hermes' own stays
 }
 
 #[test]

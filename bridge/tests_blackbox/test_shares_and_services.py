@@ -99,7 +99,10 @@ def test_an_agent_set_up_by_hand_mounts_its_folders_itself(bridges, fakes):
     bridge.put("/v1/agent-shares", headers=AUTH, json={"reads": [{"reader": "vie", "source": "wellness"}]})
     root = bridge.state_dir / "shares"
     out = bridge.cli("shares-mounts", "--agent", "vie")
-    assert out.returncode == 0 and out.stdout == f"-v\n{root}/wellness:/lecture/wellness:ro,z\n"
+    # and its outbox (what send_files_to_agent gives to another agent), made open to its container's user
+    outbox = bridge.state_dir / "envoi" / "vie"
+    assert out.returncode == 0 and out.stdout == f"-v\n{root}/wellness:/lecture/wellness:ro,z\n-v\n{outbox}:/envoi:z\n"
+    assert outbox.is_dir() and oct(outbox.stat().st_mode & 0o777) == "0o777"
     assert bridge.cli("shares-mounts", "--agent", "wellness").stdout == f"-v\n{root}/wellness:/partage:z\n"
     assert bridge.cli("shares-mounts").returncode == 2
     assert flag.read_text() == "vie\n"

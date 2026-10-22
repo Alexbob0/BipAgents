@@ -1354,6 +1354,9 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     let config = state.config();
     agents_admin::heal_thinking(&config);
     agents_admin::heal_souls(&config);
+    // The skills about other agents as this bridge writes them (an update may have changed their words).
+    crate::peers::write_contacts(&config, &crate::peers::links_of(&state.links.load()), Some(&state.households));
+    crate::shares::heal_skills(&config);
     if options.start_background {
         state.start_background();
     }
