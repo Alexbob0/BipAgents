@@ -24,6 +24,8 @@
 //!     PATCH  /v1/notebook/settings             {mentions?, nightly?, language? (only while the Carnet is empty)}
 //!     GET    /v1/notebook/export?health=       a zip of the vault, for Obsidian
 //!     POST   /v1/notebook/tidy                 the nightly pass now; GET /v1/notebook/runs its runs and this month's cost
+//!     GET    /v1/notebook/fill                 « Remplir mon Carnet »: where it is; POST starts it {agents?}, DELETE stops
+//!                                              it (each agent's task in turn, fill.rs)
 
 use axum::body::Body;
 use axum::extract::{Path as UrlPath, State};
@@ -38,7 +40,7 @@ use super::{Part, Who};
 use crate::app::AppState;
 use crate::config::Config;
 use crate::tools_knowledge as tk;
-use crate::web::{self, check_max_len, ApiResult, FieldError, HttpError, Json, QueryMap, Validate};
+use crate::web::{self, check_max_len, ApiResult, FieldError, HttpError, Json, OptionalJson, QueryMap, Validate};
 use crate::Dict;
 
 async fn blocking<T: Send + 'static>(work: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> ApiResult<T> {
@@ -673,6 +675,40 @@ async fn runs(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(view))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FillAll {
+    #[serde(default)]
+    pub agents: Option<Vec<String>>,
+}
+
+impl Validate for FillAll {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        if let Some(agents) = &self.agents {
+            for id in agents {
+                check_max_len(errors, "agents", Some(id), 80);
+            }
+        }
+    }
+}
+
+/// « Remplir mon Carnet »: each agent's « Remplir le Carnet » task, one after another (fill.rs).
+async fn fill_all(State(state): State<AppState>, OptionalJson(body): OptionalJson<FillAll>) -> ApiResult<Response> {
+    let jobs = crate::jobs::jobs_of(&state);
+    match super::fill::start_all(&jobs, body.and_then(|b| b.agents)) {
+        Ok(view) => Ok(web::ok(Value::Object(view))),
+        Err(err) if err.0 == "unknown agent" => Err(HttpError::new(404, err.0)),
+        Err(err) => Err(HttpError::new(409, err.0)),
+    }
+}
+
+async fn fill_view(State(state): State<AppState>) -> ApiResult<Response> {
+    Ok(web::ok(Value::Object(super::fill::view(&state.config()))))
+}
+
+async fn fill_stop(State(state): State<AppState>) -> ApiResult<Response> {
+    Ok(web::ok(Value::Object(super::fill::stop_all(&crate::jobs::jobs_of(&state)))))
+}
+
 /// `/v1/notebook…` (mounted under /v1 with the bridge key).
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -693,4 +729,5 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/export", get(export))
         .route("/notebook/tidy", post(tidy_now))
         .route("/notebook/runs", get(runs))
+        .route("/notebook/fill", get(fill_view).post(fill_all).delete(fill_stop))
 }

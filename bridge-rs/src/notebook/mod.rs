@@ -30,6 +30,7 @@
 //! No Python counterpart (owner group: tools-knowledge).
 
 pub mod api;
+pub mod fill;
 pub mod template;
 pub mod tidy;
 pub mod tools;

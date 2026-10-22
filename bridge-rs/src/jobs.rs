@@ -9,7 +9,10 @@
 //!                 agent ends with a report, which the notification opens
 //!
 //! An agent may propose a task (MCP `propose_task` in agent_tools.py, for work too long for a reply): it waits, budget and all, until the
-//! person starts it in the app. An agent never starts paid work by itself.
+//! person starts it in the app. Since 2026-10-22 (owner's decision: long work never inline) an agent also starts a task
+//! itself (`start_task`, `notebook_fill`), but only for work the person just asked for and within a small budget
+//! (`[jobs] direct_budget_eur`, ≈ 0.20 €, in tokens at the `[notebook]` prices: `direct_budget`); anything bigger,
+//! or its own idea, is proposed. The task is marked `proposed_by: "asked"`.
 //!
 //!     GET    /v1/jobs                        every job of every agent: proposals first, then the newest
 //!     POST   /v1/agents/{id}/jobs            {title, prompt, max_tokens, template?}   a task started now
@@ -274,6 +277,8 @@ pub struct Jobs {
     pub followers: std::sync::Mutex<std::collections::HashMap<String, tokio::task::JoinHandle<()>>>,
     /// How a task's end or an agent's proposal is told (`push.notify_job`; tests give their own).
     pub tell: Option<TellJob>,
+    /// « Remplir mon Carnet » for every agent, one after another (notebook/fill.rs).
+    pub filler: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl Jobs {
@@ -302,6 +307,7 @@ impl Jobs {
             poll: POLL_SECONDS,
             max_seconds: MAX_STEP_SECONDS,
             followers: Default::default(),
+            filler: Default::default(),
             tell,
         }
     }
@@ -444,8 +450,22 @@ impl Jobs {
         max_tokens: i64,
         template: Option<&str>,
     ) -> anyhow::Result<Dict> {
+        self.create_by(agent, title, prompt, max_tokens, template, "person").await
+    }
+
+    /// A task started now, by the person (`person`) or by the agent at the person's request (`asked`: start_task,
+    /// notebook_fill, within the direct budget).
+    pub async fn create_by(
+        self: &Arc<Self>,
+        agent: &AgentConfig,
+        title: &str,
+        prompt: &str,
+        max_tokens: i64,
+        template: Option<&str>,
+        by: &str,
+    ) -> anyhow::Result<Dict> {
         self.may_run(&agent.name)?;
-        let mut job = self.new_task(agent, title, prompt, max_tokens, template, "person")?;
+        let mut job = self.new_task(agent, title, prompt, max_tokens, template, by)?;
         let text = format!("{}\n\n{}", tk::str_or_empty(job.get("title")), tk::str_or_empty(job.get("prompt")));
         if let Err(err) = self.launch(&mut job, &text).await {
             if err.downcast_ref::<JobError>().is_some() {
@@ -488,7 +508,7 @@ impl Jobs {
         Ok(task_view(&job))
     }
 
-    fn may_run(&self, agent: &str) -> Result<(), JobError> {
+    pub(crate) fn may_run(&self, agent: &str) -> Result<(), JobError> {
         let running: Vec<Dict> = tasks(&self.config.get())
             .into_iter()
             .filter(|j| ["running", "stopping"].contains(&state_of(j).as_str()))
@@ -604,6 +624,9 @@ impl Jobs {
     /// Stops following (the bridge stops).
     pub fn stop_followers(&self) {
         for (_, task) in self.followers.lock().unwrap_or_else(|e| e.into_inner()).drain() {
+            task.abort();
+        }
+        if let Some(task) = self.filler.lock().unwrap_or_else(|e| e.into_inner()).take() {
             task.abort();
         }
     }
@@ -933,6 +956,124 @@ pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &
     }
 }
 
+/// Euros per token of an agent's work at the `[notebook]` prices: mostly reading (its context again at each step), so
+/// 95 % in and 5 % out, as the apps count a budget's ceiling (JobText.ceiling).
+fn euros_per_token(config: &crate::config::Config) -> f64 {
+    (0.95 * config.notebook.price_in + 0.05 * config.notebook.price_out).max(0.0) / 1_000_000.0
+}
+
+/// Tokens for `euros` of an agent's work (at least 10,000, the routes' smallest budget).
+pub fn tokens_for(config: &crate::config::Config, euros: f64) -> i64 {
+    let per_token = euros_per_token(config);
+    if per_token <= 0.0 {
+        return budget_of("small").unwrap_or(300_000);
+    }
+    ((euros.max(0.0) / per_token) as i64).clamp(10_000, 50_000_000)
+}
+
+/// Euros for `tokens` of an agent's work.
+pub fn euros_for(config: &crate::config::Config, tokens: i64) -> f64 {
+    tokens as f64 * euros_per_token(config)
+}
+
+/// The budget a task the person asked for may take without their go (`[jobs] direct_budget_eur`), in tokens.
+pub fn direct_budget(config: &crate::config::Config) -> i64 {
+    tokens_for(config, config.jobs.direct_budget_eur)
+}
+
+/// « 0.20 € » (two decimals, three under ten cents).
+pub fn euros_text(euros: f64) -> String {
+    if euros < 0.1 {
+        format!("{euros:.3} €")
+    } else {
+        format!("{euros:.2} €")
+    }
+}
+
+pub const START_TASK: &str = "start_task";
+
+/// `start_task`: a task the person just asked for, started at once within the direct budget.
+pub fn start_task_tool() -> Value {
+    json!({
+        "name": START_TASK,
+        "description": "Start a background task now, for long work your person just asked you for: anything that needs \
+    many steps or minutes (sorting mails, a deep research, comparing many offers, going through many pages or files). \
+    It runs on its own, in a conversation of its own with all your tools, within a small default budget, and your \
+    person gets your report when it ends. Then tell them in one plain sentence that you're on it in the background, \
+    and stop: don't do the work here as well. Only for work your person asked for: for your own ideas, or work that \
+    needs more than the default budget, use propose_task.",
+        "inputSchema": {"type": "object", "properties": {
+            "title": {"type": "string", "description": "a few words, in the person's language"},
+            "instructions": {"type": "string", "description": "everything needed to do the task without this \
+    conversation: the goal, what the person said, where to look, what to make"},
+            "budget_eur": {"type": "number", "description": "optional: at most the default budget (the tool says it); \
+    leave it out to take the default"}},
+            "required": ["title", "instructions"]},
+    })
+}
+
+/// The `start_task` MCP tool. Err: what a task file that cannot be written lets through.
+pub async fn start_tool(jobs: Option<&Arc<Jobs>>, agent: &AgentConfig, arguments: &Dict) -> anyhow::Result<Dict> {
+    let Some(jobs) = jobs else {
+        return Ok(crate::tools_knowledge::tool_failure(
+            "background tasks aren't available here",
+            "I can't keep working on this in the background here.",
+        ));
+    };
+    let config = jobs.config.get();
+    let default = direct_budget(&config);
+    let max_tokens = match arguments.get("budget_eur").filter(|v| !v.is_null()).map(|v| py::py_float(v).ok()) {
+        None => default,
+        Some(None) => return Ok(tool_text("budget_eur must be a number of euros", true)),
+        Some(Some(euros)) if euros > config.jobs.direct_budget_eur * 1.001 => {
+            return Ok(tool_text(
+                &format!(
+                    "That is more than the {} a task may take without your person's go. Propose it with propose_task \
+instead (they start it with one tap) and tell them so in one plain sentence.",
+                    euros_text(config.jobs.direct_budget_eur)
+                ),
+                true,
+            ));
+        }
+        Some(Some(euros)) => tokens_for(&config, euros),
+    };
+    let prompt = tk::str_or_empty(arguments.get("instructions"));
+    let title = tk::str_or_empty(arguments.get("title"));
+    started(jobs.create_by(agent, &title, tk::head(&prompt, 8000), max_tokens, None, "asked").await, &config, agent)
+}
+
+/// What the agent is told once its task started (or why it could not).
+pub fn started(
+    outcome: anyhow::Result<Dict>,
+    config: &crate::config::Config,
+    agent: &AgentConfig,
+) -> anyhow::Result<Dict> {
+    match outcome {
+        Ok(job) => {
+            let tokens = int_of(job.get("max_tokens"));
+            tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), budget = tokens,
+                "job started by the agent");
+            Ok(tool_text(
+                &format!(
+                    "Started in the background (budget about {}, {} tokens): it works on its own and your person gets \
+your report when it ends; they follow it in « Tâches de fond ». Tell them in one plain sentence that you're on it in \
+the background (e.g. « Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »), and stop here.",
+                    euros_text(euros_for(config, tokens)),
+                    thousands(tokens)
+                ),
+                false,
+            ))
+        }
+        Err(err) => match err.downcast_ref::<JobError>() {
+            Some(exc) => Ok(tool_text(
+                &format!("Not started: {}. Propose it with propose_task instead, and tell your person so.", exc.0),
+                true,
+            )),
+            None => Err(err),
+        },
+    }
+}
+
 /// The bridge's background tasks (one object, made the first time).
 pub fn jobs_of(state: &AppState) -> Arc<Jobs> {
     state
@@ -1104,5 +1245,20 @@ mod tests {
             serde_json::from_value(json!({"input_tokens": 12.7, "output_tokens": true, "cache_read_tokens": 3}))
                 .unwrap();
         assert_eq!(Value::Object(counters(&session)), json!({"input": 12, "output": 0, "cached": 3}));
+    }
+
+    #[test]
+    fn the_direct_budget_in_tokens() {
+        let mut config = crate::config::Config::with_key("k");
+        // 0.20 € at 0.95 × 0.50 + 0.05 × 1.50 = 0.55 € per million tokens
+        assert_eq!(direct_budget(&config), 363_636);
+        assert!((euros_for(&config, 363_636) - 0.20).abs() < 0.001);
+        assert_eq!(euros_text(0.2), "0.20 €");
+        assert_eq!(euros_text(0.05), "0.050 €");
+        config.jobs.direct_budget_eur = 0.0;
+        assert_eq!(direct_budget(&config), 10_000);
+        config.notebook.price_in = 0.0;
+        config.notebook.price_out = 0.0;
+        assert_eq!(tokens_for(&config, 1.0), 300_000);
     }
 }
