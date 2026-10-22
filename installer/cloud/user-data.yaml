@@ -60,7 +60,7 @@ write_files:
   # minute of its own taken from its machine id at first boot (below; 00:20 until then), so the servers of a region
   # don't all go down together; back within minutes, before the agents' browser refresh (01:00-03:00,
   # installer/bipinstall/browser_refresh.py). The guichet's servers say so before going down (seat-agent.py
-  # --rebooting): a planned reboot is not an outage.
+  # --rebooting): a planned reboot is not an outage. Servers installed before 2026-10-22: nightly-reboot.sh.
   - path: /etc/apt/apt.conf.d/52bipagents-reboot
     content: |
       Unattended-Upgrade::Automatic-Reboot "true";

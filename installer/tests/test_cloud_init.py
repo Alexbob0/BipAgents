@@ -88,6 +88,25 @@ def test_the_server_reboots_at_night_when_an_update_asks_at_a_minute_of_its_own(
     assert len(found) > 1
 
 
+def test_servers_installed_before_get_the_same_night_reboot_with_one_command():
+    """nightly-reboot.sh (root, once, on a server installed before 2026-10-22): user-data's settings word for word,
+    the same minute, and on a guichet's server the seat agent taken again with its reboot notice."""
+    import subprocess
+    path = ROOT / "installer" / "cloud" / "nightly-reboot.sh"
+    text = path.read_text(encoding="utf-8")
+    assert text.isascii() and subprocess.run(["bash", "-n", str(path)]).returncode == 0
+    data = yaml.safe_load(render("x" * 43))
+    files = {f["path"]: f["content"] for f in data["write_files"]}
+    for name in ("/etc/apt/apt.conf.d/52bipagents-reboot",
+                 "/etc/systemd/system/apt-daily-upgrade.timer.d/60-bipagents.conf",
+                 "/etc/needrestart/conf.d/60-bipagents.conf"):
+        assert f"cat > {name} <<'EOF'\n{files[name]}EOF\n" in text
+    minute = next(c for c in data["runcmd"] if "53bipagents-reboot-time" in c)
+    assert "\n" + minute + "\n" in text
+    assert "ExecStop=/usr/bin/python3 $lib/seat-agent.py --rebooting" in text
+    assert "systemctl enable --now bipagents-reboot-notice.service" in text
+
+
 def test_the_seat_agent_tells_the_guichet_of_a_reboot_only(monkeypatch):
     """At shutdown (bipagents-reboot-notice.service): a reboot under way is told to the guichet, a stop is not, and
     a guichet that doesn't answer never holds the shutdown up beyond the call's timeout."""
