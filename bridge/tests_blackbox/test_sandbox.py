@@ -51,7 +51,14 @@ def isolated(bridges, fakes, agents=("vie", "wellness"), proxy_ok=True):
 
 
 def terminal(hub, name):
-    return yaml.safe_load((hub / "profiles" / name / "config.yaml").read_text()).get("terminal", {})
+    """The profile's terminal settings, read whole: the fake `hermes` rewrites the file in place, and the bridge's
+    other start-up work (its tools, its soul) may be writing it at that moment."""
+    for _ in range(100):
+        data = yaml.safe_load((hub / "profiles" / name / "config.yaml").read_text())
+        if isinstance(data, dict) and "mcp_servers" in data:
+            return data.get("terminal", {})
+        time.sleep(0.05)
+    raise AssertionError(f"{name}'s config.yaml never read whole")
 
 
 def give_tokens(bridge, names):
