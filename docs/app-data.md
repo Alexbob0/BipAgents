@@ -51,12 +51,21 @@ their place on the all-included offer. Everything personal goes here, with that 
 - **Secrets the person enters:** e-mail account passwords (`/v1/mail/accounts`), vault items (`/v1/vault`), SSH public
   keys (`/v1/ssh/keys`), voice server settings.
 - **Health ("Santé")** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`): one summary a
-  day (sleep, steps, active energy, exercise, resting heart rate, HRV, weight, workouts), sent with
-  `PUT /v1/health-data/days` to every bridge where at least one agent has "Santé" turned on. Only days that are new or
+  day, sent with `PUT /v1/health-data/days` to every bridge where at least one agent has "Santé" turned on, with only
+  the figures of the categories the agents of that bridge read (`shared` in `GET /v1/health-data`; each agent's own
+  list is set with `PATCH /v1/agents/{id}/settings {"health_categories": […]}` from the "Santé" tile's details):
+  activity (steps, active energy, exercise minutes, workouts, distance, flights, stand hours), sleep (asleep/in bed,
+  times, stages, breathing rate, wrist temperature), heart (resting HR, HRV, the day's average/lowest/highest HR, blood
+  oxygen, VO2 max), body (weight, body fat, BMI, blood pressure), food and water (energy eaten, water, caffeine),
+  well-being (mindful minutes, iOS 18 state of mind), and the sensitive ones, off by default and left out of « Share
+  everything »: blood glucose (mmol/L) and cycle (menstrual flow, period starts). A new switch starts with activity,
+  sleep and heart. Stand hours, wrist temperature, BMI and moods are iPhone-only; mindfulness on Android only where
+  Health Connect has it. Each category asks the system's permission for its types when turned on. Only days that are new or
   have changed are sent (the last 7 days are rechecked every time, and up to 30 days back). The iPhone also sends them
   in the background when Health has new data (`enableBackgroundDelivery`, daily). Android reads only while the app is
-  open. The phone keeps only hashes of what it has sent. On the bridge, the data goes only to agents that have the
-  switch on (`bridge-rs/src/health.rs`).
+  open. The phone keeps only hashes of what it has sent. On the bridge, the days are kept with only the categories some
+  agent reads (one no agent reads any more is wiped from them), and each agent with the switch on reads only its own
+  categories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **iPhone Reminders** (`App/Features/Settings/RemindersSync.swift`): a copy of the reminders goes to the bridges the
   person chose, and the requests the agents queued are carried out. This feature exists only on iOS.
 - **Push registration:** the APNs or Firebase token (or a relay token instead, see §3), with the agents' ids

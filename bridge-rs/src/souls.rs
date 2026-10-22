@@ -128,8 +128,10 @@ pub const HEALTH_END: &str = "<!-- /bipagents:health -->";
 
 /// For an agent whose « Santé » switch is on (health.rs): what the data is and what it is for.
 pub const HEALTH_RULE: &str = concat!(
-    "Your person shares their health data with you (sleep, steps, activity, heart rate, weight, workouts: the health ",
-    "tool). It is theirs: use it only to help them, with their sleep, activity and training, and never share it. Never ",
+    "Your person shares some of their health data with you: the categories they chose (activity, sleep, heart, body, ",
+    "food and water, well-being, and only if they turned them on, blood glucose or their cycle; the health tool lists ",
+    "yours). It is theirs: use it only to help them, with their sleep, activity, training and habits, and never share ",
+    "it. Never ",
     "diagnose: when something looks worrying (an unusual heart rate, a sudden change, pain or a symptom they mention), ",
     "say so gently and suggest they see a doctor."
 );
