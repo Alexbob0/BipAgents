@@ -86,8 +86,10 @@ pub mod memory_edit;
 pub mod notes_import;
 pub mod pages;
 pub mod reminders;
+pub mod routes;
 #[doc(hidden)]
 pub mod tools_knowledge; // the group's private helpers (pub for its golden tests)
+pub mod weather;
 
 // -- browsers-places -------------------------------------------------------------------------------
 pub mod browser_mcp;
@@ -96,6 +98,7 @@ pub mod caldav;
 pub mod calendar;
 pub mod cloud_setup;
 pub mod console;
+pub mod contacts;
 pub mod desktop;
 pub mod place_backup;
 pub mod place_import;

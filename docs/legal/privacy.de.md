@@ -148,6 +148,39 @@ Zugangsdaten des Postfachs, die verschlüsselt auf deinem Server bleiben), wenn 
 und trägt die Termine ein oder löscht sie, um die er bittet; davon wird nichts behalten außer der Liste dieser
 Kalender. Schalte es aus, um aufzuhören.
 
+**Deine Kontakte, wenn du sie teilst (« Contacts », Kontakte).** Für jeden Agenten kannst du Kontakte in seinen
+Werkzeugen einschalten. Mit deiner Erlaubnis (Kontakte auf dem iPhone und auf Android) liest die App das Adressbuch
+deines Telefons, auch die darauf hinzugefügten Konten (iCloud, Google…), und sendet eine Kopie **nur an deinen
+Server** (oder an deinen Platz beim Rundum-Angebot), wenn die App geöffnet wird: das ganze Adressbuch oder nur die
+Gruppen (Labels), die du für diesen Server wählst, mit Name, Spitzname, Telefonnummern, E-Mail- und Postadressen,
+Geburtstag, Firma und Position, den verbundenen Personen und den Gruppen jedes Kontakts, und seinen Notizen nur, wenn
+du « Notizen » ankreuzt (standardmäßig aus). Fotos werden nie gesendet. Die Kopie bleibt dort und wird bei jedem
+Senden ersetzt; was deine Wahl nicht mehr umfasst, wird sofort entfernt, und die ganze Kopie wird gelöscht, wenn kein
+Agent sie mehr lesen darf. Nur die Agenten, die du gewählt hast, lesen sie; wenn sie einen Kontakt hinzufügen oder
+ändern möchten, erledigt das dein Telefon (so wird nichts gelöscht). Das KI-Modell des Agenten erhält die Kontakte,
+die der Agent liest, um dir zu antworten. Kerfy Studio erhält sie nicht. **Deine Kontakte sind andere Menschen**: Die
+Agenten haben die Anweisung, ihnen nie ohne dein Okay zu schreiben, sie anzurufen oder ihre Daten weiterzugeben, und
+du bleibst für deren Nutzung verantwortlich. **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO),
+die du gibst, indem du Kontakte einschaltest und es auf deinem Telefon erlaubst. **Beenden**: schalte Kontakte für den
+Agenten aus oder entziehe die Erlaubnis in den Einstellungen des Telefons (dann wird nichts mehr gesendet).
+
+**Erinnerungen an Orten und dein Standort.** Wenn du einen Agenten bittest „erinnere mich an die Milch, wenn ich im
+Supermarkt bin“, fordert er eine Erinnerung mit dem Namen des Ortes (oder seinen Koordinaten) an. Auf dem iPhone
+überwacht Apples Erinnerungen-App den Ort: BipAgents hat keinen Zugriff auf deinen Standort; der Name des Ortes wird in
+Apple Karten gesucht, um seine Koordinaten zu finden. Auf Android, das keine Erinnerungen-App hat, verwaltet BipAgents
+diese Erinnerungen selbst: Es fragt nach der Standortberechtigung (auch im Hintergrund) erst, wenn ein Agent eine
+angelegt hat, sucht den Ort mit dem Geocoding-Dienst des Telefons und übergibt den Kreis um den Ort den
+Standortdiensten von Google Play auf dem Telefon (Geofencing). Dein Standort bleibt auf dem Telefon: Er wird weder an
+deinen Server noch an den Agenten noch an Kerfy Studio gesendet und dient nur dazu, dich beim Ankommen oder Verlassen
+zu erinnern. **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du gibst, indem du den
+Standort erlaubst. **Beenden**: lösche die Erinnerung (Einstellungen › Erinnerungen an Orten) oder entziehe die
+Standortberechtigung in den Einstellungen des Telefons.
+
+**Was du mit der App teilst.** Wenn du eine Nachricht oder einen Screenshot mit BipAgents teilst (aus WhatsApp,
+Signal, Nachrichten …), geht sie an den Agenten, den du wählst, auf deinem Server, als Anhang, den du selbst sendest;
+sie kann Worte anderer Personen enthalten, teile also nur, was du brauchst. Den Antwortentwurf des Agenten sendet die
+App nie: „Senden mit …“ öffnet die App deiner Wahl, und du sendest selbst.
+
 ## 4. Was Kerfy Studio erhalten kann
 
 ### 4.1 Benachrichtigungen über das Relay von Kerfy Studio
@@ -483,6 +516,14 @@ Telefon verlässt; jeder Dienst ist dann für das verantwortlich, was er damit m
   App deinen Server nach diesen Symbolen, und dein Server holt sie bei DuckDuckGo (icons.duckduckgo.com): DuckDuckGo
   erhält den **Namen der Website** (zum Beispiel „beispiel.de“) und sieht die Adresse deines Servers, nicht die
   deines Telefons. Die Nachricht erhält DuckDuckGo nicht.
+- **Wetter und Routen.** Wenn ein Agent « Wetter » hat und du ihn nach dem Wetter fragst, fragt dein Server (oder
+  dein Platz) OpenStreetMap (Nominatim, um den Ort zu finden) nach dem Ort und dann das Norwegische Meteorologische
+  Institut (MET Norway) nach der Vorhersage: Sie erhalten **nur den Namen des Orts und seine gerundeten Koordinaten**
+  (etwa 1 km) und sehen die Adresse deines Servers, nicht die deines Telefons und nicht deine Nachricht. Eine Route ist
+  ein Link, der Apple Karten (iPhone) oder Google Maps (Android) auf deinem Telefon öffnet, nach deren eigenen Regeln.
+  Hat dein Server einen Google-Maps-Schlüssel (derzeit nicht im Komplettangebot), gehen die Orte und die Zeit der Route
+  auch an Google (Google LLC, möglicherweise in den USA, zertifiziert nach dem EU-U.S. Data Privacy Framework), um ihre
+  Dauer zu berechnen; davon wird nichts gespeichert.
 - **Spracherkennung.** Sprachnachrichten und Live nutzen die Spracherkennung deines Telefons. Die App verlangt die
   Erkennung auf dem Gerät, wenn dein Telefon sie für deine Sprache anbietet. Sonst verarbeiten Apple oder Google
   (auf Android der Erkennungsdienst des Systems, oft der von Google) das Audio auf ihren Servern, in eigener

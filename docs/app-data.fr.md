@@ -2,12 +2,12 @@
 
 # Ce que les apps BipAgents envoient sur le réseau
 
-**En bref :** les conversations, fichiers, transcriptions de notes vocales, données de santé, rappels et la mémoire
-des agents ne vont qu’au serveur de la personne (son bridge et Hermes). Les services de Kerfy Studio reçoivent des
-données de compte, d’achat et d’acheminement des notifications, ainsi que des paquets scellés qu’ils ne peuvent pas
-ouvrir. Les apps n’intègrent aucun SDK de mesure d’audience ni de rapport de plantage. Apple et Google reçoivent ce
-qu’exigent leurs boutiques, la connexion et les notifications, et la voix pour la dictée seulement si la personne a
-accepté la dictée en ligne. Avec l’offre tout compris, l’adresse e-mail propre d’un agent garde ses e-mails sur le
+**En bref :** les conversations, fichiers, transcriptions de notes vocales, données de santé, rappels, contacts et la mémoire des
+agents ne vont qu’au serveur de la personne (son bridge et Hermes). Les services de Kerfy Studio reçoivent des données
+de compte, d’achat et d’acheminement des notifications, ainsi que des paquets scellés qu’ils ne peuvent pas ouvrir. Les
+apps n’intègrent aucun SDK de mesure d’audience ni de rapport de plantage. Apple et Google reçoivent ce qu’exigent leurs
+boutiques, la connexion et les notifications, et la voix pour la dictée seulement si la personne a accepté la dictée en
+ligne. Avec l’offre tout compris, l’adresse e-mail propre d’un agent garde ses e-mails sur le
 serveur de messagerie de Kerfy Studio ; c’est le bridge de la place qui parle à ce serveur, pas l’app.
 
 Cette page a été écrite à partir du code de l’app iPhone/iPad (`App/`, `Widgets/`, `NotificationService/`,
@@ -76,7 +76,26 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   et chaque agent qui a l’interrupteur activé ne lit que ses catégories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **Rappels de l’iPhone** (`App/Features/Settings/RemindersSync.swift`) : une copie des rappels part aux bridges choisis
   par la personne, et l’app exécute les demandes que les agents ont mises en attente. Cette fonction n’existe que sur
-  iOS.
+  iOS. Un rappel par lieu (le `place` de `reminders_add`) devient une alarme de lieu EventKit : c’est Rappels qui
+  surveille le lieu, l’app n’a pas accès à la position ; le nom d’un lieu est cherché avec Plans d’Apple
+  (`MKLocalSearch`).
+- **Rappels par lieu sur Android** (`reminders/PlaceReminders.kt`) : les rappels des agents qui ont un lieu sont lus
+  dans la file du bridge (`/v1/reminders/queue`) et gardés sur le téléphone comme geofences (localisation des services
+  Google Play ; le nom cherché avec le `Geocoder` du téléphone). La permission de position (avec l’arrière-plan) n’est
+  demandée qu’une fois un tel rappel créé ; la position ne quitte jamais le téléphone. Les autres rappels restent en
+  attente pour un iPhone.
+- **Partagé vers l’app** (`ShareExtension/`, `App/Model/SharedInbox.swift`, Android `ui/SharedMessage.kt`) : un message
+  ou des captures partagés vers BipAgents vont à l’agent que la personne choisit, en brouillon et pièces jointes dans sa
+  conversation, envoyés seulement quand elle touche Envoyer. L’extension de partage iOS les écrit dans l’App Group
+  (`share/<id>/`, effacé à l’ouverture, ou au bout d’une heure). Une réponse que l’agent rédige (un bloc ```draft) a
+  « Envoyer avec… », la feuille de partage du système : l’app ne l’envoie jamais.
+- **Contacts** (`App/Features/Settings/ContactsSync.swift`, `android/.../contacts/ContactsSync.kt`) : une copie du
+  carnet d’adresses (`PUT /v1/contacts`) part à chaque bridge où au moins un agent peut le lire, réduite à ce que la
+  personne a choisi pour ce bridge (`PUT /v1/contacts/scope` : tout le carnet ou certains groupes, les notes seulement
+  si elles sont cochées ; jamais de photos), et l’app exécute les demandes que les agents ont mises en attente (un
+  contact ajouté ou modifié, jamais supprimé). Le bridge ne garde que ce que le choix couvre et efface la copie quand
+  plus aucun agent ne peut la lire (`bridge-rs/src/contacts.rs`). Sur l’iPhone, les notes ne sont jamais lues (il
+  faudrait une autorisation spéciale d’Apple que l’app n’a pas).
 - **L’adresse e-mail d’un agent** (`GET/POST/PATCH/DELETE /v1/agents/{id}/email`,
   `POST /v1/agents/{id}/email/held/{mail}`) : l’activer (une adresse de Kerfy Studio sur une place de l’offre, ou la boîte
   de la personne chez son fournisseur, avec son adresse, son mot de passe et ses serveurs IMAP/SMTP), les adresses
@@ -94,6 +113,13 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   pas lui-même.
 - **Icônes des sites** devant les liens : demandées au bridge (`/v1/favicon/<hôte>`), qui interroge le service d’icônes
   de DuckDuckGo. Le téléphone ne contacte jamais ce service ni le site.
+- **Météo et itinéraires** (`bridge-rs/src/weather.rs`, `routes.rs`) : l’interrupteur « Météo » est un réglage de
+  l’agent (`PATCH /v1/agents/{id}/settings {"weather": bool}`). C’est le bridge, pas le téléphone, qui demande le lieu
+  à Nominatim (OpenStreetMap) et les prévisions à MET Norway, avec seulement le nom du lieu et ses coordonnées
+  arrondies à 2 décimales. Un itinéraire est un lien Google Maps dans la réponse ; l’app iPhone l’ouvre comme un lien
+  Plans (`ChatText.appleMaps`), l’app Android dans Google Maps. Avec `[maps] google_key` sur le bridge, les lieux, le
+  mode et les heures de l’itinéraire partent vers l’API Routes de Google pour sa durée et sa distance ; rien n’en est
+  gardé.
 - **Le navigateur visible de l’agent** (`App/Features/Agents/DesktopView.swift`) : une vue web de la page de
   visualisation du bridge, sans données de site conservées.
 - **Appairage d’une place de l’offre** (`App/Features/Cloud/CloudPairing.swift`, `android/.../cloud/CloudPairing.kt`) :
@@ -147,8 +173,8 @@ haché 10 000 fois en tout ; les 8 premiers octets, modulo 10¹², donnent les 1
 P-256 valable n’a ni code ni bouton « Approuver ». Un vecteur de référence est vérifié dans les deux apps
 (`AccountCryptoTest.kt`, et une assertion des versions de débogage dans `AccountCrypto.swift`).
 
-**Jamais envoyé au guichet** (aucun appel de ce type n’existe dans le code) : conversations, fichiers, mémoire,
-données de santé, rappels, clés de bridge en clair, le code de récupération lui-même. Les boîtes e-mail des agents
+**Jamais envoyé au guichet** (aucun appel de ce type n’existe dans le code) : conversations, fichiers, mémoire, données
+de santé, rappels, contacts, clés de bridge en clair, le code de récupération lui-même. Les boîtes e-mail des agents
 sont demandées par le bridge de la place, pas par les apps (§1).
 
 ## 3. Le relais de notifications de Kerfy Studio (public : `relay/`)

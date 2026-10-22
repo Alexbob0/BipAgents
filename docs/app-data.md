@@ -2,10 +2,10 @@
 
 # What the BipAgents apps send over the network
 
-**In short:** conversations, files, voice-note transcripts, health data, reminders and the agents' memory go only to
-the person's own server (their bridge and Hermes). Kerfy Studio's services get account, purchase and push-routing
-data, plus sealed boxes they cannot open. There are no analytics or crash SDKs. Apple and Google get what their
-stores, sign-in and push need, and the voice for dictation only where the person agreed to online dictation. With the
+**In short:** conversations, files, voice-note transcripts, health data, reminders, contacts and the agents' memory go only to the
+person's own server (their bridge and Hermes). Kerfy Studio's services get account, purchase and push-routing data,
+plus sealed boxes they cannot open. There are no analytics or crash SDKs. Apple and Google get what their stores,
+sign-in and push need, and the voice for dictation only where the person agreed to online dictation. With the
 all-included offer, an agent's own e-mail address keeps its mail on Kerfy Studio's mail server; the place's bridge
 talks to that server, not the app.
 
@@ -71,7 +71,24 @@ their place on the all-included offer. Everything personal goes here, with that 
   agent reads (one no agent reads any more is wiped from them), and each agent with the switch on reads only its own
   categories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **iPhone Reminders** (`App/Features/Settings/RemindersSync.swift`): a copy of the reminders goes to the bridges the
-  person chose, and the requests the agents queued are carried out. This feature exists only on iOS.
+  person chose, and the requests the agents queued are carried out. This feature exists only on iOS. A reminder by
+  place (`reminders_add`'s `place`) becomes an EventKit location alarm: Reminders watches the place, the app has no
+  location access; a place's name is looked up with Apple Maps (`MKLocalSearch`).
+- **Reminders by place on Android** (`reminders/PlaceReminders.kt`): the agents' reminders that have a place are read
+  from the bridge's queue (`/v1/reminders/queue`) and kept on the phone as geofences (Google Play services location;
+  the name looked up with the phone's `Geocoder`). The location permission (with background) is asked only once such a
+  reminder exists; the position never leaves the phone. The other reminders stay queued for an iPhone.
+- **Shared to the app** (`ShareExtension/`, `App/Model/SharedInbox.swift`, Android `ui/SharedMessage.kt`): a message or
+  screenshots shared to BipAgents are handed to the agent the person picks, as a draft and attachments in its
+  conversation, sent only when the person taps Send. The iOS share extension writes them to the App Group
+  (`share/<id>/`, deleted when opened, or after an hour). A reply the agent drafts (a ```draft block) gets « Envoyer
+  avec… », the system share sheet: the app never sends it.
+- **Contacts** (`App/Features/Settings/ContactsSync.swift`, `android/.../contacts/ContactsSync.kt`): a copy of the
+  address book (`PUT /v1/contacts`) goes to every bridge where at least one agent may read it, narrowed to what the
+  person chose for that bridge (`PUT /v1/contacts/scope`: the whole address book or some groups, the notes only when
+  ticked; no photos), and the requests the agents queued (a contact added or changed, never deleted) are carried out.
+  The bridge keeps only what the choice covers and drops the copy when no agent may read it (`bridge-rs/src/contacts.rs`).
+  On the iPhone the notes are never read (they need an Apple entitlement the app doesn't have).
 - **An agent's e-mail address** (`GET/POST/PATCH/DELETE /v1/agents/{id}/email`,
   `POST /v1/agents/{id}/email/held/{mail}`): turning it on (a Kerfy Studio address on a place of the offer, or the person's
   own mailbox with its address, password and IMAP/SMTP servers), the allowed addresses, the daily limit, and approving
@@ -87,6 +104,12 @@ their place on the all-included offer. Everything personal goes here, with that 
   itself.
 - **Site icons** before links: requested from the bridge (`/v1/favicon/<host>`), which asks DuckDuckGo's icon service.
   The phone never contacts the icon service or the site.
+- **Weather and routes** (`bridge-rs/src/weather.rs`, `routes.rs`): the « Météo » switch is an agent setting
+  (`PATCH /v1/agents/{id}/settings {"weather": bool}`). The bridge, not the phone, asks OpenStreetMap's Nominatim for
+  the place and MET Norway for the forecast, with only the place's name and its coordinates rounded to 2 decimals. A
+  route is a Google Maps directions link in the reply; the iPhone app opens it as an Apple Maps link
+  (`ChatText.appleMaps`), the Android app in Google Maps. With `[maps] google_key` on the bridge, the route's places,
+  mode and times go to Google's Routes API for its duration and distance; nothing is kept.
 - **The agent's visible browser** (`App/Features/Agents/DesktopView.swift`): a web view of the bridge's viewer page,
   with no stored website data.
 - **Pairing a place of the offer** (`App/Features/Cloud/CloudPairing.swift`, `android/.../cloud/CloudPairing.kt`):
@@ -139,6 +162,7 @@ public key; the device that approves it shows the code of the key the guichet ha
 checked in both apps (`AccountCryptoTest.kt`, and a debug-build assertion in `AccountCrypto.swift`).
 
 **Never sent to the guichet** (no such call exists in the code): conversations, files, memory, health data, reminders,
+contacts,
 bridge keys in clear, the recovery code itself. The agents' mailboxes are asked for by the place's bridge, not by the
 apps (§1).
 
