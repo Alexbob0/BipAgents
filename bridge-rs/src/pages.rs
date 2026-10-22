@@ -61,6 +61,29 @@ pub fn chart_js() -> &'static [u8] {
     crate::assets::file(&crate::assets::STATIC, "vendor/chart.umd.min.js").unwrap_or(b"")
 }
 
+/// The page kit (`static/pagekit/`, embedded): the app's look (light and dark, the agent's colour, cards, big numbers,
+/// chips, tables that sort, progress bars, timelines, diagrams, sliders and switches) and its small script (`Bip.bars`,
+/// `Bip.line`, `Bip.donut`, `Bip.spark`, `Bip.diagram`, `Bip.whatIf`, the app's colours for Chart.js), so that even a
+/// small model makes a polished page with little HTML. Put inline in every page: it still opens offline, alone, years
+/// later (the Carnet's Documents, an Obsidian export). All its CSS is in `:where()`: the agent's own CSS wins.
+pub fn kit_css() -> &'static str {
+    crate::assets::text(&crate::assets::STATIC, "pagekit/kit.css").unwrap_or("")
+}
+
+pub fn kit_js() -> &'static str {
+    crate::assets::text(&crate::assets::STATIC, "pagekit/kit.js").unwrap_or("")
+}
+
+/// The kit as it goes in a page's head, in the colours of the agent's kind (`daily`, `wellness`…; else the app's).
+pub fn kit(tint: Option<&str>) -> String {
+    let tint = tint.filter(|t| crate::souls::CATEGORIES.contains(t)).unwrap_or("");
+    format!(
+        "<style id=\"bip-kit\">{}</style><script id=\"bip-kit-js\">{}</script>",
+        kit_css().replace("</style", "<\\/style"),
+        kit_js().replace("__BIP_TINT__", tint).replace("</script", "<\\/script")
+    )
+}
+
 pub fn root(config: &Config) -> PathBuf {
     PathBuf::from(config.data_dir()).join("agent-pages")
 }
@@ -80,8 +103,14 @@ pub fn media_path(agent: &str, page: &str) -> String {
 }
 
 /// The page as kept: the policy first in its head (before anything that could run), a whole document even when the
-/// agent wrote a fragment, Chart.js inline. With what it asks from the network (it will not load: the agent hears).
+/// agent wrote a fragment, the kit then Chart.js inline. With what it asks from the network (it will not load: the
+/// agent hears).
 pub fn lock(source: &str, title: &str) -> (String, Vec<String>) {
+    lock_with(source, title, None)
+}
+
+/// [`lock`] in the colours of the agent's kind.
+pub fn lock_with(source: &str, title: &str, tint: Option<&str>) -> (String, Vec<String>) {
     let without_chart = CHART.replace_all(source, "");
     let mut outside: Vec<String> = OUTSIDE.captures_iter(&without_chart).map(|c| c[2].to_string()).collect();
     outside.sort();
@@ -90,7 +119,8 @@ pub fn lock(source: &str, title: &str) -> (String, Vec<String>) {
     if CHART.is_match(&body) {
         let library =
             tk::universal_newlines(String::from_utf8_lossy(chart_js()).into_owned()).replace("</script", "<\\/script");
-        let inline = format!("<script>{library}</script>");
+        // the app's colours for the charts, before the page's own script draws them
+        let inline = format!("<script>{library}\n;window.Bip&&Bip._chart&&Bip._chart();</script>");
         body = CHART.replacen(&body, 1, regex::NoExpand(&inline)).into_owned();
         body = CHART.replace_all(&body, "").into_owned();
     }
@@ -101,7 +131,31 @@ pub fn lock(source: &str, title: &str) -> (String, Vec<String>) {
     let doctype = found.get(1).map(|m| m.as_str().to_string()).unwrap_or_else(|| "<!doctype html>".into());
     let rest = &body[found.get(0).map(|m| m.end()).unwrap_or(0)..];
     // A <meta> before <html> opens the head: the policy is in force before the agent's first tag.
-    (format!("{doctype}\n{}\n{rest}", *HEAD), outside)
+    (format!("{doctype}\n{}{}\n{rest}", *HEAD, kit(tint)), outside)
+}
+
+static MAP_SRC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\bsrc\s*=\s*(["'])map:([A-Za-z0-9-]{1,40})(["'])"#).expect("valid regex"));
+
+/// The agent's maps (`src="map:<id>"`, maps.rs) put inline as data: URIs: the page still opens offline, alone.
+pub fn inline_maps(config: &Config, agent: &str, html: &str) -> String {
+    use base64::Engine;
+    MAP_SRC
+        .replace_all(html, |c: &regex::Captures| match crate::maps::file(config, agent, &c[2]) {
+            Some(path) => match std::fs::read(path) {
+                Ok(data) => {
+                    format!(
+                        "src={}data:image/png;base64,{}{}",
+                        &c[1],
+                        base64::engine::general_purpose::STANDARD.encode(data),
+                        &c[3]
+                    )
+                }
+                Err(_) => c[0].to_string(),
+            },
+            None => c[0].to_string(),
+        })
+        .into_owned()
 }
 
 fn meta_path(folder: &Path, page: &str) -> PathBuf {
@@ -180,7 +234,9 @@ pub fn save(config: &Config, agent: &str, html: &str, title: &str, page: Option<
     if title.is_empty() {
         title = tk::capitalize(&page.replace('-', " "));
     }
-    let (locked, outside) = lock(html, &title);
+    let tint = config.agent(Some(agent)).and_then(|a| a.category.clone());
+    let (locked, outside) = lock_with(html, &title, tint.as_deref());
+    let locked = inline_maps(config, agent, &locked);
     std::fs::create_dir_all(&folder)?;
     let now = tk::now_iso_seconds();
     let version = match known.get("version") {

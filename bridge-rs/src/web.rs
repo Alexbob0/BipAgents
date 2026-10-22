@@ -854,6 +854,35 @@ pub async fn file_response(
     let etag =
         format!("\"{}\"", hex::encode(Md5::digest(format!("{}-{}", crate::py::float_repr(mtime), size).as_bytes())));
     let last_modified = httpdate(mtime as i64);
+    // The apps keep what a conversation showed and ask again with what they have (2026-10-22): unchanged, a 304
+    // without the body (If-None-Match first; else If-Modified-Since, to the second).
+    let unchanged = match request_headers.get("if-none-match").and_then(|v| v.to_str().ok()) {
+        Some(tags) => tags.split(',').any(|t| {
+            let t = t.trim();
+            t == "*" || t.trim_start_matches("W/") == etag
+        }),
+        None => request_headers
+            .get("if-modified-since")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|since| since.trim() == last_modified),
+    };
+    if unchanged && request_headers.get("range").is_none() {
+        let mut response = Response::new(axum::body::Body::empty());
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        let h = response.headers_mut();
+        for (name, value) in extra {
+            if let (Ok(n), Ok(v)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(value)) {
+                h.insert(n, v);
+            }
+        }
+        if let Ok(v) = HeaderValue::from_str(&etag) {
+            h.insert("etag", v);
+        }
+        if let Ok(v) = HeaderValue::from_str(&last_modified) {
+            h.insert("last-modified", v);
+        }
+        return response;
+    }
     let data = match tokio::fs::read(path).await {
         Ok(d) => d,
         Err(_) => return HttpError::internal().into_response(),

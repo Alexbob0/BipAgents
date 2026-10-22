@@ -822,9 +822,9 @@ async fn get_media(State(state): State<AppState>, q: QueryMap, headers: HeaderMa
     let mut extra = vec![("x-content-type-options", "nosniff".to_string())];
     if host.to_lowercase().ends_with(".html") {
         // A page an agent made (or an .html file from its sandbox): never a document of this origin, even opened by
-        // hand; a new version each time.
+        // hand; kept by the app but asked again each time (its ETag: a new version shows, the same one is a 304).
         extra.push(("content-security-policy", format!("sandbox allow-scripts; {}", crate::pages::POLICY)));
-        extra.push(("cache-control", "no-store".into()));
+        extra.push(("cache-control", "no-cache".into()));
     } else if crate::media::is_document(&host) {
         extra.push(("content-security-policy", "sandbox; default-src 'none'".into()));
     }
@@ -1050,10 +1050,52 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             Err(exc) => return Err(anyhow::anyhow!(exc).into()),
         };
     if (200..300).contains(&status) {
+        // kept for the conversation, with the request as it was shown (approvals_log.rs)
+        let shown = state.hub.pending_approvals(Some(&agent.name)).into_iter().find(|p| {
+            p.get("run_id").and_then(Value::as_str) == Some(run_id.as_str())
+                && (request_id.is_none() || p.get("request_id").and_then(Value::as_str) == request_id)
+        });
+        let mut fields = shown.unwrap_or_default();
+        fields.insert("run_id".into(), json!(run_id));
+        fields.insert("request_id".into(), json!(request_id));
+        fields.insert("choice".into(), json!(body.choice));
+        fields.insert("via".into(), json!("notification"));
+        fields.remove("created_at");
+        if let Err(err) = crate::approvals_log::record(&state.config(), &agent.name, &fields) {
+            tracing::warn!(agent = %agent.name, error = %err, "approval decision not kept");
+        }
         state.hub.forget_approval(&agent.name, &run_id, request_id);
     }
     tracing::info!(agent = %agent.name, run_id = %run_id, status = status, "approval forwarded");
     Ok(web::json_response(status, &payload))
+}
+
+/// The approvals the person answered in a conversation (`agent`, `session_id`), the oldest first (approvals_log.rs).
+async fn answered_approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let agent = agent_or_404(&config, Some(&web::query_required(&q, "agent")?))?;
+    let session = web::query_str(&q, "session_id", false, Some(200))?.filter(|s| !s.is_empty());
+    let items = crate::approvals_log::list(&config, &agent.name, session.as_deref());
+    Ok(web::ok(json!({"items": items})))
+}
+
+/// An app answered an approval (Hermes itself, or through the bridge): kept for the conversation.
+async fn record_approval(State(state): State<AppState>, body: axum::body::Bytes) -> ApiResult<Response> {
+    let config = state.config();
+    let fields = serde_json::from_slice::<Value>(&body)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .ok_or_else(|| HttpError::new(422, "a JSON object"))?;
+    let agent = agent_or_404(&config, fields.get("agent").and_then(Value::as_str))?;
+    match crate::approvals_log::record(&config, &agent.name, &fields) {
+        Ok(entry) => {
+            // answered: no longer waiting
+            let run = entry.get("run_id").and_then(Value::as_str).unwrap_or_default().to_string();
+            state.hub.forget_approval(&agent.name, &run, entry.get("request_id").and_then(Value::as_str));
+            Ok(web::ok(json!({"kept": entry})))
+        }
+        Err(err) => Err(HttpError::new(422, err.to_string())),
+    }
 }
 
 async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -1099,6 +1141,7 @@ pub fn build_router() -> Router<AppState> {
         .route("/runs/{run_id}/events", get(run_events))
         .route("/approve", post(approve))
         .route("/approvals", get(approvals))
+        .route("/approvals/answered", get(answered_approvals).post(record_approval))
 }
 
 async fn health(State(state): State<AppState>) -> ApiResult<Response> {
@@ -1264,6 +1307,8 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/runs/{run_id}/events", "GET"),
     ("/v1/approve", "POST"),
     ("/v1/approvals", "GET"),
+    ("/v1/approvals/answered", "GET"),
+    ("/v1/approvals/answered", "POST"),
     ("/v1/relay/push", "POST"),
     ("/v1/agent-kinds", "GET"),
     ("/v1/agents/claim", "POST"),

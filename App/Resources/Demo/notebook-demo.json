@@ -1166,6 +1166,18 @@
   ],
   "health_documents": [
    {
+    "name": "Tes sorties",
+    "type": "page",
+    "page": "runs",
+    "agent": "coach",
+    "days_ago": 0,
+    "origin": "made",
+    "subjects": [
+     "Domaines/Santé.md"
+    ],
+    "linked": "Domaines/Santé.md"
+   },
+   {
     "name": "Mes prises de sang",
     "type": "page",
     "page": "blood",
@@ -2437,6 +2449,18 @@
    }
   ],
   "health_documents": [
+   {
+    "name": "Your runs",
+    "type": "page",
+    "page": "runs",
+    "agent": "coach",
+    "days_ago": 0,
+    "origin": "made",
+    "subjects": [
+     "Areas/Health.md"
+    ],
+    "linked": "Areas/Health.md"
+   },
    {
     "name": "My blood tests",
     "type": "page",
@@ -3710,6 +3734,18 @@
   ],
   "health_documents": [
    {
+    "name": "Deine Läufe",
+    "type": "page",
+    "page": "runs",
+    "agent": "coach",
+    "days_ago": 0,
+    "origin": "made",
+    "subjects": [
+     "Bereiche/Gesundheit.md"
+    ],
+    "linked": "Bereiche/Gesundheit.md"
+   },
+   {
     "name": "Meine Blutwerte",
     "type": "page",
     "page": "blood",
@@ -4981,6 +5017,18 @@
    }
   ],
   "health_documents": [
+   {
+    "name": "Tus salidas",
+    "type": "page",
+    "page": "runs",
+    "agent": "coach",
+    "days_ago": 0,
+    "origin": "made",
+    "subjects": [
+     "Áreas/Salud.md"
+    ],
+    "linked": "Áreas/Salud.md"
+   },
    {
     "name": "Mis análisis de sangre",
     "type": "page",

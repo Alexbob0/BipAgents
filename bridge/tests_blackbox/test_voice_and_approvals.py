@@ -251,6 +251,30 @@ def test_approve_forwards_to_hermes(bridge, fakes):
                        json={"agent": "wellness", "run_id": "r", "choice": "x" * 33}).status_code == 422
 
 
+def test_answered_approvals_stay_in_the_conversation(bridge, fakes):
+    """Hermes' history has no approval rows (owner 2026-10-22): the bridge keeps each decision, the one it relayed from
+    a notification and the ones an app reports, per conversation, for the apps to put back in the thread."""
+    assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": "run_9", "request_id": "req_9",
+                                                          "choice": "Once"}).status_code == 200
+    reported = bridge.post("/v1/approvals/answered", headers=AUTH, json={
+        "agent": "wellness", "session_id": "s1", "run_id": "run_10", "request_id": "q1", "command": "curl -X POST x",
+        "description": "network", "topic": "sendOut", "choice": "deny", "at": 1_800_000_000.0})
+    assert reported.status_code == 200 and reported.json()["kept"]["choice"] == "deny"
+    # answered twice (a notification, then the app): one row, the last word
+    bridge.post("/v1/approvals/answered", headers=AUTH, json={"agent": "wellness", "session_id": "s1", "run_id": "run_10",
+                                                              "request_id": "q1", "choice": "once", "at": 1_800_000_100.0})
+    rows = bridge.get("/v1/approvals/answered", params={"agent": "wellness", "session_id": "s1"}, headers=AUTH).json()["items"]
+    assert [(r["run_id"], r["choice"], r["topic"], r["via"]) for r in rows] == [("run_10", "once", "sendOut", None)]
+    everything = bridge.get("/v1/approvals/answered", params={"agent": "wellness"}, headers=AUTH).json()["items"]
+    assert {(r["run_id"], r["choice"], r["via"]) for r in everything} == {("run_9", "once", "notification"),
+                                                                           ("run_10", "once", None)}
+    assert bridge.post("/v1/approvals/answered", headers=AUTH,
+                       json={"agent": "wellness", "run_id": "r", "choice": "maybe"}).status_code == 422
+    assert bridge.post("/v1/approvals/answered", headers=AUTH,
+                       json={"agent": "ghost", "run_id": "r", "choice": "once"}).status_code == 404
+    assert bridge.get("/v1/approvals/answered", params={"agent": "wellness"}).status_code == 401
+
+
 def test_approve_with_hermes_down(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["agents"]["Wellness"].update(hermes_url=fakes.down.url)).start()
     resp = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": "r", "choice": "once"})

@@ -59,7 +59,7 @@ def test_an_html_file_from_a_sandbox_is_served_locked_like_a_page(bridges, fakes
     assert got.status_code == 200 and got.headers["content-type"].startswith("text/html")
     policy = got.headers["content-security-policy"]
     assert policy.startswith("sandbox allow-scripts;") and "connect-src 'none'" in policy
-    assert got.headers["cache-control"] == "no-store"
+    assert got.headers["cache-control"] == "no-cache"   # like a page: shown from the phone's copy, revalidated
 
 
 def test_the_workspace_and_a_finished_runs_files(bridges, fakes):
