@@ -66,7 +66,8 @@ pub fn tools(health: bool) -> Vec<Value> {
                 "section": {"type": "string", "description": "e.g. Infos, Famille, Préférences, Accords, Échanges récents, Décisions, Statut, Prochaines étapes (in the person's language)"},
                 "summary": {"type": "string", "description": "the page's new « En bref », 2–3 short lines (when what matters most changes)"},
                 "aliases": {"type": "array", "items": {"type": "string"}, "description": "other names or nicknames"},
-                "contact": {"type": "string", "description": "the phone contact's id, when you know it (from contacts_search)"}},
+                "contact": {"type": "string", "description": "the phone contact's id, when you know it (from contacts_search)"},
+                "close": {"type": "boolean", "description": "true when the person says this person is close to them (family, close friends): their dates (birthday…) are then shown in « Dates à venir »"}},
                 "required": ["page", "facts"]},
         }),
         json!({
@@ -85,14 +86,23 @@ pub fn tools(health: bool) -> Vec<Value> {
         }),
         json!({
             "name": TASK,
-            "description": "The person's important tasks in the Carnet. action add: a task, with a date when there is one \
-        (due: YYYY-MM-DD, or YYYY-MM-DDTHH:MM) and the page it belongs to; a dated task also becomes a reminder on their \
-        phone when they share their reminders with you. action done: tick one off (its id). action list: the open tasks.",
+            "description": "The person's tasks in the Carnet: few and real. A fact is not a task: a birthday or someone \
+        else's deadline is a dated fact on its page (notebook_note), never a task by itself. action add only when the person \
+        asks (« rappelle-moi… », « il faut que je… »: origin asked) or states their own commitment with a deadline (origin \
+        own); with a date (due: YYYY-MM-DD, or YYYY-MM-DDTHH:MM) it also becomes a reminder on their phone when they share \
+        their reminders with you. To suggest a task yourself, first action propose (kind, title): only when clearly useful; \
+        the Carnet says whether you may (a few a week at most, never a kind the person declined); if it gives an id, ask \
+        the person in one sentence; yes: action add with origin accepted and that proposal id; no: action decline with the \
+        id (never: true when they don't want this kind at all). action done ticks one off (its id); action list: the open ones.",
             "inputSchema": {"type": "object", "properties": {
-                "action": {"type": "string", "enum": ["add", "done", "list"]},
+                "action": {"type": "string", "enum": ["add", "done", "list", "propose", "decline"]},
                 "title": {"type": "string"},
                 "due": {"type": "string"},
                 "page": {"type": "string", "description": "the page it belongs to (a person, a subject, an area)"},
+                "origin": {"type": "string", "enum": ["asked", "own", "accepted"]},
+                "kind": {"type": "string", "enum": ["birthday", "anniversary", "gift", "follow_up", "deadline", "other"], "description": "for propose"},
+                "proposal": {"type": "string", "description": "the proposal's id (for add with origin accepted, and decline)"},
+                "never": {"type": "boolean", "description": "for decline: the person doesn't want this kind of proposal any more"},
                 "id": {"type": "string", "description": "for done: the task's id (from list)"}},
                 "required": ["action"]},
         }),
@@ -206,7 +216,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
             }
             let part = if private || (health && is_health_page) { Part::Health } else { Part::Main };
             let facts = args_list(arguments, "facts");
-            if facts.is_empty() && s(arguments, "summary").is_empty() {
+            if facts.is_empty() && s(arguments, "summary").is_empty() && arguments.get("close").is_none() {
                 return Ok(tool_text("give the facts to file", true));
             }
             match super::note(
@@ -220,7 +230,16 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                 &s(arguments, "contact"),
                 &s(arguments, "summary"),
                 &who,
-            ) {
+            )
+            .and_then(|written| {
+                // « c'est un proche »: their dates are shown (the person's word, kept on the page)
+                if let Some(Value::Bool(close)) = arguments.get("close") {
+                    if part == Part::Main {
+                        super::set_close(config, &written.path, *close, &who)?;
+                    }
+                }
+                Ok(written)
+            }) {
                 Ok(written) if written.added.is_empty() && !written.created => {
                     Ok(tool_text(&format!("Already in the Carnet ({}): nothing new to file.", written.title), false))
                 }
@@ -272,7 +291,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                 "list" => {
                     let mut lines = Vec::new();
                     for part in &parts {
-                        for task in super::tasks(config, *part).into_iter().filter(|t| !t.done) {
+                        for task in super::open_tasks(config, *part) {
                             let due = if task.due.is_empty() { String::new() } else { format!(" · due {}", task.due) };
                             lines.push(format!("- id {} · {}{due}{}", task.id, task.title, marker(*part)));
                         }
@@ -283,6 +302,18 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                         Ok(tool_text(&lines.join("\n"), false))
                     }
                 }
+                "propose" => match super::propose(config, agent, &s(arguments, "kind"), &s(arguments, "title"), &s(arguments, "due")) {
+                    Ok(id) => Ok(tool_text(
+                        &format!("You may propose it (proposal {id}): ask the person in one short sentence. Yes: action add with origin accepted and proposal {id}. No: action decline with proposal {id} (never: true if they don't want this kind at all)."),
+                        false,
+                    )),
+                    Err(err) => caught(err),
+                },
+                "decline" => match super::decline(config, &s(arguments, "proposal"), arguments.get("never").map(crate::py::truthy).unwrap_or(false), &who) {
+                    Ok(Some(fact)) => Ok(tool_text(&format!("Noted: no more proposals of this kind (in the Carnet: « {fact} »)."), false)),
+                    Ok(None) => Ok(tool_text("Noted: not added.", false)),
+                    Err(err) => caught(err),
+                },
                 "add" => {
                     let part = if private { Part::Health } else { Part::Main };
                     match super::add_task(
@@ -291,6 +322,8 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                         &s(arguments, "title"),
                         &s(arguments, "due"),
                         &s(arguments, "page"),
+                        &s(arguments, "origin"),
+                        &s(arguments, "proposal"),
                         &who,
                     ) {
                         Ok((task, reminder)) => {
@@ -315,7 +348,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                     Ok(None) => Ok(tool_text("unknown task id (action list gives them)", true)),
                     Err(err) => caught(err),
                 },
-                _ => Ok(tool_text("action is add, done or list", true)),
+                _ => Ok(tool_text("action is add, done, list, propose or decline", true)),
             }
         }
         _ => Ok(tool_text(&format!("unknown tool: {name}"), true)),

@@ -40,12 +40,14 @@ pub const INSTRUCTIONS: &str = "You tidy a person's notebook (their « Carnet »
 the names of its pages, then excerpts of today's conversations between the person and their agents that the agents \
 did not file, and maybe lines « to sort » copied from the agents' memories. File only durable facts worth finding \
 again: about a person (birthday, family, preferences, what was agreed), a subject or project (decisions, status, next \
-steps), an area of life, and important tasks with a date. Skip small talk, one-off questions, passwords and codes, and \
+steps), an area of life. A fact is not a task: a birthday or someone else's deadline is a dated fact on its page. \
+Add a task only when the person asked for it (« remind me… », « I have to… »: origin asked) or stated their own \
+commitment with a deadline (origin own); never invent one. Skip small talk, one-off questions, passwords and codes, and \
 anything the person asked not to keep. Use an existing page's exact name when the fact is about it. Write each fact \
 short, in the person's language. Health facts: only from turns marked (health agent), with \"private\": true; never \
 otherwise. Answer with JSON lines only, one per line, nothing else:
 {\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area\", \"page\": \"<name>\", \"section\": \"<section>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
-{\"op\": \"task\", \"agent\": \"<agent id>\", \"title\": \"...\", \"due\": \"YYYY-MM-DD\", \"page\": \"<name, optional>\"}
+{\"op\": \"task\", \"agent\": \"<agent id>\", \"origin\": \"asked|own\", \"title\": \"...\", \"due\": \"YYYY-MM-DD\", \"page\": \"<name, optional>\"}
 {\"op\": \"merge\", \"from\": \"<page name>\", \"into\": \"<page name>\"}   (two pages about the same person or subject)
 Nothing worth filing: answer nothing.";
 
@@ -339,6 +341,15 @@ async fn run_inner(
     record.insert("eur".into(), json!(0.0));
     record.insert("applied".into(), json!(0));
     // the agents' memories, copied once (no model)
+    // accepted proposals left untouched long after their date: archived (no model)
+    let archived = tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::archive_stale(&c, Local::now().date_naive())
+    })
+    .await??;
+    if archived > 0 {
+        record.insert("archived".into(), json!(archived));
+    }
     let seeded = tokio::task::spawn_blocking({
         let c = config.clone();
         move || super::seed(&c)
@@ -568,7 +579,11 @@ pub fn apply(
                 super::note_locked(config, part, &kind, &page, &s("section"), &facts, &[], "", &s("summary"), &who)
                     .map(|w| !w.added.is_empty() || w.created)
             }
-            "task" => super::add_task_locked(config, part, &s("title"), &s("due"), &page, &who).map(|_| true),
+            "task" => {
+                // only what the person asked or committed to (never a proposal: that is the agents', with the person)
+                let origin = if s("origin") == "own" { "own" } else { "asked" };
+                super::add_task_locked(config, part, &s("title"), &s("due"), &page, origin, "", &who).map(|_| true)
+            }
             "merge" => super::merge_locked(config, Part::Main, &s("from"), &s("into"), &who).map(|m| m.is_some()),
             _ => Ok(false),
         };

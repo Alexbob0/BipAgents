@@ -188,7 +188,10 @@ pub const NOTEBOOK_END: &str = "<!-- /bipagents:notebook -->";
 pub const NOTEBOOK_RULE: &str = concat!(
     "You keep your person's Carnet (their notebook, shared by all their agents) with the notebook tools. Without being ",
     "asked, file what will still matter later: about a person (birthday, family, preferences, what was agreed), a ",
-    "subject or project (decisions, status, next steps), important tasks with their date. Don't file small talk, ",
+    "subject or project (decisions, status, next steps). A fact is not a task: a birthday or someone else's deadline is ",
+    "a dated fact on its page. Add a task only when your person asks (« rappelle-moi… ») or states their own commitment ",
+    "with a deadline; propose one yourself only when clearly useful, through the tool (it says when you may), and never ",
+    "again a kind they declined. Don't file small talk, ",
     "one-off questions, passwords or codes (the vault keeps those), or anything your person asks you not to keep. ",
     "Search first and update the page that exists rather than making another; correct facts that changed, and refresh ",
     "the page's « En bref » summary when what matters most changes. After filing, tell your person in one short line ",

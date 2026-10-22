@@ -13,6 +13,9 @@
 //!     GET    /v1/notebook/tasks                open and recent tasks
 //!     POST   /v1/notebook/tasks                {title, due?, page?, private?}
 //!     POST   /v1/notebook/tasks/{id}           {done}
+//!     GET    /v1/notebook/dates?days=&all=     « Dates à venir »: dated facts (close people's by default), not tasks
+//!     POST   /v1/notebook/close                {path, close}   a person marked close (« proche ») or not
+//!     GET    /v1/notebook/proposals            the agents' task proposals, the kinds declined
 //!     GET    /v1/notebook/documents            the files the agents made or received, by agent, with their subjects
 //!     GET    /v1/notebook/settings             {mentions, nightly, language, cap…}
 //!     PATCH  /v1/notebook/settings             {mentions?, nightly?, language? (only while the Carnet is empty)}
@@ -83,18 +86,21 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
             let count = pages.iter().filter(|(_, p)| p.kind() == kind).count();
             sections.push(json!({"kind": kind, "title": folder, "count": count}));
         }
-        let tasks = super::tasks(&config, Part::Main);
-        let open: Vec<&super::Task> = tasks.iter().filter(|t| !t.done).collect();
+        // the open tasks that count: archived ones left out, the person's own first
+        let open = super::open_tasks(&config, Part::Main);
         sections.push(json!({"kind": "tasks", "title": w.tasks, "count": open.len()}));
         let documents = super::documents(&config);
         sections.push(json!({"kind": "documents", "title": w.documents, "count": documents.len()}));
         let (_, inbox) = super::inbox(&config);
         let recent: Vec<Value> =
             super::history(&config, Some(Part::Main), None, 20).iter().map(|e| change_view(&config, e)).collect();
-        let mut upcoming: Vec<&super::Task> = open.iter().copied().filter(|t| !t.due.is_empty()).collect();
+        let mut upcoming: Vec<&super::Task> = open.iter().filter(|t| !t.due.is_empty()).collect();
         upcoming.sort_by(|a, b| a.due.cmp(&b.due));
         let upcoming: Vec<Value> = upcoming.iter().take(10).map(|t| t.view()).collect();
+        // « Dates à venir »: close people's dated facts in the next 30 days (facts, not tasks)
+        let dates = super::upcoming_dates(&config, 30, false, chrono::Local::now().date_naive());
         Ok(json!({"language": lang, "sections": sections, "recent": recent, "upcoming": upcoming,
+                  "dates": dates.into_iter().take(10).collect::<Vec<_>>(),
                   "inbox": inbox.len(), "settings": settings_view(&config)}))
     })
     .await?;
@@ -237,7 +243,8 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
               "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
               "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
               "summary": super::summary_of(&page.body, w.brief), "sections": sections, "links": links,
-              "backlinks": backlinks, "tasks": tasks, "text": text}))
+              "backlinks": backlinks, "tasks": tasks, "id": page.id(), "close": page.close(),
+              "shared_with": super::shares_of(config, part, path, &page), "text": text}))
 }
 
 async fn read_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -320,10 +327,10 @@ async fn list_tasks(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
     let part = part_of(&q);
     let view = blocking(move || {
         let all = super::tasks(&config, part);
-        let mut open: Vec<&super::Task> = all.iter().filter(|t| !t.done).collect();
-        open.sort_by(|a, b| (a.due.is_empty(), &a.due).cmp(&(b.due.is_empty(), &b.due)));
+        let open: Vec<Value> = super::open_tasks(&config, part).iter().map(|t| t.view()).collect();
         let done: Vec<Value> = all.iter().rev().filter(|t| t.done).take(50).map(|t| t.view()).collect();
-        Ok(json!({"open": open.iter().map(|t| t.view()).collect::<Vec<_>>(), "done": done}))
+        let archived: Vec<Value> = all.iter().filter(|t| t.archived && !t.done).map(|t| t.view()).collect();
+        Ok(json!({"open": open, "done": done, "archived": archived}))
     })
     .await?;
     Ok(web::ok(view))
@@ -359,6 +366,8 @@ async fn add_task(State(state): State<AppState>, Json(body): Json<NewTask>) -> A
             &body.title,
             body.due.as_deref().unwrap_or(""),
             body.page.as_deref().unwrap_or(""),
+            "asked",
+            "",
             &Who::you(&config),
         )
     })
@@ -402,6 +411,54 @@ async fn set_task(
         wake(push, &state.config());
     }
     Ok(web::ok(json!({"task": task.view()})))
+}
+
+/// « Dates à venir »: dated facts (birthdays, anniversaries, deadlines of others), never tasks. `days` (default 60,
+/// at most 366); `all=1`: every page, not only the close people's.
+async fn dates(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let days = q.get("days").and_then(|d| d.parse::<i64>().ok()).unwrap_or(60).clamp(1, 366);
+    let all = matches!(q.get("all"), Some("1" | "true" | "yes"));
+    let view = blocking(move || {
+        Ok(json!({"dates": super::upcoming_dates(&config, days, all, chrono::Local::now().date_naive())}))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Close {
+    pub path: String,
+    #[serde(deserialize_with = "web::lax::bool")]
+    pub close: bool,
+}
+
+impl Validate for Close {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "path", Some(&self.path), 300);
+    }
+}
+
+/// A person marked close (« proche ») or not, by the person.
+async fn set_close(State(state): State<AppState>, Json(body): Json<Close>) -> ApiResult<Response> {
+    let config = state.config();
+    let path = blocking(move || super::set_close(&config, &body.path, body.close, &Who::you(&config))).await?;
+    match path {
+        Some(path) => Ok(web::ok(json!({"path": path}))),
+        None => Err(HttpError::new(404, "no such page")),
+    }
+}
+
+/// The agents' task proposals (open, accepted, declined) and the kinds the person declined.
+async fn proposals(State(state): State<AppState>) -> ApiResult<Response> {
+    let config = state.config();
+    let view = blocking(move || {
+        let mut all = super::proposals(&config);
+        all.reverse();
+        Ok(json!({"proposals": all, "declined": super::declined(&config), "per_week": super::PROPOSALS_PER_WEEK}))
+    })
+    .await?;
+    Ok(web::ok(view))
 }
 
 async fn documents(State(state): State<AppState>) -> ApiResult<Response> {
@@ -542,6 +599,9 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/tasks", get(list_tasks).post(add_task))
         .route("/notebook/tasks/{id}", post(set_task))
         .route("/notebook/documents", get(documents))
+        .route("/notebook/dates", get(dates))
+        .route("/notebook/close", post(set_close))
+        .route("/notebook/proposals", get(proposals))
         .route("/notebook/settings", get(get_settings).patch(set_settings))
         .route("/notebook/export", get(export))
         .route("/notebook/tidy", post(tidy_now))

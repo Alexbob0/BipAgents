@@ -38,6 +38,7 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
+use chrono::Datelike;
 use regex::Regex;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -84,6 +85,10 @@ pub struct Words {
     pub private: &'static str,
     /// The short summary every page starts with (its first section).
     pub brief: &'static str,
+    /// The tasks page's section for proposed tasks left untouched long after their date (never deleted).
+    pub archived: &'static str,
+    /// The area page where the person's preferences about the Carnet go (« Pas de rappels pour les anniversaires »).
+    pub preferences: &'static str,
 }
 
 pub const WORDS: [Words; 4] = [
@@ -100,6 +105,8 @@ pub const WORDS: [Words; 4] = [
         health: "Santé",
         private: "Santé (privé)",
         brief: "En bref",
+        archived: "Archivées",
+        preferences: "Préférences",
     },
     Words {
         lang: "en",
@@ -114,6 +121,8 @@ pub const WORDS: [Words; 4] = [
         health: "Health",
         private: "Health (private)",
         brief: "In brief",
+        archived: "Archived",
+        preferences: "Preferences",
     },
     Words {
         lang: "de",
@@ -128,6 +137,8 @@ pub const WORDS: [Words; 4] = [
         health: "Gesundheit",
         private: "Gesundheit (privat)",
         brief: "Kurz gesagt",
+        archived: "Archiviert",
+        preferences: "Vorlieben",
     },
     Words {
         lang: "es",
@@ -142,6 +153,8 @@ pub const WORDS: [Words; 4] = [
         health: "Salud",
         private: "Salud (privado)",
         brief: "En resumen",
+        archived: "Archivadas",
+        preferences: "Preferencias",
     },
 ];
 
@@ -528,6 +541,7 @@ fn yaml_value(key: &str, value: &Value) -> String {
 impl Page {
     pub fn new(kind: &str, title: &str) -> Page {
         let mut front = Dict::new();
+        front.insert("id".into(), json!(new_page_id()));
         front.insert("type".into(), json!(kind));
         front.insert("aliases".into(), json!([]));
         Page { front, title: title.to_string(), body: String::new() }
@@ -581,6 +595,27 @@ impl Page {
             out.push('\n');
         }
         out
+    }
+
+    /// The page's stable id (`p` and 10 hex digits in its frontmatter): it survives renames and moves, for links
+    /// from outside the vault (a family share of this page, later).
+    pub fn id(&self) -> String {
+        tk::str_or_empty(self.front.get("id"))
+    }
+
+    /// An id given to a page that has none yet (made in Obsidian, or before ids): first in its frontmatter.
+    pub fn ensure_id(&mut self) {
+        if self.id().is_empty() {
+            let mut front = Dict::new();
+            front.insert("id".into(), json!(new_page_id()));
+            front.extend(std::mem::take(&mut self.front));
+            self.front = front;
+        }
+    }
+
+    /// A person close to the person (`close: true`, or `proche: true` written by hand): their dates are shown.
+    pub fn close(&self) -> bool {
+        ["close", "proche"].iter().any(|k| self.front.get(*k).map(py::truthy).unwrap_or(false))
     }
 
     pub fn kind(&self) -> String {
@@ -903,6 +938,36 @@ pub fn find(config: &Config, parts: &[Part], query: &str) -> Option<Found> {
     None
 }
 
+// -- family shares (phase 2: storage only) --------------------------------------------------------------------------
+//
+// The owner, 2026-10-22: the person shares only what they select with their family, read-only: a page, or a whole
+// folder (« Domaines/Famille », a subject with its pages) including pages added to it later. Kept in state.json
+// (`shares`): `{"pages": {<page id>: [<household member>…]}, "folders": {<folder path>: [...]}}` — a page by its stable
+// id (it survives renames and moves), a folder by its path in the vault. The private health part is never shared,
+// neither as a whole nor page by page. The transport between family places is not built yet.
+
+/// Who a page is shared with: its own list and its folder's (inherited), each once. Empty for the health part.
+pub fn shares_of(config: &Config, part: Part, path: &str, page: &Page) -> Vec<String> {
+    if part == Part::Health {
+        return Vec::new();
+    }
+    let state = read_state(config);
+    let shares = state.get("shares").cloned().unwrap_or(json!({}));
+    let mut out = strings(shares.get("pages").and_then(|p| p.get(page.id())));
+    if let Some((folder, _)) = path.rsplit_once('/') {
+        for who in strings(shares.get("folders").and_then(|f| f.get(folder))) {
+            if !out.contains(&who) {
+                out.push(who);
+            }
+        }
+    }
+    out
+}
+
+pub fn new_page_id() -> String {
+    format!("p{}", py::token_hex(5))
+}
+
 // -- history -------------------------------------------------------------------------------------------------------
 
 fn version_id(text: &str) -> String {
@@ -1112,6 +1177,7 @@ pub(crate) fn note_locked(
             (path, None, Page::new(kind, &title), true)
         }
     };
+    page.ensure_id();
     let mut names = page.aliases();
     names.extend(aliases.iter().cloned());
     if !created && fold(&title) != fold(&page.title) && !page.named(&title) {
@@ -1299,6 +1365,22 @@ pub fn merge_locked(config: &Config, part: Part, from: &str, into: &str, who: &W
 }
 
 // -- tasks ---------------------------------------------------------------------------------------------------------
+//
+// Few and real (the owner, 2026-10-22: « sinon ça sera rempli de fausses tâches »). A fact is not a task: a
+// birthday or someone else's deadline stays a dated fact on its page (`upcoming_dates`). A task exists only when the
+// person asks (« rappelle-moi… »: origin `asked`), states their own commitment with a deadline (`own`), or accepts a
+// proposal from an agent (`accepted`); proposals are budgeted per install (`propose`) and a declined kind is not
+// proposed again. Accepted proposals left untouched long after their date are archived by the nightly pass (a section
+// of the tasks page, never deleted, not counted).
+
+/// Where a task comes from.
+pub const ORIGINS: [&str; 3] = ["asked", "own", "accepted"];
+/// Proposals an agent may make, per install, in 7 days.
+pub const PROPOSALS_PER_WEEK: usize = 3;
+/// What an agent may propose.
+pub const PROPOSAL_KINDS: [&str; 6] = ["birthday", "anniversary", "gift", "follow_up", "deadline", "other"];
+/// An accepted proposal still open this many days after its date (or after it was made, without a date): archived.
+pub const ARCHIVE_AFTER_DAYS: i64 = 14;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Task {
@@ -1311,6 +1393,10 @@ pub struct Task {
     pub who: String,
     pub date: String,
     pub part: Part,
+    /// asked, own or accepted (a task written by hand in Obsidian counts as asked).
+    pub origin: String,
+    /// Under the tasks page's « Archivées ».
+    pub archived: bool,
 }
 
 static TASK: LazyLock<Regex> =
@@ -1338,6 +1424,8 @@ impl Task {
             who,
             date,
             part,
+            origin: "asked".into(),
+            archived: false,
         })
     }
 
@@ -1361,15 +1449,53 @@ impl Task {
     pub fn view(&self) -> Value {
         json!({"id": self.id, "title": self.title, "due": if self.due.is_empty() { Value::Null } else { json!(self.due) },
                "done": self.done, "done_on": if self.done_on.is_empty() { Value::Null } else { json!(self.done_on) },
-               "links": self.links, "by": self.who, "date": self.date, "part": self.part.as_str()})
+               "links": self.links, "by": self.who, "date": self.date, "part": self.part.as_str(),
+               "origin": self.origin, "archived": self.archived})
     }
 }
 
-/// The tasks of a part, in the page's order.
+fn task_meta(state: &Dict) -> Dict {
+    match state.get("tasks") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Dict::new(),
+    }
+}
+
+/// A tasks page's tasks, those under its archive section marked so; their origin from the state.
+fn tasks_in(body: &str, part: Part, archived: &str, meta: &Dict) -> Vec<Task> {
+    let mut out = Vec::new();
+    let mut in_archive = false;
+    for line in body.lines() {
+        if let Some(name) = line.strip_prefix("## ") {
+            in_archive = fold(name) == fold(archived);
+            continue;
+        }
+        if let Some(mut task) = Task::parse(line, part) {
+            task.archived = in_archive;
+            if let Some(origin) = meta.get(&task.id).and_then(|m| m.get("origin")).and_then(Value::as_str) {
+                task.origin = origin.to_string();
+            }
+            out.push(task);
+        }
+    }
+    out
+}
+
+/// The tasks of a part, in the page's order (archived ones included, marked).
 pub fn tasks(config: &Config, part: Part) -> Vec<Task> {
     let w = words(&language(config));
     let text = read_page_text(config, part, &w.tasks_path()).unwrap_or_default();
-    text.lines().filter_map(|l| Task::parse(l, part)).collect()
+    tasks_in(&text, part, w.archived, &task_meta(&read_state(config)))
+}
+
+/// The open tasks that count (not archived), what the person asked or committed to first, then by date.
+pub fn open_tasks(config: &Config, part: Part) -> Vec<Task> {
+    let mut open: Vec<Task> = tasks(config, part).into_iter().filter(|t| !t.done && !t.archived).collect();
+    open.sort_by(|a, b| {
+        let rank = |t: &Task| if t.origin == "accepted" { 1 } else { 0 };
+        (rank(a), a.due.is_empty(), &a.due).cmp(&(rank(b), b.due.is_empty(), &b.due))
+    });
+    open
 }
 
 /// `2026-10-25` or `2026-10-25T09:00…`: the date, checked.
@@ -1387,33 +1513,52 @@ pub fn due_date(due: &str) -> anyhow::Result<String> {
     Ok(m.as_str().to_string())
 }
 
-/// A new task in the part's tasks page; with a date, it also becomes a phone reminder (when the person shares their
-/// reminders with this agent, or it is the person's own task). `reminder_due`: the date or date-time the phone gets.
+/// A new task in the part's tasks page (`origin`: asked, own or accepted — accepted needs the proposal's id);
+/// with a date, it also becomes a phone reminder (when the person shares their reminders with this agent, or it is
+/// the person's own task). `due` may carry a time, which the phone gets.
+#[allow(clippy::too_many_arguments)]
 pub fn add_task(
     config: &Config,
     part: Part,
     title: &str,
     due: &str,
     page: &str,
+    origin: &str,
+    proposal: &str,
     who: &Who,
 ) -> anyhow::Result<(Task, bool)> {
     let _guard = lock();
-    add_task_locked(config, part, title, due, page, who)
+    add_task_locked(config, part, title, due, page, origin, proposal, who)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn add_task_locked(
     config: &Config,
     part: Part,
     title: &str,
     due: &str,
     page: &str,
+    origin: &str,
+    proposal: &str,
     who: &Who,
 ) -> anyhow::Result<(Task, bool)> {
     let lang = fix_language(config)?;
     let w = words(&lang);
+    let origin = if origin.trim().is_empty() { "asked" } else { origin.trim() };
+    if !ORIGINS.contains(&origin) {
+        return refuse("origin is asked (the person asked), own (their own commitment with a deadline) or accepted (they said yes to your proposal)");
+    }
     let title = tk::head(&tk::squeeze(title.replace(['\n', '^'], " ").trim()), 300).to_string();
     if title.is_empty() {
         return refuse("a task needs a title");
+    }
+    if origin == "accepted" {
+        let open = proposals(config)
+            .into_iter()
+            .any(|p| tk::str_or_empty(p.get("id")) == proposal.trim() && tk::str_or_empty(p.get("state")) == "open");
+        if !open {
+            return refuse("an accepted task needs the id of the proposal the person said yes to (notebook_task action propose gives it)");
+        }
     }
     let date = due_date(due)?;
     let path = w.tasks_path();
@@ -1426,8 +1571,9 @@ pub(crate) fn add_task_locked(
             p
         }
     };
-    let existing: Vec<Task> = doc.body.lines().filter_map(|l| Task::parse(l, part)).collect();
-    if let Some(same) = existing.iter().find(|t| !t.done && fold(&t.title) == fold(&title) && t.due == date) {
+    let existing = tasks_in(&doc.body, part, w.archived, &task_meta(&read_state(config)));
+    if let Some(same) = existing.iter().find(|t| !t.done && fold(&t.title).starts_with(&fold(&title)) && t.due == date)
+    {
         return Ok((same.clone(), false));
     }
     let mut title_line = title.clone();
@@ -1446,12 +1592,37 @@ pub(crate) fn add_task_locked(
         who: who.name.replace(['*', ','], " ").trim().to_string(),
         date: today(),
         part,
+        origin: origin.to_string(),
+        archived: false,
     };
+    // the open tasks above the archive section
     let mut lines = body_lines(&doc.body);
-    lines.push(task.render());
+    let at = section_index(&lines, w.archived).map(|i| {
+        let mut at = i;
+        while at > 0 && lines[at - 1].trim().is_empty() {
+            at -= 1;
+        }
+        at
+    });
+    match at {
+        Some(at) => lines.insert(at, task.render()),
+        None => lines.push(task.render()),
+    }
     doc.body = lines.join("\n") + "\n";
     doc.touch();
     commit(config, part, &path, before.as_deref(), Some(&doc.render()), who, "task_add", &title)?;
+    let (id, proposal) = (task.id.clone(), proposal.trim().to_string());
+    update_state(config, |s| {
+        let mut meta = task_meta(s);
+        meta.insert(
+            id,
+            json!({"origin": origin, "proposal": if proposal.is_empty() { Value::Null } else { json!(proposal) }}),
+        );
+        s.insert("tasks".into(), Value::Object(meta));
+        if !proposal.is_empty() {
+            set_proposal_state(s, &proposal, "accepted");
+        }
+    })?;
     let task = Task { links: links_in(&task.title), ..task };
     let linked = if task.due.is_empty() { false } else { link_reminder(config, &task, due, who)? };
     Ok((task, linked))
@@ -1506,6 +1677,374 @@ fn set_task_done_locked(
         return Ok(Some(task));
     }
     Ok(None)
+}
+
+/// Accepted proposals still open `ARCHIVE_AFTER_DAYS` after their date (or after they were made) moved under the
+/// tasks page's « Archivées » (the nightly pass; free). Returns how many.
+pub fn archive_stale(config: &Config, today_date: chrono::NaiveDate) -> anyhow::Result<usize> {
+    let _guard = lock();
+    let w = words(&language(config));
+    let path = w.tasks_path();
+    let meta = task_meta(&read_state(config));
+    let mut moved = 0;
+    for part in [Part::Main, Part::Health] {
+        let Some(before) = read_page_text(config, part, &path) else { continue };
+        let mut doc = Page::parse(&before, w.tasks);
+        let all = tasks_in(&doc.body, part, w.archived, &meta);
+        let stale: Vec<String> = all
+            .iter()
+            .filter(|t| !t.done && !t.archived && t.origin == "accepted")
+            .filter(|t| {
+                let since = if t.due.is_empty() { &t.date } else { &t.due };
+                chrono::NaiveDate::parse_from_str(since, "%Y-%m-%d")
+                    .map(|d| (today_date - d).num_days() > ARCHIVE_AFTER_DAYS)
+                    .unwrap_or(false)
+            })
+            .map(|t| t.id.clone())
+            .collect();
+        if stale.is_empty() {
+            continue;
+        }
+        let mut lines = body_lines(&doc.body);
+        let mut taken: Vec<String> = Vec::new();
+        lines.retain(|l| {
+            let hit = Task::parse(l, part).is_some_and(|t| stale.contains(&t.id));
+            if hit {
+                taken.push(l.clone());
+            }
+            !hit
+        });
+        match section_index(&lines, w.archived) {
+            Some(start) => {
+                let end = section_end(&lines, start);
+                for (n, l) in taken.iter().enumerate() {
+                    lines.insert(end + n, l.clone());
+                }
+            }
+            None => {
+                lines.push(String::new());
+                lines.push(format!("## {}", w.archived));
+                lines.extend(taken.iter().cloned());
+            }
+        }
+        doc.body = lines.join("\n") + "\n";
+        doc.touch();
+        let who = Who { by: "nightly".into(), name: w.archived.into(), agent: None };
+        commit(
+            config,
+            part,
+            &path,
+            Some(&before),
+            Some(&doc.render()),
+            &who,
+            "archive",
+            &format!("{} tasks", taken.len()),
+        )?;
+        moved += taken.len();
+    }
+    Ok(moved)
+}
+
+// -- proposals ------------------------------------------------------------------------------------------------------
+
+/// The proposals made (the last ones kept): {id, agent, kind, title, due, at, state: open|accepted|declined}.
+pub fn proposals(config: &Config) -> Vec<Dict> {
+    match read_state(config).get("proposals") {
+        Some(Value::Array(items)) => items.iter().filter_map(|v| v.as_object().cloned()).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn set_proposal_state(state: &mut Dict, id: &str, to: &str) {
+    if let Some(Value::Array(items)) = state.get_mut("proposals") {
+        for item in items.iter_mut() {
+            if item.get("id").and_then(Value::as_str) == Some(id) {
+                item["state"] = json!(to);
+            }
+        }
+    }
+}
+
+/// The kinds of proposals the person declined (none is proposed again).
+pub fn declined(config: &Config) -> Vec<String> {
+    strings(read_state(config).get("declined"))
+}
+
+/// Whether an agent may propose a task now: Ok(the proposal's id) within the week's budget and for a kind the person
+/// did not decline; Err(why not) otherwise (a refusal for the agent: then it doesn't propose).
+pub fn propose(config: &Config, agent: &str, kind: &str, title: &str, due: &str) -> anyhow::Result<String> {
+    let _guard = lock();
+    let kind = kind.trim();
+    if !PROPOSAL_KINDS.contains(&kind) {
+        return refuse(format!("kind is one of {}", PROPOSAL_KINDS.join(", ")));
+    }
+    if declined(config).iter().any(|k| k == kind) {
+        return refuse(format!(
+            "The person doesn't want proposals of this kind ({kind}): don't propose it. If they ask, add it as asked."
+        ));
+    }
+    let week_ago = chrono::Utc::now() - chrono::Duration::days(7);
+    let recent = proposals(config)
+        .iter()
+        .filter(|p| {
+            chrono::DateTime::parse_from_rfc3339(&tk::str_or_empty(p.get("at"))).map(|d| d > week_ago).unwrap_or(false)
+        })
+        .count();
+    if recent >= PROPOSALS_PER_WEEK {
+        return refuse("Enough tasks were proposed to the person this week: don't propose this one.");
+    }
+    let id = format!("q{}", py::token_hex(4));
+    let item = json!({"id": id, "agent": agent, "kind": kind, "title": tk::head(&tk::squeeze(title), 300),
+                      "due": tk::head(due.trim(), 40), "at": tk::now_iso_seconds(), "state": "open"});
+    update_state(config, |s| {
+        let mut all = match s.get("proposals") {
+            Some(Value::Array(a)) => a.clone(),
+            _ => Vec::new(),
+        };
+        all.push(item);
+        let excess = all.len().saturating_sub(100);
+        all.drain(..excess);
+        s.insert("proposals".into(), Value::Array(all));
+    })?;
+    Ok(id)
+}
+
+/// The person said no to a proposal: closed, and with `never` its kind is not proposed again, written as a
+/// preference on the Carnet's « Préférences » page (readable and undoable by the person).
+pub fn decline(config: &Config, proposal: &str, never: bool, who: &Who) -> anyhow::Result<Option<String>> {
+    let _guard = lock();
+    let Some(found) = proposals(config).into_iter().find(|p| tk::str_or_empty(p.get("id")) == proposal.trim()) else {
+        return refuse("unknown proposal id");
+    };
+    let kind = tk::str_or_empty(found.get("kind"));
+    update_state(config, |s| {
+        set_proposal_state(s, proposal.trim(), "declined");
+        if never {
+            let mut kinds = strings(s.get("declined"));
+            if !kinds.contains(&kind) {
+                kinds.push(kind.clone());
+            }
+            s.insert("declined".into(), json!(kinds));
+        }
+    })?;
+    if !never {
+        return Ok(None);
+    }
+    let lang = language(config);
+    let fact = no_proposals_fact(&lang, &kind);
+    let w = words(&lang);
+    note_locked(config, Part::Main, "area", w.preferences, w.notes, std::slice::from_ref(&fact), &[], "", "", who)?;
+    Ok(Some(fact))
+}
+
+fn no_proposals_fact(lang: &str, kind: &str) -> String {
+    let index = PROPOSAL_KINDS.iter().position(|k| *k == kind).unwrap_or(5);
+    let names: [[&str; 6]; 4] = [
+        [
+            "anniversaires",
+            "fêtes et anniversaires de mariage",
+            "cadeaux",
+            "relances",
+            "échéances",
+            "ce genre de tâches",
+        ],
+        ["birthdays", "anniversaries", "gifts", "follow-ups", "deadlines", "this kind of task"],
+        ["Geburtstage", "Jahrestage", "Geschenke", "Nachfassen", "Fristen", "diese Art von Aufgaben"],
+        ["cumpleaños", "aniversarios", "regalos", "seguimientos", "plazos", "este tipo de tareas"],
+    ];
+    let (row, prefix) = match lang {
+        "fr" => (0, "Pas de propositions de tâches pour les"),
+        "de" => (2, "Keine Aufgabenvorschläge für"),
+        "es" => (3, "Sin propuestas de tareas para"),
+        _ => (1, "No task proposals for"),
+    };
+    let name = names[row][index];
+    if index == 5 {
+        let _ = prefix;
+        return match lang {
+            "fr" => "Pas de propositions pour ce genre de tâches".into(),
+            "de" => "Keine Vorschläge für diese Art von Aufgaben".into(),
+            "es" => "Sin propuestas para este tipo de tareas".into(),
+            _ => "No proposals for this kind of task".into(),
+        };
+    }
+    format!("{prefix} {name}")
+}
+
+// -- dates to come ----------------------------------------------------------------------------------------------------
+
+const MONTHS: [(&str, u32); 52] = [
+    ("janvier", 1),
+    ("fevrier", 2),
+    ("mars", 3),
+    ("avril", 4),
+    ("mai", 5),
+    ("juin", 6),
+    ("juillet", 7),
+    ("aout", 8),
+    ("septembre", 9),
+    ("octobre", 10),
+    ("novembre", 11),
+    ("decembre", 12),
+    ("january", 1),
+    ("february", 2),
+    ("march", 3),
+    ("april", 4),
+    ("may", 5),
+    ("june", 6),
+    ("july", 7),
+    ("august", 8),
+    ("september", 9),
+    ("october", 10),
+    ("november", 11),
+    ("december", 12),
+    ("januar", 1),
+    ("februar", 2),
+    ("marz", 3),
+    ("juni", 6),
+    ("juli", 7),
+    ("oktober", 10),
+    ("dezember", 12),
+    ("enero", 1),
+    ("febrero", 2),
+    ("marzo", 3),
+    ("abril", 4),
+    ("mayo", 5),
+    ("junio", 6),
+    ("julio", 7),
+    ("agosto", 8),
+    ("septiembre", 9),
+    ("octubre", 10),
+    ("noviembre", 11),
+    ("diciembre", 12),
+    ("jan", 1),
+    ("feb", 2),
+    ("mar", 3),
+    ("apr", 4),
+    ("jun", 6),
+    ("jul", 7),
+    ("aug", 8),
+    ("sep", 9),
+    ("oct", 10),
+];
+
+static ISO_DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(\d{4})-(\d{2})-(\d{2})\b").expect("valid regex"));
+static DAY_MONTH: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b(\d{1,2})(?:er|st|nd|rd|th|\.)?\s+([a-z]{3,10})\b(?:\s+(\d{4}))?").expect("valid regex")
+});
+static MONTH_DAY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b([a-z]{3,10})\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?").expect("valid regex")
+});
+static NUMERIC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\b").expect("valid regex"));
+static YEARLY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)anniv|birthday|geburtstag|cumple|f[eê]te|name ?day|jahrestag|aniversario|mariage|wedding|hochzeit|boda",
+    )
+    .expect("valid regex")
+});
+
+/// A date in a fact: (month, day, year when given). Day-month order first (« 14 novembre », « 14/11 »).
+pub fn date_in(text: &str) -> Option<(u32, u32, Option<i32>)> {
+    if let Some(c) = ISO_DATE.captures(text) {
+        return Some((c[2].parse().ok()?, c[3].parse().ok()?, c[1].parse().ok()));
+    }
+    let folded = tk::ascii_fold(&text.to_lowercase());
+    let month = |name: &str| MONTHS.iter().find(|(m, _)| *m == name).map(|(_, n)| *n);
+    for c in DAY_MONTH.captures_iter(&folded) {
+        if let (Ok(day), Some(m)) = (c[1].parse::<u32>(), month(&c[2])) {
+            return Some((m, day, c.get(3).and_then(|y| y.as_str().parse().ok())));
+        }
+    }
+    for c in MONTH_DAY.captures_iter(&folded) {
+        if let (Some(m), Ok(day)) = (month(&c[1]), c[2].parse::<u32>()) {
+            return Some((m, day, c.get(3).and_then(|y| y.as_str().parse().ok())));
+        }
+    }
+    if let Some(c) = NUMERIC.captures(&folded) {
+        let (day, m): (u32, u32) = (c[1].parse().ok()?, c[2].parse().ok()?);
+        if (1..=12).contains(&m) && (1..=31).contains(&day) {
+            return Some((m, day, c.get(3).and_then(|y| y.as_str().parse().ok())));
+        }
+    }
+    None
+}
+
+/// The dated facts coming in the next `days` days: birthdays and other yearly dates (a fact naming one, or a date
+/// without a year) at their next occurrence, one-off dates when still ahead. Only close people's pages unless `all`
+/// (then every person, subject and area). Never tasks: the app shows them as « Dates à venir ».
+pub fn upcoming_dates(config: &Config, days: i64, all: bool, today_date: chrono::NaiveDate) -> Vec<Value> {
+    let w = words(&language(config));
+    let mut out: Vec<(i64, Value)> = Vec::new();
+    for (path, page) in all_pages(config, Part::Main) {
+        let kind = page.kind();
+        if !KINDS.contains(&kind.as_str()) || (!all && !(kind == "person" && page.close())) {
+            continue;
+        }
+        for (section, facts) in page.sections() {
+            if fold(&section) == fold(w.brief) {
+                continue;
+            }
+            for fact in facts {
+                let Some((month, day, year)) = date_in(&fact.text) else { continue };
+                let yearly = YEARLY.is_match(&fact.text) || year.is_none();
+                let next = if yearly {
+                    let this = chrono::NaiveDate::from_ymd_opt(today_date.year(), month, day);
+                    match this {
+                        Some(d) if d >= today_date => Some(d),
+                        _ => chrono::NaiveDate::from_ymd_opt(today_date.year() + 1, month, day),
+                    }
+                } else {
+                    year.and_then(|y| chrono::NaiveDate::from_ymd_opt(y, month, day)).filter(|d| *d >= today_date)
+                };
+                let Some(next) = next else { continue };
+                let until = (next - today_date).num_days();
+                if until > days {
+                    continue;
+                }
+                let age = if yearly { year.map(|y| next.year() - y) } else { None };
+                out.push((
+                    until,
+                    json!({"date": next.format("%Y-%m-%d").to_string(), "in_days": until, "yearly": yearly,
+                                        "years": age, "fact": fact.text, "page": page.title, "path": path,
+                                        "kind": kind, "close": page.close(), "page_id": page.id(),
+                                        "by": fact.who, "noted": fact.date}),
+                ));
+            }
+        }
+    }
+    out.sort_by_key(|a| a.0);
+    out.into_iter().map(|(_, v)| v).collect()
+}
+
+/// A person page marked close (or not): their dates appear in « Dates à venir ».
+pub fn set_close(config: &Config, query: &str, close: bool, who: &Who) -> anyhow::Result<Option<String>> {
+    let _guard = lock();
+    let Some(found) = find(config, &[Part::Main], query) else { return Ok(None) };
+    if found.page.close() == close {
+        return Ok(Some(found.path));
+    }
+    let before = read_page_text(config, Part::Main, &found.path);
+    let mut page = found.page;
+    page.ensure_id();
+    page.front.remove("proche");
+    if close {
+        page.front.insert("close".into(), json!(true));
+    } else {
+        page.front.remove("close");
+    }
+    page.touch();
+    commit(
+        config,
+        Part::Main,
+        &found.path,
+        before.as_deref(),
+        Some(&page.render()),
+        who,
+        "close",
+        if close { "close" } else { "not close" },
+    )?;
+    Ok(Some(found.path))
 }
 
 // -- the tasks' phone reminders (reminders.rs: the phone applies the queue) ------------------------------------------
@@ -2002,6 +2541,7 @@ mod tests {
     #[test]
     fn pages_round_trip_with_their_frontmatter() {
         let mut page = Page::new("person", "Marc Dupont");
+        page.front.insert("id".into(), json!("p0123456789"));
         page.set_aliases(&["Marco".into(), "marc dupont".into(), "Marco".into()]);
         page.front.insert("contact".into(), json!("ABC:123"));
         page.front.insert("updated".into(), json!("2026-10-22"));
@@ -2009,7 +2549,7 @@ mod tests {
         let text = page.render();
         assert_eq!(
             text,
-            "---\ntype: person\naliases:\n  - Marco\ncontact: \"ABC:123\"\nupdated: 2026-10-22\n---\n# Marc Dupont\n\n## Infos\n- Aime le jazz\n"
+            "---\nid: p0123456789\ntype: person\naliases:\n  - Marco\ncontact: \"ABC:123\"\nupdated: 2026-10-22\n---\n# Marc Dupont\n\n## Infos\n- Aime le jazz\n"
         );
         let back = Page::parse(&text, "x");
         assert_eq!(back.title, "Marc Dupont");
@@ -2036,6 +2576,86 @@ mod tests {
         assert!(Task::parse(&done.render(), Part::Main).unwrap().done);
         assert_eq!(due_date("2026-10-25T09:30").unwrap(), "2026-10-25");
         assert!(due_date("demain").is_err() && due_date("2026-02-30").is_err());
+    }
+
+    #[test]
+    fn dates_are_read_from_facts_in_four_languages() {
+        assert_eq!(date_in("Anniversaire : 14 novembre"), Some((11, 14, None)));
+        assert_eq!(date_in("Né le 1er mars 1980"), Some((3, 1, Some(1980))));
+        assert_eq!(date_in("Birthday: March 3rd"), Some((3, 3, None)));
+        assert_eq!(date_in("Geburtstag am 5. Dezember"), Some((12, 5, None)));
+        assert_eq!(date_in("Cumpleaños: 9 de agosto"), None); // « de » between: not taken (yet)
+        assert_eq!(date_in("Devis à rendre avant le 2026-11-30"), Some((11, 30, Some(2026))));
+        assert_eq!(date_in("Mariage le 12/06"), Some((6, 12, None)));
+        assert_eq!(date_in("Aime le jazz"), None);
+    }
+
+    fn config_in(dir: &Path) -> Config {
+        let mut config = Config::with_key("k".repeat(32));
+        config.hermes.home = dir.join("hermes").to_string_lossy().into_owned();
+        config.outbox.db_path = dir.join("data/outbox.db").to_string_lossy().into_owned();
+        config
+    }
+
+    #[test]
+    fn close_people_dates_tasks_and_proposals() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        assert!(config.data_dir().starts_with(&*dir.path().to_string_lossy()));
+        update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        let who = lea();
+        let fact = vec!["Anniversaire : 14 novembre 1980".to_string()];
+        note(&config, Part::Main, "person", "Marc Dupont", "Infos", &fact, &[], "", "", &who).unwrap();
+        note(&config, Part::Main, "person", "Paul", "Infos", &["Anniversaire : 20 novembre".into()], &[], "", "", &who)
+            .unwrap();
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
+        // only the close people by default, every page with all
+        assert!(upcoming_dates(&config, 60, false, today).is_empty());
+        set_close(&config, "Marc Dupont", true, &who).unwrap();
+        let dates = upcoming_dates(&config, 60, false, today);
+        assert_eq!(dates.len(), 1);
+        assert_eq!(
+            (dates[0]["date"].as_str(), dates[0]["in_days"].as_i64(), dates[0]["years"].as_i64()),
+            (Some("2026-11-14"), Some(13), Some(46))
+        );
+        assert_eq!(upcoming_dates(&config, 60, true, today).len(), 2);
+        let page = find(&config, &[Part::Main], "Marc Dupont").unwrap().page;
+        assert!(page.close() && page.id().starts_with('p'));
+        // a proposal: budgeted, accepted with its id, archived when left long after its date
+        assert!(
+            add_task(&config, Part::Main, "Cadeau Marc", "2026-11-14", "Marc Dupont", "accepted", "q0", &who).is_err()
+        );
+        let id = propose(&config, "lea", "gift", "Cadeau pour Marc", "2026-11-14").unwrap();
+        let (task, _) =
+            add_task(&config, Part::Main, "Cadeau pour Marc", "2026-11-14", "Marc Dupont", "accepted", &id, &who)
+                .unwrap();
+        assert_eq!(task.origin, "accepted");
+        add_task(&config, Part::Main, "Appeler la banque", "2026-11-03", "", "asked", "", &who).unwrap();
+        assert_eq!(open_tasks(&config, Part::Main)[0].title, "Appeler la banque");
+        assert_eq!(archive_stale(&config, chrono::NaiveDate::from_ymd_opt(2026, 11, 20).unwrap()).unwrap(), 0);
+        assert_eq!(archive_stale(&config, chrono::NaiveDate::from_ymd_opt(2026, 12, 10).unwrap()).unwrap(), 1);
+        let all = tasks(&config, Part::Main);
+        assert!(all.iter().any(|t| t.archived && t.id == task.id));
+        assert_eq!(open_tasks(&config, Part::Main).len(), 1);
+        let text = read_page_text(&config, Part::Main, "Tâches/Tâches.md").unwrap();
+        assert!(text.contains("\n## Archivées\n- [ ] Cadeau pour Marc [[Marc Dupont]] 📅 2026-11-14"));
+        // declined for good: written as a preference, never proposed again
+        let other = propose(&config, "lea", "birthday", "Rappel anniversaire Paul", "").unwrap();
+        assert_eq!(
+            decline(&config, &other, true, &who).unwrap().unwrap(),
+            "Pas de propositions de tâches pour les anniversaires"
+        );
+        assert!(propose(&config, "lea", "birthday", "x", "").is_err());
+        assert!(find(&config, &[Part::Main], "Préférences")
+            .unwrap()
+            .page
+            .body
+            .contains("Pas de propositions de tâches pour les anniversaires"));
+        propose(&config, "lea", "follow_up", "y", "").unwrap();
+        assert!(propose(&config, "lea", "deadline", "z", "").is_err()); // 3 a week
     }
 
     #[test]
