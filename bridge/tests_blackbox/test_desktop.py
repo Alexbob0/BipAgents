@@ -256,7 +256,11 @@ def test_the_agents_own_browser_is_woken_and_held(bridges, fakes):
     assert (folder / "busy").exists()                      # used now: not stopped for `idle_minutes`
     taken = bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": True})
     assert taken.json() == {"holder": "human", "you_hold": True}
-    assert ["exec", "bipagents-browser-vie", "sh", "-c", "touch /tmp/bipagents-hold"] in bridge.commands.of("podman")
+    # The hold with a token of the bridge's own (its view of the page on a phone gets through the relay).
+    token = (folder / "hold.token").read_text()
+    assert len(token) == 32 and (folder / "hold.token").stat().st_mode & 0o777 == 0o600
+    assert ["exec", "bipagents-browser-vie", "sh", "-c", f"umask 077; printf 'human %s' {token} > /tmp/bipagents-hold"
+            ] in bridge.commands.of("podman")
     bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": False})
     assert bridge.commands.of("podman")[-1] == ["exec", "bipagents-browser-vie", "sh", "-c", "rm -f /tmp/bipagents-hold"]
     desktop.close()

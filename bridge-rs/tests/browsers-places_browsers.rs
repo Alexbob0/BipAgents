@@ -201,6 +201,8 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     }
     let skill = s.hub.join("profiles/budget/skills/visible-browser/SKILL.md");
     assert!(std::fs::read_to_string(skill).unwrap().starts_with("---"));
+    // Of Hermes' own browser tools only the vault's stay: it browses in the browser « Bureau » shows.
+    assert!(browsers::vault_only(&s.home(), "budget"));
     // The app's « Bureau »: the bridge logs in to its VNC server.
     assert_eq!(agent.desktop_vnc.as_deref(), Some("tcp://127.0.0.1:19603"));
     assert_eq!(agent.desktop_vnc_password_file.as_deref(), Some(&*password.to_string_lossy()));
@@ -305,12 +307,25 @@ async fn taking_over_the_browser_makes_the_agents_tools_wait() {
         done[1],
         v(&["/usr/bin/podman", "exec", "bipagents-browser-budget", "test", "-e", "/tmp/.X11-unix/X99"])
     );
+    // The person's hold, with a token only the bridge knows (its own view of the page still gets through).
+    let token = browsers::hold_token(&s.config, "budget").unwrap();
+    assert_eq!(token.len(), 32);
     assert_eq!(
         done.last().unwrap(),
-        &v(&["/usr/bin/podman", "exec", "bipagents-browser-budget", "sh", "-c", "touch /tmp/bipagents-hold"])
+        &v(&[
+            "/usr/bin/podman",
+            "exec",
+            "bipagents-browser-budget",
+            "sh",
+            "-c",
+            &format!("umask 077; printf 'human %s' {token} > /tmp/bipagents-hold")
+        ])
     );
+    let kept = s.tmp.join("browsers").join("budget").join("hold.token");
+    assert_eq!(std::fs::metadata(&kept).unwrap().permissions().mode() & 0o777, 0o600);
     browsers::hold_with(&host, &s.config, "budget", false).await;
     assert_eq!(ran.lock().unwrap().last().unwrap().last().unwrap(), "rm -f /tmp/bipagents-hold");
+    assert!(browsers::hold_token(&s.config, "budget").is_none());
     assert!(!browsers::hold_with(&host, &s.config, "nobody", true).await); // no browser of its own
     assert_eq!(ran.lock().unwrap().len(), 4);
 }

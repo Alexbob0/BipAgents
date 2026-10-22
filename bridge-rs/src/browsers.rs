@@ -229,13 +229,54 @@ pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> b
     if on {
         wake_with(host, config, agent, 60.0).await;
     }
-    let command = if on { format!("touch {HOLD_FLAG}") } else { format!("rm -f {HOLD_FLAG}") };
+    // The person's hold carries a token of its own: the bridge's connections showing it (`X-Bip-Hold`) still reach
+    // Chrome's DevTools (devtools_relay.py), to show the page on the phone and pass on the person's taps and keys.
+    let token_file = folder(config, agent).join(HOLD_TOKEN);
+    let command = if on {
+        let token = crate::py::token_hex(16);
+        if crate::py::write_with_mode(&token_file.to_string_lossy(), token.as_bytes(), 0o600).is_err() {
+            tracing::warn!(agent = %agent, "browser hold token not kept");
+        }
+        format!("umask 077; printf 'human %s' {token} > {HOLD_FLAG}")
+    } else {
+        let _ = std::fs::remove_file(&token_file);
+        format!("rm -f {HOLD_FLAG}")
+    };
     let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
     if code != 0 {
         tracing::warn!(agent = %agent, on = on, "browser hold not set");
     }
     true
 }
+
+/// Where the person's hold keeps its token (`<browser root>/<agent>/hold.token`, the bridge's alone).
+pub const HOLD_TOKEN: &str = "hold.token";
+
+/// The token of the person's hold on the agent's browser, while they hold it.
+pub fn hold_token(config: &Config, agent: &str) -> Option<String> {
+    let text = std::fs::read_to_string(folder(config, agent).join(HOLD_TOKEN)).ok()?;
+    let token = text.trim();
+    (!token.is_empty() && token.bytes().all(|b| b.is_ascii_alphanumeric())).then(|| token.to_string())
+}
+
+/// The person's « Ouvrir le navigateur »: its container woken, then Chrome started on its screen with its profile
+/// when none runs (browser/open_browser.sh, detached; the agent's spawn_browser connects to it later). An image
+/// built before that script has none: the screen is up, without a browser. Returns whether this agent has one.
+pub async fn open_browser(config: &Config, agent: &str) -> bool {
+    let host = Host::real(config);
+    let Some(engine) = host.runtime.clone() else { return false };
+    if !wake_with(&host, config, agent, 90.0).await {
+        return false;
+    }
+    let code = (host.exec)(vec![engine, "exec".into(), "-d".into(), container(agent), OPEN_BROWSER.into()]).await;
+    if code != 0 {
+        tracing::warn!(agent = %agent, code = code, "browser not opened");
+    }
+    true
+}
+
+/// browser/open_browser.sh in the container.
+pub const OPEN_BROWSER: &str = "/opt/stealth/open_browser.sh";
 
 /// A card payment holds the agent's browser (card_pay.rs): its MCP tools and its DevTools wait as for the person's
 /// hold, except the bridge's own DevTools connections, which show `token` (`X-Bip-Card`, browser/devtools_relay.py).
@@ -622,8 +663,11 @@ pub async fn setup_with(
     .await?;
     let server = crate::py::dumps(&mcp_server(&engine, name, proxy.as_deref()));
     run(args(&[hermes, "-p", name, "config", "set", "mcp_servers.stealth", &server]), env.clone()).await?;
-    // The vault's tools ride with Hermes' browser toolset; they act on this Chrome through its DevTools port.
+    // The vault's tools ride with Hermes' browser toolset; they act on this Chrome through its DevTools port. Of that
+    // toolset the agent keeps only them (`browser.vault_only`, hermes/patches 0007): it browses with its `stealth`
+    // tools, in the browser the person watches, never with Hermes' own.
     run(args(&[hermes, "-p", name, "tools", "enable", "browser", "--platform", "api_server"]), env.clone()).await?;
+    set_vault_only(home, name)?;
     let skill_path =
         Path::new(home).join("profiles").join(name).join("skills").join("visible-browser").join("SKILL.md");
     if let Some(parent) = skill_path.parent() {
@@ -701,7 +745,83 @@ fn mark(home: &str, agent: &str, on: bool) -> anyhow::Result<()> {
     skills.insert("disabled", Yaml::Seq(off));
     data.insert("skills", skills);
     std::fs::write(&path, pyyaml::dump(&data))?;
+    if on {
+        set_vault_only(home, agent)?;
+    }
     Ok(())
+}
+
+/// Whether its profile has `browser.vault_only` (Hermes' own browser tools off, the vault's kept).
+pub fn vault_only(home: &str, agent: &str) -> bool {
+    let Ok(text) = std::fs::read_to_string(profile_config(home, agent)) else { return false };
+    let Ok(data) = pyyaml::load(&text) else { return false };
+    data.get("browser")
+        .filter(|b| b.is_map())
+        .and_then(|b| b.get("vault_only"))
+        .map(|v| matches!(pyx::strip(&v.py_str()).to_lowercase().as_str(), "true" | "1" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
+/// `browser.vault_only: true` in its profile (hermes/patches 0007): of Hermes' `browser` toolset only the vault's
+/// tools stay, so every page the agent opens is in its visible browser (the `stealth` tools), the one « Bureau »
+/// shows. Hermes reads it at its next request. A Hermes without the patch ignores it.
+pub fn set_vault_only(home: &str, agent: &str) -> anyhow::Result<()> {
+    if vault_only(home, agent) {
+        return Ok(());
+    }
+    let path = profile_config(home, agent);
+    let mut data = match std::fs::read_to_string(&path) {
+        Ok(text) => pyyaml::load(&text)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Yaml::map(),
+        Err(e) => return Err(e.into()),
+    };
+    if !data.truthy() {
+        data = Yaml::map();
+    }
+    if !data.is_map() {
+        return Ok(());
+    }
+    let mut browser = match data.get("browser") {
+        Some(b) if b.is_map() => b.clone(),
+        _ => Yaml::map(),
+    };
+    browser.insert("vault_only", Yaml::Bool(true));
+    data.insert("browser", browser);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, pyyaml::dump(&data))?;
+    Ok(())
+}
+
+/// At the bridge's start: every agent whose visible browser is on gets `browser.vault_only` (those set up before it
+/// browsed with Hermes' own browser tools too, which could run while its container was stopped, unseen in « Bureau »).
+/// Agents set up by hand on their server are left as they are.
+pub async fn vault_only_all(config: &Config) {
+    for agent in config.agents.values() {
+        if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) || ports_of(config, &agent.name).is_none() {
+            continue;
+        }
+        let home = crate::agents_admin::home_root(config, agent);
+        if state(&home, &agent.name) != Some(true) {
+            continue;
+        }
+        // Its skill as this bridge has it (it tells the agent which tools to browse with).
+        let skill_path =
+            Path::new(&home).join("profiles").join(&agent.name).join("skills").join("visible-browser").join("SKILL.md");
+        if skill_path.exists() && std::fs::read_to_string(&skill_path).map(|t| t != skill()).unwrap_or(true) {
+            if let Err(exc) = std::fs::write(&skill_path, skill()) {
+                tracing::warn!(agent = %agent.name, error = %exc, "browser skill not updated");
+            }
+        }
+        if vault_only(&home, &agent.name) {
+            continue;
+        }
+        match set_vault_only(&home, &agent.name) {
+            Ok(()) => tracing::info!(agent = %agent.name, "browser: Hermes' own browser tools off, the vault's kept"),
+            Err(exc) => tracing::warn!(agent = %agent.name, error = %exc, "browser.vault_only not set"),
+        }
+    }
 }
 
 /// The app's « Naviguer à ta place »: on sets the agent's browser up the first time (`setup`), then only turns it

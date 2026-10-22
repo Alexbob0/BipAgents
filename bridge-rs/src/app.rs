@@ -332,6 +332,8 @@ impl AppState {
         if config.hermes.enabled() {
             self.spawn(crate::sandbox::isolate_all(self.config.clone(), agents_admin::default_run()));
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
+            let shared = self.config.clone();
+            self.spawn(async move { crate::browsers::vault_only_all(&shared.get()).await });
             if config.cloud {
                 // a place of the reserve: its first agent made before its claim; what a claim left, finished
                 self.spawn(crate::cloud_setup::prepare_when_installed(self.config.clone(), self.http.clone()));
@@ -1398,7 +1400,10 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/family/received/{id}/seen", "POST"),
     ("/v1/agents/{agent_id}/desktop", "POST"),
     ("/v1/agents/{agent_id}/desktop/control", "POST"),
+    ("/v1/agents/{agent_id}/desktop/state", "GET"),
+    ("/v1/agents/{agent_id}/desktop/open", "POST"),
     ("/desktop/{ticket}/", "GET"),
+    ("/desktop/{ticket}/page/", "GET"),
 ];
 
 /// Starlette's path match: `{x}` one non-empty segment, a final `{x:path}` the rest.

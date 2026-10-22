@@ -80,7 +80,8 @@ au commit testé avec BipAgents (`a7b9eea`, fixé dans le `Containerfile`), et a
 - `requirements.txt` : ses paquets Python aux versions exactes testées, installés depuis PyPI. Parmi eux, **nodriver
   est sous GNU AGPL v3** et certifi sous MPL 2.0 : tous deux installés sans modification, comme paquets séparés.
 - `entrypoint.sh` (l'écran, le serveur VNC), `devtools_relay.py` (les DevTools de Chrome depuis l'hôte, à une adresse
-  qui survit aux redémarrages de Chrome), `mcp.sh` (le serveur avec seulement ce qu'il faut pour naviguer : ni copie
+  qui survit aux redémarrages de Chrome), `open_browser.sh` (Chrome lancé sur l'écran quand la personne ouvre le
+  navigateur depuis l'app ; le `spawn_browser` de l'agent s'y connecte ensuite), `mcp.sh` (le serveur avec seulement ce qu'il faut pour naviguer : ni copie
   d'éléments, ni extraction de fichiers, ni interception réseau, ni CDP brut, ni crochets de débogage) et la consigne
   qui explique à l'agent son navigateur (`bridge-rs/assets/skills/visible-browser/SKILL.md`, copiée dans son profil Hermes).
 

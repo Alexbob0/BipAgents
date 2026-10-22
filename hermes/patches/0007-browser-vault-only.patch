@@ -1,0 +1,32 @@
+diff --git a/model_tools.py b/model_tools.py
+--- a/model_tools.py
++++ b/model_tools.py
+@@ -312,6 +312,19 @@
+             print(f"{icon} {label} '{name}': {', '.join(resolved) if resolved else 'no tools'}")
+
+
++def _browser_vault_only() -> bool:
++    """``browser.vault_only``: the profile browses with a browser of its own (an MCP server's tools); of the
++    ``browser`` toolset it keeps only the vault (``browser_vault_*``, which fills that same browser through
++    ``browser.cdp_url``)."""
++    try:
++        from hermes_cli.config import read_raw_config
++        browser_cfg = read_raw_config().get("browser", {})
++        return isinstance(browser_cfg, dict) and str(browser_cfg.get("vault_only", "")).strip().lower() in (
++            "true", "1", "yes", "on")
++    except Exception:
++        return False
++
++
+ def _select_tool_names(enabled_toolsets: Optional[list[str]], disabled_toolsets: Optional[list[str]], quiet_mode: bool) -> set:
+     """Tool names requested by the toolset selection (before check_fn filtering)."""
+     tools: set = set()
+@@ -334,6 +347,8 @@
+     # disabled toolset are strictly stripped out. See issue #17309.
+     if disabled_toolsets:
+         _apply_toolset_selection(tools, disabled_toolsets, quiet_mode, disable=True)
++    if any(t.startswith("browser_") for t in tools) and _browser_vault_only():
++        tools = {t for t in tools if not t.startswith("browser_") or t.startswith("browser_vault_")}
+     return tools
+
+

@@ -1,0 +1,235 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<style>html,body{margin:0;height:100%;background:#16181d;overflow:hidden;-webkit-user-select:none;user-select:none;
+font-family:-apple-system,system-ui,Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+#bar{position:fixed;left:0;right:0;top:0;display:flex;gap:8px;align-items:center;
+padding:calc(env(safe-area-inset-top) + var(--top,52px)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));
+background:#16181d}
+#site{flex:1;min-width:0;display:flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:19px;
+background:#2a2d34;color:#fff;font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#site span{overflow:hidden;text-overflow:ellipsis}#site svg{flex:0 0 auto;opacity:.7}
+#go{display:none;flex:1;min-width:0;height:38px;border:0;border-radius:19px;padding:0 14px;font-size:16px;
+background:#fff;color:#000;outline:none}
+#back{display:none;flex:0 0 auto;width:38px;height:38px;border:0;border-radius:19px;background:#2a2d34;color:#fff;font-size:18px}
+#stage{position:fixed;left:0;right:0;bottom:0;overflow:hidden;touch-action:none}
+#stage.keys{bottom:calc(52px + env(safe-area-inset-bottom))}
+#shot{position:absolute;left:0;top:0;transform-origin:0 0;display:none;background:#fff;-webkit-user-drag:none;pointer-events:none}
+#note{position:fixed;left:24px;right:24px;top:45%;transform:translateY(-50%);text-align:center;color:#d6d8de;
+font-size:16px;font-weight:600;line-height:1.4}
+#hint{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);
+background:rgba(0,0,0,.6);color:#fff;font-size:13px;font-weight:600;padding:6px 12px;border-radius:14px;
+white-space:nowrap;transition:opacity .4s;opacity:0;pointer-events:none}
+#keys{position:fixed;left:0;right:0;bottom:0;display:none;gap:6px;overflow-x:auto;background:#1c1c1e;
+padding:8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+scrollbar-width:none}#keys::-webkit-scrollbar{display:none}
+#keys button{flex:0 0 auto;min-width:40px;height:36px;padding:0 12px;border:0;border-radius:9px;background:#3a3a3c;color:#fff;
+font:600 14px -apple-system,system-ui,sans-serif}#keys button.main{background:#fff;color:#000}
+#typing{position:fixed;left:-1000px;top:0;opacity:0;width:1px;height:1px}</style></head>
+<body><div id="bar"><button id="back" aria-label="Back">‹</button>
+<div id="site"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"
+stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span id="host"></span></div>
+<input id="go" type="url" inputmode="url" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go"></div>
+<div id="stage"><img id="shot" alt=""></div><div id="note"></div><div id="hint"></div>
+<div id="keys"><button id="kbd" class="main"></button><button id="paste"></button>
+<button data-key="Enter">⏎</button><button data-key="Backspace">⌫</button><button data-key="Tab">⇥</button>
+<button data-key="ArrowUp">↑</button><button data-key="ArrowDown">↓</button><button data-key="Escape" id="esc"></button></div>
+<textarea id="typing" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+<script>
+"use strict";
+// « Bureau » on a phone: the page the agent has open, alone, fitted to the phone's width (desktop_page.rs). Pinch to
+// zoom, one finger moves the zoomed page. With the hand (« Prendre la main »), the page renders as on a phone and
+// the fingers act on it; the key bar types into it.
+const WORDS = {
+  fr: {connecting: "Connexion…", idle: "Aucune page ouverte pour le moment.", stopped: "Le navigateur est éteint.",
+       paused: "La page s’affichera dès qu’elle sera libre.", keyboard: "⌨︎ Clavier", paste: "Coller", esc: "Échap",
+       pinch: "Pince pour zoomer", newTab: "Nouvel onglet", address: "Adresse ou recherche"},
+  en: {connecting: "Connecting…", idle: "No page open right now.", stopped: "The browser is off.",
+       paused: "The page will show as soon as it is free.", keyboard: "⌨︎ Keyboard", paste: "Paste", esc: "Esc",
+       pinch: "Pinch to zoom", newTab: "New tab", address: "Address or search"},
+  de: {connecting: "Verbinden…", idle: "Gerade ist keine Seite geöffnet.", stopped: "Der Browser ist aus.",
+       paused: "Die Seite erscheint, sobald sie frei ist.", keyboard: "⌨︎ Tastatur", paste: "Einfügen", esc: "Esc",
+       pinch: "Zum Zoomen auseinanderziehen", newTab: "Neuer Tab", address: "Adresse oder Suche"},
+  es: {connecting: "Conectando…", idle: "No hay ninguna página abierta ahora.", stopped: "El navegador está apagado.",
+       paused: "La página aparecerá en cuanto esté libre.", keyboard: "⌨︎ Teclado", paste: "Pegar", esc: "Esc",
+       pinch: "Pellizca para ampliar", newTab: "Nueva pestaña", address: "Dirección o búsqueda"},
+};
+const params = new URLSearchParams(location.search);
+const lang = (params.get("lang") || navigator.language || "fr").slice(0, 2);
+const T = WORDS[lang] || WORDS.en;
+const $ = id => document.getElementById(id);
+const stage = $("stage"), shot = $("shot"), note = $("note"), bar = $("bar"), keys = $("keys"), typing = $("typing");
+const hostEl = $("host"), go = $("go"), back = $("back"), hint = $("hint");
+$("kbd").textContent = T.keyboard; $("paste").textContent = T.paste; $("esc").textContent = T.esc;
+go.placeholder = T.address;
+if (params.get("top")) document.documentElement.style.setProperty("--top", (+params.get("top") || 0) + "px");
+note.textContent = T.connecting;
+function post(event) { try { window.webkit.messageHandlers.desktop.postMessage(event); } catch (_) {} }
+
+let holding = false, mobile = false, frame = {w: 0, h: 0}, page = {site: null, url: "", title: ""};
+let zoom = 1, panX = 0, panY = 0, socket = null, hintShown = false;
+function layout() { stage.style.top = bar.getBoundingClientRect().bottom + "px"; place(); }
+function fit() { return frame.w ? stage.clientWidth / frame.w : 1; }
+function place() {   // the picture at the stage's width × zoom, kept within its edges
+  if (!frame.w) return;
+  const s = fit() * zoom, w = frame.w * s, h = frame.h * s;
+  panX = Math.min(0, Math.max(stage.clientWidth - w, panX));
+  panY = h <= stage.clientHeight ? 0 : Math.min(0, Math.max(stage.clientHeight - h, panY));
+  shot.style.width = frame.w + "px"; shot.style.height = frame.h + "px";
+  shot.style.transform = `translate(${panX}px,${panY}px) scale(${s})`;
+}
+function zoomAt(z, cx, cy) {   // the point under the fingers stays there
+  const r = stage.getBoundingClientRect(), before = fit() * zoom;
+  z = Math.min(Math.max(z, 1), 5);
+  const px = (cx - r.left - panX) / before, py = (cy - r.top - panY) / before;
+  zoom = z;
+  const after = fit() * zoom;
+  panX = cx - r.left - px * after; panY = cy - r.top - py * after;
+  place();
+}
+function showSite() {
+  hostEl.textContent = page.site || (page.url ? page.url : T.newTab);
+  go.value = page.url || "";
+}
+function show() {
+  keys.style.display = holding ? "flex" : "none";
+  stage.classList.toggle("keys", holding);
+  back.style.display = holding ? "block" : "none";
+  if (!holding) { typing.blur(); go.blur(); editing(false); }
+  layout();
+}
+window.setViewOnly = on => { holding = !on; show(); };
+window.addEventListener("resize", () => { layout(); });
+
+// ---- The stream: a JSON line before each JPEG frame, the page's site when it changes, the state.
+function connect() {
+  const q = new URLSearchParams();
+  if (params.get("mobile") === "1") {
+    q.set("mobile", "1"); q.set("w", Math.round(innerWidth)); q.set("h", Math.round(stage.clientHeight || innerHeight));
+    q.set("dpr", String(devicePixelRatio || 2));
+  }
+  const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + location.pathname.replace(/\/$/, "") + "/ws?" + q;
+  socket = new WebSocket(url);
+  socket.binaryType = "blob";
+  let next = null;
+  socket.onopen = () => post("connected");
+  socket.onmessage = e => {
+    if (typeof e.data !== "string") {
+      if (!next) return;
+      const was = shot.src, size = next;
+      next = null;
+      shot.onload = () => {
+        if (was) URL.revokeObjectURL(was);
+        const changed = size.w !== frame.w;
+        frame = size;
+        if (changed) { zoom = 1; panX = 0; panY = 0; }
+        shot.style.display = "block"; note.textContent = "";
+        place();
+        if (!hintShown && !holding && !mobile) { hintShown = true; flash(T.pinch); }
+      };
+      shot.src = URL.createObjectURL(e.data);
+      return;
+    }
+    let m; try { m = JSON.parse(e.data); } catch (_) { return; }
+    if (m.type === "frame") next = {w: m.w, h: m.h};
+    else if (m.type === "page") { page = m; showSite(); post("page:" + (m.site || "")); }
+    else if (m.type === "state") {
+      mobile = !!m.mobile;
+      if (m.state !== "live") { shot.style.display = "none"; note.textContent = T[m.state] || ""; }
+      post("state:" + m.state);
+    }
+  };
+  socket.onclose = () => { post("disconnected"); setTimeout(connect, 1500); };
+}
+function send(m) { if (socket && socket.readyState === 1) socket.send(JSON.stringify(m)); }
+function flash(text) { hint.textContent = text; hint.style.opacity = 1; setTimeout(() => { hint.style.opacity = 0; }, 2200); }
+
+// ---- The address: shown as its site; with the hand, tapping it types another one.
+function editing(on) { go.style.display = on ? "block" : "none"; $("site").style.display = on ? "none" : "flex"; }
+$("site").addEventListener("click", () => { if (!holding) return; editing(true); go.value = page.url || ""; go.focus(); go.select(); });
+go.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); send({type: "go", url: go.value}); go.blur(); } });
+go.addEventListener("blur", () => editing(false));
+back.addEventListener("click", () => send({type: "back"}));
+
+// ---- Keys: iOS opens its keyboard only for a field the person taps; what is typed there goes to the page.
+const typeText = text => { if (text) send({type: "text", text}); };
+window.typeText = typeText;
+$("kbd").addEventListener("click", () => typing.focus());
+$("paste").addEventListener("click", async () => {
+  try { typeText(await navigator.clipboard.readText()); } catch (_) { post("paste-refused"); }
+});
+for (const b of keys.querySelectorAll("[data-key]")) b.addEventListener("click", () => send({type: "key", key: b.dataset.key}));
+typing.addEventListener("input", e => {
+  if (e.inputType === "deleteContentBackward") send({type: "key", key: "Backspace"});
+  else if (e.inputType === "insertLineBreak") send({type: "key", key: "Enter"});
+  else typeText(typing.value);
+  typing.value = "";
+});
+typing.addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); send({type: "key", key: "Enter"}); }
+  else if (e.key === "Backspace" && typing.value === "") { e.preventDefault(); send({type: "key", key: "Backspace"}); }
+});
+
+// ---- Touch: two fingers pinch (and move the zoomed page); one finger moves it while watching, and acts on the
+// page with the hand (as a finger on a phone: taps, scrolls, swipes).
+const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+const mid = (a, b) => ({x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2});
+function fraction(t) {
+  const r = shot.getBoundingClientRect();
+  return [(t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height];
+}
+let one = null, two = null, lastTap = 0, lastMove = 0;
+stage.addEventListener("touchstart", e => {
+  e.preventDefault();
+  if (e.touches.length >= 2) {
+    if (one && one.sent) send({type: "touch", phase: "cancel"});
+    one = null;
+    const [a, b] = e.touches;
+    two = {d0: dist(a, b), z0: zoom, last: mid(a, b)};
+    return;
+  }
+  const t = e.touches[0];
+  one = {x: t.clientX, y: t.clientY, x0: t.clientX, y0: t.clientY, moved: false, sent: false};
+  if (holding && frame.w) { one.sent = true; send({type: "touch", phase: "start", points: [fraction(t)]}); }
+}, {passive: false});
+stage.addEventListener("touchmove", e => {
+  e.preventDefault();
+  if (two && e.touches.length >= 2) {
+    const [a, b] = e.touches, m = mid(a, b);
+    zoomAt(two.z0 * dist(a, b) / two.d0, m.x, m.y);
+    panX += m.x - two.last.x; panY += m.y - two.last.y; place();
+    two.last = m;
+    return;
+  }
+  if (!one) return;
+  const t = e.touches[0];
+  if (Math.hypot(t.clientX - one.x0, t.clientY - one.y0) > 8) one.moved = true;
+  if (one.sent) {
+    const now = Date.now();
+    if (now - lastMove >= 30) { lastMove = now; send({type: "touch", phase: "move", points: [fraction(t)]}); }
+  } else { panX += t.clientX - one.x; panY += t.clientY - one.y; place(); }
+  one.x = t.clientX; one.y = t.clientY;
+}, {passive: false});
+function end(e) {
+  e.preventDefault();
+  if (two) { if (e.touches.length === 0) two = null; return; }
+  if (!one) return;
+  if (one.sent) send({type: "touch", phase: e.type === "touchcancel" ? "cancel" : "end"});
+  else if (!one.moved) {   // watching: a double tap zooms in there, or back out
+    const now = Date.now();
+    if (now - lastTap < 300) { zoomAt(zoom > 1.05 ? 1 : 2.5, one.x, one.y); lastTap = 0; } else lastTap = now;
+  }
+  one = null;
+}
+stage.addEventListener("touchend", end, {passive: false});
+stage.addEventListener("touchcancel", end, {passive: false});
+// A mouse (the simulator, a tablet with one): a click is a tap with the hand.
+stage.addEventListener("mousedown", e => { if (holding && frame.w) send({type: "touch", phase: "start", points: [fraction(e)]}); });
+stage.addEventListener("mouseup", e => { if (holding && frame.w) send({type: "touch", phase: "end"}); });
+stage.addEventListener("wheel", e => {
+  e.preventDefault();
+  if (e.ctrlKey) zoomAt(zoom * (1 - e.deltaY / 200), e.clientX, e.clientY);
+  else { panX -= e.deltaX; panY -= e.deltaY; place(); }
+}, {passive: false});
+
+showSite(); show(); connect();
+</script></body></html>
