@@ -1,0 +1,136 @@
+/* BipAgents page kit: the app's look for the pages the agents make (pages.rs puts it inline in every page).
+   Every rule is inside :where(), so the agent's own CSS always wins. Light and dark follow the phone. */
+:root{--bg:#F3F4F7;--card:#FFFFFF;--field:#F3F4F7;--ink:#16181D;--ink2:#5E6472;--muted:#6B7180;--line:rgba(22,24,29,.09);
+--accent:#7C6CF2;--deep:#5A49D6;--tint:#EDE9FF;--good:#2FB36B;--warn:#F08A24;--bad:#E5484D;
+--c1:var(--accent);--c2:#4F7CFF;--c3:#FF7B5C;--c4:#1FB2C1;--c5:#F6B826;--c6:#F2649E;
+--r:18px;--font:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#0F1115;--card:#1A1D24;--field:#23262F;--ink:#F2F3F7;--ink2:#A4A9B8;
+--muted:#8A90A2;--line:rgba(255,255,255,.09);--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);--deep:color-mix(in srgb,var(--accent) 70%,#fff)}}
+:where(html[data-tint=wellness]){--accent:#3CC37A;--deep:#1D8A4F;--tint:#E2F5EA}
+:where(html[data-tint=finance]){--accent:#F6B826;--deep:#9A6A00;--tint:#FFF3D1}
+:where(html[data-tint=daily]){--accent:#FF7B5C;--deep:#C9472A;--tint:#FFE8E0}
+:where(html[data-tint=work]){--accent:#4F7CFF;--deep:#2B55D4;--tint:#E4EBFF}
+:where(html[data-tint=learning]){--accent:#8E6CF5;--deep:#6142D2;--tint:#EDE7FF}
+:where(html[data-tint=home]){--accent:#1FB2C1;--deep:#0D7F8B;--tint:#DDF4F6}
+:where(html[data-tint=creative]){--accent:#F2649E;--deep:#C23774;--tint:#FDE4EE}
+:where(html[data-tint=tech]){--accent:#6B7489;--deep:#3F4659;--tint:#E7E9EE}
+@media (prefers-color-scheme:dark){:where(html[data-tint]){--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);
+--deep:color-mix(in srgb,var(--accent) 70%,#fff)}}
+/* In the conversation (the app sets data-bip-view="inline"): no ground of its own, on the app's card. */
+:where(html[data-bip-view=inline]){--bg:var(--card)}
+:where(html[data-bip-view=inline]) :where(.card){background:var(--field);border-color:transparent}
+:where(*,*::before,*::after){box-sizing:border-box}
+:where(html){height:auto;-webkit-text-size-adjust:100%}
+:where(body){margin:0;padding:16px 16px 20px;background:var(--bg);color:var(--ink);font:500 15px/1.45 var(--font);
+max-width:760px;margin-inline:auto;-webkit-font-smoothing:antialiased}
+:where(html[data-bip-view=inline] body){padding:14px 14px 16px}
+:where(h1){font-size:23px;font-weight:900;line-height:1.15;margin:0 0 4px;letter-spacing:-.01em}
+:where(h2){font-size:17px;font-weight:800;margin:18px 0 8px}
+:where(h3){font-size:15px;font-weight:800;margin:12px 0 6px}
+:where(p){margin:6px 0}
+:where(.sub,.muted){color:var(--muted);font-size:13px;font-weight:600}
+:where(.sub){margin:0 0 14px}
+:where(.good){color:var(--good)}:where(.warn){color:var(--warn)}:where(.bad){color:var(--bad)}
+:where(.accent){color:var(--deep)}
+:where(.card){background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:0 0 12px}
+:where(.card>h2:first-child,.card>h3:first-child){margin-top:0}
+:where(.grid){display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:10px;margin:0 0 12px}
+:where(.grid.two){grid-template-columns:repeat(2,minmax(0,1fr))}
+:where(.row){display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+:where(.row.between){justify-content:space-between}
+:where(.kpi){background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;min-width:0}
+:where(html[data-bip-view=inline]) :where(.kpi){background:var(--field);border-color:transparent}
+:where(.kpi .l){display:block;color:var(--muted);font-size:12.5px;font-weight:700}
+:where(.kpi .v){display:block;font-size:28px;font-weight:900;line-height:1.1;margin-top:2px;letter-spacing:-.02em;
+font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:where(.kpi .v small){font-size:14px;font-weight:800;color:var(--ink2);margin-left:2px}
+:where(.kpi .d){display:inline-block;margin-top:4px;font-size:12px;font-weight:800;border-radius:99px;padding:2px 8px;
+background:var(--field);color:var(--ink2)}
+:where(.kpi .d.up){background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}
+:where(.kpi .d.down){background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+:where(.kpi.main){background:var(--tint);border-color:transparent}
+:where(.kpi.main .v){color:var(--deep)}
+:where(.chip){display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:800;border-radius:99px;
+padding:3px 10px;background:var(--tint);color:var(--deep);white-space:nowrap}
+:where(.chip.good){background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}
+:where(.chip.warn){background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+:where(.chip.bad){background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+:where(.chip.plain){background:var(--field);color:var(--ink2)}
+:where(.note){background:var(--tint);color:var(--ink);border-radius:14px;padding:10px 12px;font-size:14px;margin:0 0 12px}
+:where(.note.warn){background:color-mix(in srgb,var(--warn) 15%,transparent)}
+:where(.note.bad){background:color-mix(in srgb,var(--bad) 12%,transparent)}
+:where(.big){font-size:40px;font-weight:900;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+/* progress: <div class="bar" style="--v:64%"></div> */
+:where(.bar){height:10px;border-radius:99px;background:var(--field);overflow:hidden;margin:6px 0}
+:where(.bar)::before{content:"";display:block;height:100%;width:var(--v,0%);max-width:100%;border-radius:inherit;
+background:var(--bar,var(--accent))}
+:where(.bar.good){--bar:var(--good)}:where(.bar.warn){--bar:var(--warn)}:where(.bar.bad){--bar:var(--bad)}
+/* tables: <table class="sort"> sorts on a tap on a header */
+:where(.table-wrap){overflow-x:auto;margin:0 0 12px;border-radius:14px;border:1px solid var(--line)}
+:where(table){width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+:where(th){text-align:left;font-size:12px;font-weight:800;color:var(--muted);background:var(--field);padding:8px 10px;
+white-space:nowrap}
+:where(td){padding:9px 10px;border-top:1px solid var(--line);vertical-align:top}
+:where(td.n,th.n){text-align:right}
+:where(tr.best td){background:var(--tint)}
+:where(tr.best td:first-child){box-shadow:inset 3px 0 0 var(--accent)}
+:where(table.sort th){cursor:pointer;user-select:none;-webkit-user-select:none}
+:where(table.sort th[aria-sort=ascending])::after{content:" ▲";font-size:9px}
+:where(table.sort th[aria-sort=descending])::after{content:" ▼";font-size:9px}
+/* timeline: <ol class="timeline"><li class="done"><b>Title</b> text <span class="when">date</span></li></ol> */
+:where(.timeline){list-style:none;margin:0 0 12px;padding:0 0 0 22px;position:relative}
+:where(.timeline)::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line)}
+:where(.timeline>li){position:relative;padding:0 0 14px}
+:where(.timeline>li)::before{content:"";position:absolute;left:-21px;top:4px;width:12px;height:12px;border-radius:50%;
+background:var(--card);border:2px solid var(--muted)}
+:where(.timeline>li.done)::before{background:var(--accent);border-color:var(--accent)}
+:where(.timeline>li.now)::before{background:var(--card);border:3px solid var(--accent);box-shadow:0 0 0 4px var(--tint)}
+:where(.timeline .when){display:block;color:var(--muted);font-size:12.5px;font-weight:700}
+/* checklist: <ul class="check"><li class="done">…</li></ul> */
+:where(.check){list-style:none;margin:0 0 12px;padding:0}
+:where(.check>li){padding:8px 0 8px 30px;position:relative;border-bottom:1px solid var(--line)}
+:where(.check>li)::before{content:"";position:absolute;left:0;top:8px;width:20px;height:20px;border-radius:7px;
+border:2px solid var(--muted)}
+:where(.check>li.done)::before{background:var(--good);border-color:var(--good)}
+:where(.check>li.done)::after{content:"✓";position:absolute;left:5px;top:7px;color:#fff;font-weight:900;font-size:13px}
+:where(.check>li.done){color:var(--muted)}
+/* flow: <div class="flow"><div>A</div><div>B</div></div>; .flow.down for a column */
+:where(.flow){display:flex;align-items:stretch;gap:22px;flex-wrap:wrap;margin:0 0 12px}
+:where(.flow>*){position:relative;flex:1 1 0;min-width:80px;background:var(--tint);color:var(--ink);border-radius:14px;
+padding:10px 12px;font-weight:700;font-size:14px;text-align:center}
+:where(.flow>*:not(:last-child))::after{content:"→";position:absolute;right:-18px;top:50%;transform:translateY(-50%);
+color:var(--muted);font-weight:900}
+:where(.flow.down){flex-direction:column;gap:20px}
+:where(.flow.down>*:not(:last-child))::after{content:"↓";right:auto;left:50%;top:auto;bottom:-20px;transform:translateX(-50%)}
+:where(.diagram){display:block;margin:0 0 12px;overflow-x:auto}
+:where(pre.diagram){font:inherit;white-space:pre;color:transparent}
+:where(svg .bip-axis){fill:var(--muted);font:700 10.5px var(--font)}
+:where(svg .bip-value){fill:var(--ink2);font:800 10.5px var(--font)}
+:where(svg .bip-grid){stroke:var(--line)}
+:where(svg .bip-node rect){fill:var(--tint);stroke:var(--accent);stroke-width:1.5}
+:where(svg .bip-node text){fill:var(--ink);font:700 13px var(--font)}
+:where(svg .bip-edge){stroke:var(--muted);stroke-width:1.6;fill:none}
+:where(.chart){display:block;width:100%;margin:4px 0 8px}
+:where(.legend){display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;font-weight:700;color:var(--ink2);margin:2px 0 6px}
+:where(.legend i){display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* what-ifs: sliders and switches */
+:where(input[type=range]){width:100%;accent-color:var(--accent);margin:8px 0}
+:where(.toggle){display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700;padding:6px 0}
+:where(.toggle input){appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:99px;background:var(--field);
+border:1px solid var(--line);position:relative;transition:background .2s;flex:none;margin:0}
+:where(.toggle input)::after{content:"";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;
+background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}
+:where(.toggle input:checked){background:var(--accent)}
+:where(.toggle input:checked)::after{transform:translateX(18px)}
+:where(label.field){display:block;font-size:13px;font-weight:700;color:var(--ink2);margin:8px 0 2px}
+:where(output){font-weight:900;color:var(--deep);font-variant-numeric:tabular-nums}
+:where(select,input[type=number],input[type=text]){font:inherit;color:var(--ink);background:var(--field);
+border:1px solid var(--line);border-radius:12px;padding:8px 10px;width:100%}
+:where(button){font:800 14px var(--font);color:var(--deep);background:var(--tint);border:0;border-radius:99px;padding:8px 14px}
+/* tabs: <div class="tabs"><button>Week</button><button>Month</button></div> then one <section class="tab"> each */
+:where(.tabs){display:flex;gap:4px;background:var(--field);border-radius:99px;padding:3px;margin:0 0 12px}
+:where(.tabs>button){flex:1;background:transparent;color:var(--ink2);padding:7px 10px}
+:where(.tabs>button[aria-selected=true]){background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+:where(section.tab[hidden]){display:none}
+:where(img){max-width:100%;height:auto;border-radius:14px}
+:where(.foot){color:var(--muted);font-size:12px;font-weight:600;margin-top:10px}

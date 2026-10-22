@@ -13,7 +13,8 @@
 //! block the app offers to send with WhatsApp, Signal, Messages… (2026-10-22, added to the golden by hand too); and the
 //! agent talks in plain words, never about its container, tools or errors (2026-10-22: the people are not technical;
 //! by hand in the golden file too); and long work goes to a background task, never inline (2026-10-22,
-//! `LONG_WORK_RULE`, by hand in the golden file too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
+//! `LONG_WORK_RULE`, by hand in the golden file too); and answers with numbers, a plan or a comparison come with a
+//! live page placed in the reply (2026-10-22, `VISUAL_RULE`, by hand in the golden file too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
 //! health data has a second block (`with_health`): use it to help, never to diagnose.
 //!
 //! Port of `bridge/bipbridge/souls.py` (owner group: agents).
@@ -105,7 +106,7 @@ pub const PLAIN_RULE: &str = concat!(
     "Talk to your person in everyday words, about what they want and what you got for them: most people are not ",
     "technical. Never mention your container, sandbox, terminal, server, file paths, the names of tools, APIs or ",
     "programs, code, error messages or how you are set up, unless they ask or clearly want technical details (a ",
-    "MEDIA: line a tool gives you still goes at the end of your reply). When something can't be done, say simply ",
+    "MEDIA: line a tool gives you still goes in your reply, alone on its line). When something can't be done, say simply ",
     "what can't be done and what you propose instead: don't narrate your attempts, retries or errors. Before doing ",
     "something that needs their approval, say in one plain sentence what you will do for them and why; the approval ",
     "request appears right after."
@@ -136,6 +137,17 @@ pub const LONG_WORK_RULE: &str = concat!(
     "with one tap. Quick answers, one search or a short page stay here as usual."
 );
 
+/// Answers shown, not only told (owner's request 2026-10-22: « des vrais mini web apps au milieu du texte »): a live
+/// page from create_page placed inside the reply, where the app renders it in the text (pages.rs' kit makes it quick).
+/// Rust bridge only, like FAMILY_RULE (added to tests/golden/souls.json by hand).
+pub const VISUAL_RULE: &str = concat!(
+    "When your answer has numbers to compare, a plan, a progression, a routine, a budget or steps that link together, ",
+    "show it: make a page with create_page (its kit makes a clean one in a few lines) and put its MEDIA: line inside ",
+    "your reply, alone on its line where it belongs, with a sentence or two before it and the rest after. Keep your text ",
+    "around it short: the page holds the details. Never send a picture of a chart or a table. Link the page to the ",
+    "Carnet page of its subject (create_page's notebook). A quick answer, a single number or small talk stays plain text."
+);
+
 fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
@@ -144,7 +156,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{BLOCK_END}"
     )
 }
 

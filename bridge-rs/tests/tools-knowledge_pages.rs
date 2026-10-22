@@ -31,7 +31,7 @@ fn a_page_is_locked_before_it_is_kept() {
     // The policy comes before anything the agent wrote, the doctype stays first.
     assert!(kept.starts_with("<!DOCTYPE html>\n<meta http-equiv=\"Content-Security-Policy\""));
     let at = |t: &str| kept.find(t).unwrap();
-    assert!(at("Content-Security-Policy") < at("<html") && at("<html") < at("<script"));
+    assert!(at("Content-Security-Policy") < at("<html") && at("<html") < at("<canvas"));
     assert!(kept.contains("connect-src 'none'") && kept.contains("form-action 'none'"));
     // Chart.js from the bridge, inline, instead of the CDN's; what else it asks from the network is reported.
     assert!(!kept.contains("cdn.jsdelivr.net") && kept.contains("Chart.js v4") && !kept[..200].contains("<\\/script"));
@@ -136,4 +136,62 @@ async fn an_agent_makes_a_page_and_the_app_gets_it_locked() {
     assert_eq!(app.request("DELETE", "/v1/pages/prises-de-sang?agent=wellness", &[(k, &v)], None).await.status, 200);
     assert_eq!(app.request("DELETE", "/v1/pages/prises-de-sang?agent=wellness", &[(k, &v)], None).await.status, 404);
     assert_eq!(call(&app, "list_pages", json!({})).await["content"][0]["text"], "No page yet.");
+}
+
+#[test]
+fn every_page_carries_the_kit_after_the_policy() {
+    let (kept, outside) = pages::lock_with(
+        "<!doctype html><html lang=\"fr\"><head><title>Sorties</title><script src=\"chart.js\"></script></head>\
+<body><div class=\"kpi\"><span class=\"v\">86</span></div><div id=\"w\"></div>\
+<script>Bip.bars('#w', {labels: ['S1'], values: [18]})</script></body></html>",
+        "Sorties",
+        Some("wellness"),
+    );
+    assert!(outside.is_empty());
+    let at = |t: &str| kept.find(t).unwrap_or_else(|| panic!("{t} missing"));
+    // The policy first, then the kit (its look and its script), then what the agent wrote.
+    assert!(at("Content-Security-Policy") < at("<style id=\"bip-kit\">"));
+    assert!(at("<style id=\"bip-kit\">") < at("<script id=\"bip-kit-js\">"));
+    assert!(at("<script id=\"bip-kit-js\">") < at("<html lang=\"fr\">"));
+    assert!(kept.contains(".kpi .v") && kept.contains("window.Bip = {") && kept.contains("var TINT = \"wellness\";"));
+    // Chart.js inline, then the app's colours for it before the page draws.
+    assert!(at("Chart.js v4") < at(";window.Bip&&Bip._chart&&Bip._chart();"));
+    assert!(at("Bip._chart();") < at("Bip.bars('#w'"));
+    // An unknown kind gets the app's colours; nothing of it reaches the page.
+    let (plain, _) = pages::lock_with("<p>x</p>", "x", Some("<script>"));
+    assert!(plain.contains("var TINT = \"\";") && !plain.contains("TINT = \"<script>"));
+    assert_eq!(plain.matches("</script>").count(), 1);
+    assert_eq!(plain.matches("</style>").count(), 1);
+}
+
+#[test]
+fn the_kit_never_outranks_the_agents_own_css() {
+    // Every rule of the kit is inside :where() (no weight), except the tokens on :root.
+    let css = pages::kit_css();
+    let without_comments = regex::Regex::new(r"(?s)/\*.*?\*/").unwrap().replace_all(css, "");
+    for block in without_comments.split('}') {
+        let selector = block.rsplit_once('{').map(|(s, _)| s).unwrap_or("");
+        let selector = selector.rsplit('{').next().unwrap_or(selector).trim();
+        if selector.is_empty() || selector.starts_with(":root") {
+            continue;
+        }
+        // the selector's own commas, not those inside :where(…)
+        let (mut depth, mut start, mut parts) = (0, 0, Vec::new());
+        for (i, c) in selector.char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => depth -= 1,
+                ',' if depth == 0 => {
+                    parts.push(&selector[start..i]);
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        parts.push(&selector[start..]);
+        for part in parts.into_iter().map(str::trim) {
+            assert!(part.starts_with(":where("), "a kit rule with weight: {part}");
+        }
+    }
+    assert!(pages::kit_js().contains("__BIP_TINT__") && pages::kit_js().len() < 30_000 && css.len() < 20_000);
 }

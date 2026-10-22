@@ -316,7 +316,7 @@ async fn the_agent_reads_and_searches_its_knowledge_pages() {
 fn the_tools_version_is_the_pythons() {
     // tools_version() of bridge/bipbridge/agent_tools.py (tests/golden/agent_tools_version.txt), until the Rust bridge's
     // own tools changed: reminders_add's place and `route`, create_page for an infographic and its link to the Carnet
-    // (2026-10-22, the Python bridge doesn't have them), start_task (2026-10-22).
+    // (2026-10-22, the Python bridge doesn't have them), start_task and the page kit (2026-10-22).
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }
