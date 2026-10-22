@@ -571,14 +571,33 @@ pub async fn forget(config: &Config, agent: &str, run: &Run) {
 
 // --- the files in the volume ---------------------------------------------------------------------------------------
 
+/// A regular file opened for reading, never through a symbolic link (O_NOFOLLOW: a link swapped in after the checks
+/// fails here), nor a pipe or a device.
+pub fn open_plain(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::other("not a regular file"));
+    }
+    Ok(file)
+}
+
 fn copy_file(source: &Path, target: &Path) -> std::io::Result<()> {
     let tmp = target.with_file_name(format!(
         ".{}.part",
         target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
     ));
-    std::fs::copy(source, &tmp)?;
-    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(SANDBOX_FILE_MODE))?;
-    std::fs::rename(&tmp, target)
+    let result = (|| {
+        let mut input = open_plain(source)?;
+        let mut out = std::fs::File::create(&tmp)?;
+        std::io::copy(&mut input, &mut out)?;
+        out.set_permissions(std::fs::Permissions::from_mode(SANDBOX_FILE_MODE))?;
+        std::fs::rename(&tmp, target)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 fn make_dir(path: &Path) -> std::io::Result<()> {
@@ -702,11 +721,11 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": WRITE,
             "description": format!("Put a file in your shared folder, for the agents the person allowed (they only \
-        read it). Put the file in {OUTBOX} first and give its path as `from`, or give a short text as `content`. The person \
+        read it). Copy the file right into {OUTBOX} (no folder) and give its path as `from`, or give a short text as `content`. The person \
         approves it."),
             "inputSchema": {"type": "object", "properties": {
                 "path": {"type": "string", "description": "where in your shared folder, e.g. resume/semaine.md"},
-                "from": {"type": "string", "description": format!("a file of yours under {OUTBOX}")},
+                "from": {"type": "string", "description": format!("{OUTBOX}/<name>: a file you copied there")},
                 "content": {"type": "string", "description": "or the text itself"},
             }, "required": ["path"]},
             "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
@@ -883,17 +902,24 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                 let Some((_, outbox)) = volumes_of(config, &agent.name) else {
                     return error("your sandbox isn't ready for files yet; try again in a moment");
                 };
-                let Some(source) = plain_relative(rest).and_then(|r| inside(&outbox, &r)) else {
-                    return error(&format!("no such file under {OUTBOX}"));
+                // Right in /envoi, no folder on the way: nothing the sandbox could swap for a link meanwhile.
+                let name = plain_relative(rest).filter(|r| r.components().count() == 1);
+                let Some(source) = name.and_then(|r| inside(&outbox, &r)) else {
+                    return error(&format!("put the file right in {OUTBOX} (no folder), then give {OUTBOX}/<name>"));
                 };
-                match source.symlink_metadata() {
-                    Ok(meta) if meta.is_file() && meta.len() <= config.limits.upload_max_bytes => {}
-                    Ok(meta) if meta.is_file() => return error("this file is too large to share"),
-                    _ => return error(&format!("no such file under {OUTBOX}")),
-                }
+                let limit = config.limits.upload_max_bytes;
+                let input = match open_plain(&source) {
+                    Ok(file) if file.metadata().map(|m| m.len() <= limit).unwrap_or(false) => file,
+                    Ok(_) => return error("this file is too large to share"),
+                    Err(_) => return error(&format!("no such file in {OUTBOX}")),
+                };
                 write_into(&own, &target, |out| {
-                    let mut input = std::fs::File::open(&source)?;
-                    std::io::copy(&mut input, out).map(|_| ())
+                    use std::io::Read;
+                    let copied = std::io::copy(&mut input.take(limit + 1), out)?;
+                    if copied > limit {
+                        return Err(std::io::Error::other("too large"));
+                    }
+                    Ok(())
                 })
             } else if let Some(content) = content {
                 if content.len() > MAX_CONTENT {

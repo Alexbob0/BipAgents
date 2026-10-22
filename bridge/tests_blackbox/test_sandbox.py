@@ -122,7 +122,7 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert servers["bipagents_files"]["headers"] == servers["bipagents"]["headers"]
     state = json.loads((bridge.state_dir / "sandbox.json").read_text())
     assert state["agents"]["vie"] == {"files": str(volumes[("files", "vie")]), "outbox": str(volumes[("envoi", "vie")])}
-    assert "sandbox isolated" in bridge.log_tail(2000)
+    assert wait_until(lambda: "sandbox isolated" in bridge.log_tail(2000), timeout=10)
     # Started again: nothing to change, nothing rewritten.
     bridge.stop()
     bridge.commands.clear()
@@ -140,7 +140,7 @@ def test_without_the_registries_proxy_the_sandbox_gets_no_network_at_all(bridges
     assert "docker_extra_args" not in vie or vie["docker_extra_args"] == []
     assert not any(k.lower().endswith("proxy") for k in vie.get("docker_env", {}))
     assert vie["docker_volumes"][-2:] == ["bipagents-files-vie:/fichiers:ro", "bipagents-envoi-vie:/envoi"]
-    assert "sandboxes without network" in bridge.log_tail(2000)
+    assert wait_until(lambda: "sandboxes without network" in bridge.log_tail(2000), timeout=10)
 
 
 def test_the_file_tools_follow_the_share_links(bridges, fakes):
@@ -171,6 +171,11 @@ def test_the_file_tools_follow_the_share_links(bridges, fakes):
     os.symlink("/etc/hosts", volumes[("envoi", "wellness")] / "hosts")
     assert call(bridge, "wellness", "shared_files_write", path="h", **{"from": "/envoi/hosts"})[1] is True
     assert call(bridge, "wellness", "shared_files_write", path="h", **{"from": "/etc/hosts"})[1] is True
+    (volumes[("envoi", "wellness")] / "sub").mkdir()
+    (volumes[("envoi", "wellness")] / "sub" / "x.md").write_text("x")
+    assert call(bridge, "wellness", "shared_files_write", path="h", **{"from": "/envoi/sub/x.md"})[1] is True
+    os.mkfifo(volumes[("envoi", "wellness")] / "pipe")
+    assert call(bridge, "wellness", "shared_files_write", path="h", **{"from": "/envoi/pipe"})[1] is True
     assert call(bridge, "wellness", "shared_files_write", path="../vie/x.md", content="x")[1] is True
     assert call(bridge, "wellness", "shared_files_get", agent="wellness", path="../../sandbox.json")[1] is True
     assert not (share / "h").exists()
@@ -230,4 +235,4 @@ def test_a_sandbox_holding_its_desktop_browser_keeps_the_internet(bridges, fakes
     assert vie.get("docker_network", True) is True and not vie.get("docker_extra_args")
     assert not any(k.lower().endswith("proxy") for k in vie.get("docker_env", {}))
     assert not any(a[:1] == ["run"] or a[:2] == ["network", "create"] for a in bridge.commands.of("podman"))
-    assert "its desktop's browser runs there" in bridge.log_tail(2000)
+    assert wait_until(lambda: "its desktop's browser runs there" in bridge.log_tail(2000), timeout=10)
