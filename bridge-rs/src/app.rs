@@ -330,7 +330,7 @@ impl AppState {
             jobs.resume_following().await;
         });
         if config.hermes.enabled() {
-            self.spawn(agents_admin::mount_all_uploads(self.config.clone(), agents_admin::default_run()));
+            self.spawn(crate::sandbox::isolate_all(self.config.clone(), agents_admin::default_run()));
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
             if config.cloud {
                 // a place of the reserve: its first agent made before its claim; what a claim left, finished
@@ -361,6 +361,9 @@ async fn purge_loop(state: AppState) {
                         tokio::task::spawn_blocking(move || crate::files::purge_uploads(&root, days, None)).await?;
                     if removed > 0 {
                         tracing::info!(agent = %agent.name, removed = removed, "uploads purged");
+                        // and from its sandbox's copy (sandbox.rs)
+                        let (c, name) = (config.clone(), agent.name.clone());
+                        tokio::task::spawn_blocking(move || crate::sandbox::sync_agent(&c, &name)).await??;
                     }
                 }
             }
@@ -1273,6 +1276,7 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/hermes/{agent}/{path:path}", ""),
     ("/peer/p/{target}/{path:path}", ""),
     ("/v1/agent-tools/mcp", "POST"),
+    ("/v1/agent-tools/files", "POST"),
     ("/family/accept", "POST"),
     ("/family/agents", "GET"),
     ("/family/p/{target}/{path:path}", ""),
@@ -1411,6 +1415,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         // listens on a local port only). Hermes checks each agent's own key.
         .merge(crate::lan::hermes_proxy())
         .merge(crate::peers::peer_router()) // agents' own tokens, checked against the links the person allowed
+        .merge(crate::sandbox::router()) // the agents' file tools (shared folders), same tokens
         .merge(crate::agent_tools::router()) // the agents' MCP tools (create_audio), each agent with its own token
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key

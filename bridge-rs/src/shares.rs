@@ -9,6 +9,10 @@
 //! `<data>/shares.json` holds the links. The sandboxes pick the new mounts up when they start again (they are recreated
 //! when their mounts change).
 //!
+//! Where the bridge isolates the sandboxes (Linux with podman, sandbox.rs), nothing is mounted: the same folders are
+//! reached through the agent's file tools (`shared_files_*`), which check these links at each call; writes and deletes
+//! are approved by the person. Agents set up by hand (`shares = "external"`) still mount what `mounts()` lists.
+//!
 //! Port of `bridge/bipbridge/shares.py` (owner group: agents).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -218,6 +222,19 @@ pub async fn apply(config: &Config, wanted: &[(String, String)], run: &Run) -> a
         }
         let Some(agent) = agent else { continue };
         let Some(folder) = profile_dir(config, agent).filter(|f| f.is_dir()) else { continue };
+        if crate::sandbox::isolates(config, agent) {
+            // An isolated sandbox mounts nothing: the agent reaches the folders through its file tools, which check
+            // these links at each call (sandbox.rs). What it may no longer read goes from its copies.
+            let skill_dir = folder.join("skills").join("shared-data");
+            if wanted.iter().any(|(a, b)| a == name || b == name) {
+                std::fs::create_dir_all(&skill_dir)?;
+                std::fs::write(skill_dir.join("SKILL.md"), crate::sandbox::skill())?;
+            } else {
+                let _ = std::fs::remove_dir_all(&skill_dir);
+            }
+            crate::sandbox::drop_stale_copies(config, name, wanted);
+            continue;
+        }
         let volumes = volumes_for(config, name, wanted, &docker_volumes(&folder));
         let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         let listed = crate::py::dumps(&json!(volumes));

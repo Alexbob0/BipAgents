@@ -470,11 +470,21 @@ pub async fn register_at(config: &Config, agent: &AgentConfig, run: &Run, url: &
     };
     let current = header.strip_prefix("Bearer ").unwrap_or("").to_string();
     let known = !current.is_empty() && tokens.get(&agent.name) == Some(&digest(&current));
+    let mut same = false;
     if let Value::Object(map) = &entry {
         let timeout = py::py_str(map.get("timeout").unwrap_or(&Value::Null));
-        if map.get("url") == Some(&Value::String(url.to_string())) && known && timeout == TOOL_TIMEOUT.to_string() {
-            return Ok(false);
-        }
+        same = map.get("url") == Some(&Value::String(url.to_string())) && known && timeout == TOOL_TIMEOUT.to_string();
+    }
+    // An isolated sandbox's file tools (sandbox.rs): a second entry, « untrusted » so Hermes asks the person before
+    // each write or delete, with the same token.
+    let files = crate::sandbox::isolates(config, agent);
+    let files_entry = servers.and_then(|s| s.get(crate::sandbox::SERVER_NAME)).cloned().unwrap_or(json!({}));
+    let files_same = !files
+        || (files_entry.get("url") == Some(&json!(crate::sandbox::tools_url(config)))
+            && files_entry.get("trust") == Some(&json!("untrusted"))
+            && files_entry.get("headers").and_then(|h| h.get("Authorization")) == Some(&json!(header)));
+    if same && files_same {
+        return Ok(false);
     }
     let token = if known { current } else { py::token_urlsafe(32) };
     // the profiles' folder is <home>/profiles/<name>
@@ -486,6 +496,16 @@ pub async fn register_at(config: &Config, agent: &AgentConfig, run: &Run, url: &
         args.extend([key, value]);
         args
     };
+    if files {
+        let name = crate::sandbox::SERVER_NAME;
+        run(with(format!("mcp_servers.{name}.url"), crate::sandbox::tools_url(config)), env.clone()).await?;
+        run(with(format!("mcp_servers.{name}.headers.Authorization"), format!("Bearer {token}")), env.clone()).await?;
+        run(with(format!("mcp_servers.{name}.trust"), "untrusted".into()), env.clone()).await?;
+        tracing::info!(agent = %agent.name, "file tools registered (writes and deletes approved by the person)");
+        if same {
+            return Ok(true);
+        }
+    }
     run(with(format!("mcp_servers.{SERVER_NAME}.url"), url.to_string()), env.clone()).await?;
     run(with(format!("mcp_servers.{SERVER_NAME}.headers.Authorization"), format!("Bearer {token}")), env.clone())
         .await?;

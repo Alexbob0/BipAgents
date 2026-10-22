@@ -41,8 +41,8 @@ const MAX_FILES: usize = 1;
 const MAX_FIELDS: usize = 8;
 const MAX_PART_SIZE: usize = 1024 * 1024;
 
-static STORED_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9a-f]{12}-[^\n]").expect("valid regex"));
-static MONTH_DIR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}\n?\z").expect("valid regex"));
+pub static STORED_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9a-f]{12}-[^\n]").expect("valid regex"));
+pub static MONTH_DIR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}\n?\z").expect("valid regex"));
 
 /// `BodyTooLarge`: an HTTPException 413.
 fn body_too_large(limit: u64) -> HttpError {
@@ -330,7 +330,10 @@ pub async fn handle_upload(state: AppState, request: Request) -> ApiResult<Value
     let source = spooled.path.clone();
     let (filename, content_type, limits) = (filename.clone(), content_type.clone(), config.limits.clone());
     let stored = tokio::task::spawn_blocking(move || {
-        store_upload(&agent, &source, &filename, content_type.as_deref(), &limits, None)
+        let stored = store_upload(&agent, &source, &filename, content_type.as_deref(), &limits, None)?;
+        // An isolated sandbox sees a copy of the uploads, in its own volume (sandbox.rs).
+        crate::sandbox::sync_agent(&config, &agent.name).map_err(anyhow::Error::from)?;
+        Ok(stored)
     })
     .await
     .map_err(anyhow::Error::from)?;

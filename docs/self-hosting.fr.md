@@ -124,6 +124,25 @@ planifiées de Hermes arrivent dans la Boîte sans elles (`[cron]`). Puis `~/.lo
 
 Toutes les options : [`bridge/README.md`](../bridge/README.fr.md).
 
+### Le bac à sable des agents (Linux avec podman)
+
+Quand les outils des agents tournent dans le bac à sable de Hermes (`terminal.backend: docker`, avec podman sans
+root), le bridge le garde isolé : Hermes y fait alors le travail sans risque (`python -c`, `execute_code`,
+`pip install`) sans te demander à chaque fois.
+
+- **Aucun dossier de la machine dedans** : les fichiers que tu envoies à un agent sont copiés dans un volume podman à
+  lui (`bipagents-files-<agent>`, en lecture seule dans `/fichiers`) ; les dossiers partagés entre agents passent par
+  les outils `shared_files_*` du bridge, et tu approuves chaque écriture ou suppression depuis l'app.
+- **Pas d'internet, sauf les dépôts de paquets** : le bac à sable est sur `bipagents-sandbox`, un réseau podman sans
+  route vers l'extérieur, et n'atteint que PyPI, npm, crates.io, Go, RubyGems et Debian, par un petit conteneur proxy
+  (`bipagents-egress` ; `podman logs bipagents-egress` montre ce qu'il a laissé passer ou bloqué). La recherche web et
+  le navigateur visible de l'agent sont d'autres outils et marchent toujours.
+
+Les agents existants passent à ce mode au prochain démarrage du bridge (`bipbridge sandbox` le fait tout de suite et
+dit ce que chacun a reçu). La section `[sandbox]` de `bridge.example.toml` liste les réglages. Sur macOS, ou avec
+docker au lieu de podman, les bacs à sable restent comme avant (dossiers montés, Hermes demande avant les commandes
+risquées).
+
 ## 5. Lancer au démarrage
 
 **macOS (Mac mini)** : deux LaunchAgents.

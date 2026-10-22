@@ -278,6 +278,32 @@ impl Default for SpacesConfig {
     }
 }
 
+/// The agents' sandboxes (sandbox.rs): no folder of this machine inside, no internet but the package registries.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SandboxConfig {
+    /// "auto": on Linux with podman (rootless); "on": wherever podman is found (tests, or a podman whose volumes this
+    /// account can write); "off": the sandboxes mount the agents' folders as before (Hermes then asks before every
+    /// risky command).
+    pub isolate: String,
+    /// The sandboxes' own network, without a route out: an IPv4 /24; the registries' proxy takes its `.2`.
+    pub subnet: String,
+    /// The only hosts the sandboxes reach, through the proxy: HTTPS (443), and plain HTTP (80) for Debian's apt.
+    pub registries: Vec<String>,
+    /// The proxy's image (default: the agents' sandbox image, already on this machine).
+    pub image: String,
+}
+
+impl Default for SandboxConfig {
+    fn default() -> Self {
+        SandboxConfig {
+            isolate: "auto".into(),
+            subnet: "10.233.80.0/24".into(),
+            registries: crate::sandbox::REGISTRIES.iter().map(|s| s.to_string()).collect(),
+            image: String::new(),
+        }
+    }
+}
+
 /// Each agent's visible browser (browsers.py): a real Chrome on a screen of its own, in a container of its own.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BrowserConfig {
@@ -427,6 +453,9 @@ pub struct Config {
     pub hermes: HermesInstall,
     pub spaces: SpacesConfig,
     pub browser: BrowserConfig,
+    /// `[sandbox]` (sandbox.rs): the agents' sandboxes isolated. Not in the serialized form (the golden config).
+    #[serde(skip)]
+    pub sandbox: SandboxConfig,
     /// `[weather]` and `[maps]` (weather.rs, routes.rs): not in the serialized form, which matches the Python's.
     #[serde(skip)]
     pub weather: WeatherConfig,
@@ -488,6 +517,7 @@ impl Config {
             hermes: HermesInstall::default(),
             spaces: SpacesConfig::default(),
             browser: BrowserConfig::default(),
+            sandbox: SandboxConfig::default(),
             weather: WeatherConfig::default(),
             maps: MapsConfig::default(),
             push_relay_url: None,
@@ -961,6 +991,24 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         return Err(ConfigError::new("browser.runtime must be 'podman' or 'docker', browser.gpu 'auto' or 'none'"));
     }
 
+    let sandbox_t = table(data, "sandbox");
+    let defaults = SandboxConfig::default();
+    let sandbox = SandboxConfig {
+        isolate: s(sandbox_t, "isolate", &defaults.isolate),
+        subnet: s(sandbox_t, "subnet", &defaults.subnet),
+        registries: match get(sandbox_t, "registries") {
+            Some(Value::Array(items)) => items.iter().map(|h| py::py_str(h).trim().to_lowercase()).collect(),
+            _ => defaults.registries,
+        },
+        image: s(sandbox_t, "image", ""),
+    };
+    if !["auto", "on", "off"].contains(&sandbox.isolate.as_str()) {
+        return Err(ConfigError::new("sandbox.isolate must be 'auto', 'on' or 'off'"));
+    }
+    if crate::sandbox::proxy_ip(&sandbox.subnet).is_none() {
+        return Err(ConfigError::new("sandbox.subnet must be an IPv4 /24, e.g. 10.233.80.0/24"));
+    }
+
     let lan_t = table(data, "lan");
     let setup_t = table(data, "setup");
     let lan = LanConfig {
@@ -1027,6 +1075,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         hermes,
         spaces,
         browser,
+        sandbox,
         weather,
         maps,
         push_relay_url,

@@ -18,8 +18,19 @@ use crate::config::{config_path, load_config, Config, SharedConfig};
 use crate::logs::setup_logging;
 use crate::py;
 
-const COMMANDS: [&str; 10] =
-    ["serve", "check", "genkey", "qr", "peer-token", "browser", "shares-mounts", "console", "spaces", "adopt"];
+const COMMANDS: [&str; 11] = [
+    "serve",
+    "check",
+    "genkey",
+    "qr",
+    "peer-token",
+    "browser",
+    "shares-mounts",
+    "console",
+    "spaces",
+    "adopt",
+    "sandbox",
+];
 
 const ACTIONS: [&str; 3] = ["add", "remove", "start"];
 
@@ -37,7 +48,7 @@ pub struct Args {
 
 const USAGE: &str = "usage: bipbridge [-h] [--config CONFIG] [--agent AGENT] [--png PNG] [--json]
                  [--all]
-                 [{serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt}]
+                 [{serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox}]
                  [{add,remove,start}]
 ";
 
@@ -45,7 +56,7 @@ const HELP: &str = "
 BipAgents bridge for Hermes agents
 
 positional arguments:
-  {serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt}
+  {serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox}
                         serve (default), check the config, print a new random
                         bridge key, show an agent's pairing QR code for the
                         app, (peer-token --agent X) give an agent set up by
@@ -58,7 +69,8 @@ positional arguments:
                         start again the agents' own spaces after an install
                         was moved here, or (adopt) serve the agents an export
                         brought to a place as its own (bipinstall import-
-                        place)
+                        place), or (sandbox) isolate the agents' sandboxes
+                        now and print what each one got
   {add,remove,start}    browser: add or remove; spaces: start
 
 options:
@@ -234,6 +246,7 @@ pub fn main(argv: Vec<String>) -> i32 {
         "browser" => runtime.block_on(browser(config, &args)),
         "spaces" => runtime.block_on(spaces(&config)),
         "adopt" => runtime.block_on(adopt(config)),
+        "sandbox" => runtime.block_on(sandbox(config)),
         "console" => console(&config),
         _ => runtime.block_on(serve(config)),
     }
@@ -305,6 +318,52 @@ fn shares_mounts(config: &Config, args: &Args) -> i32 {
         println!("-v\n{mount}");
     }
     0
+}
+
+/// The agents' sandboxes isolated now (what the bridge does at start, sandbox.rs), and what each one got: run by the
+/// installer's migration so the update's log says it. The running bridge reads the agents' sections at its restart.
+async fn sandbox(config: Config) -> i32 {
+    use crate::agents_admin::{default_run, give_tools, managed, mount_uploads};
+    let shared = SharedConfig::new(config);
+    let run = default_run();
+    let config = shared.get();
+    if crate::sandbox::engine(&config).is_none() {
+        println!("sandboxes left as they are: isolating them needs Linux and podman ([sandbox] isolate)");
+        return 0;
+    }
+    match crate::sandbox::network(&config, &run).await {
+        Ok(url) => println!(
+            "network: {} (no route out), registries through {url}: {}",
+            crate::sandbox::NETWORK,
+            config.sandbox.registries.join(", ")
+        ),
+        Err(why) => println!("network: none ({why}); the sandboxes get no internet at all until it works"),
+    }
+    let mut failed = 0;
+    let agents: Vec<_> = config.agents.values().cloned().collect();
+    for agent in agents {
+        if managed(&shared.get(), &agent.name).is_err() || !crate::sandbox::isolates(&shared.get(), &agent) {
+            continue;
+        }
+        let result: anyhow::Result<()> = async {
+            let agent = mount_uploads(&shared, &agent, &run, true).await?;
+            shared.put_agent(agent.clone());
+            give_tools(&shared.get(), &agent, &run).await?;
+            let folder = crate::shares::profile_dir(&shared.get(), &agent).unwrap_or_default();
+            let mounts = crate::shares::docker_volumes(&folder);
+            let kept = crate::sandbox::host_mounts(&mounts);
+            let by_hand =
+                if kept.is_empty() { String::new() } else { format!("; still mounted by hand: {}", kept.join(" ")) };
+            println!("{}: isolated (volumes: {}){by_hand}", agent.name, mounts.join(" "));
+            Ok(())
+        }
+        .await;
+        if let Err(exc) = result {
+            eprintln!("{}: {exc}", agent.name);
+            failed += 1;
+        }
+    }
+    i32::from(failed > 0)
 }
 
 fn console(config: &Config) -> i32 {
@@ -785,8 +844,8 @@ mod tests {
             Err(ArgsExit::Error(m)) => m,
             other => panic!("{l}: {other:?}"),
         };
-        assert_eq!(err("add"), "argument command: invalid choice: 'add' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt)");
-        assert_eq!(err("-5"), "argument command: invalid choice: '-5' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt)");
+        assert_eq!(err("add"), "argument command: invalid choice: 'add' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox)");
+        assert_eq!(err("-5"), "argument command: invalid choice: '-5' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox)");
         assert_eq!(err("check extra"), "argument action: invalid choice: 'extra' (choose from add, remove, start)");
         assert_eq!(err("spaces start extra"), "unrecognized arguments: extra");
         assert_eq!(err("--bogus"), "unrecognized arguments: --bogus");

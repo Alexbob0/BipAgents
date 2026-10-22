@@ -112,6 +112,27 @@ def browser_ports(runner: hermes.Runner, home: Path) -> str:
     return f"the agents' browsers ({len(units)}) use ports {first} to {first + count - 1}, of this install only"
 
 
+def isolated_sandboxes(runner: hermes.Runner, home: Path) -> str:
+    """The agents' sandboxes isolated (bridge-rs/src/sandbox.rs, 2026-10-22): no folder of this machine mounted in
+    them any more (the files the person sends are copied into a volume of the agent's own, shared folders go through
+    the bridge's tools), and no internet but the package registries. Hermes then stops asking before harmless work
+    there. The bridge does the same at each start; this says what each agent got in the update's log, and restarts
+    the gateways so their sandboxes are made again without the old mounts. Linux with podman only."""
+    import platform
+    import shutil
+    if platform.system() != "Linux" or not shutil.which("podman"):
+        return "agents' sandboxes left as they are (isolating them needs Linux and podman)"
+    config = _bridge_config(home)
+    if config is None:
+        return "agents' sandboxes left as they are (no bridge config found)"
+    from .rustbridge import cli
+    out = runner.run(cli(home, REPO) + ["sandbox", "--config", str(config)], cwd=REPO / "bridge")
+    from . import update
+    update.restart(runner)
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    return "agents' sandboxes isolated, gateways restarted" + ("".join(f"\n  {line}" for line in lines))
+
+
 def rust_bridge(runner: hermes.Runner, home: Path) -> str:
     """The bridge in Rust only (2026-10-21): the Python bridge left the code with this update, so a service still
     running it is put on this version's binaries (rustbridge.py), restarted, and the agents' browser tools moved to
@@ -170,6 +191,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-18-browsers-on-demand", browsers_on_demand),
     ("2026-10-19-browser-ports", browser_ports),
     ("2026-10-22-browser-refresh", browser_refresh),
+    ("2026-10-22-isolated-sandboxes", isolated_sandboxes),
 ]
 
 

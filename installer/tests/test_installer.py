@@ -733,6 +733,32 @@ def test_an_update_makes_the_browsers_start_when_used(tmp_path, monkeypatch):
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"] and "(1)" in said
 
 
+def test_an_update_isolates_the_agents_sandboxes_on_linux_with_podman(tmp_path, monkeypatch):
+    """The bridge's own command does it and prints what each agent got; the gateways restart so their sandboxes are
+    made again without the old mounts. Elsewhere nothing runs."""
+    import platform
+    import shutil
+    from bipinstall import migrations, update
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('bridge_key = "k"\n')
+    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    report = "network: bipagents-sandbox (no route out)\nvie: isolated (volumes: bipagents-files-vie:/fichiers:ro)\n"
+    runner.run = lambda args, **kw: ran.append(list(args)) or (report if "sandbox" in args else "")
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    assert "left as they are" in migrations.isolated_sandboxes(runner, tmp_path) and ran == []
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/podman" if name == "podman" else None)
+    said = migrations.isolated_sandboxes(runner, tmp_path)
+    assert ran[0][0].endswith("/bipbridge") and ran[0][1:] == ["sandbox", "--config", str(config)]
+    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
+    assert said.startswith("agents' sandboxes isolated") and "\n  vie: isolated" in said
+    assert migrations.MIGRATIONS[-1][0] == "2026-10-22-isolated-sandboxes"
+
+
 def test_each_install_of_a_machine_hands_out_browser_ports_of_its_own():
     from bipinstall.ports import browser_ports
     assert browser_ports(8640) == (9600, 400)       # the first install keeps its ports
