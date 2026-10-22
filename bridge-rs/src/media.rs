@@ -2,7 +2,8 @@
 //!
 //! Hermes runs in a container: the path is the agent's (`/home/hermes/simplex-files/x.mp3`). `[media]
 //! roots` maps agent-side prefixes to host directories; only files under a declared root, with a known
-//! media extension, are ever served (symlinks and `..` resolved first).
+//! media or document extension, are ever served (symlinks and `..` resolved first). A file in the agent's own places
+//! (its isolated sandbox's `/envoi`, its workspace) is served from the bridge's copy: sent_files.rs.
 //!
 //! Port of `bridge/bipbridge/media.py` (owner group: push-runs).
 
@@ -14,7 +15,7 @@ use regex::Regex;
 /// `^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$` (multiline).
 pub const MEDIA_LINE: &str = r"(?m)^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$";
 
-pub const CONTENT_TYPES: [(&str, &str); 18] = [
+pub const CONTENT_TYPES: &[(&str, &str)] = &[
     (".mp3", "audio/mpeg"),
     (".m4a", "audio/mp4"),
     (".aac", "audio/aac"),
@@ -34,6 +35,35 @@ pub const CONTENT_TYPES: [(&str, &str); 18] = [
     (".webm", "video/webm"),
     (".html", "text/html; charset=utf-8"), // a page an agent made (pages.py): the apps show it locked
 ];
+
+/// Documents (2026-10-22): always a download (`attachment`, `nosniff`, a `sandbox` policy), opened by Quick Look or
+/// the phone's apps; none is ever rendered as a page of the bridge's origin.
+pub const DOCUMENT_TYPES: &[(&str, &str)] = &[
+    (".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    (".xls", "application/vnd.ms-excel"),
+    (".csv", "text/csv"),
+    (".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    (".doc", "application/msword"),
+    (".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    (".ppt", "application/vnd.ms-powerpoint"),
+    (".odt", "application/vnd.oasis.opendocument.text"),
+    (".ods", "application/vnd.oasis.opendocument.spreadsheet"),
+    (".odp", "application/vnd.oasis.opendocument.presentation"),
+    (".txt", "text/plain"),
+    (".md", "text/markdown"),
+    (".json", "application/json"),
+    (".zip", "application/zip"),
+    (".rtf", "application/rtf"),
+    (".key", "application/vnd.apple.keynote"),
+    (".pages", "application/vnd.apple.pages"),
+    (".numbers", "application/vnd.apple.numbers"),
+];
+
+/// One of the documents.
+pub fn is_document(path: &str) -> bool {
+    let ext = extension(path);
+    DOCUMENT_TYPES.iter().any(|(e, _)| *e == ext)
+}
 
 static MEDIA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(MEDIA_LINE).expect("valid regex"));
 static BLANK_LINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").expect("valid regex"));
@@ -59,10 +89,21 @@ fn extension(path: &str) -> String {
     }
 }
 
-/// The host file for an agent-side path, or `None` if it is outside every root, missing, or not media.
+/// The host file for an agent-side path, or `None` if it is outside every root, missing, or not media (nor a
+/// document).
 pub fn resolve(path: &str, roots: &IndexMap<String, String>) -> Option<String> {
+    resolve_kinds(path, roots, true)
+}
+
+/// `resolve` for the bridge's own folders (its audio files, the agents' pages): media only, never the records and
+/// sources kept beside them.
+pub fn resolve_media(path: &str, roots: &IndexMap<String, String>) -> Option<String> {
+    resolve_kinds(path, roots, false)
+}
+
+fn resolve_kinds(path: &str, roots: &IndexMap<String, String>, documents: bool) -> Option<String> {
     let ext = extension(path);
-    if !CONTENT_TYPES.iter().any(|(e, _)| *e == ext) {
+    if !CONTENT_TYPES.iter().any(|(e, _)| *e == ext) && !(documents && is_document(path)) {
         return None;
     }
     // sorted(roots.items(), key=lambda item: -len(item[0])): the longest prefix first, ties in their order
@@ -86,12 +127,13 @@ pub fn resolve(path: &str, roots: &IndexMap<String, String>) -> Option<String> {
 }
 
 pub fn content_type(path: &str) -> String {
+    content_type_of(path).unwrap_or_else(|| "application/octet-stream".into())
+}
+
+/// The content type of a file the apps open, None for any other.
+pub fn content_type_of(path: &str) -> Option<String> {
     let ext = extension(path);
-    CONTENT_TYPES
-        .iter()
-        .find(|(e, _)| *e == ext)
-        .map(|(_, t)| t.to_string())
-        .unwrap_or_else(|| "application/octet-stream".into())
+    CONTENT_TYPES.iter().chain(DOCUMENT_TYPES).find(|(e, _)| *e == ext).map(|(_, t)| t.to_string())
 }
 
 #[cfg(test)]
@@ -123,7 +165,9 @@ mod tests {
         assert_eq!(resolve("/etc/passwd", &roots), None);
         std::fs::write(root.join("notes.sh"), "x").unwrap();
         assert_eq!(resolve("/home/hermes/simplex-files/notes.sh", &roots), None); // not media
-                                                                                  // a symlink out of the root is not served
+        std::fs::write(root.join("courses.xlsx"), "PK").unwrap();
+        assert!(resolve("/home/hermes/simplex-files/courses.xlsx", &roots).is_some()); // a document
+                                                                                       // a symlink out of the root is not served
         std::os::unix::fs::symlink(dir.path().join("secret.mp3"), root.join("link.mp3")).unwrap();
         assert_eq!(resolve("/home/hermes/simplex-files/link.mp3", &roots), None);
     }
@@ -135,5 +179,12 @@ mod tests {
         assert_eq!(content_type("/a/.mp3"), "application/octet-stream");
         assert_eq!(content_type("/a.b/c"), "application/octet-stream");
         assert_eq!(content_type("x.tar.gz"), "application/octet-stream");
+        assert_eq!(
+            content_type("/envoi/Courses.XLSX"),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        assert_eq!(content_type("/envoi/notes.md"), "text/markdown");
+        assert!(is_document("/envoi/a.docx") && is_document("/envoi/a.numbers") && !is_document("/envoi/a.html"));
+        assert!(!is_document("/envoi/a.pdf") && !is_document("/envoi/a.sh"));
     }
 }

@@ -110,6 +110,16 @@ pub const PLAIN_RULE: &str = concat!(
     "request appears right after."
 );
 
+/// How a file reaches the person (owner's report 2026-10-22: an isolated sandbox's file named anywhere else showed
+/// « Fichier indisponible »): /envoi or the workspace and a MEDIA: line (sent_files.rs), a page through create_page.
+pub const FILES_RULE: &str = concat!(
+    "To give your person a file you made (a spreadsheet, a document, a PDF, a picture, a sound), save it in ",
+    "/envoi when that folder exists, otherwise in /workspace, then end your reply with a line MEDIA:/envoi/<name> ",
+    "(or MEDIA:/workspace/<name>) alone on its line: the app shows it to them. A file saved anywhere else (/tmp…) ",
+    "or only named in your text never reaches them. A page to look at (an infographic, a dashboard, a chart, a ",
+    "tracker) is made with the create_page tool, never as an .html file of your own.",
+);
+
 fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
@@ -118,7 +128,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{BLOCK_END}"
     )
 }
 

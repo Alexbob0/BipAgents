@@ -68,6 +68,7 @@ pub mod households;
 pub mod own_skills;
 pub mod peers;
 pub mod sandbox;
+pub mod sent_files;
 pub mod services;
 pub mod shares;
 pub mod souls;

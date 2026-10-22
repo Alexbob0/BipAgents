@@ -88,7 +88,7 @@ pub fn external_outbox(config: &Config, agent: &str) -> PathBuf {
 }
 
 /// `path` under `prefix` (a folder): the rest, without its leading `/`.
-fn under<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+pub(crate) fn under<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
     let prefix = prefix.trim_end_matches('/');
     if prefix.is_empty() {
         return None;

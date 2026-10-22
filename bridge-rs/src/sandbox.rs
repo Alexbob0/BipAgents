@@ -969,8 +969,10 @@ fn write_into(
 const INSTRUCTIONS: &str = "BipAgents files: the files your person sends you are in /fichiers (read-only). Shared \
 folders between agents: shared_files_list, shared_files_get (copies into /fichiers/partages/), and to share a file, \
 put it in /envoi then shared_files_write; the person approves writes and deletes. To give files to one of your \
-other agents, put them in /envoi then use send_files_to_agent (bipagents tools). Your sandbox reaches the package \
-registries (pip, npm…) and nothing else on the internet: use your web tools for the rest.";
+other agents, put them in /envoi then use send_files_to_agent (bipagents tools). To give a file to your person, \
+put it in /envoi and end your reply with a line MEDIA:/envoi/<name>; a page goes through create_page. Your \
+sandbox reaches the package registries (pip, npm…) and nothing else on the internet: use your web tools for the \
+rest.";
 
 /// The file tools' MCP endpoint (same token as the bridge's other tools).
 async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {

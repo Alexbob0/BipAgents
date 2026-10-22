@@ -199,12 +199,10 @@ impl Services {
             .filter(|u| !u.is_empty())
             .map(|url| Arc::new(RelayClient::new(url, "", http.clone())));
         let push = Arc::new(PushService::new(shared.clone(), store.clone(), sender, android, push_service.clone()));
-        let hub = Arc::new(RunHub::new(
-            hermes.clone(),
-            Some(push.clone()),
-            config.limits.watch_max_seconds,
-            Some(store.clone()),
-        ));
+        let hub = Arc::new(
+            RunHub::new(hermes.clone(), Some(push.clone()), config.limits.watch_max_seconds, Some(store.clone()))
+                .with_config(shared.clone()),
+        );
         let outbox = Arc::new(OutboxService::new(shared.clone(), store.clone(), tts.clone(), push.clone()));
         Ok(Services {
             config: shared,
@@ -366,6 +364,14 @@ async fn purge_loop(state: AppState) {
                         let (c, name) = (config.clone(), agent.name.clone());
                         tokio::task::spawn_blocking(move || crate::sandbox::sync_agent(&c, &name)).await??;
                     }
+                }
+            }
+            let days = crate::files_kept::kept_days(&config);
+            if days > 0 {
+                let c = config.clone();
+                let removed = tokio::task::spawn_blocking(move || crate::sent_files::purge(&c, days, None)).await?;
+                if removed > 0 {
+                    tracing::info!(removed = removed, "files the agents sent purged");
                 }
             }
             let (c, days) = (config.clone(), config.outbox.retention_days);
@@ -764,17 +770,50 @@ async fn get_outbox_audio(
     Ok(web::file_response(&path, "audio/mpeg", Some(&format!("{item_id}.mp3")), &[], &headers).await)
 }
 
-/// A file an agent pointed to with « MEDIA:<path> » (only under `[media] roots`).
+/// A file an agent pointed to with « MEDIA:<path> »: under `[media] roots` (and the bridge's audio and pages), or in
+/// the places of the agent `agent` names (sent_files.rs: its sandbox's /envoi, its workspace…), from the bridge's
+/// copy. An app that names no agent (before 2026-10-22) gets such a copy only when a single agent has that path.
 async fn get_media(State(state): State<AppState>, q: QueryMap, headers: HeaderMap) -> ApiResult<Response> {
     let path = web::query_str(&q, "path", true, Some(1024))?.unwrap_or_default();
+    let agent = web::query_str(&q, "agent", false, Some(64))?.filter(|a| !a.is_empty());
     let config = state.config();
-    let host =
-        crate::media::resolve(&path, &crate::agent_tools::media_roots(&config)).ok_or_else(HttpError::not_found)?;
+    let host = match crate::agent_tools::served_media(&config, &path) {
+        Some(host) => host,
+        None => {
+            let agent_cfg = match agent.as_deref() {
+                Some(name) => Some(agent_or_404(&config, Some(name))?),
+                None => None,
+            };
+            let (c, p) = (config.clone(), path.clone());
+            let found = tokio::task::spawn_blocking(move || match &agent_cfg {
+                Some(agent) => crate::sent_files::capture(&c, agent, &p),
+                None => crate::sent_files::find_unique(&c, &p).ok_or_else(|| "no agent named, no single copy".into()),
+            })
+            .await
+            .map_err(anyhow::Error::from)?;
+            match found {
+                Ok(copy) => copy.to_string_lossy().into_owned(),
+                Err(why) => {
+                    tracing::warn!(
+                        target: "bipbridge::media",
+                        agent = agent.as_deref().unwrap_or("-"),
+                        path = %path,
+                        why = %why,
+                        "media file asked for and not found"
+                    );
+                    return Err(HttpError::not_found());
+                }
+            }
+        }
+    };
     let mut extra = vec![("x-content-type-options", "nosniff".to_string())];
     if host.to_lowercase().ends_with(".html") {
-        // A page an agent made: never a document of this origin, even opened by hand; a new version each time.
+        // A page an agent made (or an .html file from its sandbox): never a document of this origin, even opened by
+        // hand; a new version each time.
         extra.push(("content-security-policy", format!("sandbox allow-scripts; {}", crate::pages::POLICY)));
         extra.push(("cache-control", "no-store".into()));
+    } else if crate::media::is_document(&host) {
+        extra.push(("content-security-policy", "sandbox; default-src 'none'".into()));
     }
     let media_type = crate::media::content_type(&host);
     Ok(web::file_response(&host, &media_type, Some(&py::basename(&host)), &extra, &headers).await)
