@@ -1,0 +1,2164 @@
+{
+ "version": 1,
+ "comment": "The demo's sample Carnet (invented people), shared by the iPhone and Android apps. Agents are demo.json's ids; « you » is the person, « nightly:<agent> » the nightly pass. {date+N}: the day N days after today.",
+ "fr": {
+  "brief": "En bref",
+  "folders": {
+   "person": "Personnes",
+   "subject": "Sujets",
+   "area": "Domaines"
+  },
+  "pages": [
+   {
+    "path": "Personnes/Marc Durand.md",
+    "kind": "person",
+    "title": "Marc Durand",
+    "aliases": [
+     "Marc"
+    ],
+    "close": true,
+    "contact": "demo-marc",
+    "summary": "Le mari de Claire, ta sœur, et le papa d’Inès et Tom. Menuisier : il prépare le devis de ta cuisine. Allergique aux noix.",
+    "summary_agent": "daily",
+    "summary_days_ago": 0,
+    "sections": [
+     {
+      "title": "À savoir",
+      "facts": [
+       {
+        "text": "Anniversaire : {date+23}",
+        "agent": "daily",
+        "days_ago": 0
+       },
+       {
+        "text": "Allergique aux noix",
+        "agent": "coach",
+        "days_ago": 49
+       },
+       {
+        "text": "Menuisier, il fait le devis de ta [[Rénovation cuisine]]",
+        "agent": "home",
+        "days_ago": 13
+       }
+      ]
+     },
+     {
+      "title": "Famille",
+      "facts": [
+       {
+        "text": "Marié à [[Claire Durand]], ta sœur",
+        "agent": "daily",
+        "days_ago": 60
+       },
+       {
+        "text": "Enfants : Inès, 7 ans, et Tom, 4 ans",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "title": "Préférences",
+      "facts": [
+       {
+        "text": "Aime le jazz et les vins nature",
+        "agent": "daily",
+        "days_ago": 30
+       },
+       {
+        "text": "Préfère qu’on l’appelle le soir",
+        "agent": "you",
+        "days_ago": 20
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personnes/Claire Durand.md",
+    "kind": "person",
+    "title": "Claire Durand",
+    "aliases": [
+     "Claire"
+    ],
+    "close": true,
+    "contact": null,
+    "summary": "Ta sœur. Infirmière à Nantes, mariée à Marc.",
+    "summary_agent": "daily",
+    "summary_days_ago": 12,
+    "sections": [
+     {
+      "title": "À savoir",
+      "facts": [
+       {
+        "text": "Anniversaire : {date+41}",
+        "agent": "daily",
+        "days_ago": 12
+       },
+       {
+        "text": "Infirmière de nuit à Nantes",
+        "agent": "daily",
+        "days_ago": 12
+       }
+      ]
+     },
+     {
+      "title": "Famille",
+      "facts": [
+       {
+        "text": "Mariée à [[Marc Durand]]",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personnes/Lucas Bernard.md",
+    "kind": "person",
+    "title": "Lucas Bernard",
+    "aliases": [
+     "Lucas"
+    ],
+    "close": true,
+    "contact": null,
+    "summary": "Ton ami de la course à pied, le dimanche matin.",
+    "summary_agent": "coach",
+    "summary_days_ago": 2,
+    "sections": [
+     {
+      "title": "À savoir",
+      "facts": [
+       {
+        "text": "Anniversaire : {date+9}",
+        "agent": "coach",
+        "days_ago": 40
+       },
+       {
+        "text": "Court le semi-marathon de Nantes au printemps",
+        "agent": "nightly:coach",
+        "days_ago": 2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personnes/Sophie Laurent.md",
+    "kind": "person",
+    "title": "Sophie Laurent",
+    "aliases": [
+     "Sophie"
+    ],
+    "close": false,
+    "contact": null,
+    "summary": "Ta voisine du 3e. Elle a un double de tes clés.",
+    "summary_agent": "you",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "title": "À savoir",
+      "facts": [
+       {
+        "text": "Garde le chat pendant les vacances",
+        "agent": "you",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Sujets/Rénovation cuisine.md",
+    "kind": "subject",
+    "title": "Rénovation cuisine",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Devis de Marc reçu : 8 900 €. Il reste à choisir le plan de travail et à fixer la date des travaux.",
+    "summary_agent": "home",
+    "summary_days_ago": 1,
+    "sections": [
+     {
+      "title": "Décisions",
+      "facts": [
+       {
+        "text": "Devis de [[Marc Durand]] accepté : 8 900 €",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Plan de travail en quartz, couleur à choisir",
+        "agent": "home",
+        "days_ago": 5
+       }
+      ]
+     },
+     {
+      "title": "Infos",
+      "facts": [
+       {
+        "text": "Magasin : Cuisines Éclat, rue des Halles",
+        "agent": "home",
+        "days_ago": 40
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Sujets/Voyage Japon.md",
+    "kind": "subject",
+    "title": "Voyage Japon",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Avril, 12 jours : Tokyo, Kyoto, Osaka. Les vols sont à réserver bientôt.",
+    "summary_agent": "daily",
+    "summary_days_ago": 1,
+    "sections": [
+     {
+      "title": "Préparatifs",
+      "facts": [
+       {
+        "text": "Vols à réserver avant la fin du mois",
+        "agent": "daily",
+        "days_ago": 1
+       },
+       {
+        "text": "Budget : 4 000 € pour deux",
+        "agent": "budget",
+        "days_ago": 10
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Domaines/Famille.md",
+    "kind": "area",
+    "title": "Famille",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Ta sœur [[Claire Durand]], son mari [[Marc Durand]] et leurs enfants.",
+    "summary_agent": "daily",
+    "summary_days_ago": 12,
+    "sections": [
+     {
+      "title": "Rendez-vous",
+      "facts": [
+       {
+        "text": "Dîner chez toi avec Marc et Claire le samedi 2",
+        "agent": "daily",
+        "days_ago": 4
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Domaines/Maison.md",
+    "kind": "area",
+    "title": "Maison",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "L’appartement, les travaux de la cuisine et les voisins.",
+    "summary_agent": "home",
+    "summary_days_ago": 8,
+    "sections": [
+     {
+      "title": "Infos",
+      "facts": [
+       {
+        "text": "Entretien de la chaudière : chaque année en octobre",
+        "agent": "home",
+        "days_ago": 20
+       },
+       {
+        "text": "Un double des clés chez [[Sophie Laurent]]",
+        "agent": "you",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Domaines/Finances.md",
+    "kind": "area",
+    "title": "Finances",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Le budget du mois et les contrats à renouveler.",
+    "summary_agent": "budget",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "title": "Contrats",
+      "facts": [
+       {
+        "text": "Assurance auto à renouveler avant le 5",
+        "agent": "budget",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "health": [
+   {
+    "path": "Domaines/Santé.md",
+    "kind": "area",
+    "title": "Santé",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Ce que Coach note pour ta santé. Toi seul le vois.",
+    "summary_agent": "coach",
+    "summary_days_ago": 6,
+    "sections": [
+     {
+      "title": "À savoir",
+      "facts": [
+       {
+        "text": "Allergie à la pénicilline",
+        "agent": "coach",
+        "days_ago": 60
+       },
+       {
+        "text": "Vaccin contre la grippe à faire en novembre",
+        "agent": "coach",
+        "days_ago": 6
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "tasks": [
+   {
+    "id": "t0001",
+    "title": "Rappeler Marc pour le devis",
+    "due_in": 2,
+    "links": [
+     "Rénovation cuisine"
+    ],
+    "agent": "home",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0002",
+    "title": "Réserver les vols pour Osaka",
+    "due_in": 4,
+    "links": [
+     "Voyage Japon"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0003",
+    "title": "Renouveler l’assurance auto",
+    "due_in": 14,
+    "links": [
+     "Finances"
+    ],
+    "agent": "budget",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0004",
+    "title": "Acheter le cadeau de Marc",
+    "due_in": 21,
+    "links": [
+     "Marc Durand"
+    ],
+    "agent": "daily",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0005",
+    "title": "Choisir le plan de travail",
+    "due_in": null,
+    "links": [
+     "Rénovation cuisine"
+    ],
+    "agent": "home",
+    "days_ago": 5,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0006",
+    "title": "Trier les photos de l’été",
+    "due_in": null,
+    "links": [],
+    "agent": "you",
+    "days_ago": 9,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0007",
+    "title": "Payer la cantine",
+    "due_in": 0,
+    "links": [],
+    "agent": "budget",
+    "days_ago": 6,
+    "done_ago": 0,
+    "archived": false
+   },
+   {
+    "id": "t0008",
+    "title": "Envoyer les papiers à la banque",
+    "due_in": -3,
+    "links": [
+     "Finances"
+    ],
+    "agent": "budget",
+    "days_ago": 8,
+    "done_ago": 3,
+    "archived": false
+   },
+   {
+    "id": "t0009",
+    "title": "Comparer les box internet",
+    "due_in": null,
+    "links": [
+     "Maison"
+    ],
+    "agent": "home",
+    "days_ago": 70,
+    "done_ago": null,
+    "archived": true
+   }
+  ],
+  "documents": [
+   {
+    "name": "Voyage Japon, le programme.pptx",
+    "type": "presentation",
+    "agent": "daily",
+    "days_ago": 0,
+    "origin": "made",
+    "subjects": [
+     "Sujets/Voyage Japon.md"
+    ]
+   },
+   {
+    "name": "Budget des travaux.xlsx",
+    "type": "spreadsheet",
+    "agent": "budget",
+    "days_ago": 3,
+    "origin": "made",
+    "subjects": [
+     "Sujets/Rénovation cuisine.md"
+    ]
+   },
+   {
+    "name": "Lettre au syndic.docx",
+    "type": "document",
+    "agent": "home",
+    "days_ago": 8,
+    "origin": "made",
+    "subjects": [
+     "Domaines/Maison.md"
+    ]
+   },
+   {
+    "name": "Devis cuisine.pdf",
+    "type": "pdf",
+    "agent": "home",
+    "days_ago": 13,
+    "origin": "received",
+    "subjects": [
+     "Sujets/Rénovation cuisine.md"
+    ]
+   },
+   {
+    "name": "Plan de la cuisine.jpg",
+    "type": "image",
+    "agent": "home",
+    "days_ago": 50,
+    "origin": "received",
+    "subjects": [
+     "Sujets/Rénovation cuisine.md"
+    ]
+   }
+  ],
+  "recent": [
+   {
+    "path": "Personnes/Marc Durand.md",
+    "title": "Marc Durand",
+    "action": "edit",
+    "agent": "daily",
+    "hours_ago": 2,
+    "summary": "Anniversaire : {date+23}"
+   },
+   {
+    "path": "Sujets/Rénovation cuisine.md",
+    "title": "Rénovation cuisine",
+    "action": "edit",
+    "agent": "budget",
+    "hours_ago": 26,
+    "summary": "Devis de Marc accepté : 8 900 €"
+   },
+   {
+    "path": "Sujets/Voyage Japon.md",
+    "title": "Voyage Japon",
+    "action": "create",
+    "agent": "daily",
+    "hours_ago": 30,
+    "summary": "Vols à réserver avant la fin du mois"
+   },
+   {
+    "path": "Personnes/Lucas Bernard.md",
+    "title": "Lucas Bernard",
+    "action": "edit",
+    "agent": "nightly:coach",
+    "hours_ago": 40,
+    "summary": "Court le semi-marathon de Nantes au printemps"
+   },
+   {
+    "path": "Personnes/Sophie Laurent.md",
+    "title": "Sophie Laurent",
+    "action": "edit",
+    "agent": "you",
+    "hours_ago": 75,
+    "summary": "Garde le chat pendant les vacances"
+   }
+  ]
+ },
+ "en": {
+  "brief": "In brief",
+  "folders": {
+   "person": "People",
+   "subject": "Subjects",
+   "area": "Areas"
+  },
+  "pages": [
+   {
+    "path": "People/Marc Durand.md",
+    "kind": "person",
+    "title": "Marc Durand",
+    "aliases": [
+     "Marc"
+    ],
+    "close": true,
+    "contact": "demo-marc",
+    "summary": "Claire’s husband (your sister) and Inès and Tom’s dad. A carpenter: he’s quoting for your kitchen. Allergic to nuts.",
+    "summary_agent": "daily",
+    "summary_days_ago": 0,
+    "sections": [
+     {
+      "title": "Good to know",
+      "facts": [
+       {
+        "text": "Birthday: {date+23}",
+        "agent": "daily",
+        "days_ago": 0
+       },
+       {
+        "text": "Allergic to nuts",
+        "agent": "coach",
+        "days_ago": 49
+       },
+       {
+        "text": "Carpenter, he’s quoting for your [[Kitchen renovation]]",
+        "agent": "home",
+        "days_ago": 13
+       }
+      ]
+     },
+     {
+      "title": "Family",
+      "facts": [
+       {
+        "text": "Married to [[Claire Durand]], your sister",
+        "agent": "daily",
+        "days_ago": 60
+       },
+       {
+        "text": "Children: Inès, 7, and Tom, 4",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "title": "Preferences",
+      "facts": [
+       {
+        "text": "Loves jazz and natural wines",
+        "agent": "daily",
+        "days_ago": 30
+       },
+       {
+        "text": "Prefers calls in the evening",
+        "agent": "you",
+        "days_ago": 20
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "People/Claire Durand.md",
+    "kind": "person",
+    "title": "Claire Durand",
+    "aliases": [
+     "Claire"
+    ],
+    "close": true,
+    "contact": null,
+    "summary": "Your sister. A nurse in Nantes, married to Marc.",
+    "summary_agent": "daily",
+    "summary_days_ago": 12,
+    "sections": [
+     {
+      "title": "Good to know",
+      "facts": [
+       {
+        "text": "Birthday: {date+41}",
+        "agent": "daily",
+        "days_ago": 12
+       },
+       {
+        "text": "Night nurse in Nantes",
+        "agent": "daily",
+        "days_ago": 12
+       }
+      ]
+     },
+     {
+      "title": "Family",
+      "facts": [
+       {
+        "text": "Married to [[Marc Durand]]",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "People/Lucas Bernard.md",
+    "kind": "person",
+    "title": "Lucas Bernard",
+    "aliases": [
+     "Lucas"
+    ],
+    "close": true,
+    "contact": null,
+    "summary": "Your Sunday-morning running friend.",
+    "summary_agent": "coach",
+    "summary_days_ago": 2,
+    "sections": [
+     {
+      "title": "Good to know",
+      "facts": [
+       {
+        "text": "Birthday: {date+9}",
+        "agent": "coach",
+        "days_ago": 40
+       },
+       {
+        "text": "Running the Nantes half marathon in spring",
+        "agent": "nightly:coach",
+        "days_ago": 2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "People/Sophie Laurent.md",
+    "kind": "person",
+    "title": "Sophie Laurent",
+    "aliases": [
+     "Sophie"
+    ],
+    "close": false,
+    "contact": null,
+    "summary": "Your neighbour on the 3rd floor. She has a spare set of your keys.",
+    "summary_agent": "you",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "title": "Good to know",
+      "facts": [
+       {
+        "text": "Looks after the cat during holidays",
+        "agent": "you",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Subjects/Kitchen renovation.md",
+    "kind": "subject",
+    "title": "Kitchen renovation",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Marc’s quote is in: €8,900. The worktop is still to choose and the work date to set.",
+    "summary_agent": "home",
+    "summary_days_ago": 1,
+    "sections": [
+     {
+      "title": "Decisions",
+      "facts": [
+       {
+        "text": "[[Marc Durand]]’s quote accepted: €8,900",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Quartz worktop, colour to choose",
+        "agent": "home",
+        "days_ago": 5
+       }
+      ]
+     },
+     {
+      "title": "Notes",
+      "facts": [
+       {
+        "text": "Shop: Cuisines Éclat, rue des Halles",
+        "agent": "home",
+        "days_ago": 40
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Subjects/Japan trip.md",
+    "kind": "subject",
+    "title": "Japan trip",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "April, 12 days: Tokyo, Kyoto, Osaka. The flights are to book soon.",
+    "summary_agent": "daily",
+    "summary_days_ago": 1,
+    "sections": [
+     {
+      "title": "Planning",
+      "facts": [
+       {
+        "text": "Flights to book before the end of the month",
+        "agent": "daily",
+        "days_ago": 1
+       },
+       {
+        "text": "Budget: €4,000 for two",
+        "agent": "budget",
+        "days_ago": 10
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Areas/Family.md",
+    "kind": "area",
+    "title": "Family",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Your sister [[Claire Durand]], her husband [[Marc Durand]] and their children.",
+    "summary_agent": "daily",
+    "summary_days_ago": 12,
+    "sections": [
+     {
+      "title": "Get-togethers",
+      "facts": [
+       {
+        "text": "Dinner at yours with Marc and Claire on Saturday the 2nd",
+        "agent": "daily",
+        "days_ago": 4
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Areas/Home.md",
+    "kind": "area",
+    "title": "Home",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "The flat, the kitchen work and the neighbours.",
+    "summary_agent": "home",
+    "summary_days_ago": 8,
+    "sections": [
+     {
+      "title": "Notes",
+      "facts": [
+       {
+        "text": "Boiler service: every October",
+        "agent": "home",
+        "days_ago": 20
+       },
+       {
+        "text": "A spare set of keys with [[Sophie Laurent]]",
+        "agent": "you",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Areas/Money.md",
+    "kind": "area",
+    "title": "Money",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "The month’s budget and the contracts to renew.",
+    "summary_agent": "budget",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "title": "Contracts",
+      "facts": [
+       {
+        "text": "Car insurance to renew before the 5th",
+        "agent": "budget",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "health": [
+   {
+    "path": "Areas/Health.md",
+    "kind": "area",
+    "title": "Health",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "What Coach notes for your health. Only you see it.",
+    "summary_agent": "coach",
+    "summary_days_ago": 6,
+    "sections": [
+     {
+      "title": "Good to know",
+      "facts": [
+       {
+        "text": "Allergic to penicillin",
+        "agent": "coach",
+        "days_ago": 60
+       },
+       {
+        "text": "Flu jab due in November",
+        "agent": "coach",
+        "days_ago": 6
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "tasks": [
+   {
+    "id": "t0001",
+    "title": "Call Marc back about the quote",
+    "due_in": 2,
+    "links": [
+     "Kitchen renovation"
+    ],
+    "agent": "home",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0002",
+    "title": "Book the flights to Osaka",
+    "due_in": 4,
+    "links": [
+     "Japan trip"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0003",
+    "title": "Renew the car insurance",
+    "due_in": 14,
+    "links": [
+     "Money"
+    ],
+    "agent": "budget",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0004",
+    "title": "Buy Marc’s present",
+    "due_in": 21,
+    "links": [
+     "Marc Durand"
+    ],
+    "agent": "daily",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0005",
+    "title": "Choose the worktop",
+    "due_in": null,
+    "links": [
+     "Kitchen renovation"
+    ],
+    "agent": "home",
+    "days_ago": 5,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0006",
+    "title": "Sort the summer photos",
+    "due_in": null,
+    "links": [],
+    "agent": "you",
+    "days_ago": 9,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0007",
+    "title": "Pay the school canteen",
+    "due_in": 0,
+    "links": [],
+    "agent": "budget",
+    "days_ago": 6,
+    "done_ago": 0,
+    "archived": false
+   },
+   {
+    "id": "t0008",
+    "title": "Send the papers to the bank",
+    "due_in": -3,
+    "links": [
+     "Money"
+    ],
+    "agent": "budget",
+    "days_ago": 8,
+    "done_ago": 3,
+    "archived": false
+   },
+   {
+    "id": "t0009",
+    "title": "Compare internet providers",
+    "due_in": null,
+    "links": [
+     "Home"
+    ],
+    "agent": "home",
+    "days_ago": 70,
+    "done_ago": null,
+    "archived": true
+   }
+  ],
+  "documents": [
+   {
+    "name": "Japan trip, the plan.pptx",
+    "type": "presentation",
+    "agent": "daily",
+    "days_ago": 0,
+    "origin": "made",
+    "subjects": [
+     "Subjects/Japan trip.md"
+    ]
+   },
+   {
+    "name": "Building work budget.xlsx",
+    "type": "spreadsheet",
+    "agent": "budget",
+    "days_ago": 3,
+    "origin": "made",
+    "subjects": [
+     "Subjects/Kitchen renovation.md"
+    ]
+   },
+   {
+    "name": "Letter to the building manager.docx",
+    "type": "document",
+    "agent": "home",
+    "days_ago": 8,
+    "origin": "made",
+    "subjects": [
+     "Areas/Home.md"
+    ]
+   },
+   {
+    "name": "Kitchen quote.pdf",
+    "type": "pdf",
+    "agent": "home",
+    "days_ago": 13,
+    "origin": "received",
+    "subjects": [
+     "Subjects/Kitchen renovation.md"
+    ]
+   },
+   {
+    "name": "Kitchen plan.jpg",
+    "type": "image",
+    "agent": "home",
+    "days_ago": 50,
+    "origin": "received",
+    "subjects": [
+     "Subjects/Kitchen renovation.md"
+    ]
+   }
+  ],
+  "recent": [
+   {
+    "path": "People/Marc Durand.md",
+    "title": "Marc Durand",
+    "action": "edit",
+    "agent": "daily",
+    "hours_ago": 2,
+    "summary": "Birthday: {date+23}"
+   },
+   {
+    "path": "Subjects/Kitchen renovation.md",
+    "title": "Kitchen renovation",
+    "action": "edit",
+    "agent": "budget",
+    "hours_ago": 26,
+    "summary": "Marc’s quote accepted: €8,900"
+   },
+   {
+    "path": "Subjects/Japan trip.md",
+    "title": "Japan trip",
+    "action": "create",
+    "agent": "daily",
+    "hours_ago": 30,
+    "summary": "Flights to book before the end of the month"
+   },
+   {
+    "path": "People/Lucas Bernard.md",
+    "title": "Lucas Bernard",
+    "action": "edit",
+    "agent": "nightly:coach",
+    "hours_ago": 40,
+    "summary": "Running the Nantes half marathon in spring"
+   },
+   {
+    "path": "People/Sophie Laurent.md",
+    "title": "Sophie Laurent",
+    "action": "edit",
+    "agent": "you",
+    "hours_ago": 75,
+    "summary": "Looks after the cat during holidays"
+   }
+  ]
+ },
+ "de": {
+  "brief": "Kurz gesagt",
+  "folders": {
+   "person": "Personen",
+   "subject": "Themen",
+   "area": "Bereiche"
+  },
+  "pages": [
+   {
+    "path": "Personen/Marc Durand.md",
+    "kind": "person",
+    "title": "Marc Durand",
+    "aliases": [
+     "Marc"
+    ],
+    "close": true,
+    "contact": "demo-marc",
+    "summary": "Claires Mann (deine Schwester) und Papa von Inès und Tom. Schreiner: Er macht das Angebot für deine Küche. Nussallergie.",
+    "summary_agent": "daily",
+    "summary_days_ago": 0,
+    "sections": [
+     {
+      "title": "Gut zu wissen",
+      "facts": [
+       {
+        "text": "Geburtstag: {date+23}",
+        "agent": "daily",
+        "days_ago": 0
+       },
+       {
+        "text": "Allergisch gegen Nüsse",
+        "agent": "coach",
+        "days_ago": 49
+       },
+       {
+        "text": "Schreiner, er macht das Angebot für deine [[Küchenrenovierung]]",
+        "agent": "home",
+        "days_ago": 13
+       }
+      ]
+     },
+     {
+      "title": "Familie",
+      "facts": [
+       {
+        "text": "Verheiratet mit [[Claire Durand]], deiner Schwester",
+        "agent": "daily",
+        "days_ago": 60
+       },
+       {
+        "text": "Kinder: Inès, 7, und Tom, 4",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "title": "Vorlieben",
+      "facts": [
+       {
+        "text": "Mag Jazz und Naturweine",
+        "agent": "daily",
+        "days_ago": 30
+       },
+       {
+        "text": "Wird lieber abends angerufen",
+        "agent": "you",
+        "days_ago": 20
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personen/Claire Durand.md",
+    "kind": "person",
+    "title": "Claire Durand",
+    "aliases": [
+     "Claire"
+    ],
+    "close": true,
+    "contact": null,
+    "summary": "Deine Schwester. Krankenpflegerin in Nantes, mit Marc verheiratet.",
+    "summary_agent": "daily",
+    "summary_days_ago": 12,
+    "sections": [
+     {
+      "title": "Gut zu wissen",
+      "facts": [
+       {
+        "text": "Geburtstag: {date+41}",
+        "agent": "daily",
+        "days_ago": 12
+       },
+       {
+        "text": "Nachtschwester in Nantes",
+        "agent": "daily",
+        "days_ago": 12
+       }
+      ]
+     },
+     {
+      "title": "Familie",
+      "facts": [
+       {
+        "text": "Verheiratet mit [[Marc Durand]]",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personen/Lucas Bernard.md",
+    "kind": "person",
+    "title": "Lucas Bernard",
+    "aliases": [
+     "Lucas"
+    ],
+    "close": true,
+    "contact": null,
+    "summary": "Dein Laufpartner am Sonntagmorgen.",
+    "summary_agent": "coach",
+    "summary_days_ago": 2,
+    "sections": [
+     {
+      "title": "Gut zu wissen",
+      "facts": [
+       {
+        "text": "Geburtstag: {date+9}",
+        "agent": "coach",
+        "days_ago": 40
+       },
+       {
+        "text": "Läuft im Frühling den Halbmarathon in Nantes",
+        "agent": "nightly:coach",
+        "days_ago": 2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personen/Sophie Laurent.md",
+    "kind": "person",
+    "title": "Sophie Laurent",
+    "aliases": [
+     "Sophie"
+    ],
+    "close": false,
+    "contact": null,
+    "summary": "Deine Nachbarin im 3. Stock. Sie hat einen Ersatzschlüssel.",
+    "summary_agent": "you",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "title": "Gut zu wissen",
+      "facts": [
+       {
+        "text": "Passt in den Ferien auf die Katze auf",
+        "agent": "you",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Themen/Küchenrenovierung.md",
+    "kind": "subject",
+    "title": "Küchenrenovierung",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Marcs Angebot ist da: 8.900 €. Arbeitsplatte und Termin fehlen noch.",
+    "summary_agent": "home",
+    "summary_days_ago": 1,
+    "sections": [
+     {
+      "title": "Entscheidungen",
+      "facts": [
+       {
+        "text": "Angebot von [[Marc Durand]] angenommen: 8.900 €",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Arbeitsplatte aus Quarz, Farbe noch offen",
+        "agent": "home",
+        "days_ago": 5
+       }
+      ]
+     },
+     {
+      "title": "Notizen",
+      "facts": [
+       {
+        "text": "Geschäft: Cuisines Éclat, rue des Halles",
+        "agent": "home",
+        "days_ago": 40
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Themen/Japanreise.md",
+    "kind": "subject",
+    "title": "Japanreise",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "April, 12 Tage: Tokio, Kyoto, Osaka. Die Flüge bald buchen.",
+    "summary_agent": "daily",
+    "summary_days_ago": 1,
+    "sections": [
+     {
+      "title": "Vorbereitung",
+      "facts": [
+       {
+        "text": "Flüge vor Monatsende buchen",
+        "agent": "daily",
+        "days_ago": 1
+       },
+       {
+        "text": "Budget: 4.000 € für zwei",
+        "agent": "budget",
+        "days_ago": 10
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Bereiche/Familie.md",
+    "kind": "area",
+    "title": "Familie",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Deine Schwester [[Claire Durand]], ihr Mann [[Marc Durand]] und ihre Kinder.",
+    "summary_agent": "daily",
+    "summary_days_ago": 12,
+    "sections": [
+     {
+      "title": "Treffen",
+      "facts": [
+       {
+        "text": "Abendessen bei dir mit Marc und Claire am Samstag, den 2.",
+        "agent": "daily",
+        "days_ago": 4
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Bereiche/Zuhause.md",
+    "kind": "area",
+    "title": "Zuhause",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Die Wohnung, die Küchenarbeiten und die Nachbarn.",
+    "summary_agent": "home",
+    "summary_days_ago": 8,
+    "sections": [
+     {
+      "title": "Notizen",
+      "facts": [
+       {
+        "text": "Heizungswartung: jedes Jahr im Oktober",
+        "agent": "home",
+        "days_ago": 20
+       },
+       {
+        "text": "Ersatzschlüssel bei [[Sophie Laurent]]",
+        "agent": "you",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Bereiche/Finanzen.md",
+    "kind": "area",
+    "title": "Finanzen",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Das Monatsbudget und die Verträge zum Verlängern.",
+    "summary_agent": "budget",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "title": "Verträge",
+      "facts": [
+       {
+        "text": "Kfz-Versicherung vor dem 5. verlängern",
+        "agent": "budget",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "health": [
+   {
+    "path": "Bereiche/Gesundheit.md",
+    "kind": "area",
+    "title": "Gesundheit",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Was Coach für deine Gesundheit notiert. Nur du siehst es.",
+    "summary_agent": "coach",
+    "summary_days_ago": 6,
+    "sections": [
+     {
+      "title": "Gut zu wissen",
+      "facts": [
+       {
+        "text": "Penicillinallergie",
+        "agent": "coach",
+        "days_ago": 60
+       },
+       {
+        "text": "Grippeimpfung im November",
+        "agent": "coach",
+        "days_ago": 6
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "tasks": [
+   {
+    "id": "t0001",
+    "title": "Marc wegen des Angebots zurückrufen",
+    "due_in": 2,
+    "links": [
+     "Küchenrenovierung"
+    ],
+    "agent": "home",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0002",
+    "title": "Flüge nach Osaka buchen",
+    "due_in": 4,
+    "links": [
+     "Japanreise"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0003",
+    "title": "Kfz-Versicherung verlängern",
+    "due_in": 14,
+    "links": [
+     "Finanzen"
+    ],
+    "agent": "budget",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0004",
+    "title": "Geschenk für Marc kaufen",
+    "due_in": 21,
+    "links": [
+     "Marc Durand"
+    ],
+    "agent": "daily",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0005",
+    "title": "Arbeitsplatte aussuchen",
+    "due_in": null,
+    "links": [
+     "Küchenrenovierung"
+    ],
+    "agent": "home",
+    "days_ago": 5,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0006",
+    "title": "Sommerfotos sortieren",
+    "due_in": null,
+    "links": [],
+    "agent": "you",
+    "days_ago": 9,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0007",
+    "title": "Schulkantine bezahlen",
+    "due_in": 0,
+    "links": [],
+    "agent": "budget",
+    "days_ago": 6,
+    "done_ago": 0,
+    "archived": false
+   },
+   {
+    "id": "t0008",
+    "title": "Unterlagen an die Bank schicken",
+    "due_in": -3,
+    "links": [
+     "Finanzen"
+    ],
+    "agent": "budget",
+    "days_ago": 8,
+    "done_ago": 3,
+    "archived": false
+   },
+   {
+    "id": "t0009",
+    "title": "Internetanbieter vergleichen",
+    "due_in": null,
+    "links": [
+     "Zuhause"
+    ],
+    "agent": "home",
+    "days_ago": 70,
+    "done_ago": null,
+    "archived": true
+   }
+  ],
+  "documents": [
+   {
+    "name": "Japanreise, das Programm.pptx",
+    "type": "presentation",
+    "agent": "daily",
+    "days_ago": 0,
+    "origin": "made",
+    "subjects": [
+     "Themen/Japanreise.md"
+    ]
+   },
+   {
+    "name": "Budget der Arbeiten.xlsx",
+    "type": "spreadsheet",
+    "agent": "budget",
+    "days_ago": 3,
+    "origin": "made",
+    "subjects": [
+     "Themen/Küchenrenovierung.md"
+    ]
+   },
+   {
+    "name": "Brief an die Hausverwaltung.docx",
+    "type": "document",
+    "agent": "home",
+    "days_ago": 8,
+    "origin": "made",
+    "subjects": [
+     "Bereiche/Zuhause.md"
+    ]
+   },
+   {
+    "name": "Küchenangebot.pdf",
+    "type": "pdf",
+    "agent": "home",
+    "days_ago": 13,
+    "origin": "received",
+    "subjects": [
+     "Themen/Küchenrenovierung.md"
+    ]
+   },
+   {
+    "name": "Küchenplan.jpg",
+    "type": "image",
+    "agent": "home",
+    "days_ago": 50,
+    "origin": "received",
+    "subjects": [
+     "Themen/Küchenrenovierung.md"
+    ]
+   }
+  ],
+  "recent": [
+   {
+    "path": "Personen/Marc Durand.md",
+    "title": "Marc Durand",
+    "action": "edit",
+    "agent": "daily",
+    "hours_ago": 2,
+    "summary": "Geburtstag: {date+23}"
+   },
+   {
+    "path": "Themen/Küchenrenovierung.md",
+    "title": "Küchenrenovierung",
+    "action": "edit",
+    "agent": "budget",
+    "hours_ago": 26,
+    "summary": "Marcs Angebot angenommen: 8.900 €"
+   },
+   {
+    "path": "Themen/Japanreise.md",
+    "title": "Japanreise",
+    "action": "create",
+    "agent": "daily",
+    "hours_ago": 30,
+    "summary": "Flüge vor Monatsende buchen"
+   },
+   {
+    "path": "Personen/Lucas Bernard.md",
+    "title": "Lucas Bernard",
+    "action": "edit",
+    "agent": "nightly:coach",
+    "hours_ago": 40,
+    "summary": "Läuft im Frühling den Halbmarathon in Nantes"
+   },
+   {
+    "path": "Personen/Sophie Laurent.md",
+    "title": "Sophie Laurent",
+    "action": "edit",
+    "agent": "you",
+    "hours_ago": 75,
+    "summary": "Passt in den Ferien auf die Katze auf"
+   }
+  ]
+ },
+ "es": {
+  "brief": "En resumen",
+  "folders": {
+   "person": "Personas",
+   "subject": "Temas",
+   "area": "Áreas"
+  },
+  "pages": [
+   {
+    "path": "Personas/Marc Durand.md",
+    "kind": "person",
+    "title": "Marc Durand",
+    "aliases": [
+     "Marc"
+    ],
+    "close": true,
+    "contact": "demo-marc",
+    "summary": "El marido de Claire, tu hermana, y el padre de Inès y Tom. Carpintero: prepara el presupuesto de tu cocina. Alérgico a los frutos secos.",
+    "summary_agent": "daily",
+    "summary_days_ago": 0,
+    "sections": [
+     {
+      "title": "Para saber",
+      "facts": [
+       {
+        "text": "Cumpleaños: {date+23}",
+        "agent": "daily",
+        "days_ago": 0
+       },
+       {
+        "text": "Alérgico a los frutos secos",
+        "agent": "coach",
+        "days_ago": 49
+       },
+       {
+        "text": "Carpintero, hace el presupuesto de tu [[Reforma de la cocina]]",
+        "agent": "home",
+        "days_ago": 13
+       }
+      ]
+     },
+     {
+      "title": "Familia",
+      "facts": [
+       {
+        "text": "Casado con [[Claire Durand]], tu hermana",
+        "agent": "daily",
+        "days_ago": 60
+       },
+       {
+        "text": "Hijos: Inès, 7 años, y Tom, 4",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "title": "Preferencias",
+      "facts": [
+       {
+        "text": "Le gustan el jazz y los vinos naturales",
+        "agent": "daily",
+        "days_ago": 30
+       },
+       {
+        "text": "Prefiere que lo llamen por la tarde",
+        "agent": "you",
+        "days_ago": 20
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personas/Claire Durand.md",
+    "kind": "person",
+    "title": "Claire Durand",
+    "aliases": [
+     "Claire"
+    ],
+    "close": true,
+    "contact": null,
+    "summary": "Tu hermana. Enfermera en Nantes, casada con Marc.",
+    "summary_agent": "daily",
+    "summary_days_ago": 12,
+    "sections": [
+     {
+      "title": "Para saber",
+      "facts": [
+       {
+        "text": "Cumpleaños: {date+41}",
+        "agent": "daily",
+        "days_ago": 12
+       },
+       {
+        "text": "Enfermera de noche en Nantes",
+        "agent": "daily",
+        "days_ago": 12
+       }
+      ]
+     },
+     {
+      "title": "Familia",
+      "facts": [
+       {
+        "text": "Casada con [[Marc Durand]]",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personas/Lucas Bernard.md",
+    "kind": "person",
+    "title": "Lucas Bernard",
+    "aliases": [
+     "Lucas"
+    ],
+    "close": true,
+    "contact": null,
+    "summary": "Tu amigo de correr los domingos por la mañana.",
+    "summary_agent": "coach",
+    "summary_days_ago": 2,
+    "sections": [
+     {
+      "title": "Para saber",
+      "facts": [
+       {
+        "text": "Cumpleaños: {date+9}",
+        "agent": "coach",
+        "days_ago": 40
+       },
+       {
+        "text": "Corre la media maratón de Nantes en primavera",
+        "agent": "nightly:coach",
+        "days_ago": 2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Personas/Sophie Laurent.md",
+    "kind": "person",
+    "title": "Sophie Laurent",
+    "aliases": [
+     "Sophie"
+    ],
+    "close": false,
+    "contact": null,
+    "summary": "Tu vecina del tercero. Tiene una copia de tus llaves.",
+    "summary_agent": "you",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "title": "Para saber",
+      "facts": [
+       {
+        "text": "Cuida del gato en vacaciones",
+        "agent": "you",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Temas/Reforma de la cocina.md",
+    "kind": "subject",
+    "title": "Reforma de la cocina",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Llegó el presupuesto de Marc: 8.900 €. Falta elegir la encimera y fijar la fecha de la obra.",
+    "summary_agent": "home",
+    "summary_days_ago": 1,
+    "sections": [
+     {
+      "title": "Decisiones",
+      "facts": [
+       {
+        "text": "Presupuesto de [[Marc Durand]] aceptado: 8.900 €",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Encimera de cuarzo, color por elegir",
+        "agent": "home",
+        "days_ago": 5
+       }
+      ]
+     },
+     {
+      "title": "Notas",
+      "facts": [
+       {
+        "text": "Tienda: Cuisines Éclat, rue des Halles",
+        "agent": "home",
+        "days_ago": 40
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Temas/Viaje a Japón.md",
+    "kind": "subject",
+    "title": "Viaje a Japón",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Abril, 12 días: Tokio, Kioto, Osaka. Hay que reservar los vuelos pronto.",
+    "summary_agent": "daily",
+    "summary_days_ago": 1,
+    "sections": [
+     {
+      "title": "Preparativos",
+      "facts": [
+       {
+        "text": "Reservar los vuelos antes de fin de mes",
+        "agent": "daily",
+        "days_ago": 1
+       },
+       {
+        "text": "Presupuesto: 4.000 € para dos",
+        "agent": "budget",
+        "days_ago": 10
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Áreas/Familia.md",
+    "kind": "area",
+    "title": "Familia",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Tu hermana [[Claire Durand]], su marido [[Marc Durand]] y sus hijos.",
+    "summary_agent": "daily",
+    "summary_days_ago": 12,
+    "sections": [
+     {
+      "title": "Encuentros",
+      "facts": [
+       {
+        "text": "Cena en tu casa con Marc y Claire el sábado 2",
+        "agent": "daily",
+        "days_ago": 4
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Áreas/Casa.md",
+    "kind": "area",
+    "title": "Casa",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "El piso, la obra de la cocina y los vecinos.",
+    "summary_agent": "home",
+    "summary_days_ago": 8,
+    "sections": [
+     {
+      "title": "Notas",
+      "facts": [
+       {
+        "text": "Revisión de la caldera: cada año en octubre",
+        "agent": "home",
+        "days_ago": 20
+       },
+       {
+        "text": "Una copia de las llaves en casa de [[Sophie Laurent]]",
+        "agent": "you",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Áreas/Finanzas.md",
+    "kind": "area",
+    "title": "Finanzas",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "El presupuesto del mes y los contratos por renovar.",
+    "summary_agent": "budget",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "title": "Contratos",
+      "facts": [
+       {
+        "text": "Renovar el seguro del coche antes del día 5",
+        "agent": "budget",
+        "days_ago": 3
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "health": [
+   {
+    "path": "Áreas/Salud.md",
+    "kind": "area",
+    "title": "Salud",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Lo que Coach anota sobre tu salud. Solo tú lo ves.",
+    "summary_agent": "coach",
+    "summary_days_ago": 6,
+    "sections": [
+     {
+      "title": "Para saber",
+      "facts": [
+       {
+        "text": "Alergia a la penicilina",
+        "agent": "coach",
+        "days_ago": 60
+       },
+       {
+        "text": "Vacuna de la gripe en noviembre",
+        "agent": "coach",
+        "days_ago": 6
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "tasks": [
+   {
+    "id": "t0001",
+    "title": "Llamar a Marc por el presupuesto",
+    "due_in": 2,
+    "links": [
+     "Reforma de la cocina"
+    ],
+    "agent": "home",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0002",
+    "title": "Reservar los vuelos a Osaka",
+    "due_in": 4,
+    "links": [
+     "Viaje a Japón"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0003",
+    "title": "Renovar el seguro del coche",
+    "due_in": 14,
+    "links": [
+     "Finanzas"
+    ],
+    "agent": "budget",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0004",
+    "title": "Comprar el regalo de Marc",
+    "due_in": 21,
+    "links": [
+     "Marc Durand"
+    ],
+    "agent": "daily",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0005",
+    "title": "Elegir la encimera",
+    "due_in": null,
+    "links": [
+     "Reforma de la cocina"
+    ],
+    "agent": "home",
+    "days_ago": 5,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0006",
+    "title": "Ordenar las fotos del verano",
+    "due_in": null,
+    "links": [],
+    "agent": "you",
+    "days_ago": 9,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0007",
+    "title": "Pagar el comedor escolar",
+    "due_in": 0,
+    "links": [],
+    "agent": "budget",
+    "days_ago": 6,
+    "done_ago": 0,
+    "archived": false
+   },
+   {
+    "id": "t0008",
+    "title": "Enviar los papeles al banco",
+    "due_in": -3,
+    "links": [
+     "Finanzas"
+    ],
+    "agent": "budget",
+    "days_ago": 8,
+    "done_ago": 3,
+    "archived": false
+   },
+   {
+    "id": "t0009",
+    "title": "Comparar las ofertas de internet",
+    "due_in": null,
+    "links": [
+     "Casa"
+    ],
+    "agent": "home",
+    "days_ago": 70,
+    "done_ago": null,
+    "archived": true
+   }
+  ],
+  "documents": [
+   {
+    "name": "Viaje a Japón, el programa.pptx",
+    "type": "presentation",
+    "agent": "daily",
+    "days_ago": 0,
+    "origin": "made",
+    "subjects": [
+     "Temas/Viaje a Japón.md"
+    ]
+   },
+   {
+    "name": "Presupuesto de la obra.xlsx",
+    "type": "spreadsheet",
+    "agent": "budget",
+    "days_ago": 3,
+    "origin": "made",
+    "subjects": [
+     "Temas/Reforma de la cocina.md"
+    ]
+   },
+   {
+    "name": "Carta al administrador.docx",
+    "type": "document",
+    "agent": "home",
+    "days_ago": 8,
+    "origin": "made",
+    "subjects": [
+     "Áreas/Casa.md"
+    ]
+   },
+   {
+    "name": "Presupuesto cocina.pdf",
+    "type": "pdf",
+    "agent": "home",
+    "days_ago": 13,
+    "origin": "received",
+    "subjects": [
+     "Temas/Reforma de la cocina.md"
+    ]
+   },
+   {
+    "name": "Plano de la cocina.jpg",
+    "type": "image",
+    "agent": "home",
+    "days_ago": 50,
+    "origin": "received",
+    "subjects": [
+     "Temas/Reforma de la cocina.md"
+    ]
+   }
+  ],
+  "recent": [
+   {
+    "path": "Personas/Marc Durand.md",
+    "title": "Marc Durand",
+    "action": "edit",
+    "agent": "daily",
+    "hours_ago": 2,
+    "summary": "Cumpleaños: {date+23}"
+   },
+   {
+    "path": "Temas/Reforma de la cocina.md",
+    "title": "Reforma de la cocina",
+    "action": "edit",
+    "agent": "budget",
+    "hours_ago": 26,
+    "summary": "Presupuesto de Marc aceptado: 8.900 €"
+   },
+   {
+    "path": "Temas/Viaje a Japón.md",
+    "title": "Viaje a Japón",
+    "action": "create",
+    "agent": "daily",
+    "hours_ago": 30,
+    "summary": "Reservar los vuelos antes de fin de mes"
+   },
+   {
+    "path": "Personas/Lucas Bernard.md",
+    "title": "Lucas Bernard",
+    "action": "edit",
+    "agent": "nightly:coach",
+    "hours_ago": 40,
+    "summary": "Corre la media maratón de Nantes en primavera"
+   },
+   {
+    "path": "Personas/Sophie Laurent.md",
+    "title": "Sophie Laurent",
+    "action": "edit",
+    "agent": "you",
+    "hours_ago": 75,
+    "summary": "Cuida del gato en vacaciones"
+   }
+  ]
+ }
+}
