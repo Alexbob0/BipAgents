@@ -338,8 +338,40 @@ fn owned_volume(config: &Config, entry: &str) -> bool {
         || target.starts_with("/lecture/")
 }
 
+/// What a sandbox reaches.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Net<'a> {
+    /// The registries only, through the proxy at this URL.
+    Registries(&'a str),
+    /// Nothing (the proxy couldn't be set up).
+    Closed,
+    /// The internet, as before: Hermes' Bot Desktop and its browser live in this sandbox (`desktop_in_sandbox`).
+    Open,
+}
+
+/// Hermes' Bot Desktop runs in the agent's sandbox: an install without the visible browser's containers
+/// (`[browser] enabled = false`) whose agents browse with the desktop Hermes starts in their sandbox
+/// (`bot_desktop.auto_start`, the installer's setup_desktop). Its browser needs the internet: that sandbox keeps it.
+pub fn desktop_in_sandbox(config: &Config, folder: &Path) -> bool {
+    if config.browser.enabled {
+        return false;
+    }
+    let home = folder.parent().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_default();
+    for dir in [folder.to_path_buf(), home] {
+        if let Some(Value::Object(desktop)) = shares::profile_config(&dir).get("bot_desktop") {
+            if desktop.get("placement").and_then(Value::as_str) == Some("gateway") {
+                return false;
+            }
+            if let Some(on) = desktop.get("auto_start") {
+                return py::truthy(on);
+            }
+        }
+    }
+    false
+}
+
 /// The terminal settings an isolated sandbox gets, from the profile's current ones: the person's own entries kept.
-pub fn wanted_terminal(config: &Config, agent: &str, current: &Dict, proxy: Option<&str>) -> Dict {
+pub fn wanted_terminal(config: &Config, agent: &str, current: &Dict, net: Net) -> Dict {
     let list = |key: &str| -> Vec<String> {
         match current.get(key) {
             Some(Value::Array(items)) => items.iter().map(py::py_str).collect(),
@@ -356,7 +388,7 @@ pub fn wanted_terminal(config: &Config, agent: &str, current: &Dict, proxy: Opti
         _ => Dict::new(),
     };
     env.retain(|k, _| !PROXY_ENV.contains(&k.as_str()));
-    if let Some(url) = proxy {
+    if let Net::Registries(url) = net {
         extra.extend(ours);
         for key in PROXY_ENV {
             let value =
@@ -368,7 +400,7 @@ pub fn wanted_terminal(config: &Config, agent: &str, current: &Dict, proxy: Opti
     out.insert("docker_volumes".into(), json!(volumes));
     out.insert("docker_extra_args".into(), json!(extra));
     out.insert("docker_env".into(), Value::Object(env));
-    out.insert("docker_network".into(), json!(proxy.is_some()));
+    out.insert("docker_network".into(), json!(net != Net::Closed));
     out
 }
 
@@ -415,12 +447,18 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     })?;
     let (c, name) = (config.clone(), agent.name.clone());
     let (added, removed) = tokio::task::spawn_blocking(move || sync_agent(&c, &name)).await??;
-    let proxy = network(&config, run).await.ok();
+    let desktop = desktop_in_sandbox(&config, &folder);
+    let proxy = if desktop { None } else { network(&config, run).await.ok() };
+    let net = match (&proxy, desktop) {
+        (_, true) => Net::Open,
+        (Some(url), _) => Net::Registries(url),
+        (None, _) => Net::Closed,
+    };
     let current = match shares::profile_config(&folder).get("terminal") {
         Some(Value::Object(map)) => map.clone(),
         _ => Dict::new(),
     };
-    let wanted = wanted_terminal(&config, &agent.name, &current, proxy.as_deref());
+    let wanted = wanted_terminal(&config, &agent.name, &current, net);
     let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let env = BTreeMap::from([("HERMES_HOME".to_string(), home)]);
     let mut changed: Vec<String> = Vec::new();
@@ -454,7 +492,11 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
             agent = %agent.name,
             changed = %changed.join(","),
             mounts_before = %before.join(" "),
-            network = %proxy.as_deref().map(|_| "registries only").unwrap_or("none"),
+            network = match net {
+                Net::Registries(_) => "registries only",
+                Net::Closed => "none",
+                Net::Open => "internet (its desktop's browser runs there)",
+            },
             "sandbox isolated: no folder of this machine inside, the files through the bridge's tools"
         );
     }
@@ -496,7 +538,10 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
 pub async fn isolate_all(config: SharedConfig, run: Run) {
     crate::agents_admin::mount_all_uploads(config.clone(), run.clone()).await;
     let current = config.get();
-    let any = current.agents.values().any(|a| isolates(&current, a));
+    let any = current.agents.values().any(|a| {
+        isolates(&current, a)
+            && !shares::profile_dir(&current, a).map(|f| desktop_in_sandbox(&current, &f)).unwrap_or(false)
+    });
     if !any {
         return;
     }
@@ -1030,7 +1075,7 @@ mod tests {
             "docker_env": {"LANG": "fr_FR.UTF-8", "HTTPS_PROXY": "http://old"},
         }))
         .unwrap();
-        let wanted = wanted_terminal(&config, "vie", &current, Some("http://10.233.80.2:3128"));
+        let wanted = wanted_terminal(&config, "vie", &current, Net::Registries("http://10.233.80.2:3128"));
         assert_eq!(
             wanted["docker_volumes"],
             json!(["/home/x/photos:/photos:ro", "bipagents-files-vie:/fichiers:ro", "bipagents-envoi-vie:/envoi"])
@@ -1048,9 +1093,14 @@ mod tests {
             1
         );
         // No proxy: no network at all, never the open internet.
-        let closed = wanted_terminal(&config, "vie", &current, None);
+        let closed = wanted_terminal(&config, "vie", &current, Net::Closed);
         assert_eq!(closed["docker_extra_args"], json!(["--shm-size=2g"]));
         assert_eq!(closed["docker_env"], json!({"LANG": "fr_FR.UTF-8"}));
         assert_eq!(closed["docker_network"], json!(false));
+        // Its desktop's browser in the sandbox: the internet as before, the folders still out.
+        let open = wanted_terminal(&config, "vie", &current, Net::Open);
+        assert_eq!(open["docker_network"], json!(true));
+        assert_eq!(open["docker_extra_args"], json!(["--shm-size=2g"]));
+        assert_eq!(open["docker_volumes"], wanted["docker_volumes"]);
     }
 }
