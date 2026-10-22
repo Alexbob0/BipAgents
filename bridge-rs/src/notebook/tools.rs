@@ -52,18 +52,20 @@ pub fn tools(health: bool) -> Vec<Value> {
         }),
         json!({
             "name": NOTE,
-            "description": "File durable facts in the Carnet: about a person (birthday, family, preferences, what was agreed, \
-        recent exchanges), a subject or project (decisions, status, next steps, people involved) or an area of life (home, \
+            "description": "File durable facts in the Carnet: about your person themself (kind self: their « Toi » page; who \
+        they are, family, work, likes and habits, goals, how their agents should behave with them), a person (birthday, \
+        family, preferences, what was agreed, recent exchanges), a subject or project (decisions, status, next steps, people involved) or an area of life (home, \
         money, work, family…). The page is found by its name, a nickname or the contact's id, and made if it doesn't exist. \
-        Facts already there are not repeated. Write each fact short and dated when it matters (« Anniversaire : 14 novembre », \
+        Facts already there are not repeated. Every page has the same fixed sections for its kind: give the section \
+        the facts belong to (one call per section); one short fact per item. Write each fact short and dated when it matters (« Anniversaire : 14 novembre », \
         « Devis plombier accepté le 22/10 : 480 € »); link pages with [[Name]]. Give the page's « En bref » when it changes: \
         2 or 3 short lines saying what matters most now. Not for small talk, one-off questions, passwords or codes, or what \
         the person asked not to keep.",
             "inputSchema": {"type": "object", "properties": {
                 "page": {"type": "string", "description": "the person's, subject's or area's name (« Marc Dupont », « Rénovation cuisine », « Maison »)"},
-                "kind": {"type": "string", "enum": ["person", "subject", "area"], "description": "for a new page"},
+                "kind": {"type": "string", "enum": ["person", "subject", "area", "self"], "description": "for a new page; self: your person themself (their « Toi » page, one per Carnet)"},
                 "facts": {"type": "array", "items": {"type": "string"}, "maxItems": 20, "description": "short facts, one per item"},
-                "section": {"type": "string", "description": "e.g. Infos, Famille, Préférences, Accords, Échanges récents, Décisions, Statut, Prochaines étapes (in the person's language)"},
+                "section": {"type": "string", "enum": super::template::all_ids(), "description": super::template::described()},
                 "summary": {"type": "string", "description": "the page's new « En bref », 2–3 short lines (when what matters most changes)"},
                 "aliases": {"type": "array", "items": {"type": "string"}, "description": "other names or nicknames"},
                 "contact": {"type": "string", "description": "the phone contact's id, when you know it (from contacts_search)"},
@@ -73,13 +75,13 @@ pub fn tools(health: bool) -> Vec<Value> {
         json!({
             "name": EDIT,
             "description": "Correct the Carnet when something changed or was wrong: replace a fact (old: words of the fact, \
-        new: the corrected fact; new empty removes it), or rewrite a whole section (section and text, e.g. a project's « Statut »), \
+        new: the corrected fact; new empty removes it), or rewrite a whole section (section and text, e.g. a subject's status), \
         and/or rewrite the page's « En bref » (summary). Read the page first.",
             "inputSchema": {"type": "object", "properties": {
                 "page": {"type": "string"},
                 "old": {"type": "string", "description": "words of the fact to correct"},
                 "new": {"type": "string", "description": "the corrected fact (empty: remove it)"},
-                "section": {"type": "string"},
+                "section": {"type": "string", "enum": super::template::all_ids(), "description": "the section to rewrite, by its id (as in notebook_note)"},
                 "text": {"type": "string", "description": "the section's new content (list lines « - … »)"},
                 "summary": {"type": "string", "description": "the page's new « En bref », 2–3 short lines"}},
                 "required": ["page"]},
@@ -246,9 +248,14 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                 Ok(written) => {
                     let what = format!("{} — {}", written.title, written.added.join(" ; "));
                     let made = if written.created { "new page" } else { "updated" };
+                    let under = if written.sections.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" Under: {}.", written.sections.join(", "))
+                    };
                     Ok(tool_text(
                         &format!(
-                            "Filed in the Carnet: {} ({made}, {}{}), {} fact(s).{}",
+                            "Filed in the Carnet: {} ({made}, {}{}), {} fact(s).{under}{}",
                             written.title,
                             written.path,
                             marker(part),

@@ -197,6 +197,12 @@ pub fn save(config: &Config, agent: &str, html: &str, title: &str, page: Option<
     meta.insert("updated".into(), json!(now));
     meta.insert("version".into(), json!(version));
     meta.insert("bytes".into(), json!(locked.len()));
+    // its place in the Carnet stays across versions (set_link)
+    for key in ["notebook", "private"] {
+        if let Some(v) = known.get(key) {
+            meta.insert(key.into(), v.clone());
+        }
+    }
     let record = py::dumps(&Value::Object(meta.clone())) + "\n";
     for (name, text) in [
         (format!("{page}.source"), html.to_string()),
@@ -211,6 +217,49 @@ pub fn save(config: &Config, agent: &str, html: &str, title: &str, page: Option<
     out.insert("outside".into(), json!(outside));
     out.extend(meta);
     Ok(out)
+}
+
+/// A page's place in the Carnet: linked to a Carnet page (`link`: its stable id and part, « main » or « health »),
+/// and kept in the private health part (`private`: made by the agent the person chose for their health, or linked to
+/// that part; once private, always). Nothing else of the page changes.
+pub fn set_link(
+    config: &Config,
+    agent: &str,
+    page: &str,
+    link: Option<(&str, &str)>,
+    private: bool,
+) -> anyhow::Result<()> {
+    let page = normalize(page);
+    if !ID.is_match(&page) {
+        return Err(unknown(&page));
+    }
+    let folder = root(config).join(agent);
+    let path = meta_path(&folder, &page);
+    let mut meta = read_meta(&path);
+    if meta.is_empty() {
+        return Err(unknown(&page));
+    }
+    if let Some((id, part)) = link {
+        meta.insert("notebook".into(), json!({"id": id, "part": part}));
+    }
+    if private || link.is_some_and(|(_, part)| part == "health") {
+        meta.insert("private".into(), json!(true));
+    }
+    let record = py::dumps(&Value::Object(meta)) + "\n";
+    tk::replace_with(&folder.join(format!(".{page}.json.part")), &path, record.as_bytes())?;
+    Ok(())
+}
+
+/// Whether a page belongs to the private health part (`private` in its record).
+pub fn private(meta: &Dict) -> bool {
+    meta.get("private").map(py::truthy).unwrap_or(false)
+}
+
+/// The Carnet page a page is linked to: (its id, its part), if any.
+pub fn link(meta: &Dict) -> Option<(String, String)> {
+    let n = meta.get("notebook")?;
+    let id = tk::str_or_empty(n.get("id"));
+    (!id.is_empty()).then(|| (id, tk::str_or_empty(n.get("part"))))
 }
 
 /// The agent's pages, the last changed first.

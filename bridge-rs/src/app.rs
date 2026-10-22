@@ -834,6 +834,12 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
             for k in ["page", "path", "title", "created", "updated", "version", "bytes"] {
                 out.insert(k.into(), p.get(k).cloned().unwrap_or(Value::Null));
             }
+            // its place in the Carnet, when it has one
+            for k in ["notebook", "private"] {
+                if let Some(v) = p.get(k) {
+                    out.insert(k.into(), v.clone());
+                }
+            }
             Value::Object(out)
         })
         .collect();

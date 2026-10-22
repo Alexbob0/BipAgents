@@ -1,6 +1,6 @@
 {
  "version": 1,
- "comment": "The demo's sample Carnet (invented people), shared by the iPhone and Android apps. Agents are demo.json's ids; « you » is the person, « nightly:<agent> » the nightly pass. {date+N}: the day N days after today.",
+ "comment": "The demo's sample Carnet (invented people), shared by the iPhone and Android apps. Agents are demo.json's ids; « you » is the person, « nightly:<agent> » the nightly pass. {date+N}: the day N days after today. Sections: each page's fixed outline (id and title, in the bridge's order: notebook/template.rs); a document of type page opens demo.json's page of that id; « me » is the person's own page (kind self, « Toi »); health_documents are the private health part's.",
  "fr": {
   "brief": "En bref",
   "folders": {
@@ -23,33 +23,31 @@
     "summary_days_ago": 0,
     "sections": [
      {
-      "title": "À savoir",
+      "id": "who",
+      "title": "Qui c'est",
+      "facts": [
+       {
+        "text": "Ton beau-frère, marié à [[Claire Durand]]",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Dates",
       "facts": [
        {
         "text": "Anniversaire : {date+23}",
         "agent": "daily",
         "days_ago": 0
-       },
-       {
-        "text": "Allergique aux noix",
-        "agent": "coach",
-        "days_ago": 49
-       },
-       {
-        "text": "Menuisier, il fait le devis de ta [[Rénovation cuisine]]",
-        "agent": "home",
-        "days_ago": 13
        }
       ]
      },
      {
-      "title": "Famille",
+      "id": "family",
+      "title": "Famille et proches",
       "facts": [
-       {
-        "text": "Marié à [[Claire Durand]], ta sœur",
-        "agent": "daily",
-        "days_ago": 60
-       },
        {
         "text": "Enfants : Inès, 7 ans, et Tom, 4 ans",
         "agent": "daily",
@@ -58,7 +56,19 @@
       ]
      },
      {
-      "title": "Préférences",
+      "id": "work",
+      "title": "Travail",
+      "facts": [
+       {
+        "text": "Menuisier à son compte, il fait le devis de ta [[Rénovation cuisine]]",
+        "agent": "home",
+        "days_ago": 13
+       }
+      ]
+     },
+     {
+      "id": "tastes",
+      "title": "Goûts et préférences",
       "facts": [
        {
         "text": "Aime le jazz et les vins nature",
@@ -66,9 +76,68 @@
         "days_ago": 30
        },
        {
-        "text": "Préfère qu’on l’appelle le soir",
+        "text": "Allergique aux noix",
+        "agent": "coach",
+        "days_ago": 49
+       },
+       {
+        "text": "Préfère qu'on l'appelle le soir",
         "agent": "you",
         "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "gifts",
+      "title": "Idées cadeaux",
+      "facts": [
+       {
+        "text": "Un vinyle de Chet Baker",
+        "agent": "daily",
+        "days_ago": 5
+       }
+      ]
+     },
+     {
+      "id": "agreed",
+      "title": "Ce que vous avez convenu",
+      "facts": [
+       {
+        "text": "Te prête sa ponceuse jusqu'à fin novembre",
+        "agent": "home",
+        "days_ago": 6
+       },
+       {
+        "text": "Passe prendre les mesures de la cuisine samedi",
+        "agent": "home",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "exchanges",
+      "title": "Derniers échanges",
+      "facts": [
+       {
+        "text": "Appel : le devis arrive ce soir",
+        "agent": "home",
+        "days_ago": 1
+       },
+       {
+        "text": "Dîner chez Claire, il a parlé de vacances au Portugal",
+        "agent": "daily",
+        "days_ago": 9
+       }
+      ]
+     },
+     {
+      "id": "remember",
+      "title": "À ne pas oublier",
+      "facts": [
+       {
+        "text": "Pas de noix au dîner du 2",
+        "agent": "coach",
+        "days_ago": 4
        }
       ]
      }
@@ -88,13 +157,42 @@
     "summary_days_ago": 12,
     "sections": [
      {
-      "title": "À savoir",
+      "id": "who",
+      "title": "Qui c'est",
+      "facts": [
+       {
+        "text": "Ta sœur",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Dates",
       "facts": [
        {
         "text": "Anniversaire : {date+41}",
         "agent": "daily",
         "days_ago": 12
-       },
+       }
+      ]
+     },
+     {
+      "id": "family",
+      "title": "Famille et proches",
+      "facts": [
+       {
+        "text": "Mariée à [[Marc Durand]], deux enfants : Inès et Tom",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "work",
+      "title": "Travail",
+      "facts": [
        {
         "text": "Infirmière de nuit à Nantes",
         "agent": "daily",
@@ -103,12 +201,13 @@
       ]
      },
      {
-      "title": "Famille",
+      "id": "exchanges",
+      "title": "Derniers échanges",
       "facts": [
        {
-        "text": "Mariée à [[Marc Durand]]",
+        "text": "Message : elle viendra avec un gâteau samedi",
         "agent": "daily",
-        "days_ago": 60
+        "days_ago": 3
        }
       ]
      }
@@ -128,16 +227,45 @@
     "summary_days_ago": 2,
     "sections": [
      {
-      "title": "À savoir",
+      "id": "who",
+      "title": "Qui c'est",
+      "facts": [
+       {
+        "text": "Ton ami de la course à pied, le dimanche matin",
+        "agent": "coach",
+        "days_ago": 40
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Dates",
       "facts": [
        {
         "text": "Anniversaire : {date+9}",
         "agent": "coach",
         "days_ago": 40
-       },
+       }
+      ]
+     },
+     {
+      "id": "tastes",
+      "title": "Goûts et préférences",
+      "facts": [
        {
         "text": "Court le semi-marathon de Nantes au printemps",
         "agent": "nightly:coach",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "gifts",
+      "title": "Idées cadeaux",
+      "facts": [
+       {
+        "text": "Une montre de course, il en parle souvent",
+        "agent": "coach",
         "days_ago": 2
        }
       ]
@@ -158,12 +286,29 @@
     "summary_days_ago": 3,
     "sections": [
      {
-      "title": "À savoir",
+      "id": "who",
+      "title": "Qui c'est",
+      "facts": [
+       {
+        "text": "Ta voisine du 3e",
+        "agent": "you",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "agreed",
+      "title": "Ce que vous avez convenu",
       "facts": [
        {
         "text": "Garde le chat pendant les vacances",
         "agent": "you",
         "days_ago": 3
+       },
+       {
+        "text": "A un double de tes clés",
+        "agent": "you",
+        "days_ago": 30
        }
       ]
      }
@@ -181,10 +326,22 @@
     "summary_days_ago": 1,
     "sections": [
      {
+      "id": "status",
+      "title": "Où on en est",
+      "facts": [
+       {
+        "text": "Devis reçu, travaux à fixer avec Marc",
+        "agent": "home",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "decisions",
       "title": "Décisions",
       "facts": [
        {
-        "text": "Devis de [[Marc Durand]] accepté : 8 900 €",
+        "text": "Devis de [[Marc Durand]] accepté",
         "agent": "budget",
         "days_ago": 1
        },
@@ -196,10 +353,64 @@
       ]
      },
      {
-      "title": "Infos",
+      "id": "next",
+      "title": "Prochaines étapes",
       "facts": [
        {
-        "text": "Magasin : Cuisines Éclat, rue des Halles",
+        "text": "Choisir la couleur du plan de travail",
+        "agent": "home",
+        "days_ago": 5
+       },
+       {
+        "text": "Fixer la date des travaux",
+        "agent": "home",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "people",
+      "title": "Personnes",
+      "facts": [
+       {
+        "text": "[[Marc Durand]], menuisier",
+        "agent": "home",
+        "days_ago": 13
+       },
+       {
+        "text": "Cuisines Éclat, rue des Halles",
+        "agent": "home",
+        "days_ago": 40
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Chiffres et budget",
+      "facts": [
+       {
+        "text": "Devis : 8 900 €",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Enveloppe prévue : 10 000 €",
+        "agent": "budget",
+        "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "history",
+      "title": "Historique",
+      "facts": [
+       {
+        "text": "Devis accepté",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Visite du magasin",
         "agent": "home",
         "days_ago": 40
        }
@@ -219,13 +430,42 @@
     "summary_days_ago": 1,
     "sections": [
      {
-      "title": "Préparatifs",
+      "id": "status",
+      "title": "Où on en est",
       "facts": [
        {
-        "text": "Vols à réserver avant la fin du mois",
+        "text": "Itinéraire fixé, vols pas encore pris",
         "agent": "daily",
         "days_ago": 1
-       },
+       }
+      ]
+     },
+     {
+      "id": "decisions",
+      "title": "Décisions",
+      "facts": [
+       {
+        "text": "Avril, 12 jours : Tokyo, Kyoto, Osaka",
+        "agent": "daily",
+        "days_ago": 10
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Prochaines étapes",
+      "facts": [
+       {
+        "text": "Réserver les vols avant la fin du mois",
+        "agent": "daily",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Chiffres et budget",
+      "facts": [
        {
         "text": "Budget : 4 000 € pour deux",
         "agent": "budget",
@@ -247,10 +487,33 @@
     "summary_days_ago": 12,
     "sections": [
      {
-      "title": "Rendez-vous",
+      "id": "matters",
+      "title": "Ce qui compte",
       "facts": [
        {
-        "text": "Dîner chez toi avec Marc et Claire le samedi 2",
+        "text": "Ta sœur [[Claire Durand]], son mari [[Marc Durand]] et leurs enfants",
+        "agent": "daily",
+        "days_ago": 12
+       }
+      ]
+     },
+     {
+      "id": "habits",
+      "title": "Habitudes et règles",
+      "facts": [
+       {
+        "text": "Dîner ensemble un samedi par mois",
+        "agent": "daily",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En cours",
+      "facts": [
+       {
+        "text": "Dîner chez toi le samedi 2",
         "agent": "daily",
         "days_ago": 4
        }
@@ -270,7 +533,8 @@
     "summary_days_ago": 8,
     "sections": [
      {
-      "title": "Infos",
+      "id": "habits",
+      "title": "Habitudes et règles",
       "facts": [
        {
         "text": "Entretien de la chaudière : chaque année en octobre",
@@ -278,9 +542,36 @@
         "days_ago": 20
        },
        {
+        "text": "Poubelles le lundi soir",
+        "agent": "home",
+        "days_ago": 15
+       }
+      ]
+     },
+     {
+      "id": "contacts",
+      "title": "Contacts utiles",
+      "facts": [
+       {
         "text": "Un double des clés chez [[Sophie Laurent]]",
         "agent": "you",
         "days_ago": 3
+       },
+       {
+        "text": "Syndic : Cabinet Moreau, 02 40 00 00 00",
+        "agent": "home",
+        "days_ago": 25
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En cours",
+      "facts": [
+       {
+        "text": "Les travaux de la [[Rénovation cuisine]]",
+        "agent": "home",
+        "days_ago": 8
        }
       ]
      }
@@ -298,7 +589,19 @@
     "summary_days_ago": 3,
     "sections": [
      {
-      "title": "Contrats",
+      "id": "matters",
+      "title": "Ce qui compte",
+      "facts": [
+       {
+        "text": "Épargne : 200 € par mois sur le livret",
+        "agent": "budget",
+        "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En cours",
       "facts": [
        {
         "text": "Assurance auto à renouveler avant le 5",
@@ -323,13 +626,31 @@
     "summary_days_ago": 6,
     "sections": [
      {
-      "title": "À savoir",
+      "id": "matters",
+      "title": "Ce qui compte",
       "facts": [
        {
         "text": "Allergie à la pénicilline",
         "agent": "coach",
         "days_ago": 60
-       },
+       }
+      ]
+     },
+     {
+      "id": "habits",
+      "title": "Habitudes et règles",
+      "facts": [
+       {
+        "text": "Prise de sang tous les 6 mois",
+        "agent": "coach",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En cours",
+      "facts": [
        {
         "text": "Vaccin contre la grippe à faire en novembre",
         "agent": "coach",
@@ -448,6 +769,18 @@
   ],
   "documents": [
    {
+    "name": "Budget du voyage",
+    "type": "page",
+    "page": "trip_budget",
+    "agent": "budget",
+    "days_ago": 2,
+    "origin": "made",
+    "subjects": [
+     "Sujets/Voyage Japon.md"
+    ],
+    "linked": "Sujets/Voyage Japon.md"
+   },
+   {
     "name": "Voyage Japon, le programme.pptx",
     "type": "presentation",
     "agent": "daily",
@@ -539,7 +872,115 @@
     "hours_ago": 75,
     "summary": "Garde le chat pendant les vacances"
    }
-  ]
+  ],
+  "health_documents": [
+   {
+    "name": "Mes prises de sang",
+    "type": "page",
+    "page": "blood",
+    "agent": "coach",
+    "days_ago": 1,
+    "origin": "made",
+    "subjects": [
+     "Domaines/Santé.md"
+    ],
+    "linked": "Domaines/Santé.md"
+   }
+  ],
+  "me": {
+   "path": "Toi.md",
+   "kind": "self",
+   "title": "Toi",
+   "aliases": [],
+   "close": false,
+   "contact": null,
+   "summary": "Tu vis à Nantes, tu cours le dimanche et tu prépares un voyage au Japon.",
+   "summary_agent": "daily",
+   "summary_days_ago": 5,
+   "sections": [
+    {
+     "id": "about",
+     "title": "Qui tu es",
+     "facts": [
+      {
+       "text": "Vit à Nantes",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "family",
+     "title": "Famille",
+     "facts": [
+      {
+       "text": "Sœur : [[Claire Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      },
+      {
+       "text": "Beau-frère : [[Marc Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "work",
+     "title": "Travail",
+     "facts": [
+      {
+       "text": "Graphiste en agence, télétravail le vendredi",
+       "agent": "daily",
+       "days_ago": 30
+      }
+     ]
+    },
+    {
+     "id": "habits",
+     "title": "Goûts et habitudes",
+     "facts": [
+      {
+       "text": "Course à pied le dimanche matin avec [[Lucas Bernard]]",
+       "agent": "coach",
+       "days_ago": 40
+      },
+      {
+       "text": "Café sans sucre",
+       "agent": "you",
+       "days_ago": 20
+      }
+     ]
+    },
+    {
+     "id": "goals",
+     "title": "Objectifs",
+     "facts": [
+      {
+       "text": "Courir un semi-marathon au printemps",
+       "agent": "coach",
+       "days_ago": 10
+      }
+     ]
+    },
+    {
+     "id": "agents",
+     "title": "Ce que tes agents doivent savoir",
+     "facts": [
+      {
+       "text": "Pas de propositions de tâches pour les anniversaires",
+       "agent": "daily",
+       "days_ago": 15
+      },
+      {
+       "text": "Réponses courtes le matin",
+       "agent": "you",
+       "days_ago": 5
+      }
+     ]
+    }
+   ]
+  }
  },
  "en": {
   "brief": "In brief",
@@ -563,33 +1004,31 @@
     "summary_days_ago": 0,
     "sections": [
      {
-      "title": "Good to know",
+      "id": "who",
+      "title": "Who they are",
+      "facts": [
+       {
+        "text": "Your brother-in-law, married to [[Claire Durand]]",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Dates",
       "facts": [
        {
         "text": "Birthday: {date+23}",
         "agent": "daily",
         "days_ago": 0
-       },
-       {
-        "text": "Allergic to nuts",
-        "agent": "coach",
-        "days_ago": 49
-       },
-       {
-        "text": "Carpenter, he’s quoting for your [[Kitchen renovation]]",
-        "agent": "home",
-        "days_ago": 13
        }
       ]
      },
      {
-      "title": "Family",
+      "id": "family",
+      "title": "Family and close ones",
       "facts": [
-       {
-        "text": "Married to [[Claire Durand]], your sister",
-        "agent": "daily",
-        "days_ago": 60
-       },
        {
         "text": "Children: Inès, 7, and Tom, 4",
         "agent": "daily",
@@ -598,7 +1037,19 @@
       ]
      },
      {
-      "title": "Preferences",
+      "id": "work",
+      "title": "Work",
+      "facts": [
+       {
+        "text": "Self-employed carpenter, quoting your [[Kitchen renovation]]",
+        "agent": "home",
+        "days_ago": 13
+       }
+      ]
+     },
+     {
+      "id": "tastes",
+      "title": "Likes and preferences",
       "facts": [
        {
         "text": "Loves jazz and natural wines",
@@ -606,9 +1057,68 @@
         "days_ago": 30
        },
        {
+        "text": "Allergic to nuts",
+        "agent": "coach",
+        "days_ago": 49
+       },
+       {
         "text": "Prefers calls in the evening",
         "agent": "you",
         "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "gifts",
+      "title": "Gift ideas",
+      "facts": [
+       {
+        "text": "A Chet Baker record",
+        "agent": "daily",
+        "days_ago": 5
+       }
+      ]
+     },
+     {
+      "id": "agreed",
+      "title": "What you agreed",
+      "facts": [
+       {
+        "text": "Lends you his sander until the end of November",
+        "agent": "home",
+        "days_ago": 6
+       },
+       {
+        "text": "Comes to measure the kitchen on Saturday",
+        "agent": "home",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "exchanges",
+      "title": "Latest exchanges",
+      "facts": [
+       {
+        "text": "Call: the quote comes tonight",
+        "agent": "home",
+        "days_ago": 1
+       },
+       {
+        "text": "Dinner at Claire's, he talked about a holiday in Portugal",
+        "agent": "daily",
+        "days_ago": 9
+       }
+      ]
+     },
+     {
+      "id": "remember",
+      "title": "Don't forget",
+      "facts": [
+       {
+        "text": "No nuts at dinner on the 2nd",
+        "agent": "coach",
+        "days_ago": 4
        }
       ]
      }
@@ -628,13 +1138,42 @@
     "summary_days_ago": 12,
     "sections": [
      {
-      "title": "Good to know",
+      "id": "who",
+      "title": "Who they are",
+      "facts": [
+       {
+        "text": "Your sister",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Dates",
       "facts": [
        {
         "text": "Birthday: {date+41}",
         "agent": "daily",
         "days_ago": 12
-       },
+       }
+      ]
+     },
+     {
+      "id": "family",
+      "title": "Family and close ones",
+      "facts": [
+       {
+        "text": "Married to [[Marc Durand]], two children: Inès and Tom",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "work",
+      "title": "Work",
+      "facts": [
        {
         "text": "Night nurse in Nantes",
         "agent": "daily",
@@ -643,12 +1182,13 @@
       ]
      },
      {
-      "title": "Family",
+      "id": "exchanges",
+      "title": "Latest exchanges",
       "facts": [
        {
-        "text": "Married to [[Marc Durand]]",
+        "text": "Text: she'll bring a cake on Saturday",
         "agent": "daily",
-        "days_ago": 60
+        "days_ago": 3
        }
       ]
      }
@@ -668,16 +1208,45 @@
     "summary_days_ago": 2,
     "sections": [
      {
-      "title": "Good to know",
+      "id": "who",
+      "title": "Who they are",
+      "facts": [
+       {
+        "text": "Your running friend, Sunday mornings",
+        "agent": "coach",
+        "days_ago": 40
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Dates",
       "facts": [
        {
         "text": "Birthday: {date+9}",
         "agent": "coach",
         "days_ago": 40
-       },
+       }
+      ]
+     },
+     {
+      "id": "tastes",
+      "title": "Likes and preferences",
+      "facts": [
        {
-        "text": "Running the Nantes half marathon in spring",
+        "text": "Runs the Nantes half marathon in spring",
         "agent": "nightly:coach",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "gifts",
+      "title": "Gift ideas",
+      "facts": [
+       {
+        "text": "A running watch, he often mentions it",
+        "agent": "coach",
         "days_ago": 2
        }
       ]
@@ -698,12 +1267,29 @@
     "summary_days_ago": 3,
     "sections": [
      {
-      "title": "Good to know",
+      "id": "who",
+      "title": "Who they are",
       "facts": [
        {
-        "text": "Looks after the cat during holidays",
+        "text": "Your neighbour on the 3rd floor",
+        "agent": "you",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "agreed",
+      "title": "What you agreed",
+      "facts": [
+       {
+        "text": "Looks after the cat during the holidays",
         "agent": "you",
         "days_ago": 3
+       },
+       {
+        "text": "Has a spare set of your keys",
+        "agent": "you",
+        "days_ago": 30
        }
       ]
      }
@@ -721,10 +1307,22 @@
     "summary_days_ago": 1,
     "sections": [
      {
+      "id": "status",
+      "title": "Where it stands",
+      "facts": [
+       {
+        "text": "Quote received, dates to set with Marc",
+        "agent": "home",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "decisions",
       "title": "Decisions",
       "facts": [
        {
-        "text": "[[Marc Durand]]’s quote accepted: €8,900",
+        "text": "[[Marc Durand]]'s quote accepted",
         "agent": "budget",
         "days_ago": 1
        },
@@ -736,10 +1334,64 @@
       ]
      },
      {
-      "title": "Notes",
+      "id": "next",
+      "title": "Next steps",
       "facts": [
        {
-        "text": "Shop: Cuisines Éclat, rue des Halles",
+        "text": "Choose the worktop colour",
+        "agent": "home",
+        "days_ago": 5
+       },
+       {
+        "text": "Set the work dates",
+        "agent": "home",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "people",
+      "title": "People",
+      "facts": [
+       {
+        "text": "[[Marc Durand]], carpenter",
+        "agent": "home",
+        "days_ago": 13
+       },
+       {
+        "text": "Cuisines Éclat, rue des Halles",
+        "agent": "home",
+        "days_ago": 40
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Figures and budget",
+      "facts": [
+       {
+        "text": "Quote: €8,900",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Budget set aside: €10,000",
+        "agent": "budget",
+        "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "history",
+      "title": "History",
+      "facts": [
+       {
+        "text": "Quote accepted",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Visit to the showroom",
         "agent": "home",
         "days_ago": 40
        }
@@ -759,13 +1411,42 @@
     "summary_days_ago": 1,
     "sections": [
      {
-      "title": "Planning",
+      "id": "status",
+      "title": "Where it stands",
       "facts": [
        {
-        "text": "Flights to book before the end of the month",
+        "text": "Route set, flights not booked yet",
         "agent": "daily",
         "days_ago": 1
-       },
+       }
+      ]
+     },
+     {
+      "id": "decisions",
+      "title": "Decisions",
+      "facts": [
+       {
+        "text": "April, 12 days: Tokyo, Kyoto, Osaka",
+        "agent": "daily",
+        "days_ago": 10
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Next steps",
+      "facts": [
+       {
+        "text": "Book the flights before the end of the month",
+        "agent": "daily",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Figures and budget",
+      "facts": [
        {
         "text": "Budget: €4,000 for two",
         "agent": "budget",
@@ -787,10 +1468,33 @@
     "summary_days_ago": 12,
     "sections": [
      {
-      "title": "Get-togethers",
+      "id": "matters",
+      "title": "What matters",
       "facts": [
        {
-        "text": "Dinner at yours with Marc and Claire on Saturday the 2nd",
+        "text": "Your sister [[Claire Durand]], her husband [[Marc Durand]] and their children",
+        "agent": "daily",
+        "days_ago": 12
+       }
+      ]
+     },
+     {
+      "id": "habits",
+      "title": "Habits and rules",
+      "facts": [
+       {
+        "text": "Dinner together one Saturday a month",
+        "agent": "daily",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "In progress",
+      "facts": [
+       {
+        "text": "Dinner at yours on Saturday the 2nd",
         "agent": "daily",
         "days_ago": 4
        }
@@ -810,7 +1514,8 @@
     "summary_days_ago": 8,
     "sections": [
      {
-      "title": "Notes",
+      "id": "habits",
+      "title": "Habits and rules",
       "facts": [
        {
         "text": "Boiler service: every October",
@@ -818,9 +1523,36 @@
         "days_ago": 20
        },
        {
-        "text": "A spare set of keys with [[Sophie Laurent]]",
+        "text": "Bins out on Monday evening",
+        "agent": "home",
+        "days_ago": 15
+       }
+      ]
+     },
+     {
+      "id": "contacts",
+      "title": "Useful contacts",
+      "facts": [
+       {
+        "text": "A spare key with [[Sophie Laurent]]",
         "agent": "you",
         "days_ago": 3
+       },
+       {
+        "text": "Building manager: Cabinet Moreau, 02 40 00 00 00",
+        "agent": "home",
+        "days_ago": 25
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "In progress",
+      "facts": [
+       {
+        "text": "The [[Kitchen renovation]] works",
+        "agent": "home",
+        "days_ago": 8
        }
       ]
      }
@@ -838,7 +1570,19 @@
     "summary_days_ago": 3,
     "sections": [
      {
-      "title": "Contracts",
+      "id": "matters",
+      "title": "What matters",
+      "facts": [
+       {
+        "text": "Savings: €200 a month",
+        "agent": "budget",
+        "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "In progress",
       "facts": [
        {
         "text": "Car insurance to renew before the 5th",
@@ -863,13 +1607,31 @@
     "summary_days_ago": 6,
     "sections": [
      {
-      "title": "Good to know",
+      "id": "matters",
+      "title": "What matters",
       "facts": [
        {
         "text": "Allergic to penicillin",
         "agent": "coach",
         "days_ago": 60
-       },
+       }
+      ]
+     },
+     {
+      "id": "habits",
+      "title": "Habits and rules",
+      "facts": [
+       {
+        "text": "Blood test every 6 months",
+        "agent": "coach",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "In progress",
+      "facts": [
        {
         "text": "Flu jab due in November",
         "agent": "coach",
@@ -988,6 +1750,18 @@
   ],
   "documents": [
    {
+    "name": "Trip budget",
+    "type": "page",
+    "page": "trip_budget",
+    "agent": "budget",
+    "days_ago": 2,
+    "origin": "made",
+    "subjects": [
+     "Subjects/Japan trip.md"
+    ],
+    "linked": "Subjects/Japan trip.md"
+   },
+   {
     "name": "Japan trip, the plan.pptx",
     "type": "presentation",
     "agent": "daily",
@@ -1079,7 +1853,115 @@
     "hours_ago": 75,
     "summary": "Looks after the cat during holidays"
    }
-  ]
+  ],
+  "health_documents": [
+   {
+    "name": "My blood tests",
+    "type": "page",
+    "page": "blood",
+    "agent": "coach",
+    "days_ago": 1,
+    "origin": "made",
+    "subjects": [
+     "Areas/Health.md"
+    ],
+    "linked": "Areas/Health.md"
+   }
+  ],
+  "me": {
+   "path": "You.md",
+   "kind": "self",
+   "title": "You",
+   "aliases": [],
+   "close": false,
+   "contact": null,
+   "summary": "You live in Nantes, run on Sundays and are planning a trip to Japan.",
+   "summary_agent": "daily",
+   "summary_days_ago": 5,
+   "sections": [
+    {
+     "id": "about",
+     "title": "Who you are",
+     "facts": [
+      {
+       "text": "Lives in Nantes",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "family",
+     "title": "Family",
+     "facts": [
+      {
+       "text": "Sister: [[Claire Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      },
+      {
+       "text": "Brother-in-law: [[Marc Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "work",
+     "title": "Work",
+     "facts": [
+      {
+       "text": "Graphic designer at an agency, works from home on Fridays",
+       "agent": "daily",
+       "days_ago": 30
+      }
+     ]
+    },
+    {
+     "id": "habits",
+     "title": "Likes and habits",
+     "facts": [
+      {
+       "text": "Runs on Sunday mornings with [[Lucas Bernard]]",
+       "agent": "coach",
+       "days_ago": 40
+      },
+      {
+       "text": "Coffee without sugar",
+       "agent": "you",
+       "days_ago": 20
+      }
+     ]
+    },
+    {
+     "id": "goals",
+     "title": "Goals",
+     "facts": [
+      {
+       "text": "Run a half marathon in spring",
+       "agent": "coach",
+       "days_ago": 10
+      }
+     ]
+    },
+    {
+     "id": "agents",
+     "title": "What your agents should know",
+     "facts": [
+      {
+       "text": "No task proposals for birthdays",
+       "agent": "daily",
+       "days_ago": 15
+      },
+      {
+       "text": "Short answers in the morning",
+       "agent": "you",
+       "days_ago": 5
+      }
+     ]
+    }
+   ]
+  }
  },
  "de": {
   "brief": "Kurz gesagt",
@@ -1103,33 +1985,31 @@
     "summary_days_ago": 0,
     "sections": [
      {
-      "title": "Gut zu wissen",
+      "id": "who",
+      "title": "Wer das ist",
+      "facts": [
+       {
+        "text": "Dein Schwager, verheiratet mit [[Claire Durand]]",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Wichtige Daten",
       "facts": [
        {
         "text": "Geburtstag: {date+23}",
         "agent": "daily",
         "days_ago": 0
-       },
-       {
-        "text": "Allergisch gegen Nüsse",
-        "agent": "coach",
-        "days_ago": 49
-       },
-       {
-        "text": "Schreiner, er macht das Angebot für deine [[Küchenrenovierung]]",
-        "agent": "home",
-        "days_ago": 13
        }
       ]
      },
      {
-      "title": "Familie",
+      "id": "family",
+      "title": "Familie und Nahestehende",
       "facts": [
-       {
-        "text": "Verheiratet mit [[Claire Durand]], deiner Schwester",
-        "agent": "daily",
-        "days_ago": 60
-       },
        {
         "text": "Kinder: Inès, 7, und Tom, 4",
         "agent": "daily",
@@ -1138,6 +2018,18 @@
       ]
      },
      {
+      "id": "work",
+      "title": "Arbeit",
+      "facts": [
+       {
+        "text": "Selbstständiger Schreiner, macht das Angebot für deine [[Küchenrenovierung]]",
+        "agent": "home",
+        "days_ago": 13
+       }
+      ]
+     },
+     {
+      "id": "tastes",
       "title": "Vorlieben",
       "facts": [
        {
@@ -1146,9 +2038,68 @@
         "days_ago": 30
        },
        {
-        "text": "Wird lieber abends angerufen",
+        "text": "Allergisch gegen Nüsse",
+        "agent": "coach",
+        "days_ago": 49
+       },
+       {
+        "text": "Lieber abends anrufen",
         "agent": "you",
         "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "gifts",
+      "title": "Geschenkideen",
+      "facts": [
+       {
+        "text": "Eine Schallplatte von Chet Baker",
+        "agent": "daily",
+        "days_ago": 5
+       }
+      ]
+     },
+     {
+      "id": "agreed",
+      "title": "Was ihr vereinbart habt",
+      "facts": [
+       {
+        "text": "Leiht dir seinen Schleifer bis Ende November",
+        "agent": "home",
+        "days_ago": 6
+       },
+       {
+        "text": "Kommt am Samstag die Küche ausmessen",
+        "agent": "home",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "exchanges",
+      "title": "Letzte Kontakte",
+      "facts": [
+       {
+        "text": "Anruf: das Angebot kommt heute Abend",
+        "agent": "home",
+        "days_ago": 1
+       },
+       {
+        "text": "Abendessen bei Claire, er sprach von Urlaub in Portugal",
+        "agent": "daily",
+        "days_ago": 9
+       }
+      ]
+     },
+     {
+      "id": "remember",
+      "title": "Nicht vergessen",
+      "facts": [
+       {
+        "text": "Keine Nüsse beim Abendessen am 2.",
+        "agent": "coach",
+        "days_ago": 4
        }
       ]
      }
@@ -1168,13 +2119,42 @@
     "summary_days_ago": 12,
     "sections": [
      {
-      "title": "Gut zu wissen",
+      "id": "who",
+      "title": "Wer das ist",
+      "facts": [
+       {
+        "text": "Deine Schwester",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Wichtige Daten",
       "facts": [
        {
         "text": "Geburtstag: {date+41}",
         "agent": "daily",
         "days_ago": 12
-       },
+       }
+      ]
+     },
+     {
+      "id": "family",
+      "title": "Familie und Nahestehende",
+      "facts": [
+       {
+        "text": "Verheiratet mit [[Marc Durand]], zwei Kinder: Inès und Tom",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "work",
+      "title": "Arbeit",
+      "facts": [
        {
         "text": "Nachtschwester in Nantes",
         "agent": "daily",
@@ -1183,12 +2163,13 @@
       ]
      },
      {
-      "title": "Familie",
+      "id": "exchanges",
+      "title": "Letzte Kontakte",
       "facts": [
        {
-        "text": "Verheiratet mit [[Marc Durand]]",
+        "text": "Nachricht: sie bringt am Samstag einen Kuchen mit",
         "agent": "daily",
-        "days_ago": 60
+        "days_ago": 3
        }
       ]
      }
@@ -1208,16 +2189,45 @@
     "summary_days_ago": 2,
     "sections": [
      {
-      "title": "Gut zu wissen",
+      "id": "who",
+      "title": "Wer das ist",
+      "facts": [
+       {
+        "text": "Dein Lauffreund, sonntagmorgens",
+        "agent": "coach",
+        "days_ago": 40
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Wichtige Daten",
       "facts": [
        {
         "text": "Geburtstag: {date+9}",
         "agent": "coach",
         "days_ago": 40
-       },
+       }
+      ]
+     },
+     {
+      "id": "tastes",
+      "title": "Vorlieben",
+      "facts": [
        {
         "text": "Läuft im Frühling den Halbmarathon in Nantes",
         "agent": "nightly:coach",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "gifts",
+      "title": "Geschenkideen",
+      "facts": [
+       {
+        "text": "Eine Laufuhr, davon spricht er oft",
+        "agent": "coach",
         "days_ago": 2
        }
       ]
@@ -1238,12 +2248,29 @@
     "summary_days_ago": 3,
     "sections": [
      {
-      "title": "Gut zu wissen",
+      "id": "who",
+      "title": "Wer das ist",
       "facts": [
        {
-        "text": "Passt in den Ferien auf die Katze auf",
+        "text": "Deine Nachbarin im 3. Stock",
+        "agent": "you",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "agreed",
+      "title": "Was ihr vereinbart habt",
+      "facts": [
+       {
+        "text": "Hütet die Katze in den Ferien",
         "agent": "you",
         "days_ago": 3
+       },
+       {
+        "text": "Hat einen Zweitschlüssel von dir",
+        "agent": "you",
+        "days_ago": 30
        }
       ]
      }
@@ -1261,10 +2288,22 @@
     "summary_days_ago": 1,
     "sections": [
      {
+      "id": "status",
+      "title": "Stand der Dinge",
+      "facts": [
+       {
+        "text": "Angebot erhalten, Termin mit Marc festlegen",
+        "agent": "home",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "decisions",
       "title": "Entscheidungen",
       "facts": [
        {
-        "text": "Angebot von [[Marc Durand]] angenommen: 8.900 €",
+        "text": "Angebot von [[Marc Durand]] angenommen",
         "agent": "budget",
         "days_ago": 1
        },
@@ -1276,10 +2315,64 @@
       ]
      },
      {
-      "title": "Notizen",
+      "id": "next",
+      "title": "Nächste Schritte",
       "facts": [
        {
-        "text": "Geschäft: Cuisines Éclat, rue des Halles",
+        "text": "Farbe der Arbeitsplatte wählen",
+        "agent": "home",
+        "days_ago": 5
+       },
+       {
+        "text": "Termin für die Arbeiten festlegen",
+        "agent": "home",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "people",
+      "title": "Personen",
+      "facts": [
+       {
+        "text": "[[Marc Durand]], Schreiner",
+        "agent": "home",
+        "days_ago": 13
+       },
+       {
+        "text": "Cuisines Éclat, rue des Halles",
+        "agent": "home",
+        "days_ago": 40
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Zahlen und Budget",
+      "facts": [
+       {
+        "text": "Angebot: 8.900 €",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Eingeplant: 10.000 €",
+        "agent": "budget",
+        "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "history",
+      "title": "Verlauf",
+      "facts": [
+       {
+        "text": "Angebot angenommen",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Besuch im Küchenstudio",
         "agent": "home",
         "days_ago": 40
        }
@@ -1299,13 +2392,42 @@
     "summary_days_ago": 1,
     "sections": [
      {
-      "title": "Vorbereitung",
+      "id": "status",
+      "title": "Stand der Dinge",
       "facts": [
        {
-        "text": "Flüge vor Monatsende buchen",
+        "text": "Route steht, Flüge noch nicht gebucht",
         "agent": "daily",
         "days_ago": 1
-       },
+       }
+      ]
+     },
+     {
+      "id": "decisions",
+      "title": "Entscheidungen",
+      "facts": [
+       {
+        "text": "April, 12 Tage: Tokio, Kyoto, Osaka",
+        "agent": "daily",
+        "days_ago": 10
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Nächste Schritte",
+      "facts": [
+       {
+        "text": "Flüge bis Monatsende buchen",
+        "agent": "daily",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Zahlen und Budget",
+      "facts": [
        {
         "text": "Budget: 4.000 € für zwei",
         "agent": "budget",
@@ -1327,10 +2449,33 @@
     "summary_days_ago": 12,
     "sections": [
      {
-      "title": "Treffen",
+      "id": "matters",
+      "title": "Was zählt",
       "facts": [
        {
-        "text": "Abendessen bei dir mit Marc und Claire am Samstag, den 2.",
+        "text": "Deine Schwester [[Claire Durand]], ihr Mann [[Marc Durand]] und die Kinder",
+        "agent": "daily",
+        "days_ago": 12
+       }
+      ]
+     },
+     {
+      "id": "habits",
+      "title": "Gewohnheiten und Regeln",
+      "facts": [
+       {
+        "text": "Einmal im Monat samstags gemeinsames Abendessen",
+        "agent": "daily",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "Laufend",
+      "facts": [
+       {
+        "text": "Abendessen bei dir am Samstag, den 2.",
         "agent": "daily",
         "days_ago": 4
        }
@@ -1350,7 +2495,8 @@
     "summary_days_ago": 8,
     "sections": [
      {
-      "title": "Notizen",
+      "id": "habits",
+      "title": "Gewohnheiten und Regeln",
       "facts": [
        {
         "text": "Heizungswartung: jedes Jahr im Oktober",
@@ -1358,9 +2504,36 @@
         "days_ago": 20
        },
        {
-        "text": "Ersatzschlüssel bei [[Sophie Laurent]]",
+        "text": "Müll am Montagabend",
+        "agent": "home",
+        "days_ago": 15
+       }
+      ]
+     },
+     {
+      "id": "contacts",
+      "title": "Nützliche Kontakte",
+      "facts": [
+       {
+        "text": "Ein Zweitschlüssel bei [[Sophie Laurent]]",
         "agent": "you",
         "days_ago": 3
+       },
+       {
+        "text": "Hausverwaltung: Cabinet Moreau, 02 40 00 00 00",
+        "agent": "home",
+        "days_ago": 25
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "Laufend",
+      "facts": [
+       {
+        "text": "Die Arbeiten an der [[Küchenrenovierung]]",
+        "agent": "home",
+        "days_ago": 8
        }
       ]
      }
@@ -1378,7 +2551,19 @@
     "summary_days_ago": 3,
     "sections": [
      {
-      "title": "Verträge",
+      "id": "matters",
+      "title": "Was zählt",
+      "facts": [
+       {
+        "text": "Sparen: 200 € im Monat",
+        "agent": "budget",
+        "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "Laufend",
       "facts": [
        {
         "text": "Kfz-Versicherung vor dem 5. verlängern",
@@ -1403,13 +2588,31 @@
     "summary_days_ago": 6,
     "sections": [
      {
-      "title": "Gut zu wissen",
+      "id": "matters",
+      "title": "Was zählt",
       "facts": [
        {
         "text": "Penicillinallergie",
         "agent": "coach",
         "days_ago": 60
-       },
+       }
+      ]
+     },
+     {
+      "id": "habits",
+      "title": "Gewohnheiten und Regeln",
+      "facts": [
+       {
+        "text": "Blutabnahme alle 6 Monate",
+        "agent": "coach",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "Laufend",
+      "facts": [
        {
         "text": "Grippeimpfung im November",
         "agent": "coach",
@@ -1528,6 +2731,18 @@
   ],
   "documents": [
    {
+    "name": "Reisebudget",
+    "type": "page",
+    "page": "trip_budget",
+    "agent": "budget",
+    "days_ago": 2,
+    "origin": "made",
+    "subjects": [
+     "Themen/Japanreise.md"
+    ],
+    "linked": "Themen/Japanreise.md"
+   },
+   {
     "name": "Japanreise, das Programm.pptx",
     "type": "presentation",
     "agent": "daily",
@@ -1619,7 +2834,115 @@
     "hours_ago": 75,
     "summary": "Passt in den Ferien auf die Katze auf"
    }
-  ]
+  ],
+  "health_documents": [
+   {
+    "name": "Meine Blutwerte",
+    "type": "page",
+    "page": "blood",
+    "agent": "coach",
+    "days_ago": 1,
+    "origin": "made",
+    "subjects": [
+     "Bereiche/Gesundheit.md"
+    ],
+    "linked": "Bereiche/Gesundheit.md"
+   }
+  ],
+  "me": {
+   "path": "Du.md",
+   "kind": "self",
+   "title": "Du",
+   "aliases": [],
+   "close": false,
+   "contact": null,
+   "summary": "Du wohnst in Nantes, läufst sonntags und planst eine Reise nach Japan.",
+   "summary_agent": "daily",
+   "summary_days_ago": 5,
+   "sections": [
+    {
+     "id": "about",
+     "title": "Wer du bist",
+     "facts": [
+      {
+       "text": "Wohnt in Nantes",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "family",
+     "title": "Familie",
+     "facts": [
+      {
+       "text": "Schwester: [[Claire Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      },
+      {
+       "text": "Schwager: [[Marc Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "work",
+     "title": "Arbeit",
+     "facts": [
+      {
+       "text": "Grafikdesigner in einer Agentur, freitags im Homeoffice",
+       "agent": "daily",
+       "days_ago": 30
+      }
+     ]
+    },
+    {
+     "id": "habits",
+     "title": "Vorlieben und Gewohnheiten",
+     "facts": [
+      {
+       "text": "Läuft sonntagmorgens mit [[Lucas Bernard]]",
+       "agent": "coach",
+       "days_ago": 40
+      },
+      {
+       "text": "Kaffee ohne Zucker",
+       "agent": "you",
+       "days_ago": 20
+      }
+     ]
+    },
+    {
+     "id": "goals",
+     "title": "Ziele",
+     "facts": [
+      {
+       "text": "Im Frühling einen Halbmarathon laufen",
+       "agent": "coach",
+       "days_ago": 10
+      }
+     ]
+    },
+    {
+     "id": "agents",
+     "title": "Was deine Agenten wissen sollten",
+     "facts": [
+      {
+       "text": "Keine Aufgabenvorschläge für Geburtstage",
+       "agent": "daily",
+       "days_ago": 15
+      },
+      {
+       "text": "Morgens kurze Antworten",
+       "agent": "you",
+       "days_ago": 5
+      }
+     ]
+    }
+   ]
+  }
  },
  "es": {
   "brief": "En resumen",
@@ -1643,33 +2966,31 @@
     "summary_days_ago": 0,
     "sections": [
      {
-      "title": "Para saber",
+      "id": "who",
+      "title": "Quién es",
+      "facts": [
+       {
+        "text": "Tu cuñado, casado con [[Claire Durand]]",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Fechas",
       "facts": [
        {
         "text": "Cumpleaños: {date+23}",
         "agent": "daily",
         "days_ago": 0
-       },
-       {
-        "text": "Alérgico a los frutos secos",
-        "agent": "coach",
-        "days_ago": 49
-       },
-       {
-        "text": "Carpintero, hace el presupuesto de tu [[Reforma de la cocina]]",
-        "agent": "home",
-        "days_ago": 13
        }
       ]
      },
      {
-      "title": "Familia",
+      "id": "family",
+      "title": "Familia y allegados",
       "facts": [
-       {
-        "text": "Casado con [[Claire Durand]], tu hermana",
-        "agent": "daily",
-        "days_ago": 60
-       },
        {
         "text": "Hijos: Inès, 7 años, y Tom, 4",
         "agent": "daily",
@@ -1678,7 +2999,19 @@
       ]
      },
      {
-      "title": "Preferencias",
+      "id": "work",
+      "title": "Trabajo",
+      "facts": [
+       {
+        "text": "Carpintero autónomo, hace el presupuesto de tu [[Reforma de la cocina]]",
+        "agent": "home",
+        "days_ago": 13
+       }
+      ]
+     },
+     {
+      "id": "tastes",
+      "title": "Gustos y preferencias",
       "facts": [
        {
         "text": "Le gustan el jazz y los vinos naturales",
@@ -1686,9 +3019,68 @@
         "days_ago": 30
        },
        {
+        "text": "Alérgico a los frutos secos",
+        "agent": "coach",
+        "days_ago": 49
+       },
+       {
         "text": "Prefiere que lo llamen por la tarde",
         "agent": "you",
         "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "gifts",
+      "title": "Ideas de regalo",
+      "facts": [
+       {
+        "text": "Un vinilo de Chet Baker",
+        "agent": "daily",
+        "days_ago": 5
+       }
+      ]
+     },
+     {
+      "id": "agreed",
+      "title": "Lo que habéis acordado",
+      "facts": [
+       {
+        "text": "Te presta su lijadora hasta finales de noviembre",
+        "agent": "home",
+        "days_ago": 6
+       },
+       {
+        "text": "Viene a medir la cocina el sábado",
+        "agent": "home",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "exchanges",
+      "title": "Últimos contactos",
+      "facts": [
+       {
+        "text": "Llamada: el presupuesto llega esta noche",
+        "agent": "home",
+        "days_ago": 1
+       },
+       {
+        "text": "Cena en casa de Claire, habló de vacaciones en Portugal",
+        "agent": "daily",
+        "days_ago": 9
+       }
+      ]
+     },
+     {
+      "id": "remember",
+      "title": "No olvidar",
+      "facts": [
+       {
+        "text": "Nada de frutos secos en la cena del día 2",
+        "agent": "coach",
+        "days_ago": 4
        }
       ]
      }
@@ -1708,13 +3100,42 @@
     "summary_days_ago": 12,
     "sections": [
      {
-      "title": "Para saber",
+      "id": "who",
+      "title": "Quién es",
+      "facts": [
+       {
+        "text": "Tu hermana",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Fechas",
       "facts": [
        {
         "text": "Cumpleaños: {date+41}",
         "agent": "daily",
         "days_ago": 12
-       },
+       }
+      ]
+     },
+     {
+      "id": "family",
+      "title": "Familia y allegados",
+      "facts": [
+       {
+        "text": "Casada con [[Marc Durand]], dos hijos: Inès y Tom",
+        "agent": "daily",
+        "days_ago": 60
+       }
+      ]
+     },
+     {
+      "id": "work",
+      "title": "Trabajo",
+      "facts": [
        {
         "text": "Enfermera de noche en Nantes",
         "agent": "daily",
@@ -1723,12 +3144,13 @@
       ]
      },
      {
-      "title": "Familia",
+      "id": "exchanges",
+      "title": "Últimos contactos",
       "facts": [
        {
-        "text": "Casada con [[Marc Durand]]",
+        "text": "Mensaje: traerá un pastel el sábado",
         "agent": "daily",
-        "days_ago": 60
+        "days_ago": 3
        }
       ]
      }
@@ -1748,16 +3170,45 @@
     "summary_days_ago": 2,
     "sections": [
      {
-      "title": "Para saber",
+      "id": "who",
+      "title": "Quién es",
+      "facts": [
+       {
+        "text": "Tu amigo de correr, los domingos por la mañana",
+        "agent": "coach",
+        "days_ago": 40
+       }
+      ]
+     },
+     {
+      "id": "dates",
+      "title": "Fechas",
       "facts": [
        {
         "text": "Cumpleaños: {date+9}",
         "agent": "coach",
         "days_ago": 40
-       },
+       }
+      ]
+     },
+     {
+      "id": "tastes",
+      "title": "Gustos y preferencias",
+      "facts": [
        {
         "text": "Corre la media maratón de Nantes en primavera",
         "agent": "nightly:coach",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "gifts",
+      "title": "Ideas de regalo",
+      "facts": [
+       {
+        "text": "Un reloj para correr, habla de él a menudo",
+        "agent": "coach",
         "days_ago": 2
        }
       ]
@@ -1778,12 +3229,29 @@
     "summary_days_ago": 3,
     "sections": [
      {
-      "title": "Para saber",
+      "id": "who",
+      "title": "Quién es",
       "facts": [
        {
-        "text": "Cuida del gato en vacaciones",
+        "text": "Tu vecina del tercero",
+        "agent": "you",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "agreed",
+      "title": "Lo que habéis acordado",
+      "facts": [
+       {
+        "text": "Cuida del gato durante las vacaciones",
         "agent": "you",
         "days_ago": 3
+       },
+       {
+        "text": "Tiene un duplicado de tus llaves",
+        "agent": "you",
+        "days_ago": 30
        }
       ]
      }
@@ -1801,10 +3269,22 @@
     "summary_days_ago": 1,
     "sections": [
      {
+      "id": "status",
+      "title": "Cómo va",
+      "facts": [
+       {
+        "text": "Presupuesto recibido, fechas por fijar con Marc",
+        "agent": "home",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "decisions",
       "title": "Decisiones",
       "facts": [
        {
-        "text": "Presupuesto de [[Marc Durand]] aceptado: 8.900 €",
+        "text": "Presupuesto de [[Marc Durand]] aceptado",
         "agent": "budget",
         "days_ago": 1
        },
@@ -1816,10 +3296,64 @@
       ]
      },
      {
-      "title": "Notas",
+      "id": "next",
+      "title": "Próximos pasos",
       "facts": [
        {
-        "text": "Tienda: Cuisines Éclat, rue des Halles",
+        "text": "Elegir el color de la encimera",
+        "agent": "home",
+        "days_ago": 5
+       },
+       {
+        "text": "Fijar la fecha de la obra",
+        "agent": "home",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "people",
+      "title": "Personas",
+      "facts": [
+       {
+        "text": "[[Marc Durand]], carpintero",
+        "agent": "home",
+        "days_ago": 13
+       },
+       {
+        "text": "Cuisines Éclat, rue des Halles",
+        "agent": "home",
+        "days_ago": 40
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Cifras y presupuesto",
+      "facts": [
+       {
+        "text": "Presupuesto: 8.900 €",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Previsto: 10.000 €",
+        "agent": "budget",
+        "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "history",
+      "title": "Historial",
+      "facts": [
+       {
+        "text": "Presupuesto aceptado",
+        "agent": "budget",
+        "days_ago": 1
+       },
+       {
+        "text": "Visita a la tienda",
         "agent": "home",
         "days_ago": 40
        }
@@ -1839,13 +3373,42 @@
     "summary_days_ago": 1,
     "sections": [
      {
-      "title": "Preparativos",
+      "id": "status",
+      "title": "Cómo va",
+      "facts": [
+       {
+        "text": "Ruta fijada, vuelos aún sin reservar",
+        "agent": "daily",
+        "days_ago": 1
+       }
+      ]
+     },
+     {
+      "id": "decisions",
+      "title": "Decisiones",
+      "facts": [
+       {
+        "text": "Abril, 12 días: Tokio, Kioto, Osaka",
+        "agent": "daily",
+        "days_ago": 10
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Próximos pasos",
       "facts": [
        {
         "text": "Reservar los vuelos antes de fin de mes",
         "agent": "daily",
         "days_ago": 1
-       },
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Cifras y presupuesto",
+      "facts": [
        {
         "text": "Presupuesto: 4.000 € para dos",
         "agent": "budget",
@@ -1867,10 +3430,33 @@
     "summary_days_ago": 12,
     "sections": [
      {
-      "title": "Encuentros",
+      "id": "matters",
+      "title": "Lo que importa",
       "facts": [
        {
-        "text": "Cena en tu casa con Marc y Claire el sábado 2",
+        "text": "Tu hermana [[Claire Durand]], su marido [[Marc Durand]] y sus hijos",
+        "agent": "daily",
+        "days_ago": 12
+       }
+      ]
+     },
+     {
+      "id": "habits",
+      "title": "Hábitos y reglas",
+      "facts": [
+       {
+        "text": "Cena juntos un sábado al mes",
+        "agent": "daily",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En curso",
+      "facts": [
+       {
+        "text": "Cena en tu casa el sábado 2",
         "agent": "daily",
         "days_ago": 4
        }
@@ -1890,7 +3476,8 @@
     "summary_days_ago": 8,
     "sections": [
      {
-      "title": "Notas",
+      "id": "habits",
+      "title": "Hábitos y reglas",
       "facts": [
        {
         "text": "Revisión de la caldera: cada año en octubre",
@@ -1898,9 +3485,36 @@
         "days_ago": 20
        },
        {
-        "text": "Una copia de las llaves en casa de [[Sophie Laurent]]",
+        "text": "Basura el lunes por la noche",
+        "agent": "home",
+        "days_ago": 15
+       }
+      ]
+     },
+     {
+      "id": "contacts",
+      "title": "Contactos útiles",
+      "facts": [
+       {
+        "text": "Un duplicado de llaves en casa de [[Sophie Laurent]]",
         "agent": "you",
         "days_ago": 3
+       },
+       {
+        "text": "Administrador: Cabinet Moreau, 02 40 00 00 00",
+        "agent": "home",
+        "days_ago": 25
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En curso",
+      "facts": [
+       {
+        "text": "La obra de la [[Reforma de la cocina]]",
+        "agent": "home",
+        "days_ago": 8
        }
       ]
      }
@@ -1918,10 +3532,22 @@
     "summary_days_ago": 3,
     "sections": [
      {
-      "title": "Contratos",
+      "id": "matters",
+      "title": "Lo que importa",
       "facts": [
        {
-        "text": "Renovar el seguro del coche antes del día 5",
+        "text": "Ahorro: 200 € al mes",
+        "agent": "budget",
+        "days_ago": 20
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En curso",
+      "facts": [
+       {
+        "text": "Renovar el seguro del coche antes del 5",
         "agent": "budget",
         "days_ago": 3
        }
@@ -1943,13 +3569,31 @@
     "summary_days_ago": 6,
     "sections": [
      {
-      "title": "Para saber",
+      "id": "matters",
+      "title": "Lo que importa",
       "facts": [
        {
         "text": "Alergia a la penicilina",
         "agent": "coach",
         "days_ago": 60
-       },
+       }
+      ]
+     },
+     {
+      "id": "habits",
+      "title": "Hábitos y reglas",
+      "facts": [
+       {
+        "text": "Análisis de sangre cada 6 meses",
+        "agent": "coach",
+        "days_ago": 30
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En curso",
+      "facts": [
        {
         "text": "Vacuna de la gripe en noviembre",
         "agent": "coach",
@@ -2068,6 +3712,18 @@
   ],
   "documents": [
    {
+    "name": "Presupuesto del viaje",
+    "type": "page",
+    "page": "trip_budget",
+    "agent": "budget",
+    "days_ago": 2,
+    "origin": "made",
+    "subjects": [
+     "Temas/Viaje a Japón.md"
+    ],
+    "linked": "Temas/Viaje a Japón.md"
+   },
+   {
     "name": "Viaje a Japón, el programa.pptx",
     "type": "presentation",
     "agent": "daily",
@@ -2159,6 +3815,114 @@
     "hours_ago": 75,
     "summary": "Cuida del gato en vacaciones"
    }
-  ]
+  ],
+  "health_documents": [
+   {
+    "name": "Mis análisis de sangre",
+    "type": "page",
+    "page": "blood",
+    "agent": "coach",
+    "days_ago": 1,
+    "origin": "made",
+    "subjects": [
+     "Áreas/Salud.md"
+    ],
+    "linked": "Áreas/Salud.md"
+   }
+  ],
+  "me": {
+   "path": "Tú.md",
+   "kind": "self",
+   "title": "Tú",
+   "aliases": [],
+   "close": false,
+   "contact": null,
+   "summary": "Vives en Nantes, corres los domingos y preparas un viaje a Japón.",
+   "summary_agent": "daily",
+   "summary_days_ago": 5,
+   "sections": [
+    {
+     "id": "about",
+     "title": "Quién eres",
+     "facts": [
+      {
+       "text": "Vive en Nantes",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "family",
+     "title": "Familia",
+     "facts": [
+      {
+       "text": "Hermana: [[Claire Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      },
+      {
+       "text": "Cuñado: [[Marc Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "work",
+     "title": "Trabajo",
+     "facts": [
+      {
+       "text": "Diseñador gráfico en una agencia, teletrabajo los viernes",
+       "agent": "daily",
+       "days_ago": 30
+      }
+     ]
+    },
+    {
+     "id": "habits",
+     "title": "Gustos y hábitos",
+     "facts": [
+      {
+       "text": "Corre los domingos por la mañana con [[Lucas Bernard]]",
+       "agent": "coach",
+       "days_ago": 40
+      },
+      {
+       "text": "Café sin azúcar",
+       "agent": "you",
+       "days_ago": 20
+      }
+     ]
+    },
+    {
+     "id": "goals",
+     "title": "Objetivos",
+     "facts": [
+      {
+       "text": "Correr una media maratón en primavera",
+       "agent": "coach",
+       "days_ago": 10
+      }
+     ]
+    },
+    {
+     "id": "agents",
+     "title": "Lo que tus agentes deben saber",
+     "facts": [
+      {
+       "text": "Sin propuestas de tareas para cumpleaños",
+       "agent": "daily",
+       "days_ago": 15
+      },
+      {
+       "text": "Respuestas cortas por la mañana",
+       "agent": "you",
+       "days_ago": 5
+      }
+     ]
+    }
+   ]
+  }
  }
 }
