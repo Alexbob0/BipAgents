@@ -569,6 +569,7 @@ fn last_chars(text: &str, n: usize) -> String {
 /// A deleted agent: its token goes, and its pages.
 pub fn forget(config: &Config, name: &str) {
     pages::forget(config, name);
+    crate::approvals_log::forget(config, name);
     crate::notebook::forget(config, name);
     let mut tokens = load_tokens(config);
     if tokens.shift_remove(name).is_some() {
