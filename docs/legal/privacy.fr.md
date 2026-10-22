@@ -417,6 +417,14 @@ est ensuite responsable de ce qu'il en fait.
   ton serveur, qui les récupère auprès de DuckDuckGo (icons.duckduckgo.com) : DuckDuckGo reçoit le **nom du site**
   (par exemple « exemple.fr ») et voit l'adresse de ton serveur, pas celle de ton téléphone. Il ne reçoit pas le
   message.
+- **Météo et itinéraires.** Quand un agent a « Météo » et que tu lui demandes le temps qu'il fera, ton serveur (ou
+  ta place) demande le lieu à OpenStreetMap (Nominatim, pour trouver la ville) puis les prévisions à l'Institut
+  météorologique norvégien (MET Norway) : ils reçoivent **seulement le nom du lieu et ses coordonnées arrondies**
+  (environ 1 km), et voient l'adresse de ton serveur, pas celle de ton téléphone ni ton message. Un itinéraire est un
+  lien qui ouvre Plans (iPhone) ou Google Maps (Android) sur ton téléphone ; ils s'appliquent alors leurs propres
+  règles. Si ton serveur a une clé Google Maps (pas l'offre tout compris pour l'instant), les lieux et l'heure de
+  l'itinéraire partent aussi chez Google (Google LLC, possiblement aux États-Unis, certifiée au « EU-U.S. Data Privacy
+  Framework ») pour en calculer la durée ; rien n'en est gardé.
 - **Reconnaissance vocale.** Les notes vocales et le Live utilisent la reconnaissance vocale de ton téléphone. L'app
   demande la reconnaissance sur l'appareil quand ton téléphone la propose pour ta langue. Sinon, Apple ou Google (sur
   Android, le service de reconnaissance du système, souvent celui de Google) traitent l'audio sur leurs serveurs, sous

@@ -429,6 +429,14 @@ Telefon verlässt; jeder Dienst ist dann für das verantwortlich, was er damit m
   App deinen Server nach diesen Symbolen, und dein Server holt sie bei DuckDuckGo (icons.duckduckgo.com): DuckDuckGo
   erhält den **Namen der Website** (zum Beispiel „beispiel.de“) und sieht die Adresse deines Servers, nicht die
   deines Telefons. Die Nachricht erhält DuckDuckGo nicht.
+- **Wetter und Routen.** Wenn ein Agent « Wetter » hat und du ihn nach dem Wetter fragst, fragt dein Server (oder
+  dein Platz) OpenStreetMap (Nominatim, um den Ort zu finden) nach dem Ort und dann das Norwegische Meteorologische
+  Institut (MET Norway) nach der Vorhersage: Sie erhalten **nur den Namen des Orts und seine gerundeten Koordinaten**
+  (etwa 1 km) und sehen die Adresse deines Servers, nicht die deines Telefons und nicht deine Nachricht. Eine Route ist
+  ein Link, der Apple Karten (iPhone) oder Google Maps (Android) auf deinem Telefon öffnet, nach deren eigenen Regeln.
+  Hat dein Server einen Google-Maps-Schlüssel (derzeit nicht im Komplettangebot), gehen die Orte und die Zeit der Route
+  auch an Google (Google LLC, möglicherweise in den USA, zertifiziert nach dem EU-U.S. Data Privacy Framework), um ihre
+  Dauer zu berechnen; davon wird nichts gespeichert.
 - **Spracherkennung.** Sprachnachrichten und Live nutzen die Spracherkennung deines Telefons. Die App verlangt die
   Erkennung auf dem Gerät, wenn dein Telefon sie für deine Sprache anbietet. Sonst verarbeiten Apple oder Google
   (auf Android der Erkennungsdienst des Systems, oft der von Google) das Audio auf ihren Servern, in eigener

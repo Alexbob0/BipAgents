@@ -76,6 +76,12 @@ their place on the all-included offer. Everything personal goes here, with that 
   itself.
 - **Site icons** before links: requested from the bridge (`/v1/favicon/<host>`), which asks DuckDuckGo's icon service.
   The phone never contacts the icon service or the site.
+- **Weather and routes** (`bridge-rs/src/weather.rs`, `routes.rs`): the « Météo » switch is an agent setting
+  (`PATCH /v1/agents/{id}/settings {"weather": bool}`). The bridge, not the phone, asks OpenStreetMap's Nominatim for
+  the place and MET Norway for the forecast, with only the place's name and its coordinates rounded to 2 decimals. A
+  route is a Google Maps directions link in the reply; the iPhone app opens it as an Apple Maps link
+  (`ChatText.appleMaps`), the Android app in Google Maps. With `[maps] google_key` on the bridge, the route's places,
+  mode and times go to Google's Routes API for its duration and distance; nothing is kept.
 - **The agent's visible browser** (`App/Features/Agents/DesktopView.swift`): a web view of the bridge's viewer page,
   with no stored website data.
 - **Pairing a place of the offer** (`App/Features/Cloud/CloudPairing.swift`, `android/.../cloud/CloudPairing.kt`):
