@@ -362,7 +362,7 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
         tools.push(crate::weather::weather_tool());
     }
     if crate::health::enabled(config, &agent.name) {
-        tools.push(crate::health::health_tool());
+        tools.push(crate::health::health_tool(&crate::health::categories(config, &agent.name)));
     }
     if calendar_on(config, &agent.name) {
         tools.extend(crate::calendar::tools());
@@ -1187,7 +1187,7 @@ the BipAgents app.",
                     true,
                 ));
             }
-            Ok(crate::health::call(&config, &arguments_c))
+            Ok(crate::health::call(&config, &agent_c.name, &arguments_c))
         })
         .await;
     }

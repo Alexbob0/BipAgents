@@ -54,13 +54,23 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   import de notes, pages, tâches de fond, tâches planifiées, partages entre agents, liens familiaux (`/v1/family/*`).
 - **Secrets saisis par la personne :** mots de passe des boîtes mail (`/v1/mail/accounts`), éléments du coffre
   (`/v1/vault`), clés SSH publiques (`/v1/ssh/keys`), réglages d’un serveur de voix.
-- **Santé** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`) : un résumé par jour
-  (sommeil, pas, énergie active, exercice, fréquence cardiaque au repos, VFC, poids, séances), envoyé par
-  `PUT /v1/health-data/days` à chaque bridge dont au moins un agent a « Santé » activé. Seuls les jours nouveaux ou
+- **Santé** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`) : un résumé par jour,
+  envoyé par `PUT /v1/health-data/days` à chaque bridge dont au moins un agent a « Santé » activé, avec seulement les
+  données des catégories que lisent les agents de ce bridge (`shared` dans `GET /v1/health-data` ; la liste de chaque
+  agent se règle par `PATCH /v1/agents/{id}/settings {"health_categories": […]}` depuis les détails de la tuile
+  « Santé ») : activité (pas, énergie active, minutes d’exercice, séances, distance, étages, heures debout), sommeil
+  (endormi/au lit, heures, phases, respiration, température du poignet), cœur (pouls au repos, VFC, pouls moyen/min/max
+  du jour, oxygène dans le sang, VO2 max), corps (poids, masse grasse, IMC, tension), alimentation et eau (calories
+  mangées, eau, caféine), bien-être (pleine conscience, état d’esprit d’iOS 18), et les plus sensibles, désactivées
+  par défaut et laissées hors de « Tout partager » : glycémie (mmol/L) et cycle (flux, début des règles). Un
+  interrupteur activé commence avec activité, sommeil et cœur. Heures debout, température du poignet, IMC et humeurs
+  n’existent que sur iPhone ; la pleine conscience sur Android seulement là où Health Connect l’a. Chaque catégorie
+  demande l’autorisation du système pour ses types quand on l’active. Seuls les jours nouveaux ou
   modifiés partent : les 7 derniers jours sont revérifiés à chaque fois, et l’envoi remonte jusqu’à 30 jours. L’iPhone
   envoie aussi en arrière-plan quand Santé a de nouvelles données (`enableBackgroundDelivery`, quotidien). Android ne
   lit que lorsque l’app est ouverte. Le téléphone ne garde que des empreintes de ce qu’il a envoyé. Sur le bridge, les
-  données ne vont qu’aux agents qui ont l’interrupteur activé (`bridge-rs/src/health.rs`).
+  journées ne gardent que les catégories qu’au moins un agent lit (une catégorie que plus aucun ne lit en est effacée),
+  et chaque agent qui a l’interrupteur activé ne lit que ses catégories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **Rappels de l’iPhone** (`App/Features/Settings/RemindersSync.swift`) : une copie des rappels part aux bridges choisis
   par la personne, et l’app exécute les demandes que les agents ont mises en attente. Cette fonction n’existe que sur
   iOS.

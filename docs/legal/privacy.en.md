@@ -100,12 +100,19 @@ agents' names and addresses; it only goes to the app or person you pick in the s
 
 **Your health, if you turn it on (« Santé », Health).** For each agent, you can turn on Health in its tools. With
 your permission in Apple Health (iPhone, including your Apple Watch's data) or Health Connect (Android), the app reads,
-without ever writing anything there, a summary of each day: your sleep (time asleep, time in bed, bedtime and wake-up
-time), your steps, active energy, exercise minutes, resting heart rate, heart rate variability, weight and workouts
-(type, duration, distance, energy). It sends the last 30 days the first time, then the days that changed, **only to
-your server** (or to your place with the all-included offer), where they are kept one file per day, 400 days at most.
-Only the agents you turned Health on for read them, to help you with your sleep, activity and training; they do not
-diagnose. The agent's AI model receives what the agent reads to answer you: with the all-included offer, Health is
+without ever writing anything there, a summary of each day, **only for the categories you chose for that agent**:
+activity (steps, active energy, exercise minutes, workouts with their type, duration, distance and energy, walking and
+running distance, flights climbed, stand hours); sleep (time asleep and in bed, bedtime and wake-up time, sleep
+stages, breathing rate and wrist temperature at night); heart (resting heart rate, heart rate variability, the day's
+average, lowest and highest heart rate, blood oxygen, VO2 max); body (weight, body fat, BMI, blood pressure); food and
+water (food energy, water, caffeine); well-being (mindful minutes, the moods you log on an iPhone); and, **off unless
+you turn them on one by one**, the more sensitive blood glucose and cycle (menstrual flow, period starts). A new agent
+with Health starts with activity, sleep and heart; « Share everything » leaves blood glucose and cycle out. Some
+figures exist only on an iPhone (stand hours, wrist temperature, BMI, moods). It sends the last 30 days the first time,
+then the days that changed, **only to your server** (or to your place with the all-included offer), where they are
+kept one file per day, 400 days at most, with only the categories some agent there reads (a category no agent reads
+any more is deleted from the days kept). Each agent reads only its own categories, to help you with your sleep,
+activity, training and habits; they do not diagnose. The agent's AI model receives what the agent reads to answer you: with the all-included offer, Health is
 only possible with a model that runs in the European Union. The phone keeps only the dates and a fingerprint of what it
 already sent, never the values, and nothing in iCloud. Kerfy Studio does not receive them; nothing is sold or used for
 advertising. **Legal basis**: your explicit consent (GDPR articles 6.1.a and 9.2.a), which you give by turning Health

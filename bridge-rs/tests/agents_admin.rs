@@ -655,10 +655,21 @@ async fn routes_for_settings_thinking_and_model() {
     );
     assert_eq!(got.json()["soul"], "Tu es Wellness.");
     assert_eq!(got.json()["language"], "fr");
-    assert_eq!(got.json()["health"], json!({"on": false}));
+    assert_eq!(got.json()["health"], json!({"on": false, "categories": []}));
     // « Santé » on: the rule goes in its personality, which the person still sees as they wrote it.
     let on = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &json!({"health": true})).await.json();
-    assert_eq!((&on["health"], &on["soul"]), (&json!({"on": true}), &json!("Tu es Wellness.")));
+    assert_eq!(
+        (&on["health"], &on["soul"]),
+        (&json!({"on": true, "categories": ["activity", "sleep", "heart"]}), &json!("Tu es Wellness."))
+    );
+    // Its categories: the known ones, in their order; an unknown one refused.
+    let chosen = json!({"health_categories": ["glucose", "activity", "glucose"]});
+    let chosen = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &chosen).await.json();
+    assert_eq!(chosen["health"], json!({"on": true, "categories": ["activity", "glucose"]}));
+    let odd = json!({"health_categories": ["activity", "dreams"]});
+    let odd = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &odd).await;
+    assert_eq!(odd.status, 422);
+    assert_eq!(odd.json()["detail"][0]["loc"], json!(["body", "health_categories", 1]));
     assert!(std::fs::read_to_string(folder.join("SOUL.md")).unwrap().contains(souls::HEALTH_RULE));
     let edited = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &json!({"soul": "Tu es Vie."})).await;
     assert_eq!(edited.json()["soul"], "Tu es Vie.");
@@ -673,6 +684,9 @@ async fn routes_for_settings_thinking_and_model() {
     assert!(bipbridge::weather::enabled(&config, "wellness"));
     let off = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &json!({"weather": false})).await.json();
     assert_eq!(off["weather"], json!({"on": false}));
+    let off = json!({"health_categories": ["activity"]});
+    let off = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &off).await;
+    assert_eq!(off.status, 400, "{}", off.text()); // its switch off: nothing to choose
     assert_eq!(
         app.get("/v1/agents/nobody/settings", &h).await.json(),
         json!({"detail": "not an agent this install manages"})

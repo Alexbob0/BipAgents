@@ -291,6 +291,9 @@ pub struct AgentSettings {
     /// « Santé »: the person's health data and the `health` tool (health.rs).
     #[serde(default, deserialize_with = "web::lax::opt_bool")]
     pub health: Option<bool>,
+    /// What it reads of that data (health::CATEGORIES), its switch on (set after `health`).
+    #[serde(default)]
+    pub health_categories: Option<Vec<String>>,
     /// « Météo »: the `weather` tool (weather.rs).
     #[serde(default, deserialize_with = "web::lax::opt_bool")]
     pub weather: Option<bool>,
@@ -299,6 +302,16 @@ pub struct AgentSettings {
 impl Validate for AgentSettings {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         check_max_len(errors, "soul", self.soul.as_deref(), 8000);
+        for (n, name) in self.health_categories.iter().flatten().enumerate() {
+            if !crate::health::CATEGORIES.contains(&name.as_str()) {
+                errors.push(FieldError::new(
+                    "value_error",
+                    vec![json!("body"), json!("health_categories"), json!(n)],
+                    format!("Value error, one of {}", crate::health::CATEGORIES.join(", ")),
+                    json!(name),
+                ));
+            }
+        }
     }
 }
 
@@ -1129,7 +1142,8 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "protected": config.hermes.isolated,
               "services": crate::services::listing(config, agent), "skills": crate::own_skills::listing(&profile_folder(config, agent)),
               "browser": browser_settings(config, agent),
-              "health": {"on": crate::health::enabled(config, agent.name.as_str())},
+              "health": {"on": crate::health::enabled(config, agent.name.as_str()),
+                         "categories": crate::health::categories(config, agent.name.as_str())},
               "weather": {"on": crate::weather::enabled(config, agent.name.as_str())},
               "group": crate::agent_groups::group_of(config, &agent.name)}))
 }
@@ -1158,6 +1172,7 @@ pub async fn write_settings(
             || !skills.is_empty()
             || body.browser.is_some()
             || body.health.is_some()
+            || body.health_categories.is_some()
             || body.weather.is_some())
     {
         return Err(AgentError("the tools of an agent set up by hand are changed on its server".into()).into());
@@ -1197,6 +1212,9 @@ pub async fn write_settings(
     }
     if let Some(on) = body.health {
         set_health(&config, agent, on, run).await?;
+    }
+    if let Some(categories) = &body.health_categories {
+        set_health_categories(&config, agent, categories, run).await?;
     }
     if let Some(on) = body.weather {
         if crate::weather::set_enabled(&config, &agent.name, on)? {
@@ -1239,6 +1257,25 @@ pub async fn set_health(config: &Config, agent: &AgentConfig, on: bool, run: &Ru
         tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %error, "agent tools not registered");
     }
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, on = on, "health switched");
+    Ok(())
+}
+
+/// What `agent` reads of the person's health data (its switch on): its tools' entry changes with it (the tool's
+/// description and choices list the categories).
+pub async fn set_health_categories(
+    config: &Config,
+    agent: &AgentConfig,
+    categories: &[String],
+    run: &Run,
+) -> anyhow::Result<()> {
+    let Some(now) = crate::health::set_categories(config, &agent.name, categories)? else {
+        return Err(AgentError("« Santé » is off for this agent".into()).into());
+    };
+    if let Err(exc) = crate::agent_tools::register(config, agent, run).await {
+        let error = tail(&exc.to_string(), 200);
+        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %error, "agent tools not registered");
+    }
+    tracing::info!(target: "bipbridge::agents", agent = %agent.name, categories = %now.join(","), "health categories set");
     Ok(())
 }
 
