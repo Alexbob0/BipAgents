@@ -847,6 +847,10 @@ pub async fn mount_uploads(
     {
         return Ok(agent.clone());
     }
+    if crate::sandbox::isolates(&config, agent) {
+        // Linux with podman: no folder of this machine in the sandbox, its uploads copied into a volume (sandbox.rs).
+        return crate::sandbox::isolate(shared, agent, run, save).await;
+    }
     let root = host.clone();
     tokio::task::spawn_blocking(move || open_to_sandbox(&root)).await??;
     let terminal = crate::shares::profile_config(&folder).get("terminal").cloned().unwrap_or(Value::Null);
@@ -1297,6 +1301,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     shared.remove_agent(&agent.name);
     let config = shared.get();
     crate::shares::forget(&config, &agent.name, run).await?;
+    crate::sandbox::forget(&config, &agent.name, run).await;
     crate::agent_tools::forget(&config, &agent.name);
     crate::health::forget(&config, &agent.name);
     crate::weather::forget(&config, &agent.name);
