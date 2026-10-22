@@ -784,6 +784,11 @@ def sandbox_main(argv: List[str]) -> int:
     if not config.exists():
         say(f"No BipAgents install in this account ({config} is missing): run this command in the account it was installed in.")
         return 1
+    try:   # this checkout's bridge, fetched if an update ran before its release was out
+        rustbridge.ensure(Path.home())
+    except rustbridge.RustBridgeError as exc:
+        say(f"{exc}. Try `bipagents update` again in a few minutes.")
+        return 1
     command = rustbridge.cli(Path.home()) + ["sandbox", "adopt", "--agent", args.agent, "--config", str(config)]
     command += ["--dry-run"] * args.dry_run + ["--undo"] * args.undo
     return subprocess.run(command, cwd=REPO / "bridge", check=False).returncode
