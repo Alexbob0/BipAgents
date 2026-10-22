@@ -280,7 +280,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] in ("family", "famille"):   # « famille ajouter »: its first name, kept working
         from .family import main as family_main
         return family_main(argv[1:])
-    parser = argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
+    if argv and argv[0] == "sandbox":   # « sandbox adopt <agent> »: its hand-made mounts into volumes (the bridge)
+        return sandbox_main(argv[1:])
+    parser =argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
                                      "(`bipinstall uninstall` removes it; `bipinstall family add <name>` prepares a "
                                      "family member's install on this server; `bipinstall update` brings it up to date; `bipinstall voice` connects your own voice "
                                      "model (a TTS server on the network); `bipinstall console` gives a link to the web "
@@ -766,6 +768,25 @@ def qr_main(argv: List[str]) -> int:
     say("In the BipAgents app: \"+\" › Scan QR code.")
     return subprocess.run(rustbridge.cli(Path.home()) + ["qr", "--config", str(config)] + rest, cwd=REPO / "bridge",
                           check=False).returncode
+
+
+def sandbox_main(argv: List[str]) -> int:
+    """`bipagents sandbox adopt <agent> [--dry-run] [--undo]`: the bridge's `sandbox adopt` (bridge-rs/src/
+    sandbox_adopt.rs), with this account's config: an agent's hand-made sandbox mounts moved into volumes."""
+    parser = argparse.ArgumentParser(prog="bipagents sandbox",
+                                     description="Isolate an agent's sandbox that still mounts folders added by hand")
+    parser.add_argument("action", choices=["adopt"])
+    parser.add_argument("agent", help="the agent (its id, e.g. wellness)")
+    parser.add_argument("--dry-run", action="store_true", help="print the plan only, change nothing")
+    parser.add_argument("--undo", action="store_true", help="set the mounts back as they were before")
+    args = parser.parse_args(argv)
+    config = Path.home() / ".config" / "bipagents" / "bridge.toml"
+    if not config.exists():
+        say(f"No BipAgents install in this account ({config} is missing): run this command in the account it was installed in.")
+        return 1
+    command = rustbridge.cli(Path.home()) + ["sandbox", "adopt", "--agent", args.agent, "--config", str(config)]
+    command += ["--dry-run"] * args.dry_run + ["--undo"] * args.undo
+    return subprocess.run(command, cwd=REPO / "bridge", check=False).returncode
 
 
 def uninstall_main(argv: List[str]) -> int:

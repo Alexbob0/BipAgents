@@ -211,6 +211,24 @@ pub fn main(argv: Vec<String>) -> i32 {
     if argv.first().map(String::as_str) == Some("space") {
         return crate::space::cli(&argv[1..]);
     }
+    // `bipbridge sandbox adopt …`: its own command line (sandbox_adopt.rs), `--config X` before it or among its own
+    // options.
+    let (mut config_first, mut rest) = (Vec::new(), &argv[..]);
+    while let Some(first) = rest.first() {
+        if first == "--config" && rest.len() > 1 {
+            config_first.extend(rest[..2].iter().cloned());
+            rest = &rest[2..];
+        } else if let Some(value) = first.strip_prefix("--config=") {
+            config_first.extend(["--config".to_string(), value.to_string()]);
+            rest = &rest[1..];
+        } else {
+            break;
+        }
+    }
+    let with_config = |args: &[String]| -> Vec<String> { args.iter().cloned().chain(config_first.clone()).collect() };
+    if rest.first().map(String::as_str) == Some("sandbox") && rest.get(1).map(String::as_str) == Some("adopt") {
+        return crate::sandbox_adopt::cli(&with_config(&rest[2..]));
+    }
     let args = match parse_args(&argv) {
         Ok(a) => a,
         Err(ArgsExit::Help) => {

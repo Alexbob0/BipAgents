@@ -171,7 +171,7 @@ fn state_path(config: &Config) -> PathBuf {
     PathBuf::from(config.data_dir()).join("sandbox.json")
 }
 
-fn load_state(config: &Config) -> Dict {
+pub(crate) fn load_state(config: &Config) -> Dict {
     let Ok(text) = std::fs::read_to_string(state_path(config)) else { return Dict::new() };
     match serde_json::from_str::<Value>(&text) {
         Ok(Value::Object(map)) => map,
@@ -179,7 +179,7 @@ fn load_state(config: &Config) -> Dict {
     }
 }
 
-fn save_state(config: &Config, change: impl FnOnce(&mut Dict)) -> std::io::Result<()> {
+pub(crate) fn save_state(config: &Config, change: impl FnOnce(&mut Dict)) -> std::io::Result<()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _held = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut state = load_state(config);
@@ -332,7 +332,7 @@ pub async fn reset_network() {
 
 /// A `docker_volumes` entry the bridge owns (today's or the mounts it used to set): its uploads, shared folders and
 /// volumes.
-fn owned_volume(config: &Config, entry: &str) -> bool {
+pub(crate) fn owned_volume(config: &Config, entry: &str) -> bool {
     let root = shares::shares_root(config).to_string_lossy().into_owned();
     let target = entry.split(':').nth(1).unwrap_or("");
     entry.starts_with(&format!("{root}/"))
@@ -418,7 +418,7 @@ pub fn host_mounts(volumes: &[String]) -> Vec<String> {
         .collect()
 }
 
-async fn mountpoint(run: &Run, podman: &str, volume: &str) -> anyhow::Result<PathBuf> {
+pub(crate) async fn mountpoint(run: &Run, podman: &str, volume: &str) -> anyhow::Result<PathBuf> {
     let none = BTreeMap::new();
     run(args(&[podman, "volume", "create", "--ignore", volume]), none.clone()).await?;
     let out = run(args(&[podman, "volume", "inspect", "--format", "{{.Mountpoint}}", volume]), none).await?;
@@ -449,6 +449,9 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     })?;
     let (c, name) = (config.clone(), agent.name.clone());
     let (added, removed) = tokio::task::spawn_blocking(move || sync_agent(&c, &name)).await??;
+    // The code an adopted agent runs (its skills, its bin…), refreshed from the folders the person keeps it in.
+    let (c, name) = (config.clone(), agent.name.clone());
+    tokio::task::spawn_blocking(move || crate::sandbox_adopt::refresh(&c, &name)).await?;
     let proxy = network(&config, run).await.ok();
     let net = match &proxy {
         Some(url) => Net::Registries(url),

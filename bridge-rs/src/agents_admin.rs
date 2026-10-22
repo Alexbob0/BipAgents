@@ -886,6 +886,32 @@ pub async fn mount_uploads(
     Ok(agent)
 }
 
+/// The gateway serving the agent restarted, to read its settings again: its space's (its systemd unit when there is
+/// one, else Hermes' own command in its HERMES_HOME), or the hub's (cloud_setup's `restart_command`). The hub's
+/// gateway serves all its agents: they all restart.
+pub async fn restart_gateway(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<()> {
+    let mut env = BTreeMap::new();
+    let units = crate::place_backup::home().join(".config").join("systemd").join("user");
+    let command = match agent.space.as_deref().filter(|s| !s.is_empty()) {
+        Some(space) => {
+            let unit = crate::spaces::unit_name(&agent.name);
+            if units.join(format!("{unit}.service")).exists() {
+                strings(&["systemctl", "--user", "restart", &unit])
+            } else {
+                env.insert("HERMES_HOME".to_string(), space.to_string());
+                vec![config.hermes.bin.clone(), "gateway".into(), "restart".into()]
+            }
+        }
+        None => {
+            if !config.hermes.home.is_empty() {
+                env.insert("HERMES_HOME".to_string(), config.hermes.home.clone());
+            }
+            crate::cloud_setup::restart_command(config, &units)
+        }
+    };
+    run(command, env).await.map(|_| ())
+}
+
 /// The bridge's tools (`create_audio`…) in the agent's Hermes; it works without them if that fails.
 pub async fn give_tools(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<()> {
     if let Err(exc) = crate::agent_tools::register(config, agent, run).await {
