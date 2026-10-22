@@ -502,6 +502,11 @@ pub struct Config {
     /// `[notebook]` (notebook/tidy.rs): not in the serialized form either.
     #[serde(skip)]
     pub notebook: NotebookConfig,
+    /// `[vault] cards` (cards.rs): whether the person may turn card payments on in the app. "auto" (or "on"): yes,
+    /// except on a place of the all-included offer or a « no computer » server; "off": never. Payments stay off
+    /// until the person turns them on. Not in the serialized form either.
+    #[serde(skip)]
+    pub cards: String,
     /// Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
     pub push_relay_url: Option<String>,
     pub push_relay_key: Option<String>,
@@ -562,6 +567,7 @@ impl Config {
             weather: WeatherConfig::default(),
             maps: MapsConfig::default(),
             notebook: NotebookConfig::default(),
+            cards: "auto".into(),
             push_relay_url: None,
             push_relay_key: None,
             push_service_url: None,
@@ -1085,6 +1091,11 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         max_input_chars: i(notebook_t, "max_input_chars", nd.max_input_chars as i64)?.clamp(1000, 200_000) as usize,
     };
 
+    let cards = s(table(data, "vault"), "cards", "auto").to_lowercase();
+    if !["auto", "on", "off"].contains(&cards.as_str()) {
+        return Err(ConfigError::new("vault.cards must be 'auto', 'on' or 'off'"));
+    }
+
     let mut pronunciations = IndexMap::new();
     if let Value::Object(langs) = table(data, "pronunciations") {
         for (lang, t) in langs {
@@ -1134,6 +1145,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         weather,
         maps,
         notebook,
+        cards,
         push_relay_url,
         push_relay_key,
         push_service_url,

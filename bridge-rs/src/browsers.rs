@@ -237,6 +237,29 @@ pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> b
     true
 }
 
+/// A card payment holds the agent's browser (card_pay.rs): its MCP tools and its DevTools wait as for the person's
+/// hold, except the bridge's own DevTools connections, which show `token` (`X-Bip-Card`, browser/devtools_relay.py).
+/// `Some(token)`: taken, unless the person holds it already (false). `None`: given back, only if a payment held it.
+pub async fn hold_for_payment(config: &Config, agent: &str, token: Option<&str>) -> bool {
+    let host = Host::real(config);
+    let Some(engine) = host.runtime.clone() else { return false };
+    if !has_ports(config, agent) {
+        return false;
+    }
+    let command = match token {
+        Some(token) if token.bytes().all(|b| b.is_ascii_alphanumeric()) => {
+            format!("[ -e {HOLD_FLAG} ] && exit 3; umask 077; printf 'card %s' {token} > {HOLD_FLAG}")
+        }
+        Some(_) => return false,
+        None => format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && rm -f {HOLD_FLAG}; exit 0"),
+    };
+    let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
+    if code != 0 {
+        tracing::warn!(agent = %agent, on = token.is_some(), code = code, "payment hold not set");
+    }
+    code == 0
+}
+
 /// Its DevTools and VNC ports (`{"cdp": …, "vnc": …}`), when it has a browser.
 pub fn ports_of(config: &Config, agent: &str) -> Option<IndexMap<String, u16>> {
     let text = std::fs::read_to_string(folder(config, agent).join("ports.json")).ok()?;

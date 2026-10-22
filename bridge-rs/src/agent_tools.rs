@@ -452,7 +452,13 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     } else {
         tools_url(config)
     };
-    register_at(config, agent, run, &url).await
+    let changed = register_at(config, agent, run, &url).await?;
+    // The card payment tools (card_pay.rs): their own entry, with the same token.
+    let paying = crate::card_pay::register(config, agent, run).await.unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "card payment tools not registered");
+        false
+    });
+    Ok(changed || paying)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).

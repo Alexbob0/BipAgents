@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Card</title></head>
+<body>
+<!-- A payment provider's frame, Stripe Elements-like: autocomplete tokens, the number reformatted as typed. -->
+<input id="number" name="cardnumber" autocomplete="cc-number" inputmode="numeric" placeholder="1234 1234 1234 1234" aria-label="Card number">
+<input id="exp" name="exp-date" autocomplete="cc-exp" placeholder="MM / YY" aria-label="Expiry">
+<input id="cvc" name="cvc" autocomplete="cc-csc" placeholder="CVC" aria-label="CVC">
+<input id="zip" name="postal" autocomplete="billing postal-code" placeholder="ZIP">
+<script>
+  const number = document.getElementById("number");
+  number.addEventListener("input", () => {
+    const digits = number.value.replace(/\D/g, "").slice(0, 19);
+    number.value = digits.replace(/(\d{4})(?=\d)/g, "$1 ");
+  });
+  const exp = document.getElementById("exp");
+  exp.addEventListener("input", () => {
+    const d = exp.value.replace(/\D/g, "").slice(0, 4);
+    exp.value = d.length > 2 ? d.slice(0, 2) + " / " + d.slice(2) : d;
+  });
+</script>
+</body></html>

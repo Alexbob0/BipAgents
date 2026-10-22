@@ -32,7 +32,9 @@ use crate::config::{AgentConfig, Config};
 use crate::web::{self, ApiResult, HttpError};
 use crate::Dict;
 
-pub const KINDS: [&str; 3] = ["login", "payment", "address"];
+pub const KINDS: [&str; 4] = ["login", "payment", "address", crate::cards::KIND];
+/// A card's handle for an agent allowed to use it: nothing is written into the agent's own vault.
+pub const CARD_HANDLE: &str = "bridge";
 pub const IDENTIFIER_TYPES: [&str; 3] = ["email", "phone", "username"];
 pub const PAYMENT_FIELDS: [&str; 6] =
     ["card_number", "cardholder_name", "exp_month", "exp_year", "cvc", "billing_postal_code"];
@@ -69,6 +71,19 @@ pub enum VaultError {
     /// `Unprotected`.
     #[error("this server does not isolate its agents: no credentials are kept")]
     Unprotected,
+    /// Payment cards are off on this install (`[vault] cards`).
+    #[error("payment cards are off on this server")]
+    CardsOff,
+}
+
+/// A card found for an agent (`Vault::card_for`): its numbers stay in the bridge.
+pub struct CardFound {
+    pub id: String,
+    pub label: String,
+    /// Its public part (cards.rs).
+    pub meta: Dict,
+    /// number, exp_month, exp_year, csc, name, postal_code.
+    pub secret: Dict,
 }
 
 /// Python's `KeyError(item_id)`: no item with this id.
@@ -95,6 +110,9 @@ pub struct Item {
     pub agents: IndexMap<String, String>,
     pub created_at: String,
     pub updated_at: String,
+    /// A payment card's public part (cards.rs): last 4 digits, expiry, flags, sites, payments. Never its numbers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub card: Option<Value>,
 }
 
 impl Item {
@@ -102,9 +120,13 @@ impl Item {
     pub fn public(&self) -> Value {
         let mut agents: Vec<&String> = self.agents.keys().collect();
         agents.sort();
-        json!({"id": self.id, "kind": self.kind, "label": self.label, "origin": self.origin,
+        let mut out = json!({"id": self.id, "kind": self.kind, "label": self.label, "origin": self.origin,
                "identifier_type": self.identifier_type, "identifier": self.identifier, "has_otp": self.has_otp,
-               "agents": agents, "created_at": self.created_at, "updated_at": self.updated_at})
+               "agents": agents, "created_at": self.created_at, "updated_at": self.updated_at});
+        if let (Some(card), Value::Object(map)) = (&self.card, &mut out) {
+            map.insert("card".into(), crate::cards::public(card));
+        }
+        out
     }
 }
 
@@ -387,6 +409,8 @@ impl Vault {
             }
             let has_otp = secret.get("otp_secret").map(crate::py::truthy).unwrap_or(false);
             record.insert("has_otp".into(), json!(has_otp));
+        } else if kind == crate::cards::KIND {
+            crate::cards::parse(body, &mut record, &mut secret)?;
         } else {
             let allowed = if kind == "payment" { PAYMENT_FIELDS } else { ADDRESS_FIELDS };
             for name in allowed {
@@ -457,7 +481,13 @@ impl Vault {
     }
 
     async fn give(&self, record: &mut Dict, agents: &[AgentConfig]) -> anyhow::Result<()> {
+        let card = record.get("kind").and_then(Value::as_str) == Some(crate::cards::KIND);
         for agent in agents {
+            if card {
+                // A card stays in the bridge: the agent only gets the right to ask for it (card_pay.rs).
+                Self::handles(record).insert(agent.name.clone(), json!(CARD_HANDLE));
+                continue;
+            }
             let answer = (self.run)(agent.clone(), Self::to_hermes(record)).await?;
             let handle = answer.get("id").ok_or_else(|| anyhow::anyhow!("KeyError: 'id'"))?;
             Self::handles(record).insert(agent.name.clone(), json!(crate::py::py_str(handle)));
@@ -472,7 +502,8 @@ impl Vault {
         for agent_id in agent_ids {
             let handle = Self::handles(record).shift_remove(agent_id);
             let agent = config.agent(Some(agent_id));
-            if let (Some(handle), Some(agent)) = (handle.filter(crate::py::truthy), agent) {
+            let handle = handle.filter(|h| crate::py::truthy(h) && h.as_str() != Some(CARD_HANDLE));
+            if let (Some(handle), Some(agent)) = (handle, agent) {
                 if !agent.python.is_empty() && agent.hermes_home.as_deref().map(|h| !h.is_empty()).unwrap_or(false) {
                     let mut request = Dict::new();
                     request.insert("op".into(), json!("remove"));
@@ -491,6 +522,7 @@ impl Vault {
             return Err(VaultError::Unprotected.into());
         }
         let mut record = Self::parse(body, None)?;
+        Self::cards_allowed(config, &record, true)?;
         let wanted = match body.get("agents").filter(|v| crate::py::truthy(v)) {
             Some(v) => strs_of(v)?,
             None => Vec::new(),
@@ -523,6 +555,7 @@ impl Vault {
         };
         let before = records[index].clone();
         let mut record = Self::parse(body, Some(&before))?;
+        Self::cards_allowed(config, &record, false)?;
         let before_agents = match before.get("agents") {
             Some(Value::Object(map)) => map.clone(),
             _ => Dict::new(),
@@ -562,6 +595,75 @@ impl Vault {
         self.write(&kept)
     }
 
+    /// A card added while payments are off (or kept on an install that forbids them): refused. Hermes' own `payment`
+    /// items are never kept: they would hold the security code, in the agent's own vault (cards replace them).
+    fn cards_allowed(config: &Config, record: &Dict, creating: bool) -> Result<(), VaultError> {
+        let kind = record.get("kind").and_then(Value::as_str).unwrap_or("");
+        if kind == "payment" {
+            return Err(VaultError::Invalid("payment items are not kept: add a card".into()));
+        }
+        let on = if creating { crate::cards::enabled(config) } else { crate::cards::allowed(config) };
+        if kind == crate::cards::KIND && !on {
+            return Err(VaultError::CardsOff);
+        }
+        Ok(())
+    }
+
+    // -- cards (card_pay.rs) ---------------------------------------------------------------------------
+
+    /// The card `label` that `agent` may use (case and spaces ignored): its id, label, public part and numbers.
+    /// Not found: the labels of the cards it may use, for the agent.
+    pub fn card_for(&self, agent: &str, label: &str) -> anyhow::Result<Result<CardFound, Vec<String>>> {
+        let wanted = pyx::strip(label).to_lowercase();
+        let mut labels = Vec::new();
+        for record in self.read()? {
+            let allowed = matches!(record.get("agents"), Some(Value::Object(a)) if a.contains_key(agent));
+            if record.get("kind").and_then(Value::as_str) != Some(crate::cards::KIND) || !allowed {
+                continue;
+            }
+            let name = record.get("label").map(crate::py::py_str).unwrap_or_default();
+            if pyx::strip(&name).to_lowercase() == wanted {
+                let object = |key: &str| match record.get(key) {
+                    Some(Value::Object(m)) => m.clone(),
+                    _ => Dict::new(),
+                };
+                return Ok(Ok(CardFound {
+                    id: record.get("id").map(crate::py::py_str).unwrap_or_default(),
+                    label: name,
+                    meta: object("card"),
+                    secret: object("secret"),
+                }));
+            }
+            labels.push(name);
+        }
+        Ok(Err(labels))
+    }
+
+    /// The cards `agent` may use: label and public part.
+    pub fn cards_of(&self, agent: &str) -> Vec<(String, Value)> {
+        self.items()
+            .into_iter()
+            .filter(|i| i.kind == crate::cards::KIND && i.agents.contains_key(agent))
+            .map(|i| (i.label.clone(), i.card.clone().unwrap_or(Value::Null)))
+            .collect()
+    }
+
+    /// A payment made with card `item_id`, kept on it (a single-use card is then used).
+    pub async fn record_card_payment(&self, item_id: &str, payment: Value) -> anyhow::Result<()> {
+        let _lock = self.lock.lock().await;
+        let mut records = self.read()?;
+        let Some(record) = records.iter_mut().find(|r| r.get("id").and_then(Value::as_str) == Some(item_id)) else {
+            return Err(NoSuchItem(item_id.to_string()).into());
+        };
+        let mut meta = match record.get("card") {
+            Some(Value::Object(m)) => m.clone(),
+            _ => Dict::new(),
+        };
+        crate::cards::record_payment(&mut meta, payment);
+        record.insert("card".into(), Value::Object(meta));
+        self.write(&records)
+    }
+
     /// An agent deleted: its handles go (its own vault is deleted with it).
     pub async fn forget_agent(&self, _config: &Config, agent_id: &str) -> anyhow::Result<()> {
         let _lock = self.lock.lock().await;
@@ -580,6 +682,7 @@ fn answer(exc: anyhow::Error) -> HttpError {
         return match err {
             VaultError::CannotHold(reasons) => HttpError::json(409, json!({"code": "cannot_hold", "agents": reasons})),
             VaultError::Unprotected => HttpError::json(409, json!({"code": "unprotected_install"})),
+            VaultError::CardsOff => HttpError::json(409, json!({"code": "cards_off"})),
             VaultError::Invalid(text) => HttpError::new(400, text.clone()),
         };
     }
@@ -613,7 +716,8 @@ async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
             json!({"id": a.name, "name": a.display_name, "can_hold": why.is_none(), "why": why})
         })
         .collect();
-    Ok(web::ok(json!({"protected": config.hermes.isolated, "items": items, "agents": agents})))
+    Ok(web::ok(json!({"protected": config.hermes.isolated, "items": items, "agents": agents,
+                      "cards": crate::cards::enabled(&config), "cards_allowed": crate::cards::allowed(&config)})))
 }
 
 async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Response> {

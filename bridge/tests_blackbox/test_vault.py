@@ -115,9 +115,10 @@ def test_what_the_app_must_send(bridges, fakes):
                          ({**LOGIN, "identifier_type": "fax"}, "unknown identifier type")):
         resp = bridge.post("/v1/vault", headers=AUTH, json={**body, "agents": []})
         assert resp.status_code == 400 and resp.json() == {"detail": detail}, detail
+    # Hermes' own payment items would keep the security code in the agent's vault: cards replace them (test_card_payments).
     card = bridge.post("/v1/vault", headers=AUTH, json={"kind": "payment", "label": "Visa", "card_number": "4111",
-                                                         "cvc": "123", "agents": []}).json()
-    assert card["kind"] == "payment" and card["origin"] is None and card["identifier"] is None
+                                                         "cvc": "123", "agents": []})
+    assert card.status_code == 400 and card.json() == {"detail": "payment items are not kept: add a card"}
     port = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "site": "HTTPS://Example.com:443/a?b", "agents": []})
     assert port.json()["origin"] == "https://example.com"
     other = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "site": "example.com:8443", "agents": []})
@@ -136,7 +137,7 @@ def test_hermes_refusing_an_item_is_said_without_the_secret(bridges, fakes):
 
 def test_an_install_whose_agents_can_read_the_bridge_keeps_no_credentials(bridge):
     listing = bridge.get("/v1/vault", headers=AUTH).json()
-    assert listing == {"protected": False, "items": [],
+    assert listing == {"protected": False, "items": [], "cards": False, "cards_allowed": False,
                        "agents": [{"id": "wellness", "name": "Wellness", "can_hold": False, "why": "unprotected_install"}]}
     refused = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": []})
     assert refused.status_code == 409 and refused.json() == {"detail": {"code": "unprotected_install"}}
