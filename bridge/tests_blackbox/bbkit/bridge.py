@@ -113,6 +113,10 @@ def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
         "outbox": {"audio_wait_seconds": 2},
         "limits": {"upload_max_mb": 1, "purge_interval_hours": 1000},
         "cron": {"watch": False},
+        # The weather and route tools' services: never the real ones.
+        "weather": {"met_url": fakes.maps.url + "/weatherapi/locationforecast/2.0/complete",
+                    "geocoder_url": fakes.maps.url + "/search"},
+        "maps": {"routes_url": fakes.maps.url + "/directions/v2:computeRoutes"},
         "agents": {
             "Wellness": {
                 "display_name": "Wellness", "hermes_url": fakes.hermes.url, "hermes_key": HERMES_KEY,

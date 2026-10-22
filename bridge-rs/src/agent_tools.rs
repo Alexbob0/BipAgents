@@ -243,6 +243,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.extend([knowledge_read_tool(), knowledge_search_tool()]);
     tools.extend(reminders::reminder_tools());
     tools.push(propose_task_tool());
+    tools.push(crate::routes::route_tool());
     tools
 });
 
@@ -354,9 +355,12 @@ pub fn version_of(tools: &[Value]) -> String {
 }
 
 /// The tools of `agent`: the install's, `health` when the person gave it their health data, the calendar's when they
-/// shared their calendar with it.
+/// shared their calendar with it, `weather` when its « Météo » is on.
 pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     let mut tools = install_tools(config).to_vec();
+    if crate::weather::enabled(config, &agent.name) {
+        tools.push(crate::weather::weather_tool());
+    }
     if crate::health::enabled(config, &agent.name) {
         tools.push(crate::health::health_tool());
     }
@@ -432,7 +436,10 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// hand are left as they are. Returns whether the profile was changed (a new conversation picks it up). Err: a
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
-    let url = if crate::health::enabled(config, &agent.name) || calendar_on(config, &agent.name) {
+    let url = if crate::health::enabled(config, &agent.name)
+        || calendar_on(config, &agent.name)
+        || crate::weather::enabled(config, &agent.name)
+    {
         url_with(config, &version_of(&tools_for(config, agent)))
     } else {
         tools_url(config)
@@ -1158,6 +1165,18 @@ pub async fn call_tool(
         return crate::jobs::propose_tool(jobs.as_deref(), agent, arguments).await;
     }
     let config = maker.config.get();
+    if name == crate::weather::TOOL_NAME {
+        if !crate::weather::enabled(&config, &agent.name) {
+            return Ok(tool_text(
+                "The weather is off for you: the person switches « Météo » on in your page of the app.",
+                true,
+            ));
+        }
+        return Ok(crate::weather::call(&config, arguments).await);
+    }
+    if name == crate::routes::TOOL_NAME {
+        return Ok(crate::routes::call(crate::weather::http(), &config, arguments).await);
+    }
     let (agent_c, name_c, arguments_c) = (agent.clone(), name.to_string(), arguments.clone());
     if name == crate::health::TOOL_NAME {
         return blocking(move || {

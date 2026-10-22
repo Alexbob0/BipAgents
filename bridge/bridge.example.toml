@@ -72,6 +72,13 @@ window_hours = 12        # on first start, only tasks from the last N hours are 
 # service_account = "~/.config/bipagents/fcm.json"
 # base_url = "https://fcm.googleapis.com"   # tests only, with token_url (default: the service account's token_uri)
 
+# The agents' « Météo » (weather tool) needs nothing: MET Norway's forecast and OpenStreetMap's place search, free,
+# reached from this server with only the place. Their `route` tool always gives a link that opens the maps app; with
+# a Google Maps Platform key (Routes API on, billed per route by Google) it also gives the travel time, with the
+# traffic, and the distance: then the route's places and times go to Google. The key is never shown to the agents.
+# [maps]
+# google_key_file = "~/.config/bipagents/google-maps.key"   # mode 600 (or google_key = "…")
+
 [apns]
 # Leave team_id/key_id empty to disable push.
 team_id = ""                # Apple Developer Team ID (10 characters)

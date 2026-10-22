@@ -649,6 +649,7 @@ async fn routes_for_settings_thinking_and_model() {
             "skills",
             "browser",
             "health",
+            "weather",
             "group"
         ]
     );
@@ -665,6 +666,13 @@ async fn routes_for_settings_thinking_and_model() {
     assert!(soul.contains(souls::HEALTH_RULE) && soul.contains("write in French"));
     std::fs::write(folder.join("SOUL.md"), souls::with_language("Tu es Wellness.\n", Some("fr"))).unwrap();
     bipbridge::health::set_enabled(&config, "wellness", false).unwrap();
+    // « Météo »: the weather tool, nothing in its personality.
+    assert_eq!(got.json()["weather"], json!({"on": false}));
+    let on = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &json!({"weather": true})).await.json();
+    assert_eq!(on["weather"], json!({"on": true}));
+    assert!(bipbridge::weather::enabled(&config, "wellness"));
+    let off = app.send_json("PATCH", "/v1/agents/wellness/settings", &h, &json!({"weather": false})).await.json();
+    assert_eq!(off["weather"], json!({"on": false}));
     assert_eq!(
         app.get("/v1/agents/nobody/settings", &h).await.json(),
         json!({"detail": "not an agent this install manages"})

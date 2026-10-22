@@ -28,6 +28,9 @@ pub const APNS_HOSTS: [(&str, &str); 2] =
     [("production", "https://api.push.apple.com"), ("sandbox", "https://api.sandbox.push.apple.com")];
 /// Google's FCM API and OAuth token endpoint (`[fcm] base_url` / `token_url` override them, for tests).
 pub const FCM_BASE_URL: &str = "https://fcm.googleapis.com";
+pub const MET_URL: &str = "https://api.met.no/weatherapi/locationforecast/2.0/complete";
+pub const GEOCODER_URL: &str = "https://nominatim.openstreetmap.org/search";
+pub const ROUTES_URL: &str = "https://routes.googleapis.com/directions/v2:computeRoutes";
 pub const FCM_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -353,6 +356,37 @@ impl Default for LanConfig {
     }
 }
 
+/// The `weather` tool's providers (weather.rs). Their public services by default; tests point them at fakes.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WeatherConfig {
+    /// MET Norway's Locationforecast 2.0 (`complete`: hourly, then 6-hourly up to about 9 days).
+    pub met_url: String,
+    /// A Nominatim search endpoint (OpenStreetMap's public one by default: 1 request per second at most).
+    pub geocoder_url: String,
+}
+
+impl Default for WeatherConfig {
+    fn default() -> Self {
+        WeatherConfig { met_url: MET_URL.into(), geocoder_url: GEOCODER_URL.into() }
+    }
+}
+
+/// The `route` tool's paid routing (routes.rs): with a Google Maps Platform key, durations and distances besides the
+/// link to open the maps app. The key never reaches the agents.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MapsConfig {
+    #[serde(skip)]
+    pub google_key: Option<String>,
+    /// Google's Routes API (`computeRoutes`); tests point it at a fake.
+    pub routes_url: String,
+}
+
+impl Default for MapsConfig {
+    fn default() -> Self {
+        MapsConfig { google_key: None, routes_url: ROUTES_URL.into() }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub bridge_key: String,
@@ -393,6 +427,11 @@ pub struct Config {
     pub hermes: HermesInstall,
     pub spaces: SpacesConfig,
     pub browser: BrowserConfig,
+    /// `[weather]` and `[maps]` (weather.rs, routes.rs): not in the serialized form, which matches the Python's.
+    #[serde(skip)]
+    pub weather: WeatherConfig,
+    #[serde(skip)]
+    pub maps: MapsConfig,
     /// Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
     pub push_relay_url: Option<String>,
     pub push_relay_key: Option<String>,
@@ -449,6 +488,8 @@ impl Config {
             hermes: HermesInstall::default(),
             spaces: SpacesConfig::default(),
             browser: BrowserConfig::default(),
+            weather: WeatherConfig::default(),
+            maps: MapsConfig::default(),
             push_relay_url: None,
             push_relay_key: None,
             push_service_url: None,
@@ -930,6 +971,17 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         cert_dir: expand(&s(lan_t, "cert_dir", &py::join(&data_dir, "lan"))),
     };
 
+    let weather_t = table(data, "weather");
+    let weather = WeatherConfig {
+        met_url: py::rstrip_slash(&s(weather_t, "met_url", MET_URL)),
+        geocoder_url: py::rstrip_slash(&s(weather_t, "geocoder_url", GEOCODER_URL)),
+    };
+    let maps_t = table(data, "maps");
+    let maps = MapsConfig {
+        google_key: secret(maps_t, "google_key", "maps", false)?,
+        routes_url: py::rstrip_slash(&s(maps_t, "routes_url", ROUTES_URL)),
+    };
+
     let mut pronunciations = IndexMap::new();
     if let Value::Object(langs) = table(data, "pronunciations") {
         for (lang, t) in langs {
@@ -975,6 +1027,8 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         hermes,
         spaces,
         browser,
+        weather,
+        maps,
         push_relay_url,
         push_relay_key,
         push_service_url,

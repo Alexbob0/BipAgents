@@ -291,6 +291,9 @@ pub struct AgentSettings {
     /// « Santé »: the person's health data and the `health` tool (health.rs).
     #[serde(default, deserialize_with = "web::lax::opt_bool")]
     pub health: Option<bool>,
+    /// « Météo »: the `weather` tool (weather.rs).
+    #[serde(default, deserialize_with = "web::lax::opt_bool")]
+    pub weather: Option<bool>,
 }
 
 impl Validate for AgentSettings {
@@ -1127,6 +1130,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "services": crate::services::listing(config, agent), "skills": crate::own_skills::listing(&profile_folder(config, agent)),
               "browser": browser_settings(config, agent),
               "health": {"on": crate::health::enabled(config, agent.name.as_str())},
+              "weather": {"on": crate::weather::enabled(config, agent.name.as_str())},
               "group": crate::agent_groups::group_of(config, &agent.name)}))
 }
 
@@ -1150,7 +1154,11 @@ pub async fn write_settings(
     let toolsets = lax_map(&body.toolsets);
     let skills = lax_map(&body.skills);
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty())
-        && (!toolsets.is_empty() || !skills.is_empty() || body.browser.is_some() || body.health.is_some())
+        && (!toolsets.is_empty()
+            || !skills.is_empty()
+            || body.browser.is_some()
+            || body.health.is_some()
+            || body.weather.is_some())
     {
         return Err(AgentError("the tools of an agent set up by hand are changed on its server".into()).into());
     }
@@ -1189,6 +1197,15 @@ pub async fn write_settings(
     }
     if let Some(on) = body.health {
         set_health(&config, agent, on, run).await?;
+    }
+    if let Some(on) = body.weather {
+        if crate::weather::set_enabled(&config, &agent.name, on)? {
+            // Its tools' entry changes (`weather` listed or not): its Hermes fetches the list again.
+            if let Err(exc) = crate::agent_tools::register(&config, agent, run).await {
+                let error = tail(&exc.to_string(), 200);
+                tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %error, "agent tools not registered");
+            }
+        }
     }
     let env = env_of(&[("HERMES_HOME", &home_root(&config, agent))]);
     for action in ["enable", "disable"] {
@@ -1245,6 +1262,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     crate::shares::forget(&config, &agent.name, run).await?;
     crate::agent_tools::forget(&config, &agent.name);
     crate::health::forget(&config, &agent.name);
+    crate::weather::forget(&config, &agent.name);
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, "agent deleted");
     Ok(())
 }
