@@ -28,6 +28,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0004 image store | applies | applies |
 | 0005 vault fill re-attach | applies | not checked yet |
 | 0006 synchronous peer reply | applies | applies (`f86276d2eb`, 2026-10-13) |
+| 0007 browser vault only | applies | applies (`97a9ae8ee`, checked 2026-10-22) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -121,3 +122,20 @@ unchanged.
 **Tests.** `tests/tools/test_bot_mode_dm_sync_peer.py` (reply handed back, timeout); the Bot Mode suites still
 pass (115).
 
+## 0007 — `browser.vault_only`: the vault without Hermes' own browser
+
+**Problem.** An agent with its visible browser (BipAgents' container: a real Chrome on a screen the person watches in
+the app's « Bureau ») browses with the `stealth` MCP tools. Hermes' `browser` toolset has to stay on for the vault
+(`browser_vault_*` ride with it and fill that same Chrome through `browser.cdp_url`), which also gives the agent
+Hermes' own browser tools (`browser_navigate`, `browser_snapshot`, `browser_exec`…). The agent used them too: on a
+browser container stopped while unused they fail (nothing starts it on a DevTools connection), and what they do is
+not what the person sees started from « Bureau ».
+
+**What the patch does.** With `browser.vault_only: true` in the profile's config, the tool selection keeps only the
+`browser_vault_*` tools of the `browser` toolset; every other `browser_*` tool is left out, as if its toolset were
+off. Without the key nothing changes. The bridge sets it for every agent whose visible browser is on (at its setup,
+and at the bridge's start for those set up before).
+
+**Files.** `model_tools.py` (`_select_tool_names`).
+
+**Tests.** None upstream; checked with `patch --dry-run` on `517b5e10f` and `97a9ae8ee`.

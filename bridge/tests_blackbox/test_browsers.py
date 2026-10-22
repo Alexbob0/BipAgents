@@ -3,6 +3,7 @@ removed with `bipbridge browser remove` (tests/test_browsers.py's routes; its co
 import yaml
 
 from bbkit.common import AUTH
+from bbkit.servers import wait_until
 from conftest import managed_install, profile, wait_registered
 
 STEALTH = ("mcp_servers:\n  stealth:\n    url: http://127.0.0.1:9601/mcp\n    enabled: true\n"
@@ -61,3 +62,27 @@ def test_the_browser_command_removes_one(bridges, fakes):
     assert bridge.cli("browser").returncode == 2
     wrong = bridge.cli("browser", "remove", "--agent", "wellness")
     assert wrong.returncode == 1 and "wellness: not an agent this install manages" in wrong.stderr
+
+
+def test_an_agent_with_its_browser_keeps_only_the_vault_of_hermes_browser_tools(bridges, fakes):
+    """At the bridge's start, an agent whose visible browser is on gets `browser.vault_only` (hermes/patches 0007): it
+    browses only with its `stealth` tools, in the browser « Bureau » shows; its skill is the bridge's."""
+    bridge = bridges.new()
+    hub = managed_install(bridge, fakes, agents=("coach",))
+    folder = profile(hub, "coach")
+    (folder / "config.yaml").write_text(STEALTH)
+    skill = folder / "skills" / "visible-browser" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("---\nname: visible-browser\nversion: 1.4.0\n---\nAn earlier skill.\n")
+    (bridge.data / "browsers" / "coach").mkdir(parents=True)
+    (bridge.data / "browsers" / "coach" / "ports.json").write_text('{"cdp": 9600, "vnc": 9601}')
+    bridge.start()
+    wait_registered(bridge, ["coach"])
+
+    def vault_only():
+        return (yaml.safe_load((folder / "config.yaml").read_text()).get("browser") or {}).get("vault_only")
+
+    assert wait_until(lambda: vault_only() is True)
+    data = yaml.safe_load((folder / "config.yaml").read_text())
+    assert data["mcp_servers"]["stealth"]["enabled"] is True          # the rest as it was
+    assert "browser_vault_" in skill.read_text() and "An earlier skill" not in skill.read_text()

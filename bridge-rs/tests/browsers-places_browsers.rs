@@ -201,6 +201,8 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     }
     let skill = s.hub.join("profiles/budget/skills/visible-browser/SKILL.md");
     assert!(std::fs::read_to_string(skill).unwrap().starts_with("---"));
+    // Of Hermes' own browser tools only the vault's stay: it browses in the browser « Bureau » shows.
+    assert!(browsers::vault_only(&s.home(), "budget"));
     // The app's « Bureau »: the bridge logs in to its VNC server.
     assert_eq!(agent.desktop_vnc.as_deref(), Some("tcp://127.0.0.1:19603"));
     assert_eq!(agent.desktop_vnc_password_file.as_deref(), Some(&*password.to_string_lossy()));
