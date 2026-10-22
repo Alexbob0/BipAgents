@@ -67,7 +67,18 @@ their place on the all-included offer. Everything personal goes here, with that 
   agent reads (one no agent reads any more is wiped from them), and each agent with the switch on reads only its own
   categories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **iPhone Reminders** (`App/Features/Settings/RemindersSync.swift`): a copy of the reminders goes to the bridges the
-  person chose, and the requests the agents queued are carried out. This feature exists only on iOS.
+  person chose, and the requests the agents queued are carried out. This feature exists only on iOS. A reminder by
+  place (`reminders_add`'s `place`) becomes an EventKit location alarm: Reminders watches the place, the app has no
+  location access; a place's name is looked up with Apple Maps (`MKLocalSearch`).
+- **Reminders by place on Android** (`reminders/PlaceReminders.kt`): the agents' reminders that have a place are read
+  from the bridge's queue (`/v1/reminders/queue`) and kept on the phone as geofences (Google Play services location;
+  the name looked up with the phone's `Geocoder`). The location permission (with background) is asked only once such a
+  reminder exists; the position never leaves the phone. The other reminders stay queued for an iPhone.
+- **Shared to the app** (`ShareExtension/`, `App/Model/SharedInbox.swift`, Android `ui/SharedMessage.kt`): a message or
+  screenshots shared to BipAgents are handed to the agent the person picks, as a draft and attachments in its
+  conversation, sent only when the person taps Send. The iOS share extension writes them to the App Group
+  (`share/<id>/`, deleted when opened, or after an hour). A reply the agent drafts (a ```draft block) gets « Envoyer
+  avec… », the system share sheet: the app never sends it.
 - **Contacts** (`App/Features/Settings/ContactsSync.swift`, `android/.../contacts/ContactsSync.kt`): a copy of the
   address book (`PUT /v1/contacts`) goes to every bridge where at least one agent may read it, narrowed to what the
   person chose for that bridge (`PUT /v1/contacts/scope`: the whole address book or some groups, the notes only when

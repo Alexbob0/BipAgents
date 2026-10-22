@@ -73,7 +73,19 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   et chaque agent qui a l’interrupteur activé ne lit que ses catégories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **Rappels de l’iPhone** (`App/Features/Settings/RemindersSync.swift`) : une copie des rappels part aux bridges choisis
   par la personne, et l’app exécute les demandes que les agents ont mises en attente. Cette fonction n’existe que sur
-  iOS.
+  iOS. Un rappel par lieu (le `place` de `reminders_add`) devient une alarme de lieu EventKit : c’est Rappels qui
+  surveille le lieu, l’app n’a pas accès à la position ; le nom d’un lieu est cherché avec Plans d’Apple
+  (`MKLocalSearch`).
+- **Rappels par lieu sur Android** (`reminders/PlaceReminders.kt`) : les rappels des agents qui ont un lieu sont lus
+  dans la file du bridge (`/v1/reminders/queue`) et gardés sur le téléphone comme geofences (localisation des services
+  Google Play ; le nom cherché avec le `Geocoder` du téléphone). La permission de position (avec l’arrière-plan) n’est
+  demandée qu’une fois un tel rappel créé ; la position ne quitte jamais le téléphone. Les autres rappels restent en
+  attente pour un iPhone.
+- **Partagé vers l’app** (`ShareExtension/`, `App/Model/SharedInbox.swift`, Android `ui/SharedMessage.kt`) : un message
+  ou des captures partagés vers BipAgents vont à l’agent que la personne choisit, en brouillon et pièces jointes dans sa
+  conversation, envoyés seulement quand elle touche Envoyer. L’extension de partage iOS les écrit dans l’App Group
+  (`share/<id>/`, effacé à l’ouverture, ou au bout d’une heure). Une réponse que l’agent rédige (un bloc ```draft) a
+  « Envoyer avec… », la feuille de partage du système : l’app ne l’envoie jamais.
 - **Contacts** (`App/Features/Settings/ContactsSync.swift`, `android/.../contacts/ContactsSync.kt`) : une copie du
   carnet d’adresses (`PUT /v1/contacts`) part à chaque bridge où au moins un agent peut le lire, réduite à ce que la
   personne a choisi pour ce bridge (`PUT /v1/contacts/scope` : tout le carnet ou certains groupes, les notes seulement
