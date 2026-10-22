@@ -531,7 +531,14 @@ async fn an_agent_set_up_by_hand_mounts_its_folders_itself() {
     assert_eq!(shares::why_not(&c, &vie), None);
     shares::apply(&c, &pairs(&[("vie", "wellness")]), &run).await.unwrap();
     let root = dir.path().join("data/shares");
-    assert_eq!(shares::mounts(&c, "vie", None), [format!("{}/wellness:/lecture/wellness:ro,z", s(&root))]);
+    // and its outbox, for send_files_to_agent (agent_files.rs)
+    assert_eq!(
+        shares::mounts(&c, "vie", None),
+        [
+            format!("{}/wellness:/lecture/wellness:ro,z", s(&root)),
+            format!("{}/envoi/vie:/envoi:z", s(&dir.path().join("data")))
+        ]
+    );
     assert_eq!(shares::mounts(&c, "wellness", None), [format!("{}/wellness:/partage:z", s(&root))]);
     assert!(root.join("wellness").is_dir());
     let restart = (strs(&["sh", "-c", "restart-when-idle vie"]), BTreeMap::new());

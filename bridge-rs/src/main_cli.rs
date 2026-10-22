@@ -18,7 +18,7 @@ use crate::config::{config_path, load_config, Config, SharedConfig};
 use crate::logs::setup_logging;
 use crate::py;
 
-const COMMANDS: [&str; 11] = [
+const COMMANDS: [&str; 12] = [
     "serve",
     "check",
     "genkey",
@@ -30,6 +30,7 @@ const COMMANDS: [&str; 11] = [
     "spaces",
     "adopt",
     "sandbox",
+    "agent-tools",
 ];
 
 const ACTIONS: [&str; 3] = ["add", "remove", "start"];
@@ -48,7 +49,7 @@ pub struct Args {
 
 const USAGE: &str = "usage: bipbridge [-h] [--config CONFIG] [--agent AGENT] [--png PNG] [--json]
                  [--all]
-                 [{serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox}]
+                 [{serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox,agent-tools}]
                  [{add,remove,start}]
 ";
 
@@ -56,7 +57,7 @@ const HELP: &str = "
 BipAgents bridge for Hermes agents
 
 positional arguments:
-  {serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox}
+  {serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox,agent-tools}
                         serve (default), check the config, print a new random
                         bridge key, show an agent's pairing QR code for the
                         app, (peer-token --agent X) give an agent set up by
@@ -70,7 +71,9 @@ positional arguments:
                         was moved here, or (adopt) serve the agents an export
                         brought to a place as its own (bipinstall import-
                         place), or (sandbox) isolate the agents' sandboxes
-                        now and print what each one got
+                        now and print what each one got, or (agent-tools
+                        --agent X) give an agent set up by hand the bridge's
+                        tools (files to other agents, voices, pages...)
   {add,remove,start}    browser: add or remove; spaces: start
 
 options:
@@ -243,6 +246,7 @@ pub fn main(argv: Vec<String>) -> i32 {
         "qr" => qr(&config, &args),
         "peer-token" => peer_token(&config, &args),
         "shares-mounts" => shares_mounts(&config, &args),
+        "agent-tools" => agent_tools_entry(&config, &args),
         "browser" => runtime.block_on(browser(config, &args)),
         "spaces" => runtime.block_on(spaces(&config)),
         "adopt" => runtime.block_on(adopt(config)),
@@ -307,6 +311,38 @@ fn peer_token(config: &Config, args: &Args) -> i32 {
     0
 }
 
+/// The bridge's tools (agent_tools.rs) for an agent whose Hermes the bridge doesn't set up itself: a new token (its
+/// old one stops working), printed once with the commands for its administrator, never stored in clear.
+fn agent_tools_entry(config: &Config, args: &Args) -> i32 {
+    use crate::agent_tools::{digest, load_tokens, save_tokens, tools_for, url_with, version_of, SERVER_NAME};
+    let Some(agent) = args.agent.as_deref().and_then(|a| config.agent(Some(a))) else {
+        eprintln!("agent-tools needs --agent X (an agent of this bridge)");
+        return 2;
+    };
+    if crate::shares::profile_dir(config, agent).is_some() {
+        println!("{} gets the bridge's tools by itself (the bridge sets up its Hermes).", agent.name);
+        return 0;
+    }
+    let token = py::token_urlsafe(32);
+    let mut tokens = load_tokens(config);
+    tokens.insert(agent.name.clone(), digest(&token));
+    if let Err(e) = save_tokens(config, &tokens) {
+        eprintln!("{e}");
+        return 1;
+    }
+    let url = url_with(config, &version_of(&tools_for(config, agent)));
+    println!("# In the HERMES_HOME of the gateway serving {} (the bridge must be reachable from there):", agent.name);
+    println!("hermes -p {} config set mcp_servers.{SERVER_NAME}.url '{url}'", agent.name);
+    println!("hermes -p {} config set mcp_servers.{SERVER_NAME}.headers.Authorization 'Bearer {token}'", agent.name);
+    println!(
+        "hermes -p {} config set mcp_servers.{SERVER_NAME}.timeout {}",
+        agent.name,
+        crate::agent_tools::TOOL_TIMEOUT
+    );
+    println!("# then restart that gateway.");
+    0
+}
+
 fn shares_mounts(config: &Config, args: &Args) -> i32 {
     // For the start script of an agent set up by hand (shares = "external"): one `-v` argument per line.
     let agent = args.agent.as_deref().and_then(|a| config.agent(Some(a)));
@@ -314,6 +350,14 @@ fn shares_mounts(config: &Config, args: &Args) -> i32 {
         eprintln!("shares-mounts needs --agent X (an agent of this bridge)");
         return 2;
     };
+    if agent.shares == "external" {
+        // Its outbox, open to its container's own user (as the shared folders are, shares.rs).
+        let outbox = crate::agent_files::external_outbox(config, &agent.name);
+        if std::fs::create_dir_all(&outbox).and_then(|_| py::chmod(&outbox.to_string_lossy(), 0o777)).is_err() {
+            eprintln!("could not make {}", outbox.display());
+            return 1;
+        }
+    }
     for mount in crate::shares::mounts(config, &agent.name, None) {
         println!("-v\n{mount}");
     }
@@ -844,8 +888,8 @@ mod tests {
             Err(ArgsExit::Error(m)) => m,
             other => panic!("{l}: {other:?}"),
         };
-        assert_eq!(err("add"), "argument command: invalid choice: 'add' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox)");
-        assert_eq!(err("-5"), "argument command: invalid choice: '-5' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox)");
+        assert_eq!(err("add"), "argument command: invalid choice: 'add' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox, agent-tools)");
+        assert_eq!(err("-5"), "argument command: invalid choice: '-5' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox, agent-tools)");
         assert_eq!(err("check extra"), "argument action: invalid choice: 'extra' (choose from add, remove, start)");
         assert_eq!(err("spaces start extra"), "unrecognized arguments: extra");
         assert_eq!(err("--bogus"), "unrecognized arguments: --bogus");

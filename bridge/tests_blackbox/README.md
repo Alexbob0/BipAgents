@@ -6,7 +6,7 @@ runs the bridge as a separate process and talks to it the way the apps, the agen
 administrator do: over HTTP, SSE, WebSocket and the command line. It reads and writes nothing of the bridge's code.
 The only Python it imports is its own harness (`bbkit/`).
 
-All 254 tests pass against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
+All 280 tests pass against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
 
 ## Running it
 
@@ -29,7 +29,7 @@ BRIDGE_CMD="/path/to/bipbridge serve" python -m pytest tests_blackbox -q -p no:c
 
 `BRIDGE_CMD` is split like a shell command line and must end with `serve`. The CLI tests use the same command
 without `serve`, followed by the subcommand they need: `check`, `genkey`, `qr --json [--agent X]`, `console`,
-`peer-token --agent X`, `shares-mounts --agent X`, `spaces start`, `adopt`, `browser remove --agent X`. The suite
+`peer-token --agent X`, `shares-mounts --agent X`, `agent-tools --agent X`, `spaces start`, `adopt`, `browser remove --agent X`. The suite
 needs no network and runs nothing as root. It uses about 30 local ports.
 
 ## What a test sees

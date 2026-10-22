@@ -1072,19 +1072,27 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
     Ok(read_model(config, agent).unwrap_or_else(|| json!({})))
 }
 
-/// Agents whose bridge-owned block (language, what they read) an earlier bridge wrote: brought up to date, the
-/// personality the person wrote untouched.
+/// Agents whose bridge-owned block (language, what they read, plain words) an earlier bridge wrote: brought up to
+/// date, the personality the person wrote untouched. A personality written by hand without the block gets it, in
+/// the place's language (owner 2026-10-22: every agent talks plainly and treats what it reads as information, an
+/// agent set up by hand too, like Vie); an agent without any personality keeps Hermes' own.
 pub fn heal_souls(config: &Config) {
+    let mut place_language: Option<String> = None;
     for name in config.agents.keys() {
         let Ok(agent) = editable(config, name) else { continue };
         let Ok(soul) = read_soul(config, &agent) else { continue };
-        let (_, lang) = crate::souls::split_language(&soul);
-        if let Some(lang) = lang {
-            if !soul.contains(&crate::souls::language_block(Some(&lang))) {
-                let _ = std::fs::write(
-                    profile_folder(config, &agent).join("SOUL.md"),
-                    crate::souls::with_language(&soul, Some(&lang)),
-                );
+        let lang = match crate::souls::split_language(&soul).1 {
+            Some(lang) => lang,
+            None if soul.trim().is_empty() => continue,
+            None => place_language.get_or_insert_with(|| crate::notebook::language(config)).clone(),
+        };
+        if !soul.contains(&crate::souls::language_block(Some(&lang))) {
+            let healed = std::fs::write(
+                profile_folder(config, &agent).join("SOUL.md"),
+                crate::souls::with_language(&soul, Some(&lang)),
+            );
+            if healed.is_ok() {
+                tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date");
             }
         }
     }
@@ -1600,6 +1608,12 @@ async fn set_agent_links(State(state): State<AppState>, request: Request) -> Api
         _ => Vec::new(),
     };
     manual.sort();
+    // Who may write to whom decides who gets send_files_to_agent (agent_files.rs): their tools' list follows.
+    let config = state.config();
+    let run = default_run();
+    for agent in config.agents.values() {
+        give_tools(&config, agent, &run).await?;
+    }
     Ok(web::ok(json!({"links": links_json(&state.links.load()), "needs_setup": manual})))
 }
 

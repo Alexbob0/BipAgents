@@ -1,4 +1,4 @@
-//! `bipbridge [serve|check|genkey|qr|peer-token|browser|shares-mounts|console|spaces|adopt]` (Python:
+//! `bipbridge [serve|check|genkey|qr|peer-token|browser|shares-mounts|agent-tools|console|spaces|adopt]` (Python:
 //! `python -m bipbridge …`). The commands live in `bipbridge::main_cli`.
 
 fn main() {
