@@ -673,6 +673,11 @@ impl Page {
         ["close", "proche"].iter().any(|k| self.front.get(*k).map(py::truthy).unwrap_or(false))
     }
 
+    /// The icon the person chose for it in the app (`icon:`), if any.
+    pub fn icon(&self) -> Option<String> {
+        self.front.get("icon").and_then(Value::as_str).map(str::trim).filter(|i| !i.is_empty()).map(str::to_string)
+    }
+
     pub fn kind(&self) -> String {
         tk::str_or_empty(self.front.get("type"))
     }
@@ -2442,6 +2447,32 @@ pub fn set_close(config: &Config, query: &str, close: bool, who: &Who) -> anyhow
         "close",
         if close { "close" } else { "not close" },
     )?;
+    Ok(Some(found.path))
+}
+
+/// A subject's or an area's icon chosen by the person (`icon:` in its frontmatter: an id of the apps' table,
+/// scripts/notebook-icons.py), or taken off (empty: the apps pick one from its words again). Never set by an agent.
+pub fn set_icon(config: &Config, query: &str, icon: &str, who: &Who) -> anyhow::Result<Option<String>> {
+    let icon = icon.trim();
+    if !icon.is_empty() && !(icon.len() <= 40 && icon.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')) {
+        return Err(NotebookError("an icon is a short id (a-z, 0-9, -)".into()).into());
+    }
+    let _guard = lock();
+    let Some(found) = find(config, &[Part::Main], query) else { return Ok(None) };
+    if found.page.icon().unwrap_or_default() == icon {
+        return Ok(Some(found.path));
+    }
+    let before = read_page_text(config, Part::Main, &found.path);
+    let mut page = found.page;
+    page.ensure_id();
+    if icon.is_empty() {
+        page.front.remove("icon");
+    } else {
+        page.front.insert("icon".into(), json!(icon));
+    }
+    page.touch();
+    let summary = if icon.is_empty() { "automatic" } else { icon };
+    commit(config, Part::Main, &found.path, before.as_deref(), Some(&page.render()), who, "icon", summary)?;
     Ok(Some(found.path))
 }
 

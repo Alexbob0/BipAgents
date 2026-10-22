@@ -237,6 +237,28 @@ def test_dates_to_come_are_facts_of_close_people(bridge):
     assert bridge.get("/v1/notebook/dates", headers=AUTH).json()["dates"] == []
 
 
+def test_the_person_picks_a_subjects_icon_and_agents_keep_it(bridge):
+    give_token(bridge)
+    in_french(bridge)
+    call(bridge, "notebook_note", {"page": "Voyage Japon", "kind": "subject", "section": "status", "facts": ["Vols à réserver"]})
+    card = bridge.get("/v1/notebook/pages", params={"kind": "subject"}, headers=AUTH).json()["pages"][0]
+    assert card["icon"] is None   # the apps pick one from its words
+    chosen = bridge.post("/v1/notebook/icon", json={"path": "Sujets/Voyage Japon.md", "icon": "gifts"}, headers=AUTH)
+    assert chosen.status_code == 200 and chosen.json()["path"] == "Sujets/Voyage Japon.md"
+    assert "\nicon: gifts\n" in (notebook(bridge) / "carnet" / "Sujets" / "Voyage Japon.md").read_text()
+    # an agent's next note keeps it; the page, the list and the search return it
+    call(bridge, "notebook_note", {"page": "Voyage Japon", "section": "decisions", "facts": ["Avril, 12 jours"]})
+    assert bridge.get("/v1/notebook/page", params={"path": "Sujets/Voyage Japon.md"}, headers=AUTH).json()["icon"] == "gifts"
+    assert bridge.get("/v1/notebook/pages", params={"kind": "subject"}, headers=AUTH).json()["pages"][0]["icon"] == "gifts"
+    assert bridge.get("/v1/notebook/search", params={"q": "japon"}, headers=AUTH).json()["pages"][0]["icon"] == "gifts"
+    assert bridge.post("/v1/notebook/icon", json={"path": "Sujets/Voyage Japon.md", "icon": "Not An Id!"},
+                       headers=AUTH).status_code == 400
+    assert bridge.post("/v1/notebook/icon", json={"path": "Sujets/Nulle part.md", "icon": "travel"},
+                       headers=AUTH).status_code == 404
+    assert bridge.post("/v1/notebook/icon", json={"path": "Sujets/Voyage Japon.md", "icon": ""}, headers=AUTH).status_code == 200
+    assert bridge.get("/v1/notebook/page", params={"path": "Sujets/Voyage Japon.md"}, headers=AUTH).json()["icon"] is None
+
+
 def test_the_health_part_is_private_to_the_health_agent_and_the_person(bridge, fakes):
     health = bridge.state_dir / "health" / "agents.json"
     health.parent.mkdir(parents=True, exist_ok=True)

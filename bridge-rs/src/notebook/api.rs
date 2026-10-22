@@ -17,6 +17,7 @@
 //!     POST   /v1/notebook/tasks/{id}           {done}
 //!     GET    /v1/notebook/dates?days=&all=     « Dates à venir »: dated facts (close people's by default), not tasks
 //!     POST   /v1/notebook/close                {path, close}   a person marked close (« proche ») or not
+//!     POST   /v1/notebook/icon                 {path, icon}    a subject's or area's icon, the person's choice ("": automatic)
 //!     GET    /v1/notebook/proposals            the agents' task proposals, the kinds declined
 //!     GET    /v1/notebook/documents?private=   the files the agents made or received and their web pages, by agent,
 //!                                              with their subjects (the private part's pages only with private=1)
@@ -116,7 +117,7 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
 fn page_summary(path: &str, part: Part, page: &super::Page, brief: &str) -> Value {
     json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(), "aliases": page.aliases(),
            "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
-           "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
+           "updated": page.front.get("updated").cloned().unwrap_or(Value::Null), "icon": page.icon(),
            "summary": super::summary_of(&page.body, brief)})
 }
 
@@ -295,7 +296,7 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
               "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
               "summary": super::summary_of(&page.body, w.brief), "sections": sections, "outline": outline, "links": links,
               "backlinks": backlinks, "tasks": tasks, "documents": documents, "id": page.id(), "close": page.close(),
-              "shared_with": super::shares_of(config, part, path, &page), "text": text}))
+              "icon": page.icon(), "shared_with": super::shares_of(config, part, path, &page), "text": text}))
 }
 
 async fn read_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -534,6 +535,30 @@ async fn set_close(State(state): State<AppState>, Json(body): Json<Close>) -> Ap
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct IconChoice {
+    pub path: String,
+    #[serde(default)]
+    pub icon: String,
+}
+
+impl Validate for IconChoice {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "path", Some(&self.path), 300);
+        check_max_len(errors, "icon", Some(&self.icon), 40);
+    }
+}
+
+/// A page's icon chosen by the person in the app ("": back to the one its words give).
+async fn set_icon(State(state): State<AppState>, Json(body): Json<IconChoice>) -> ApiResult<Response> {
+    let config = state.config();
+    let path = blocking(move || super::set_icon(&config, &body.path, &body.icon, &Who::you(&config))).await?;
+    match path {
+        Some(path) => Ok(web::ok(json!({"path": path}))),
+        None => Err(HttpError::new(404, "no such page")),
+    }
+}
+
 /// The agents' task proposals (open, accepted, declined) and the kinds the person declined.
 async fn proposals(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
@@ -688,6 +713,7 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/documents", get(documents))
         .route("/notebook/dates", get(dates))
         .route("/notebook/close", post(set_close))
+        .route("/notebook/icon", post(set_icon))
         .route("/notebook/proposals", get(proposals))
         .route("/notebook/settings", get(get_settings).patch(set_settings))
         .route("/notebook/export", get(export))
