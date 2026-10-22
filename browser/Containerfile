@@ -5,12 +5,16 @@
 # Nothing of stealth-browser-mcp (MIT) is kept in our repository: it is fetched here from its own repository, at the
 # commit BipAgents is tested with, then our patch (stealth.patch) is applied. Its Python packages come from PyPI at
 # pinned versions (requirements.txt); nodriver among them is AGPL v3, installed as a separate package, unmodified.
-FROM registry.fedoraproject.org/fedora:43
+FROM registry.fedoraproject.org/fedora:44
 
 ARG STEALTH_REPO=https://github.com/vibheksoni/stealth-browser-mcp.git
 ARG STEALTH_COMMIT=a7b9eea8aa8dac36dc140ce4f2778d48021e79c0
 
-RUN dnf -y install --setopt=install_weak_deps=False \
+# Chrome and the system's packages, as of the day of the build: the installer and the nightly refresh
+# (installer/bipinstall/browser_refresh.py) pass a new BROWSER_REFRESH when Fedora or Google have security updates,
+# so this layer is installed again rather than taken from the build cache. The pinned layers below stay as they are.
+ARG BROWSER_REFRESH=first-build
+RUN echo "packages of ${BROWSER_REFRESH}" && dnf -y upgrade --refresh && dnf -y install --setopt=install_weak_deps=False \
         python3.11 git-core procps-ng \
         xorg-x11-server-Xvfb x11vnc openbox lxpanel \
         liberation-fonts dejavu-sans-fonts dejavu-serif-fonts google-noto-sans-fonts \

@@ -781,6 +781,9 @@ def import_main(argv: List[str]) -> int:
                 ports_file.unlink()   # others are picked
         try:
             hermes.build_browser(runner, target.sandbox, REPO)
+            from . import browser_refresh
+            from .__main__ import INSTALLER_PYTHON
+            browser_refresh.install_timer(runner, REPO, INSTALLER_PYTHON)   # Chrome's security fixes, each night
             runner.run(bridge + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
             if machine.system == "linux":
                 runner.run(["systemctl", "--user", "restart", label], check=False)

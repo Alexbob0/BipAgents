@@ -322,7 +322,9 @@ def test_linux_with_podman_offers_the_visible_browser(monkeypatch, tmp_path, cap
     assert cli.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "visible browser" in out and "[6/6]" in out
-    assert "/usr/bin/podman build -t bipagents-browser -f " in out and "/browser/Containerfile" in out
+    assert "/usr/bin/podman build --pull=newer --build-arg BROWSER_REFRESH=" in out and "/browser/Containerfile" in out
+    assert " -t bipagents-browser -f " in out                          # today's Chrome, never a cached layer
+    assert "bipagents-refresh-browser.timer" in out                     # and its security fixes each night
     assert "/bipbridge browser add --all --config" in out and "systemctl --user restart bipagents-bridge" in out
     assert "fetch the bridge " in out and "bridge/.venv" not in out and "bridge/requirements" not in out
     assert "[browser]\nenabled = true" in out and "isolated = true" in out
@@ -337,11 +339,13 @@ def test_uninstall_removes_the_browsers(tmp_path, monkeypatch):
     units = tmp_path / ".config" / "systemd" / "user"
     units.mkdir(parents=True)
     (units / "bipagents-browser-lea.service").write_text("[Unit]\n")
+    (units / "bipagents-refresh-browser.timer").write_text("[Timer]\n")
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/podman" if name == "podman" else None)
     runner = hermes.Runner(dry=True)
     uninstall(runner, everything=False, home=tmp_path, system="linux", tailscale=None)
     log = "\n".join(runner.log)
     assert "systemctl --user disable --now bipagents-browser-lea" in log
+    assert "systemctl --user disable --now bipagents-refresh-browser.timer" in log      # its nightly refresh too
     assert "/usr/bin/podman image rm -f bipagents-browser" in log
 
 

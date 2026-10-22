@@ -50,6 +50,20 @@ With a GPU (`/dev/dri`), Chrome renders with it; otherwise in software. `[browse
 `idle_minutes` (10), `language` (e.g. `fr-FR`), `timezone`, `gpu = "none"`, `first_port` (9600) and `runtime` (`podman`
 or `docker`).
 
+## Staying up to date
+
+Chrome gets security fixes every week or two, and an image keeps the Chrome it was built with. So each install that
+has browsers checks every night, between 1:00 and 3:00, apart from BipAgents' own updates (a user timer,
+`bipagents-refresh-browser`; `installer/bipinstall/browser_refresh.py`): dnf, in a throwaway container of the image,
+says whether Chrome (Chromium on ARM) has a newer version or the image's packages have security updates. If not,
+nothing happens. If so, the image is built again aside, with today's packages and the pinned stealth-browser-mcp
+unchanged; it replaces the current one only once its Chrome starts. A browser in use is never interrupted: it starts
+on the new image next time (one that never stops, `idle_minutes = 0`, is restarted once unused for 30 minutes), its
+profile and logins kept. A failed night (no network, Google's repository down) keeps the current image and tries again
+the next one. The servers' installs take turns, at the lowest priority, and old images are removed.
+`journalctl --user -u bipagents-refresh-browser` tells what it did; `bipagents browser-refresh` does it now (`--force`:
+even with nothing new; `--version`: which Chrome the browser has).
+
 ## What is ours, what is fetched
 
 Nothing of stealth-browser-mcp is kept in this repository. The image build fetches it from its own repository at the

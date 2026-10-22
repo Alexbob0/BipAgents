@@ -132,6 +132,11 @@ La première fois, il propose de le faire chaque nuit à 4 h 30 (un minuteur de 
 sans questions ; `systemctl --user disable --now bipagents-update.timer` l'arrête). `--check` dit seulement ce qui est
 nouveau. Un Hermes que tu avais avant BipAgents garde ses réglages, sauf avec `--apply-to-my-hermes`.
 
+Le navigateur des agents n'attend pas ces mises à jour : chaque nuit, un minuteur à lui (`bipagents-refresh-browser`)
+regarde si Chrome ou les paquets de l'image ont des correctifs de sécurité et, seulement alors, reconstruit l'image et
+la met en place sans interrompre un navigateur en service (`browser/README.fr.md`, « Rester à jour »). Les places de
+l'offre l'ont aussi.
+
 ## Déménager sur une autre machine
 
 D'un serveur loué vers un ordinateur à la maison, d'un hébergeur vers un moins cher, ou l'inverse : tout suit. Le

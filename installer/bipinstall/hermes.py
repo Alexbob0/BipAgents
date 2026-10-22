@@ -214,8 +214,10 @@ BROWSER_IMAGE = "bipagents-browser"
 def build_browser(runner: Runner, engine: str, repo: Path) -> None:
     """The agents' visible browser (browser/Containerfile): Chrome, its screen, and the stealth-browser-mcp server,
     fetched from its own repository at a fixed commit with our patch. Each agent then gets its own container of it
-    (the bridge sets them up: `bipbridge browser add`)."""
-    runner.run([engine, "build", "-t", BROWSER_IMAGE, "-f", str(repo / "browser" / "Containerfile"), str(repo / "browser")])
+    (the bridge sets them up: `bipbridge browser add`). Always with today's Chrome and packages, never a cached layer
+    (browser_refresh.py, which also keeps it up to date each night)."""
+    from .browser_refresh import build_command
+    runner.run(build_command(engine, repo, BROWSER_IMAGE))
 
 
 def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = None) -> str:
