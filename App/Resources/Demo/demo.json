@@ -351,6 +351,7 @@
             },
             {
               "approve": {
+                "topic": "sendOut",
                 "description": {
                   "fr": "Je vais envoyer la réservation en ton nom",
                   "en": "I’m about to send the booking in your name",
@@ -895,6 +896,7 @@
           "then": [
             {
               "approve": {
+                "topic": "sendOut",
                 "description": {
                   "fr": "Je vais envoyer la résiliation en ton nom",
                   "en": "I’m about to send the cancellation in your name",
@@ -1086,6 +1088,7 @@
         },
         {
           "approve": {
+            "topic": "home",
             "description": {
               "fr": "Je vais monter le chauffage du salon",
               "en": "I’m about to turn up the living room heating",

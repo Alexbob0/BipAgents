@@ -901,8 +901,14 @@ pub async fn handle(name: &str, arguments: &Dict, sources: &[Source], phone: boo
                     ),
                     false,
                 ),
-                Ok(a) => tool_text(&refused(a.status).unwrap_or_else(|| format!("not added ({})", a.status)), true),
-                Err(why) => tool_text(&format!("not added: {why}"), true),
+                Ok(a) => tk::tool_failure(
+                    &refused(a.status).unwrap_or_else(|| format!("not added ({})", a.status)),
+                    &format!("I couldn't add it to your calendar « {} » just now.", calendar.title),
+                ),
+                Err(why) => tk::tool_failure(
+                    &format!("not added: {why}"),
+                    &format!("I couldn't add it to your calendar « {} » just now.", calendar.title),
+                ),
             })
         }
         "calendar_update" | "calendar_delete" => {
@@ -940,8 +946,14 @@ and added again",
             }
             Some(match dav("DELETE", href, &source.username, &source.password, None, None, &[]).await {
                 Ok(a) if (200..300).contains(&a.status) => tool_text(&format!("Deleted from {}.", source.label), false),
-                Ok(a) => tool_text(&refused(a.status).unwrap_or_else(|| format!("not deleted ({})", a.status)), true),
-                Err(why) => tool_text(&format!("not deleted: {why}"), true),
+                Ok(a) => tk::tool_failure(
+                    &refused(a.status).unwrap_or_else(|| format!("not deleted ({})", a.status)),
+                    "I couldn't remove it from your calendar just now.",
+                ),
+                Err(why) => tk::tool_failure(
+                    &format!("not deleted: {why}"),
+                    "I couldn't remove it from your calendar just now.",
+                ),
             })
         }
         _ => None,

@@ -907,7 +907,12 @@ fn thousands(n: i64) -> String {
 
 /// The `propose_task` MCP tool (agent_tools.py). Err: what Python lets through (a task file that cannot be written).
 pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &Dict) -> anyhow::Result<Dict> {
-    let Some(jobs) = jobs else { return Ok(tool_text("background tasks aren't available here", true)) };
+    let Some(jobs) = jobs else {
+        return Ok(crate::tools_knowledge::tool_failure(
+            "background tasks aren't available here",
+            "I can't keep working on this in the background here.",
+        ));
+    };
     let budget = match arguments.get("budget") {
         Some(v) if py::truthy(v) => py::py_str(v),
         _ => "medium".into(),
