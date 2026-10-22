@@ -1733,6 +1733,53 @@
           "es": "Glucosa en ayunas"
         }
       }
+    },
+    "trip_budget": {
+      "template": "<!doctype html>\n<html lang=\"{{lang}}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{{title}}</title>\n<style>\n:root{--bg:#f6f7fb;--card:#fff;--ink:#17171a;--muted:#6b6e78;--bar:#7c6cf2;--track:#7c6cf21f;--ok:#2fb36b}\n@media (prefers-color-scheme:dark){:root{--bg:#0f1012;--card:#1a1d24;--ink:#f2f3f7;--muted:#9aa0ae;--bar:#a99ff7;--track:#a99ff72e}}\n*{box-sizing:border-box}\nbody{margin:0;padding:18px 16px 28px;font:16px -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--ink)}\nh1{font-size:24px;margin:0}\n.sub{color:var(--muted);font-size:14px;margin:4px 0 16px}\n.card{background:var(--card);border-radius:18px;padding:16px;margin-bottom:12px}\n.total{font-size:30px;font-weight:800}\n.left{color:var(--ok);font-weight:700;font-size:15px;margin-top:2px}\n.row{margin:12px 0}\n.top{display:flex;justify-content:space-between;font-weight:600}\n.track{height:10px;border-radius:99px;background:var(--track);margin-top:6px;overflow:hidden}\n.fill{height:100%;border-radius:99px;background:var(--bar)}\n</style></head><body>\n<h1>✈️ {{title}}</h1>\n<div class=\"sub\">{{subtitle}}</div>\n<div class=\"card\"><div class=\"total\" id=\"total\"></div><div class=\"left\" id=\"left\"></div></div>\n<div class=\"card\" id=\"list\"></div>\n<script>\nconst budget = 4000;\nconst items = [[\"✈️ {{flights}}\", 1700], [\"🏨 {{hotels}}\", 1150], [\"🚄 {{rail}}\", 560], [\"🍜 {{food}}\", 420]];\nconst money = n => n.toLocaleString(\"{{lang}}\", {style: \"currency\", currency: \"EUR\", maximumFractionDigits: 0});\nconst spent = items.reduce((s, i) => s + i[1], 0);\ndocument.getElementById(\"total\").textContent = `${money(spent)} / ${money(budget)}`;\ndocument.getElementById(\"left\").textContent = `{{left}} ${money(budget - spent)}`;\nfor (const [name, amount] of items) {\n  const row = document.createElement(\"div\");\n  row.className = \"row\";\n  row.innerHTML = `<div class=\"top\"><span>${name}</span><span>${money(amount)}</span></div>` +\n    `<div class=\"track\"><div class=\"fill\" style=\"width:${Math.round(amount / budget * 100)}%\"></div></div>`;\n  document.getElementById(\"list\").append(row);\n}\n</script></body></html>\n",
+      "values": {
+        "title": {
+          "fr": "Budget du voyage",
+          "en": "Trip budget",
+          "de": "Reisebudget",
+          "es": "Presupuesto del viaje"
+        },
+        "subtitle": {
+          "fr": "Japon en avril, pour deux",
+          "en": "Japan in April, for two",
+          "de": "Japan im April, für zwei",
+          "es": "Japón en abril, para dos"
+        },
+        "flights": {
+          "fr": "Vols",
+          "en": "Flights",
+          "de": "Flüge",
+          "es": "Vuelos"
+        },
+        "hotels": {
+          "fr": "Hôtels",
+          "en": "Hotels",
+          "de": "Hotels",
+          "es": "Hoteles"
+        },
+        "rail": {
+          "fr": "Pass ferroviaire",
+          "en": "Rail pass",
+          "de": "Bahnpass",
+          "es": "Pase de tren"
+        },
+        "food": {
+          "fr": "Repas",
+          "en": "Meals",
+          "de": "Essen",
+          "es": "Comidas"
+        },
+        "left": {
+          "fr": "Reste :",
+          "en": "Left:",
+          "de": "Übrig:",
+          "es": "Queda:"
+        }
+      }
     }
   }
 }
