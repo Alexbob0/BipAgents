@@ -151,6 +151,12 @@ night at most, only when the day's conversations hold something the agents did n
 OpenAI-compatible API, `price_in`/`price_out` (€ per million tokens), `monthly_cap` (€, default 0.10) and `hour`
 (default 3). Each run logs `notebook pass` with its tokens and cost; `GET /v1/notebook/runs` shows the month.
 
+Long work goes to background tasks, never inline in a conversation. An agent starts one by itself only when the person
+asked for it, within `[jobs] direct_budget_eur` (€, default 0.20, counted at the `[notebook]` prices); above that it
+proposes the task and the person starts it with one tap. A conversation's run that goes past `handoff_tool_calls`
+(default 15) tool calls or `handoff_seconds` (default 180) is told once to hand the rest over (`handoff = false` turns
+this off); the bridge logs `long run: handing over to a background task (steer)`.
+
 ## 5. Start at boot
 
 **macOS (Mac mini)**: two LaunchAgents.

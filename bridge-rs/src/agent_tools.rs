@@ -247,6 +247,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.extend([knowledge_read_tool(), knowledge_search_tool()]);
     tools.extend(reminders::reminder_tools());
     tools.push(propose_task_tool());
+    tools.push(crate::jobs::start_task_tool());
     tools.push(crate::routes::route_tool());
     tools
 });
@@ -370,6 +371,7 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     let mut tools = install_tools(config).to_vec();
     if crate::notebook::enabled(config, &agent.name) {
         tools.extend(crate::notebook::tools::tools(crate::notebook::health_agent(config, &agent.name)));
+        tools.push(crate::notebook::fill::tool());
     }
     if crate::weather::enabled(config, &agent.name) {
         tools.push(crate::weather::weather_tool());
@@ -1251,6 +1253,12 @@ pub async fn call_tool(
 ) -> anyhow::Result<Dict> {
     if name == PROPOSE_TASK {
         return crate::jobs::propose_tool(jobs.as_deref(), agent, arguments).await;
+    }
+    if name == crate::jobs::START_TASK {
+        return crate::jobs::start_tool(jobs.as_ref(), agent, arguments).await;
+    }
+    if name == crate::notebook::fill::TOOL_NAME {
+        return crate::notebook::fill::tool_call(jobs.as_ref(), agent).await;
     }
     let config = maker.config.get();
     if name == crate::weather::TOOL_NAME {

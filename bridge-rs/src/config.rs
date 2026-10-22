@@ -451,6 +451,26 @@ impl Default for NotebookConfig {
     }
 }
 
+/// `[jobs]`: long work handed to background tasks (jobs.rs, decided 2026-10-22). An agent starts a task by itself only
+/// when the person asked for that work, within `direct_budget_eur` (counted at the `[notebook]` prices, the bridge's
+/// one price list); above it, it proposes. The bridge's safety net (runs.rs) steers once into a conversation's run
+/// that goes past `handoff_tool_calls` tool calls or `handoff_seconds`, asking the agent to hand the rest over.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct JobsConfig {
+    /// Euros of tokens a task the person asked for may take without their go (≈ 0.20 €).
+    pub direct_budget_eur: f64,
+    /// The safety net on or off.
+    pub handoff: bool,
+    pub handoff_tool_calls: u32,
+    pub handoff_seconds: f64,
+}
+
+impl Default for JobsConfig {
+    fn default() -> Self {
+        JobsConfig { direct_budget_eur: 0.20, handoff: true, handoff_tool_calls: 15, handoff_seconds: 180.0 }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub bridge_key: String,
@@ -502,6 +522,9 @@ pub struct Config {
     /// `[notebook]` (notebook/tidy.rs): not in the serialized form either.
     #[serde(skip)]
     pub notebook: NotebookConfig,
+    /// `[jobs]` (jobs.rs, runs.rs): not in the serialized form either.
+    #[serde(skip)]
+    pub jobs: JobsConfig,
     /// `[vault] cards` (cards.rs): whether the person may turn card payments on in the app. "auto" (or "on"): yes,
     /// except on a place of the all-included offer or a « no computer » server; "off": never. Payments stay off
     /// until the person turns them on. Not in the serialized form either.
@@ -567,6 +590,7 @@ impl Config {
             weather: WeatherConfig::default(),
             maps: MapsConfig::default(),
             notebook: NotebookConfig::default(),
+            jobs: JobsConfig::default(),
             cards: "auto".into(),
             push_relay_url: None,
             push_relay_key: None,
@@ -1091,6 +1115,15 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         max_input_chars: i(notebook_t, "max_input_chars", nd.max_input_chars as i64)?.clamp(1000, 200_000) as usize,
     };
 
+    let jobs_t = table(data, "jobs");
+    let jd = JobsConfig::default();
+    let jobs = JobsConfig {
+        direct_budget_eur: f(jobs_t, "direct_budget_eur", jd.direct_budget_eur)?.clamp(0.0, 50.0),
+        handoff: b(jobs_t, "handoff", jd.handoff),
+        handoff_tool_calls: i(jobs_t, "handoff_tool_calls", jd.handoff_tool_calls as i64)?.clamp(1, 10_000) as u32,
+        handoff_seconds: f(jobs_t, "handoff_seconds", jd.handoff_seconds)?.clamp(5.0, 86_400.0),
+    };
+
     let cards = s(table(data, "vault"), "cards", "auto").to_lowercase();
     if !["auto", "on", "off"].contains(&cards.as_str()) {
         return Err(ConfigError::new("vault.cards must be 'auto', 'on' or 'off'"));
@@ -1145,6 +1178,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         weather,
         maps,
         notebook,
+        jobs,
         cards,
         push_relay_url,
         push_relay_key,

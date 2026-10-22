@@ -647,6 +647,13 @@ impl HermesClient {
         Ok(())
     }
 
+    /// `POST /v1/runs/{id}/steer`: words delivered to the running turn after its next tool batch (409 unless running).
+    pub async fn steer_run(&self, agent: &AgentConfig, run_id: &str, text: &str) -> Result<(), HermesError> {
+        let body = serde_json::json!({"input": text});
+        self.send(agent, reqwest::Method::POST, &format!("/v1/runs/{run_id}/steer"), Some(body), 15.0).await?;
+        Ok(())
+    }
+
     /// The events of `GET /v1/runs/{run_id}/events` until the server closes the stream. Fails with
     /// `HermesError::Http` on a non-200 answer (before any event), with a transport error when unreachable.
     /// Timeouts as in Python: 5 s to connect, 60 s between two reads (Hermes sends keepalives every 10 s).

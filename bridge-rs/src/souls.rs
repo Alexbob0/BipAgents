@@ -12,7 +12,8 @@
 //! tests/golden/souls.json has the rule added by hand); a message drafted for the person to send goes in a ```draft
 //! block the app offers to send with WhatsApp, Signal, Messages… (2026-10-22, added to the golden by hand too); and the
 //! agent talks in plain words, never about its container, tools or errors (2026-10-22: the people are not technical;
-//! by hand in the golden file too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
+//! by hand in the golden file too); and long work goes to a background task, never inline (2026-10-22,
+//! `LONG_WORK_RULE`, by hand in the golden file too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
 //! health data has a second block (`with_health`): use it to help, never to diagnose.
 //!
 //! Port of `bridge/bipbridge/souls.py` (owner group: agents).
@@ -120,6 +121,21 @@ pub const FILES_RULE: &str = concat!(
     "tracker) is made with the create_page tool, never as an .html file of your own.",
 );
 
+/// Long work goes to a background task, never inline (owner's decision 2026-10-22, after an agent filled the Carnet in
+/// the conversation for a long time: dozens of tool rows, the chat blocked, the end never shown). `start_task` within
+/// the small budget the bridge allows when the person asked; `propose_task` above it or for the agent's own ideas.
+/// Rust bridge only, like FAMILY_RULE (added to tests/golden/souls.json by hand).
+pub const LONG_WORK_RULE: &str = concat!(
+    "Work that needs many steps or minutes (more than a few searches or tool calls) never happens here in the ",
+    "conversation: hand it to a background task, which works on its own and tells your person when it is done. When ",
+    "your person asks for such work, start it at once with start_task (it takes the default budget; the tool says ",
+    "when a bigger one needs their go) and answer in one plain sentence, e.g. « Je m'en occupe en arrière-plan, je te ",
+    "préviens quand c'est fini. » Examples: « remplis mon Carnet » (notebook_fill), « trie mes mails », « fais une ",
+    "recherche approfondie sur les mutuelles », « compare 10 appartements ». When the work needs more than the default ",
+    "budget, or the idea comes from you and not from your person, propose it with propose_task instead: they start it ",
+    "with one tap. Quick answers, one search or a short page stay here as usual."
+);
+
 fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
@@ -128,7 +144,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{BLOCK_END}"
     )
 }
 

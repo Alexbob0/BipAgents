@@ -326,7 +326,8 @@ impl AppState {
         });
         let jobs = jobs_of(self);
         self.spawn(async move {
-            jobs.resume_following().await;
+            jobs.clone().resume_following().await;
+            crate::notebook::fill::follow(&jobs);
         });
         if config.hermes.enabled() {
             self.spawn(crate::sandbox::isolate_all(self.config.clone(), agents_admin::default_run()));

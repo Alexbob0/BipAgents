@@ -10,6 +10,9 @@
 //! follower, push an `APPROVAL` notification (once per request); when such a run completes, push a
 //! « reply ready » alert that opens its conversation.
 //!
+//! Long-work safety net (2026-10-22, `[jobs] handoff`): a conversation's run that goes past ~15 tool calls or ~3
+//! minutes is steered once to hand the rest over to a background task (`handoff`).
+//!
 //! Port of `bridge/bipbridge/runs.py` (owner group: push-runs).
 //!
 //! Concurrency (Python runs all this on one event loop): the hub's map of runs and its pending approvals sit
@@ -47,6 +50,12 @@ pub const UNREACHABLE_AFTER: u32 = 3;
 /// A question answered or gone: BipAgents' patch (`clarify.responded` / `clarify.cancelled`, `request_id`) or Hermes'
 /// upstream contract (`clarify.retired`, one question per `clarify_id`).
 pub const CLARIFY_DONE: [&str; 3] = ["clarify.responded", "clarify.cancelled", "clarify.retired"];
+/// The safety net's steer starts with this (the apps hide such rows: HermesKit SteerMarker, Android Hermes.kt).
+pub const HANDOFF_MARK: &str = "[bipagents:handoff]";
+pub const HANDOFF_TEXT: &str = "This is long: hand the rest over to a background task now (start_task, within the \
+default budget, or propose_task), tell your person in one sentence, and stop here.";
+/// Tools that hand work over already (the agent's MCP tools, maybe with Hermes' `mcp_<server>_` prefix).
+pub const HANDOFF_TOOLS: [&str; 3] = ["start_task", "propose_task", "notebook_fill"];
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
@@ -158,6 +167,12 @@ pub struct SubscriptionState {
     pub backlog: VecDeque<SSEEvent>,
     /// What was pushed already (approvals by request, questions by `clarify:<id>`).
     pub pushed: HashSet<String>,
+    /// The long-work safety net (`handoff`): when the hub began following the run, its tool calls so far, whether the
+    /// agent already handed work over (start_task, propose_task, notebook_fill), and whether the bridge steered.
+    pub followed_since: f64,
+    pub tool_calls: u32,
+    pub handed_off: bool,
+    pub steered: bool,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -175,6 +190,10 @@ impl Default for SubscriptionState {
             end_push: true,
             backlog: VecDeque::new(),
             pushed: HashSet::new(),
+            followed_since: crate::py::time_time(),
+            tool_calls: 0,
+            handed_off: false,
+            steered: false,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -700,6 +719,9 @@ impl RunHub {
         append_to_backlog(&mut st.backlog, &event);
         st.send_all(Some(&event));
         let kind = event.r#type.as_str();
+        if kind == "tool.started" || kind == "tool.completed" {
+            self.handoff(sub, &mut st, &event);
+        }
         if kind == "approval.request" {
             self.on_approval(&mut inner, sub, &mut st, &event);
         } else if kind == "clarify.request" {
@@ -754,6 +776,39 @@ impl RunHub {
                 }
             }
         }
+    }
+
+    /// The long-work safety net (decided 2026-10-22, independent of the model): a run in a person's conversation (not a
+    /// background task's own, whose watch has no end push) that passes `[jobs] handoff_tool_calls` tool calls or
+    /// `handoff_seconds` is steered once, at a tool boundary, to hand the rest over to a background task. Not when the
+    /// agent already did (start_task, propose_task, notebook_fill). The apps hide the steered words (HANDOFF_MARK).
+    fn handoff(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
+        let tool = event.data.get("tool").or_else(|| event.data.get("name")).and_then(Value::as_str).unwrap_or("");
+        if event.r#type == "tool.started" {
+            st.tool_calls += 1;
+            if HANDOFF_TOOLS.iter().any(|t| tool == *t || tool.ends_with(&format!("_{t}"))) {
+                st.handed_off = true;
+            }
+        }
+        if st.steered || st.handed_off || !st.end_push || st.finished {
+            return;
+        }
+        let Some(shared) = self.config.as_ref() else { return };
+        let jobs = shared.get().jobs.clone();
+        let seconds = crate::py::time_time() - st.followed_since;
+        if !jobs.handoff || (st.tool_calls < jobs.handoff_tool_calls && seconds < jobs.handoff_seconds) {
+            return;
+        }
+        st.steered = true;
+        let (hermes, agent, run_id, calls) =
+            (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone(), st.tool_calls);
+        tracing::info!(agent = %agent.name, run_id = %run_id, tool_calls = calls, seconds = seconds.round() as i64,
+            "long run: handing over to a background task (steer)");
+        self.spawn(async move {
+            if let Err(err) = hermes.steer_run(&agent, &run_id, &format!("{HANDOFF_MARK} {HANDOFF_TEXT}")).await {
+                tracing::warn!(agent = %agent.name, run_id = %run_id, error = %err, "long run: steer refused");
+            }
+        });
     }
 
     /// A question (docs/hermes-clarify-api.md) nobody sees: push it once, like an approval.

@@ -30,6 +30,7 @@
 //! No Python counterpart (owner group: tools-knowledge).
 
 pub mod api;
+pub mod fill;
 pub mod template;
 pub mod tidy;
 pub mod tools;
@@ -2454,7 +2455,9 @@ pub fn set_close(config: &Config, query: &str, close: bool, who: &Who) -> anyhow
 /// scripts/notebook-icons.py), or taken off (empty: the apps pick one from its words again). Never set by an agent.
 pub fn set_icon(config: &Config, query: &str, icon: &str, who: &Who) -> anyhow::Result<Option<String>> {
     let icon = icon.trim();
-    if !icon.is_empty() && !(icon.len() <= 40 && icon.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')) {
+    if !icon.is_empty()
+        && !(icon.len() <= 40 && icon.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
+    {
         return Err(NotebookError("an icon is a short id (a-z, 0-9, -)".into()).into());
     }
     let _guard = lock();

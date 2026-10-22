@@ -259,6 +259,7 @@ class FakeHermes(Fake):
         self.run_info: Dict[str, Dict[str, Any]] = {}   # GET /v1/runs/{id}, as Hermes keeps a run's status
         self.event_requests: List[Seen] = []
         self.approvals: List[Dict[str, Any]] = []
+        self.steers: List[Dict[str, Any]] = []          # POST /v1/runs/{id}/steer
         self.approval_response: Tuple[int, Any] = (200, {"object": "hermes.run.approval_response", "resolved": 1})
         self.sessions: Dict[str, Dict[str, Dict[str, Any]]] = {}   # agent -> session id -> session
         self.messages: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
@@ -349,6 +350,9 @@ class FakeHermes(Fake):
             self.approvals.append({"agent": agent, "run_id": run_id, "body": seen.json()})
             status, payload = self.approval_response
             return JSONResponse(payload, status_code=status)
+        if len(parts) == 4 and parts[3] == "steer" and method == "POST":
+            self.steers.append({"agent": agent, "run_id": run_id, "body": seen.json()})
+            return JSONResponse({"status": "queued"}, status_code=202)
         if len(parts) == 4 and parts[3] == "stop" and method == "POST":
             run = self.started.get(run_id)
             if run is not None:

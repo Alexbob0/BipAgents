@@ -153,6 +153,13 @@ le modèle des agents, chez leur fournisseur), `base_url` et `key` pour une autr
 `price_in`/`price_out` (€ par million de tokens), `monthly_cap` (€, 0,10 par défaut) et `hour` (3 par défaut). Chaque
 passage écrit `notebook pass` dans le journal avec ses tokens et son coût ; `GET /v1/notebook/runs` montre le mois.
 
+Les travaux longs passent en tâche de fond, jamais dans la conversation. Un agent en lance une de lui-même seulement
+quand la personne l'a demandé, dans la limite de `[jobs] direct_budget_eur` (€, 0,20 par défaut, compté aux prix de
+`[notebook]`) ; au-delà, il propose la tâche et la personne la lance d'un geste. Un tour de conversation qui dépasse
+`handoff_tool_calls` (15 par défaut) appels d'outils ou `handoff_seconds` (180 par défaut) reçoit une fois la consigne
+de passer la suite en tâche de fond (`handoff = false` le coupe) ; le pont écrit
+`long run: handing over to a background task (steer)` dans le journal.
+
 ## 5. Lancer au démarrage
 
 **macOS (Mac mini)** : deux LaunchAgents.
