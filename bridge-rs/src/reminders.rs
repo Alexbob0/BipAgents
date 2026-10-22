@@ -4,7 +4,9 @@
 //! a reminder to be added or ticked off; the request waits here until the iPhone has done it.
 //!
 //!     reminders_list       the reminders as the iPhone last sent them (not done, and done in the last 30 days)
-//!     reminders_add        a new reminder (a title, a date, a list), done by the iPhone at its next sync
+//!     reminders_add        a new reminder (a title, a date, a list, or a place: « when I get to… »), done by the phone
+//!                          at its next sync (an Android phone does only those with a place, as its own « rappels par
+//!                          lieu »: Android has no Reminders app)
 //!     reminders_complete   a reminder ticked off, the same way
 //!
 //! App routes (the bridge key):
@@ -53,9 +55,15 @@ pub fn reminder_tools() -> Vec<Value> {
         json!({
             "name": "reminders_add",
             "description": "Add a reminder to the person's iPhone Reminders (it appears when their iPhone next syncs, usually \
-        within minutes). due: an ISO date or date-time, optional; list: a list's name, optional.",
+        within minutes). due: an ISO date or date-time, optional; list: a list's name, optional. A reminder by place \
+        (« when I get to the supermarket… »): place, the place's name or address as the person says it (their phone \
+        finds it), latitude and longitude only when you know them, when: arriving (default) or leaving, radius in \
+        metres (default 150). On an Android phone, only reminders with a place are done.",
             "inputSchema": {"type": "object", "properties": {"title": {"type": "string"}, "due": {"type": "string"},
-                                                             "list": {"type": "string"}, "notes": {"type": "string"}},
+                                                             "list": {"type": "string"}, "notes": {"type": "string"},
+                                                             "place": {"type": "string"}, "latitude": {"type": "number"},
+                                                             "longitude": {"type": "number"}, "radius": {"type": "number"},
+                                                             "when": {"type": "string", "enum": ["arriving", "leaving"]}},
                             "required": ["title"]},
         }),
         json!({
@@ -128,7 +136,8 @@ pub fn call(
         let mut data = read(config);
         if !tk::py_in(agent, data.get("agents").unwrap_or(&json!([]))) {
             return Ok(tool_text(
-                "The person hasn't shared their iPhone Reminders with you: they do it in the BipAgents app (Settings › Rappels).",
+                "The person hasn't shared their reminders with you: they do it in the BipAgents app (on an iPhone: Settings › \
+                 Rappels; on Android: your « Rappels » tool, for reminders by place).",
                 true,
             ));
         }
@@ -192,10 +201,19 @@ pub fn call(
             if title.is_empty() {
                 return Ok(tool_text("a title is needed", true));
             }
-            json!({"id": py::token_hex(6), "op": "add", "agent": agent, "created": now, "state": "pending",
-                   "args": {"title": tk::head(&title, 300), "due": tk::head(&tk::str_or_empty(arguments.get("due")), 40),
-                            "list": tk::head(&tk::str_or_empty(arguments.get("list")), 120),
-                            "notes": tk::head(&tk::str_or_empty(arguments.get("notes")), 2000)}})
+            let mut args = json!({"title": tk::head(&title, 300), "due": tk::head(&tk::str_or_empty(arguments.get("due")), 40),
+                                  "list": tk::head(&tk::str_or_empty(arguments.get("list")), 120),
+                                  "notes": tk::head(&tk::str_or_empty(arguments.get("notes")), 2000)});
+            match place_args(arguments) {
+                Ok(Some(Value::Object(place))) => {
+                    if let Some(args) = args.as_object_mut() {
+                        args.extend(place);
+                    }
+                }
+                Ok(_) => {}
+                Err(why) => return Ok(tool_text(why, true)),
+            }
+            json!({"id": py::token_hex(6), "op": "add", "agent": agent, "created": now, "state": "pending", "args": args})
         } else if name == "reminders_complete" {
             let reminder = tk::str_or_empty(arguments.get("id"));
             if !items.iter().any(|i| field(i, "id").and_then(Value::as_str) == Some(reminder.as_str())) {
@@ -221,6 +239,50 @@ pub fn call(
         "Asked: the person's iPhone does it at its next sync (usually within minutes, or when the app opens).",
         false,
     ))
+}
+
+/// A reminder by place's arguments, as the phone reads them (strings, like the rest of a request's args): `place` (a
+/// name the phone looks up when there are no coordinates), `latitude`/`longitude`, `radius` in metres and `when`
+/// (« arriving » or « leaving »). None without a place; Err: why the agent's arguments don't make one.
+pub fn place_args(arguments: &Dict) -> Result<Option<Value>, &'static str> {
+    const NUMBERS: &str = "latitude, longitude and radius are numbers";
+    let number = |key: &str| -> Result<Option<f64>, &'static str> {
+        match arguments.get(key) {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::Number(n)) => Ok(n.as_f64()),
+            Some(Value::String(t)) if t.trim().is_empty() => Ok(None),
+            Some(Value::String(t)) => t.trim().parse::<f64>().map(Some).map_err(|_| NUMBERS),
+            Some(_) => Err(NUMBERS),
+        }
+    };
+    let name = tk::strip(&tk::str_or_empty(arguments.get("place"))).to_string();
+    let (latitude, longitude) = (number("latitude")?, number("longitude")?);
+    let when = tk::strip(&tk::str_or_empty(arguments.get("when"))).to_lowercase();
+    if name.is_empty() && latitude.is_none() && longitude.is_none() {
+        return if when.is_empty() { Ok(None) } else { Err("a reminder by place needs a place (its name or address)") };
+    }
+    if latitude.is_some() != longitude.is_some() {
+        return Err("give both latitude and longitude, or only the place's name");
+    }
+    if let (Some(lat), Some(lon)) = (latitude, longitude) {
+        if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
+            return Err("latitude is between -90 and 90, longitude between -180 and 180");
+        }
+    }
+    let when = match when.as_str() {
+        "" | "arriving" | "arrive" | "enter" => "arriving",
+        "leaving" | "leave" | "exit" => "leaving",
+        _ => return Err("when is « arriving » or « leaving »"),
+    };
+    // The phones watch a circle: under 100 m it is easily missed, over 5 km it means little.
+    let radius = number("radius")?.unwrap_or(150.0).clamp(100.0, 5000.0);
+    let mut place =
+        json!({"place": tk::head(&name, 200), "when": when, "radius": format!("{}", radius.round() as i64)});
+    if let (Some(lat), Some(lon), Some(map)) = (latitude, longitude, place.as_object_mut()) {
+        map.insert("latitude".into(), json!(format!("{lat:.6}")));
+        map.insert("longitude".into(), json!(format!("{lon:.6}")));
+    }
+    Ok(Some(place))
 }
 
 // -- the app's routes --------------------------------------------------------------------------------------------------
@@ -439,6 +501,29 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn place(arguments: Value) -> Result<Option<Value>, &'static str> {
+        place_args(arguments.as_object().unwrap())
+    }
+
+    #[test]
+    fn places_as_the_phones_read_them() {
+        assert_eq!(place(json!({"title": "x"})), Ok(None));
+        assert_eq!(
+            place(json!({"place": "Carrefour Market, rue Oberkampf"})),
+            Ok(Some(json!({"place": "Carrefour Market, rue Oberkampf", "when": "arriving", "radius": "150"})))
+        );
+        assert_eq!(
+            place(json!({"latitude": 48.8566, "longitude": "2.3522", "when": "leaving", "radius": 20})),
+            Ok(Some(
+                json!({"place": "", "when": "leaving", "radius": "100", "latitude": "48.856600", "longitude": "2.352200"})
+            ))
+        );
+        assert!(place(json!({"latitude": 48.8})).is_err());
+        assert!(place(json!({"latitude": 98.0, "longitude": 2.0})).is_err());
+        assert!(place(json!({"place": "home", "when": "tomorrow"})).is_err());
+        assert!(place(json!({"when": "arriving"})).is_err());
+    }
 
     #[test]
     fn ages_as_python() {

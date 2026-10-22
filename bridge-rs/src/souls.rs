@@ -9,8 +9,10 @@
 //! person; and when the person seems in danger, give their country's crisis line (decided 2026-10-20, the five countries
 //! the offer is sold in); and when what the person says concerns their family, propose to tell them with
 //! `tell_family`, never sent before the person approves (decided 2026-10-21, family_news.rs; the Rust bridge only:
-//! tests/golden/souls.json has the rule added by hand). `heal_souls` brings existing agents' blocks up to date. An
-//! agent given the person's health data has a second block (`with_health`): use it to help, never to diagnose.
+//! tests/golden/souls.json has the rule added by hand); and a message drafted for the person to send goes in a ```draft
+//! block the app offers to send with WhatsApp, Signal, Messages… (2026-10-22, added to the golden by hand too).
+//! `heal_souls` brings existing agents' blocks up to date. An agent given the person's health data has a second block
+//! (`with_health`): use it to help, never to diagnose.
 //!
 //! Port of `bridge/bipbridge/souls.py` (owner group: agents).
 
@@ -87,6 +89,15 @@ pub const FAMILY_RULE: &str = concat!(
     "once per topic; if your person said no, don't propose it again."
 );
 
+/// A reply drafted for the person to send themselves (a message shared to the app: WhatsApp, Signal, Messages…): the
+/// app recognises the fenced block and offers « Envoyer avec… » under the reply (decided 2026-10-22; nothing is ever
+/// sent by the app or the agent). Rust bridge only, like FAMILY_RULE.
+pub const DRAFT_RULE: &str = concat!(
+    "When your person asks you to write a message for them to send (a reply to a message they shared, a text, an ",
+    "e-mail), put the text ready to send alone in a block that starts with a line ```draft and ends with a line ```: ",
+    "the app then offers to send it with the app they choose. They send it themselves; never say it was sent."
+);
+
 fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
@@ -95,7 +106,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{BLOCK_END}"
     )
 }
 

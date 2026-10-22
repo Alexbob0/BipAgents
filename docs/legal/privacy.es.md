@@ -136,6 +136,22 @@ agente, o retira el permiso en los ajustes del teléfono (ya no se envía nada).
 buzón, que quedan cifradas en tu servidor) cuando un agente de ese buzón los consulta, y añade o borra las citas que
 pide; no se guarda nada salvo la lista de esos calendarios. Desactívalo para dejarlo.
 
+**Los recordatorios por lugar y tu ubicación.** Cuando le pides a un agente «recuérdame la leche al llegar al
+súper», pide un recordatorio con el nombre del lugar (o sus coordenadas). En el iPhone, es la app Recordatorios de
+Apple la que vigila el lugar: BipAgents no tiene acceso a tu ubicación; el nombre del lugar se busca en Mapas de Apple
+para encontrar sus coordenadas. En Android, que no tiene app de recordatorios, BipAgents guarda él mismo estos
+recordatorios: te pide el permiso de ubicación (también en segundo plano) solo cuando un agente ha creado uno, busca el
+lugar con el servicio de geocodificación del teléfono y confía el círculo alrededor del lugar a los servicios de
+ubicación de Google Play en el teléfono (geofencing). Tu ubicación se queda en el teléfono: no se envía ni a tu
+servidor, ni al agente, ni a Kerfy Studio, y solo sirve para avisarte al llegar o al salir. **Base jurídica**: tu
+consentimiento (artículo 6.1.a del RGPD), que das al permitir la ubicación. **Para dejarlo**: elimina el recordatorio
+(Ajustes › Recordatorios por lugar) o retira el permiso de ubicación en los ajustes del teléfono.
+
+**Lo que compartes con la app.** Cuando compartes un mensaje o una captura de pantalla con BipAgents (desde WhatsApp,
+Signal, Mensajes…), va al agente que eliges, en tu servidor, como un adjunto que envías tú; puede contener palabras de
+otras personas, así que comparte solo lo que necesites. La app nunca envía el borrador de respuesta que escribe el
+agente: «Enviar con…» abre la app que eliges, y lo envías tú.
+
 ## 4. Lo que Kerfy Studio puede recibir
 
 ### 4.1 Las notificaciones, a través del relé de Kerfy Studio

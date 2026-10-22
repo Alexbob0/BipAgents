@@ -140,6 +140,23 @@ réglages du téléphone (plus rien n'est envoyé). Pour une boîte mail que tu 
 boîte, qui restent chiffrés sur ton serveur) quand un agent de cette boîte les consulte, et y ajoute ou supprime les
 rendez-vous qu'il demande ; rien n'en est gardé à part la liste de ces agendas. Désactive-le pour arrêter.
 
+**Les rappels par lieu et ta position.** Quand tu demandes à un agent « rappelle-moi le lait en arrivant au
+supermarché », il demande un rappel avec le nom du lieu (ou ses coordonnées). Sur l'iPhone, c'est l'app Rappels
+d'Apple qui surveille le lieu : BipAgents n'a pas accès à ta position ; le nom du lieu est cherché dans Plans d'Apple
+pour trouver ses coordonnées. Sur Android, qui n'a pas d'app Rappels, BipAgents garde lui-même ces rappels : il te
+demande la permission de position (y compris en arrière-plan) seulement quand un agent en a créé un, cherche le lieu
+avec le service de géocodage du téléphone, et confie le cercle autour du lieu aux services de localisation de Google
+Play sur le téléphone (geofencing). Ta position reste sur le téléphone : elle n'est envoyée ni à ton serveur, ni à
+l'agent, ni à Kerfy Studio, et ne sert qu'à te prévenir en arrivant ou en partant. **Base légale** : ton consentement
+(article 6.1.a du RGPD), que tu donnes en autorisant la position. **Arrêter** : supprime le rappel (Réglages › Rappels
+par lieu), ou retire la permission de position dans les réglages du téléphone.
+
+**Ce que tu partages vers l'app.** Quand tu partages un message ou une capture d'écran vers BipAgents (depuis
+WhatsApp, Signal, Messages…), il va à l'agent que tu choisis, sur ton serveur, comme une pièce jointe que tu envoies
+toi-même ; il peut contenir les mots d'autres personnes, partage seulement ce dont tu as besoin. Le brouillon de
+réponse que l'agent écrit n'est jamais envoyé par l'app : le bouton « Envoyer avec… » ouvre l'app de ton choix, et
+c'est toi qui envoies.
+
 ## 4. Ce que Kerfy Studio peut recevoir
 
 ### 4.1 Les notifications, par le relais de Kerfy Studio

@@ -67,7 +67,18 @@ their place on the all-included offer. Everything personal goes here, with that 
   agent reads (one no agent reads any more is wiped from them), and each agent with the switch on reads only its own
   categories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **iPhone Reminders** (`App/Features/Settings/RemindersSync.swift`): a copy of the reminders goes to the bridges the
-  person chose, and the requests the agents queued are carried out. This feature exists only on iOS.
+  person chose, and the requests the agents queued are carried out. This feature exists only on iOS. A reminder by
+  place (`reminders_add`'s `place`) becomes an EventKit location alarm: Reminders watches the place, the app has no
+  location access; a place's name is looked up with Apple Maps (`MKLocalSearch`).
+- **Reminders by place on Android** (`reminders/PlaceReminders.kt`): the agents' reminders that have a place are read
+  from the bridge's queue (`/v1/reminders/queue`) and kept on the phone as geofences (Google Play services location;
+  the name looked up with the phone's `Geocoder`). The location permission (with background) is asked only once such a
+  reminder exists; the position never leaves the phone. The other reminders stay queued for an iPhone.
+- **Shared to the app** (`ShareExtension/`, `App/Model/SharedInbox.swift`, Android `ui/SharedMessage.kt`): a message or
+  screenshots shared to BipAgents are handed to the agent the person picks, as a draft and attachments in its
+  conversation, sent only when the person taps Send. The iOS share extension writes them to the App Group
+  (`share/<id>/`, deleted when opened, or after an hour). A reply the agent drafts (a ```draft block) gets « Envoyer
+  avec… », the system share sheet: the app never sends it.
 - **Push registration:** the APNs or Firebase token (or a relay token instead, see §3), with the agents' ids
   (`/v1/devices`). The notification extension (`NotificationService/NotificationService.swift`) and the Android
   service (`push/BipMessagingService.kt`) then fetch the reply text, the approval command and the audio from the bridge
