@@ -57,6 +57,7 @@ pub const DOCUMENT_TYPES: &[(&str, &str)] = &[
     (".key", "application/vnd.apple.keynote"),
     (".pages", "application/vnd.apple.pages"),
     (".numbers", "application/vnd.apple.numbers"),
+    (".svg", "image/svg+xml"), // an infographic: never rendered as the bridge's page (its scripts stay locked)
 ];
 
 /// One of the documents.

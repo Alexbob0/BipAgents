@@ -782,7 +782,19 @@ async fn get_media(State(state): State<AppState>, q: QueryMap, headers: HeaderMa
         Some(host) => host,
         None => {
             let agent_cfg = match agent.as_deref() {
-                Some(name) => Some(agent_or_404(&config, Some(name))?),
+                Some(name) => match config.agent(Some(name)) {
+                    Some(agent) => Some(agent.clone()),
+                    None => {
+                        tracing::warn!(
+                            target: "bipbridge::media",
+                            agent = %name,
+                            path = %path,
+                            why = "unknown agent",
+                            "media file asked for and not found"
+                        );
+                        return Err(HttpError::not_found());
+                    }
+                },
                 None => None,
             };
             let (c, p) = (config.clone(), path.clone());
