@@ -436,11 +436,14 @@ pub struct NotebookConfig {
 impl Default for NotebookConfig {
     fn default() -> Self {
         NotebookConfig {
-            model: "mistral-small-latest".into(),
+            // The agents' own model by default: a name that exists at their provider, whichever it is (a fixed default
+            // such as `mistral-small-latest` is unknown at EUrouter). Prices on the high side of cheap models (e.g.
+            // DeepSeek V4.1 Flash), so the cap holds even when the model is a bit dearer than the usual small one.
+            model: String::new(),
             base_url: String::new(),
             key: None,
-            price_in: 0.10,
-            price_out: 0.30,
+            price_in: 0.50,
+            price_out: 1.50,
             monthly_cap: 0.10,
             hour: 3,
             max_input_chars: 12000,

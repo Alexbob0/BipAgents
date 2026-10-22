@@ -271,7 +271,7 @@ def test_the_nightly_pass_files_what_the_agents_missed_and_counts_its_cost(bridg
                                   {"op": "task", "agent": "wellness", "origin": "asked", "title": "x", "due": "bad"}]
     run = tidy(bridge)
     assert (run["reason"], run["turns_seen"], run["turns_kept"], run["model_called"]) == ("filed", 3, 1, True)
-    assert (run["tokens_in"], run["tokens_out"], run["eur"], run["applied"], run["model"]) == (3000, 300, 0.00039, 1, "small-eu")
+    assert (run["tokens_in"], run["tokens_out"], run["eur"], run["applied"], run["model"]) == (3000, 300, 0.00195, 1, "small-eu")  # 0.50 € / 1.50 € a million (defaults)
     chat = fakes.model.chats[-1]
     assert chat["authorization"] == "Bearer sk-nb" and chat["body"]["model"] == "small-eu"
     sent = chat["body"]["messages"][1]["content"]
@@ -284,7 +284,7 @@ def test_the_nightly_pass_files_what_the_agents_missed_and_counts_its_cost(bridg
     again = tidy(bridge)
     assert again["model_called"] is False and len(fakes.model.chats) == 1
     spend = bridge.get("/v1/notebook/runs", headers=AUTH).json()["spend"]
-    assert (spend["eur"], spend["tokens_in"], spend["model_calls"]) == (0.00039, 3000, 1)
+    assert (spend["eur"], spend["tokens_in"], spend["model_calls"]) == (0.00195, 3000, 1)
 
 
 def test_the_monthly_cap_stops_the_nightly_pass(bridges, fakes):

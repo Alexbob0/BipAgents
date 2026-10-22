@@ -149,7 +149,7 @@ Le bridge garde le Carnet de la personne dans son dossier de données (`notebook
 s'ouvre dans Obsidian ; `notebook/private/` pour la santé ; `notebook/history/` pour chaque changement). Son rangement
 de nuit appelle un petit modèle une fois par nuit au plus, seulement quand les conversations du jour contiennent
 quelque chose que les agents n'ont pas noté, sous un plafond mensuel : `[notebook] model` (par défaut
-`mistral-small-latest` chez le fournisseur des agents), `base_url` et `key` pour une autre API compatible OpenAI,
+le modèle des agents, chez leur fournisseur), `base_url` et `key` pour une autre API compatible OpenAI,
 `price_in`/`price_out` (€ par million de tokens), `monthly_cap` (€, 0,10 par défaut) et `hour` (3 par défaut). Chaque
 passage écrit `notebook pass` dans le journal avec ses tokens et son coût ; `GET /v1/notebook/runs` montre le mois.
 

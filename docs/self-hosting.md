@@ -147,7 +147,7 @@ sandboxes stay as they were (folders mounted, Hermes asks before risky commands)
 The bridge keeps the person's Carnet under its data dir (`notebook/carnet/`, plain Markdown that opens in Obsidian;
 `notebook/private/` for health; `notebook/history/` for every change). Its nightly sorting calls a small model once a
 night at most, only when the day's conversations hold something the agents did not file, under a monthly cap:
-`[notebook] model` (default `mistral-small-latest` at the agents' own provider), `base_url` and `key` for another
+`[notebook] model` (default: the agents' own model, at their provider), `base_url` and `key` for another
 OpenAI-compatible API, `price_in`/`price_out` (€ per million tokens), `monthly_cap` (€, default 0.10) and `hour`
 (default 3). Each run logs `notebook pass` with its tokens and cost; `GET /v1/notebook/runs` shows the month.
 
