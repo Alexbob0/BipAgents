@@ -1374,6 +1374,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::agent_groups::router())
         .merge(crate::files_kept::router())
         .merge(crate::vault::router())
+        .merge(crate::card_pay::app_router())
         .merge(crate::place_backup::router())
         .merge(import_admin)
         .merge(crate::ssh_keys::router())
@@ -1418,6 +1419,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::lan::hermes_proxy())
         .merge(crate::peers::peer_router()) // agents' own tokens, checked against the links the person allowed
         .merge(crate::sandbox::router()) // the agents' file tools (shared folders), same tokens
+        .merge(crate::card_pay::router()) // the agents' card payment tools, same tokens
         .merge(crate::agent_tools::router()) // the agents' MCP tools (create_audio), each agent with its own token
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key

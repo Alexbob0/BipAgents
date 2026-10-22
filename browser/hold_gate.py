@@ -3,7 +3,9 @@
 Hermes talks to the browser's MCP server over stdio (`mcp.sh`); this sits in between. While the bridge's flag
 (`/tmp/bipagents-hold`, set when the person takes over the desktop in the app) is there and less than 15 minutes old,
 every tool call gets « the person has the browser, wait » instead of reaching Chrome: the agent neither clicks nor
-reads the page while the person types a password into it. Everything else passes through, line by line (MCP's
+reads the page while the person types a password into it. A card payment holds it the same way (the flag then reads
+« card <token> »): the bridge types the card into the page and clicks « Pay » itself, and the agent can neither read
+the card's fields nor take a screenshot of them until the page has moved on. Everything else passes through, line by line (MCP's
 stdio framing: one JSON message per line).
 
     python3.11 -I hold_gate.py <the server's command…>
@@ -23,6 +25,18 @@ WAIT = ("The person has taken over this browser in the BipAgents app (to log in,
         "Do not use the browser until they hand it back: tell them you are waiting, or go on with something else.")
 
 
+PAYING = ("A card payment is going on in this browser: the bridge typed the card into the page, and nobody may read "
+          "it. Your browser tools wait until it ends: use confirm_payment (or cancel_payment) from the BipAgents tools.")
+
+
+def paying() -> bool:
+    try:
+        with open(HOLD, "rb") as flag:
+            return flag.read(4) == b"card"
+    except OSError:
+        return False
+
+
 def held() -> bool:
     try:
         return time.time() - os.path.getmtime(HOLD) < LIMIT
@@ -32,7 +46,8 @@ def held() -> bool:
 
 def refusal(message: dict) -> bytes:
     return (json.dumps({"jsonrpc": "2.0", "id": message.get("id"),
-                        "result": {"content": [{"type": "text", "text": WAIT}], "isError": True}}) + "\n").encode()
+                        "result": {"content": [{"type": "text", "text": PAYING if paying() else WAIT}],
+                                   "isError": True}}) + "\n").encode()
 
 
 def main(command: list) -> int:
