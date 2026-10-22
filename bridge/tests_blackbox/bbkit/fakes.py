@@ -462,11 +462,18 @@ class FakeModel(Fake):
         super().reset()
         self.status = 200
         self.chats: List[Dict[str, Any]] = []
+        # the Carnet's nightly pass (its instructions start « You tidy »): the lines it answers
+        self.notebook_lines: List[Dict[str, Any]] = []
 
     async def handle(self, seen: Seen) -> Response:
         if seen.path.endswith("/chat/completions"):
             body = seen.json()
             self.chats.append({"body": body, "authorization": seen.header("authorization")})
+            if body["messages"][0]["content"].startswith("You tidy"):
+                content = "\n".join(json.dumps(line, ensure_ascii=False) for line in self.notebook_lines)
+                return JSONResponse({"choices": [{"message": {"content": content}}],
+                                     "usage": {"prompt_tokens": 3000, "completion_tokens": 300}},
+                                    status_code=self.status)
             content = "\n".join(json.dumps(line, ensure_ascii=False) for line in facts_answer(body))
             return JSONResponse({"choices": [{"message": {"content": content}}],
                                  "usage": {"prompt_tokens": 1000, "completion_tokens": 100,

@@ -50,7 +50,10 @@ def test_the_protocol_and_the_tokens(bridge):
     assert [t["name"] for t in tools] == ["create_audio", "create_podcast", "list_voices", "create_page", "list_pages",
                                           "read_page", "delete_page", "mail_search", "mail_read", "mail_draft",
                                           "knowledge_read", "knowledge_search", "reminders_list", "reminders_add",
-                                          "reminders_complete", "propose_task", "route"]
+                                          "reminders_complete", "propose_task", "route",
+                                          # the Carnet's (on by default)
+                                          "notebook_search", "notebook_read", "notebook_note", "notebook_edit",
+                                          "notebook_task"]
     assert all(set(t) >= {"name", "description", "inputSchema"} for t in tools)
     missing = rpc(bridge, "resources/list").json()
     assert missing == {"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "method not found: resources/list"}}

@@ -47,7 +47,8 @@ def test_an_agent_moves_into_its_own_space(bridges, fakes):
     assert oct(os.stat(root / ".env").st_mode & 0o777) == "0o600"
     assert (root / "config.yaml").read_text().startswith("model:")
     copied = root / "profiles" / "coach"
-    assert (copied / "SOUL.md").read_text() == "Tu es Coach.\n" and (copied / "memories" / "MEMORY.md").exists()
+    soul = (copied / "SOUL.md").read_text()   # with the Carnet's rule (on by default), added when its tools were given
+    assert soul.split("\n\n<!-- bipagents:notebook -->")[0] == "Tu es Coach." and "<!-- /bipagents:notebook -->" in soul and (copied / "memories" / "MEMORY.md").exists()
     assert not (copied / "gateway.pid").exists()
     commands = [(e["argv"], e["hermes_home"]) for e in bridge.commands.entries("hermes")]
     assert (["-p", "coach", "config", "set", "gateway.strict", "true"], str(root)) in commands
