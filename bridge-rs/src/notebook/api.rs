@@ -64,6 +64,11 @@ fn part_of(q: &QueryMap) -> Part {
 
 fn change_view(config: &Config, entry: &Dict) -> Value {
     let mut out = entry.clone();
+    // Always strings for the apps: the person's own changes and the nightly tidy's have no agent (null in the log).
+    for key in ["id", "at", "by", "name", "agent", "part", "path", "title", "action", "summary"] {
+        let text = tk::str_or_empty(entry.get(key));
+        out.insert(key.into(), json!(text));
+    }
     let by = tk::str_or_empty(entry.get("by"));
     out.insert("by_you".into(), json!(by == "you"));
     out.insert("nightly".into(), json!(by == "nightly"));
