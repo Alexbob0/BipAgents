@@ -55,9 +55,36 @@ write_files:
     content: |
       APT::Periodic::Update-Package-Lists "1";
       APT::Periodic::Unattended-Upgrade "1";
+  # Kernel fixes only count after a reboot: the server reboots by itself at night, only when an update asks for it
+  # (/var/run/reboot-required), whoever is connected. The time is server time (UTC on these images): 00:00-00:44, a
+  # minute of its own taken from its machine id at first boot (below; 00:20 until then), so the servers of a region
+  # don't all go down together; back within minutes, before the agents' browser refresh (01:00-03:00,
+  # installer/bipinstall/browser_refresh.py). The guichet's servers say so before going down (seat-agent.py
+  # --rebooting): a planned reboot is not an outage. Servers installed before 2026-10-22: nightly-reboot.sh.
+  - path: /etc/apt/apt.conf.d/52bipagents-reboot
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "00:20";
+  # The updates themselves at 23:00-23:30, just before (Ubuntu's own time, 06:00-07:00, would leave a kernel fix
+  # waiting a whole day for the next night).
+  - path: /etc/systemd/system/apt-daily-upgrade.timer.d/60-bipagents.conf
+    content: |
+      [Timer]
+      OnCalendar=
+      OnCalendar=*-*-* 23:00
+      RandomizedDelaySec=30min
+  # Services whose libraries an update replaced are restarted (needrestart; it never restarts user@.service, so the
+  # places' own services keep theirs until the night's reboot or their own restart).
+  - path: /etc/needrestart/conf.d/60-bipagents.conf
+    content: |
+      $nrconf{restart} = 'a';
 
 runcmd:
   - sysctl --system
+  # The night's reboot minute, 00:00 to 00:44, from the machine id (the same each time it is worked out).
+  - m=$(( 0x$(cut -c1-4 /etc/machine-id) % 45 )) && printf 'Unattended-Upgrade::Automatic-Reboot-Time "00:%02d";\n' "$m" > /etc/apt/apt.conf.d/53bipagents-reboot-time
+  - systemctl daemon-reload
   - systemctl restart systemd-journald
   # Compressed memory (zram: half the memory, zstd) ahead of the swap file, when the provider's kernel has it: the
   # server holds about 1.5x more before slowing down (the places' installs then leave it as it is).
