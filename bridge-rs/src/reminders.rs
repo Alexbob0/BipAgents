@@ -241,6 +241,46 @@ pub fn call(
     ))
 }
 
+/// A request for the phone added by the bridge itself (the Carnet's dated tasks, notebook/mod.rs): `op` « add » or
+/// « complete », its args as the phone reads them. Returns the request's id. The caller may hold the notebook's lock
+/// (taken before this one, never after).
+pub fn enqueue(config: &Config, agent: &str, op: &str, args: Value) -> std::io::Result<String> {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let id = py::token_hex(6);
+    let mut queue = list_of(&data, "queue");
+    queue.push(
+        json!({"id": id, "op": op, "agent": agent, "created": py::time_time(), "state": "pending", "args": args}),
+    );
+    data.insert("queue".into(), Value::Array(queue));
+    write(config, &data)?;
+    Ok(id)
+}
+
+/// A request still waiting for the phone, cancelled (it never reaches it). Returns whether it was waiting.
+pub fn cancel_pending(config: &Config, op_id: &str) -> std::io::Result<bool> {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let mut queue = list_of(&data, "queue");
+    let mut found = false;
+    for op in queue.iter_mut() {
+        if field(op, "id").and_then(Value::as_str) == Some(op_id)
+            && field(op, "state").and_then(Value::as_str) == Some("pending")
+        {
+            if let Some(map) = op.as_object_mut() {
+                map.insert("state".into(), json!("cancelled"));
+                map.insert("finished".into(), json!(py::time_time()));
+            }
+            found = true;
+        }
+    }
+    if found {
+        data.insert("queue".into(), Value::Array(queue));
+        write(config, &data)?;
+    }
+    Ok(found)
+}
+
 /// A reminder by place's arguments, as the phone reads them (strings, like the rest of a request's args): `place` (a
 /// name the phone looks up when there are no coordinates), `latitude`/`longitude`, `radius` in metres and `when`
 /// (« arriving » or « leaving »). None without a place; Err: why the agent's arguments don't make one.
@@ -398,7 +438,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
 async fn snapshot(State(state): State<AppState>, Json(body): Json<Snapshot>) -> ApiResult<Response> {
     let config = state.config();
     let items = blocking(move || {
-        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut data = read(&config);
         let dump = |i: &Item| serde_json::to_value(i).unwrap_or(Value::Null);
         let done: Vec<Value> = body.items.iter().filter(|i| i.completed).take(KEPT_DONE).map(dump).collect();
@@ -418,7 +458,11 @@ async fn snapshot(State(state): State<AppState>, Json(body): Json<Snapshot>) -> 
             .collect();
         data.insert("queue".into(), Value::Array(queue));
         write(&config, &data)?;
-        Ok(list_of(&data, "items").len())
+        drop(guard);
+        // The Carnet's tasks follow their reminders ticked on the phone (and the other way round).
+        let items = list_of(&data, "items");
+        crate::notebook::reminders_synced(&config, &items);
+        Ok(items.len())
     })
     .await?;
     Ok(web::ok(json!({"items": items})))

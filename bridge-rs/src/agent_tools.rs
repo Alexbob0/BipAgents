@@ -370,6 +370,9 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if crate::contacts::enabled(config, &agent.name) {
         tools.extend(crate::contacts::tools());
     }
+    if crate::notebook::enabled(config, &agent.name) {
+        tools.extend(crate::notebook::tools::tools(crate::notebook::health_agent(config, &agent.name)));
+    }
     tools
 }
 
@@ -439,12 +442,10 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// hand are left as they are. Returns whether the profile was changed (a new conversation picks it up). Err: a
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
-    let url = if crate::health::enabled(config, &agent.name)
-        || calendar_on(config, &agent.name)
-        || crate::contacts::enabled(config, &agent.name)
-        || crate::weather::enabled(config, &agent.name)
-    {
-        url_with(config, &version_of(&tools_for(config, agent)))
+    crate::notebook::sync_soul(config, agent);
+    let tools = tools_for(config, agent);
+    let url = if tools.as_slice() != install_tools(config) {
+        url_with(config, &version_of(&tools))
     } else {
         tools_url(config)
     };
@@ -535,6 +536,7 @@ fn last_chars(text: &str, n: usize) -> String {
 /// A deleted agent: its token goes, and its pages.
 pub fn forget(config: &Config, name: &str) {
     pages::forget(config, name);
+    crate::notebook::forget(config, name);
     let mut tokens = load_tokens(config);
     if tokens.shift_remove(name).is_some() {
         if let Err(err) = save_tokens(config, &tokens) {
@@ -1223,6 +1225,24 @@ the BipAgents app.",
             mailbox::call(&config, &agent_c.name, &name_c, &arguments_c, &mailbox::default_connect())
         })
         .await;
+    }
+    if crate::notebook::tools::TOOL_NAMES.contains(&name) {
+        let result =
+            blocking(move || crate::notebook::tools::call(&config, &agent_c.name, &name_c, &arguments_c)).await?;
+        let reminder = result
+            .get("content")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("text"))
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.contains("phone reminders"));
+        if let (Some(push), true) = (push, reminder) {
+            // The person's phone woken to add the task's reminder now (a silent push; else when the app opens).
+            let agent_name = agent.name.clone();
+            tokio::spawn(async move {
+                push.notify_silent(&agent_name, "reminders", Dict::new()).await;
+            });
+        }
+        return Ok(result);
     }
     if KNOWLEDGE_TOOLS.contains(&name) {
         return blocking(move || knowledge_tool(&config, &agent_c, &name_c, &arguments_c)).await;

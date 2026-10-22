@@ -180,6 +180,44 @@ pub fn with_health(soul: &str, on: bool) -> String {
     format!("{}\n\n{HEALTH_START}\n{HEALTH_RULE}\n{HEALTH_END}\n", body.trim_end())
 }
 
+pub const NOTEBOOK_START: &str = "<!-- bipagents:notebook -->";
+pub const NOTEBOOK_END: &str = "<!-- /bipagents:notebook -->";
+
+/// For an agent with the Carnet's tools on (notebook/, decided 2026-10-22; on by default): file durable facts without
+/// being asked. Rust bridge only, like FAMILY_RULE (tests/golden/souls.json: its case added by hand).
+pub const NOTEBOOK_RULE: &str = concat!(
+    "You keep your person's Carnet (their notebook, shared by all their agents) with the notebook tools. Without being ",
+    "asked, file what will still matter later: about a person (birthday, family, preferences, what was agreed), a ",
+    "subject or project (decisions, status, next steps), important tasks with their date. Don't file small talk, ",
+    "one-off questions, passwords or codes (the vault keeps those), or anything your person asks you not to keep. ",
+    "Search first and update the page that exists rather than making another; correct facts that changed, and refresh ",
+    "the page's « En bref » summary when what matters most changes. After filing, tell your person in one short line ",
+    "(« Noté dans ton Carnet : … », in their language) unless the tool says they turned these mentions off. Health ",
+    "facts go only to the private health part, and only if you are the agent your person chose for their health. The ",
+    "Carnet is your person's alone: never write in another person's, even in the family."
+);
+
+/// The personality without the notebook block (the person never sees it), and whether it had one.
+pub fn split_notebook(soul: &str) -> (String, bool) {
+    let (Some(start), Some(end)) = (soul.find(NOTEBOOK_START), soul.find(NOTEBOOK_END)) else {
+        return (soul.to_string(), false);
+    };
+    if end < start {
+        return (soul.to_string(), false);
+    }
+    let rest = format!("{}{}", soul[..start].trim_end(), &soul[end + NOTEBOOK_END.len()..]);
+    (rest, true)
+}
+
+/// The personality with the notebook block when `on` (after the rest), without it otherwise.
+pub fn with_notebook(soul: &str, on: bool) -> String {
+    let (body, _) = split_notebook(soul);
+    if !on {
+        return body;
+    }
+    format!("{}\n\n{NOTEBOOK_START}\n{NOTEBOOK_RULE}\n{NOTEBOOK_END}\n", body.trim_end())
+}
+
 /// `agent_templates.yaml` as PyYAML reads it (parsed once).
 static RAW: LazyLock<Vec<Yaml>> = LazyLock::new(|| match pyyaml::load(TEMPLATES_YAML) {
     Ok(Yaml::Seq(items)) => items,

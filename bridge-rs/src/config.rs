@@ -413,6 +413,41 @@ impl Default for MapsConfig {
     }
 }
 
+/// `[notebook]`: the Carnet's nightly pass (notebook/tidy.rs): a small model, its prices and a hard monthly cap.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NotebookConfig {
+    /// The model's name at the install's model provider (empty: each agent's own model).
+    pub model: String,
+    /// Another OpenAI-compatible API than the agents' (with its `key`); empty: the agents' own router and key.
+    pub base_url: String,
+    #[serde(skip)]
+    pub key: Option<String>,
+    /// Euros per million tokens, in and out (to count what each run costs).
+    pub price_in: f64,
+    pub price_out: f64,
+    /// Euros per month at most for the nightly pass, per install: reached, it waits for the next month.
+    pub monthly_cap: f64,
+    /// The local hour it runs at (0–23).
+    pub hour: u32,
+    /// What one run sends at most (characters of conversation and of « À ranger »).
+    pub max_input_chars: usize,
+}
+
+impl Default for NotebookConfig {
+    fn default() -> Self {
+        NotebookConfig {
+            model: "mistral-small-latest".into(),
+            base_url: String::new(),
+            key: None,
+            price_in: 0.10,
+            price_out: 0.30,
+            monthly_cap: 0.10,
+            hour: 3,
+            max_input_chars: 12000,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub bridge_key: String,
@@ -461,6 +496,9 @@ pub struct Config {
     pub weather: WeatherConfig,
     #[serde(skip)]
     pub maps: MapsConfig,
+    /// `[notebook]` (notebook/tidy.rs): not in the serialized form either.
+    #[serde(skip)]
+    pub notebook: NotebookConfig,
     /// Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
     pub push_relay_url: Option<String>,
     pub push_relay_key: Option<String>,
@@ -520,6 +558,7 @@ impl Config {
             sandbox: SandboxConfig::default(),
             weather: WeatherConfig::default(),
             maps: MapsConfig::default(),
+            notebook: NotebookConfig::default(),
             push_relay_url: None,
             push_relay_key: None,
             push_service_url: None,
@@ -1030,6 +1069,19 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         routes_url: py::rstrip_slash(&s(maps_t, "routes_url", ROUTES_URL)),
     };
 
+    let notebook_t = table(data, "notebook");
+    let nd = NotebookConfig::default();
+    let notebook = NotebookConfig {
+        model: s(notebook_t, "model", &nd.model),
+        base_url: py::rstrip_slash(&s(notebook_t, "base_url", "")),
+        key: secret(notebook_t, "key", "notebook", false)?,
+        price_in: f(notebook_t, "price_in", nd.price_in)?,
+        price_out: f(notebook_t, "price_out", nd.price_out)?,
+        monthly_cap: f(notebook_t, "monthly_cap", nd.monthly_cap)?,
+        hour: i(notebook_t, "hour", nd.hour as i64)?.clamp(0, 23) as u32,
+        max_input_chars: i(notebook_t, "max_input_chars", nd.max_input_chars as i64)?.clamp(1000, 200_000) as usize,
+    };
+
     let mut pronunciations = IndexMap::new();
     if let Value::Object(langs) = table(data, "pronunciations") {
         for (lang, t) in langs {
@@ -1078,6 +1130,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         sandbox,
         weather,
         maps,
+        notebook,
         push_relay_url,
         push_relay_key,
         push_service_url,

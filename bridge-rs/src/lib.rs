@@ -84,6 +84,7 @@ pub mod jobs;
 pub mod mail_scan;
 pub mod mailbox;
 pub mod memory_edit;
+pub mod notebook;
 pub mod notes_import;
 pub mod pages;
 pub mod reminders;

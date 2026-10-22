@@ -1,0 +1,549 @@
+//! The Carnet for the apps (the bridge key, like the other app routes; mounted under /v1). The private health part
+//! (`private=1` / `"private": true`) is the person's: the home leaves it out (it is reached only through its own page,
+//! behind the app's lock).
+//!
+//!     GET    /v1/notebook                      home: sections and counts, « Nouveau » (recent changes), upcoming tasks
+//!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, area, other)
+//!     GET    /v1/notebook/search?q=            pages, and the facts that answer (for a short answer on top)
+//!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links
+//!     PUT    /v1/notebook/page                 {path, text, private?}   the person's edit (« toi » in its history)
+//!     DELETE /v1/notebook/page?path=
+//!     GET    /v1/notebook/history?path=        changes (a page's, or all), the newest first
+//!     POST   /v1/notebook/restore              {change}   the page as it was after that change
+//!     GET    /v1/notebook/tasks                open and recent tasks
+//!     POST   /v1/notebook/tasks                {title, due?, page?, private?}
+//!     POST   /v1/notebook/tasks/{id}           {done}
+//!     GET    /v1/notebook/documents            the files the agents made or received, by agent, with their subjects
+//!     GET    /v1/notebook/settings             {mentions, nightly, language, cap…}
+//!     PATCH  /v1/notebook/settings             {mentions?, nightly?, language? (only while the Carnet is empty)}
+//!     GET    /v1/notebook/export?health=       a zip of the vault, for Obsidian
+//!     POST   /v1/notebook/tidy                 the nightly pass now; GET /v1/notebook/runs its runs and this month's cost
+
+use axum::body::Body;
+use axum::extract::{Path as UrlPath, State};
+use axum::http::HeaderValue;
+use axum::response::Response;
+use axum::routing::{get, post};
+use axum::Router;
+use serde::Deserialize;
+use serde_json::{json, Value};
+
+use super::{Part, Who};
+use crate::app::AppState;
+use crate::config::Config;
+use crate::tools_knowledge as tk;
+use crate::web::{self, check_max_len, ApiResult, FieldError, HttpError, Json, QueryMap, Validate};
+use crate::Dict;
+
+async fn blocking<T: Send + 'static>(work: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> ApiResult<T> {
+    match tokio::task::spawn_blocking(work).await.map_err(anyhow::Error::from)? {
+        Ok(v) => Ok(v),
+        Err(err) => match err.downcast_ref::<super::NotebookError>() {
+            Some(message) => Err(HttpError::new(400, message.0.clone())),
+            None => Err(err.into()),
+        },
+    }
+}
+
+fn part_of(q: &QueryMap) -> Part {
+    if matches!(q.get("private"), Some("1" | "true" | "yes")) {
+        Part::Health
+    } else {
+        Part::Main
+    }
+}
+
+fn change_view(config: &Config, entry: &Dict) -> Value {
+    let mut out = entry.clone();
+    let by = tk::str_or_empty(entry.get("by"));
+    out.insert("by_you".into(), json!(by == "you"));
+    out.insert("nightly".into(), json!(by == "nightly"));
+    let agent = tk::str_or_empty(entry.get("agent"));
+    out.insert("agent_color".into(), json!(config.agent(Some(&agent)).and_then(|a| a.color.clone())));
+    Value::Object(out)
+}
+
+fn section_of(w: &super::Words, page: &super::Page, path: &str) -> String {
+    let kind = page.kind();
+    match kind.as_str() {
+        "person" | "subject" | "area" | "tasks" => kind,
+        _ if path == w.inbox_path() => "inbox".into(),
+        _ => "other".into(),
+    }
+}
+
+async fn home(State(state): State<AppState>) -> ApiResult<Response> {
+    let config = state.config();
+    let view = blocking(move || {
+        let lang = super::language(&config);
+        let w = super::words(&lang);
+        let pages = super::all_pages(&config, Part::Main);
+        let mut sections = Vec::new();
+        for (kind, folder) in [("person", w.people), ("subject", w.subjects), ("area", w.areas)] {
+            let count = pages.iter().filter(|(_, p)| p.kind() == kind).count();
+            sections.push(json!({"kind": kind, "title": folder, "count": count}));
+        }
+        let tasks = super::tasks(&config, Part::Main);
+        let open: Vec<&super::Task> = tasks.iter().filter(|t| !t.done).collect();
+        sections.push(json!({"kind": "tasks", "title": w.tasks, "count": open.len()}));
+        let documents = super::documents(&config);
+        sections.push(json!({"kind": "documents", "title": w.documents, "count": documents.len()}));
+        let (_, inbox) = super::inbox(&config);
+        let recent: Vec<Value> =
+            super::history(&config, Some(Part::Main), None, 20).iter().map(|e| change_view(&config, e)).collect();
+        let mut upcoming: Vec<&super::Task> = open.iter().copied().filter(|t| !t.due.is_empty()).collect();
+        upcoming.sort_by(|a, b| a.due.cmp(&b.due));
+        let upcoming: Vec<Value> = upcoming.iter().take(10).map(|t| t.view()).collect();
+        Ok(json!({"language": lang, "sections": sections, "recent": recent, "upcoming": upcoming,
+                  "inbox": inbox.len(), "settings": settings_view(&config)}))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+fn page_summary(path: &str, part: Part, page: &super::Page, brief: &str) -> Value {
+    json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(), "aliases": page.aliases(),
+           "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
+           "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
+           "summary": super::summary_of(&page.body, brief)})
+}
+
+async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let part = part_of(&q);
+    let kind = q.get("kind").unwrap_or("").to_string();
+    let view = blocking(move || {
+        let w = super::words(&super::language(&config));
+        let pages: Vec<Value> = super::all_pages(&config, part)
+            .iter()
+            .filter(|(path, p)| kind.is_empty() || section_of(w, p, path) == kind)
+            .map(|(path, p)| page_summary(path, part, p, w.brief))
+            .collect();
+        Ok(json!({"pages": pages}))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+async fn search(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let part = part_of(&q);
+    let words = web::query_str(&q, "q", true, Some(200))?.unwrap_or_default();
+    let view = blocking(move || {
+        let w = super::words(&super::language(&config));
+        let found = super::search(&config, &[part], &words, "");
+        let wanted: Vec<String> = super::fold(&words).split(' ').filter(|x| x.len() > 1).map(str::to_string).collect();
+        // the facts that answer: the words not in the page's name found in the fact (« anniversaire marc » → Marc's
+        // birthday line), for a short answer on top
+        let mut answers: Vec<Value> = Vec::new();
+        for (part, path, page, _) in &found {
+            let names = super::fold(&format!("{} {}", page.title, page.aliases().join(" ")));
+            let rest: Vec<&String> = wanted.iter().filter(|x| !names.contains(x.as_str())).collect();
+            if rest.is_empty() {
+                continue;
+            }
+            for (section, facts) in page.sections() {
+                if super::fold(&section) == super::fold(w.brief) {
+                    continue;
+                }
+                for fact in facts {
+                    let folded = super::fold(&format!("{section} {}", fact.text));
+                    if rest.iter().all(|x| folded.contains(x.as_str())) {
+                        let short =
+                            fact.text.split_once(':').map(|(_, v)| v.trim().to_string()).filter(|v| !v.is_empty());
+                        answers.push(
+                            json!({"page": page.title, "path": path, "part": part.as_str(), "section": section,
+                                            "fact": fact.text, "answer": short.unwrap_or_else(|| fact.text.clone()),
+                                            "by": fact.who, "date": fact.date}),
+                        );
+                    }
+                }
+            }
+        }
+        answers.truncate(5);
+        let pages: Vec<Value> = found
+            .iter()
+            .take(50)
+            .map(|(part, path, page, lines)| {
+                let mut v = page_summary(path, *part, page, w.brief);
+                v["lines"] = json!(lines);
+                v
+            })
+            .collect();
+        let tasks: Vec<Value> = super::tasks(&config, part)
+            .iter()
+            .filter(|t| !wanted.is_empty() && wanted.iter().all(|x| super::fold(&t.title).contains(x.as_str())))
+            .map(|t| t.view())
+            .collect();
+        Ok(json!({"answers": answers, "pages": pages, "tasks": tasks}))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+/// A page for the app: its frontmatter apart, its « En bref », its sections with each fact's attribution, its
+/// links resolved to pages (or not found), the pages that link to it.
+pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Value> {
+    super::checked(path)?;
+    let Some(text) = super::read_page_text(config, part, path) else {
+        return Err(super::NotebookError("no such page".into()).into());
+    };
+    let w = super::words(&super::language(config));
+    let stem = std::path::Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let page = super::Page::parse(&text, &stem);
+    let all = super::all_pages(config, part);
+    let resolve = |name: &str| -> Value {
+        match all.iter().find(|(p, pg)| {
+            pg.named(name) || std::path::Path::new(p).file_stem().map(|s| s.to_string_lossy() == name).unwrap_or(false)
+        }) {
+            Some((p, pg)) => json!({"title": name, "path": p, "kind": pg.kind()}),
+            None => json!({"title": name, "path": null}),
+        }
+    };
+    let sections: Vec<Value> = page
+        .sections()
+        .into_iter()
+        .filter(|(name, _)| super::fold(name) != super::fold(w.brief))
+        .map(|(name, facts)| {
+            let facts: Vec<Value> = facts
+                .iter()
+                .map(|f| {
+                    let links: Vec<Value> = super::links_in(&f.text).iter().map(|l| resolve(l)).collect();
+                    json!({"text": f.text, "by": if f.who.is_empty() { Value::Null } else { json!(f.who) },
+                           "date": if f.date.is_empty() { Value::Null } else { json!(f.date) }, "item": f.item, "links": links})
+                })
+                .collect();
+            json!({"title": name, "facts": facts})
+        })
+        .collect();
+    let links: Vec<Value> = super::links_in(&page.body).iter().map(|l| resolve(l)).collect();
+    let mut names: Vec<String> = vec![page.title.clone()];
+    names.extend(page.aliases());
+    let backlinks: Vec<Value> = all
+        .iter()
+        .filter(|(p, _)| p != path)
+        .filter(|(_, pg)| {
+            super::links_in(&pg.body).iter().any(|l| names.iter().any(|n| super::fold(n) == super::fold(l)))
+        })
+        .map(|(p, pg)| json!({"title": pg.title, "path": p, "kind": pg.kind()}))
+        .collect();
+    let tasks: Vec<Value> = super::tasks(config, part)
+        .iter()
+        .filter(|t| t.links.iter().any(|l| names.iter().any(|n| super::fold(n) == super::fold(l))))
+        .map(|t| t.view())
+        .collect();
+    Ok(json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(),
+              "frontmatter": page.front, "aliases": page.aliases(),
+              "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
+              "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
+              "summary": super::summary_of(&page.body, w.brief), "sections": sections, "links": links,
+              "backlinks": backlinks, "tasks": tasks, "text": text}))
+}
+
+async fn read_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let part = part_of(&q);
+    let path = web::query_str(&q, "path", true, Some(300))?.unwrap_or_default();
+    let view =
+        tokio::task::spawn_blocking(move || page_view(&config, part, &path)).await.map_err(anyhow::Error::from)?;
+    match view {
+        Ok(v) => Ok(web::ok(v)),
+        Err(err) => match err.downcast_ref::<super::NotebookError>() {
+            Some(e) => Err(HttpError::new(404, e.0.clone())),
+            None => Err(err.into()),
+        },
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PageEdit {
+    pub path: String,
+    pub text: String,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub private: bool,
+}
+
+impl Validate for PageEdit {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "path", Some(&self.path), 300);
+        check_max_len(errors, "text", Some(&self.text), 200_000);
+    }
+}
+
+async fn write_page(State(state): State<AppState>, Json(body): Json<PageEdit>) -> ApiResult<Response> {
+    let config = state.config();
+    let part = if body.private { Part::Health } else { Part::Main };
+    let entry = blocking(move || super::write_page(&config, part, &body.path, &body.text, &Who::you(&config))).await?;
+    Ok(web::ok(json!({"change": entry})))
+}
+
+async fn delete_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let part = part_of(&q);
+    let path = web::query_str(&q, "path", true, Some(300))?.unwrap_or_default();
+    let entry = blocking(move || super::delete_page(&config, part, &path, &Who::you(&config))).await?;
+    Ok(web::ok(json!({"change": entry})))
+}
+
+async fn history(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let part = part_of(&q);
+    let path = q.get("path").map(str::to_string);
+    let view = blocking(move || {
+        let changes: Vec<Value> =
+            super::history(&config, Some(part), path.as_deref(), 200).iter().map(|e| change_view(&config, e)).collect();
+        Ok(json!({"changes": changes}))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Restore {
+    pub change: String,
+}
+
+impl Validate for Restore {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "change", Some(&self.change), 40);
+    }
+}
+
+async fn restore(State(state): State<AppState>, Json(body): Json<Restore>) -> ApiResult<Response> {
+    let config = state.config();
+    let entry = blocking(move || super::restore(&config, &body.change, &Who::you(&config))).await?;
+    Ok(web::ok(json!({"change": entry})))
+}
+
+async fn list_tasks(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let part = part_of(&q);
+    let view = blocking(move || {
+        let all = super::tasks(&config, part);
+        let mut open: Vec<&super::Task> = all.iter().filter(|t| !t.done).collect();
+        open.sort_by(|a, b| (a.due.is_empty(), &a.due).cmp(&(b.due.is_empty(), &b.due)));
+        let done: Vec<Value> = all.iter().rev().filter(|t| t.done).take(50).map(|t| t.view()).collect();
+        Ok(json!({"open": open.iter().map(|t| t.view()).collect::<Vec<_>>(), "done": done}))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewTask {
+    pub title: String,
+    #[serde(default)]
+    pub due: Option<String>,
+    #[serde(default)]
+    pub page: Option<String>,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub private: bool,
+}
+
+impl Validate for NewTask {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "title", Some(&self.title), 300);
+        check_max_len(errors, "due", self.due.as_deref(), 40);
+        check_max_len(errors, "page", self.page.as_deref(), 200);
+    }
+}
+
+async fn add_task(State(state): State<AppState>, Json(body): Json<NewTask>) -> ApiResult<Response> {
+    let config = state.config();
+    let part = if body.private { Part::Health } else { Part::Main };
+    let push = state.push.clone();
+    let (task, reminder) = blocking(move || {
+        super::add_task(
+            &config,
+            part,
+            &body.title,
+            body.due.as_deref().unwrap_or(""),
+            body.page.as_deref().unwrap_or(""),
+            &Who::you(&config),
+        )
+    })
+    .await?;
+    if reminder {
+        wake(push, &state.config());
+    }
+    Ok(web::ok(json!({"task": task.view(), "reminder": reminder})))
+}
+
+/// The phones woken to apply the reminders' queue (a silent push), as for an agent's reminders_add.
+fn wake(push: std::sync::Arc<crate::push::PushService>, config: &Config) {
+    let agents = crate::reminders::read(config).get("agents").cloned().unwrap_or(json!([]));
+    let Some(agent) = agents.get(0).and_then(Value::as_str).map(str::to_string) else { return };
+    tokio::spawn(async move {
+        push.notify_silent(&agent, "reminders", Dict::new()).await;
+    });
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TaskDone {
+    #[serde(deserialize_with = "web::lax::bool")]
+    pub done: bool,
+}
+
+impl Validate for TaskDone {}
+
+async fn set_task(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<TaskDone>,
+) -> ApiResult<Response> {
+    let config = state.config();
+    let push = state.push.clone();
+    let task = blocking(move || {
+        super::set_task_done(&config, &[Part::Main, Part::Health], &id, body.done, &Who::you(&config), false)
+    })
+    .await?;
+    let Some(task) = task else { return Err(HttpError::new(404, "no such task")) };
+    if task.done {
+        wake(push, &state.config());
+    }
+    Ok(web::ok(json!({"task": task.view()})))
+}
+
+async fn documents(State(state): State<AppState>) -> ApiResult<Response> {
+    let config = state.config();
+    let view = blocking(move || Ok(json!({"documents": super::documents(&config)}))).await?;
+    Ok(web::ok(view))
+}
+
+pub fn settings_view(config: &Config) -> Value {
+    let spend = super::tidy::spending(config);
+    json!({"mentions": super::mentions(config), "nightly": super::nightly(config), "nightly_choices": super::NIGHTLY,
+           "language": super::language(config),
+           "monthly_cap": config.notebook.monthly_cap, "spent_this_month": spend.get("eur").cloned().unwrap_or(json!(0.0)),
+           "model": config.notebook.model})
+}
+
+async fn get_settings(State(state): State<AppState>) -> ApiResult<Response> {
+    let config = state.config();
+    let view = blocking(move || Ok(settings_view(&config))).await?;
+    Ok(web::ok(view))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Settings {
+    #[serde(default, deserialize_with = "web::lax::opt_bool")]
+    pub mentions: Option<bool>,
+    #[serde(default)]
+    pub nightly: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
+}
+
+impl Validate for Settings {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        if let Some(n) = &self.nightly {
+            if !super::NIGHTLY.contains(&n.as_str()) {
+                errors.push(FieldError::new(
+                    "value_error",
+                    web::body_loc("nightly"),
+                    format!("Value error, one of {}", super::NIGHTLY.join(", ")),
+                    json!(n),
+                ));
+            }
+        }
+        if let Some(l) = &self.language {
+            if !super::WORDS.iter().any(|w| w.lang == l) {
+                errors.push(FieldError::new(
+                    "value_error",
+                    web::body_loc("language"),
+                    "Value error, one of fr, en, de, es",
+                    json!(l),
+                ));
+            }
+        }
+    }
+}
+
+async fn set_settings(State(state): State<AppState>, Json(body): Json<Settings>) -> ApiResult<Response> {
+    let config = state.config();
+    let view = blocking(move || {
+        let _guard = super::lock();
+        if body.language.is_some()
+            && (!super::all_pages(&config, Part::Main).is_empty()
+                || !super::all_pages(&config, Part::Health).is_empty())
+        {
+            return Err(super::NotebookError("the Carnet's language is set once it has pages".into()).into());
+        }
+        super::update_state(&config, |s| {
+            if let Some(m) = body.mentions {
+                s.insert("mentions".into(), json!(m));
+            }
+            if let Some(n) = &body.nightly {
+                s.insert("nightly".into(), json!(n));
+            }
+            if let Some(l) = &body.language {
+                s.insert("language".into(), json!(l));
+            }
+        })?;
+        Ok(settings_view(&config))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+async fn export(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let with_health = part_of(&QueryMap {
+        pairs: q.get("health").map(|h| vec![("private".to_string(), h.to_string())]).unwrap_or_default(),
+    }) == Part::Health;
+    let lang = super::language(&config);
+    let data = blocking(move || super::export_zip(&config, with_health)).await?;
+    let name = format!(
+        "{}.zip",
+        if lang == "fr" {
+            "Carnet"
+        } else if lang == "de" {
+            "Notizbuch"
+        } else if lang == "es" {
+            "Cuaderno"
+        } else {
+            "Notebook"
+        }
+    );
+    let mut response = Response::new(Body::from(data));
+    response.headers_mut().insert("content-type", HeaderValue::from_static("application/zip"));
+    if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")) {
+        response.headers_mut().insert("content-disposition", v);
+    }
+    response.headers_mut().insert("cache-control", HeaderValue::from_static("no-store"));
+    Ok(response)
+}
+
+async fn tidy_now(State(state): State<AppState>) -> ApiResult<Response> {
+    let config = state.config();
+    let record = super::tidy::run(&config, &state.hermes, &state.http).await;
+    Ok(web::ok(json!({"run": record})))
+}
+
+async fn runs(State(state): State<AppState>) -> ApiResult<Response> {
+    let config = state.config();
+    let view = blocking(move || {
+        Ok(json!({"runs": super::tidy::runs(&config), "spend": super::tidy::spending(&config),
+                  "monthly_cap": config.notebook.monthly_cap}))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+/// `/v1/notebook…` (mounted under /v1 with the bridge key).
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/notebook", get(home))
+        .route("/notebook/pages", get(list_pages))
+        .route("/notebook/search", get(search))
+        .route("/notebook/page", get(read_page).put(write_page).delete(delete_page))
+        .route("/notebook/history", get(history))
+        .route("/notebook/restore", post(restore))
+        .route("/notebook/tasks", get(list_tasks).post(add_task))
+        .route("/notebook/tasks/{id}", post(set_task))
+        .route("/notebook/documents", get(documents))
+        .route("/notebook/settings", get(get_settings).patch(set_settings))
+        .route("/notebook/export", get(export))
+        .route("/notebook/tidy", post(tidy_now))
+        .route("/notebook/runs", get(runs))
+}

@@ -297,6 +297,9 @@ pub struct AgentSettings {
     /// « Météo »: the `weather` tool (weather.rs).
     #[serde(default, deserialize_with = "web::lax::opt_bool")]
     pub weather: Option<bool>,
+    /// « Carnet »: the notebook tools and their rule (notebook/), on by default.
+    #[serde(default, deserialize_with = "web::lax::opt_bool")]
+    pub notebook: Option<bool>,
 }
 
 impl Validate for AgentSettings {
@@ -1105,6 +1108,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     // The language block is the bridge's: shown and changed as « language », never in the editable personality.
     let (soul, lang) = crate::souls::split_language(&read_soul(config, agent)?);
     let (soul, _) = crate::souls::split_health(&soul);
+    let (soul, _) = crate::souls::split_notebook(&soul);
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         // set up by hand: its tools are its administrator's
         return Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
@@ -1149,6 +1153,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "health": {"on": crate::health::enabled(config, agent.name.as_str()),
                          "categories": crate::health::categories(config, agent.name.as_str())},
               "weather": {"on": crate::weather::enabled(config, agent.name.as_str())},
+              "notebook": {"on": crate::notebook::enabled(config, agent.name.as_str())},
               "group": crate::agent_groups::group_of(config, &agent.name)}))
 }
 
@@ -1177,7 +1182,8 @@ pub async fn write_settings(
             || body.browser.is_some()
             || body.health.is_some()
             || body.health_categories.is_some()
-            || body.weather.is_some())
+            || body.weather.is_some()
+            || body.notebook.is_some())
     {
         return Err(AgentError("the tools of an agent set up by hand are changed on its server".into()).into());
     }
@@ -1212,6 +1218,7 @@ pub async fn write_settings(
             _ => text,
         };
         let text = crate::souls::with_health(&text, crate::health::enabled(&config, &agent.name));
+        let text = crate::souls::with_notebook(&text, crate::notebook::enabled(&config, &agent.name));
         std::fs::write(profile_folder(&config, agent).join("SOUL.md"), text)?;
     }
     if let Some(on) = body.health {
@@ -1223,6 +1230,15 @@ pub async fn write_settings(
     if let Some(on) = body.weather {
         if crate::weather::set_enabled(&config, &agent.name, on)? {
             // Its tools' entry changes (`weather` listed or not): its Hermes fetches the list again.
+            if let Err(exc) = crate::agent_tools::register(&config, agent, run).await {
+                let error = tail(&exc.to_string(), 200);
+                tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %error, "agent tools not registered");
+            }
+        }
+    }
+    if let Some(on) = body.notebook {
+        if crate::notebook::set_enabled(&config, &agent.name, on)? {
+            // Its tools' entry changes (the notebook tools listed or not) and its rule with them.
             if let Err(exc) = crate::agent_tools::register(&config, agent, run).await {
                 let error = tail(&exc.to_string(), 200);
                 tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %error, "agent tools not registered");

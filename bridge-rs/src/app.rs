@@ -315,6 +315,7 @@ impl AppState {
             self.spawn(watcher.run());
         }
         self.spawn(purge_loop(self.clone()));
+        self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
         if self.sleep.enabled() {
@@ -1384,6 +1385,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::jobs::router())
         .merge(crate::notes_import::router())
         .merge(crate::reminders::router())
+        .merge(crate::notebook::api::router())
         .merge(crate::calendar::router())
         .merge(crate::contacts::router())
         .merge(crate::health::router())
