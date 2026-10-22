@@ -164,6 +164,10 @@ record({"rule": bool(found)})
 if found is not None:
     if found.get("stdout"):
         sys.stdout.write(found["stdout"])
+    if found.get("stdout_file"):
+        sys.stdout.flush()
+        with open(found["stdout_file"], "rb") as fh:
+            sys.stdout.buffer.write(fh.read())
     if found.get("stderr"):
         sys.stderr.write(found["stderr"])
     sys.exit(int(found.get("exit", 0)))
@@ -213,9 +217,11 @@ class Commands:
             self.log.unlink()
 
     def rule(self, cmd: str, prefix: List[str], exit: int = 0, stdout: str = "", stderr: str = "",
-             times: int = -1) -> None:
+             times: int = -1, stdout_file: str = "") -> None:
         rules = json.loads(self.rules_path.read_text(encoding="utf-8"))
         item: Dict[str, Any] = {"cmd": cmd, "prefix": prefix, "exit": exit, "stdout": stdout, "stderr": stderr}
+        if stdout_file:
+            item["stdout_file"] = stdout_file   # bytes (a tar stream for `podman cp … -`)
         if times >= 0:
             item["times"] = times
         rules.append(item)
