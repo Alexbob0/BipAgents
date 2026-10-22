@@ -104,13 +104,20 @@ de partage.
 
 **Ta santé, si tu l'actives (« Santé »).** Pour chaque agent, tu peux activer « Santé » dans ses outils. Avec ton
 autorisation dans Apple Santé (iPhone, y compris les données de ton Apple Watch) ou Health Connect (Android), l'app
-lit, sans jamais rien y écrire, un résumé de chaque journée : ton sommeil (temps endormi, temps au lit, heures de
-coucher et de lever), tes pas, ton énergie active, tes minutes d'exercice, ta fréquence cardiaque au repos, ta
-variabilité cardiaque, ton poids et tes séances de sport (type, durée, distance, énergie). Elle envoie les 30 derniers
-jours la première fois, puis les jours qui ont changé, **uniquement à ton serveur** (ou à ta place avec l'offre tout
-compris), où ils sont gardés un fichier par jour, 400 jours au plus. Seuls les agents pour lesquels tu as activé
-« Santé » les lisent, pour t'aider sur ton sommeil, ton activité et ton entraînement ; ils ne posent pas de
-diagnostic. Le modèle d'IA de l'agent reçoit ce que l'agent lit pour te répondre : avec l'offre tout compris, « Santé »
+lit, sans jamais rien y écrire, un résumé de chaque journée, **seulement pour les catégories que tu as choisies pour
+cet agent** : activité (pas, énergie active, minutes d'exercice, séances avec leur type, durée, distance et énergie,
+distance à pied et en courant, étages montés, heures debout) ; sommeil (temps endormi et au lit, heures de coucher et de
+lever, phases du sommeil, respiration et température du poignet la nuit) ; cœur (fréquence cardiaque au repos,
+variabilité cardiaque, pouls moyen, le plus bas et le plus haut de la journée, oxygène dans le sang, VO2 max) ; corps
+(poids, masse grasse, IMC, tension) ; alimentation et eau (calories mangées, eau, caféine) ; bien-être (minutes de
+pleine conscience, humeurs notées sur iPhone) ; et, **désactivées tant que tu ne les actives pas une par une**, la
+glycémie et le cycle (flux des règles, début des règles), plus sensibles. Un agent qui reçoit « Santé » commence avec
+activité, sommeil et cœur ; « Tout partager » laisse la glycémie et le cycle de côté. Certaines données n'existent que
+sur iPhone (heures debout, température du poignet, IMC, humeurs). Elle envoie les 30 derniers jours la première fois,
+puis les jours qui ont changé, **uniquement à ton serveur** (ou à ta place avec l'offre tout compris), où ils sont
+gardés un fichier par jour, 400 jours au plus, avec seulement les catégories qu'au moins un agent y lit (une catégorie
+que plus aucun agent ne lit est effacée des journées gardées). Chaque agent ne lit que ses catégories, pour t'aider sur
+ton sommeil, ton activité, ton entraînement et tes habitudes ; ils ne posent pas de diagnostic. Le modèle d'IA de l'agent reçoit ce que l'agent lit pour te répondre : avec l'offre tout compris, « Santé »
 n'est possible qu'avec un modèle qui tourne dans l'Union européenne. Le téléphone ne garde que les dates et une
 empreinte de ce qu'il a déjà envoyé, jamais les valeurs, et rien dans iCloud. Kerfy Studio ne les reçoit pas ; rien
 n'est vendu ni utilisé pour de la publicité. **Base légale** : ton consentement explicite (articles 6.1.a et 9.2.a du

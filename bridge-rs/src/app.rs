@@ -1068,7 +1068,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         "push_relay": state.push_service.is_some(), "fcm": state.fcm.is_some(),
         "tts_queue": tts.scheduler.depth(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
-        "features": ["agent_groups", "files_kept", "calendar", "contacts"],
+        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts"],
     })))
 }
 

@@ -102,12 +102,20 @@ el nombre y la dirección de tus agentes; solo va a la app o a la persona que el
 
 **Tu salud, si la activas (« Santé », Salud).** Para cada agente, puedes activar Salud en sus herramientas. Con tu
 permiso en Apple Salud (iPhone, incluidos los datos de tu Apple Watch) o Health Connect (Android), la app lee, sin
-escribir nunca nada allí, un resumen de cada día: tu sueño (tiempo dormido, tiempo en la cama, hora de acostarte y de
-levantarte), tus pasos, tu energía activa, tus minutos de ejercicio, tu frecuencia cardíaca en reposo, tu
-variabilidad cardíaca, tu peso y tus sesiones de deporte (tipo, duración, distancia, energía). Envía los últimos 30
-días la primera vez y luego los días que cambiaron, **solo a tu servidor** (o a tu plaza con la oferta todo incluido),
-donde se guardan en un archivo por día, 400 días como máximo. Solo los agentes para los que activaste Salud los leen,
-para ayudarte con tu sueño, tu actividad y tu entrenamiento; no hacen diagnósticos. El modelo de IA del agente recibe
+escribir nunca nada allí, un resumen de cada día, **solo de las categorías que elegiste para ese agente**: actividad
+(pasos, energía activa, minutos de ejercicio, sesiones de deporte con su tipo, duración, distancia y energía, distancia
+caminando y corriendo, pisos subidos, horas de pie); sueño (tiempo dormido y en la cama, hora de acostarte y de
+levantarte, fases del sueño, respiración y temperatura de la muñeca por la noche); corazón (frecuencia cardíaca en
+reposo, variabilidad cardíaca, pulso medio, mínimo y máximo del día, oxígeno en sangre, VO2 máx.); cuerpo (peso, grasa
+corporal, IMC, tensión arterial); comida y agua (calorías comidas, agua, cafeína); bienestar (minutos de atención
+plena, estados de ánimo anotados en el iPhone); y, **desactivadas hasta que las actives una a una**, la glucosa y el
+ciclo (flujo y comienzo de la regla), más sensibles. Un agente que recibe Salud empieza con actividad, sueño y corazón;
+«Compartir todo» deja fuera la glucosa y el ciclo. Algunos datos solo existen en el iPhone (horas de pie, temperatura
+de la muñeca, IMC, estados de ánimo). Envía los últimos 30 días la primera vez y luego los días que cambiaron, **solo a
+tu servidor** (o a tu plaza con la oferta todo incluido), donde se guardan en un archivo por día, 400 días como
+máximo, solo con las categorías que al menos un agente lee allí (una categoría que ya ningún agente lee se borra de
+los días guardados). Cada agente solo lee sus categorías, para ayudarte con tu sueño, tu actividad, tu entrenamiento y
+tus hábitos; no hacen diagnósticos. El modelo de IA del agente recibe
 lo que el agente lee para responderte: con la oferta todo incluido, Salud solo es posible con un modelo que funciona en
 la Unión Europea. El teléfono solo guarda las fechas y una huella de lo que ya envió, nunca los valores, y nada en
 iCloud. Kerfy Studio no los recibe; nada se vende ni se usa para publicidad. **Base jurídica**: tu consentimiento
