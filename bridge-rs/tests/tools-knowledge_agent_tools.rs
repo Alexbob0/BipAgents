@@ -309,8 +309,8 @@ async fn the_agent_reads_and_searches_its_knowledge_pages() {
 
 #[test]
 fn the_tools_version_is_the_pythons() {
-    // tools_version() of bridge/bipbridge/agent_tools.py (tests/golden/agent_tools_version.txt), then of the tools
-    // added since (2026-10-22: `route`)
+    // tools_version() of bridge/bipbridge/agent_tools.py (tests/golden/agent_tools_version.txt), until the Rust bridge's
+    // own tools changed: reminders_add's place and `route` (2026-10-22, the Python bridge doesn't have them).
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }

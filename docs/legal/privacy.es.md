@@ -136,6 +136,37 @@ agente, o retira el permiso en los ajustes del teléfono (ya no se envía nada).
 buzón, que quedan cifradas en tu servidor) cuando un agente de ese buzón los consulta, y añade o borra las citas que
 pide; no se guarda nada salvo la lista de esos calendarios. Desactívalo para dejarlo.
 
+**Tus contactos, si los compartes (« Contacts », Contactos).** Para cada agente, puedes activar Contactos en sus
+herramientas. Con tu permiso (Contactos en el iPhone y en Android), la app lee la libreta de direcciones de tu
+teléfono, incluidas las cuentas añadidas en él (iCloud, Google…), y envía una copia **solo a tu servidor** (o a tu
+plaza con la oferta todo incluido), cuando se abre la app: toda la libreta o solo los grupos (etiquetas) que elijas
+para ese servidor, con el nombre, apodo, teléfonos, direcciones de correo y postales, cumpleaños, empresa y cargo, las
+personas relacionadas y los grupos de cada contacto, y sus notas solo si marcas « notas » (desactivado por defecto).
+Las fotos nunca se envían. La copia se queda allí y se sustituye en cada envío; lo que tu elección ya no cubre se
+retira enseguida, y toda la copia se borra cuando ningún agente puede leerla ya. Solo la leen los agentes que
+elegiste; cuando piden añadir o cambiar un contacto, lo hace tu teléfono (así no se borra nada). El modelo de IA del
+agente recibe los contactos que el agente lee para responderte. Kerfy Studio no los recibe. **Tus contactos son otras
+personas**: los agentes tienen la consigna de no escribirles nunca, llamarles ni pasar sus datos sin tu permiso, y
+sigues siendo responsable del uso que hagas de ellos. **Base jurídica**: tu consentimiento (artículo 6.1.a del RGPD),
+que das al activar Contactos y permitirlo en tu teléfono. **Dejarlo**: desactiva Contactos para el agente, o retira
+el permiso en los ajustes del teléfono (ya no se envía nada).
+
+**Los recordatorios por lugar y tu ubicación.** Cuando le pides a un agente «recuérdame la leche al llegar al
+súper», pide un recordatorio con el nombre del lugar (o sus coordenadas). En el iPhone, es la app Recordatorios de
+Apple la que vigila el lugar: BipAgents no tiene acceso a tu ubicación; el nombre del lugar se busca en Mapas de Apple
+para encontrar sus coordenadas. En Android, que no tiene app de recordatorios, BipAgents guarda él mismo estos
+recordatorios: te pide el permiso de ubicación (también en segundo plano) solo cuando un agente ha creado uno, busca el
+lugar con el servicio de geocodificación del teléfono y confía el círculo alrededor del lugar a los servicios de
+ubicación de Google Play en el teléfono (geofencing). Tu ubicación se queda en el teléfono: no se envía ni a tu
+servidor, ni al agente, ni a Kerfy Studio, y solo sirve para avisarte al llegar o al salir. **Base jurídica**: tu
+consentimiento (artículo 6.1.a del RGPD), que das al permitir la ubicación. **Para dejarlo**: elimina el recordatorio
+(Ajustes › Recordatorios por lugar) o retira el permiso de ubicación en los ajustes del teléfono.
+
+**Lo que compartes con la app.** Cuando compartes un mensaje o una captura de pantalla con BipAgents (desde WhatsApp,
+Signal, Mensajes…), va al agente que eliges, en tu servidor, como un adjunto que envías tú; puede contener palabras de
+otras personas, así que comparte solo lo que necesites. La app nunca envía el borrador de respuesta que escribe el
+agente: «Enviar con…» abre la app que eliges, y lo envías tú.
+
 ## 4. Lo que Kerfy Studio puede recibir
 
 ### 4.1 Las notificaciones, a través del relé de Kerfy Studio

@@ -143,7 +143,7 @@ def test_the_iphone_shares_its_reminders_and_does_what_the_agents_ask(bridges, f
     token = "coach-token-" + "c" * 30
     give_token(bridge, "coach", token)
     not_yet = call(bridge, "reminders_list", {}, token=token)
-    assert not_yet["isError"] and text_of(not_yet).startswith("The person hasn't shared their iPhone Reminders with you")
+    assert not_yet["isError"] and text_of(not_yet).startswith("The person hasn't shared their reminders with you")
     assert bridge.put("/v1/reminders/agents", json={"agents": ["Coach"]}, headers=AUTH).json() == {"agents": ["coach"]}
     unknown = bridge.put("/v1/reminders/agents", json={"agents": ["ghost"]}, headers=AUTH)
     assert unknown.status_code == 400 and unknown.json() == {"detail": "unknown agent"}

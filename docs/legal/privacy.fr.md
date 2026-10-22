@@ -140,6 +140,39 @@ réglages du téléphone (plus rien n'est envoyé). Pour une boîte mail que tu 
 boîte, qui restent chiffrés sur ton serveur) quand un agent de cette boîte les consulte, et y ajoute ou supprime les
 rendez-vous qu'il demande ; rien n'en est gardé à part la liste de ces agendas. Désactive-le pour arrêter.
 
+**Tes contacts, si tu les partages (« Contacts »).** Pour chaque agent, tu peux activer « Contacts » dans ses outils.
+Avec ton autorisation (Contacts sur l'iPhone et sur Android), l'app lit le carnet d'adresses de ton téléphone, y
+compris les comptes ajoutés dessus (iCloud, Google…), et en envoie une copie **uniquement à ton serveur** (ou à ta
+place avec l'offre tout compris), quand l'app s'ouvre : tout le carnet ou seulement les groupes (libellés) que tu
+choisis pour ce serveur, avec pour chaque contact son nom, son surnom, ses numéros, ses adresses e-mail et postales,
+son anniversaire, son entreprise et son poste, les personnes qui lui sont liées, ses groupes, et ses notes seulement si
+tu coches « notes » (désactivé par défaut). Les photos ne sont jamais envoyées. Cette copie y reste, remplacée à chaque
+envoi ; ce que ton choix ne couvre plus en est retiré aussitôt, et toute la copie est effacée quand plus aucun agent ne
+peut la lire. Seuls les agents que tu as choisis la lisent ; quand ils te demandent d'ajouter ou de modifier un
+contact, c'est ton téléphone qui le fait (rien n'est supprimé de cette façon). Le modèle d'IA de l'agent reçoit les
+contacts que l'agent lit pour te répondre. Kerfy Studio ne les reçoit pas. **Tes contacts sont d'autres personnes** :
+les agents ont pour consigne de ne jamais leur écrire, les appeler ou transmettre leurs coordonnées sans ton accord, et
+tu restes responsable de l'usage que tu en fais. **Base légale** : ton consentement (article 6.1.a du RGPD), que tu
+donnes en activant « Contacts » et en l'autorisant sur ton téléphone. **Arrêter** : désactive « Contacts » pour
+l'agent, ou retire l'autorisation dans les réglages du téléphone (plus rien n'est envoyé).
+
+**Les rappels par lieu et ta position.** Quand tu demandes à un agent « rappelle-moi le lait en arrivant au
+supermarché », il demande un rappel avec le nom du lieu (ou ses coordonnées). Sur l'iPhone, c'est l'app Rappels
+d'Apple qui surveille le lieu : BipAgents n'a pas accès à ta position ; le nom du lieu est cherché dans Plans d'Apple
+pour trouver ses coordonnées. Sur Android, qui n'a pas d'app Rappels, BipAgents garde lui-même ces rappels : il te
+demande la permission de position (y compris en arrière-plan) seulement quand un agent en a créé un, cherche le lieu
+avec le service de géocodage du téléphone, et confie le cercle autour du lieu aux services de localisation de Google
+Play sur le téléphone (geofencing). Ta position reste sur le téléphone : elle n'est envoyée ni à ton serveur, ni à
+l'agent, ni à Kerfy Studio, et ne sert qu'à te prévenir en arrivant ou en partant. **Base légale** : ton consentement
+(article 6.1.a du RGPD), que tu donnes en autorisant la position. **Arrêter** : supprime le rappel (Réglages › Rappels
+par lieu), ou retire la permission de position dans les réglages du téléphone.
+
+**Ce que tu partages vers l'app.** Quand tu partages un message ou une capture d'écran vers BipAgents (depuis
+WhatsApp, Signal, Messages…), il va à l'agent que tu choisis, sur ton serveur, comme une pièce jointe que tu envoies
+toi-même ; il peut contenir les mots d'autres personnes, partage seulement ce dont tu as besoin. Le brouillon de
+réponse que l'agent écrit n'est jamais envoyé par l'app : le bouton « Envoyer avec… » ouvre l'app de ton choix, et
+c'est toi qui envoies.
+
 ## 4. Ce que Kerfy Studio peut recevoir
 
 ### 4.1 Les notifications, par le relais de Kerfy Studio
