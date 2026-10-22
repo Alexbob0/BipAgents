@@ -152,13 +152,16 @@ fn create_page_tool() -> Value {
     light and dark (prefers-color-scheme), with a clear title and the date of the data. Nothing typed in the \
     page is kept (no storage): what must last goes in its data, through you. Say where the numbers come from \
     (which document, which date). To change a page later (new results, a fix), call again with its page id: \
-    the person's link shows the new version. The result gives a MEDIA: line: put it alone on a line in your reply.",
+    the person's link shows the new version. Link it to the Carnet page of what it is about (notebook: the person's, \
+    subject's or area's page, e.g. « Voyage Japon »; search the Carnet first): the person finds it there, in its \
+    Documents. The result gives a MEDIA: line: put it alone on a line in your reply.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "html": {"type": "string", "description": "The whole page: one HTML file with everything inline."},
                 "title": {"type": "string", "description": "A short title, shown on the page's card.", "maxLength": 80},
                 "page": {"type": "string", "description": "To update a page: its id (from a previous result or list_pages)."},
+                "notebook": {"type": "string", "description": "The Carnet page it is about: its name, its path (« Domaines/Santé ») or its id. Kept when you update the page without it."},
             },
             "required": ["html", "title"],
         },
@@ -1170,9 +1173,52 @@ inline, or do without, and update the page.",
         )
     };
     let path = py::py_str(made.get("path").unwrap_or(&Value::Null));
+    // its place in the Carnet: the page it is about; the health agent's pages stay in the private health part
+    let health = crate::notebook::health_agent(config, &agent.name);
+    let wanted = tk::strip(&tk::str_or_empty(arguments.get("notebook"))).to_string();
+    let mut linked = String::new();
+    let mut link: Option<(String, &str)> = None;
+    if !wanted.is_empty() {
+        let parts: Vec<crate::notebook::Part> = if health {
+            vec![crate::notebook::Part::Main, crate::notebook::Part::Health]
+        } else {
+            vec![crate::notebook::Part::Main]
+        };
+        match crate::notebook::find(config, &parts, &wanted) {
+            Some(mut found) if crate::notebook::KINDS.contains(&found.page.kind().as_str()) => {
+                if found.page.id().is_empty() {
+                    // a page without an id yet (made by hand): given one, so the link survives a rename
+                    let _guard = crate::notebook::lock();
+                    let before = found.page.render();
+                    found.page.ensure_id();
+                    let who = crate::notebook::Who::agent(config, &agent.name);
+                    crate::notebook::commit(
+                        config,
+                        found.part,
+                        &found.path,
+                        Some(&before),
+                        Some(&found.page.render()),
+                        &who,
+                        "id",
+                        "",
+                    )?;
+                }
+                linked = format!("\nLinked to the Carnet page {} ({}).", found.page.title, found.path);
+                link = Some((found.page.id(), found.part.as_str()));
+            }
+            _ => {
+                linked = format!(
+                    "\nNo Carnet page « {wanted} »: the page is not linked (notebook_search finds the page; file the subject first if it has none)."
+                );
+            }
+        }
+    }
+    if link.is_some() || health {
+        pages::set_link(config, &agent.name, &id, link.as_ref().map(|(i, p)| (i.as_str(), *p)), health)?;
+    }
     Ok(tool_text(
         &format!(
-            "Page {}: id {id}, version {version}.{warning}\nTo give it to the person, put this line alone at the end of \
+            "Page {}: id {id}, version {version}.{warning}{linked}\nTo give it to the person, put this line alone at the end of \
 your reply:\nMEDIA:{path}",
             if version > 1 { "updated" } else { "ready" }
         ),

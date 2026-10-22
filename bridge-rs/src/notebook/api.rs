@@ -3,10 +3,12 @@
 //! behind the app's lock).
 //!
 //!     GET    /v1/notebook                      home: sections and counts, « Nouveau » (recent changes), upcoming tasks
-//!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, area, other)
+//!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, area, other), with what their card
+//!                                              shows (close, next_date, status, facts)
 //!     GET    /v1/notebook/search?q=            pages, and the facts that answer (for a short answer on top)
 //!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links
 //!     PUT    /v1/notebook/page                 {path, text, private?}   the person's edit (« toi » in its history)
+//!     PUT    /v1/notebook/section              {path, section (its id), text, private?}   « Modifier » on one section
 //!     DELETE /v1/notebook/page?path=
 //!     GET    /v1/notebook/history?path=        changes (a page's, or all), the newest first
 //!     POST   /v1/notebook/restore              {change}   the page as it was after that change
@@ -16,7 +18,8 @@
 //!     GET    /v1/notebook/dates?days=&all=     « Dates à venir »: dated facts (close people's by default), not tasks
 //!     POST   /v1/notebook/close                {path, close}   a person marked close (« proche ») or not
 //!     GET    /v1/notebook/proposals            the agents' task proposals, the kinds declined
-//!     GET    /v1/notebook/documents            the files the agents made or received, by agent, with their subjects
+//!     GET    /v1/notebook/documents?private=   the files the agents made or received and their web pages, by agent,
+//!                                              with their subjects (the private part's pages only with private=1)
 //!     GET    /v1/notebook/settings             {mentions, nightly, language, cap…}
 //!     PATCH  /v1/notebook/settings             {mentions?, nightly?, language? (only while the Carnet is empty)}
 //!     GET    /v1/notebook/export?health=       a zip of the vault, for Obsidian
@@ -89,7 +92,7 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         // the open tasks that count: archived ones left out, the person's own first
         let open = super::open_tasks(&config, Part::Main);
         sections.push(json!({"kind": "tasks", "title": w.tasks, "count": open.len()}));
-        let documents = super::documents(&config);
+        let documents = super::documents(&config, Part::Main);
         sections.push(json!({"kind": "documents", "title": w.documents, "count": documents.len()}));
         let (_, inbox) = super::inbox(&config);
         let recent: Vec<Value> =
@@ -120,10 +123,39 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
     let kind = q.get("kind").unwrap_or("").to_string();
     let view = blocking(move || {
         let w = super::words(&super::language(&config));
+        // what a section's card shows: a person's next date and whether they are close, a subject's « Où on en
+        // est », an area's number of facts
+        let dates = match part {
+            Part::Main => super::upcoming_dates(&config, 366, true, chrono::Local::now().date_naive()),
+            Part::Health => Vec::new(),
+        };
         let pages: Vec<Value> = super::all_pages(&config, part)
             .iter()
             .filter(|(path, p)| kind.is_empty() || section_of(w, p, path) == kind)
-            .map(|(path, p)| page_summary(path, part, p, w.brief))
+            .map(|(path, p)| {
+                let mut view = page_summary(path, part, p, w.brief);
+                let shaped = super::Page { body: super::in_outline(&config, p), ..p.clone() };
+                let sections = shaped.sections();
+                let status = super::template::title(&p.kind(), "status", &super::language(&config));
+                view["close"] = json!(p.close());
+                view["next_date"] = dates
+                    .iter()
+                    .find(|d| d.get("path").and_then(Value::as_str) == Some(path.as_str()))
+                    .map(|d| json!({"date": d["date"], "in_days": d["in_days"], "fact": d["fact"], "yearly": d["yearly"]}))
+                    .unwrap_or(Value::Null);
+                view["status"] = sections
+                    .iter()
+                    .find(|(name, _)| p.kind() == "subject" && *name == status)
+                    .and_then(|(_, facts)| facts.first())
+                    .map(|f| json!(f.text))
+                    .unwrap_or(Value::Null);
+                view["facts"] = json!(sections
+                    .iter()
+                    .filter(|(name, _)| super::fold(name) != super::fold(w.brief))
+                    .map(|(_, facts)| facts.len())
+                    .sum::<usize>());
+                view
+            })
             .collect();
         Ok(json!({"pages": pages}))
     })
@@ -196,7 +228,11 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
     };
     let w = super::words(&super::language(config));
     let stem = std::path::Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let page = super::Page::parse(&text, &stem);
+    let mut page = super::Page::parse(&text, &stem);
+    // shown in its outline even before the re-filing reached it (on disk at the next write or the re-filing)
+    page.body = super::in_outline(config, &page);
+    let kind = page.kind();
+    let lang = super::language(config);
     let all = super::all_pages(config, part);
     let resolve = |name: &str| -> Value {
         match all.iter().find(|(p, pg)| {
@@ -219,8 +255,15 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
                            "date": if f.date.is_empty() { Value::Null } else { json!(f.date) }, "item": f.item, "links": links})
                 })
                 .collect();
-            json!({"title": name, "facts": facts})
+            let id = super::template::resolve(&kind, &name)
+                .or_else(|| (super::fold(&name) == super::fold(&super::template::title(&kind, "other", &lang))).then_some("other"));
+            json!({"id": id, "title": name, "facts": facts})
         })
+        .collect();
+    // the kind's outline, for « Modifier » on a section and adding to an empty one
+    let outline: Vec<Value> = super::template::outline(&kind)
+        .iter()
+        .map(|s| json!({"id": s.id, "title": super::template::title(&kind, s.id, &lang)}))
         .collect();
     let links: Vec<Value> = super::links_in(&page.body).iter().map(|l| resolve(l)).collect();
     let mut names: Vec<String> = vec![page.title.clone()];
@@ -238,12 +281,17 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
         .filter(|t| t.links.iter().any(|l| names.iter().any(|n| super::fold(n) == super::fold(l))))
         .map(|t| t.view())
         .collect();
+    // the web pages the agents made about it (linked to it by `create_page`), shown in its « Documents »
+    let documents: Vec<Value> = super::documents(config, part)
+        .into_iter()
+        .filter(|d| d.get("linked").and_then(|l| l.get("path")).and_then(Value::as_str) == Some(path))
+        .collect();
     Ok(json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(),
               "frontmatter": page.front, "aliases": page.aliases(),
               "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
               "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
-              "summary": super::summary_of(&page.body, w.brief), "sections": sections, "links": links,
-              "backlinks": backlinks, "tasks": tasks, "id": page.id(), "close": page.close(),
+              "summary": super::summary_of(&page.body, w.brief), "sections": sections, "outline": outline, "links": links,
+              "backlinks": backlinks, "tasks": tasks, "documents": documents, "id": page.id(), "close": page.close(),
               "shared_with": super::shares_of(config, part, path, &page), "text": text}))
 }
 
@@ -282,6 +330,40 @@ async fn write_page(State(state): State<AppState>, Json(body): Json<PageEdit>) -
     let part = if body.private { Part::Health } else { Part::Main };
     let entry = blocking(move || super::write_page(&config, part, &body.path, &body.text, &Who::you(&config))).await?;
     Ok(web::ok(json!({"change": entry})))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SectionEdit {
+    pub path: String,
+    /// The section's id in the page's outline (`dates`, `decisions`…).
+    pub section: String,
+    /// Its new lines (« - … »; empty: the section is emptied). A line unchanged keeps its attribution.
+    pub text: String,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub private: bool,
+}
+
+impl Validate for SectionEdit {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "path", Some(&self.path), 300);
+        check_max_len(errors, "section", Some(&self.section), 80);
+        check_max_len(errors, "text", Some(&self.text), 50_000);
+    }
+}
+
+/// The person's « Modifier » on one section of a page.
+async fn write_section(State(state): State<AppState>, Json(body): Json<SectionEdit>) -> ApiResult<Response> {
+    let config = state.config();
+    let part = if body.private { Part::Health } else { Part::Main };
+    let view = blocking(move || {
+        super::checked(&body.path)?;
+        let who = Who::you(&config);
+        let (written, _) =
+            super::edit(&config, &[part], &body.path, "", "", &body.section, Some(&body.text), "", &who)?;
+        page_view(&config, part, &written.path)
+    })
+    .await?;
+    Ok(web::ok(view))
 }
 
 async fn delete_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -461,9 +543,10 @@ async fn proposals(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(view))
 }
 
-async fn documents(State(state): State<AppState>) -> ApiResult<Response> {
+async fn documents(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
-    let view = blocking(move || Ok(json!({"documents": super::documents(&config)}))).await?;
+    let part = part_of(&q);
+    let view = blocking(move || Ok(json!({"documents": super::documents(&config, part)}))).await?;
     Ok(web::ok(view))
 }
 
@@ -594,6 +677,7 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/pages", get(list_pages))
         .route("/notebook/search", get(search))
         .route("/notebook/page", get(read_page).put(write_page).delete(delete_page))
+        .route("/notebook/section", axum::routing::put(write_section))
         .route("/notebook/history", get(history))
         .route("/notebook/restore", post(restore))
         .route("/notebook/tasks", get(list_tasks).post(add_task))

@@ -30,6 +30,7 @@
 //! No Python counterpart (owner group: tools-knowledge).
 
 pub mod api;
+pub mod template;
 pub mod tidy;
 pub mod tools;
 
@@ -89,6 +90,8 @@ pub struct Words {
     pub archived: &'static str,
     /// The area page where the person's preferences about the Carnet go (« Pas de rappels pour les anniversaires »).
     pub preferences: &'static str,
+    /// The nightly pass and the re-filing, in the history (« rangement »).
+    pub tidy: &'static str,
 }
 
 pub const WORDS: [Words; 4] = [
@@ -107,6 +110,7 @@ pub const WORDS: [Words; 4] = [
         brief: "En bref",
         archived: "Archivées",
         preferences: "Préférences",
+        tidy: "rangement",
     },
     Words {
         lang: "en",
@@ -123,6 +127,7 @@ pub const WORDS: [Words; 4] = [
         brief: "In brief",
         archived: "Archived",
         preferences: "Preferences",
+        tidy: "tidying",
     },
     Words {
         lang: "de",
@@ -139,6 +144,7 @@ pub const WORDS: [Words; 4] = [
         brief: "Kurz gesagt",
         archived: "Archiviert",
         preferences: "Vorlieben",
+        tidy: "Aufräumen",
     },
     Words {
         lang: "es",
@@ -155,6 +161,7 @@ pub const WORDS: [Words; 4] = [
         brief: "En resumen",
         archived: "Archivadas",
         preferences: "Preferencias",
+        tidy: "orden",
     },
 ];
 
@@ -438,6 +445,11 @@ impl Who {
         who.by = "nightly".into();
         who
     }
+
+    /// The re-filing of pages into their outline (« rangement »): no agent, no attribution of its own.
+    pub fn tidy(config: &Config) -> Who {
+        Who { by: "nightly".into(), name: words(&language(config)).tidy.into(), agent: None }
+    }
 }
 
 pub fn today() -> String {
@@ -652,11 +664,12 @@ impl Page {
         self.front.insert("updated".into(), json!(today()));
     }
 
-    /// Whether `query` names this page: its title, an alias or its contact id.
+    /// Whether `query` names this page: its title, an alias, its contact id or its own id.
     pub fn named(&self, query: &str) -> bool {
         let wanted = fold(query);
         !wanted.is_empty()
             && (fold(&self.title) == wanted
+                || (!self.id().is_empty() && self.id() == query.trim())
                 || self.aliases().iter().any(|a| fold(a) == wanted)
                 || (!self.contact().is_empty() && self.contact() == query.trim()))
     }
@@ -790,9 +803,14 @@ pub fn correct_fact(body: &str, old: &str, new: &str, who: &Who, date: &str) -> 
 }
 
 /// `section`'s content replaced by `text` (made if missing; an empty text removes it). List lines without an
-/// attribution get one.
+/// attribution keep the one of the same fact already there (the person rewrote the section, not every fact), else get
+/// a new one.
 pub fn set_section(body: &str, section: &str, text: &str, who: &Who, date: &str) -> String {
     let mut lines = body_lines(body);
+    let old: Vec<String> = match section_index(&lines, section) {
+        Some(start) => lines[start + 1..section_end(&lines, start)].to_vec(),
+        None => Vec::new(),
+    };
     let new: Vec<String> = text
         .trim_matches('\n')
         .lines()
@@ -800,6 +818,13 @@ pub fn set_section(body: &str, section: &str, text: &str, who: &Who, date: &str)
             let trimmed = l.trim_end();
             if let Some(item) = trimmed.strip_prefix("- ") {
                 if split_attribution(item).1.is_none() && !item.trim().is_empty() {
+                    let same = old.iter().find(|o| {
+                        let (text, by) = split_attribution(o.trim().trim_start_matches("- "));
+                        by.is_some() && fold(&text) == fold(item)
+                    });
+                    if let Some(same) = same {
+                        return same.trim_end().to_string();
+                    }
                     return format!("- {}{}", item.trim(), attribution(who, date));
                 }
             }
@@ -916,8 +941,16 @@ pub fn find(config: &Config, parts: &[Part], query: &str) -> Option<Found> {
     if query.is_empty() {
         return None;
     }
+    // a path, with or without its « .md » (« Domaines/Santé »)
+    let as_path = if query.ends_with(".md") {
+        Some(query.to_string())
+    } else if query.contains('/') {
+        Some(format!("{query}.md"))
+    } else {
+        None
+    };
     for part in parts {
-        if query.ends_with(".md") {
+        if let Some(query) = as_path.as_deref() {
             if let Some(text) = read_page_text(config, *part, query) {
                 let stem = Path::new(query).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
                 return Some(Found {
@@ -1111,6 +1144,8 @@ pub struct Written {
     pub title: String,
     pub created: bool,
     pub added: Vec<String>,
+    /// The sections the facts went to (their titles).
+    pub sections: Vec<String>,
 }
 
 /// Facts filed about `title` (a person, a subject or an area): its page found by title, alias or contact id (in this
@@ -1187,13 +1222,43 @@ pub(crate) fn note_locked(
     if !contact.trim().is_empty() && page.contact().is_empty() {
         page.front.insert("contact".into(), json!(tk::head(contact.trim(), 200)));
     }
-    let section = if section.trim().is_empty() { w.notes.to_string() } else { section.trim().to_string() };
-    let (body, added) = add_facts(&page.body, &section, facts, who, &today());
+    // each fact, one a line, under the section of the page's outline it belongs to
+    let page_kind = if KINDS.contains(&page.kind().as_str()) { page.kind() } else { kind.to_string() };
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    for fact in facts {
+        for piece in template::split_fact(fact) {
+            let title = if template::outline(&page_kind).is_empty() {
+                if section.trim().is_empty() {
+                    w.notes.to_string()
+                } else {
+                    section.trim().to_string()
+                }
+            } else {
+                template::title(&page_kind, template::place(&page_kind, section, &piece), &lang)
+            };
+            match groups.iter_mut().find(|(t, _)| *t == title) {
+                Some((_, list)) => list.push(piece),
+                None => groups.push((title, vec![piece])),
+            }
+        }
+    }
+    let mut body = page.body.clone();
+    let mut added: Vec<String> = Vec::new();
+    let mut sections: Vec<String> = Vec::new();
+    for (title, list) in &groups {
+        let (next, new) = add_facts(&body, title, list, who, &today());
+        if !new.is_empty() {
+            sections.push(title.clone());
+        }
+        body = next;
+        added.extend(new);
+    }
     let body = set_summary(&body, w.brief, summary);
+    let body = template::normalize(&page_kind, &lang, w.brief, &body).body;
     let summary_changed = summary_of(&body, w.brief) != summary_of(&page.body, w.brief);
     let aliases_changed = before.as_deref().map(|b| Page::parse(b, "").aliases() != page.aliases()).unwrap_or(false);
     if added.is_empty() && !created && !aliases_changed && !summary_changed {
-        return Ok(Written { part: Some(part), path, title: page.title, created, added });
+        return Ok(Written { part: Some(part), path, title: page.title, created, added, sections });
     }
     page.body = body;
     page.touch();
@@ -1215,7 +1280,37 @@ pub(crate) fn note_locked(
         if created { "create" } else { "note" },
         &summary,
     )?;
-    Ok(Written { part: Some(part), path, title: page.title, created, added })
+    archive_logs(config, part, &path, &mut page, &lang)?;
+    Ok(Written { part: Some(part), path, title: page.title, created, added, sections })
+}
+
+/// The page's dated logs (« Derniers échanges », « Historique ») cut to their latest lines, as a change of its own
+/// (« rangement »): the lines taken out stay in the page's history.
+fn archive_logs(config: &Config, part: Part, path: &str, page: &mut Page, lang: &str) -> anyhow::Result<()> {
+    let (body, removed) = template::trim_logs(&page.kind(), lang, &page.body);
+    if removed.is_empty() {
+        return Ok(());
+    }
+    let before = page.render();
+    page.body = body;
+    let summary: Vec<String> = removed.iter().map(|l| split_attribution(l.trim().trim_start_matches("- ")).0).collect();
+    commit(
+        config,
+        part,
+        path,
+        Some(&before),
+        Some(&page.render()),
+        &Who::tidy(config),
+        "archive",
+        &summary.join(" · "),
+    )?;
+    Ok(())
+}
+
+/// A page's body in its kind's outline (its sections in order, the empty ones left out).
+pub fn in_outline(config: &Config, page: &Page) -> String {
+    let lang = language(config);
+    template::normalize(&page.kind(), &lang, words(&lang).brief, &page.body).body
 }
 
 /// A fact corrected (`new` empty: removed), or a section replaced (`section` and `text`), and/or the page's « En
@@ -1239,7 +1334,9 @@ pub fn edit(
     let before = read_page_text(config, found.part, &found.path);
     let mut page = found.page;
     let date = today();
-    let w = words(&language(config));
+    let lang = language(config);
+    let w = words(&lang);
+    let kind = page.kind();
     let (body, action, summary) = match text {
         None if old.trim().is_empty() && !brief.trim().is_empty() => {
             (page.body.clone(), "brief", format!("{} : {}", w.brief, tk::head(&tk::squeeze(brief), 200)))
@@ -1248,10 +1345,24 @@ pub fn edit(
             if section.trim().is_empty() {
                 return refuse("give the section to replace");
             }
+            let title = if template::outline(&kind).is_empty() {
+                section.trim().to_string()
+            } else {
+                match template::resolve(&kind, section).or((fold(section) == "other").then_some("other")) {
+                    Some(id) => template::title(&kind, id, &lang),
+                    None => {
+                        return refuse(format!(
+                            "no section « {} » on a {kind} page: it is one of {}",
+                            section.trim(),
+                            template::ids(&kind).join(", ")
+                        ))
+                    }
+                }
+            };
             (
-                set_section(&page.body, section, text, who, &date),
+                set_section(&page.body, &title, text, who, &date),
                 "section",
-                format!("{} : {}", section.trim(), tk::head(&tk::squeeze(text), 200)),
+                format!("{title} : {}", tk::head(&tk::squeeze(text), 200)),
             )
         }
         None => match correct_fact(&page.body, old, new, who, &date) {
@@ -1263,15 +1374,23 @@ pub fn edit(
             None => return refuse(format!("no fact containing « {old} » on {} (read it first)", page.title)),
         },
     };
-    page.body = set_summary(&body, w.brief, brief);
+    page.body = template::normalize(&kind, &lang, w.brief, &set_summary(&body, w.brief, brief)).body;
     page.touch();
     let rendered = page.render();
     if before.as_deref() == Some(rendered.as_str()) {
         return refuse("nothing changed");
     }
     commit(config, found.part, &found.path, before.as_deref(), Some(&rendered), who, action, &summary)?;
+    archive_logs(config, found.part, &found.path, &mut page, &lang)?;
     Ok((
-        Written { part: Some(found.part), path: found.path, title: page.title, created: false, added: Vec::new() },
+        Written {
+            part: Some(found.part),
+            path: found.path,
+            title: page.title,
+            created: false,
+            added: Vec::new(),
+            sections: Vec::new(),
+        },
         summary,
     ))
 }
@@ -1356,12 +1475,174 @@ pub fn merge_locked(config: &Config, part: Part, from: &str, into: &str, who: &W
         }
         body = lines.join("\n") + "\n";
     }
-    page.body = body;
+    page.body = in_outline(config, &Page { body, ..page.clone() });
     page.touch();
     let summary = format!("{} → {}", a.page.title, page.title);
     commit(config, part, &b.path, before_into.as_deref(), Some(&page.render()), who, "merge", &summary)?;
     commit(config, part, &a.path, before_from.as_deref(), None, who, "merge", &summary)?;
     Ok(Some(summary))
+}
+
+// -- re-filing into the outlines ----------------------------------------------------------------------------------------
+
+/// The outlines' version: pages are re-filed once (no model) when it changes.
+pub const OUTLINE_VERSION: i64 = 1;
+/// Lines of « Autres » the nightly pass asks its model to place, a night at most (no big one-time bill).
+pub const REFILE_PER_NIGHT: usize = 15;
+/// The « Autres » lines the model already looked at (not sent again).
+const TRIED_KEPT: usize = 500;
+
+fn filed_words(lang: &str, n: usize) -> String {
+    match lang {
+        "fr" => format!("{n} fait(s) rangé(s)"),
+        "de" => format!("{n} Fakt(en) einsortiert"),
+        "es" => format!("{n} dato(s) ordenado(s)"),
+        _ => format!("{n} fact(s) filed"),
+    }
+}
+
+/// The pages written before the outlines (or by hand) put in their outline without a model: each fact where its
+/// section or its words say (« anniversaire » → Dates, « frère » → Famille et proches…), the rest in « Autres » for
+/// the nightly pass. Once per outline version, then on every agent's write to a page. Attributions and dates are
+/// kept; each page's change is « rangement » in its history. Returns the pages re-filed.
+pub fn refile_existing(config: &Config) -> anyhow::Result<usize> {
+    let _guard = lock();
+    if read_state(config).get("outline").and_then(Value::as_i64).unwrap_or(0) >= OUTLINE_VERSION {
+        return Ok(0);
+    }
+    let lang = language(config);
+    let w = words(&lang);
+    let who = Who::tidy(config);
+    let mut done = 0;
+    for part in [Part::Main, Part::Health] {
+        for (path, mut page) in all_pages(config, part) {
+            if !KINDS.contains(&page.kind().as_str()) {
+                continue;
+            }
+            let shaped = template::normalize(&page.kind(), &lang, w.brief, &page.body);
+            if shaped.body.trim() == page.body.trim() {
+                continue;
+            }
+            let before = page.render();
+            page.body = shaped.body;
+            let summary = format!("{} : {}", w.tidy, filed_words(&lang, shaped.moved));
+            commit(config, part, &path, Some(&before), Some(&page.render()), &who, "refile", &summary)?;
+            archive_logs(config, part, &path, &mut page, &lang)?;
+            done += 1;
+        }
+    }
+    update_state(config, |s| {
+        s.insert("outline".into(), json!(OUTLINE_VERSION));
+    })?;
+    if done > 0 {
+        tracing::info!(pages = done, "notebook pages put in their outline");
+    }
+    Ok(done)
+}
+
+/// A line of « Autres » waiting for its section: (page title, kind, the fact without its attribution).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unsorted {
+    pub page: String,
+    pub kind: String,
+    pub fact: String,
+}
+
+/// The « Autres » lines of the shared part the nightly pass has not tried yet, `limit` at most.
+pub fn unsorted(config: &Config, limit: usize) -> Vec<Unsorted> {
+    let tried = strings(read_state(config).get("refile_tried"));
+    let lang = language(config);
+    let mut out = Vec::new();
+    for (_, page) in all_pages(config, Part::Main) {
+        let kind = page.kind();
+        if !KINDS.contains(&kind.as_str()) {
+            continue;
+        }
+        let other = fold(&template::title(&kind, "other", &lang));
+        for (section, facts) in page.sections() {
+            if fold(&section) != other {
+                continue;
+            }
+            for fact in facts {
+                if fact.text.is_empty() || tried.contains(&fold(&fact.text)) {
+                    continue;
+                }
+                out.push(Unsorted { page: page.title.clone(), kind: kind.clone(), fact: fact.text });
+                if out.len() >= limit {
+                    return out;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The « Autres » lines the model was shown, not sent again (placed or not).
+pub(crate) fn mark_tried(config: &Config, facts: &[Unsorted]) -> std::io::Result<()> {
+    if facts.is_empty() {
+        return Ok(());
+    }
+    update_state(config, |s| {
+        let mut tried = strings(s.get("refile_tried"));
+        for f in facts {
+            let key = fold(&f.fact);
+            if !tried.contains(&key) {
+                tried.push(key);
+            }
+        }
+        let over = tried.len().saturating_sub(TRIED_KEPT);
+        tried.drain(..over);
+        s.insert("refile_tried".into(), json!(tried));
+    })?;
+    Ok(())
+}
+
+/// A fact of a page's « Autres » moved under `section` (an id of the page's outline), its line kept as it was.
+pub(crate) fn refile_locked(
+    config: &Config,
+    query: &str,
+    fact: &str,
+    section: &str,
+    who: &Who,
+) -> anyhow::Result<bool> {
+    let Some(found) = find(config, &[Part::Main], query) else { return Ok(false) };
+    let kind = found.page.kind();
+    let Some(id) = template::resolve(&kind, section).filter(|id| *id != "other") else { return Ok(false) };
+    let lang = language(config);
+    let other = template::title(&kind, "other", &lang);
+    let mut lines = body_lines(&found.page.body);
+    let Some(start) = section_index(&lines, &other) else { return Ok(false) };
+    let end = section_end(&lines, start);
+    let wanted = fold(fact);
+    let Some(at) = (start + 1..end).find(|i| {
+        let text = split_attribution(lines[*i].trim().trim_start_matches("- ")).0;
+        !wanted.is_empty() && fold(&text) == wanted
+    }) else {
+        return Ok(false);
+    };
+    let line = lines.remove(at);
+    let title = template::title(&kind, id, &lang);
+    match section_index(&lines, &title) {
+        Some(s) => {
+            let mut e = section_end(&lines, s);
+            while e > s + 1 && lines[e - 1].trim().is_empty() {
+                e -= 1;
+            }
+            lines.insert(e, line);
+        }
+        None => {
+            lines.push(String::new());
+            lines.push(format!("## {title}"));
+            lines.push(line);
+        }
+    }
+    let before = read_page_text(config, Part::Main, &found.path);
+    let mut page = found.page;
+    page.body = in_outline(config, &Page { body: lines.join("\n") + "\n", ..page.clone() });
+    let summary = format!("{} : {} → {title}", words(&lang).tidy, tk::head(fact, 150));
+    commit(config, Part::Main, &found.path, before.as_deref(), Some(&page.render()), who, "refile", &summary)?;
+    archive_logs(config, Part::Main, &found.path, &mut page, &lang)?;
+    Ok(true)
 }
 
 // -- tasks ---------------------------------------------------------------------------------------------------------
@@ -1833,7 +2114,7 @@ pub fn decline(config: &Config, proposal: &str, never: bool, who: &Who) -> anyho
     let lang = language(config);
     let fact = no_proposals_fact(&lang, &kind);
     let w = words(&lang);
-    note_locked(config, Part::Main, "area", w.preferences, w.notes, std::slice::from_ref(&fact), &[], "", "", who)?;
+    note_locked(config, Part::Main, "area", w.preferences, "habits", std::slice::from_ref(&fact), &[], "", "", who)?;
     Ok(Some(fact))
 }
 
@@ -2229,9 +2510,18 @@ pub fn file_type(name: &str) -> &'static str {
     }
 }
 
+/// An agent's web page's link to a Carnet page: (its id, its part).
+type PageLink = Option<(String, String)>;
+
 /// The files the agents made (audio, pages) or were sent (uploads), where the bridge keeps them: by agent, the newest
-/// first, each with the Carnet pages that name it.
-pub fn documents(config: &Config) -> Vec<Value> {
+/// first, each with the Carnet pages that name it. The web pages the agents made (`create_page`) are there too, as
+/// their own type (`page`, with their `page` id), first under the Carnet page they are linked to (`linked`); those of
+/// the private health part (made by the health agent, or linked there) only in that part's list (`part` Health), never
+/// in the shared one.
+pub fn documents(config: &Config, part: Part) -> Vec<Value> {
+    let health = part == Part::Health;
+    // (agent, page id) → the Carnet page it is linked to
+    let mut links: Vec<(String, String, PageLink)> = Vec::new();
     let mut found: Vec<Dict> = Vec::new();
     let mut add =
         |agent: &str, name: String, origin: &str, path: &Path, media: Option<String>, title: Option<String>| {
@@ -2256,7 +2546,7 @@ pub fn documents(config: &Config) -> Vec<Value> {
             found.push(item);
         };
     for agent in config.agents.values() {
-        if let Some(root) = agent.upload_dir_host.as_deref().filter(|r| !r.is_empty()) {
+        if let Some(root) = agent.upload_dir_host.as_deref().filter(|r| !r.is_empty() && !health) {
             for month in std::fs::read_dir(root).into_iter().flatten().flatten() {
                 if !month.path().is_dir() {
                     continue;
@@ -2278,13 +2568,17 @@ pub fn documents(config: &Config) -> Vec<Value> {
         let audio = crate::agent_tools::audio_root(config).join(&agent.name);
         for file in std::fs::read_dir(&audio).into_iter().flatten().flatten() {
             let name = file.file_name().to_string_lossy().into_owned();
-            if file.path().is_file() && !name.starts_with('.') && file_type(&name) == "audio" {
+            if !health && file.path().is_file() && !name.starts_with('.') && file_type(&name) == "audio" {
                 let media = format!("{}/{}/{name}", crate::agent_tools::MEDIA_PREFIX, agent.name);
                 add(&agent.name, name, "made", &file.path(), Some(media), None);
             }
         }
         for page in crate::pages::list_pages(config, &agent.name) {
+            if crate::pages::private(&page) != health {
+                continue;
+            }
             let id = tk::str_or_empty(page.get("page"));
+            links.push((agent.name.clone(), format!("{id}.html"), crate::pages::link(&page)));
             let file = crate::pages::root(config).join(&agent.name).join(format!("{id}.html"));
             add(
                 &agent.name,
@@ -2297,11 +2591,23 @@ pub fn documents(config: &Config) -> Vec<Value> {
         }
     }
     // the Carnet's pages that name a file (its name, or its name without the extension)
-    let pages = all_pages(config, Part::Main);
+    let pages = all_pages(config, part);
     let mut out: Vec<Value> = Vec::new();
     found.sort_by_key(|d| std::cmp::Reverse(tk::str_or_empty(d.get("date"))));
     for mut item in found {
         let file = tk::str_or_empty(item.get("file"));
+        let agent = tk::str_or_empty(item.get("agent"));
+        let made_page = links.iter().find(|(a, f, _)| *a == agent && *f == file);
+        let linked = made_page.and_then(|(_, _, l)| l.as_ref()).and_then(|(id, _)| {
+            pages
+                .iter()
+                .find(|(_, p)| p.id() == *id)
+                .map(|(path, p)| json!({"title": p.title, "path": path, "kind": p.kind()}))
+        });
+        if let Some((_, f, _)) = made_page {
+            item.insert("page".into(), json!(f.trim_end_matches(".html")));
+            item.insert("linked".into(), linked.clone().unwrap_or(Value::Null));
+        }
         let stem =
             fold(Path::new(&file).file_stem().map(|s| s.to_string_lossy().into_owned()).as_deref().unwrap_or(""));
         let name = fold(&tk::str_or_empty(item.get("name")));
@@ -2314,6 +2620,12 @@ pub fn documents(config: &Config) -> Vec<Value> {
             })
             .map(|(path, p)| json!({"title": p.title, "path": path, "kind": p.kind()}))
             .collect();
+        let subjects: Vec<Value> = linked.into_iter().chain(subjects).fold(Vec::new(), |mut all, s| {
+            if !all.iter().any(|a: &Value| a["path"] == s["path"]) {
+                all.push(s);
+            }
+            all
+        });
         item.insert("subjects".into(), Value::Array(subjects));
         out.push(Value::Object(item));
     }
@@ -2359,7 +2671,7 @@ pub fn documents_page(config: &Config, documents: &[Value]) -> String {
 /// folder of its own).
 pub fn export_zip(config: &Config, with_health: bool) -> anyhow::Result<Vec<u8>> {
     let w = words(&language(config));
-    let docs = documents(config);
+    let docs = documents(config, Part::Main);
     let mut buffer = std::io::Cursor::new(Vec::new());
     {
         let mut zip = zip::ZipWriter::new(&mut buffer);
@@ -2596,6 +2908,80 @@ mod tests {
         config.hermes.home = dir.join("hermes").to_string_lossy().into_owned();
         config.outbox.db_path = dir.join("data/outbox.db").to_string_lossy().into_owned();
         config
+    }
+
+    #[test]
+    fn facts_are_filed_in_the_outline_and_old_pages_refiled() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        let who = lea();
+        // an old page, from before the outlines
+        let old = "---\nid: p0000000001\ntype: person\naliases: []\n---\n# Marc\n\n## Infos\n- Aime le jazz — *Léa, 2026-10-01*\n\
+- Grand — *Léa, 2026-10-01*\n\n## Famille\n- Fille : Zoé — *Léa, 2026-10-02*\n";
+        write_file(&part_root(&config, Part::Main).join("Personnes/Marc.md"), old).unwrap();
+        assert_eq!(refile_existing(&config).unwrap(), 1);
+        assert_eq!(refile_existing(&config).unwrap(), 0); // once
+        let text = read_page_text(&config, Part::Main, "Personnes/Marc.md").unwrap();
+        assert!(text.ends_with(
+            "# Marc\n\n## Famille et proches\n- Fille : Zoé — *Léa, 2026-10-02*\n\n## Goûts et préférences\n\
+- Aime le jazz — *Léa, 2026-10-01*\n\n## Autres\n- Grand — *Léa, 2026-10-01*\n"
+        ));
+        let change = &history(&config, None, None, 1)[0];
+        assert_eq!((change["action"].as_str(), change["by"].as_str()), (Some("refile"), Some("nightly")));
+        assert_eq!(change["summary"].as_str(), Some("rangement : 2 fait(s) rangé(s)"));
+        // an agent's facts: split, each under its section, in the outline's order
+        let facts = vec!["Anniversaire : 14 novembre; travaille chez Airbus".to_string(), "Habite Lyon".into()];
+        let written = note(&config, Part::Main, "person", "Marc", "Infos", &facts, &[], "", "", &who).unwrap();
+        assert_eq!(written.sections, vec!["Dates", "Travail", "Qui c'est"]);
+        let page = find(&config, &[Part::Main], "Marc").unwrap().page;
+        let titles: Vec<String> = page.sections().into_iter().map(|(t, _)| t).collect();
+        assert_eq!(titles, ["Qui c'est", "Dates", "Famille et proches", "Travail", "Goûts et préférences", "Autres"]);
+        assert_eq!(
+            unsorted(&config, 10),
+            vec![Unsorted { page: "Marc".into(), kind: "person".into(), fact: "Grand".into() }]
+        );
+        // the nightly pass's model places what is left; the line keeps its attribution
+        assert!(refile_locked(&config, "Marc", "Grand", "who", &Who::tidy(&config)).unwrap());
+        let text = read_page_text(&config, Part::Main, "Personnes/Marc.md").unwrap();
+        assert!(
+            text.contains("## Qui c'est\n- Habite Lyon — *Léa, ") && text.contains("- Grand — *Léa, 2026-10-01*\n")
+        );
+        assert!(!text.contains("## Autres"));
+        // the latest exchanges only: the older ones leave the page as a change of their own
+        for n in 1..=8 {
+            let fact = format!("2026-10-1{n} : appel numéro {n}");
+            note(&config, Part::Main, "person", "Marc", "exchanges", &[fact], &[], "", "", &who).unwrap();
+        }
+        let page = find(&config, &[Part::Main], "Marc").unwrap().page;
+        let exchanges = page.sections().into_iter().find(|(t, _)| t == "Derniers échanges").unwrap().1;
+        assert_eq!(exchanges.len(), 6);
+        assert!(exchanges[0].text.starts_with("2026-10-13"));
+        let archived = history(&config, None, None, 10).into_iter().rfind(|c| c["action"] == "archive").unwrap();
+        assert!(archived["summary"].as_str().unwrap().contains("appel numéro 1"));
+        // the section to rewrite is one of the outline's
+        let refused = edit(&config, &[Part::Main], "Marc", "", "", "Voyages", Some("- x"), "", &who);
+        assert!(refused.unwrap_err().to_string().contains("one of who, dates"));
+        edit(
+            &config,
+            &[Part::Main],
+            "Marc",
+            "",
+            "",
+            "dates",
+            Some("- Anniversaire : 14 novembre\n- Fête : 25 avril"),
+            "",
+            &who,
+        )
+        .unwrap();
+        let text = read_page_text(&config, Part::Main, "Personnes/Marc.md").unwrap();
+        assert!(
+            text.contains("## Dates\n- Anniversaire : 14 novembre — *Léa, ")
+                && text.contains("- Fête : 25 avril — *Léa, ")
+        );
     }
 
     #[test]

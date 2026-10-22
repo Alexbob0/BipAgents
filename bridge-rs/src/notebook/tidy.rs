@@ -44,8 +44,14 @@ steps), an area of life. A fact is not a task: a birthday or someone else's dead
 Add a task only when the person asked for it (« remind me… », « I have to… »: origin asked) or stated their own \
 commitment with a deadline (origin own); never invent one. Skip small talk, one-off questions, passwords and codes, and \
 anything the person asked not to keep. Use an existing page's exact name when the fact is about it. Write each fact \
-short, in the person's language. Never file health facts. Answer with JSON lines only, one per line, nothing else:
-{\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area\", \"page\": \"<name>\", \"section\": \"<section>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
+short (one fact an item), in the person's language. Never file health facts. Every page has fixed sections, named by \
+id: person: who (how they relate, how they met, contact details), dates, family, work, tastes (likes, dislikes, food \
+allergies), gifts, agreed (promises, loans, appointments), exchanges (short dated lines), remember; subject: status, \
+decisions, next, people, budget, documents, history; area: matters, habits, contacts, ongoing; other only when \
+nothing fits. You may also get lines filed under « other »: move each to its section when one clearly fits. Answer \
+with JSON lines only, one per line, nothing else:
+{\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area\", \"page\": \"<name>\", \"section\": \"<section id>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
+{\"op\": \"refile\", \"page\": \"<name>\", \"fact\": \"<the line, exactly>\", \"section\": \"<section id>\"}
 {\"op\": \"task\", \"agent\": \"<agent id>\", \"origin\": \"asked|own\", \"title\": \"...\", \"due\": \"YYYY-MM-DD\", \"page\": \"<name, optional>\"}
 {\"op\": \"merge\", \"from\": \"<page name>\", \"into\": \"<page name>\"}   (two pages about the same person or subject)
 Nothing worth filing: answer nothing.";
@@ -357,6 +363,17 @@ async fn run_inner(
     if seeded > 0 {
         record.insert("seeded".into(), json!(seeded));
     }
+    // pages from before the outlines: re-filed once by their words (no model)
+    let refiled = tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::refile_existing(&c)
+    })
+    .await??;
+    if refiled > 0 {
+        record.insert("refiled".into(), json!(refiled));
+    }
+    let unsorted = super::unsorted(config, super::REFILE_PER_NIGHT);
+    record.insert("unsorted".into(), json!(unsorted.len()));
     let tidy = tidy_state(&super::read_state(config));
     let since = tidy.get("since").and_then(Value::as_f64).unwrap_or(py::time_time() - 36.0 * 3600.0);
     let now = py::time_time();
@@ -399,7 +416,7 @@ async fn run_inner(
         })?;
         Ok(())
     };
-    if kept == 0 && inbox_lines.is_empty() {
+    if kept == 0 && inbox_lines.is_empty() && unsorted.is_empty() {
         record.insert("reason".into(), json!(if seen == 0 { "no conversation" } else { "nothing to file" }));
         save_cursors(&gathered)?;
         return Ok(());
@@ -469,7 +486,16 @@ async fn run_inner(
         size += line.len();
         sent_inbox.push(line.clone());
     }
-    if kept_blocks.is_empty() && sent_inbox.is_empty() {
+    let mut sent_unsorted: Vec<super::Unsorted> = Vec::new();
+    for line in &unsorted {
+        let size_of = line.page.len() + line.fact.len() + 20;
+        if size + size_of > room {
+            break;
+        }
+        size += size_of;
+        sent_unsorted.push(line.clone());
+    }
+    if kept_blocks.is_empty() && sent_inbox.is_empty() && sent_unsorted.is_empty() {
         record.insert("reason".into(), json!("monthly cap reached"));
         return Ok(());
     }
@@ -487,6 +513,11 @@ async fn run_inner(
             "\n\nTo sort (from the agents' memories; use agent {first} unless a line names another):\n{}",
             sent_inbox.join("\n")
         ));
+    }
+    if !sent_unsorted.is_empty() {
+        let lines: Vec<String> =
+            sent_unsorted.iter().map(|u| format!("- [{}] ({}) {}", u.page, u.kind, u.fact)).collect();
+        user.push_str(&format!("\n\nFiled under « other » (refile them when a section fits):\n{}", lines.join("\n")));
     }
     let Some((base, model, key)) = model(config) else {
         record.insert("reason".into(), json!("no model to call"));
@@ -531,7 +562,13 @@ async fn run_inner(
     let agents: Vec<(String, bool)> = gathered.iter().map(|g| (g.agent.name.clone(), g.health)).collect();
     let fallback =
         agents.first().map(|a| a.0.clone()).or_else(|| config.agents.keys().next().cloned()).unwrap_or_default();
-    let applied = tokio::task::spawn_blocking(move || apply(&c, &answer, &agents, &fallback, &sent_inbox)).await??;
+    let applied = tokio::task::spawn_blocking(move || {
+        let applied = apply(&c, &answer, &agents, &fallback, &sent_inbox)?;
+        let _guard = super::lock();
+        super::mark_tried(&c, &sent_unsorted)?;
+        anyhow::Ok(applied)
+    })
+    .await??;
     record.insert("applied".into(), json!(applied));
     record.insert("reason".into(), json!("filed"));
     save_cursors(&gathered)?;
@@ -582,6 +619,7 @@ pub fn apply(
                 let origin = if s("origin") == "own" { "own" } else { "asked" };
                 super::add_task_locked(config, part, &s("title"), &s("due"), &page, origin, "", &who).map(|_| true)
             }
+            "refile" => super::refile_locked(config, &page, &s("fact"), &s("section"), &Who::tidy(config)),
             "merge" => super::merge_locked(config, Part::Main, &s("from"), &s("into"), &who).map(|m| m.is_some()),
             _ => Ok(false),
         };
@@ -601,6 +639,13 @@ pub fn apply(
 /// The scheduler: every ten minutes, the pass if it is due.
 pub async fn scheduler(state: AppState) {
     tokio::time::sleep(Duration::from_secs(60)).await;
+    // the pages from before the outlines put in theirs at once (no model), not at the first night
+    let config = state.config();
+    match tokio::task::spawn_blocking(move || super::refile_existing(&config)).await {
+        Ok(Err(err)) => tracing::warn!(error = %err, "notebook pages not re-filed"),
+        Err(err) => tracing::warn!(error = %err, "notebook pages not re-filed"),
+        Ok(Ok(_)) => {}
+    }
     loop {
         let config = state.config();
         if due(&config, Local::now()) {
