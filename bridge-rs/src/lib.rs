@@ -74,6 +74,8 @@ pub mod spaces;
 pub mod ssh_keys;
 
 // -- tools-knowledge -------------------------------------------------------------------------------
+pub mod agent_email;
+pub mod agent_email_smtp;
 pub mod agent_tools;
 pub mod favicons;
 pub mod health;

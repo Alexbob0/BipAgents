@@ -31,6 +31,7 @@ pub const QUESTION_BODY: &str = "Une question pour toi";
 pub const APPROVAL_BODY: &str = "Approbation requise";
 pub const SUBTASK_BODY: &str = "Sous-tâche terminée";
 pub const FAMILY_BODY: &str = "Message de ta famille";
+pub const EMAIL_HELD_BODY: &str = "Veut écrire à quelqu'un de nouveau : ton accord est demandé";
 
 /// Python's truthiness of an optional str (`if x:`).
 fn given(value: Option<&str>) -> Option<&str> {
@@ -501,6 +502,17 @@ impl PushService {
             reply_payload(agent, &self.title(agent), "session:family", None, shown, Some(&reply_id), FAMILY_BODY);
         payload.insert("family".into(), json!(note_id));
         self.fanout(agent, payload, "alert", 10, Some(format!("family:{note_id}"))).await
+    }
+
+    /// The agent's e-mail to an address not allowed yet waits for the person (agent_email.rs): « Veut écrire à
+    /// x@y » when previews are on; tapping opens the agent's e-mail screen (`email_held`: the held mail's id).
+    pub async fn notify_email_held(&self, agent: &str, to: &str, held_id: &str) -> usize {
+        let line = format!("Veut écrire à {to}");
+        let preview = if self.previews() { Some(line.as_str()) } else { None };
+        let mut payload =
+            reply_payload(agent, &self.title(agent), "session:email", None, preview, None, EMAIL_HELD_BODY);
+        payload.insert("email_held".into(), json!(held_id));
+        self.fanout(agent, payload, "alert", 10, Some(format!("email:{held_id}"))).await
     }
 
     /// `notify_silent(agent, reason, **extra)`.
