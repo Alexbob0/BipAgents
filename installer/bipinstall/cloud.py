@@ -2,6 +2,7 @@
 installed at first boot with nobody at the keyboard (installer/cloud/user-data.yaml).
 
 FILE, written at first boot from that setup: {"v": 1, "pair": "<base64url>", "language": "fr", "profile": "solo"}, and "port" when the door isn't on 443 (a server shared by two people).
+"keys": {"url", "grant", "signature"} (with "backup") encrypts the space at rest from the start (space.py).
 `pair` is the one-time pairing secret the guichet hands to the app that bought the server; the profile is « mini »
 (no visible browser, for a 2 GB server) or « solo » (the default, 4 GB). No model key: the app sends it to the bridge
 once paired (bridge-rs/src/cloud_setup.rs), since the provider keeps that setup.
@@ -35,6 +36,9 @@ class CloudSetup:
     profile: str = "solo"
     port: int = DOOR_PORT    # the bridge's door; on a server shared by two people, the second one's is 444
     backup: Optional[Dict[str, str]] = None   # the guichet's backup address and this place's token (backup.py)
+    # The space encrypted at rest from the start (space.py): the key service's address and the guichet's signed
+    # grant for this place's token (the backup token). Absent: not encrypted (this first version's default).
+    keys: Optional[Dict[str, str]] = None
 
 
 def read(path: Path) -> CloudSetup:
@@ -65,8 +69,15 @@ def read(path: Path) -> CloudSetup:
         if not isinstance(url, str) or not url.startswith("https://") or not isinstance(token, str) or len(token) < 16:
             raise CloudError("the backup settings are not an https address and a token")
         backup = {"url": url, "token": token}
+    keys = data.get("keys")
+    if keys is not None:
+        fields = (keys.get("url"), keys.get("grant"), keys.get("signature")) if isinstance(keys, dict) else (None,) * 3
+        if not isinstance(fields[0], str) or not fields[0].startswith("https://") \
+                or not all(isinstance(f, str) and f for f in fields[1:]) or backup is None:
+            raise CloudError("the key service settings are not an https address and a signed grant (with backups)")
+        keys = {"url": fields[0], "grant": fields[1], "signature": fields[2]}
     return CloudSetup(pair=pair, language=language if language in LANGUAGES else "en",
-                      profile=profile if profile in PROFILES else "solo", port=port, backup=backup)
+                      profile=profile if profile in PROFILES else "solo", port=port, backup=backup, keys=keys)
 
 
 def _global(address: str) -> bool:

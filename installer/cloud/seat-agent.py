@@ -3,7 +3,8 @@
 
 Run as root every two minutes by bipagents-seats.timer, set up at first boot. Its call to the guichet, with the token
 its first boot gave it, is the server's heartbeat (guichet/bipguichet/watch.py): it says, for each place, whether its
-bridge's door answers here, whether its Hermes runs (or sleeps), the BipAgents version it runs and when its last backup worked,
+bridge's door answers here, whether its Hermes runs (or sleeps), the BipAgents version it runs, when its last backup worked
+and whether its encrypted space waits for its key ("locked" and why),
 and for the server its memory, swap, disk and load -- yes or no, a version, a time and numbers, nothing of anyone. The
 guichet answers with its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
 openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. There are three orders:
@@ -40,6 +41,7 @@ MAX_SEATS = 8
 BACKUP_STATE = ".local/state/bipagents/backup.json"
 ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge-rs/src/sleep.rs)
 SETUP = ".config/bipagents/setup.json"     # its bridge's pairing secret while it waits for an app (cloud_setup.py)
+LOCKED = ".local/share/bipagents/space/locked.json"   # its encrypted space not open yet, and why (space.rs)
 PAIR_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
 
@@ -195,6 +197,17 @@ def last_backup(user):
         return None
 
 
+def locked(home):
+    """Why the place's encrypted space is not open ("key service unreachable"...), else None: a place waiting
+    for its key is locked, not down (bridge-rs/src/space.rs writes the file outside the encrypted folder)."""
+    try:
+        with open(os.path.join(home, LOCKED)) as fh:
+            reason = json.load(fh).get("reason")
+        return str(reason)[:120] if reason else "locked"
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def running(uid, words, proc="/proc"):
     """A process of this account whose command line holds all `words` (what runs, never what it does)."""
     for pid in os.listdir(proc):
@@ -272,7 +285,8 @@ def health():
             continue
         seats[str(number)] = {"up": door_open(442 + number), "hermes": running(entry.pw_uid, ("hermes", "gateway")),
                               "asleep": os.path.exists(os.path.join(entry.pw_dir, ASLEEP)),
-                              "version": version(entry.pw_dir), "backup": last_backup(user)}
+                              "version": version(entry.pw_dir), "backup": last_backup(user),
+                              "locked": locked(entry.pw_dir)}
     return seats
 
 
