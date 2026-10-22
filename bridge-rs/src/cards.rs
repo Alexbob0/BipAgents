@@ -34,7 +34,10 @@ pub const MAX_AMOUNT_CENTS: i64 = 10_000_000;
 /// place of the all-included offer (its guichet token, `place_backup::SETTINGS`) or a « no computer » server of it
 /// (`cloud`).
 pub fn allowed(config: &Config) -> bool {
-    config.cards != "off" && !config.cloud && crate::agent_email::place_token(&crate::place_backup::home()).is_none()
+    config.hermes.isolated
+        && config.cards != "off"
+        && !config.cloud
+        && crate::agent_email::place_token(&crate::place_backup::home()).is_none()
 }
 
 /// The person's switch, « Paiements par tes agents » (off until they turn it on, after the warning in the app).

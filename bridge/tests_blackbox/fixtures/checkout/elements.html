@@ -1,0 +1,13 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Checkout</title></head>
+<body>
+<h1>Paiement</h1>
+<label for="holder">Nom sur la carte</label> <input id="holder" autocomplete="cc-name">
+<label for="ship">Code postal de livraison</label> <input id="ship" name="shipping_zip" value="">
+<!-- The provider's frame on another site (an out-of-process frame): its URL is given in the query. -->
+<iframe id="psp" width="600" height="200"></iframe>
+<button id="pay" onclick="location.href='done.html'">Payer 12,50 €</button>
+<script>
+  document.getElementById("psp").src = new URLSearchParams(location.search).get("psp");
+</script>
+</body></html>

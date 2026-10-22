@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Paiement</title></head>
+<body>
+<!-- A French form without autocomplete tokens: labels, names, the expiry in two selects. -->
+<form onsubmit="event.preventDefault(); location.href='done.html'">
+  <p><label for="numero">Numéro de carte</label> <input id="numero" name="numero_carte" maxlength="19"></p>
+  <p><label for="mois">Mois</label>
+    <select id="mois" name="mois_expiration"><option value="">--</option>
+      <option value="01">01 - janvier</option><option value="02">02</option><option value="03">03</option>
+      <option value="04">04</option><option value="05">05</option><option value="06">06</option>
+      <option value="07">07</option><option value="08">08</option><option value="09">09</option>
+      <option value="10">10</option><option value="11">11</option><option value="12">12 - décembre</option>
+    </select>
+    <label for="annee">Année</label>
+    <select id="annee" name="annee_expiration"><option value="">--</option>
+      <option>2026</option><option>2027</option><option>2028</option><option>2029</option><option>2030</option>
+      <option>2031</option><option>2032</option>
+    </select></p>
+  <p><label for="crypto">Cryptogramme visuel</label> <input id="crypto" name="cryptogramme" maxlength="4"></p>
+  <p><label for="titulaire">Titulaire de la carte</label> <input id="titulaire" name="titulaire"></p>
+  <p><label for="nom">Nom (livraison)</label> <input id="nom" name="nom"></p>
+  <p><button type="submit">Valider le paiement</button> <a href="/aide">Aide</a></p>
+</form>
+</body></html>
