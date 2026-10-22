@@ -207,6 +207,10 @@ pub fn parse_args(argv: &[String]) -> Result<Args, ArgsExit> {
 
 /// The process's exit code.
 pub fn main(argv: Vec<String>) -> i32 {
+    // `bipbridge space …`: the encrypted space (space.rs), its own command line.
+    if argv.first().map(String::as_str) == Some("space") {
+        return crate::space::cli(&argv[1..]);
+    }
     let args = match parse_args(&argv) {
         Ok(a) => a,
         Err(ArgsExit::Help) => {
@@ -222,6 +226,12 @@ pub fn main(argv: Vec<String>) -> i32 {
     if args.command == "genkey" {
         println!("{}", py::token_urlsafe(32));
         return 0;
+    }
+    // An encrypted space not open yet (after a reboot): the locked door until it opens, then this bridge again.
+    if args.command == "serve" {
+        if let Some(code) = crate::space::serve_if_locked() {
+            return code;
+        }
     }
     setup_logging("info");
     let config = match load_config(args.config.as_deref()) {
@@ -668,7 +678,7 @@ pub fn save_png(code: &qrcode::QrCode, path: &str, scale: usize, border: usize) 
     Ok(())
 }
 
-async fn shutdown_signal() {
+pub async fn shutdown_signal() {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
