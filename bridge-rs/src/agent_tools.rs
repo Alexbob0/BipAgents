@@ -154,6 +154,7 @@ THE KIT is always there (no link needed), in the app's look, light and dark, in 
 B -> C: label</pre> (boxes and arrows drawn for you)
 - charts in SVG: <div id="c"></div><script>Bip.bars("#c",{labels:["L","M"],values:[5,8],unit:"km",goal:6})</script>; Bip.line(el,{labels,values|series:[{name,values}],unit,goal}); Bip.donut(el,{labels,values,unit,center:"1 748 €"}); Bip.spark(el,[3,5,4]); colours var(--c1)…var(--c6)
 - what-ifs: <label class="field">Budget <output for="b" data-unit="€"></output></label><input type="range" id="b" min="0" max="500" value="200">, <label class="toggle">Bio <input type="checkbox" id="bio"></label>, then Bip.whatIf(v => Bip.set("#total", Bip.fmt(v.b*12,0,"€"))); .tabs: <div class="tabs"><button>Week</button><button>Month</button></div><section class="tab">…</section><section class="tab">…</section>
+- maps: call map_image first (OpenStreetMap, numbered markers), then paste the <figure class="map-card"> it gives (a tap on a line rings its marker)
 - Bip.fmt(n, digits, unit) formats in the person's language. Chart.js 4 too if you need more: <script src="chart.js"></script> (already in the app's colours).
 EXAMPLES (whole pages):
 1 dashboard: <h1>🏃 Tes sorties</h1><p class="sub">Santé · 4 dernières semaines</p><div class="grid"><div class="kpi main"><span class="l">Distance</span><span class="v">86<small>km</small></span><span class="d up">+14 %</span></div><div class="kpi"><span class="l">Allure</span><span class="v">5:42<small>/km</small></span></div></div><div class="card"><h3>Km par semaine</h3><div id="w"></div></div><script>Bip.bars("#w",{labels:["S1","S2","S3","S4"],values:[18,21,22,25],unit:"km"})</script>
@@ -261,6 +262,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.push(propose_task_tool());
     tools.push(crate::jobs::start_task_tool());
     tools.push(crate::routes::route_tool());
+    tools.push(crate::maps::tool());
     tools
 });
 
@@ -362,6 +364,7 @@ pub fn media_roots(config: &Config) -> IndexMap<String, String> {
     let mut roots = IndexMap::new();
     roots.insert(MEDIA_PREFIX.into(), audio_root(config).to_string_lossy().into_owned());
     roots.insert(pages::PREFIX.into(), pages::root(config).to_string_lossy().into_owned());
+    roots.insert(crate::maps::PREFIX.into(), crate::maps::media_root(config).to_string_lossy().into_owned());
     roots
 }
 
@@ -570,6 +573,7 @@ fn last_chars(text: &str, n: usize) -> String {
 pub fn forget(config: &Config, name: &str) {
     pages::forget(config, name);
     crate::approvals_log::forget(config, name);
+    crate::maps::forget(config, name);
     crate::notebook::forget(config, name);
     let mut tokens = load_tokens(config);
     if tokens.shift_remove(name).is_some() {
@@ -1286,6 +1290,9 @@ pub async fn call_tool(
     }
     if name == crate::routes::TOOL_NAME {
         return Ok(crate::routes::call(crate::weather::http(), &config, arguments).await);
+    }
+    if name == crate::maps::TOOL_NAME {
+        return Ok(crate::maps::call(&config, &agent.name, arguments).await);
     }
     let (agent_c, name_c, arguments_c) = (agent.clone(), name.to_string(), arguments.clone());
     if name == crate::health::TOOL_NAME {

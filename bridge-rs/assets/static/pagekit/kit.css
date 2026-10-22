@@ -135,3 +135,13 @@ border:1px solid var(--line);border-radius:12px;padding:8px 10px;width:100%}
 /* in the conversation, last so they win over the rules above (all without weight) */
 :where(html[data-bip-view=inline]) :where(.card,.kpi){background:var(--field);border-color:transparent}
 :where(html[data-bip-view=inline]) :where(.kpi.main){background:var(--tint)}
+/* map card (map_image): <figure class="map-card"><img src="map:…"><ol><li data-x="40" data-y="55">Place</li></ol></figure> */
+:where(.map-card){margin:0 0 12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+:where(.map-frame){position:relative;line-height:0}
+:where(.map-card img){width:100%;border-radius:0;display:block}
+:where(.map-ring){position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid var(--accent);box-shadow:0 0 0 6px var(--tint);pointer-events:none;transition:left .25s,top .25s}
+:where(.map-card ol){list-style:none;margin:0;padding:6px 8px 8px;counter-reset:map}
+:where(.map-card li){counter-increment:map;display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:12px;font-weight:700;cursor:pointer}
+:where(.map-card li)::before{content:counter(map);flex:none;width:24px;height:24px;border-radius:50%;background:var(--field);color:var(--ink2);font:900 12px/24px var(--font);text-align:center}
+:where(.map-card li[aria-current=true]){background:var(--tint)}
+:where(.map-card li[aria-current=true])::before{background:var(--accent);color:#fff}

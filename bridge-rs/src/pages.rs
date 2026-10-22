@@ -134,6 +134,30 @@ pub fn lock_with(source: &str, title: &str, tint: Option<&str>) -> (String, Vec<
     (format!("{doctype}\n{}{}\n{rest}", *HEAD, kit(tint)), outside)
 }
 
+static MAP_SRC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\bsrc\s*=\s*(["'])map:([A-Za-z0-9-]{1,40})(["'])"#).expect("valid regex"));
+
+/// The agent's maps (`src="map:<id>"`, maps.rs) put inline as data: URIs: the page still opens offline, alone.
+pub fn inline_maps(config: &Config, agent: &str, html: &str) -> String {
+    use base64::Engine;
+    MAP_SRC
+        .replace_all(html, |c: &regex::Captures| match crate::maps::file(config, agent, &c[2]) {
+            Some(path) => match std::fs::read(path) {
+                Ok(data) => {
+                    format!(
+                        "src={}data:image/png;base64,{}{}",
+                        &c[1],
+                        base64::engine::general_purpose::STANDARD.encode(data),
+                        &c[3]
+                    )
+                }
+                Err(_) => c[0].to_string(),
+            },
+            None => c[0].to_string(),
+        })
+        .into_owned()
+}
+
 fn meta_path(folder: &Path, page: &str) -> PathBuf {
     folder.join(format!("{page}.json"))
 }
@@ -212,6 +236,7 @@ pub fn save(config: &Config, agent: &str, html: &str, title: &str, page: Option<
     }
     let tint = config.agent(Some(agent)).and_then(|a| a.category.clone());
     let (locked, outside) = lock_with(html, &title, tint.as_deref());
+    let locked = inline_maps(config, agent, &locked);
     std::fs::create_dir_all(&folder)?;
     let now = tk::now_iso_seconds();
     let version = match known.get("version") {

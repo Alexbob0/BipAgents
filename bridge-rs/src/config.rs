@@ -405,13 +405,24 @@ pub struct MapsConfig {
     pub google_key: Option<String>,
     /// Google's Routes API (`computeRoutes`); tests point it at a fake.
     pub routes_url: String,
+    /// The maps' tiles (maps.rs): « osm » (OpenStreetMap, the only one for now; a paid provider can come later).
+    pub tiles: String,
+    /// The tiles' address, `{z}/{x}/{y}` filled in; tests point it at a fake.
+    pub tile_url: String,
 }
 
 impl Default for MapsConfig {
     fn default() -> Self {
-        MapsConfig { google_key: None, routes_url: ROUTES_URL.into() }
+        MapsConfig {
+            google_key: None,
+            routes_url: ROUTES_URL.into(),
+            tiles: "osm".into(),
+            tile_url: OSM_TILE_URL.into(),
+        }
     }
 }
+
+pub const OSM_TILE_URL: &str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 /// `[notebook]`: the Carnet's nightly pass (notebook/tidy.rs): a small model, its prices and a hard monthly cap.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1100,6 +1111,8 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
     let maps = MapsConfig {
         google_key: secret(maps_t, "google_key", "maps", false)?,
         routes_url: py::rstrip_slash(&s(maps_t, "routes_url", ROUTES_URL)),
+        tiles: s(maps_t, "tiles", "osm").trim().to_lowercase(),
+        tile_url: s(maps_t, "tile_url", OSM_TILE_URL),
     };
 
     let notebook_t = table(data, "notebook");

@@ -321,7 +321,33 @@
     });
   }
 
+  // A map card (the bridge's map_image): a tap on a line of its list rings its marker on the picture.
+  function mapCard(card) {
+    var img = card.querySelector("img");
+    if (!img) return;
+    var frame = doc.createElement("div"), ring = doc.createElement("div");
+    frame.className = "map-frame";
+    ring.className = "map-ring";
+    ring.hidden = true;
+    img.replaceWith(frame);
+    frame.appendChild(img);
+    frame.appendChild(ring);
+    var items = Array.prototype.slice.call(card.querySelectorAll("li[data-x]"));
+    items.forEach(function (li) {
+      li.addEventListener("click", function () {
+        var again = li.getAttribute("aria-current") === "true";
+        items.forEach(function (other) { other.removeAttribute("aria-current"); });
+        ring.hidden = again;
+        if (again) return;
+        li.setAttribute("aria-current", "true");
+        ring.style.left = li.dataset.x + "%";
+        ring.style.top = li.dataset.y + "%";
+      });
+    });
+  }
+
   function enhance() {
+    doc.querySelectorAll(".map-card").forEach(mapCard);
     doc.querySelectorAll("table.sort").forEach(sortable);
     doc.querySelectorAll(".tabs").forEach(tabs);
     doc.querySelectorAll("pre.diagram,div.diagram[data-src]").forEach(function (el) { diagram(el, el.dataset.src || null); });
