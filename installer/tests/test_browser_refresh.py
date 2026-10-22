@@ -138,20 +138,16 @@ def test_the_browser_folder_follows_the_bridge_config(tmp_path):
 
 def test_one_refresh_at_a_time_on_a_server(tmp_path):
     lock = tmp_path / "refresh.lock"
+    previous = os.umask(0o077)   # a strict umask (an offer place)
     first = refresh.server_lock(lock, wait=0)
-    assert first is not None and lock.stat().st_mode & 0o777 == 0o644 & ~_umask()
+    os.umask(previous)
+    assert first is not None and lock.stat().st_mode & 0o777 == 0o644          # the other accounts open it too
     waited = []
     assert refresh.server_lock(lock, wait=0, sleep=waited.append) is None      # the other one waits, then gives up
     os.close(first)
     again = refresh.server_lock(lock, wait=0)
     assert again is not None
     os.close(again)
-
-
-def _umask() -> int:
-    mask = os.umask(0)
-    os.umask(mask)
-    return mask
 
 
 def test_the_timer_runs_each_night_spread_and_at_the_lowest_priority(tmp_path):

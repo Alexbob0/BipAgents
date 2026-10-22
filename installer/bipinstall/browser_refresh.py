@@ -218,12 +218,19 @@ def server_lock(path: Path = LOCK, wait: float = LOCK_WAIT, sleep: Callable[[flo
     """One refresh at a time on the server (its places are accounts of their own, each with its own images): a
     file every account can open, locked with flock. None after `wait` seconds (another one is stuck: tomorrow)."""
     try:
-        fd = os.open(path, os.O_RDONLY)
-    except FileNotFoundError:
         try:
-            fd = os.open(path, os.O_RDONLY | os.O_CREAT | os.O_EXCL, 0o644)
-        except FileExistsError:
             fd = os.open(path, os.O_RDONLY)
+        except FileNotFoundError:
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                os.fchmod(fd, 0o644)   # whatever this account's umask: the other accounts open it too
+            except FileExistsError:
+                fd = os.open(path, os.O_RDONLY)
+    except PermissionError:   # made unreadable by hand: this account's own lock, the others may build meanwhile
+        say(f"{path} cannot be opened: not waiting for the server's other installs")
+        private = Path.home() / ".cache" / "bipagents-browser-refresh.lock"
+        private.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(private, os.O_RDONLY | os.O_CREAT, 0o600)
     deadline = time.monotonic() + wait
     said = False
     while True:
