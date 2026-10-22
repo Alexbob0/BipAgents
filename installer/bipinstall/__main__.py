@@ -19,7 +19,7 @@ from typing import Callable, List, Optional
 import httpx
 import yaml
 
-from . import hermes, models, rustbridge, souls, ui, voices
+from . import browser_refresh, hermes, models, rustbridge, souls, ui, voices
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
@@ -268,6 +268,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "voice":
         from .voice_server import main as voice_main
         return voice_main(argv[1:])
+    if argv and argv[0] == "browser-refresh":   # browser_refresh.py: the agents' browser kept up to date, each night
+        from .browser_refresh import main as browser_refresh_main
+        return browser_refresh_main(argv[1:])
     if argv and argv[0] == "console":   # a one-time link to the web console, from the bridge
         from .console import main as console_main
         return console_main(argv[1:])
@@ -664,6 +667,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
                        "from its repository).\n    Allow a few minutes the first time."))
         try:
             hermes.build_browser(runner, sandbox, REPO)
+            browser_refresh.install_timer(runner, REPO, INSTALLER_PYTHON)   # Chrome's security fixes, each night
             runner.run(rustbridge.cli(inst.home, REPO) + ["browser", "add", "--all", "--config", str(inst.bridge_config)],
                        cwd=REPO / "bridge")
             if machine.system == "linux":

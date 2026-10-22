@@ -147,6 +147,8 @@ COMMAND_HELP = """BipAgents, in this account:
   bipagents resume           start again here after `export --moving`, if the move is called off
   bipagents send ADDR CODE   send your agents to your place of the all-included offer (the app shows both)
   bipagents backup           back this place up now (the all-included offer's places: every hour by themselves)
+  bipagents browser-refresh  update the agents' browser now if Chrome has news (each night by itself);
+                             `--version`: which Chrome it has
   bipagents uninstall        remove it"""
 
 

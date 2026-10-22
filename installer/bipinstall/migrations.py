@@ -149,6 +149,19 @@ def rust_bridge(runner: hermes.Runner, home: Path) -> str:
     return "; ".join(said)
 
 
+def browser_refresh(runner: hermes.Runner, home: Path) -> str:
+    """The agents' browser kept up to date with Chrome's security fixes each night, apart from BipAgents' own updates
+    (browser_refresh.py): its timer, on a Linux install that has the browser."""
+    from . import browser_refresh as refresh
+    from .__main__ import INSTALLER_PYTHON
+    engine = hermes.sandbox_runtime()
+    units = list((home / ".config" / "systemd" / "user").glob("bipagents-browser-*.service"))
+    if not engine or not (units or refresh.image_id(engine, refresh.IMAGE, refresh.run)):
+        return "no agent browser here"
+    refresh.install_timer(runner, REPO, INSTALLER_PYTHON, home)
+    return "the agents' browser now gets Chrome's security fixes each night (bipagents-browser-refresh.timer)"
+
+
 # In order; an id never changes once released. rust-bridge comes first: the others run the bridge's command line.
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-21-rust-bridge", rust_bridge),
@@ -156,6 +169,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-16-approvals-manual", approvals_manual),
     ("2026-10-18-browsers-on-demand", browsers_on_demand),
     ("2026-10-19-browser-ports", browser_ports),
+    ("2026-10-22-browser-refresh", browser_refresh),
 ]
 
 
