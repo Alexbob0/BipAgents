@@ -322,7 +322,9 @@ impl Proxy {
     fn fail(&self, ident: &Value, exc: &str) {
         if !ident.is_null() {
             self.to_client(&json!({"jsonrpc": "2.0", "id": ident,
-                                   "error": {"code": -32603, "message": format!("the agent's browser could not start: {exc}")}}));
+                                   "error": {"code": -32603, "message": format!(
+                                       "the agent's browser could not start: {exc}\nTell your person simply, in \
+their language: « I can't open web pages right now; I'll try again in a moment. »")}}));
         }
     }
 

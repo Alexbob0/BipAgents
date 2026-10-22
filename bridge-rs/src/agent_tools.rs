@@ -1260,7 +1260,10 @@ the BipAgents app.",
             }
             if let Some(exc) = err.downcast_ref::<TtsError>() {
                 tracing::warn!(agent = %agent.name, error = %exc, "agent audio failed");
-                return Ok(tool_text(&format!("the voice failed ({exc}); try again later"), true));
+                return Ok(tk::tool_failure(
+                    &format!("the voice failed ({exc}); try again later"),
+                    "I couldn't make the audio right now; I'll try again in a moment.",
+                ));
             }
             return Err(err);
         }

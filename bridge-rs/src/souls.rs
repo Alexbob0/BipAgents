@@ -9,8 +9,10 @@
 //! person; and when the person seems in danger, give their country's crisis line (decided 2026-10-20, the five countries
 //! the offer is sold in); and when what the person says concerns their family, propose to tell them with
 //! `tell_family`, never sent before the person approves (decided 2026-10-21, family_news.rs; the Rust bridge only:
-//! tests/golden/souls.json has the rule added by hand). `heal_souls` brings existing agents' blocks up to date. An
-//! agent given the person's health data has a second block (`with_health`): use it to help, never to diagnose.
+//! tests/golden/souls.json has the rule added by hand); and talk in plain words, never about its container, tools or
+//! errors (decided 2026-10-22: the people are not technical; also by hand in the golden file). `heal_souls` brings
+//! existing agents' blocks up to date. An agent given the person's health data has a second block (`with_health`):
+//! use it to help, never to diagnose.
 //!
 //! Port of `bridge/bipbridge/souls.py` (owner group: agents).
 
@@ -87,6 +89,16 @@ pub const FAMILY_RULE: &str = concat!(
     "once per topic; if your person said no, don't propose it again."
 );
 
+pub const PLAIN_RULE: &str = concat!(
+    "Talk to your person in everyday words, about what they want and what you got for them: most people are not ",
+    "technical. Never mention your container, sandbox, terminal, server, file paths, the names of tools, APIs or ",
+    "programs, code, error messages or how you are set up, unless they ask or clearly want technical details (a ",
+    "MEDIA: line a tool gives you still goes at the end of your reply). When something can't be done, say simply ",
+    "what can't be done and what you propose instead: don't narrate your attempts, retries or errors. Before doing ",
+    "something that needs their approval, say in one plain sentence what you will do for them and why; the approval ",
+    "request appears right after."
+);
+
 fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
@@ -95,7 +107,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PLAIN_RULE}\n{BLOCK_END}"
     )
 }
 

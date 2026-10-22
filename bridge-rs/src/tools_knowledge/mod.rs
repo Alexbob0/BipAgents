@@ -172,6 +172,12 @@ pub fn tool_text(text: &str, error: bool) -> crate::Dict {
     out
 }
 
+/// A failure the agent tends to repeat to the person word for word: what went wrong (for the agent), then a plain
+/// sentence it can pass on instead (PLAIN_RULE, souls.rs).
+pub fn tool_failure(what: &str, plain: &str) -> crate::Dict {
+    tool_text(&format!("{what}\nTell your person simply, in their language: « {plain} »"), true)
+}
+
 /// `isinstance(value, int)` (a bool is one in Python): its value.
 pub fn as_py_int(value: Option<&Value>) -> Option<i64> {
     match value? {
