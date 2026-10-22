@@ -76,7 +76,8 @@ commit BipAgents is tested with (`a7b9eea`, set in the `Containerfile`) and appl
 - `requirements.txt`: its Python packages at the exact versions tested, installed from PyPI. Among them, **nodriver is
   under the GNU AGPL v3** and certifi under the MPL 2.0: both are installed unmodified, as separate packages.
 - `entrypoint.sh` (the screen, the VNC server), `devtools_relay.py` (Chrome's DevTools from the host, at an address
-  that outlives Chrome's restarts), `mcp.sh` (the server with only what browsing needs:
+  that outlives Chrome's restarts), `open_browser.sh` (Chrome started on the screen when the person opens the browser
+  from the app; the agent's `spawn_browser` then connects to it), `mcp.sh` (the server with only what browsing needs:
   no element cloning, file extraction, network interception, raw CDP or debugging hooks) and the skill telling the
   agent how to use its browser (`bridge-rs/assets/skills/visible-browser/SKILL.md`, copied into its Hermes profile).
 
@@ -85,7 +86,9 @@ commit BipAgents is tested with (`a7b9eea`, set in the `Containerfile`) and appl
 « Prendre la main » in the app sets a flag in the container (`/tmp/bipagents-hold`, by the bridge): until « Rendre la
 main », the agent's browser tools answer « the person has the browser, wait » (`hold_gate.py`, between Hermes and the
 MCP server) and its DevTools connections are closed (`devtools_relay.py`), so it neither clicks nor reads the page while
-the person logs in. A flag older than 15 minutes (the app closed without handing it back) no longer counts.
+the person logs in. Only the bridge's own connections showing the hold's token (`human <token>` in the flag,
+`X-Bip-Hold`) get through: on a phone they show the person the page, rendered as on a phone, and pass on their taps
+and keys. A flag older than 15 minutes (the app closed without handing it back) no longer counts.
 
 ## Limits
 
