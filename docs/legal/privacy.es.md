@@ -20,7 +20,8 @@
   3. **informes de fallos**, solo si has activado su envío en los ajustes de tu teléfono.
 - Con la oferta todo incluido, Kerfy Studio trata además tu cuenta, el estado de tu suscripción, datos técnicos sobre
   tu plaza (nunca su contenido) y tus copias de seguridad, cifradas con una clave que no tiene; aloja tu plaza sin
-  acceder a ella (sección 5).
+  acceder a ella (sección 5). Si das a un agente su propia dirección de correo, Kerfy Studio guarda además los correos
+  de esa dirección en su servidor de correo (sección 5.8).
 
 ## 1. Quién es responsable
 
@@ -61,6 +62,10 @@ Con tu propio ordenador o tu propio servidor:
   modelo que funciona en tu casa, nada sale de tu red.
 - **Los servicios que conectas a tus agentes** (correo, agenda, sitios web, domótica…) reciben lo que tus agentes les
   envían, según sus propias reglas.
+- **Una dirección de correo para un agente.** En tu propio servidor, puedes dar a un agente un buzón de tu propio
+  proveedor de correo. Su contraseña se queda en tu servidor; el agente solo lee los correos de las direcciones que
+  has autorizado y te pide tu aprobación antes de escribir a una nueva. Se aplican las condiciones de ese proveedor, y
+  Kerfy Studio no guarda nada de él.
 - **Varias personas en un mismo servidor** (función familia): cada persona tiene su propia instalación, separada de
   las demás. Quien administra el servidor es responsable frente a las demás.
 
@@ -235,8 +240,8 @@ soporte). El servicio de Kerfy Studio que gestiona las cuentas, las suscripcione
 ### 5.1 Quién es responsable de qué
 
 - **Kerfy Studio es el responsable** de los tratamientos que requiere la oferta: tu cuenta, el estado de tu
-  suscripción, el alojamiento de tu plaza, el envío de tus mensajes al modelo de IA, las copias de seguridad, la
-  supervisión técnica y la tramitación de los abusos.
+  suscripción, el alojamiento de tu plaza, el envío de tus mensajes al modelo de IA, las copias de seguridad, las
+  direcciones de correo de tus agentes si las activas, la supervisión técnica y la tramitación de los abusos.
 - **El contenido de tu plaza** (tus agentes, tus conversaciones, tus archivos, su memoria, sus rutinas, la caja fuerte
   de contraseñas): tú decides lo que pones en ella. Kerfy Studio lo aloja y hace que lo trate el modelo de IA solo para
   prestarte el servicio (artículo 6.1.b del RGPD), **sin acceder a él**: su software no lo lee
@@ -377,12 +382,56 @@ a las demás personas, responder a las autoridades.
 legítimo de Kerfy Studio en proteger su servicio y a sus clientes (artículo 6.1.f).
 **Plazo.** 1 año después de su tramitación, más tiempo si un litigio o un procedimiento lo exige.
 
-### 5.8 Los prestadores de la oferta
+### 5.8 Las direcciones de correo de tus agentes
+
+**Qué es.** Puedes dar a un agente que elijas su propia dirección de correo, por ejemplo `lea.k7m2@a.bipagents.com`.
+Está desactivada por defecto: la activas para ese agente en la app y puedes quitarla en cualquier momento.
+
+**Dónde.** El buzón se guarda en el servidor de correo propio de Kerfy Studio, un servidor dedicado alquilado a
+Hetzner (Alemania o Finlandia), aparte de los servidores de las plazas.
+
+**Datos.** La propia dirección, que el guichet vincula a tu plaza. Los correos recibidos y enviados por esa dirección:
+sus cabeceras (remitentes, destinatarios, fechas, asuntos), su contenido y sus adjuntos. La contraseña de la dirección
+se crea en el servidor de Kerfy Studio y se entrega una sola vez a tu plaza, donde se guarda con los ajustes del
+agente; el servidor de correo solo guarda un hash de ella, y el guichet no la guarda. Las direcciones a las que tu
+agente puede escribir, su límite diario y los correos que esperan tu aprobación se guardan en tu plaza.
+
+**Quién puede escribir a tu agente.** El agente solo lee los correos de las direcciones que has autorizado, cuando su
+remitente está verificado (las comprobaciones habituales contra remitentes falsificados). No lee ni responde los
+correos de nadie más: se quedan en el buzón hasta que se borran con los demás (más abajo). Un correo lo escribe otra
+persona: el agente toma lo que dice como información, nunca como instrucciones que seguir.
+
+**Lo que tu agente puede enviar.** Responde a las direcciones que has autorizado. Para escribir a una dirección nueva,
+necesita tu aprobación en la app: el correo espera hasta que lo apruebes (la dirección queda entonces autorizada) o lo
+descartes. Envía como máximo el número de correos al día que fijas en la app (20 por defecto).
+
+**Spam y seguridad.** El servidor de correo filtra el spam y guarda registros de seguridad (las direcciones IP de los
+servidores que envían, la entrega de cada correo, las conexiones al buzón) durante **30 días**, para entregar los
+correos, bloquear el spam y los abusos e investigar un incidente.
+
+**Acceso.** Como con el contenido de tu plaza (sección 5.1), Kerfy Studio no lee estos correos: su software solo los
+entrega, filtra el spam y los borra cuando se cumple su plazo. Entre servidores de correo, los correos van cifrados
+durante el trayecto cuando el otro servidor lo permite; un correo no está cifrado de extremo a extremo.
+
+**Finalidades y bases jurídicas.** Dar a tu agente una dirección para recibir los correos de las personas que
+autorizas y responderles: ejecución del contrato (artículo 6.1.b del RGPD). Filtrado del spam y registros de
+seguridad: interés legítimo de Kerfy Studio en proteger su servicio y a las personas que lo usan (artículo 6.1.f).
+
+**Plazo.** Los correos recibidos y enviados se borran a los **90 días**. Este plazo es un ajuste de la oferta: puede
+acortarse, y nunca se alarga sin avisarte antes. El buzón entero se borra de una vez cuando quitas la dirección o el
+agente, cuando se borra tu plaza (sección 5.4) y cuando se borra tu cuenta (sección 5.2). Registros de seguridad: 30
+días.
+
+**Tu propio buzón en su lugar.** En tu propio servidor, puedes conectar en su lugar un buzón de tu propio proveedor de
+correo (sección 2): sus credenciales se quedan en tu servidor, se aplican las condiciones de ese proveedor, BipAgents
+no borra nada en él y Kerfy Studio no guarda nada de él.
+
+### 5.9 Los prestadores de la oferta
 
 | Prestador | Papel | Datos | Dónde |
 |---|---|---|---|
 | OVHcloud (OVH SAS, Roubaix, Francia) | Aloja los servidores de las plazas; imagen diaria de cada servidor | Contenido de las plazas | Unión Europea |
-| Hetzner Online GmbH (Gunzenhausen, Alemania) | Aloja parte de los servidores de las plazas | Contenido de las plazas | Alemania, Finlandia |
+| Hetzner Online GmbH (Gunzenhausen, Alemania) | Aloja parte de los servidores de las plazas y el servidor de correo de los agentes | Contenido de las plazas; buzones de los agentes y registros de seguridad del servidor de correo | Alemania, Finlandia |
 | EUrouter B.V. (Ámsterdam, Países Bajos) | Enrutador de IA | Mensajes enviados al modelo, metadatos | Unión Europea |
 | Proveedores de los modelos: [por completar] | Hacen funcionar el modelo elegido | Mensajes enviados al modelo | [por completar] |
 | [por completar: proveedor de alojamiento de las copias de seguridad] | Guarda las copias de seguridad | Copias de seguridad cifradas, ilegibles para él y para Kerfy Studio | [por completar] |
@@ -470,10 +519,11 @@ Estados Unidos:
 - Apple indica que enmarca las transferencias desde el Espacio Económico Europeo con las cláusulas contractuales tipo
   adoptadas por la Comisión Europea.
 
-**La oferta todo incluido.** Los servidores de las plazas están en la Unión Europea, para todas las personas de la
-oferta. EUrouter trata los mensajes en la Unión Europea [por completar: países donde funcionan los modelos ofrecidos, y
-la garantía si alguno está fuera de la Unión]. Apple y Google (inicio de sesión, tiendas, DeviceCheck, Play Integrity)
-pueden tratar datos en Estados Unidos, con las garantías indicadas arriba.
+**La oferta todo incluido.** Los servidores de las plazas y el servidor de correo de los agentes están en la Unión
+Europea, para todas las personas de la oferta. EUrouter trata los mensajes en la Unión Europea [por completar: países
+donde funcionan los modelos ofrecidos, y la garantía si alguno está fuera de la Unión]. Apple y Google (inicio de
+sesión, tiendas, DeviceCheck, Play Integrity) pueden tratar datos en Estados Unidos, con las garantías indicadas
+arriba.
 
 **Si vives fuera de la Unión Europea** (Estados Unidos, Reino Unido, Israel, Singapur), tus datos vienen a la Unión
 Europea, donde Kerfy Studio los trata conforme al RGPD, que se aplica a todos sus tratamientos. El Reino Unido e Israel
@@ -507,6 +557,8 @@ seguridad: [por completar: país; garantía]. Puedes pedirnos una copia de las g
 | Datos técnicos de los servidores | Solo los últimos valores |
 | Registro de eventos del guichet | 12 meses |
 | Metadatos en EUrouter | Hasta 12 meses, según EUrouter |
+| Correos de tus agentes (oferta todo incluido) | 90 días por correo (puede acortarse); el buzón entero de una vez cuando quitas la dirección o el agente, cuando se borra la plaza o cuando se borra la cuenta |
+| Registros de seguridad del servidor de correo de los agentes | 30 días |
 | Denuncias de abusos | 1 año después de su tramitación |
 
 ## 13. Seguridad
@@ -518,9 +570,11 @@ certificado de tu servidor. El código de la app, del servidor y del relé es p�
 informar de un fallo de seguridad: **support@kerfystudio.com** (consulta el archivo SECURITY.md del repositorio).
 
 Con la oferta todo incluido, cada plaza es una cuenta separada del servidor, sin derechos de administrador; Kerfy
-Studio no tiene ninguna clave SSH en los servidores, y un servidor solo ejecuta órdenes firmadas por el guichet. La app
-se conecta a tu plaza en HTTPS y comprueba su certificado. Las copias de seguridad se cifran en la plaza antes de
-salir.
+Studio no tiene ninguna clave SSH en los servidores, y un servidor solo ejecuta órdenes firmadas por el guichet. La
+app se conecta a tu plaza en HTTPS y comprueba su certificado. Las copias de seguridad se cifran en la plaza antes de
+salir. El servidor de correo de los agentes es un servidor aparte, gestionado por Kerfy Studio: las plazas se conectan
+a él con conexiones cifradas, y un agente solo envía correos a través de un control en su plaza que aplica las
+direcciones autorizadas, tus aprobaciones y el límite diario.
 
 **En caso de violación de datos**, Kerfy Studio avisa a la CNIL en un plazo de 72 horas (artículo 33 del RGPD) y a las
 personas afectadas cuando el riesgo para ellas es alto (artículo 34); para las personas en Singapur, a la Personal

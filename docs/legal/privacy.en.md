@@ -18,7 +18,8 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
   3. **crash reports**, only if you turned on sharing them in your phone's settings.
 - With the all-included offer, Kerfy Studio also processes your account, the state of your subscription, technical
   data about your place (never its content) and your backups, encrypted with a key it does not have; it hosts your
-  place without accessing it (section 5).
+  place without accessing it (section 5). If you give an agent its own e-mail address, Kerfy Studio also keeps that
+  address's mails on its mail server (section 5.8).
 
 ## 1. Who is responsible
 
@@ -61,6 +62,9 @@ With your own computer or your own server:
   nothing leaves your network.
 - **The services you connect to your agents** (email, calendar, websites, smart home…) receive what your agents send
   them, under their own rules.
+- **An e-mail address for an agent.** On your own server, you can give an agent a mailbox at your own e-mail provider.
+  Its password stays on your server; the agent only reads the mails of the addresses you allowed and asks for your
+  approval before writing to a new one. That provider's terms apply, and Kerfy Studio keeps nothing of it.
 - **Several people on one server** (the family feature): each person has their own install, separate from the
   others. Whoever administers the server is responsible towards the others.
 
@@ -230,8 +234,8 @@ subscriptions and places is called the guichet.
 ### 5.1 Who is responsible for what
 
 - **Kerfy Studio is the controller** of the processing the offer requires: your account, the state of your
-  subscription, the hosting of your place, sending your messages to the AI model, the backups, technical monitoring
-  and handling abuse.
+  subscription, the hosting of your place, sending your messages to the AI model, the backups, your agents' e-mail
+  addresses if you turn them on, technical monitoring and handling abuse.
 - **The content of your place** (your agents, your conversations, your files, their memory, their routines, the
   password vault): you decide what you put there. Kerfy Studio hosts it and has it processed by the AI model only to
   provide you with the service (GDPR article 6(1)(b)), **without accessing it**: its software does not read it
@@ -367,12 +371,56 @@ people, answering authorities.
 Studio's legitimate interest in protecting its service and its customers (article 6(1)(f)).
 **Retention.** 1 year after they were handled, longer if a dispute or proceedings require it.
 
-### 5.8 The offer's service providers
+### 5.8 Your agents' e-mail addresses
+
+**What it is.** You can give an agent you choose its own e-mail address, such as `lea.k7m2@a.bipagents.com`. It is off
+by default: you turn it on for that agent in the app, and you can remove it at any time.
+
+**Where.** The mailbox is kept on Kerfy Studio's own mail server, a dedicated server rented from Hetzner (Germany or
+Finland), apart from the places' servers.
+
+**Data.** The address itself, which the guichet links to your place. The mails received and sent by that address:
+their headers (senders, recipients, dates, subjects), their contents and their attachments. The address's password is
+made on Kerfy Studio's server and given once to your place, where it is kept with the agent's settings; the mail
+server only keeps a hashed form of it, and the guichet does not keep it. The addresses your agent may write to, its
+daily limit and the mails waiting for your approval are kept on your place.
+
+**Who can write to your agent.** The agent only reads the mails of the addresses you allowed, when their sender is
+verified (the usual checks against forged senders). It does not read or answer mails from anyone else: they stay in
+the mailbox until they are deleted with the others (below). A mail is written by someone else: the agent treats what
+it says as information, never as instructions to follow.
+
+**What your agent can send.** It answers the addresses you allowed. To write to a new address, it needs your approval
+in the app: the mail waits until you approve it (the address is then allowed) or drop it. It sends at most the number
+of mails a day that you set in the app (20 by default).
+
+**Spam and security.** The mail server filters spam and keeps security logs (the IP addresses of the sending servers,
+the delivery of each mail, the connections to the mailbox) for **30 days**, to deliver the mails, block spam and
+abuse, and investigate an incident.
+
+**Access.** As for the content of your place (section 5.1), Kerfy Studio does not read these mails: its software only
+delivers them, filters spam and deletes them when their time is up. Between mail servers, mails are encrypted on the
+way when the other server allows it; a mail is not encrypted end to end.
+
+**Purposes and legal bases.** Giving your agent an address to receive the mails of the people you allow and answer
+them: performance of the contract (GDPR article 6(1)(b)). Spam filtering and security logs: Kerfy Studio's legitimate
+interest in protecting its service and the people who use it (article 6(1)(f)).
+
+**Retention.** Mails received and sent are deleted after **90 days**. This duration is a setting of the offer: it may
+be shortened, and it is never lengthened without telling you first. The whole mailbox is deleted at once when you
+remove the address or the agent, when your place is erased (section 5.4) and when your account is erased (section
+5.2). Security logs: 30 days.
+
+**Your own mailbox instead.** On your own server, you can instead connect a mailbox at your own e-mail provider
+(section 2): its credentials stay on your server, that provider's terms apply, BipAgents deletes nothing from it and
+Kerfy Studio keeps nothing of it.
+
+### 5.9 The offer's service providers
 
 | Provider | Role | Data | Where |
 |---|---|---|---|
 | OVHcloud (OVH SAS, Roubaix, France) | Hosts the places' servers; daily image of each server | Content of the places | European Union |
-| Hetzner Online GmbH (Gunzenhausen, Germany) | Hosts some of the places' servers | Content of the places | Germany, Finland |
+| Hetzner Online GmbH (Gunzenhausen, Germany) | Hosts some of the places' servers and the agents' mail server | Content of the places; the agents' mailboxes and the mail server's security logs | Germany, Finland |
 | EUrouter B.V. (Amsterdam, Netherlands) | AI router | Messages sent to the model, metadata | European Union |
 | Model providers: [to be completed] | Run the chosen model | Messages sent to the model | [to be completed] |
 | [to be completed: backup hosting provider] | Keeps the backups | Encrypted backups, unreadable for it and for Kerfy Studio | [to be completed] |
@@ -455,10 +503,10 @@ Google may process the token and the notification outside the European Union, no
 - Apple states that it covers transfers from the European Economic Area with the standard contractual clauses adopted
   by the European Commission.
 
-**The all-included offer.** The places' servers are in the European Union, for everyone in the offer. EUrouter
-processes the messages in the European Union [to be completed: countries where the models offered run, and the
-safeguard if one is outside the Union]. Apple and Google (sign-in, stores, DeviceCheck, Play Integrity) may process
-data in the United States, with the safeguards stated above.
+**The all-included offer.** The places' servers and the agents' mail server are in the European Union, for everyone in
+the offer. EUrouter processes the messages in the European Union [to be completed: countries where the models offered
+run, and the safeguard if one is outside the Union]. Apple and Google (sign-in, stores, DeviceCheck, Play Integrity)
+may process data in the United States, with the safeguards stated above.
 
 **If you live outside the European Union** (United States, United Kingdom, Israel, Singapore, Canada), your data
 comes to the European Union, where Kerfy Studio processes it under the GDPR, which applies to all its processing. The
@@ -466,14 +514,14 @@ United Kingdom and Israel recognise the European Union as providing adequate pro
 protection and our contracts with our service providers give the comparable protection that Singapore's law requires.
 
 **If you live in Canada**, your data is therefore stored and processed outside Canada, and outside Quebec if you live
-there: in the European Union for your place, its backups and your account, and at the service providers named in this
-section. It is subject there to the laws of those countries, and their courts and authorities may access it in the
-cases their laws provide for. Kerfy Studio remains responsible for your data at its service providers and binds them
-by contract. For people in Quebec, Kerfy Studio assesses the privacy-related factors before this transfer (the
-sensitivity of the data, the purposes, the protection measures, including contractual ones, and the legal framework
-of the country of destination) and makes the transfer only if this assessment shows adequate protection (section 17
-of the Act respecting the protection of personal information in the private sector). You can ask us for a summary of
-this assessment.
+there: in the European Union for your place, its backups, your agents' mailboxes and your account, and at the service
+providers named in this section. It is subject there to the laws of those countries, and their courts and authorities
+may access it in the cases their laws provide for. Kerfy Studio remains responsible for your data at its service
+providers and binds them by contract. For people in Quebec, Kerfy Studio assesses the privacy-related factors before
+this transfer (the sensitivity of the data, the purposes, the protection measures, including contractual ones, and the
+legal framework of the country of destination) and makes the transfer only if this assessment shows adequate
+protection (section 17 of the Act respecting the protection of personal information in the private sector). You can
+ask us for a summary of this assessment.
 
 Email provider: [country; safeguard]. Email sending provider and backup hosting provider: [to be completed: country;
 safeguard]. You can ask us for a copy of the applicable safeguards.
@@ -502,6 +550,8 @@ safeguard]. You can ask us for a copy of the applicable safeguards.
 | Servers' technical data | Latest values only |
 | The guichet's event log | 12 months |
 | Metadata at EUrouter | Up to 12 months, according to EUrouter |
+| Your agents' e-mail (all-included offer) | 90 days per mail (may be shortened); the whole mailbox at once when you remove the address or the agent, when the place is erased or when the account is erased |
+| Security logs of the agents' mail server | 30 days |
 | Abuse reports | 1 year after they were handled |
 
 ## 13. Security
@@ -514,7 +564,9 @@ security flaw: **support@kerfystudio.com** (see the SECURITY.md file in the repo
 
 With the all-included offer, each place is a separate account on the server, without administrator rights; Kerfy
 Studio has no SSH key on the servers, and a server only carries out orders signed by the guichet. The app connects to
-your place over HTTPS and checks its certificate. Backups are encrypted on the place before they leave.
+your place over HTTPS and checks its certificate. Backups are encrypted on the place before they leave. The agents'
+mail server is a separate server run by Kerfy Studio: the places reach it over encrypted connections, and an agent
+only sends mail through a guard on its place that applies the allowed addresses, your approvals and the daily limit.
 
 **In case of a data breach**, Kerfy Studio notifies the CNIL within 72 hours (GDPR article 33) and the people
 concerned when the risk to them is high (article 34); for people in Singapore, the Personal Data Protection Commission
