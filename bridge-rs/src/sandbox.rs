@@ -57,19 +57,19 @@ use crate::tools_knowledge::tool_text;
 use crate::web::ApiResult;
 use crate::{py, shares, Dict};
 
-/// The registries a sandbox reaches by default: Python, JavaScript, Rust, Go and Ruby packages, Debian's.
-pub const REGISTRIES: [&str; 13] = [
+/// The registries a sandbox reaches by default: Python, JavaScript, Rust, Go packages, Debian's. Only hosts that serve
+/// packages: PyPI takes uploads on upload.pypi.org and crates.io's API publishes, so neither is listed, and RubyGems
+/// (installs and pushes on one host) is left out; npm's registry does both, a risk accepted (2026-10-22: the agent's
+/// visible browser is an easier way out anyway).
+pub const REGISTRIES: [&str; 10] = [
     "pypi.org",
     "files.pythonhosted.org",
     "registry.npmjs.org",
     "registry.yarnpkg.com",
-    "crates.io",
     "index.crates.io",
     "static.crates.io",
     "proxy.golang.org",
     "sum.golang.org",
-    "rubygems.org",
-    "index.rubygems.org",
     "deb.debian.org",
     "security.debian.org",
 ];
@@ -160,7 +160,9 @@ pub fn isolates(config: &Config, agent: &AgentConfig) -> bool {
         return false;
     }
     let Some(folder) = shares::profile_dir(config, agent) else { return false };
-    folder.is_dir() && shares::terminal_backend(&folder).as_deref() == Some("docker")
+    folder.is_dir()
+        && shares::terminal_backend(&folder).as_deref() == Some("docker")
+        && !desktop_in_sandbox(config, &folder)
 }
 
 // --- state ---------------------------------------------------------------------------------------------------------
@@ -345,13 +347,13 @@ pub enum Net<'a> {
     Registries(&'a str),
     /// Nothing (the proxy couldn't be set up).
     Closed,
-    /// The internet, as before: Hermes' Bot Desktop and its browser live in this sandbox (`desktop_in_sandbox`).
-    Open,
 }
 
 /// Hermes' Bot Desktop runs in the agent's sandbox: an install without the visible browser's containers
 /// (`[browser] enabled = false`) whose agents browse with the desktop Hermes starts in their sandbox
-/// (`bot_desktop.auto_start`, the installer's setup_desktop). Its browser needs the internet: that sandbox keeps it.
+/// (`bot_desktop.auto_start`, the installer's setup_desktop). Its browser needs the internet, so that sandbox is not
+/// isolated at all (owner decision 2026-10-22): its folders stay mounted as before and Hermes keeps asking the person
+/// before risky commands, rather than running code with the open internet and no question asked.
 pub fn desktop_in_sandbox(config: &Config, folder: &Path) -> bool {
     if config.browser.enabled {
         return false;
@@ -447,12 +449,10 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     })?;
     let (c, name) = (config.clone(), agent.name.clone());
     let (added, removed) = tokio::task::spawn_blocking(move || sync_agent(&c, &name)).await??;
-    let desktop = desktop_in_sandbox(&config, &folder);
-    let proxy = if desktop { None } else { network(&config, run).await.ok() };
-    let net = match (&proxy, desktop) {
-        (_, true) => Net::Open,
-        (Some(url), _) => Net::Registries(url),
-        (None, _) => Net::Closed,
+    let proxy = network(&config, run).await.ok();
+    let net = match &proxy {
+        Some(url) => Net::Registries(url),
+        None => Net::Closed,
     };
     let current = match shares::profile_config(&folder).get("terminal") {
         Some(Value::Object(map)) => map.clone(),
@@ -495,7 +495,6 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
             network = match net {
                 Net::Registries(_) => "registries only",
                 Net::Closed => "none",
-                Net::Open => "internet (its desktop's browser runs there)",
             },
             "sandbox isolated: no folder of this machine inside, the files through the bridge's tools"
         );
@@ -538,10 +537,7 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
 pub async fn isolate_all(config: SharedConfig, run: Run) {
     crate::agents_admin::mount_all_uploads(config.clone(), run.clone()).await;
     let current = config.get();
-    let any = current.agents.values().any(|a| {
-        isolates(&current, a)
-            && !shares::profile_dir(&current, a).map(|f| desktop_in_sandbox(&current, &f)).unwrap_or(false)
-    });
+    let any = current.agents.values().any(|a| isolates(&current, a));
     if !any {
         return;
     }
@@ -1123,10 +1119,5 @@ mod tests {
         assert_eq!(closed["docker_extra_args"], json!(["--shm-size=2g"]));
         assert_eq!(closed["docker_env"], json!({"LANG": "fr_FR.UTF-8"}));
         assert_eq!(closed["docker_network"], json!(false));
-        // Its desktop's browser in the sandbox: the internet as before, the folders still out.
-        let open = wanted_terminal(&config, "vie", &current, Net::Open);
-        assert_eq!(open["docker_network"], json!(true));
-        assert_eq!(open["docker_extra_args"], json!(["--shm-size=2g"]));
-        assert_eq!(open["docker_volumes"], wanted["docker_volumes"]);
     }
 }

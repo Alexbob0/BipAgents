@@ -134,7 +134,7 @@ root), le bridge le garde isolé : Hermes y fait alors le travail sans risque (`
   lui (`bipagents-files-<agent>`, en lecture seule dans `/fichiers`) ; les dossiers partagés entre agents passent par
   les outils `shared_files_*` du bridge, et tu approuves chaque écriture ou suppression depuis l'app.
 - **Pas d'internet, sauf les dépôts de paquets** : le bac à sable est sur `bipagents-sandbox`, un réseau podman sans
-  route vers l'extérieur, et n'atteint que PyPI, npm, crates.io, Go, RubyGems et Debian, par un petit conteneur proxy
+  route vers l'extérieur, et n'atteint que PyPI, npm, les crates Rust, Go et Debian, par un petit conteneur proxy
   (`bipagents-egress` ; `podman logs bipagents-egress` montre ce qu'il a laissé passer ou bloqué). La recherche web et
   le navigateur visible de l'agent sont d'autres outils et marchent toujours.
 

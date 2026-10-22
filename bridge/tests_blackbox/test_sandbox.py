@@ -231,15 +231,20 @@ def test_the_command_line_isolates_and_says_what_each_agent_got(bridges, fakes):
     assert tomllib.loads(bridge.toml_text())["agents"]["vie"]["upload_dir_container"] == "/fichiers"
 
 
-def test_a_sandbox_holding_its_desktop_browser_keeps_the_internet(bridges, fakes):
+def test_a_sandbox_holding_its_desktop_browser_is_left_as_it_was(bridges, fakes):
     """An install without the visible browser's containers: Hermes' Bot Desktop, and the browser the agent drives,
-    run in the sandbox. Its folders go all the same; its network stays as it was (no proxy, nothing set up)."""
+    run in the sandbox, which needs the internet. That sandbox is not isolated at all: its folders stay mounted, so
+    Hermes keeps asking the person before risky commands (never code with the open internet and no question asked)."""
     bridge, hub, _ = isolated(bridges, fakes, agents=("vie",))
     (hub / "config.yaml").write_text(yaml.safe_dump({"bot_desktop": {"auto_start": True}}))
-    started(bridge, hub, ["vie"])
+    bridge.start()
+    wait_registered(bridge, ["vie"])
+    time.sleep(1)
     vie = terminal(hub, "vie")
-    assert vie["docker_volumes"][-2:] == ["bipagents-files-vie:/fichiers:ro", "bipagents-envoi-vie:/envoi"]
+    assert any(v.startswith("/") and v.endswith(":/fichiers:ro,z") for v in vie["docker_volumes"])
+    assert not any(v.startswith("bipagents-") for v in vie["docker_volumes"])
     assert vie.get("docker_network", True) is True and not vie.get("docker_extra_args")
     assert not any(k.lower().endswith("proxy") for k in vie.get("docker_env", {}))
     assert not any(a[:1] == ["run"] or a[:2] == ["network", "create"] for a in bridge.commands.of("podman"))
-    assert wait_until(lambda: "its desktop's browser runs there" in bridge.log_tail(2000), timeout=10)
+    servers = yaml.safe_load((hub / "profiles" / "vie" / "config.yaml").read_text())["mcp_servers"]
+    assert "bipagents_files" not in servers

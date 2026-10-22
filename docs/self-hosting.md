@@ -134,7 +134,7 @@ you each time:
   (`bipagents-files-<agent>`, read-only at `/fichiers`); folders shared between agents go through the bridge's
   `shared_files_*` tools, and you approve each write or delete from the app;
 - **no internet but the package registries**: the sandbox sits on `bipagents-sandbox`, a podman network without a
-  route out, and reaches PyPI, npm, crates.io, Go, RubyGems and Debian only, through a small proxy container
+  route out, and reaches PyPI, npm, Rust crates, Go and Debian only, through a small proxy container
   (`bipagents-egress`, `podman logs bipagents-egress` shows what it let through or blocked). Web search and the
   agent's own visible browser are separate tools and keep working.
 

@@ -34,8 +34,8 @@ Add `--dry-run` to see every step and command without changing anything.
    agent is a profile reached at `/p/<agent>/` with its own key. New agents are picked up without a restart.
    On Linux with podman, each agent's tools run in a sandbox the bridge keeps isolated: no folder of the machine
    inside (the files sent to the agent are copied into a podman volume of its own; shared folders go through the
-   bridge's tools, writes approved by the person) and no internet but the package registries (PyPI, npm, crates.io,
-   Go, RubyGems, Debian), through the `bipagents-egress` proxy on a network without a route out. Hermes then runs
+   bridge's tools, writes approved by the person) and no internet but the package registries (PyPI, npm, Rust crates,
+   Go, Debian), through the `bipagents-egress` proxy on a network without a route out. Hermes then runs
    harmless work there without asking each time. `bipagents update` switches existing installs
    (`2026-10-22-isolated-sandboxes`).
 5. **Creates the first agents**, named by the person, from kinds (Everyday, Wellness, Finances, Home, Work, Learn, Creative, Tech) or a custom « Other » (its role, tone, rules, language and colour, described by the person),

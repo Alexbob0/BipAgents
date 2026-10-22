@@ -153,7 +153,7 @@ port = 8650
 # [sandbox]
 # isolate = "auto"            # Linux with podman; "off": the folders mounted as before (Hermes asks before risky commands)
 # subnet = "10.233.80.0/24"   # the sandboxes' network; the proxy takes its .2
-# registries = ["pypi.org", "files.pythonhosted.org", "registry.npmjs.org"]   # default: PyPI, npm, crates.io, Go, RubyGems, Debian
+# registries = ["pypi.org", "files.pythonhosted.org", "registry.npmjs.org"]   # default: PyPI, npm, Rust crates, Go, Debian (no host that publishes but npm)
 # image = ""                  # the proxy's image (default: the agents' sandbox image)
 
 [agents.wellness]
