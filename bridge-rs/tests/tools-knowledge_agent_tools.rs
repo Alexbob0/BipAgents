@@ -47,7 +47,12 @@ async fn each_agent_of_the_install_gets_the_tools_with_a_token_of_its_own() {
     let values: BTreeMap<String, String> = seen.iter().map(|(a, _)| (a[5].clone(), a[6].clone())).collect();
     assert_eq!(
         values["mcp_servers.bipagents.url"],
-        format!("http://127.0.0.1:{}/v1/agent-tools/mcp?v={}", config.port, agent_tools::tools_version())
+        // the Carnet's tools are on by default: the install's tools and those
+        format!(
+            "http://127.0.0.1:{}/v1/agent-tools/mcp?v={}",
+            config.port,
+            agent_tools::version_of(&agent_tools::tools_for(&config, config.agent(Some("vie")).unwrap()))
+        )
     );
     assert_eq!(values["mcp_servers.bipagents.timeout"], agent_tools::TOOL_TIMEOUT.to_string());
     let token = values["mcp_servers.bipagents.headers.Authorization"].strip_prefix("Bearer ").unwrap().to_string();

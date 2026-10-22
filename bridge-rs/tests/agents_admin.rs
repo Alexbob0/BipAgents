@@ -650,6 +650,7 @@ async fn routes_for_settings_thinking_and_model() {
             "browser",
             "health",
             "weather",
+            "notebook",
             "group"
         ]
     );

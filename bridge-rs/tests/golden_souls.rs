@@ -22,6 +22,8 @@ fn souls_match_python() {
                 let (body, lang) = souls::split_language(input[0].as_str().unwrap());
                 json!([body, lang])
             }
+            // Rust only (the Carnet, 2026-10-22): its cases added by hand
+            "with_notebook" => json!(souls::with_notebook(input[0].as_str().unwrap(), input[1].as_bool().unwrap())),
             "with_language" => json!(souls::with_language(input[0].as_str().unwrap(), opt(&input[1]))),
             "soul_for" => match souls::soul_for(input[0].as_str().unwrap(), input[1].as_str().unwrap(), opt(&input[2]))
             {

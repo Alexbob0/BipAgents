@@ -354,10 +354,13 @@ pub fn version_of(tools: &[Value]) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))[..10].to_string()
 }
 
-/// The tools of `agent`: the install's, `health` when the person gave it their health data, the calendar's when they
+/// The tools of `agent`: the install's, the Carnet's (on by default), `health` when the person gave it their health data, the calendar's when they
 /// shared their calendar with it, the address book's when they shared that, `weather` when its « Météo » is on.
 pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     let mut tools = install_tools(config).to_vec();
+    if crate::notebook::enabled(config, &agent.name) {
+        tools.extend(crate::notebook::tools::tools(crate::notebook::health_agent(config, &agent.name)));
+    }
     if crate::weather::enabled(config, &agent.name) {
         tools.push(crate::weather::weather_tool());
     }
@@ -369,9 +372,6 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     }
     if crate::contacts::enabled(config, &agent.name) {
         tools.extend(crate::contacts::tools());
-    }
-    if crate::notebook::enabled(config, &agent.name) {
-        tools.extend(crate::notebook::tools::tools(crate::notebook::health_agent(config, &agent.name)));
     }
     tools
 }

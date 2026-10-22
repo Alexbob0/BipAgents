@@ -2039,6 +2039,17 @@ mod tests {
     }
 
     #[test]
+    fn the_summary_comes_first_and_is_rewritten() {
+        let body = "## Infos\n- Aime le jazz\n";
+        let with = set_summary(body, "En bref", "Ami d'enfance.\nAnniversaire le 14 novembre.");
+        assert_eq!(with, "## En bref\nAmi d'enfance.\nAnniversaire le 14 novembre.\n\n## Infos\n- Aime le jazz\n");
+        assert_eq!(summary_of(&with, "en bref"), "Ami d'enfance.\nAnniversaire le 14 novembre.");
+        let again = set_summary(&with, "En bref", "Ami d'enfance, vit à Lyon.");
+        assert_eq!(again, "## En bref\nAmi d'enfance, vit à Lyon.\n\n## Infos\n- Aime le jazz\n");
+        assert_eq!(set_summary(&again, "En bref", "  "), again);
+    }
+
+    #[test]
     fn names_and_paths() {
         assert_eq!(file_name("Marc/Dupont: [notes]"), "Marc Dupont notes");
         assert_eq!(fold("Élodie  O'Brien!"), "elodie o brien");
