@@ -13,6 +13,11 @@ given BipAgents version (the guichet's update waves, or their way back), which i
 pair again with a new secret (its person recovered their account without any of their devices). The other places
 are not touched, and nothing is ever read or sent back: only "done".
 
+With --rebooting, run by bipagents-reboot-notice.service as the server shuts down (the night's reboot after a kernel
+update, user-data.yaml), it only tells the guichet the server is rebooting when a reboot is under way: the guichet
+then waits a quarter of an hour before taking its silence, or its places not answering yet, for an outage. The beat
+says how long the server has been up for the same reason.
+
 ASCII only, like user-data.yaml and add-seat.sh (installer/tests/test_cloud_init.py checks it).
 """
 import base64
@@ -228,8 +233,17 @@ def version(home):
     return None
 
 
-def vitals(meminfo="/proc/meminfo", root="/"):
-    """The server's own numbers: memory, swap and disk in MB and GB, the load."""
+def uptime(path="/proc/uptime"):
+    """Seconds since the server started, else None."""
+    try:
+        with open(path) as fh:
+            return int(float(fh.read().split()[0]))
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def vitals(meminfo="/proc/meminfo", root="/", uptime_path="/proc/uptime"):
+    """The server's own numbers: memory, swap and disk in MB and GB, the load, how long it has been up."""
     info = {}
     try:
         with open(meminfo) as fh:
@@ -244,7 +258,7 @@ def vitals(meminfo="/proc/meminfo", root="/"):
     return {"memory_mb": info.get("MemTotal"), "available_mb": info.get("MemAvailable"),
             "swap_mb": info.get("SwapTotal"), "swap_used_mb": info.get("SwapTotal", 0) - info.get("SwapFree", 0),
             "disk_gb": round(disk.total / 1e9, 1), "disk_free_gb": round(disk.free / 1e9, 1),
-            "load": [round(load[0], 2), round(load[1], 2)]}
+            "load": [round(load[0], 2), round(load[1], 2)], "uptime": uptime(uptime_path)}
 
 
 def health():
@@ -270,9 +284,33 @@ def read_done():
         return set()
 
 
-def main():
+def reboot_queued():
+    """The server is going down to start again (not to stop): systemd has a job for reboot.target."""
+    try:
+        jobs = subprocess.run(["systemctl", "list-jobs", "--no-legend", "--no-pager"], capture_output=True,
+                              text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(line.split()[1:2] == ["reboot.target"] for line in jobs.splitlines())
+
+
+def rebooting(conf):
+    """As the server shuts down: the guichet told when it is a reboot, nothing else (it is a planned one)."""
+    if not reboot_queued():
+        return 0
+    try:
+        call(conf, "POST", "/v1/server/rebooting")
+        log("the guichet knows this server is rebooting")
+    except (OSError, ValueError) as exc:
+        log("the guichet was not told of the reboot: %s" % exc)
+    return 0
+
+
+def main(argv=()):
     with open(CONF) as fh:
         conf = json.load(fh)
+    if "--rebooting" in argv:
+        return rebooting(conf)
     try:
         orders = call(conf, "POST", "/v1/server/beat", {"seats": health(), "server": vitals()}).get("orders") or []
     except (OSError, ValueError) as exc:
@@ -312,4 +350,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

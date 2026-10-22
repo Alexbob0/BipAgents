@@ -58,6 +58,60 @@ def test_no_model_key_or_other_secret_has_a_place_in_it():
     assert len(render("x" * 43).encode()) < 16_000   # far under the providers' user-data limits (64 KB at DigitalOcean)
 
 
+def test_the_server_reboots_at_night_when_an_update_asks_at_a_minute_of_its_own(tmp_path):
+    """unattended-upgrades reboots by itself when an update needs it (a kernel's fixes only count after one), whoever
+    is connected, between 00:00 and 00:44 server time: the minute comes from the machine id, so it is the same each
+    time and the servers of a region don't go down together. Updates run at 23:00-23:30, just before."""
+    import subprocess
+    data = yaml.safe_load(render("x" * 43))
+    files = {f["path"]: f["content"] for f in data["write_files"]}
+    reboot = files["/etc/apt/apt.conf.d/52bipagents-reboot"]
+    assert 'Automatic-Reboot "true";' in reboot and 'Automatic-Reboot-WithUsers "true";' in reboot
+    assert 'Automatic-Reboot-Time "00:20";' in reboot   # until the minute of its own is written
+    timer = files["/etc/systemd/system/apt-daily-upgrade.timer.d/60-bipagents.conf"]
+    assert "OnCalendar=\nOnCalendar=*-*-* 23:00\n" in timer and "RandomizedDelaySec=30min" in timer
+    assert "$nrconf{restart} = 'a';" in files["/etc/needrestart/conf.d/60-bipagents.conf"]
+    commands = data["runcmd"]
+    minute = next(c for c in commands if "53bipagents-reboot-time" in c)
+    assert commands.index(minute) < commands.index("systemctl daemon-reload") < commands.index(
+        "loginctl enable-linger bip")
+    found = set()
+    for machine_id in ("0000aaaa", "ffffffff", "4f3a1b2c", "a1b2c3d4"):
+        (tmp_path / "machine-id").write_text(machine_id + "0" * 24 + "\n")
+        out = tmp_path / "time"
+        command = minute.replace("/etc/machine-id", str(tmp_path / "machine-id")).replace(
+            "/etc/apt/apt.conf.d/53bipagents-reboot-time", str(out))
+        assert subprocess.run(["sh", "-c", command]).returncode == 0
+        text = out.read_text()
+        assert text == 'Unattended-Upgrade::Automatic-Reboot-Time "00:%02d";\n' % (int(machine_id[:4], 16) % 45)
+        found.add(text)
+    assert len(found) > 1
+
+
+def test_the_seat_agent_tells_the_guichet_of_a_reboot_only(monkeypatch):
+    """At shutdown (bipagents-reboot-notice.service): a reboot under way is told to the guichet, a stop is not, and
+    a guichet that doesn't answer never holds the shutdown up beyond the call's timeout."""
+    agent = _seat_agent()
+    calls = []
+    monkeypatch.setattr(agent, "call", lambda conf, method, path, body=None: calls.append((method, path)) or {})
+    jobs = {"text": "1215 reboot.target start waiting\n1216 systemd-reboot.service start waiting\n"}
+
+    class Done:
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    monkeypatch.setattr(agent.subprocess, "run", lambda *a, **k: Done(jobs["text"]))
+    assert agent.rebooting({"url": "https://g", "token": "t"}) == 0 and calls == [("POST", "/v1/server/rebooting")]
+    jobs["text"] = "1215 poweroff.target start waiting\n"
+    assert agent.rebooting({}) == 0 and len(calls) == 1
+
+    def unreachable(*a, **k):
+        raise OSError("no network")
+
+    jobs["text"] = "1 reboot.target start waiting\n"
+    monkeypatch.setattr(agent, "call", unreachable)
+    assert agent.rebooting({}) == 0
+
 
 def test_the_seat_script_is_ascii_and_refuses_a_wrong_call(tmp_path):
     """add-seat.sh runs as root at first boot (the guichet's script) and for the seat agent: ASCII like user-data,
@@ -187,6 +241,9 @@ def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_number
     meminfo = tmp_path / "meminfo"
     meminfo.write_text("MemTotal:        8000000 kB\nMemAvailable:    3000000 kB\nSwapTotal:       2097148 kB\n"
                        "SwapFree:        1048576 kB\nHugePages_Total:       0\n")
-    numbers = agent.vitals(str(meminfo), str(tmp_path))
-    assert set(numbers) == {"memory_mb", "available_mb", "swap_mb", "swap_used_mb", "disk_gb", "disk_free_gb", "load"}
+    (tmp_path / "uptime").write_text("754.31 2900.02\n")
+    numbers = agent.vitals(str(meminfo), str(tmp_path), str(tmp_path / "uptime"))
+    assert set(numbers) == {"memory_mb", "available_mb", "swap_mb", "swap_used_mb", "disk_gb", "disk_free_gb", "load",
+                            "uptime"}
+    assert numbers["uptime"] == 754 and agent.uptime(str(tmp_path / "missing")) is None
     assert numbers["memory_mb"] == 7812 and numbers["available_mb"] == 2929 and numbers["swap_used_mb"] == 1023
