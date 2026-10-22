@@ -229,13 +229,54 @@ pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> b
     if on {
         wake_with(host, config, agent, 60.0).await;
     }
-    let command = if on { format!("touch {HOLD_FLAG}") } else { format!("rm -f {HOLD_FLAG}") };
+    // The person's hold carries a token of its own: the bridge's connections showing it (`X-Bip-Hold`) still reach
+    // Chrome's DevTools (devtools_relay.py), to show the page on the phone and pass on the person's taps and keys.
+    let token_file = folder(config, agent).join(HOLD_TOKEN);
+    let command = if on {
+        let token = crate::py::token_hex(16);
+        if crate::py::write_with_mode(&token_file.to_string_lossy(), token.as_bytes(), 0o600).is_err() {
+            tracing::warn!(agent = %agent, "browser hold token not kept");
+        }
+        format!("umask 077; printf 'human %s' {token} > {HOLD_FLAG}")
+    } else {
+        let _ = std::fs::remove_file(&token_file);
+        format!("rm -f {HOLD_FLAG}")
+    };
     let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
     if code != 0 {
         tracing::warn!(agent = %agent, on = on, "browser hold not set");
     }
     true
 }
+
+/// Where the person's hold keeps its token (`<browser root>/<agent>/hold.token`, the bridge's alone).
+pub const HOLD_TOKEN: &str = "hold.token";
+
+/// The token of the person's hold on the agent's browser, while they hold it.
+pub fn hold_token(config: &Config, agent: &str) -> Option<String> {
+    let text = std::fs::read_to_string(folder(config, agent).join(HOLD_TOKEN)).ok()?;
+    let token = text.trim();
+    (!token.is_empty() && token.bytes().all(|b| b.is_ascii_alphanumeric())).then(|| token.to_string())
+}
+
+/// The person's « Ouvrir le navigateur »: its container woken, then Chrome started on its screen with its profile
+/// when none runs (browser/open_browser.sh, detached; the agent's spawn_browser connects to it later). An image
+/// built before that script has none: the screen is up, without a browser. Returns whether this agent has one.
+pub async fn open_browser(config: &Config, agent: &str) -> bool {
+    let host = Host::real(config);
+    let Some(engine) = host.runtime.clone() else { return false };
+    if !wake_with(&host, config, agent, 90.0).await {
+        return false;
+    }
+    let code = (host.exec)(vec![engine, "exec".into(), "-d".into(), container(agent), OPEN_BROWSER.into()]).await;
+    if code != 0 {
+        tracing::warn!(agent = %agent, code = code, "browser not opened");
+    }
+    true
+}
+
+/// browser/open_browser.sh in the container.
+pub const OPEN_BROWSER: &str = "/opt/stealth/open_browser.sh";
 
 /// A card payment holds the agent's browser (card_pay.rs): its MCP tools and its DevTools wait as for the person's
 /// hold, except the bridge's own DevTools connections, which show `token` (`X-Bip-Card`, browser/devtools_relay.py).

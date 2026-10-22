@@ -48,6 +48,16 @@ def test_a_payment_lets_only_the_bridge_through(monkeypatch, tmp_path):
     assert "card payment" in refusal["result"]["content"][0]["text"]
 
 
+def test_the_persons_hold_lets_only_the_bridges_view_through(monkeypatch, tmp_path):
+    use_flag(monkeypatch, tmp_path, b"human 77aa88bb")
+    assert hold_gate.held() and not hold_gate.paying()
+    assert devtools_relay.payment_token() is None and devtools_relay.hold_token() == b"77aa88bb"
+    assert devtools_relay.let_through(HEAD + b"X-Bip-Hold: 77aa88bb\r\n\r\n")
+    assert not devtools_relay.let_through(HEAD + b"X-Bip-Hold: 77aa88bc\r\n\r\n")
+    assert not devtools_relay.let_through(HEAD + b"\r\n")
+    assert json.loads(hold_gate.refusal({"id": 3}))["result"]["content"][0]["text"] == hold_gate.WAIT
+
+
 def test_an_old_hold_lapses(monkeypatch, tmp_path):
     flag = use_flag(monkeypatch, tmp_path, b"card 0123abcd")
     old = time.time() - hold_gate.LIMIT - 5

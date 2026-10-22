@@ -307,12 +307,25 @@ async fn taking_over_the_browser_makes_the_agents_tools_wait() {
         done[1],
         v(&["/usr/bin/podman", "exec", "bipagents-browser-budget", "test", "-e", "/tmp/.X11-unix/X99"])
     );
+    // The person's hold, with a token only the bridge knows (its own view of the page still gets through).
+    let token = browsers::hold_token(&s.config, "budget").unwrap();
+    assert_eq!(token.len(), 32);
     assert_eq!(
         done.last().unwrap(),
-        &v(&["/usr/bin/podman", "exec", "bipagents-browser-budget", "sh", "-c", "touch /tmp/bipagents-hold"])
+        &v(&[
+            "/usr/bin/podman",
+            "exec",
+            "bipagents-browser-budget",
+            "sh",
+            "-c",
+            &format!("umask 077; printf 'human %s' {token} > /tmp/bipagents-hold")
+        ])
     );
+    let kept = s.tmp.join("browsers").join("budget").join("hold.token");
+    assert_eq!(std::fs::metadata(&kept).unwrap().permissions().mode() & 0o777, 0o600);
     browsers::hold_with(&host, &s.config, "budget", false).await;
     assert_eq!(ran.lock().unwrap().last().unwrap().last().unwrap(), "rm -f /tmp/bipagents-hold");
+    assert!(browsers::hold_token(&s.config, "budget").is_none());
     assert!(!browsers::hold_with(&host, &s.config, "nobody", true).await); // no browser of its own
     assert_eq!(ran.lock().unwrap().len(), 4);
 }

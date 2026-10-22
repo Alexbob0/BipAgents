@@ -1355,7 +1355,10 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/family/received/{id}/seen", "POST"),
     ("/v1/agents/{agent_id}/desktop", "POST"),
     ("/v1/agents/{agent_id}/desktop/control", "POST"),
+    ("/v1/agents/{agent_id}/desktop/state", "GET"),
+    ("/v1/agents/{agent_id}/desktop/open", "POST"),
     ("/desktop/{ticket}/", "GET"),
+    ("/desktop/{ticket}/page/", "GET"),
 ];
 
 /// Starlette's path match: `{x}` one non-empty segment, a final `{x:path}` the rest.

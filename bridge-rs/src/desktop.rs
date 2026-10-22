@@ -787,7 +787,11 @@ async fn session(
 
 /// The page and its stream (a short-lived ticket from the admin routes). Mounted at the root.
 pub fn desktop_router() -> Router<AppState> {
-    Router::new().route("/desktop/{ticket}/", get(page)).route("/desktop/{ticket}/ws", get(stream))
+    Router::new()
+        .route("/desktop/{ticket}/", get(page))
+        .route("/desktop/{ticket}/ws", get(stream))
+        .route("/desktop/{ticket}/page/", get(crate::desktop_page::page))
+        .route("/desktop/{ticket}/page/ws", get(crate::desktop_page::stream))
 }
 
 async fn open_desktop(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
@@ -804,10 +808,12 @@ async fn open_desktop(State(state): State<AppState>, UrlPath(agent_id): UrlPath<
         });
         // Its own browser container (browsers.py): taking over makes its tools wait. Set up by hand: it does not.
         let control = control_of(&state, &agent.name);
+        // Its own container: on a phone, its page alone (desktop_page.rs).
+        let page = crate::desktop_page::cdp_port(&config, &agent.name).map(|_| format!("desktop/{ticket}/page/"));
         return Ok(web::ok(json!({
             "kind": "novnc", "path": format!("desktop/{ticket}/"), "you_hold": control.unwrap_or(false),
             "holder": if control.unwrap_or(false) { "human" } else { "agent" }, "reason": null,
-            "pauses_agent": crate::browsers::ports_of(&config, &agent.name).is_some(),
+            "pauses_agent": crate::browsers::ports_of(&config, &agent.name).is_some(), "page_path": page,
         })));
     }
     if let Some(url) = agent.desktop_url.as_deref().filter(|u| !u.is_empty()) {
@@ -846,6 +852,10 @@ async fn control(
         // container makes its tools wait (browsers.hold) until the person hands it back.
         let take = take_of(&body)?;
         state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), take);
+        if !take {
+            // a tab shown as on the person's phone: back to its desktop rendering before the agent's tools resume
+            crate::desktop_page::give_back(&agent.name).await;
+        }
         crate::browsers::hold(&config, &agent.name, take).await;
         let holder = if take { "human" } else { "agent" };
         tracing::info!(agent = %agent.name, holder = holder, "desktop control");
@@ -867,6 +877,8 @@ pub fn desktop_admin_router() -> Router<AppState> {
     Router::new()
         .route("/agents/{agent_id}/desktop", post(open_desktop))
         .route("/agents/{agent_id}/desktop/control", post(control))
+        .route("/agents/{agent_id}/desktop/state", get(crate::desktop_page::state_route))
+        .route("/agents/{agent_id}/desktop/open", post(crate::desktop_page::open_route))
 }
 
 /// noVNC (`static/novnc`, embedded), mounted at /desktop/static/novnc.

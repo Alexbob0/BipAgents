@@ -6,9 +6,11 @@ each time it starts: the MCP server starts it on demand and closes it when idle.
 any browser endpoint to the current one. Everything else passes through unchanged.
 
 While the person holds the browser in the app (hold_gate.py's flag), nothing gets through, and the connections open
-when they took it are closed: Hermes (the vault's fills) waits too. While a card payment holds it (the flag reads
-« card <token> »), only the bridge's own connections get through, those whose request shows that token
-(`X-Bip-Card: <token>`): it types the card and clicks « Pay »; nothing else reads the page meanwhile."""
+when they took it are closed: Hermes (the vault's fills) waits too. Only the bridge's own connections get through,
+those whose request shows the hold's token: while a card payment holds it (the flag reads « card <token> »,
+`X-Bip-Card: <token>`), it types the card and clicks « Pay », and nothing else reads the page meanwhile; while the
+person holds it from the app (« human <token> », `X-Bip-Hold: <token>`), it shows them the page and passes on their
+taps and keys (a flag with no token, from an older bridge, lets nothing through)."""
 from __future__ import annotations
 
 import asyncio
@@ -24,7 +26,7 @@ from hold_gate import HOLD, held  # noqa: E402
 
 CHROME = ("127.0.0.1", 9222)
 BROWSER_ENDPOINT = re.compile(rb"^GET /devtools/browser/[^ ?]*")
-CARD_HEADER = re.compile(rb"\r\nx-bip-card:[ \t]*([A-Za-z0-9]+)[ \t]*\r\n", re.IGNORECASE)
+TOKEN_HEADER = re.compile(rb"\r\nx-bip-(?:card|hold):[ \t]*([A-Za-z0-9]+)[ \t]*\r\n", re.IGNORECASE)
 
 
 def current_endpoint() -> bytes:
@@ -33,21 +35,34 @@ def current_endpoint() -> bytes:
     return b"GET /devtools/browser/" + url.rsplit("/devtools/browser/", 1)[1].encode()
 
 
-def payment_token() -> bytes | None:
-    """The token of the card payment holding the browser, if one does."""
+def _flag() -> bytes:
     try:
         with open(HOLD, "rb") as flag:
-            text = flag.read(200)
+            return flag.read(200)
     except OSError:
-        return None
+        return b""
+
+
+def payment_token() -> bytes | None:
+    """The token of the card payment holding the browser, if one does."""
+    text = _flag()
     return text[5:].strip() or None if text.startswith(b"card ") else None
 
 
+def hold_token() -> bytes | None:
+    """The token of whatever holds the browser (a card payment, the person in the app), if it has one."""
+    text = _flag()
+    for kind in (b"card ", b"human "):
+        if text.startswith(kind):
+            return text[len(kind):].strip() or None
+    return None
+
+
 def let_through(head: bytes) -> bool:
-    """Not held, or held by a card payment and this is the bridge's own connection."""
+    """Not held, or held and this is the bridge's own connection (it shows the hold's token)."""
     if not held():
         return True
-    token, shown = payment_token(), CARD_HEADER.search(head)
+    token, shown = hold_token(), TOKEN_HEADER.search(head)
     return bool(token and shown and hmac.compare_digest(token, shown.group(1)))
 
 
@@ -63,11 +78,11 @@ async def pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> No
 
 
 OPEN: set = set()     # the writers of the connections passing through, closed when the person takes over
-BRIDGE: set = set()   # those of the bridge's payment connections, left open by a payment's hold
+BRIDGE: set = set()   # those of the bridge's own connections, left open by the hold they came with
 
 
 async def relay(client_reader: asyncio.StreamReader, client_writer: asyncio.StreamWriter) -> None:
-    if held() and payment_token() is None:
+    if held() and hold_token() is None:
         client_writer.close()
         return
     try:
@@ -84,7 +99,7 @@ async def relay(client_reader: asyncio.StreamReader, client_writer: asyncio.Stre
         return
     chrome_writer.write(first + b"\r\n" + rest)
     pair = {client_writer, chrome_writer}
-    bridge = held()   # let through while held: the payment's own connection
+    bridge = held()   # let through while held: the bridge's own connection (a payment, the person's view)
     (BRIDGE if bridge else OPEN).update(pair)
     try:
         await asyncio.gather(pipe(client_reader, chrome_writer), pipe(chrome_reader, client_writer))
