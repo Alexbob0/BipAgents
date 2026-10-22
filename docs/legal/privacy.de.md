@@ -135,6 +135,22 @@ Zugangsdaten des Postfachs, die verschlüsselt auf deinem Server bleiben), wenn 
 und trägt die Termine ein oder löscht sie, um die er bittet; davon wird nichts behalten außer der Liste dieser
 Kalender. Schalte es aus, um aufzuhören.
 
+**Deine Kontakte, wenn du sie teilst (« Contacts », Kontakte).** Für jeden Agenten kannst du Kontakte in seinen
+Werkzeugen einschalten. Mit deiner Erlaubnis (Kontakte auf dem iPhone und auf Android) liest die App das Adressbuch
+deines Telefons, auch die darauf hinzugefügten Konten (iCloud, Google…), und sendet eine Kopie **nur an deinen
+Server** (oder an deinen Platz beim Rundum-Angebot), wenn die App geöffnet wird: das ganze Adressbuch oder nur die
+Gruppen (Labels), die du für diesen Server wählst, mit Name, Spitzname, Telefonnummern, E-Mail- und Postadressen,
+Geburtstag, Firma und Position, den verbundenen Personen und den Gruppen jedes Kontakts, und seinen Notizen nur, wenn
+du « Notizen » ankreuzt (standardmäßig aus). Fotos werden nie gesendet. Die Kopie bleibt dort und wird bei jedem
+Senden ersetzt; was deine Wahl nicht mehr umfasst, wird sofort entfernt, und die ganze Kopie wird gelöscht, wenn kein
+Agent sie mehr lesen darf. Nur die Agenten, die du gewählt hast, lesen sie; wenn sie einen Kontakt hinzufügen oder
+ändern möchten, erledigt das dein Telefon (so wird nichts gelöscht). Das KI-Modell des Agenten erhält die Kontakte,
+die der Agent liest, um dir zu antworten. Kerfy Studio erhält sie nicht. **Deine Kontakte sind andere Menschen**: Die
+Agenten haben die Anweisung, ihnen nie ohne dein Okay zu schreiben, sie anzurufen oder ihre Daten weiterzugeben, und
+du bleibst für deren Nutzung verantwortlich. **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO),
+die du gibst, indem du Kontakte einschaltest und es auf deinem Telefon erlaubst. **Beenden**: schalte Kontakte für den
+Agenten aus oder entziehe die Erlaubnis in den Einstellungen des Telefons (dann wird nichts mehr gesendet).
+
 ## 4. Was Kerfy Studio erhalten kann
 
 ### 4.1 Benachrichtigungen über das Relay von Kerfy Studio

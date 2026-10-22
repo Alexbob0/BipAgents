@@ -126,6 +126,21 @@ calendar too »: your server then reads that account's calendars (CalDAV, with t
 encrypted on your server) when one of the mailbox's agents looks at them, and adds or deletes the events it asks for;
 nothing of them is kept apart from the list of those calendars. Turn it off to stop.
 
+**Your contacts, if you share them (« Contacts »).** For each agent, you can turn on Contacts in its tools. With your
+permission (Contacts on the iPhone and on Android), the app reads your phone's address book, including the accounts
+added to it (iCloud, Google…), and sends a copy, **only to your server** (or to your place with the all-included
+offer), when the app opens: the whole address book or only the groups (labels) you choose for that server, with for
+each contact their name, nickname, phone numbers, e-mail and postal addresses, birthday, company and job, the people
+they are related to, the groups they are in, and their notes only if you tick « notes » (off by default). Photos are
+never sent. The copy stays there, replaced at each sending; whatever your choice no longer covers is removed at once,
+and the whole copy is removed when no agent may read it any more. Only the agents you chose read it; when they ask to
+add a contact or change one, your phone does it (nothing is deleted this way). The agent's AI model receives the
+contacts the agent reads to answer you. Kerfy Studio does not receive them. **Your contacts are other people**: the
+agents are told never to write to them, call them or pass on their details without your approval, and you remain
+responsible for what you do with them. **Legal basis**: your consent (GDPR article 6.1.a), which you give by turning
+Contacts on and allowing it on your phone. **Stopping**: turn Contacts off for the agent, or remove the permission in
+the phone's settings (nothing more is sent).
+
 ## 4. What Kerfy Studio may receive
 
 ### 4.1 Notifications, through Kerfy Studio's relay

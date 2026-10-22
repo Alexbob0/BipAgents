@@ -94,6 +94,7 @@ pub mod caldav;
 pub mod calendar;
 pub mod cloud_setup;
 pub mod console;
+pub mod contacts;
 pub mod desktop;
 pub mod place_backup;
 pub mod place_import;
