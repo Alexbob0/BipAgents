@@ -72,6 +72,7 @@ pub mod sent_files;
 pub mod services;
 pub mod shares;
 pub mod souls;
+pub mod space;
 pub mod spaces;
 pub mod ssh_keys;
 

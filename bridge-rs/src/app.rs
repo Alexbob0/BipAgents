@@ -1118,6 +1118,8 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         // The app registers with the publisher's relay and sends the relay token (environment « relay »).
         "push_relay": state.push_service.is_some(), "fcm": state.fcm.is_some(),
         "tts_queue": tts.scheduler.depth(),
+        // The space encrypted at rest (space.rs): « on » or « off » (a locked bridge answers « locked » itself).
+        "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
         "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts"],
     })))

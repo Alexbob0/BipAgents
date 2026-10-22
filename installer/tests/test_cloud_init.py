@@ -242,9 +242,14 @@ def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_number
     monkeypatch.setattr(agent, "running", lambda uid, words: uid == 1000 and words == ("hermes", "gateway"))
     (tmp_path / "bip2" / ".local" / "state" / "bipagents").mkdir(parents=True)
     (tmp_path / "bip2" / ".local" / "state" / "bipagents" / "asleep").write_text("1790000000")
+    # place 2's encrypted space waits for its key (bridge-rs/src/space.rs): locked, not down
+    (tmp_path / "bip2" / ".local" / "share" / "bipagents" / "space").mkdir(parents=True)
+    (tmp_path / "bip2" / ".local" / "share" / "bipagents" / "space" / "locked.json").write_text(
+        '{"since": 1790000000, "reason": "key service unreachable", "tries": 3}')
     assert agent.health() == {"1": {"up": True, "hermes": True, "asleep": False, "version": "0123456789ab",
-                                    "backup": 1790000000.5},
-                              "2": {"up": False, "hermes": False, "asleep": True, "version": None, "backup": None}}
+                                    "backup": 1790000000.5, "locked": None},
+                              "2": {"up": False, "hermes": False, "asleep": True, "version": None, "backup": None,
+                                    "locked": "key service unreachable"}}
     monkeypatch.undo()
     assert agent.door_open(port) is True
     listening.close()

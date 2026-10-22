@@ -149,6 +149,8 @@ COMMAND_HELP = """BipAgents, in this account:
   bipagents backup           back this place up now (the all-included offer's places: every hour by themselves)
   bipagents browser-refresh  update the agents' browser now if Chrome has news (each night by itself);
                              `--version`: which Chrome it has
+  bipagents encrypt          encrypt your space on this server's disk (it opens by itself after a reboot);
+                             `encrypt status`, `rollback`: what it is, put it back
   bipagents uninstall        remove it"""
 
 

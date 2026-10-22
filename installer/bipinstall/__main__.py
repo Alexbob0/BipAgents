@@ -265,6 +265,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "restore":   # backup.py: a place moved after an outage, from its last backup
         from .backup import restore_main
         return restore_main(argv[1:])
+    if argv and argv[0] == "encrypt":   # space.py: this account's space encrypted at rest
+        from .space import main as space_main
+        return space_main(argv[1:])
     if argv and argv[0] == "voice":
         from .voice_server import main as voice_main
         return voice_main(argv[1:])
@@ -459,6 +462,12 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     status = finish(inst, machine, runner, args, steps, total, sandbox)
     if status == 0 and not runner.dry:
         (hermes.hermes_home() / hermes.UNFINISHED).unlink(missing_ok=True)
+    if status == 0 and setup.keys:   # encrypted from the start: nothing of anyone is here yet (space.py)
+        from . import space
+        runner.log.append(f"write {Path.home() / space.KEYS}")
+        if not runner.dry:
+            cloud._write_private(Path.home() / space.KEYS, setup.keys)
+            status = space.encrypt(None, say=say)
     return status
 
 
