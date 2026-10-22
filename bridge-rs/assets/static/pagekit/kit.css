@@ -6,19 +6,18 @@
 --r:18px;--font:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:light dark}
 @media (prefers-color-scheme:dark){:root{--bg:#0F1115;--card:#1A1D24;--field:#23262F;--ink:#F2F3F7;--ink2:#A4A9B8;
 --muted:#8A90A2;--line:rgba(255,255,255,.09);--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);--deep:color-mix(in srgb,var(--accent) 70%,#fff)}}
-:where(html[data-tint=wellness]){--accent:#3CC37A;--deep:#1D8A4F;--tint:#E2F5EA}
-:where(html[data-tint=finance]){--accent:#F6B826;--deep:#9A6A00;--tint:#FFF3D1}
-:where(html[data-tint=daily]){--accent:#FF7B5C;--deep:#C9472A;--tint:#FFE8E0}
-:where(html[data-tint=work]){--accent:#4F7CFF;--deep:#2B55D4;--tint:#E4EBFF}
-:where(html[data-tint=learning]){--accent:#8E6CF5;--deep:#6142D2;--tint:#EDE7FF}
-:where(html[data-tint=home]){--accent:#1FB2C1;--deep:#0D7F8B;--tint:#DDF4F6}
-:where(html[data-tint=creative]){--accent:#F2649E;--deep:#C23774;--tint:#FDE4EE}
-:where(html[data-tint=tech]){--accent:#6B7489;--deep:#3F4659;--tint:#E7E9EE}
-@media (prefers-color-scheme:dark){:where(html[data-tint]){--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);
+:root[data-tint=wellness]{--accent:#3CC37A;--deep:#1D8A4F;--tint:#E2F5EA}
+:root[data-tint=finance]{--accent:#F6B826;--deep:#9A6A00;--tint:#FFF3D1}
+:root[data-tint=daily]{--accent:#FF7B5C;--deep:#C9472A;--tint:#FFE8E0}
+:root[data-tint=work]{--accent:#4F7CFF;--deep:#2B55D4;--tint:#E4EBFF}
+:root[data-tint=learning]{--accent:#8E6CF5;--deep:#6142D2;--tint:#EDE7FF}
+:root[data-tint=home]{--accent:#1FB2C1;--deep:#0D7F8B;--tint:#DDF4F6}
+:root[data-tint=creative]{--accent:#F2649E;--deep:#C23774;--tint:#FDE4EE}
+:root[data-tint=tech]{--accent:#6B7489;--deep:#3F4659;--tint:#E7E9EE}
+@media (prefers-color-scheme:dark){:root[data-tint]{--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);
 --deep:color-mix(in srgb,var(--accent) 70%,#fff)}}
 /* In the conversation (the app sets data-bip-view="inline"): no ground of its own, on the app's card. */
-:where(html[data-bip-view=inline]){--bg:var(--card)}
-:where(html[data-bip-view=inline]) :where(.card){background:var(--field);border-color:transparent}
+:root[data-bip-view=inline]{--bg:var(--card)}
 :where(*,*::before,*::after){box-sizing:border-box}
 :where(html){height:auto;-webkit-text-size-adjust:100%}
 :where(body){margin:0;padding:16px 16px 20px;background:var(--bg);color:var(--ink);font:500 15px/1.45 var(--font);
@@ -39,7 +38,6 @@ max-width:760px;margin-inline:auto;-webkit-font-smoothing:antialiased}
 :where(.row){display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 :where(.row.between){justify-content:space-between}
 :where(.kpi){background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;min-width:0}
-:where(html[data-bip-view=inline]) :where(.kpi){background:var(--field);border-color:transparent}
 :where(.kpi .l){display:block;color:var(--muted);font-size:12.5px;font-weight:700}
 :where(.kpi .v){display:block;font-size:28px;font-weight:900;line-height:1.1;margin-top:2px;letter-spacing:-.02em;
 font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -134,3 +132,6 @@ border:1px solid var(--line);border-radius:12px;padding:8px 10px;width:100%}
 :where(section.tab[hidden]){display:none}
 :where(img){max-width:100%;height:auto;border-radius:14px}
 :where(.foot){color:var(--muted);font-size:12px;font-weight:600;margin-top:10px}
+/* in the conversation, last so they win over the rules above (all without weight) */
+:where(html[data-bip-view=inline]) :where(.card,.kpi){background:var(--field);border-color:transparent}
+:where(html[data-bip-view=inline]) :where(.kpi.main){background:var(--tint)}

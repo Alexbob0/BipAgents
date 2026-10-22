@@ -17,7 +17,7 @@
 
   function fmt(n, digits, unit) {
     if (typeof n !== "number" || !isFinite(n)) return n == null ? "" : String(n);
-    var d = digits == null ? (Math.abs(n) < 10 && n % 1 ? 1 : 0) : digits;
+    var d = digits == null ? (Math.round(n * 10) % 10 ? 1 : 0) : digits;
     var text = n.toLocaleString(lang(), { minimumFractionDigits: d, maximumFractionDigits: d });
     return unit ? text + (/^[%°]/.test(unit) ? "" : " ") + unit : text;
   }
@@ -54,8 +54,10 @@
   }
   function grid(c, top, bottom, left, max, unit) {
     var out = "";
-    for (var k = 0; k <= 3; k++) {
-      var y = bottom - (bottom - top) * k / 3, v = max * k / 3;
+    // round steps (0, 10, 20, 30 rather than 0, 16,7, 33,3)
+    var step = nice(max / 4), count = Math.round(max / step);
+    for (var k = 0; k <= count; k++) {
+      var y = bottom - (bottom - top) * k / count, v = step * k;
       out += '<line class="bip-grid" x1="' + left + '" x2="' + c.w + '" y1="' + y + '" y2="' + y + '"/>' +
         '<text class="bip-axis" x="' + (left - 6) + '" y="' + (y + 3.5) + '" text-anchor="end">' + esc(fmt(v, v % 1 ? 1 : 0)) + "</text>";
     }
@@ -69,7 +71,8 @@
     var series = spec.series || [{ name: spec.name || "", values: spec.values || [] }];
     var labels = spec.labels || [], n = Math.max(labels.length, series[0].values.length);
     var all = [].concat.apply([], series.map(function (s) { return s.values; })).concat(spec.goal || 0);
-    var max = nice(Math.max.apply(null, all.map(Number).filter(isFinite)));
+    var highest = Math.max.apply(null, all.map(Number).filter(isFinite)) || 1, unitStep = nice(highest / 4);
+    var max = Math.ceil(highest * 1.08 / unitStep) * unitStep;
     var left = 34, top = 16, bottom = c.h - 22, band = (c.w - left) / n, gap = band * 0.28;
     var width = (band - gap) / series.length, out = grid(c, top, bottom, left, max);
     series.forEach(function (s, j) {
