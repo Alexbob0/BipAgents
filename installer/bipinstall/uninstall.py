@@ -102,6 +102,10 @@ def uninstall(runner: Runner, *, everything: bool, home: Optional[Path] = None, 
         for unit in browsers:
             runner.run(["systemctl", "--user", "disable", "--now", unit.stem], check=False)
             remove(unit, runner)
+        if (units / "bipagents-refresh-browser.timer").exists():   # browser_refresh.py: its nightly refresh
+            runner.run(["systemctl", "--user", "disable", "--now", "bipagents-refresh-browser.timer"], check=False)
+            for name in ("bipagents-refresh-browser.timer", "bipagents-refresh-browser.service"):
+                remove(units / name, runner)
         engine = shutil.which("podman") or shutil.which("docker")
         if browsers and engine:
             runner.run([engine, "image", "rm", "-f", "bipagents-browser"], check=False)

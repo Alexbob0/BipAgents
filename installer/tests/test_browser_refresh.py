@@ -157,13 +157,14 @@ def test_the_timer_runs_each_night_spread_and_at_the_lowest_priority(tmp_path):
     python = REPO / "installer" / ".venv" / "bin" / "python"
     refresh.install_timer(runner, REPO, python, tmp_path)
     folder = tmp_path / ".config" / "systemd" / "user"
-    service = (folder / "bipagents-browser-refresh.service").read_text()
-    timer = (folder / "bipagents-browser-refresh.timer").read_text()
+    service = (folder / "bipagents-refresh-browser.service").read_text()
+    timer = (folder / "bipagents-refresh-browser.timer").read_text()
     assert f"ExecStart={python} -m bipinstall browser-refresh" in service
     assert "Type=oneshot" in service and "Nice=19" in service and "IOSchedulingClass=idle" in service
     assert "OnCalendar=*-*-* 01:00:00" in timer and "RandomizedDelaySec=2h" in timer and "Persistent=true" in timer
     assert ran == [["systemctl", "--user", "daemon-reload"],
-                   ["systemctl", "--user", "enable", "--now", "bipagents-browser-refresh.timer"]]
+                   ["systemctl", "--user", "enable", "--now", "bipagents-refresh-browser.timer"]]
+    assert not list(folder.glob("bipagents-browser-*.service"))   # never taken for an agent's browser
 
 
 def test_an_update_gives_existing_installs_the_refresh(tmp_path, monkeypatch):
@@ -178,8 +179,8 @@ def test_an_update_gives_existing_installs_the_refresh(tmp_path, monkeypatch):
     assert migrations.browser_refresh(runner, tmp_path) == "no agent browser here"
     monkeypatch.setattr(refresh, "run", Engine(UP_TO_DATE))
     said = migrations.browser_refresh(runner, tmp_path)
-    assert "each night" in said and (tmp_path / ".config" / "systemd" / "user" / "bipagents-browser-refresh.timer").is_file()
-    assert ran[-1] == ["systemctl", "--user", "enable", "--now", "bipagents-browser-refresh.timer"]
+    assert "each night" in said and (tmp_path / ".config" / "systemd" / "user" / "bipagents-refresh-browser.timer").is_file()
+    assert ran[-1] == ["systemctl", "--user", "enable", "--now", "bipagents-refresh-browser.timer"]
     assert "2026-10-22-browser-refresh" in [mid for mid, _ in migrations.MIGRATIONS]
 
 

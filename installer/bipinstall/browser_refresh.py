@@ -17,7 +17,7 @@ of each install that has browsers (a self-hosted one, each place of the offer), 
    browser never stops by itself) is restarted now; its profile, and so its logins, stay;
 5. images no longer used are removed, so the disk does not grow.
 
-What it did goes to the journal (`journalctl --user -u bipagents-browser-refresh`).
+What it did goes to the journal (`journalctl --user -u bipagents-refresh-browser`).
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 
 IMAGE = "bipagents-browser"   # hermes.BROWSER_IMAGE (not imported: this runs from a timer, with little around it)
 NEW = f"{IMAGE}:refresh"     # the image being built, named IMAGE only once it works
-UNIT = "bipagents-browser-refresh"
+UNIT = "bipagents-refresh-browser"   # never bipagents-browser-*: that is each agent's browser (moving, uninstall…)
 LOCK = Path("/tmp/bipagents-browser-refresh.lock")   # shared by every account of the server
 LOCK_WAIT = 3 * 3600        # another place's build takes minutes; past this, tomorrow
 IDLE_RESTART = 30 * 60      # a browser on an old image, unused this long, is restarted on the new one

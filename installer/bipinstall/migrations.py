@@ -159,7 +159,7 @@ def browser_refresh(runner: hermes.Runner, home: Path) -> str:
     if not engine or not (units or refresh.image_id(engine, refresh.IMAGE, refresh.run)):
         return "no agent browser here"
     refresh.install_timer(runner, REPO, INSTALLER_PYTHON, home)
-    return "the agents' browser now gets Chrome's security fixes each night (bipagents-browser-refresh.timer)"
+    return "the agents' browser now gets Chrome's security fixes each night (bipagents-refresh-browser.timer)"
 
 
 # In order; an id never changes once released. rust-bridge comes first: the others run the bridge's command line.
