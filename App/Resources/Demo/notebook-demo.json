@@ -1,6 +1,6 @@
 {
  "version": 1,
- "comment": "The demo's sample Carnet (invented people), shared by the iPhone and Android apps. Agents are demo.json's ids; « you » is the person, « nightly:<agent> » the nightly pass. {date+N}: the day N days after today. Sections: each page's fixed outline (id and title, in the bridge's order: notebook/template.rs); a document of type page opens demo.json's page of that id; health_documents are the private health part's.",
+ "comment": "The demo's sample Carnet (invented people), shared by the iPhone and Android apps. Agents are demo.json's ids; « you » is the person, « nightly:<agent> » the nightly pass. {date+N}: the day N days after today. Sections: each page's fixed outline (id and title, in the bridge's order: notebook/template.rs); a document of type page opens demo.json's page of that id; « me » is the person's own page (kind self, « Toi »); health_documents are the private health part's.",
  "fr": {
   "brief": "En bref",
   "folders": {
@@ -886,7 +886,101 @@
     ],
     "linked": "Domaines/Santé.md"
    }
-  ]
+  ],
+  "me": {
+   "path": "Toi.md",
+   "kind": "self",
+   "title": "Toi",
+   "aliases": [],
+   "close": false,
+   "contact": null,
+   "summary": "Tu vis à Nantes, tu cours le dimanche et tu prépares un voyage au Japon.",
+   "summary_agent": "daily",
+   "summary_days_ago": 5,
+   "sections": [
+    {
+     "id": "about",
+     "title": "Qui tu es",
+     "facts": [
+      {
+       "text": "Vit à Nantes",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "family",
+     "title": "Famille",
+     "facts": [
+      {
+       "text": "Sœur : [[Claire Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      },
+      {
+       "text": "Beau-frère : [[Marc Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "work",
+     "title": "Travail",
+     "facts": [
+      {
+       "text": "Graphiste en agence, télétravail le vendredi",
+       "agent": "daily",
+       "days_ago": 30
+      }
+     ]
+    },
+    {
+     "id": "habits",
+     "title": "Goûts et habitudes",
+     "facts": [
+      {
+       "text": "Course à pied le dimanche matin avec [[Lucas Bernard]]",
+       "agent": "coach",
+       "days_ago": 40
+      },
+      {
+       "text": "Café sans sucre",
+       "agent": "you",
+       "days_ago": 20
+      }
+     ]
+    },
+    {
+     "id": "goals",
+     "title": "Objectifs",
+     "facts": [
+      {
+       "text": "Courir un semi-marathon au printemps",
+       "agent": "coach",
+       "days_ago": 10
+      }
+     ]
+    },
+    {
+     "id": "agents",
+     "title": "Ce que tes agents doivent savoir",
+     "facts": [
+      {
+       "text": "Pas de propositions de tâches pour les anniversaires",
+       "agent": "daily",
+       "days_ago": 15
+      },
+      {
+       "text": "Réponses courtes le matin",
+       "agent": "you",
+       "days_ago": 5
+      }
+     ]
+    }
+   ]
+  }
  },
  "en": {
   "brief": "In brief",
@@ -1773,7 +1867,101 @@
     ],
     "linked": "Areas/Health.md"
    }
-  ]
+  ],
+  "me": {
+   "path": "You.md",
+   "kind": "self",
+   "title": "You",
+   "aliases": [],
+   "close": false,
+   "contact": null,
+   "summary": "You live in Nantes, run on Sundays and are planning a trip to Japan.",
+   "summary_agent": "daily",
+   "summary_days_ago": 5,
+   "sections": [
+    {
+     "id": "about",
+     "title": "Who you are",
+     "facts": [
+      {
+       "text": "Lives in Nantes",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "family",
+     "title": "Family",
+     "facts": [
+      {
+       "text": "Sister: [[Claire Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      },
+      {
+       "text": "Brother-in-law: [[Marc Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "work",
+     "title": "Work",
+     "facts": [
+      {
+       "text": "Graphic designer at an agency, works from home on Fridays",
+       "agent": "daily",
+       "days_ago": 30
+      }
+     ]
+    },
+    {
+     "id": "habits",
+     "title": "Likes and habits",
+     "facts": [
+      {
+       "text": "Runs on Sunday mornings with [[Lucas Bernard]]",
+       "agent": "coach",
+       "days_ago": 40
+      },
+      {
+       "text": "Coffee without sugar",
+       "agent": "you",
+       "days_ago": 20
+      }
+     ]
+    },
+    {
+     "id": "goals",
+     "title": "Goals",
+     "facts": [
+      {
+       "text": "Run a half marathon in spring",
+       "agent": "coach",
+       "days_ago": 10
+      }
+     ]
+    },
+    {
+     "id": "agents",
+     "title": "What your agents should know",
+     "facts": [
+      {
+       "text": "No task proposals for birthdays",
+       "agent": "daily",
+       "days_ago": 15
+      },
+      {
+       "text": "Short answers in the morning",
+       "agent": "you",
+       "days_ago": 5
+      }
+     ]
+    }
+   ]
+  }
  },
  "de": {
   "brief": "Kurz gesagt",
@@ -2660,7 +2848,101 @@
     ],
     "linked": "Bereiche/Gesundheit.md"
    }
-  ]
+  ],
+  "me": {
+   "path": "Du.md",
+   "kind": "self",
+   "title": "Du",
+   "aliases": [],
+   "close": false,
+   "contact": null,
+   "summary": "Du wohnst in Nantes, läufst sonntags und planst eine Reise nach Japan.",
+   "summary_agent": "daily",
+   "summary_days_ago": 5,
+   "sections": [
+    {
+     "id": "about",
+     "title": "Wer du bist",
+     "facts": [
+      {
+       "text": "Wohnt in Nantes",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "family",
+     "title": "Familie",
+     "facts": [
+      {
+       "text": "Schwester: [[Claire Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      },
+      {
+       "text": "Schwager: [[Marc Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "work",
+     "title": "Arbeit",
+     "facts": [
+      {
+       "text": "Grafikdesigner in einer Agentur, freitags im Homeoffice",
+       "agent": "daily",
+       "days_ago": 30
+      }
+     ]
+    },
+    {
+     "id": "habits",
+     "title": "Vorlieben und Gewohnheiten",
+     "facts": [
+      {
+       "text": "Läuft sonntagmorgens mit [[Lucas Bernard]]",
+       "agent": "coach",
+       "days_ago": 40
+      },
+      {
+       "text": "Kaffee ohne Zucker",
+       "agent": "you",
+       "days_ago": 20
+      }
+     ]
+    },
+    {
+     "id": "goals",
+     "title": "Ziele",
+     "facts": [
+      {
+       "text": "Im Frühling einen Halbmarathon laufen",
+       "agent": "coach",
+       "days_ago": 10
+      }
+     ]
+    },
+    {
+     "id": "agents",
+     "title": "Was deine Agenten wissen sollten",
+     "facts": [
+      {
+       "text": "Keine Aufgabenvorschläge für Geburtstage",
+       "agent": "daily",
+       "days_ago": 15
+      },
+      {
+       "text": "Morgens kurze Antworten",
+       "agent": "you",
+       "days_ago": 5
+      }
+     ]
+    }
+   ]
+  }
  },
  "es": {
   "brief": "En resumen",
@@ -3547,6 +3829,100 @@
     ],
     "linked": "Áreas/Salud.md"
    }
-  ]
+  ],
+  "me": {
+   "path": "Tú.md",
+   "kind": "self",
+   "title": "Tú",
+   "aliases": [],
+   "close": false,
+   "contact": null,
+   "summary": "Vives en Nantes, corres los domingos y preparas un viaje a Japón.",
+   "summary_agent": "daily",
+   "summary_days_ago": 5,
+   "sections": [
+    {
+     "id": "about",
+     "title": "Quién eres",
+     "facts": [
+      {
+       "text": "Vive en Nantes",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "family",
+     "title": "Familia",
+     "facts": [
+      {
+       "text": "Hermana: [[Claire Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      },
+      {
+       "text": "Cuñado: [[Marc Durand]]",
+       "agent": "daily",
+       "days_ago": 60
+      }
+     ]
+    },
+    {
+     "id": "work",
+     "title": "Trabajo",
+     "facts": [
+      {
+       "text": "Diseñador gráfico en una agencia, teletrabajo los viernes",
+       "agent": "daily",
+       "days_ago": 30
+      }
+     ]
+    },
+    {
+     "id": "habits",
+     "title": "Gustos y hábitos",
+     "facts": [
+      {
+       "text": "Corre los domingos por la mañana con [[Lucas Bernard]]",
+       "agent": "coach",
+       "days_ago": 40
+      },
+      {
+       "text": "Café sin azúcar",
+       "agent": "you",
+       "days_ago": 20
+      }
+     ]
+    },
+    {
+     "id": "goals",
+     "title": "Objetivos",
+     "facts": [
+      {
+       "text": "Correr una media maratón en primavera",
+       "agent": "coach",
+       "days_ago": 10
+      }
+     ]
+    },
+    {
+     "id": "agents",
+     "title": "Lo que tus agentes deben saber",
+     "facts": [
+      {
+       "text": "Sin propuestas de tareas para cumpleaños",
+       "agent": "daily",
+       "days_ago": 15
+      },
+      {
+       "text": "Respuestas cortas por la mañana",
+       "agent": "you",
+       "days_ago": 5
+      }
+     ]
+    }
+   ]
+  }
  }
 }
