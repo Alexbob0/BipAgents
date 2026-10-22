@@ -111,7 +111,15 @@ async fn an_agent_makes_a_page_and_the_app_gets_it_locked() {
     assert_eq!(page.status, 200);
     assert!(page.header("content-type").unwrap().starts_with("text/html"));
     assert!(page.header("content-security-policy").unwrap().starts_with("sandbox allow-scripts; default-src 'none'"));
-    assert_eq!(page.header("cache-control").as_deref(), Some("no-store"));
+    assert_eq!(page.header("cache-control").as_deref(), Some("no-cache"));
+    // Kept by the app and asked again with its ETag: unchanged, a 304 without the body (policy still on it).
+    let etag = page.header("etag").unwrap();
+    let again = app.get(&format!("/v1/media?path={media}"), &[(k, &v), ("if-none-match", &etag)]).await;
+    assert_eq!(again.status, 304);
+    assert!(again.text().is_empty() && again.header("etag").as_deref() == Some(etag.as_str()));
+    assert!(again.header("content-security-policy").unwrap().starts_with("sandbox allow-scripts"));
+    let other = app.get(&format!("/v1/media?path={media}"), &[(k, &v), ("if-none-match", "\"old\"")]).await;
+    assert_eq!(other.status, 200);
     assert_eq!(page.header("x-content-type-options").as_deref(), Some("nosniff"));
     assert!(page.text().contains("Chart.js v4"));
     // Its source and its record are not served.

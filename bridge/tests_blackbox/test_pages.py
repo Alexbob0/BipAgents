@@ -31,7 +31,13 @@ def test_an_agent_makes_a_page_and_the_app_gets_it_locked(bridge):
     page = bridge.get("/v1/media", params={"path": media}, headers=AUTH)
     assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
     assert page.headers["content-security-policy"].startswith("sandbox allow-scripts; default-src 'none'")
-    assert page.headers["cache-control"] == "no-store" and page.headers["x-content-type-options"] == "nosniff"
+    assert page.headers["cache-control"] == "no-cache" and page.headers["x-content-type-options"] == "nosniff"
+    # kept by the app, asked again with its ETag or date: unchanged, a 304 without the body
+    again = bridge.get("/v1/media", params={"path": media}, headers={**AUTH, "If-None-Match": page.headers["etag"]})
+    assert again.status_code == 304 and again.content == b"" and again.headers["etag"] == page.headers["etag"]
+    since = bridge.get("/v1/media", params={"path": media}, headers={**AUTH, "If-Modified-Since": page.headers["last-modified"]})
+    assert since.status_code == 304
+    assert bridge.get("/v1/media", params={"path": media}, headers={**AUTH, "If-None-Match": '"old"'}).status_code == 200
     assert "Chart.js v4" in page.text
     # The policy comes before anything the agent wrote, the doctype stays first; Chart.js inline instead of the CDN's.
     kept = (pages_dir(bridge) / "prises-de-sang.html").read_text()
