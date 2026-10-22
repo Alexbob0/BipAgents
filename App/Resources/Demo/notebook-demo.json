@@ -476,6 +476,122 @@
     ]
    },
    {
+    "path": "Sujets/Anniversaire d’Inès.md",
+    "kind": "subject",
+    "title": "Anniversaire d’Inès",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Inès fête ses 8 ans samedi {date+12}, chez Claire. Thème : les licornes.",
+    "summary_agent": "daily",
+    "summary_days_ago": 0,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Où on en est",
+      "facts": [
+       {
+        "text": "Invitations à envoyer cette semaine",
+        "agent": "daily",
+        "days_ago": 0
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Prochaines étapes",
+      "facts": [
+       {
+        "text": "Commander le gâteau chez le pâtissier",
+        "agent": "daily",
+        "days_ago": 0
+       }
+      ]
+     },
+     {
+      "id": "people",
+      "title": "Personnes",
+      "facts": [
+       {
+        "text": "[[Claire Durand]] organise, [[Marc Durand]] anime les jeux",
+        "agent": "daily",
+        "days_ago": 1
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Sujets/Impôts 2026.md",
+    "kind": "subject",
+    "title": "Impôts 2026",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Déclaration en ligne à vérifier avant la fin du mois.",
+    "summary_agent": "budget",
+    "summary_days_ago": 2,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Où on en est",
+      "facts": [
+       {
+        "text": "Déclaration pré-remplie reçue",
+        "agent": "budget",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Prochaines étapes",
+      "facts": [
+       {
+        "text": "Ajouter les dons et les frais de garde",
+        "agent": "budget",
+        "days_ago": 2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Sujets/Changer de voiture.md",
+    "kind": "subject",
+    "title": "Changer de voiture",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Une hybride d’occasion, 15 000 € au maximum.",
+    "summary_agent": "budget",
+    "summary_days_ago": 4,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Où on en est",
+      "facts": [
+       {
+        "text": "Trois modèles retenus",
+        "agent": "budget",
+        "days_ago": 4
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Chiffres et budget",
+      "facts": [
+       {
+        "text": "Budget : 15 000 € au maximum",
+        "agent": "budget",
+        "days_ago": 6
+       }
+      ]
+     }
+    ]
+   },
+   {
     "path": "Domaines/Famille.md",
     "kind": "area",
     "title": "Famille",
@@ -607,6 +723,41 @@
         "text": "Assurance auto à renouveler avant le 5",
         "agent": "budget",
         "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Domaines/Travail.md",
+    "kind": "area",
+    "title": "Travail",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Ton poste chez Atelier Lumière et ton entretien annuel.",
+    "summary_agent": "daily",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "id": "matters",
+      "title": "Ce qui compte",
+      "facts": [
+       {
+        "text": "Entretien annuel le {date+5}",
+        "agent": "daily",
+        "days_ago": 3
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En cours",
+      "facts": [
+       {
+        "text": "Formation Excel en novembre",
+        "agent": "daily",
+        "days_ago": 8
        }
       ]
      }
@@ -765,6 +916,138 @@
     "days_ago": 70,
     "done_ago": null,
     "archived": true
+   },
+   {
+    "id": "t0010",
+    "title": "Envoyer les invitations",
+    "due_in": 3,
+    "links": [
+     "Anniversaire d’Inès"
+    ],
+    "agent": "daily",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0011",
+    "title": "Commander le gâteau",
+    "due_in": 10,
+    "links": [
+     "Anniversaire d’Inès"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0012",
+    "title": "Acheter les ballons",
+    "due_in": null,
+    "links": [
+     "Anniversaire d’Inès"
+    ],
+    "agent": "you",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0013",
+    "title": "Vérifier la déclaration pré-remplie",
+    "due_in": 6,
+    "links": [
+     "Impôts 2026"
+    ],
+    "agent": "budget",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0014",
+    "title": "Retrouver les reçus de dons",
+    "due_in": null,
+    "links": [
+     "Impôts 2026"
+    ],
+    "agent": "budget",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0015",
+    "title": "Réserver un essai de la Yaris",
+    "due_in": 9,
+    "links": [
+     "Changer de voiture"
+    ],
+    "agent": "budget",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0016",
+    "title": "Comparer trois modèles d’occasion",
+    "due_in": null,
+    "links": [
+     "Changer de voiture"
+    ],
+    "agent": "budget",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0017",
+    "title": "Préparer l’entretien annuel",
+    "due_in": 5,
+    "links": [
+     "Travail"
+    ],
+    "agent": "daily",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0018",
+    "title": "Choisir la crédence",
+    "due_in": null,
+    "links": [
+     "Rénovation cuisine"
+    ],
+    "agent": "home",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0019",
+    "title": "Prendre rendez-vous chez le dentiste",
+    "due_in": 7,
+    "links": [
+     "Toi"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0020",
+    "title": "Acheter un guide de Kyoto",
+    "due_in": null,
+    "links": [
+     "Voyage Japon"
+    ],
+    "agent": "daily",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
    }
   ],
   "documents": [
@@ -839,6 +1122,14 @@
     "agent": "daily",
     "hours_ago": 2,
     "summary": "Anniversaire : {date+23}"
+   },
+   {
+    "path": "Sujets/Anniversaire d’Inès.md",
+    "title": "Anniversaire d’Inès",
+    "action": "create",
+    "agent": "daily",
+    "hours_ago": 5,
+    "summary": "Fête samedi chez Claire, thème licornes"
    },
    {
     "path": "Sujets/Rénovation cuisine.md",
@@ -1457,6 +1748,122 @@
     ]
    },
    {
+    "path": "Subjects/Inès’s birthday.md",
+    "kind": "subject",
+    "title": "Inès’s birthday",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Inès turns 8 on Saturday {date+12}, at Claire’s. Theme: unicorns.",
+    "summary_agent": "daily",
+    "summary_days_ago": 0,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Where it stands",
+      "facts": [
+       {
+        "text": "Invitations to send this week",
+        "agent": "daily",
+        "days_ago": 0
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Next steps",
+      "facts": [
+       {
+        "text": "Order the cake from the bakery",
+        "agent": "daily",
+        "days_ago": 0
+       }
+      ]
+     },
+     {
+      "id": "people",
+      "title": "People",
+      "facts": [
+       {
+        "text": "[[Claire Durand]] organises, [[Marc Durand]] runs the games",
+        "agent": "daily",
+        "days_ago": 1
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Subjects/Taxes 2026.md",
+    "kind": "subject",
+    "title": "Taxes 2026",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Online tax return to check before the end of the month.",
+    "summary_agent": "budget",
+    "summary_days_ago": 2,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Where it stands",
+      "facts": [
+       {
+        "text": "Pre-filled return received",
+        "agent": "budget",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Next steps",
+      "facts": [
+       {
+        "text": "Add the donations and the childcare costs",
+        "agent": "budget",
+        "days_ago": 2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Subjects/New car.md",
+    "kind": "subject",
+    "title": "New car",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "A used hybrid, €15,000 at most.",
+    "summary_agent": "budget",
+    "summary_days_ago": 4,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Where it stands",
+      "facts": [
+       {
+        "text": "Three models shortlisted",
+        "agent": "budget",
+        "days_ago": 4
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Figures and budget",
+      "facts": [
+       {
+        "text": "Budget: €15,000 at most",
+        "agent": "budget",
+        "days_ago": 6
+       }
+      ]
+     }
+    ]
+   },
+   {
     "path": "Areas/Family.md",
     "kind": "area",
     "title": "Family",
@@ -1588,6 +1995,41 @@
         "text": "Car insurance to renew before the 5th",
         "agent": "budget",
         "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Areas/Work.md",
+    "kind": "area",
+    "title": "Work",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Your job at Atelier Lumière and your annual review.",
+    "summary_agent": "daily",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "id": "matters",
+      "title": "What matters",
+      "facts": [
+       {
+        "text": "Annual review on {date+5}",
+        "agent": "daily",
+        "days_ago": 3
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "In progress",
+      "facts": [
+       {
+        "text": "Excel course in November",
+        "agent": "daily",
+        "days_ago": 8
        }
       ]
      }
@@ -1746,6 +2188,138 @@
     "days_ago": 70,
     "done_ago": null,
     "archived": true
+   },
+   {
+    "id": "t0010",
+    "title": "Send the invitations",
+    "due_in": 3,
+    "links": [
+     "Inès’s birthday"
+    ],
+    "agent": "daily",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0011",
+    "title": "Order the cake",
+    "due_in": 10,
+    "links": [
+     "Inès’s birthday"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0012",
+    "title": "Buy the balloons",
+    "due_in": null,
+    "links": [
+     "Inès’s birthday"
+    ],
+    "agent": "you",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0013",
+    "title": "Check the pre-filled tax return",
+    "due_in": 6,
+    "links": [
+     "Taxes 2026"
+    ],
+    "agent": "budget",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0014",
+    "title": "Find the donation receipts",
+    "due_in": null,
+    "links": [
+     "Taxes 2026"
+    ],
+    "agent": "budget",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0015",
+    "title": "Book a Yaris test drive",
+    "due_in": 9,
+    "links": [
+     "New car"
+    ],
+    "agent": "budget",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0016",
+    "title": "Compare three used models",
+    "due_in": null,
+    "links": [
+     "New car"
+    ],
+    "agent": "budget",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0017",
+    "title": "Prepare the annual review",
+    "due_in": 5,
+    "links": [
+     "Work"
+    ],
+    "agent": "daily",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0018",
+    "title": "Choose the splashback",
+    "due_in": null,
+    "links": [
+     "Kitchen renovation"
+    ],
+    "agent": "home",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0019",
+    "title": "Book a dentist appointment",
+    "due_in": 7,
+    "links": [
+     "You"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0020",
+    "title": "Buy a Kyoto guidebook",
+    "due_in": null,
+    "links": [
+     "Japan trip"
+    ],
+    "agent": "daily",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
    }
   ],
   "documents": [
@@ -1820,6 +2394,14 @@
     "agent": "daily",
     "hours_ago": 2,
     "summary": "Birthday: {date+23}"
+   },
+   {
+    "path": "Subjects/Inès’s birthday.md",
+    "title": "Inès’s birthday",
+    "action": "create",
+    "agent": "daily",
+    "hours_ago": 5,
+    "summary": "Party on Saturday at Claire’s, unicorn theme"
    },
    {
     "path": "Subjects/Kitchen renovation.md",
@@ -2438,6 +3020,122 @@
     ]
    },
    {
+    "path": "Themen/Inès’ Geburtstag.md",
+    "kind": "subject",
+    "title": "Inès’ Geburtstag",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Inès wird am Samstag, {date+12}, 8 Jahre alt, bei Claire. Motto: Einhörner.",
+    "summary_agent": "daily",
+    "summary_days_ago": 0,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Stand der Dinge",
+      "facts": [
+       {
+        "text": "Einladungen diese Woche verschicken",
+        "agent": "daily",
+        "days_ago": 0
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Nächste Schritte",
+      "facts": [
+       {
+        "text": "Die Torte beim Konditor bestellen",
+        "agent": "daily",
+        "days_ago": 0
+       }
+      ]
+     },
+     {
+      "id": "people",
+      "title": "Personen",
+      "facts": [
+       {
+        "text": "[[Claire Durand]] organisiert, [[Marc Durand]] macht die Spiele",
+        "agent": "daily",
+        "days_ago": 1
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Themen/Steuern 2026.md",
+    "kind": "subject",
+    "title": "Steuern 2026",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Die Online-Steuererklärung bis Monatsende prüfen.",
+    "summary_agent": "budget",
+    "summary_days_ago": 2,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Stand der Dinge",
+      "facts": [
+       {
+        "text": "Vorausgefüllte Erklärung erhalten",
+        "agent": "budget",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Nächste Schritte",
+      "facts": [
+       {
+        "text": "Spenden und Betreuungskosten eintragen",
+        "agent": "budget",
+        "days_ago": 2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Themen/Neues Auto.md",
+    "kind": "subject",
+    "title": "Neues Auto",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Ein gebrauchter Hybrid, höchstens 15.000 €.",
+    "summary_agent": "budget",
+    "summary_days_ago": 4,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Stand der Dinge",
+      "facts": [
+       {
+        "text": "Drei Modelle in der engeren Wahl",
+        "agent": "budget",
+        "days_ago": 4
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Zahlen und Budget",
+      "facts": [
+       {
+        "text": "Budget: höchstens 15.000 €",
+        "agent": "budget",
+        "days_ago": 6
+       }
+      ]
+     }
+    ]
+   },
+   {
     "path": "Bereiche/Familie.md",
     "kind": "area",
     "title": "Familie",
@@ -2569,6 +3267,41 @@
         "text": "Kfz-Versicherung vor dem 5. verlängern",
         "agent": "budget",
         "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Bereiche/Arbeit.md",
+    "kind": "area",
+    "title": "Arbeit",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Deine Stelle bei Atelier Lumière und dein Jahresgespräch.",
+    "summary_agent": "daily",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "id": "matters",
+      "title": "Was zählt",
+      "facts": [
+       {
+        "text": "Jahresgespräch am {date+5}",
+        "agent": "daily",
+        "days_ago": 3
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "Laufend",
+      "facts": [
+       {
+        "text": "Excel-Kurs im November",
+        "agent": "daily",
+        "days_ago": 8
        }
       ]
      }
@@ -2727,6 +3460,138 @@
     "days_ago": 70,
     "done_ago": null,
     "archived": true
+   },
+   {
+    "id": "t0010",
+    "title": "Die Einladungen verschicken",
+    "due_in": 3,
+    "links": [
+     "Inès’ Geburtstag"
+    ],
+    "agent": "daily",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0011",
+    "title": "Die Torte bestellen",
+    "due_in": 10,
+    "links": [
+     "Inès’ Geburtstag"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0012",
+    "title": "Luftballons kaufen",
+    "due_in": null,
+    "links": [
+     "Inès’ Geburtstag"
+    ],
+    "agent": "you",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0013",
+    "title": "Die vorausgefüllte Erklärung prüfen",
+    "due_in": 6,
+    "links": [
+     "Steuern 2026"
+    ],
+    "agent": "budget",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0014",
+    "title": "Die Spendenquittungen suchen",
+    "due_in": null,
+    "links": [
+     "Steuern 2026"
+    ],
+    "agent": "budget",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0015",
+    "title": "Eine Probefahrt im Yaris buchen",
+    "due_in": 9,
+    "links": [
+     "Neues Auto"
+    ],
+    "agent": "budget",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0016",
+    "title": "Drei Gebrauchtmodelle vergleichen",
+    "due_in": null,
+    "links": [
+     "Neues Auto"
+    ],
+    "agent": "budget",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0017",
+    "title": "Das Jahresgespräch vorbereiten",
+    "due_in": 5,
+    "links": [
+     "Arbeit"
+    ],
+    "agent": "daily",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0018",
+    "title": "Die Küchenrückwand aussuchen",
+    "due_in": null,
+    "links": [
+     "Küchenrenovierung"
+    ],
+    "agent": "home",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0019",
+    "title": "Einen Zahnarzttermin machen",
+    "due_in": 7,
+    "links": [
+     "Du"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0020",
+    "title": "Einen Kyoto-Reiseführer kaufen",
+    "due_in": null,
+    "links": [
+     "Japanreise"
+    ],
+    "agent": "daily",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
    }
   ],
   "documents": [
@@ -2801,6 +3666,14 @@
     "agent": "daily",
     "hours_ago": 2,
     "summary": "Geburtstag: {date+23}"
+   },
+   {
+    "path": "Themen/Inès’ Geburtstag.md",
+    "title": "Inès’ Geburtstag",
+    "action": "create",
+    "agent": "daily",
+    "hours_ago": 5,
+    "summary": "Feier am Samstag bei Claire, Motto Einhörner"
    },
    {
     "path": "Themen/Küchenrenovierung.md",
@@ -3419,6 +4292,122 @@
     ]
    },
    {
+    "path": "Temas/Cumpleaños de Inès.md",
+    "kind": "subject",
+    "title": "Cumpleaños de Inès",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Inès cumple 8 años el sábado {date+12}, en casa de Claire. Tema: unicornios.",
+    "summary_agent": "daily",
+    "summary_days_ago": 0,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Cómo va",
+      "facts": [
+       {
+        "text": "Invitaciones por enviar esta semana",
+        "agent": "daily",
+        "days_ago": 0
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Próximos pasos",
+      "facts": [
+       {
+        "text": "Encargar la tarta en la pastelería",
+        "agent": "daily",
+        "days_ago": 0
+       }
+      ]
+     },
+     {
+      "id": "people",
+      "title": "Personas",
+      "facts": [
+       {
+        "text": "[[Claire Durand]] lo organiza, [[Marc Durand]] se ocupa de los juegos",
+        "agent": "daily",
+        "days_ago": 1
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Temas/Impuestos 2026.md",
+    "kind": "subject",
+    "title": "Impuestos 2026",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Revisar la declaración en línea antes de fin de mes.",
+    "summary_agent": "budget",
+    "summary_days_ago": 2,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Cómo va",
+      "facts": [
+       {
+        "text": "Borrador de la declaración recibido",
+        "agent": "budget",
+        "days_ago": 2
+       }
+      ]
+     },
+     {
+      "id": "next",
+      "title": "Próximos pasos",
+      "facts": [
+       {
+        "text": "Añadir los donativos y los gastos de guardería",
+        "agent": "budget",
+        "days_ago": 2
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Temas/Cambiar de coche.md",
+    "kind": "subject",
+    "title": "Cambiar de coche",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Un híbrido de segunda mano, 15.000 € como máximo.",
+    "summary_agent": "budget",
+    "summary_days_ago": 4,
+    "sections": [
+     {
+      "id": "status",
+      "title": "Cómo va",
+      "facts": [
+       {
+        "text": "Tres modelos preseleccionados",
+        "agent": "budget",
+        "days_ago": 4
+       }
+      ]
+     },
+     {
+      "id": "budget",
+      "title": "Cifras y presupuesto",
+      "facts": [
+       {
+        "text": "Presupuesto: 15.000 € como máximo",
+        "agent": "budget",
+        "days_ago": 6
+       }
+      ]
+     }
+    ]
+   },
+   {
     "path": "Áreas/Familia.md",
     "kind": "area",
     "title": "Familia",
@@ -3550,6 +4539,41 @@
         "text": "Renovar el seguro del coche antes del 5",
         "agent": "budget",
         "days_ago": 3
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "path": "Áreas/Trabajo.md",
+    "kind": "area",
+    "title": "Trabajo",
+    "aliases": [],
+    "close": false,
+    "contact": null,
+    "summary": "Tu puesto en Atelier Lumière y tu entrevista anual.",
+    "summary_agent": "daily",
+    "summary_days_ago": 3,
+    "sections": [
+     {
+      "id": "matters",
+      "title": "Lo que importa",
+      "facts": [
+       {
+        "text": "Entrevista anual el {date+5}",
+        "agent": "daily",
+        "days_ago": 3
+       }
+      ]
+     },
+     {
+      "id": "ongoing",
+      "title": "En curso",
+      "facts": [
+       {
+        "text": "Curso de Excel en noviembre",
+        "agent": "daily",
+        "days_ago": 8
        }
       ]
      }
@@ -3708,6 +4732,138 @@
     "days_ago": 70,
     "done_ago": null,
     "archived": true
+   },
+   {
+    "id": "t0010",
+    "title": "Enviar las invitaciones",
+    "due_in": 3,
+    "links": [
+     "Cumpleaños de Inès"
+    ],
+    "agent": "daily",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0011",
+    "title": "Encargar la tarta",
+    "due_in": 10,
+    "links": [
+     "Cumpleaños de Inès"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0012",
+    "title": "Comprar los globos",
+    "due_in": null,
+    "links": [
+     "Cumpleaños de Inès"
+    ],
+    "agent": "you",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0013",
+    "title": "Revisar el borrador de la declaración",
+    "due_in": 6,
+    "links": [
+     "Impuestos 2026"
+    ],
+    "agent": "budget",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0014",
+    "title": "Buscar los recibos de los donativos",
+    "due_in": null,
+    "links": [
+     "Impuestos 2026"
+    ],
+    "agent": "budget",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0015",
+    "title": "Reservar una prueba del Yaris",
+    "due_in": 9,
+    "links": [
+     "Cambiar de coche"
+    ],
+    "agent": "budget",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0016",
+    "title": "Comparar tres modelos de segunda mano",
+    "due_in": null,
+    "links": [
+     "Cambiar de coche"
+    ],
+    "agent": "budget",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0017",
+    "title": "Preparar la entrevista anual",
+    "due_in": 5,
+    "links": [
+     "Trabajo"
+    ],
+    "agent": "daily",
+    "days_ago": 3,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0018",
+    "title": "Elegir el frontal de la cocina",
+    "due_in": null,
+    "links": [
+     "Reforma de la cocina"
+    ],
+    "agent": "home",
+    "days_ago": 0,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0019",
+    "title": "Pedir cita con el dentista",
+    "due_in": 7,
+    "links": [
+     "Tú"
+    ],
+    "agent": "daily",
+    "days_ago": 1,
+    "done_ago": null,
+    "archived": false
+   },
+   {
+    "id": "t0020",
+    "title": "Comprar una guía de Kioto",
+    "due_in": null,
+    "links": [
+     "Viaje a Japón"
+    ],
+    "agent": "daily",
+    "days_ago": 2,
+    "done_ago": null,
+    "archived": false
    }
   ],
   "documents": [
@@ -3782,6 +4938,14 @@
     "agent": "daily",
     "hours_ago": 2,
     "summary": "Cumpleaños: {date+23}"
+   },
+   {
+    "path": "Temas/Cumpleaños de Inès.md",
+    "title": "Cumpleaños de Inès",
+    "action": "create",
+    "agent": "daily",
+    "hours_ago": 5,
+    "summary": "Fiesta el sábado en casa de Claire, tema unicornios"
    },
    {
     "path": "Temas/Reforma de la cocina.md",
