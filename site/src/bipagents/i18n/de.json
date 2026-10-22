@@ -176,6 +176,28 @@
       "text": "Deine Agenten fragen einander — nur die, die du erlaubst — und der Austausch klappt sich zu einer einzigen Zeile ein."
     }
   },
+  "compare": {
+    "kicker": "Warum es privat ist",
+    "title": "Deins. Nicht für alle.",
+    "a11y": "Ein üblicher Assistent: Deine Nachrichten gehen auf die Server des Unternehmens, zu den Gesprächen aller, und können zum Training seiner KI dienen. BipAgents: Deine Nachrichten gehen auf deinen Bereich, der nur dir gehört; die KI liest sie, um dir zu antworten; Kerfy Studio behält dein Konto und dein Abo, nicht deine Gespräche.",
+    "usual": "Ein üblicher Assistent",
+    "you": "Du",
+    "theirServers": "Ihre Server",
+    "everyones": "die Gespräche aller",
+    "theirAi": "Ihre KI",
+    "mayTrain": "kann damit trainiert werden",
+    "yourPlace": "Dein Bereich",
+    "yoursAlone": "nur für dich",
+    "theAi": "Die KI",
+    "readsToAnswer": "liest, um dir zu antworten",
+    "kerfy": "dein Konto und dein Abo, nicht deine Gespräche",
+    "line1": "Deine Gespräche und das Gedächtnis deiner Agenten liegen auf deinem Bereich, getrennt von denen der anderen.",
+    "line2": "Wir lesen sie nicht und trainieren keine KI damit. Die KI liest sie nur, um dir zu antworten.",
+    "line3": "Wir behalten dein Konto, nicht deine Gespräche. Du kannst alles mitnehmen und gehen.",
+    "note": "„Ein üblicher Assistent“: was die Verbraucherangebote von Assistenten wie ChatGPT oder Gemini standardmäßig tun, laut ihren eigenen Seiten im Oktober 2026. Beim Rundum-Angebot mietet Kerfy Studio den Server deines Platzes: Wir lesen ihn nicht, versprechen aber nichts Unmögliches.",
+    "more": "Der Vergleich, seine Quellen und unsere Grenzen →",
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
+  },
   "privacy": {
     "kicker": "Privat, ohne Aufwand",
     "title": "Dein eigener Computer. Ohne Installation.",
@@ -187,7 +209,7 @@
     "model": "deine Wahl",
     "modelName": "KI-Modell",
     "modelSub": "Cloud oder lokal",
-    "nope": "Kerfy Studio, der Herausgeber der App, sieht deine Unterhaltungen nie",
+    "nope": "Kerfy Studio, der Herausgeber der App, liest deine Unterhaltungen nicht",
     "chip1": "Kein Konto",
     "chip2": "Keine Werbung",
     "chip3": "Kein Tracking",

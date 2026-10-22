@@ -373,7 +373,11 @@ se borran 30 días después de detenerse.
 ### 5.5 Las copias de seguridad
 
 Tu plaza hace una copia de seguridad cada hora. La copia se **cifra en la plaza**, antes de salir, con una clave que
-solo tienen tus dispositivos, más una copia de esa clave cifrada con tu código de recuperación (sección 5.2). Kerfy
+se queda en la plaza y en tus dispositivos, más una copia de esa clave cifrada con tu código de recuperación (sección
+5.2), que Kerfy Studio no puede abrir. En la oferta todo incluido, la plaza está en un servidor que alquila Kerfy
+Studio: la clave también está allí y,
+técnicamente, el proveedor y Kerfy Studio podrían acceder a ella; nuestro software no lee ni tu plaza ni sus copias, y
+solo lo haríamos si la ley nos obligara. Kerfy
 Studio guarda estas copias en [por completar: proveedor de alojamiento de las copias de seguridad] sin poder leerlas:
 una por hora durante 48 horas, una por día durante 30 días, una por semana durante 12 semanas. Se borran con tu plaza.
 

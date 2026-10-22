@@ -379,7 +379,11 @@ réduit sont effacées 30 jours après s'être arrêtées.
 ### 5.5 Les sauvegardes
 
 Ta place se sauvegarde toutes les heures. La sauvegarde est **chiffrée sur la place**, avant de partir, avec une clé
-que seuls tes appareils détiennent, plus une copie de cette clé chiffrée par ton code de récupération (section 5.2).
+qui reste sur la place et sur tes appareils, plus une copie de cette clé chiffrée par ton code de récupération
+(section 5.2), que Kerfy Studio ne peut pas ouvrir. Sur l'offre tout compris, la place est sur un serveur loué par
+Kerfy Studio : la clé y est donc présente, et
+techniquement l'hébergeur comme Kerfy Studio pourraient y accéder ; notre logiciel ne lit ni ta place ni ses
+sauvegardes, et nous ne le ferions que si la loi nous y oblige.
 Kerfy Studio garde ces sauvegardes chez [à compléter : hébergeur des sauvegardes] sans pouvoir les lire : une par heure
 pendant 48 heures, une par jour pendant 30 jours, une par semaine pendant 12 semaines. Elles sont effacées avec ta
 place.

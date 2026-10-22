@@ -363,8 +363,11 @@ are erased 30 days after they stopped.
 
 ### 5.5 Backups
 
-Your place backs itself up every hour. The backup is **encrypted on the place**, before it leaves, with a key that only
-your devices hold, plus a copy of this key encrypted with your recovery code (section 5.2). Kerfy Studio keeps these
+Your place backs itself up every hour. The backup is **encrypted on the place**, before it leaves, with a key that stays
+on the place and on your devices, plus a copy of this key encrypted with your recovery code (section 5.2), which Kerfy
+Studio cannot open. On the all-included offer the place is on a server Kerfy Studio rents, so the key is there too, and
+technically the host as well as Kerfy Studio could access it; our software reads neither your place nor its backups,
+and we would only do so if the law required it. Kerfy Studio keeps these
 backups at [to be completed: backup hosting provider] without being able to read them: one per hour for 48 hours, one
 per day for 30 days, one per week for 12 weeks. They are erased with your place.
 

@@ -392,8 +392,11 @@ Plätze eines verkleinerten Tarifs werden 30 Tage nach ihrem Anhalten gelöscht.
 ### 5.5 Die Sicherungen
 
 Dein Platz sichert sich jede Stunde. Die Sicherung wird **auf dem Platz verschlüsselt**, bevor sie ihn verlässt, mit
-einem Schlüssel, den nur deine Geräte haben, plus einer Kopie dieses Schlüssels, die mit deinem Wiederherstellungscode
-verschlüsselt ist (Abschnitt 5.2). Kerfy Studio bewahrt diese Sicherungen bei [zu ergänzen: Hoster der Sicherungen]
+einem Schlüssel, der auf dem Platz und auf deinen Geräten bleibt, plus einer Kopie dieses Schlüssels, die mit deinem
+Wiederherstellungscode verschlüsselt ist (Abschnitt 5.2) und die Kerfy Studio nicht öffnen kann. Beim Komplettangebot
+liegt der Platz auf einem von Kerfy Studio gemieteten Server: Der Schlüssel ist also auch dort, und
+technisch könnten der Hoster wie Kerfy Studio darauf zugreifen; unsere Software liest weder deinen Platz noch seine
+Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei [zu ergänzen: Hoster der Sicherungen]
 auf, ohne sie lesen zu können: eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, eine pro Woche für 12 Wochen.
 Sie werden mit deinem Platz gelöscht.
 

@@ -176,6 +176,28 @@
       "text": "Your agents ask each other — only the ones you allow — and the exchange folds into a single line."
     }
   },
+  "compare": {
+    "kicker": "Why it’s private",
+    "title": "Yours. Not everyone’s.",
+    "a11y": "A usual assistant: your messages go to the company’s servers, with everyone’s conversations, and may be used to train its AI. BipAgents: your messages go to your space, yours alone; the AI reads them to answer you; Kerfy Studio keeps your account and your subscription, not your conversations.",
+    "usual": "A usual assistant",
+    "you": "You",
+    "theirServers": "Their servers",
+    "everyones": "everyone’s conversations",
+    "theirAi": "Their AI",
+    "mayTrain": "may train on them",
+    "yourPlace": "Your space",
+    "yoursAlone": "yours alone",
+    "theAi": "The AI",
+    "readsToAnswer": "reads to answer you",
+    "kerfy": "your account and subscription, not your conversations",
+    "line1": "Your conversations and your agents’ memory live in your space, separate from everyone else’s.",
+    "line2": "We don’t read them and we train no AI with them. The AI reads them only to answer you.",
+    "line3": "We keep your account, not your conversations. You can take everything and leave.",
+    "note": "“A usual assistant”: what the consumer offers of assistants such as ChatGPT or Gemini do by default, according to their own pages in October 2026. On the all-included offer, Kerfy Studio rents your space’s server: we don’t read it, but we don’t promise the impossible.",
+    "more": "The comparison, its sources and our limits →",
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
+  },
   "privacy": {
     "kicker": "Private, nothing to do",
     "title": "Your own computer. Nothing to install.",
@@ -187,7 +209,7 @@
     "model": "your choice",
     "modelName": "AI model",
     "modelSub": "cloud or local",
-    "nope": "Kerfy Studio, the app’s publisher, never sees your conversations",
+    "nope": "Kerfy Studio, the app’s publisher, does not read your conversations",
     "chip1": "No account",
     "chip2": "No ads",
     "chip3": "No tracking",
