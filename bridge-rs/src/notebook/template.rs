@@ -565,6 +565,163 @@ pub const SELF: [Section; 7] = [
     OTHER,
 ];
 
+/// A trip (« Voyage », 2026-10-23): a subject that is clearly a journey (dates, bookings, a destination). Its « Notes »
+/// is the outline's last section (what fits nowhere else), so it takes « Autres »' place.
+pub const TRIP: [Section; 9] = [
+    Section {
+        id: "dates",
+        titles: ["Dates", "Dates", "Reisedaten", "Fechas"],
+        aliases: &["date", "quand", "depart et retour", "when", "travel dates", "daten", "wann", "fecha", "cuando"],
+    },
+    Section {
+        id: "itinerary",
+        titles: ["Itinéraire", "Itinerary", "Reiseverlauf", "Itinerario"],
+        aliases: &[
+            "itineraire",
+            "programme",
+            "jour par jour",
+            "etapes du voyage",
+            "planning",
+            "plan",
+            "day by day",
+            "schedule",
+            "route",
+            "reiseplan",
+            "tagesplan",
+            "programa",
+            "dia a dia",
+            "ruta",
+        ],
+    },
+    Section {
+        id: "transport",
+        titles: ["Transports", "Transport", "Verkehrsmittel", "Transportes"],
+        aliases: &[
+            "transport",
+            "trajets",
+            "vols",
+            "vol",
+            "trains",
+            "billets",
+            "flights",
+            "trains",
+            "travel",
+            "getting there",
+            "anreise",
+            "fluge",
+            "zuge",
+            "vuelos",
+            "trenes",
+            "transporte",
+        ],
+    },
+    Section {
+        id: "lodging",
+        titles: ["Hébergements", "Places to stay", "Unterkünfte", "Alojamientos"],
+        aliases: &[
+            "hebergement",
+            "hebergements",
+            "logement",
+            "hotels",
+            "hotel",
+            "lodging",
+            "accommodation",
+            "accommodations",
+            "stay",
+            "unterkunft",
+            "hotels",
+            "alojamiento",
+            "hoteles",
+        ],
+    },
+    Section {
+        id: "documents",
+        titles: ["Documents", "Documents", "Dokumente", "Documentos"],
+        aliases: &[
+            "document",
+            "papiers",
+            "fichiers",
+            "assurance",
+            "papers",
+            "files",
+            "insurance",
+            "dokumente",
+            "papiere",
+            "versicherung",
+            "documentos",
+            "papeles",
+            "seguro",
+        ],
+    },
+    Section {
+        id: "packing",
+        titles: ["À emporter", "To pack", "Zum Einpacken", "Para llevar"],
+        aliases: &[
+            "a emporter",
+            "valise",
+            "bagages",
+            "checklist",
+            "liste",
+            "packing",
+            "packing list",
+            "luggage",
+            "einpacken",
+            "packliste",
+            "gepack",
+            "equipaje",
+            "maleta",
+            "para llevar",
+        ],
+    },
+    Section {
+        id: "budget",
+        titles: ["Budget", "Budget", "Budget", "Presupuesto"],
+        aliases: &[
+            "chiffres et budget",
+            "chiffres",
+            "couts",
+            "depenses",
+            "prix",
+            "argent",
+            "figures and budget",
+            "costs",
+            "money",
+            "zahlen und budget",
+            "kosten",
+            "geld",
+            "cifras y presupuesto",
+            "costes",
+            "dinero",
+        ],
+    },
+    Section {
+        id: "onsite",
+        titles: ["Sur place", "On site", "Vor Ort", "En destino"],
+        aliases: &[
+            "sur place",
+            "adresses",
+            "contacts",
+            "a voir",
+            "restaurants",
+            "on site",
+            "addresses",
+            "contacts",
+            "to see",
+            "vor ort",
+            "adressen",
+            "kontakte",
+            "en destino",
+            "direcciones",
+            "contactos",
+        ],
+    },
+    Section {
+        id: "other",
+        titles: ["Notes", "Notes", "Notizen", "Notas"],
+        aliases: &["autre", "autres", "others", "divers", "misc", "sonstige", "sonstiges", "otro", "otros", "varios"],
+    },
+];
+
 /// The names that say nothing about where a fact goes (an agent's « Infos », a hand-made « Notes »): each fact is
 /// placed by its own words.
 const GENERIC: [&str; 14] = [
@@ -599,6 +756,7 @@ pub fn outline(kind: &str) -> &'static [Section] {
         "subject" => &SUBJECT,
         "area" => &AREA,
         "self" => &SELF,
+        "trip" => &TRIP,
         _ => &[],
     }
 }
@@ -657,6 +815,7 @@ fn cross(kind: &str, id: &str) -> Option<&'static str> {
             ("remember", "agents"),
             ("people", "family"),
         ],
+        "trip" => &[("who", "onsite"), ("people", "onsite"), ("contacts", "onsite")],
         "area" => &[
             ("who", "contacts"),
             ("people", "contacts"),
@@ -691,13 +850,17 @@ pub fn resolve(kind: &str, name: &str) -> Option<&'static str> {
     if let Some(s) = outline(kind).iter().find(|s| matches(s)) {
         return Some(s.id);
     }
-    for other in ["person", "subject", "area", "self"] {
+    for other in ["person", "subject", "area", "self", "trip"] {
         if other == kind {
             continue;
         }
         if let Some(s) = outline(other).iter().find(|s| matches(s)) {
             if let Some(to) = cross(kind, s.id) {
                 return Some(to);
+            }
+            // a subject turned into a trip: its sections the trip also has keep their place (« Chiffres et budget »)
+            if kind == "trip" && s.id != "other" && outline(kind).iter().any(|t| t.id == s.id) {
+                return Some(s.id);
             }
         }
     }
@@ -1387,9 +1550,151 @@ fn keywords(kind: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ),
             ("matters", &["important*", "priorit*", "essentiel*", "wichtig*", "importante*", "prioridad*"]),
         ],
+        "trip" => &[
+            (
+                "transport",
+                &[
+                    "vol",
+                    "vols",
+                    "avion",
+                    "aeroport",
+                    "train",
+                    "tgv",
+                    "gare",
+                    "ferry",
+                    "bateau",
+                    "embarquement",
+                    "navette",
+                    "location de voiture",
+                    "voiture de location",
+                    "flight*",
+                    "plane",
+                    "airport",
+                    "boarding",
+                    "car rental",
+                    "rental car",
+                    "flug*",
+                    "zug",
+                    "bahnhof",
+                    "mietwagen",
+                    "vuelo*",
+                    "aeropuerto",
+                    "tren",
+                    "estacion",
+                    "coche de alquiler",
+                ],
+            ),
+            (
+                "lodging",
+                &[
+                    "hotel*",
+                    "airbnb",
+                    "gite",
+                    "camping",
+                    "auberge",
+                    "chambre d hotes",
+                    "logement",
+                    "hebergement",
+                    "check in",
+                    "check out",
+                    "hostel",
+                    "apartment",
+                    "unterkunft",
+                    "ferienwohnung",
+                    "pension",
+                    "alojamiento",
+                    "hostal",
+                    "apartamento",
+                ],
+            ),
+            (
+                "documents",
+                &[
+                    "passeport",
+                    "visa",
+                    "esta",
+                    "carte d identite",
+                    "assurance*",
+                    "permis",
+                    "passport",
+                    "insurance",
+                    "id card",
+                    "driving licence",
+                    "reisepass",
+                    "personalausweis",
+                    "versicherung",
+                    "pasaporte",
+                    "seguro",
+                    "dni",
+                ],
+            ),
+            (
+                "packing",
+                &[
+                    "emporter",
+                    "valise",
+                    "adaptateur",
+                    "chargeur",
+                    "creme solaire",
+                    "pack",
+                    "bring",
+                    "suitcase",
+                    "adapter",
+                    "charger",
+                    "sunscreen",
+                    "einpacken",
+                    "mitnehmen",
+                    "koffer",
+                    "llevar",
+                    "maleta",
+                    "cargador",
+                ],
+            ),
+            (
+                "dates",
+                &[
+                    "depart",
+                    "retour",
+                    "departure",
+                    "return",
+                    "back on",
+                    "abreise",
+                    "ruckreise",
+                    "ruckkehr",
+                    "salida",
+                    "regreso",
+                    "vuelta",
+                ],
+            ),
+            (
+                "onsite",
+                &[
+                    "adresse",
+                    "telephone",
+                    "restaurant*",
+                    "ambassade",
+                    "consulat",
+                    "urgence*",
+                    "address",
+                    "phone",
+                    "embassy",
+                    "emergency",
+                    "botschaft",
+                    "notfall",
+                    "direccion",
+                    "telefono",
+                    "embajada",
+                    "urgencia*",
+                ],
+            ),
+        ],
         _ => &[],
     }
 }
+
+/// A day of a trip's itinerary (« J1 », « Jour 3 », « Day 2 », « Tag 4 », « Día 5 »).
+pub static DAY_MARK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^\s*(?:j|jour|day|tag|d[ií]a)\s?(\d{1,2})\b").expect("valid regex"));
 
 fn hits(words: &[&str], phrase: &str, keyword: &str) -> bool {
     if keyword.contains(' ') {
@@ -1410,6 +1715,19 @@ pub fn guess(kind: &str, fact: &str) -> Option<&'static str> {
             "subject" => return Some("history"),
             _ => {}
         }
+    }
+    if kind == "trip" {
+        // a day of the trip first (« J2 : Kyoto, train pour Nara » is the itinerary, not a booking), then the words,
+        // then a price; a dated line alone stays where it is (a subject's history is not an itinerary)
+        if DAY_MARK.is_match(&text) {
+            return Some("itinerary");
+        }
+        let folded = fold(&text);
+        let words: Vec<&str> = folded.split(' ').collect();
+        if let Some((id, _)) = keywords(kind).iter().find(|(_, list)| list.iter().any(|k| hits(&words, &folded, k))) {
+            return Some(id);
+        }
+        return (text.contains('€') || text.contains('$') || text.contains('£')).then_some("budget");
     }
     if kind == "subject" && (text.contains('€') || text.contains('$') || text.contains('£')) {
         let folded = fold(&text);
@@ -1596,18 +1914,21 @@ pub fn described() -> String {
         "the page's section, by its id. person: {} (who: how they relate to the person, how they met, contact details \
 if useful; dates: birthday, name day, important dates; tastes: likes, dislikes, food allergies as everyday facts; \
 agreed: promises, loans, appointments; exchanges: short dated lines, the latest few). subject: {}. area: {}. \
-self (your person themself): {} (agents: how their agents should behave with them). other only when nothing fits.",
+self (your person themself): {} (agents: how their agents should behave with them). trip: {} (itinerary: one \
+line a day, « J1 · 12/11 : … »; transport: flights and trains with times and booking numbers; packing: one thing to \
+take a line). other only when nothing fits.",
         list("person"),
         list("subject"),
         list("area"),
-        list("self")
+        list("self"),
+        list("trip")
     )
 }
 
 /// Every section id, for the tool's enum.
 pub fn all_ids() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
-    for kind in ["person", "subject", "area", "self"] {
+    for kind in ["person", "subject", "area", "self", "trip"] {
         for id in ids(kind) {
             if !out.contains(&id) {
                 out.push(id);

@@ -31,9 +31,11 @@
 
 pub mod api;
 pub mod fill;
+pub mod records;
 pub mod template;
 pub mod tidy;
 pub mod tools;
+pub mod trip;
 
 use std::collections::HashSet;
 use std::io::Write;
@@ -95,6 +97,8 @@ pub struct Words {
     pub tidy: &'static str,
     /// The person's own page (« Toi »), at the vault's root, never among « Personnes ».
     pub me: &'static str,
+    /// The folder of the records' pages (purchases, subscriptions, contracts, papers, bookings: records.rs).
+    pub records: &'static str,
 }
 
 pub const WORDS: [Words; 4] = [
@@ -115,6 +119,7 @@ pub const WORDS: [Words; 4] = [
         preferences: "Préférences",
         tidy: "rangement",
         me: "Toi",
+        records: "Fiches",
     },
     Words {
         lang: "en",
@@ -133,6 +138,7 @@ pub const WORDS: [Words; 4] = [
         preferences: "Preferences",
         tidy: "tidying",
         me: "You",
+        records: "Records",
     },
     Words {
         lang: "de",
@@ -151,6 +157,7 @@ pub const WORDS: [Words; 4] = [
         preferences: "Vorlieben",
         tidy: "Aufräumen",
         me: "Du",
+        records: "Unterlagen",
     },
     Words {
         lang: "es",
@@ -169,6 +176,7 @@ pub const WORDS: [Words; 4] = [
         preferences: "Preferencias",
         tidy: "orden",
         me: "Tú",
+        records: "Registros",
     },
 ];
 
@@ -176,14 +184,15 @@ pub fn words(lang: &str) -> &'static Words {
     WORDS.iter().find(|w| w.lang == lang).unwrap_or(&WORDS[1])
 }
 
-/// The kinds of pages an agent writes, in the frontmatter's `type`.
-pub const KINDS: [&str; 4] = ["person", "subject", "area", "self"];
+/// The kinds of pages an agent writes, in the frontmatter's `type`. A trip (« Voyage », trip.rs) is a subject with its
+/// own outline and layout: it lives among the subjects.
+pub const KINDS: [&str; 5] = ["person", "subject", "area", "self", "trip"];
 
 impl Words {
     pub fn folder(&self, kind: &str) -> Option<&'static str> {
         match kind {
             "person" => Some(self.people),
-            "subject" => Some(self.subjects),
+            "subject" | "trip" => Some(self.subjects),
             "area" => Some(self.areas),
             "task" | "tasks" => Some(self.tasks),
             _ => None,
@@ -784,14 +793,14 @@ pub fn add_facts(body: &str, section: &str, facts: &[String], who: &Who, date: &
         .iter()
         .map(|l| {
             let item = l.trim().strip_prefix("- ").unwrap_or(l.trim());
-            fold(&split_attribution(item).0)
+            fold(trip::without_box(&split_attribution(item).0))
         })
         .collect();
     let mut added: Vec<String> = Vec::new();
     for fact in facts {
         let fact = tk::squeeze(fact.trim().trim_start_matches("- ").trim());
         let fact = tk::head(&fact, 600).to_string();
-        let folded = fold(&fact);
+        let folded = fold(trip::without_box(&fact));
         if folded.is_empty() || known.contains(&folded) || added.iter().any(|a| fold(a) == folded) {
             continue;
         }
@@ -1195,6 +1204,8 @@ pub struct Written {
     pub added: Vec<String>,
     /// The sections the facts went to (their titles).
     pub sections: Vec<String>,
+    /// A subject made a trip by this write, or a trip's details changed (trip.rs).
+    pub changed: bool,
 }
 
 /// Facts filed about `title` (a person, a subject or an area): its page found by title, alias or contact id (in this
@@ -1257,7 +1268,7 @@ pub(crate) fn note_locked(
         None if is_self => (w.self_path(), None, Page::new("self", w.me), true),
         None => {
             let Some(folder) = w.folder(kind).filter(|_| KINDS.contains(&kind)) else {
-                return refuse("kind is person, subject, area or self");
+                return refuse("kind is person, subject, area, self or trip");
             };
             let mut path = format!("{folder}/{}.md", file_name(&title));
             let mut n = 2;
@@ -1269,6 +1280,11 @@ pub(crate) fn note_locked(
         }
     };
     page.ensure_id();
+    // the agent's judgement: a subject that is a trip becomes one (its content kept, put in the trip's outline)
+    let converted = kind == "trip" && page.kind() == "subject";
+    if converted {
+        trip::make_trip(&mut page, &lang);
+    }
     let mut names = page.aliases();
     names.extend(aliases.iter().cloned());
     if fold(&title) != fold(&page.title) && !page.named(&title) && !self_word(&title) {
@@ -1283,6 +1299,9 @@ pub(crate) fn note_locked(
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
     for fact in facts {
         for piece in template::split_fact(fact) {
+            let id = template::place(&page_kind, section, &piece);
+            // a trip's packing list: one thing to tick a line
+            let piece = if page_kind == "trip" && id == "packing" { trip::unticked(&piece) } else { piece };
             let title = if template::outline(&page_kind).is_empty() {
                 if section.trim().is_empty() {
                     w.notes.to_string()
@@ -1290,7 +1309,7 @@ pub(crate) fn note_locked(
                     section.trim().to_string()
                 }
             } else {
-                template::title(&page_kind, template::place(&page_kind, section, &piece), &lang)
+                template::title(&page_kind, id, &lang)
             };
             match groups.iter_mut().find(|(t, _)| *t == title) {
                 Some((_, list)) => list.push(piece),
@@ -1313,13 +1332,15 @@ pub(crate) fn note_locked(
     let body = template::normalize(&page_kind, &lang, w.brief, &body).body;
     let summary_changed = summary_of(&body, w.brief) != summary_of(&page.body, w.brief);
     let aliases_changed = before.as_deref().map(|b| Page::parse(b, "").aliases() != page.aliases()).unwrap_or(false);
-    if added.is_empty() && !created && !aliases_changed && !summary_changed {
-        return Ok(Written { part: Some(part), path, title: page.title, created, added, sections });
+    if added.is_empty() && !created && !aliases_changed && !summary_changed && !converted {
+        return Ok(Written { part: Some(part), path, title: page.title, created, added, sections, changed: false });
     }
     page.body = body;
     page.touch();
     let text = page.render();
-    let summary = if !added.is_empty() {
+    let summary = if converted && added.is_empty() {
+        "trip".to_string()
+    } else if !added.is_empty() {
         added.join(" · ")
     } else if summary_changed {
         format!("{} : {}", w.brief, tk::head(&summary_of(&page.body, w.brief), 200))
@@ -1333,11 +1354,17 @@ pub(crate) fn note_locked(
         before.as_deref(),
         Some(&text),
         who,
-        if created { "create" } else { "note" },
+        if created {
+            "create"
+        } else if converted {
+            "trip"
+        } else {
+            "note"
+        },
         &summary,
     )?;
     archive_logs(config, part, &path, &mut page, &lang)?;
-    Ok(Written { part: Some(part), path, title: page.title, created, added, sections })
+    Ok(Written { part: Some(part), path, title: page.title, created, added, sections, changed: converted })
 }
 
 /// The page's dated logs (« Derniers échanges », « Historique ») cut to their latest lines, as a change of its own
@@ -1446,6 +1473,7 @@ pub fn edit(
             created: false,
             added: Vec::new(),
             sections: Vec::new(),
+            changed: false,
         },
         summary,
     ))
@@ -1782,7 +1810,8 @@ pub const ORIGINS: [&str; 3] = ["asked", "own", "accepted"];
 /// Proposals an agent may make, per install, in 7 days.
 pub const PROPOSALS_PER_WEEK: usize = 3;
 /// What an agent may propose.
-pub const PROPOSAL_KINDS: [&str; 6] = ["birthday", "anniversary", "gift", "follow_up", "deadline", "other"];
+pub const PROPOSAL_KINDS: [&str; 9] =
+    ["birthday", "anniversary", "gift", "follow_up", "deadline", "other", "warranty", "renewal", "expiry"];
 /// An accepted proposal still open this many days after its date (or after it was made, without a date): archived.
 pub const ARCHIVE_AFTER_DAYS: i64 = 14;
 
@@ -2177,6 +2206,19 @@ pub fn declined(config: &Config) -> Vec<String> {
 /// Whether an agent may propose a task now: Ok(the proposal's id) within the week's budget and for a kind the person
 /// did not decline; Err(why not) otherwise (a refusal for the agent: then it doesn't propose).
 pub fn propose(config: &Config, agent: &str, kind: &str, title: &str, due: &str) -> anyhow::Result<String> {
+    propose_for(config, agent, kind, title, due, "")
+}
+
+/// `propose` with the Carnet page the task would belong to (`page`, its name; the records' reminders: their page).
+/// `agent` empty: the Carnet itself (the nightly pass), whose proposals the person answers in the app.
+pub fn propose_for(
+    config: &Config,
+    agent: &str,
+    kind: &str,
+    title: &str,
+    due: &str,
+    page: &str,
+) -> anyhow::Result<String> {
     let _guard = lock();
     let kind = kind.trim();
     if !PROPOSAL_KINDS.contains(&kind) {
@@ -2199,7 +2241,8 @@ pub fn propose(config: &Config, agent: &str, kind: &str, title: &str, due: &str)
     }
     let id = format!("q{}", py::token_hex(4));
     let item = json!({"id": id, "agent": agent, "kind": kind, "title": tk::head(&tk::squeeze(title), 300),
-                      "due": tk::head(due.trim(), 40), "at": tk::now_iso_seconds(), "state": "open"});
+                      "due": tk::head(due.trim(), 40), "at": tk::now_iso_seconds(), "state": "open",
+                      "page": tk::head(page.trim(), 200)});
     update_state(config, |s| {
         let mut all = match s.get("proposals") {
             Some(Value::Array(a)) => a.clone(),
@@ -2211,6 +2254,39 @@ pub fn propose(config: &Config, agent: &str, kind: &str, title: &str, due: &str)
         s.insert("proposals".into(), Value::Array(all));
     })?;
     Ok(id)
+}
+
+/// The person said yes to a proposal in the app: its task added (origin accepted, on its page, with its date and so
+/// its phone reminder).
+pub fn accept(config: &Config, proposal: &str, who: &Who) -> anyhow::Result<(Task, bool)> {
+    let _guard = lock();
+    let Some(found) = proposals(config).into_iter().find(|p| tk::str_or_empty(p.get("id")) == proposal.trim()) else {
+        return refuse("unknown proposal id");
+    };
+    if tk::str_or_empty(found.get("state")) != "open" {
+        return refuse("this proposal was already answered");
+    }
+    let added = add_task_locked(
+        config,
+        Part::Main,
+        &tk::str_or_empty(found.get("title")),
+        &tk::str_or_empty(found.get("due")),
+        &tk::str_or_empty(found.get("page")),
+        "accepted",
+        proposal.trim(),
+        who,
+    )?;
+    // the same task already there (no duplicate): the proposal is answered all the same
+    update_state(config, |s| set_proposal_state(s, proposal.trim(), "accepted"))?;
+    Ok(added)
+}
+
+/// The open proposals (the newest first).
+pub fn open_proposals(config: &Config) -> Vec<Dict> {
+    let mut open: Vec<Dict> =
+        proposals(config).into_iter().filter(|p| tk::str_or_empty(p.get("state")) == "open").collect();
+    open.reverse();
+    open
 }
 
 /// The person said no to a proposal: closed, and with `never` its kind is not proposed again, written as a
@@ -2243,7 +2319,7 @@ pub fn decline(config: &Config, proposal: &str, never: bool, who: &Who) -> anyho
 
 fn no_proposals_fact(lang: &str, kind: &str) -> String {
     let index = PROPOSAL_KINDS.iter().position(|k| *k == kind).unwrap_or(5);
-    let names: [[&str; 6]; 4] = [
+    let names: [[&str; 9]; 4] = [
         [
             "anniversaires",
             "fêtes et anniversaires de mariage",
@@ -2251,10 +2327,43 @@ fn no_proposals_fact(lang: &str, kind: &str) -> String {
             "relances",
             "échéances",
             "ce genre de tâches",
+            "fins de garantie",
+            "renouvellements d'abonnements",
+            "papiers qui expirent",
         ],
-        ["birthdays", "anniversaries", "gifts", "follow-ups", "deadlines", "this kind of task"],
-        ["Geburtstage", "Jahrestage", "Geschenke", "Nachfassen", "Fristen", "diese Art von Aufgaben"],
-        ["cumpleaños", "aniversarios", "regalos", "seguimientos", "plazos", "este tipo de tareas"],
+        [
+            "birthdays",
+            "anniversaries",
+            "gifts",
+            "follow-ups",
+            "deadlines",
+            "this kind of task",
+            "warranties ending",
+            "subscription renewals",
+            "papers expiring",
+        ],
+        [
+            "Geburtstage",
+            "Jahrestage",
+            "Geschenke",
+            "Nachfassen",
+            "Fristen",
+            "diese Art von Aufgaben",
+            "endende Garantien",
+            "Abo-Verlängerungen",
+            "ablaufende Ausweise",
+        ],
+        [
+            "cumpleaños",
+            "aniversarios",
+            "regalos",
+            "seguimientos",
+            "plazos",
+            "este tipo de tareas",
+            "garantías que terminan",
+            "renovaciones de suscripciones",
+            "documentos que caducan",
+        ],
     ];
     let (row, prefix) = match lang {
         "fr" => (0, "Pas de propositions de tâches pour les"),
@@ -2615,7 +2724,8 @@ pub fn search(config: &Config, parts: &[Part], words_text: &str, kind: &str) -> 
     let mut out = Vec::new();
     for part in parts {
         for (path, page) in all_pages(config, *part) {
-            if !kind.is_empty() && page.kind() != kind {
+            // a trip is a subject too
+            if !kind.is_empty() && page.kind() != kind && !(kind == "subject" && page.kind() == "trip") {
                 continue;
             }
             let names = fold(&format!("{} {} {}", page.title, page.aliases().join(" "), page.contact()));

@@ -2,7 +2,8 @@
 //! (`private=1` / `"private": true`) is the person's: the home leaves it out (it is reached only through its own page,
 //! behind the app's lock).
 //!
-//!     GET    /v1/notebook                      home: sections and counts, « Nouveau » (recent changes), upcoming tasks
+//!     GET    /v1/notebook                      home: sections and counts, « Nouveau » (recent changes), upcoming tasks,
+//!                                              the trips within 30 days or under way, the records, the open proposals
 //!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, area, other), with what their card
 //!                                              shows (close, next_date, status, facts)
 //!     GET    /v1/notebook/search?q=            pages, and the facts that answer (for a short answer on top)
@@ -19,6 +20,10 @@
 //!     POST   /v1/notebook/close                {path, close}   a person marked close (« proche ») or not
 //!     POST   /v1/notebook/icon                 {path, icon}    a subject's or area's icon, the person's choice ("": automatic)
 //!     GET    /v1/notebook/proposals            the agents' task proposals, the kinds declined
+//!     POST   /v1/notebook/proposals/{id}       {accept, never?}   the person's answer to a proposal (yes: its task added)
+//!     GET    /v1/notebook/records              the records (purchases, subscriptions, contracts, papers, bookings), by
+//!                                              type, the soonest next date first (records.rs)
+//!     POST   /v1/notebook/check                {path, item, done}   a trip's thing to pack ticked (trip.rs)
 //!     GET    /v1/notebook/documents?private=   the files the agents made or received and their web pages, by agent,
 //!                                              with their subjects (the private part's pages only with private=1)
 //!     GET    /v1/notebook/settings             {mentions, nightly, language, cap…}
@@ -80,7 +85,8 @@ fn change_view(config: &Config, entry: &Dict) -> Value {
 fn section_of(w: &super::Words, page: &super::Page, path: &str) -> String {
     let kind = page.kind();
     match kind.as_str() {
-        "person" | "subject" | "area" | "self" | "tasks" => kind,
+        "person" | "subject" | "area" | "self" | "tasks" | "records" => kind,
+        "trip" => "subject".into(),
         _ if path == w.inbox_path() => "inbox".into(),
         _ => "other".into(),
     }
@@ -97,7 +103,8 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         let mut sections = vec![json!({"kind": "self", "title": w.me, "count": usize::from(mine.is_some()),
                                        "path": mine.unwrap_or_else(|| w.self_path())})];
         for (kind, folder) in [("person", w.people), ("subject", w.subjects), ("area", w.areas)] {
-            let count = pages.iter().filter(|(_, p)| p.kind() == kind).count();
+            let count =
+                pages.iter().filter(|(_, p)| p.kind() == kind || (kind == "subject" && p.kind() == "trip")).count();
             sections.push(json!({"kind": kind, "title": folder, "count": count}));
         }
         // the open tasks that count: archived ones left out, the person's own first
@@ -112,10 +119,16 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         upcoming.sort_by(|a, b| a.due.cmp(&b.due));
         let upcoming: Vec<Value> = upcoming.iter().take(10).map(|t| t.view()).collect();
         // « Dates à venir »: close people's dated facts in the next 30 days (facts, not tasks)
-        let dates = super::upcoming_dates(&config, 30, false, chrono::Local::now().date_naive());
+        let today = chrono::Local::now().date_naive();
+        let dates = super::upcoming_dates(&config, 30, false, today);
+        // « Mode voyage »: the trips within 30 days or under way; the records by type; the proposals to answer
+        let trips = super::trip::upcoming(&config, today);
+        let records = super::records::home(&config, today);
+        let proposals = super::open_proposals(&config);
         Ok(json!({"language": lang, "sections": sections, "recent": recent, "upcoming": upcoming,
                   "dates": dates.into_iter().take(10).collect::<Vec<_>>(),
-                  "inbox": inbox.len(), "settings": settings_view(&config)}))
+                  "inbox": inbox.len(), "settings": settings_view(&config), "trips": trips, "records": records,
+                  "proposals": proposals}))
     })
     .await?;
     Ok(web::ok(view))
@@ -297,7 +310,11 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
         .into_iter()
         .filter(|d| d.get("linked").and_then(|l| l.get("path")).and_then(Value::as_str) == Some(path))
         .collect();
-    Ok(json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(),
+    // a trip's layout, a records page's table (null for the other pages)
+    let trip = if kind == "trip" { super::trip::view(config, part, path, &page) } else { Value::Null };
+    let records = super::records::page_view(config, &page, chrono::Local::now().date_naive()).unwrap_or(Value::Null);
+    Ok(json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(), "trip": trip,
+              "records": records,
               "frontmatter": page.front, "aliases": page.aliases(),
               "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
               "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
@@ -578,6 +595,72 @@ async fn proposals(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(view))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Answer {
+    #[serde(deserialize_with = "web::lax::bool")]
+    pub accept: bool,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub never: bool,
+}
+
+impl Validate for Answer {}
+
+/// The person's answer to a proposal in the app: yes adds its task (with its date: a phone reminder), no closes it
+/// (`never`: that kind is not proposed again).
+async fn answer_proposal(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<Answer>,
+) -> ApiResult<Response> {
+    let config = state.config();
+    let push = state.push.clone();
+    if body.accept {
+        let (task, reminder) = blocking(move || super::accept(&config, &id, &Who::you(&config))).await?;
+        if reminder {
+            wake(push, &state.config());
+        }
+        return Ok(web::ok(json!({"task": task.view(), "reminder": reminder})));
+    }
+    let fact = blocking(move || super::decline(&config, &id, body.never, &Who::you(&config))).await?;
+    Ok(web::ok(json!({"declined": true, "preference": fact})))
+}
+
+async fn records(State(state): State<AppState>) -> ApiResult<Response> {
+    let config = state.config();
+    let view = blocking(move || Ok(super::records::view(&config, chrono::Local::now().date_naive()))).await?;
+    Ok(web::ok(view))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Check {
+    pub path: String,
+    pub item: String,
+    #[serde(deserialize_with = "web::lax::bool")]
+    pub done: bool,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub private: bool,
+}
+
+impl Validate for Check {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "path", Some(&self.path), 300);
+        check_max_len(errors, "item", Some(&self.item), 600);
+    }
+}
+
+/// A trip's thing to pack ticked (or not) by the person.
+async fn check(State(state): State<AppState>, Json(body): Json<Check>) -> ApiResult<Response> {
+    let config = state.config();
+    let part = if body.private { Part::Health } else { Part::Main };
+    let found =
+        blocking(move || super::trip::tick(&config, part, &body.path, &body.item, body.done, &Who::you(&config)))
+            .await?;
+    if !found {
+        return Err(HttpError::new(404, "no such thing to pack on this page"));
+    }
+    Ok(web::ok(json!({"done": true})))
+}
+
 async fn documents(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
     let part = part_of(&q);
@@ -756,6 +839,9 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/close", post(set_close))
         .route("/notebook/icon", post(set_icon))
         .route("/notebook/proposals", get(proposals))
+        .route("/notebook/proposals/{id}", post(answer_proposal))
+        .route("/notebook/records", get(records))
+        .route("/notebook/check", post(check))
         .route("/notebook/settings", get(get_settings).patch(set_settings))
         .route("/notebook/export", get(export))
         .route("/notebook/tidy", post(tidy_now))

@@ -235,7 +235,11 @@ pub const NOTEBOOK_RULE: &str = concat!(
     "Search first and update the page that exists rather than making another; file each fact under the right section of ",
     "the page's fixed outline, one short fact per line (facts about your person themself go to their « Toi » page); ",
     "correct facts that changed, and refresh ",
-    "the page's « En bref » summary when what matters most changes. After filing, tell your person in one short line ",
+    "the page's « En bref » summary when what matters most changes. A trip gets its own page (kind trip, with its ",
+    "start and end): its days, flights and trains with times and booking numbers, where they stay, papers, what to ",
+    "pack. Precise facts go in records (notebook_record): a purchase and its warranty, a subscription and its renewal, ",
+    "a contract or an insurance, a paper and its expiry, a booking; the Carnet proposes their reminders itself. ",
+    "After filing, tell your person in one short line ",
     "(« Noté dans ton Carnet : … », in their language) unless the tool says they turned these mentions off. Health ",
     "facts go only to the private health part, and only if you are the agent your person chose for their health. The ",
     "Carnet is your person's alone: never write in another person's, even in the family."
