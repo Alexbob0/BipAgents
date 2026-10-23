@@ -1059,6 +1059,15 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         };
     }
+    // a card of the vault's (an account to create with a vault password, vault_logins.rs), answered here
+    if let Some(id) = run_id.strip_prefix(crate::vault_logins::RUN_PREFIX) {
+        let allow = body.choice.trim().to_lowercase() != "deny";
+        return if crate::vault_logins::answer(&state.config(), &agent.name, id, allow, "notification") {
+            Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }})))
+        } else {
+            Err(HttpError::new(404, "no such request (answered already?)"))
+        };
+    }
     let request_id = body.request_id.as_deref();
     let (status, payload) =
         match state.hermes.approve(&agent, &run_id, &body.choice.trim().to_lowercase(), request_id).await {
@@ -1124,6 +1133,7 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
     let mut items = state.hub.pending_approvals(name.as_deref());
     // the bridge's own cards too (a site for an agent's programs, sandbox_sites.rs)
     items.extend(crate::sandbox_sites::pending_items(&config, name.as_deref()));
+    items.extend(crate::vault_logins::pending_items(&config, name.as_deref()));
     for item in items.iter_mut() {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
         let micros = (created * 1_000_000.0).round() as i64;
@@ -1505,6 +1515,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::files_kept::router())
         .merge(crate::vault::router())
         .merge(crate::card_pay::app_router())
+        .merge(crate::vault_logins::app_router())
         .merge(crate::place_backup::router())
         .merge(import_admin)
         .merge(crate::ssh_keys::router())
@@ -1554,6 +1565,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::peers::peer_router()) // agents' own tokens, checked against the links the person allowed
         .merge(crate::sandbox::router()) // the agents' file tools (shared folders), same tokens
         .merge(crate::card_pay::router()) // the agents' card payment tools, same tokens
+        .merge(crate::vault_logins::router()) // the agents' vault tools (accounts with a vault password), same tokens
         .merge(crate::agent_tools::router()) // the agents' MCP tools (create_audio), each agent with its own token
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key

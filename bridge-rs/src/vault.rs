@@ -5,7 +5,8 @@
 //! person allowed, and only theirs. Hermes fills the login form itself on the item's exact origin, and the
 //! password never reaches the model, the conversation or the logs (`browser_vault_fill`).
 //!
-//! Write-only: the app never reads a secret back. It replaces or deletes it.
+//! Write-only: the app never reads a secret back. It replaces or deletes it. One exception: a login an agent created
+//! with a password the vault made (vault_logins.rs), which the person never typed, is shown to them on request.
 //!
 //! An agent can hold an item only when it has its own space (`isolated`): in a shared gateway, an agent with a
 //! terminal could read another's vault. Agents created from the app live in the shared hub until they move
@@ -113,6 +114,15 @@ pub struct Item {
     /// A payment card's public part (cards.rs): last 4 digits, expiry, flags, sites, payments. Never its numbers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub card: Option<Value>,
+    /// A login an agent created on a website with a password of the vault (vault_logins.rs): that agent's id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    /// Such a login until the agent (or the person) confirms the site accepted the sign-up: « en attente de
+    /// confirmation ».
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pending: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confirmed_at: Option<String>,
 }
 
 impl Item {
@@ -125,6 +135,11 @@ impl Item {
                "agents": agents, "created_at": self.created_at, "updated_at": self.updated_at});
         if let (Some(card), Value::Object(map)) = (&self.card, &mut out) {
             map.insert("card".into(), crate::cards::public(card));
+        }
+        if let (Some(agent), Value::Object(map)) = (&self.created_by, &mut out) {
+            map.insert("created_by".into(), json!(agent));
+            map.insert("pending".into(), json!(self.pending));
+            map.insert("confirmed_at".into(), json!(self.confirmed_at));
         }
         out
     }
@@ -664,6 +679,123 @@ impl Vault {
         self.write(&records)
     }
 
+    // -- logins created by an agent (vault_logins.rs) ---------------------------------------------------------
+
+    /// The login kept for `origin` and `identifier` (case ignored), if any.
+    pub fn login_for(&self, origin: &str, identifier: &str) -> anyhow::Result<Option<Item>> {
+        let wanted = pyx::strip(identifier).to_lowercase();
+        Ok(self.read()?.iter().map(Self::item).find(|i| {
+            i.kind == "login"
+                && i.origin.as_deref() == Some(origin)
+                && i.identifier.as_deref().map(|x| pyx::strip(x).to_lowercase()).as_deref() == Some(wanted.as_str())
+        }))
+    }
+
+    /// A login `agent` created with a password of the vault, kept « en attente de confirmation » and written into that
+    /// agent's own Hermes vault (so it can log in with `browser_vault_fill` later). The one it created before for the
+    /// same site and identifier, still waiting, is replaced (a password the site refused). Never another one.
+    pub async fn save_created_login(
+        &self,
+        config: &Config,
+        agent: &AgentConfig,
+        origin: &str,
+        identifier: &str,
+        password: &str,
+    ) -> anyhow::Result<Item> {
+        if let Some(why) = holder(config, agent) {
+            return Err(VaultError::CannotHold([(agent.name.clone(), why)].into_iter().collect()).into());
+        }
+        let _lock = self.lock.lock().await;
+        let mut records = self.read()?;
+        let wanted = pyx::strip(identifier).to_lowercase();
+        let index = records.iter().position(|r| {
+            r.get("kind").and_then(Value::as_str) == Some("login")
+                && r.get("origin").and_then(Value::as_str) == Some(origin)
+                && r.get("identifier").and_then(Value::as_str).map(|x| pyx::strip(x).to_lowercase()).as_deref()
+                    == Some(wanted.as_str())
+        });
+        let host = origin.split("://").nth(1).unwrap_or(origin).to_string();
+        let mut body = Dict::new();
+        body.insert("kind".into(), json!("login"));
+        body.insert("label".into(), json!(host));
+        body.insert("site".into(), json!(origin));
+        body.insert("identifier_type".into(), json!(identifier_type_of(identifier)));
+        body.insert("identifier".into(), json!(identifier));
+        body.insert("password".into(), json!(password));
+        let mut record = match index {
+            Some(at) => {
+                let before = records[at].clone();
+                let item = Self::item(&before);
+                if item.created_by.as_deref() != Some(agent.name.as_str()) || !item.pending {
+                    return Err(invalid("this login is already in the vault").into());
+                }
+                let mut record = Self::parse(&body, Some(&before))?;
+                let had: Vec<String> = Self::handles(&mut record).keys().cloned().collect();
+                self.take_back(config, &mut record, &had).await;
+                record
+            }
+            None => {
+                let mut record = Self::parse(&body, None)?;
+                record.insert("id".into(), json!(format!("item_{}", &crate::py::uuid4_hex()[..12])));
+                record.insert("agents".into(), json!({}));
+                record.insert("created_at".into(), json!(now()));
+                record
+            }
+        };
+        record.insert("created_by".into(), json!(agent.name));
+        record.insert("pending".into(), json!(true));
+        record.insert("confirmed_at".into(), Value::Null);
+        record.insert("updated_at".into(), json!(now()));
+        if let Err(exc) = self.give(&mut record, std::slice::from_ref(agent)).await {
+            let given: Vec<String> = Self::handles(&mut record).keys().cloned().collect();
+            self.take_back(config, &mut record, &given).await;
+            return Err(exc);
+        }
+        match index {
+            Some(at) => records[at] = record.clone(),
+            None => records.push(record.clone()),
+        }
+        self.write(&records)?;
+        Ok(Self::item(&record))
+    }
+
+    /// The site accepted the sign-up: the login is no longer « en attente de confirmation ». `agent`: only one it
+    /// created (the person confirms any).
+    pub async fn confirm_login(&self, item_id: &str, agent: Option<&str>) -> anyhow::Result<Item> {
+        let _lock = self.lock.lock().await;
+        let mut records = self.read()?;
+        let Some(record) = records.iter_mut().find(|r| r.get("id").and_then(Value::as_str) == Some(item_id)) else {
+            return Err(NoSuchItem(item_id.to_string()).into());
+        };
+        let item = Self::item(record);
+        if item.created_by.is_none() || agent.is_some_and(|a| item.created_by.as_deref() != Some(a)) {
+            return Err(NoSuchItem(item_id.to_string()).into());
+        }
+        if item.pending {
+            record.insert("pending".into(), json!(false));
+            record.insert("confirmed_at".into(), json!(now()));
+            record.insert("updated_at".into(), json!(now()));
+        }
+        let item = Self::item(record);
+        self.write(&records)?;
+        Ok(item)
+    }
+
+    /// The password of a login an agent created, for the person (the app asks for Face ID first): they never typed
+    /// it, so it is the only way they can know it. Items the person entered stay write-only.
+    pub fn created_password(&self, item_id: &str) -> anyhow::Result<zeroize::Zeroizing<String>> {
+        let records = self.read()?;
+        let Some(record) = records.iter().find(|r| r.get("id").and_then(Value::as_str) == Some(item_id)) else {
+            return Err(NoSuchItem(item_id.to_string()).into());
+        };
+        let item = Self::item(record);
+        if item.kind != "login" || item.created_by.is_none() {
+            return Err(VaultError::Invalid("only a login created by an agent can be shown".into()).into());
+        }
+        let password = record.get("secret").and_then(|s| s.get("password")).and_then(Value::as_str).unwrap_or("");
+        Ok(zeroize::Zeroizing::new(password.to_string()))
+    }
+
     /// An agent deleted: its handles go (its own vault is deleted with it).
     pub async fn forget_agent(&self, _config: &Config, agent_id: &str) -> anyhow::Result<()> {
         let _lock = self.lock.lock().await;
@@ -672,6 +804,19 @@ impl Vault {
             Self::handles(record).shift_remove(agent_id);
         }
         self.write(&records)
+    }
+}
+
+/// What an identifier looks like: an e-mail, a phone number, else a user name.
+pub fn identifier_type_of(identifier: &str) -> &'static str {
+    if identifier.contains('@') {
+        "email"
+    } else if identifier.chars().all(|c| c.is_ascii_digit() || " +-.()".contains(c))
+        && identifier.chars().filter(char::is_ascii_digit).count() >= 6
+    {
+        "phone"
+    } else {
+        "username"
     }
 }
 
@@ -748,9 +893,29 @@ async fn delete(State(state): State<AppState>, Path(item_id): Path<String>) -> A
     Ok(web::no_content())
 }
 
+/// The person confirms a login an agent created (the site accepted it).
+async fn confirm(State(state): State<AppState>, Path(item_id): Path<String>) -> ApiResult<Response> {
+    let item = state.vault.confirm_login(&item_id, None).await.map_err(answer)?;
+    tracing::info!(item = %item_id, "created login confirmed by the person");
+    Ok(web::ok(item.public()))
+}
+
+/// The password of a login an agent created, shown to the person (after Face ID in the app). Never logged.
+async fn reveal(State(state): State<AppState>, Path(item_id): Path<String>) -> ApiResult<Response> {
+    let password = state.vault.created_password(&item_id).map_err(answer)?;
+    tracing::info!(item = %item_id, "created login shown to the person");
+    let mut response = web::ok(json!({"password": password.as_str()}));
+    response.headers_mut().insert("cache-control", axum::http::HeaderValue::from_static("no-store"));
+    Ok(response)
+}
+
 /// `vault_router()` (mounted under /v1 with the bridge key).
 pub fn router() -> Router<AppState> {
-    Router::new().route("/vault", get(listing).post(create)).route("/vault/{item_id}", patch(update).delete(delete))
+    Router::new()
+        .route("/vault", get(listing).post(create))
+        .route("/vault/{item_id}", patch(update).delete(delete))
+        .route("/vault/{item_id}/confirm", axum::routing::post(confirm))
+        .route("/vault/{item_id}/reveal", axum::routing::post(reveal))
 }
 
 #[cfg(test)]

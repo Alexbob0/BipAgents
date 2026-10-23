@@ -489,7 +489,12 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "card payment tools not registered");
         false
     });
-    Ok(changed || paying)
+    // The vault's account tools (vault_logins.rs): their own entry too.
+    let accounts = crate::vault_logins::register(config, agent, run).await.unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "vault account tools not registered");
+        false
+    });
+    Ok(changed || paying || accounts)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).
