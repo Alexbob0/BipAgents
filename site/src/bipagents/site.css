@@ -289,8 +289,6 @@ h1 { font-size: clamp(46px, 5.6vw, 84px); line-height: .96; letter-spacing: -.04
 @keyframes ring { from { transform: scale(.7); opacity: 1; } to { transform: scale(2); opacity: 0; } }
 
 /* -- Install --------------------------------------------------------------------------------------------------- */
-.install-section .terminal { max-width: 940px; margin: 0 auto; }
-@media (min-width: 700px) { .install-section .terminal pre { font-size: 16px; padding: 26px 30px 84px; min-height: 260px; } .install-section .copy { height: 48px; padding: 0 24px; font-size: 16px; } }
 .windows { max-width: 940px; margin: 16px auto 0; color: var(--ink2); font-size: 15px; text-align: center; }
 .windows code { display: inline-block; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13.5px; background: var(--card);
   padding: 4px 10px; border-radius: 10px; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--ink); word-break: break-all; user-select: all; }
@@ -609,12 +607,64 @@ a.store:hover { transform: translateY(-2px); }
 .fine-print { max-width: 860px; text-align: center; font-size: 13px; color: var(--muted); font-weight: 700; line-height: 1.55; }
 .fine-print a { color: var(--ink2); font-weight: 900; }
 
+/* -- Prices: all included, or on my computer (one switch, two panels; the height follows) ---------------------------- */
+.mode-anchor { position: absolute; top: 0; left: 0; scroll-margin-top: 72px; }
+.mode-head { text-align: center; max-width: 820px; margin: 0 auto 40px; }
+.mode { position: relative; display: grid; grid-template-columns: 1fr 1fr; width: 100%; max-width: 700px; margin: 0 auto; padding: 6px;
+  border-radius: 30px; background: var(--card); box-shadow: var(--shadow), inset 0 0 0 1.5px var(--line); }
+.mode-thumb { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc(50% - 6px); border-radius: 24px; background: var(--ink);
+  box-shadow: 0 12px 26px -12px rgba(22, 24, 29, .55); transition: transform .5s cubic-bezier(.3, 1.25, .5, 1); }
+.pricing-section[data-mode="self"] .mode-thumb { transform: translateX(100%); }
+.mode button { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; min-height: 76px; padding: 12px 16px; border: 0;
+  border-radius: 24px; background: none; font: inherit; color: var(--ink2); text-align: left; cursor: pointer; transition: color .3s; }
+.mode button:hover { color: var(--ink); }
+.mode button[aria-selected="true"] { color: var(--ground); }
+.mode button:focus-visible { outline-offset: 2px; border-radius: 24px; }
+.mode-ic { flex: none; width: 44px; height: 44px; border-radius: 15px; display: grid; place-items: center; font-size: 21px; background: var(--ground2); transition: background .3s; }
+.mode button[aria-selected="true"] .mode-ic { background: color-mix(in srgb, var(--ground) 16%, transparent); }
+.mode-txt { display: grid; gap: 2px; min-width: 0; }
+.mode-txt b { font-weight: 1000; font-size: 17.5px; line-height: 1.2; letter-spacing: -.01em; }
+.mode-txt small { font-size: 13.5px; font-weight: 700; line-height: 1.3; opacity: .78; }
+@media (max-width: 560px) {
+  .mode { border-radius: 26px; }
+  .mode-thumb { border-radius: 20px; }
+  .mode button { justify-content: center; text-align: center; min-height: 66px; padding: 9px 6px; border-radius: 20px; }
+  .mode-ic { display: none; }
+  .mode-txt b { font-size: 15px; letter-spacing: -.02em; } .mode-txt small { font-size: 12px; line-height: 1.25; }
+}
+.mode-stage { position: relative; }
+.mode-stage.moving { overflow: hidden; transition: height .45s cubic-bezier(.3, .8, .3, 1); }
+.mode-panel.enter { animation: panel-in .5s cubic-bezier(.2, .8, .3, 1) both; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(16px); } }
+@media (prefers-reduced-motion: reduce) { .mode-thumb, .mode button, .mode-ic, .mode-stage.moving { transition: none; } .mode-panel.enter { animation: none; } }
+
 /* -- Your own computer -------------------------------------------------------------------------------------------- */
-.selfhost { display: grid; gap: 30px; align-items: center; border-radius: 40px; padding: 28px 20px; box-shadow: inset 0 0 0 1.5px var(--line); }
-@media (min-width: 1000px) { .selfhost { grid-template-columns: .9fr 1.1fr; padding: 48px; gap: 50px; } }
+.own { max-width: 1080px; margin: 0 auto; display: grid; gap: 22px; }
+.own-cards { display: grid; gap: 14px; }
+@media (min-width: 860px) { .own-cards { grid-template-columns: 1fr 1fr; gap: 18px; } }
+.own-card { border-radius: 30px; padding: 24px; background: var(--card); box-shadow: var(--shadow); }
+@media (min-width: 860px) { .own-card { padding: 28px 30px; } }
+.own-card h3, .own-steps h3 { font-size: 18px; }
+.own-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 12px; }
+.own-list li { display: flex; gap: 10px; align-items: flex-start; font-weight: 800; color: var(--ink2); font-size: 15.5px; line-height: 1.45; }
+.own-list li span { flex: none; width: 30px; height: 30px; border-radius: 10px; background: var(--ground2); display: grid; place-items: center; font-size: 15px; }
+.own-install { display: grid; gap: 24px; align-items: center; border-radius: 30px; padding: 24px; background: var(--card); box-shadow: var(--shadow); }
+@media (min-width: 960px) { .own-install { grid-template-columns: .85fr 1.15fr; gap: 36px; padding: 34px; } }
+.own-steps ol { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 14px; }
+.own-steps li { display: flex; gap: 14px; align-items: flex-start; }
+.own-steps li > span { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: var(--ground); font-weight: 1000; display: grid; place-items: center; }
+.own-steps li p { color: var(--ink2); font-weight: 700; padding-top: 4px; line-height: 1.45; }
+.own-steps li b { color: var(--ink); font-weight: 1000; }
+.own .terminal { min-width: 0; box-shadow: var(--shadow); }
+.own .terminal pre { min-height: 220px; }
+.own .windows { margin-top: -4px; }
+.own-yourself { background: var(--gold-tint); box-shadow: none; }
+.own-yourself-head p { color: var(--ink2); font-weight: 800; margin-top: 4px; }
+.own-yourself .own-list li span { background: var(--card); }
+@media (min-width: 760px) { .own-yourself .own-list { grid-template-columns: 1fr 1fr; } }
+.own .install-more { margin-top: 0; }
 .h2-small { font-size: clamp(28px, 3.4vw, 42px); }
 .hermes-line { margin-top: 18px; color: var(--ink2); font-weight: 700; font-size: 15.5px; }
-.selfhost .terminal pre { min-height: 190px; }
 .windows a { color: var(--ink); font-weight: 900; }
 
 /* -- End, footer, sticky buy bar ---------------------------------------------------------------------------------- */
@@ -662,9 +712,6 @@ a.store:hover { transform: translateY(-2px); }
 .day-more { margin: 40px auto 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 16px; font-weight: 900; font-size: 18px; text-align: center; }
 @media (min-width: 1000px) { .day-more { margin-top: 0; } }
 
-/* -- Pricing: your own computer, in one line ----------------------------------------------------------------------- */
-.selfhost-line { font-weight: 800; color: var(--ink2); text-align: center; font-size: 15.5px; }
-.selfhost-line a { color: var(--ink); font-weight: 1000; }
 .faq-more { text-align: center; margin-top: 22px; font-weight: 800; color: var(--ink2); }
 .faq-more a { color: var(--ink); font-weight: 1000; }
 
@@ -672,7 +719,6 @@ a.store:hover { transform: translateY(-2px); }
 .page-section { padding-top: 48px; }
 @media (min-width: 900px) { .page-section { padding-top: 72px; } }
 .page-h1 { font-size: clamp(34px, 5vw, 60px); line-height: 1.02; letter-spacing: -.035em; margin: 0; }
-.install-section .page-h1 { font-size: clamp(30px, 3.8vw, 46px); }
 .install-more { max-width: 940px; margin: 26px auto 0; text-align: center; font-weight: 800; color: var(--ink2); }
 .install-more a { color: var(--ink); font-weight: 1000; }
 .page-cta { padding-bottom: 96px; }
@@ -682,5 +728,4 @@ a.store:hover { transform: translateY(-2px); }
 .cta-band-bips { display: flex; justify-content: center; margin-bottom: 10px; }
 .cta-band-bips i { width: 64px; height: 64px; margin: 0 -6px; } .cta-band-bips svg { width: 100%; height: 100%; }
 .foot-stores { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
-.install-section.page-section { padding-bottom: 96px; }
 .top-links a[aria-current] { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 6px; }

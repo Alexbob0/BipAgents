@@ -269,13 +269,17 @@
         "famille": "Familie"
       }
     },
-    "selfhost": "Dein eigener Computer? Die App ist gratis:",
-    "selfhostLink": "installieren →"
+    "mode": {
+      "label": "Wähle, wie du BipAgents nutzt",
+      "offer": "Alles inklusive",
+      "offerSub": "wir kümmern uns um alles, ab {{p.web.month.solo}}/Monat",
+      "self": "Auf meinem Computer",
+      "selfSub": "gratis, du hostest selbst"
+    }
   },
   "install": {
-    "kicker": "Oder gratis, bei dir",
     "title": "Dein eigener Computer? Die App ist gratis.",
-    "sub": "Ein Mac, ein Linux-PC oder Windows 11, der an bleibt, oder dein Server: Befehl einfügen, QR-Code in der App scannen und dein KI-Modell wählen. Du zahlst nur das Modell.",
+    "sub": "Deine Agenten laufen bei dir, mit Hermes Agent. Du wählst dein KI-Modell und zahlst nur das: nichts an Kerfy Studio.",
     "hermes": "Du nutzt schon Hermes Agent? Derselbe Befehl verbindet die App, ohne dein Modell oder deine Agenten anzufassen.",
     "out1": "✓ Hermes Agent, das Gehirn der Agenten",
     "out2": "✓ Die Bridge und die Stimmen der Bips",
@@ -285,7 +289,27 @@
     "windows": "Unter Windows 11, in PowerShell als Administrator:",
     "guide": "Die ganze Anleitung",
     "more": "Lieber alles erledigt bekommen? Mit dem Abo musst du nichts installieren.",
-    "moreCta": "Tarife ansehen →"
+    "moreCta": "Tarife ansehen →",
+    "whatTitle": "Was das heißt",
+    "what1": "Die App ist gratis. Du zahlst nichts an Kerfy Studio.",
+    "what2": "Deine Agenten, ihr Gedächtnis und ihre Dateien liegen auf deinem Computer, mit Hermes Agent.",
+    "what3": "Du bringst dein KI-Modell mit: deinen Schlüssel bei OpenRouter, OpenAI, Anthropic oder Mistral, oder ein Modell in deinem Netz (Ollama, LM Studio…).",
+    "what4": "Auch die Stimmen der Bips laufen bei dir, ohne Grafikkarte.",
+    "needTitle": "Was du brauchst",
+    "need1": "Einen Mac, einen Linux-PC oder Windows 11 (22H2 oder neuer), der an bleibt.",
+    "need2": "Etwa 1 GB Arbeitsspeicher pro Person, plus die Stimmen, wenn das Modell woanders läuft: Ein Mac mini mit 16 GB reicht für eine Familie.",
+    "need3": "Tailscale auf dem Computer und deinem Handy: Die App erreicht deine Agenten von überall, ohne dass etwas im Internet offen ist.",
+    "need4": "Keine Administratorrechte nötig: Alles landet in deinem Konto (unter Windows PowerShell als Administrator).",
+    "stepsTitle": "In drei Schritten",
+    "step1": "<b>Füge den Befehl ein</b>, im Terminal deines Macs oder Linux-PCs.",
+    "step2": "<b>Beantworte seine Fragen</b>: wo dein KI-Modell läuft und wie deine ersten Agenten heißen.",
+    "step3": "<b>Scanne den QR-Code</b> in der App: Alle deine Agenten kommen dazu.",
+    "yourselfTitle": "Was du selbst machst",
+    "yourselfSub": "Bei Alles inklusive kümmern wir uns darum.",
+    "yourself1": "Updates: ein Befehl, oder jede Nacht, wenn du willst.",
+    "yourself2": "Backups: Ein Befehl exportiert deine Agenten, sicher aufzubewahren.",
+    "yourself3": "Den Computer an und online halten: Geht er aus, schlafen deine Agenten auch.",
+    "yourself4": "Dein KI-Modell beim Anbieter bezahlen, nach Verbrauch."
   },
   "faq": {
     "kicker": "Fragen",

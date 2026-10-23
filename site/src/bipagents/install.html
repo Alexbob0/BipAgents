@@ -1,21 +1,17 @@
-{{>top}}
-<!-- ============================================================ YOUR OWN COMPUTER (free) -->
-<section class="section page-section install-section" id="install">
-  <div class="selfhost">
-    <div class="selfhost-copy">
-      <p class="kicker">{{install.kicker}}</p>
-      <h1 class="page-h1">{{install.title}}</h1>
-      <p class="sub">{{install.sub}}</p>
-      <p class="hermes-line">🧩 {{install.hermes}}</p>
-    </div>
-    <div class="terminal">
-      <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
-      <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
-<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span></code></pre>
-      <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
-    </div>
-  </div>
-  <p class="windows">{{install.windows}} <code>irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex</code> · <a href="https://github.com/Alexbob0/BipAgents/blob/main/docs/self-hosting.md" rel="noopener">{{install.guide}}</a></p>
-  <p class="install-more">{{install.more}} <a href="{{home}}#pricing">{{install.moreCta}}</a></p>
-</section>
-{{>foot}}
+<!doctype html>
+<!-- The self-install now lives in the home's prices, « on my computer » side: this address opens it there. -->
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{pagetitle}}</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="https://bipagents.com{{home}}">
+<meta http-equiv="refresh" content="0; url={{home}}#install">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<style>:root { color-scheme: light dark; } body { margin: 0; padding: 32px 16px; font: 18px/1.5 system-ui, sans-serif; background: Canvas; color: CanvasText; text-align: center; }</style>
+</head>
+<body>
+<p><a href="{{home}}#install">{{install.title}}</a></p>
+</body>
+</html>

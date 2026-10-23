@@ -195,9 +195,26 @@
 </section>
 
 <!-- ============================================================ PRICING -->
-<section class="section pricing-section" id="pricing">
-  <div class="section-head reveal">
+<!-- Two ways in one section: the all-included offer, or the free app on one's own computer (#install opens it). -->
+<section class="section pricing-section" id="pricing" data-mode="offer">
+  <span class="mode-anchor" id="install"></span>
+  <div class="mode-head reveal">
     <p class="kicker">{{pricing.kicker}}</p>
+    <div class="mode" role="tablist" aria-label="{{pricing.mode.label}}">
+      <span class="mode-thumb" aria-hidden="true"></span>
+      <button type="button" role="tab" id="tab-offer" aria-controls="panel-offer" aria-selected="true" data-mode="offer">
+        <span class="mode-ic" aria-hidden="true">✨</span>
+        <span class="mode-txt"><b>{{pricing.mode.offer}}</b><small>{{pricing.mode.offerSub}}</small></span>
+      </button>
+      <button type="button" role="tab" id="tab-self" aria-controls="panel-self" aria-selected="false" tabindex="-1" data-mode="self">
+        <span class="mode-ic" aria-hidden="true">💻</span>
+        <span class="mode-txt"><b>{{pricing.mode.self}}</b><small>{{pricing.mode.selfSub}}</small></span>
+      </button>
+    </div>
+  </div>
+  <div class="mode-stage">
+  <div class="mode-panel" id="panel-offer" role="tabpanel" aria-labelledby="tab-offer">
+  <div class="section-head reveal">
     <h2>{{pricing.title}}</h2>
     <p class="sub">{{pricing.sub}}</p>
   </div>
@@ -257,8 +274,71 @@
         <li><span aria-hidden="true">🇪🇺</span>{{pricing.inc6}}</li>
       </ul>
     </div>
-    <p class="selfhost-line">💻 {{pricing.selfhost}} <a href="{{installhref}}">{{pricing.selfhostLink}}</a></p>
     <p class="fine-print">{{pricing.fine}} <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{pricing.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
+  </div>
+  </div>
+
+  <div class="mode-panel" id="panel-self" role="tabpanel" aria-labelledby="tab-self" hidden>
+  <div class="section-head">
+    <h2>{{install.title}}</h2>
+    <p class="sub">{{install.sub}}</p>
+  </div>
+  <div class="own">
+    <div class="own-cards">
+      <div class="own-card">
+        <h3>{{install.whatTitle}}</h3>
+        <ul class="own-list">
+          <li><span aria-hidden="true">🆓</span>{{install.what1}}</li>
+          <li><span aria-hidden="true">💻</span>{{install.what2}}</li>
+          <li><span aria-hidden="true">🧠</span>{{install.what3}}</li>
+          <li><span aria-hidden="true">🎙️</span>{{install.what4}}</li>
+        </ul>
+      </div>
+      <div class="own-card">
+        <h3>{{install.needTitle}}</h3>
+        <ul class="own-list">
+          <li><span aria-hidden="true">🖥️</span>{{install.need1}}</li>
+          <li><span aria-hidden="true">🧮</span>{{install.need2}}</li>
+          <li><span aria-hidden="true">🔒</span>{{install.need3}}</li>
+          <li><span aria-hidden="true">🔑</span>{{install.need4}}</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="own-install">
+      <div class="own-steps">
+        <h3>{{install.stepsTitle}}</h3>
+        <ol>
+          <li><span aria-hidden="true">1</span><p>{{install.step1}}</p></li>
+          <li><span aria-hidden="true">2</span><p>{{install.step2}}</p></li>
+          <li><span aria-hidden="true">3</span><p>{{install.step3}}</p></li>
+        </ol>
+        <p class="hermes-line">🧩 {{install.hermes}}</p>
+      </div>
+      <div class="terminal">
+        <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
+        <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
+<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span></code></pre>
+        <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
+      </div>
+    </div>
+    <p class="windows">{{install.windows}} <code>irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex</code> · <a href="https://github.com/Alexbob0/BipAgents/blob/main/docs/self-hosting.md" rel="noopener">{{install.guide}}</a></p>
+
+    <div class="own-card own-yourself">
+      <div class="own-yourself-head">
+        <h3>{{install.yourselfTitle}}</h3>
+        <p>{{install.yourselfSub}}</p>
+      </div>
+      <ul class="own-list">
+        <li><span aria-hidden="true">🔄</span>{{install.yourself1}}</li>
+        <li><span aria-hidden="true">🛡️</span>{{install.yourself2}}</li>
+        <li><span aria-hidden="true">📶</span>{{install.yourself3}}</li>
+        <li><span aria-hidden="true">💳</span>{{install.yourself4}}</li>
+      </ul>
+    </div>
+    <p class="install-more">{{install.more}} <a href="#pricing" data-mode-go="offer">{{install.moreCta}}</a></p>
+  </div>
+  </div>
   </div>
 </section>
 

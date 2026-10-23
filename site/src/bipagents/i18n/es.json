@@ -269,13 +269,17 @@
         "famille": "Familia"
       }
     },
-    "selfhost": "¿Tu propio ordenador? La app es gratis:",
-    "selfhostLink": "instalarla →"
+    "mode": {
+      "label": "Elige cómo usar BipAgents",
+      "offer": "Todo incluido",
+      "offerSub": "nos ocupamos de todo, desde {{p.web.month.solo}}/mes",
+      "self": "En mi ordenador",
+      "selfSub": "gratis, lo alojas tú"
+    }
   },
   "install": {
-    "kicker": "O gratis, en casa",
     "title": "¿Tu propio ordenador? La app es gratis.",
-    "sub": "Un Mac, un PC con Linux o Windows 11 que se quede encendido, o tu servidor: pega este comando, escanea el código QR en la app y elige tu modelo de IA. Solo pagas el modelo.",
+    "sub": "Tus agentes funcionan en casa, con Hermes Agent. Eliges tu modelo de IA y solo pagas eso: nada a Kerfy Studio.",
     "hermes": "¿Ya usas Hermes Agent? El mismo comando conecta la app, sin tocar tu modelo ni tus agentes.",
     "out1": "✓ Hermes Agent, el cerebro de los agentes",
     "out2": "✓ El bridge y las voces de los Bips",
@@ -285,7 +289,27 @@
     "windows": "En Windows 11, en PowerShell como administrador:",
     "guide": "La guía completa",
     "more": "¿Prefieres que nos ocupemos de todo? Con la suscripción, no hay nada que instalar.",
-    "moreCta": "Ver los planes →"
+    "moreCta": "Ver los planes →",
+    "whatTitle": "Qué significa",
+    "what1": "La app es gratis. No pagas nada a Kerfy Studio.",
+    "what2": "Tus agentes, su memoria y sus archivos viven en tu ordenador, con Hermes Agent.",
+    "what3": "Traes tu modelo de IA: tu clave de OpenRouter, OpenAI, Anthropic o Mistral, o un modelo de tu red (Ollama, LM Studio…).",
+    "what4": "Las voces de los Bips también funcionan en casa, sin tarjeta gráfica.",
+    "needTitle": "Qué necesitas",
+    "need1": "Un Mac, un PC con Linux o Windows 11 (22H2 o posterior) que se quede encendido.",
+    "need2": "Cerca de 1 GB de memoria por persona, más las voces, si el modelo funciona en otro sitio: un Mac mini de 16 GB basta para una familia.",
+    "need3": "Tailscale en el ordenador y en tu móvil: la app llega a tus agentes desde cualquier sitio, sin abrir nada a Internet.",
+    "need4": "Sin permisos de administrador: todo se instala en tu cuenta (en Windows, PowerShell como administrador).",
+    "stepsTitle": "En tres pasos",
+    "step1": "<b>Pega el comando</b> en el Terminal de tu Mac o PC con Linux.",
+    "step2": "<b>Responde a sus preguntas</b>: dónde funciona tu modelo de IA y los nombres de tus primeros agentes.",
+    "step3": "<b>Escanea el código QR</b> en la app: se añaden todos tus agentes.",
+    "yourselfTitle": "Lo que haces tú",
+    "yourselfSub": "Con Todo incluido, nos encargamos nosotros.",
+    "yourself1": "Las actualizaciones: un comando, o cada noche si lo eliges.",
+    "yourself2": "Las copias de seguridad: un comando exporta tus agentes, para guardarlos en un lugar seguro.",
+    "yourself3": "Mantener el ordenador encendido y conectado: si se apaga, tus agentes también.",
+    "yourself4": "Pagar a tu proveedor de modelo de IA, según lo que uses."
   },
   "faq": {
     "kicker": "Preguntas",

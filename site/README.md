@@ -6,11 +6,12 @@
   talking; 9:00 mail and calendar; 12:30 the Carnet; 15:00 the visible browser, « take over », then the approval card;
   18:00 a background task with its budget; 18:30 a Live call in the car; 20:00 the family list; then a link to the
   demo), why it's private (the apps' diagram, animated, three lines, the dated comparison), the prices
-  (monthly/yearly, Solo/Duo/Famille, web price against the stores' price, computed live; one line for « your own
-  computer? the app is free »), six questions that settle a purchase, the footer (store badges, company, links). On a
+  under a switch « All included » / « On my computer »: monthly/yearly, Solo/Duo/Famille, web price against the stores'
+  price, computed live; or the free app on one's own computer — what it means, what it needs, three steps with the
+  command to copy, Windows, and what one then does oneself; `#install` opens that side), six questions that settle a purchase, the footer (store badges, company, links). On a
   phone, a bar at the bottom keeps the chosen plan and its button. Their own pages: `/demo/` (the app's own demo
   playing in a chat: four scenarios, with the walk's map and the page kit's « Your runs » page inside the replies),
-  `/faq/` (every question), `/install/` (the self-install command, Windows too). English at `/`, French, German and
+  `/faq/` (every question); `/install/` only sends to the home's `#install`. English at `/`, French, German and
   Spanish at `/fr/`, `/de/`, `/es/` (and `/fr/demo/`, `/fr/faq/`…).
 - **kerfystudio.com** — the publisher: its two apps (BipAgents, Tablée), how it works, the company's details (what Apple
   and Google check for an organization), contact, support, the privacy policy and terms in four languages and the
@@ -42,7 +43,7 @@ One file, read by both sites:
 
 ## Where things come from
 
-The pages are `src/bipagents/{index,demo,faq,install}.html`, sharing `partials/top.html` (head, header) and
+The pages are `src/bipagents/{index,demo,faq}.html` (and `install.html`, the redirect to `#install`), sharing `partials/top.html` (head, header) and
 `partials/foot.html` (footer, script) through `{{>top}}` / `{{>foot}}`; `PAGES` in `build.py` lists them, and
 `FAQ_HOME` picks the home's questions. One `site.js` for all: each part runs where its elements are.
 
