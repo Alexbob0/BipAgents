@@ -3,7 +3,10 @@
 `bipagents sandbox adopt` (bridge-rs/src/sandbox_adopt.rs) moves an agent's working folders (its data, scripts,
 plans…) out of this machine's folders into named volumes, `bipagents-<agent>-<name>`: from then on the agent writes
 there only, so the hourly backup (backup.py) and `bipagents export` (moving.py) must take them. The bridge lists them
-in `<data>/sandbox.json` (`adopted.<agent>.volumes`, `kind: "work"`).
+in `<data>/sandbox.json` (`adopted.<agent>.volumes`, `kind: "work"`). Its « linked » folders too (`kind: "link"`,
+2026-10-23: a folder programs of this machine keep writing, moved into a volume with a symbolic link left at its path):
+the volume is taken here, and the link, at its path, as a link (backup.py and moving.py never follow one), so its
+content is counted once.
 
 Each one goes as `podman volume export` writes it (a tar, read as the sandboxes' own « root » of rootless podman: the
 files a sandbox's user made, unreadable to this account, are in it too), and comes back with `podman volume import`
@@ -38,7 +41,7 @@ def podman() -> Optional[str]:
 
 
 def kept(data_dir: Path) -> List[str]:
-    """The volumes whose content lives nowhere else: adopt's working folders."""
+    """The volumes whose content lives nowhere else: adopt's working folders and linked folders."""
     try:
         state = json.loads((data_dir / "sandbox.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -48,7 +51,7 @@ def kept(data_dir: Path) -> List[str]:
     for entry in adopted.values() if isinstance(adopted, dict) else []:
         listed = entry.get("volumes") if isinstance(entry, dict) else None
         for volume in listed if isinstance(listed, list) else []:
-            if isinstance(volume, dict) and volume.get("kind") == "work" and NAME.match(str(volume.get("name", ""))):
+            if isinstance(volume, dict) and volume.get("kind") in ("work", "link") and NAME.match(str(volume.get("name", ""))):
                 names.add(str(volume["name"]))
     return sorted(names)
 

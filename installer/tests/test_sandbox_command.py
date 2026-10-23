@@ -18,7 +18,10 @@ def test_adopt_runs_the_bridge_with_the_accounts_config(monkeypatch, tmp_path):
     assert runs == [["/bin/bipbridge", "sandbox", "adopt", "--agent", "wellness", "--config", str(config), "--dry-run"]]
     assert main.main(["sandbox", "adopt", "vie", "--undo"]) == 0
     assert runs[-1][-1] == "--undo" and "--dry-run" not in runs[-1]
-    assert fetched == [tmp_path, tmp_path]   # the bridge of this checkout fetched first (an update before its release)
+    assert main.main(["sandbox", "adopt", "wellness", "--link", "~/.garmin-mcp", "--link", "/x/data",
+                      "--allow-sites"]) == 0
+    assert runs[-1][-5:] == ["--link", "~/.garmin-mcp", "--link", "/x/data", "--allow-sites"]
+    assert fetched == [tmp_path, tmp_path, tmp_path]   # the bridge of this checkout fetched first (an update before its release)
 
 
 def test_adopt_says_when_the_bridge_is_not_out_yet(monkeypatch, tmp_path):
