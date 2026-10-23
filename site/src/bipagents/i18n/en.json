@@ -269,13 +269,17 @@
         "famille": "Family"
       }
     },
-    "selfhost": "Your own computer? The app is free:",
-    "selfhostLink": "install it →"
+    "mode": {
+      "label": "Choose how to use BipAgents",
+      "offer": "All included",
+      "offerSub": "we handle everything, from {{p.web.month.solo}}/month",
+      "self": "On my computer",
+      "selfSub": "free, you host it yourself"
+    }
   },
   "install": {
-    "kicker": "Or free, at home",
     "title": "Your own computer? The app is free.",
-    "sub": "A Mac, a Linux PC or Windows 11 that stays on, or your server: paste this command, scan the QR code in the app and pick your AI model. You only pay for the model.",
+    "sub": "Your agents run at home, with Hermes Agent. You pick your AI model and only pay for it: nothing to Kerfy Studio.",
     "hermes": "Already running Hermes Agent? The same command plugs the app in, without touching your model or your agents.",
     "out1": "✓ Hermes Agent, the agents’ brain",
     "out2": "✓ The bridge and the Bips’ voices",
@@ -285,7 +289,27 @@
     "windows": "On Windows 11, in PowerShell run as administrator:",
     "guide": "The full guide",
     "more": "Rather have us handle everything? With the subscription, there’s nothing to install.",
-    "moreCta": "See the plans →"
+    "moreCta": "See the plans →",
+    "whatTitle": "What it means",
+    "what1": "The app is free. You pay nothing to Kerfy Studio.",
+    "what2": "Your agents, their memory and their files live on your computer, with Hermes Agent.",
+    "what3": "You bring your AI model: your key with OpenRouter, OpenAI, Anthropic or Mistral, or a model on your network (Ollama, LM Studio…).",
+    "what4": "The Bips’ voices run at home too, no graphics card needed.",
+    "needTitle": "What you need",
+    "need1": "A Mac, a Linux PC or Windows 11 (22H2 or later) that stays on.",
+    "need2": "About 1 GB of memory per person, plus the voices, when the model runs elsewhere: a 16 GB Mac mini fits a family.",
+    "need3": "Tailscale on the computer and your phone: the app reaches your agents from anywhere, with nothing open on the Internet.",
+    "need4": "No admin rights needed: everything installs in your account (on Windows, PowerShell as administrator).",
+    "stepsTitle": "Three steps",
+    "step1": "<b>Paste the command</b> in the Terminal of your Mac or Linux PC.",
+    "step2": "<b>Answer its questions</b>: where your AI model runs, and your first agents’ names.",
+    "step3": "<b>Scan the QR code</b> in the app: all your agents are added.",
+    "yourselfTitle": "What you do yourself",
+    "yourselfSub": "With All included, we take care of it.",
+    "yourself1": "Updates: one command, or every night if you choose.",
+    "yourself2": "Backups: one command exports your agents, to keep somewhere safe.",
+    "yourself3": "Keeping the computer on and online: if it switches off, so do your agents.",
+    "yourself4": "Paying your AI model’s provider, for what you use."
   },
   "faq": {
     "kicker": "Questions",

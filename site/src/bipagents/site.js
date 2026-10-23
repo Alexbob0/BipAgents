@@ -362,16 +362,88 @@ if (compare) once(compare, () => compare.classList.add("go"), 0.4);
   });
   render();
 
-  // The bar at the bottom of a phone's screen: once past the top, until the prices are in view.
-  const seen = new Set();
-  const io = new IntersectionObserver(entries => {
-    for (const e of entries) e.isIntersecting ? seen.add(e.target) : seen.delete(e.target);
-    const show = scrollY > 300 && !seen.size;
+  // The bar at the bottom of a phone's screen: once past the top, until the prices are in view; never while
+  // « on my computer » is chosen (nothing to buy there).
+  const seen = new Set(), section = $("#pricing");
+  const showSticky = () => {
+    const show = scrollY > 300 && !seen.size && section.dataset.mode !== "self";
     sticky.classList.toggle("show", show);
     sticky.setAttribute("aria-hidden", String(!show));
     $("a", sticky).tabIndex = show ? 0 : -1;
+  };
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) e.isIntersecting ? seen.add(e.target) : seen.delete(e.target);
+    showSticky();
   });
-  [$(".hero"), $("#pricing"), $(".foot")].forEach(el => el && io.observe(el));
+  [$(".hero"), section, $(".foot")].forEach(el => el && io.observe(el));
+  section.addEventListener("modechange", showSticky);
+})();
+
+// -- The prices' switch: all included, or on my computer (#pricing / #install) --------------------------------------
+(function modes() {
+  const section = $("#pricing"), stage = $(".mode-stage");
+  if (!section || !stage) return;
+  const tabs = $$('[role="tab"]', section);
+  const panels = { offer: $("#panel-offer"), self: $("#panel-self") };
+
+  function choose(mode, { focus = false, animate = true } = {}) {
+    if (section.dataset.mode === mode) return;
+    const from = stage.offsetHeight;
+    section.dataset.mode = mode;
+    tabs.forEach(t => {
+      const on = t.dataset.mode === mode;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      if (on && focus) t.focus();
+    });
+    for (const [name, panel] of Object.entries(panels)) panel.hidden = name !== mode;
+    const shown = panels[mode];
+    $$(".reveal", shown).forEach(el => el.classList.add("in"));
+    section.dispatchEvent(new Event("modechange"));
+    if (!animate || REDUCED) return;
+    // The height goes from the old panel's to the new one's, the new panel rises in.
+    shown.classList.remove("enter"); void shown.offsetWidth; shown.classList.add("enter");
+    const to = stage.offsetHeight;
+    stage.classList.remove("moving");
+    stage.style.height = from + "px";
+    void stage.offsetHeight;
+    stage.classList.add("moving");
+    stage.style.height = to + "px";
+    const done = e => {
+      if (e && e.target !== stage) return;
+      stage.classList.remove("moving"); stage.style.height = ""; stage.removeEventListener("transitionend", done);
+    };
+    stage.addEventListener("transitionend", done);
+    setTimeout(done, 700);
+  }
+
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => choose(t.dataset.mode));
+    t.addEventListener("keydown", e => {   // a tab list: arrows, Home and End move and choose
+      const next = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      choose(tabs[(next + tabs.length) % tabs.length].dataset.mode, { focus: true });
+    });
+  });
+
+  // Deep links: #install opens « on my computer », #pricing the offer — on arrival, and from any link on the page.
+  const fromHash = (hash, animate) => {
+    if (hash === "#install") choose("self", { animate });
+    else if (hash === "#pricing") choose("offer", { animate });
+  };
+  fromHash(location.hash, false);
+  addEventListener("hashchange", () => fromHash(location.hash, true));
+  document.addEventListener("click", e => {
+    const a = e.target.closest('a[href$="#install"], a[href$="#pricing"]');
+    if (!a || a.pathname !== location.pathname) return;
+    fromHash(a.hash, true);
+    if (a.hasAttribute("data-mode-go")) {   // switching from inside the section: stay at its top
+      e.preventDefault();
+      section.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth" });
+      $('[role="tab"][aria-selected="true"]', section).focus({ preventScroll: true });
+    }
+  });
 })();
 
 // -- Install: the command typed, then what it says -------------------------------------------------------------------

@@ -221,8 +221,9 @@ def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
 # -- bipagents.com ---------------------------------------------------------------------------------------------------
 
 DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"))
-# The pages: (name, template, path under the language's root). The home sells; the demo, every question and the
-# self-install have their own pages. They share the header and the footer (src/bipagents/partials/).
+# The pages: (name, template, path under the language's root). The home sells, and its prices hold the self-install
+# too (« on my computer », #install); the demo and every question have their own pages, sharing the header and the
+# footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
          ("install", "install.html", "install/"))
 FAQ_HOME = (1, 3, 2, 6, 4, 5)   # what's included, AI credit, free week, stopping, privacy, Duo/Famille
@@ -293,7 +294,7 @@ def bipagents(version: str) -> Path:
                                  for n in numbers)
         values.update({
             "lang": lang, "home": paths[lang], "version": version,
-            "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}install/",
+            "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}#install",
             "legalprefix": "" if lang == "fr" else f"/{lang}",
             "marquee": "".join(f'<span>{html.escape(word)}<i style="background:{COLORS[CATEGORY_ORDER[i % 8]][0]}"></i></span>'
                                for i, word in enumerate(t["marquee"])),
@@ -362,7 +363,7 @@ def bipagents(version: str) -> Path:
     (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {BIPAGENTS}/sitemap.xml\n", encoding="utf-8")
     (out / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
                                      + "".join(f"  <url><loc>{BIPAGENTS}{paths[l]}{sub}</loc></url>\n"
-                                               for _, _, sub in PAGES for l in LANGS)
+                                               for name, _, sub in PAGES if name != "install" for l in LANGS)
                                      + "</urlset>\n", encoding="utf-8")
     return out
 
