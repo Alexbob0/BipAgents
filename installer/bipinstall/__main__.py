@@ -781,6 +781,11 @@ def sandbox_main(argv: List[str]) -> int:
     parser.add_argument("agent", help="the agent (its id, e.g. wellness)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan only, change nothing")
     parser.add_argument("--undo", action="store_true", help="set the mounts back as they were before")
+    parser.add_argument("--link", action="append", default=[], metavar="PATH",
+                        help="a folder programs of this machine keep writing: moved into a volume, a link left at its "
+                             "path (repeatable)")
+    parser.add_argument("--allow-sites", action="store_true",
+                        help="allow now the sites the plan says the agent's programs will need")
     args = parser.parse_args(argv)
     config = Path.home() / ".config" / "bipagents" / "bridge.toml"
     if not config.exists():
@@ -793,6 +798,9 @@ def sandbox_main(argv: List[str]) -> int:
         return 1
     command = rustbridge.cli(Path.home()) + ["sandbox", "adopt", "--agent", args.agent, "--config", str(config)]
     command += ["--dry-run"] * args.dry_run + ["--undo"] * args.undo
+    for path in args.link:
+        command += ["--link", path]
+    command += ["--allow-sites"] * args.allow_sites
     return subprocess.run(command, cwd=REPO / "bridge", check=False).returncode
 
 

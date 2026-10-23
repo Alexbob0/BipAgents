@@ -61,6 +61,11 @@ def podman(tmp_path, monkeypatch):
 def test_only_the_volumes_whose_content_lives_nowhere_else_are_kept(tmp_path):
     (tmp_path / "sandbox.json").write_text(json.dumps(ADOPTED))
     assert volumes.kept(tmp_path) == ["bipagents-vie-notes"]       # not code, shares, uploads' copy or outbox
+    linked = json.loads(json.dumps(ADOPTED))
+    linked["adopted"]["wellness"] = {"volumes": [{"name": "bipagents-wellness-data", "kind": "link",
+                                                  "mountpoint": "/x/data", "host": "/h/data"}]}
+    (tmp_path / "sandbox.json").write_text(json.dumps(linked))
+    assert volumes.kept(tmp_path) == ["bipagents-vie-notes", "bipagents-wellness-data"]   # a linked folder's, too
     (tmp_path / "sandbox.json").write_text("{not json")
     assert volumes.kept(tmp_path) == [] and volumes.kept(tmp_path / "none") == []
 

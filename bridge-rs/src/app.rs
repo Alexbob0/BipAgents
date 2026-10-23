@@ -333,6 +333,7 @@ impl AppState {
         });
         if config.hermes.enabled() {
             self.spawn(crate::sandbox::isolate_all(self.config.clone(), agents_admin::default_run()));
+            self.spawn(crate::sandbox_sites::watch(self.clone()));
             self.spawn(crate::shares::mirror_forever(self.config.clone()));
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
             let shared = self.config.clone();
@@ -1047,6 +1048,16 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
 async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>) -> ApiResult<Response> {
     let agent = agent_or_404(&state.config(), Some(&body.agent))?;
     let run_id = check_run_id(&body.run_id)?;
+    // a card of the bridge's own (a site for the agent's programs, sandbox_sites.rs), answered here
+    if let Some(id) = run_id.strip_prefix(crate::sandbox_sites::RUN_PREFIX) {
+        let allow = body.choice.trim().to_lowercase() != "deny";
+        return match crate::sandbox_sites::answer(&state.config(), &agent.name, id, allow, "notification")
+            .map_err(anyhow::Error::from)?
+        {
+            Some(_) => Ok(web::ok(json!({"ok": true, "choice": if allow { "always" } else { "deny" }}))),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        };
+    }
     let request_id = body.request_id.as_deref();
     let (status, payload) =
         match state.hermes.approve(&agent, &run_id, &body.choice.trim().to_lowercase(), request_id).await {
@@ -1110,6 +1121,8 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
         None => None,
     };
     let mut items = state.hub.pending_approvals(name.as_deref());
+    // the bridge's own cards too (a site for an agent's programs, sandbox_sites.rs)
+    items.extend(crate::sandbox_sites::pending_items(&config, name.as_deref()));
     for item in items.iter_mut() {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
         let micros = (created * 1_000_000.0).round() as i64;
@@ -1498,6 +1511,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::memory_edit::router())
         .merge(crate::mailbox::router())
         .merge(crate::agent_email::router())
+        .merge(crate::sandbox_sites::router())
         .merge(crate::mail_scan::router())
         .merge(crate::jobs::router())
         .merge(crate::notes_import::router())
