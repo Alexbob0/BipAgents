@@ -113,6 +113,7 @@ pub mod console;
 pub mod contacts;
 pub mod desktop;
 pub mod desktop_page;
+pub mod desktop_read;
 pub mod place_backup;
 pub mod place_import;
 pub mod vault;

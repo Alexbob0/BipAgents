@@ -792,6 +792,7 @@ pub fn desktop_router() -> Router<AppState> {
         .route("/desktop/{ticket}/ws", get(stream))
         .route("/desktop/{ticket}/page/", get(crate::desktop_page::page))
         .route("/desktop/{ticket}/page/ws", get(crate::desktop_page::stream))
+        .route("/desktop/{ticket}/page/reader", get(crate::desktop_read::ticket_reader))
 }
 
 async fn open_desktop(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
@@ -879,6 +880,8 @@ pub fn desktop_admin_router() -> Router<AppState> {
         .route("/agents/{agent_id}/desktop/control", post(control))
         .route("/agents/{agent_id}/desktop/state", get(crate::desktop_page::state_route))
         .route("/agents/{agent_id}/desktop/open", post(crate::desktop_page::open_route))
+        .route("/agents/{agent_id}/desktop/focus", get(crate::desktop_read::focus_route))
+        .route("/agents/{agent_id}/desktop/reader", get(crate::desktop_read::reader_route))
 }
 
 /// noVNC (`static/novnc`, embedded), mounted at /desktop/static/novnc.
