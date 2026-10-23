@@ -145,3 +145,12 @@ border:1px solid var(--line);border-radius:12px;padding:8px 10px;width:100%}
 :where(.map-card li)::before{content:counter(map);flex:none;width:24px;height:24px;border-radius:50%;background:var(--field);color:var(--ink2);font:900 12px/24px var(--font);text-align:center}
 :where(.map-card li[aria-current=true]){background:var(--tint)}
 :where(.map-card li[aria-current=true])::before{background:var(--accent);color:#fff}
+/* the live map over the picture (inside the app only): same size, the picture kept for its height */
+:where(.map-live){position:absolute;inset:0;line-height:normal}
+:where(.map-card.live .map-frame img){visibility:hidden}
+:where(.map-pin){cursor:pointer;padding:6px}
+:where(.map-pin span){display:block;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);font:900 12px/22px var(--font);text-align:center;transition:transform .2s}
+:where(.map-pin[data-current] span){transform:scale(1.3)}
+:where(.map-card li){flex-wrap:wrap}
+:where(.map-open){margin-left:auto;padding:4px 10px;border-radius:99px;background:var(--tint);color:var(--deep);font-size:12px;font-weight:800;text-decoration:none;white-space:nowrap}
+:where(.map-route){display:block;margin:0 14px 12px;padding:10px 12px;border-radius:12px;background:var(--accent);color:#fff;font-weight:800;text-align:center;text-decoration:none}

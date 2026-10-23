@@ -321,7 +321,54 @@
     });
   }
 
-  // A map card (the bridge's map_image): a tap on a line of its list rings its marker on the picture.
+  // A map card (the bridge's map_image): its picture, and a list where a tap on a line rings its marker. Inside the
+  // app the picture becomes a live map (MapLibre, which the app ships; the map's files come through the bridge, never
+  // from here): pan, pinch, double tap, a tap on a line flies to its marker, and « Open in Maps » links the app
+  // answers itself (bipmaps:, only numbers and a short name). Elsewhere (a browser, an export) the picture stays.
+  var ANDROID = /Android/i.test(navigator.userAgent || "");
+  var MAP_BASE = ANDROID ? "https://bipmap.invalid/" : "bipmap://map/";
+  var MAP_WORDS = {
+    open: ANDROID ? { fr: "Ouvrir dans Google Maps", en: "Open in Google Maps", de: "In Google Maps öffnen", es: "Abrir en Google Maps" }
+      : { fr: "Ouvrir dans Plans", en: "Open in Maps", de: "In Karten öffnen", es: "Abrir en Mapas" },
+    route: { fr: "Itinéraire", en: "Directions", de: "Route", es: "Cómo llegar" },
+    fingers: { fr: "Deux doigts pour déplacer la carte", en: "Use two fingers to move the map",
+      de: "Mit zwei Fingern die Karte bewegen", es: "Usa dos dedos para mover el mapa" },
+  };
+  var mapWord = function (key) { var w = MAP_WORDS[key]; return w[lang().slice(0, 2).toLowerCase()] || w.en; };
+  var library = null;
+
+  function maplibre() {
+    if (library) return library;
+    library = new Promise(function (resolve, reject) {
+      if (window.maplibregl) { resolve(window.maplibregl); return; }
+      var script = doc.createElement("script");
+      var timer = setTimeout(function () { reject(new Error("no map library")); }, 8000);
+      script.onload = function () {
+        clearTimeout(timer);
+        window.maplibregl ? resolve(window.maplibregl) : reject(new Error("no map library"));
+      };
+      script.onerror = function () { clearTimeout(timer); reject(new Error("no map library")); };
+      script.src = MAP_BASE + "lib.js";
+      (doc.head || root).appendChild(script);
+    }).then(function (ml) {
+      // every map file asked from the page's own thread, through the app's door
+      ml.addProtocol("bipmap", function (params, abort) {
+        var url = MAP_BASE + String(params.url).replace(/^bipmap:\/\/map\//, "");
+        return fetch(url, { signal: abort && abort.signal }).then(function (r) {
+          if (r.status === 204) return { data: params.type === "json" ? {} : new ArrayBuffer(0) };
+          if (!r.ok) throw new Error("map file " + r.status);
+          var body = params.type === "json" ? r.json() : params.type === "string" ? r.text() : r.arrayBuffer();
+          return body.then(function (data) { return { data: data }; });
+        });
+      });
+      return ml;
+    });
+    return library;
+  }
+
+  var coords = function (lat, lon) { return (+lat).toFixed(6) + "," + (+lon).toFixed(6); };
+  var shortName = function (text) { return encodeURIComponent(String(text || "").replace(/\s+/g, " ").trim().slice(0, 80)); };
+
   function mapCard(card) {
     var img = card.querySelector("img");
     if (!img) return;
@@ -333,10 +380,12 @@
     frame.appendChild(img);
     frame.appendChild(ring);
     var items = Array.prototype.slice.call(card.querySelectorAll("li[data-x]"));
+    var live = null;
     items.forEach(function (li) {
       li.addEventListener("click", function () {
         var again = li.getAttribute("aria-current") === "true";
         items.forEach(function (other) { other.removeAttribute("aria-current"); });
+        if (live) { live.select(again ? -1 : points.map(function (p) { return p.li; }).indexOf(li)); if (!again) li.setAttribute("aria-current", "true"); return; }
         ring.hidden = again;
         if (again) return;
         li.setAttribute("aria-current", "true");
@@ -344,6 +393,95 @@
         ring.style.top = li.dataset.y + "%";
       });
     });
+    var points = items.map(function (li) {
+      return { lat: parseFloat(li.dataset.lat), lon: parseFloat(li.dataset.lon), color: li.dataset.color, li: li,
+        label: (li.firstChild && li.firstChild.nodeType === 3 ? li.firstChild.nodeValue : li.textContent).trim() };
+    }).filter(function (p) { return isFinite(p.lat) && isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180; });
+    var center = (card.dataset.center || "").split(",").map(parseFloat);
+    if (!points.length && !(center.length === 2 && isFinite(center[0]) && isFinite(center[1]))) return;
+    maplibre().then(function (ml) {
+      live = liveMap(ml, card, frame, img, ring, points, center);
+    }, function () { /* outside the app: the picture stays */ });
+  }
+
+  function liveMap(ml, card, frame, img, ring, points, center) {
+    var inline = root.getAttribute("data-bip-view") === "inline";
+    var box = doc.createElement("div");
+    box.className = "map-live";
+    frame.appendChild(box);
+    var options = {
+      container: box, style: "bipmap://map/style.json", attributionControl: { compact: true }, dragRotate: false,
+      pitchWithRotate: false, touchPitch: false, maxZoom: 18, fadeDuration: 0, cooperativeGestures: inline,
+      canvasContextAttributes: { preserveDrawingBuffer: true },
+      locale: { "CooperativeGesturesHandler.MobileHelpText": mapWord("fingers"),
+        "CooperativeGesturesHandler.WindowsHelpText": mapWord("fingers"), "CooperativeGesturesHandler.MacHelpText": mapWord("fingers") },
+    };
+    var spots = points.map(function (p) { return [p.lon, p.lat]; });
+    if (spots.length > 1) {
+      options.bounds = spots.reduce(function (b, s) { return b.extend(s); }, new ml.LngLatBounds(spots[0], spots[0]));
+      options.fitBoundsOptions = { padding: 44, maxZoom: 16 };
+    } else {
+      options.center = spots.length ? spots[0] : [center[1], center[0]];
+      options.zoom = parseFloat(card.dataset.zoom) || 15;
+    }
+    var map, styled = false, ready = false;
+    try { map = new ml.Map(options); } catch (e) { box.remove(); return null; }
+    var giveUp = function () {
+      if (ready) return;
+      try { map.remove(); } catch (e) { /* gone already */ }
+      box.remove();
+    };
+    var timer = setTimeout(function () { if (!styled) giveUp(); }, 12000);
+    map.on("styledata", function () { styled = true; });
+    map.on("error", function () { if (!styled) { clearTimeout(timer); giveUp(); } });
+    map.touchZoomRotate.disableRotation();
+    var pins = points.map(function (p, i) {
+      var holder = doc.createElement("div"), pin = doc.createElement("span");
+      holder.className = "map-pin";
+      pin.textContent = String(i + 1);
+      if (p.color) pin.style.background = p.color;
+      holder.appendChild(pin);
+      holder.addEventListener("click", function (event) { event.stopPropagation(); p.li.click(); });
+      new ml.Marker({ element: holder }).setLngLat([p.lon, p.lat]).addTo(map);
+      return holder;
+    });
+    map.on("load", function () {
+      ready = true;
+      clearTimeout(timer);
+      if (card.dataset.line && spots.length > 1) {
+        map.addSource("bip-line", { type: "geojson", data: { type: "Feature", properties: {},
+          geometry: { type: "LineString", coordinates: spots } } });
+        map.addLayer({ id: "bip-line", type: "line", source: "bip-line", layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": css("--accent") || "#7C6CF2", "line-width": 4, "line-opacity": 0.85 } });
+      }
+      card.classList.add("live");
+      ring.hidden = true;
+      img.setAttribute("aria-hidden", "true");
+      points.forEach(function (p) {
+        var open = doc.createElement("a");
+        open.className = "map-open";
+        open.href = "bipmaps:place?lat=" + (+p.lat).toFixed(6) + "&lon=" + (+p.lon).toFixed(6) + "&label=" + shortName(p.label);
+        open.textContent = mapWord("open");
+        open.addEventListener("click", function (event) { event.stopPropagation(); });
+        p.li.appendChild(open);
+      });
+      var mode = card.dataset.directions;
+      if (mode && points.length > 1) {
+        var first = points[0], last = points[points.length - 1], route = doc.createElement("a");
+        route.className = "map-route";
+        route.href = "bipmaps:route?from=" + coords(first.lat, first.lon) + "&to=" + coords(last.lat, last.lon) +
+          "&mode=" + encodeURIComponent(mode) + "&from_label=" + shortName(first.label) + "&to_label=" + shortName(last.label);
+        route.textContent = mapWord("route") + " · " + mapWord("open");
+        card.appendChild(route);
+      }
+    });
+    return {
+      select: function (i) {
+        pins.forEach(function (pin, j) { pin.toggleAttribute("data-current", j === i); });
+        if (i < 0 || !points[i]) return;
+        map.easeTo({ center: [points[i].lon, points[i].lat], zoom: Math.max(map.getZoom(), 15), duration: 450 });
+      },
+    };
   }
 
   function enhance() {

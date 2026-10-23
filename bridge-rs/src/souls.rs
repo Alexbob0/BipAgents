@@ -145,7 +145,8 @@ pub const VISUAL_RULE: &str = concat!(
     "show it: make a page with create_page (its kit makes a clean one in a few lines) and put its MEDIA: line inside ",
     "your reply, alone on its line where it belongs, with a sentence or two before it and the rest after. Keep your text ",
     "around it short: the page holds the details. Never send a picture of a chart or a table. Link the page to the ",
-    "Carnet page of its subject (create_page's notebook). A quick answer, a single number or small talk stays plain text."
+    "Carnet page of its subject (create_page's notebook). Places to go, a tour or a way somewhere: a map from ",
+    "map_image in the page. A quick answer, a single number or small talk stays plain text."
 );
 
 fn language_name(code: &str) -> &'static str {

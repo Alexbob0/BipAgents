@@ -7,6 +7,10 @@
 //! for a reply, or `src="map:<id>"` in a page (pages.rs puts it inline as a data: URI when the page is kept).
 //! `[maps] tiles = "osm"` (the only provider for now; a paid one can come later) and `tile_url` (tests: a fake).
 //!
+//! Since 2026-10-23 the card it gives also carries each place's position (`data-lat`, `data-lon`), an optional line
+//! through them and the travel mode for directions: inside the apps the page kit turns the picture into a live map
+//! (map_tiles.rs) with « Open in Maps » links; anywhere else (an export, a browser) the picture stays.
+//!
 //! Not a Python module: Rust bridge only (owner group: tools-knowledge).
 
 use std::path::PathBuf;
@@ -29,15 +33,19 @@ const TILE: f64 = 256.0;
 const TILE_GAP: Duration = Duration::from_millis(500);
 const TILE_DAYS: u64 = 30;
 const MAX_MARKERS: usize = 12;
+/// How the directions link travels (the apps turn it into Apple Maps' or Google Maps' own words).
+pub const MODES: [&str; 4] = ["walking", "driving", "transit", "bicycling"];
 static TILE_TURN: LazyLock<tokio::sync::Mutex<Option<Instant>>> = LazyLock::new(|| tokio::sync::Mutex::new(None));
 
 pub fn tool() -> Value {
     json!({
         "name": TOOL_NAME,
-        "description": "Draw a map (OpenStreetMap) with numbered markers, for a page or a reply. Give the places as names \
-    (« Gare de Lyon, Paris ») or « lat, lon ». The result gives the map's id and a <figure class=\"map-card\"> to paste in \
-    create_page's HTML (the picture goes inline, the page stays offline; a tap on a line of its list shows its marker), \
-    and a MEDIA: line to show the map alone in a reply.",
+        "description": "Make a map (OpenStreetMap) with numbered markers, for a page or a reply. Give the places as names \
+    (« Gare de Lyon, Paris ») or « lat, lon ». The result gives a <figure class=\"map-card\"> to paste as it is in \
+    create_page's HTML: in the app it is a live map (move, zoom, a tap on a line of its list goes to its marker, an \
+    « Open in Maps » button per place), elsewhere its picture. line: draw a line through the markers in order (a walk, \
+    a tour). directions: a button for the way from the first marker to the last (walking, driving, transit, \
+    bicycling). Also a MEDIA: line to show the picture alone in a reply.",
         "inputSchema": {"type": "object", "properties": {
             "markers": {"type": "array", "maxItems": MAX_MARKERS, "items": {"type": "object", "properties": {
                 "place": {"type": "string", "description": "a name or « lat, lon »"},
@@ -46,6 +54,8 @@ pub fn tool() -> Value {
                 "required": ["place"]}},
             "center": {"type": "string", "description": "without markers: the place the map shows"},
             "zoom": {"type": "integer", "minimum": 3, "maximum": 18, "description": "default: what fits the markers"},
+            "line": {"type": "boolean", "description": "a line through the markers, in their order"},
+            "directions": {"type": "string", "enum": MODES, "description": "a directions button, first marker to last"},
             "width": {"type": "integer", "minimum": 200, "maximum": 800},
             "height": {"type": "integer", "minimum": 150, "maximum": 800}}},
     })
@@ -204,6 +214,16 @@ impl Canvas {
         }
     }
 
+    /// A thick line from one point to another (discs along it; good enough for a few segments).
+    fn segment(&mut self, from: (f64, f64), to: (f64, f64), r: f64, c: [u8; 3]) {
+        let length = ((to.0 - from.0).powi(2) + (to.1 - from.1).powi(2)).sqrt();
+        let steps = (length / (r / 2.0)).ceil().max(1.0) as usize;
+        for i in 0..=steps {
+            let t = i as f64 / steps as f64;
+            self.disc(from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t, r, c);
+        }
+    }
+
     fn rect(&mut self, x: i64, y: i64, w: i64, h: i64, c: [u8; 3], alpha: f64) {
         for yy in y..y + h {
             for xx in x..x + w {
@@ -317,8 +337,28 @@ async fn locate(config: &Config, place: &str) -> Result<(f64, f64, String), Stri
     }
 }
 
-/// The map: (its PNG, the markers' positions on it in % of its width and height, their labels).
-pub async fn draw(config: &Config, arguments: &Dict) -> Result<(Vec<u8>, Vec<(String, f64, f64)>), String> {
+/// A marker as the card lists it: its label, where it is on the picture (% of its width and height), where it is on
+/// Earth, its colour.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placed {
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub lat: f64,
+    pub lon: f64,
+    pub color: [u8; 3],
+}
+
+/// The map drawn: its PNG, its markers, and its center when it has no marker.
+pub struct Drawn {
+    pub png: Vec<u8>,
+    pub places: Vec<Placed>,
+    pub center: Option<(f64, f64)>,
+    pub zoom: u32,
+}
+
+/// The map: its PNG and its markers.
+pub async fn draw(config: &Config, arguments: &Dict) -> Result<Drawn, String> {
     if config.maps.tiles != "osm" {
         return Err(format!("unknown map tiles « {} » (only osm)", config.maps.tiles));
     }
@@ -338,9 +378,11 @@ pub async fn draw(config: &Config, arguments: &Dict) -> Result<(Vec<u8>, Vec<(St
         markers.push(Marker { label: label.map(str::to_string).unwrap_or(found), lat, lon, color: paint });
     }
     let points: Vec<(f64, f64)> = markers.iter().map(|m| (m.lat, m.lon)).collect();
+    let mut asked_center = None;
     let center = match arguments.get("center").and_then(Value::as_str).map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => {
             let (lat, lon, _) = locate(config, c).await?;
+            asked_center = Some((lat, lon));
             (lat, lon)
         }
         None if !points.is_empty() => {
@@ -388,6 +430,22 @@ pub async fn draw(config: &Config, arguments: &Dict) -> Result<(Vec<u8>, Vec<(St
             }
         }
     }
+    let line = arguments.get("line").and_then(Value::as_bool).unwrap_or(false);
+    if line {
+        let path: Vec<(f64, f64)> = markers
+            .iter()
+            .map(|m| {
+                let (px, py) = pixel(m.lat, m.lon, z);
+                (px - left, py - top)
+            })
+            .collect();
+        for pair in path.windows(2) {
+            canvas.segment(pair[0], pair[1], 3.5, [0xFF, 0xFF, 0xFF]);
+        }
+        for pair in path.windows(2) {
+            canvas.segment(pair[0], pair[1], 2.2, [0x7C, 0x6C, 0xF2]);
+        }
+    }
     let mut places = Vec::new();
     for (i, m) in markers.iter().enumerate() {
         let (px, py) = pixel(m.lat, m.lon, z);
@@ -398,14 +456,21 @@ pub async fn draw(config: &Config, arguments: &Dict) -> Result<(Vec<u8>, Vec<(St
         let number = (i + 1).to_string();
         let width = number.len() as i64 * 12 - 2;
         canvas.text((x - width as f64 / 2.0).round() as i64, (y - 7.0).round() as i64, &number, 2, [255, 255, 255]);
-        places.push((m.label.clone(), (x / w as f64 * 1000.0).round() / 10.0, (y / h as f64 * 1000.0).round() / 10.0));
+        places.push(Placed {
+            label: m.label.clone(),
+            x: (x / w as f64 * 1000.0).round() / 10.0,
+            y: (y / h as f64 * 1000.0).round() / 10.0,
+            lat: m.lat,
+            lon: m.lon,
+            color: m.color,
+        });
     }
     // the attribution the tile policy asks for, on the picture itself
     let text_w = ATTRIBUTION.chars().count() as i64 * 12;
     let (bx, by) = (w as i64 - text_w - 14, h as i64 - 24);
     canvas.rect(bx, by, text_w + 14, 24, [255, 255, 255], 0.85);
     canvas.text(bx + 7, by + 5, ATTRIBUTION, 2, [0x33, 0x33, 0x33]);
-    Ok((canvas.png(), places))
+    Ok(Drawn { png: canvas.png(), places, center: asked_center.filter(|_| markers.is_empty()), zoom: z })
 }
 
 fn unproject(x: f64, y: f64, z: u32) -> (f64, f64) {
@@ -415,30 +480,61 @@ fn unproject(x: f64, y: f64, z: u32) -> (f64, f64) {
     (n.sinh().atan().to_degrees(), lon)
 }
 
+/// The card to paste in a page: the picture (`map:<id>`, put inline when the page is kept), its list with each place's
+/// position and colour, and what the live map adds (a line, directions, the center of a map without markers).
+pub fn figure(id: &str, drawn: &Drawn, line: bool, directions: Option<&str>) -> String {
+    let items: String = drawn
+        .places
+        .iter()
+        .map(|p| {
+            format!(
+                "<li data-x=\"{}\" data-y=\"{}\" data-lat=\"{:.6}\" data-lon=\"{:.6}\" data-color=\"#{}\">{}</li>",
+                p.x,
+                p.y,
+                p.lat,
+                p.lon,
+                hex::encode(p.color),
+                tk::html::escape(&p.label)
+            )
+        })
+        .collect();
+    let mut attributes = String::new();
+    if line && drawn.places.len() > 1 {
+        attributes.push_str(" data-line=\"1\"");
+    }
+    if let Some(mode) = directions.filter(|m| MODES.contains(m)).filter(|_| drawn.places.len() > 1) {
+        attributes.push_str(&format!(" data-directions=\"{mode}\""));
+    }
+    if let Some((lat, lon)) = drawn.center {
+        attributes.push_str(&format!(" data-center=\"{lat:.6},{lon:.6}\" data-zoom=\"{}\"", drawn.zoom));
+    }
+    format!("<figure class=\"map-card\"{attributes}><img src=\"map:{id}\" alt=\"Carte\"><ol>{items}</ol></figure>")
+}
+
 /// `map_image`: the map kept for the agent, with how to show it.
 pub async fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
-    let (data, places) = match draw(config, arguments).await {
+    let drawn = match draw(config, arguments).await {
         Ok(made) => made,
         Err(why) => return tool_text(&format!("No map: {why}."), true),
     };
-    let id = format!("m-{}", &hex::encode(<sha2::Sha256 as sha2::Digest>::digest(&data))[..10]);
+    let data = &drawn.png;
+    let id = format!("m-{}", &hex::encode(<sha2::Sha256 as sha2::Digest>::digest(data))[..10]);
     let folder = root(config).join(agent);
     let path = folder.join(format!("{id}.png"));
     if std::fs::create_dir_all(&folder).is_err()
-        || tk::replace_with(&folder.join(format!(".{id}.part")), &path, &data).is_err()
+        || tk::replace_with(&folder.join(format!(".{id}.part")), &path, data).is_err()
     {
         return tool_text("No map: it could not be kept.", true);
     }
-    let items: String = places
-        .iter()
-        .map(|(label, x, y)| format!("<li data-x=\"{x}\" data-y=\"{y}\">{}</li>", tk::html::escape(label)))
-        .collect();
-    let figure = format!("<figure class=\"map-card\"><img src=\"map:{id}\" alt=\"Carte\"><ol>{items}</ol></figure>");
+    let line = arguments.get("line").and_then(Value::as_bool).unwrap_or(false);
+    let directions = arguments.get("directions").and_then(Value::as_str).map(str::trim);
+    let card = figure(&id, &drawn, line, directions);
     tool_text(
         &format!(
-            "Map ready: {id} ({} markers). In a page, paste this into create_page's HTML (the picture goes inline):\n{figure}\n\
-Or to show it alone, put this line alone on its own line in your reply:\nMEDIA:{PREFIX}/{agent}/{id}.png",
-            places.len()
+            "Map ready: {id} ({} markers). In a page, paste this as it is into create_page's HTML (a live map in the app, \
+its picture elsewhere):\n{card}\nOr to show the picture alone, put this line alone on its own line in your reply:\n\
+MEDIA:{PREFIX}/{agent}/{id}.png",
+            drawn.places.len()
         ),
         false,
     )
@@ -462,5 +558,37 @@ mod tests {
         assert_eq!(color("Blue", 0), [0x4F, 0x7C, 0xFF]);
         assert_eq!(color("", 1), PALETTE[1].1);
         assert!(ATTRIBUTION.chars().all(|c| c == ' ' || glyph(c).is_some()));
+    }
+
+    #[test]
+    fn the_card_carries_what_the_live_map_needs() {
+        let place = |label: &str, lat: f64| Placed {
+            label: label.into(),
+            x: 10.0,
+            y: 20.5,
+            lat,
+            lon: 4.85,
+            color: [0xE5, 0x48, 0x4D],
+        };
+        let drawn = Drawn {
+            png: Vec::new(),
+            places: vec![place("Départ <A>", 45.7), place("Fin", 45.71)],
+            center: None,
+            zoom: 14,
+        };
+        let card = figure("m-1", &drawn, true, Some("walking"));
+        assert_eq!(
+            card,
+            "<figure class=\"map-card\" data-line=\"1\" data-directions=\"walking\"><img src=\"map:m-1\" alt=\"Carte\"><ol>\
+<li data-x=\"10\" data-y=\"20.5\" data-lat=\"45.700000\" data-lon=\"4.850000\" data-color=\"#e5484d\">Départ &lt;A&gt;</li>\
+<li data-x=\"10\" data-y=\"20.5\" data-lat=\"45.710000\" data-lon=\"4.850000\" data-color=\"#e5484d\">Fin</li></ol></figure>"
+        );
+        // an unknown mode, or a single place: no directions, no line
+        let alone = Drawn { places: vec![place("A", 1.0)], ..drawn };
+        let card = figure("m-1", &alone, true, Some("walking"));
+        assert!(!card.contains("data-line") && !card.contains("data-directions"));
+        let empty = Drawn { png: Vec::new(), places: Vec::new(), center: Some((45.5, 4.25)), zoom: 12 };
+        assert!(figure("m-2", &empty, false, Some("teleport"))
+            .starts_with("<figure class=\"map-card\" data-center=\"45.500000,4.250000\" data-zoom=\"12\"><img"));
     }
 }
