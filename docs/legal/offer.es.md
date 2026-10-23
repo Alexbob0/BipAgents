@@ -21,15 +21,16 @@ de la semana gratis si la hay, los enlaces a estas condiciones, cómo cancelar, 
 contrato y el formulario de desistimiento (artículo L221-13 del Código de Consumo francés). Estas condiciones siguen
 disponibles en Ajustes › Acerca de.
 
-**En el sitio bipagents.com**, la página de pago de Stripe te muestra el plan, su precio con todos los impuestos
-incluidos y su periodo de renovación. Marcas la aceptación de estas condiciones (con su enlace) y te indica: «Tu
-servicio empieza enseguida, a petición tuya. Puedes desistir del contrato durante 14 días y se te reembolsa todo.»
-Después del pago, recibes la confirmación del contrato en la dirección de correo que diste al pagar: el plan, su precio,
-la fecha de inicio, los enlaces a estas condiciones, cómo conseguir la app e iniciar sesión en ella con esa misma
-dirección, un enlace para gestionar o cancelar tu suscripción, la fecha límite para desistir del contrato y el
-formulario de desistimiento. La suscripción pasa a tu cuenta de BipAgents cuando inicias sesión en la app con esa
-dirección (el código que recibes por correo demuestra que es tuya). Si esa cuenta ya tiene una suscripción, la segunda
-no se vincula a ella y Kerfy Studio se pone en contacto contigo para reembolsar una de las dos.
+**En el sitio bipagents.com**, la página de pago de Stripe te muestra el plan, su precio en la moneda elegida, sus
+impuestos (incluidos o, en Estados Unidos y Canadá, añadidos) y el total que pagas, y su periodo de renovación. Marcas
+la aceptación de estas condiciones (con su enlace) y te indica: «Tu servicio empieza enseguida, a petición tuya.
+Puedes desistir del contrato durante 14 días y se te reembolsa todo.» Después del pago, recibes la confirmación del
+contrato en la dirección de correo que diste al pagar: el plan, su precio, la fecha de inicio, los enlaces a estas
+condiciones, cómo conseguir la app e iniciar sesión en ella con esa misma dirección, un enlace para gestionar o
+cancelar tu suscripción, la fecha límite para desistir del contrato y el formulario de desistimiento. La suscripción
+pasa a tu cuenta de BipAgents cuando inicias sesión en la app con esa dirección (el código que recibes por correo
+demuestra que es tuya). Si esa cuenta ya tiene una suscripción, la segunda no se vincula a ella y Kerfy Studio se pone
+en contacto contigo para reembolsar una de las dos.
 
 Usar BipAgents con tu propio ordenador o tu propio servidor sigue siendo gratis y no está cubierto por estas
 condiciones.
@@ -53,7 +54,7 @@ condiciones.
 
 ## 3. Lo que incluye un plan
 
-| Plan | Personas | Servidor | Precio en la app (App Store, Google Play), IVA incluido | Precio en el sitio bipagents.com, IVA incluido |
+| Plan | Personas | Servidor | Precio en la app (App Store, Google Play), IVA incluido | Precio en el sitio bipagents.com, en euros, IVA incluido |
 |---|---|---|---|---|
 | Solo | 1 | una plaza en un servidor compartido con otros suscriptores | 6,99 € al mes o 69,90 € al año | 6,49 € al mes o 64,90 € al año |
 | Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 11,99 € al mes o 119,90 € al año | 10,99 € al mes o 109,90 € al año |
@@ -61,6 +62,19 @@ condiciones.
 
 La suscripción anual cuesta 10 meses por 12 y se paga de una vez por los 12 meses. Los precios del sitio son más bajos
 que los de las tiendas.
+
+**Los precios del sitio en cada moneda.** En el sitio, cada moneda tiene sus propios precios, fijados por Kerfy Studio
+(no son conversiones): la página de precios te propone la de tu país, puedes elegir otra, y la página de pago de
+Stripe muestra el precio, la moneda y el total que pagas.
+
+| Moneda | País | Solo, al mes / al año | Dúo, al mes / al año | Familia, al mes / al año | Impuestos |
+|---|---|---|---|---|---|
+| Euro (EUR) | Unión Europea | 6,49 € / 64,90 € | 10,99 € / 109,90 € | 17,99 € / 179,90 € | IVA incluido |
+| Dólar estadounidense (USD) | Estados Unidos | 6,49 US$ / 64,90 US$ | 10,99 US$ / 109,90 US$ | 17,99 US$ / 179,90 US$ | sin impuestos: el impuesto sobre las ventas de tu estado se añade al pagar |
+| Dólar canadiense (CAD) | Canadá | 8,99 CA$ / 89,90 CA$ | 14,99 CA$ / 149,90 CA$ | 24,99 CA$ / 249,90 CA$ | sin impuestos: el GST/HST y, según tu provincia, el PST o el QST se añaden al pagar |
+| Libra esterlina (GBP) | Reino Unido | 5,49 £ / 54,90 £ | 9,49 £ / 94,90 £ | 15,49 £ / 154,90 £ | IVA incluido |
+| Dólar de Singapur (SGD) | Singapur | 8,99 S$ / 89,90 S$ | 14,99 S$ / 149,90 S$ | 24,99 S$ / 249,90 S$ | GST incluido |
+| Séquel (ILS) | Israel | 24,90 ₪ / 249,00 ₪ | 42,90 ₪ / 429,00 ₪ | 69,90 ₪ / 699,00 ₪ | IVA incluido |
 
 Para cada persona del plan:
 
@@ -105,9 +119,12 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 ## 5. Precio, pago y renovación
 
-- Los precios de arriba están en euros, con todos los impuestos incluidos, para Francia. En otro país, la tienda muestra
-  el precio en tu moneda; el precio que se muestra en el momento de la compra es el que pagas. En el sitio, la página de
-  pago muestra el precio con todos los impuestos incluidos, con los impuestos de tu país.
+- Los precios de arriba están en euros, con todos los impuestos incluidos, para Francia. En otro país, la tienda
+  muestra el precio en tu moneda; el precio que se muestra en el momento de la compra es el que pagas. En el sitio, el
+  precio es el de la moneda elegida (tabla de la sección 3): con todos los impuestos incluidos en euros, libras
+  esterlinas, dólares de Singapur y séqueles, con el IVA o el GST de tu país; sin impuestos en dólares estadounidenses
+  y canadienses, y la página de pago añade el impuesto sobre las ventas de tu estado o provincia y muestra el total
+  antes de que pagues. Una suscripción se queda en la moneda en que se compró.
 - La suscripción es **mensual o anual, sin permanencia**: se renueva sola cada mes o cada año hasta que la canceles. La
   tienda cobra al principio de cada periodo de suscripción (Apple puede hacerlo hasta 24 horas antes); en el sitio,
   Stripe cobra tu tarjeta al principio de cada periodo.

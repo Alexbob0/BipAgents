@@ -21,15 +21,16 @@ début, la fin de la semaine gratuite s'il y en a une, les liens vers ces condit
 limite pour renoncer au contrat et le formulaire de rétractation (article L221-13 du Code de la consommation). Ces
 conditions restent accessibles dans Réglages › À propos.
 
-**Sur le site bipagents.com**, la page de paiement de Stripe te montre le forfait, son prix toutes taxes comprises et sa
-période de renouvellement. Tu coches l'acceptation de ces conditions (avec leur lien) et elle t'indique : « Ton service
-commence tout de suite, à ta demande. Tu peux renoncer au contrat pendant 14 jours et être remboursé entièrement. »
-Après le paiement, tu reçois la confirmation du contrat à l'adresse e-mail donnée au paiement : le forfait, son prix, la
-date de début, les liens vers ces conditions, comment installer l'app et t'y connecter avec cette même adresse, un lien
-pour gérer ou résilier ton abonnement, la date limite pour renoncer au contrat et le formulaire de rétractation.
-L'abonnement rejoint ton compte BipAgents quand tu te connectes dans l'app avec cette adresse (le code reçu par e-mail
-prouve qu'elle est à toi). Si ce compte a déjà un abonnement, le second n'y est pas rattaché et Kerfy Studio te contacte
-pour en rembourser un.
+**Sur le site bipagents.com**, la page de paiement de Stripe te montre le forfait, son prix dans la monnaie choisie,
+ses taxes (comprises, ou ajoutées aux États-Unis et au Canada) et le total à payer, et sa période de renouvellement.
+Tu coches l'acceptation de ces conditions (avec leur lien) et elle t'indique : « Ton service commence tout de suite, à
+ta demande. Tu peux renoncer au contrat pendant 14 jours et être remboursé entièrement. » Après le paiement, tu reçois
+la confirmation du contrat à l'adresse e-mail donnée au paiement : le forfait, son prix, la date de début, les liens
+vers ces conditions, comment installer l'app et t'y connecter avec cette même adresse, un lien pour gérer ou résilier
+ton abonnement, la date limite pour renoncer au contrat et le formulaire de rétractation. L'abonnement rejoint ton
+compte BipAgents quand tu te connectes dans l'app avec cette adresse (le code reçu par e-mail prouve qu'elle est à
+toi). Si ce compte a déjà un abonnement, le second n'y est pas rattaché et Kerfy Studio te contacte pour en rembourser
+un.
 
 Utiliser BipAgents avec ton propre ordinateur ou ton propre serveur reste gratuit et n'est pas concerné par ces
 conditions.
@@ -52,7 +53,7 @@ conditions.
 
 ## 3. Ce que comprend un forfait
 
-| Forfait | Personnes | Serveur | Prix TTC dans l'app (App Store, Google Play) | Prix TTC sur le site bipagents.com |
+| Forfait | Personnes | Serveur | Prix TTC dans l'app (App Store, Google Play) | Prix TTC sur le site bipagents.com, en euros |
 |---|---|---|---|---|
 | Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 6,99 € par mois ou 69,90 € par an | 6,49 € par mois ou 64,90 € par an |
 | Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 11,99 € par mois ou 119,90 € par an | 10,99 € par mois ou 109,90 € par an |
@@ -60,6 +61,19 @@ conditions.
 
 L'abonnement annuel coûte 10 mois pour 12 et se paie en une fois pour les 12 mois. Les prix du site sont plus bas que
 ceux des stores.
+
+**Les prix du site dans chaque monnaie.** Sur le site, chaque monnaie a ses propres prix, fixés par Kerfy Studio (ce
+ne sont pas des conversions) : la page des prix te propose celle de ton pays, tu peux en choisir une autre, et la page
+de paiement de Stripe affiche le prix, la monnaie et le total que tu paies.
+
+| Monnaie | Pays | Solo, par mois / par an | Duo, par mois / par an | Famille, par mois / par an | Taxes |
+|---|---|---|---|---|---|
+| Euro (EUR) | Union européenne | 6,49 € / 64,90 € | 10,99 € / 109,90 € | 17,99 € / 179,90 € | TVA comprise |
+| Dollar américain (USD) | États-Unis | 6,49 US$ / 64,90 US$ | 10,99 US$ / 109,90 US$ | 17,99 US$ / 179,90 US$ | hors taxes : la taxe de vente de ton État s'ajoute au paiement |
+| Dollar canadien (CAD) | Canada | 8,99 CA$ / 89,90 CA$ | 14,99 CA$ / 149,90 CA$ | 24,99 CA$ / 249,90 CA$ | hors taxes : la TPS/TVH et, selon ta province, la TVP ou la TVQ s'ajoutent au paiement |
+| Livre sterling (GBP) | Royaume-Uni | 5,49 £ / 54,90 £ | 9,49 £ / 94,90 £ | 15,49 £ / 154,90 £ | TVA comprise |
+| Dollar de Singapour (SGD) | Singapour | 8,99 S$ / 89,90 S$ | 14,99 S$ / 149,90 S$ | 24,99 S$ / 249,90 S$ | GST comprise |
+| Shekel (ILS) | Israël | 24,90 ₪ / 249,00 ₪ | 42,90 ₪ / 429,00 ₪ | 69,90 ₪ / 699,00 ₪ | TVA comprise |
 
 Pour chaque personne du forfait :
 
@@ -105,9 +119,12 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 
 ## 5. Prix, paiement et renouvellement
 
-- Les prix ci-dessus sont en euros, toutes taxes comprises, pour la France. Dans un autre pays, le store affiche le prix
-  dans ta monnaie ; le prix affiché au moment de l'achat est celui que tu paies. Sur le site, la page de paiement
-  affiche le prix toutes taxes comprises, avec les taxes de ton pays.
+- Les prix ci-dessus sont en euros, toutes taxes comprises, pour la France. Dans un autre pays, le store affiche le
+  prix dans ta monnaie ; le prix affiché au moment de l'achat est celui que tu paies. Sur le site, le prix est celui
+  de la monnaie choisie (tableau de la section 3) : toutes taxes comprises en euros, en livres sterling, en dollars de
+  Singapour et en shekels, avec la TVA ou la GST de ton pays ; hors taxes en dollars américains et canadiens, la taxe
+  de vente de ton État ou de ta province étant ajoutée par la page de paiement, qui affiche le total avant que tu
+  paies. Un abonnement reste dans la monnaie de son achat.
 - L'abonnement est **mensuel ou annuel, sans engagement** : il se renouvelle tout seul chaque mois ou chaque année
   jusqu'à ce que tu le résilies. Le store prélève au début de chaque période d'abonnement (Apple peut le faire jusqu'à
   24 heures avant) ; sur le site, Stripe prélève ta carte au début de chaque période.
