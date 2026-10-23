@@ -166,6 +166,16 @@ quand la personne l'a demandé, dans la limite de `[jobs] direct_budget_eur` (�
 de passer la suite en tâche de fond (`handoff = false` le coupe) ; le pont écrit
 `long run: handing over to a background task (steer)` dans le journal.
 
+Les fiches (achats, abonnements, contrats, papiers, réservations) peuvent être remplies depuis une archive d'un agent :
+`bipagents archive extract <agent> --archive <id> --sample 50` lit 50 documents probables avec le modèle de l'agent et
+affiche ce qu'il ajouterait et l'estimation pour toute l'archive, sans rien écrire ; `--run --budget <€>` les remplit
+ensuite (une tâche de fond, en pause au plafond), puis les nouveaux documents sont lus chaque nuit. `--model <id>`
+choisit un autre modèle du fournisseur de l'agent pour ce passage (avec `--price-in`/`--price-out`, € par million de
+jetons ; un modèle sur la machine est gratuit). `[archive_records]` : `models = [{id, label, price_in, price_out}]`
+proposés dans l'app, `unknown_price_in`/`unknown_price_out` (3 € / 15 € par défaut, pour que le plafond tienne),
+`sample_cap_eur` (1), `nightly_cap_eur` (0,05 par nuit et par archive). Le texte des documents part chez le fournisseur
+du modèle.
+
 ## 5. Lancer au démarrage
 
 **macOS (Mac mini)** : deux LaunchAgents.
