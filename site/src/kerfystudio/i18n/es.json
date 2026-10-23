@@ -1,13 +1,16 @@
 {
  "meta": {
-  "title": "Kerfy Studio — herramientas de IA que se quedan en casa",
-  "description": "Kerfy Studio es un estudio independiente francés. Nuestra primera app, BipAgents, pone tus propios agentes de IA en tu bolsillo."
+  "title": "Kerfy Studio — apps útiles, privadas y cercanas",
+  "description": "Kerfy Studio es un pequeño estudio francés. Hacemos BipAgents, tus propios agentes de IA, y Tablée, las comidas de la semana en familia. Alojado en Europa, sin anuncios ni rastreo."
  },
  "nav": {
-  "support": "Soporte"
+  "support": "Soporte",
+  "apps": "Nuestras apps",
+  "studio": "El estudio",
+  "contact": "Contacto"
  },
  "foot": {
-  "about": "Kerfy Studio es un estudio independiente que hace BipAgents, la app de tus propios agentes de IA.",
+  "about": "Kerfy Studio es un pequeño estudio francés que hace BipAgents y Tablée.",
   "privacy": "Privacidad",
   "terms": "Condiciones de uso",
   "offer": "Condiciones de la oferta todo incluido",
@@ -16,28 +19,86 @@
   "fine": "Ni cookies ni rastreadores en este sitio."
  },
  "home": {
-  "kicker": "Estudio independiente",
-  "title": "Hacemos herramientas de IA que se quedan en casa.",
-  "lede": "Kerfy Studio es un pequeño estudio francés. Nuestra primera app, BipAgents, pone tus propios agentes de IA en tu bolsillo: funcionan en tu servidor, con el modelo que elijas, sin cuenta y sin rastreo.",
-  "productKicker": "Nuestra app",
-  "product": "Tus agentes de IA, en casa, en tu bolsillo. Escríbeles, háblales, pasa a Live: actúan con tu permiso. Construida sobre Hermes Agent.",
-  "productCta": "Descubrir BipAgents",
+  "kicker": "Estudio independiente · Francia",
+  "title": "Apps útiles, privadas y cercanas.",
+  "lede": "Kerfy Studio es un pequeño estudio francés. Hacemos apps que ayudan en el día a día, guardan tus datos en Europa y no viven ni de la publicidad ni del rastreo.",
+  "appsKicker": "Nuestras apps",
+  "appsTitle": "Dos apps para el día a día.",
+  "bip": {
+   "tag": "Agentes de IA",
+   "pitch": "Tus propios agentes de IA, los Bips: reservan, ordenan tu correo, llevan tu agenda y tu Cuaderno, y te preguntan antes de actuar. Construido sobre Hermes Agent.",
+   "points": [
+    "Escribe, habla o pasa a Live",
+    "Tu espacio en Europa, que no leemos",
+    "Código abierto (MIT)"
+   ],
+   "cta": "Descubrir BipAgents"
+  },
+  "tablee": {
+   "tag": "Comidas en familia",
+   "pitch": "Los menús de la semana pensados para tu familia, recetas ajustadas a quien come y una lista de la compra compartida entre vuestros móviles.",
+   "points": [
+    "Un perfil familiar: alergias, gustos, restricciones",
+    "Menús semanales, raciones adaptadas al hogar",
+    "Lista de la compra sincronizada, para marcar en la tienda",
+    "Tus propias recetas, e importación con ayuda de la IA"
+   ],
+   "cta": "Descubrir Tablée",
+   "mockTitle": "Esta semana",
+   "family": "2 adultos · 2 niños",
+   "m1": [
+    "Lun · cena",
+    "Gratinado de calabacín"
+   ],
+   "m2": [
+    "Mar · cena",
+    "Curry de garbanzos"
+   ],
+   "m3": [
+    "Mié · comida",
+    "Quiche de puerros"
+   ],
+   "list": "Compra · compartida",
+   "i1": "Calabacines",
+   "i2": "Leche de coco",
+   "i3": "Puerros"
+  },
+  "valuesTitle": "Cómo trabajamos",
   "values": [
    {
-    "title": "Privada por diseño",
-    "text": "Tus datos se quedan en tu servidor. No vemos tus conversaciones, y nuestros sitios no tienen cookies ni rastreadores."
+    "title": "Privado por diseño",
+    "text": "Tus datos están para ayudarte, no para perfilarte. Sin publicidad, sin reventa, sin rastreadores en nuestros sitios."
    },
    {
-    "title": "Abierta",
-    "text": "El código de nuestras apps es público, con licencia MIT: cualquiera puede leerlo, comprobarlo y mejorarlo."
+    "title": "Alojado en Europa",
+    "text": "Nuestros servidores están en la Unión Europea, y el RGPD se aplica a todo lo que hacemos."
    },
    {
-    "title": "Sencilla",
-    "text": "Un comando para instalar, un código QR para conectar y una demo para probarla sin instalar nada."
+    "title": "Abierto",
+    "text": "El código de BipAgents es público, con licencia MIT: cualquiera puede leerlo, comprobarlo y mejorarlo."
+   },
+   {
+    "title": "Para toda la familia",
+    "text": "Apps sencillas y cercanas, en español, inglés, francés y alemán."
    }
   ],
+  "companyTitle": "La empresa",
+  "companyText": "Kerfy Studio desarrolla y publica sus apps en el App Store y Google Play.",
+  "rows": {
+   "name": "Denominación",
+   "form": "Forma jurídica",
+   "formValue": "Société par actions simplifiée (SAS), Francia",
+   "capital": "Capital social",
+   "address": "Domicilio social",
+   "rcs": "Registro",
+   "vat": "NIF-IVA intracomunitario",
+   "president": "Presidente",
+   "contact": "Contacto",
+   "support": "Soporte"
+  },
   "contactTitle": "Hablemos.",
-  "contactText": "¿Una pregunta, una colaboración, una idea? Lo leemos todo."
+  "contactText": "¿Una pregunta, una colaboración, prensa? Escríbenos, lo leemos todo.",
+  "supportLine": "¿Una pregunta sobre una app?"
  },
  "support": {
   "kicker": "Soporte",
@@ -88,5 +149,9 @@
   ],
   "whoTitle": "Quiénes somos",
   "who": "Kerfy Studio · <mark class=\"todo\">[dirección del domicilio social]</mark> · <mark class=\"todo\">[número de teléfono]</mark> · support@kerfystudio.com"
+ },
+ "store": {
+  "soon": "Muy pronto en",
+  "get": "Descárgalo en"
  }
 }

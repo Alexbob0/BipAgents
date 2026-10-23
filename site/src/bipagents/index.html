@@ -20,7 +20,7 @@
 <link rel="preload" href="/assets/nunito.ttf" as="font" type="font/ttf" crossorigin>
 <link rel="stylesheet" href="/assets/site.css?v={{version}}">
 </head>
-<body>
+<body data-checkout="{{checkoutstate}}">
 <a class="skip" href="#main">{{a11y.skip}}</a>
 
 <header class="top" id="top">
@@ -30,8 +30,9 @@
   </a>
   <nav class="top-links" aria-label="{{a11y.nav}}">
     <a href="#demo">{{nav.demo}}</a>
-    <a href="#bips">{{nav.bips}}</a>
-    <a href="#privacy">{{nav.privacy}}</a>
+    <a href="#day">{{nav.features}}</a>
+    <a href="#private">{{nav.privacy}}</a>
+    <a href="#pricing">{{nav.pricing}}</a>
     <a href="#faq">{{nav.faq}}</a>
   </nav>
   <div class="top-actions">
@@ -39,8 +40,9 @@
       <summary aria-label="{{a11y.language}}">{{lang.short}}</summary>
       <div class="lang-menu">{{langmenu}}</div>
     </details>
-    <a class="pill pill-ink small" href="#install">{{nav.cta}}</a>
+    <a class="pill pill-ink small" href="#pricing">{{nav.cta}}</a>
   </div>
+  <div class="progress" aria-hidden="true"><i></i></div>
 </header>
 
 <main id="main">
@@ -59,24 +61,24 @@
     </h1>
     <p class="lede">{{hero.lede}}</p>
     <div class="cta-row">
-      <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">App Store</span></span>
-      <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">Google Play</span></span>
+      <a class="pill pill-buy" href="#pricing">{{hero.cta}} <span aria-hidden="true">→</span></a>
       <a class="pill pill-soft" href="#demo">{{hero.watch}} <span aria-hidden="true">↓</span></a>
     </div>
+    <p class="hero-price">{{hero.price}}</p>
     <ul class="trust">
-      <li>{{hero.trust1}}</li><li>{{hero.trust2}}</li><li>{{hero.trust3}}</li>
+      <li>{{hero.trust1}}</li><li>{{hero.trust2}}</li><li>{{hero.trust3}}</li><li>{{hero.trust4}}</li>
     </ul>
   </div>
 
   <div class="hero-stage" aria-hidden="true">
     <div class="halo"></div>
-    <div class="phone phone-hero">
+    <div class="phone phone-hero" data-tilt>
       <div class="phone-screen"><img src="/assets/shots/home-{{lang}}.jpg" alt="" width="900" height="1957" fetchpriority="high"></div>
     </div>
-    <div class="float-bip fb-1" data-bip="wellness" data-interactive></div>
-    <div class="float-bip fb-2" data-bip="finance" data-interactive></div>
-    <div class="float-bip fb-3" data-bip="home" data-interactive></div>
-    <div class="float-bip fb-4" data-bip="creative" data-interactive></div>
+    <div class="float-bip fb-1" data-bip="wellness" data-interactive data-parallax="-0.12"></div>
+    <div class="float-bip fb-2" data-bip="finance" data-interactive data-parallax="0.1"></div>
+    <div class="float-bip fb-3" data-bip="home" data-interactive data-parallax="0.16"></div>
+    <div class="float-bip fb-4" data-bip="creative" data-interactive data-parallax="-0.08"></div>
     <div class="toasts">
       <div class="toast" data-cat="daily"><span class="toast-bip" data-bip-static="daily"></span><span><b>{{toast.1.from}}</b><small>{{toast.now}}</small><em>{{toast.1.text}}</em></span></div>
       <div class="toast" data-cat="finance"><span class="toast-bip" data-bip-static="finance"></span><span><b>{{toast.2.from}}</b><small>{{toast.now}}</small><em>{{toast.2.text}}</em></span></div>
@@ -89,145 +91,141 @@
 <!-- ============================================================ MARQUEE -->
 <div class="marquee" aria-hidden="true"><div class="marquee-track">{{marquee}}{{marquee}}</div></div>
 
-<!-- ============================================================ DEMO -->
+<!-- ============================================================ DEMO (the app's own demo scenarios) -->
 <section class="section demo-section" id="demo">
   <div class="demo-grid">
     <div class="demo-copy reveal">
       <p class="kicker">{{demo.kicker}}</p>
       <h2>{{demo.title}}</h2>
       <p class="sub">{{demo.sub}}</p>
-      <div class="tabs" role="tablist">
-        <button class="tab active" role="tab" aria-selected="true" data-scenario="book_table">
+      <div class="tabs" role="tablist" aria-label="{{demo.tabs}}">
+        <button class="tab active" role="tab" aria-selected="true" aria-controls="chat" data-scenario="book_table">
           <span class="tab-bip" data-bip-static="daily"></span>{{demo.tab1}}</button>
-        <button class="tab" role="tab" aria-selected="false" data-scenario="heating">
-          <span class="tab-bip" data-bip-static="home"></span>{{demo.tab2}}</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="walk">
+          <span class="tab-bip" data-bip-static="daily"></span>{{demo.tab2}}</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="runs_weeks">
+          <span class="tab-bip" data-bip-static="wellness"></span>{{demo.tab3}}</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="heating">
+          <span class="tab-bip" data-bip-static="home"></span>{{demo.tab4}}</button>
       </div>
       <ul class="checks">
         <li>{{demo.point1}}</li><li>{{demo.point2}}</li><li>{{demo.point3}}</li>
       </ul>
     </div>
     <div class="chat-wrap reveal">
-      <div class="chat" aria-live="off">
+      <div class="chat" id="chat" role="tabpanel" aria-label="{{demo.chatLabel}}">
         <div class="chat-head">
           <span class="chat-avatar" data-bip-chat></span>
           <span class="chat-title"><span><b class="chat-name"></b> <span class="ai">{{ai}}</span></span><small>{{demo.chatSub}}</small></span>
           <button class="replay" type="button" aria-label="{{demo.replay}}">↻</button>
         </div>
         <div class="chat-body"></div>
-        <div class="chat-input"><span>{{demo.placeholder}}</span><i class="mic"></i></div>
+        <div class="chat-input" aria-hidden="true"><span>{{demo.placeholder}}</span><i class="mic"></i></div>
       </div>
     </div>
   </div>
 </section>
 
-
-<!-- ============================================================ BIPS -->
-<section class="section bips-section" id="bips">
+<!-- ============================================================ A DAY WITH THE BIPS (scroll story) -->
+<section class="section day-section" id="day">
   <div class="section-head reveal">
-    <p class="kicker">{{bips.kicker}}</p>
-    <h2>{{bips.title}}</h2>
-    <p class="sub">{{bips.sub}}</p>
+    <p class="kicker">{{day.kicker}}</p>
+    <h2>{{day.title}}</h2>
+    <p class="sub">{{day.sub}}</p>
   </div>
-  <div class="bip-grid reveal">
-    {{bipcards}}
-  </div>
-  <p class="hint reveal">{{bips.hint}}</p>
-</section>
+  <div class="day">
+    <div class="day-stage" aria-hidden="true">
+      <div class="phone phone-day">
+        <div class="phone-screen day-screen">
+          <div class="day-status"><b class="day-clock">7:30</b><span class="day-sig"><i></i><i></i><i></i><i></i></span></div>
 
+          <div class="scene" data-scene="0">
+            <div class="s-notif"><span class="s-ic" data-bip-static="daily"></span><span><b>{{day.s1.from}}</b><em>{{day.s1.notif}}</em></span></div>
+            <div class="s-pod">
+              <div class="s-pod-bips"><span data-bip-static="daily"></span><span data-bip-static="wellness"></span></div>
+              <b>{{day.s1.card}}</b><small>{{day.s1.meta}}</small>
+              <div class="s-pod-bar"><span class="s-play"></span><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
 
-<!-- ============================================================ WHY IT'S PRIVATE (the apps' PrivacyDiagram) -->
-<section class="section compare-section" id="private">
-  <div class="section-head reveal">
-    <p class="kicker">{{compare.kicker}}</p>
-    <h2>{{compare.title}}</h2>
-  </div>
-  <figure class="compare reveal" role="img" aria-label="{{compare.a11y}}">
-    <div class="cmp-row cmp-usual">
-      <p class="cmp-title"><span class="cmp-dot cmp-grey" aria-hidden="true">▦</span>{{compare.usual}}</p>
-      <div class="cmp-flow" aria-hidden="true">
-        <div class="cmp-node cmp-small"><svg class="cmp-pic" viewBox="0 0 30 50" width="30" height="50"><rect x="1.25" y="1.25" width="27.5" height="47.5" rx="7" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/><rect x="8" y="17" width="14" height="6" rx="3" fill="var(--blue)"/><rect x="8" y="27" width="14" height="6" rx="3" fill="var(--muted)" opacity=".5"/></svg><b>{{compare.you}}</b></div>
-        <div class="cmp-arrow cmp-arrow-grey"><i></i></div>
-        <div class="cmp-node cmp-wide"><svg class="cmp-pic" viewBox="0 0 112 62" width="112" height="62"><rect x="54.5" y="0" width="3" height="8" rx="1.5" fill="#6B7489"/><rect x="1.25" y="8.25" width="109.5" height="52.5" rx="9" fill="var(--ground2)" stroke="#6B7489" stroke-width="2.5"/><g><rect x="12" y="16" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="31" y="16" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="50" y="16" width="14" height="8" rx="3" fill="#3CC37A"/><rect x="69" y="16" width="14" height="8" rx="3" fill="#4F7CFF"/><rect x="88" y="16" width="14" height="8" rx="3" fill="#F6B826"/><rect x="12" y="30" width="14" height="8" rx="3" fill="#8E6CF5"/><rect x="31" y="30" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="50" y="30" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="69" y="30" width="14" height="8" rx="3" fill="#3CC37A"/><rect x="88" y="30" width="14" height="8" rx="3" fill="#4F7CFF"/><rect x="12" y="44" width="14" height="8" rx="3" fill="#F2649E"/><rect x="31" y="44" width="14" height="8" rx="3" fill="#8E6CF5"/><rect x="50" y="44" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="69" y="44" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="88" y="44" width="14" height="8" rx="3" fill="#3CC37A"/></g></svg><b>{{compare.theirServers}}</b><small>{{compare.everyones}}</small></div>
-        <div class="cmp-arrow cmp-arrow-grey"><i></i></div>
-        <div class="cmp-node cmp-side"><span class="cmp-badge cmp-violet">🧠</span><b>{{compare.theirAi}}</b><small>{{compare.mayTrain}}</small></div>
+          <div class="scene" data-scene="1">
+            <div class="s-head"><span class="s-ic" data-bip-static="daily"></span><b>{{day.s2.head}}</b></div>
+            <div class="s-mail"><span class="s-dot coral"></span><span><b>{{day.s2.m1}}</b><small>{{day.s2.m1s}}</small></span></div>
+            <div class="s-mail"><span class="s-dot violet"></span><span><b>{{day.s2.m2}}</b><small>{{day.s2.m2s}}</small></span></div>
+            <div class="s-mail"><span class="s-dot teal"></span><span><b>{{day.s2.m3}}</b><small>{{day.s2.m3s}}</small></span></div>
+            <div class="s-rest">{{day.s2.rest}}</div>
+            <div class="s-chip">🗓️ {{day.s2.agenda}}</div>
+          </div>
+
+          <div class="scene" data-scene="2">
+            <div class="s-carnet">
+              <p class="s-kind">📓 {{day.s3.kind}}</p>
+              <h4>✈️ {{day.s3.title}}</h4>
+              <p class="s-status"><b>{{day.s3.statusT}}</b>{{day.s3.status}}</p>
+              <p class="s-sec">{{day.s3.nextT}}</p>
+              <p class="s-task"><i></i>{{day.s3.next1}}</p>
+              <p class="s-task done"><i></i>{{day.s3.next2}}</p>
+              <p class="s-sec">{{day.s3.budgetT}}</p>
+              <div class="s-budget"><span style="--w:96%"></span></div>
+              <p class="s-small">{{day.s3.budget}}</p>
+              <p class="s-sec">{{day.s3.docsT}}</p>
+              <div class="s-docs"><span>📄 {{day.s3.doc1}}</span><span>🧾 {{day.s3.doc2}}</span></div>
+            </div>
+          </div>
+
+          <div class="scene" data-scene="3">
+            <div class="s-desk">
+              <div class="s-desk-bar"><i></i><i></i><i></i><span>{{day.s4.url}}</span></div>
+              <div class="s-desk-page"><b></b><b class="w2"></b><span class="s-field"></span><span class="s-field"></span><span class="s-btn"></span><em class="s-cursor"></em></div>
+            </div>
+            <div class="s-live"><span class="s-rec"></span>{{day.s4.live}}</div>
+            <span class="s-take">✋ {{day.s4.take}}</span>
+          </div>
+
+          <div class="scene" data-scene="4">
+            <div class="s-approve">
+              <p class="s-small">🔒 {{day.s5.head}}</p>
+              <b>{{day.s5.title}}</b>
+              <code>{{day.s5.detail}}</code>
+              <div class="s-btns"><span class="on">{{control.once}}</span><span>{{control.session}}</span><span>{{control.deny}}</span></div>
+            </div>
+          </div>
+
+          <div class="scene" data-scene="5">
+            <div class="s-head"><span class="s-ic" data-bip-static="finance"></span><b>{{day.s6.head}}</b></div>
+            <div class="s-task-card">
+              <b>{{day.s6.title}}</b>
+              <div class="s-progress"><span></span></div>
+              <p class="s-small">{{day.s6.progress}}</p>
+              <p class="s-budget-line">💶 {{day.s6.budget}}</p>
+            </div>
+            <div class="s-chip">✅ {{day.s6.done}}</div>
+          </div>
+
+          <div class="scene" data-scene="6">
+            <div class="s-head"><span class="s-ic" data-bip-static="home"></span><b>{{day.s7.head}}</b></div>
+            <div class="s-list">
+              <p><i class="tick"></i>{{day.s7.i1}}<span data-bip-static="daily"></span></p>
+              <p><i></i>{{day.s7.i2}}<span data-bip-static="wellness"></span></p>
+              <p><i></i>{{day.s7.i3}}<span data-bip-static="creative"></span></p>
+              <p class="new"><i></i>{{day.s7.i4}}<span data-bip-static="learning"></span></p>
+            </div>
+            <div class="s-chip">👨‍👩‍👧‍👦 {{day.s7.chip}}</div>
+          </div>
+        </div>
       </div>
+      <div class="day-bip" data-bip="daily"></div>
     </div>
-    <div class="cmp-row cmp-bip">
-      <p class="cmp-title"><span class="cmp-dot cmp-green" aria-hidden="true">🔒</span>BipAgents</p>
-      <div class="cmp-flow" aria-hidden="true">
-        <div class="cmp-node cmp-small"><svg class="cmp-pic" viewBox="0 0 30 50" width="30" height="50"><rect x="1.25" y="1.25" width="27.5" height="47.5" rx="7" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/><rect x="8" y="17" width="14" height="6" rx="3" fill="var(--blue)"/><rect x="8" y="27" width="14" height="6" rx="3" fill="var(--muted)" opacity=".5"/></svg><b>{{compare.you}}</b></div>
-        <div class="cmp-arrow cmp-arrow-green"><i></i></div>
-        <div class="cmp-node cmp-wide"><span class="cmp-house"><svg viewBox="0 0 64 58" width="64" height="58"><path d="M32 1 L63 24 L58 24 L58 57 L6 57 L6 24 L1 24 Z" fill="var(--card)" stroke="var(--green-deep)" stroke-width="2.5" stroke-linejoin="round"/></svg><i data-bip-static="wellness"></i><em>🔒</em></span><b>{{compare.yourPlace}}</b><small>{{compare.yoursAlone}}</small></div>
-        <div class="cmp-arrow cmp-arrow-pink cmp-both"><i></i></div>
-        <div class="cmp-node cmp-side"><span class="cmp-badge cmp-pink">✦</span><b>{{compare.theAi}}</b><small>{{compare.readsToAnswer}}</small></div>
-      </div>
-      <p class="cmp-kerfy"><b>Kerfy Studio</b> · {{compare.kerfy}}</p>
-    </div>
-  </figure>
-  <ul class="cmp-lines reveal">
-    <li><span aria-hidden="true">🏠</span>{{compare.line1}}</li>
-    <li><span aria-hidden="true">🙈</span>{{compare.line2}}</li>
-    <li><span aria-hidden="true">🧳</span>{{compare.line3}}</li>
-  </ul>
-  <p class="cmp-note reveal">{{compare.note}} <a href="{{compare.href}}">{{compare.more}}</a></p>
-</section>
 
-<!-- ============================================================ PRIVACY -->
-<section class="section privacy-section" id="privacy">
-  <div class="privacy reveal">
-    <div class="section-head left">
-      <p class="kicker light">{{privacy.kicker}}</p>
-      <h2>{{privacy.title}}</h2>
-      <p class="sub">{{privacy.sub}}</p>
-    </div>
-    <div class="own">
-      <article class="own-card"><span class="own-icon" aria-hidden="true">☁️</span><h3>{{privacy.own1.title}} <span class="soon">{{privacy.soon}}</span></h3><p>{{privacy.own1.text}}</p></article>
-      <article class="own-card"><span class="own-icon" aria-hidden="true">🛠️</span><h3>{{privacy.own2.title}}</h3><p>{{privacy.own2.text}}</p></article>
-      <article class="own-card"><span class="own-icon" aria-hidden="true">✦</span><h3>{{privacy.own3.title}}</h3><p>{{privacy.own3.text}}</p></article>
-    </div>
-    <div class="flow" aria-hidden="true">
-      <div class="node node-phone"><span class="node-icon">📱</span><b>{{privacy.phone}}</b></div>
-      <div class="pipe"><span>{{privacy.link}}</span><i></i></div>
-      <div class="node node-server"><span class="node-bips"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="finance"></i></span><b>{{privacy.server}}</b><small>{{privacy.serverSub}}</small></div>
-      <div class="pipe"><span>{{privacy.model}}</span><i></i></div>
-      <div class="node node-model"><span class="node-icon">✦</span><b>{{privacy.modelName}}</b><small>{{privacy.modelSub}}</small></div>
-    </div>
-    <div class="nope"><span class="nope-x">✕</span>{{privacy.nope}}</div>
-    <ul class="chips">
-      <li>{{privacy.chip1}}</li><li>{{privacy.chip2}}</li><li>{{privacy.chip3}}</li><li>{{privacy.chip4}}</li>
-    </ul>
-  </div>
-</section>
-
-<!-- ============================================================ INSTALL -->
-<section class="section install-section" id="install">
-  <div class="section-head reveal">
-    <p class="kicker">{{install.kicker}}</p>
-    <h2>{{install.title}}</h2>
-    <p class="sub">{{install.sub}}</p>
-  </div>
-  <div class="terminal reveal">
-    <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
-    <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
-<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span><span class="out o4 qr">▄▄▄▄▄ ▄ ▄▄ ▄▄▄▄▄
-█ ▄ █ ▀█▄ █ ▄ █
-█▄▄▄█ █▀▄ █▄▄▄█  {{install.out4}}</span></code></pre>
-    <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
-  </div>
-  <p class="windows reveal">{{install.windows}} <code>irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex</code></p>
-  <ol class="steps reveal">
-    <li><span class="n">1</span><div><h3>{{install.step1.title}}</h3><p>{{install.step1.text}}</p></div></li>
-    <li><span class="n">2</span><div><h3>{{install.step2.title}}</h3><p>{{install.step2.text}}</p></div></li>
-    <li><span class="n">3</span><div><h3>{{install.step3.title}}</h3><p>{{install.step3.text}}</p></div></li>
-  </ol>
-  <div class="hermes-note reveal">
-    <span class="hn-icon" aria-hidden="true">🧩</span>
-    <p>{{install.hermes}}</p>
-  </div>
-  <div class="extras reveal">
-    <div class="extra"><b>{{install.extra1.title}}</b><p>{{install.extra1.text}}</p></div>
-    <div class="extra"><b>{{install.extra2.title}}</b><p>{{install.extra2.text}}</p></div>
-    <div class="extra"><b>{{install.extra3.title}}</b><p>{{install.extra3.text}}</p></div>
+    <ol class="day-steps">
+      <li class="day-step" data-step="0" data-time="7:30" data-cat="daily"><span class="day-time">7:30</span><h3>{{day.s1.title}}</h3><p>{{day.s1.text}}</p></li>
+      <li class="day-step" data-step="1" data-time="9:00" data-cat="daily"><span class="day-time">9:00</span><h3>{{day.s2.title}}</h3><p>{{day.s2.text}}</p></li>
+      <li class="day-step" data-step="2" data-time="12:30" data-cat="learning"><span class="day-time">12:30</span><h3>{{day.s3.title2}}</h3><p>{{day.s3.text}}</p></li>
+      <li class="day-step" data-step="3" data-time="15:00" data-cat="work"><span class="day-time">15:00</span><h3>{{day.s4.title}}</h3><p>{{day.s4.text}}</p></li>
+      <li class="day-step" data-step="4" data-time="15:02" data-cat="daily"><span class="day-time">15:02</span><h3>{{day.s5.title2}}</h3><p>{{day.s5.text}}</p></li>
+      <li class="day-step" data-step="5" data-time="18:00" data-cat="finance"><span class="day-time">18:00</span><h3>{{day.s6.title2}}</h3><p>{{day.s6.text}}</p></li>
+      <li class="day-step" data-step="6" data-time="20:00" data-cat="home"><span class="day-time">20:00</span><h3>{{day.s7.title}}</h3><p>{{day.s7.text}}</p></li>
+    </ol>
   </div>
 </section>
 
@@ -242,12 +240,12 @@
     </div>
     <div class="studio">
       <div class="sun" aria-hidden="true"></div>
-      <div class="hosts">
+      <div class="hosts" aria-hidden="true">
         <div class="host" data-host="0"><div class="host-bip" data-bip="daily"></div><span>{{podcast.host1}}</span></div>
         <div class="host" data-host="1"><div class="host-bip" data-bip="wellness"></div><span>{{podcast.host2}}</span></div>
       </div>
       <div class="player">
-        <button class="play" type="button" aria-label="{{podcast.play}}"><span class="i-play"></span></button>
+        <button class="play" type="button" aria-label="{{podcast.play}}" data-pause="{{podcast.pause}}"><span class="i-play"></span></button>
         <div class="wave" aria-hidden="true">{{wavebars}}</div>
         <span class="time">0:00</span>
       </div>
@@ -255,7 +253,6 @@
     </div>
   </div>
 </section>
-
 
 <!-- ============================================================ LIVE -->
 <section class="section live-section" id="live">
@@ -277,46 +274,143 @@
   </div>
 </section>
 
-
-<!-- ============================================================ CONTROL -->
-<section class="section control-section" id="control">
+<!-- ============================================================ BIPS -->
+<section class="section bips-section" id="bips">
   <div class="section-head reveal">
-    <p class="kicker">{{control.kicker}}</p>
-    <h2>{{control.title}}</h2>
-    <p class="sub">{{control.sub}}</p>
+    <p class="kicker">{{bips.kicker}}</p>
+    <h2>{{bips.title}}</h2>
+    <p class="sub">{{bips.sub}}</p>
   </div>
-  <div class="cards3">
-    <article class="card-x reveal" style="--tone: var(--coral-tint)">
-      <div class="approval">
-        <p class="approval-title">{{control.approvalTitle}}</p>
-        <code>{{control.approvalCommand}}</code>
-        <div class="approval-buttons"><span class="on">{{control.once}}</span><span>{{control.session}}</span><span>{{control.deny}}</span></div>
+  <div class="bip-grid reveal">
+    {{bipcards}}
+  </div>
+  <p class="hint reveal">{{bips.hint}}</p>
+</section>
+
+<!-- ============================================================ WHY IT'S PRIVATE (the apps' PrivacyDiagram, animated) -->
+<section class="section compare-section" id="private">
+  <div class="section-head reveal">
+    <p class="kicker">{{compare.kicker}}</p>
+    <h2>{{compare.title}}</h2>
+    <p class="sub">{{compare.sub}}</p>
+  </div>
+  <figure class="compare reveal" role="img" aria-label="{{compare.a11y}}">
+    <div class="cmp-row cmp-usual">
+      <p class="cmp-title"><span class="cmp-dot cmp-grey" aria-hidden="true">▦</span>{{compare.usual}}</p>
+      <div class="cmp-flow" aria-hidden="true">
+        <div class="cmp-node cmp-small"><svg class="cmp-pic" viewBox="0 0 30 50" width="30" height="50"><rect x="1.25" y="1.25" width="27.5" height="47.5" rx="7" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/><rect x="8" y="17" width="14" height="6" rx="3" fill="var(--blue)"/><rect x="8" y="27" width="14" height="6" rx="3" fill="var(--muted)" opacity=".5"/></svg><b>{{compare.you}}</b></div>
+        <div class="cmp-arrow cmp-arrow-grey"><i></i><span class="packet"></span></div>
+        <div class="cmp-node cmp-wide cmp-crowd"><svg class="cmp-pic" viewBox="0 0 112 62" width="112" height="62"><rect x="54.5" y="0" width="3" height="8" rx="1.5" fill="#6B7489"/><rect x="1.25" y="8.25" width="109.5" height="52.5" rx="9" fill="var(--ground2)" stroke="#6B7489" stroke-width="2.5"/><g class="crowd"><rect x="12" y="16" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="31" y="16" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="50" y="16" width="14" height="8" rx="3" fill="#3CC37A"/><rect x="69" y="16" width="14" height="8" rx="3" fill="#4F7CFF"/><rect x="88" y="16" width="14" height="8" rx="3" fill="#F6B826"/><rect x="12" y="30" width="14" height="8" rx="3" fill="#8E6CF5"/><rect x="31" y="30" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="50" y="30" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="69" y="30" width="14" height="8" rx="3" fill="#3CC37A"/><rect x="88" y="30" width="14" height="8" rx="3" fill="#4F7CFF"/><rect x="12" y="44" width="14" height="8" rx="3" fill="#F2649E"/><rect x="31" y="44" width="14" height="8" rx="3" fill="#8E6CF5"/><rect x="50" y="44" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="69" y="44" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="88" y="44" width="14" height="8" rx="3" class="mine" fill="#4F7CFF"/></g></svg><b>{{compare.theirServers}}</b><small>{{compare.everyones}}</small></div>
+        <div class="cmp-arrow cmp-arrow-grey"><i></i><span class="packet"></span></div>
+        <div class="cmp-node cmp-side"><span class="cmp-badge cmp-violet">🧠</span><b>{{compare.theirAi}}</b><small>{{compare.mayTrain}}</small></div>
       </div>
-      <h3>{{control.card1.title}}</h3>
-      <p>{{control.card1.text}}</p>
-    </article>
-    <article class="card-x reveal" style="--tone: var(--blue-tint)">
-      <div class="desk">
-        <div class="desk-bar"><i></i><i></i><i></i><span>{{control.deskUrl}}</span></div>
-        <div class="desk-page"><b></b><b></b><b class="short"></b><em class="cursor"></em></div>
-        <span class="desk-take">{{control.take}}</span>
+    </div>
+    <div class="cmp-row cmp-bip">
+      <p class="cmp-title"><span class="cmp-dot cmp-green" aria-hidden="true">🔒</span>BipAgents</p>
+      <div class="cmp-flow" aria-hidden="true">
+        <div class="cmp-node cmp-small"><svg class="cmp-pic" viewBox="0 0 30 50" width="30" height="50"><rect x="1.25" y="1.25" width="27.5" height="47.5" rx="7" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/><rect x="8" y="17" width="14" height="6" rx="3" fill="var(--blue)"/><rect x="8" y="27" width="14" height="6" rx="3" fill="var(--muted)" opacity=".5"/></svg><b>{{compare.you}}</b></div>
+        <div class="cmp-arrow cmp-arrow-green"><i></i><span class="packet"></span></div>
+        <div class="cmp-node cmp-wide"><span class="cmp-house"><svg viewBox="0 0 64 58" width="64" height="58"><path d="M32 1 L63 24 L58 24 L58 57 L6 57 L6 24 L1 24 Z" fill="var(--card)" stroke="var(--green-deep)" stroke-width="2.5" stroke-linejoin="round"/></svg><i data-bip-static="wellness"></i><em>🔒</em></span><b>{{compare.yourPlace}}</b><small>{{compare.yoursAlone}}</small></div>
+        <div class="cmp-arrow cmp-arrow-pink cmp-both"><i></i><span class="packet"></span></div>
+        <div class="cmp-node cmp-side"><span class="cmp-badge cmp-pink">✦</span><b>{{compare.theAi}}</b><small>{{compare.readsToAnswer}}</small></div>
       </div>
-      <h3>{{control.card2.title}}</h3>
-      <p>{{control.card2.text}}</p>
-    </article>
-    <article class="card-x reveal" style="--tone: var(--violet-tint)">
-      <div class="team">
-        <span class="team-bip" data-bip-static="wellness"></span>
-        <span class="team-line"><span class="team-dot"></span></span>
-        <span class="team-bip" data-bip-static="finance"></span>
-        <p>{{control.teamLine}}</p>
+      <p class="cmp-kerfy"><b>Kerfy Studio</b> · {{compare.kerfy}}</p>
+    </div>
+  </figure>
+  <ul class="cmp-lines reveal">
+    <li><span aria-hidden="true">🇪🇺</span>{{compare.line0}}</li>
+    <li><span aria-hidden="true">🏠</span>{{compare.line1}}</li>
+    <li><span aria-hidden="true">🙈</span>{{compare.line2}}</li>
+    <li><span aria-hidden="true">🧳</span>{{compare.line3}}</li>
+  </ul>
+  <p class="cmp-note reveal">{{compare.note}} <a href="{{compare.href}}">{{compare.more}}</a></p>
+</section>
+
+<!-- ============================================================ PRICING -->
+<section class="section pricing-section" id="pricing">
+  <div class="section-head reveal">
+    <p class="kicker">{{pricing.kicker}}</p>
+    <h2>{{pricing.title}}</h2>
+    <p class="sub">{{pricing.sub}}</p>
+  </div>
+  <div class="pricing reveal">
+    <div class="period" role="radiogroup" aria-label="{{pricing.periodLabel}}">
+      <button type="button" role="radio" aria-checked="false" data-period="month">{{pricing.monthly}}</button>
+      <button type="button" role="radio" aria-checked="true" data-period="year">{{pricing.yearly}} <span class="gift">{{pricing.yearlyBadge}}</span></button>
+    </div>
+    <div class="plans" role="radiogroup" aria-label="{{pricing.planLabel}}">
+      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo" style="--main:#FF7B5C;--tint:var(--coral-tint)">
+        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i></span>
+        <span class="plan-name">{{pricing.solo.name}}</span>
+        <span class="plan-who">{{pricing.solo.who}}</span>
+        <span class="plan-price"><b data-price="solo">{{p.web.year.solo}}</b><small data-unit>{{pricing.perYear}}</small></span>
+        <span class="plan-equiv" data-equiv="solo">{{pricing.equivPrefix}} {{p.web.yearmonth.solo}} {{pricing.perMonthShort}}</span>
+        <span class="plan-store" data-store="solo">{{pricing.inApp}} {{p.store.year.solo}}</span>
+        <span class="plan-blurb">{{pricing.solo.blurb}}</span>
+      </button>
+      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="duo" style="--main:#4F7CFF;--tint:var(--blue-tint)">
+        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="work"></i></span>
+        <span class="plan-name">{{pricing.duo.name}}</span>
+        <span class="plan-who">{{pricing.duo.who}}</span>
+        <span class="plan-price"><b data-price="duo">{{p.web.year.duo}}</b><small data-unit>{{pricing.perYear}}</small></span>
+        <span class="plan-equiv" data-equiv="duo">{{pricing.equivPrefix}} {{p.web.yearmonth.duo}} {{pricing.perMonthShort}}</span>
+        <span class="plan-store" data-store="duo">{{pricing.inApp}} {{p.store.year.duo}}</span>
+        <span class="plan-blurb">{{pricing.duo.blurb}}</span>
+      </button>
+      <button type="button" class="plan plan-best" role="radio" aria-checked="true" data-plan="famille" style="--main:#3CC37A;--tint:var(--green-tint)">
+        <span class="plan-flag">{{pricing.famille.flag}}</span>
+        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="finance"></i><i data-bip-static="home"></i></span>
+        <span class="plan-name">{{pricing.famille.name}}</span>
+        <span class="plan-who">{{pricing.famille.who}}</span>
+        <span class="plan-price"><b data-price="famille">{{p.web.year.famille}}</b><small data-unit>{{pricing.perYear}}</small></span>
+        <span class="plan-equiv" data-equiv="famille">{{pricing.equivPrefix}} {{p.web.yearmonth.famille}} {{pricing.perMonthShort}}</span>
+        <span class="plan-store" data-store="famille">{{pricing.inApp}} {{p.store.year.famille}}</span>
+        <span class="plan-blurb">{{pricing.famille.blurb}}</span>
+      </button>
+    </div>
+
+    <div class="checkout">
+      <div class="checkout-copy">
+        <p class="sum" aria-live="polite"><span class="sum-plan">{{pricing.famille.name}}</span> · <span class="sum-price">{{p.web.year.famille}}</span><span class="sum-unit"> {{pricing.perYear}}</span></p>
+        <p class="save" aria-live="polite"></p>
+        <p class="trial">🎁 {{pricing.trial}}</p>
       </div>
-      <h3>{{control.card3.title}}</h3>
-      <p>{{control.card3.text}}</p>
-    </article>
+      <div class="checkout-act">{{buy}}</div>
+    </div>
+
+    <div class="included">
+      <h3>{{pricing.includedTitle}}</h3>
+      <ul>
+        <li><span aria-hidden="true">🤖</span>{{pricing.inc1}}</li>
+        <li><span aria-hidden="true">✦</span>{{pricing.inc2}}</li>
+        <li><span aria-hidden="true">🎙️</span>{{pricing.inc3}}</li>
+        <li><span aria-hidden="true">📓</span>{{pricing.inc4}}</li>
+        <li><span aria-hidden="true">🛡️</span>{{pricing.inc5}}</li>
+        <li><span aria-hidden="true">🇪🇺</span>{{pricing.inc6}}</li>
+      </ul>
+    </div>
+    <p class="fine-print">{{pricing.fine}} <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{pricing.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
   </div>
 </section>
 
+<!-- ============================================================ YOUR OWN COMPUTER (free) -->
+<section class="section install-section" id="install">
+  <div class="selfhost reveal">
+    <div class="selfhost-copy">
+      <p class="kicker">{{install.kicker}}</p>
+      <h2 class="h2-small">{{install.title}}</h2>
+      <p class="sub">{{install.sub}}</p>
+      <p class="hermes-line">🧩 {{install.hermes}}</p>
+    </div>
+    <div class="terminal">
+      <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
+      <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
+<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span></code></pre>
+      <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
+    </div>
+  </div>
+  <p class="windows reveal">{{install.windows}} <code>irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex</code> · <a href="https://github.com/Alexbob0/BipAgents/blob/main/docs/self-hosting.md" rel="noopener">{{install.guide}}</a></p>
+</section>
 
 <!-- ============================================================ FAQ -->
 <section class="section faq-section" id="faq">
@@ -332,9 +426,11 @@
     <details><summary>{{faq.5.q}}</summary><p>{{faq.5.a}}</p></details>
     <details><summary>{{faq.6.q}}</summary><p>{{faq.6.a}}</p></details>
     <details><summary>{{faq.7.q}}</summary><p>{{faq.7.a}}</p></details>
+    <details><summary>{{faq.8.q}}</summary><p>{{faq.8.a}}</p></details>
+    <details><summary>{{faq.9.q}}</summary><p>{{faq.9.a}}</p></details>
+    <details><summary>{{faq.10.q}}</summary><p>{{faq.10.a}}</p></details>
   </div>
 </section>
-
 
 <!-- ============================================================ END -->
 <section class="section end-section">
@@ -347,10 +443,9 @@
     <h2>{{end.title}}</h2>
     <p class="sub">{{end.sub}}</p>
     <div class="cta-row center">
-      <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">App Store</span></span>
-      <span class="store"><span class="store-kicker">{{store.soon}}</span><span class="store-name">Google Play</span></span>
-      <a class="pill pill-ink" href="https://github.com/Alexbob0/BipAgents" rel="noopener">GitHub</a>
+      <a class="pill pill-buy" href="#pricing">{{end.cta}} <span aria-hidden="true">→</span></a>
     </div>
+    <div class="cta-row center end-stores">{{storebadges}}</div>
   </div>
 </section>
 
@@ -361,11 +456,13 @@
     <div>
       <a class="brand" href="{{home}}"><span class="brand-bip" data-bip-static="daily"></span><span class="brand-name">Bip<b>Agents</b></span></a>
       <p>{{foot.about}}</p>
+      <p class="foot-company">{{foot.publisher}} {{company}} · <a href="mailto:{{contact}}">{{contact}}</a></p>
     </div>
     <nav aria-label="{{foot.legal}}">
       <b>{{foot.legal}}</b>
-      <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a>
+      <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{foot.offer}}</a>
       <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a>
+      <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a>
       <a href="https://kerfystudio.com/mentions-legales/">{{foot.notice}}</a>
       <a href="https://kerfystudio.com{{legalprefix}}/support/">{{foot.support}}</a>
     </nav>
@@ -374,10 +471,16 @@
       <a href="https://github.com/Alexbob0/BipAgents" rel="noopener">GitHub</a>
       <a href="/play/">{{foot.play}}</a>
       <a href="https://github.com/NousResearch/hermes-agent" rel="noopener">Hermes Agent</a>
+      <a href="https://kerfystudio.com{{legalprefix}}/">Kerfy Studio</a>
     </nav>
   </div>
   <p class="foot-fine">{{foot.fine}}</p>
 </footer>
+
+<div class="sticky-buy" aria-hidden="true">
+  <span class="sb-copy"><b class="sb-plan">{{pricing.famille.name}}</b><span class="sb-price">{{p.web.yearmonth.famille}} {{pricing.perMonthShort}}</span></span>
+  <a class="pill pill-buy small" href="#pricing" tabindex="-1">{{nav.cta}}</a>
+</div>
 
 <script type="application/json" id="site-data">{{data}}</script>
 <script type="module" src="/assets/site.js?v={{version}}"></script>

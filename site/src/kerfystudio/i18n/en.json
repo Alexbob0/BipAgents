@@ -1,13 +1,16 @@
 {
  "meta": {
-  "title": "Kerfy Studio — AI tools that stay at home",
-  "description": "Kerfy Studio is an independent French studio. Our first app, BipAgents, puts your own AI agents in your pocket."
+  "title": "Kerfy Studio — useful, private, friendly apps",
+  "description": "Kerfy Studio is a small French studio. We make BipAgents, your own AI agents, and Tablée, the family's weekly meals. Hosted in Europe, no ads, no tracking."
  },
  "nav": {
-  "support": "Support"
+  "support": "Support",
+  "apps": "Our apps",
+  "studio": "The studio",
+  "contact": "Contact"
  },
  "foot": {
-  "about": "Kerfy Studio is an independent studio making BipAgents, the app for your own AI agents.",
+  "about": "Kerfy Studio is a small French studio that makes BipAgents and Tablée.",
   "privacy": "Privacy",
   "terms": "Terms of use",
   "offer": "All-included offer terms",
@@ -16,28 +19,86 @@
   "fine": "No cookies and no trackers on this site."
  },
  "home": {
-  "kicker": "Independent studio",
-  "title": "We make AI tools that stay at home.",
-  "lede": "Kerfy Studio is a small French studio. Our first app, BipAgents, puts your own AI agents in your pocket: they run on your server, with the model you choose, with no account and no tracking.",
-  "productKicker": "Our app",
-  "product": "Your AI agents, at home, in your pocket. Text them, talk to them, go Live: they act with your OK. Built on Hermes Agent.",
-  "productCta": "Discover BipAgents",
+  "kicker": "Independent studio · France",
+  "title": "Useful, private, friendly apps.",
+  "lede": "Kerfy Studio is a small French studio. We build apps that help in everyday life, keep your data in Europe, and live off neither ads nor tracking.",
+  "appsKicker": "Our apps",
+  "appsTitle": "Two apps for everyday life.",
+  "bip": {
+   "tag": "AI agents",
+   "pitch": "Your own AI agents, the Bips: they book things, sort your email, keep your calendar and your Notebook, and ask before they act. Built on Hermes Agent.",
+   "points": [
+    "Write, talk or go Live",
+    "Your space in Europe, which we don’t read",
+    "Open-source code (MIT)"
+   ],
+   "cta": "Discover BipAgents"
+  },
+  "tablee": {
+   "tag": "Family meals",
+   "pitch": "The week’s menus planned for your family, recipes scaled to who’s eating, and a shopping list shared between your phones.",
+   "points": [
+    "A family profile: allergies, likes, constraints",
+    "Weekly menus, portions fitted to the household",
+    "A synced shopping list to tick off in the shop",
+    "Your own recipes, and AI-assisted import"
+   ],
+   "cta": "Discover Tablée",
+   "mockTitle": "This week",
+   "family": "2 adults · 2 children",
+   "m1": [
+    "Mon · dinner",
+    "Courgette gratin"
+   ],
+   "m2": [
+    "Tue · dinner",
+    "Chickpea curry"
+   ],
+   "m3": [
+    "Wed · lunch",
+    "Leek quiche"
+   ],
+   "list": "Shopping · shared",
+   "i1": "Courgettes",
+   "i2": "Coconut milk",
+   "i3": "Leeks"
+  },
+  "valuesTitle": "How we work",
   "values": [
    {
     "title": "Private by design",
-    "text": "Your data stays on your server. We don’t see your conversations, and our sites have no cookies and no trackers."
+    "text": "Your data is there to serve you, not to profile you. No advertising, no reselling, no trackers on our sites."
+   },
+   {
+    "title": "Hosted in Europe",
+    "text": "Our servers are in the European Union, and the GDPR applies to everything we do."
    },
    {
     "title": "Open",
-    "text": "Our apps’ code is public under the MIT license: anyone can read it, check it and improve it."
+    "text": "BipAgents’ code is public under the MIT license: anyone can read it, check it and improve it."
    },
    {
-    "title": "Simple",
-    "text": "One command to install, a QR code to connect, and a demo to try it without installing anything."
+    "title": "For the whole family",
+    "text": "Simple, friendly apps in English, French, German and Spanish."
    }
   ],
+  "companyTitle": "The company",
+  "companyText": "Kerfy Studio develops and publishes its apps on the App Store and Google Play.",
+  "rows": {
+   "name": "Company name",
+   "form": "Legal form",
+   "formValue": "Société par actions simplifiée (SAS), France",
+   "capital": "Share capital",
+   "address": "Registered office",
+   "rcs": "Registration",
+   "vat": "EU VAT number",
+   "president": "President",
+   "contact": "Contact",
+   "support": "Support"
+  },
   "contactTitle": "Let’s talk.",
-  "contactText": "A question, a partnership, an idea? We read everything."
+  "contactText": "A question, a partnership, press? Write to us, we read everything.",
+  "supportLine": "A question about an app?"
  },
  "support": {
   "kicker": "Support",
@@ -88,5 +149,9 @@
   ],
   "whoTitle": "Who we are",
   "who": "Kerfy Studio · <mark class=\"todo\">[registered office address]</mark> · <mark class=\"todo\">[phone number]</mark> · support@kerfystudio.com"
+ },
+ "store": {
+  "soon": "Coming soon to",
+  "get": "Download on"
  }
 }
