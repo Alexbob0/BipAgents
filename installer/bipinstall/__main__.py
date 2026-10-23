@@ -282,6 +282,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return family_main(argv[1:])
     if argv and argv[0] == "sandbox":   # « sandbox adopt <agent> »: its hand-made mounts into volumes (the bridge)
         return sandbox_main(argv[1:])
+    if argv and argv[0] == "archive":   # « archive add <agent> <folder> »: a folder searched on demand (the bridge)
+        return archive_main(argv[1:])
     parser =argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
                                      "(`bipinstall uninstall` removes it; `bipinstall family add <name>` prepares a "
                                      "family member's install on this server; `bipinstall update` brings it up to date; `bipinstall voice` connects your own voice "
@@ -791,6 +793,37 @@ def sandbox_main(argv: List[str]) -> int:
         return 1
     command = rustbridge.cli(Path.home()) + ["sandbox", "adopt", "--agent", args.agent, "--config", str(config)]
     command += ["--dry-run"] * args.dry_run + ["--undo"] * args.undo
+    return subprocess.run(command, cwd=REPO / "bridge", check=False).returncode
+
+
+def archive_main(argv: List[str]) -> int:
+    """`bipagents archive add|list|remove|refresh <agent> [folder]`: the bridge's `archive` (bridge-rs/src/archives/),
+    with this account's config: a big folder of documents an agent searches where it is, instead of a copy."""
+    parser = argparse.ArgumentParser(prog="bipagents archive",
+                                     description="Connect a folder of documents to an agent: indexed on this machine, "
+                                                 "searched by the agent when you ask about the past")
+    parser.add_argument("action", choices=["add", "list", "remove", "refresh"])
+    parser.add_argument("agent", help="the agent (its id, e.g. vie)")
+    parser.add_argument("folder", nargs="?", help="add: the folder (/home/…, or /workspace/… as the agent sees it)")
+    parser.add_argument("--name", help="add: the archive's name in the app (default: the folder's)")
+    parser.add_argument("--id", help="remove, refresh: the archive's id (from list)")
+    parser.add_argument("--overview", action="store_true", help="add: a yearly overview page in the Carnet")
+    args = parser.parse_args(argv)
+    config = Path.home() / ".config" / "bipagents" / "bridge.toml"
+    if not config.exists():
+        say(f"No BipAgents install in this account ({config} is missing): run this command in the account it was installed in.")
+        return 1
+    if args.action == "add" and not args.folder:
+        say("Give the folder: bipagents archive add <agent> <folder>")
+        return 2
+    try:
+        rustbridge.ensure(Path.home())
+    except rustbridge.RustBridgeError as exc:
+        say(f"{exc}. Try `bipagents update` again in a few minutes.")
+        return 1
+    command = rustbridge.cli(Path.home()) + ["archive", args.action, "--agent", args.agent, "--config", str(config)]
+    command += ["--folder", args.folder] * bool(args.folder) + ["--name", args.name] * bool(args.name)
+    command += ["--id", args.id] * bool(args.id) + ["--overview"] * args.overview
     return subprocess.run(command, cwd=REPO / "bridge", check=False).returncode
 
 
