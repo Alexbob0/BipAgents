@@ -288,6 +288,18 @@ pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
         &format!("BIP_ALLOW={allow}"),
         "-e",
         &format!("BIP_PORT={PROXY_PORT}"),
+        // the agents' sites (sandbox_sites.rs): read-only here; and where it reports what it refused. Root of the
+        // rootless container: this account, which owns both folders (no capability needed).
+        "--user",
+        "0:0",
+        "-v",
+        &format!("{}:/bip/policy:ro,z", crate::sandbox_sites::policy_dir(config).display()),
+        "-v",
+        &format!("{}:/bip/reports:z", crate::sandbox_sites::reports_dir(config).display()),
+        "-e",
+        &format!("BIP_POLICY=/bip/policy/{}", crate::sandbox_sites::POLICY_FILE),
+        "-e",
+        &format!("BIP_REPORTS=/bip/reports/{}", crate::sandbox_sites::REPORTS_FILE),
         "--entrypoint",
         "python3",
     ]);
@@ -308,6 +320,7 @@ async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<Stri
         .map_err(|e| format!("network not created: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
         tracing::info!(target: "bipbridge::sandbox", network = NETWORK, subnet = %config.sandbox.subnet, "sandboxes' network created (no route out)");
     }
+    crate::sandbox_sites::ensure_policy(config).map_err(|e| format!("the agents' sites not written: {e}"))?;
     run(proxy_command(config, podman), none)
         .await
         .map_err(|e| format!("registries' proxy not started: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
@@ -466,7 +479,11 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     // The code an adopted agent runs (its skills, its bin…), refreshed from the folders the person keeps it in.
     let (c, name) = (config.clone(), agent.name.clone());
     tokio::task::spawn_blocking(move || crate::sandbox_adopt::refresh(&c, &name)).await?;
-    let proxy = network(&config, run).await.ok();
+    // its own credentials on the proxy (sandbox_sites.rs): the proxy knows it, and lets it reach its sites
+    let proxy = match network(&config, run).await {
+        Ok(base) => Some(crate::sandbox_sites::proxy_url(&config, &agent.name, &base)?),
+        Err(_) => None,
+    };
     let net = match &proxy {
         Some(url) => Net::Registries(url),
         None => Net::Closed,
@@ -681,6 +698,7 @@ pub async fn forget(config: &Config, agent: &str, run: &Run) {
         }
     }
     forget_state(config, agent);
+    crate::sandbox_sites::forget(config, agent);
 }
 
 // --- the files in the volume ---------------------------------------------------------------------------------------
@@ -855,6 +873,9 @@ pub fn tools() -> Vec<Value> {
             "annotations": {"readOnlyHint": false, "destructiveHint": true, "openWorldHint": false},
         }),
     ]
+    .into_iter()
+    .chain(crate::sandbox_sites::tools())
+    .collect()
 }
 
 /// A relative path made of plain names (no `..`, no root, no hidden `.`/`..`): None otherwise.
@@ -1101,8 +1122,9 @@ ones shared with you at /lecture/<agent> (read-only). shared_files_list, shared_
 them too; the person approves each shared_files_delete. To give files to one of your \
 other agents, put them in /envoi then use send_files_to_agent (bipagents tools). To give a file to your person, \
 put it in /envoi and end your reply with a line MEDIA:/envoi/<name>; a page goes through create_page. Your \
-sandbox reaches the package registries (pip, npm…) and nothing else on the internet: use your web tools for the \
-rest.";
+sandbox reaches the package registries (pip, npm…) and the sites your person allowed (sandbox_sites lists them); \
+another site your programs need: sandbox_sites_request asks your person (a site refused to your programs is asked \
+about by itself). For anything else on the internet, use your web tools.";
 
 /// The file tools' MCP endpoint (same token as the bridge's other tools).
 async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
@@ -1143,6 +1165,17 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
                 Some(Value::Object(map)) => map.clone(),
                 _ => Dict::new(),
             };
+            if [crate::sandbox_sites::LIST, crate::sandbox_sites::REQUEST].contains(&name.as_str()) {
+                let (c, a) = (config.clone(), agent.clone());
+                let (text, is_error, card) =
+                    tokio::task::spawn_blocking(move || crate::sandbox_sites::call(&c, &a, &name, &arguments))
+                        .await
+                        .map_err(anyhow::Error::from)?;
+                if let Some(card) = card {
+                    crate::sandbox_sites::notify(&state, &agent, &card).await;
+                }
+                return Ok(reply(Value::Object(tool_text(&text, is_error))));
+            }
             let result = tokio::task::spawn_blocking(move || call(&config, &agent, &name, &arguments))
                 .await
                 .map_err(anyhow::Error::from)?;

@@ -32,6 +32,8 @@ pub const APPROVAL_BODY: &str = "Approbation requise";
 pub const SUBTASK_BODY: &str = "Sous-tâche terminée";
 pub const FAMILY_BODY: &str = "Message de ta famille";
 pub const EMAIL_HELD_BODY: &str = "Veut écrire à quelqu'un de nouveau : ton accord est demandé";
+/// A site the agent's programs want to reach (sandbox_sites.rs), without the site when previews are off.
+pub const SITE_BODY: &str = "Veut joindre un site depuis ses programmes : ton accord est demandé";
 
 /// Python's truthiness of an optional str (`if x:`).
 fn given(value: Option<&str>) -> Option<&str> {
@@ -513,6 +515,15 @@ impl PushService {
             reply_payload(agent, &self.title(agent), "session:email", None, preview, None, EMAIL_HELD_BODY);
         payload.insert("email_held".into(), json!(held_id));
         self.fanout(agent, payload, "alert", 10, Some(format!("email:{held_id}"))).await
+    }
+
+    /// A site the agent's programs want to reach (sandbox_sites.rs): tapping opens the app's Boîte, where the card is.
+    pub async fn notify_site_request(&self, agent: &str, host: &str, id: &str) -> usize {
+        let line = format!("Veut joindre {host} depuis ses programmes");
+        let preview = if self.previews() { Some(line.as_str()) } else { None };
+        let mut payload = reply_payload(agent, &self.title(agent), "session:sites", None, preview, None, SITE_BODY);
+        payload.insert("site_request".into(), json!(id));
+        self.fanout(agent, payload, "alert", 10, Some(format!("site:{id}"))).await
     }
 
     /// `notify_silent(agent, reason, **extra)`.

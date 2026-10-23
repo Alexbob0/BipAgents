@@ -70,6 +70,7 @@ pub mod own_skills;
 pub mod peers;
 pub mod sandbox;
 pub mod sandbox_adopt;
+pub mod sandbox_sites;
 pub mod sent_files;
 pub mod services;
 pub mod shares;
