@@ -333,7 +333,20 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                         &s(arguments, "proposal"),
                         &who,
                     ) {
-                        Ok((task, reminder)) => {
+                        Ok(super::Added { task, reminder, existing: true, dated }) => {
+                            let due = if task.due.is_empty() { String::new() } else { format!(", due {}", task.due) };
+                            let date = if dated { " It had no date: it now has this one." } else { "" };
+                            let phone =
+                                if reminder { " It will also appear in the person's phone reminders." } else { "" };
+                            Ok(tool_text(
+                                &format!(
+                                    "Already in the Carnet as ^{}: {}{due}. Not added again.{date}{phone}",
+                                    task.id, task.title
+                                ),
+                                false,
+                            ))
+                        }
+                        Ok(super::Added { task, reminder, .. }) => {
                             let phone =
                                 if reminder { " It will also appear in the person's phone reminders." } else { "" };
                             let due = if task.due.is_empty() { String::new() } else { format!(", due {}", task.due) };

@@ -1126,6 +1126,22 @@ pub fn commit(
     let mut fh = std::fs::OpenOptions::new().append(true).create(true).open(&log)?;
     fh.write_all((py::Dumps::new().unicode().dumps(&Value::Object(entry.clone())) + "\n").as_bytes())?;
     py::chmod(&log.to_string_lossy(), 0o600)?;
+    // a tasks page's change, whoever made it and however (a tool, the app, a restore, a page deleted): the tasks that
+    // left the Carnet take their phone reminders with them (moved under « Archivées » or to the other part: not gone)
+    if is_tasks_path(path) {
+        let gone: Vec<String> = {
+            let kept = task_ids_in(after.unwrap_or(""));
+            task_ids_in(before.unwrap_or("")).into_iter().filter(|id| !kept.contains(id)).collect()
+        };
+        if !gone.is_empty() {
+            let left = all_task_ids(config);
+            for task in gone.iter().filter(|t| !left.contains(*t)) {
+                if let Err(err) = remove_reminder(config, task) {
+                    tracing::warn!(task = %task, error = %format!("{err:#}"), "notebook task's reminder not removed");
+                }
+            }
+        }
+    }
     Ok(entry)
 }
 
@@ -1917,9 +1933,39 @@ pub fn due_date(due: &str) -> anyhow::Result<String> {
     Ok(m.as_str().to_string())
 }
 
+/// What `add_task` did.
+#[derive(Debug, Clone)]
+pub struct Added {
+    pub task: Task,
+    /// A phone reminder asked for.
+    pub reminder: bool,
+    /// The same open task was already there: it is returned, nothing added.
+    pub existing: bool,
+    /// That task had no date: it got this one.
+    pub dated: bool,
+}
+
+/// A task's title as « the same task » compares it: its `[[links]]` read as their names, folded (case, accents,
+/// punctuation, spaces).
+fn same_task_key(title: &str) -> String {
+    let plain = LINK.replace_all(title, |c: &regex::Captures| c[1].to_string());
+    fold(&plain)
+}
+
+/// A task line's keys: its whole title, and without the page link added at its end (« … [[Maison]] »).
+fn task_keys(title: &str) -> [String; 2] {
+    let bare = match title.trim_end().strip_suffix("]]").and_then(|t| t.rfind("[[").map(|i| &title[..i])) {
+        Some(head) => same_task_key(head),
+        None => same_task_key(title),
+    };
+    [same_task_key(title), bare]
+}
+
 /// A new task in the part's tasks page (`origin`: asked, own or accepted — accepted needs the proposal's id);
 /// with a date, it also becomes a phone reminder (when the person shares their reminders with this agent, or it is
-/// the person's own task). `due` may carry a time, which the phone gets.
+/// the person's own task). `due` may carry a time, which the phone gets. The same open task already there (same
+/// title once folded, same part, the same date or one of them without) is returned instead (`existing`): when it
+/// had no date it takes this one.
 #[allow(clippy::too_many_arguments)]
 pub fn add_task(
     config: &Config,
@@ -1930,7 +1976,7 @@ pub fn add_task(
     origin: &str,
     proposal: &str,
     who: &Who,
-) -> anyhow::Result<(Task, bool)> {
+) -> anyhow::Result<Added> {
     let _guard = lock();
     add_task_locked(config, part, title, due, page, origin, proposal, who)
 }
@@ -1945,7 +1991,7 @@ pub(crate) fn add_task_locked(
     origin: &str,
     proposal: &str,
     who: &Who,
-) -> anyhow::Result<(Task, bool)> {
+) -> anyhow::Result<Added> {
     let lang = fix_language(config)?;
     let w = words(&lang);
     let origin = if origin.trim().is_empty() { "asked" } else { origin.trim() };
@@ -1975,16 +2021,36 @@ pub(crate) fn add_task_locked(
             p
         }
     };
-    let existing = tasks_in(&doc.body, part, w.archived, &task_meta(&read_state(config)));
-    if let Some(same) = existing.iter().find(|t| !t.done && fold(&t.title).starts_with(&fold(&title)) && t.due == date)
-    {
-        return Ok((same.clone(), false));
-    }
     let mut title_line = title.clone();
     let page = page.trim();
     if !page.is_empty() && !title_line.contains("[[") {
         let target = find(config, &[part], page).map(|f| f.page.title).unwrap_or_else(|| file_name(page));
         title_line = format!("{title_line} [[{target}]]");
+    }
+    // the same open task already there (an agent filling the Carnet from its memory asks again): no second one
+    let existing = tasks_in(&doc.body, part, w.archived, &task_meta(&read_state(config)));
+    let wanted = [same_task_key(&title), same_task_key(&title_line)];
+    if let Some(same) = existing.iter().find(|t| {
+        !t.done
+            && !t.archived
+            && (t.due == date || t.due.is_empty() || date.is_empty())
+            && task_keys(&t.title).iter().any(|k| !k.is_empty() && wanted.contains(k))
+    }) {
+        let mut same = Task { links: links_in(&same.title), ..same.clone() };
+        if !same.id.is_empty() && same.due.is_empty() && !date.is_empty() {
+            // it had no date: it gets this one (and its phone reminder)
+            let mut lines = body_lines(&doc.body);
+            if let Some(index) = lines.iter().position(|l| Task::parse(l, part).is_some_and(|t| t.id == same.id)) {
+                same.due = date.clone();
+                lines[index] = same.render();
+                doc.body = lines.join("\n") + "\n";
+                doc.touch();
+                commit(config, part, &path, before.as_deref(), Some(&doc.render()), who, "task_due", &same.title)?;
+                let reminder = link_reminder(config, &same, due, who)?;
+                return Ok(Added { task: same, reminder, existing: true, dated: true });
+            }
+        }
+        return Ok(Added { task: same, reminder: false, existing: true, dated: false });
     }
     let task = Task {
         id: format!("t{}", py::token_hex(4)),
@@ -2029,7 +2095,7 @@ pub(crate) fn add_task_locked(
     })?;
     let task = Task { links: links_in(&task.title), ..task };
     let linked = if task.due.is_empty() { false } else { link_reminder(config, &task, due, who)? };
-    Ok((task, linked))
+    Ok(Added { task, reminder: linked, existing: false, dated: false })
 }
 
 /// A task done (or open again). `from_phone`: ticked on the phone (its reminder is already done: nothing is sent
@@ -2496,6 +2562,136 @@ fn links(state: &Dict) -> Dict {
     }
 }
 
+/// The task a reminder's notes carry the mark of (exactly: `^t12ab…` whole).
+fn marked_task(notes: &str) -> Option<String> {
+    MARK.captures(notes).and_then(|c| {
+        let end = c.get(0)?.end();
+        let next = notes[end..].chars().next();
+        (!next.is_some_and(|ch| ch.is_ascii_alphanumeric())).then(|| c[1].to_string())
+    })
+}
+
+/// The phone's open reminders (as it last shared them) carrying `task`'s mark: their ids.
+fn open_reminders_of(items: &[Value], task: &str) -> Vec<String> {
+    items
+        .iter()
+        .filter(|i| !i.get("completed").map(py::truthy).unwrap_or(false))
+        .filter(|i| marked_task(&tk::str_or_empty(i.get("notes"))).as_deref() == Some(task))
+        .map(|i| tk::str_or_empty(i.get("id")))
+        .filter(|id| !id.is_empty())
+        .collect()
+}
+
+fn shared_items(config: &Config) -> Vec<Value> {
+    match crate::reminders::read(config).get("items") {
+        Some(Value::Array(items)) => items.clone(),
+        _ => Vec::new(),
+    }
+}
+
+/// Whether `path` is a tasks page (in any of the Carnet's languages).
+fn is_tasks_path(path: &str) -> bool {
+    WORDS.iter().any(|w| w.tasks_path() == path)
+}
+
+/// The ids of the tasks in a tasks page's text, in order.
+fn task_ids_in(text: &str) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    for task in text.lines().filter_map(|l| Task::parse(l, Part::Main)) {
+        if !task.id.is_empty() && !ids.contains(&task.id) {
+            ids.push(task.id);
+        }
+    }
+    ids
+}
+
+/// Every task id in the Carnet: both parts, archived and done ones included.
+fn all_task_ids(config: &Config) -> HashSet<String> {
+    let mut ids = HashSet::new();
+    for part in [Part::Main, Part::Health] {
+        for w in &WORDS {
+            if let Some(text) = read_page_text(config, part, &w.tasks_path()) {
+                ids.extend(task_ids_in(&text));
+            }
+        }
+    }
+    ids
+}
+
+fn ask_removal(config: &Config, reminder: &str, task: &str) -> anyhow::Result<bool> {
+    let args = json!({"id": reminder, "mark": reminder_mark(task)});
+    Ok(crate::reminders::enqueue_once(config, "notebook", "remove", args)?.is_some())
+}
+
+/// A task gone from the Carnet (deleted, not moved): its add cancelled while it still waits for the phone, else the
+/// phone asked to remove its reminders (only those carrying its mark); its link dropped. Returns the requests made.
+fn remove_reminder(config: &Config, task: &str) -> anyhow::Result<usize> {
+    let link = links(&read_state(config)).get(task).cloned();
+    let cancelled = match &link {
+        Some(l) => crate::reminders::cancel_pending(config, &tk::str_or_empty(l.get("op")))?,
+        None => false,
+    };
+    let mut asked = 0;
+    if !cancelled {
+        let ids = open_reminders_of(&shared_items(config), task);
+        if ids.is_empty() && link.is_some() {
+            // added but not shared back yet: the phone finds it by its mark
+            asked += usize::from(ask_removal(config, "", task)?);
+        }
+        for id in ids {
+            asked += usize::from(ask_removal(config, &id, task)?);
+        }
+    }
+    if link.is_some() {
+        update_state(config, |s| {
+            let mut map = links(s);
+            map.remove(task);
+            s.insert("reminders".into(), Value::Object(map));
+        })?;
+    }
+    Ok(asked)
+}
+
+/// The reminders the Carnet's tasks left behind (before 2026-10-23 a task removed kept its reminder): a link to a
+/// task no longer in the Carnet removed with its reminder; on the phone's copy, the open reminders of this Carnet's
+/// tasks (those it made: a phone shared with several installs carries other Carnets' marks, never touched) whose
+/// task is gone, and all but one of several carrying the same task's mark. Idempotent (each request asked once).
+/// At the bridge's start, each night and after each phone share. Returns the requests made.
+pub fn clean_reminders(config: &Config) -> anyhow::Result<usize> {
+    if !root(config).exists() {
+        return Ok(0);
+    }
+    let _guard = lock();
+    clean_reminders_locked(config, &shared_items(config))
+}
+
+fn clean_reminders_locked(config: &Config, items: &[Value]) -> anyhow::Result<usize> {
+    let existing = all_task_ids(config);
+    let state = read_state(config);
+    let map = links(&state);
+    let mut asked = 0;
+    for task in map.keys().filter(|t| !existing.contains(*t)) {
+        asked += remove_reminder(config, task)?;
+    }
+    let ours: HashSet<String> = task_meta(&state).keys().chain(map.keys()).cloned().collect();
+    let mut kept: HashSet<String> = HashSet::new();
+    for item in items {
+        if item.get("completed").map(py::truthy).unwrap_or(false) {
+            continue;
+        }
+        let Some(task) = marked_task(&tk::str_or_empty(item.get("notes"))) else { continue };
+        let id = tk::str_or_empty(item.get("id"));
+        if !ours.contains(&task) || id.is_empty() {
+            continue;
+        }
+        if existing.contains(&task) && kept.insert(task.clone()) {
+            continue; // the task's one reminder
+        }
+        asked += usize::from(ask_removal(config, &id, &task)?);
+    }
+    Ok(asked)
+}
+
 /// A dated task's phone reminder asked for, once: when the phone shares its reminders (with this agent, or any for
 /// the person's own task).
 fn link_reminder(config: &Config, task: &Task, due: &str, who: &Who) -> anyhow::Result<bool> {
@@ -2540,9 +2736,10 @@ fn complete_reminder(config: &Config, task: &str) -> anyhow::Result<()> {
         return Ok(());
     }
     let data = crate::reminders::read(config);
-    let mark = reminder_mark(task);
     let item = match data.get("items") {
-        Some(Value::Array(items)) => items.iter().find(|i| tk::str_or_empty(i.get("notes")).contains(&mark)).cloned(),
+        Some(Value::Array(items)) => {
+            items.iter().find(|i| marked_task(&tk::str_or_empty(i.get("notes"))).as_deref() == Some(task)).cloned()
+        }
         _ => None,
     };
     match item {
@@ -2582,8 +2779,7 @@ pub fn reminders_synced(config: &Config, items: &[Value]) {
     let map = links(&state);
     for item in items {
         let notes = tk::str_or_empty(item.get("notes"));
-        let Some(c) = MARK.captures(&notes) else { continue };
-        let task = c[1].to_string();
+        let Some(task) = marked_task(&notes) else { continue };
         let completed = item.get("completed").map(py::truthy).unwrap_or(false);
         let link = map.get(&task).cloned().unwrap_or(json!({}));
         let result = if completed {
@@ -2603,6 +2799,10 @@ pub fn reminders_synced(config: &Config, items: &[Value]) {
         if let Err(err) = result.and(cleared.map(|_| ()).map_err(anyhow::Error::from)) {
             tracing::warn!(task = %task, error = %format!("{err:#}"), "notebook task not synced with its reminder");
         }
+    }
+    // what removed tasks left on the phone, and duplicates, taken off
+    if let Err(err) = clean_reminders_locked(config, items) {
+        tracing::warn!(error = %format!("{err:#}"), "notebook reminders not cleaned");
     }
 }
 
@@ -3207,9 +3407,10 @@ mod tests {
             add_task(&config, Part::Main, "Cadeau Marc", "2026-11-14", "Marc Dupont", "accepted", "q0", &who).is_err()
         );
         let id = propose(&config, "lea", "gift", "Cadeau pour Marc", "2026-11-14").unwrap();
-        let (task, _) =
+        let task =
             add_task(&config, Part::Main, "Cadeau pour Marc", "2026-11-14", "Marc Dupont", "accepted", &id, &who)
-                .unwrap();
+                .unwrap()
+                .task;
         assert_eq!(task.origin, "accepted");
         add_task(&config, Part::Main, "Appeler la banque", "2026-11-03", "", "asked", "", &who).unwrap();
         assert_eq!(open_tasks(&config, Part::Main)[0].title, "Appeler la banque");
@@ -3234,6 +3435,107 @@ mod tests {
             .contains("Pas de propositions de tâches pour les anniversaires"));
         propose(&config, "lea", "follow_up", "y", "").unwrap();
         assert!(propose(&config, "lea", "deadline", "z", "").is_err()); // 3 a week
+    }
+
+    fn queue_of(config: &Config) -> Vec<(String, String, Value)> {
+        match crate::reminders::read(config).get("queue") {
+            Some(Value::Array(q)) => q
+                .iter()
+                .map(|o| (tk::str_or_empty(o.get("op")), tk::str_or_empty(o.get("state")), o["args"].clone()))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn share_items(config: &Config, items: Value) {
+        let mut data = crate::reminders::read(config);
+        data.insert("items".into(), items);
+        crate::reminders::write(config, &data).unwrap();
+    }
+
+    #[test]
+    fn a_task_is_not_added_twice_and_takes_its_reminder_when_it_leaves() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        let mut data = Dict::new();
+        data.insert("agents".into(), json!(["lea"]));
+        crate::reminders::write(&config, &data).unwrap();
+        let who = lea();
+        // the same task asked again (case, accents, punctuation, the page's link): the first one returned
+        let first = add_task(&config, Part::Main, "Appeler le dentiste", "2026-11-03", "", "asked", "", &who).unwrap();
+        assert!(first.reminder && !first.existing);
+        let again =
+            add_task(&config, Part::Main, "appeler le DENTISTE !", "2026-11-03T10:00", "", "asked", "", &who).unwrap();
+        assert!(again.existing && !again.reminder && again.task.id == first.task.id);
+        let undated = add_task(&config, Part::Main, "Appeler le dentiste", "", "", "asked", "", &who).unwrap();
+        assert!(undated.existing && undated.task.id == first.task.id);
+        // another date, another title: other tasks
+        let next = add_task(&config, Part::Main, "Appeler le dentiste", "2026-12-03", "", "asked", "", &who).unwrap();
+        assert!(!next.existing);
+        let other = add_task(&config, Part::Main, "Appeler le garage", "2026-11-03", "", "asked", "", &who).unwrap();
+        assert!(!other.existing);
+        // without a date first, then with one: the date and its reminder added to the same task
+        let plain = add_task(&config, Part::Main, "Payer la cantine", "", "Maison", "asked", "", &who).unwrap();
+        let dated = add_task(&config, Part::Main, "Payer la cantine", "2026-11-06", "", "asked", "", &who).unwrap();
+        assert!(dated.existing && dated.dated && dated.reminder && dated.task.id == plain.task.id);
+        assert_eq!(tasks(&config, Part::Main).iter().filter(|t| t.title.starts_with("Payer")).count(), 1);
+        assert_eq!(queue_of(&config).len(), 4);
+        // removed while its add still waits: the add cancelled, nothing sent
+        edit(&config, &[Part::Main], "Tâches", "Appeler le garage", "", "", None, "", &who).unwrap();
+        let queue = queue_of(&config);
+        assert_eq!(queue.iter().filter(|(op, state, _)| op == "add" && state == "cancelled").count(), 1);
+        assert!(queue.iter().all(|(op, _, _)| op == "add"));
+        // on the phone (shared back): removed by its id and mark
+        let mark = reminder_mark(&first.task.id);
+        share_items(&config, json!([{"id": "r1", "title": "Appeler le dentiste", "notes": mark}]));
+        for (n, (op, _, _)) in queue_of(&config).iter().enumerate() {
+            if op == "add" {
+                let id = tk::str_or_empty(crate::reminders::read(&config)["queue"][n].get("id"));
+                let _ = crate::reminders::cancel_pending(&config, &id); // as if done by the phone
+            }
+        }
+        edit(&config, &[Part::Main], "Tâches", "Appeler le dentiste", "", "", None, "", &who).unwrap();
+        let removes: Vec<Value> =
+            queue_of(&config).into_iter().filter(|(op, _, _)| op == "remove").map(|(_, _, a)| a).collect();
+        assert_eq!(removes, vec![json!({"id": "r1", "mark": mark})]);
+        assert!(!links(&read_state(&config)).contains_key(&first.task.id));
+        // archived (moved): not gone, nothing asked
+        let before = queue_of(&config).len();
+        let text = read_page_text(&config, Part::Main, "Tâches/Tâches.md").unwrap();
+        let moved = text.replace(&next.task.render(), "") + &format!("\n## Archivées\n{}\n", next.task.render());
+        write_page(&config, Part::Main, "Tâches/Tâches.md", &moved, &Who::you(&config)).unwrap();
+        assert!(tasks(&config, Part::Main).iter().any(|t| t.id == next.task.id && t.archived));
+        assert_eq!(queue_of(&config).len(), before);
+        // the cleanup: an orphan link (removed before this fix), duplicates of one mark, another Carnet's mark
+        update_state(&config, |s| {
+            let mut map = links(s);
+            map.insert("t0000aaaa".into(), json!({"op": "gone", "part": "main", "complete": false}));
+            s.insert("reminders".into(), Value::Object(map));
+            let mut meta = task_meta(s);
+            meta.insert("t0000aaaa".into(), json!({"origin": "asked"}));
+            s.insert("tasks".into(), Value::Object(meta));
+        })
+        .unwrap();
+        let kept = reminder_mark(&next.task.id);
+        share_items(
+            &config,
+            json!([{"id": "r2", "notes": reminder_mark("t0000aaaa")}, {"id": "r3", "notes": kept},
+                   {"id": "r4", "notes": format!("x\n{kept}")}, {"id": "r5", "notes": reminder_mark("t9999ffff")},
+                   {"id": "r6", "notes": format!("{kept}0")}, {"id": "r7", "notes": kept, "completed": true}]),
+        );
+        assert_eq!(clean_reminders(&config).unwrap(), 2);
+        assert_eq!(clean_reminders(&config).unwrap(), 0); // asked once
+        let removes: Vec<String> = queue_of(&config)
+            .into_iter()
+            .filter(|(op, _, _)| op == "remove")
+            .map(|(_, _, a)| tk::str_or_empty(a.get("id")))
+            .collect();
+        assert_eq!(removes, vec!["r1", "r2", "r4"]);
+        assert!(!links(&read_state(&config)).contains_key("t0000aaaa"));
     }
 
     #[test]
