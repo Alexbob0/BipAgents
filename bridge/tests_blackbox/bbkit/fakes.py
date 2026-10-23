@@ -483,11 +483,28 @@ class FakeModel(Fake):
         self.chats: List[Dict[str, Any]] = []
         # the Carnet's nightly pass (its instructions start « You tidy »): the lines it answers
         self.notebook_lines: List[Dict[str, Any]] = []
+        # records from an archive (its instructions start « You extract precise records »): per document of the
+        # prompt, the records of the first word of `records_by_word` found in it; a document with « BROKEN » spoils the
+        # whole answer (no JSON)
+        self.records_by_word: Dict[str, List[Dict[str, Any]]] = {}
+
+    def records_answer(self, user: str) -> str:
+        documents = []
+        for n, part in enumerate(user.split("Document ")[1:], start=1):
+            if "BROKEN" in part:
+                return "Sorry, here it is: not JSON"
+            found = next((records for word, records in self.records_by_word.items() if word in part), [])
+            documents.append({"doc": n, "records": found})
+        return json.dumps({"documents": documents}, ensure_ascii=False)
 
     async def handle(self, seen: Seen) -> Response:
         if seen.path.endswith("/chat/completions"):
             body = seen.json()
             self.chats.append({"body": body, "authorization": seen.header("authorization")})
+            if body["messages"][0]["content"].startswith("You extract precise records"):
+                return JSONResponse({"choices": [{"message": {"content": self.records_answer(body["messages"][1]["content"])}}],
+                                     "usage": {"prompt_tokens": 2000, "completion_tokens": 200}},
+                                    status_code=self.status)
             if body["messages"][0]["content"].startswith("You tidy"):
                 content = "\n".join(json.dumps(line, ensure_ascii=False) for line in self.notebook_lines)
                 return JSONResponse({"choices": [{"message": {"content": content}}],
