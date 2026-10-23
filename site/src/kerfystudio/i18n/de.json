@@ -1,7 +1,7 @@
 {
  "meta": {
-  "title": "Kerfy Studio — nützliche, private, freundliche Apps",
-  "description": "Kerfy Studio ist ein kleines Studio aus Frankreich. Wir machen BipAgents, deine eigenen KI-Agenten, und Tablée, die Mahlzeiten der Woche für die Familie. Gehostet in Europa, ohne Werbung und Tracking."
+  "title": "Kerfy Studio — Apps statt Datenfabriken",
+  "description": "Kerfy Studio ist ein französisches Softwarestudio. Unsere Apps: BipAgents, KI-Agenten, die für Sie arbeiten, und Tablée, Familienessen ohne Kopfzerbrechen. In Europa gehostet, ohne Werbung und Tracking."
  },
  "nav": {
   "support": "Support",
@@ -20,23 +20,23 @@
  },
  "home": {
   "kicker": "Unabhängiges Studio · Frankreich",
-  "title": "Nützliche, private, freundliche Apps.",
-  "lede": "Kerfy Studio ist ein kleines Studio aus Frankreich. Wir bauen Apps, die im Alltag helfen, deine Daten in Europa lassen und weder von Werbung noch von Tracking leben.",
+  "title": "Wir bauen Apps.\nKeine Datenfabriken.",
+  "lede": "Kerfy Studio ist ein französisches Softwarestudio. Unsere Apps: BipAgents, KI-Agenten, die für Sie arbeiten, und Tablée, Familienessen ohne Kopfzerbrechen. Keine Werbung. Kein Tracking. Viel Kaffee.",
   "appsKicker": "Unsere Apps",
   "appsTitle": "Zwei Apps für den Alltag.",
   "bip": {
    "tag": "KI-Agenten",
-   "pitch": "Deine eigenen KI-Agenten, die Bips: Sie reservieren, sortieren deine Mails, führen Kalender und Notizbuch und fragen, bevor sie handeln. Gebaut auf Hermes Agent.",
+   "pitch": "Ihre eigenen KI-Agenten, die Bips: Sie reservieren, sortieren Ihre Mails, führen Kalender und Notizbuch und fragen, bevor sie handeln. Gebaut auf Hermes Agent.",
    "points": [
     "Schreiben, sprechen oder Live",
-    "Dein Bereich in Europa, den wir nicht lesen",
+    "Ihr Bereich in Europa, den wir nicht lesen",
     "Open-Source-Code (MIT)"
    ],
    "cta": "BipAgents entdecken"
   },
   "tablee": {
    "tag": "Familienessen",
-   "pitch": "Die Menüs der Woche für deine Familie geplant, Rezepte passend zu allen, die mitessen, und eine Einkaufsliste, die eure Handys teilen.",
+   "pitch": "Die Menüs der Woche für Ihre Familie geplant, Rezepte passend zu allen, die mitessen, und eine Einkaufsliste, die Ihre Handys teilen.",
    "points": [
     "Ein Familienprofil: Allergien, Vorlieben, Einschränkungen",
     "Wochenmenüs, Portionen passend zum Haushalt",
@@ -67,7 +67,7 @@
   "values": [
    {
     "title": "Privat von Grund auf",
-    "text": "Deine Daten sind dazu da, dir zu helfen, nicht, dich zu durchleuchten. Keine Werbung, kein Weiterverkauf, keine Tracker auf unseren Websites."
+    "text": "Ihre Daten sind dazu da, Ihnen zu helfen, nicht, Sie zu durchleuchten. Keine Werbung, kein Weiterverkauf, keine Tracker auf unseren Websites."
    },
    {
     "title": "Gehostet in Europa",

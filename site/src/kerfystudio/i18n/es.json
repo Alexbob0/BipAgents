@@ -1,7 +1,7 @@
 {
  "meta": {
-  "title": "Kerfy Studio — apps útiles, privadas y cercanas",
-  "description": "Kerfy Studio es un pequeño estudio francés. Hacemos BipAgents, tus propios agentes de IA, y Tablée, las comidas de la semana en familia. Alojado en Europa, sin anuncios ni rastreo."
+  "title": "Kerfy Studio — apps, no fábricas de datos",
+  "description": "Kerfy Studio es un estudio de software francés. Nuestras apps: BipAgents, agentes de IA que trabajan para usted, y Tablée, las comidas en familia, resueltas. Alojado en Europa, sin publicidad ni rastreo."
  },
  "nav": {
   "support": "Soporte",
@@ -20,28 +20,28 @@
  },
  "home": {
   "kicker": "Estudio independiente · Francia",
-  "title": "Apps útiles, privadas y cercanas.",
-  "lede": "Kerfy Studio es un pequeño estudio francés. Hacemos apps que ayudan en el día a día, guardan tus datos en Europa y no viven ni de la publicidad ni del rastreo.",
+  "title": "Creamos apps.\nNo fábricas de datos.",
+  "lede": "Kerfy Studio es un estudio de software francés. Nuestras apps: BipAgents, agentes de IA que trabajan para usted, y Tablée, las comidas en familia, resueltas. Cero anuncios. Cero rastreo. Mucho café.",
   "appsKicker": "Nuestras apps",
   "appsTitle": "Dos apps para el día a día.",
   "bip": {
    "tag": "Agentes de IA",
-   "pitch": "Tus propios agentes de IA, los Bips: reservan, ordenan tu correo, llevan tu agenda y tu Cuaderno, y te preguntan antes de actuar. Construido sobre Hermes Agent.",
+   "pitch": "Sus propios agentes de IA, los Bips: reservan, ordenan su correo, llevan su agenda y su Cuaderno, y le preguntan antes de actuar. Construido sobre Hermes Agent.",
    "points": [
     "Escribe, habla o pasa a Live",
-    "Tu espacio en Europa, que no leemos",
+    "Su espacio en Europa, que no leemos",
     "Código abierto (MIT)"
    ],
    "cta": "Descubrir BipAgents"
   },
   "tablee": {
    "tag": "Comidas en familia",
-   "pitch": "Los menús de la semana pensados para tu familia, recetas ajustadas a quien come y una lista de la compra compartida entre vuestros móviles.",
+   "pitch": "Los menús de la semana pensados para su familia, recetas ajustadas a quien come y una lista de la compra compartida entre sus móviles.",
    "points": [
     "Un perfil familiar: alergias, gustos, restricciones",
     "Menús semanales, raciones adaptadas al hogar",
     "Lista de la compra sincronizada, para marcar en la tienda",
-    "Tus propias recetas, e importación con ayuda de la IA"
+    "Sus propias recetas, e importación con ayuda de la IA"
    ],
    "cta": "Descubrir Tablée",
    "mockTitle": "Esta semana",
@@ -67,7 +67,7 @@
   "values": [
    {
     "title": "Privado por diseño",
-    "text": "Tus datos están para ayudarte, no para perfilarte. Sin publicidad, sin reventa, sin rastreadores en nuestros sitios."
+    "text": "Sus datos están para ayudarle, no para perfilarle. Sin publicidad, sin reventa, sin rastreadores en nuestros sitios."
    },
    {
     "title": "Alojado en Europa",

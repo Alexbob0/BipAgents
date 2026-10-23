@@ -260,7 +260,7 @@ def home_body(t: Dict, lang: str, cfg: Dict) -> str:
     return f"""<section class="hero">
   <div class="hero-copy reveal">
     <p class="kicker">{esc(h['kicker'])}</p>
-    <h1>{esc(h['title'])}</h1>
+    <h1>{'<br>'.join(esc(line) for line in h['title'].split(chr(10)))}</h1>
     <p class="lede">{esc(h['lede'])}</p>
   </div>
   <div class="hero-apps reveal" aria-hidden="true">

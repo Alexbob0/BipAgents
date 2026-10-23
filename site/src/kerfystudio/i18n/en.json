@@ -1,6 +1,6 @@
 {
  "meta": {
-  "title": "Kerfy Studio — useful, private, friendly apps",
+  "title": "Kerfy Studio — apps, not data factories",
   "description": "Kerfy Studio is a small French studio. We make BipAgents, your own AI agents, and Tablée, the family's weekly meals. Hosted in Europe, no ads, no tracking."
  },
  "nav": {
@@ -20,8 +20,8 @@
  },
  "home": {
   "kicker": "Independent studio · France",
-  "title": "Useful, private, friendly apps.",
-  "lede": "Kerfy Studio is a small French studio. We build apps that help in everyday life, keep your data in Europe, and live off neither ads nor tracking.",
+  "title": "We build apps.\nNot data factories.",
+  "lede": "Kerfy Studio is a French software studio. Our apps: BipAgents, AI agents that work for you, and Tablée, family meals, sorted. Zero ads. Zero tracking. Plenty of coffee.",
   "appsKicker": "Our apps",
   "appsTitle": "Two apps for everyday life.",
   "bip": {
