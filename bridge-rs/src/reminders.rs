@@ -15,7 +15,8 @@
 //!     PUT  /v1/reminders                 {lists: [{id, title}], items: [{id, list, title, notes, due, completed}]}
 //!     PUT  /v1/reminders/agents          {agents}
 //!     GET  /v1/reminders/queue           the agents' requests waiting for the iPhone
-//!     POST /v1/reminders/queue/{id}      {done: bool, error?}
+//!     POST /v1/reminders/queue/{id}      {done: bool, error?} (error « unknown request », from an app older than the
+//!                                        request's op: it stays waiting for the app's update)
 //!
 //!     data_dir/reminders.json   (chmod 600: the copy, the agents allowed, the requests)
 //!
@@ -241,8 +242,9 @@ pub fn call(
     ))
 }
 
-/// A request for the phone added by the bridge itself (the Carnet's dated tasks, notebook/mod.rs): `op` « add » or
-/// « complete », its args as the phone reads them. Returns the request's id. The caller may hold the notebook's lock
+/// A request for the phone added by the bridge itself (the Carnet's dated tasks, notebook/mod.rs): `op` « add »,
+/// « complete » or « remove » (args: the reminder's `id` when known, and the task's `mark`: the phone removes only a
+/// reminder whose notes carry it), its args as the phone reads them. Returns the request's id. The caller may hold the notebook's lock
 /// (taken before this one, never after).
 pub fn enqueue(config: &Config, agent: &str, op: &str, args: Value) -> std::io::Result<String> {
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -256,6 +258,27 @@ pub fn enqueue(config: &Config, agent: &str, op: &str, args: Value) -> std::io::
     write(config, &data)?;
     Ok(id)
 }
+
+/// `enqueue`, unless the same request (same op, same args) is already waiting or was done: the cleanups that ask for
+/// it may run again before the phone shares its reminders anew. Returns the new request's id, None when not asked.
+pub fn enqueue_once(config: &Config, agent: &str, op: &str, args: Value) -> std::io::Result<Option<String>> {
+    {
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let asked = list_of(&read(config), "queue").iter().any(|o| {
+            field(o, "op").and_then(Value::as_str) == Some(op)
+                && field(o, "args") == Some(&args)
+                && matches!(field(o, "state").and_then(Value::as_str), Some("pending" | "done"))
+        });
+        if asked {
+            return Ok(None);
+        }
+    }
+    enqueue(config, agent, op, args).map(Some)
+}
+
+/// What an app older than a request's op answers (`RemindersSync.apply`): the request stays waiting, done once the
+/// person has updated the app.
+pub const UNKNOWN_REQUEST: &str = "unknown request";
 
 /// A request still waiting for the phone, cancelled (it never reaches it). Returns whether it was waiting.
 pub fn cancel_pending(config: &Config, op_id: &str) -> std::io::Result<bool> {
@@ -514,7 +537,16 @@ async fn done(State(state): State<AppState>, Path(op_id): Path<String>, Json(bod
         let mut queue = list_of(&data, "queue");
         for op in queue.iter_mut() {
             if field(op, "id").and_then(Value::as_str) == Some(op_id.as_str()) {
+                // an app too old for this request: kept waiting for its update (tried again at each sync)
+                let later = !body.done && body.error.as_deref().map(str::trim) == Some(UNKNOWN_REQUEST);
                 if let Some(map) = op.as_object_mut() {
+                    if later {
+                        map.insert("error".into(), json!(body.error));
+                        map.insert("tried".into(), json!(py::time_time()));
+                        data.insert("queue".into(), Value::Array(queue));
+                        write(&config, &data)?;
+                        return Ok(true);
+                    }
                     map.insert("state".into(), json!(if body.done { "done" } else { "failed" }));
                     map.insert("error".into(), json!(body.error));
                     map.insert("finished".into(), json!(py::time_time()));

@@ -452,7 +452,7 @@ async fn add_task(State(state): State<AppState>, Json(body): Json<NewTask>) -> A
     let config = state.config();
     let part = if body.private { Part::Health } else { Part::Main };
     let push = state.push.clone();
-    let (task, reminder) = blocking(move || {
+    let added = blocking(move || {
         super::add_task(
             &config,
             part,
@@ -465,10 +465,10 @@ async fn add_task(State(state): State<AppState>, Json(body): Json<NewTask>) -> A
         )
     })
     .await?;
-    if reminder {
+    if added.reminder {
         wake(push, &state.config());
     }
-    Ok(web::ok(json!({"task": task.view(), "reminder": reminder})))
+    Ok(web::ok(json!({"task": added.task.view(), "reminder": added.reminder, "existing": added.existing})))
 }
 
 /// The phones woken to apply the reminders' queue (a silent push), as for an agent's reminders_add.

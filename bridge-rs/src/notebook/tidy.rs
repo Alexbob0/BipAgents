@@ -356,6 +356,12 @@ async fn run_inner(
     if archived > 0 {
         record.insert("archived".into(), json!(archived));
     }
+    // the phone reminders of tasks no longer in the Carnet (an edit outside the bridge, an older bridge): taken off
+    tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::clean_reminders(&c)
+    })
+    .await??;
     let seeded = tokio::task::spawn_blocking({
         let c = config.clone();
         move || super::seed(&c)
@@ -618,7 +624,8 @@ pub fn apply(
             "task" => {
                 // only what the person asked or committed to (never a proposal: that is the agents', with the person)
                 let origin = if s("origin") == "own" { "own" } else { "asked" };
-                super::add_task_locked(config, part, &s("title"), &s("due"), &page, origin, "", &who).map(|_| true)
+                super::add_task_locked(config, part, &s("title"), &s("due"), &page, origin, "", &who)
+                    .map(|added| !added.existing)
             }
             "refile" => super::refile_locked(config, &page, &s("fact"), &s("section"), &Who::tidy(config)),
             "merge" => super::merge_locked(config, Part::Main, &s("from"), &s("into"), &who).map(|m| m.is_some()),
@@ -639,6 +646,14 @@ pub fn apply(
 
 /// The scheduler: every ten minutes, the pass if it is due.
 pub async fn scheduler(state: AppState) {
+    // at once: the reminders removed tasks left on the phone (and duplicates), asked off once (free, no model)
+    let config = state.config();
+    match tokio::task::spawn_blocking(move || super::clean_reminders(&config)).await {
+        Ok(Err(err)) => tracing::warn!(error = %err, "notebook reminders not cleaned"),
+        Err(err) => tracing::warn!(error = %err, "notebook reminders not cleaned"),
+        Ok(Ok(n)) if n > 0 => tracing::info!(requests = n, "notebook reminders cleaned"),
+        Ok(Ok(_)) => {}
+    }
     tokio::time::sleep(Duration::from_secs(60)).await;
     // the pages from before the outlines put in theirs at once (no model), not at the first night
     let config = state.config();
