@@ -23,6 +23,16 @@ def use_flag(monkeypatch, tmp_path, text):
     return flag
 
 
+def test_the_relay_tells_its_version_even_while_held(monkeypatch, tmp_path):
+    use_flag(monkeypatch, tmp_path, b"human 0123abcd")
+    assert devtools_relay.VERSION_PATH.match(b"GET /bipagents/relay HTTP/1.1\r\nHost: x\r\n\r\n")
+    assert not devtools_relay.VERSION_PATH.match(HEAD + b"\r\n")
+    answer = devtools_relay.version_answer()
+    head, _, body = answer.partition(b"\r\n\r\n")
+    assert head.startswith(b"HTTP/1.1 200 OK") and json.loads(body) == {"relay": 2, "hold_token": True}
+    assert f"Content-Length: {len(body)}".encode() in head
+
+
 def test_nothing_held_lets_everything_through(monkeypatch, tmp_path):
     use_flag(monkeypatch, tmp_path, None)
     assert devtools_relay.let_through(HEAD + b"\r\n")
