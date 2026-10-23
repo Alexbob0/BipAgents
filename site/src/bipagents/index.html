@@ -219,9 +219,13 @@
     <p class="sub">{{pricing.sub}}</p>
   </div>
   <div class="pricing reveal">
-    <div class="period" role="radiogroup" aria-label="{{pricing.periodLabel}}">
-      <button type="button" role="radio" aria-checked="false" data-period="month">{{pricing.monthly}}</button>
-      <button type="button" role="radio" aria-checked="true" data-period="year">{{pricing.yearly}} <span class="gift">{{pricing.yearlyBadge}}</span></button>
+    <div class="pricing-bar">
+      <div class="period" role="radiogroup" aria-label="{{pricing.periodLabel}}">
+        <button type="button" role="radio" aria-checked="false" data-period="month">{{pricing.monthly}}</button>
+        <button type="button" role="radio" aria-checked="true" data-period="year">{{pricing.yearly}} <span class="gift">{{pricing.yearlyBadge}}</span></button>
+      </div>
+      <label class="currency" title="{{pricing.currencyLabel}}"><span class="currency-label">{{pricing.currencyLabel}}</span>
+        <select data-currency>{{currencyoptions}}</select></label>
     </div>
     <div class="plans" role="radiogroup" aria-label="{{pricing.planLabel}}">
       <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo" style="--main:#FF7B5C;--tint:var(--coral-tint)">
@@ -274,7 +278,7 @@
         <li><span aria-hidden="true">🇪🇺</span>{{pricing.inc6}}</li>
       </ul>
     </div>
-    <p class="fine-print">{{pricing.fine}} <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{pricing.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
+    <p class="fine-print"><span class="fine-tax">{{pricing.fineTax}}</span> {{pricing.fine}} <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{pricing.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
   </div>
   </div>
 

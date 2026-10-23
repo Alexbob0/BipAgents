@@ -28,7 +28,7 @@
     "lede": "Write, talk, or go Live: your Bips book things, sort your email, keep your calendar and your Notebook, and always ask before they act. Everything included, in your own space in Europe, which we don’t read.",
     "cta": "Choose my plan",
     "watch": "See the demo",
-    "price": "From {{p.web.month.solo}} a month on the web · cheaper than in the stores · cancel anytime",
+    "price": "From {{p.from}} a month on the web · cheaper than in the stores · cancel anytime",
     "trust1": "Servers in Europe",
     "trust2": "No ads, no tracking",
     "trust3": "Open-source code",
@@ -249,9 +249,16 @@
     "inc4": "Notebook, email, calendar, reminders, browser and background tasks",
     "inc5": "An encrypted backup every hour",
     "inc6": "Your space on a server in Europe",
-    "fine": "Prices in euros including VAT (France). No commitment: cancel whenever you like, the subscription ends at the end of the paid period. Yearly: paid once for 12 months. 14 days to change your mind. On the web the seller is Kerfy Studio; in the app, the App Store or Google Play.",
+    "currencyLabel": "Currency",
+    "fineTax": "Prices in euros including VAT.",
+    "fine": "No commitment: cancel whenever you like, the subscription ends at the end of the paid period. Yearly: paid once for 12 months. 14 days to change your mind. On the web the seller is Kerfy Studio; in the app, the App Store or Google Play.",
     "terms": "Offer terms",
     "js": {
+      "saveYearWeb": "{x} less a year than paying monthly",
+      "plusTax": "+ tax",
+      "taxIncl": "Prices in {currency}, taxes included.",
+      "taxExcl": "Prices in {currency} before tax: your state’s or province’s sales tax is added at checkout.",
+      "currencies": {"EUR": "euros", "USD": "US dollars", "CAD": "Canadian dollars", "GBP": "pounds sterling", "SGD": "Singapore dollars", "ILS": "Israeli shekels"},
       "perMonth": "/month",
       "perYear": "/year",
       "equiv": "that’s {x} a month",
@@ -272,7 +279,7 @@
     "mode": {
       "label": "Choose how to use BipAgents",
       "offer": "All included",
-      "offerSub": "we handle everything, from {{p.web.month.solo}}/month",
+      "offerSub": "we handle everything, from {{p.from}}/month",
       "self": "On my computer",
       "selfSub": "free, you host it yourself"
     }
@@ -370,7 +377,7 @@
     "support": "Support",
     "more": "More",
     "play": "Play with the Bips",
-    "fine": "© 2026 Kerfy Studio. Prices include VAT. The demo podcast: Built with Fish Audio. The Bips’ voices: Pocket TTS, by Kyutai. Demo map © OpenStreetMap. No cookies and no trackers on this site.",
+    "fine": "© 2026 Kerfy Studio. Prices include VAT or GST, except in US and Canadian dollars: sales tax is added at checkout. The demo podcast: Built with Fish Audio. The Bips’ voices: Pocket TTS, by Kyutai. Demo map © OpenStreetMap. No cookies and no trackers on this site.",
     "demo": "The demo",
     "faq": "Questions",
     "install": "Install at home"
