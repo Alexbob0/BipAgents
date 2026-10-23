@@ -10,14 +10,21 @@
 //!
 //! Each row has a stable id (`r` and 6 hex digits, its last column). The agents add and update rows through
 //! notebook_record; the same record given twice is merged on its obvious key (the item and its date, the service, the
-//! contract's number, the document, the booking's reference). A purchase without a known end of warranty gets the EU's
-//! two-year legal guarantee, marked so. `source` holds the reference of the document a record comes from (the archive's,
+//! contract's number, the document, the booking's reference). A purchase has a class (`class`: durable goods, a service,
+//! a ticket or registration, food, digital content, travel, a fee, other — given by the agent or the extraction's
+//! model, else guessed from its words and price by `classify`). Only durable goods get the EU's two-year legal
+//! guarantee when their end of warranty is unknown, marked so (the owner, 2026-10-23: no « garantie légale » on a 3 €
+//! registration); only goods from `[notebook] warranty_min_eur` (50 € by default) get its reminder and count among the
+//! « important » purchases the apps show first. `source` holds the reference of the document a record comes from (the archive's,
 //! an opaque text), shown as a link when the apps get a route for it. Text the person writes around the table in
 //! Obsidian is kept.
 //!
 //! The nightly pass proposes reminders (never adds them by itself): a warranty ending within 30 days, a renewal within
 //! 7, a contract's end within 30, a paper expiring within 60 — as Carnet task proposals (mod.rs `propose`, within its
 //! weekly budget), each record's date once.
+//!
+//! What is past moves to the same table in the archives (`Archives/Fiches/Achats.md`, archive.rs decides when): the
+//! row as it was, its id kept. `records` reads the live table, `archived_records` the other; the tool's list shows both.
 
 use chrono::NaiveDate;
 use serde_json::{json, Value};
@@ -50,6 +57,7 @@ pub struct Kind {
 }
 
 const SOURCE: Field = Field { id: "source", titles: ["Source", "Source", "Quelle", "Fuente"] };
+const CLASS: Field = Field { id: "class", titles: ["Catégorie", "Kind", "Art", "Categoría"] };
 const PRICE: Field = Field { id: "price", titles: ["Prix", "Price", "Preis", "Precio"] };
 
 pub const TYPES: [Kind; 5] = [
@@ -62,6 +70,7 @@ pub const TYPES: [Kind; 5] = [
             Field { id: "item", titles: ["Objet", "Item", "Gegenstand", "Artículo"] },
             Field { id: "store", titles: ["Magasin", "Store", "Geschäft", "Tienda"] },
             PRICE,
+            CLASS,
             Field {
                 id: "warranty_end",
                 titles: ["Fin de garantie", "Warranty ends", "Garantie bis", "Fin de garantía"],
@@ -216,6 +225,12 @@ pub fn path_of(lang: &str, t: &Kind) -> String {
     format!("{}/{}.md", super::words(lang).records, t.titles[lang_index(lang)])
 }
 
+/// The same table in the archives: `Archives/Fiches/Achats.md`.
+pub fn archive_path_of(lang: &str, t: &Kind) -> String {
+    let w = super::words(lang);
+    format!("{}/{}/{}.md", w.archives, w.records, t.titles[lang_index(lang)])
+}
+
 fn field_of(t: &Kind, header: &str) -> Option<&'static str> {
     let wanted = fold(header);
     t.fields
@@ -223,6 +238,485 @@ fn field_of(t: &Kind, header: &str) -> Option<&'static str> {
         .find(|f| fold(f.id) == wanted || f.titles.iter().any(|x| fold(x) == wanted))
         .map(|f| f.id)
         .or(if wanted == "id" { Some("id") } else { None })
+}
+
+// -- a purchase's class ----------------------------------------------------------------------------------------------
+
+/// The classes of a purchase (`class`): its id and its word in the table (fr, en, de, es). Only `goods` (durable goods
+/// bought from a professional) have the legal guarantee.
+pub const CLASSES: [(&str, [&str; 4]); 8] = [
+    ("goods", ["bien durable", "durable goods", "Gebrauchsgut", "bien duradero"]),
+    ("service", ["service", "service", "Dienstleistung", "servicio"]),
+    ("ticket", ["billet ou inscription", "ticket or registration", "Ticket oder Anmeldung", "entrada o inscripción"]),
+    ("food", ["alimentation", "food", "Lebensmittel", "comida"]),
+    ("digital", ["numérique", "digital", "digital", "digital"]),
+    ("travel", ["voyage", "travel", "Reise", "viaje"]),
+    ("fee", ["frais", "fee", "Gebühr", "tasa"]),
+    ("other", ["autre", "other", "Sonstiges", "otro"]),
+];
+
+/// A class's id from its id or its word in any language (None: not a class).
+pub fn class_id(text: &str) -> Option<&'static str> {
+    let wanted = fold(text);
+    if wanted.is_empty() {
+        return None;
+    }
+    CLASSES.iter().find(|(id, words)| fold(id) == wanted || words.iter().any(|w| fold(w) == wanted)).map(|(id, _)| *id)
+}
+
+fn class_word(id: &str, lang: &str) -> String {
+    CLASSES.iter().find(|(c, _)| *c == id).map(|(_, w)| w[lang_index(lang)].to_string()).unwrap_or_else(|| id.into())
+}
+
+/// Words that tell a purchase's class (folded, whole words or phrases), tried in this order: the first class whose
+/// words are in the item or the store wins.
+const CLASS_WORDS: [(&str, &[&str]); 7] = [
+    (
+        "fee",
+        &[
+            "frais",
+            "fee",
+            "fees",
+            "commission",
+            "amende",
+            "penalite",
+            "timbre fiscal",
+            "taxe",
+            "gebuhr",
+            "gebuhren",
+            "tasa",
+            "tasas",
+            "comision",
+            "frais de port",
+            "frais de dossier",
+            "shipping",
+            "porto",
+            "envio",
+        ],
+    ),
+    (
+        "ticket",
+        &[
+            "billet",
+            "billets",
+            "ticket",
+            "tickets",
+            "entree",
+            "entrees",
+            "inscription",
+            "inscriptions",
+            "registration",
+            "concert",
+            "spectacle",
+            "festival",
+            "match",
+            "cinema",
+            "musee",
+            "evenement",
+            "event",
+            "conference",
+            "seminaire",
+            "webinar",
+            "webinaire",
+            "atelier",
+            "workshop",
+            "salon",
+            "exposition",
+            "eintritt",
+            "eintrittskarte",
+            "konzert",
+            "anmeldung",
+            "veranstaltung",
+            "entrada",
+            "entradas",
+            "inscripcion",
+            "evento",
+            "museo",
+            "theatre",
+            "theater",
+            "teatro",
+            "place de concert",
+            "pass",
+        ],
+    ),
+    (
+        "travel",
+        &[
+            "vol",
+            "vols",
+            "flight",
+            "train",
+            "tgv",
+            "sncf",
+            "ouigo",
+            "hotel",
+            "airbnb",
+            "taxi",
+            "uber",
+            "bus",
+            "peage",
+            "parking",
+            "ferry",
+            "sejour",
+            "location de voiture",
+            "car rental",
+            "bahn",
+            "flug",
+            "zug",
+            "vuelo",
+            "renfe",
+            "ryanair",
+            "easyjet",
+            "air france",
+            "transavia",
+            "vueling",
+            "blablacar",
+            "eurostar",
+            "navigo",
+            "nuitee",
+            "nuitees",
+            "hebergement",
+            "booking com",
+        ],
+    ),
+    (
+        "food",
+        &[
+            "restaurant",
+            "repas",
+            "menu",
+            "pizza",
+            "sushi",
+            "burger",
+            "deliveroo",
+            "uber eats",
+            "ubereats",
+            "just eat",
+            "boulangerie",
+            "traiteur",
+            "epicerie",
+            "supermarche",
+            "courses",
+            "alimentation",
+            "dejeuner",
+            "diner",
+            "brunch",
+            "lebensmittel",
+            "essen",
+            "comida",
+            "cena",
+            "almuerzo",
+            "groceries",
+            "grocery",
+            "takeaway",
+            "frichti",
+            "picard",
+        ],
+    ),
+    (
+        "digital",
+        &[
+            "application",
+            "app",
+            "apps",
+            "ebook",
+            "e book",
+            "kindle",
+            "app store",
+            "google play",
+            "steam",
+            "logiciel",
+            "software",
+            "licence",
+            "license",
+            "telechargement",
+            "download",
+            "vod",
+            "itunes",
+            "spotify",
+            "netflix",
+            "icloud",
+            "stockage en ligne",
+            "in app",
+            "credits",
+            "dlc",
+            "abonnement numerique",
+            "jeu video en ligne",
+            "lizenz",
+            "aplicacion",
+        ],
+    ),
+    (
+        "service",
+        &[
+            "abonnement",
+            "subscription",
+            "forfait",
+            "reparation",
+            "repair",
+            "entretien",
+            "revision",
+            "cours",
+            "lecon",
+            "formation",
+            "coiffeur",
+            "menage",
+            "nettoyage",
+            "pressing",
+            "assurance",
+            "cotisation",
+            "adhesion",
+            "membership",
+            "consultation",
+            "seance",
+            "massage",
+            "installation",
+            "intervention",
+            "plombier",
+            "electricien",
+            "garde",
+            "location",
+            "rental",
+            "livraison",
+            "delivery",
+            "service",
+            "services",
+            "dienstleistung",
+            "reparatur",
+            "wartung",
+            "kurs",
+            "servicio",
+            "reparacion",
+            "clase",
+            "mutuelle",
+            "loyer",
+            "facture",
+            "electricite",
+            "gaz",
+            "internet",
+            "mobile",
+        ],
+    ),
+    (
+        "goods",
+        &[
+            "lave linge",
+            "lave vaisselle",
+            "seche linge",
+            "machine",
+            "frigo",
+            "refrigerateur",
+            "congelateur",
+            "televiseur",
+            "tv",
+            "television",
+            "ordinateur",
+            "laptop",
+            "macbook",
+            "iphone",
+            "smartphone",
+            "telephone",
+            "tablette",
+            "ipad",
+            "casque",
+            "ecouteurs",
+            "airpods",
+            "aspirateur",
+            "four",
+            "micro ondes",
+            "velo",
+            "trottinette",
+            "montre",
+            "appareil photo",
+            "camera",
+            "console",
+            "playstation",
+            "xbox",
+            "nintendo",
+            "imprimante",
+            "ecran",
+            "moniteur",
+            "clavier",
+            "souris",
+            "meuble",
+            "canape",
+            "lit",
+            "matelas",
+            "chaise",
+            "table",
+            "bureau",
+            "lampe",
+            "chaussures",
+            "baskets",
+            "vetement",
+            "vetements",
+            "manteau",
+            "veste",
+            "jean",
+            "sac",
+            "valise",
+            "jouet",
+            "perceuse",
+            "outil",
+            "outils",
+            "poussette",
+            "batterie",
+            "chargeur",
+            "enceinte",
+            "routeur",
+            "drone",
+            "cafetiere",
+            "bouilloire",
+            "grille pain",
+            "blender",
+            "mixeur",
+            "robot",
+            "poele",
+            "casserole",
+            "pneu",
+            "pneus",
+            "lunettes",
+            "bijou",
+            "bague",
+            "washing machine",
+            "dishwasher",
+            "fridge",
+            "freezer",
+            "computer",
+            "phone",
+            "headphones",
+            "vacuum",
+            "bike",
+            "bicycle",
+            "watch",
+            "chair",
+            "sofa",
+            "couch",
+            "bed",
+            "mattress",
+            "desk",
+            "shoes",
+            "jacket",
+            "printer",
+            "monitor",
+            "keyboard",
+            "speaker",
+            "router",
+            "waschmaschine",
+            "spulmaschine",
+            "kuhlschrank",
+            "fernseher",
+            "handy",
+            "kopfhorer",
+            "staubsauger",
+            "fahrrad",
+            "uhr",
+            "drucker",
+            "lavadora",
+            "lavavajillas",
+            "nevera",
+            "frigorifico",
+            "televisor",
+            "portatil",
+            "movil",
+            "auriculares",
+            "aspiradora",
+            "bicicleta",
+            "reloj",
+            "impresora",
+        ],
+    ),
+];
+
+/// A price's amount (« 1 299,00 € », « $45.99 », « 12 EUR »), when it has one.
+pub fn price_value(text: &str) -> Option<f64> {
+    static NUMBER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"\d{1,3}(?:[ \u{a0}\u{202f}.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?")
+            .expect("valid regex")
+    });
+    let found = NUMBER.find(text)?.as_str();
+    let plain: String = found.chars().filter(|c| !c.is_whitespace()).collect();
+    // the last « , » or « . » followed by one or two digits is the decimal mark; the others group thousands
+    let (whole, cents) = match plain.rfind([',', '.']) {
+        Some(i) if plain.len() - i - 1 <= 2 => (&plain[..i], &plain[i + 1..]),
+        _ => (plain.as_str(), ""),
+    };
+    let whole: String = whole.chars().filter(char::is_ascii_digit).collect();
+    format!("{whole}.{}", if cents.is_empty() { "0" } else { cents }).parse().ok()
+}
+
+/// A purchase's class from its words (item, store) and its price, when no one gave it: the first class whose words
+/// are there, else durable goods from `min_eur`, else other (no warranty, no reminder).
+pub fn classify(item: &str, store: &str, price: &str, min_eur: f64) -> &'static str {
+    let item = format!(" {} ", fold(item));
+    let store = format!(" {} ", fold(store));
+    // the item's words first: « Machine à café » is goods wherever it was bought
+    for text in [&item, &store] {
+        for (class, words) in CLASS_WORDS.iter().rev() {
+            if *class == "goods" && words.iter().any(|w| text.contains(&format!(" {w} "))) {
+                return class;
+            }
+        }
+        for (class, words) in CLASS_WORDS.iter() {
+            if *class != "goods" && words.iter().any(|w| text.contains(&format!(" {w} "))) {
+                return class;
+            }
+        }
+    }
+    match price_value(price) {
+        Some(p) if p >= min_eur => "goods",
+        _ => "other",
+    }
+}
+
+/// Whether a purchase is worth showing first (and its warranty a reminder): durable goods from `min_eur`, or a
+/// warranty still running that the document or the person stated (the computed legal one counts only for goods
+/// worth it: a 10 € cable is not « important »).
+pub fn important(record: &Dict, min_eur: f64, today: NaiveDate) -> bool {
+    let class = class_id(&tk::str_or_empty(record.get("class"))).unwrap_or("other");
+    let goods_worth =
+        class == "goods" && price_value(&tk::str_or_empty(record.get("price"))).is_some_and(|p| p >= min_eur);
+    let end = tk::str_or_empty(record.get("warranty_end"));
+    let stated = !end.is_empty() && !is_legal(&end);
+    let running =
+        super::date_in(&end).and_then(|(m, d, y)| NaiveDate::from_ymd_opt(y?, m, d)).is_some_and(|d| d >= today);
+    goods_worth || (stated && running)
+}
+
+/// Whether an end of warranty is the computed legal one (« 2027-03-12 (légale) »).
+pub fn is_legal(end: &str) -> bool {
+    super::WORDS.iter().any(|w| end.contains(&format!("({})", legal_word(w.lang))))
+}
+
+/// A purchase's class set (given or guessed) and its legal warranty kept only for durable goods: computed when
+/// unknown, taken off (it was computed, never stated) for the others. `given`: the fields just given.
+fn settle_purchase(record: &mut Dict, given: &Dict, lang: &str, min_eur: f64) {
+    let class = match class_id(&tk::str_or_empty(record.get("class"))) {
+        Some(c) => c,
+        None => classify(
+            &tk::str_or_empty(record.get("item")),
+            &tk::str_or_empty(record.get("store")),
+            &tk::str_or_empty(record.get("price")),
+            min_eur,
+        ),
+    };
+    record.insert("class".into(), json!(class_word(class, lang)));
+    let end = tk::str_or_empty(record.get("warranty_end"));
+    let computed = end.is_empty() || is_legal(&end);
+    if !computed || given.contains_key("warranty_end") {
+        return;
+    }
+    if class != "goods" {
+        record.remove("warranty_end");
+        return;
+    }
+    let bought = tk::str_or_empty(record.get("date"));
+    if let Some((m, d, Some(y))) = super::date_in(&bought) {
+        if let Some(date) = NaiveDate::from_ymd_opt(y, m, d) {
+            let until = date.checked_add_months(chrono::Months::new(24)).unwrap_or(date);
+            record.insert("warranty_end".into(), json!(format!("{} ({})", until.format("%Y-%m-%d"), legal_word(lang))));
+        }
+    }
 }
 
 /// The legal guarantee's mark after a computed end of warranty.
@@ -347,15 +841,24 @@ fn same(t: &Kind, old: &Dict, new: &Dict) -> bool {
 }
 
 fn read(config: &Config, t: &Kind) -> (String, Option<String>, Page, Table) {
+    read_at(config, t, false)
+}
+
+/// A type's live table, or the archived one (`archived`).
+pub(crate) fn read_at(config: &Config, t: &Kind, archived: bool) -> (String, Option<String>, Page, Table) {
     let lang = super::language(config);
-    let path = path_of(&lang, t);
+    let path = if archived { archive_path_of(&lang, t) } else { path_of(&lang, t) };
     let before = super::read_page_text(config, Part::Main, &path);
+    let title = t.titles[lang_index(&lang)];
     let page = match &before {
-        Some(text) => Page::parse(text, t.titles[lang_index(&lang)]),
+        Some(text) => Page::parse(text, title),
         None => {
-            let mut p = Page::new("records", t.titles[lang_index(&lang)]);
+            let mut p = Page::new("records", title);
             p.front.remove("aliases");
             p.front.insert("records".into(), json!(t.id));
+            if archived {
+                p.front.insert("archived".into(), json!(true));
+            }
             p
         }
     };
@@ -408,21 +911,28 @@ pub fn upsert(
 ) -> anyhow::Result<(Dict, Upserted)> {
     let _guard = super::lock();
     let lang = super::language(config);
-    let (path, before, mut page, mut table) = read(config, t);
     let new = prepare(t, fields);
     let id = id.trim();
-    let index = if id.is_empty() {
-        table.rows.iter().position(|r| same(t, r, &new))
-    } else {
-        match table.rows.iter().position(|r| tk::str_or_empty(r.get("id")) == id) {
-            Some(i) => Some(i),
-            None => {
-                return Err(
-                    super::NotebookError(format!("no {} record with id {id} (action list gives them)", t.id)).into()
-                )
-            }
+    let position = |table: &Table| {
+        if id.is_empty() {
+            table.rows.iter().position(|r| same(t, r, &new))
+        } else {
+            table.rows.iter().position(|r| tk::str_or_empty(r.get("id")) == id)
         }
     };
+    // the live table, else the archived one when the record is there (it stays there, updated)
+    let (mut path, mut before, mut page, mut table) = read(config, t);
+    let mut index = position(&table);
+    if index.is_none() {
+        let archived = read_at(config, t, true);
+        if let Some(i) = position(&archived.3) {
+            (path, before, page, table) = archived;
+            index = Some(i);
+        }
+    }
+    if index.is_none() && !id.is_empty() {
+        return Err(super::NotebookError(format!("no {} record with id {id} (action list gives them)", t.id)).into());
+    }
     if index.is_none() && update_only {
         return Err(
             super::NotebookError(format!("no such {} record: give its id (action list gives them)", t.id)).into()
@@ -447,25 +957,13 @@ pub fn upsert(
             record.insert(k.clone(), v.clone());
         }
     }
-    // the EU's legal guarantee (two years) when the end of warranty is unknown, or was computed from an older date
+    // its class; the EU's legal guarantee (two years) for durable goods when the end of warranty is unknown, or was
+    // computed from an older date
     if t.id == "purchase" {
-        let end = tk::str_or_empty(record.get("warranty_end"));
-        let computed = end.is_empty()
-            || end.contains(legal_word(&lang))
-            || super::WORDS.iter().any(|w| end.contains(legal_word(w.lang)));
-        let given = new.contains_key("warranty_end");
-        if computed && !given {
-            let bought = tk::str_or_empty(record.get("date"));
-            if let Some((m, d, Some(y))) = super::date_in(&bought) {
-                if let Some(date) = NaiveDate::from_ymd_opt(y, m, d) {
-                    let until = date.checked_add_months(chrono::Months::new(24)).unwrap_or(date);
-                    record.insert(
-                        "warranty_end".into(),
-                        json!(format!("{} ({})", until.format("%Y-%m-%d"), legal_word(&lang))),
-                    );
-                }
-            }
+        if new.contains_key("class") && class_id(&tk::str_or_empty(new.get("class"))).is_none() {
+            record.remove("class");
         }
+        settle_purchase(&mut record, &new, &lang, config.notebook.warranty_min_eur);
     }
     let done = match index {
         Some(_) if record == was => return Ok((record, Upserted::Same)),
@@ -490,8 +988,15 @@ pub fn upsert(
 pub fn remove(config: &Config, t: &'static Kind, id: &str, who: &Who) -> anyhow::Result<Option<Dict>> {
     let _guard = super::lock();
     let lang = super::language(config);
-    let (path, before, mut page, mut table) = read(config, t);
-    let Some(index) = table.rows.iter().position(|r| tk::str_or_empty(r.get("id")) == id.trim()) else {
+    let find = |table: &Table| table.rows.iter().position(|r| tk::str_or_empty(r.get("id")) == id.trim());
+    let (mut path, mut before, mut page, mut table) = read(config, t);
+    let mut index = find(&table);
+    if index.is_none() {
+        let archived = read_at(config, t, true);
+        index = find(&archived.3);
+        (path, before, page, table) = archived;
+    }
+    let Some(index) = index else {
         return Ok(None);
     };
     let record = table.rows.remove(index);
@@ -529,6 +1034,62 @@ pub fn records(config: &Config, t: &Kind) -> Vec<Dict> {
     }
 }
 
+/// A type's archived records (archive.rs moved them: past, ended, replaced).
+pub fn archived_records(config: &Config, t: &Kind) -> Vec<Dict> {
+    let lang = super::language(config);
+    match super::read_page_text(config, Part::Main, &archive_path_of(&lang, t)) {
+        Some(text) => parse(t, &Page::parse(&text, "").body).rows,
+        None => Vec::new(),
+    }
+}
+
+/// Every purchase of a page given its class (guessed when it has none) and its legal warranty only if it is durable
+/// goods: the migration of 2026-10-23, at each nightly pass (idempotent: nothing to do once each row has its class).
+/// Returns how many rows changed.
+pub fn settle_classes(config: &Config) -> anyhow::Result<usize> {
+    let _guard = super::lock();
+    let lang = super::language(config);
+    let Some(t) = kind("purchase") else { return Ok(0) };
+    let who = Who::tidy(config);
+    let mut changed = 0;
+    for archived in [false, true] {
+        let (path, before, mut page, mut table) = read_at(config, t, archived);
+        if before.is_none() {
+            continue;
+        }
+        let mut lines: Vec<String> = Vec::new();
+        for row in table.rows.iter_mut() {
+            let was = row.clone();
+            settle_purchase(row, &Dict::new(), &lang, config.notebook.warranty_min_eur);
+            if *row != was {
+                changed += 1;
+                let warranty = if was.contains_key("warranty_end") && !row.contains_key("warranty_end") {
+                    format!(" (−{})", tk::str_or_empty(was.get("warranty_end")))
+                } else {
+                    String::new()
+                };
+                lines.push(format!("{} : {}{warranty}", summary_head(t, row), tk::str_or_empty(row.get("class"))));
+            }
+        }
+        if lines.is_empty() {
+            continue;
+        }
+        page.body = render_body(t, &lang, &table);
+        page.touch();
+        super::commit(
+            config,
+            Part::Main,
+            &path,
+            before.as_deref(),
+            Some(&page.render()),
+            &who,
+            "classes",
+            &lines.join(" · "),
+        )?;
+    }
+    Ok(changed)
+}
+
 static ARCHIVE_REF: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(r"archive:([A-Za-z0-9_.-]+/[a-z0-9-]+/[0-9a-fA-F]{16})\b").expect("valid regex")
 });
@@ -539,14 +1100,19 @@ pub fn source_ref(source: &str) -> Option<String> {
     ARCHIVE_REF.captures(source).map(|c| c[1].to_lowercase())
 }
 
-fn item_view(t: &Kind, record: &Dict, today: NaiveDate) -> Value {
+fn item_view(t: &Kind, record: &Dict, today: NaiveDate, min_eur: f64, archived: bool) -> Value {
     let mut out = record.clone();
     let next = next_date(t, record);
     out.insert("next_date".into(), json!(next.map(|d| d.format("%Y-%m-%d").to_string())));
     out.insert("in_days".into(), json!(next.map(|d| (d - today).num_days())));
-    let legal = t.id == "purchase"
-        && super::WORDS.iter().any(|w| tk::str_or_empty(record.get("warranty_end")).contains(legal_word(w.lang)));
+    let legal = t.id == "purchase" && is_legal(&tk::str_or_empty(record.get("warranty_end")));
     out.insert("legal".into(), json!(legal));
+    if t.id == "purchase" {
+        let class = class_id(&tk::str_or_empty(record.get("class")));
+        out.insert("class_id".into(), json!(class));
+        out.insert("important".into(), json!(important(record, min_eur, today)));
+    }
+    out.insert("archived".into(), json!(archived));
     out.insert("source_ref".into(), json!(source_ref(&tk::str_or_empty(record.get("source")))));
     for f in t.fields {
         out.entry(f.id.to_string()).or_insert(json!(""));
@@ -567,9 +1133,20 @@ pub fn type_view(config: &Config, t: &Kind, today: NaiveDate) -> Value {
     });
     let fields: Vec<Value> = t.fields.iter().map(|f| json!({"id": f.id, "title": f.titles[i]})).collect();
     let next_title = t.fields.iter().find(|f| f.id == t.next).map(|f| f.titles[i]).unwrap_or("");
+    let min_eur = config.notebook.warranty_min_eur;
+    let mut archived = archived_records(config, t);
+    archived.sort_by_key(|r| {
+        std::cmp::Reverse(next_date(t, r).or_else(|| {
+            super::date_in(&tk::str_or_empty(r.get("date"))).and_then(|(m, d, y)| NaiveDate::from_ymd_opt(y?, m, d))
+        }))
+    });
+    let views: Vec<Value> = items.iter().map(|r| item_view(t, r, today, min_eur, false)).collect();
+    let important = views.iter().filter(|v| v.get("important").map(py::truthy).unwrap_or(false)).count();
     json!({"type": t.id, "title": t.titles[i], "path": path_of(&lang, t), "fields": fields, "next": t.next,
-           "next_title": next_title, "count": items.len(),
-           "items": items.iter().map(|r| item_view(t, r, today)).collect::<Vec<_>>()})
+           "next_title": next_title, "count": items.len(), "important_count": important,
+           "warranty_min_eur": min_eur, "items": views,
+           "archive_path": archive_path_of(&lang, t), "archived_count": archived.len(),
+           "archived": archived.iter().map(|r| item_view(t, r, today, min_eur, true)).collect::<Vec<_>>()})
 }
 
 /// Every type, for `GET /v1/notebook/records`.
@@ -621,18 +1198,22 @@ pub fn page_view(config: &Config, page: &Page, today: NaiveDate) -> Option<Value
 /// whose date falls within it.
 pub fn bookings_for(config: &Config, trip: &Page, start: Option<NaiveDate>, end: Option<NaiveDate>) -> Vec<Dict> {
     let Some(t) = kind("booking") else { return Vec::new() };
-    records(config, t)
-        .into_iter()
+    let mut all = records(config, t);
+    all.extend(archived_records(config, t));
+    let near = |d: Option<NaiveDate>, days: i64| match (d, start, end) {
+        (Some(d), Some(s), Some(e)) => d >= s - chrono::Duration::days(days) && d <= e + chrono::Duration::days(days),
+        (Some(_), _, _) => days > 0,
+        _ => days > 0,
+    };
+    all.into_iter()
         .filter(|r| {
             let named = tk::str_or_empty(r.get("trip"));
             let named = super::LINK.replace_all(&named, |c: &regex::Captures| c[1].to_string()).to_string();
-            if !named.trim().is_empty() {
-                return trip.named(&named);
+            if !named.trim().is_empty() && trip.named(&named) {
+                // the same name for two trips (« Lisbonne » in 2025 and 2026): the dates tell which
+                return near(next_date(t, r), 3);
             }
-            match (next_date(t, r), start, end) {
-                (Some(d), Some(s), Some(e)) => d >= s && d <= e,
-                _ => false,
-            }
+            named.trim().is_empty() && near(next_date(t, r), 0)
         })
         .collect()
 }
@@ -669,6 +1250,10 @@ pub fn propose_due(config: &Config, today: NaiveDate) -> anyhow::Result<usize> {
     let mut made = 0;
     for t in TYPES.iter().filter(|t| t.window > 0) {
         for record in records(config, t) {
+            // a warranty's end: only for goods worth it (not a 3 € registration)
+            if t.id == "purchase" && !important(&record, config.notebook.warranty_min_eur, today) {
+                continue;
+            }
             let Some(date) = next_date(t, &record) else { continue };
             let until = (date - today).num_days();
             if until < 0 || until > t.window {
@@ -714,8 +1299,8 @@ mod tests {
     #[test]
     fn a_table_reads_back_and_keeps_the_text_around() {
         let t = kind("Achats").unwrap();
-        let body = "Mes achats.\n\n| Date | Objet | Magasin | Prix | Fin de garantie | Source | id |\n| --- | --- | --- | --- | --- | --- | --- |\n\
-| 2025-03-12 | Lave-linge | Darty | 499 € | 2027-03-12 (légale) |  | r1a2b3c |\n\nÀ revoir.\n";
+        let body = "Mes achats.\n\n| Date | Objet | Magasin | Prix | Catégorie | Fin de garantie | Source | id |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n\
+| 2025-03-12 | Lave-linge | Darty | 499 € | bien durable | 2027-03-12 (légale) |  | r1a2b3c |\n\nÀ revoir.\n";
         let table = parse(t, body);
         assert_eq!(table.rows.len(), 1);
         assert_eq!(table.rows[0]["item"], "Lave-linge");
@@ -740,5 +1325,47 @@ mod tests {
         let netflix: Dict = serde_json::from_value(json!({"service": "Netflix", "id": "r2"})).unwrap();
         let price: Dict = serde_json::from_value(json!({"service": "NETFLIX", "price": "13,49 €"})).unwrap();
         assert!(same(s, &netflix, &price));
+    }
+
+    #[test]
+    fn only_durable_goods_get_the_legal_warranty() {
+        assert_eq!(price_value("1 299,00 €"), Some(1299.0));
+        assert_eq!(price_value("$45.99"), Some(45.99));
+        assert_eq!(price_value("1,299.50 USD"), Some(1299.5));
+        assert_eq!(price_value("3 €"), Some(3.0));
+        assert_eq!(classify("Inscription au trail des Monts", "Njuko", "3 €", 50.0), "ticket");
+        assert_eq!(classify("Machine à café l’Expresso", "Darty", "189 €", 50.0), "goods");
+        assert_eq!(classify("Pizza 4 fromages", "Deliveroo", "14 €", 50.0), "food");
+        assert_eq!(classify("Frais de port", "Amazon", "4,99 €", 50.0), "fee");
+        assert_eq!(classify("Premium Individual", "Spotify", "10,99 €", 50.0), "digital");
+        assert_eq!(classify("Philips Hue E27", "Boulanger", "79 €", 50.0), "goods");
+        assert_eq!(classify("Philips Hue E27", "Boulanger", "19 €", 50.0), "other");
+        assert_eq!(class_id("billet ou inscription"), Some("ticket"));
+        assert_eq!(class_id("Gebrauchsgut"), Some("goods"));
+        let mut ticket: Dict = serde_json::from_value(
+            json!({"date": "2026-03-01", "item": "Inscription au trail", "price": "3 €", "warranty_end": "2028-03-01 (légale)"}),
+        )
+        .unwrap();
+        settle_purchase(&mut ticket, &Dict::new(), "fr", 50.0);
+        assert_eq!(ticket["class"], "billet ou inscription");
+        assert!(!ticket.contains_key("warranty_end"));
+        let mut tv: Dict =
+            serde_json::from_value(json!({"date": "2026-03-01", "item": "Téléviseur", "price": "499 €"})).unwrap();
+        settle_purchase(&mut tv, &Dict::new(), "fr", 50.0);
+        assert_eq!(tv["warranty_end"], "2028-03-01 (légale)");
+        let today = NaiveDate::from_ymd_opt(2026, 10, 23).unwrap();
+        assert!(important(&tv, 50.0, today));
+        let mut cable: Dict =
+            serde_json::from_value(json!({"date": "2026-03-01", "item": "Chargeur", "price": "12 €"})).unwrap();
+        settle_purchase(&mut cable, &Dict::new(), "fr", 50.0);
+        assert!(!important(&cable, 50.0, today));
+        // a warranty stated by the document stays, whatever the class
+        let mut repair: Dict = serde_json::from_value(
+            json!({"date": "2026-03-01", "item": "Réparation vélo", "price": "40 €", "warranty_end": "2027-03-01"}),
+        )
+        .unwrap();
+        settle_purchase(&mut repair, &Dict::new(), "fr", 50.0);
+        assert_eq!(repair["warranty_end"], "2027-03-01");
+        assert!(important(&repair, 50.0, today));
     }
 }

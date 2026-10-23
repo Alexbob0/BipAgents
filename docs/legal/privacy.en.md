@@ -287,6 +287,8 @@ subscriptions and places is called the guichet.
   sensitive data there (your health, for instance), it is only processed to carry out what you ask your agents to do.
 - **Apple and Google** are responsible for their own processing when you sign in with them and when you pay in their
   store.
+- **Stripe** (Stripe Payments Europe, Ltd., Ireland) processes the payment when you buy on the bipagents.com website
+  (section 5.3).
 - **Your agents are AIs and say so**: the "AI" badge, a notice at the start of each Live session, a mention in
   notifications and in the messages they send to other people (Regulation (EU) 2024/1689, article 50).
 
@@ -324,6 +326,14 @@ AI credit you buy, the identifier of each purchase and its amount. **Never your 
 store knows. Your store account's country, which the app sends to find out whether the offer is sold there (it is not
 kept).
 
+**Purchase on the bipagents.com website.** The payment goes through **Stripe** (Stripe Payments Europe, Ltd., Ireland).
+Stripe receives your email address, your billing address or country, your card details (which only Stripe handles: Kerfy
+Studio never receives your full card number) and your device's IP address, for fraud checks. It processes them to
+collect the payment, calculate the taxes (Stripe Tax), prevent fraud and issue the invoices. For its own legal
+obligations (anti-money laundering, fraud), Stripe may act as an independent controller, under its privacy policy
+(https://stripe.com/privacy). Kerfy Studio's guichet keeps the email address given at payment, the customer and
+subscription identifiers at Stripe, the plan and its period (month or year), the billing country and the language.
+
 **Your contract.** The start date, the date of the confirmation email and, if you withdraw from the contract, the date
 and time of your withdrawal.
 
@@ -342,15 +352,18 @@ and the credit carried over: an amount, never your messages.
 - **The IP address** of your phone is kept for as long as a trial place is reserved (15 minutes at most), to limit the
   number of reservations per address.
 
-**Purposes and legal bases.** Providing and managing your subscription, your places and your credit: performance of
-the contract (GDPR article 6(1)(b)). Preventing the same person from chaining free weeks: Kerfy Studio's legitimate
-interest in preventing fraud and in being able to keep offering a free week (article 6(1)(f) and recital 47). Reading
-the device's identifier does not require your consent, as it only serves to limit free access to the service to a
-limited period (article 82 of the French Data Protection Act; CNIL, deliberation no. 2020-091, article 5). Keeping
-proof of the contract: Kerfy Studio's legitimate interest in being able to defend its rights.
-**Retention.** Subscription and purchase data: during the subscription, then 5 years in archive, as proof of the
-contract (article 2224 of the French Civil Code). Android device fingerprint: 24 months. IP address: 15 minutes at
-most. The DeviceCheck bits are kept by Apple.
+**Purposes and legal bases.** Providing and managing your subscription, your places and your credit: performance of the
+contract (GDPR article 6(1)(b)). Preventing the same person from chaining free weeks: Kerfy Studio's legitimate interest
+in preventing fraud and in being able to keep offering a free week (article 6(1)(f) and recital 47). Reading the
+device's identifier does not require your consent, as it only serves to limit free access to the service to a limited
+period (article 82 of the French Data Protection Act; CNIL, deliberation no. 2020-091, article 5). Keeping proof of the
+contract: Kerfy Studio's legitimate interest in being able to defend its rights. Purchase on the website: collecting the
+payment and calculating the taxes, performance of the contract (article 6(1)(b)); fraud checks, legitimate interest
+(article 6(1)(f)); invoices and accounting records, legal obligation (article 6(1)(c)).
+**Retention.** Subscription and purchase data, including those of a purchase on the website: during the subscription,
+then 5 years in archive, as proof of the contract (article 2224 of the French Civil Code). Invoices and payment records:
+10 years (article L123-22 of the French Commercial Code); Stripe keeps the invoices. Android device fingerprint:
+24 months. IP address: 15 minutes at most. The DeviceCheck bits are kept by Apple.
 
 ### 5.4 Your place and the AI model
 
@@ -471,10 +484,12 @@ Kerfy Studio keeps nothing of it.
 | [to be completed: backup hosting provider] | Keeps the backups | Encrypted backups, unreadable for it and for Kerfy Studio | [to be completed] |
 | [relay hosting provider] | Hosts the guichet and the relay | Account, subscription, technical data | European Union |
 | [to be completed: email sending provider] | Sends the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices | Email address, content of these emails | [to be completed] |
+| Stripe Payments Europe, Ltd. (Dublin, Ireland) | Payment of purchases on the bipagents.com website, tax calculation, fraud checks, invoices | Email address, billing address or country, card details, IP address | European Union; possibly outside the Union (section 11) |
 
-They are bound to Kerfy Studio by a contract that complies with GDPR article 28. Apple (DeviceCheck, App Store) and
-Google (Play Integrity, Google Play) are also involved, as section 5.3 says; "Sign in with Apple" and signing in with
-Google fall under their own responsibility.
+They are bound to Kerfy Studio by a contract that complies with GDPR article 28; Stripe also acts as an independent
+controller for its own legal obligations (section 5.3). Apple (DeviceCheck, App Store) and Google (Play Integrity,
+Google Play) are also involved, as section 5.3 says; "Sign in with Apple" and signing in with Google fall under their
+own responsibility.
 
 ## 6. What Kerfy Studio does not do
 
@@ -556,9 +571,11 @@ Google may process the token and the notification outside the European Union, no
   by the European Commission.
 
 **The all-included offer.** The places' servers and the agents' mail server are in the European Union, for everyone in
-the offer. EUrouter processes the messages in the European Union [to be completed: countries where the models offered
-run, and the safeguard if one is outside the Union]. Apple and Google (sign-in, stores, DeviceCheck, Play Integrity)
-may process data in the United States, with the safeguards stated above.
+the offer. EUrouter processes the messages in the European Union
+[to be completed: countries where the models offered run, and the safeguard if one is outside the Union]. Apple and
+Google (sign-in, stores, DeviceCheck, Play Integrity) may process data in the United States, with the safeguards stated
+above. For a purchase on the website, Stripe may process data outside the European Union, notably in the United States,
+with the safeguards its privacy policy describes (https://stripe.com/privacy).
 
 **If you live outside the European Union** (United States, United Kingdom, Israel, Singapore, Canada), your data
 comes to the European Union, where Kerfy Studio processes it under the GDPR, which applies to all its processing. The
@@ -594,6 +611,8 @@ safeguard]. You can ask us for a copy of the applicable safeguards.
 | Invitation not accepted | 30 days |
 | Email address and account identifier after the end of the contract (obligation of hosting providers) | 5 years for the email, 1 year for the identifier, kept apart |
 | Subscription and purchases | During the subscription, then 5 years in archive |
+| Purchase on the website (email address given at payment, Stripe identifiers, plan and period, billing country, language) | During the subscription, then 5 years in archive |
+| Invoices and payment records of a purchase on the website | 10 years (article L123-22 of the French Commercial Code); invoices kept by Stripe |
 | Keyed fingerprint of the Android device (free week) | 24 months |
 | IP address when a free week is reserved | 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |

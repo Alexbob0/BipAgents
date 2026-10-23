@@ -294,6 +294,8 @@ soporte). El servicio de Kerfy Studio que gestiona las cuentas, las suscripcione
   pides a tus agentes.
 - **Apple y Google** son responsables de sus propios tratamientos cuando inicias sesión con ellos y cuando pagas en su
   tienda.
+- **Stripe** (Stripe Payments Europe, Ltd., Irlanda) procesa el pago cuando compras en el sitio bipagents.com
+  (sección 5.3).
 - **Tus agentes son IA y lo dicen**: la insignia «IA», un aviso al principio de cada sesión Live, una mención en las
   notificaciones y en los mensajes que envían a otras personas (Reglamento (UE) 2024/1689, artículo 50).
 
@@ -333,6 +335,15 @@ renovación está desactivada y, para el crédito de IA que compras, el identifi
 **Nunca tus medios de pago**, que solo conoce la tienda. El país de tu cuenta de la tienda, que la app envía para
 saber si la oferta se vende allí (no se conserva).
 
+**Compra en el sitio bipagents.com.** El pago pasa por **Stripe** (Stripe Payments Europe, Ltd., Irlanda). Stripe recibe
+tu dirección de correo, tu dirección o tu país de facturación, los datos de tu tarjeta (que solo trata Stripe: Kerfy
+Studio nunca recibe el número completo de tu tarjeta) y la dirección IP de tu dispositivo, para los controles contra el
+fraude. Los trata para cobrar el pago, calcular los impuestos (Stripe Tax), prevenir el fraude y emitir las facturas.
+Para sus propias obligaciones legales (lucha contra el blanqueo de capitales y el fraude), Stripe puede actuar como
+responsable del tratamiento independiente, según su política de privacidad (https://stripe.com/privacy). El guichet de
+Kerfy Studio guarda la dirección de correo que diste al pagar, los identificadores de cliente y de suscripción en
+Stripe, el plan y su periodo (mes o año), el país de facturación y el idioma.
+
 **Tu contrato.** La fecha de inicio, la del correo de confirmación y, si desistes del contrato, la fecha y la hora de
 tu desistimiento.
 
@@ -355,12 +366,14 @@ de IA una vez por minuto como máximo, y el crédito traspasado: un importe, nun
 (artículo 6.1.b del RGPD). Evitar que una misma persona encadene semanas gratis: interés legítimo de Kerfy Studio en
 prevenir el fraude y en poder seguir ofreciendo una semana gratis (artículo 6.1.f y considerando 47). Leer el
 identificador del dispositivo no requiere tu consentimiento, porque solo sirve para limitar el acceso gratuito al
-servicio a un periodo limitado (artículo 82 de la ley francesa de protección de datos; CNIL, deliberación
-n.º 2020-091, artículo 5). Conservar la prueba del contrato: interés legítimo de Kerfy Studio en poder defender sus
-derechos.
-**Plazo.** Datos de suscripción y de compra: durante la suscripción y después 5 años archivados, como prueba del
-contrato (artículo 2224 del Código Civil francés). Huella del dispositivo Android: 24 meses. Dirección IP: 15 minutos
-como máximo. Los bits de DeviceCheck los guarda Apple.
+servicio a un periodo limitado (artículo 82 de la ley francesa de protección de datos; CNIL, deliberación n.º 2020-091,
+artículo 5). Conservar la prueba del contrato: interés legítimo de Kerfy Studio en poder defender sus derechos. Compra
+en el sitio: cobrar el pago y calcular los impuestos, ejecución del contrato (artículo 6.1.b); controles contra el
+fraude, interés legítimo (artículo 6.1.f); facturas y documentos contables, obligación legal (artículo 6.1.c).
+**Plazo.** Datos de suscripción y de compra, incluidos los de una compra en el sitio: durante la suscripción y después
+5 años archivados, como prueba del contrato (artículo 2224 del Código Civil francés). Facturas y justificantes de pago:
+10 años (artículo L123-22 del Código de Comercio francés); Stripe guarda las facturas. Huella del dispositivo Android:
+24 meses. Dirección IP: 15 minutos como máximo. Los bits de DeviceCheck los guarda Apple.
 
 ### 5.4 Tu plaza y el modelo de IA
 
@@ -483,10 +496,12 @@ no borra nada en él y Kerfy Studio no guarda nada de él.
 | [por completar: proveedor de alojamiento de las copias de seguridad] | Guarda las copias de seguridad | Copias de seguridad cifradas, ilegibles para él y para Kerfy Studio | [por completar] |
 | [proveedor de alojamiento del relé] | Aloja el guichet y el relé | Cuenta, suscripción, datos técnicos | Unión Europea |
 | [por completar: proveedor de envío de correos] | Envía los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación | Dirección de correo, contenido de esos correos | [por completar] |
+| Stripe Payments Europe, Ltd. (Dublín, Irlanda) | Pago de las compras en el sitio bipagents.com, cálculo de impuestos, controles contra el fraude, facturas | Dirección de correo, dirección o país de facturación, datos de tarjeta, dirección IP | Unión Europea; posiblemente fuera de la Unión (sección 11) |
 
-Están vinculados a Kerfy Studio por un contrato conforme al artículo 28 del RGPD. Apple (DeviceCheck, App Store) y
-Google (Play Integrity, Google Play) también intervienen, como dice la sección 5.3; «Iniciar sesión con Apple» y el
-inicio de sesión con Google son de su propia responsabilidad.
+Están vinculados a Kerfy Studio por un contrato conforme al artículo 28 del RGPD; Stripe actúa además como responsable
+independiente para sus propias obligaciones legales (sección 5.3). Apple (DeviceCheck, App Store) y Google (Play
+Integrity, Google Play) también intervienen, como dice la sección 5.3; «Iniciar sesión con Apple» y el inicio de sesión
+con Google son de su propia responsabilidad.
 
 ## 6. Lo que Kerfy Studio no hace
 
@@ -574,10 +589,11 @@ Estados Unidos:
   adoptadas por la Comisión Europea.
 
 **La oferta todo incluido.** Los servidores de las plazas y el servidor de correo de los agentes están en la Unión
-Europea, para todas las personas de la oferta. EUrouter trata los mensajes en la Unión Europea [por completar: países
-donde funcionan los modelos ofrecidos, y la garantía si alguno está fuera de la Unión]. Apple y Google (inicio de
-sesión, tiendas, DeviceCheck, Play Integrity) pueden tratar datos en Estados Unidos, con las garantías indicadas
-arriba.
+Europea, para todas las personas de la oferta. EUrouter trata los mensajes en la Unión Europea
+[por completar: países donde funcionan los modelos ofrecidos, y la garantía si alguno está fuera de la Unión]. Apple y
+Google (inicio de sesión, tiendas, DeviceCheck, Play Integrity) pueden tratar datos en Estados Unidos, con las garantías
+indicadas arriba. Para una compra en el sitio, Stripe puede tratar datos fuera de la Unión Europea, en particular en
+Estados Unidos, con las garantías que describe su política de privacidad (https://stripe.com/privacy).
 
 **Si vives fuera de la Unión Europea** (Estados Unidos, Reino Unido, Israel, Singapur), tus datos vienen a la Unión
 Europea, donde Kerfy Studio los trata conforme al RGPD, que se aplica a todos sus tratamientos. El Reino Unido e Israel
@@ -603,6 +619,8 @@ seguridad: [por completar: país; garantía]. Puedes pedirnos una copia de las g
 | Invitación no aceptada | 30 días |
 | Dirección de correo e identificador de cuenta después del fin del contrato (obligación de los proveedores de alojamiento) | 5 años para el correo, 1 año para el identificador, conservados aparte |
 | Suscripción y compras | Durante la suscripción y después 5 años archivados |
+| Compra en el sitio (dirección de correo dada al pagar, identificadores de Stripe, plan y periodo, país de facturación, idioma) | Durante la suscripción y después 5 años archivados |
+| Facturas y justificantes de pago de una compra en el sitio | 10 años (artículo L123-22 del Código de Comercio francés); facturas guardadas por Stripe |
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses |
 | Dirección IP al reservar una semana gratis | 15 minutos como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |

@@ -709,7 +709,7 @@ fn silence(ms: u32) -> Vec<u8> {
 }
 
 fn slug(title: &str) -> String {
-    let text = tk::dashes(&tk::ascii_fold(title).to_lowercase());
+    let text = tk::dashes(&tk::ascii_fold(&tk::spaced_punctuation(title)).to_lowercase());
     let text = tk::head(text.trim_matches('-'), 40).to_string();
     if text.is_empty() {
         "audio".into()

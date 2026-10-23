@@ -567,8 +567,17 @@ impl Jobs {
             }
         };
         if !job.get("session_id").is_some_and(py::truthy) {
-            let title = format!("{TITLE_MARK}{}", tk::str_or_empty(job.get("title")));
-            let session = self.hermes.create_session(&agent, &title).await.map_err(refused)?;
+            // Hermes refuses a title another conversation holds (a task asked again after it was cancelled): numbered
+            let base = format!("{TITLE_MARK}{}", tk::str_or_empty(job.get("title")));
+            let mut attempt = 1;
+            let session = loop {
+                let title = if attempt == 1 { base.clone() } else { format!("{base} ({attempt})") };
+                match self.hermes.create_session(&agent, &title).await {
+                    Ok(session) => break session,
+                    Err(HermesError::Http { status: 400 | 409, .. }) if attempt < 9 => attempt += 1,
+                    Err(err) => return Err(refused(err)),
+                }
+            };
             job.insert("session_id".into(), json!(session));
         }
         let session_id = tk::str_or_empty(job.get("session_id"));

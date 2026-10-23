@@ -280,6 +280,7 @@ class FakeHermes(Fake):
         self.run_usage = {"input_tokens": 100_000, "output_tokens": 5_000}
         self.forget_runs = False
         self.default_session = {"title": "Bot Chat", "message_count": 7}
+        self.unique_titles = False   # as Hermes: a title another conversation holds is refused (400)
 
     # what the tests set up
     def add_session(self, session_id: str, messages: List[Dict[str, Any]], title: str = "Discussion",
@@ -381,6 +382,8 @@ class FakeHermes(Fake):
             return JSONResponse({"sessions": listed})
         if len(parts) == 2 and method == "POST":
             body = seen.json() or {}
+            if self.unique_titles and any(s.get("title") == body.get("title") for s in mine.values()):
+                return JSONResponse({"error": "title already in use"}, status_code=400)
             with self.lock:
                 self.created.append((agent, body))
                 session_id = f"api_s{len(self.created)}"

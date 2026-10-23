@@ -100,6 +100,33 @@ pub fn ascii_fold(text: &str) -> String {
     text.nfkd().filter(char::is_ascii).collect()
 }
 
+/// Punctuation that the ASCII folding would drop (typographic apostrophes and quotes, dashes) made spaces, and the
+/// ligatures and letters it would lose spelled out (« œ » → « oe », « ß » → « ss »): what is left keeps its words
+/// apart (« l’enquête » → « l enquête », not « lenquête »).
+pub fn spaced_punctuation(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            'œ' => out.push_str("oe"),
+            'Œ' => out.push_str("OE"),
+            'æ' => out.push_str("ae"),
+            'Æ' => out.push_str("AE"),
+            'ß' => out.push_str("ss"),
+            'ø' => out.push('o'),
+            'Ø' => out.push('O'),
+            'ł' => out.push('l'),
+            'Ł' => out.push('L'),
+            'đ' => out.push('d'),
+            c if c.is_alphanumeric() || c.is_ascii() => out.push(c),
+            c if c.is_alphabetic() => out.push(c),
+            // a combining accent stays with its letter
+            c if unicode_normalization::char::is_combining_mark(c) => out.push(c),
+            _ => out.push(' '),
+        }
+    }
+    out
+}
+
 /// `re.sub(r"[^a-z0-9]+", "-", text)` on an ASCII lower-case text.
 pub fn dashes(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

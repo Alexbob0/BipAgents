@@ -375,6 +375,14 @@ async fn run_inner(
     if trips > 0 {
         record.insert("trips".into(), json!(trips));
     }
+    // « Archives »: purchases' classes, the trips from bookings, trips in their folder, what is past archived (no
+    // model); before the reminders, so an archived record is not proposed
+    let archives = tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::archive::run(&c, Local::now().date_naive())
+    })
+    .await??;
+    record.extend(archives.view());
     let proposed = tokio::task::spawn_blocking({
         let c = config.clone();
         move || super::records::propose_due(&c, Local::now().date_naive())
@@ -683,6 +691,20 @@ pub async fn scheduler(state: AppState) {
         Ok(Err(err)) => tracing::warn!(error = %err, "notebook pages not re-filed"),
         Err(err) => tracing::warn!(error = %err, "notebook pages not re-filed"),
         Ok(Ok(_)) => {}
+    }
+    // the trips out of the subjects, the purchases' classes, the archives (2026-10-23): at once, not at the first night
+    let config = state.config();
+    if super::root(&config).join("carnet").is_dir() {
+        match tokio::task::spawn_blocking(move || super::archive::run(&config, Local::now().date_naive())).await {
+            Ok(Err(err)) => tracing::warn!(error = %format!("{err:#}"), "notebook archives not tidied"),
+            Err(err) => tracing::warn!(error = %err, "notebook archives not tidied"),
+            Ok(Ok(done)) => {
+                let view = done.view();
+                if !view.is_empty() {
+                    tracing::info!(done = %serde_json::Value::Object(view), "notebook archives tidied");
+                }
+            }
+        }
     }
     loop {
         let config = state.config();
