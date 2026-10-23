@@ -141,7 +141,7 @@
     <ol class="day-steps">
       <li class="day-step" data-step="0" data-time="7:30" data-cat="daily"><span class="day-time">7:30</span><h3>{{day.s1.title}}</h3><p>{{day.s1.text}}</p>
         <div class="listen-row">
-          <button class="listen" type="button" aria-pressed="false" data-pause="{{day.s1.pause}}"><span class="i-play" aria-hidden="true"></span><span class="listen-label">{{day.s1.listen}}</span><span class="listen-time" aria-hidden="true"></span></button>
+          <button class="listen" type="button" data-pause="{{day.s1.pause}}"><span class="listen-ic" aria-hidden="true"><span class="i-play"></span></span><span class="listen-label">{{day.s1.listen}}</span><span class="listen-time" aria-hidden="true"></span></button>
           <small class="listen-credit">{{day.s1.credit}}</small>
         </div>
         <audio preload="none" src="/assets/media/podcast-morning-{{lang}}.m4a"></audio>

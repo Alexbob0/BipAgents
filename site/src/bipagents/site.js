@@ -1,5 +1,6 @@
-// bipagents.com: the agent at work (the app's own demo scenarios, with its map and its pages), a day with the Bips,
-// the morning podcast, Live, the privacy picture, the plan picker, the install. No framework, no network but this site.
+// bipagents.com: a day with the Bips (with the morning podcast and a Live call in it), the privacy picture, the plan
+// picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
+// install. One script for every page: each part runs where its elements are. No framework, no network but this site.
 import { Bip, CATEGORIES, REDUCED, audioContext, staticBip } from "./bips.js";
 
 const data = JSON.parse(document.getElementById("site-data").textContent);
@@ -188,13 +189,13 @@ tabs.forEach((tab, i) => {
   });
 });
 $(".replay")?.addEventListener("click", () => play(current));
-once(chat, () => play(current), 0.35);
+if (chat) once(chat, () => play(current), 0.35);   // the demo has its own page (/demo/)
 
 // -- A day with the Bips: the phone follows the story -------------------------------------------------------------
 (function day() {
   const steps = $$(".day-step"), scenes = $$(".scene"), clock = $(".day-clock"), stage = $(".day-stage");
   if (!steps.length) return;
-  const bipEl = $(".day-bip"), bip = bips.get(bipEl);
+  const bip = bips.get($(".day-bip"));
   // On a phone, each step carries its own copy of the screen (the sticky phone is for wide screens).
   steps.forEach((step, i) => {
     const copy = document.createElement("div");
@@ -204,97 +205,102 @@ once(chat, () => play(current), 0.35);
     step.prepend(copy);
   });
   let active = -1;
+  const catOf = i => steps[i].dataset.cat;
   function show(i) {
     if (i === active) return;
     active = i;
     steps.forEach((s, j) => s.classList.toggle("on", j === i));
     scenes.forEach((s, j) => s.classList.toggle("on", j === i));
     clock.textContent = steps[i].dataset.time;
-    const cat = steps[i].dataset.cat;
-    stage.style.setProperty("--day-tint", `var(--${TONE[cat]}-tint)`);
-    if (bip) { bip.c = CATEGORIES[cat]; if (!REDUCED) bip.jump(18); }
+    stage.style.setProperty("--day-tint", `var(--${TONE[catOf(i)]}-tint)`);
+    if (bip) { bip.c = CATEGORIES[catOf(i)]; bip.mood = "happy"; bip.level = null; if (!REDUCED) bip.jump(18); }
   }
   const io = new IntersectionObserver(entries => {
     for (const e of entries) if (e.isIntersecting) show(+e.target.dataset.step);
   }, { rootMargin: "-45% 0px -45% 0px" });
   steps.forEach(s => io.observe(s));
   show(0);
-})();
 
-// -- The morning podcast: two Bips, their mouths on the audio -------------------------------------------------------
-(function podcast() {
-  const studio = $(".studio");
-  if (!studio) return;
-  const audio = $("audio", studio), button = $(".play", studio), time = $(".time", studio), bars = $$(".wave i", studio);
-  const hosts = $$(".host", studio).map(h => ({ el: h, bip: bips.get($(".host-bip", h)) }));
-  const playLabel = button.getAttribute("aria-label"), pauseLabel = button.dataset.pause;
-  let analyser, wave, freq, raf, quiet = 0;
-  // Who speaks when: each turn's start, found in the recording (scripts/podcast-timeline.py), not guessed from pauses.
-  const turns = data.podcast || [[0, 0]];
-  const speakerAt = t => turns.reduce((who, [start, host]) => (t + 0.05 >= start ? host : who), turns[0][1]);
-  const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-  const idle = () => {
-    hosts.forEach(h => { h.bip.mood = "happy"; h.bip.level = null; h.el.classList.remove("on"); });
-    bars.forEach((b, i) => { b.style.height = `${18 + 14 * Math.abs(Math.sin(i * 1.7))}%`; });
-  };
-  const stop = () => { studio.classList.remove("playing"); button.setAttribute("aria-label", playLabel); cancelAnimationFrame(raf); idle(); };
-  idle();
-  audio.addEventListener("ended", stop);
-  button.addEventListener("click", async () => {
-    const ctx = audioContext();
-    if (!analyser) {
-      analyser = ctx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0.6;
-      ctx.createMediaElementSource(audio).connect(analyser); analyser.connect(ctx.destination);
-      wave = new Uint8Array(analyser.fftSize); freq = new Uint8Array(analyser.frequencyBinCount);
-    }
-    if (!audio.paused) { audio.pause(); stop(); return; }
-    studio.classList.add("playing");
-    button.setAttribute("aria-label", pauseLabel);
-    await audio.play();
-    (function frame() {
-      analyser.getByteTimeDomainData(wave); analyser.getByteFrequencyData(freq);
-      let peak = 0;
-      for (const v of wave) peak = Math.max(peak, Math.abs(v - 128));
-      const level = Math.min(1, peak / 45);
-      quiet = level < 0.06 ? quiet + 1 : 0;
-      const speaker = speakerAt(audio.currentTime);
-      hosts.forEach((h, i) => {
-        const on = i === speaker && quiet < 20;
-        h.bip.mood = on ? "speaking" : "happy"; h.bip.level = on ? level : null; h.el.classList.toggle("on", on);
-      });
-      const progress = audio.duration ? audio.currentTime / audio.duration : 0;
-      bars.forEach((b, i) => {
-        const v = freq[Math.floor(4 + i * (freq.length * 0.45) / bars.length)] / 255;
-        b.style.height = `${12 + v * 88}%`;
-        b.classList.toggle("past", i / bars.length < progress);
-      });
-      time.textContent = fmt(audio.currentTime);
-      raf = requestAnimationFrame(frame);
+  // 7:30 — the demo's morning podcast. While it plays, the Bip beside the phone speaks with the audio, in the colour
+  // of whichever host is talking (scripts/podcast-timeline.py found each turn in the recording).
+  const audio = $("audio", steps[0]), button = $(".listen", steps[0]);
+  if (audio && button) {
+    const label = $(".listen-label", button), time = $(".listen-time", button);
+    const playText = label.textContent, pauseText = button.dataset.pause;
+    const HOSTS = ["daily", "wellness"], turns = data.podcast || [[0, 0]];
+    const speakerAt = t => turns.reduce((who, [start, host]) => (t + 0.05 >= start ? host : who), turns[0][1]);
+    const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+    let analyser, wave, raf;
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      button.classList.remove("playing");
+      label.textContent = playText;
+      if (bip && active >= 0) { bip.mood = "happy"; bip.level = null; bip.c = CATEGORIES[catOf(active)]; }
+    };
+    audio.addEventListener("pause", stop);
+    audio.addEventListener("ended", stop);
+    button.addEventListener("click", async () => {
+      if (!audio.paused) { audio.pause(); return; }
+      if (!analyser) {
+        try {
+          const ctx = audioContext();
+          analyser = ctx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0.6;
+          ctx.createMediaElementSource(audio).connect(analyser); analyser.connect(ctx.destination);
+          wave = new Uint8Array(analyser.fftSize);
+        } catch { analyser = null; }
+      }
+      button.classList.add("playing");
+      label.textContent = pauseText;
+      try { await audio.play(); } catch { stop(); return; }
+      (function frame() {
+        let level = 0.5;
+        if (analyser) {
+          analyser.getByteTimeDomainData(wave);
+          let peak = 0;
+          for (const v of wave) peak = Math.max(peak, Math.abs(v - 128));
+          level = Math.min(1, peak / 45);
+        }
+        if (bip && active === 0) {
+          bip.c = CATEGORIES[HOSTS[speakerAt(audio.currentTime)] ?? "daily"];
+          bip.mood = level > 0.06 ? "speaking" : "happy"; bip.level = level > 0.06 ? level : null;
+        }
+        time.textContent = audio.duration ? `${fmt(audio.currentTime)} / ${fmt(audio.duration)}` : fmt(audio.currentTime);
+        raf = requestAnimationFrame(frame);
+      })();
+    });
+  }
+
+  // 18:30 — a Live call in the car: what you say, what your Bip answers, in a loop while it's on screen.
+  const calls = $$(".s-call"), turns = data.live || [];
+  if (calls.length && turns.length && !REDUCED) {
+    const inline = calls.find(c => c.closest(".day-inline"));
+    let inlineSeen = false;
+    if (inline) new IntersectionObserver(([e]) => { inlineSeen = e.isIntersecting; }).observe(inline);
+    const step = scenes.indexOf(calls.find(c => !c.closest(".day-inline")));
+    const each = fn => calls.forEach(fn);
+    const setText = (who, text) => each(c => { $(`.s-cap.${who}`, c).textContent = text; });
+    (async function loop() {
+      for (let i = 0; ; i++) {
+        if (active !== step && !inlineSeen) {   // off screen: the last exchange stays, whole
+          each(c => c.classList.remove("anim"));
+          while (active !== step && !inlineSeen) await wait(400);
+        }
+        each(c => c.classList.add("anim"));
+        const turn = turns[i % turns.length], live = active === step && bip;
+        setText("you", turn.you); setText("bip", turn.bip);
+        each(c => { c.classList.remove("speaking", "answer"); c.classList.add("asking"); });
+        if (live) bip.mood = "listening";
+        await wait(2300);
+        if (active === step && bip) bip.mood = "thinking";
+        await wait(800);
+        each(c => { c.classList.add("speaking", "answer"); });
+        if (active === step && bip) bip.mood = "speaking";
+        await wait(3600);
+        each(c => c.classList.remove("asking", "answer", "speaking"));
+        if (active === step && bip) bip.mood = "happy";
+        await wait(700);
+      }
     })();
-  });
-})();
-
-// -- Live: a hands-free conversation, in a loop ---------------------------------------------------------------------
-(async function live() {
-  const stage = $(".live-stage");
-  if (!stage) return;
-  const bip = bips.get($(".live-bip", stage)), you = $(".caption-bubble.you", stage), said = $(".caption-bubble.bip", stage);
-  let visible = false;
-  new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(stage);
-  for (let i = 0; ; i++) {
-    while (!visible) await wait(400);
-    const turn = data.live[i % data.live.length];
-    bip.mood = "listening"; stage.classList.remove("speaking");
-    you.textContent = turn.you; you.classList.add("show");
-    await wait(2300);
-    bip.mood = "thinking";
-    await wait(900);
-    bip.mood = "speaking"; stage.classList.add("speaking");
-    said.textContent = turn.bip; said.classList.add("show");
-    await wait(3600);
-    you.classList.remove("show"); said.classList.remove("show");
-    bip.mood = "happy"; stage.classList.remove("speaking");
-    await wait(900);
   }
 })();
 
@@ -365,7 +371,7 @@ if (compare) once(compare, () => compare.classList.add("go"), 0.4);
     sticky.setAttribute("aria-hidden", String(!show));
     $("a", sticky).tabIndex = show ? 0 : -1;
   });
-  [$(".hero"), $("#pricing"), $(".end-section"), $(".foot")].forEach(el => el && io.observe(el));
+  [$(".hero"), $("#pricing"), $(".foot")].forEach(el => el && io.observe(el));
 })();
 
 // -- Install: the command typed, then what it says -------------------------------------------------------------------
