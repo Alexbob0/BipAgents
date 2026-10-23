@@ -24,34 +24,55 @@ padding:8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inse
 scrollbar-width:none}#keys::-webkit-scrollbar{display:none}
 #keys button{flex:0 0 auto;min-width:40px;height:36px;padding:0 12px;border:0;border-radius:9px;background:#3a3a3c;color:#fff;
 font:600 14px -apple-system,system-ui,sans-serif}#keys button.main{background:#fff;color:#000}
-#typing{position:fixed;left:-1000px;top:0;opacity:0;width:1px;height:1px}</style></head>
+#typing{position:fixed;left:-1000px;top:0;opacity:0;width:1px;height:1px}
+.pill{display:none;flex:0 0 auto;height:38px;padding:0 13px;border:0;border-radius:19px;background:#2a2d34;color:#fff;
+font:700 14px -apple-system,system-ui,Roboto,sans-serif;white-space:nowrap}.pill.on{background:#fff;color:#000}
+#shot.glide{transition:transform .45s cubic-bezier(.2,.7,.2,1)}
+#reader{position:fixed;left:0;right:0;bottom:0;display:none;overflow-y:auto;-webkit-overflow-scrolling:touch;
+background:#fbfaf7;color:#1d1d1f;-webkit-user-select:text;user-select:text;
+padding:18px calc(20px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
+font:17px/1.55 -apple-system,"Iowan Old Style",Georgia,serif;box-sizing:border-box}
+#reader article{max-width:640px;margin:0 auto}#reader h1{font-size:25px;line-height:1.25;margin:4px 0 14px}
+#reader h2{font-size:21px;line-height:1.3;margin:22px 0 8px}#reader h3{font-size:18px;margin:18px 0 6px}
+#reader p{margin:0 0 14px}#reader ul{margin:0 0 14px;padding-left:22px}#reader li{margin:0 0 6px}
+#reader blockquote{margin:0 0 14px;padding-left:14px;border-left:3px solid #c9c4b8;color:#4a4a4f}
+#reader .img{margin:0 0 14px;color:#76767c;font-size:14px;font-style:italic}
+#reader .src{color:#76767c;font:600 13px -apple-system,system-ui,sans-serif;margin-bottom:6px}
+@media (prefers-color-scheme:dark){#reader{background:#1c1c1e;color:#ececf0}#reader .img,#reader .src{color:#9a9aa2}
+#reader blockquote{color:#c0c0c8;border-color:#55555c}}</style></head>
 <body><div id="bar"><button id="back" aria-label="Back">‹</button>
 <div id="site"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"
 stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span id="host"></span></div>
+<button id="zoomBtn" class="pill"></button><button id="mode" class="pill"></button>
 <input id="go" type="url" inputmode="url" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go"></div>
-<div id="stage"><img id="shot" alt=""></div><div id="note"></div><div id="hint"></div>
+<div id="stage"><img id="shot" alt=""></div><div id="reader" lang=""><article></article></div><div id="note"></div><div id="hint"></div>
 <div id="keys"><button id="kbd" class="main"></button><button id="paste"></button>
 <button data-key="Enter">⏎</button><button data-key="Backspace">⌫</button><button data-key="Tab">⇥</button>
 <button data-key="ArrowUp">↑</button><button data-key="ArrowDown">↓</button><button data-key="Escape" id="esc"></button></div>
 <textarea id="typing" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
 <script>
 "use strict";
-// « Bureau » on a phone: the page the agent has open, alone, fitted to the phone's width (desktop_page.rs). Pinch to
-// zoom, one finger moves the zoomed page. With the hand (« Prendre la main »), the page renders as on a phone and
+// « Bureau » on a phone: the page the agent has open, alone (desktop_page.rs). It stays a desktop page for the agent;
+// the view follows where it acts (the focus the bridge reads, desktop_read.rs), or shows it whole (« Vue entière »),
+// or reads it as text (« Lecture »). Pinch to zoom, one finger moves the zoomed page. With the hand (« Prendre la main »), the page renders as on a phone and
 // the fingers act on it; the key bar types into it.
 const WORDS = {
   fr: {connecting: "Connexion…", idle: "Aucune page ouverte pour le moment.", stopped: "Le navigateur est éteint.",
        paused: "La page s’affichera dès qu’elle sera libre.", keyboard: "⌨︎ Clavier", paste: "Coller", esc: "Échap",
-       pinch: "Pince pour zoomer", newTab: "Nouvel onglet", address: "Adresse ou recherche"},
+       pinch: "Pince pour zoomer", newTab: "Nouvel onglet", address: "Adresse ou recherche",
+       reader: "Lecture", page: "Page", follow: "Suivre", whole: "Vue entière", nothing: "Rien à lire sur cette page pour le moment.", image: "Image", update: "Mets à jour le navigateur de {name} : bipagents update"},
   en: {connecting: "Connecting…", idle: "No page open right now.", stopped: "The browser is off.",
        paused: "The page will show as soon as it is free.", keyboard: "⌨︎ Keyboard", paste: "Paste", esc: "Esc",
-       pinch: "Pinch to zoom", newTab: "New tab", address: "Address or search"},
+       pinch: "Pinch to zoom", newTab: "New tab", address: "Address or search",
+       reader: "Reading", page: "Page", follow: "Follow", whole: "Whole page", nothing: "Nothing to read on this page yet.", image: "Image", update: "Update {name}’s browser: bipagents update"},
   de: {connecting: "Verbinden…", idle: "Gerade ist keine Seite geöffnet.", stopped: "Der Browser ist aus.",
        paused: "Die Seite erscheint, sobald sie frei ist.", keyboard: "⌨︎ Tastatur", paste: "Einfügen", esc: "Esc",
-       pinch: "Zum Zoomen auseinanderziehen", newTab: "Neuer Tab", address: "Adresse oder Suche"},
+       pinch: "Zum Zoomen auseinanderziehen", newTab: "Neuer Tab", address: "Adresse oder Suche",
+       reader: "Lesen", page: "Seite", follow: "Folgen", whole: "Ganze Seite", nothing: "Auf dieser Seite gibt es noch nichts zu lesen.", image: "Bild", update: "Aktualisiere den Browser von {name}: bipagents update"},
   es: {connecting: "Conectando…", idle: "No hay ninguna página abierta ahora.", stopped: "El navegador está apagado.",
        paused: "La página aparecerá en cuanto esté libre.", keyboard: "⌨︎ Teclado", paste: "Pegar", esc: "Esc",
-       pinch: "Pellizca para ampliar", newTab: "Nueva pestaña", address: "Dirección o búsqueda"},
+       pinch: "Pellizca para ampliar", newTab: "Nueva pestaña", address: "Dirección o búsqueda",
+       reader: "Lectura", page: "Página", follow: "Seguir", whole: "Página entera", nothing: "Todavía no hay nada que leer en esta página.", image: "Imagen", update: "Actualiza el navegador de {name}: bipagents update"},
 };
 const params = new URLSearchParams(location.search);
 const lang = (params.get("lang") || navigator.language || "fr").slice(0, 2);
@@ -59,6 +80,9 @@ const T = WORDS[lang] || WORDS.en;
 const $ = id => document.getElementById(id);
 const stage = $("stage"), shot = $("shot"), note = $("note"), bar = $("bar"), keys = $("keys"), typing = $("typing");
 const hostEl = $("host"), go = $("go"), back = $("back"), hint = $("hint");
+const readerEl = $("reader"), modeBtn = $("mode"), zoomBtn = $("zoomBtn");
+const agentName = params.get("name") || "";
+T.updateLine = (T.update || "").replace("{name}", agentName || "?");
 $("kbd").textContent = T.keyboard; $("paste").textContent = T.paste; $("esc").textContent = T.esc;
 go.placeholder = T.address;
 if (params.get("top")) document.documentElement.style.setProperty("--top", (+params.get("top") || 0) + "px");
@@ -67,7 +91,13 @@ function post(event) { try { window.webkit.messageHandlers.desktop.postMessage(e
 
 let holding = false, mobile = false, frame = {w: 0, h: 0}, page = {site: null, url: "", title: ""};
 let zoom = 1, panX = 0, panY = 0, socket = null, hintShown = false;
-function layout() { stage.style.top = bar.getBoundingClientRect().bottom + "px"; place(); }
+// « Suivre » (the default): the view zooms to where the agent acts; a pinch or a pan pauses it until it acts
+// elsewhere. « Vue entière »: the page at the phone's width. `view`: "page" or "reader" (« Lecture »).
+let follow = true, target = null, paused = null, view = "page";
+function layout() {
+  const top = bar.getBoundingClientRect().bottom + "px";
+  stage.style.top = top; readerEl.style.top = top; place();
+}
 function fit() { return frame.w ? stage.clientWidth / frame.w : 1; }
 function place() {   // the picture at the stage's width × zoom, kept within its edges
   if (!frame.w) return;
@@ -86,6 +116,83 @@ function zoomAt(z, cx, cy) {   // the point under the fingers stays there
   panX = cx - r.left - px * after; panY = cy - r.top - py * after;
   place();
 }
+function key(t) { return t ? [t.x, t.y, t.w, t.h].map(Math.round).join(",") : ""; }
+function glide(on) { shot.classList.toggle("glide", on); }
+function aim() {   // the zoom and the pan that show the target, readable, in the middle
+  if (!frame.w || holding || mobile || !follow || view !== "page") return;
+  if (paused !== null && paused === key(target)) return;
+  paused = null;
+  const W = stage.clientWidth, H = stage.clientHeight, base = fit();
+  if (!target) { zoom = 1; panX = 0; panY = 0; glide(true); place(); return; }
+  const want = target.kind === "content" ? target.w + 24 : Math.max(target.w * 1.5, 420);
+  zoom = Math.min(Math.max(frame.w / Math.min(want, frame.w), 1), 4);
+  const s = base * zoom, cx = target.x + target.w / 2, cy = target.y + target.h / 2;
+  panX = W / 2 - cx * s;
+  panY = target.kind === "content" ? -target.y * s + 12 : H / 3 - cy * s;
+  glide(true); place();
+}
+function manual() { glide(false); if (follow) paused = key(target); }
+function setFollow(on) {
+  follow = on; paused = null;
+  send({type: "follow", on: on && view === "page"});
+  if (on) aim(); else { zoom = 1; panX = 0; panY = 0; glide(true); place(); }
+  show();
+}
+zoomBtn.addEventListener("click", () => setFollow(!follow));
+
+// ---- « Lecture »: the page's text, laid out for a phone (the bridge reads it from Chrome's DOM snapshot).
+let readerShown = "", readerUrl = "", readerAt = 0, readerBusy = false;
+function block(b) {
+  const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = b.text; return e; };
+  if (b.t === "h") return el("h" + Math.min(Math.max(b.level || 2, 1), 3));
+  if (b.t === "quote") return el("blockquote");
+  if (b.t === "img") { const e = el("div", "img"); e.textContent = T.image + " : " + b.text; return e; }
+  return el("p");
+}
+function render(data) {
+  const article = readerEl.firstChild, fresh = document.createDocumentFragment();
+  readerEl.lang = data.lang || "";
+  const src = document.createElement("div"); src.className = "src"; src.textContent = data.site || ""; fresh.appendChild(src);
+  let list = null;
+  for (const b of data.blocks || []) {
+    if (b.t === "li") {
+      if (!list) { list = document.createElement("ul"); fresh.appendChild(list); }
+      const li = document.createElement("li"); li.textContent = b.text;
+      li.style.marginLeft = ((b.depth || 1) - 1) * 18 + "px"; list.appendChild(li);
+      continue;
+    }
+    list = null;
+    fresh.appendChild(block(b));
+  }
+  if (!(data.blocks || []).length) { const e = document.createElement("p"); e.textContent = T.nothing; fresh.appendChild(e); }
+  article.replaceChildren(fresh);
+}
+async function loadReader(force) {
+  if (view !== "reader" || readerBusy) return;
+  if (!force && Date.now() - readerAt < 5000) return;
+  readerBusy = true; readerAt = Date.now();
+  try {
+    const answer = await fetch("reader", {cache: "no-store"});
+    const data = answer.ok ? await answer.json() : {blocks: []};
+    const text = JSON.stringify(data);
+    if (text !== readerShown) {
+      const moved = data.url !== readerUrl;
+      readerShown = text; readerUrl = data.url;
+      render(data);
+      if (moved) readerEl.scrollTop = 0;
+    }
+  } catch (_) {}
+  readerBusy = false;
+}
+function setView(v) {
+  view = v;
+  readerEl.style.display = v === "reader" ? "block" : "none";
+  stage.style.visibility = v === "reader" ? "hidden" : "visible";
+  send({type: "follow", on: follow && v === "page"});
+  if (v === "reader") loadReader(true); else aim();
+  post("view:" + v);
+}
+modeBtn.addEventListener("click", () => { setView(view === "reader" ? "page" : "reader"); show(); });
 function showSite() {
   hostEl.textContent = page.site || (page.url ? page.url : T.newTab);
   go.value = page.url || "";
@@ -94,6 +201,14 @@ function show() {
   keys.style.display = holding ? "flex" : "none";
   stage.classList.toggle("keys", holding);
   back.style.display = holding ? "block" : "none";
+  // Watching a desktop page: « Lecture » and the zoom that follows the agent; with the hand, the page as a phone's.
+  const watching = !holding && !mobile;
+  if (!watching && view === "reader") setView("page");
+  modeBtn.style.display = watching ? "block" : "none";
+  zoomBtn.style.display = watching && view === "page" ? "block" : "none";
+  modeBtn.textContent = view === "reader" ? T.page : T.reader;
+  zoomBtn.textContent = follow ? T.whole : T.follow;
+  zoomBtn.classList.toggle("on", !follow);
   if (!holding) { typing.blur(); go.blur(); editing(false); }
   layout();
 }
@@ -121,9 +236,10 @@ function connect() {
         if (was) URL.revokeObjectURL(was);
         const changed = size.w !== frame.w;
         frame = size;
-        if (changed) { zoom = 1; panX = 0; panY = 0; }
+        if (changed) { zoom = 1; panX = 0; panY = 0; glide(false); }
         shot.style.display = "block"; note.textContent = "";
-        place();
+        if (changed) aim(); else place();
+        loadReader(false);   // the page changed: « Lecture » read again (every 5 s at most)
         if (!hintShown && !holding && !mobile) { hintShown = true; flash(T.pinch); }
       };
       shot.src = URL.createObjectURL(e.data);
@@ -131,10 +247,19 @@ function connect() {
     }
     let m; try { m = JSON.parse(e.data); } catch (_) { return; }
     if (m.type === "frame") next = {w: m.w, h: m.h};
-    else if (m.type === "page") { page = m; showSite(); post("page:" + (m.site || "")); }
+    else if (m.type === "page") {
+      const moved = m.url !== page.url;
+      page = m; showSite(); post("page:" + (m.site || ""));
+      if (moved) loadReader(true);
+    }
+    else if (m.type === "focus") { target = m.target; aim(); }
     else if (m.type === "state") {
       mobile = !!m.mobile;
-      if (m.state !== "live") { shot.style.display = "none"; note.textContent = T[m.state] || ""; }
+      if (m.state !== "live") {
+        shot.style.display = "none";
+        note.textContent = m.state === "update" ? T.updateLine : (T[m.state] || "");
+      } else send({type: "follow", on: follow && view === "page" && !holding});
+      show();
       post("state:" + m.state);
     }
   };
@@ -185,6 +310,7 @@ stage.addEventListener("touchstart", e => {
     one = null;
     const [a, b] = e.touches;
     two = {d0: dist(a, b), z0: zoom, last: mid(a, b)};
+    manual();
     return;
   }
   const t = e.touches[0];
@@ -206,7 +332,7 @@ stage.addEventListener("touchmove", e => {
   if (one.sent) {
     const now = Date.now();
     if (now - lastMove >= 30) { lastMove = now; send({type: "touch", phase: "move", points: [fraction(t)]}); }
-  } else { panX += t.clientX - one.x; panY += t.clientY - one.y; place(); }
+  } else { if (one.moved) manual(); panX += t.clientX - one.x; panY += t.clientY - one.y; place(); }
   one.x = t.clientX; one.y = t.clientY;
 }, {passive: false});
 function end(e) {
@@ -216,7 +342,7 @@ function end(e) {
   if (one.sent) send({type: "touch", phase: e.type === "touchcancel" ? "cancel" : "end"});
   else if (!one.moved) {   // watching: a double tap zooms in there, or back out
     const now = Date.now();
-    if (now - lastTap < 300) { zoomAt(zoom > 1.05 ? 1 : 2.5, one.x, one.y); lastTap = 0; } else lastTap = now;
+    if (now - lastTap < 300) { manual(); zoomAt(zoom > 1.05 ? 1 : 2.5, one.x, one.y); lastTap = 0; } else lastTap = now;
   }
   one = null;
 }
@@ -227,6 +353,7 @@ stage.addEventListener("mousedown", e => { if (holding && frame.w) send({type: "
 stage.addEventListener("mouseup", e => { if (holding && frame.w) send({type: "touch", phase: "end"}); });
 stage.addEventListener("wheel", e => {
   e.preventDefault();
+  manual();
   if (e.ctrlKey) zoomAt(zoom * (1 - e.deltaY / 200), e.clientX, e.clientY);
   else { panX -= e.deltaX; panY -= e.deltaY; place(); }
 }, {passive: false});
