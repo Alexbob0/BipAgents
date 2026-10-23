@@ -1,0 +1,2136 @@
+{
+  "version": 1,
+  "comment": "The demo Carnet's trip (« Mode voyage ») and records, shared by the iPhone and Android apps (2026-10-23). Same shapes as GET /v1/notebook/page (trip) and /v1/notebook/records, dated from today: start_in (days), a booking's day (1 = the first day), {date+N} (« 14 novembre »), {day+N}/{day-N} (an ISO day), next_in (days to a record's next date). The trip page joins the demo's subjects (kind trip).",
+  "fr": {
+    "trip": {
+      "path": "Sujets/Week-end à Lisbonne.md",
+      "title": "Week-end à Lisbonne",
+      "summary": "Quatre jours à Lisbonne avec Claire, du {date+12} au {date+15}. Vols et hôtel réservés.",
+      "summary_agent": "daily",
+      "destination": "Lisbonne, Portugal",
+      "start_in": 12,
+      "days_count": 4,
+      "icon": "plane",
+      "days": [
+        {
+          "day": 1,
+          "text": "Arrivée, hôtel et balade dans l’Alfama",
+          "place": "Alfama"
+        },
+        {
+          "day": 2,
+          "text": "Château Saint-Georges le matin, Baixa et Chiado l’après-midi",
+          "place": "Château Saint-Georges"
+        },
+        {
+          "day": 3,
+          "text": "Belém : la tour, le monastère et les pastéis",
+          "place": "Belém"
+        },
+        {
+          "day": 4,
+          "text": "Marché de Campo de Ourique, puis vol du retour",
+          "place": "Campo de Ourique"
+        }
+      ],
+      "bookings": [
+        {
+          "kind": "transport",
+          "text": "Vol TP433 Paris-Orly → Lisbonne",
+          "day": 1,
+          "time": "07:15",
+          "number": "TP433",
+          "reference": "X7K2PQ"
+        },
+        {
+          "kind": "lodging",
+          "text": "Hôtel Rossio, 3 nuits (arrivée dès 15 h)",
+          "day": 1,
+          "time": "15:00",
+          "reference": "HR-55821"
+        },
+        {
+          "kind": "booking",
+          "text": "Visite du château Saint-Georges, 2 billets",
+          "day": 2,
+          "time": "10:00",
+          "reference": "CSG-2291",
+          "record": "rb2",
+          "source": "E-mail de confirmation du château"
+        },
+        {
+          "kind": "transport",
+          "text": "Vol TP438 Lisbonne → Paris-Orly",
+          "day": 4,
+          "time": "18:40",
+          "number": "TP438",
+          "reference": "X7K2PQ"
+        }
+      ],
+      "packing": [
+        {
+          "text": "Passeport",
+          "done": true
+        },
+        {
+          "text": "Chaussures de marche",
+          "done": true
+        },
+        {
+          "text": "Copie des billets",
+          "done": true
+        },
+        {
+          "text": "Crème solaire",
+          "done": false
+        },
+        {
+          "text": "Imperméable léger",
+          "done": false
+        },
+        {
+          "text": "Chargeur de téléphone",
+          "done": false
+        }
+      ],
+      "places": [
+        {
+          "name": "Alfama",
+          "section": "itinerary"
+        },
+        {
+          "name": "Château Saint-Georges",
+          "section": "itinerary"
+        },
+        {
+          "name": "Tour de Belém",
+          "section": "itinerary"
+        },
+        {
+          "name": "Hôtel Rossio",
+          "section": "lodging"
+        },
+        {
+          "name": "Miradouro da Senhora do Monte",
+          "section": "onsite"
+        },
+        {
+          "name": "Time Out Market",
+          "section": "onsite"
+        }
+      ],
+      "sections": [
+        {
+          "id": "dates",
+          "title": "Dates",
+          "facts": [
+            {
+              "text": "Du {date+12} au {date+15}",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "itinerary",
+          "title": "Itinéraire",
+          "facts": [
+            {
+              "text": "Jour 1 : arrivée, hôtel et balade dans l’Alfama",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Jour 2 : château Saint-Georges, Baixa et Chiado",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Jour 3 : Belém",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Jour 4 : marché de Campo de Ourique, puis retour",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "transport",
+          "title": "Transports",
+          "facts": [
+            {
+              "text": "Vol TP433 Paris-Orly → Lisbonne, 7 h 15, réf. X7K2PQ",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Vol TP438 Lisbonne → Paris-Orly, 18 h 40, réf. X7K2PQ",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "lodging",
+          "title": "Hébergements",
+          "facts": [
+            {
+              "text": "[[Hôtel Rossio]], 3 nuits, réf. HR-55821",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "packing",
+          "title": "À emporter",
+          "facts": [
+            {
+              "text": "[x] Passeport",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[x] Chaussures de marche",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[x] Copie des billets",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Crème solaire",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Imperméable léger",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Chargeur de téléphone",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "budget",
+          "title": "Budget",
+          "facts": [
+            {
+              "text": "Budget : 900 € pour deux, vols et hôtel compris",
+              "agent": "budget",
+              "days_ago": 3
+            }
+          ]
+        },
+        {
+          "id": "onsite",
+          "title": "Sur place",
+          "facts": [
+            {
+              "text": "Le tram 28 passe devant l’hôtel",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Miradouro da Senhora do Monte au coucher du soleil",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        }
+      ]
+    },
+    "records": [
+      {
+        "type": "purchase",
+        "title": "Achats",
+        "path": "Fiches/Achats.md",
+        "fields": [
+          {
+            "id": "date",
+            "title": "Date"
+          },
+          {
+            "id": "item",
+            "title": "Objet"
+          },
+          {
+            "id": "store",
+            "title": "Magasin"
+          },
+          {
+            "id": "price",
+            "title": "Prix"
+          },
+          {
+            "id": "warranty_end",
+            "title": "Fin de garantie"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "warranty_end",
+        "next_title": "Fin de garantie",
+        "items": [
+          {
+            "id": "rp1",
+            "values": {
+              "date": "{day-700}",
+              "item": "Lave-linge",
+              "store": "Électro Plus",
+              "price": "499 €",
+              "warranty_end": "{day+30} (légale)",
+              "source": "Facture reçue par e-mail"
+            },
+            "next_in": 30,
+            "legal": true
+          },
+          {
+            "id": "rp2",
+            "values": {
+              "date": "{day-120}",
+              "item": "Tablette",
+              "store": "Boutique en ligne",
+              "price": "329 €",
+              "warranty_end": "{day+610} (légale)",
+              "source": "Confirmation de commande"
+            },
+            "next_in": 610,
+            "legal": true
+          },
+          {
+            "id": "rp3",
+            "values": {
+              "date": "{day-800}",
+              "item": "Casque audio",
+              "store": "Grand magasin",
+              "price": "89 €",
+              "warranty_end": "{day-70}",
+              "source": ""
+            },
+            "next_in": -70,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "subscription",
+        "title": "Abonnements",
+        "path": "Fiches/Abonnements.md",
+        "fields": [
+          {
+            "id": "service",
+            "title": "Service"
+          },
+          {
+            "id": "price",
+            "title": "Prix"
+          },
+          {
+            "id": "period",
+            "title": "Période"
+          },
+          {
+            "id": "renewal",
+            "title": "Prochain renouvellement"
+          },
+          {
+            "id": "cancel",
+            "title": "Comment résilier"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "renewal",
+        "next_title": "Prochain renouvellement",
+        "items": [
+          {
+            "id": "rs1",
+            "values": {
+              "service": "Films en streaming",
+              "price": "13,49 €",
+              "period": "Mensuel",
+              "renewal": "{day+9}",
+              "cancel": "En ligne, à tout moment",
+              "source": "Relevé de compte"
+            },
+            "next_in": 9,
+            "legal": false
+          },
+          {
+            "id": "rs2",
+            "values": {
+              "service": "Salle de sport",
+              "price": "29,90 €",
+              "period": "Mensuel",
+              "renewal": "{day+17}",
+              "cancel": "Lettre, un mois avant",
+              "source": "Contrat signé"
+            },
+            "next_in": 17,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "contract",
+        "title": "Contrats et assurances",
+        "path": "Fiches/Contrats et assurances.md",
+        "fields": [
+          {
+            "id": "what",
+            "title": "Type"
+          },
+          {
+            "id": "provider",
+            "title": "Organisme"
+          },
+          {
+            "id": "number",
+            "title": "Numéro"
+          },
+          {
+            "id": "end",
+            "title": "Échéance"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "end",
+        "next_title": "Échéance",
+        "items": [
+          {
+            "id": "rc1",
+            "values": {
+              "what": "Assurance habitation",
+              "provider": "Assureur Horizon",
+              "number": "HAB-448120",
+              "end": "{day+95}",
+              "source": "Avis d’échéance"
+            },
+            "next_in": 95,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "paper",
+        "title": "Papiers",
+        "path": "Fiches/Papiers.md",
+        "fields": [
+          {
+            "id": "document",
+            "title": "Document"
+          },
+          {
+            "id": "expires",
+            "title": "Expiration"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "expires",
+        "next_title": "Expiration",
+        "items": [
+          {
+            "id": "rd1",
+            "values": {
+              "document": "Passeport",
+              "expires": "{day+420}",
+              "source": "Photo du passeport"
+            },
+            "next_in": 420,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "booking",
+        "title": "Réservations",
+        "path": "Fiches/Réservations.md",
+        "fields": [
+          {
+            "id": "date",
+            "title": "Date"
+          },
+          {
+            "id": "what",
+            "title": "Quoi"
+          },
+          {
+            "id": "provider",
+            "title": "Chez"
+          },
+          {
+            "id": "reference",
+            "title": "Référence"
+          },
+          {
+            "id": "trip",
+            "title": "Voyage"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "date",
+        "next_title": "Date",
+        "items": [
+          {
+            "id": "rb1",
+            "values": {
+              "date": "{day+12}",
+              "what": "Hôtel, 3 nuits",
+              "provider": "Hôtel Rossio",
+              "reference": "HR-55821",
+              "trip": "Week-end à Lisbonne",
+              "source": "E-mail de l’hôtel"
+            },
+            "next_in": 12,
+            "legal": false
+          },
+          {
+            "id": "rb2",
+            "values": {
+              "date": "{day+13}",
+              "what": "Visite du château, 2 billets",
+              "provider": "Château Saint-Georges",
+              "reference": "CSG-2291",
+              "trip": "Week-end à Lisbonne",
+              "source": "E-mail de confirmation du château"
+            },
+            "next_in": 13,
+            "legal": false
+          }
+        ]
+      }
+    ],
+    "proposals": [
+      {
+        "id": "q1demo",
+        "agent": "",
+        "kind": "warranty",
+        "title": "Garantie du lave-linge : se termine le {date+30}",
+        "due_in": 23,
+        "page": "Achats"
+      }
+    ]
+  },
+  "en": {
+    "trip": {
+      "path": "Subjects/Lisbon weekend.md",
+      "title": "Lisbon weekend",
+      "summary": "Four days in Lisbon with Claire, from {date+12} to {date+15}. Flights and hotel booked.",
+      "summary_agent": "daily",
+      "destination": "Lisbon, Portugal",
+      "start_in": 12,
+      "days_count": 4,
+      "icon": "plane",
+      "days": [
+        {
+          "day": 1,
+          "text": "Arrival, hotel and a walk through Alfama",
+          "place": "Alfama"
+        },
+        {
+          "day": 2,
+          "text": "São Jorge Castle in the morning, Baixa and Chiado in the afternoon",
+          "place": "São Jorge Castle"
+        },
+        {
+          "day": 3,
+          "text": "Belém: the tower, the monastery and the pastéis",
+          "place": "Belém"
+        },
+        {
+          "day": 4,
+          "text": "Campo de Ourique market, then the flight home",
+          "place": "Campo de Ourique"
+        }
+      ],
+      "bookings": [
+        {
+          "kind": "transport",
+          "text": "Flight TP433 Paris-Orly → Lisbon",
+          "day": 1,
+          "time": "07:15",
+          "number": "TP433",
+          "reference": "X7K2PQ"
+        },
+        {
+          "kind": "lodging",
+          "text": "Hotel Rossio, 3 nights (check-in from 3 pm)",
+          "day": 1,
+          "time": "15:00",
+          "reference": "HR-55821"
+        },
+        {
+          "kind": "booking",
+          "text": "São Jorge Castle visit, 2 tickets",
+          "day": 2,
+          "time": "10:00",
+          "reference": "CSG-2291",
+          "record": "rb2",
+          "source": "Castle confirmation e-mail"
+        },
+        {
+          "kind": "transport",
+          "text": "Flight TP438 Lisbon → Paris-Orly",
+          "day": 4,
+          "time": "18:40",
+          "number": "TP438",
+          "reference": "X7K2PQ"
+        }
+      ],
+      "packing": [
+        {
+          "text": "Passport",
+          "done": true
+        },
+        {
+          "text": "Walking shoes",
+          "done": true
+        },
+        {
+          "text": "Copy of the tickets",
+          "done": true
+        },
+        {
+          "text": "Sunscreen",
+          "done": false
+        },
+        {
+          "text": "Light raincoat",
+          "done": false
+        },
+        {
+          "text": "Phone charger",
+          "done": false
+        }
+      ],
+      "places": [
+        {
+          "name": "Alfama",
+          "section": "itinerary"
+        },
+        {
+          "name": "São Jorge Castle",
+          "section": "itinerary"
+        },
+        {
+          "name": "Belém Tower",
+          "section": "itinerary"
+        },
+        {
+          "name": "Hotel Rossio",
+          "section": "lodging"
+        },
+        {
+          "name": "Miradouro da Senhora do Monte",
+          "section": "onsite"
+        },
+        {
+          "name": "Time Out Market",
+          "section": "onsite"
+        }
+      ],
+      "sections": [
+        {
+          "id": "dates",
+          "title": "Dates",
+          "facts": [
+            {
+              "text": "From {date+12} to {date+15}",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "itinerary",
+          "title": "Itinerary",
+          "facts": [
+            {
+              "text": "Day 1: arrival, hotel and a walk through Alfama",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Day 2: São Jorge Castle, Baixa and Chiado",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Day 3: Belém",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Day 4: Campo de Ourique market, then home",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "transport",
+          "title": "Transport",
+          "facts": [
+            {
+              "text": "Flight TP433 Paris-Orly → Lisbon, 7:15 am, ref. X7K2PQ",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Flight TP438 Lisbon → Paris-Orly, 6:40 pm, ref. X7K2PQ",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "lodging",
+          "title": "Places to stay",
+          "facts": [
+            {
+              "text": "[[Hotel Rossio]], 3 nights, ref. HR-55821",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "packing",
+          "title": "To pack",
+          "facts": [
+            {
+              "text": "[x] Passport",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[x] Walking shoes",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[x] Copy of the tickets",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Sunscreen",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Light raincoat",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Phone charger",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "budget",
+          "title": "Budget",
+          "facts": [
+            {
+              "text": "Budget: €900 for two, flights and hotel included",
+              "agent": "budget",
+              "days_ago": 3
+            }
+          ]
+        },
+        {
+          "id": "onsite",
+          "title": "On site",
+          "facts": [
+            {
+              "text": "Tram 28 stops in front of the hotel",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Miradouro da Senhora do Monte at sunset",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        }
+      ]
+    },
+    "records": [
+      {
+        "type": "purchase",
+        "title": "Purchases",
+        "path": "Records/Purchases.md",
+        "fields": [
+          {
+            "id": "date",
+            "title": "Date"
+          },
+          {
+            "id": "item",
+            "title": "Item"
+          },
+          {
+            "id": "store",
+            "title": "Store"
+          },
+          {
+            "id": "price",
+            "title": "Price"
+          },
+          {
+            "id": "warranty_end",
+            "title": "Warranty ends"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "warranty_end",
+        "next_title": "Warranty ends",
+        "items": [
+          {
+            "id": "rp1",
+            "values": {
+              "date": "{day-700}",
+              "item": "Washing machine",
+              "store": "Electro Plus",
+              "price": "€499",
+              "warranty_end": "{day+30} (legal)",
+              "source": "Invoice received by e-mail"
+            },
+            "next_in": 30,
+            "legal": true
+          },
+          {
+            "id": "rp2",
+            "values": {
+              "date": "{day-120}",
+              "item": "Tablet",
+              "store": "Online shop",
+              "price": "€329",
+              "warranty_end": "{day+610} (legal)",
+              "source": "Order confirmation"
+            },
+            "next_in": 610,
+            "legal": true
+          },
+          {
+            "id": "rp3",
+            "values": {
+              "date": "{day-800}",
+              "item": "Headphones",
+              "store": "Department store",
+              "price": "€89",
+              "warranty_end": "{day-70}",
+              "source": ""
+            },
+            "next_in": -70,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "subscription",
+        "title": "Subscriptions",
+        "path": "Records/Subscriptions.md",
+        "fields": [
+          {
+            "id": "service",
+            "title": "Service"
+          },
+          {
+            "id": "price",
+            "title": "Price"
+          },
+          {
+            "id": "period",
+            "title": "Period"
+          },
+          {
+            "id": "renewal",
+            "title": "Next renewal"
+          },
+          {
+            "id": "cancel",
+            "title": "How to cancel"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "renewal",
+        "next_title": "Next renewal",
+        "items": [
+          {
+            "id": "rs1",
+            "values": {
+              "service": "Film streaming",
+              "price": "€13.49",
+              "period": "Monthly",
+              "renewal": "{day+9}",
+              "cancel": "Online, any time",
+              "source": "Bank statement"
+            },
+            "next_in": 9,
+            "legal": false
+          },
+          {
+            "id": "rs2",
+            "values": {
+              "service": "Gym",
+              "price": "€29.90",
+              "period": "Monthly",
+              "renewal": "{day+17}",
+              "cancel": "By letter, one month ahead",
+              "source": "Signed contract"
+            },
+            "next_in": 17,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "contract",
+        "title": "Contracts and insurance",
+        "path": "Records/Contracts and insurance.md",
+        "fields": [
+          {
+            "id": "what",
+            "title": "Type"
+          },
+          {
+            "id": "provider",
+            "title": "Provider"
+          },
+          {
+            "id": "number",
+            "title": "Number"
+          },
+          {
+            "id": "end",
+            "title": "Ends"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "end",
+        "next_title": "Ends",
+        "items": [
+          {
+            "id": "rc1",
+            "values": {
+              "what": "Home insurance",
+              "provider": "Horizon Insurance",
+              "number": "HAB-448120",
+              "end": "{day+95}",
+              "source": "Renewal notice"
+            },
+            "next_in": 95,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "paper",
+        "title": "Papers",
+        "path": "Records/Papers.md",
+        "fields": [
+          {
+            "id": "document",
+            "title": "Document"
+          },
+          {
+            "id": "expires",
+            "title": "Expires"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "expires",
+        "next_title": "Expires",
+        "items": [
+          {
+            "id": "rd1",
+            "values": {
+              "document": "Passport",
+              "expires": "{day+420}",
+              "source": "Photo of the passport"
+            },
+            "next_in": 420,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "booking",
+        "title": "Bookings",
+        "path": "Records/Bookings.md",
+        "fields": [
+          {
+            "id": "date",
+            "title": "Date"
+          },
+          {
+            "id": "what",
+            "title": "What"
+          },
+          {
+            "id": "provider",
+            "title": "With"
+          },
+          {
+            "id": "reference",
+            "title": "Reference"
+          },
+          {
+            "id": "trip",
+            "title": "Trip"
+          },
+          {
+            "id": "source",
+            "title": "Source"
+          }
+        ],
+        "next": "date",
+        "next_title": "Date",
+        "items": [
+          {
+            "id": "rb1",
+            "values": {
+              "date": "{day+12}",
+              "what": "Hotel, 3 nights",
+              "provider": "Hotel Rossio",
+              "reference": "HR-55821",
+              "trip": "Lisbon weekend",
+              "source": "Hotel e-mail"
+            },
+            "next_in": 12,
+            "legal": false
+          },
+          {
+            "id": "rb2",
+            "values": {
+              "date": "{day+13}",
+              "what": "Castle visit, 2 tickets",
+              "provider": "São Jorge Castle",
+              "reference": "CSG-2291",
+              "trip": "Lisbon weekend",
+              "source": "Castle confirmation e-mail"
+            },
+            "next_in": 13,
+            "legal": false
+          }
+        ]
+      }
+    ],
+    "proposals": [
+      {
+        "id": "q1demo",
+        "agent": "",
+        "kind": "warranty",
+        "title": "Washing machine warranty: ends on {date+30}",
+        "due_in": 23,
+        "page": "Purchases"
+      }
+    ]
+  },
+  "de": {
+    "trip": {
+      "path": "Themen/Wochenende in Lissabon.md",
+      "title": "Wochenende in Lissabon",
+      "summary": "Vier Tage Lissabon mit Claire, vom {date+12} bis {date+15}. Flüge und Hotel gebucht.",
+      "summary_agent": "daily",
+      "destination": "Lissabon, Portugal",
+      "start_in": 12,
+      "days_count": 4,
+      "icon": "plane",
+      "days": [
+        {
+          "day": 1,
+          "text": "Ankunft, Hotel und Spaziergang durch die Alfama",
+          "place": "Alfama"
+        },
+        {
+          "day": 2,
+          "text": "Morgens Burg São Jorge, nachmittags Baixa und Chiado",
+          "place": "Burg São Jorge"
+        },
+        {
+          "day": 3,
+          "text": "Belém: Turm, Kloster und Pastéis",
+          "place": "Belém"
+        },
+        {
+          "day": 4,
+          "text": "Markt in Campo de Ourique, dann Rückflug",
+          "place": "Campo de Ourique"
+        }
+      ],
+      "bookings": [
+        {
+          "kind": "transport",
+          "text": "Flug TP433 Paris-Orly → Lissabon",
+          "day": 1,
+          "time": "07:15",
+          "number": "TP433",
+          "reference": "X7K2PQ"
+        },
+        {
+          "kind": "lodging",
+          "text": "Hotel Rossio, 3 Nächte (Check-in ab 15 Uhr)",
+          "day": 1,
+          "time": "15:00",
+          "reference": "HR-55821"
+        },
+        {
+          "kind": "booking",
+          "text": "Besuch der Burg São Jorge, 2 Tickets",
+          "day": 2,
+          "time": "10:00",
+          "reference": "CSG-2291",
+          "record": "rb2",
+          "source": "Bestätigungs-E-Mail der Burg"
+        },
+        {
+          "kind": "transport",
+          "text": "Flug TP438 Lissabon → Paris-Orly",
+          "day": 4,
+          "time": "18:40",
+          "number": "TP438",
+          "reference": "X7K2PQ"
+        }
+      ],
+      "packing": [
+        {
+          "text": "Reisepass",
+          "done": true
+        },
+        {
+          "text": "Wanderschuhe",
+          "done": true
+        },
+        {
+          "text": "Kopie der Tickets",
+          "done": true
+        },
+        {
+          "text": "Sonnencreme",
+          "done": false
+        },
+        {
+          "text": "Leichte Regenjacke",
+          "done": false
+        },
+        {
+          "text": "Handy-Ladegerät",
+          "done": false
+        }
+      ],
+      "places": [
+        {
+          "name": "Alfama",
+          "section": "itinerary"
+        },
+        {
+          "name": "Burg São Jorge",
+          "section": "itinerary"
+        },
+        {
+          "name": "Turm von Belém",
+          "section": "itinerary"
+        },
+        {
+          "name": "Hotel Rossio",
+          "section": "lodging"
+        },
+        {
+          "name": "Miradouro da Senhora do Monte",
+          "section": "onsite"
+        },
+        {
+          "name": "Time Out Market",
+          "section": "onsite"
+        }
+      ],
+      "sections": [
+        {
+          "id": "dates",
+          "title": "Reisedaten",
+          "facts": [
+            {
+              "text": "Vom {date+12} bis {date+15}",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "itinerary",
+          "title": "Reiseverlauf",
+          "facts": [
+            {
+              "text": "Tag 1: Ankunft, Hotel und Spaziergang durch die Alfama",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Tag 2: Burg São Jorge, Baixa und Chiado",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Tag 3: Belém",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Tag 4: Markt in Campo de Ourique, dann zurück",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "transport",
+          "title": "Verkehrsmittel",
+          "facts": [
+            {
+              "text": "Flug TP433 Paris-Orly → Lissabon, 7:15 Uhr, Buchungsnr. X7K2PQ",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Flug TP438 Lissabon → Paris-Orly, 18:40 Uhr, Buchungsnr. X7K2PQ",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "lodging",
+          "title": "Unterkünfte",
+          "facts": [
+            {
+              "text": "[[Hotel Rossio]], 3 Nächte, Buchungsnr. HR-55821",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "packing",
+          "title": "Zum Einpacken",
+          "facts": [
+            {
+              "text": "[x] Reisepass",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[x] Wanderschuhe",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[x] Kopie der Tickets",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Sonnencreme",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Leichte Regenjacke",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Handy-Ladegerät",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "budget",
+          "title": "Budget",
+          "facts": [
+            {
+              "text": "Budget: 900 € für zwei, Flüge und Hotel inklusive",
+              "agent": "budget",
+              "days_ago": 3
+            }
+          ]
+        },
+        {
+          "id": "onsite",
+          "title": "Vor Ort",
+          "facts": [
+            {
+              "text": "Die Tram 28 hält vor dem Hotel",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Miradouro da Senhora do Monte bei Sonnenuntergang",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        }
+      ]
+    },
+    "records": [
+      {
+        "type": "purchase",
+        "title": "Käufe",
+        "path": "Unterlagen/Käufe.md",
+        "fields": [
+          {
+            "id": "date",
+            "title": "Datum"
+          },
+          {
+            "id": "item",
+            "title": "Gegenstand"
+          },
+          {
+            "id": "store",
+            "title": "Geschäft"
+          },
+          {
+            "id": "price",
+            "title": "Preis"
+          },
+          {
+            "id": "warranty_end",
+            "title": "Garantie bis"
+          },
+          {
+            "id": "source",
+            "title": "Quelle"
+          }
+        ],
+        "next": "warranty_end",
+        "next_title": "Garantie bis",
+        "items": [
+          {
+            "id": "rp1",
+            "values": {
+              "date": "{day-700}",
+              "item": "Waschmaschine",
+              "store": "Elektro Plus",
+              "price": "499 €",
+              "warranty_end": "{day+30} (gesetzlich)",
+              "source": "Rechnung per E-Mail"
+            },
+            "next_in": 30,
+            "legal": true
+          },
+          {
+            "id": "rp2",
+            "values": {
+              "date": "{day-120}",
+              "item": "Tablet",
+              "store": "Onlineshop",
+              "price": "329 €",
+              "warranty_end": "{day+610} (gesetzlich)",
+              "source": "Bestellbestätigung"
+            },
+            "next_in": 610,
+            "legal": true
+          },
+          {
+            "id": "rp3",
+            "values": {
+              "date": "{day-800}",
+              "item": "Kopfhörer",
+              "store": "Kaufhaus",
+              "price": "89 €",
+              "warranty_end": "{day-70}",
+              "source": ""
+            },
+            "next_in": -70,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "subscription",
+        "title": "Abonnements",
+        "path": "Unterlagen/Abonnements.md",
+        "fields": [
+          {
+            "id": "service",
+            "title": "Dienst"
+          },
+          {
+            "id": "price",
+            "title": "Preis"
+          },
+          {
+            "id": "period",
+            "title": "Zeitraum"
+          },
+          {
+            "id": "renewal",
+            "title": "Nächste Verlängerung"
+          },
+          {
+            "id": "cancel",
+            "title": "Kündigung"
+          },
+          {
+            "id": "source",
+            "title": "Quelle"
+          }
+        ],
+        "next": "renewal",
+        "next_title": "Nächste Verlängerung",
+        "items": [
+          {
+            "id": "rs1",
+            "values": {
+              "service": "Film-Streaming",
+              "price": "13,49 €",
+              "period": "Monatlich",
+              "renewal": "{day+9}",
+              "cancel": "Online, jederzeit",
+              "source": "Kontoauszug"
+            },
+            "next_in": 9,
+            "legal": false
+          },
+          {
+            "id": "rs2",
+            "values": {
+              "service": "Fitnessstudio",
+              "price": "29,90 €",
+              "period": "Monatlich",
+              "renewal": "{day+17}",
+              "cancel": "Per Brief, einen Monat vorher",
+              "source": "Unterschriebener Vertrag"
+            },
+            "next_in": 17,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "contract",
+        "title": "Verträge und Versicherungen",
+        "path": "Unterlagen/Verträge und Versicherungen.md",
+        "fields": [
+          {
+            "id": "what",
+            "title": "Art"
+          },
+          {
+            "id": "provider",
+            "title": "Anbieter"
+          },
+          {
+            "id": "number",
+            "title": "Nummer"
+          },
+          {
+            "id": "end",
+            "title": "Ablauf"
+          },
+          {
+            "id": "source",
+            "title": "Quelle"
+          }
+        ],
+        "next": "end",
+        "next_title": "Ablauf",
+        "items": [
+          {
+            "id": "rc1",
+            "values": {
+              "what": "Hausratversicherung",
+              "provider": "Horizont Versicherung",
+              "number": "HAB-448120",
+              "end": "{day+95}",
+              "source": "Beitragsrechnung"
+            },
+            "next_in": 95,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "paper",
+        "title": "Ausweise und Papiere",
+        "path": "Unterlagen/Ausweise und Papiere.md",
+        "fields": [
+          {
+            "id": "document",
+            "title": "Dokument"
+          },
+          {
+            "id": "expires",
+            "title": "Gültig bis"
+          },
+          {
+            "id": "source",
+            "title": "Quelle"
+          }
+        ],
+        "next": "expires",
+        "next_title": "Gültig bis",
+        "items": [
+          {
+            "id": "rd1",
+            "values": {
+              "document": "Reisepass",
+              "expires": "{day+420}",
+              "source": "Foto des Passes"
+            },
+            "next_in": 420,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "booking",
+        "title": "Buchungen",
+        "path": "Unterlagen/Buchungen.md",
+        "fields": [
+          {
+            "id": "date",
+            "title": "Datum"
+          },
+          {
+            "id": "what",
+            "title": "Was"
+          },
+          {
+            "id": "provider",
+            "title": "Bei"
+          },
+          {
+            "id": "reference",
+            "title": "Buchungsnummer"
+          },
+          {
+            "id": "trip",
+            "title": "Reise"
+          },
+          {
+            "id": "source",
+            "title": "Quelle"
+          }
+        ],
+        "next": "date",
+        "next_title": "Datum",
+        "items": [
+          {
+            "id": "rb1",
+            "values": {
+              "date": "{day+12}",
+              "what": "Hotel, 3 Nächte",
+              "provider": "Hotel Rossio",
+              "reference": "HR-55821",
+              "trip": "Wochenende in Lissabon",
+              "source": "E-Mail des Hotels"
+            },
+            "next_in": 12,
+            "legal": false
+          },
+          {
+            "id": "rb2",
+            "values": {
+              "date": "{day+13}",
+              "what": "Burgbesuch, 2 Tickets",
+              "provider": "Burg São Jorge",
+              "reference": "CSG-2291",
+              "trip": "Wochenende in Lissabon",
+              "source": "Bestätigungs-E-Mail der Burg"
+            },
+            "next_in": 13,
+            "legal": false
+          }
+        ]
+      }
+    ],
+    "proposals": [
+      {
+        "id": "q1demo",
+        "agent": "",
+        "kind": "warranty",
+        "title": "Garantie der Waschmaschine: endet am {date+30}",
+        "due_in": 23,
+        "page": "Käufe"
+      }
+    ]
+  },
+  "es": {
+    "trip": {
+      "path": "Temas/Fin de semana en Lisboa.md",
+      "title": "Fin de semana en Lisboa",
+      "summary": "Cuatro días en Lisboa con Claire, del {date+12} al {date+15}. Vuelos y hotel reservados.",
+      "summary_agent": "daily",
+      "destination": "Lisboa, Portugal",
+      "start_in": 12,
+      "days_count": 4,
+      "icon": "plane",
+      "days": [
+        {
+          "day": 1,
+          "text": "Llegada, hotel y paseo por la Alfama",
+          "place": "Alfama"
+        },
+        {
+          "day": 2,
+          "text": "Castillo de San Jorge por la mañana, Baixa y Chiado por la tarde",
+          "place": "Castillo de San Jorge"
+        },
+        {
+          "day": 3,
+          "text": "Belém: la torre, el monasterio y los pastéis",
+          "place": "Belém"
+        },
+        {
+          "day": 4,
+          "text": "Mercado de Campo de Ourique y vuelo de vuelta",
+          "place": "Campo de Ourique"
+        }
+      ],
+      "bookings": [
+        {
+          "kind": "transport",
+          "text": "Vuelo TP433 París-Orly → Lisboa",
+          "day": 1,
+          "time": "07:15",
+          "number": "TP433",
+          "reference": "X7K2PQ"
+        },
+        {
+          "kind": "lodging",
+          "text": "Hotel Rossio, 3 noches (entrada desde las 15 h)",
+          "day": 1,
+          "time": "15:00",
+          "reference": "HR-55821"
+        },
+        {
+          "kind": "booking",
+          "text": "Visita al castillo de San Jorge, 2 entradas",
+          "day": 2,
+          "time": "10:00",
+          "reference": "CSG-2291",
+          "record": "rb2",
+          "source": "Correo de confirmación del castillo"
+        },
+        {
+          "kind": "transport",
+          "text": "Vuelo TP438 Lisboa → París-Orly",
+          "day": 4,
+          "time": "18:40",
+          "number": "TP438",
+          "reference": "X7K2PQ"
+        }
+      ],
+      "packing": [
+        {
+          "text": "Pasaporte",
+          "done": true
+        },
+        {
+          "text": "Zapatillas para caminar",
+          "done": true
+        },
+        {
+          "text": "Copia de los billetes",
+          "done": true
+        },
+        {
+          "text": "Crema solar",
+          "done": false
+        },
+        {
+          "text": "Chubasquero ligero",
+          "done": false
+        },
+        {
+          "text": "Cargador del móvil",
+          "done": false
+        }
+      ],
+      "places": [
+        {
+          "name": "Alfama",
+          "section": "itinerary"
+        },
+        {
+          "name": "Castillo de San Jorge",
+          "section": "itinerary"
+        },
+        {
+          "name": "Torre de Belém",
+          "section": "itinerary"
+        },
+        {
+          "name": "Hotel Rossio",
+          "section": "lodging"
+        },
+        {
+          "name": "Miradouro da Senhora do Monte",
+          "section": "onsite"
+        },
+        {
+          "name": "Time Out Market",
+          "section": "onsite"
+        }
+      ],
+      "sections": [
+        {
+          "id": "dates",
+          "title": "Fechas",
+          "facts": [
+            {
+              "text": "Del {date+12} al {date+15}",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "itinerary",
+          "title": "Itinerario",
+          "facts": [
+            {
+              "text": "Día 1: llegada, hotel y paseo por la Alfama",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Día 2: castillo de San Jorge, Baixa y Chiado",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Día 3: Belém",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Día 4: mercado de Campo de Ourique y vuelta",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "transport",
+          "title": "Transportes",
+          "facts": [
+            {
+              "text": "Vuelo TP433 París-Orly → Lisboa, 7:15, loc. X7K2PQ",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Vuelo TP438 Lisboa → París-Orly, 18:40, loc. X7K2PQ",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "lodging",
+          "title": "Alojamientos",
+          "facts": [
+            {
+              "text": "[[Hotel Rossio]], 3 noches, loc. HR-55821",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "packing",
+          "title": "Para llevar",
+          "facts": [
+            {
+              "text": "[x] Pasaporte",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[x] Zapatillas para caminar",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[x] Copia de los billetes",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Crema solar",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Chubasquero ligero",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "[ ] Cargador del móvil",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        },
+        {
+          "id": "budget",
+          "title": "Presupuesto",
+          "facts": [
+            {
+              "text": "Presupuesto: 900 € para dos, vuelos y hotel incluidos",
+              "agent": "budget",
+              "days_ago": 3
+            }
+          ]
+        },
+        {
+          "id": "onsite",
+          "title": "En destino",
+          "facts": [
+            {
+              "text": "El tranvía 28 para delante del hotel",
+              "agent": "daily",
+              "days_ago": 1
+            },
+            {
+              "text": "Miradouro da Senhora do Monte al atardecer",
+              "agent": "daily",
+              "days_ago": 1
+            }
+          ]
+        }
+      ]
+    },
+    "records": [
+      {
+        "type": "purchase",
+        "title": "Compras",
+        "path": "Registros/Compras.md",
+        "fields": [
+          {
+            "id": "date",
+            "title": "Fecha"
+          },
+          {
+            "id": "item",
+            "title": "Artículo"
+          },
+          {
+            "id": "store",
+            "title": "Tienda"
+          },
+          {
+            "id": "price",
+            "title": "Precio"
+          },
+          {
+            "id": "warranty_end",
+            "title": "Fin de garantía"
+          },
+          {
+            "id": "source",
+            "title": "Fuente"
+          }
+        ],
+        "next": "warranty_end",
+        "next_title": "Fin de garantía",
+        "items": [
+          {
+            "id": "rp1",
+            "values": {
+              "date": "{day-700}",
+              "item": "Lavadora",
+              "store": "Electro Plus",
+              "price": "499 €",
+              "warranty_end": "{day+30} (legal)",
+              "source": "Factura recibida por correo"
+            },
+            "next_in": 30,
+            "legal": true
+          },
+          {
+            "id": "rp2",
+            "values": {
+              "date": "{day-120}",
+              "item": "Tableta",
+              "store": "Tienda en línea",
+              "price": "329 €",
+              "warranty_end": "{day+610} (legal)",
+              "source": "Confirmación del pedido"
+            },
+            "next_in": 610,
+            "legal": true
+          },
+          {
+            "id": "rp3",
+            "values": {
+              "date": "{day-800}",
+              "item": "Auriculares",
+              "store": "Grandes almacenes",
+              "price": "89 €",
+              "warranty_end": "{day-70}",
+              "source": ""
+            },
+            "next_in": -70,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "subscription",
+        "title": "Suscripciones",
+        "path": "Registros/Suscripciones.md",
+        "fields": [
+          {
+            "id": "service",
+            "title": "Servicio"
+          },
+          {
+            "id": "price",
+            "title": "Precio"
+          },
+          {
+            "id": "period",
+            "title": "Periodo"
+          },
+          {
+            "id": "renewal",
+            "title": "Próxima renovación"
+          },
+          {
+            "id": "cancel",
+            "title": "Cómo cancelar"
+          },
+          {
+            "id": "source",
+            "title": "Fuente"
+          }
+        ],
+        "next": "renewal",
+        "next_title": "Próxima renovación",
+        "items": [
+          {
+            "id": "rs1",
+            "values": {
+              "service": "Películas en streaming",
+              "price": "13,49 €",
+              "period": "Mensual",
+              "renewal": "{day+9}",
+              "cancel": "En línea, cuando quieras",
+              "source": "Extracto bancario"
+            },
+            "next_in": 9,
+            "legal": false
+          },
+          {
+            "id": "rs2",
+            "values": {
+              "service": "Gimnasio",
+              "price": "29,90 €",
+              "period": "Mensual",
+              "renewal": "{day+17}",
+              "cancel": "Por carta, un mes antes",
+              "source": "Contrato firmado"
+            },
+            "next_in": 17,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "contract",
+        "title": "Contratos y seguros",
+        "path": "Registros/Contratos y seguros.md",
+        "fields": [
+          {
+            "id": "what",
+            "title": "Tipo"
+          },
+          {
+            "id": "provider",
+            "title": "Entidad"
+          },
+          {
+            "id": "number",
+            "title": "Número"
+          },
+          {
+            "id": "end",
+            "title": "Vencimiento"
+          },
+          {
+            "id": "source",
+            "title": "Fuente"
+          }
+        ],
+        "next": "end",
+        "next_title": "Vencimiento",
+        "items": [
+          {
+            "id": "rc1",
+            "values": {
+              "what": "Seguro del hogar",
+              "provider": "Seguros Horizonte",
+              "number": "HAB-448120",
+              "end": "{day+95}",
+              "source": "Aviso de vencimiento"
+            },
+            "next_in": 95,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "paper",
+        "title": "Documentos personales",
+        "path": "Registros/Documentos personales.md",
+        "fields": [
+          {
+            "id": "document",
+            "title": "Documento"
+          },
+          {
+            "id": "expires",
+            "title": "Caduca"
+          },
+          {
+            "id": "source",
+            "title": "Fuente"
+          }
+        ],
+        "next": "expires",
+        "next_title": "Caduca",
+        "items": [
+          {
+            "id": "rd1",
+            "values": {
+              "document": "Pasaporte",
+              "expires": "{day+420}",
+              "source": "Foto del pasaporte"
+            },
+            "next_in": 420,
+            "legal": false
+          }
+        ]
+      },
+      {
+        "type": "booking",
+        "title": "Reservas",
+        "path": "Registros/Reservas.md",
+        "fields": [
+          {
+            "id": "date",
+            "title": "Fecha"
+          },
+          {
+            "id": "what",
+            "title": "Qué"
+          },
+          {
+            "id": "provider",
+            "title": "Con"
+          },
+          {
+            "id": "reference",
+            "title": "Localizador"
+          },
+          {
+            "id": "trip",
+            "title": "Viaje"
+          },
+          {
+            "id": "source",
+            "title": "Fuente"
+          }
+        ],
+        "next": "date",
+        "next_title": "Fecha",
+        "items": [
+          {
+            "id": "rb1",
+            "values": {
+              "date": "{day+12}",
+              "what": "Hotel, 3 noches",
+              "provider": "Hotel Rossio",
+              "reference": "HR-55821",
+              "trip": "Fin de semana en Lisboa",
+              "source": "Correo del hotel"
+            },
+            "next_in": 12,
+            "legal": false
+          },
+          {
+            "id": "rb2",
+            "values": {
+              "date": "{day+13}",
+              "what": "Visita al castillo, 2 entradas",
+              "provider": "Castillo de San Jorge",
+              "reference": "CSG-2291",
+              "trip": "Fin de semana en Lisboa",
+              "source": "Correo de confirmación del castillo"
+            },
+            "next_in": 13,
+            "legal": false
+          }
+        ]
+      }
+    ],
+    "proposals": [
+      {
+        "id": "q1demo",
+        "agent": "",
+        "kind": "warranty",
+        "title": "Garantía de la lavadora: termina el {date+30}",
+        "due_in": 23,
+        "page": "Compras"
+      }
+    ]
+  }
+}
