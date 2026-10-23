@@ -502,6 +502,18 @@ impl HermesClient {
         Ok(Self::items(data, ["sessions", "data", "items"]))
     }
 
+    /// `GET /api/sessions?limit=&offset=`: one page of the list (Hermes reads at most 200 at a time).
+    pub async fn list_sessions_page(
+        &self,
+        agent: &AgentConfig,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let params = [("limit", limit.to_string()), ("offset", offset.to_string())];
+        let data = self.get_json(agent, "/api/sessions", &params).await?;
+        Ok(Self::items(data, ["sessions", "data", "items"]))
+    }
+
     /// `GET /api/sessions/{id}`.
     pub async fn session(&self, agent: &AgentConfig, session_id: &str) -> Result<Map<String, Value>, HermesError> {
         let data = self.get_json(agent, &format!("/api/sessions/{session_id}"), &[]).await?;

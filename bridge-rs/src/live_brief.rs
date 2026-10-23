@@ -19,6 +19,21 @@
 //!
 //! Messages and points stay on this server (data folder « briefs », one file per conversation).
 //!
+//! The throwaway sessions must never come back. Hermes (517b5e10f) titles a session in a background thread after its
+//! first turn (`agent/title_generator.py` `auto_title_session`), and that thread bills its model call to the session
+//! (`agent/aux_accounting.py` → `hermes_state_usage.py` `record_auxiliary_usage`), which upserts the session row
+//! (`_insert_session_row(session_id, "unknown")`): after our DELETE, a new empty, visible row then took the generated
+//! title — an empty conversation named after the person's subjects, every hour or two. So:
+//!
+//! - the scratch session's title is set with a PATCH (Hermes' « user » provenance): the titler sees a title it must
+//!   not replace and stops before any model call (`_has_upgraded_title`); the title is unique (Hermes refuses a
+//!   title another session holds);
+//! - the scratch ids are kept (« briefs/scratch.json ») and deleted again a few times over the next half hour, and at
+//!   the bridge's start, until Hermes answers 404 (that path only ever deletes the ids it created);
+//! - the empty rows already written back are swept (`is_ghost`): an `api_` id (minted by `POST /api/sessions`) whose
+//!   source is Hermes' accounting placeholder « unknown », no message (count and transcript), not pinned, ten
+//!   minutes old at least.
+//!
 //! Port of `bridge/bipbridge/live_brief.py` (owner group: voice-speech).
 
 use std::sync::{LazyLock, Mutex};
@@ -59,6 +74,22 @@ pub const CALLS_KEPT: usize = 3;
 pub const CALL_HOURS: f64 = 24.0;
 pub const CALL_CHARS: usize = 2500;
 pub const POINTS_TITLE: &str = "BipAgents · notes";
+/// After a scratch session's deletion, when it is deleted again (seconds): Hermes' titler may write it back meanwhile.
+pub const SCRATCH_CHECKS: [f64; 6] = [10.0, 30.0, 90.0, 300.0, 900.0, 1800.0];
+/// A scratch session Hermes still keeps past the last check (a turn still running…): again every half hour…
+pub const SCRATCH_RETRY_SECONDS: f64 = 1800.0;
+/// …for two days at most.
+pub const SCRATCH_KEPT_SECONDS: f64 = 2.0 * 86400.0;
+/// While its chat runs, a scratch session is not deleted by the sweep (a crash meanwhile: deleted at the next start).
+pub const SCRATCH_CHAT_SECONDS: f64 = 300.0;
+pub const SWEEP_SECONDS: f64 = 5.0;
+/// The empty rows Hermes wrote back: looked for 20 s after the start, then every 6 hours.
+pub const GHOSTS_FIRST_SECONDS: f64 = 20.0;
+pub const GHOSTS_EVERY_SECONDS: f64 = 6.0 * 3600.0;
+pub const GHOST_AGE_SECONDS: f64 = 600.0;
+const GHOST_PAGE: i64 = 200;
+const GHOST_PAGES: i64 = 10;
+static SCRATCH_LOCK: Mutex<()> = Mutex::new(());
 pub const LIVE_TITLE: &str = "Live";
 /// What the apps put in a message for the agent only (a call's opening, a call's recap): never shown to the person.
 static HIDDEN: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?s)<!--\s*bip:.*?-->").unwrap());
@@ -195,15 +226,65 @@ fn truthy_key(session: &Dict, key: &str) -> bool {
     session.get(key).map(py::truthy).unwrap_or(false)
 }
 
-/// A conversation with the person: not a call, a scheduled task, a throwaway notes session or a sub-agent.
+/// An empty row Hermes wrote back after its deletion (see the module's doc): only `POST /api/sessions` mints `api_`
+/// ids and it gives them its own source, so an `api_` row with the accounting placeholder « unknown » and no message
+/// was upserted by Hermes' usage accounting, not created by anyone. Never a pinned one, a Bot Chat, a scheduled task's
+/// or a call's, and only past ten minutes. The transcript is checked as well before deleting (`sweep_ghosts`).
+pub fn is_ghost(session: &Dict, now: f64) -> bool {
+    let id = session.get("id").and_then(Value::as_str).unwrap_or("");
+    let source = session.get("source").and_then(Value::as_str).unwrap_or("");
+    let title = session.get("title").and_then(Value::as_str).unwrap_or("");
+    let old = |key: &str| seconds(session.get(key)).is_some_and(|at| now - at >= GHOST_AGE_SECONDS);
+    id.starts_with("api_")
+        && source == "unknown"
+        && as_int(session.get("message_count")) == Some(0)
+        && !truthy_key(session, "pinned")
+        && !title.eq_ignore_ascii_case("Bot Chat")
+        && !title.starts_with(LIVE_TITLE)
+        && !is_cron_session(session)
+        && old("started_at")
+        && session.get("last_active").is_none_or(|v| v.is_null() || old("last_active"))
+}
+
+/// A throwaway session to delete again (« briefs/scratch.json »).
+#[derive(Debug, Clone, PartialEq)]
+struct Scratch {
+    agent: String,
+    id: String,
+    at: f64,
+    checks: usize,
+    next: f64,
+}
+
+impl Scratch {
+    fn of(value: &Value) -> Option<Scratch> {
+        Some(Scratch {
+            agent: value.get("agent")?.as_str()?.to_string(),
+            id: value.get("id")?.as_str()?.to_string(),
+            at: value.get("at")?.as_f64()?,
+            checks: value.get("checks").and_then(Value::as_u64).unwrap_or(0) as usize,
+            next: value.get("next").and_then(Value::as_f64).unwrap_or(0.0),
+        })
+    }
+
+    fn json(&self) -> Value {
+        json!({"agent": self.agent, "id": self.id, "at": self.at, "checks": self.checks, "next": self.next})
+    }
+}
+
+/// A conversation with the person: not a call, a scheduled task, a throwaway notes session, a sub-agent or an empty row
+/// Hermes wrote back after a deletion (its accounting placeholder source « unknown », no message, whatever its age).
 pub fn is_conversation(session: &Dict) -> bool {
     let title = match session.get("title") {
         Some(v) if py::truthy(v) => py::py_str(v),
         _ => String::new(),
     };
+    let written_back = session.get("source").and_then(Value::as_str) == Some("unknown")
+        && as_int(session.get("message_count")) == Some(0);
     !(is_cron_session(session)
         || title.starts_with(LIVE_TITLE)
         || title.starts_with(POINTS_TITLE)
+        || written_back
         || truthy_key(session, "is_internal_child")
         || truthy_key(session, "hidden"))
 }
@@ -452,16 +533,33 @@ impl Briefs {
             _ => "(none yet)".to_string(),
         };
         let request = points_request(pystr::strip(&points), &text);
-        let scratch = self.hermes.create_session(agent, POINTS_TITLE).await?;
-        let mut hidden = Map::new();
-        hidden.insert("hidden".into(), Value::Bool(true));
-        match self.hermes.update_session(agent, &scratch, hidden).await {
-            Ok(()) | Err(HermesError::Http { .. }) => {} // an older Hermes: the session shows a few seconds, then it's deleted
+        // Unique: Hermes refuses a title another session holds (one left behind would stop the notes for good).
+        let title = format!("{POINTS_TITLE} · {}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        let scratch = self.hermes.create_session(agent, &title).await?;
+        self.note_scratch(&agent.name, &scratch, py::time_time() + SCRATCH_CHAT_SECONDS)?;
+        // The title again through a PATCH: « user » provenance, so Hermes' titler leaves the session alone (no model
+        // call billed to it, which would write the row back after its deletion).
+        let mut fields = Map::new();
+        fields.insert("title".into(), json!(title));
+        fields.insert("hidden".into(), Value::Bool(true));
+        match self.hermes.update_session(agent, &scratch, fields.clone()).await {
+            Ok(()) => {}
+            Err(HermesError::Http { .. }) => {
+                // an older Hermes without « hidden »: the session shows a few seconds, then it's deleted
+                fields.remove("hidden");
+                match self.hermes.update_session(agent, &scratch, fields).await {
+                    Ok(()) | Err(HermesError::Http { .. }) => {}
+                    Err(other) => return Err(other.into()),
+                }
+            }
             Err(other) => return Err(other.into()),
         }
         let extra = json!({"model_options": {"reasoning": {"enabled": false}}});
         let reply = self.hermes.session_chat(agent, &scratch, &request, extra.as_object().cloned(), 240.0).await;
-        match self.hermes.delete_session(agent, &scratch).await {
+        let deleted = self.hermes.delete_session(agent, &scratch).await;
+        // Deleted or not, deleted again over the next half hour (`sweep_scratch`).
+        self.note_scratch(&agent.name, &scratch, py::time_time() + SCRATCH_CHECKS[0])?;
+        match deleted {
             Ok(()) => {}
             Err(HermesError::Http { status, .. }) => {
                 tracing::warn!(agent = %agent.name, status = status, "notes session not deleted");
@@ -480,6 +578,164 @@ impl Briefs {
         self.save(&agent.name, session, &state)?;
         tracing::info!(agent = %agent.name, chars = pystr::len(&points), "live brief points");
         Ok(true)
+    }
+
+    fn scratch_path(&self) -> String {
+        py::join(&self.folder, "scratch.json")
+    }
+
+    fn scratch_list(&self) -> Vec<Scratch> {
+        let text = std::fs::read_to_string(self.scratch_path()).unwrap_or_default();
+        match serde_json::from_str::<Value>(&text) {
+            Ok(Value::Object(map)) => {
+                map.get("sessions").and_then(Value::as_array).into_iter().flatten().filter_map(Scratch::of).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn scratch_save(&self, list: &[Scratch]) -> std::io::Result<()> {
+        let path = self.scratch_path();
+        if list.is_empty() {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            };
+        }
+        py::makedirs(&self.folder, 0o700)?;
+        let data = json!({"sessions": list.iter().map(Scratch::json).collect::<Vec<_>>()});
+        let temporary = with_suffix(&path, ".tmp");
+        py::write_with_mode(&temporary, data.to_string().as_bytes(), 0o600)?;
+        std::fs::rename(&temporary, &path)
+    }
+
+    /// A scratch session to delete (again) at `next`; its checks start over.
+    fn note_scratch(&self, agent: &str, id: &str, next: f64) -> std::io::Result<()> {
+        let _guard = lock(&SCRATCH_LOCK);
+        let mut list = self.scratch_list();
+        list.retain(|s| !(s.agent == agent && s.id == id));
+        list.push(Scratch { agent: agent.to_string(), id: id.to_string(), at: py::time_time(), checks: 0, next });
+        self.scratch_save(&list)
+    }
+
+    /// The scratch sessions still to check (agent, id).
+    pub fn scratch_pending(&self) -> Vec<(String, String)> {
+        let _guard = lock(&SCRATCH_LOCK);
+        self.scratch_list().into_iter().map(|s| (s.agent, s.id)).collect()
+    }
+
+    /// The scratch sessions due (all of them at the bridge's start) deleted again; one leaves the list once Hermes
+    /// answers 404 at its last check (or after two days). Returns how many Hermes still had.
+    pub async fn sweep_scratch(&self, now: f64, all: bool) -> std::io::Result<usize> {
+        let due: Vec<Scratch> = {
+            let _guard = lock(&SCRATCH_LOCK);
+            self.scratch_list().into_iter().filter(|s| all || s.next <= now).collect()
+        };
+        if due.is_empty() {
+            return Ok(0);
+        }
+        let config = self.config.get();
+        let mut came_back = 0;
+        let mut done: Vec<(Scratch, bool)> = Vec::new(); // (the entry updated, dropped)
+        for mut entry in due {
+            let Some(agent) = config.agents.values().find(|a| a.name == entry.agent) else {
+                done.push((entry, true)); // the agent is gone, its sessions with it
+                continue;
+            };
+            let gone = match self.hermes.delete_session(agent, &entry.id).await {
+                Ok(()) => {
+                    came_back += 1;
+                    tracing::warn!(agent = %agent.name, session = %entry.id, "notes session still there, deleted again");
+                    false
+                }
+                Err(HermesError::Http { status: 404, .. }) => true,
+                Err(err) => {
+                    tracing::warn!(agent = %agent.name, error = %err.type_name(), "notes session check failed");
+                    false
+                }
+            };
+            entry.checks += 1;
+            let last = entry.checks >= SCRATCH_CHECKS.len();
+            let drop = (gone && last) || now - entry.at > SCRATCH_KEPT_SECONDS;
+            entry.next = now
+                + if last {
+                    SCRATCH_RETRY_SECONDS
+                } else {
+                    SCRATCH_CHECKS[entry.checks] - SCRATCH_CHECKS[entry.checks - 1]
+                };
+            done.push((entry, drop));
+        }
+        let _guard = lock(&SCRATCH_LOCK);
+        let mut list = self.scratch_list();
+        for (entry, drop) in done {
+            let Some(index) = list.iter().position(|s| s.agent == entry.agent && s.id == entry.id) else { continue };
+            if list[index].at != entry.at {
+                continue; // noted again meanwhile (deleted once more by `refresh`): its own checks
+            }
+            if drop {
+                list.remove(index);
+            } else {
+                list[index] = entry;
+            }
+        }
+        self.scratch_save(&list)?;
+        Ok(came_back)
+    }
+
+    /// The empty rows Hermes wrote back (`is_ghost`, and an empty transcript) deleted. Returns how many.
+    pub async fn sweep_ghosts(&self, agent: &AgentConfig, now: f64) -> Result<usize, HermesError> {
+        let mut ghosts = Vec::new();
+        for page in 0..GHOST_PAGES {
+            let sessions = self.hermes.list_sessions_page(agent, GHOST_PAGE, page * GHOST_PAGE).await?;
+            for session in sessions.iter().filter(|s| is_ghost(s, now)) {
+                if let Some(Value::String(id)) = session.get("id") {
+                    ghosts.push(id.clone());
+                }
+            }
+            if (sessions.len() as i64) < GHOST_PAGE {
+                break;
+            }
+        }
+        let mut deleted = 0;
+        for id in ghosts {
+            match self.hermes.session_messages(agent, &id).await {
+                Ok(messages) if messages.is_empty() => {}
+                _ => continue,
+            }
+            match self.hermes.delete_session(agent, &id).await {
+                Ok(()) => deleted += 1,
+                Err(HermesError::Http { .. }) => {}
+                Err(other) => return Err(other),
+            }
+        }
+        if deleted > 0 {
+            tracing::info!(agent = %agent.name, count = deleted, "empty sessions written back by Hermes deleted");
+        }
+        Ok(deleted)
+    }
+
+    /// Every few seconds the scratch sessions due deleted again (all of them at the start); the rows Hermes wrote back
+    /// swept 20 s after the start, then every 6 hours.
+    pub async fn sweep_forever(self: std::sync::Arc<Self>) {
+        let mut all = true;
+        let mut ghosts_at = py::time_time() + GHOSTS_FIRST_SECONDS;
+        loop {
+            let now = py::time_time();
+            if let Err(err) = self.sweep_scratch(now, all).await {
+                tracing::warn!(error = %err, "notes sessions sweep");
+            }
+            all = false;
+            if now >= ghosts_at {
+                ghosts_at = now + GHOSTS_EVERY_SECONDS;
+                let config = self.config.get();
+                for agent in config.agents.values() {
+                    if let Err(err) = self.sweep_ghosts(agent, now).await {
+                        tracing::warn!(agent = %agent.name, error = %err.type_name(), "empty sessions sweep");
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs_f64(SWEEP_SECONDS)).await;
+        }
     }
 
     /// Every two minutes, at most one conversation's key points written again (the one waiting the longest).

@@ -114,8 +114,11 @@ def test_the_key_points_are_written_in_a_throwaway_session_then_kept(bridge, fak
     assert chat["model_options"] == {"reasoning": {"enabled": False}}
     assert "message 13" in chat["message"] and "(none yet)" in chat["message"] and "Use no tool" in chat["message"]
     assert chat["message"].startswith("<!--bip:notes-->")
-    assert hermes.created == [("", {"title": "BipAgents · notes"})]
-    assert hermes.patched == [{"id": chat["session"], "hidden": True}]
+    # A unique title, set again by a PATCH (Hermes' « user » provenance: its titler leaves the session alone), hidden.
+    (agent, created), = hermes.created
+    title = created["title"]
+    assert agent == "" and title.startswith("BipAgents · notes · ") and len(title) == len("BipAgents · notes · ") + 8
+    assert hermes.patched == [{"id": chat["session"], "title": title, "hidden": True}]
     assert hermes.deleted == [chat["session"]]      # nothing left in the agent's conversations
     assert wait_until(lambda: brief(bridge, session="s1").json()["points_at"])
     got = brief(bridge, session="s1").json()
@@ -123,3 +126,53 @@ def test_the_key_points_are_written_in_a_throwaway_session_then_kept(bridge, fak
     kept = json.loads((bridge.state_dir / "briefs" / "wellness" / "s1.json").read_text())
     assert kept["upto"] == len(talk(14)) == kept["count"] and kept["points"].startswith("- Alex")   # Hermes' count
     assert bridge.logged("live brief points")[0]["agent"] == "wellness"
+
+
+@pytest.mark.slow
+def test_a_scratch_session_written_back_is_deleted_again(bridge, fakes):
+    """Hermes' titler can write the scratch session back after its deletion (an empty row titled from the request):
+    the bridge deletes it again a few seconds later, and keeps checking it for a while."""
+    hermes = fakes.hermes
+    hermes.revive, hermes.revive_after = 1, 1.0
+    hermes.add_session("s1", talk(14), last_active=time.time() - 900)
+    assert wait_until(lambda: hermes.chats, timeout=45)
+    scratch = hermes.chats[0]["session"]
+    assert wait_until(lambda: scratch in hermes.sessions.get("", {}), timeout=10)   # back, as on the owner's phone
+    assert wait_until(lambda: len(hermes.deleted) == 2, timeout=30)
+    assert hermes.deleted == [scratch, scratch] and scratch not in hermes.sessions[""]
+    assert "s1" in hermes.sessions[""]
+    assert bridge.logged("notes session still there, deleted again")
+    kept = json.loads((bridge.state_dir / "briefs" / "scratch.json").read_text())
+    assert [s["id"] for s in kept["sessions"]] == [scratch]   # still checked over the next half hour
+
+
+@pytest.mark.slow
+def test_the_empty_rows_written_back_are_swept(bridge, fakes):
+    """20 s after the start: only `api_` rows with Hermes' accounting source « unknown », no message (count and
+    transcript), not pinned, ten minutes old."""
+    hermes = fakes.hermes
+    old = time.time() - 3600
+
+    def row(session_id, messages=(), **extra):
+        fields = {"title": "Notes on a cable", "last_active": old, "started_at": old, "source": "unknown",
+                  "message_count": 0, **extra}
+        hermes.add_session(session_id, list(messages), **fields)
+
+    row("api_1761200000_ab12cd34")                                         # the ghost
+    row("api_young", last_active=time.time(), started_at=time.time())     # written back a moment ago
+    row("api_counted0", talk(2))                                           # a transcript after all
+    row("api_talk", talk(4), message_count=4)
+    row("api_pinned", pinned=True)
+    row("cron_x_20261023_070000")
+    row("20261023_101500_ab12cd")                                          # not minted by the API server
+    row("api_new", source="api_server", title="Nouvelle")                  # nobody has written in it yet
+    assert wait_until(lambda: hermes.deleted, timeout=45)
+    time.sleep(1)
+    assert hermes.deleted == ["api_1761200000_ab12cd34"]
+    assert bridge.logged("empty sessions written back by Hermes deleted")[0]["count"] == 1
+
+
+def test_a_written_back_row_is_not_the_latest_conversation(bridge, fakes):
+    fakes.hermes.add_session("api_talk", talk(4), last_active=1)
+    fakes.hermes.add_session("api_ghost", [], title="Notes on a cable", last_active=2, source="unknown")
+    assert brief(bridge).json()["session"] == "api_talk"
