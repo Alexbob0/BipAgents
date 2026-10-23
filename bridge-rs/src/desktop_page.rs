@@ -2,7 +2,9 @@
 //!
 //! - `GET /v1/agents/{id}/desktop/state`: stopped, starting, idle (its screen up, no page or a blank one) or active
 //!   (a page open), with that page's site. The apps show a friendly empty state until the agent browses, then switch
-//!   to the live view by themselves. Nothing is started by asking.
+//!   to the live view by themselves. Nothing is started by asking. `working`: its browser tools were used this last
+//!   minute (the conversation's « <agent> navigue… »); `update_browser`: its image predates this page view (its
+//!   DevTools relay tells no version), the apps say « bipagents update ».
 //! - `POST /v1/agents/{id}/desktop/open`: the person's « Ouvrir le navigateur »: its container woken and Chrome
 //!   started on its screen (browsers::open_browser).
 //! - `/desktop/<ticket>/page/` and its WebSocket: on a phone, the active tab's page only (no taskbar, no window),
@@ -10,7 +12,10 @@
 //!   a few per second and only when the page changes. While the person holds the browser (« Prendre la main »,
 //!   whose hold lets the bridge's connections through with its token), that tab renders as on a phone (device
 //!   metrics, a mobile user agent, touch) and their taps, scrolls and keys go to it; handing it back clears the
-//!   overrides and reloads the page before the agent's tools resume.
+//!   overrides and reloads the page before the agent's tools resume. Watching, the phone may ask to follow the
+//!   agent (`{"type": "follow", "on": true}`): where it acts comes as `{"type": "focus", …}` when it moves, read
+//!   without touching the page (desktop_read.rs, which also makes the « Lecture » view). A state « update »: the
+//!   person holds the browser and its relay, too old, lets the bridge through no more.
 //!
 //! Only for an agent's own browser container (browsers.rs): a desktop set up by hand, or Hermes' Bot Desktop, keeps
 //! the full desktop view (desktop.rs).
@@ -48,6 +53,8 @@ pub const BLANK: [&str; 6] = [
 pub const STARTING_SECONDS: f64 = 90.0;
 /// The agent's browser tools touched its `busy` file this recently: it is starting it.
 pub const BUSY_SECONDS: u64 = 15;
+/// Its browser tools were used this recently: it is browsing (the state's `working`).
+pub const WORKING_SECONDS: u64 = 60;
 /// At most this many frames per second reach the phone (Chrome waits for each frame's ack before the next).
 pub const FRAME_INTERVAL: Duration = Duration::from_millis(200);
 /// The viewer page (`assets/desktop_page.html`).
@@ -138,12 +145,22 @@ pub fn site(url: &str) -> Option<String> {
     Some(host.strip_prefix("www.").unwrap_or(&host).to_string())
 }
 
-fn busy_recently(config: &Config, agent: &str) -> bool {
+fn busy_within(config: &Config, agent: &str, seconds: u64) -> bool {
     std::fs::metadata(crate::browsers::folder(config, agent).join("busy"))
         .and_then(|m| m.modified())
         .ok()
         .and_then(|t| t.elapsed().ok())
-        .is_some_and(|age| age < Duration::from_secs(BUSY_SECONDS))
+        .is_some_and(|age| age < Duration::from_secs(seconds))
+}
+
+fn busy_recently(config: &Config, agent: &str) -> bool {
+    busy_within(config, agent, BUSY_SECONDS)
+}
+
+/// Its browser tools were used this last minute (each call touches `busy`, and every 30 s of a long one): the
+/// conversation's « <agent> navigue… ».
+fn working_recently(config: &Config, agent: &str) -> bool {
+    busy_within(config, agent, WORKING_SECONDS)
 }
 
 async fn listening(port: u16) -> bool {
@@ -180,10 +197,13 @@ pub async fn state_route(State(state): State<AppState>, UrlPath(agent_id): UrlPa
     };
     if let Some(port) = cdp_port(&config, &agent.name).filter(|_| has_vnc(&agent)) {
         let (now, browser, tab) = browser_state(&config, &agent.name, port).await;
+        // Chrome answers through its relay, which does not know this page view: an image to rebuild.
+        let update = browser && crate::desktop_read::relay_outdated(port).await;
         return Ok(web::ok(json!({
             "state": now, "browser": browser, "page": true, "can_open": true,
             "site": tab.as_ref().and_then(|t| site(&t.url)), "title": tab.as_ref().map(|t| t.title.clone()),
             "you_hold": holds(&state, &agent.name),
+            "working": now == "active" && working_recently(&config, &agent.name), "update_browser": update,
         })));
     }
     // A desktop set up by hand, a viewer page, Hermes' Bot Desktop: shown whole, as it is.
@@ -196,7 +216,7 @@ pub async fn state_route(State(state): State<AppState>, UrlPath(agent_id): UrlPa
     }
     Ok(web::ok(json!({
         "state": "active", "browser": true, "page": false, "can_open": false, "site": null, "title": null,
-        "you_hold": holds(&state, &agent.name),
+        "you_hold": holds(&state, &agent.name), "working": false, "update_browser": false,
     })))
 }
 
@@ -227,7 +247,8 @@ pub async fn open_route(State(state): State<AppState>, UrlPath(agent_id): UrlPat
     });
     tracing::info!(agent = %agent.name, "browser opened by the person");
     Ok(web::ok(json!({"state": "starting", "browser": false, "page": true, "can_open": true, "site": null,
-                      "title": null, "you_hold": holds(&state, &agent.name)})))
+                      "title": null, "you_hold": holds(&state, &agent.name), "working": false,
+                      "update_browser": false})))
 }
 
 fn has_vnc(agent: &AgentConfig) -> bool {
@@ -241,6 +262,8 @@ pub struct Cdp {
     sink: SplitSink<WsClient, WsMessage>,
     stream: SplitStream<WsClient>,
     next: u64,
+    /// The newest screencast frame that came while waiting for an answer: handed to `receive` next, not lost.
+    stashed: Option<Value>,
 }
 
 impl Cdp {
@@ -263,7 +286,7 @@ impl Cdp {
             .map_err(|_| "timed out".to_string())?
             .map_err(|e| e.to_string())?;
         let (sink, stream) = socket.split();
-        Ok(Cdp { sink, stream, next: 0 })
+        Ok(Cdp { sink, stream, next: 0, stashed: None })
     }
 
     /// Sends a command without waiting for its answer.
@@ -276,6 +299,9 @@ impl Cdp {
 
     /// The next message from Chrome (None: it closed).
     pub async fn receive(&mut self) -> Option<Value> {
+        if let Some(frame) = self.stashed.take() {
+            return Some(frame);
+        }
         loop {
             match self.stream.next().await? {
                 Ok(WsMessage::Text(text)) => {
@@ -289,20 +315,33 @@ impl Cdp {
         }
     }
 
-    /// A command and its answer; frames that come meanwhile are acknowledged and dropped.
+    /// A command and its answer. A frame that comes meanwhile is kept for `receive` (an older one kept before it is
+    /// acknowledged and dropped): the view never misses the page's last change.
     pub async fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
         let id = self.send(method, params).await?;
         let wait = async {
             loop {
-                let message = self.receive().await.ok_or("closed")?;
+                let message = loop {
+                    match self.stream.next().await {
+                        Some(Ok(WsMessage::Text(text))) => {
+                            if let Ok(value) = serde_json::from_str::<Value>(&text) {
+                                break value;
+                            }
+                        }
+                        Some(Ok(WsMessage::Close(_)) | Err(_)) | None => return Err("closed".to_string()),
+                        Some(Ok(_)) => {}
+                    }
+                };
                 if message.get("id").and_then(Value::as_u64) == Some(id) {
                     return match message.get("error") {
                         Some(error) => Err(error.to_string()),
                         None => Ok(message.get("result").cloned().unwrap_or(Value::Null)),
                     };
                 }
-                if let Some(session) = frame_session(&message) {
-                    self.send("Page.screencastFrameAck", json!({"sessionId": session})).await?;
+                if frame_session(&message).is_some() {
+                    if let Some(session) = self.stashed.replace(message).as_ref().and_then(frame_session) {
+                        self.send("Page.screencastFrameAck", json!({"sessionId": session})).await?;
+                    }
                 }
             }
         };
@@ -591,6 +630,8 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
     tracing::info!(agent = %agent, mobile = phone.wanted(), "page view connected");
     let mut desktop_height = 650.0f64;
     let mut last_said = Value::Null;
+    // The phone follows where the agent acts (its « Suivre »): the focus pushed as it moves (desktop_read.rs).
+    let mut follow = false;
     'outer: loop {
         let config = state.config();
         let Some(port) = cdp_port(&config, &agent) else { break };
@@ -603,6 +644,7 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                 Err(_) if listening(port).await => "idle",
                 Err(_) => "stopped",
             };
+            let now = if holding && now == "idle" && list.is_err() { outdated_or(port, now).await } else { now };
             let said = json!({"type": "state", "state": now, "mobile": false, "holding": holding});
             if said != last_said {
                 if !send_json(&mut app_tx, said.clone()).await {
@@ -618,7 +660,9 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
         let mut cdp = match Cdp::connect(port, &tab.id, token.as_deref()).await {
             Ok(cdp) => cdp,
             Err(_) => {
-                let said = json!({"type": "state", "state": "paused", "mobile": false, "holding": holding});
+                // held and not let through: an image whose relay predates the person's hold token
+                let now = if holding { outdated_or(port, "paused").await } else { "paused" };
+                let said = json!({"type": "state", "state": now, "mobile": false, "holding": holding});
                 if said != last_said {
                     if !send_json(&mut app_tx, said.clone()).await {
                         break;
@@ -664,6 +708,9 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
         let mut next_ack = Instant::now();
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         let mut touched: Option<Instant> = None;
+        let mut world: Option<i64> = None;
+        let mut changed = true; // frames came since the focus was last read
+        let mut last_focus = Value::Null;
         loop {
             tokio::select! {
                 message = cdp.receive() => {
@@ -689,6 +736,7 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                         break 'outer;
                     }
                     pending = params.get("sessionId").cloned();
+                    changed = true;
                     next_ack = Instant::now() + FRAME_INTERVAL;
                     if touched.is_none_or(|t| t.elapsed() > Duration::from_secs(60)) {
                         touched = Some(Instant::now());
@@ -702,13 +750,17 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                 }
                 message = app_rx.next() => match message {
                     Some(Ok(Message::Text(text))) => {
+                        let value = serde_json::from_str::<Value>(&text).unwrap_or(Value::Null);
+                        if value.get("type").and_then(Value::as_str) == Some("follow") {
+                            follow = value.get("on").and_then(Value::as_bool).unwrap_or(false);
+                            (changed, last_focus) = (true, Value::Null);
+                            continue;
+                        }
                         if !holds(&state, &agent) {
                             continue;
                         }
-                        if let Ok(value) = serde_json::from_str::<Value>(&text) {
-                            if act(&mut cdp, &value, view).await.is_err() {
-                                continue 'outer;
-                            }
+                        if act(&mut cdp, &value, view).await.is_err() {
+                            continue 'outer;
                         }
                     }
                     Some(Ok(_)) => {}
@@ -727,6 +779,20 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                     continue 'outer;
                 }
                 _ = tick.tick() => {
+                    if follow && !mobile && changed {
+                        changed = false;
+                        if let Ok(focus) = crate::desktop_read::focus(&mut cdp, &mut world).await {
+                            let mut said = focus.to_json();
+                            said["type"] = json!("focus");
+                            if said != last_focus {
+                                if !send_json(&mut app_tx, said.clone()).await {
+                                    restore_or_close(cdp, mobile, port, &tab.id, token.as_deref()).await;
+                                    break 'outer;
+                                }
+                                last_focus = said;
+                            }
+                        }
+                    }
                     if holds(&state, &agent) != holding {
                         // taken over or handed back: connected again, with or without the hold's token
                         restore_or_close(cdp, mobile, port, &tab.id, token.as_deref()).await;
@@ -762,6 +828,15 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
     }
     let _ = app_tx.close().await;
     tracing::info!(agent = %agent, "page view closed");
+}
+
+/// `fallback`, or « update » when the agent's browser image predates this page view (its relay says no version).
+async fn outdated_or(port: u16, fallback: &'static str) -> &'static str {
+    if crate::desktop_read::relay_outdated(port).await {
+        "update"
+    } else {
+        fallback
+    }
 }
 
 async fn restore_or_close(cdp: Cdp, mobile: bool, port: u16, tab: &str, token: Option<&str>) {

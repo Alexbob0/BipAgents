@@ -10,7 +10,10 @@ when they took it are closed: Hermes (the vault's fills) waits too. Only the bri
 those whose request shows the hold's token: while a card payment holds it (the flag reads « card <token> »,
 `X-Bip-Card: <token>`), it types the card and clicks « Pay », and nothing else reads the page meanwhile; while the
 person holds it from the app (« human <token> », `X-Bip-Hold: <token>`), it shows them the page and passes on their
-taps and keys (a flag with no token, from an older bridge, lets nothing through)."""
+taps and keys (a flag with no token, from an older bridge, lets nothing through).
+
+`GET /bipagents/relay` is answered here, never by Chrome: this relay's version, so the bridge can tell an image built
+before it (Chrome's 404) and ask the person to update the agent's browser."""
 from __future__ import annotations
 
 import asyncio
@@ -26,6 +29,8 @@ from hold_gate import HOLD, held  # noqa: E402
 
 CHROME = ("127.0.0.1", 9222)
 BROWSER_ENDPOINT = re.compile(rb"^GET /devtools/browser/[^ ?]*")
+VERSION_PATH = re.compile(rb"^GET /bipagents/relay[ ?]")
+RELAY_VERSION = 2   # 2: the version route itself, the person's hold token (« human <token> »)
 TOKEN_HEADER = re.compile(rb"\r\nx-bip-(?:card|hold):[ \t]*([A-Za-z0-9]+)[ \t]*\r\n", re.IGNORECASE)
 
 
@@ -81,13 +86,21 @@ OPEN: set = set()     # the writers of the connections passing through, closed w
 BRIDGE: set = set()   # those of the bridge's own connections, left open by the hold they came with
 
 
+def version_answer() -> bytes:
+    body = json.dumps({"relay": RELAY_VERSION, "hold_token": True}).encode()
+    return (b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "
+            + str(len(body)).encode() + b"\r\n\r\n" + body)
+
+
 async def relay(client_reader: asyncio.StreamReader, client_writer: asyncio.StreamWriter) -> None:
-    if held() and hold_token() is None:
-        client_writer.close()
-        return
     try:
         head = await client_reader.readuntil(b"\r\n\r\n")
-        if not let_through(head):
+        if VERSION_PATH.match(head):
+            client_writer.write(version_answer())
+            await client_writer.drain()
+            client_writer.close()
+            return
+        if (held() and hold_token() is None) or not let_through(head):
             client_writer.close()
             return
         first, _, rest = head.partition(b"\r\n")
