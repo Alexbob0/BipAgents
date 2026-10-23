@@ -23,8 +23,8 @@
     "tablee": { "appStore": "", "googlePlay": "" }
   },
   "checkout": {
-    "_readme": "url: one template for every plan and period, {plan} = solo|duo|famille, {period} = month|year, {lang} = en|fr|de|es. links: optional per plan/period overrides, e.g. {\"duo\": {\"year\": \"https://…\"}}. Both empty = no web checkout yet.",
-    "url": "",
+    "_readme": "url: one template for every plan and period, {plan} = solo|duo|famille, {period} = month|year, {lang} = en|fr|de|es. links: optional per plan/period overrides, e.g. {\"duo\": {\"year\": \"https://…\"}}. Both empty = no web checkout yet. The guichet answers « bientôt sur le site » until its [web] enabled is on, and « complet » when the offer is full.",
+    "url": "https://guichet.bipagents.com/v1/web/checkout?plan={plan}&period={period}&lang={lang}",
     "links": {}
   },
   "prices": {

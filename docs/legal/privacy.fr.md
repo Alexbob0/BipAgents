@@ -303,6 +303,8 @@ Kerfy Studio qui gère les comptes, les abonnements et les places s'appelle le g
   exécuter ce que tu demandes à tes agents.
 - **Apple et Google** sont responsables de leurs propres traitements quand tu te connectes avec eux et quand tu paies
   dans leur store.
+- **Stripe** (Stripe Payments Europe, Ltd., Irlande) traite le paiement quand tu achètes sur le site bipagents.com
+  (section 5.3).
 - **Tes agents sont des IA et le disent** : badge « IA », annonce au début de chaque session Live, mention dans les
   notifications et dans les messages qu'ils envoient à d'autres personnes (règlement (UE) 2024/1689, article 50).
 
@@ -341,6 +343,15 @@ gratuite, actif, suspendu, terminé, remboursé), la fin de la période payée, 
 crédit d'IA acheté, l'identifiant de chaque achat et son montant. **Jamais tes moyens de paiement**, que seul le store
 connaît. Le pays du compte de ton store, que l'app envoie pour savoir si l'offre y est vendue (il n'est pas gardé).
 
+**Achat sur le site bipagents.com.** Le paiement passe par **Stripe** (Stripe Payments Europe, Ltd., Irlande). Stripe
+reçoit ton adresse e-mail, ton adresse ou ton pays de facturation, les données de ta carte (que seul Stripe traite :
+Kerfy Studio ne reçoit jamais le numéro complet de ta carte) et l'adresse IP de ton appareil, pour les contrôles contre
+la fraude. Il les traite pour encaisser le paiement, calculer les taxes (Stripe Tax), prévenir la fraude et établir les
+factures. Pour ses propres obligations légales (lutte contre le blanchiment, contre la fraude), Stripe peut agir comme
+responsable de traitement indépendant, selon sa politique de confidentialité (https://stripe.com/privacy). Le guichet de
+Kerfy Studio garde l'adresse e-mail donnée au paiement, les identifiants de client et d'abonnement chez Stripe, le
+forfait et sa période (mois ou année), le pays de facturation et la langue.
+
 **Ton contrat.** La date de début, celle de l'e-mail de confirmation et, si tu renonces au contrat, la date et l'heure
 de ta rétractation.
 
@@ -361,13 +372,16 @@ une fois par minute au plus, et le crédit reporté : un montant, jamais tes mes
 
 **Finalités et bases légales.** Fournir et gérer ton abonnement, tes places et ton crédit : exécution du contrat
 (article 6.1.b du RGPD). Empêcher qu'une même personne enchaîne les semaines gratuites : intérêt légitime de Kerfy
-Studio à prévenir la fraude et à pouvoir continuer d'offrir une semaine gratuite (article 6.1.f et considérant 47).
-Lire l'identifiant de l'appareil ne demande pas ton consentement, car cela sert uniquement à limiter l'accès gratuit
-au service à une période limitée (article 82 de la loi Informatique et Libertés ; CNIL, délibération n° 2020-091,
-article 5). Garder la preuve du contrat : intérêt légitime de Kerfy Studio à pouvoir défendre ses droits.
-**Durée.** Données d'abonnement et d'achat : pendant l'abonnement, puis 5 ans en archive, pour la preuve du contrat
-(article 2224 du Code civil). Empreinte de l'appareil Android : 24 mois. Adresse IP :
-15 minutes au plus. Les bits de DeviceCheck sont gardés par Apple.
+Studio à prévenir la fraude et à pouvoir continuer d'offrir une semaine gratuite (article 6.1.f et considérant 47). Lire
+l'identifiant de l'appareil ne demande pas ton consentement, car cela sert uniquement à limiter l'accès gratuit au
+service à une période limitée (article 82 de la loi Informatique et Libertés ; CNIL, délibération n° 2020-091,
+article 5). Garder la preuve du contrat : intérêt légitime de Kerfy Studio à pouvoir défendre ses droits. Achat sur le
+site : encaisser le paiement et calculer les taxes, exécution du contrat (article 6.1.b) ; contrôles contre la fraude,
+intérêt légitime (article 6.1.f) ; factures et pièces comptables, obligation légale (article 6.1.c).
+**Durée.** Données d'abonnement et d'achat, y compris celles d'un achat sur le site : pendant l'abonnement, puis 5 ans
+en archive, pour la preuve du contrat (article 2224 du Code civil). Factures et pièces de paiement : 10 ans
+(article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois. Adresse IP
+: 15 minutes au plus. Les bits de DeviceCheck sont gardés par Apple.
 
 ### 5.4 Ta place et le modèle d'IA
 
@@ -495,10 +509,12 @@ BipAgents n'y efface rien et Kerfy Studio n'en garde rien.
 | [à compléter : hébergeur des sauvegardes] | Garde les sauvegardes | Sauvegardes chiffrées, illisibles pour lui et pour Kerfy Studio | [à compléter] |
 | [hébergeur du relais] | Héberge le guichet et le relais | Compte, abonnement, données techniques | Union européenne |
 | [à compléter : prestataire d'envoi des e-mails] | Envoie les codes, les avis de sécurité, les invitations, la confirmation d'achat, l'accusé de rétractation et les avis de suppression | Adresse e-mail, contenu de ces e-mails | [à compléter] |
+| Stripe Payments Europe, Ltd. (Dublin, Irlande) | Paiement des achats sur le site bipagents.com, calcul des taxes, contrôles contre la fraude, factures | Adresse e-mail, adresse ou pays de facturation, données de carte, adresse IP | Union européenne ; possiblement hors de l'Union (section 11) |
 
-Ils sont liés à Kerfy Studio par un contrat conforme à l'article 28 du RGPD. Apple (DeviceCheck, App Store) et Google
-(Play Integrity, Google Play) interviennent aussi, comme dit à la section 5.3 ; « Se connecter avec Apple » et la
-connexion avec Google relèvent de leur propre responsabilité.
+Ils sont liés à Kerfy Studio par un contrat conforme à l'article 28 du RGPD ; Stripe agit en plus comme responsable
+indépendant pour ses propres obligations légales (section 5.3). Apple (DeviceCheck, App Store) et Google (Play
+Integrity, Google Play) interviennent aussi, comme dit à la section 5.3 ; « Se connecter avec Apple » et la connexion
+avec Google relèvent de leur propre responsabilité.
 
 ## 6. Ce que Kerfy Studio ne fait pas
 
@@ -587,9 +603,11 @@ notifications, Apple et Google peuvent traiter le jeton et la notification hors 
   adoptées par la Commission européenne.
 
 **L'offre tout compris.** Les serveurs des places et le serveur de messagerie des agents sont dans l'Union européenne,
-pour toutes les personnes de l'offre. EUrouter traite les messages dans l'Union européenne [à compléter : pays où
-tournent les modèles proposés, et garantie si l'un est hors de l'Union]. Apple et Google (connexion, stores,
-DeviceCheck, Play Integrity) peuvent traiter des données aux États-Unis, avec les garanties indiquées ci-dessus.
+pour toutes les personnes de l'offre. EUrouter traite les messages dans l'Union européenne
+[à compléter : pays où tournent les modèles proposés, et garantie si l'un est hors de l'Union]. Apple et Google
+(connexion, stores, DeviceCheck, Play Integrity) peuvent traiter des données aux États-Unis, avec les garanties
+indiquées ci-dessus. Pour un achat sur le site, Stripe peut traiter des données hors de l'Union européenne, notamment
+aux États-Unis, avec les garanties que décrit sa politique de confidentialité (https://stripe.com/privacy).
 
 **Si tu vis hors de l'Union européenne** (États-Unis, Royaume-Uni, Israël, Singapour, Canada), tes données viennent
 dans l'Union européenne, où Kerfy Studio les traite selon le RGPD, qui s'applique à tous ses traitements. Le
@@ -626,6 +644,8 @@ compléter : pays ; garantie]. Tu peux nous demander une copie des garanties app
 | Invitation non acceptée | 30 jours |
 | Adresse e-mail et identifiant de compte après la fin du contrat (obligation des hébergeurs) | 5 ans pour l'e-mail, 1 an pour l'identifiant, gardés à part |
 | Abonnement et achats | Pendant l'abonnement, puis 5 ans en archive |
+| Achat sur le site (adresse e-mail donnée au paiement, identifiants Stripe, forfait et période, pays de facturation, langue) | Pendant l'abonnement, puis 5 ans en archive |
+| Factures et pièces de paiement d'un achat sur le site | 10 ans (article L123-22 du Code de commerce) ; factures gardées par Stripe |
 | Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois |
 | Adresse IP à la réservation d'une semaine gratuite | 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
