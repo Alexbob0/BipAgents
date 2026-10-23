@@ -142,6 +142,19 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     if !offered(config, agent) {
         return Ok(false);
     }
+    register_entry(config, agent, run, SERVER_NAME, &tools_url(config), TOOL_TIMEOUT).await
+}
+
+/// An MCP entry `server` of the bridge's own in the agent's profile, at `url` with the agent's token (the one of the
+/// `bipagents` entry) and `timeout`: written when it differs. Returns whether its profile changed.
+pub async fn register_entry(
+    config: &Config,
+    agent: &AgentConfig,
+    run: &Run,
+    server: &str,
+    url: &str,
+    timeout: u32,
+) -> anyhow::Result<bool> {
     let Some(folder) = crate::shares::profile_dir(config, agent) else { return Ok(false) };
     if !folder.is_dir() {
         return Ok(false);
@@ -157,11 +170,10 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     if !header.starts_with("Bearer ") {
         return Ok(false); // the bridge's tools aren't registered (an agent set up by hand)
     }
-    let url = tools_url(config);
-    let entry = servers.get(SERVER_NAME).cloned().unwrap_or(Value::Null);
+    let entry = servers.get(server).cloned().unwrap_or(Value::Null);
     let same = entry.get("url") == Some(&json!(url))
         && entry.get("headers").and_then(|h| h.get("Authorization")) == Some(&json!(header))
-        && entry.get("timeout").map(py::py_str) == Some(TOOL_TIMEOUT.to_string());
+        && entry.get("timeout").map(py::py_str) == Some(timeout.to_string());
     if same {
         return Ok(false);
     }
@@ -175,14 +187,14 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
             agent.name.clone(),
             "config".into(),
             "set".into(),
-            format!("mcp_servers.{SERVER_NAME}.{key}"),
+            format!("mcp_servers.{server}.{key}"),
             value,
         ]
     };
-    run(set("url", url), env.clone()).await?;
+    run(set("url", url.to_string()), env.clone()).await?;
     run(set("headers.Authorization", header), env.clone()).await?;
-    run(set("timeout", TOOL_TIMEOUT.to_string()), env).await?;
-    tracing::info!(agent = %agent.name, "card payment tools registered");
+    run(set("timeout", timeout.to_string()), env).await?;
+    tracing::info!(agent = %agent.name, server = server, "bridge tools registered");
     Ok(true)
 }
 
@@ -754,7 +766,47 @@ fn rpc(id: &Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
 
+/// A tool of a bridge MCP entry, run with the call's way back to Hermes (elicitations).
+pub type CallFn = for<'a> fn(
+    &'a AppState,
+    &'a AgentConfig,
+    &'a str,
+    &'a Dict,
+    &'a Asker,
+) -> futures::future::BoxFuture<'a, anyhow::Result<Dict>>;
+
+/// An MCP entry of the bridge's own for the agents (same tokens as `bipagents`): its name, instructions, tools and
+/// how a call runs. A call that takes a stream gets keepalives while it waits (the person may take a while).
+pub struct ToolServer {
+    pub name: &'static str,
+    pub instructions: &'static str,
+    pub tools: fn() -> Vec<Value>,
+    pub call: CallFn,
+}
+
+fn call_boxed<'a>(
+    state: &'a AppState,
+    agent: &'a AgentConfig,
+    name: &'a str,
+    arguments: &'a Dict,
+    asker: &'a Asker,
+) -> futures::future::BoxFuture<'a, anyhow::Result<Dict>> {
+    Box::pin(call(state, agent, name, arguments, asker))
+}
+
+static PAY_SERVER: ToolServer = ToolServer { name: SERVER_NAME, instructions: INSTRUCTIONS, tools, call: call_boxed };
+
 async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
+    serve(state, headers, body, &PAY_SERVER).await
+}
+
+/// One MCP message for `server`, from the agent whose token it shows.
+pub async fn serve(
+    state: AppState,
+    headers: HeaderMap,
+    body: Bytes,
+    server: &'static ToolServer,
+) -> ApiResult<Response> {
     let header = headers.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("");
     let token = header.strip_prefix("Bearer ").unwrap_or(header).trim();
     let config = state.config();
@@ -791,14 +843,14 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
                     json!({
                         "protocolVersion": version,
                         "capabilities": {"tools": {"listChanged": false}},
-                        "serverInfo": {"name": SERVER_NAME, "version": crate::VERSION},
-                        "instructions": INSTRUCTIONS,
+                        "serverInfo": {"name": server.name, "version": crate::VERSION},
+                        "instructions": server.instructions,
                     }),
                 ),
             ))
         }
         "ping" => Ok(web::json_response(200, &rpc(&id, json!({})))),
-        "tools/list" => Ok(web::json_response(200, &rpc(&id, json!({"tools": tools()})))),
+        "tools/list" => Ok(web::json_response(200, &rpc(&id, json!({"tools": (server.tools)()})))),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or("").to_string();
             let arguments = match params.get("arguments") {
@@ -810,7 +862,8 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
             let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
             let asker = Asker { agent: agent.name.clone(), out: stream.then_some(out_tx) };
             let worker_state = state.clone();
-            let mut work = tokio::spawn(async move { call(&worker_state, &agent, &name, &arguments, &asker).await });
+            let mut work =
+                tokio::spawn(async move { (server.call)(&worker_state, &agent, &name, &arguments, &asker).await });
             if !stream {
                 let result = (&mut work).await.map_err(anyhow::Error::from)??;
                 return Ok(web::json_response(200, &rpc(&id, Value::Object(result))));
@@ -829,8 +882,8 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
                                     let payload = py::dumps(&rpc(&id, Value::Object(result)));
                                     yield Ok(Bytes::from(format!("event: message\ndata: {payload}\n\n")));
                                 }
-                                Ok(Err(err)) => tracing::error!(exc = %format!("{err:#}"), "card payment tool failed"),
-                                Err(err) => tracing::error!(exc = %err, "card payment tool failed"),
+                                Ok(Err(err)) => tracing::error!(server = server.name, exc = %format!("{err:#}"), "bridge tool failed"),
+                                Err(err) => tracing::error!(server = server.name, exc = %err, "bridge tool failed"),
                             }
                             break;
                         }

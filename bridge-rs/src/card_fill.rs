@@ -205,7 +205,7 @@ impl Cdp {
     }
 
     /// An expression's value in a world (`context`) of a session.
-    async fn evaluate(&mut self, session: &str, context: i64, expression: &str) -> Result<Value, FillError> {
+    pub async fn evaluate(&mut self, session: &str, context: i64, expression: &str) -> Result<Value, FillError> {
         let result = self
             .call(
                 "Runtime.evaluate",
@@ -303,7 +303,7 @@ impl Page {
     }
 
     /// Every frame of the page, with the session that reaches it: the page's own, then each out-of-process frame's.
-    async fn frames(&mut self) -> Result<Vec<(String, String, String)>, FillError> {
+    pub async fn frames(&mut self) -> Result<Vec<(String, String, String)>, FillError> {
         let mut sessions = vec![self.session.clone()];
         let mut out = Vec::new();
         let mut index = 0;
