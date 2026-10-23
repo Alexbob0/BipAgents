@@ -1,0 +1,43 @@
+{
+  "_readme": "The one place for what the owner fills in: the company's details (both sites' legal pages and footers), the store links, the web checkout and the prices. Empty strings stay visible as TODO marks (company) or fall back (stores: « soon »; checkout: the store badges and « web subscription coming soon »).",
+  "company": {
+    "name": "Kerfy Studio",
+    "form": "SAS",
+    "capital": "",
+    "siren": "",
+    "rcsCity": "",
+    "address": "",
+    "phone": "",
+    "vat": "",
+    "president": "",
+    "noticeDate": ""
+  },
+  "contact": {
+    "general": "contact@kerfystudio.com",
+    "support": "support@kerfystudio.com",
+    "abuse": "abuse@kerfystudio.com"
+  },
+  "repo": "https://github.com/Alexbob0/BipAgents",
+  "stores": {
+    "bipagents": { "appStore": "", "googlePlay": "" },
+    "tablee": { "appStore": "", "googlePlay": "" }
+  },
+  "checkout": {
+    "_readme": "url: one template for every plan and period, {plan} = solo|duo|famille, {period} = month|year, {lang} = en|fr|de|es. links: optional per plan/period overrides, e.g. {\"duo\": {\"year\": \"https://…\"}}. Both empty = no web checkout yet.",
+    "url": "",
+    "links": {}
+  },
+  "prices": {
+    "_readme": "Euros TTC (France). web = sold on the site (Stripe), store = App Store / Google Play. year = 10 months for 12.",
+    "plans": ["solo", "duo", "famille"],
+    "people": { "solo": 1, "duo": 2, "famille": 6 },
+    "web": {
+      "month": { "solo": 6.49, "duo": 10.99, "famille": 17.99 },
+      "year": { "solo": 64.90, "duo": 109.90, "famille": 179.90 }
+    },
+    "store": {
+      "month": { "solo": 6.99, "duo": 11.99, "famille": 19.99 },
+      "year": { "solo": 69.90, "duo": 119.90, "famille": 199.90 }
+    }
+  }
+}

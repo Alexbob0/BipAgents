@@ -146,10 +146,86 @@ p {{ font-size: 26px; font-weight: 800; color: #4A5163; margin: 30px 0 0; }}
     page.unlink(missing_ok=True)
 
 
+# -- Config: the owner's one place (site/config.json) ----------------------------------------------------------------
+
+def config() -> Dict[str, Any]:
+    return json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+
+
+def money(value: float, lang: str) -> str:
+    """6.49 → « 6,49 € » (fr, de, es) or « €6.49 » (en)."""
+    text = f"{value:,.2f}"
+    if lang == "en":
+        return "€" + text
+    return text.replace(",", " ").replace(".", ",") + " €"
+
+
+def todo(value: str, label: str) -> str:
+    """A company detail, or a visible TODO mark while the owner hasn't given it."""
+    return html.escape(value) if value else f'<mark class="todo">[{html.escape(label)}]</mark>'
+
+
+def checkout_url(cfg: Dict[str, Any], plan: str, period: str, lang: str) -> str:
+    c = cfg.get("checkout", {})
+    url = ((c.get("links") or {}).get(plan) or {}).get(period) or c.get("url", "")
+    return url.replace("{plan}", plan).replace("{period}", period).replace("{lang}", lang) if url else ""
+
+
+APPLE = ('<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8s2 .8 3.4.8c1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9 0 0-2.7-1-2.7-4.1zM13.9 4.9c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.6-.7.8-1.3 2-1.1 3.1 1.1.1 2.3-.6 3.1-1.5z"/></svg>')
+PLAY = ('<svg viewBox="0 0 24 24" width="22" height="22"><path fill="#34A853" d="M3.6 1.8 13.4 12l-9.8 10.2c-.4-.2-.6-.7-.6-1.2V3c0-.5.2-1 .6-1.2z"/>'
+        '<path fill="#FBBC04" d="m16.8 8.6-3.4 3.4 3.4 3.4 3.8-2.2c1.1-.6 1.1-1.8 0-2.4z"/>'
+        '<path fill="#4285F4" d="M3.6 22.2 13.4 12l3.4 3.4L5 22.2c-.5.3-1 .3-1.4 0z"/>'
+        '<path fill="#EA4335" d="M3.6 1.8c.4-.3.9-.3 1.4 0l11.8 6.8-3.4 3.4z"/></svg>')
+
+
+def store_badges(links: Dict[str, str], soon: str, get: str) -> str:
+    """The two store badges: links once the owner has set them, « coming soon » until then."""
+    out = []
+    for key, name, glyph in (("appStore", "App Store", APPLE), ("googlePlay", "Google Play", PLAY)):
+        url = links.get(key, "")
+        inner = (f'<span class="store-glyph" aria-hidden="true">{glyph}</span><span class="store-text">'
+                 f'<span class="store-kicker">{html.escape(get if url else soon)}</span>'
+                 f'<span class="store-name">{name}</span></span>')
+        out.append(f'<a class="store" href="{html.escape(url)}" rel="noopener">{inner}</a>' if url
+                   else f'<span class="store store-soon">{inner}</span>')
+    return "".join(out)
+
+
+def walk_map(demo: Dict[str, Any], target: Path) -> str:
+    """The map of the demo's « Sunday walk » page (an OpenStreetMap drawing the app embeds), as a small JPEG when sips
+    is there, else the PNG itself. Returns the file's name."""
+    import base64
+    found = re.search(r"data:image/png;base64,([A-Za-z0-9+/=]+)", demo["pages"]["walk"]["template"])
+    if not found:
+        return ""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    png = target.with_suffix(".png")
+    png.write_bytes(base64.b64decode(found.group(1)))
+    if shutil.which("sips"):
+        done = subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "72", str(png), "--out", str(target)],
+                              capture_output=True)
+        if done.returncode == 0 and target.exists():
+            png.unlink()
+            return target.name
+    return png.name
+
+
+def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
+    """One of the demo's pages (made with the page kit, like the agents' own pages), filled in one language."""
+    page = demo["pages"][name]
+    values = {k: localized(v, lang) for k, v in page.get("values", {}).items()}
+    values["lang"] = lang
+    return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), page["template"])
+
+
 # -- bipagents.com ---------------------------------------------------------------------------------------------------
+
+DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"))
+
 
 def bipagents(version: str) -> Path:
     src, out = SRC / "bipagents", DIST / "bipagents.com"
+    cfg = config()
     if out.exists():
         shutil.rmtree(out)
     assets = out / "assets"
@@ -173,17 +249,30 @@ def bipagents(version: str) -> Path:
     copy(REPO / "docs" / "play" / "index.html", out / "play" / "index.html")
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
+    map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")
     # When each Bip speaks in the podcast (scripts/podcast-timeline.py).
     timeline = json.loads((src / "podcast-timeline.json").read_text(encoding="utf-8"))
     agents = {a["id"]: a for a in demo["agents"]}
     template = (src / "index.html").read_text(encoding="utf-8")
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
     paths = {lang: "/" if lang == "en" else f"/{lang}/" for lang in LANGS}
+    prices, company = cfg["prices"], cfg["company"]
+    (assets / "pages").mkdir()
     for lang in LANGS:
         t = texts[lang]
+        # A page the demo's agent makes (the page kit's real output), shown in a frame in the chat.
+        (assets / "pages" / f"runs-{lang}.html").write_text(demo_page(demo, "runs", lang), encoding="utf-8")
         values = flatten({k: v for k, v in t.items() if k not in ("marquee", "lines", "liveDialog")})
+        for where in ("web", "store"):
+            for period in ("month", "year"):
+                for plan in prices["plans"]:
+                    values[f"p.{where}.{period}.{plan}"] = money(prices[where][period][plan], lang)
+        for plan in prices["plans"]:
+            values[f"p.web.yearmonth.{plan}"] = money(round(prices["web"]["year"][plan] / 12, 2), lang)
         if lang == "fr":   # « ? », « : »… never alone at the start of a line
             values = {k: french_spaces(v) if isinstance(v, str) else v for k, v in values.items()}
+        default_url = checkout_url(cfg, "famille", "year", lang)
+        badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
         values.update({
             "lang": lang, "path": paths[lang], "home": paths[lang], "version": version,
             "legalprefix": "" if lang == "fr" else f"/{lang}",
@@ -194,6 +283,18 @@ def bipagents(version: str) -> Path:
             "marquee": "".join(f'<span>{html.escape(word)}<i style="background:{COLORS[CATEGORY_ORDER[i % 8]][0]}"></i></span>'
                                for i, word in enumerate(t["marquee"])),
             "wavebars": "<i></i>" * 48,
+            "storebadges": badges,
+            "buy": (f'<a class="pill pill-buy" id="buy" href="{html.escape(default_url)}" rel="noopener">'
+                    f'<span class="buy-label">{html.escape(t["pricing"]["cta"])}</span><span aria-hidden="true">→</span></a>'
+                    if default_url else
+                    f'<p class="soon-web">{t["pricing"]["soon"]}</p><div class="cta-row center">{badges}</div>'),
+            "checkoutstate": "on" if default_url else "off",
+            "company": (f'{html.escape(company["name"])}, {html.escape(company["form"])} · {html.escape(t["foot"]["capital"])} '
+                        f'{todo(money(float(company["capital"]), lang) if company["capital"] else "", "capital")} · RCS '
+                        f'{todo(company["rcsCity"], "RCS")} {todo(company["siren"], "SIREN")} · '
+                        f'{todo(company["address"], t["foot"]["address"])}'),
+            "contact": cfg["contact"]["general"],
+            "mapsrc": f"/assets/showcase/{map_file}",
         })
         cards = []
         for category in CATEGORY_ORDER:
@@ -205,15 +306,29 @@ def bipagents(version: str) -> Path:
                 f'<h3>{html.escape(name)}</h3><span class="chip">{html.escape(label)}</span></article>')
         values["bipcards"] = "\n    ".join(cards)
         scenarios = {}
-        for scenario, agent in (("book_table", "daily"), ("heating", "home")):
+        for scenario, agent in DEMO_TABS:
             s = localized(demo["scenarios"][scenario], lang)
             scenarios[scenario] = {"agent": localized(agents[agent]["name"], lang), "category": agents[agent]["category"],
                                    "prompt": s["prompt"], "steps": s["steps"]}
+        walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
+        stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
+                           demo["pages"]["walk"]["template"])
         data = {"lang": lang, "lines": t["lines"], "live": t["liveDialog"], "scenarios": scenarios,
                 "podcast": timeline.get(lang, [[0, 0]]),
-                "labels": {"once": t["control"]["once"], "session": t["control"]["session"], "deny": t["control"]["deny"]}}
+                "labels": {"once": t["control"]["once"], "session": t["control"]["session"], "deny": t["control"]["deny"],
+                           "open": t["demo"]["open"]},
+                "pages": {"runs": {"src": f"/assets/pages/runs-{lang}.html",
+                                   "title": localized(demo["pages"]["runs"]["values"]["title"], lang)},
+                          "walk": {"src": f"/assets/showcase/{map_file}", "title": walk["title"], "subtitle": walk["subtitle"],
+                                   "alt": walk["alt"], "tip": walk["tip"], "source": walk["source"],
+                                   "stops": [{"x": float(x), "y": float(y), "color": c, "name": walk[k]} for x, y, c, k in stops]}},
+                "prices": {k: v for k, v in prices.items() if not k.startswith("_")},
+                "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}
+                             for plan in prices["plans"]},
+                "pricing": t["pricing"]["js"]}
         values["data"] = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-        page = fill(template, values, f"bipagents/{lang}")
+        # Twice: the texts themselves may carry {{…}} (the prices).
+        page = fill(fill(template, values, f"bipagents/{lang}"), values, f"bipagents/{lang} (texts)")
         target = out / paths[lang].strip("/") / "index.html" if lang != "en" else out / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(page, encoding="utf-8")
