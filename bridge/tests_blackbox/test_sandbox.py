@@ -3,6 +3,7 @@
 shared folders in podman volumes of their own (shares.rs) and through the file tools (`/v1/agent-tools/files`) with
 their permission checks, the registries-only network, and the way back (`isolate = "off"`). podman is the fake one:
 its volumes are folders of the test."""
+import hashlib
 import json
 import os
 import time
@@ -109,8 +110,17 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
                                                            "bipagents-envoi-wellness:/envoi"]
     assert vie["docker_extra_args"] == ["--network=bipagents-sandbox", "--dns=127.0.0.1"]
     assert vie.get("docker_network", True) is True     # Hermes' default: not written
-    assert vie["docker_env"]["HTTPS_PROXY"] == "http://10.233.80.2:3128" == vie["docker_env"]["https_proxy"]
-    assert vie["docker_env"]["npm_config_https_proxy"] == "http://10.233.80.2:3128"
+    # Each sandbox its own credentials on the proxy (sandbox_sites.rs): the proxy knows which agent asks.
+    sites = json.loads((bridge.state_dir / "sandbox-sites.json").read_text())["agents"]
+    token = sites["vie"]["token"]
+    assert len(token) >= 24 and token != sites["wellness"]["token"]
+    proxy = f"http://vie:{token}@10.233.80.2:3128"
+    assert vie["docker_env"]["HTTPS_PROXY"] == proxy == vie["docker_env"]["https_proxy"]
+    assert vie["docker_env"]["npm_config_https_proxy"] == proxy
+    assert oct(os.stat(bridge.state_dir / "sandbox-sites.json").st_mode & 0o777) == "0o600"
+    policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
+    assert policy["agents"]["vie"] == {"key": hashlib.sha256(token.encode()).hexdigest(), "hosts": []}
+    assert token not in json.dumps(policy) and token not in bridge.log_tail(20000)
     assert vie["docker_env"]["NO_PROXY"] == "localhost,127.0.0.1"
     podman = bridge.commands.of("podman")
     assert ["network", "create", "--internal", "--subnet", "10.233.80.0/24", "bipagents-sandbox"] in podman
@@ -121,6 +131,10 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert "pypi.org" in allow and "files.pythonhosted.org" in allow and "registry.npmjs.org" in allow
     assert "github.com" not in allow
     assert run[run.index("--entrypoint") + 1] == "python3" and "docker.io/nousresearch/hermes-sandbox:desktop" in run
+    assert run[run.index("--user") + 1] == "0:0"
+    assert f"{bridge.state_dir}/sandbox-proxy/policy:/bip/policy:ro,z" in run
+    assert f"{bridge.state_dir}/sandbox-proxy/reports:/bip/reports:z" in run
+    assert "BIP_POLICY=/bip/policy/sites.json" in run and "BIP_REPORTS=/bip/reports/blocked.jsonl" in run
     assert sum(1 for args in podman if args[:1] == ["run"]) == 1       # the network set up once for both agents
     # The uploads are copied into the volume, at the same paths as before.
     assert (volumes[("files", "vie")] / "2026-10" / "0123456789ab-facture.pdf").read_bytes() == b"%PDF facture"
@@ -183,7 +197,7 @@ def test_the_shared_folders_are_volumes_and_the_file_tools_follow_the_links(brid
     hints = {t["name"]: t["annotations"]["readOnlyHint"] for t in listed}
     # Writing in its own shared folder is never asked (it writes it directly anyway); deleting is.
     assert hints == {"shared_files_list": True, "shared_files_get": True, "shared_files_write": True,
-                     "shared_files_delete": False}
+                     "shared_files_delete": False, "sandbox_sites": True, "sandbox_sites_request": True}
     assert bridge.post(FILES_PATH, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                        headers={"Authorization": "Bearer nope"}).status_code == 401
     # Wellness shares a text and a file it made (from /envoi).
@@ -308,6 +322,9 @@ def test_turning_isolation_off_gives_the_sandboxes_their_folders_back(bridges, f
     assert wait_until(lambda: "sandbox not isolated any more" in bridge.log_tail(4000), timeout=10)
     skill = (hub / "profiles" / "vie" / "skills" / "shared-data" / "SKILL.md").read_text()
     assert "shared_files_get" not in skill
+    # The sites' list is kept, with no effect, and the app says so.
+    view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
+    assert view["effective"] is False and view["why"] == "isolation"
     # Started again: nothing more to change.
     bridge.stop()
     bridge.commands.clear()
@@ -315,6 +332,74 @@ def test_turning_isolation_off_gives_the_sandboxes_their_folders_back(bridges, f
     time.sleep(2)
     assert not any("terminal." in " ".join(a) for a in bridge.commands.of("hermes"))
     assert not any(a[:1] == ["rm"] for a in bridge.commands.of("podman"))
+
+
+def site_cards(bridge, agent):
+    items = bridge.get("/v1/approvals", params={"agent": agent}, headers=AUTH).json()["items"]
+    return [i for i in items if i["run_id"].startswith("bip-site-")]
+
+
+def test_a_site_refused_to_an_agents_programs_asks_the_person(bridges, fakes):
+    """The proxy refused data.gouv.fr to vie's programs (its report, as the proxy writes it): one card for the person,
+    « Autoriser toujours / Refuser », among the approvals; the agent can ask first; the app's list."""
+    bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness"))
+    started(bridge, hub, ["vie", "wellness"])
+    reports = bridge.state_dir / "sandbox-proxy" / "reports" / "blocked.jsonl"
+    assert reports.parent.is_dir()
+    lines = [{"agent": "vie", "host": "data.gouv.fr"}, {"agent": "vie", "host": "data.gouv.fr"},
+             {"agent": "vie", "host": "localhost"}, {"agent": "nobody", "host": "x.fr"}]
+    reports.write_text("".join(json.dumps(l) + "\n" for l in lines))
+    assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1, timeout=10)
+    assert wait_until(lambda: not reports.exists(), timeout=5)
+    card = site_cards(bridge, "vie")[0]
+    assert card["bip_site"] == "data.gouv.fr" and card["choices"] == ["always", "deny"]
+    assert card["description"] == "Vie veut joindre data.gouv.fr depuis ses programmes"
+    assert card["bip_site_via"] == "proxy" and card["session_id"] is None
+    # The agent asks first for another one, with its reason; and lists what it has.
+    give_tokens(bridge, ["vie", "wellness"])
+    text, error = call(bridge, "vie", "sandbox_sites_request", host="https://api.meteo.fr/v1", reason="la pluie demain")
+    assert not error and "api.meteo.fr" in text
+    assert call(bridge, "vie", "sandbox_sites_request", host="pypi.org")[0] == "Your programs can reach it already."
+    assert call(bridge, "vie", "sandbox_sites_request", host="10.0.0.1")[1] is True
+    cards = {c["bip_site"]: c for c in site_cards(bridge, "vie")}
+    assert set(cards) == {"data.gouv.fr", "api.meteo.fr"} and cards["api.meteo.fr"]["bip_site_reason"] == "la pluie demain"
+    assert site_cards(bridge, "wellness") == []
+    # « Autoriser toujours » in the app; « Refuser » from a notification.
+    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{cards['data.gouv.fr']['request_id']}",
+                           json={"allow": True}, headers=AUTH)
+    assert answered.status_code == 200, answered.text
+    assert [s["host"] for s in answered.json()["sites"]] == ["data.gouv.fr"]
+    assert answered.json()["sites"][0]["by"] == "request"
+    denied = bridge.post("/v1/approve", json={"agent": "vie", "run_id": cards["api.meteo.fr"]["run_id"],
+                                              "choice": "deny"}, headers=AUTH)
+    assert denied.status_code == 200, denied.text
+    assert site_cards(bridge, "vie") == []
+    assert bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{cards['api.meteo.fr']['request_id']}",
+                       json={"allow": True}, headers=AUTH).status_code == 404
+    policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
+    assert policy["agents"]["vie"]["hosts"] == ["data.gouv.fr"] and policy["agents"]["wellness"]["hosts"] == []
+    kept = bridge.get("/v1/approvals/answered", params={"agent": "vie"}, headers=AUTH).json()["items"]
+    assert [(k["command"], k["choice"], k["topic"]) for k in kept] == [
+        ("data.gouv.fr", "always", "site"), ("api.meteo.fr", "deny", "site")]
+    # Refused: the proxy's next refusal asks nothing; the agent's own request neither, today.
+    reports.write_text(json.dumps({"agent": "vie", "host": "api.meteo.fr"}) + "\n")
+    assert wait_until(lambda: not reports.exists(), timeout=10)
+    assert site_cards(bridge, "vie") == []
+    assert call(bridge, "vie", "sandbox_sites_request", host="api.meteo.fr")[1] is True
+    # The app's list: the registries always open, the sites with their date, one added by hand, one removed.
+    view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
+    assert "pypi.org" in view["registries"] and view["effective"] is True and view["why"] is None
+    assert bridge.post("/v1/agents/vie/sandbox/sites", json={"host": "*.ouraring.com"}, headers=AUTH).status_code == 200
+    for bad in ("localhost", "*.com", "192.168.1.1", "nas.local"):
+        assert bridge.post("/v1/agents/vie/sandbox/sites", json={"host": bad}, headers=AUTH).status_code == 422, bad
+    assert bridge.delete("/v1/agents/vie/sandbox/sites/data.gouv.fr", headers=AUTH).status_code == 200
+    assert bridge.delete("/v1/agents/vie/sandbox/sites/data.gouv.fr", headers=AUTH).status_code == 404
+    assert bridge.get("/v1/agents/nobody/sandbox/sites", headers=AUTH).status_code == 404
+    assert bridge.get("/v1/agents/vie/sandbox/sites").status_code == 401
+    listed = call(bridge, "vie", "sandbox_sites")[0]
+    assert "*.ouraring.com" in listed and "data.gouv.fr" not in listed and "pypi.org" in listed
+    policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
+    assert policy["agents"]["vie"]["hosts"] == ["*.ouraring.com"]
 
 
 def test_a_deleted_agent_loses_its_volumes(bridges, fakes):
@@ -332,6 +417,7 @@ def test_a_deleted_agent_loses_its_volumes(bridges, fakes):
     assert not (bridge.state_dir / "shares" / "wellness").exists()
     assert "bipagents-share-wellness:/lecture/wellness:ro" not in terminal(hub, "vie")["docker_volumes"]
     assert "wellness" not in json.loads((bridge.state_dir / "sandbox.json").read_text())["agents"]
+    assert "wellness" not in json.loads((bridge.state_dir / "sandbox-sites.json").read_text())["agents"]
 
 
 def test_the_command_line_isolates_and_says_what_each_agent_got(bridges, fakes):
