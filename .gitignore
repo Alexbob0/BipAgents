@@ -40,3 +40,4 @@ docs/store/shots/
 # Rust builds (bridge-rs, relay): per-agent target dirs at the root
 /target-*/
 bridge-rs/target/
+keys-rs/target/
