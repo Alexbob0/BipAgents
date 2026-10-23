@@ -37,6 +37,9 @@ use crate::Dict;
 
 /// Bookings within this many days of each other (and of the same destination) are one trip.
 pub const GAP_DAYS: i64 = 2;
+/// A leg from anywhere this many days at most after a stay's booking is the way on or back (a hotel in Kyoto, the
+/// flight from Osaka).
+pub const STAY_DAYS: i64 = 14;
 /// A leg from the destination this many days at most after the way there is the way back.
 pub const RETURN_DAYS: i64 = 31;
 /// Bookings this many days old at most start a new trip page (older ones only complete the existing ones).
@@ -657,6 +660,14 @@ pub fn title(places: &[String], start: NaiveDate, end: NaiveDate, lang: &str) ->
 pub fn group(mut bookings: Vec<Booking>) -> Vec<Group> {
     bookings.sort_by_key(|b| b.date);
     let gap = chrono::Duration::days(GAP_DAYS);
+    // home: where the legs leave from most (twice at least); going there is coming back, never a trip
+    let mut froms: HashMap<String, usize> = HashMap::new();
+    for b in bookings.iter().filter(|b| b.kind == "transport") {
+        if let Some(f) = b.from.as_deref() {
+            *froms.entry(fold(f)).or_default() += 1;
+        }
+    }
+    let home = froms.into_iter().filter(|(_, n)| *n >= 2).max_by_key(|(k, n)| (*n, k.clone())).map(|(k, _)| k);
     let mut groups: Vec<Group> = Vec::new();
     let mut loose: Vec<Booking> = Vec::new();
     for b in bookings {
@@ -668,6 +679,18 @@ pub fn group(mut bookings: Vec<Booking>) -> Vec<Group> {
         let found = groups.iter().rposition(|g| {
             (near(g) && key.as_ref().is_some_and(|k| g.keys().contains(k)))
                 || (back(g) && b.kind == "transport" && from.as_ref().is_some_and(|f| g.keys().contains(f)))
+        });
+        // a leg leaving during a stay or the day after it, from somewhere near (Kyoto's hotel, Osaka's airport)
+        let found = found.or_else(|| {
+            (b.kind == "transport")
+                .then(|| {
+                    groups.iter().rposition(|g| {
+                        b.date >= g.start
+                            && b.date <= g.end + chrono::Duration::days(STAY_DAYS)
+                            && g.bookings.iter().any(|x| x.kind == "lodging")
+                    })
+                })
+                .flatten()
         });
         match (found, &b.to) {
             (Some(i), _) => {
@@ -682,6 +705,7 @@ pub fn group(mut bookings: Vec<Booking>) -> Vec<Group> {
                 g.end = g.end.max(b.date);
                 g.bookings.push(b);
             }
+            (None, Some(to)) if home.as_deref() == Some(fold(to).as_str()) && b.kind == "transport" => loose.push(b),
             (None, Some(to)) => {
                 groups.push(Group { places: vec![to.clone()], start: b.date, end: b.date, bookings: vec![b] })
             }
@@ -904,6 +928,9 @@ fn sync_locked(config: &Config, who: &Who, today: NaiveDate) -> anyhow::Result<S
                     // the same trip twice: merged into the first
                     if super::merge_locked(config, Part::Main, &path, &into, who)?.is_some() {
                         done.merged += 1;
+                        if let Some(text) = super::read_page_text(config, Part::Main, &into) {
+                            relink_locked(config, &page.title, &Page::parse(&text, "").title, who)?;
+                        }
                         complete_locked(config, &into, &groups[g], who, &lang, &mut done)?;
                     }
                 } else {

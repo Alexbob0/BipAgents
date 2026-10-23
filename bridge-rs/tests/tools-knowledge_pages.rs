@@ -57,7 +57,7 @@ fn a_fragment_becomes_a_whole_locked_document() {
     .unwrap();
     let kept = std::fs::read_to_string(pages::root(&config).join("wellness/mon-b-titre-b.html")).unwrap();
     assert!(kept.starts_with("<!doctype html>\n<meta http-equiv=\"Content-Security-Policy\""));
-    assert!(kept.contains("<title>Mon &lt;b&gt;titre&lt;/b&gt;</title><body><h1>Hello</h1>"));
+    assert!(kept.contains("</script><title>Mon &lt;b&gt;titre&lt;/b&gt;</title>\n<body><h1>Hello</h1>"));
     assert_eq!(made["outside"], json!([]));
 }
 
