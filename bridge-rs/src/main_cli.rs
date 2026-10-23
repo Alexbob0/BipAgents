@@ -226,6 +226,10 @@ pub fn main(argv: Vec<String>) -> i32 {
         }
     }
     let with_config = |args: &[String]| -> Vec<String> { args.iter().cloned().chain(config_first.clone()).collect() };
+    // `bipbridge archive …`: an agent's archives from the command line (archives/).
+    if rest.first().map(String::as_str) == Some("archive") {
+        return crate::archives::cli(&with_config(&rest[1..]));
+    }
     if rest.first().map(String::as_str) == Some("sandbox") && rest.get(1).map(String::as_str) == Some("adopt") {
         return crate::sandbox_adopt::cli(&with_config(&rest[2..]));
     }

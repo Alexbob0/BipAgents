@@ -551,6 +551,10 @@ pub struct Config {
     /// until the person turns them on. Not in the serialized form either.
     #[serde(skip)]
     pub cards: String,
+    /// `[[archives]]` (archives/): folders an existing install connects to its agents, searched on demand. Their
+    /// tables as written (checked by archives/). Not in the serialized form either.
+    #[serde(skip)]
+    pub archives: Vec<Value>,
     /// Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
     pub push_relay_url: Option<String>,
     pub push_relay_key: Option<String>,
@@ -613,6 +617,7 @@ impl Config {
             notebook: NotebookConfig::default(),
             jobs: JobsConfig::default(),
             cards: "auto".into(),
+            archives: Vec::new(),
             push_relay_url: None,
             push_relay_key: None,
             push_service_url: None,
@@ -1213,6 +1218,10 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         notebook,
         jobs,
         cards,
+        archives: match data.get("archives") {
+            Some(Value::Array(items)) => items.iter().filter(|v| v.is_object()).cloned().collect(),
+            _ => Vec::new(),
+        },
         push_relay_url,
         push_relay_key,
         push_service_url,
