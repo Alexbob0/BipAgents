@@ -13,8 +13,9 @@
 //!    field rejects the record), readable dates, and the values that must come from the document (a booking reference,
 //!    a contract number, a price, a name) really in its text; never a card number or an IBAN. What passes is written
 //!    through records.rs (`upsert`: merged on the type's key, so the same order seen twice is one record), its
-//!    `source` the document's reference (`archive:<agent>/<archive>/<16 hex>`, which the apps open). Upcoming and
-//!    recent bookings with a trip name start that trip's page. The mails themselves are never copied into the Carnet.
+//!    `source` the document's reference (`archive:<agent>/<archive>/<16 hex>`, which the apps open). Bookings that
+//!    make time away start a trip page (notebook/trip_auto.rs: strict rules, human names, past ones archived); a
+//!    purchase's class (goods, service, ticket…) decides whether it has the legal warranty (records.rs). The mails themselves are never copied into the Carnet.
 //! 3. **Idempotent**: each document read is remembered (its key, its file's state, its text's hash, the schema's
 //!    version) in `data_dir/archive-records/<agent>/<archive>.sqlite`; a document already read is skipped, a changed one
 //!    read again, and a new `SCHEMA` reads everything again (the records merge).
@@ -90,16 +91,21 @@ pub const TRIP_DAYS: i64 = 365;
 pub const INSTRUCTIONS: &str = "You extract precise records from a person's documents (e-mails, invoices, notes) for \
 their notebook. Five record types, with these fields only (all strings; dates YYYY-MM-DD, a booking's time as \
 YYYY-MM-DD HH:MM when the document gives it):
-purchase: date (of the purchase), item (what was bought, short), store, price (with its currency), warranty_end (only \
-when the document states it)
+purchase: date (of the purchase), item (what was bought, short), store, price (with its currency), class (goods: a \
+durable thing bought from a business — appliance, device, furniture, clothes, tool…; service: repair, lesson, \
+cleaning, delivery…; ticket: an event, a show, a registration, an entry; food: groceries, a restaurant, a meal \
+delivery; digital: an app, an e-book, a game, a download, in-app credits; travel: a flight, a train, a hotel, a car \
+hire; fee: shipping, a charge, a fine, a commission; other), warranty_end (only when the document states it)
 subscription: service, price (with its currency), period (monthly, yearly…), renewal (the next renewal date, when \
 stated), cancel (how to cancel, when stated)
 contract: what (its kind: home insurance, car insurance, phone plan, lease, energy…), provider, number (the contract or \
 policy number exactly as written), end (its end or renewal date, when stated)
 paper: document (passport, ID card, driving licence, residence permit, vehicle registration…, and whose when stated), \
 expires
-booking: date (its start), what (flight Paris → Lisbon, hotel in Rome, train…), provider, reference (the booking \
-reference exactly as written), trip (the destination or trip name, short)
+booking: date (its start), what (flight Paris → Lisbon, hotel in Rome, train Lyon → Paris, table at a restaurant, \
+concert…: say the kind and the places), provider, reference (the booking reference exactly as written), trip (only for \
+time away: the destination city, never an airport, or the trip's name as written; leave it out for a commute, a \
+restaurant, an event)
 Rules: only what the document itself states: never guess, complete or convert a value; leave a field out when the text \
 doesn't give it. A record is something the person bought, subscribed to, signed, holds or booked: nothing for adverts, \
 newsletters, quotes not accepted, abandoned carts, surveys. A cancelled booking or an order fully refunded: no record. \
@@ -663,6 +669,13 @@ pub fn check(value: &Value, text: &str, doc_date: &str) -> Result<(&'static Kind
                 return Err(format!("price {value:?} is not in the document"));
             }
         }
+        if key == "class" {
+            // one of the classes, else left out (the Carnet guesses it from the words)
+            if let Some(class) = records::class_id(&value) {
+                fields.insert(key.clone(), json!(class));
+            }
+            continue;
+        }
         if NAMED.contains(&key.as_str()) {
             let long: Vec<String> = fold(&value).split(' ').filter(|w| w.len() >= 4).map(str::to_string).collect();
             if !long.is_empty() && !long.iter().any(|w| words.contains(w.as_str()) || folded_text.contains(w.as_str()))
@@ -1033,7 +1046,7 @@ pub async fn run(
     }
     if writes && !bookings.is_empty() {
         let (c, agent) = (config.clone(), archive.agent.clone());
-        tally.trips = tokio::task::spawn_blocking(move || trips(&c, &agent, &bookings)).await?;
+        tally.trips = tokio::task::spawn_blocking(move || trips(&c, &agent)).await?;
     }
     tally.seconds = started.elapsed().as_secs_f64();
     Ok(tally)
@@ -1107,85 +1120,20 @@ fn apply(
     Ok(out)
 }
 
-/// The trips named by upcoming or recent bookings, their pages started when the Carnet has none (one line per
-/// booking, linked to its document). Returns how many pages were started.
-fn trips(config: &Config, agent: &str, bookings: &[(Dict, String)]) -> usize {
+/// The trips the bookings make (notebook/trip_auto.rs: time away only, grouped by destination and dates, human
+/// names, past ones in the archives), and the trip pages made before put right. Returns how many pages were started.
+fn trips(config: &Config, agent: &str) -> usize {
     if !crate::notebook::enabled(config, agent) {
         return 0;
     }
-    let today = chrono::Local::now().date_naive();
-    let mut started = 0;
-    let mut by_trip: Vec<(String, Vec<&(Dict, String)>)> = Vec::new();
-    for booking in bookings {
-        let trip = tk::str_or_empty(booking.0.get("trip")).trim().to_string();
-        let date = tk::str_or_empty(booking.0.get("date"));
-        let Some(day) =
-            ISO_DAY.find(&date).and_then(|m| chrono::NaiveDate::parse_from_str(m.as_str(), "%Y-%m-%d").ok())
-        else {
-            continue;
-        };
-        if trip.is_empty() || (today - day).num_days() > TRIP_DAYS {
-            continue;
-        }
-        match by_trip.iter_mut().find(|(t, _)| fold(t) == fold(&trip)) {
-            Some((_, list)) => list.push(booking),
-            None => by_trip.push((trip, vec![booking])),
+    let who = Who::agent(config, agent);
+    match crate::notebook::trip_auto::sync(config, &who, chrono::Local::now().date_naive()) {
+        Ok(done) => done.created,
+        Err(err) => {
+            tracing::warn!(target: "bipbridge::archives", error = %format!("{err:#}"), "trips not made");
+            0
         }
     }
-    let lang = crate::notebook::language(config);
-    let see = match lang.as_str() {
-        "fr" => "voir le document",
-        "de" => "Dokument ansehen",
-        "es" => "ver el documento",
-        _ => "see the document",
-    };
-    for (trip, list) in by_trip {
-        if crate::notebook::find(config, &[crate::notebook::Part::Main], &trip).is_some() {
-            continue;
-        }
-        let mut lodging: Vec<String> = Vec::new();
-        let mut transport: Vec<String> = Vec::new();
-        for (fields, source) in list {
-            let what = tk::str_or_empty(fields.get("what"));
-            let parts: Vec<String> = ["date", "what", "provider", "reference"]
-                .iter()
-                .map(|k| tk::str_or_empty(fields.get(*k)))
-                .filter(|v| !v.is_empty())
-                .collect();
-            let line = format!("{} [[{source}|{see}]]", parts.join(" — "));
-            let folded = fold(&what);
-            if ["hotel", "logement", "airbnb", "gite", "camping", "appartement", "lodging", "unterkunft", "alojamiento"]
-                .iter()
-                .any(|w| folded.contains(w))
-            {
-                lodging.push(line);
-            } else {
-                transport.push(line);
-            }
-        }
-        for (section, facts) in [("transport", transport), ("lodging", lodging)] {
-            if facts.is_empty() {
-                continue;
-            }
-            let mut note = Dict::new();
-            note.insert("page".into(), json!(trip));
-            note.insert("kind".into(), json!("trip"));
-            note.insert("section".into(), json!(section));
-            note.insert("facts".into(), json!(facts));
-            match crate::notebook::tools::call(config, agent, crate::notebook::tools::NOTE, &note) {
-                Ok(result) if !result.get("isError").map(py::truthy).unwrap_or(false) => {
-                    if section == "transport" || started == 0 {
-                        started += 1;
-                    }
-                }
-                Ok(_) => tracing::info!(target: "bipbridge::archives", trip = %trip, "trip page not started"),
-                Err(err) => {
-                    tracing::warn!(target: "bipbridge::archives", trip = %trip, error = %err, "trip page not started")
-                }
-            }
-        }
-    }
-    started
 }
 
 // -- the report ------------------------------------------------------------------------------------------------------

@@ -26,7 +26,8 @@ def mails(root):
          "Merci pour votre achat chez Boutique Cycles : vélo électrique, 1 299 €. Numéro de commande 778.")
     note("netflix.md", "Votre abonnement Netflix", "2024-02-01", "Abonnement mensuel Netflix : 13,49 €.")
     note("vol.md", "Confirmation de réservation Lisbonne", "2024-04-01",
-         f"Vol Paris → Lisbonne le {LATER} à 07:15, TAP, référence de réservation LIS7Q2.")
+         f"Vol Paris → Lisbonne le {LATER} à 07:15, TAP, référence de réservation LIS7Q2. "
+         "Hôtel Alfama à Lisbonne, 2 nuits, réservation HTL889.")
     note("faux.md", "Facture Inventé", "2024-03-01", "Facture : objet Inventé, contrat auto.")
     note("promo.md", "Newsletter soldes", "2024-03-02", "Tout à -50 %.")
     note("journal.md", "Journal", "2024-03-03", "Une belle journée à la plage.")
@@ -38,7 +39,9 @@ ANSWERS = {
                                              "price": "1 299 €"}}],
     "Netflix": [{"type": "subscription", "fields": {"service": "Netflix", "price": "13,49 €", "period": "mensuel"}}],
     "Lisbonne": [{"type": "booking", "fields": {"date": f"{LATER} 07:15", "what": "Vol Paris → Lisbonne",
-                                                "provider": "TAP", "reference": "LIS7Q2", "trip": "Lisbonne"}}],
+                                                "provider": "TAP", "reference": "LIS7Q2", "trip": "Lisbonne"}},
+                 {"type": "booking", "fields": {"date": LATER, "what": "Hôtel Alfama à Lisbonne", "provider": "Hôtel Alfama",
+                                                "reference": "HTL889", "trip": "Lisbonne"}}],
     # an invented field, and a contract number that isn't in the document: both refused
     "Inventé": [{"type": "purchase", "fields": {"item": "Inventé", "warranty_years": "5"}},
                 {"type": "contract", "fields": {"what": "auto", "number": "NOPE-000"}}],
@@ -85,8 +88,8 @@ def test_a_sample_reports_without_writing_then_the_full_pass_fills_the_records(b
     assert sampled.status_code == 202 and sampled.json()["state"] == "sampling"
     assert wait_until(lambda: records_state(bridge)["sample"] is not None, timeout=30)
     sample = records_state(bridge)["sample"]
-    assert (sample["sent"], sample["new"], sample["rejected"]) == (4, 3, 2)
-    assert sample["records"]["booking"]["new"] == 1 and sample["estimate"]["documents"] == 4
+    assert (sample["sent"], sample["new"], sample["rejected"]) == (4, 4, 2)
+    assert sample["records"]["booking"]["new"] == 2 and sample["estimate"]["documents"] == 4
     titles = {e["title"] for e in sample["examples"]}
     assert titles == {"Votre commande Vélo", "Votre abonnement Netflix", "Confirmation de réservation Lisbonne"}
     sent = "\n".join(c["body"]["messages"][1]["content"] for c in extraction_chats(fakes))
@@ -101,7 +104,7 @@ def test_a_sample_reports_without_writing_then_the_full_pass_fills_the_records(b
     assert wait_until(lambda: job_of(bridge, job_id)["state"] == "done", timeout=30), job_of(bridge, job_id)
     job = job_of(bridge, job_id)
     assert job["archive"] == "mails" and job["progress"] == {"done": 4, "total": 4}
-    assert job["report"].startswith("3 new records from « Mails »")
+    assert job["report"].startswith("4 new records from « Mails »")
     found = carnet_records(bridge)
     assert [i["item"] for i in found["purchase"]] == ["Vélo électrique"]
     assert found["purchase"][0]["warranty_end"].startswith("2026-05-02")
@@ -109,11 +112,13 @@ def test_a_sample_reports_without_writing_then_the_full_pass_fills_the_records(b
     assert reference.startswith(f"{AGENT}/mails/") and found["purchase"][0]["source"] == f"archive:{reference}"
     document = bridge.get("/v1/archives/document", params={"ref": reference}, headers=AUTH).json()
     assert document["title"] == "Votre commande Vélo"
-    assert [b["reference"] for b in found["booking"]] == ["LIS7Q2"]
-    # the coming booking started its trip's page, linked to its document
-    trip = (bridge.state_dir / "notebook" / "carnet").rglob("Lisbonne.md")
-    page = next(trip).read_text()
-    assert "type: trip" in page and "LIS7Q2" in page and "[[archive:" in page
+    assert [b["reference"] for b in found["booking"]] == ["LIS7Q2", "HTL889"]
+    # the flight and the hotel make one trip (time away), named by its city and month, linked to its document
+    trips = list((bridge.state_dir / "notebook" / "carnet" / "Trips").glob("Lisbon — *.md"))
+    assert len(trips) == 1, trips
+    page = trips[0].read_text()
+    assert "type: trip" in page and "LIS7Q2" in page and "HTL889" in page and "[[archive:" in page
+    assert "origin: archive" in page
     state = records_state(bridge)
     assert state["read"] == 4 and state["nightly"] is True and state["job"]["id"] == job_id
 
@@ -168,7 +173,7 @@ def test_the_agent_samples_and_proposes_and_the_command_line_reports(bridges, fa
     assert sampling["isError"] is False and "Sample started" in text_of(sampling)
     assert wait_until(lambda: records_state(bridge)["sample"] is not None, timeout=30)
     status = text_of(call(bridge, "archive_records", {"action": "status"}))
-    assert "3 new records would be made" in status and "Vélo électrique" in status
+    assert "4 new records would be made" in status and "Vélo électrique" in status
     proposed = call(bridge, "archive_records", {"action": "propose"})
     assert proposed["isError"] is False and "Tâches de fond" in text_of(proposed)
     job = [j for j in bridge.get("/v1/jobs", headers=AUTH).json()["jobs"] if j["kind"] == "archive_extract"][0]

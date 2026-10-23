@@ -87,8 +87,8 @@ def test_the_app_reads_searches_edits_and_restores(bridge):
                                    "facts": ["Devis accepté avec [[Marco]]"]})
     home = bridge.get("/v1/notebook", headers=AUTH).json()
     counts = {s["kind"]: s["count"] for s in home["sections"]}
-    assert counts == {"self": 0, "person": 1, "subject": 1, "area": 0, "tasks": 0, "documents": 0}
-    assert [s["title"] for s in home["sections"]][:4] == ["Toi", "Personnes", "Sujets", "Domaines"]
+    assert counts == {"self": 0, "person": 1, "subject": 1, "trip": 0, "area": 0, "tasks": 0, "documents": 0}
+    assert [s["title"] for s in home["sections"]][:4] == ["Toi", "Personnes", "Sujets", "Voyages"]
     # The person themself: their own « Toi » page, never among « Personnes ».
     me = call(bridge, "notebook_note", {"page": "moi", "facts": ["Veut courir un marathon"]})
     assert text_of(me).startswith("Filed in the Carnet: Toi (new page, Toi.md), 1 fact(s). Under: Objectifs.")
@@ -491,7 +491,7 @@ def test_the_health_agents_web_pages_stay_in_the_private_part(bridge):
     made = call(bridge, "create_page", {"html": "<p>Ferritine</p>", "title": "Prises de sang", "notebook": "Domaines/Santé"})
     assert "Linked to the Carnet page Santé (Domaines/Santé.md)." in text_of(made)
     assert bridge.get("/v1/notebook/documents", headers=AUTH).json()["documents"] == []
-    assert bridge.get("/v1/notebook", headers=AUTH).json()["sections"][5] == {"kind": "documents", "title": "Documents", "count": 0}
+    assert bridge.get("/v1/notebook", headers=AUTH).json()["sections"][6] == {"kind": "documents", "title": "Documents", "count": 0}
     private = bridge.get("/v1/notebook/documents", params={"private": 1}, headers=AUTH).json()["documents"]
     assert [(d["page"], d["linked"]["path"]) for d in private] == [("prises-de-sang", "Domaines/Santé.md")]
     view = bridge.get("/v1/notebook/page", params={"path": "Domaines/Santé.md", "private": 1}, headers=AUTH).json()

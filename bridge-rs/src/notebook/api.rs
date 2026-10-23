@@ -4,7 +4,7 @@
 //!
 //!     GET    /v1/notebook                      home: sections and counts, « Nouveau » (recent changes), upcoming tasks,
 //!                                              the trips within 30 days or under way, the records, the open proposals
-//!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, area, other), with what their card
+//!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, trip, area, other), with what their card
 //!                                              shows (close, next_date, status, facts)
 //!     GET    /v1/notebook/search?q=            pages, and the facts that answer (for a short answer on top)
 //!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links
@@ -22,7 +22,8 @@
 //!     GET    /v1/notebook/proposals            the agents' task proposals, the kinds declined
 //!     POST   /v1/notebook/proposals/{id}       {accept, never?}   the person's answer to a proposal (yes: its task added)
 //!     GET    /v1/notebook/records              the records (purchases, subscriptions, contracts, papers, bookings), by
-//!                                              type, the soonest next date first (records.rs)
+//!                                              type, the soonest next date first, their archived ones apart (records.rs)
+//!     POST   /v1/notebook/records/archive      {type, id, archived}   a record archived, or brought back (archive.rs)
 //!     POST   /v1/notebook/check                {path, item, done}   a trip's thing to pack ticked (trip.rs)
 //!     GET    /v1/notebook/documents?private=   the files the agents made or received and their web pages, by agent,
 //!                                              with their subjects (the private part's pages only with private=1)
@@ -85,8 +86,7 @@ fn change_view(config: &Config, entry: &Dict) -> Value {
 fn section_of(w: &super::Words, page: &super::Page, path: &str) -> String {
     let kind = page.kind();
     match kind.as_str() {
-        "person" | "subject" | "area" | "self" | "tasks" | "records" => kind,
-        "trip" => "subject".into(),
+        "person" | "subject" | "area" | "self" | "tasks" | "records" | "trip" => kind,
         _ if path == w.inbox_path() => "inbox".into(),
         _ => "other".into(),
     }
@@ -103,9 +103,15 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         let mut sections = vec![json!({"kind": "self", "title": w.me, "count": usize::from(mine.is_some()),
                                        "path": mine.unwrap_or_else(|| w.self_path())})];
         for (kind, folder) in [("person", w.people), ("subject", w.subjects), ("area", w.areas)] {
-            let count =
-                pages.iter().filter(|(_, p)| p.kind() == kind || (kind == "subject" && p.kind() == "trip")).count();
+            let count = pages.iter().filter(|(_, p)| p.kind() == kind).count();
             sections.push(json!({"kind": kind, "title": folder, "count": count}));
+            // the trips apart from the subjects (2026-10-23), the past ones in the archives
+            if kind == "subject" {
+                let trips: Vec<&String> =
+                    pages.iter().filter(|(_, p)| p.kind() == "trip").map(|(path, _)| path).collect();
+                let past = trips.iter().filter(|path| w.archived(path)).count();
+                sections.push(json!({"kind": "trip", "title": w.trips, "count": trips.len() - past, "archived": past}));
+            }
         }
         // the open tasks that count: archived ones left out, the person's own first
         let open = super::open_tasks(&config, Part::Main);
@@ -125,7 +131,8 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         let trips = super::trip::upcoming(&config, today);
         let records = super::records::home(&config, today);
         let proposals = super::open_proposals(&config);
-        Ok(json!({"language": lang, "sections": sections, "recent": recent, "upcoming": upcoming,
+        let archives = super::archive::counts(&config);
+        Ok(json!({"language": lang, "sections": sections, "recent": recent, "upcoming": upcoming, "archives": archives,
                   "dates": dates.into_iter().take(10).collect::<Vec<_>>(),
                   "inbox": inbox.len(), "settings": settings_view(&config), "trips": trips, "records": records,
                   "proposals": proposals}))
@@ -135,7 +142,9 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
 }
 
 fn page_summary(path: &str, part: Part, page: &super::Page, brief: &str) -> Value {
+    let archived = super::WORDS.iter().any(|w| w.archived(path));
     json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(), "aliases": page.aliases(),
+           "archived": archived,
            "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
            "updated": page.front.get("updated").cloned().unwrap_or(Value::Null), "icon": page.icon(),
            "summary": super::summary_of(&page.body, brief)})
@@ -153,9 +162,28 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
             Part::Main => super::upcoming_dates(&config, 366, true, chrono::Local::now().date_naive()),
             Part::Health => Vec::new(),
         };
-        let pages: Vec<Value> = super::all_pages(&config, part)
+        let mut listed = super::all_pages(&config, part);
+        listed.retain(|(path, p)| kind.is_empty() || section_of(w, p, path) == kind);
+        // the trips: under way and upcoming first (the soonest first), then those without dates, then the past ones
+        // (the latest first)
+        let today = chrono::Local::now().date_naive();
+        let order = |path: &String, p: &super::Page| {
+            if p.kind() != "trip" {
+                return (0, 0);
+            }
+            let (start, end) = super::trip::dates_of(p);
+            let past = w.archived(path) || end.is_some_and(|e| e < today);
+            match (past, start) {
+                (false, Some(s)) => (1, (s - today).num_days()),
+                (false, None) => (2, 0),
+                (true, s) => (3, s.map(|s| (today - s).num_days()).unwrap_or(i64::MAX)),
+            }
+        };
+        if kind == "trip" {
+            listed.sort_by_key(|(path, p)| order(path, p));
+        }
+        let pages: Vec<Value> = listed
             .iter()
-            .filter(|(path, p)| kind.is_empty() || section_of(w, p, path) == kind)
             .map(|(path, p)| {
                 let mut view = page_summary(path, part, p, w.brief);
                 let shaped = super::Page { body: super::in_outline(&config, p), ..p.clone() };
@@ -178,6 +206,12 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
                     .filter(|(name, _)| super::fold(name) != super::fold(w.brief))
                     .map(|(_, facts)| facts.len())
                     .sum::<usize>());
+                if p.kind() == "trip" {
+                    let (start, end) = super::trip::dates_of(p);
+                    view["start"] = json!(start.map(|d| d.format("%Y-%m-%d").to_string()));
+                    view["end"] = json!(end.map(|d| d.format("%Y-%m-%d").to_string()));
+                    view["destination"] = p.front.get("destination").cloned().unwrap_or(Value::Null);
+                }
                 view
             })
             .collect();
@@ -319,7 +353,7 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
     let trip = if kind == "trip" { super::trip::view(config, part, path, &page) } else { Value::Null };
     let records = super::records::page_view(config, &page, chrono::Local::now().date_naive()).unwrap_or(Value::Null);
     Ok(json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(), "trip": trip,
-              "records": records,
+              "records": records, "archived": w.archived(path),
               "frontmatter": page.front, "aliases": page.aliases(),
               "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
               "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
@@ -653,6 +687,38 @@ impl Validate for Check {
     }
 }
 
+#[derive(Deserialize)]
+pub struct RecordArchive {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub id: String,
+    #[serde(deserialize_with = "web::lax::bool")]
+    pub archived: bool,
+}
+
+impl Validate for RecordArchive {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "type", Some(&self.kind), 40);
+        check_max_len(errors, "id", Some(&self.id), 40);
+    }
+}
+
+/// A record archived, or brought back from the archives (then kept live), by the person.
+async fn archive_record(State(state): State<AppState>, Json(body): Json<RecordArchive>) -> ApiResult<Response> {
+    let config = state.config();
+    let Some(kind) = super::records::kind(&body.kind) else {
+        return Err(HttpError::new(400, "type is purchase, subscription, contract, paper or booking"));
+    };
+    let record = blocking(move || {
+        super::archive::set_record_archived(&config, kind, &body.id, body.archived, &Who::you(&config))
+    })
+    .await?;
+    match record {
+        Some(r) => Ok(web::ok(json!({"record": r}))),
+        None => Err(HttpError::new(404, "no such record")),
+    }
+}
+
 /// A trip's thing to pack ticked (or not) by the person.
 async fn check(State(state): State<AppState>, Json(body): Json<Check>) -> ApiResult<Response> {
     let config = state.config();
@@ -846,6 +912,7 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/proposals", get(proposals))
         .route("/notebook/proposals/{id}", post(answer_proposal))
         .route("/notebook/records", get(records))
+        .route("/notebook/records/archive", post(archive_record))
         .route("/notebook/check", post(check))
         .route("/notebook/settings", get(get_settings).patch(set_settings))
         .route("/notebook/export", get(export))
