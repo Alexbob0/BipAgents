@@ -23,21 +23,69 @@
     "tablee": { "appStore": "", "googlePlay": "" }
   },
   "checkout": {
-    "_readme": "url: one template for every plan and period, {plan} = solo|duo|famille, {period} = month|year, {lang} = en|fr|de|es. links: optional per plan/period overrides, e.g. {\"duo\": {\"year\": \"https://…\"}}. Both empty = no web checkout yet. The guichet answers « bientôt sur le site » until its [web] enabled is on, and « complet » when the offer is full.",
+    "_readme": "url: one template for every plan and period, {plan} = solo|duo|famille, {period} = month|year, {lang} = en|fr|de|es; the page adds &currency=EUR|USD|… (the visitor's choice; or put {currency} in the template). links: optional per plan/period overrides, e.g. {\"duo\": {\"year\": \"https://…\"}}. Both empty = no web checkout yet. The guichet answers « bientôt sur le site » until its [web] enabled is on, and « complet » when the offer is full.",
     "url": "https://guichet.bipagents.com/v1/web/checkout?plan={plan}&period={period}&lang={lang}",
     "links": {}
   },
   "prices": {
-    "_readme": "Euros TTC (France). web = sold on the site (Stripe), store = App Store / Google Play. year = 10 months for 12.",
+    "_readme": "Each currency its own round prices (decided 2026-10-23, not Stripe's conversion): the same table as the guichet's guichet.toml ([web.currencies] and the plans' web.<currency>), keep them equal. web = sold on the site (Stripe), store = App Store / Google Play in that currency (null: not known yet, the « in the app » and savings lines are hidden). year = 10 months for 12. tax: inclusive (VAT/GST inside the price) or exclusive (sales tax added at checkout, « + taxes » shown). countries: the visitor's region (browser language) that picks this currency first; the one without countries is the default. symbol: the selector's label. proposal: a price not decided yet (SGD, ILS).",
     "plans": ["solo", "duo", "famille"],
     "people": { "solo": 1, "duo": 2, "famille": 6 },
-    "web": {
-      "month": { "solo": 6.49, "duo": 10.99, "famille": 17.99 },
-      "year": { "solo": 64.90, "duo": 109.90, "famille": 179.90 }
-    },
-    "store": {
-      "month": { "solo": 6.99, "duo": 11.99, "famille": 19.99 },
-      "year": { "solo": 69.90, "duo": 119.90, "famille": 199.90 }
+    "currencies": {
+      "EUR": {
+        "symbol": "€", "tax": "inclusive", "countries": [],
+        "web": {
+          "month": { "solo": 6.49, "duo": 10.99, "famille": 17.99 },
+          "year": { "solo": 64.90, "duo": 109.90, "famille": 179.90 }
+        },
+        "store": {
+          "month": { "solo": 6.99, "duo": 11.99, "famille": 19.99 },
+          "year": { "solo": 69.90, "duo": 119.90, "famille": 199.90 }
+        }
+      },
+      "USD": {
+        "symbol": "$", "tax": "exclusive", "countries": ["US"],
+        "web": {
+          "month": { "solo": 6.49, "duo": 10.99, "famille": 17.99 },
+          "year": { "solo": 64.90, "duo": 109.90, "famille": 179.90 }
+        },
+        "store": {
+          "month": { "solo": 6.99, "duo": 11.99, "famille": 19.99 },
+          "year": { "solo": 69.90, "duo": 119.90, "famille": 199.90 }
+        }
+      },
+      "CAD": {
+        "symbol": "CA$", "tax": "exclusive", "countries": ["CA"],
+        "web": {
+          "month": { "solo": 8.99, "duo": 14.99, "famille": 24.99 },
+          "year": { "solo": 89.90, "duo": 149.90, "famille": 249.90 }
+        },
+        "store": null
+      },
+      "GBP": {
+        "symbol": "£", "tax": "inclusive", "countries": ["GB"],
+        "web": {
+          "month": { "solo": 5.49, "duo": 9.49, "famille": 15.49 },
+          "year": { "solo": 54.90, "duo": 94.90, "famille": 154.90 }
+        },
+        "store": null
+      },
+      "SGD": {
+        "symbol": "S$", "tax": "inclusive", "countries": ["SG"], "proposal": true,
+        "web": {
+          "month": { "solo": 8.99, "duo": 14.99, "famille": 24.99 },
+          "year": { "solo": 89.90, "duo": 149.90, "famille": 249.90 }
+        },
+        "store": null
+      },
+      "ILS": {
+        "symbol": "₪", "tax": "inclusive", "countries": ["IL"], "proposal": true,
+        "web": {
+          "month": { "solo": 24.90, "duo": 42.90, "famille": 69.90 },
+          "year": { "solo": 249.00, "duo": 429.00, "famille": 699.00 }
+        },
+        "store": null
+      }
     }
   }
 }

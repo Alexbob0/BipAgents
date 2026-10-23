@@ -270,6 +270,10 @@ def bipagents(version: str) -> Path:
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
     paths = {lang: "/" if lang == "en" else f"/{lang}/" for lang in LANGS}
     prices, company = cfg["prices"], cfg["company"]
+    # Built in the default currency (the one without countries); the script switches to the visitor's.
+    currencies = prices["currencies"]
+    default_currency = next(code for code, c in currencies.items() if not c.get("countries"))
+    base = currencies[default_currency]
     (assets / "pages").mkdir()
     for lang in LANGS:
         t = texts[lang]
@@ -279,13 +283,18 @@ def bipagents(version: str) -> Path:
         for where in ("web", "store"):
             for period in ("month", "year"):
                 for plan in prices["plans"]:
-                    values[f"p.{where}.{period}.{plan}"] = money(prices[where][period][plan], lang)
+                    values[f"p.{where}.{period}.{plan}"] = money(base[where][period][plan], lang)
         for plan in prices["plans"]:
-            values[f"p.web.yearmonth.{plan}"] = money(round(prices["web"]["year"][plan] / 12, 2), lang)
+            values[f"p.web.yearmonth.{plan}"] = money(round(base["web"]["year"][plan] / 12, 2), lang)
+        # « from 6,49 € »: the lowest monthly price, which the script follows in the visitor's currency
+        values["p.from"] = f'<span data-from>{money(base["web"]["month"][prices["plans"][0]], lang)}</span>'
         values["livefirst.you"] = html.escape(t["liveDialog"][0]["you"])
         values["livefirst.bip"] = html.escape(t["liveDialog"][0]["bip"])
         if lang == "fr":   # « ? », « : »… never alone at the start of a line
             values = {k: french_spaces(v) if isinstance(v, str) else v for k, v in values.items()}
+        values["currencyoptions"] = "".join(
+            f'<option value="{code}"{" selected" if code == default_currency else ""}>{html.escape(c["symbol"])} {code}</option>'
+            for code, c in currencies.items())
         default_url = checkout_url(cfg, "famille", "year", lang)
         badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
 
@@ -324,7 +333,8 @@ def bipagents(version: str) -> Path:
         # Each page gets the data its script needs: the home its podcast, Live and prices, the demo its scenarios.
         data = {
             "home": {**common, "live": t["liveDialog"], "podcast": timeline.get(lang, [[0, 0]]),
-                     "prices": {k: v for k, v in prices.items() if not k.startswith("_")},
+                     "prices": {**{k: v for k, v in prices.items() if not k.startswith("_")},
+                                "default": default_currency},
                      "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}
                                   for plan in prices["plans"]},
                      "pricing": t["pricing"]["js"]},

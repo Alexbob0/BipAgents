@@ -313,41 +313,87 @@ if (compare) once(compare, () => compare.classList.add("go"), 0.4);
   const root = $(".pricing");
   if (!root) return;
   const P = data.prices, L = data.pricing, lang = data.lang;
-  const money = v => {
-    const [whole, cents] = v.toFixed(2).split(".");
-    const group = whole.replace(/\B(?=(\d{3})+(?!\d))/g, lang === "en" ? "," : " ");
-    return lang === "en" ? `€${group}.${cents}` : `${group},${cents} €`;
+  // Each currency its own round prices (site/config.json), written as the page's language writes them.
+  const LOCALES = { en: "en-US", fr: "fr-FR", de: "de-DE", es: "es-ES" };
+  const formats = {};
+  const money = (v, code) => {
+    formats[code] = formats[code] || new Intl.NumberFormat(LOCALES[lang] || lang, { style: "currency", currency: code });
+    return formats[code].format(Math.round(v * 100) / 100);
   };
   const say = (template, x) => template.replace("{x}", x);
-  const state = { plan: "famille", period: "year" };
-  const buy = $("#buy"), sticky = $(".sticky-buy");
+
+  // The visitor's currency: the one chosen here before, else the browser's region (en-US → USD, *-CA → CAD, he → ILS…),
+  // else the default (EUR).
+  const KEY = "bipagents.currency";
+  const remembered = () => { try { return localStorage.getItem(KEY); } catch (e) { return null; } };
+  const remember = code => { try { localStorage.setItem(KEY, code); } catch (e) { /* private mode: not kept */ } };
+  function guess() {
+    for (const tag of navigator.languages || [navigator.language || ""]) {
+      const parts = String(tag).split(/[-_]/);
+      const region = (parts.slice(1).find(p => /^[A-Za-z]{2}$/.test(p)) || "").toUpperCase();
+      const country = region || ({ he: "IL", iw: "IL" })[parts[0].toLowerCase()];
+      const found = country && Object.keys(P.currencies).find(c => (P.currencies[c].countries || []).includes(country));
+      if (found) return found;
+      if (region) break;   // a region (fr-FR, de-AT…) no other currency claims: the default
+    }
+    return P.default;
+  }
+  const kept = remembered();
+  const state = { plan: "famille", period: "year", currency: P.currencies[kept] ? kept : guess() };
+  const buy = $("#buy"), sticky = $(".sticky-buy"), picker = $("select[data-currency]", root);
+  const fineTax = $(".fine-tax"), fineDefault = fineTax && fineTax.textContent;
+
+  // The checkout's address, with the currency the visitor sees.
+  function withCurrency(url, code) {
+    if (!url) return url;
+    if (/\{currency\}|%7Bcurrency%7D/i.test(url)) return url.replace(/\{currency\}|%7Bcurrency%7D/gi, code);
+    try { const u = new URL(url, location.href); u.searchParams.set("currency", code); return u.href; } catch (e) { return url; }
+  }
 
   function render() {
-    const { plan, period } = state;
+    const { plan, period, currency } = state;
+    const C = P.currencies[currency], web = C.web, store = C.store;
+    const m = v => money(v, currency);
+    const tax = C.tax === "exclusive" ? " " + L.plusTax : "";
     $$("[data-period]", root).forEach(b => b.setAttribute("aria-checked", String(b.dataset.period === period)));
     root.dataset.period = period;
+    root.dataset.shown = currency;
+    if (picker) picker.value = currency;
     $$(".plan", root).forEach(b => {
       const p = b.dataset.plan, on = p === plan;
       b.setAttribute("aria-checked", String(on));
       b.tabIndex = on ? 0 : -1;
-      $("[data-price]", b).textContent = money(P.web[period][p]);
-      $("[data-unit]", b).textContent = period === "year" ? L.perYear : L.perMonth;
-      $("[data-equiv]", b).textContent = period === "year" ? say(L.equiv, money(P.web.year[p] / 12)) : "";
-      $("[data-store]", b).textContent = say(L.inApp, money(P.store[period][p]));
+      $("[data-price]", b).textContent = m(web[period][p]);
+      $("[data-unit]", b).textContent = (period === "year" ? L.perYear : L.perMonth) + tax;
+      $("[data-equiv]", b).textContent = period === "year" ? say(L.equiv, m(web.year[p] / 12)) : "";
+      $("[data-store]", b).textContent = store ? say(L.inApp, m(store[period][p])) : "";
     });
-    const price = P.web[period][plan];
+    const price = web[period][plan];
     $(".sum-plan", root).textContent = L.names[plan];
-    $(".sum-price", root).textContent = money(price);
-    $(".sum-unit", root).textContent = " " + (period === "year" ? L.perYear : L.perMonth);
-    const saved = period === "year" ? P.store.month[plan] * 12 - price : P.store.month[plan] - price;
-    $(".save", root).textContent = saved > 0 ? "✓ " + say(period === "year" ? L.saveYear : L.saveMonth, money(saved)) : "";
+    $(".sum-price", root).textContent = m(price);
+    $(".sum-unit", root).textContent = " " + (period === "year" ? L.perYear : L.perMonth) + tax;
+    // the savings against the stores, when their price in this currency is known; else the year against 12 months
+    const saved = !store ? (period === "year" ? web.month[plan] * 12 - price : 0)
+      : period === "year" ? store.month[plan] * 12 - price : store.month[plan] - price;
+    const line = !store ? L.saveYearWeb : period === "year" ? L.saveYear : L.saveMonth;
+    $(".save", root).textContent = saved > 0 ? "✓ " + say(line, m(saved)) : "";
     if (buy) {
-      buy.href = data.checkout[plan][period] || buy.href;
+      buy.href = withCurrency(data.checkout[plan][period], currency) || buy.href;
       $(".buy-label", buy).textContent = L.buy.replace("{plan}", L.names[plan]).replace("{period}", L.period[period]);
     }
     $(".sb-plan", sticky).textContent = L.names[plan];
-    $(".sb-price", sticky).textContent = (period === "year" ? money(price / 12) : money(price)) + " " + L.perMonth;
+    $(".sb-price", sticky).textContent = (period === "year" ? m(price / 12) : m(price)) + " " + L.perMonth + tax;
+    $$("[data-from]").forEach(el => { el.textContent = m(web.month[P.plans[0]]); });
+    if (fineTax) {
+      const name = (L.currencies || {})[currency] || currency;
+      fineTax.textContent = currency === P.default ? fineDefault
+        : (C.tax === "exclusive" ? L.taxExcl : L.taxIncl).replace("{currency}", name);
+    }
   }
+  if (picker) picker.addEventListener("change", () => {
+    if (!P.currencies[picker.value]) return;
+    state.currency = picker.value; remember(picker.value); render();
+  });
   $$("[data-period]", root).forEach(b => b.addEventListener("click", () => { state.period = b.dataset.period; render(); }));
   const plans = $$(".plan", root);
   plans.forEach((b, i) => {

@@ -19,15 +19,15 @@ confirmation of the contract by email, at your account's address: the plan, the 
 if there is one, the links to these terms, how to cancel, the deadline to withdraw from the contract and the withdrawal
 form (article L221-13 of the French Consumer Code). These terms remain available in Settings › About.
 
-**On the bipagents.com website**, Stripe's payment page shows you the plan, its price with all taxes included and its
-renewal period. You tick the box accepting these terms (with their link) and it tells you: "Your service starts at once,
-at your request. You can withdraw from the contract within 14 days and be refunded in full." After the payment, you
-receive the confirmation of the contract at the email address given at payment: the plan, its price, the start date, the
-links to these terms, how to get the app and sign in with that same address, a link to manage or cancel your
-subscription, the deadline to withdraw from the contract and the withdrawal form. The subscription joins your BipAgents
-account when you sign in in the app with that address (the code you receive by email proves it is yours). If that
-account already has a subscription, the second one is not attached to it and Kerfy Studio contacts you to refund one of
-them.
+**On the bipagents.com website**, Stripe's payment page shows you the plan, its price in the currency chosen, its
+taxes (included, or added in the United States and Canada) and the total to pay, and its renewal period. You tick the
+box accepting these terms (with their link) and it tells you: "Your service starts at once, at your request. You can
+withdraw from the contract within 14 days and be refunded in full." After the payment, you receive the confirmation of
+the contract at the email address given at payment: the plan, its price, the start date, the links to these terms, how
+to get the app and sign in with that same address, a link to manage or cancel your subscription, the deadline to
+withdraw from the contract and the withdrawal form. The subscription joins your BipAgents account when you sign in in
+the app with that address (the code you receive by email proves it is yours). If that account already has a
+subscription, the second one is not attached to it and Kerfy Studio contacts you to refund one of them.
 
 Using BipAgents with your own computer or your own server stays free and is not covered by these terms.
 
@@ -49,7 +49,7 @@ Using BipAgents with your own computer or your own server stays free and is not 
 
 ## 3. What a plan includes
 
-| Plan | People | Server | Price in the app (App Store, Google Play), VAT included | Price on the bipagents.com website, VAT included |
+| Plan | People | Server | Price in the app (App Store, Google Play), VAT included | Price on the bipagents.com website, in euros, VAT included |
 |---|---|---|---|---|
 | Solo | 1 | a place on a server shared with other subscribers | €6.99 per month or €69.90 per year | €6.49 per month or €64.90 per year |
 | Duo | 2 | two places on one server, shared with other subscribers | €11.99 per month or €119.90 per year | €10.99 per month or €109.90 per year |
@@ -57,6 +57,19 @@ Using BipAgents with your own computer or your own server stays free and is not 
 
 The yearly subscription costs 10 months for 12 and is paid at once for the 12 months. The website's prices are lower
 than the stores'.
+
+**The website's prices in each currency.** On the website, each currency has its own prices, set by Kerfy Studio (they
+are not conversions): the pricing page offers your country's, you can choose another one, and Stripe's payment page
+shows the price, the currency and the total you pay.
+
+| Currency | Country | Solo, per month / per year | Duo, per month / per year | Family, per month / per year | Taxes |
+|---|---|---|---|---|---|
+| Euro (EUR) | European Union | €6.49 / €64.90 | €10.99 / €109.90 | €17.99 / €179.90 | VAT included |
+| US dollar (USD) | United States | US$6.49 / US$64.90 | US$10.99 / US$109.90 | US$17.99 / US$179.90 | before tax: your state's sales tax is added at checkout |
+| Canadian dollar (CAD) | Canada | CA$8.99 / CA$89.90 | CA$14.99 / CA$149.90 | CA$24.99 / CA$249.90 | before tax: GST/HST and, depending on your province, PST or QST are added at checkout |
+| Pound sterling (GBP) | United Kingdom | £5.49 / £54.90 | £9.49 / £94.90 | £15.49 / £154.90 | VAT included |
+| Singapore dollar (SGD) | Singapore | S$8.99 / S$89.90 | S$14.99 / S$149.90 | S$24.99 / S$249.90 | GST included |
+| Shekel (ILS) | Israel | ₪24.90 / ₪249.00 | ₪42.90 / ₪429.00 | ₪69.90 / ₪699.00 | VAT included |
 
 For each person in the plan:
 
@@ -100,8 +113,11 @@ section 6); the services you connect to your agents and their own subscriptions.
 ## 5. Price, payment and renewal
 
 - The prices above are in euros, all taxes included, for France. In another country, the store shows the price in your
-  currency; the price shown at the time of purchase is the one you pay. On the website, the payment page shows the price
-  with all taxes included, with your country's taxes.
+  currency; the price shown at the time of purchase is the one you pay. On the website, the price is the one of the
+  currency chosen (table in section 3): all taxes included in euros, pounds sterling, Singapore dollars and shekels,
+  with your country's VAT or GST; before tax in US and Canadian dollars, your state's or province's sales tax being
+  added by the payment page, which shows the total before you pay. A subscription stays in the currency it was bought
+  in.
 - The subscription is **monthly or yearly, with no commitment**: it renews on its own each month or each year until you
   cancel it. The store charges you at the start of each subscription period (Apple may do so up to 24 hours before); on
   the website, Stripe charges your card at the start of each period.

@@ -547,11 +547,22 @@ a.store:hover { transform: translateY(-2px); }
 
 /* -- Pricing ---------------------------------------------------------------------------------------------------- */
 .pricing-section { position: relative; }
-.pricing { max-width: 1080px; margin: 0 auto; display: grid; gap: 22px; justify-items: center; }
+.pricing { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; justify-items: center; }
 .period { position: relative; display: inline-flex; padding: 5px; border-radius: 999px; background: var(--card); box-shadow: var(--shadow), inset 0 0 0 1.5px var(--line); }
 .period button { position: relative; z-index: 1; border: 0; background: none; font: inherit; font-weight: 900; font-size: 15.5px; height: 46px; padding: 0 20px; border-radius: 999px; cursor: pointer; color: var(--ink2); transition: color .3s, background .3s; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .period button[aria-checked="true"] { color: var(--ground); background: var(--ink); }
 .period-knob { display: none; }
+.pricing-bar { width: 100%; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; }
+.currency { position: relative; display: inline-flex; }
+.currency-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.currency select {
+  appearance: none; -webkit-appearance: none; font: inherit; font-weight: 900; font-size: 15.5px; color: var(--ink); height: 56px;
+  padding: 0 42px 0 20px; border: 0; border-radius: 999px; cursor: pointer; background: var(--card);
+  box-shadow: var(--shadow), inset 0 0 0 1.5px var(--line);
+}
+.currency::after { content: ""; position: absolute; right: 20px; top: 50%; width: 8px; height: 8px; margin-top: -6px; border: solid var(--ink2); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); pointer-events: none; }
+.currency select:focus-visible { outline: 3px solid var(--coral, #FF7B5C); outline-offset: 2px; }
+.plus-tax { font-size: .8em; font-weight: 900; color: var(--ink2); white-space: nowrap; }
 .gift { font-size: 11.5px; padding: 3px 8px; border-radius: 999px; background: var(--green); color: #fff; }
 .plans { width: 100%; display: grid; gap: 14px; }
 @media (min-width: 860px) { .plans { grid-template-columns: repeat(3, 1fr); align-items: stretch; margin-top: 10px; } }
@@ -592,7 +603,12 @@ a.store:hover { transform: translateY(-2px); }
 .sum { font-size: clamp(22px, 2.4vw, 30px); font-weight: 1000; letter-spacing: -.02em; }
 .save { color: #9FE4BC; font-weight: 900; margin-top: 4px; min-height: 1.5em; }
 .trial { color: color-mix(in srgb, var(--ground) 72%, transparent); font-size: 14.5px; font-weight: 700; margin-top: 8px; }
-.checkout-act { display: grid; gap: 10px; justify-items: center; }
+.checkout-act { display: grid; gap: 10px; justify-items: center; min-width: 0; }
+.checkout-copy { min-width: 0; }
+@media (max-width: 859px) {   /* a long « Subscribe · Family, yearly » wraps inside the card on a phone */
+  .checkout { grid-template-columns: minmax(0, 1fr); }
+  .checkout-act .pill-buy { max-width: 100%; white-space: normal; text-align: center; line-height: 1.2; height: auto; min-height: 58px; padding: 10px 24px; }
+}
 .checkout-act .cta-row { margin-top: 0; }
 .soon-web { font-size: 14.5px; font-weight: 700; max-width: 420px; text-align: center; color: color-mix(in srgb, var(--ground) 85%, transparent); }
 .soon-web b { color: var(--ground); }

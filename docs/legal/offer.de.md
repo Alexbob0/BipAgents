@@ -21,16 +21,17 @@ das Datum des Beginns, das Ende der kostenlosen Woche, falls es eine gibt, die L
 kündigst, das Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular (Art. L221-13 des
 französischen Verbrauchergesetzbuchs). Diese Bedingungen bleiben unter Einstellungen › Über abrufbar.
 
-**Auf der Website bipagents.com** zeigt dir die Zahlungsseite von Stripe den Tarif, seinen Preis einschließlich aller
-Steuern und seinen Verlängerungszeitraum. Du kreuzt an, dass du diese Bedingungen akzeptierst (mit ihrem Link), und sie
-sagt dir: „Dein Dienst beginnt sofort, auf deinen Wunsch. Du kannst den Vertrag 14 Tage lang widerrufen und bekommst
-alles erstattet.“ Nach der Zahlung erhältst du die Bestätigung des Vertrags an die E-Mail-Adresse, die du bei der
-Zahlung angegeben hast: den Tarif, seinen Preis, das Datum des Beginns, die Links zu diesen Bedingungen, wie du die App
+**Auf der Website bipagents.com** zeigt dir die Zahlungsseite von Stripe den Tarif, seinen Preis in der gewählten
+Währung, seine Steuern (enthalten oder, in den USA und Kanada, hinzugerechnet) und den zu zahlenden Betrag sowie
+seinen Verlängerungszeitraum. Du kreuzt an, dass du diese Bedingungen akzeptierst (mit ihrem Link), und sie sagt dir:
+„Dein Dienst beginnt sofort, auf deinen Wunsch. Du kannst den Vertrag 14 Tage lang widerrufen und bekommst alles
+erstattet.“ Nach der Zahlung erhältst du die Bestätigung des Vertrags an die E-Mail-Adresse, die du bei der Zahlung
+angegeben hast: den Tarif, seinen Preis, das Datum des Beginns, die Links zu diesen Bedingungen, wie du die App
 bekommst und dich darin mit derselben Adresse anmeldest, einen Link, um dein Abo zu verwalten oder zu kündigen, das
-Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular. Das Abo kommt zu deinem BipAgents-Konto,
-wenn du dich in der App mit dieser Adresse anmeldest (der Code, den du per E-Mail erhältst, beweist, dass sie dir
-gehört). Hat dieses Konto schon ein Abo, wird das zweite nicht damit verbunden, und Kerfy Studio meldet sich bei dir, um
-eines davon zu erstatten.
+Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular. Das Abo kommt zu deinem
+BipAgents-Konto, wenn du dich in der App mit dieser Adresse anmeldest (der Code, den du per E-Mail erhältst, beweist,
+dass sie dir gehört). Hat dieses Konto schon ein Abo, wird das zweite nicht damit verbunden, und Kerfy Studio meldet
+sich bei dir, um eines davon zu erstatten.
 
 BipAgents mit deinem eigenen Computer oder deinem eigenen Server zu nutzen, bleibt kostenlos und fällt nicht unter
 diese Bedingungen.
@@ -54,7 +55,7 @@ diese Bedingungen.
 
 ## 3. Was ein Tarif umfasst
 
-| Tarif | Personen | Server | Preis in der App (App Store, Google Play), inkl. MwSt. | Preis auf der Website bipagents.com, inkl. MwSt. |
+| Tarif | Personen | Server | Preis in der App (App Store, Google Play), inkl. MwSt. | Preis auf der Website bipagents.com, in Euro, inkl. MwSt. |
 |---|---|---|---|---|
 | Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 6,99 € pro Monat oder 69,90 € pro Jahr | 6,49 € pro Monat oder 64,90 € pro Jahr |
 | Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 11,99 € pro Monat oder 119,90 € pro Jahr | 10,99 € pro Monat oder 109,90 € pro Jahr |
@@ -62,6 +63,19 @@ diese Bedingungen.
 
 Das Jahresabo kostet 10 Monate für 12 und wird auf einmal für die 12 Monate bezahlt. Die Preise auf der Website sind
 niedriger als in den Stores.
+
+**Die Preise der Website in jeder Währung.** Auf der Website hat jede Währung ihre eigenen Preise, von Kerfy Studio
+festgelegt (keine Umrechnungen): Die Preisseite schlägt dir die deines Landes vor, du kannst eine andere wählen, und
+die Zahlungsseite von Stripe zeigt den Preis, die Währung und den Betrag, den du zahlst.
+
+| Währung | Land | Solo, pro Monat / pro Jahr | Duo, pro Monat / pro Jahr | Familie, pro Monat / pro Jahr | Steuern |
+|---|---|---|---|---|---|
+| Euro (EUR) | Europäische Union | 6,49 € / 64,90 € | 10,99 € / 109,90 € | 17,99 € / 179,90 € | inkl. MwSt. |
+| US-Dollar (USD) | Vereinigte Staaten | 6,49 US$ / 64,90 US$ | 10,99 US$ / 109,90 US$ | 17,99 US$ / 179,90 US$ | ohne Steuern: Die Umsatzsteuer deines Bundesstaats kommt beim Bezahlen dazu |
+| Kanadischer Dollar (CAD) | Kanada | 8,99 CA$ / 89,90 CA$ | 14,99 CA$ / 149,90 CA$ | 24,99 CA$ / 249,90 CA$ | ohne Steuern: GST/HST und, je nach Provinz, PST oder QST kommen beim Bezahlen dazu |
+| Pfund Sterling (GBP) | Vereinigtes Königreich | 5,49 £ / 54,90 £ | 9,49 £ / 94,90 £ | 15,49 £ / 154,90 £ | inkl. MwSt. |
+| Singapur-Dollar (SGD) | Singapur | 8,99 S$ / 89,90 S$ | 14,99 S$ / 149,90 S$ | 24,99 S$ / 249,90 S$ | inkl. GST |
+| Schekel (ILS) | Israel | 24,90 ₪ / 249,00 ₪ | 42,90 ₪ / 429,00 ₪ | 69,90 ₪ / 699,00 ₪ | inkl. MwSt. |
 
 Für jede Person des Tarifs:
 
@@ -107,9 +121,12 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 
 ## 5. Preis, Zahlung und Verlängerung
 
-- Die Preise oben sind in Euro, einschließlich aller Steuern, für Frankreich. In einem anderen Land zeigt der Store den
-  Preis in deiner Währung; der beim Kauf angezeigte Preis ist der, den du zahlst. Auf der Website zeigt die
-  Zahlungsseite den Preis einschließlich aller Steuern, mit den Steuern deines Landes.
+- Die Preise oben sind in Euro, einschließlich aller Steuern, für Frankreich. In einem anderen Land zeigt der Store
+  den Preis in deiner Währung; der beim Kauf angezeigte Preis ist der, den du zahlst. Auf der Website gilt der Preis
+  der gewählten Währung (Tabelle in Abschnitt 3): einschließlich aller Steuern in Euro, Pfund Sterling,
+  Singapur-Dollar und Schekel, mit der MwSt. oder GST deines Landes; ohne Steuern in US- und kanadischen Dollar, wobei
+  die Zahlungsseite die Umsatzsteuer deines Bundesstaats oder deiner Provinz hinzurechnet und den Gesamtbetrag zeigt,
+  bevor du zahlst. Ein Abo bleibt in der Währung, in der es gekauft wurde.
 - Das Abo ist **monatlich oder jährlich und ohne Mindestlaufzeit**: Es verlängert sich von selbst jeden Monat oder jedes
   Jahr, bis du es kündigst. Der Store bucht zu Beginn jedes Abozeitraums ab (Apple kann das bis zu 24 Stunden vorher
   tun); auf der Website belastet Stripe deine Karte zu Beginn jedes Zeitraums.

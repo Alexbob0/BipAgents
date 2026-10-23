@@ -35,11 +35,19 @@ One file, read by both sites:
 - **`contact`** — `contact@` (general), `support@`, `abuse@`.
 - **`stores`** — App Store and Google Play links for BipAgents and for Tablée. Empty = « Coming soon to » badges.
 - **`checkout.url`** — the web checkout, one template for every plan and period:
-  `https://…/v1/web/checkout?plan={plan}&period={period}&lang={lang}` (`plan` = solo | duo | famille, `period` = month |
+  `https://…/v1/web/checkout?plan={plan}&period={period}&lang={lang}` (the page adds `&currency=`) (`plan` = solo | duo | famille, `period` = month |
   year). `checkout.links.<plan>.<period>` overrides one of them. Empty = no « Subscribe » button: the price block shows
   « the web subscription is coming very soon » and the store badges instead.
-- **`prices`** — euros TTC, web and store, monthly and yearly (10 months for 12). The page, its live picker and the
-  savings line are computed from these.
+- **`prices`** — per currency (`prices.currencies`: EUR, USD, CAD, GBP, SGD, ILS; decided 2026-10-23, round prices of
+  our own, not Stripe's conversion): web and store, monthly and yearly (10 months for 12), `tax` inclusive (VAT/GST
+  inside) or exclusive (US, Canada: « + tax » shown, sales tax added at checkout), the `countries` whose visitors get
+  it first, the selector's `symbol`. The one without countries (EUR) is the default the page is built in; SGD and ILS
+  are proposals. `store: null` = the stores' price in that currency isn't known yet: the « in the app » line is hidden
+  and the savings line compares the year with 12 months. Keep it equal to the guichet's guichet.toml (`[web.currencies]`
+  and the plans' `web.<currency>`), which is what Stripe charges. The page picks the currency from the visitor's
+  browser region (en-US → USD, en-GB → GBP, *-CA → CAD, *-SG → SGD, he/*-IL → ILS, else EUR), a selector changes it
+  (remembered in localStorage), prices are written with `Intl.NumberFormat` in the page's language, and the checkout
+  link carries `&currency=`.
 
 ## Where things come from
 
