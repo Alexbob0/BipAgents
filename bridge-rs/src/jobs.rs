@@ -220,7 +220,7 @@ pub fn scan_view(job: &Dict, running: bool) -> Dict {
 }
 
 pub fn task_view(job: &Dict) -> Dict {
-    const KEEP: [&str; 24] = [
+    const KEEP: [&str; 18] = [
         "id",
         "kind",
         "agent",
@@ -239,15 +239,14 @@ pub fn task_view(job: &Dict) -> Dict {
         "report",
         "proposed_by",
         "runs",
-        // an extraction from an archive (archives/records_fill.rs): euros, its cap, documents read
-        "archive",
-        "eur",
-        "budget_eur",
-        "progress",
-        "model",
-        "counts",
     ];
-    KEEP.iter().map(|k| (k.to_string(), job.get(*k).cloned().unwrap_or(Value::Null))).collect()
+    // an extraction from an archive (archives/records_fill.rs): its euros, its cap, the documents read
+    const EXTRACT: [&str; 6] = ["archive", "eur", "budget_eur", "progress", "model", "counts"];
+    let extract = crate::archives::records_fill::is_extract(job);
+    KEEP.iter()
+        .chain(EXTRACT.iter().filter(|_| extract))
+        .map(|k| (k.to_string(), job.get(*k).cloned().unwrap_or(Value::Null)))
+        .collect()
 }
 
 fn state_of(job: &Dict) -> String {
