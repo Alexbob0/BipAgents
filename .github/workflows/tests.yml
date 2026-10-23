@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:   # the private repository's app jobs: by hand only (its Actions minutes are counted)
 
 permissions:
   contents: read
@@ -11,6 +12,7 @@ permissions:
 jobs:
   python:
     name: Bridge and installer
+    if: github.repository == 'Alexbob0/BipAgents'   # free there; the private copy would count minutes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -39,6 +41,7 @@ jobs:
 
   relay:
     name: Push relay (Rust)
+    if: github.repository == 'Alexbob0/BipAgents'   # free there; the private copy would count minutes
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -55,6 +58,7 @@ jobs:
 
   windows:
     name: Windows install script
+    if: github.repository == 'Alexbob0/BipAgents'   # free there; the private copy would count minutes
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -67,7 +71,8 @@ jobs:
 
   swift:
     name: HermesKit and VoiceKit
-    if: github.repository == 'Alexbob0/bipagents-private'   # the apps' source is private
+    # the apps' source is private; run by hand (macOS minutes count ten times), checked locally before each merge
+    if: github.repository == 'Alexbob0/bipagents-private' && github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -83,7 +88,8 @@ jobs:
 
   android:
     name: Android app
-    if: github.repository == 'Alexbob0/bipagents-private'   # the apps' source is private
+    # the apps' source is private; run by hand (macOS minutes count ten times), checked locally before each merge
+    if: github.repository == 'Alexbob0/bipagents-private' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
