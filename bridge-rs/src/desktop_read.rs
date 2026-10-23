@@ -74,10 +74,11 @@ pub fn focus_from(value: &Value) -> Focus {
         if right - left < 2.0 || bottom - top < 2.0 {
             return None;
         }
-        let kind = match value.get("kind").and_then(Value::as_str) {
-            Some(k @ ("field" | "element" | "content")) => k,
-            _ => "element",
-        };
+        let kind = value
+            .get("kind")
+            .and_then(Value::as_str)
+            .filter(|k| matches!(*k, "field" | "element" | "content"))
+            .unwrap_or("element");
         let round = |n: f64| (n * 10.0).round() / 10.0;
         Some((round(left), round(top), round(right - left), round(bottom - top), kind.to_string()))
     })();
@@ -531,8 +532,11 @@ pub async fn relay_outdated(port: u16) -> bool {
 mod tests {
     use super::*;
 
-    /// A snapshot as Chrome answers it, from (parent, type, name, value, attributes, layout: (display, visibility)).
-    fn snapshot(nodes: &[(i64, i64, &str, &str, &[(&str, &str)], Option<(&str, &str)>)]) -> Value {
+    /// A node: (parent, type, name, value, attributes, layout: (display, visibility)).
+    type Node<'a> = (i64, i64, &'a str, &'a str, &'a [(&'a str, &'a str)], Option<(&'a str, &'a str)>);
+
+    /// A snapshot as Chrome answers it.
+    fn snapshot(nodes: &[Node]) -> Value {
         let mut strings: Vec<String> = Vec::new();
         let mut index = |s: &str| -> i64 {
             if s.is_empty() {
