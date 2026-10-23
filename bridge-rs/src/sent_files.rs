@@ -65,7 +65,7 @@ fn copy_path(config: &Config, agent: &str, path: &str) -> Option<PathBuf> {
 }
 
 /// A hidden or secret-looking file (or one under a hidden folder, or a vault): never handed out.
-fn secret_looking(relative: &Path) -> bool {
+pub(crate) fn secret_looking(relative: &Path) -> bool {
     let parts: Vec<String> = relative.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect();
     let Some(name) = parts.last() else { return true };
     if parts.iter().any(|p| p.starts_with('.') || p == "vault" || p == "secrets") {
@@ -128,7 +128,7 @@ fn hand_mounts(config: &Config, agent: &AgentConfig, profile: &Path) -> Vec<(Pat
 
 /// A podman volume named for this agent (`bipagents-<agent>-<what>`), and not for another agent whose name starts
 /// like this one's (`bipagents-vie-pro-…` is never `vie`'s).
-fn own_volume(config: &Config, agent: &AgentConfig, volume: &str) -> bool {
+pub(crate) fn own_volume(config: &Config, agent: &AgentConfig, volume: &str) -> bool {
     let named_for = |name: &str| {
         volume.strip_prefix(&format!("bipagents-{name}-")).is_some_and(|rest| {
             !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c))
@@ -142,7 +142,7 @@ fn own_volume(config: &Config, agent: &AgentConfig, volume: &str) -> bool {
 }
 
 /// A podman volume's folder on this machine (`podman volume inspect --format {{.Mountpoint}}`).
-fn volume_mountpoint(volume: &str) -> Option<PathBuf> {
+pub(crate) fn volume_mountpoint(volume: &str) -> Option<PathBuf> {
     let podman = crate::browsers::pyx::which("podman")?;
     let out =
         run(&[podman, "volume".into(), "inspect".into(), "--format".into(), "{{.Mountpoint}}".into(), volume.into()])
@@ -194,6 +194,40 @@ fn places(config: &Config, agent: &AgentConfig) -> Vec<(String, Vec<PathBuf>)> {
     }
     out.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
     out
+}
+
+/// The folder of this machine behind a folder `path` as the agent sees it in its sandbox (`/workspace/notes`, a
+/// mounted folder, its outbox…): the newest when several of its sandboxes have one. None: not one of its places, or no
+/// such folder (or a link on the way).
+pub(crate) fn sandbox_folder(config: &Config, agent: &AgentConfig, path: &str) -> Option<PathBuf> {
+    let path = path.trim().trim_end_matches('/');
+    for (prefix, folders) in places(config, agent) {
+        let relative = if path == prefix.trim_end_matches('/') {
+            PathBuf::new()
+        } else {
+            match under(path, &prefix) {
+                Some(rest) => plain_relative(rest)?,
+                None => continue,
+            }
+        };
+        let found = folders
+            .iter()
+            .filter(|folder| folder.is_dir())
+            .filter_map(|folder| {
+                // no link on the way beneath the place: each part a real folder
+                let mut at = folder.clone();
+                for part in relative.components() {
+                    at.push(part);
+                    if !at.symlink_metadata().is_ok_and(|m| m.is_dir()) {
+                        return None;
+                    }
+                }
+                Some(at)
+            })
+            .max_by_key(|candidate| candidate.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH));
+        return found;
+    }
+    None
 }
 
 fn modified(file: &std::fs::File) -> SystemTime {

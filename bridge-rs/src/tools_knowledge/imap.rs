@@ -70,6 +70,10 @@ pub trait Imap: Send {
     fn append(&mut self, mailbox: &str, flags: &str, date_time: &str, message: &[u8]) -> Result<Reply, ImapError>;
     /// `conn._encoding = "utf-8"`.
     fn use_utf8(&mut self) {}
+    /// The selected folder's UIDVALIDITY (its `* OK [UIDVALIDITY n]` answer to the last `select`), when it gave one.
+    fn uid_validity(&mut self) -> Option<u64> {
+        None
+    }
     fn logout(&mut self) -> Result<(), ImapError>;
 }
 
@@ -484,6 +488,17 @@ impl Imap for Client {
 
     fn use_utf8(&mut self) {
         self.utf8 = true;
+    }
+
+    fn uid_validity(&mut self) -> Option<u64> {
+        static CODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\[UIDVALIDITY (\d+)\]").expect("valid regex"));
+        self.untagged.get("OK")?.iter().find_map(|item| {
+            let line = match item {
+                Data::Line(line) | Data::Literal(line, _) => line,
+                Data::None => return None,
+            };
+            CODE.captures(line).and_then(|c| std::str::from_utf8(&c[1]).ok()?.parse().ok())
+        })
     }
 
     fn logout(&mut self) -> Result<(), ImapError> {
