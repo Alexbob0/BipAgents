@@ -2240,7 +2240,7 @@ pub fn cli(config: &Config, agent: &AgentConfig, options: &HashMap<String, Strin
             Ok(report) => {
                 println!("{}", cli_text(&report));
                 println!(
-                    "(a sample writes nothing; then: bipbridge archive extract --agent {} --id {} --run --budget EUR)",
+                    "(a sample writes nothing; then: bipagents archive extract {} --archive {} --run --budget EUR)",
                     agent.name, archive.id
                 );
                 0
