@@ -535,7 +535,7 @@ pub struct DocIn {
 
 /// A text cut to `DOC_CHARS`: its start and its end.
 pub fn cut_text(text: &str) -> String {
-    let lines: Vec<String> = text.lines().map(|l| tk::squeeze(l)).filter(|l| !l.is_empty()).collect::<Vec<_>>();
+    let lines: Vec<String> = text.lines().map(tk::squeeze).filter(|l| !l.is_empty()).collect::<Vec<_>>();
     let text = lines.join("\n");
     let n = text.chars().count();
     if n <= DOC_CHARS {
@@ -620,11 +620,6 @@ const NAMED: [&str; 6] = ["item", "store", "service", "provider", "document", "w
 /// One record of the answer checked against its document: Ok((type, fields)) or Err(why).
 pub fn check(value: &Value, text: &str, doc_date: &str) -> Result<(&'static Kind, Dict), String> {
     let Some(object) = value.as_object() else { return Err("not an object".into()) };
-    for key in object.keys() {
-        if key != "type" && key != "fields" {
-            return Err(format!("unknown key {key}"));
-        }
-    }
     let type_name = object.get("type").and_then(Value::as_str).unwrap_or("");
     let Some(kind) = records::TYPES.iter().find(|t| t.id == type_name) else {
         return Err(format!("unknown type {type_name:?}"));
@@ -962,7 +957,8 @@ pub async fn run(
                 batches.push(vec![doc]);
             }
         }
-        for batch in batches {
+        let mut queue: std::collections::VecDeque<Vec<DocIn>> = batches.into();
+        while let Some(batch) = queue.pop_front() {
             let user = prompt_for(&batch);
             let most = plan.model.cost(tokens_of(INSTRUCTIONS.len() + user.len()), MAX_OUTPUT_TOKENS);
             if plan.model.price_in + plan.model.price_out > 0.0 && tally.eur + most > plan.budget_eur {
@@ -988,8 +984,15 @@ pub async fn run(
             tally.tokens_in += tokens_in;
             tally.tokens_out += tokens_out;
             tally.eur += plan.model.cost(tokens_in, tokens_out);
-            tally.sent += batch.len();
             let parsed = parse_answer(&answer, &batch);
+            if parsed.is_err() && batch.len() > 1 {
+                // one document may have spoiled the answer: each asked on its own
+                for doc in batch.into_iter().rev() {
+                    queue.push_front(vec![doc]);
+                }
+                continue;
+            }
+            tally.sent += batch.len();
             let (c, a) = (config.clone(), archive.clone());
             let batch_c = batch.clone();
             let mut preview_moved = std::mem::take(&mut preview);
@@ -1036,9 +1039,12 @@ pub async fn run(
     Ok(tally)
 }
 
+/// One record done: its type, what was done, its line in the report, and a booking (its fields, its source).
+type Done = (&'static str, Upserted, Example, Option<(Dict, String)>);
+
 /// What one batch's answer did.
 struct Applied {
-    done: Vec<(&'static str, Upserted, Example, Option<(Dict, String)>)>,
+    done: Vec<Done>,
     rejected: usize,
     failed: usize,
 }
@@ -1393,16 +1399,35 @@ pub async fn sample(
     size: usize,
     cap: f64,
 ) -> anyhow::Result<Value> {
-    if !SAMPLING.lock().unwrap_or_else(|e| e.into_inner()).insert(archive.key()) {
+    let Some(claim) = Sampling::claim(&archive) else {
         return Err(ArchiveError("a sample of this archive is running already".into()).into());
+    };
+    sample_claimed(config, archive, model, size, cap, claim).await
+}
+
+/// The archive marked as being sampled while it lives.
+pub struct Sampling(String);
+
+impl Sampling {
+    fn claim(archive: &Archive) -> Option<Sampling> {
+        SAMPLING.lock().unwrap_or_else(|e| e.into_inner()).insert(archive.key()).then(|| Sampling(archive.key()))
     }
-    struct Done(String);
-    impl Drop for Done {
-        fn drop(&mut self) {
-            SAMPLING.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
-        }
+}
+
+impl Drop for Sampling {
+    fn drop(&mut self) {
+        SAMPLING.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
     }
-    let _done = Done(archive.key());
+}
+
+async fn sample_claimed(
+    config: Arc<Config>,
+    archive: Archive,
+    model: Model,
+    size: usize,
+    cap: f64,
+    _claim: Sampling,
+) -> anyhow::Result<Value> {
     let plan = Plan { archive: archive.clone(), mode: Mode::Sample(size.clamp(1, SAMPLE_MAX)), model, budget_eur: cap };
     let tally = run(config.clone(), &plan, |_| true).await?;
     let out = report(&plan, &tally);
@@ -1416,12 +1441,19 @@ pub async fn sample(
 
 /// A sample started in the background (the app asks for its report).
 pub fn start_sample(config: Arc<Config>, archive: Archive, model: Model, size: usize, cap: f64) -> anyhow::Result<()> {
-    if sampling(&archive) {
+    let Some(claim) = Sampling::claim(&archive) else {
         return Err(ArchiveError("a sample of this archive is running already".into()).into());
-    }
+    };
     tokio::spawn(async move {
-        if let Err(err) = sample(config, archive.clone(), model, size, cap).await {
+        if let Err(err) = sample_claimed(config.clone(), archive.clone(), model, size, cap, claim).await {
             tracing::warn!(target: "bipbridge::archives", archive = %archive.id, error = %err, "records sample failed");
+            let message = match err.downcast_ref::<ArchiveError>() {
+                Some(e) => e.0.clone(),
+                None => err.to_string(),
+            };
+            let text = json!({"error": message, "at": py::time_time()}).to_string();
+            let path = store_path(&config, &archive);
+            let _ = tokio::task::spawn_blocking(move || Store::open(&path).map(|s| s.set_meta("sample", &text))).await;
         }
     });
     Ok(())
@@ -1596,6 +1628,25 @@ pub async fn work(config: Arc<Config>, job_id: String, tell: Tell) {
             })
             .collect();
         job.insert("counts".into(), Value::Object(summed));
+        // the whole pass so far (a resumed job adds to what it did before)
+        let mut whole = tally.clone();
+        let before = job.get("by_type").cloned().unwrap_or(json!({}));
+        for t in records::TYPES.iter() {
+            for (key, map) in [("new", &mut whole.added), ("updated", &mut whole.updated), ("same", &mut whole.same)] {
+                let n = before.get(t.id).and_then(|v| v.get(key)).and_then(Value::as_u64).unwrap_or(0) as usize;
+                if n > 0 {
+                    *map.entry(t.id).or_insert(0) += n;
+                }
+            }
+        }
+        whole.sent += job.get("sent").and_then(Value::as_u64).unwrap_or(0) as usize;
+        whole.planned = whole.planned.max(job.get("planned").and_then(Value::as_u64).unwrap_or(0) as usize);
+        whole.trips += job.get("trips").and_then(Value::as_u64).unwrap_or(0) as usize;
+        whole.eur += before_eur;
+        job.insert("by_type".into(), whole.per_type());
+        job.insert("sent".into(), json!(whole.sent));
+        job.insert("planned".into(), json!(whole.planned));
+        job.insert("trips".into(), json!(whole.trips));
         match tally.stopped.as_deref() {
             Some("budget") | Some("paused") => {
                 job.insert("state".into(), json!("paused"));
@@ -1613,7 +1664,7 @@ pub async fn work(config: Arc<Config>, job_id: String, tell: Tell) {
                 job.insert("state".into(), json!("done"));
                 job.insert("reason".into(), Value::Null);
                 job.insert("finished".into(), json!(py::time_time()));
-                job.insert("report".into(), json!(plain_report(&tally, &archive, &lang)));
+                job.insert("report".into(), json!(plain_report(&whole, &archive, &lang)));
             }
         }
         let _ = crate::jobs::save(&config, &job);
@@ -1805,7 +1856,7 @@ pub fn state_view(config: &Config, agent: &AgentConfig, archive: &Archive) -> Va
     let store = if path.exists() { Store::open(&path).ok() } else { None };
     let meta = |k: &str| store.as_ref().and_then(|s| s.meta(k)).and_then(|t| serde_json::from_str::<Value>(&t).ok());
     let (candidates, read) =
-        match Index::open(&index_path(config, archive)).ok().filter(|_| index_path(config, archive).exists()) {
+        match Some(index_path(config, archive)).filter(|p| p.exists()).and_then(|p| Index::open(&p).ok()) {
             Some(index) => {
                 let rows = candidates(&index).unwrap_or_default();
                 let seen = store.as_ref().and_then(|s| s.seen().ok()).unwrap_or_default();
