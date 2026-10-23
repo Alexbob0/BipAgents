@@ -353,13 +353,16 @@ pub fn model_of(config: &Config, agent: &AgentConfig) -> Result<IndexMap<String,
         _ if provider == "openrouter" => "OPENROUTER_API_KEY".into(),
         _ => "CUSTOM_MODEL_API_KEY".into(),
     };
-    let home = if config.hermes.home.is_empty() {
-        py::join(&py::expanduser("~"), ".hermes")
-    } else {
-        config.hermes.home.clone()
+    // the agent's own Hermes home: its space when it has one (its own container), else the hub's
+    let home = crate::agents_admin::home_root(config, agent);
+    let mut key = match model.get("api_key") {
+        Some(v) if py::truthy(v) => py::py_str(v),
+        _ => String::new(),
     };
-    let mut key = String::new();
     for env in [folder.join(".env"), PathBuf::from(home).join(".env")] {
+        if !key.is_empty() {
+            break;
+        }
         let Ok(text) = tk::read_text(&env) else { continue };
         for line in crate::hermes::splitlines(&text) {
             let (name, value) = line.split_once('=').unwrap_or((&line, ""));
@@ -373,7 +376,8 @@ pub fn model_of(config: &Config, agent: &AgentConfig) -> Result<IndexMap<String,
             break;
         }
     }
-    if key.is_empty() {
+    // a server of the person's on this machine or the local network often wants no key
+    if key.is_empty() && !crate::archives::records_fill::is_local(&base) {
         return Err(ScanError("this agent's model key wasn't found".into()));
     }
     let mut out = IndexMap::new();
@@ -1388,6 +1392,46 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn agent_in_space(space: &Path, model: &str) -> Config {
+        let profile = space.join("profiles").join("vie");
+        std::fs::create_dir_all(&profile).unwrap();
+        std::fs::write(profile.join("config.yaml"), model).unwrap();
+        crate::config::parse_config(
+            &json!({"bridge_key": "k".repeat(32), "data_dir": space.join("data").to_string_lossy(),
+                    "agents": {"vie": {"hermes_url": "http://127.0.0.1:9300", "hermes_key": "h".repeat(32),
+                                       "space": space.to_string_lossy()}}}),
+            None,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn an_agent_in_its_own_space_has_its_key_there_and_a_local_model_needs_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = agent_in_space(
+            dir.path(),
+            "model:\n  provider: custom\n  base_url: https://models.example.eu/v1\n  default: big\n",
+        );
+        std::fs::write(dir.path().join(".env"), "CUSTOM_MODEL_API_KEY=from-the-space\n").unwrap();
+        let found = model_of(&config, config.agent(Some("vie")).unwrap()).unwrap();
+        assert_eq!(found["key"], "from-the-space");
+
+        let local = tempfile::tempdir().unwrap();
+        let config = agent_in_space(
+            local.path(),
+            "model:\n  provider: custom\n  base_url: http://192.168.1.20:8000/v1\n  default: local\n",
+        );
+        let found = model_of(&config, config.agent(Some("vie")).unwrap()).unwrap();
+        assert_eq!((found["model"].as_str(), found["key"].as_str()), ("local", ""));
+
+        let remote = tempfile::tempdir().unwrap();
+        let config = agent_in_space(
+            remote.path(),
+            "model:\n  provider: custom\n  base_url: https://models.example.eu/v1\n  default: big\n",
+        );
+        assert!(model_of(&config, config.agent(Some("vie")).unwrap()).is_err());
+    }
 
     #[test]
     fn steps_are_proposed_newest_first_with_their_cost() {

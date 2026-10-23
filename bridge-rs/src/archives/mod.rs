@@ -311,6 +311,12 @@ pub fn locate(config: &Config, agent: &AgentConfig, source: &str) -> Result<(Pat
     if let Some(why) = refused_folder(config, agent, &host) {
         return Err(why);
     }
+    if !host.is_dir() {
+        return Err(format!(
+            "« {source} » isn't a folder found on this machine: give its path here (/home/…), or as the agent's sandbox \
+             mounts it"
+        ));
+    }
     Ok((canonical(&host), None))
 }
 
@@ -1356,7 +1362,13 @@ pub fn cli(argv: &[String]) -> i32 {
                     "{}  « {} »  {}  {} documents  {}",
                     a.id,
                     a.name,
-                    if a.kind == "mail" { format!("mail:{}", a.account) } else { a.source.clone() },
+                    if a.kind == "mail" {
+                        format!("mail:{}", a.account)
+                    } else if !a.folder.is_empty() && a.folder != a.source {
+                        format!("{} ({})", a.source, a.folder)
+                    } else {
+                        a.source.clone()
+                    },
                     v["documents"],
                     v["state"].as_str().unwrap_or("")
                 )
@@ -1372,7 +1384,7 @@ pub fn cli(argv: &[String]) -> i32 {
             add(&config, &agent, &body).map(|archive| {
                 register(&config);
                 vec![format!(
-                    "{}: archive « {} » ({}) added; the bridge indexes it within ten minutes (now: bipbridge archive refresh --agent {} --id {})",
+                    "{}: archive « {} » ({}) added; the bridge indexes it within ten minutes (now: bipagents archive refresh {} --id {})",
                     agent.name, archive.name, archive.id, agent.name, archive.id
                 )]
             })
