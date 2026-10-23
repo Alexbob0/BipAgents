@@ -210,6 +210,84 @@ def test_tasks_stay_few_and_follow_the_phone_reminders(bridge):
     assert "## Ce que tes agents doivent savoir\n- Pas de propositions" in (notebook(bridge) / "carnet" / "Toi.md").read_text()
 
 
+def test_a_task_is_added_once_and_takes_its_reminder_when_it_leaves(bridge):
+    give_token(bridge)
+    in_french(bridge)
+    assert bridge.put("/v1/reminders/agents", json={"agents": ["Wellness"]}, headers=AUTH).status_code == 200
+    queue = lambda: bridge.get("/v1/reminders/queue", headers=AUTH).json()["queue"]
+    first = text_of(call(bridge, "notebook_task", {"action": "add", "title": "Appeler le dentiste", "due": "2026-11-03"}))
+    task_id = re.search(r"id (t[0-9a-f]+)", first).group(1)
+    # Asked again while filling the Carnet from memory: the same task, said so, no second reminder.
+    again = call(bridge, "notebook_task", {"action": "add", "title": "appeler le Dentiste.", "due": "2026-11-03"})
+    assert again["isError"] is False
+    assert text_of(again).startswith(f"Already in the Carnet as ^{task_id}: Appeler le dentiste, due 2026-11-03.")
+    same = bridge.post("/v1/notebook/tasks", json={"title": "Appeler le dentiste"}, headers=AUTH).json()
+    assert same["existing"] is True and same["task"]["id"] == task_id
+    assert len(queue()) == 1
+    # Removed while its add still waits: cancelled.
+    call(bridge, "notebook_task", {"action": "add", "title": "Appeler le garage", "due": "2026-11-04"})
+    assert len(queue()) == 2
+    call(bridge, "notebook_edit", {"page": "Tâches", "old": "Appeler le garage", "new": ""})
+    assert [op["args"]["title"] for op in queue()] == ["Appeler le dentiste"]
+    # On the phone: removed by its id and mark (the agent's edit, or the person's in the app).
+    op = queue()[0]
+    bridge.post(f"/v1/reminders/queue/{op['id']}", json={"done": True}, headers=AUTH)
+    mark = f"BipAgents · Carnet ^{task_id}"
+    assert op["args"]["notes"] == mark
+    bridge.put("/v1/reminders", json={"lists": [], "items": [{"id": "r1", "title": "Appeler le dentiste", "notes": mark}]},
+               headers=AUTH)
+    page = (notebook(bridge) / "carnet" / "Tâches" / "Tâches.md").read_text()
+    edited = "\n".join(line for line in page.splitlines() if task_id not in line) + "\n"
+    assert bridge.put("/v1/notebook/page", json={"path": "Tâches/Tâches.md", "text": edited}, headers=AUTH).status_code == 200
+    asked = queue()
+    assert [(o["op"], o["args"]) for o in asked] == [("remove", {"id": "r1", "mark": mark})]
+    # An app from before « remove » answers « unknown request »: the request waits for its update.
+    bridge.post(f"/v1/reminders/queue/{asked[0]['id']}", json={"done": False, "error": "unknown request"}, headers=AUTH)
+    assert [o["id"] for o in queue()] == [asked[0]["id"]]
+    bridge.post(f"/v1/reminders/queue/{asked[0]['id']}", json={"done": True}, headers=AUTH)
+    assert queue() == []
+
+
+def test_reminders_left_by_removed_tasks_are_cleaned_at_start(bridge):
+    give_token(bridge)
+    in_french(bridge)
+    assert bridge.put("/v1/reminders/agents", json={"agents": ["Wellness"]}, headers=AUTH).status_code == 200
+    kept = re.search(r"id (t[0-9a-f]+)", text_of(call(bridge, "notebook_task", {
+        "action": "add", "title": "Rendez-vous banque", "due": "2026-11-05"}))).group(1)
+    # Archived (moved under « Archivées »): not gone, nothing asked.
+    op = bridge.get("/v1/reminders/queue", headers=AUTH).json()["queue"][0]
+    bridge.post(f"/v1/reminders/queue/{op['id']}", json={"done": True}, headers=AUTH)
+    path = notebook(bridge) / "carnet" / "Tâches" / "Tâches.md"
+    page = path.read_text()
+    line = next(l for l in page.splitlines() if kept in l)
+    moved = page.replace(line + "\n", "") + f"\n## Archivées\n{line}\n"
+    assert bridge.put("/v1/notebook/page", json={"path": "Tâches/Tâches.md", "text": moved}, headers=AUTH).status_code == 200
+    assert bridge.get("/v1/reminders/queue", headers=AUTH).json()["queue"] == []
+    # What an older bridge left: a link to a task removed, and the phone with duplicates and another Carnet's mark.
+    bridge.stop()
+    state_path = notebook(bridge) / "state.json"
+    state = json.loads(state_path.read_text())
+    state["reminders"]["t0000aaaa"] = {"op": "old", "part": "main", "complete": False}
+    state["tasks"]["t0000aaaa"] = {"origin": "asked"}
+    state_path.write_text(json.dumps(state))
+    reminders_path = bridge.state_dir / "reminders.json"
+    data = json.loads(reminders_path.read_text())
+    mark = lambda t: f"BipAgents · Carnet ^{t}"
+    data["items"] = [{"id": "r2", "notes": mark("t0000aaaa")}, {"id": "r3", "notes": mark(kept)},
+                     {"id": "r4", "notes": mark(kept)}, {"id": "r5", "notes": mark("t9999ffff")}]
+    reminders_path.write_text(json.dumps(data))
+    bridge.start()
+    deadline = time.time() + 10
+    while time.time() < deadline and len(bridge.get("/v1/reminders/queue", headers=AUTH).json()["queue"]) < 2:
+        time.sleep(0.2)
+    asked = bridge.get("/v1/reminders/queue", headers=AUTH).json()["queue"]
+    assert sorted((o["op"], o["args"]["id"]) for o in asked) == [("remove", "r2"), ("remove", "r4")]
+    assert "t0000aaaa" not in json.loads(state_path.read_text())["reminders"]
+    # Once: a restart or the phone's next share asks nothing more.
+    bridge.put("/v1/reminders", json={"lists": [], "items": data["items"]}, headers=AUTH)
+    assert len(bridge.get("/v1/reminders/queue", headers=AUTH).json()["queue"]) == 2
+
+
 def test_dates_to_come_are_facts_of_close_people(bridge):
     give_token(bridge)
     in_french(bridge)
