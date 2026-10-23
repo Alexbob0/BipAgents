@@ -628,9 +628,9 @@ a.store:hover { transform: translateY(-2px); }
 @media (max-width: 560px) {
   .mode { border-radius: 26px; }
   .mode-thumb { border-radius: 20px; }
-  .mode button { justify-content: center; text-align: center; min-height: 70px; padding: 10px 8px; border-radius: 20px; }
+  .mode button { justify-content: center; text-align: center; min-height: 66px; padding: 9px 6px; border-radius: 20px; }
   .mode-ic { display: none; }
-  .mode-txt b { font-size: 15.5px; } .mode-txt small { font-size: 12.5px; }
+  .mode-txt b { font-size: 15px; letter-spacing: -.02em; } .mode-txt small { font-size: 12px; line-height: 1.25; }
 }
 .mode-stage { position: relative; }
 .mode-stage.moving { overflow: hidden; transition: height .45s cubic-bezier(.3, .8, .3, 1); }
