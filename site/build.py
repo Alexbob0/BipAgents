@@ -202,7 +202,7 @@ def walk_map(demo: Dict[str, Any], target: Path) -> str:
     png = target.with_suffix(".png")
     png.write_bytes(base64.b64decode(found.group(1)))
     if shutil.which("sips"):
-        done = subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "72", str(png), "--out", str(target)],
+        done = subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "60", str(png), "--out", str(target)],
                               capture_output=True)
         if done.returncode == 0 and target.exists():
             png.unlink()
@@ -290,7 +290,7 @@ def bipagents(version: str) -> Path:
                     f'<p class="soon-web">{t["pricing"]["soon"]}</p><div class="cta-row center">{badges}</div>'),
             "checkoutstate": "on" if default_url else "off",
             "company": (f'{html.escape(company["name"])}, {html.escape(company["form"])} · {html.escape(t["foot"]["capital"])} '
-                        f'{todo(money(float(company["capital"]), lang) if company["capital"] else "", "capital")} · RCS '
+                        f'{todo(money(float(company["capital"]), lang).replace(",00", "").replace(".00", "") if company["capital"] else "", "capital")} · RCS '
                         f'{todo(company["rcsCity"], "RCS")} {todo(company["siren"], "SIREN")} · '
                         f'{todo(company["address"], t["foot"]["address"])}'),
             "contact": cfg["contact"]["general"],
@@ -359,7 +359,15 @@ def links(src: Path, out: Path) -> None:
         "relation": ["delegate_permission/common.handle_all_urls"],
         "target": {"namespace": "android_app", "package_name": "io.github.bipagents",
                    "sha256_cert_fingerprints": [play]}}], indent=2) + "\n", encoding="utf-8")
-    copy(src / "links" / "p.html", out / "p" / "index.html")
+    # The page shown where the app isn't installed: the store links from site/config.json once the owner has them.
+    page = (src / "links" / "p.html").read_text(encoding="utf-8")
+    stores = config()["stores"]["bipagents"]
+    if stores.get("appStore"):
+        page = page.replace("https://apps.apple.com/app/bipagents/idAPPSTOREID", stores["appStore"])
+    if stores.get("googlePlay"):
+        page = page.replace("https://play.google.com/store/apps/details?id=io.github.bipagents", stores["googlePlay"])
+    (out / "p").mkdir(parents=True, exist_ok=True)
+    (out / "p" / "index.html").write_text(page, encoding="utf-8")
 
 
 def main(argv: List[str]) -> int:
