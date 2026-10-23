@@ -6,11 +6,12 @@
 
 ## 1. Objet
 
-Ces conditions encadrent l'**offre tout compris** de BipAgents : les forfaits Solo, Duo et Famille et le crédit d'IA
-supplémentaire, achetés dans l'app. Elles complètent les [conditions générales d'utilisation](terms.fr.md) de l'app,
-qui continuent de s'appliquer, et la [politique d'usage acceptable](acceptable-use.fr.md) en fait partie. La
-[politique de confidentialité](privacy.fr.md) décrit ce que deviennent tes données. Pour l'offre tout compris, ces
-conditions l'emportent sur les conditions d'utilisation si elles se contredisent.
+Ces conditions encadrent l'**offre tout compris** de BipAgents : les forfaits Solo, Duo et Famille, achetés dans l'app
+ou sur le site bipagents.com, et le crédit d'IA supplémentaire, acheté dans l'app. Elles complètent les
+[conditions générales d'utilisation](terms.fr.md) de l'app, qui continuent de s'appliquer, et la
+[politique d'usage acceptable](acceptable-use.fr.md) en fait partie. La [politique de confidentialité](privacy.fr.md)
+décrit ce que deviennent tes données. Pour l'offre tout compris, ces conditions l'emportent sur les conditions
+d'utilisation si elles se contredisent.
 
 Avant l'achat, l'app te montre le forfait, ce qu'il comprend, son prix, la semaine gratuite s'il y en a une et le prix
 qui la suivra, le délai de 14 jours pour renoncer au contrat, et des liens vers ces conditions, la politique d'usage
@@ -20,28 +21,45 @@ début, la fin de la semaine gratuite s'il y en a une, les liens vers ces condit
 limite pour renoncer au contrat et le formulaire de rétractation (article L221-13 du Code de la consommation). Ces
 conditions restent accessibles dans Réglages › À propos.
 
+**Sur le site bipagents.com**, la page de paiement de Stripe te montre le forfait, son prix toutes taxes comprises et sa
+période de renouvellement. Tu coches l'acceptation de ces conditions (avec leur lien) et elle t'indique : « Ton service
+commence tout de suite, à ta demande. Tu peux renoncer au contrat pendant 14 jours et être remboursé entièrement. »
+Après le paiement, tu reçois la confirmation du contrat à l'adresse e-mail donnée au paiement : le forfait, son prix, la
+date de début, les liens vers ces conditions, comment installer l'app et t'y connecter avec cette même adresse, un lien
+pour gérer ou résilier ton abonnement, la date limite pour renoncer au contrat et le formulaire de rétractation.
+L'abonnement rejoint ton compte BipAgents quand tu te connectes dans l'app avec cette adresse (le code reçu par e-mail
+prouve qu'elle est à toi). Si ce compte a déjà un abonnement, le second n'y est pas rattaché et Kerfy Studio te contacte
+pour en rembourser un.
+
 Utiliser BipAgents avec ton propre ordinateur ou ton propre serveur reste gratuit et n'est pas concerné par ces
 conditions.
 
-## 2. Kerfy Studio et les stores
+## 2. Kerfy Studio, les stores et le site
 
 - **Kerfy Studio fournit le service** : ta place, ton crédit d'IA, les sauvegardes et le support. Kerfy Studio, SAS au
   capital de [capital] €, siège social : [adresse du siège], immatriculée au RCS de [ville du greffe] sous le numéro
   [SIREN], téléphone : [numéro de téléphone]. Contact : **support@kerfystudio.com**. Signalement d'abus :
   **abuse@kerfystudio.com**.
-- **Le store encaisse le prix.** L'achat se fait dans l'App Store d'Apple ou sur Google Play, avec ton compte chez
-  eux : le store facture, encaisse le prix et la TVA, et rembourse selon ses propres règles. Sur l'App Store, Apple
-  agit comme mandataire de Kerfy Studio et, pour l'Union européenne, le vendeur est Apple Distribution International
-  Ltd. (Irlande) ; sur Google Play, le vendeur est Google Commerce Limited (Irlande). Leurs conditions s'appliquent au
-  paiement. Kerfy Studio ne reçoit jamais tes moyens de paiement.
+- **Dans l'app, le store encaisse le prix.** L'achat se fait dans l'App Store d'Apple ou sur Google Play, avec ton
+  compte chez eux : le store facture, encaisse le prix et la TVA, et rembourse selon ses propres règles. Sur l'App
+  Store, Apple agit comme mandataire de Kerfy Studio et, pour l'Union européenne, le vendeur est Apple Distribution
+  International Ltd. (Irlande) ; sur Google Play, le vendeur est Google Commerce Limited (Irlande). Leurs conditions
+  s'appliquent au paiement. Kerfy Studio ne reçoit jamais tes moyens de paiement.
+- **Sur le site bipagents.com, Kerfy Studio vend lui-même.** Kerfy Studio est alors le vendeur : il te facture et
+  encaisse le prix et la TVA ou les taxes de vente, calculées selon ton pays par Stripe Tax. Le paiement est traité par
+  Stripe (Stripe Payments Europe, Ltd., Irlande) ; Kerfy Studio ne reçoit jamais le numéro complet de ta carte. Les apps
+  ne vendent jamais en dehors du store : un abonnement pris sur le site y apparaît avec « Géré sur bipagents.com ».
 
 ## 3. Ce que comprend un forfait
 
-| Forfait | Personnes | Serveur | Prix par mois, TTC |
-|---|---|---|---|
-| Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 6,99 € |
-| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 11,99 € |
-| Famille | jusqu'à 6 | un serveur rien qu'à vous | 19,99 € |
+| Forfait | Personnes | Serveur | Prix TTC dans l'app (App Store, Google Play) | Prix TTC sur le site bipagents.com |
+|---|---|---|---|---|
+| Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 6,99 € par mois ou 69,90 € par an | 6,49 € par mois ou 64,90 € par an |
+| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 11,99 € par mois ou 119,90 € par an | 10,99 € par mois ou 109,90 € par an |
+| Famille | jusqu'à 6 | un serveur rien qu'à vous | 19,99 € par mois ou 199,90 € par an | 17,99 € par mois ou 179,90 € par an |
+
+L'abonnement annuel coûte 10 mois pour 12 et se paie en une fois pour les 12 mois. Les prix du site sont plus bas que
+ceux des stores.
 
 Pour chaque personne du forfait :
 
@@ -62,7 +80,8 @@ dans l'Union européenne, y compris pour les personnes qui vivent hors de l'Unio
 
 **Dans quels pays.** L'offre est proposée quand le compte de ton store est dans l'Union européenne, aux États-Unis, au
 Royaume-Uni, en Israël, à Singapour ou au Canada. Ailleurs, l'app ne la propose pas ; BipAgents reste utilisable avec
-ton propre serveur. Les règles propres aux personnes qui vivent hors de l'Union sont à la section 17.
+ton propre serveur. Sur le site, un achat fait depuis un pays où l'offre n'est pas vendue est annulé et remboursé
+aussitôt. Les règles propres aux personnes qui vivent hors de l'Union sont à la section 17.
 
 **Ce qui n'est pas compris** : ton téléphone et ton accès à Internet ; l'utilisation du modèle d'IA au-delà de ton
 crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agents et leurs propres abonnements.
@@ -74,6 +93,7 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 - Un forfait peut commencer par **une semaine gratuite**, quand le budget d'essais du mois le permet et que ton
   appareil et ton compte du store n'en ont jamais eu. Sinon, l'app te propose le même forfait sans semaine gratuite.
   Avant l'achat, l'app te dit si la semaine gratuite s'applique, quand elle finit et le prix qui suivra.
+- La semaine gratuite s'applique aux achats dans l'app ; sur le site, la page de paiement indique si elle s'applique.
 - Pendant la semaine gratuite, tout fonctionne comme dans le forfait ; chaque personne a 0,50 € de crédit d'IA pour
   toute la semaine.
 - **À la fin de la semaine, l'abonnement payant commence tout seul**, sauf si tu l'as résilié dans le store avant la
@@ -86,12 +106,15 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 ## 5. Prix, paiement et renouvellement
 
 - Les prix ci-dessus sont en euros, toutes taxes comprises, pour la France. Dans un autre pays, le store affiche le prix
-  dans ta monnaie ; le prix affiché au moment de l'achat est celui que tu paies.
-- L'abonnement est **mensuel et sans engagement** : il se renouvelle chaque mois jusqu'à ce que tu le résilies. Le store
-  prélève au début de chaque mois d'abonnement (Apple peut le faire jusqu'à 24 heures avant).
+  dans ta monnaie ; le prix affiché au moment de l'achat est celui que tu paies. Sur le site, la page de paiement
+  affiche le prix toutes taxes comprises, avec les taxes de ton pays.
+- L'abonnement est **mensuel ou annuel, sans engagement** : il se renouvelle tout seul chaque mois ou chaque année
+  jusqu'à ce que tu le résilies. Le store prélève au début de chaque période d'abonnement (Apple peut le faire jusqu'à
+  24 heures avant) ; sur le site, Stripe prélève ta carte au début de chaque période.
 - **Changer de forfait** (Réglages › Offre tout compris › Changer de forfait) : vers un forfait plus grand, tout de
   suite, et le store tient compte de ce qu'il reste de ton mois ; vers un forfait plus petit, à ton renouvellement (les
-  places en trop : section 8).
+  places en trop : section 8). Pour un abonnement pris sur le site, tu changes de forfait sur la page client de Stripe
+  (section 11).
 - **Changement de prix** : un nouveau prix ne s'applique jamais au mois déjà payé. Le store te prévient au moins
   30 jours avant et, selon ses règles, te demande ton accord ; si tu ne l'acceptes pas, tu peux résilier sans frais
   avant qu'il s'applique (article R212-4 du Code de la consommation).
@@ -145,8 +168,9 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   **30 jours** après ta demande. D'ici là, tes agents sont à l'arrêt, tu peux encore récupérer tes données et tu peux
   changer d'avis (Réglages › Compte › Garder mon compte). Au bout des 30 jours, ta place et ses sauvegardes sont
   effacées, puis ton compte (la [politique de confidentialité](privacy.fr.md) dit ce que la loi oblige à garder).
-- **Supprimer ton compte ne résilie pas ton abonnement** : résilie-le dans le store (section 11). Sur Google Play,
-  Kerfy Studio arrête aussi son renouvellement le jour de l'effacement ; l'App Store ne le permet pas.
+- **Supprimer ton compte ne résilie pas ton abonnement** : résilie-le dans le store, ou sur la page client de Stripe
+  s'il a été pris sur le site (section 11). Sur Google Play, Kerfy Studio arrête aussi son renouvellement le jour de
+  l'effacement ; l'App Store ne le permet pas.
 - **Si tu partages ton forfait**, les personnes invitées sont prévenues par e-mail : leurs places s'arrêtent le jour où
   ton compte est effacé. **Si tu es une personne invitée**, ta place est effacée à la fin des 30 jours, et la personne
   qui paie en reçoit une nouvelle, qu'elle peut offrir à quelqu'un d'autre.
@@ -156,10 +180,10 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 - La personne qui souscrit invite les autres par e-mail, avec un lien qui ne sert qu'une fois. Chaque personne invitée
   crée son propre compte et a **sa propre place**, ses agents et son crédit d'IA. **Ni la personne qui paie ni Kerfy
   Studio ne peuvent lire ses agents ou ses conversations.**
-- La personne qui souscrit reste la seule cliente du store : elle paie, change de forfait ou résilie. Les places des
-  personnes invitées dépendent de son abonnement : s'il prend fin, elles suivent les mêmes règles que la sienne
-  (section 11), et l'app les prévient. Si elle supprime son compte, leurs places s'arrêtent 30 jours plus tard et elles
-  sont prévenues par e-mail (section 7). Dis-le aux personnes que tu invites.
+- La personne qui souscrit reste la seule cliente du store (ou de Kerfy Studio, sur le site) : elle paie, change de
+  forfait ou résilie. Les places des personnes invitées dépendent de son abonnement : s'il prend fin, elles suivent les
+  mêmes règles que la sienne (section 11), et l'app les prévient. Si elle supprime son compte, leurs places s'arrêtent
+  30 jours plus tard et elles sont prévenues par e-mail (section 7). Dis-le aux personnes que tu invites.
 - **Passer à un forfait plus petit** : à ton renouvellement, les places en trop s'arrêtent, puis elles sont effacées
   avec leurs sauvegardes 30 jours plus tard, sauf si tu reviens au forfait plus grand avant. L'app indique lesquelles et
   à quelle date.
@@ -211,11 +235,18 @@ couper la clé d'IA d'une place et la suspendre aussitôt, dans les conditions d
   directement : Réglages › Offre tout compris › Résilier mon abonnement. La résiliation prend effet à la fin du mois déjà
   payé : tu gardes tout jusque-là. Le store te confirme la résiliation et sa date (article L215-1-1 du Code de la
   consommation).
+- **Résilier un abonnement pris sur le site** : à tout moment, sans frais, sur la page client de Stripe, par le lien de
+  l'e-mail de confirmation ou par « Gérer mon abonnement » sur bipagents.com, qui t'envoie par e-mail un lien valable
+  24 heures. Le forfait continue jusqu'à la fin de la période déjà payée. Sur cette page, tu peux aussi changer de
+  forfait ou de carte et retrouver tes factures.
 - **Quand l'abonnement prend fin** (résilié ou non renouvelé) : ta place est **suspendue pendant 30 jours**. Tes agents
   n'appellent plus le modèle d'IA, rien n'est effacé, tu peux encore ouvrir tes conversations et récupérer tes fichiers,
   et tu peux revenir en reprenant un abonnement. Au bout de 30 jours, ta place et ses sauvegardes sont effacées. Le
   crédit d'IA acheté et non utilisé est gardé sur ton compte (section 6).
 - **Après une semaine gratuite non poursuivie** : 3 jours au lieu de 30.
+- **Renouvellement non payé sur le site** : Stripe réessaie de prélever ta carte. Tes agents continuent environ 7 jours,
+  puis l'IA s'arrête et ta place est suspendue 30 jours, comme pour un abonnement du store non renouvelé ; elle est
+  ensuite effacée si rien n'a été payé.
 - **Remboursement par le store** : ta place est suspendue aussitôt, puis effacée avec ses sauvegardes au bout de
   30 jours.
 - **Rappels** : quand tu coupes le renouvellement, l'app te rappelle d'utiliser ton crédit restant. Si tu n'as pas
@@ -247,6 +278,9 @@ l'heure de ta décision.
   dans l'app : termine la demande, ou fais-la sur reportaproblem.apple.com. Ta place s'arrête dès qu'Apple a remboursé.
 - **Pendant la semaine gratuite**, rien n'a été payé : ta place s'arrête aussitôt. Sur iPhone, l'app ouvre aussi tes
   abonnements pour que tu coupes le renouvellement, sans quoi Apple prélèverait le premier mois.
+- **Site bipagents.com** : Kerfy Studio arrête ton abonnement chez Stripe et te rembourse aussitôt, en entier, tous tes
+  paiements ; l'argent revient sur ton moyen de paiement sous 5 à 10 jours. Un remboursement entier, par exemple fait
+  par le support, arrête aussi l'abonnement.
 
 Tu peux aussi renoncer au contrat par toute déclaration claire : un e-mail à support@kerfystudio.com ou le formulaire
 en annexe ; ou demander directement le remboursement au store (App Store : historique des achats de ton compte Apple ;
@@ -307,14 +341,17 @@ déjà payé. Si tu n'es pas d'accord, tu peux résilier sans frais avant qu'il 
 ## 17. Si tu vis hors de l'Union européenne
 
 Ces règles s'ajoutent aux sections précédentes pour les personnes dont le compte du store est dans ces pays. Elles ne
-retirent aucun droit que la loi de ton pays t'accorde et qu'un contrat ne peut pas écarter.
+retirent aucun droit que la loi de ton pays t'accorde et qu'un contrat ne peut pas écarter. Pour un achat sur le site,
+c'est le pays de facturation qui compte, et ce qui est dit ici du store vaut pour Kerfy Studio et Stripe : Kerfy Studio
+facture les taxes de ton pays, calculées par Stripe Tax, et tu résilies sur la page client de Stripe (sections 2 et 11).
 
 **États-Unis**
 
 - **Prix et taxes** : les prix sont affichés hors taxes ; le store calcule et encaisse la taxe de vente de ton État.
-- **Renouvellement automatique** : l'abonnement se renouvelle chaque mois, au prix affiché, jusqu'à ce que tu le
-  résilies dans le store ou dans l'app (section 11). Ces conditions, le prix et la façon de résilier te sont donnés
-  avant l'achat et confirmés par e-mail (section 1). Tu peux renoncer au contrat comme dit à la section 12.
+- **Renouvellement automatique** : l'abonnement se renouvelle chaque mois (chaque année pour l'abonnement annuel), au
+  prix affiché, jusqu'à ce que tu le résilies dans le store ou dans l'app (section 11). Ces conditions, le prix et la
+  façon de résilier te sont donnés avant l'achat et confirmés par e-mail (section 1). Tu peux renoncer au contrat comme
+  dit à la section 12.
 - **Âge** : aucune personne de moins de 13 ans ne peut utiliser une place (section 7).
 - **Arbitrage individuel** : tout litige entre toi et Kerfy Studio lié à l'offre est réglé par un **arbitrage
   individuel et définitif**, administré par [à compléter : organisme d'arbitrage et ses règles pour les consommateurs],
@@ -339,9 +376,9 @@ retirent aucun droit que la loi de ton pays t'accorde et qu'un contrat ne peut p
 
 **Israël**
 
-- Tu peux résilier à tout moment (section 11) ; le renouvellement mensuel, son prix et la façon de résilier te sont
-  indiqués avant l'achat et confirmés par e-mail. La loi israélienne sur la protection du consommateur s'applique pour
-  ce qu'elle impose.
+- Tu peux résilier à tout moment (section 11) ; le renouvellement mensuel ou annuel, son prix et la façon de résilier te
+  sont indiqués avant l'achat et confirmés par e-mail. La loi israélienne sur la protection du consommateur s'applique
+  pour ce qu'elle impose.
 
 **Singapour**
 
@@ -356,10 +393,10 @@ retirent aucun droit que la loi de ton pays t'accorde et qu'un contrat ne peut p
   gratuite s'il y en a une et le prix qui la suivra, la façon de résilier et ces conditions, que tu peux enregistrer et
   imprimer ; tu peux accepter, corriger ou refuser avant de confirmer. La confirmation du contrat t'est envoyée par
   e-mail dès l'achat (section 1), et au plus tard dans les 15 jours.
-- **Renouvellement et résiliation** : l'abonnement se renouvelle chaque mois, au prix affiché, jusqu'à ce que tu le
-  résilies. Tu peux résilier à tout moment, sans frais, dans le store ou directement depuis l'app (Réglages › Offre tout
-  compris › Résilier mon abonnement, section 11). Avec une semaine gratuite, l'e-mail de confirmation te rappelle sa
-  date de fin et le prix qui s'appliquera ensuite.
+- **Renouvellement et résiliation** : l'abonnement se renouvelle chaque mois (chaque année pour l'abonnement annuel), au
+  prix affiché, jusqu'à ce que tu le résilies. Tu peux résilier à tout moment, sans frais, dans le store ou directement
+  depuis l'app (Réglages › Offre tout compris › Résilier mon abonnement, section 11). Avec une semaine gratuite,
+  l'e-mail de confirmation te rappelle sa date de fin et le prix qui s'appliquera ensuite.
 - **Renoncer au contrat** : la fonction de la section 12 reste à ta disposition. Elle s'ajoute aux droits d'annulation
   que te donne la loi de ta province (au Québec, ceux de la Loi sur la protection du consommateur pour les contrats
   conclus à distance).

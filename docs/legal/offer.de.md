@@ -6,11 +6,12 @@
 
 ## 1. Gegenstand
 
-Diese Bedingungen regeln das **Alles-inklusive-Angebot** von BipAgents: die Tarife Solo, Duo und Familie und das
-zusätzliche KI-Guthaben, die in der App gekauft werden. Sie ergänzen die [Nutzungsbedingungen](terms.de.md) der App,
-die weiter gelten, und die [Richtlinie zur zulässigen Nutzung](acceptable-use.de.md) ist Teil von ihnen. Die
-[Datenschutzerklärung](privacy.de.md) beschreibt, was mit deinen Daten geschieht. Für das Alles-inklusive-Angebot gehen
-diese Bedingungen den Nutzungsbedingungen vor, wenn sie sich widersprechen.
+Diese Bedingungen regeln das **Alles-inklusive-Angebot** von BipAgents: die Tarife Solo, Duo und Familie, die in der App
+oder auf der Website bipagents.com gekauft werden, und das zusätzliche KI-Guthaben, das in der App gekauft wird. Sie
+ergänzen die [Nutzungsbedingungen](terms.de.md) der App, die weiter gelten, und die
+[Richtlinie zur zulässigen Nutzung](acceptable-use.de.md) ist Teil von ihnen. Die [Datenschutzerklärung](privacy.de.md)
+beschreibt, was mit deinen Daten geschieht. Für das Alles-inklusive-Angebot gehen diese Bedingungen den
+Nutzungsbedingungen vor, wenn sie sich widersprechen.
 
 Vor dem Kauf zeigt dir die App den Tarif, was er umfasst, seinen Preis, die kostenlose Woche, falls es eine gibt, und
 den Preis danach, die Frist von 14 Tagen, um den Vertrag zu widerrufen, und Links zu diesen Bedingungen, zur Richtlinie
@@ -20,28 +21,47 @@ das Datum des Beginns, das Ende der kostenlosen Woche, falls es eine gibt, die L
 kündigst, das Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular (Art. L221-13 des
 französischen Verbrauchergesetzbuchs). Diese Bedingungen bleiben unter Einstellungen › Über abrufbar.
 
+**Auf der Website bipagents.com** zeigt dir die Zahlungsseite von Stripe den Tarif, seinen Preis einschließlich aller
+Steuern und seinen Verlängerungszeitraum. Du kreuzt an, dass du diese Bedingungen akzeptierst (mit ihrem Link), und sie
+sagt dir: „Dein Dienst beginnt sofort, auf deinen Wunsch. Du kannst den Vertrag 14 Tage lang widerrufen und bekommst
+alles erstattet.“ Nach der Zahlung erhältst du die Bestätigung des Vertrags an die E-Mail-Adresse, die du bei der
+Zahlung angegeben hast: den Tarif, seinen Preis, das Datum des Beginns, die Links zu diesen Bedingungen, wie du die App
+bekommst und dich darin mit derselben Adresse anmeldest, einen Link, um dein Abo zu verwalten oder zu kündigen, das
+Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular. Das Abo kommt zu deinem BipAgents-Konto,
+wenn du dich in der App mit dieser Adresse anmeldest (der Code, den du per E-Mail erhältst, beweist, dass sie dir
+gehört). Hat dieses Konto schon ein Abo, wird das zweite nicht damit verbunden, und Kerfy Studio meldet sich bei dir, um
+eines davon zu erstatten.
+
 BipAgents mit deinem eigenen Computer oder deinem eigenen Server zu nutzen, bleibt kostenlos und fällt nicht unter
 diese Bedingungen.
 
-## 2. Kerfy Studio und die Stores
+## 2. Kerfy Studio, die Stores und die Website
 
 - **Kerfy Studio erbringt den Dienst**: deinen Platz, dein KI-Guthaben, die Sicherungen und den Support. Kerfy Studio,
   SAS (französische vereinfachte Aktiengesellschaft) mit einem Kapital von [Kapital] €, Sitz: [Adresse des Sitzes],
   eingetragen im RCS [Ort des Handelsregisters] unter der Nummer [SIREN], Telefon: [Telefonnummer]. Kontakt:
   **support@kerfystudio.com**. Missbrauch melden: **abuse@kerfystudio.com**.
-- **Der Store kassiert den Preis.** Du kaufst im App Store von Apple oder bei Google Play, mit deinem Konto dort: Der
-  Store stellt die Rechnung, kassiert den Preis und die Mehrwertsteuer und erstattet nach seinen eigenen Regeln. Im App
-  Store handelt Apple als Vertreter von Kerfy Studio, und für die Europäische Union ist der Verkäufer Apple
-  Distribution International Ltd. (Irland); bei Google Play ist der Verkäufer Google Commerce Limited (Irland). Für die
-  Zahlung gelten ihre Bedingungen. Kerfy Studio erhält nie deine Zahlungsdaten.
+- **In der App kassiert der Store den Preis.** Du kaufst im App Store von Apple oder bei Google Play, mit deinem Konto
+  dort: Der Store stellt die Rechnung, kassiert den Preis und die Mehrwertsteuer und erstattet nach seinen eigenen
+  Regeln. Im App Store handelt Apple als Vertreter von Kerfy Studio, und für die Europäische Union ist der Verkäufer
+  Apple Distribution International Ltd. (Irland); bei Google Play ist der Verkäufer Google Commerce Limited (Irland).
+  Für die Zahlung gelten ihre Bedingungen. Kerfy Studio erhält nie deine Zahlungsdaten.
+- **Auf der Website bipagents.com verkauft Kerfy Studio selbst.** Kerfy Studio ist dann der Verkäufer: Es stellt dir die
+  Rechnung und kassiert den Preis und die Mehrwertsteuer oder Verkaufssteuern, die Stripe Tax für dein Land berechnet.
+  Die Zahlung wickelt Stripe ab (Stripe Payments Europe, Ltd., Irland); Kerfy Studio erhält nie deine vollständige
+  Kartennummer. Die Apps verkaufen nie außerhalb des Stores: Ein Abo von der Website erscheint dort mit „Verwaltet auf
+  bipagents.com“.
 
 ## 3. Was ein Tarif umfasst
 
-| Tarif | Personen | Server | Preis pro Monat, inkl. MwSt. |
-|---|---|---|---|
-| Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 6,99 € |
-| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 11,99 € |
-| Familie | bis zu 6 | ein Server nur für euch | 19,99 € |
+| Tarif | Personen | Server | Preis in der App (App Store, Google Play), inkl. MwSt. | Preis auf der Website bipagents.com, inkl. MwSt. |
+|---|---|---|---|---|
+| Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 6,99 € pro Monat oder 69,90 € pro Jahr | 6,49 € pro Monat oder 64,90 € pro Jahr |
+| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 11,99 € pro Monat oder 119,90 € pro Jahr | 10,99 € pro Monat oder 109,90 € pro Jahr |
+| Familie | bis zu 6 | ein Server nur für euch | 19,99 € pro Monat oder 199,90 € pro Jahr | 17,99 € pro Monat oder 179,90 € pro Jahr |
+
+Das Jahresabo kostet 10 Monate für 12 und wird auf einmal für die 12 Monate bezahlt. Die Preise auf der Website sind
+niedriger als in den Stores.
 
 Für jede Person des Tarifs:
 
@@ -62,7 +82,8 @@ der Europäischen Union, auch für Personen, die außerhalb der Union leben.
 
 **In welchen Ländern.** Das Angebot ist erhältlich, wenn dein Store-Konto in der Europäischen Union, in den USA, im
 Vereinigten Königreich, in Israel oder in Singapur ist. Anderswo bietet die App es nicht an; BipAgents bleibt mit deinem
-eigenen Server nutzbar. Die besonderen Regeln für Personen, die außerhalb der Union leben, stehen in Abschnitt 17.
+eigenen Server nutzbar. Auf der Website wird ein Kauf aus einem Land, in dem das Angebot nicht verkauft wird, sofort
+storniert und erstattet. Die besonderen Regeln für Personen, die außerhalb der Union leben, stehen in Abschnitt 17.
 
 **Nicht enthalten**: dein Telefon und dein Internetzugang; die Nutzung des KI-Modells über dein Guthaben hinaus (du
 kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten verbindest, und deren eigene Abos.
@@ -74,6 +95,7 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - Ein Tarif kann mit **einer kostenlosen Woche** beginnen, wenn das Testbudget des Monats es erlaubt und dein Gerät und
   dein Store-Konto noch nie eine hatten. Sonst bietet dir die App denselben Tarif ohne kostenlose Woche an. Vor dem Kauf
   sagt dir die App, ob die kostenlose Woche gilt, wann sie endet und welcher Preis danach folgt.
+- Die kostenlose Woche gilt für Käufe in der App; auf der Website zeigt die Zahlungsseite, ob sie gilt.
 - Während der kostenlosen Woche funktioniert alles wie im Tarif; jede Person hat 0,50 € KI-Guthaben für die ganze
   Woche.
 - **Am Ende der Woche beginnt das kostenpflichtige Abo von selbst**, außer du hast es vor dem Ende im Store gekündigt
@@ -86,12 +108,15 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 ## 5. Preis, Zahlung und Verlängerung
 
 - Die Preise oben sind in Euro, einschließlich aller Steuern, für Frankreich. In einem anderen Land zeigt der Store den
-  Preis in deiner Währung; der beim Kauf angezeigte Preis ist der, den du zahlst.
-- Das Abo ist **monatlich und ohne Mindestlaufzeit**: Es verlängert sich jeden Monat, bis du es kündigst. Der Store
-  bucht zu Beginn jedes Abomonats ab (Apple kann das bis zu 24 Stunden vorher tun).
-- **Tarif wechseln** (Einstellungen › Alles-inklusive-Angebot › Angebot ändern): zu einem größeren Tarif sofort, und
-  der Store berücksichtigt, was von deinem Monat übrig ist; zu einem kleineren Tarif bei deiner Verlängerung (die
-  überzähligen Plätze: Abschnitt 8).
+  Preis in deiner Währung; der beim Kauf angezeigte Preis ist der, den du zahlst. Auf der Website zeigt die
+  Zahlungsseite den Preis einschließlich aller Steuern, mit den Steuern deines Landes.
+- Das Abo ist **monatlich oder jährlich und ohne Mindestlaufzeit**: Es verlängert sich von selbst jeden Monat oder jedes
+  Jahr, bis du es kündigst. Der Store bucht zu Beginn jedes Abozeitraums ab (Apple kann das bis zu 24 Stunden vorher
+  tun); auf der Website belastet Stripe deine Karte zu Beginn jedes Zeitraums.
+- **Tarif wechseln** (Einstellungen › Alles-inklusive-Angebot › Angebot ändern): zu einem größeren Tarif sofort, und der
+  Store berücksichtigt, was von deinem Monat übrig ist; zu einem kleineren Tarif bei deiner Verlängerung (die
+  überzähligen Plätze: Abschnitt 8). Bei einem Abo von der Website wechselst du den Tarif auf der Kundenseite von Stripe
+  (Abschnitt 11).
 - **Preisänderung**: Ein neuer Preis gilt nie für einen schon bezahlten Monat. Der Store informiert dich mindestens
   30 Tage vorher und fragt nach seinen Regeln nach deiner Zustimmung; wenn du ihn nicht akzeptierst, kannst du vor
   seinem Inkrafttreten kostenlos kündigen (Art. R212-4 des französischen Verbrauchergesetzbuchs).
@@ -148,8 +173,9 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   herunterladen und es dir anders überlegen (Einstellungen › Konto › Konto behalten). Nach den 30 Tagen werden dein
   Platz und seine Sicherungen gelöscht, dann dein Konto (die [Datenschutzerklärung](privacy.de.md) sagt, was das Gesetz
   aufzubewahren verlangt).
-- **Dein Konto zu löschen kündigt dein Abo nicht**: Kündige es im Store (Abschnitt 11). Bei Google Play beendet Kerfy
-  Studio außerdem seine Verlängerung am Tag der Löschung; der App Store erlaubt das nicht.
+- **Dein Konto zu löschen kündigt dein Abo nicht**: Kündige es im Store oder, wenn du es auf der Website gekauft hast,
+  auf der Kundenseite von Stripe (Abschnitt 11). Bei Google Play beendet Kerfy Studio außerdem seine Verlängerung am Tag
+  der Löschung; der App Store erlaubt das nicht.
 - **Wenn du deinen Tarif teilst**, werden die eingeladenen Personen per E-Mail informiert: Ihre Plätze halten an dem Tag
   an, an dem dein Konto gelöscht wird. **Wenn du eine eingeladene Person bist**, wird dein Platz am Ende der 30 Tage
   gelöscht, und die Person, die zahlt, bekommt einen neuen, den sie jemand anderem anbieten kann.
@@ -159,11 +185,11 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - Die Person, die abschließt, lädt die anderen per E-Mail ein, mit einem Link, der nur einmal funktioniert. Jede
   eingeladene Person erstellt ihr eigenes Konto und hat **ihren eigenen Platz**, ihre Agenten und ihr KI-Guthaben.
   **Weder die Person, die zahlt, noch Kerfy Studio können ihre Agenten oder ihre Unterhaltungen lesen.**
-- Die Person, die abschließt, bleibt die einzige Kundin des Stores: Sie zahlt, wechselt den Tarif oder kündigt. Die
-  Plätze der eingeladenen Personen hängen von ihrem Abo ab: Endet es, folgen sie denselben Regeln wie ihr eigener
-  (Abschnitt 11), und die App informiert sie. Löscht die Person, die abschließt, ihr Konto, halten die Plätze der
-  eingeladenen Personen 30 Tage später an, und diese werden per E-Mail informiert (Abschnitt 7). Sag es den Personen,
-  die du einlädst.
+- Die Person, die abschließt, bleibt die einzige Kundin des Stores (oder von Kerfy Studio, auf der Website): Sie zahlt,
+  wechselt den Tarif oder kündigt. Die Plätze der eingeladenen Personen hängen von ihrem Abo ab: Endet es, folgen sie
+  denselben Regeln wie ihr eigener (Abschnitt 11), und die App informiert sie. Löscht die Person, die abschließt, ihr
+  Konto, halten die Plätze der eingeladenen Personen 30 Tage später an, und diese werden per E-Mail informiert
+  (Abschnitt 7). Sag es den Personen, die du einlädst.
 - **Wechsel zu einem kleineren Tarif**: Bei deiner Verlängerung halten die überzähligen Plätze an und werden 30 Tage
   später mit ihren Sicherungen gelöscht, außer du wechselst vorher zurück zum größeren Tarif. Die App zeigt, welche und
   an welchem Datum.
@@ -218,11 +244,18 @@ Studio den KI-Schlüssel eines Platzes abschalten und ihn sofort sperren, zu den
   Einstellungen › Alles-inklusive-Angebot › Mein Abo kündigen. Die Kündigung wirkt zum Ende des schon bezahlten
   Monats: Bis dahin behältst du alles. Der Store bestätigt dir die Kündigung und ihr Datum (Art. L215-1-1 des
   französischen Verbrauchergesetzbuchs).
+- **Ein Abo von der Website kündigen**: jederzeit, kostenlos, auf der Kundenseite von Stripe, über den Link in der
+  Bestätigungs-E-Mail oder über „Mein Abo verwalten“ auf bipagents.com, das dir per E-Mail einen Link schickt, der
+  24 Stunden gilt. Der Tarif läuft bis zum Ende des schon bezahlten Zeitraums weiter. Auf dieser Seite kannst du auch
+  den Tarif oder die Karte wechseln und deine Rechnungen finden.
 - **Wenn das Abo endet** (gekündigt oder nicht verlängert): Dein Platz wird **30 Tage lang gesperrt**. Deine Agenten
   rufen das KI-Modell nicht mehr auf, nichts wird gelöscht, du kannst deine Unterhaltungen noch öffnen und deine
   Dateien herunterladen, und du kannst zurückkommen, indem du wieder ein Abo abschließt. Nach 30 Tagen werden dein
   Platz und seine Sicherungen gelöscht. Gekauftes und nicht genutztes KI-Guthaben bleibt auf deinem Konto (Abschnitt 6).
 - **Nach einer kostenlosen Woche, die du nicht fortgesetzt hast**: 3 Tage statt 30.
+- **Nicht bezahlte Verlängerung auf der Website**: Stripe versucht erneut, deine Karte zu belasten. Deine Agenten laufen
+  etwa 7 Tage weiter, dann hält die KI an und dein Platz wird 30 Tage lang gesperrt, wie bei einem Store-Abo, das nicht
+  verlängert wurde; danach wird er gelöscht, wenn nichts bezahlt wurde.
 - **Erstattung durch den Store**: Dein Platz wird sofort gesperrt und nach 30 Tagen mit seinen Sicherungen gelöscht.
 - **Erinnerungen**: Wenn du die Verlängerung ausschaltest, erinnert dich die App daran, dein restliches Guthaben zu
   nutzen. Wenn du die App einen Monat lang nicht geöffnet hast, erinnert dich dein Telefon daran, dass das Abo
@@ -256,6 +289,9 @@ E-Mail, mit Datum und Uhrzeit deiner Entscheidung.
   erstattet hat.
 - **Während der kostenlosen Woche** wurde nichts bezahlt: Dein Platz hält sofort an. Auf dem iPhone öffnet die App
   außerdem deine Abos, damit du die Verlängerung ausschaltest, sonst würde Apple den ersten Monat abbuchen.
+- **Website bipagents.com**: Kerfy Studio beendet dein Abo bei Stripe und erstattet dir sofort alle deine Zahlungen
+  vollständig; das Geld kommt innerhalb von 5 bis 10 Tagen auf dein Zahlungsmittel zurück. Eine vollständige Erstattung,
+  zum Beispiel durch den Support, beendet das Abo ebenfalls.
 
 Du kannst den Vertrag auch mit jeder eindeutigen Erklärung widerrufen: einer E-Mail an support@kerfystudio.com oder dem
 Formular im Anhang; oder die Erstattung direkt beim Store beantragen (App Store: Kaufhistorie deines Apple-Kontos;
@@ -320,15 +356,19 @@ Inkrafttreten kostenlos kündigen.
 ## 17. Wenn du außerhalb der Europäischen Union lebst
 
 Diese Regeln ergänzen die vorigen Abschnitte für Personen, deren Store-Konto in diesen Ländern ist. Sie nehmen dir kein
-Recht, das dir das Gesetz deines Landes gibt und das ein Vertrag nicht ausschließen kann.
+Recht, das dir das Gesetz deines Landes gibt und das ein Vertrag nicht ausschließen kann. Bei einem Kauf auf der Website
+zählt das Land der Rechnungsadresse, und was hier über den Store gesagt wird, gilt für Kerfy Studio und Stripe: Kerfy
+Studio stellt die Steuern deines Landes in Rechnung, die Stripe Tax berechnet, und du kündigst auf der Kundenseite von
+Stripe (Abschnitte 2 und 11).
 
 **USA**
 
 - **Preise und Steuern**: Die Preise werden ohne Steuern angezeigt; der Store berechnet und kassiert die Verkaufssteuer
   deines Bundesstaats.
-- **Automatische Verlängerung**: Das Abo verlängert sich jeden Monat zum angezeigten Preis, bis du es im Store oder in
-  der App kündigst (Abschnitt 11). Diese Bedingungen, der Preis und wie du kündigst, werden dir vor dem Kauf genannt und
-  per E-Mail bestätigt (Abschnitt 1). Du kannst den Vertrag widerrufen, wie in Abschnitt 12 beschrieben.
+- **Automatische Verlängerung**: Das Abo verlängert sich jeden Monat (beim Jahresabo jedes Jahr) zum angezeigten Preis,
+  bis du es im Store oder in der App kündigst (Abschnitt 11). Diese Bedingungen, der Preis und wie du kündigst, werden
+  dir vor dem Kauf genannt und per E-Mail bestätigt (Abschnitt 1). Du kannst den Vertrag widerrufen, wie in
+  Abschnitt 12 beschrieben.
 - **Alter**: Keine Person unter 13 Jahren darf einen Platz nutzen (Abschnitt 7).
 - **Individuelles Schiedsverfahren**: Jeder Streit zwischen dir und Kerfy Studio im Zusammenhang mit dem Angebot wird
   durch ein **individuelles und endgültiges Schiedsverfahren** beigelegt, durchgeführt von [zu ergänzen: Schiedsstelle
@@ -354,8 +394,9 @@ Recht, das dir das Gesetz deines Landes gibt und das ein Vertrag nicht ausschlie
 
 **Israel**
 
-- Du kannst jederzeit kündigen (Abschnitt 11); die monatliche Verlängerung, ihr Preis und wie du kündigst, werden dir
-  vor dem Kauf genannt und per E-Mail bestätigt. Das israelische Verbraucherschutzgesetz gilt, soweit es zwingend ist.
+- Du kannst jederzeit kündigen (Abschnitt 11); die monatliche oder jährliche Verlängerung, ihr Preis und wie du
+  kündigst, werden dir vor dem Kauf genannt und per E-Mail bestätigt. Das israelische Verbraucherschutzgesetz gilt,
+  soweit es zwingend ist.
 
 **Singapur**
 

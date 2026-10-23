@@ -313,6 +313,8 @@ Support). Der Dienst von Kerfy Studio, der Konten, Abos und Plätze verwaltet, h
   auszuführen, worum du deine Agenten bittest.
 - **Apple und Google** sind für ihre eigenen Verarbeitungen verantwortlich, wenn du dich bei ihnen anmeldest und wenn
   du in ihrem Store bezahlst.
+- **Stripe** (Stripe Payments Europe, Ltd., Irland) wickelt die Zahlung ab, wenn du auf der Website bipagents.com kaufst
+  (Abschnitt 5.3).
 - **Deine Agenten sind KIs und sagen das**: das Abzeichen „KI“, ein Hinweis zu Beginn jeder Live-Sitzung, ein Vermerk in
   den Benachrichtigungen und in den Nachrichten, die sie an andere Personen schicken (Verordnung (EU) 2024/1689,
   Art. 50).
@@ -354,6 +356,16 @@ und für gekauftes KI-Guthaben die Kennung jedes Kaufs und sein Betrag. **Nie de
 kennt. Das Land deines Store-Kontos, das die App schickt, um zu erfahren, ob das Angebot dort verkauft wird (es wird
 nicht aufbewahrt).
 
+**Kauf auf der Website bipagents.com.** Die Zahlung läuft über **Stripe** (Stripe Payments Europe, Ltd., Irland). Stripe
+erhält deine E-Mail-Adresse, deine Rechnungsadresse oder dein Rechnungsland, deine Kartendaten (die nur Stripe
+verarbeitet: Kerfy Studio erhält nie deine vollständige Kartennummer) und die IP-Adresse deines Geräts für die
+Betrugsprüfung. Stripe verarbeitet sie, um die Zahlung einzuziehen, die Steuern zu berechnen (Stripe Tax), Betrug
+vorzubeugen und die Rechnungen auszustellen. Für seine eigenen gesetzlichen Pflichten (Geldwäsche- und
+Betrugsbekämpfung) kann Stripe als eigenständiger Verantwortlicher handeln, nach seiner Datenschutzerklärung
+(https://stripe.com/privacy). Der Guichet von Kerfy Studio bewahrt die bei der Zahlung angegebene E-Mail-Adresse, die
+Kunden- und Abo-Kennungen bei Stripe, den Tarif und seinen Zeitraum (Monat oder Jahr), das Rechnungsland und die Sprache
+auf.
+
 **Dein Vertrag.** Das Datum des Beginns, das Datum der Bestätigungs-E-Mail und, wenn du den Vertrag widerrufst, Datum
 und Uhrzeit deines Widerrufs.
 
@@ -373,15 +385,18 @@ pro Minute beim KI-Router abgefragt, und das übertragene Guthaben: ein Betrag, 
   15 Minuten), um die Zahl der Reservierungen pro Adresse zu begrenzen.
 
 **Zwecke und Rechtsgrundlagen.** Dein Abo, deine Plätze und dein Guthaben bereitstellen und verwalten: Erfüllung des
-Vertrags (Art. 6 Abs. 1 lit. b DSGVO). Verhindern, dass dieselbe Person kostenlose Wochen aneinanderreiht:
-berechtigtes Interesse von Kerfy Studio, Betrug vorzubeugen und weiterhin eine kostenlose Woche anbieten zu können
-(Art. 6 Abs. 1 lit. f und Erwägungsgrund 47 DSGVO). Das Lesen der Gerätekennung erfordert nicht deine Einwilligung,
-denn es dient nur dazu, den kostenlosen Zugang zum Dienst auf einen begrenzten Zeitraum zu beschränken (Art. 82 des
+Vertrags (Art. 6 Abs. 1 lit. b DSGVO). Verhindern, dass dieselbe Person kostenlose Wochen aneinanderreiht: berechtigtes
+Interesse von Kerfy Studio, Betrug vorzubeugen und weiterhin eine kostenlose Woche anbieten zu können
+(Art. 6 Abs. 1 lit. f und Erwägungsgrund 47 DSGVO). Das Lesen der Gerätekennung erfordert nicht deine Einwilligung, denn
+es dient nur dazu, den kostenlosen Zugang zum Dienst auf einen begrenzten Zeitraum zu beschränken (Art. 82 des
 französischen Datenschutzgesetzes; CNIL, Beschluss Nr. 2020-091, Art. 5). Den Nachweis des Vertrags aufbewahren:
-berechtigtes Interesse von Kerfy Studio, seine Rechte verteidigen zu können.
-**Dauer.** Abo- und Kaufdaten: während des Abos, dann 5 Jahre im Archiv, als Nachweis des Vertrags (Art. 2224 des
-französischen Zivilgesetzbuchs). Fingerabdruck des Android-Geräts: 24 Monate. IP-Adresse: höchstens 15 Minuten. Die
-DeviceCheck-Bits bewahrt Apple auf.
+berechtigtes Interesse von Kerfy Studio, seine Rechte verteidigen zu können. Kauf auf der Website: die Zahlung einziehen
+und die Steuern berechnen, Erfüllung des Vertrags (Art. 6 Abs. 1 lit. b DSGVO); Betrugsprüfung, berechtigtes Interesse
+(Art. 6 Abs. 1 lit. f DSGVO); Rechnungen und Buchungsbelege, rechtliche Verpflichtung (Art. 6 Abs. 1 lit. c DSGVO).
+**Dauer.** Abo- und Kaufdaten, auch die eines Kaufs auf der Website: während des Abos, dann 5 Jahre im Archiv, als
+Nachweis des Vertrags (Art. 2224 des französischen Zivilgesetzbuchs). Rechnungen und Zahlungsbelege: 10 Jahre
+(Art. L123-22 des französischen Handelsgesetzbuchs); die Rechnungen bewahrt Stripe auf. Fingerabdruck des
+Android-Geräts: 24 Monate. IP-Adresse: höchstens 15 Minuten. Die DeviceCheck-Bits bewahrt Apple auf.
 
 ### 5.4 Dein Platz und das KI-Modell
 
@@ -508,8 +523,10 @@ dieses Anbieters, BipAgents löscht darin nichts, und Kerfy Studio bewahrt nicht
 | [zu ergänzen: Hoster der Sicherungen] | Bewahrt die Sicherungen auf | Verschlüsselte Sicherungen, für ihn und für Kerfy Studio unlesbar | [zu ergänzen] |
 | [Hoster des Relays] | Hostet den Guichet und das Relay | Konto, Abo, technische Daten | Europäische Union |
 | [zu ergänzen: Anbieter für den E-Mail-Versand] | Verschickt die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung | E-Mail-Adresse, Inhalt dieser E-Mails | [zu ergänzen] |
+| Stripe Payments Europe, Ltd. (Dublin, Irland) | Zahlung der Käufe auf der Website bipagents.com, Steuerberechnung, Betrugsprüfung, Rechnungen | E-Mail-Adresse, Rechnungsadresse oder -land, Kartendaten, IP-Adresse | Europäische Union; möglicherweise außerhalb der Union (Abschnitt 11) |
 
-Sie sind mit Kerfy Studio durch einen Vertrag nach Art. 28 DSGVO verbunden. Apple (DeviceCheck, App Store) und Google
+Sie sind mit Kerfy Studio durch einen Vertrag nach Art. 28 DSGVO verbunden; Stripe handelt außerdem für seine eigenen
+gesetzlichen Pflichten als eigenständiger Verantwortlicher (Abschnitt 5.3). Apple (DeviceCheck, App Store) und Google
 (Play Integrity, Google Play) sind ebenfalls beteiligt, wie in Abschnitt 5.3 beschrieben; „Mit Apple anmelden“ und die
 Anmeldung mit Google liegen in ihrer eigenen Verantwortung.
 
@@ -601,11 +618,12 @@ insbesondere in den USA:
 - Apple gibt an, Übermittlungen aus dem Europäischen Wirtschaftsraum durch die von der Europäischen Kommission
   erlassenen Standardvertragsklauseln abzusichern.
 
-**Das Alles-inklusive-Angebot.** Die Server der Plätze und der Mailserver der Agenten stehen in der Europäischen
-Union, für alle Personen des Angebots. EUrouter verarbeitet die Nachrichten in der Europäischen Union [zu ergänzen:
-Länder, in denen die angebotenen Modelle laufen, und die Garantie, falls eines außerhalb der Union liegt]. Apple und
-Google (Anmeldung, Stores, DeviceCheck, Play Integrity) können Daten in den USA verarbeiten, mit den oben genannten
-Garantien.
+**Das Alles-inklusive-Angebot.** Die Server der Plätze und der Mailserver der Agenten stehen in der Europäischen Union,
+für alle Personen des Angebots. EUrouter verarbeitet die Nachrichten in der Europäischen Union
+[zu ergänzen: Länder, in denen die angebotenen Modelle laufen, und die Garantie, falls eines außerhalb der Union liegt].
+Apple und Google (Anmeldung, Stores, DeviceCheck, Play Integrity) können Daten in den USA verarbeiten, mit den oben
+genannten Garantien. Bei einem Kauf auf der Website kann Stripe Daten außerhalb der Europäischen Union verarbeiten,
+insbesondere in den USA, mit den Garantien, die seine Datenschutzerklärung beschreibt (https://stripe.com/privacy).
 
 **Wenn du außerhalb der Europäischen Union lebst** (USA, Vereinigtes Königreich, Israel, Singapur), kommen deine Daten
 in die Europäische Union, wo Kerfy Studio sie nach der DSGVO verarbeitet, die für alle seine Verarbeitungen gilt. Das
@@ -632,6 +650,8 @@ Garantie]. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
 | Nicht angenommene Einladung | 30 Tage |
 | E-Mail-Adresse und Kontokennung nach dem Ende des Vertrags (Pflicht der Hoster) | 5 Jahre für die E-Mail, 1 Jahr für die Kennung, getrennt aufbewahrt |
 | Abo und Käufe | Während des Abos, dann 5 Jahre im Archiv |
+| Kauf auf der Website (bei der Zahlung angegebene E-Mail-Adresse, Kennungen bei Stripe, Tarif und Zeitraum, Rechnungsland, Sprache) | Während des Abos, dann 5 Jahre im Archiv |
+| Rechnungen und Zahlungsbelege eines Kaufs auf der Website | 10 Jahre (Art. L123-22 des französischen Handelsgesetzbuchs); Rechnungen bei Stripe aufbewahrt |
 | Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Höchstens 15 Minuten |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
