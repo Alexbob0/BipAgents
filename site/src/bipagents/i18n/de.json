@@ -87,7 +87,8 @@
     "chatLabel": "Die laufende Demo",
     "replay": "Nochmal",
     "placeholder": "Nachricht …",
-    "open": "Öffnen"
+    "open": "Öffnen",
+    "ctaTitle": "Deine Bips, ganz echt."
   },
   "ai": "KI",
   "day": {
@@ -96,11 +97,14 @@
     "sub": "Vom Morgenkaffee bis zum Abendessen: Das tun deine Agenten für dich, und das bleibt in deiner Hand.",
     "s1": {
       "title": "Dein Morgenüberblick als Podcast",
-      "text": "Termine, Wetter, Pakete: Dein Agent schreibt den Überblick über deinen Tag, und zwei Stimmen lesen ihn dir zum Kaffee vor.",
+      "text": "Termine, Wetter, Pakete: Dein Agent schreibt den Überblick über deinen Tag, und zwei Stimmen lesen ihn dir zum Kaffee vor. Hör dir den aus der Demo an.",
       "from": "Alltag",
       "notif": "Dein Morgen-Podcast ist fertig ☕",
       "card": "Dein Morgenüberblick",
-      "meta": "Dienstag · zwei Stimmen"
+      "meta": "Dienstag · zwei Stimmen",
+      "listen": "Ausschnitt anhören",
+      "pause": "Pause",
+      "credit": "Stimmen: Fish Audio Drama 3 · Built with Fish Audio"
     },
     "s2": {
       "title": "Mails sortiert, Kalender geführt",
@@ -132,15 +136,13 @@
       "doc2": "Reiseversicherung.pdf"
     },
     "s4": {
-      "title": "Er surft, du schaust zu",
-      "text": "Jeder Agent hat seinen eigenen Browser. Sieh live zu, wie er ein Formular ausfüllt, und übernimm, wann du willst: ein Passwort, ein Captcha, ein Zweifel.",
+      "title": "Er surft, du behältst die Kontrolle",
+      "text": "Jeder Agent hat seinen eigenen Browser: Sieh live zu, wie er ein Formular ausfüllt, und übernimm, wann du willst. Bevor er bucht, zahlt oder sendet, fragt er dich: einmal, für die Sitzung oder nein, sogar aus der Mitteilung.",
       "url": "zuege.beispiel",
       "live": "Live · Alltag",
       "take": "Übernehmen"
     },
     "s5": {
-      "title2": "Nichts Wichtiges ohne dein Okay",
-      "text": "Buchen, zahlen, senden: Vor allem Heiklen fragt er dich. Einmal, für die Sitzung oder nein, mit einem Tipp, sogar aus der Mitteilung.",
       "head": "Alltag fragt dich",
       "title": "Die Buchung in deinem Namen senden?",
       "detail": "Paris → Lyon · Samstag 9:04\n2 Erwachsene · 58,00 €"
@@ -163,25 +165,14 @@
       "i3": "Parmesan",
       "i4": "Geburtstagskerzen",
       "chip": "Familie: bis zu 6 Personen"
-    }
-  },
-  "podcast": {
-    "kicker": "Dein Morgen, auf Sendung",
-    "title": "Dein Morgenüberblick als Podcast.",
-    "sub": "Dein Agent schreibt ihn aus deinem Tag — Termine, Wetter, Pakete — und zwei Stimmen lesen ihn dir zum Kaffee vor. Das ist der aus der Demo, in vier Sprachen aufgenommen.",
-    "credit": "Stimmen: Fish Audio Drama 3 · Built with Fish Audio",
-    "host1": "Alltag",
-    "host2": "Coach",
-    "play": "Podcast abspielen",
-    "pause": "Pause"
-  },
-  "live": {
-    "kicker": "Geh Live",
-    "title": "Einfach reden. Freihändig.",
-    "sub": "Live ist ein echtes Gespräch mit deinem Agenten: kein Knopf zum Festhalten, er antwortet laut, und du unterbrichst ihn einfach, indem du sprichst.",
-    "point1": "Auf Deutsch, Englisch, Französisch und Spanisch",
-    "point2": "Freihändig: in der Küche, im Auto, das Handy in der Tasche",
-    "point3": "Bevor er handelt, fragt er trotzdem auf dem Bildschirm nach deinem OK"
+    },
+    "call": {
+      "title": "Im Auto, ein Live-Gespräch mit deinem Bip",
+      "text": "Hände am Lenkrad: Geh Live und rede einfach. Kein Knopf zum Festhalten, er antwortet laut, und du unterbrichst ihn, indem du sprichst. Auf Deutsch, Englisch, Französisch und Spanisch.",
+      "label": "Live · Alltag"
+    },
+    "more": "Willst du es in echt sehen?",
+    "moreCta": "Die Demo der App ansehen →"
   },
   "liveDialog": [
     {
@@ -191,52 +182,8 @@
     {
       "you": "Erinnere mich, um 19 Uhr Mama anzurufen.",
       "bip": "Erledigt: eine Erinnerung um 19 Uhr, mit ihrer Nummer."
-    },
-    {
-      "you": "Ist es kalt im Wohnzimmer?",
-      "bip": "18,5 °C. Ich kann auf 21 hochdrehen — bestätige einfach auf dem Bildschirm."
     }
   ],
-  "bips": {
-    "kicker": "Das sind die Bips",
-    "title": "Ein Bip pro Agent.",
-    "sub": "In der App ist jeder Agent ein kleines Maskottchen mit eigener Farbe und Laune: Du siehst auf einen Blick, wer mit dir spricht. Na los, stups sie an: Sie reagieren genau wie in der App.",
-    "hint": "Tippen, kitzeln, streicheln, lange drücken…",
-    "cat": {
-      "daily": {
-        "name": "Alltag",
-        "label": "Alltag"
-      },
-      "wellness": {
-        "name": "Coach",
-        "label": "Wohlbefinden"
-      },
-      "finance": {
-        "name": "Budget",
-        "label": "Finanzen"
-      },
-      "home": {
-        "name": "Zuhause",
-        "label": "Zuhause"
-      },
-      "work": {
-        "name": "Büro",
-        "label": "Arbeit"
-      },
-      "learning": {
-        "name": "Lehrer",
-        "label": "Lernen"
-      },
-      "creative": {
-        "name": "Atelier",
-        "label": "Kreativ"
-      },
-      "tech": {
-        "name": "Server",
-        "label": "Technik"
-      }
-    }
-  },
   "control": {
     "once": "Einmal",
     "session": "Diese Sitzung",
@@ -257,14 +204,11 @@
     "theAi": "Die KI",
     "readsToAnswer": "liest, um dir zu antworten",
     "kerfy": "dein Konto und dein Abo, nicht deine Gespräche",
-    "line1": "Deine Gespräche und das Gedächtnis deiner Agenten liegen auf deinem Bereich, getrennt von denen der anderen.",
-    "line2": "Wir lesen sie nicht und trainieren keine KI damit. Die KI liest sie nur, um dir zu antworten.",
+    "line1": "Dein Bereich, getrennt von dem der anderen, auf einem Server in Europa (OVHcloud oder Hetzner) oder auf deinem eigenen Computer.",
+    "line2": "Wir lesen deine Gespräche nicht und trainieren keine KI damit: Die KI liest sie nur, um dir zu antworten.",
     "line3": "Wir behalten dein Konto, nicht deine Gespräche. Du kannst alles mitnehmen und gehen.",
-    "note": "„Ein üblicher Assistent“: was die Verbraucherangebote von Assistenten wie ChatGPT oder Gemini standardmäßig tun, laut ihren eigenen Seiten im Oktober 2026. Beim Rundum-Angebot mietet Kerfy Studio den Server deines Platzes: Wir lesen ihn nicht, versprechen aber nichts Unmögliches.",
-    "more": "Der Vergleich, seine Quellen und unsere Grenzen →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md",
-    "sub": "Deine Agenten kennen dein Leben. Es bleibt in deinem Bereich, in Europa.",
-    "line0": "Dein Bereich liegt auf einem Server in Europa, bei OVHcloud oder Hetzner, oder auf deinem eigenen Computer."
+    "more": "Der Vergleich vom Oktober 2026, seine Quellen und unsere Grenzen →",
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
   },
   "pricing": {
     "kicker": "Preise",
@@ -324,7 +268,9 @@
         "duo": "Duo",
         "famille": "Familie"
       }
-    }
+    },
+    "selfhost": "Dein eigener Computer? Die App ist gratis:",
+    "selfhostLink": "installieren →"
   },
   "install": {
     "kicker": "Oder gratis, bei dir",
@@ -337,7 +283,9 @@
     "copy": "Kopieren",
     "copied": "Kopiert ✓",
     "windows": "Unter Windows 11, in PowerShell als Administrator:",
-    "guide": "Die ganze Anleitung"
+    "guide": "Die ganze Anleitung",
+    "more": "Lieber alles erledigt bekommen? Mit dem Abo musst du nichts installieren.",
+    "moreCta": "Tarife ansehen →"
   },
   "faq": {
     "kicker": "Fragen",
@@ -381,12 +329,9 @@
     "10": {
       "q": "Und mit meinem eigenen Computer?",
       "a": "Die App ist gratis: Ein Befehl installiert sie auf deinem Computer oder Server, und du zahlst nur das KI-Modell deiner Wahl. Das Abo erspart dir all das."
-    }
-  },
-  "end": {
-    "title": "Deine Bips warten auf dich.",
-    "sub": "Wähl deinen Tarif in einer Minute. Hör auf, wann du willst.",
-    "cta": "Tarif wählen"
+    },
+    "all": "Alle Fragen →",
+    "more": "Noch eine Frage? Schreib uns:"
   },
   "foot": {
     "about": "BipAgents, die App deiner eigenen KI-Agenten, wird von Kerfy Studio herausgegeben, einem kleinen Studio aus Frankreich. Gebaut auf Hermes Agent, freie Software von Nous Research; BipAgents ist eine unabhängige App.",
@@ -401,7 +346,10 @@
     "support": "Support",
     "more": "Mehr",
     "play": "Spiel mit den Bips",
-    "fine": "© 2026 Kerfy Studio. Preise inkl. MwSt. Der Demo-Podcast: Built with Fish Audio. Die Stimmen der Bips: Pocket TTS, von Kyutai. Demo-Karte © OpenStreetMap. Keine Cookies und keine Tracker auf dieser Website."
+    "fine": "© 2026 Kerfy Studio. Preise inkl. MwSt. Der Demo-Podcast: Built with Fish Audio. Die Stimmen der Bips: Pocket TTS, von Kyutai. Demo-Karte © OpenStreetMap. Keine Cookies und keine Tracker auf dieser Website.",
+    "demo": "Die Demo",
+    "faq": "Fragen",
+    "install": "Bei dir installieren"
   },
   "lines": {
     "hop": [
@@ -445,5 +393,19 @@
     "boing": [
       "Boing!"
     ]
+  },
+  "page": {
+    "demo": {
+      "title": "Die Demo — BipAgents",
+      "description": "Die Demo der App BipAgents, unverändert: vier Szenarien, in denen dein Agent nachdenkt, seine Werkzeuge nutzt und auf dein Okay wartet, bevor es ernst wird."
+    },
+    "faq": {
+      "title": "Fragen — BipAgents",
+      "description": "Preis, KI-Guthaben, Gratiswoche, Kündigung, Datenschutz, Familie, Geräte, Hermes Agent: Antworten zu BipAgents."
+    },
+    "install": {
+      "title": "Bei dir installieren — BipAgents",
+      "description": "Die App BipAgents ist auf deinem eigenen Computer oder Server gratis: Ein Befehl installiert Hermes Agent und die Bridge, du zahlst nur dein KI-Modell."
+    }
   }
 }

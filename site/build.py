@@ -221,6 +221,12 @@ def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
 # -- bipagents.com ---------------------------------------------------------------------------------------------------
 
 DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"))
+# The pages: (name, template, path under the language's root). The home sells; the demo, every question and the
+# self-install have their own pages. They share the header and the footer (src/bipagents/partials/).
+PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
+         ("install", "install.html", "install/"))
+FAQ_HOME = (1, 3, 2, 6, 4, 5)   # what's included, AI credit, free week, stopping, privacy, Duo/Famille
+FAQ_COUNT = 10
 
 
 def bipagents(version: str) -> Path:
@@ -257,7 +263,9 @@ def bipagents(version: str) -> Path:
     # When each Bip speaks in the podcast (scripts/podcast-timeline.py).
     timeline = json.loads((src / "podcast-timeline.json").read_text(encoding="utf-8"))
     agents = {a["id"]: a for a in demo["agents"]}
-    template = (src / "index.html").read_text(encoding="utf-8")
+    partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / "partials").glob("*.html")}
+    templates = {name: re.sub(r"\{\{>(\w+)\}\}", lambda m: partials[m.group(1)], (src / file).read_text(encoding="utf-8"))
+                 for name, file, _ in PAGES}
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
     paths = {lang: "/" if lang == "en" else f"/{lang}/" for lang in LANGS}
     prices, company = cfg["prices"], cfg["company"]
@@ -273,21 +281,25 @@ def bipagents(version: str) -> Path:
                     values[f"p.{where}.{period}.{plan}"] = money(prices[where][period][plan], lang)
         for plan in prices["plans"]:
             values[f"p.web.yearmonth.{plan}"] = money(round(prices["web"]["year"][plan] / 12, 2), lang)
+        values["livefirst.you"] = html.escape(t["liveDialog"][0]["you"])
+        values["livefirst.bip"] = html.escape(t["liveDialog"][0]["bip"])
         if lang == "fr":   # « ? », « : »… never alone at the start of a line
             values = {k: french_spaces(v) if isinstance(v, str) else v for k, v in values.items()}
         default_url = checkout_url(cfg, "famille", "year", lang)
         badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
+
+        def faq(numbers: Any) -> str:
+            return "\n    ".join(f'<details><summary>{values[f"faq.{n}.q"]}</summary><p>{values[f"faq.{n}.a"]}</p></details>'
+                                 for n in numbers)
         values.update({
-            "lang": lang, "path": paths[lang], "home": paths[lang], "version": version,
+            "lang": lang, "home": paths[lang], "version": version,
+            "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}install/",
             "legalprefix": "" if lang == "fr" else f"/{lang}",
-            "hreflang": "\n".join([f'<link rel="alternate" hreflang="{l}" href="{BIPAGENTS}{paths[l]}">' for l in LANGS]
-                                  + [f'<link rel="alternate" hreflang="x-default" href="{BIPAGENTS}/">']),
-            "langmenu": "".join(f'<a href="{paths[l]}" lang="{l}" hreflang="{l}"{CURRENT if l == lang else ""}>'
-                                f'{html.escape(texts[l]["lang"]["name"])}</a>' for l in LANGS),
             "marquee": "".join(f'<span>{html.escape(word)}<i style="background:{COLORS[CATEGORY_ORDER[i % 8]][0]}"></i></span>'
                                for i, word in enumerate(t["marquee"])),
-            "wavebars": "<i></i>" * 48,
             "storebadges": badges,
+            # The home keeps the questions that settle a purchase; /faq/ has them all.
+            "faqhome": faq(FAQ_HOME), "faqall": faq(range(1, FAQ_COUNT + 1)),
             "buy": (f'<a class="pill pill-buy" id="buy" href="{html.escape(default_url)}" rel="noopener">'
                     f'<span class="buy-label">{html.escape(t["pricing"]["cta"])}</span><span aria-hidden="true">→</span></a>'
                     if default_url else
@@ -298,17 +310,8 @@ def bipagents(version: str) -> Path:
                         f'{todo(company["rcsCity"], "RCS")} {todo(company["siren"], "SIREN")} · '
                         f'{todo(company["address"], t["foot"]["address"])}'),
             "contact": cfg["contact"]["general"],
-            "mapsrc": f"/assets/showcase/{map_file}",
         })
-        cards = []
-        for category in CATEGORY_ORDER:
-            main, deep, tone = COLORS[category]
-            name, label = t["bips"]["cat"][category]["name"], t["bips"]["cat"][category]["label"]
-            cards.append(
-                f'<article class="bip-card" style="--main:{main};--deep:{deep};--tint:var(--{tone}-tint)">'
-                f'<div data-bip="{category}" data-interactive aria-label="{html.escape(name)}"></div>'
-                f'<h3>{html.escape(name)}</h3><span class="chip">{html.escape(label)}</span></article>')
-        values["bipcards"] = "\n    ".join(cards)
+        common = {"lang": lang, "lines": t["lines"]}
         scenarios = {}
         for scenario, agent in DEMO_TABS:
             s = localized(demo["scenarios"][scenario], lang)
@@ -317,30 +320,49 @@ def bipagents(version: str) -> Path:
         walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
         stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
                            demo["pages"]["walk"]["template"])
-        data = {"lang": lang, "lines": t["lines"], "live": t["liveDialog"], "scenarios": scenarios,
-                "podcast": timeline.get(lang, [[0, 0]]),
-                "labels": {"once": t["control"]["once"], "session": t["control"]["session"], "deny": t["control"]["deny"],
-                           "open": t["demo"]["open"]},
-                "pages": {"runs": {"src": f"/assets/pages/runs-{lang}.html",
-                                   "title": localized(demo["pages"]["runs"]["values"]["title"], lang)},
-                          "walk": {"src": f"/assets/showcase/{map_file}", "title": walk["title"], "subtitle": walk["subtitle"],
-                                   "alt": walk["alt"], "tip": walk["tip"], "source": walk["source"],
-                                   "stops": [{"x": float(x), "y": float(y), "color": c, "name": walk[k]} for x, y, c, k in stops]}},
-                "prices": {k: v for k, v in prices.items() if not k.startswith("_")},
-                "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}
-                             for plan in prices["plans"]},
-                "pricing": t["pricing"]["js"]}
-        values["data"] = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-        # Twice: the texts themselves may carry {{…}} (the prices).
-        page = fill(fill(template, values, f"bipagents/{lang}"), values, f"bipagents/{lang} (texts)")
-        target = out / paths[lang].strip("/") / "index.html" if lang != "en" else out / "index.html"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(page, encoding="utf-8")
+        # Each page gets the data its script needs: the home its podcast, Live and prices, the demo its scenarios.
+        data = {
+            "home": {**common, "live": t["liveDialog"], "podcast": timeline.get(lang, [[0, 0]]),
+                     "prices": {k: v for k, v in prices.items() if not k.startswith("_")},
+                     "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}
+                                  for plan in prices["plans"]},
+                     "pricing": t["pricing"]["js"]},
+            "demo": {**common, "scenarios": scenarios,
+                     "labels": {"once": t["control"]["once"], "session": t["control"]["session"], "deny": t["control"]["deny"],
+                                "open": t["demo"]["open"]},
+                     "pages": {"runs": {"src": f"/assets/pages/runs-{lang}.html",
+                                        "title": localized(demo["pages"]["runs"]["values"]["title"], lang)},
+                               "walk": {"src": f"/assets/showcase/{map_file}", "title": walk["title"], "subtitle": walk["subtitle"],
+                                        "alt": walk["alt"], "tip": walk["tip"], "source": walk["source"],
+                                        "stops": [{"x": float(x), "y": float(y), "color": c, "name": walk[k]}
+                                                  for x, y, c, k in stops]}}},
+        }
+        for name, _, sub in PAGES:
+            here = {l: paths[l] + sub for l in LANGS}
+            page_values = dict(values)
+            page_values.update({
+                "pagename": name, "path": here[lang],
+                "pagetitle": values["meta.title"] if name == "home" else values[f"page.{name}.title"],
+                "pagedesc": values["meta.description"] if name == "home" else values[f"page.{name}.description"],
+                "hreflang": "\n".join([f'<link rel="alternate" hreflang="{l}" href="{BIPAGENTS}{here[l]}">' for l in LANGS]
+                                      + [f'<link rel="alternate" hreflang="x-default" href="{BIPAGENTS}{here["en"]}">']),
+                "langmenu": "".join(f'<a href="{here[l]}" lang="{l}" hreflang="{l}"{CURRENT if l == lang else ""}>'
+                                    f'{html.escape(texts[l]["lang"]["name"])}</a>' for l in LANGS),
+                "cur.demo": CURRENT if name == "demo" else "", "cur.faq": CURRENT if name == "faq" else "",
+                "data": json.dumps(data.get(name, common), ensure_ascii=False).replace("</", "<\\/"),
+            })
+            # Twice: the texts themselves may carry {{…}} (the prices).
+            page = fill(fill(templates[name], page_values, f"bipagents/{lang}/{name}"), page_values,
+                        f"bipagents/{lang}/{name} (texts)")
+            target = out / here[lang].strip("/") / "index.html"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(page, encoding="utf-8")
         og_image(t, lang, assets / f"og-{lang}.png")
     links(src, out)
     (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {BIPAGENTS}/sitemap.xml\n", encoding="utf-8")
     (out / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-                                     + "".join(f"  <url><loc>{BIPAGENTS}{paths[l]}</loc></url>\n" for l in LANGS)
+                                     + "".join(f"  <url><loc>{BIPAGENTS}{paths[l]}{sub}</loc></url>\n"
+                                               for _, _, sub in PAGES for l in LANGS)
                                      + "</urlset>\n", encoding="utf-8")
     return out
 

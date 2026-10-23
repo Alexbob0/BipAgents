@@ -1,12 +1,17 @@
 # The websites
 
-- **bipagents.com** sells the all-included offer, honestly. In order: the hero (price from, the plan button), the app's
-  own demo playing in a chat (four scenarios, with the walk's map and the page kit's « Your runs » page inside the
-  replies), « a day with your Bips » (a sticky phone whose screen follows the story: podcast, mail, the Carnet, the
-  visible browser, approvals, background tasks, family), the morning podcast player, Live, the Bips, why it's private
-  (the apps' diagram, animated), the prices (monthly/yearly, Solo/Duo/Famille, web price against the stores' price,
-  computed live), the free self-install, questions, the final call. On a phone, a bar at the bottom keeps the chosen
-  plan and its button. English at `/`, French, German and Spanish at `/fr/`, `/de/`, `/es/`.
+- **bipagents.com** sells the all-included offer, honestly. The home is short: the hero (price from, the plan button,
+  « See the demo »), « a day with your Bips » (a sticky phone whose screen follows seven steps: 7:30 the morning podcast
+  with a « play a clip » button on the real recording, the Bip beside the phone speaking in the colour of the host
+  talking; 9:00 mail and calendar; 12:30 the Carnet; 15:00 the visible browser, « take over », then the approval card;
+  18:00 a background task with its budget; 18:30 a Live call in the car; 20:00 the family list; then a link to the
+  demo), why it's private (the apps' diagram, animated, three lines, the dated comparison), the prices
+  (monthly/yearly, Solo/Duo/Famille, web price against the stores' price, computed live; one line for « your own
+  computer? the app is free »), six questions that settle a purchase, the footer (store badges, company, links). On a
+  phone, a bar at the bottom keeps the chosen plan and its button. Their own pages: `/demo/` (the app's own demo
+  playing in a chat: four scenarios, with the walk's map and the page kit's « Your runs » page inside the replies),
+  `/faq/` (every question), `/install/` (the self-install command, Windows too). English at `/`, French, German and
+  Spanish at `/fr/`, `/de/`, `/es/` (and `/fr/demo/`, `/fr/faq/`…).
 - **kerfystudio.com** — the publisher: its two apps (BipAgents, Tablée), how it works, the company's details (what Apple
   and Google check for an organization), contact, support, the privacy policy and terms in four languages and the
   mentions légales, rendered from [`docs/legal/`](../docs/legal/), and `/.well-known/security.txt`. French at `/`.
@@ -36,6 +41,10 @@ One file, read by both sites:
   savings line are computed from these.
 
 ## Where things come from
+
+The pages are `src/bipagents/{index,demo,faq,install}.html`, sharing `partials/top.html` (head, header) and
+`partials/foot.html` (footer, script) through `{{>top}}` / `{{>foot}}`; `PAGES` in `build.py` lists them, and
+`FAQ_HOME` picks the home's questions. One `site.js` for all: each part runs where its elements are.
 
 Nothing is copied twice: texts are in `src/<site>/i18n/*.json`, the demo's scenarios and pages from
 `App/Resources/Demo/demo.json` (the « Your runs » page is the page kit's real output, written to

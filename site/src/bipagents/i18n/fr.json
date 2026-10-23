@@ -87,7 +87,8 @@
     "chatLabel": "La démo en cours",
     "replay": "Rejouer",
     "placeholder": "Message…",
-    "open": "Ouvrir"
+    "open": "Ouvrir",
+    "ctaTitle": "Tes Bips, pour de vrai."
   },
   "ai": "IA",
   "day": {
@@ -96,11 +97,14 @@
     "sub": "Du café du matin au dîner, voilà ce que tes agents font pour toi, et ce que tu gardes en main.",
     "s1": {
       "title": "Ton point du matin, en podcast",
-      "text": "Rendez-vous, météo, colis : ton agent écrit le point de ta journée, et deux voix te le lisent pendant le café.",
+      "text": "Rendez-vous, météo, colis : ton agent écrit le point de ta journée, et deux voix te le lisent pendant le café. Écoute celui de la démo.",
       "from": "Quotidien",
       "notif": "Ton podcast du matin est prêt ☕",
       "card": "Ton point du matin",
-      "meta": "Mardi · deux voix"
+      "meta": "Mardi · deux voix",
+      "listen": "Écouter un extrait",
+      "pause": "Mettre en pause",
+      "credit": "Voix : Fish Audio Drama 3 · Built with Fish Audio"
     },
     "s2": {
       "title": "Tes mails triés, ton agenda tenu",
@@ -132,15 +136,13 @@
       "doc2": "Assurance voyage.pdf"
     },
     "s4": {
-      "title": "Il navigue, tu regardes",
-      "text": "Chaque agent a son propre navigateur. Regarde-le remplir un formulaire en direct, et prends la main quand tu veux : un mot de passe, un captcha, un doute.",
+      "title": "Il navigue, tu gardes la main",
+      "text": "Chaque agent a son propre navigateur : regarde-le remplir un formulaire en direct, et prends la main quand tu veux. Avant de réserver, payer ou envoyer, il te demande : une fois, pour la session, ou non, même depuis la notification.",
       "url": "trains.exemple",
       "live": "En direct · Quotidien",
       "take": "Prendre la main"
     },
     "s5": {
-      "title2": "Rien d’important sans ton accord",
-      "text": "Réserver, payer, envoyer : avant toute action sensible, il te demande. Une fois, pour la session, ou non, d’un geste, même depuis la notification.",
       "head": "Quotidien te demande",
       "title": "Envoyer la réservation en ton nom ?",
       "detail": "Paris → Lyon · samedi 9 h 04\n2 adultes · 58,00 €"
@@ -163,25 +165,14 @@
       "i3": "Parmesan",
       "i4": "Bougies d’anniversaire",
       "chip": "Famille : jusqu’à 6 personnes"
-    }
-  },
-  "podcast": {
-    "kicker": "Ton matin, à l’antenne",
-    "title": "Ton point du matin, en podcast.",
-    "sub": "Ton agent l’écrit à partir de ta journée — rendez-vous, météo, colis — et deux voix te le lisent pendant le café. Voici celui de la démo, enregistré en quatre langues.",
-    "credit": "Voix : Fish Audio Drama 3 · Built with Fish Audio",
-    "host1": "Quotidien",
-    "host2": "Coach",
-    "play": "Écouter le podcast",
-    "pause": "Mettre en pause"
-  },
-  "live": {
-    "kicker": "Passe en Live",
-    "title": "Parle, tout simplement.",
-    "sub": "Le Live, c’est une vraie conversation avec ton agent : aucun bouton à tenir, il te répond à voix haute, et tu l’interromps simplement en parlant.",
-    "point1": "En français, anglais, allemand et espagnol",
-    "point2": "Les mains libres : en cuisine, en voiture, téléphone en poche",
-    "point3": "Il te demande toujours ton accord à l’écran avant d’agir"
+    },
+    "call": {
+      "title": "En voiture, un appel Live avec ton Bip",
+      "text": "Les mains sur le volant, passe en Live et parle, tout simplement : aucun bouton à tenir, il te répond à voix haute, et tu l’interromps en parlant. En français, anglais, allemand et espagnol.",
+      "label": "Live · Quotidien"
+    },
+    "more": "Envie de le voir en vrai ?",
+    "moreCta": "Voir la démo de l’app →"
   },
   "liveDialog": [
     {
@@ -191,52 +182,8 @@
     {
       "you": "Rappelle-moi d’appeler maman à 19 h.",
       "bip": "C’est noté : un rappel à 19 h, avec son numéro."
-    },
-    {
-      "you": "Il fait froid dans le salon ?",
-      "bip": "18,5 °C. Je peux monter à 21 : confirme à l’écran."
     }
   ],
-  "bips": {
-    "kicker": "Voici les Bips",
-    "title": "Un Bip par agent.",
-    "sub": "Dans l’app, chaque agent est une petite mascotte avec sa couleur et son humeur : tu sais d’un coup d’œil qui te parle. Vas-y, embête-les un peu : ils réagissent comme dans l’app.",
-    "hint": "Touche, chatouille, caresse, appui long…",
-    "cat": {
-      "daily": {
-        "name": "Quotidien",
-        "label": "Quotidien"
-      },
-      "wellness": {
-        "name": "Coach",
-        "label": "Bien-être"
-      },
-      "finance": {
-        "name": "Budget",
-        "label": "Finance"
-      },
-      "home": {
-        "name": "Maison",
-        "label": "Maison"
-      },
-      "work": {
-        "name": "Boulot",
-        "label": "Travail"
-      },
-      "learning": {
-        "name": "Prof",
-        "label": "Apprendre"
-      },
-      "creative": {
-        "name": "Atelier",
-        "label": "Créatif"
-      },
-      "tech": {
-        "name": "Serveur",
-        "label": "Tech"
-      }
-    }
-  },
   "control": {
     "once": "Une fois",
     "session": "Cette session",
@@ -257,14 +204,11 @@
     "theAi": "L’IA",
     "readsToAnswer": "lit pour te répondre",
     "kerfy": "ton compte et ton abonnement, pas tes conversations",
-    "line1": "Tes conversations et la mémoire de tes agents vivent dans ton espace, séparé de celui des autres.",
-    "line2": "Nous ne les lisons pas et n’entraînons aucune IA avec. L’IA les lit seulement pour te répondre.",
+    "line1": "Ton espace, séparé de celui des autres, sur un serveur en Europe (OVHcloud ou Hetzner) ou sur ton propre ordinateur.",
+    "line2": "Nous ne lisons pas tes conversations et n’entraînons aucune IA avec : l’IA les lit seulement pour te répondre.",
     "line3": "Nous gardons ton compte, pas tes conversations. Tu peux tout récupérer et partir.",
-    "note": "« Un assistant classique » : ce que font par défaut les offres grand public d’assistants comme ChatGPT ou Gemini, d’après leurs propres pages en octobre 2026. Avec l’offre tout compris, Kerfy Studio loue le serveur de ton espace : nous ne le lisons pas, mais ne promettons pas l’impossible.",
-    "more": "La comparaison, ses sources et nos limites →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.fr.md",
-    "sub": "Tes agents connaissent ta vie. Elle reste dans ton espace, en Europe.",
-    "line0": "Ton espace est sur un serveur en Europe, chez OVHcloud ou Hetzner, ou sur ton propre ordinateur."
+    "more": "La comparaison d’octobre 2026, ses sources et nos limites →",
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.fr.md"
   },
   "pricing": {
     "kicker": "Prix",
@@ -324,7 +268,9 @@
         "duo": "Duo",
         "famille": "Famille"
       }
-    }
+    },
+    "selfhost": "Tu as ton propre ordinateur ? L’app est gratuite :",
+    "selfhostLink": "installer →"
   },
   "install": {
     "kicker": "Ou gratuit, chez toi",
@@ -337,7 +283,9 @@
     "copy": "Copier",
     "copied": "Copié ✓",
     "windows": "Sur Windows 11, dans PowerShell ouvert en administrateur :",
-    "guide": "Le guide complet"
+    "guide": "Le guide complet",
+    "more": "Tu préfères qu’on s’occupe de tout ? Avec l’abonnement, rien à installer.",
+    "moreCta": "Voir les formules →"
   },
   "faq": {
     "kicker": "Questions",
@@ -381,12 +329,9 @@
     "10": {
       "q": "Et avec mon propre ordinateur ?",
       "a": "L’app est gratuite : une commande l’installe sur ton ordinateur ou ton serveur, et tu ne paies que le modèle d’IA de ton choix. L’abonnement, lui, t’évite tout ça."
-    }
-  },
-  "end": {
-    "title": "Tes Bips t’attendent.",
-    "sub": "Choisis ta formule en une minute. Tu arrêtes quand tu veux.",
-    "cta": "Choisir ma formule"
+    },
+    "all": "Toutes les questions →",
+    "more": "Une autre question ? Écris-nous :"
   },
   "foot": {
     "about": "BipAgents, l’app de tes propres agents IA, est éditée par Kerfy Studio, un petit studio français. Construite sur Hermes Agent, logiciel libre de Nous Research ; BipAgents est une app indépendante.",
@@ -401,7 +346,10 @@
     "support": "Support",
     "more": "Et aussi",
     "play": "Joue avec les Bips",
-    "fine": "© 2026 Kerfy Studio. Prix TTC. Le podcast de la démo : Built with Fish Audio. Les voix des Bips : Pocket TTS, de Kyutai. Carte de la démo © OpenStreetMap. Aucun cookie et aucun traceur sur ce site."
+    "fine": "© 2026 Kerfy Studio. Prix TTC. Le podcast de la démo : Built with Fish Audio. Les voix des Bips : Pocket TTS, de Kyutai. Carte de la démo © OpenStreetMap. Aucun cookie et aucun traceur sur ce site.",
+    "demo": "La démo",
+    "faq": "Questions",
+    "install": "Installer chez toi"
   },
   "lines": {
     "hop": [
@@ -445,5 +393,19 @@
     "boing": [
       "Boing !"
     ]
+  },
+  "page": {
+    "demo": {
+      "title": "La démo — BipAgents",
+      "description": "La démo de l’app BipAgents, telle quelle : quatre scénarios où ton agent réfléchit, utilise ses outils et attend ton accord avant ce qui compte."
+    },
+    "faq": {
+      "title": "Questions — BipAgents",
+      "description": "Prix, crédit d’IA, semaine gratuite, résiliation, vie privée, famille, appareils, Hermes Agent : les réponses sur BipAgents."
+    },
+    "install": {
+      "title": "Installer chez toi — BipAgents",
+      "description": "L’app BipAgents est gratuite sur ton propre ordinateur ou serveur : une commande installe Hermes Agent et le bridge, tu ne paies que ton modèle d’IA."
+    }
   }
 }
