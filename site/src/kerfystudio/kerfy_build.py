@@ -158,7 +158,8 @@ def shell(t: Dict, lang: str, title: str, body: str, path: str, version: str, al
 <header class="bar">
   <a class="mark" href="{p or '/'}" aria-label="Kerfy Studio"><span class="dot"></span>Kerfy<b>Studio</b></a>
   <nav>
-    <a href="https://bipagents.com{'' if lang == 'en' else '/' + lang}/">BipAgents</a>
+    <a class="hide-s" href="{p or ''}/#apps">{t['nav']['apps']}</a>
+    <a class="hide-s" href="{p or ''}/#contact">{t['nav']['contact']}</a>
     <a href="{p}/support/">{t['nav']['support']}</a>
     <span class="switch">{switch}</span>
   </nav>
@@ -181,6 +182,7 @@ def shell(t: Dict, lang: str, title: str, body: str, path: str, version: str, al
   </nav>
   <p class="fine">© 2026 Kerfy Studio · {t['foot']['fine']}</p>
 </footer>
+{'<script type="module" src="/assets/kerfy.js?v=' + version + '"></script>' if page_class == "home" else ""}
 </body>
 </html>
 """
@@ -189,61 +191,182 @@ def shell(t: Dict, lang: str, title: str, body: str, path: str, version: str, al
 CURRENT = ' aria-current="page"'
 
 
-def home_body(t: Dict, lang: str, bips: Dict[str, str]) -> str:
-    h = t["home"]
-    cluster = "".join(f'<span class="b b{i}">{bips[c]}</span>' for i, c in enumerate(("daily", "wellness", "finance", "home", "learning")))
-    values = "".join(f'<div class="value"><span class="vn">0{i}</span><h3>{v["title"]}</h3><p>{v["text"]}</p></div>'
+def esc(text: str) -> str:
+    return html.escape(text, quote=True)
+
+
+def company_value(company: Dict[str, str], key: str, label: str) -> str:
+    value = company.get(key, "")
+    return esc(value) if value else f'<mark class="todo">[{esc(label)}]</mark>'
+
+
+# The legal texts' placeholders the company's details fill in (site/config.json), in the four languages. Placeholders
+# may wrap over two lines in the Markdown, hence the spaces matched loosely.
+LEGAL_FILL = {
+    "capital": ("capital", "Kapital"),
+    "siren": ("SIREN",),
+    "address": ("adresse du siège", "registered office address", "Adresse des Sitzes", "dirección del domicilio social"),
+    "rcsCity": ("ville du greffe", "registry city", "Ort des Handelsregisters", "ciudad del registro"),
+    "phone": ("numéro de téléphone", "phone number", "Telefonnummer", "número de teléfono"),
+    "president": ("Prénom Nom", "First name Last name", "Vorname Nachname", "Vorname Name", "Nombre Apellido", "NOM DU PRÉSIDENT"),
+    "vat": ("numéro de TVA intracommunautaire ; supprimer cette ligne si aucun numéro n'est attribué",),
+    "repo": ("URL du dépôt", "repository URL", "URL des Repositorys", "URL del repositorio"),
+}
+
+
+def fill_company(text: str, cfg: Dict) -> str:
+    values = dict(cfg["company"], repo=cfg.get("repo", ""))
+    for key, labels in LEGAL_FILL.items():
+        if not values.get(key):
+            continue
+        for label in labels:
+            pattern = r"\[" + r"\s+".join(re.escape(word) for word in label.split()) + r"\]"
+            text = re.sub(pattern, lambda _m: values[key], text)
+    return text
+
+
+TABLEE = {"paper": "#FBF8F3", "sable": "#ECE4D3", "ink": "#15171A", "pain": "#D4A574", "painDeep": "#B8873A",
+          "herbe": "#8FA876", "herbeDeep": "#5A7A48", "terre": "#B8492A", "terreDeep": "#8A3315", "icon": "#F2B242"}
+
+# Tablée's icon (a steaming pot), drawn again in SVG after the app's own icon.
+TABLEE_ICON = ('<svg viewBox="0 0 1024 1024" aria-hidden="true"><rect width="1024" height="1024" rx="228" fill="#F2B242"/>'
+               '<path d="M408 80q40 40 0 85t0 85M614 80q-40 40 0 85t0 85" fill="none" stroke="#2D2621" stroke-width="38" stroke-linecap="round"/>'
+               '<rect x="482" y="318" width="60" height="50" rx="10" fill="#2D2621"/>'
+               '<path d="M226 438h572l-40 420a44 44 0 0 1-44 42H310a44 44 0 0 1-44-42z" fill="#B84B2E"/>'
+               '<rect x="144" y="472" width="96" height="50" rx="22" fill="#B84B2E"/><rect x="784" y="472" width="96" height="50" rx="22" fill="#B84B2E"/>'
+               '<rect x="185" y="370" width="654" height="70" rx="28" fill="#2D2621"/></svg>')
+
+
+def home_body(t: Dict, lang: str, cfg: Dict) -> str:
+    from build import store_badges
+    h, company, contact = t["home"], cfg["company"], cfg["contact"]
+    bip_site = f"https://bipagents.com{'' if lang == 'en' else '/' + lang}/"
+    b, tb, r = h["bip"], h["tablee"], h["rows"]
+    pts = lambda items: "".join(f"<li>{esc(p)}</li>" for p in items)
+    bip_badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
+    tablee_badges = store_badges(cfg["stores"]["tablee"], t["store"]["soon"], t["store"]["get"])
+    values = "".join(f'<div class="value reveal"><span class="vn">0{i}</span><h3>{esc(v["title"])}</h3><p>{esc(v["text"])}</p></div>'
                      for i, v in enumerate(h["values"], 1))
+    rcs = (f'RCS {company_value(company, "rcsCity", "ville du greffe")} {company_value(company, "siren", "SIREN")}')
+    rows = [(r["name"], esc(company["name"])), (r["form"], esc(r["formValue"])),
+            (r["capital"], company_value(company, "capital", "capital") + (" €" if company.get("capital") else "")),
+            (r["address"], company_value(company, "address", "adresse du siège")), (r["rcs"], rcs),
+            (r["vat"], company_value(company, "vat", "TVA")), (r["president"], company_value(company, "president", "Prénom Nom")),
+            (r["contact"], f'<a href="mailto:{contact["general"]}">{contact["general"]}</a>'
+                           + (f' · {esc(company["phone"])}' if company.get("phone") else "")),
+            (r["support"], f'<a href="mailto:{contact["support"]}">{contact["support"]}</a>')]
+    table = "".join(f"<div><dt>{esc(k)}</dt><dd>{v}</dd></div>" for k, v in rows)
+    m = lambda pair: f'<p class="t-meal"><small>{esc(pair[0])}</small><b>{esc(pair[1])}</b></p>'
     return f"""<section class="hero">
-  <p class="kicker">{h['kicker']}</p>
-  <h1>{h['title']}</h1>
-  <p class="lede">{h['lede']}</p>
-</section>
-<a class="product" href="https://bipagents.com{'' if lang == 'en' else '/' + lang}/">
-  <div class="cluster" aria-hidden="true">{cluster}</div>
-  <div class="product-copy">
-    <p class="kicker">{h['productKicker']}</p>
-    <h2>BipAgents</h2>
-    <p>{h['product']}</p>
-    <span class="go">{h['productCta']} →</span>
+  <div class="hero-copy reveal">
+    <p class="kicker">{esc(h['kicker'])}</p>
+    <h1>{esc(h['title'])}</h1>
+    <p class="lede">{esc(h['lede'])}</p>
   </div>
-</a>
-<section class="values">{values}</section>
-<section class="contact">
-  <h2>{h['contactTitle']}</h2>
-  <p>{h['contactText']}</p>
-  <a class="mail" href="mailto:support@kerfystudio.com">support@kerfystudio.com</a>
+  <div class="hero-apps reveal" aria-hidden="true">
+    <span class="app-tile tile-bip" data-tilt><span class="tile-bip-in" data-bip="daily"></span></span>
+    <span class="app-tile tile-tablee" data-tilt>{TABLEE_ICON}</span>
+  </div>
+</section>
+
+<section class="apps" id="apps">
+  <p class="kicker reveal">{esc(h['appsKicker'])}</p>
+  <h2 class="reveal">{esc(h['appsTitle'])}</h2>
+
+  <article class="showcase show-bip reveal">
+    <div class="show-copy">
+      <p class="tag">{esc(b['tag'])}</p>
+      <h3>BipAgents</h3>
+      <p class="pitch">{esc(b['pitch'])}</p>
+      <ul class="points">{pts(b['points'])}</ul>
+      <div class="show-act"><a class="go" href="{bip_site}">{esc(b['cta'])} <span aria-hidden="true">→</span></a></div>
+      <div class="badges">{bip_badges}</div>
+    </div>
+    <div class="show-art bip-art" aria-hidden="true">
+      <div class="bip-stage">
+        <span data-bip="daily" data-interactive class="sb sb0"></span><span data-bip="wellness" data-interactive class="sb sb1"></span>
+        <span data-bip="finance" data-interactive class="sb sb2"></span><span data-bip="home" data-interactive class="sb sb3"></span>
+        <span data-bip="learning" data-interactive class="sb sb4"></span>
+      </div>
+    </div>
+  </article>
+
+  <article class="showcase show-tablee reveal">
+    <div class="show-copy">
+      <p class="tag">{esc(tb['tag'])}</p>
+      <h3>Tablée</h3>
+      <p class="pitch">{esc(tb['pitch'])}</p>
+      <ul class="points">{pts(tb['points'])}</ul>
+      <div class="show-act"><a class="go" href="https://tablee.net" rel="noopener">{esc(tb['cta'])} <span aria-hidden="true">→</span></a></div>
+      <div class="badges">{tablee_badges}</div>
+    </div>
+    <div class="show-art tablee-art" aria-hidden="true">
+      <div class="t-phone" data-tilt>
+        <div class="t-head"><span class="t-icon">{TABLEE_ICON}</span><b>{esc(tb['mockTitle'])}</b></div>
+        <p class="t-family">👨‍👩‍👧‍👦 {esc(tb['family'])}</p>
+        {m(tb['m1'])}{m(tb['m2'])}{m(tb['m3'])}
+        <div class="t-list"><p class="t-list-h">🛒 {esc(tb['list'])}</p>
+          <p class="t-item done"><i></i>{esc(tb['i1'])}</p><p class="t-item"><i></i>{esc(tb['i2'])}</p><p class="t-item"><i></i>{esc(tb['i3'])}</p></div>
+      </div>
+    </div>
+  </article>
+</section>
+
+<section class="values-wrap" id="studio">
+  <h2 class="reveal">{esc(h['valuesTitle'])}</h2>
+  <div class="values">{values}</div>
+</section>
+
+<section class="company reveal" id="company">
+  <div>
+    <h2>{esc(h['companyTitle'])}</h2>
+    <p>{esc(h['companyText'])}</p>
+  </div>
+  <dl>{table}</dl>
+</section>
+
+<section class="contact reveal" id="contact">
+  <h2>{esc(h['contactTitle'])}</h2>
+  <p>{esc(h['contactText'])}</p>
+  <a class="mail" href="mailto:{contact['general']}">{contact['general']}</a>
+  <p class="support-line">{esc(h['supportLine'])} <a href="{prefix(lang)}/support/">{esc(t['nav']['support'])} →</a></p>
 </section>"""
 
 
-def support_body(t: Dict, lang: str) -> str:
-    s = t["support"]
+def support_body(t: Dict, lang: str, cfg: Dict) -> str:
+    s, company, contact = t["support"], cfg["company"], cfg["contact"]
     blocks = "".join(f'<section class="card"><h2>{b["title"]}</h2>{"".join(f"<p>{p}</p>" for p in b["text"])}</section>'
                      for b in s["blocks"])
+    who = (f'{esc(company["name"])} ({esc(company["form"])}) · {company_value(company, "address", "adresse du siège")} · '
+           f'RCS {company_value(company, "rcsCity", "ville du greffe")} {company_value(company, "siren", "SIREN")} · '
+           f'{company_value(company, "phone", "téléphone")} · <a href="mailto:{contact["support"]}">{contact["support"]}</a> · '
+           f'<a href="mailto:{contact["general"]}">{contact["general"]}</a>')
     return f"""<section class="page-head">
   <p class="kicker">{s['kicker']}</p>
   <h1>{s['title']}</h1>
   <p class="lede">{s['lede']}</p>
-  <a class="mail big" href="mailto:support@kerfystudio.com">support@kerfystudio.com</a>
+  <a class="mail big" href="mailto:{contact['support']}">{contact['support']}</a>
 </section>
 <div class="cards">{blocks}</div>
-<section class="card who"><h2>{s['whoTitle']}</h2><p>{s['who']}</p></section>"""
+<section class="card who"><h2>{s['whoTitle']}</h2><p>{who}</p></section>"""
 
 
 def build(root: Path, repo: Path, version: str) -> Path:
     import sys
     sys.path.insert(0, str(root))
-    from build import copy, favicon, node_bip   # the shared helpers of site/build.py
+    from build import config, copy, favicon   # the shared helpers of site/build.py
+    cfg = config()
 
     src, out = root / "src" / "kerfystudio", root / "dist" / "kerfystudio.com"
     if out.exists():
         shutil.rmtree(out)
     assets = out / "assets"
     assets.mkdir(parents=True)
-    copy(src / "kerfy.css", assets / "kerfy.css")
+    for name in ("kerfy.css", "kerfy.js"):
+        copy(src / name, assets / name)
+    copy(root / "src" / "shared" / "bips.js", assets / "bips.js")
     copy(repo / "android" / "app" / "src" / "main" / "res" / "font" / "nunito.ttf", assets / "nunito.ttf")
     (assets / "favicon.svg").write_text(favicon("daily"), encoding="utf-8")
-    bips = {c: node_bip(c) or "" for c in ("daily", "wellness", "finance", "home", "learning")}
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
     links = links_for()
 
@@ -256,25 +379,26 @@ def build(root: Path, repo: Path, version: str) -> Path:
     supports = {l: f"{prefix(l)}/support/" for l in LANGS}
     for lang in LANGS:
         t = texts[lang]
-        write(homes[lang], shell(t, lang, t["meta"]["title"], home_body(t, lang, bips), homes[lang], version, homes, "home"))
-        write(supports[lang], shell(t, lang, f"{t['support']['title']} · Kerfy Studio", support_body(t, lang),
+        write(homes[lang], shell(t, lang, t["meta"]["title"], home_body(t, lang, cfg), homes[lang], version, homes, "home"))
+        write(supports[lang], shell(t, lang, f"{t['support']['title']} · Kerfy Studio", support_body(t, lang, cfg),
                                     supports[lang], version, supports))
         for name in LEGAL:
             source = repo / "docs" / "legal" / f"{name}.{lang}.md"
             text = source.read_text(encoding="utf-8")
             text = "\n".join(text.splitlines()[1:]) if text.startswith("[") else text   # its language line: the header has one
+            text = fill_company(text, cfg)
             title = re.search(r"^#\s+(.*)$", text, re.M).group(1)
             pages = {l: f"{prefix(l)}/{name}/" for l in LANGS}
             write(pages[lang], shell(t, lang, f"{title} · Kerfy Studio", f'<article class="legal">{markdown(text, links)}</article>',
                                      pages[lang], version, pages, "doc"))
-    notice = (repo / "docs" / "legal" / "mentions-legales.fr.md").read_text(encoding="utf-8")
+    notice = fill_company((repo / "docs" / "legal" / "mentions-legales.fr.md").read_text(encoding="utf-8"), cfg)
     write("/mentions-legales/", shell(texts["fr"], "fr", "Mentions légales · Kerfy Studio",
                                       f'<article class="legal">{markdown(notice, links)}</article>', "/mentions-legales/",
                                       version, {"fr": "/mentions-legales/"}, "doc"))
     well_known = out / ".well-known"
     well_known.mkdir()
     (well_known / "security.txt").write_text(
-        "Contact: mailto:support@kerfystudio.com\nExpires: 2027-10-01T00:00:00.000Z\nPreferred-Languages: fr, en\n"
+        f"Contact: mailto:{cfg['contact']['support']}\nExpires: 2027-10-01T00:00:00.000Z\nPreferred-Languages: fr, en\n"
         f"Canonical: {SITE}/.well-known/security.txt\nPolicy: https://github.com/Alexbob0/BipAgents/blob/main/SECURITY.md\n",
         encoding="utf-8")
     (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\n", encoding="utf-8")

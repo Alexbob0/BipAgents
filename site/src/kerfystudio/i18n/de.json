@@ -1,13 +1,16 @@
 {
  "meta": {
-  "title": "Kerfy Studio — KI-Werkzeuge, die bei dir zu Hause bleiben",
-  "description": "Kerfy Studio ist ein unabhängiges französisches Studio. Unsere erste App, BipAgents, bringt deine eigenen KI-Agenten in deine Tasche."
+  "title": "Kerfy Studio — nützliche, private, freundliche Apps",
+  "description": "Kerfy Studio ist ein kleines Studio aus Frankreich. Wir machen BipAgents, deine eigenen KI-Agenten, und Tablée, die Mahlzeiten der Woche für die Familie. Gehostet in Europa, ohne Werbung und Tracking."
  },
  "nav": {
-  "support": "Support"
+  "support": "Support",
+  "apps": "Unsere Apps",
+  "studio": "Das Studio",
+  "contact": "Kontakt"
  },
  "foot": {
-  "about": "Kerfy Studio ist ein unabhängiges Studio, das BipAgents macht, die App für deine eigenen KI-Agenten.",
+  "about": "Kerfy Studio ist ein kleines Studio aus Frankreich, das BipAgents und Tablée macht.",
   "privacy": "Datenschutz",
   "terms": "Nutzungsbedingungen",
   "offer": "Bedingungen des Alles-inklusive-Angebots",
@@ -16,28 +19,86 @@
   "fine": "Keine Cookies und keine Tracker auf dieser Seite."
  },
  "home": {
-  "kicker": "Unabhängiges Studio",
-  "title": "Wir bauen KI-Werkzeuge, die bei dir zu Hause bleiben.",
-  "lede": "Kerfy Studio ist ein kleines französisches Studio. Unsere erste App, BipAgents, bringt deine eigenen KI-Agenten in deine Tasche: Sie laufen auf deinem Server, mit dem Modell deiner Wahl, ohne Konto und ohne Tracking.",
-  "productKicker": "Unsere App",
-  "product": "Deine KI-Agenten, bei dir zu Hause, in deiner Tasche. Schreib ihnen, sprich mit ihnen, geh Live: Sie handeln mit deinem OK. Gebaut auf Hermes Agent.",
-  "productCta": "BipAgents entdecken",
+  "kicker": "Unabhängiges Studio · Frankreich",
+  "title": "Nützliche, private, freundliche Apps.",
+  "lede": "Kerfy Studio ist ein kleines Studio aus Frankreich. Wir bauen Apps, die im Alltag helfen, deine Daten in Europa lassen und weder von Werbung noch von Tracking leben.",
+  "appsKicker": "Unsere Apps",
+  "appsTitle": "Zwei Apps für den Alltag.",
+  "bip": {
+   "tag": "KI-Agenten",
+   "pitch": "Deine eigenen KI-Agenten, die Bips: Sie reservieren, sortieren deine Mails, führen Kalender und Notizbuch und fragen, bevor sie handeln. Gebaut auf Hermes Agent.",
+   "points": [
+    "Schreiben, sprechen oder Live",
+    "Dein Bereich in Europa, den wir nicht lesen",
+    "Open-Source-Code (MIT)"
+   ],
+   "cta": "BipAgents entdecken"
+  },
+  "tablee": {
+   "tag": "Familienessen",
+   "pitch": "Die Menüs der Woche für deine Familie geplant, Rezepte passend zu allen, die mitessen, und eine Einkaufsliste, die eure Handys teilen.",
+   "points": [
+    "Ein Familienprofil: Allergien, Vorlieben, Einschränkungen",
+    "Wochenmenüs, Portionen passend zum Haushalt",
+    "Synchronisierte Einkaufsliste zum Abhaken im Laden",
+    "Eigene Rezepte und KI-gestützter Import"
+   ],
+   "cta": "Tablée entdecken",
+   "mockTitle": "Diese Woche",
+   "family": "2 Erwachsene · 2 Kinder",
+   "m1": [
+    "Mo · Abend",
+    "Zucchini-Gratin"
+   ],
+   "m2": [
+    "Di · Abend",
+    "Kichererbsen-Curry"
+   ],
+   "m3": [
+    "Mi · Mittag",
+    "Lauch-Quiche"
+   ],
+   "list": "Einkauf · geteilt",
+   "i1": "Zucchini",
+   "i2": "Kokosmilch",
+   "i3": "Lauch"
+  },
+  "valuesTitle": "Wie wir arbeiten",
   "values": [
    {
     "title": "Privat von Grund auf",
-    "text": "Deine Daten bleiben auf deinem Server. Wir sehen deine Unterhaltungen nicht, und unsere Seiten haben weder Cookies noch Tracker."
+    "text": "Deine Daten sind dazu da, dir zu helfen, nicht, dich zu durchleuchten. Keine Werbung, kein Weiterverkauf, keine Tracker auf unseren Websites."
+   },
+   {
+    "title": "Gehostet in Europa",
+    "text": "Unsere Server stehen in der Europäischen Union, und die DSGVO gilt für alles, was wir tun."
    },
    {
     "title": "Offen",
-    "text": "Der Code unserer Apps ist öffentlich, unter der MIT-Lizenz: Jeder kann ihn lesen, prüfen und verbessern."
+    "text": "Der Code von BipAgents ist öffentlich, unter MIT-Lizenz: Jeder kann ihn lesen, prüfen und verbessern."
    },
    {
-    "title": "Einfach",
-    "text": "Ein Befehl zum Installieren, ein QR-Code zum Verbinden und eine Demo zum Ausprobieren, ohne etwas zu installieren."
+    "title": "Für die ganze Familie",
+    "text": "Einfache, freundliche Apps auf Deutsch, Englisch, Französisch und Spanisch."
    }
   ],
+  "companyTitle": "Das Unternehmen",
+  "companyText": "Kerfy Studio entwickelt seine Apps und veröffentlicht sie im App Store und bei Google Play.",
+  "rows": {
+   "name": "Firma",
+   "form": "Rechtsform",
+   "formValue": "Société par actions simplifiée (SAS), Frankreich",
+   "capital": "Stammkapital",
+   "address": "Sitz",
+   "rcs": "Handelsregister",
+   "vat": "USt-IdNr.",
+   "president": "Präsident",
+   "contact": "Kontakt",
+   "support": "Support"
+  },
   "contactTitle": "Lass uns reden.",
-  "contactText": "Eine Frage, eine Partnerschaft, eine Idee? Wir lesen alles."
+  "contactText": "Eine Frage, eine Partnerschaft, Presse? Schreib uns, wir lesen alles.",
+  "supportLine": "Eine Frage zu einer App?"
  },
  "support": {
   "kicker": "Support",
@@ -88,5 +149,9 @@
   ],
   "whoTitle": "Wer wir sind",
   "who": "Kerfy Studio · <mark class=\"todo\">[Anschrift des Sitzes]</mark> · <mark class=\"todo\">[Telefonnummer]</mark> · support@kerfystudio.com"
+ },
+ "store": {
+  "soon": "Bald im",
+  "get": "Laden im"
  }
 }
