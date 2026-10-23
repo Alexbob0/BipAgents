@@ -11,6 +11,10 @@
 //!         Personnes/Marc Dupont.md       one page per person (People, Personen, Personas)
 //!         Sujets/Cuisine.md              projects and subjects (Subjects, Themen, Temas)
 //!         Domaines/Maison.md             areas of life (Areas, Bereiche, Áreas)
+//!         Voyages/Lisbonne — nov. 2025.md  trips (Trips, Reisen, Viajes: trip.rs), apart from the subjects
+//!         Fiches/Achats.md               records (Records, Unterlagen, Registros: records.rs)
+//!         Archives/…                     what is past, moved by the nightly pass (archive.rs): Archives/Voyages,
+//!                                        Archives/Fiches/Achats.md… (Archive, Archiv, Archivo)
 //!         Tâches/Tâches.md               the dated tasks (Tasks, Aufgaben, Tareas)
 //!         Documents.md                   the index of the files the agents made or received (written, not kept)
 //!         À ranger.md                    what waits for the nightly pass (the agents' memories, at first)
@@ -30,12 +34,14 @@
 //! No Python counterpart (owner group: tools-knowledge).
 
 pub mod api;
+pub mod archive;
 pub mod fill;
 pub mod records;
 pub mod template;
 pub mod tidy;
 pub mod tools;
 pub mod trip;
+pub mod trip_auto;
 
 use std::collections::HashSet;
 use std::io::Write;
@@ -99,6 +105,11 @@ pub struct Words {
     pub me: &'static str,
     /// The folder of the records' pages (purchases, subscriptions, contracts, papers, bookings: records.rs).
     pub records: &'static str,
+    /// The trips' folder (trip.rs), apart from the subjects.
+    pub trips: &'static str,
+    /// What is past (archive.rs): past trips, bookings that are over, ended subscriptions and contracts, replaced
+    /// papers, purchases out of warranty — moved here by the nightly pass, never deleted.
+    pub archives: &'static str,
 }
 
 pub const WORDS: [Words; 4] = [
@@ -120,6 +131,8 @@ pub const WORDS: [Words; 4] = [
         tidy: "rangement",
         me: "Toi",
         records: "Fiches",
+        trips: "Voyages",
+        archives: "Archives",
     },
     Words {
         lang: "en",
@@ -139,6 +152,8 @@ pub const WORDS: [Words; 4] = [
         tidy: "tidying",
         me: "You",
         records: "Records",
+        trips: "Trips",
+        archives: "Archive",
     },
     Words {
         lang: "de",
@@ -158,6 +173,8 @@ pub const WORDS: [Words; 4] = [
         tidy: "Aufräumen",
         me: "Du",
         records: "Unterlagen",
+        trips: "Reisen",
+        archives: "Archiv",
     },
     Words {
         lang: "es",
@@ -177,6 +194,8 @@ pub const WORDS: [Words; 4] = [
         tidy: "orden",
         me: "Tú",
         records: "Registros",
+        trips: "Viajes",
+        archives: "Archivo",
     },
 ];
 
@@ -184,15 +203,16 @@ pub fn words(lang: &str) -> &'static Words {
     WORDS.iter().find(|w| w.lang == lang).unwrap_or(&WORDS[1])
 }
 
-/// The kinds of pages an agent writes, in the frontmatter's `type`. A trip (« Voyage », trip.rs) is a subject with its
-/// own outline and layout: it lives among the subjects.
+/// The kinds of pages an agent writes, in the frontmatter's `type`. A trip (« Voyage », trip.rs) has its own outline,
+/// layout and folder (« Voyages »; a past one in « Archives/Voyages »): it is not listed among the subjects.
 pub const KINDS: [&str; 5] = ["person", "subject", "area", "self", "trip"];
 
 impl Words {
     pub fn folder(&self, kind: &str) -> Option<&'static str> {
         match kind {
             "person" => Some(self.people),
-            "subject" | "trip" => Some(self.subjects),
+            "subject" => Some(self.subjects),
+            "trip" => Some(self.trips),
             "area" => Some(self.areas),
             "task" | "tasks" => Some(self.tasks),
             _ => None,
@@ -200,10 +220,16 @@ impl Words {
     }
 
     pub fn kind_of(&self, folder: &str) -> Option<&'static str> {
-        [("person", self.people), ("subject", self.subjects), ("area", self.areas), ("tasks", self.tasks)]
-            .into_iter()
-            .find(|(_, f)| *f == folder)
-            .map(|(k, _)| k)
+        [
+            ("person", self.people),
+            ("subject", self.subjects),
+            ("area", self.areas),
+            ("tasks", self.tasks),
+            ("trip", self.trips),
+        ]
+        .into_iter()
+        .find(|(_, f)| *f == folder)
+        .map(|(k, _)| k)
     }
 
     /// `Tâches/Tâches.md`.
@@ -218,6 +244,16 @@ impl Words {
     /// `Toi.md`: the person's own page.
     pub fn self_path(&self) -> String {
         format!("{}.md", self.me)
+    }
+
+    /// `Archives/Voyages`: the past trips' folder.
+    pub fn past_trips(&self) -> String {
+        format!("{}/{}", self.archives, self.trips)
+    }
+
+    /// Whether a page's path is in the archives (« Archives/… »).
+    pub fn archived(&self, path: &str) -> bool {
+        path.starts_with(&format!("{}/", self.archives))
     }
 }
 
@@ -299,7 +335,7 @@ pub fn checked(relative: &str) -> anyhow::Result<PathBuf> {
     let path = Path::new(relative);
     let plain = path.components().all(|c| matches!(c, Component::Normal(_)));
     let depth = path.components().count();
-    if relative.is_empty() || !plain || depth > 2 || !relative.ends_with(".md") || relative.contains('\0') {
+    if relative.is_empty() || !plain || depth > 3 || !relative.ends_with(".md") || relative.contains('\0') {
         return refuse(format!("not a page of the Carnet: {relative}"));
     }
     Ok(path.to_path_buf())
@@ -548,8 +584,10 @@ pub fn links_in(text: &str) -> Vec<String> {
 }
 
 /// Lower-case, accents and punctuation folded, spaces squeezed: what « the same name » or « the same fact » means.
+/// A curly apostrophe (« aujourd’hui ») folds like a straight one (« aujourd'hui »): both a space, never dropped (the
+/// ASCII folding alone dropped it, so « aujourd’hui » and « aujourd'hui » were not the same name).
 pub fn fold(text: &str) -> String {
-    let plain = tk::ascii_fold(&text.to_lowercase());
+    let plain = tk::ascii_fold(&tk::spaced_punctuation(&text.to_lowercase()));
     let spaced: String = plain.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' }).collect();
     spaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -973,13 +1011,20 @@ pub fn all_pages(config: &Config, part: Part) -> Vec<(String, Page)> {
             found.push((format!("{prefix}{name}"), Page::parse(&text, stem)));
         }
     };
-    visit(&base, "");
-    for entry in std::fs::read_dir(&base).into_iter().flatten().flatten() {
-        let path = entry.path();
-        let is_link = std::fs::symlink_metadata(&path).map(|m| m.file_type().is_symlink()).unwrap_or(true);
-        if path.is_dir() && !is_link && !entry.file_name().to_string_lossy().starts_with('.') {
-            let folder = entry.file_name().to_string_lossy().into_owned();
-            visit(&path, &format!("{folder}/"));
+    // the vault's root, its folders, and their own folders (« Archives/Voyages »)
+    let mut dirs: Vec<(PathBuf, String, usize)> = vec![(base.clone(), String::new(), 0)];
+    while let Some((dir, prefix, depth)) = dirs.pop() {
+        visit(&dir, &prefix);
+        if depth >= 2 {
+            continue;
+        }
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            let is_link = std::fs::symlink_metadata(&path).map(|m| m.file_type().is_symlink()).unwrap_or(true);
+            if path.is_dir() && !is_link && !entry.file_name().to_string_lossy().starts_with('.') {
+                let folder = entry.file_name().to_string_lossy().into_owned();
+                dirs.push((path, format!("{prefix}{folder}/"), depth + 1));
+            }
         }
     }
     found.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1098,6 +1143,22 @@ pub fn commit(
     action: &str,
     summary: &str,
 ) -> anyhow::Result<Dict> {
+    commit_with(config, part, path, before, after, who, action, summary, Dict::new())
+}
+
+/// [`commit`] with more fields in the log's line (a move's other path: `moved_to`, `moved_from`).
+#[allow(clippy::too_many_arguments)]
+fn commit_with(
+    config: &Config,
+    part: Part,
+    path: &str,
+    before: Option<&str>,
+    after: Option<&str>,
+    who: &Who,
+    action: &str,
+    summary: &str,
+    extra: Dict,
+) -> anyhow::Result<Dict> {
     let relative = checked(path)?;
     fix_language(config)?;
     let file = part_root(config, part).join(&relative);
@@ -1130,6 +1191,7 @@ pub fn commit(
     entry.insert("summary".into(), json!(tk::head(&tk::squeeze(summary), 300)));
     entry.insert("before".into(), json!(before_id));
     entry.insert("after".into(), json!(after_id));
+    entry.extend(extra);
     let log = history_dir(config).join("log.jsonl");
     std::fs::create_dir_all(history_dir(config))?;
     let mut fh = std::fs::OpenOptions::new().append(true).create(true).open(&log)?;
@@ -1174,8 +1236,54 @@ pub fn history(config: &Config, part: Option<Part>, path: Option<&str>, limit: u
     out
 }
 
+/// A free path for a page in `folder` (« Voyages/Lisbonne — nov. 2025.md », else « … 2.md »), `own` (its present
+/// path) counting as free.
+pub fn free_path(config: &Config, part: Part, folder: &str, title: &str, own: &str) -> String {
+    let prefix = if folder.is_empty() { String::new() } else { format!("{folder}/") };
+    let mut path = format!("{prefix}{}.md", file_name(title));
+    let mut n = 2;
+    while path != own && part_root(config, part).join(&path).exists() {
+        path = format!("{prefix}{} {n}.md", file_name(title));
+        n += 1;
+    }
+    path
+}
+
+/// A page moved (and maybe changed: `text`) from `from` to `to`, as two lines in the log that point to each other
+/// (`moved_to`, `moved_from`): a restore of either moves it back. The caller holds the lock.
+#[allow(clippy::too_many_arguments)]
+pub fn move_page_locked(
+    config: &Config,
+    part: Part,
+    from: &str,
+    to: &str,
+    text: &str,
+    who: &Who,
+    action: &str,
+    summary: &str,
+) -> anyhow::Result<()> {
+    checked(to)?;
+    let before = read_page_text(config, part, from);
+    if from == to {
+        if before.as_deref() != Some(text) {
+            commit(config, part, to, before.as_deref(), Some(text), who, action, summary)?;
+        }
+        return Ok(());
+    }
+    if part_root(config, part).join(checked(to)?).exists() {
+        return refuse(format!("a page is already there: {to}"));
+    }
+    let mut there = Dict::new();
+    there.insert("moved_from".into(), json!(from));
+    commit_with(config, part, to, None, Some(text), who, action, summary, there)?;
+    let mut here = Dict::new();
+    here.insert("moved_to".into(), json!(to));
+    commit_with(config, part, from, before.as_deref(), None, who, action, summary, here)?;
+    Ok(())
+}
+
 /// The page as it was right after change `change` (as it was before it, for a deletion), written back as a new
-/// change by `who`.
+/// change by `who`. A move (the archives, a trip's new folder or name) is undone as a move back, under its old name.
 pub fn restore(config: &Config, change: &str, who: &Who) -> anyhow::Result<Dict> {
     let _guard = lock();
     let Some(entry) = history(config, None, None, usize::MAX)
@@ -1184,6 +1292,55 @@ pub fn restore(config: &Config, change: &str, who: &Who) -> anyhow::Result<Dict>
     else {
         return refuse("no such change");
     };
+    let (moved_from, moved_to) = (tk::str_or_empty(entry.get("moved_from")), tk::str_or_empty(entry.get("moved_to")));
+    if !moved_from.is_empty() || !moved_to.is_empty() {
+        let part = Part::parse(&tk::str_or_empty(entry.get("part")));
+        let path = tk::str_or_empty(entry.get("path"));
+        // (where the page was, where it went)
+        let (old, new) = if moved_to.is_empty() { (moved_from, path) } else { (path, moved_to) };
+        let version = if entry.get("after").map(|a| !a.is_null()).unwrap_or(false) {
+            tk::str_or_empty(entry.get("after"))
+        } else {
+            tk::str_or_empty(entry.get("before"))
+        };
+        let old_text = history(config, Some(part), Some(&old), usize::MAX)
+            .into_iter()
+            .find(|e| tk::str_or_empty(e.get("moved_to")) == new)
+            .and_then(|e| version_text(config, &tk::str_or_empty(e.get("before"))))
+            .or_else(|| version_text(config, &version));
+        let Some(old_text) = old_text else { return refuse("this version is no longer kept") };
+        if read_page_text(config, part, &new).is_none() {
+            return refuse("the page is no longer where it was moved");
+        }
+        if read_page_text(config, part, &old).is_some() {
+            return refuse("a page is already where it was");
+        }
+        let date = tk::str_or_empty(entry.get("at"));
+        move_page_locked(
+            config,
+            part,
+            &new,
+            &old,
+            &old_text,
+            who,
+            "restore",
+            &format!("as of {}", tk::head(&date, 10)),
+        )?;
+        // a trip brought back from the archives stays where the person put it
+        if tk::str_or_empty(entry.get("action")) == "archive" {
+            let id = Page::parse(&old_text, "").id();
+            if !id.is_empty() {
+                update_state(config, |s| {
+                    let mut kept = strings(s.get("archive_kept"));
+                    if !kept.contains(&id) {
+                        kept.push(id.clone());
+                    }
+                    s.insert("archive_kept".into(), json!(kept));
+                })?;
+            }
+        }
+        return Ok(history(config, Some(part), Some(&old), 1).into_iter().next().unwrap_or_default());
+    }
     let version = match entry.get("after").and_then(Value::as_str) {
         Some(id) => id.to_string(),
         None => tk::str_or_empty(entry.get("before")),
@@ -1380,6 +1537,14 @@ pub(crate) fn note_locked(
         &summary,
     )?;
     archive_logs(config, part, &path, &mut page, &lang)?;
+    // a subject made a trip leaves the subjects for « Voyages » (or the archives, when it is over)
+    let mut path = path;
+    if part == Part::Main && page.kind() == "trip" {
+        let today = chrono::Local::now().date_naive();
+        if let Some((to, _)) = archive::place_one_locked(config, &path, &page, today, who)? {
+            path = to;
+        }
+    }
     Ok(Written { part: Some(part), path, title: page.title, created, added, sections, changed: converted })
 }
 
@@ -2924,8 +3089,7 @@ pub fn search(config: &Config, parts: &[Part], words_text: &str, kind: &str) -> 
     let mut out = Vec::new();
     for part in parts {
         for (path, page) in all_pages(config, *part) {
-            // a trip is a subject too
-            if !kind.is_empty() && page.kind() != kind && !(kind == "subject" && page.kind() == "trip") {
+            if !kind.is_empty() && page.kind() != kind {
                 continue;
             }
             let names = fold(&format!("{} {} {}", page.title, page.aliases().join(" "), page.contact()));
@@ -3664,7 +3828,7 @@ mod tests {
         assert_eq!(file_name("Marc/Dupont: [notes]"), "Marc Dupont notes");
         assert_eq!(fold("Élodie  O'Brien!"), "elodie o brien");
         assert!(checked("Personnes/Marc.md").is_ok());
-        assert!(checked("../x.md").is_err() && checked("a/b/c.md").is_err() && checked("Personnes/x.txt").is_err());
+        assert!(checked("../x.md").is_err() && checked("a/b/c/d.md").is_err() && checked("Personnes/x.txt").is_err());
         assert_eq!(words("de").tasks_path(), "Aufgaben/Aufgaben.md");
         assert_eq!(words("it").lang, "en");
     }

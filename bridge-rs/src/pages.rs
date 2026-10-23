@@ -54,6 +54,7 @@ static OUTSIDE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("valid regex")
 });
+static TITLE_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<title\b[^>]*>\s*[^<\s]").expect("valid regex"));
 static DOCUMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<(html|head|body)\b").expect("valid regex"));
 
 /// Python's `ValueError` here: a message for the agent.
@@ -94,7 +95,7 @@ pub fn root(config: &Config) -> PathBuf {
 }
 
 pub fn slug(title: &str) -> String {
-    let text = tk::dashes(&tk::ascii_fold(title).to_lowercase());
+    let text = tk::dashes(&tk::ascii_fold(&tk::spaced_punctuation(title)).to_lowercase());
     let text = tk::head(text.trim_matches('-'), 40).trim_matches('-').to_string();
     if text.is_empty() {
         "page".into()
@@ -129,14 +130,21 @@ pub fn lock_with(source: &str, title: &str, tint: Option<&str>) -> (String, Vec<
         body = CHART.replacen(&body, 1, regex::NoExpand(&inline)).into_owned();
         body = CHART.replace_all(&body, "").into_owned();
     }
+    // its title in the page, as written (the apps read it there: a page without one showed its id's words, « L
+    // enquete » for « L'enquête »)
+    let named = if TITLE_TAG.is_match(&body) || title.trim().is_empty() {
+        String::new()
+    } else {
+        format!("<title>{}</title>", escape(title))
+    };
     if !DOCUMENT.is_match(&body) {
-        body = format!("<title>{}</title><body>{body}</body>", escape(title));
+        body = format!("<body>{body}</body>");
     }
     let found = DOCTYPE.captures(&body).expect("always matches");
     let doctype = found.get(1).map(|m| m.as_str().to_string()).unwrap_or_else(|| "<!doctype html>".into());
     let rest = &body[found.get(0).map(|m| m.end()).unwrap_or(0)..];
     // A <meta> before <html> opens the head: the policy is in force before the agent's first tag.
-    (format!("{doctype}\n{}{}\n{rest}", *HEAD, kit(tint)), outside)
+    (format!("{doctype}\n{}{}{named}\n{rest}", *HEAD, kit(tint)), outside)
 }
 
 static MAP_SRC: LazyLock<Regex> =

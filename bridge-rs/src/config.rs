@@ -452,6 +452,9 @@ pub struct NotebookConfig {
     pub hour: u32,
     /// What one run sends at most (characters of conversation and of « À ranger »).
     pub max_input_chars: usize,
+    /// Purchases worth a warranty reminder and shown among the « important » ones: goods from this price (euros, or
+    /// the same number in another currency) — notebook/records.rs.
+    pub warranty_min_eur: f64,
 }
 
 impl Default for NotebookConfig {
@@ -468,6 +471,7 @@ impl Default for NotebookConfig {
             monthly_cap: 0.10,
             hour: 3,
             max_input_chars: 12000,
+            warranty_min_eur: 50.0,
         }
     }
 }
@@ -1191,6 +1195,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         monthly_cap: f(notebook_t, "monthly_cap", nd.monthly_cap)?,
         hour: i(notebook_t, "hour", nd.hour as i64)?.clamp(0, 23) as u32,
         max_input_chars: i(notebook_t, "max_input_chars", nd.max_input_chars as i64)?.clamp(1000, 200_000) as usize,
+        warranty_min_eur: f(notebook_t, "warranty_min_eur", nd.warranty_min_eur)?.clamp(0.0, 100_000.0),
     };
 
     let jobs_t = table(data, "jobs");

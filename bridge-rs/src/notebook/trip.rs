@@ -191,6 +191,7 @@ pub fn detect(config: &Config) -> anyhow::Result<usize> {
         page.touch();
         let summary = format!("{} : {}", super::words(&lang).tidy, trip_word(&lang));
         super::commit(config, Part::Main, &path, Some(&before), Some(&page.render()), &who, "trip", &summary)?;
+        super::archive::place_one_locked(config, &path, &page, chrono::Local::now().date_naive(), &who)?;
         done.push(page.id());
     }
     if !done.is_empty() {
@@ -218,6 +219,7 @@ pub fn convert_locked(config: &Config, query: &str, who: &Who) -> anyhow::Result
     page.touch();
     let summary = format!("{} : {}", super::words(&lang).tidy, trip_word(&lang));
     super::commit(config, Part::Main, &found.path, Some(&before), Some(&page.render()), who, "trip", &summary)?;
+    super::archive::place_one_locked(config, &found.path, &page, chrono::Local::now().date_naive(), who)?;
     let id = page.id();
     super::update_state(config, |s| {
         let mut all = super::strings(s.get("trips_seen"));

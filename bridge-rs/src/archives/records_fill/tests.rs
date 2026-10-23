@@ -247,17 +247,17 @@ async fn a_sample_writes_nothing_and_a_full_pass_writes_once() {
     assert_eq!(view["sample"]["new"], json!(3));
     assert_eq!(view["read"], json!(0));
 
-    // the full pass: written, with the documents as sources; a trip page started from the coming booking
+    // the full pass: written, with the documents as sources; a lone flight is no trip (notebook/trip_auto.rs)
     let plan = Plan { archive: archive.clone(), mode: Mode::Full, model: model.clone(), budget_eur: 0.0 };
     let tally = run(config.clone(), &plan, |_| true).await.unwrap();
-    assert_eq!((Tally::total(&tally.added), tally.sent, tally.trips), (3, 4, 1));
+    assert_eq!((Tally::total(&tally.added), tally.sent, tally.trips), (3, 4, 0));
     let purchases = records::records(&config, records::kind("purchase").unwrap());
     assert_eq!(purchases.len(), 1);
     let source = tk::str_or_empty(purchases[0].get("source"));
     assert!(source.starts_with("archive:vie/mails/"), "{source}");
     assert!(records::source_ref(&source).is_some());
     assert!(tk::str_or_empty(purchases[0].get("warranty_end")).starts_with("2026-05-02"));
-    assert!(crate::notebook::find(&config, &[crate::notebook::Part::Main], "Lisbonne").is_some());
+    assert!(crate::notebook::find(&config, &[crate::notebook::Part::Main], "Lisbonne").is_none());
 
     // again: nothing to read (idempotent)
     let calls = seen.lock().unwrap().len();

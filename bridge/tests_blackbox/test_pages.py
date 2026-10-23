@@ -109,7 +109,7 @@ def test_a_fragment_becomes_a_whole_locked_document(bridge):
     assert "id mon-b-titre-b," in made["content"][0]["text"] and "Warning" not in made["content"][0]["text"]
     kept = (pages_dir(bridge) / "mon-b-titre-b.html").read_text()
     assert kept.startswith("<!doctype html>\n<meta http-equiv=\"Content-Security-Policy\"")
-    assert "<title>Mon &lt;b&gt;titre&lt;/b&gt;</title><body><h1>Hello</h1>" in kept
+    assert "</script><title>Mon &lt;b&gt;titre&lt;/b&gt;</title>\n<body><h1>Hello</h1>" in kept
 
 
 def test_an_update_keeps_the_path_and_a_new_page_never_takes_another_s(bridge):

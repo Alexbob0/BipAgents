@@ -119,17 +119,20 @@ pub fn tools(health: bool) -> Vec<Value> {
         json!({
             "name": RECORD,
             "description": "Precise records in the person's Carnet, one line each with every detail, instead of vague \
-        facts: a purchase (date, item, store, price, end of warranty: leave it out when unknown, the EU's two-year legal \
-        guarantee is computed), a subscription (service, price, period, next renewal, how to cancel), a contract or an \
+        facts: a purchase (date, item, store, price, class: goods for a durable thing, else service, ticket (event, \
+        registration), food, digital, travel, fee or other; end of warranty: leave it out when unknown, the EU's \
+        two-year legal guarantee is computed for durable goods only), a subscription (service, price, period, next renewal, how to cancel), a contract or an \
         insurance (type, provider, number, end), a paper (document: passport, ID card, driving licence…, expiry) or a \
         booking (date, with time if any: YYYY-MM-DD HH:MM; what, with whom, booking reference, the trip it belongs to). \
         Dates as YYYY-MM-DD. source: the reference of the document it comes from when you have one. action add (the \
         same record given twice is merged: same item and date, same service, same contract number, same document, same \
-        booking reference), update (its id, only the fields that change), remove (its id), list (one type, or all). \
+        booking reference), update (its id, only the fields that change), remove (its id), list (one type, or all; \
+        the archived ones marked: past trips' bookings, ended subscriptions, purchases out of warranty…), archive or \
+        unarchive (its id: the Carnet archives what is past by itself at night). \
         The Carnet proposes the reminders itself (a warranty ending, a renewal, a paper expiring): don't add tasks for \
         them. Never card numbers, codes or passwords.",
             "inputSchema": {"type": "object", "properties": {
-                "action": {"type": "string", "enum": ["add", "update", "remove", "list"]},
+                "action": {"type": "string", "enum": ["add", "update", "remove", "list", "archive", "unarchive"]},
                 "type": {"type": "string", "enum": super::records::TYPES.iter().map(|t| t.id).collect::<Vec<_>>()},
                 "id": {"type": "string", "description": "the record's id (from add or list), for update and remove"},
                 "fields": {"type": "object", "description": "the record's fields (those of its type)", "properties":
@@ -210,6 +213,9 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
             for (part, path, page, lines) in found.iter().take(if words.is_empty() { 150 } else { 20 }) {
                 let aliases = page.aliases();
                 let mut head = format!("{} ({path}){}", page.title, marker(*part));
+                if w.archived(path) {
+                    head.push_str(" [archived: past]");
+                }
                 if !aliases.is_empty() {
                     head.push_str(&format!(" — also: {}", aliases.join(", ")));
                 }
@@ -464,6 +470,14 @@ fn record(config: &Config, arguments: &Dict, who: &Who) -> anyhow::Result<Dict> 
                         records::summary_of(k, &r)
                     ));
                 }
+                for r in records::archived_records(config, k) {
+                    lines.push(format!(
+                        "- {} id {} [archived] · {}",
+                        k.id,
+                        tk::str_or_empty(r.get("id")),
+                        records::summary_of(k, &r)
+                    ));
+                }
             }
             if lines.is_empty() {
                 return Ok(tool_text("No record yet.", false));
@@ -496,6 +510,23 @@ fn record(config: &Config, arguments: &Dict, who: &Who) -> anyhow::Result<Dict> 
                 None => Ok(tool_text("unknown record id (action list gives them)", true)),
             }
         }
-        _ => Ok(tool_text("action is add, update, remove or list", true)),
+        "archive" | "unarchive" => {
+            let Some(kind) = kind else {
+                return Ok(tool_text("type is purchase, subscription, contract, paper or booking", true));
+            };
+            let archived = action == "archive";
+            match super::archive::set_record_archived(config, kind, &s(arguments, "id"), archived, who)? {
+                Some(r) => Ok(tool_text(
+                    &format!(
+                        "{} {}.",
+                        if archived { "Archived:" } else { "Back from the archives:" },
+                        records::summary_of(kind, &r)
+                    ),
+                    false,
+                )),
+                None => Ok(tool_text("unknown record id there (action list gives them)", true)),
+            }
+        }
+        _ => Ok(tool_text("action is add, update, remove, list, archive or unarchive", true)),
     }
 }
