@@ -154,8 +154,11 @@ def sqlite_copy(path: Path, stage: Path, seen: Dict[str, List[int]]) -> Optional
 
 def files(inv, stage: Path, seen: Dict[str, List[int]]) -> Iterator[Path]:
     """What goes: moving.py's roots, minus what it skips (caches, runtimes, sockets), the databases' copies instead
-    of the databases, and the manifest."""
+    of the databases, the agents' own podman volumes as `podman volume export` writes them (volumes.py: counted in
+    the place's used space like the rest), and the manifest."""
+    from . import volumes
     yield stage / "manifest.json"
+    yield from volumes.export_all(volumes.kept(inv.data_dir), stage / "volumes", volumes.podman())
     for root in inv.roots().values():
         if root.is_file():
             entries: Iterator[Path] = iter([root])
@@ -230,6 +233,8 @@ def run(base: Optional[Path] = None, config: Optional[Path] = None, now: Optiona
                                   tailnet_name=None)
         manifest = moving.manifest(inv, machine)
         manifest["stage"] = str(stage)
+        from . import volumes
+        manifest["volumes"] = volumes.kept(inv.data_dir)
         write_private(stage / "manifest.json", manifest)
         listed = list(files(inv, stage, seen))
         write_private(stage / "seen.json", seen)
@@ -423,6 +428,15 @@ def put_back(fetched: Path, base: Path, repo: Path, address: Optional[str]) -> D
             for sidecar in ("-wal", "-shm", "-journal"):
                 dest.with_name(dest.name + sidecar).unlink(missing_ok=True)
             _copy(copy, dest)
+    # The agents' own podman volumes, under their names (volumes.py).
+    from . import volumes
+    exported = _inside(fetched, info.get("stage") or str(stage)) / "volumes"
+    if exported.is_dir():
+        staged = base / moving.VOLUMES_STAGE
+        staged.mkdir(parents=True, exist_ok=True)
+        for tar in exported.glob(f"*{volumes.SUFFIX}"):
+            _copy(tar, staged / tar.name)
+        info["volumes_restored"] = moving.import_volumes(base)
     old_toml = tomllib.loads(config.read_text(encoding="utf-8"))
     mapping = {int(info["ports"][k]): int(new_ports[k]) for k in ("hub", "bridge", "desk")
                if k in info["ports"] and int(info["ports"][k]) != int(new_ports[k])}
