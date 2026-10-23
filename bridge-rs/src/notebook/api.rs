@@ -246,6 +246,10 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
     let lang = super::language(config);
     let all = super::all_pages(config, part);
     let resolve = |name: &str| -> Value {
+        // a link to a document of an agent's archive (`[[archive:<ref>|voir le mail]]`, archives/): opened by the app
+        if let Some(reference) = name.strip_prefix("archive:") {
+            return json!({"title": name, "path": null, "archive": reference.trim()});
+        }
         match all.iter().find(|(p, pg)| {
             pg.named(name) || std::path::Path::new(p).file_stem().map(|s| s.to_string_lossy() == name).unwrap_or(false)
         }) {
@@ -276,7 +280,8 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
         .iter()
         .map(|s| json!({"id": s.id, "title": super::template::title(&kind, s.id, &lang)}))
         .collect();
-    let links: Vec<Value> = super::links_in(&page.body).iter().map(|l| resolve(l)).collect();
+    let links: Vec<Value> =
+        super::links_in(&page.body).iter().filter(|l| !l.starts_with("archive:")).map(|l| resolve(l)).collect();
     let mut names: Vec<String> = vec![page.title.clone()];
     names.extend(page.aliases());
     let backlinks: Vec<Value> = all
