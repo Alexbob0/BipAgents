@@ -757,7 +757,35 @@ def test_an_update_isolates_the_agents_sandboxes_on_linux_with_podman(tmp_path, 
     assert ran[0][0].endswith("/bipbridge") and ran[0][1:] == ["sandbox", "--config", str(config)]
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("agents' sandboxes isolated") and "\n  vie: isolated" in said
-    assert migrations.MIGRATIONS[-1][0] == "2026-10-22-isolated-sandboxes"
+    assert migrations.MIGRATIONS[-2][0] == "2026-10-22-isolated-sandboxes"
+
+
+def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypatch):
+    """2026-10-23: the same command of the bridge makes the shared folders' volumes (the old folders copied in and
+    kept as a backup) and mounts them; the gateways restart. Elsewhere nothing runs."""
+    import platform
+    import shutil
+    from bipinstall import migrations, update
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('bridge_key = "k"\n')
+    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    report = ("network: bipagents-sandbox (no route out)\nwellness's shared folder: 3 file(s) copied into "
+              "bipagents-share-wellness; the old folder kept as a backup at /d/shares/wellness.before-volume\n")
+    runner.run = lambda args, **kw: ran.append(list(args)) or (report if "sandbox" in args else "")
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    assert migrations.share_volumes(runner, tmp_path).startswith("shared folders left as they are") and ran == []
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/podman" if name == "podman" else None)
+    said = migrations.share_volumes(runner, tmp_path)
+    assert ran[0][1:] == ["sandbox", "--config", str(config)]
+    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
+    assert said.startswith("shared folders in podman volumes, gateways restarted")
+    assert "\n  wellness's shared folder: 3 file(s) copied" in said
+    assert migrations.MIGRATIONS[-1][0] == "2026-10-23-share-volumes"
 
 
 def test_each_install_of_a_machine_hands_out_browser_ports_of_its_own():

@@ -102,7 +102,8 @@ fn where_to_put(config: &Config, agent: &AgentConfig) -> String {
     if crate::sandbox::isolates(config, agent) || agent.shares == "external" {
         places.push(format!("copy it right into {OUTBOX} (no sub-folder)"));
     }
-    if !crate::sandbox::isolates(config, agent) && crate::shares::why_not(config, agent).is_none() {
+    let shared = crate::shares::load(config).iter().any(|(_, source)| source == &agent.name);
+    if crate::shares::why_not(config, agent).is_none() && (shared || !crate::sandbox::isolates(config, agent)) {
         places.push("put it in /partage".into());
     }
     if places.is_empty() {
@@ -142,9 +143,9 @@ fn locate(config: &Config, agent: &AgentConfig, raw: &str) -> Result<(PathBuf, P
             found = Some((PathBuf::from(host), rest, false));
         }
     }
-    if found.is_none() && isolated.is_none() && crate::shares::why_not(config, agent).is_none() {
+    if found.is_none() && crate::shares::why_not(config, agent).is_none() {
         if let Some(rest) = under(path, "/partage") {
-            found = Some((crate::shares::shares_root(config).join(&agent.name), rest, false));
+            found = Some((crate::shares::share_dir(config, &agent.name), rest, false));
         }
     }
     if found.is_none() {

@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from . import hermes, ui
+from . import hermes, ui, volumes
 from .sealed import SealedError, SealedReader, SealedWriter, new_passphrase
 
 REPO = Path(__file__).resolve().parents[2]
@@ -42,6 +42,10 @@ SUMMARY = "summary.json"
 SQLITE = b"SQLite format 3\x00"
 SMALL = 64 * 1024 * 1024        # read whole before archiving: a file growing meanwhile cannot break the archive
 MOVED = "moved.json"            # in the config folder: what `--moving` stopped, for `bipagents resume`
+# The agents' own podman volumes (volumes.py): `podman-volumes/<name>.tar` in the archive, put in this folder of the
+# target's home on the way in, then imported.
+VOLUMES = "podman-volumes"
+VOLUMES_STAGE = Path(".local") / "state" / "bipagents" / "volumes-import"
 
 # A HERMES_HOME (the hub's, each space's): Hermes' code and runtimes (installed again for the target's processor),
 # caches, logs and what a running gateway or sandbox leaves, at its root and in each profile.
@@ -306,6 +310,7 @@ def export(inv: Inventory, out: Path, passphrase: str, machine: Any,
            extra: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], Tally]:
     """`extra`: more in the manifest (an export for a place says so: to_place.py)."""
     info = {**manifest(inv, machine), **(extra or {})}
+    info["volumes"] = volumes.kept(inv.data_dir)
     tally = Tally()
     out.parent.mkdir(parents=True, exist_ok=True)
     partial = out.with_name(out.name + ".part")
@@ -319,6 +324,11 @@ def export(inv: Inventory, out: Path, passphrase: str, machine: Any,
             tar.addfile(entry, io.BytesIO(data))
             for name, root in info["roots"].items():
                 add_tree(tar, inv, name, Path(root), tally, Path(scratch))
+            exported = volumes.export_all(info["volumes"], Path(scratch) / VOLUMES, volumes.podman())
+            for path in exported:
+                add_tree(tar, inv, f"{VOLUMES}/{path.name}", path, tally, Path(scratch))
+            missed = sorted(set(info["volumes"]) - {p.name[:-len(volumes.SUFFIX)] for p in exported})
+            tally.skipped += [f"podman volume {name}" for name in missed]
             data = json.dumps({"files": tally.files, "size": tally.size, "skipped": tally.skipped}).encode()
             entry = tarfile.TarInfo(SUMMARY)
             entry.size, entry.mode = len(data), 0o600
@@ -435,6 +445,7 @@ def rehome(path: str, info: Dict[str, Any], target: Target) -> Path:
 def restore(tar: tarfile.TarFile, info: Dict[str, Any], target: Target) -> Dict[str, Any]:
     """The archive's files in their places here. Returns the archive's summary."""
     roots = {name: rehome(path, info, target) for name, path in info["roots"].items()}
+    roots[VOLUMES] = target.home / VOLUMES_STAGE
     summary: Dict[str, Any] = {}
     while (member := tar.next()) is not None:
         tar.members = []   # a stream: nothing to go back to, nothing kept
@@ -583,6 +594,7 @@ def unpack(tar: tarfile.TarFile, info: Dict[str, Any], target: Target, config: P
     how many settings files changed."""
     import tomllib
     summary = restore(tar, info, target)
+    import_volumes(target.home)
     if not config.exists():
         raise SealedError("the export holds no bridge config: it was not made by `bipagents export`")
     old_toml = tomllib.loads(config.read_text(encoding="utf-8"))
@@ -592,6 +604,23 @@ def unpack(tar: tarfile.TarFile, info: Dict[str, Any], target: Target, config: P
     (config.parent / "existing-hermes.json").unlink(missing_ok=True)   # Hermes is BipAgents' own here
     (config.parent / MOVED).unlink(missing_ok=True)
     return summary, changed
+
+
+def import_volumes(home: Path) -> List[str]:
+    """The agents' volumes of an export (or a backup) into podman, under their names; the tars of those imported go.
+    Without podman they stay, and the next `bipagents import` of the same file, or this, can be run again."""
+    stage = home / VOLUMES_STAGE
+    if not stage.is_dir():
+        return []
+    filled = volumes.import_all(stage, volumes.podman())
+    for name in filled:
+        (stage / f"{name}{volumes.SUFFIX}").unlink(missing_ok=True)
+    left = sorted(p.name for p in stage.glob(f"*{volumes.SUFFIX}"))
+    if filled:
+        say(f"  the agents' volumes back in podman: {', '.join(filled)}")
+    if left:
+        say(f"  not put back in podman (no podman here?), kept in {stage}: {', '.join(left)}")
+    return filled
 
 
 def import_main(argv: List[str]) -> int:

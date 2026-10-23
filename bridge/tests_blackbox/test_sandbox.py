@@ -1,7 +1,8 @@
 """The agents' sandboxes isolated (bridge-rs/src/sandbox.rs, `[sandbox] isolate = "on"` since these tests run where
 `auto` would leave them as they are): no folder of this machine mounted, the uploads copied into a podman volume, the
-shared folders through the file tools (`/v1/agent-tools/files`) and their permission checks, the registries-only
-network. podman is the fake one: its volumes are folders of the test."""
+shared folders in podman volumes of their own (shares.rs) and through the file tools (`/v1/agent-tools/files`) with
+their permission checks, the registries-only network, and the way back (`isolate = "off"`). podman is the fake one:
+its volumes are folders of the test."""
 import json
 import os
 import time
@@ -38,7 +39,7 @@ def isolated(bridges, fakes, agents=("vie", "wellness"), proxy_ok=True):
         if name == "vie":
             mounts = ["/home/x/photos:/photos:ro"] + mounts + [f"{root}/wellness:/lecture/wellness:ro,z"]
         (folder / "config.yaml").write_text(yaml.safe_dump({"terminal": {"backend": "docker", "docker_volumes": mounts}}))
-        for kind in ("files", "envoi"):
+        for kind in ("files", "envoi", "share"):
             volume = bridge.root / "volumes" / f"{kind}-{name}"
             volume.mkdir(parents=True)
             volumes[(kind, name)] = volume
@@ -48,6 +49,12 @@ def isolated(bridges, fakes, agents=("vie", "wellness"), proxy_ok=True):
     if not proxy_ok:
         bridge.commands.rule("podman", ["run"], exit=125, stderr="Error: image not known")
     return bridge, hub, volumes
+
+
+def linked(bridge):
+    """Vie reads what Wellness shares (the person's link, already there)."""
+    bridge.state_dir.mkdir(parents=True, exist_ok=True)
+    (bridge.state_dir / "shares.json").write_text(json.dumps({"reads": [["vie", "wellness"]]}) + "\n")
 
 
 def terminal(hub, name):
@@ -150,20 +157,32 @@ def test_without_the_registries_proxy_the_sandbox_gets_no_network_at_all(bridges
     assert wait_until(lambda: "sandboxes without network" in bridge.log_tail(2000), timeout=10)
 
 
-def test_the_file_tools_follow_the_share_links(bridges, fakes):
+def test_the_shared_folders_are_volumes_and_the_file_tools_follow_the_links(bridges, fakes):
     bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness", "budget"))
     started(bridge, hub, ["vie", "wellness", "budget"])
     bridge.commands.clear()
     reads = bridge.put("/v1/agent-shares", headers=AUTH, json={"reads": [{"reader": "vie", "source": "wellness"}]})
     assert reads.json() == {"reads": [{"reader": "vie", "source": "wellness"}]}
-    # Nothing mounted: the links are checked by the tools.
-    assert not any(a[4:5] == ["terminal.docker_volumes"] for a in bridge.commands.of("hermes"))
+    # Named volumes (the sandbox stays isolated): Wellness writes in /partage, Vie reads it at /lecture/wellness.
+    assert ["volume", "create", "--ignore", "bipagents-share-wellness"] in bridge.commands.of("podman")
+    assert terminal(hub, "wellness")["docker_volumes"] == ["bipagents-files-wellness:/fichiers:ro",
+                                                           "bipagents-envoi-wellness:/envoi",
+                                                           "bipagents-share-wellness:/partage"]
+    assert terminal(hub, "vie")["docker_volumes"] == ["/home/x/photos:/photos:ro", "bipagents-files-vie:/fichiers:ro",
+                                                      "bipagents-envoi-vie:/envoi",
+                                                      "bipagents-share-wellness:/lecture/wellness:ro"]
+    assert "bipagents-share" not in " ".join(terminal(hub, "budget")["docker_volumes"])
+    assert oct(os.stat(volumes[("share", "wellness")]).st_mode & 0o777) == "0o777"   # its agent writes there
     skill = (hub / "profiles" / "vie" / "skills" / "shared-data" / "SKILL.md").read_text()
-    assert "shared_files_get" in skill and "/lecture" not in skill
+    assert "/lecture/<agent>" in skill and "shared_files_get" in skill and "nobody needs to approve" in skill
+    # A night routine writes straight into the volume (the reader mounts the same one).
+    (volumes[("share", "wellness")] / "sommeil.csv").write_text("nuit;7h")
+    share = bridge.state_dir / "shares" / "wellness"
     give_tokens(bridge, ["vie", "wellness", "budget"])
     listed = rpc(bridge, "vie", "tools/list").json()["result"]["tools"]
     hints = {t["name"]: t["annotations"]["readOnlyHint"] for t in listed}
-    assert hints == {"shared_files_list": True, "shared_files_get": True, "shared_files_write": False,
+    # Writing in its own shared folder is never asked (it writes it directly anyway); deleting is.
+    assert hints == {"shared_files_list": True, "shared_files_get": True, "shared_files_write": True,
                      "shared_files_delete": False}
     assert bridge.post(FILES_PATH, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                        headers={"Authorization": "Bearer nope"}).status_code == 401
@@ -172,8 +191,12 @@ def test_the_file_tools_follow_the_share_links(bridges, fakes):
         "In your shared folder: resume/semaine.md", False)
     (volumes[("envoi", "wellness")] / "graphe.png").write_bytes(b"PNG")
     assert call(bridge, "wellness", "shared_files_write", path="graphe.png", **{"from": "/envoi/graphe.png"})[1] is False
-    share = bridge.state_dir / "shares" / "wellness"
-    assert (share / "resume" / "semaine.md").read_text() == "7 h de sommeil" and (share / "graphe.png").read_bytes() == b"PNG"
+    volume = volumes[("share", "wellness")]
+    assert (volume / "resume" / "semaine.md").read_text() == "7 h de sommeil" and (volume / "graphe.png").read_bytes() == b"PNG"
+    assert oct(os.stat(volume / "graphe.png").st_mode & 0o777) == "0o666"           # its agent may change it
+    # The folder backups take follows the volume (every minute, and at once after the tools' writes).
+    assert (share / "resume" / "semaine.md").read_text() == "7 h de sommeil"
+    assert (share / "sommeil.csv").read_text() == "nuit;7h"
     # Never a file of this machine: outside /envoi, through a link, or up the tree.
     os.symlink("/etc/hosts", volumes[("envoi", "wellness")] / "hosts")
     assert call(bridge, "wellness", "shared_files_write", path="h", **{"from": "/envoi/hosts"})[1] is True
@@ -185,10 +208,11 @@ def test_the_file_tools_follow_the_share_links(bridges, fakes):
     assert call(bridge, "wellness", "shared_files_write", path="h", **{"from": "/envoi/pipe"})[1] is True
     assert call(bridge, "wellness", "shared_files_write", path="../vie/x.md", content="x")[1] is True
     assert call(bridge, "wellness", "shared_files_get", agent="wellness", path="../../sandbox.json")[1] is True
-    assert not (share / "h").exists()
+    assert not (volume / "h").exists()
     # Vie reads it (a copy in its own volume), budget can't.
     text, failed = call(bridge, "vie", "shared_files_list")
-    assert not failed and "Shared with you by Wellness (agent `wellness`)" in text and "resume/semaine.md" in text
+    assert not failed and "Shared with you by Wellness (agent `wellness`, at /lecture/wellness" in text
+    assert "resume/semaine.md" in text and "sommeil.csv" in text
     assert call(bridge, "vie", "shared_files_get", agent="wellness", path="resume/semaine.md") == (
         "Copied to /fichiers/partages/wellness/resume/semaine.md (read-only).", False)
     copy = volumes[("files", "vie")] / "partages" / "wellness" / "resume" / "semaine.md"
@@ -198,25 +222,115 @@ def test_the_file_tools_follow_the_share_links(bridges, fakes):
     assert "wellness" not in call(bridge, "budget", "shared_files_list")[0].split("Your shared folder")[1]
     # Writes and deletes only in one's own folder.
     assert call(bridge, "vie", "shared_files_delete", path="resume/semaine.md")[1] is True     # not in vie's folder
-    assert (share / "resume" / "semaine.md").exists()
+    assert (volume / "resume" / "semaine.md").exists()
     assert call(bridge, "wellness", "shared_files_delete", path="resume") == (
         "Deleted from your shared folder: resume", False)
-    assert not (share / "resume").exists() and (share / "graphe.png").exists()
-    # The link taken back: vie's copies go, and it can't fetch any more.
+    assert not (volume / "resume").exists() and (volume / "graphe.png").exists()
+    assert not (share / "resume").exists()
+    # A file of its shared folder, or of one it reads, handed to the person (MEDIA:).
+    got = bridge.get("/v1/media", params={"path": "/lecture/wellness/graphe.png", "agent": "vie"}, headers=AUTH)
+    assert got.status_code == 200 and got.content == b"PNG"
+    got = bridge.get("/v1/media", params={"path": "/partage/sommeil.csv", "agent": "wellness"}, headers=AUTH)
+    assert got.status_code == 200 and got.content == b"nuit;7h"
+    assert bridge.get("/v1/media", params={"path": "/lecture/wellness/graphe.png", "agent": "budget"},
+                      headers=AUTH).status_code == 404
+    # The link taken back: vie's mount and copies go, and it can't fetch any more; the volume stays its source's.
     bridge.put("/v1/agent-shares", headers=AUTH, json={"reads": []})
+    assert terminal(hub, "vie")["docker_volumes"][-1] == "bipagents-envoi-vie:/envoi"
+    assert terminal(hub, "wellness")["docker_volumes"][-1] == "bipagents-envoi-wellness:/envoi"
     assert not (volumes[("files", "vie")] / "partages" / "wellness").exists()
     assert call(bridge, "vie", "shared_files_get", agent="wellness", path="graphe.png")[1] is True
     assert not (hub / "profiles" / "vie" / "skills" / "shared-data").exists()
+    assert (volume / "graphe.png").exists()
+
+
+def test_an_update_moves_the_shared_folders_into_their_volumes(bridges, fakes):
+    """An install whose agents shared through folders of this machine (or the tools of 2026-10-22): at start, each
+    source's folder is copied into its volume once, the folder kept as a backup, the sandboxes mount the volumes."""
+    bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness"))
+    linked(bridge)
+    old = bridge.state_dir / "shares" / "wellness"
+    (old / "export").mkdir(parents=True)
+    (old / "export" / "sommeil.csv").write_text("nuit;7h")
+    started(bridge, hub, ["vie", "wellness"])
+    assert wait_until(lambda: "bipagents-share-wellness:/lecture/wellness:ro" in terminal(hub, "vie")["docker_volumes"],
+                      timeout=10)
+    assert (volumes[("share", "wellness")] / "export" / "sommeil.csv").read_text() == "nuit;7h"
+    backup = bridge.state_dir / "shares" / "wellness.before-volume"
+    assert (backup / "export" / "sommeil.csv").read_text() == "nuit;7h"
+    assert (old / "export" / "sommeil.csv").read_text() == "nuit;7h"         # the folder kept in step with the volume
+    assert wait_until(lambda: "old folder is kept as a backup" in bridge.log_tail(4000), timeout=10)
+    state = json.loads((bridge.state_dir / "sandbox.json").read_text())
+    assert state["shares"] == {"wellness": {"folder": str(volumes[("share", "wellness")])}}
+    # Started again: nothing copied twice, no second backup; the agent's changes in the volume win.
+    (volumes[("share", "wellness")] / "export" / "sommeil.csv").write_text("nuit;8h")
+    bridge.stop()
+    bridge.start()
+    assert wait_until(lambda: (old / "export" / "sommeil.csv").read_text() == "nuit;8h", timeout=15)
+    assert sorted(p.name for p in (bridge.state_dir / "shares").iterdir()) == ["wellness", "wellness.before-volume"]
+    # The command line of the update says it too.
+    bridge.stop()
+    out = bridge.cli("sandbox")
+    assert out.returncode == 0, out.stderr
+    assert "wellness's shared folder: in bipagents-share-wellness" in out.stdout
+
+
+def test_turning_isolation_off_gives_the_sandboxes_their_folders_back(bridges, fakes):
+    bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness"))
+    linked(bridge)
+    started(bridge, hub, ["vie", "wellness"])
+    assert wait_until(lambda: "bipagents-share-wellness:/partage" in terminal(hub, "wellness")["docker_volumes"],
+                      timeout=10)
+    (volumes[("share", "wellness")] / "semaine.md").write_text("written while isolated")
+    bridge.stop()
+    bridge.commands.clear()
+    bridge.config["sandbox"] = {"isolate": "off"}
+    bridge.start()
+    root = bridge.state_dir / "shares"
+    uploads = profile(hub, "vie") / "uploads"
+    assert wait_until(lambda: terminal(hub, "vie")["docker_volumes"] == [
+        "/home/x/photos:/photos:ro", f"{uploads}:/fichiers:ro,z", f"{root}/wellness:/lecture/wellness:ro,z"],
+        timeout=15), terminal(hub, "vie")
+    assert wait_until(lambda: terminal(hub, "wellness")["docker_volumes"] == [
+        f"{profile(hub, 'wellness') / 'uploads'}:/fichiers:ro,z", f"{root}/wellness:/partage:z"], timeout=15)
+    for name in ("vie", "wellness"):
+        settings = terminal(hub, name)
+        assert settings.get("docker_extra_args", []) == []
+        assert not any(k.lower().endswith("proxy") for k in settings.get("docker_env", {}))
+        assert settings.get("docker_network", True) is True
+    # What the agent wrote while isolated is in the folder it now mounts; the proxy is stopped, the volumes kept.
+    assert (root / "wellness" / "semaine.md").read_text() == "written while isolated"
+    assert wait_until(lambda: ["rm", "-f", "--ignore", "bipagents-egress"] in bridge.commands.of("podman"), timeout=10)
+    assert not any(a[:2] == ["volume", "rm"] for a in bridge.commands.of("podman"))
+    assert not any(a[:1] == ["run"] for a in bridge.commands.of("podman"))
+    state = json.loads((bridge.state_dir / "sandbox.json").read_text())
+    assert not state.get("agents") and not state.get("shares")
+    assert wait_until(lambda: "sandbox not isolated any more" in bridge.log_tail(4000), timeout=10)
+    skill = (hub / "profiles" / "vie" / "skills" / "shared-data" / "SKILL.md").read_text()
+    assert "shared_files_get" not in skill
+    # Started again: nothing more to change.
+    bridge.stop()
+    bridge.commands.clear()
+    bridge.start()
+    time.sleep(2)
+    assert not any("terminal." in " ".join(a) for a in bridge.commands.of("hermes"))
+    assert not any(a[:1] == ["rm"] for a in bridge.commands.of("podman"))
 
 
 def test_a_deleted_agent_loses_its_volumes(bridges, fakes):
     bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+    linked(bridge)
     started(bridge, hub, ["vie", "wellness"])
+    assert wait_until(lambda: "wellness" in json.loads((bridge.state_dir / "sandbox.json").read_text()).get("shares", {}),
+                      timeout=10)
     bridge.commands.clear()
     assert bridge.delete("/v1/agents/wellness", headers=AUTH).status_code == 204
     podman = bridge.commands.of("podman")
     assert ["volume", "rm", "-f", "bipagents-files-wellness"] in podman
     assert ["volume", "rm", "-f", "bipagents-envoi-wellness"] in podman
+    assert ["volume", "rm", "-f", "bipagents-share-wellness"] in podman
+    assert not (bridge.state_dir / "shares" / "wellness").exists()
+    assert "bipagents-share-wellness:/lecture/wellness:ro" not in terminal(hub, "vie")["docker_volumes"]
     assert "wellness" not in json.loads((bridge.state_dir / "sandbox.json").read_text())["agents"]
 
 

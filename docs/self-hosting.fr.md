@@ -131,8 +131,12 @@ root), le bridge le garde isolé : Hermes y fait alors le travail sans risque (`
 `pip install`) sans te demander à chaque fois.
 
 - **Aucun dossier de la machine dedans** : les fichiers que tu envoies à un agent sont copiés dans un volume podman à
-  lui (`bipagents-files-<agent>`, en lecture seule dans `/fichiers`) ; les dossiers partagés entre agents passent par
-  les outils `shared_files_*` du bridge, et tu approuves chaque écriture ou suppression depuis l'app.
+  lui (`bipagents-files-<agent>`, en lecture seule dans `/fichiers`) ; le dossier qu'un agent partage est aussi un
+  volume podman (`bipagents-share-<agent>`), dans `/partage` de son bac à sable et en lecture seule dans
+  `/lecture/<agent>` chez les agents que tu autorises à le lire. Le bridge garde `<data>/shares/<agent>/` à jour avec
+  lui (les sauvegardes et les exports prennent ce dossier) ; la première fois, le contenu de ce dossier est copié dans
+  le volume et le dossier gardé sous le nom `<agent>.before-volume`. Les outils `shared_files_*` atteignent les mêmes
+  dossiers (tu approuves les suppressions depuis l'app).
 - **Pas d'internet, sauf les dépôts de paquets** : le bac à sable est sur `bipagents-sandbox`, un réseau podman sans
   route vers l'extérieur, et n'atteint que PyPI, npm, les crates Rust, Go et Debian, par un petit conteneur proxy
   (`bipagents-egress` ; `podman logs bipagents-egress` montre ce qu'il a laissé passer ou bloqué). La recherche web et
@@ -141,7 +145,9 @@ root), le bridge le garde isolé : Hermes y fait alors le travail sans risque (`
 Les agents existants passent à ce mode au prochain démarrage du bridge (`bipbridge sandbox` le fait tout de suite et
 dit ce que chacun a reçu). La section `[sandbox]` de `bridge.example.toml` liste les réglages. Sur macOS, ou avec
 docker au lieu de podman, les bacs à sable restent comme avant (dossiers montés, Hermes demande avant les commandes
-risquées).
+risquées). Pour revenir en arrière sous Linux, mets `[sandbox] isolate = "off"` et redémarre le bridge : chaque bac à
+sable retrouve ses dossiers montés (ce que les agents ont écrit dans les volumes y est recopié d'abord), et les
+réglages de réseau et de proxy sont retirés ; les volumes restent.
 
 ### Le Carnet (le carnet des agents)
 

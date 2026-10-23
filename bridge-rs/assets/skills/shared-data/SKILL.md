@@ -1,7 +1,7 @@
 ---
 name: shared-data
 description: "Share data with your other agents (your /partage folder), read what they share with you (/lecture/<agent>, read-only), and give them files (send_files_to_agent)."
-version: 1.1.0
+version: 1.2.0
 author: BipAgents
 license: MIT
 ---
@@ -9,7 +9,8 @@ license: MIT
 # Data shared between agents
 
 - `/partage` is yours to share: files you put there can be read by the agents the person allowed (read-only for
-  them). Put only what is meant for them there (summaries, exports), never secrets.
+  them). Write there directly, a routine too (nobody needs to approve it). Put only what is meant for them there
+  (summaries, exports), never secrets.
 - `/lecture/<agent>` holds what another agent shares with you, read-only: read it, never try to change it. If it is
   missing or empty, that agent shares nothing (yet) or the person has not allowed it.
 - These folders exist only where the person set up sharing: if one is missing, don't look for it, don't create it.

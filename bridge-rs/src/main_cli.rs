@@ -411,6 +411,10 @@ async fn sandbox(config: Config) -> i32 {
         ),
         Err(why) => println!("network: none ({why}); the sandboxes get no internet at all until it works"),
     }
+    // The shared folders' podman volumes (made, filled from the folders the first time), before the sandboxes.
+    for line in crate::shares::ensure_volumes(&config, &run, &crate::shares::load(&config)).await {
+        println!("{line}");
+    }
     let mut failed = 0;
     let agents: Vec<_> = config.agents.values().cloned().collect();
     for agent in agents {
