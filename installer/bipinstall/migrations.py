@@ -133,6 +133,21 @@ def isolated_sandboxes(runner: hermes.Runner, home: Path) -> str:
     return "agents' sandboxes isolated, gateways restarted" + ("".join(f"\n  {line}" for line in lines))
 
 
+def share_volumes(runner: hermes.Runner, home: Path) -> str:
+    """Shared folders as podman volumes (bridge-rs/src/shares.rs, 2026-10-23): since the isolation of 2026-10-22 the
+    sandboxes mounted no shared folder, so an agent sharing from a night routine had nobody to approve its writes.
+    Each source's folder now lives in `bipagents-share-<agent>`, mounted at /partage and, read-only, at
+    /lecture/<agent> in its readers' sandboxes. The first time, `<data>/shares/<agent>/` is copied into the volume and
+    kept as a backup (`<agent>.before-volume`); the folder itself then follows the volume (backups and exports take
+    it). The bridge does the same at each start; this says it in the update's log and restarts the gateways so the
+    sandboxes are made again with the volumes. Linux with podman only."""
+    said = isolated_sandboxes(runner, home)
+    if not said.startswith("agents' sandboxes isolated"):
+        return said.replace("agents' sandboxes left as they are", "shared folders left as they are")
+    return said.replace("agents' sandboxes isolated, gateways restarted",
+                        "shared folders in podman volumes, gateways restarted", 1)
+
+
 def rust_bridge(runner: hermes.Runner, home: Path) -> str:
     """The bridge in Rust only (2026-10-21): the Python bridge left the code with this update, so a service still
     running it is put on this version's binaries (rustbridge.py), restarted, and the agents' browser tools moved to
@@ -192,6 +207,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-19-browser-ports", browser_ports),
     ("2026-10-22-browser-refresh", browser_refresh),
     ("2026-10-22-isolated-sandboxes", isolated_sandboxes),
+    ("2026-10-23-share-volumes", share_volumes),
 ]
 
 
