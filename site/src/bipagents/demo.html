@@ -1,0 +1,49 @@
+{{>top}}
+<!-- ============================================================ DEMO (the app's own demo scenarios) -->
+<section class="section page-section demo-section" id="demo">
+  <div class="demo-grid">
+    <div class="demo-copy reveal">
+      <p class="kicker">{{demo.kicker}}</p>
+      <h1 class="page-h1">{{demo.title}}</h1>
+      <p class="sub">{{demo.sub}}</p>
+      <div class="tabs" role="tablist" aria-label="{{demo.tabs}}">
+        <button class="tab active" role="tab" aria-selected="true" aria-controls="chat" data-scenario="book_table">
+          <span class="tab-bip" data-bip-static="daily"></span>{{demo.tab1}}</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="walk">
+          <span class="tab-bip" data-bip-static="daily"></span>{{demo.tab2}}</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="runs_weeks">
+          <span class="tab-bip" data-bip-static="wellness"></span>{{demo.tab3}}</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="heating">
+          <span class="tab-bip" data-bip-static="home"></span>{{demo.tab4}}</button>
+      </div>
+      <ul class="checks">
+        <li>{{demo.point1}}</li><li>{{demo.point2}}</li><li>{{demo.point3}}</li>
+      </ul>
+    </div>
+    <div class="chat-wrap reveal">
+      <div class="chat" id="chat" role="tabpanel" aria-label="{{demo.chatLabel}}">
+        <div class="chat-head">
+          <span class="chat-avatar" data-bip-chat></span>
+          <span class="chat-title"><span><b class="chat-name"></b> <span class="ai">{{ai}}</span></span><small>{{demo.chatSub}}</small></span>
+          <button class="replay" type="button" aria-label="{{demo.replay}}">↻</button>
+        </div>
+        <div class="chat-body"></div>
+        <div class="chat-input" aria-hidden="true"><span>{{demo.placeholder}}</span><i class="mic"></i></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ TO THE PRICES -->
+<section class="section page-cta">
+  <div class="cta-band reveal">
+    <div class="cta-band-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="home"></i></div>
+    <h2 class="h2-small">{{demo.ctaTitle}}</h2>
+    <p class="sub">{{hero.price}}</p>
+    <div class="cta-row center">
+      <a class="pill pill-buy" href="{{home}}#pricing">{{hero.cta}} <span aria-hidden="true">→</span></a>
+      <a class="pill pill-soft" href="{{home}}#day">{{nav.features}}</a>
+    </div>
+  </div>
+</section>
+{{>foot}}

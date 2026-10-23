@@ -87,7 +87,8 @@
     "chatLabel": "The demo playing",
     "replay": "Replay",
     "placeholder": "Message…",
-    "open": "Open"
+    "open": "Open",
+    "ctaTitle": "Your Bips, for real."
   },
   "ai": "AI",
   "day": {
@@ -96,11 +97,14 @@
     "sub": "From morning coffee to dinner, here’s what your agents do for you, and what stays in your hands.",
     "s1": {
       "title": "Your morning briefing, as a podcast",
-      "text": "Appointments, weather, parcels: your agent writes up your day, and two voices read it to you over coffee.",
+      "text": "Appointments, weather, parcels: your agent writes up your day, and two voices read it to you over coffee. Listen to the demo’s.",
       "from": "Daily",
       "notif": "Your morning podcast is ready ☕",
       "card": "Your morning briefing",
-      "meta": "Tuesday · two voices"
+      "meta": "Tuesday · two voices",
+      "listen": "Play a clip",
+      "pause": "Pause",
+      "credit": "Voices: Fish Audio Drama 3 · Built with Fish Audio"
     },
     "s2": {
       "title": "Email sorted, calendar kept",
@@ -132,15 +136,13 @@
       "doc2": "Travel insurance.pdf"
     },
     "s4": {
-      "title": "It browses, you watch",
-      "text": "Each agent has its own browser. Watch it fill in a form live, and take over whenever you like: a password, a captcha, a doubt.",
+      "title": "It browses, you stay in charge",
+      "text": "Each agent has its own browser: watch it fill in a form live, and take over whenever you like. Before booking, paying or sending, it asks: once, for the session, or no, even from the notification.",
       "url": "trains.example",
       "live": "Live · Daily",
       "take": "Take over"
     },
     "s5": {
-      "title2": "Nothing important without your OK",
-      "text": "Booking, paying, sending: before anything sensitive, it asks. Once, for the session, or no, with one tap, even from the notification.",
       "head": "Daily is asking",
       "title": "Send the booking in your name?",
       "detail": "Paris → Lyon · Saturday 9:04 am\n2 adults · €58.00"
@@ -163,25 +165,14 @@
       "i3": "Parmesan",
       "i4": "Birthday candles",
       "chip": "Family: up to 6 people"
-    }
-  },
-  "podcast": {
-    "kicker": "Your morning, on air",
-    "title": "Your morning briefing, as a podcast.",
-    "sub": "Your agent writes it from your day — meetings, weather, parcels — and two voices read it to you over coffee. This is the demo’s, recorded in four languages.",
-    "credit": "Voices: Fish Audio Drama 3 · Built with Fish Audio",
-    "host1": "Daily",
-    "host2": "Coach",
-    "play": "Play the podcast",
-    "pause": "Pause"
-  },
-  "live": {
-    "kicker": "Go Live",
-    "title": "Just talk. Hands-free.",
-    "sub": "Live is a real conversation with your agent: no button to hold, it answers out loud, and you interrupt it simply by speaking.",
-    "point1": "In English, French, German and Spanish",
-    "point2": "Hands-free: in the kitchen, in the car, phone in your pocket",
-    "point3": "It still asks for your OK on screen before acting"
+    },
+    "call": {
+      "title": "In the car, a Live call with your Bip",
+      "text": "Hands on the wheel, go Live and just talk: no button to hold, it answers out loud, and you interrupt it simply by speaking. In English, French, German and Spanish.",
+      "label": "Live · Daily"
+    },
+    "more": "Want to see it for real?",
+    "moreCta": "Watch the app’s demo →"
   },
   "liveDialog": [
     {
@@ -191,52 +182,8 @@
     {
       "you": "Remind me to call Mum at 7.",
       "bip": "Done: a reminder at 7 pm, with her number."
-    },
-    {
-      "you": "Is it cold in the living room?",
-      "bip": "18.5 °C. I can turn it up to 21 — just confirm on screen."
     }
   ],
-  "bips": {
-    "kicker": "Meet the Bips",
-    "title": "One Bip per agent.",
-    "sub": "In the app, every agent is a little mascot with its colour and its mood: you know at a glance who’s talking. Go on, poke them: they react just like in the app.",
-    "hint": "Tap, tickle, stroke, long-press…",
-    "cat": {
-      "daily": {
-        "name": "Daily",
-        "label": "Everyday"
-      },
-      "wellness": {
-        "name": "Coach",
-        "label": "Wellness"
-      },
-      "finance": {
-        "name": "Budget",
-        "label": "Finance"
-      },
-      "home": {
-        "name": "Home",
-        "label": "Home"
-      },
-      "work": {
-        "name": "Office",
-        "label": "Work"
-      },
-      "learning": {
-        "name": "Tutor",
-        "label": "Learning"
-      },
-      "creative": {
-        "name": "Studio",
-        "label": "Creative"
-      },
-      "tech": {
-        "name": "Server",
-        "label": "Tech"
-      }
-    }
-  },
   "control": {
     "once": "Once",
     "session": "This session",
@@ -257,14 +204,11 @@
     "theAi": "The AI",
     "readsToAnswer": "reads to answer you",
     "kerfy": "your account and subscription, not your conversations",
-    "line1": "Your conversations and your agents’ memory live in your space, separate from everyone else’s.",
-    "line2": "We don’t read them and we train no AI with them. The AI reads them only to answer you.",
+    "line1": "Your space, separate from everyone else’s, on a server in Europe (OVHcloud or Hetzner) or on your own computer.",
+    "line2": "We don’t read your conversations and train no AI with them: the AI reads them only to answer you.",
     "line3": "We keep your account, not your conversations. You can take everything and leave.",
-    "note": "“A usual assistant”: what the consumer offers of assistants such as ChatGPT or Gemini do by default, according to their own pages in October 2026. On the all-included offer, Kerfy Studio rents your space’s server: we don’t read it, but we don’t promise the impossible.",
-    "more": "The comparison, its sources and our limits →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md",
-    "sub": "Your agents know your life. It stays in your space, in Europe.",
-    "line0": "Your space is on a server in Europe, at OVHcloud or Hetzner, or on your own computer."
+    "more": "The October 2026 comparison, its sources and our limits →",
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
   },
   "pricing": {
     "kicker": "Pricing",
@@ -324,7 +268,9 @@
         "duo": "Duo",
         "famille": "Family"
       }
-    }
+    },
+    "selfhost": "Your own computer? The app is free:",
+    "selfhostLink": "install it →"
   },
   "install": {
     "kicker": "Or free, at home",
@@ -337,7 +283,9 @@
     "copy": "Copy",
     "copied": "Copied ✓",
     "windows": "On Windows 11, in PowerShell run as administrator:",
-    "guide": "The full guide"
+    "guide": "The full guide",
+    "more": "Rather have us handle everything? With the subscription, there’s nothing to install.",
+    "moreCta": "See the plans →"
   },
   "faq": {
     "kicker": "Questions",
@@ -381,12 +329,9 @@
     "10": {
       "q": "What about my own computer?",
       "a": "The app is free: one command installs it on your computer or server, and you only pay for the AI model you pick. The subscription spares you all that."
-    }
-  },
-  "end": {
-    "title": "Your Bips are waiting.",
-    "sub": "Pick your plan in a minute. Stop whenever you like.",
-    "cta": "Choose my plan"
+    },
+    "all": "All questions →",
+    "more": "Another question? Write to us:"
   },
   "foot": {
     "about": "BipAgents, the app of your own AI agents, is published by Kerfy Studio, a small French studio. Built on Hermes Agent, free software by Nous Research; BipAgents is an independent app.",
@@ -401,7 +346,10 @@
     "support": "Support",
     "more": "More",
     "play": "Play with the Bips",
-    "fine": "© 2026 Kerfy Studio. Prices include VAT. The demo podcast: Built with Fish Audio. The Bips’ voices: Pocket TTS, by Kyutai. Demo map © OpenStreetMap. No cookies and no trackers on this site."
+    "fine": "© 2026 Kerfy Studio. Prices include VAT. The demo podcast: Built with Fish Audio. The Bips’ voices: Pocket TTS, by Kyutai. Demo map © OpenStreetMap. No cookies and no trackers on this site.",
+    "demo": "The demo",
+    "faq": "Questions",
+    "install": "Install at home"
   },
   "lines": {
     "hop": [
@@ -445,5 +393,19 @@
     "boing": [
       "Boing!"
     ]
+  },
+  "page": {
+    "demo": {
+      "title": "The demo — BipAgents",
+      "description": "The BipAgents app’s own demo, as is: four scenarios where your agent thinks, uses its tools and waits for your OK before anything that matters."
+    },
+    "faq": {
+      "title": "Questions — BipAgents",
+      "description": "Price, AI credit, free week, cancelling, privacy, family, devices, Hermes Agent: answers about BipAgents."
+    },
+    "install": {
+      "title": "Install at home — BipAgents",
+      "description": "The BipAgents app is free on your own computer or server: one command installs Hermes Agent and the bridge, you only pay for your AI model."
+    }
   }
 }

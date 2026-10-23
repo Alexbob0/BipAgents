@@ -1,0 +1,25 @@
+{{>top}}
+<!-- ============================================================ EVERY QUESTION -->
+<section class="section page-section faq-section" id="faq">
+  <div class="section-head">
+    <p class="kicker">{{faq.kicker}}</p>
+    <h1 class="page-h1">{{faq.title}}</h1>
+  </div>
+  <div class="faq">
+    {{faqall}}
+  </div>
+  <p class="faq-more">{{faq.more}} <a href="https://kerfystudio.com{{legalprefix}}/support/">{{foot.support}}</a></p>
+</section>
+
+<section class="section page-cta">
+  <div class="cta-band reveal">
+    <div class="cta-band-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="home"></i></div>
+    <h2 class="h2-small">{{demo.ctaTitle}}</h2>
+    <p class="sub">{{hero.price}}</p>
+    <div class="cta-row center">
+      <a class="pill pill-buy" href="{{home}}#pricing">{{hero.cta}} <span aria-hidden="true">→</span></a>
+      <a class="pill pill-soft" href="{{demohref}}">{{hero.watch}}</a>
+    </div>
+  </div>
+</section>
+{{>foot}}
