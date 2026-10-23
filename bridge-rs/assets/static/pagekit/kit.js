@@ -408,6 +408,7 @@
     var inline = root.getAttribute("data-bip-view") === "inline";
     var box = doc.createElement("div");
     box.className = "map-live";
+    box.style.cssText = "position:absolute;inset:0";   // over the picture (MapLibre's own CSS says relative)
     frame.appendChild(box);
     var options = {
       container: box, style: "bipmap://map/style.json", attributionControl: { compact: true }, dragRotate: false,
@@ -419,7 +420,7 @@
     var spots = points.map(function (p) { return [p.lon, p.lat]; });
     if (spots.length > 1) {
       options.bounds = spots.reduce(function (b, s) { return b.extend(s); }, new ml.LngLatBounds(spots[0], spots[0]));
-      options.fitBoundsOptions = { padding: 44, maxZoom: 16 };
+      options.fitBoundsOptions = { padding: { top: 40, right: 40, bottom: 56, left: 40 }, maxZoom: 16 };
     } else {
       options.center = spots.length ? spots[0] : [center[1], center[0]];
       options.zoom = parseFloat(card.dataset.zoom) || 15;
@@ -455,6 +456,11 @@
           paint: { "line-color": css("--accent") || "#7C6CF2", "line-width": 4, "line-opacity": 0.85 } });
       }
       card.classList.add("live");
+      // the credits folded into their ⓘ once the map has drawn (MapLibre shows them open at first)
+      map.once("idle", function () {
+        var credits = box.querySelector(".maplibregl-ctrl-attrib");
+        if (credits) { credits.removeAttribute("open"); credits.classList.remove("maplibregl-compact-show"); }
+      });
       ring.hidden = true;
       img.setAttribute("aria-hidden", "true");
       points.forEach(function (p) {
