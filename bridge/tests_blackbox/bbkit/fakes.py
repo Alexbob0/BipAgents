@@ -577,13 +577,72 @@ class FakeAdminRelay(Fake):
 
 # -- the weather and route tools' services ---------------------------------------------------------------------------
 
+def tiny_png(width: int = 256, height: int = 256, rgb: Tuple[int, int, int] = (0xD0, 0xE4, 0xC8)) -> bytes:
+    """A plain PNG of one colour (an OpenStreetMap raster tile's stand-in), without Pillow."""
+    import zlib
+    raw = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+VECTOR_TILE = b"\x1a\x0bfake-vector-tile" * 8   # what a tile's bytes are does not matter to the bridge
+
+
 class FakeMaps(Fake):
     """MET Norway's Locationforecast (`/weatherapi/locationforecast/2.0/complete`: hourly from the current hour for
     48 hours, rain in the 3rd and 4th, `Expires` an hour on), OpenStreetMap's Nominatim (`/search`: « Lyon », nothing
-    for a query with « Nowhere ») and Google's Routes API (`/directions/v2:computeRoutes`, key `test-maps-key`)."""
+    for a query with « Nowhere »), Google's Routes API (`/directions/v2:computeRoutes`, key `test-maps-key`),
+    OpenStreetMap's raster tiles (`/osm/{z}/{x}/{y}.png`) and OpenFreeMap's vector maps under `/vector` (the positron
+    style with a raster source and a source on another host, which the bridge leaves out; its TileJSON; gzip tiles up
+    to zoom 14; glyphs; the sprite). `vector_down`: every `/vector` answer a 500."""
     name = "maps"
 
+    def reset(self) -> None:
+        super().reset()
+        self.vector_down = False
+
+    def vector(self, seen: Seen) -> Response:
+        import gzip
+        base = self.url + "/vector"
+        path = seen.path[len("/vector"):]
+        if self.vector_down:
+            return Response(status_code=500)
+        if path == "/styles/positron":
+            return JSONResponse({
+                "version": 8,
+                "sources": {"ne2_shaded": {"type": "raster", "tiles": [base + "/natural_earth/{z}/{x}/{y}.png"]},
+                            "openmaptiles": {"type": "vector", "url": base + "/planet"},
+                            "elsewhere": {"type": "vector", "url": "http://127.0.0.1:9/planet"}},
+                "sprite": base + "/sprites/ofm_f384/ofm",
+                "glyphs": base + "/fonts/{fontstack}/{range}.pbf",
+                "layers": [{"id": "background", "type": "background", "paint": {"background-color": "rgb(242,243,240)"}},
+                           {"id": "relief", "type": "raster", "source": "ne2_shaded"},
+                           {"id": "far", "type": "fill", "source": "elsewhere", "source-layer": "x"},
+                           {"id": "water", "type": "fill", "source": "openmaptiles", "source-layer": "water"},
+                           {"id": "label", "type": "symbol", "source": "openmaptiles", "source-layer": "place",
+                            "layout": {"text-font": ["Noto Sans Regular"]}}]})
+        if path == "/planet":
+            return JSONResponse({"tilejson": "3.0.0", "tiles": [base + "/planet/20261018/{z}/{x}/{y}.pbf"],
+                                 "minzoom": 0, "maxzoom": 14})
+        if path.startswith("/planet/20261018/") and path.endswith(".pbf"):
+            return Response(gzip.compress(VECTOR_TILE), media_type="application/vnd.mapbox-vector-tile",
+                            headers={"Content-Encoding": "gzip"})
+        if path.startswith("/fonts/") and path.endswith(".pbf"):
+            return Response(b"glyphs:" + path.encode(), media_type="application/x-protobuf")
+        if path in ("/sprites/ofm_f384/ofm.json", "/sprites/ofm_f384/ofm@2x.json"):
+            return JSONResponse({"park": {"x": 0, "y": 0, "width": 16, "height": 16, "pixelRatio": 1}})
+        if path in ("/sprites/ofm_f384/ofm.png", "/sprites/ofm_f384/ofm@2x.png"):
+            return Response(tiny_png(16, 16), media_type="image/png")
+        return Response(status_code=404)
+
     async def handle(self, seen: Seen) -> Response:
+        if seen.path.startswith("/vector/"):
+            return self.vector(seen)
+        if seen.path.startswith("/osm/") and seen.path.endswith(".png"):
+            return Response(tiny_png(), media_type="image/png")
         if seen.path == "/weatherapi/locationforecast/2.0/complete":
             start = int(time.time()) // 3600 * 3600
             series = []

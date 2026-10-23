@@ -32,7 +32,9 @@ fn a_page_is_locked_before_it_is_kept() {
     assert!(kept.starts_with("<!DOCTYPE html>\n<meta http-equiv=\"Content-Security-Policy\""));
     let at = |t: &str| kept.find(t).unwrap();
     assert!(at("Content-Security-Policy") < at("<html") && at("<html") < at("<canvas"));
-    assert!(kept.contains("connect-src 'none'") && kept.contains("form-action 'none'"));
+    // the network only through the maps' door, which the apps answer themselves (map_tiles.rs)
+    assert!(kept.contains("connect-src bipmap: https://bipmap.invalid;") && kept.contains("form-action 'none'"));
+    assert!(!kept[..600].contains("unsafe-eval") && kept.contains("worker-src blob:;"));
     // Chart.js from the bridge, inline, instead of the CDN's; what else it asks from the network is reported.
     assert!(!kept.contains("cdn.jsdelivr.net") && kept.contains("Chart.js v4") && !kept[..200].contains("<\\/script"));
     assert_eq!(made["outside"], json!(["https://fonts.googleapis.com/css2?family=Inter"]));

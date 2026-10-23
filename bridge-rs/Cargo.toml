@@ -86,11 +86,12 @@ webpki-roots = "1"
 yaml-rust2 = "0.10"
 unicode-general-category = "1"
 multer = "3"
+# maps: the map provider's style kept as it came (gzip)
+flate2 = "1"
 # browsers-places: the desktop's websockify upstream (a WebSocket client over rustls)
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
-flate2 = "1"
 rsa = { version = "0.9", features = ["pem"] }
 tempfile = "3"
 

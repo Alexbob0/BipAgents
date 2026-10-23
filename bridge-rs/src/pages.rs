@@ -2,7 +2,8 @@
 //! any subject, one prompt. The agent writes one HTML file (its CSS, script and data inline); the bridge keeps it in its
 //! own folder and serves it to the app like any `MEDIA:` file under `/bipagents/pages`. An agent can be talked into
 //! writing anything (a web page or a mail it read), so the page is locked before it is kept: a Content-Security-Policy
-//! first in its head (no network, no forms, no frames: it runs offline), Chart.js from the bridge put inline instead of a
+//! first in its head (no network, no forms, no frames: it runs offline; only the maps' `bipmap:` door, which the apps
+//! answer themselves with fixed map files), Chart.js from the bridge put inline instead of a
 //! CDN's, and the apps show it in a view with no way out (nothing loaded from the network, no navigation, no bridge to the
 //! app). The agent's own source is kept beside it (`<id>.source`, never served) for `read_page`.
 //!
@@ -24,10 +25,14 @@ pub const PREFIX: &str = "/bipagents/pages";
 pub const MAX_BYTES: usize = 1_000_000;
 /// Per agent.
 pub const MAX_PAGES: usize = 100;
+/// One door for the interactive maps (map_tiles.rs, 2026-10-23): `bipmap:` (the iPhone's web view serves it) and
+/// `https://bipmap.invalid` (Android's web view answers it before any network: `.invalid` never resolves anywhere
+/// else), for the map library the apps ship and the files the bridge keeps for it; MapLibre's worker is a blob. Outside
+/// the apps neither answers and the page keeps the map's picture.
 pub const POLICY: &str =
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; \
-font-src data:; media-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; \
-frame-src 'none'; worker-src 'none'; object-src 'none'";
+    "default-src 'none'; script-src 'unsafe-inline' bipmap: https://bipmap.invalid; style-src 'unsafe-inline'; \
+img-src data: blob:; font-src data:; media-src data: blob:; connect-src bipmap: https://bipmap.invalid; \
+form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src blob:; child-src blob:; object-src 'none'";
 
 /// What goes first in every page's head.
 pub static HEAD: LazyLock<String> = LazyLock::new(|| {
