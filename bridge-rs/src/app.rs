@@ -1505,7 +1505,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::health::router())
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())
-        .merge(crate::favicons::router());
+        .merge(crate::favicons::router())
+        .merge(crate::map_tiles::router());
     if !config.cloud {
         authed = authed.merge(crate::console::console_admin_router());
     }

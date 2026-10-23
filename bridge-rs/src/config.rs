@@ -409,6 +409,12 @@ pub struct MapsConfig {
     pub tiles: String,
     /// The tiles' address, `{z}/{x}/{y}` filled in; tests point it at a fake.
     pub tile_url: String,
+    /// The interactive maps in pages (map_tiles.rs): « openfreemap » (vector tiles through the bridge) or « off »
+    /// (pages keep the drawn picture).
+    pub vector: String,
+    /// The vector provider's address (its style at `<url>/styles/<vector_style>`); tests point it at a fake.
+    pub vector_url: String,
+    pub vector_style: String,
 }
 
 impl Default for MapsConfig {
@@ -418,11 +424,15 @@ impl Default for MapsConfig {
             routes_url: ROUTES_URL.into(),
             tiles: "osm".into(),
             tile_url: OSM_TILE_URL.into(),
+            vector: "openfreemap".into(),
+            vector_url: OPENFREEMAP_URL.into(),
+            vector_style: "positron".into(),
         }
     }
 }
 
 pub const OSM_TILE_URL: &str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+pub const OPENFREEMAP_URL: &str = "https://tiles.openfreemap.org";
 
 /// `[notebook]`: the Carnet's nightly pass (notebook/tidy.rs): a small model, its prices and a hard monthly cap.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1113,6 +1123,16 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         routes_url: py::rstrip_slash(&s(maps_t, "routes_url", ROUTES_URL)),
         tiles: s(maps_t, "tiles", "osm").trim().to_lowercase(),
         tile_url: s(maps_t, "tile_url", OSM_TILE_URL),
+        vector: s(maps_t, "vector", "openfreemap").trim().to_lowercase(),
+        vector_url: py::rstrip_slash(&s(maps_t, "vector_url", OPENFREEMAP_URL)),
+        vector_style: {
+            let style = s(maps_t, "vector_style", "positron").trim().to_lowercase();
+            if !style.is_empty() && style.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+                style
+            } else {
+                "positron".into()
+            }
+        },
     };
 
     let notebook_t = table(data, "notebook");

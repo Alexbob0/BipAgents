@@ -88,6 +88,7 @@ pub mod health;
 pub mod jobs;
 pub mod mail_scan;
 pub mod mailbox;
+pub mod map_tiles;
 pub mod maps;
 pub mod memory_edit;
 pub mod notebook;

@@ -116,7 +116,8 @@ def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
         # The weather and route tools' services: never the real ones.
         "weather": {"met_url": fakes.maps.url + "/weatherapi/locationforecast/2.0/complete",
                     "geocoder_url": fakes.maps.url + "/search"},
-        "maps": {"routes_url": fakes.maps.url + "/directions/v2:computeRoutes"},
+        "maps": {"routes_url": fakes.maps.url + "/directions/v2:computeRoutes",
+                 "tile_url": fakes.maps.url + "/osm/{z}/{x}/{y}.png", "vector_url": fakes.maps.url + "/vector"},
         # Never isolated by default: `auto` would isolate the sandboxes on Linux with podman (CI); test_sandbox says on.
         "sandbox": {"isolate": "off"},
         "agents": {

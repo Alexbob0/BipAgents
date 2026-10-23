@@ -44,7 +44,8 @@ def test_an_agent_makes_a_page_and_the_app_gets_it_locked(bridge):
     assert kept == page.text
     assert kept.startswith("<!DOCTYPE html>\n<meta http-equiv=\"Content-Security-Policy\"")
     assert kept.index("Content-Security-Policy") < kept.index("<style id=\"bip-kit\">") < kept.index("<html") < kept.index("<canvas")
-    assert "connect-src 'none'" in kept and "form-action 'none'" in kept
+    # the network only through the maps' door (bipmap:), which the apps answer themselves
+    assert "connect-src bipmap: https://bipmap.invalid;" in kept and "form-action 'none'" in kept and "unsafe-eval" not in kept[:600]
     assert "cdn.jsdelivr.net" not in kept and "<\\/script" not in kept[:200]
     # The agent's own source is kept beside it, never served; its record too.
     assert (pages_dir(bridge) / "prises-de-sang.source").read_text() == DASHBOARD.strip()
@@ -93,12 +94,12 @@ def test_every_page_gets_the_kit_and_goes_inside_the_reply(bridge):
     assert page.headers["content-security-policy"].startswith("sandbox allow-scripts; default-src 'none'")
     kept = page.text
     assert kept.startswith("<!doctype html>\n<meta http-equiv=\"Content-Security-Policy\"")
-    assert kept.index("connect-src 'none'") < kept.index('<style id="bip-kit">') < kept.index('<script id="bip-kit-js">')
+    assert kept.index("connect-src bipmap: https://bipmap.invalid;") < kept.index('<style id="bip-kit">') < kept.index('<script id="bip-kit-js">')
     assert kept.index('<script id="bip-kit-js">') < kept.index("<h1>Tes sorties</h1>")
     assert ":where(.kpi .v)" in kept and "window.Bip = {" in kept and "Chart.js v4" not in kept
-    # nothing of the kit reaches the network: no URL but the SVG namespace
-    kit = kept[kept.index('<style id="bip-kit">'):kept.index("<title>")]
-    assert re.findall(r"https?://[^\s\"')]+", kit) == ["http://www.w3.org/2000/svg"]
+    # nothing of the kit reaches the network: no URL but the SVG namespace and the maps' door on Android
+    kit = kept[kept.index('<style id="bip-kit">'):kept.index("</script>", kept.index('<script id="bip-kit-js">'))]
+    assert sorted(re.findall(r"https?://[^\s\"')]+", kit)) == ["http://www.w3.org/2000/svg", "https://bipmap.invalid/"]
 
 
 def test_a_fragment_becomes_a_whole_locked_document(bridge):
