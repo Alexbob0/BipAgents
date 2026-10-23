@@ -91,6 +91,8 @@ space = "{data}/spaces/coach"
     database(data / "bridge.db", ["device-token"])
     write(data / "vault" / "vault.key", "fernet", 0o600)
     write(data / "migrations.json", json.dumps({"done": ["2026-10-15-local-compression"]}))
+    write(data / "archives.json", json.dumps({"archives": [{"agent": "vie", "id": "mails", "folder": str(home / "notes")}]}))
+    write(data / "archive-index" / "vie" / "mails.sqlite", "derived")   # an archive's index: made again over there
     write(data / "spaces" / "coach" / ".env", "API_SERVER_PORT=8660\nHERMES_DOCKER_BINARY=/usr/bin/podman\n", 0o600)
     write(data / "spaces" / "coach" / "profiles" / "coach" / "SOUL.md", "Tu es Coach.")
     write(data / "spaces" / "coach" / "hermes-agent" / "x", "code")
@@ -149,6 +151,7 @@ def test_an_install_moves_to_another_home_name_and_ports(source, tmp_path):
     for gone in ("hermes-agent", "tools", "cache", "logs", "gateway.pid", "profiles/vie/sandboxes"):
         assert not (hub / gone).exists(), gone
     assert not (data / "spaces" / "coach" / "hermes-agent").exists()
+    assert (data / "archives.json").exists() and not (data / "archive-index").exists()
     assert not (data / "browsers" / "vie" / "busy").exists()
     assert not (data / "browsers" / "vie" / "profile" / "Default" / "Cache").exists()
     assert not (data / "browsers" / "vie" / "profile" / "SingletonLock").exists()

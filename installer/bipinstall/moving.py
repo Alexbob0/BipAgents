@@ -60,6 +60,8 @@ CHROME_SKIP = {"Cache", "Code Cache", "GPUCache", "ShaderCache", "GrShaderCache"
 # Settings rewritten for the target (paths, ports, names); conversations, files and browser profiles stay as they are.
 TEXT_SUFFIXES = {".toml", ".yaml", ".yml", ".json", ".env", ".conf", ".txt", ".service", ".plist", ".sh"}
 TEXT_NAMES = {".env", "relay-clients"}
+# The bridge's derived data, made again after a restore or a move: the archives' search indexes (bridge-rs/src/archives/).
+DATA_SKIP = {"archive-index"}
 NOT_SETTINGS = {"profile", "uploads", "media", "audio", "agent-audio", "image_store", "image_cache", "audio_cache",
                 "shares", "sessions", "output", "skills", "memories"}
 
@@ -134,6 +136,9 @@ class Inventory:
                 return True
             if len(parts) >= 3 and parts[0] == "profiles" and parts[2] in HERMES_SKIP_PROFILE:
                 return True
+        parts = _relative(path, self.data_dir)
+        if parts and parts[0] in DATA_SKIP:
+            return True
         parts = _relative(path, self.browsers_root)
         if parts and len(parts) >= 3 and parts[1] == "profile" and any(p in CHROME_SKIP for p in parts[2:]):
             return True

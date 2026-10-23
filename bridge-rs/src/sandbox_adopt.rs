@@ -409,6 +409,10 @@ pub fn plan(config: &Config, agent: &AgentConfig) -> anyhow::Result<Plan> {
             item.why = "missing on this machine".into();
         } else if !host.is_dir() {
             item.why = "a single file, not a folder: not recognised".into();
+        } else if let Some(archive) = crate::archives::covering(config, &agent.name, &host) {
+            // a folder its archive reads where it is (archives/): no copy that would go stale
+            item.action = Action::Drop;
+            item.why = format!("reached through archive search: « {} »", archive.name);
         } else if own_roots.iter().any(|r| inside(&host, r)) || (!read_only && inside(&host, &person_home)) {
             item.action = if read_only { Action::Code } else { Action::Work };
             item.volume = Some(volume_name(&agent.name, &host, &taken));
@@ -490,6 +494,10 @@ fn counted(tally: &Tally) -> String {
     text
 }
 
+/// A working folder this big is better connected as an archive (searched where it is) than copied once.
+pub const ARCHIVE_HINT_FILES: usize = 500;
+pub const ARCHIVE_HINT_BYTES: u64 = 200 * 1024 * 1024;
+
 /// The plan in plain lines.
 pub fn describe(plan: &Plan) -> Vec<String> {
     let mut lines = Vec::new();
@@ -515,6 +523,15 @@ pub fn describe(plan: &Plan) -> Vec<String> {
             Action::Drop => format!("  drop  {host} ({})", item.why),
             Action::Keep => format!("  keep  {host} ({})", item.why),
         });
+        if item.action == Action::Work
+            && (item.tally.files >= ARCHIVE_HINT_FILES || item.tally.bytes >= ARCHIVE_HINT_BYTES)
+        {
+            lines.push(format!(
+                "        hint: if something outside the sandbox keeps filling this folder, a copy goes stale: connect it \
+                 as an archive instead (searched where it is, the mount then dropped): bipagents archive add {} {host}",
+                plan.agent
+            ));
+        }
     }
     let left = plan.left();
     if left.is_empty() {

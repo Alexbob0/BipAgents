@@ -1,4 +1,5 @@
-"""A small TOML writer for the bridge configs the suite writes (strings, numbers, booleans, arrays, tables)."""
+"""A small TOML writer for the bridge configs the suite writes (strings, numbers, booleans, arrays, tables; a table
+inside an array as an inline table: `archives = [{agent = "vie", …}]`)."""
 from __future__ import annotations
 
 import json
@@ -21,6 +22,8 @@ def _value(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False)
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(_value(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{_key(k)} = {_value(v)}" for k, v in value.items() if v is not None) + "}"
     raise TypeError(f"cannot write {value!r} in TOML")
 
 

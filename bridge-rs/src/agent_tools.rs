@@ -403,6 +403,9 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if crate::agent_files::offered(config, &agent.name) {
         tools.push(crate::agent_files::tool());
     }
+    if crate::archives::enabled(config, &agent.name) {
+        tools.extend(crate::archives::tools(config, &agent.name));
+    }
     tools
 }
 
@@ -473,6 +476,7 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
     crate::notebook::sync_soul(config, agent);
+    crate::archives::sync_soul(config, agent);
     let tools = tools_for(config, agent);
     let url = if tools.as_slice() != install_tools(config) {
         url_with(config, &version_of(&tools))
@@ -575,6 +579,7 @@ pub fn forget(config: &Config, name: &str) {
     crate::approvals_log::forget(config, name);
     crate::maps::forget(config, name);
     crate::notebook::forget(config, name);
+    crate::archives::forget(config, name);
     let mut tokens = load_tokens(config);
     if tokens.shift_remove(name).is_some() {
         if let Err(err) = save_tokens(config, &tokens) {
@@ -1319,6 +1324,18 @@ the BipAgents app.",
             ));
         }
         return blocking(move || Ok(crate::agent_files::call(&config, &agent_c, &arguments_c))).await;
+    }
+    if crate::archives::TOOL_NAMES.contains(&name) {
+        return blocking(move || {
+            if !crate::archives::enabled(&config, &agent_c.name) {
+                return Ok(tool_text(
+                    "No archive is connected to you: the person adds one in your page of the app.",
+                    true,
+                ));
+            }
+            crate::archives::call(&config, &agent_c.name, &name_c, &arguments_c, &mailbox::default_connect())
+        })
+        .await;
     }
     if mailbox::MAIL_TOOL_NAMES.contains(&name) {
         return blocking(move || {

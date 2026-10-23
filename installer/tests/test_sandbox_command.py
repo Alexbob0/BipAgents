@@ -37,3 +37,20 @@ def test_adopt_says_when_the_bridge_is_not_out_yet(monkeypatch, tmp_path):
 def test_adopt_without_an_install_says_so(monkeypatch, tmp_path):
     monkeypatch.setattr(main.Path, "home", lambda: tmp_path)
     assert main.main(["sandbox", "adopt", "wellness"]) == 1
+
+
+def test_archive_runs_the_bridge_with_the_accounts_config(monkeypatch, tmp_path):
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text("")
+    runs = []
+    monkeypatch.setattr(main.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(main.rustbridge, "cli", lambda home, *a: ["/bin/bipbridge"])
+    monkeypatch.setattr(main.rustbridge, "ensure", lambda home, *a: None)
+    monkeypatch.setattr(main.subprocess, "run", lambda cmd, **kw: runs.append(cmd) or SimpleNamespace(returncode=0))
+    assert main.main(["archive", "add", "vie", "/home/alex/Public/emails-memoire", "--name", "Mails"]) == 0
+    assert runs == [["/bin/bipbridge", "archive", "add", "--agent", "vie", "--config", str(config),
+                     "--folder", "/home/alex/Public/emails-memoire", "--name", "Mails"]]
+    assert main.main(["archive", "refresh", "vie", "--id", "mails"]) == 0
+    assert runs[-1][-2:] == ["--id", "mails"]
+    assert main.main(["archive", "add", "vie"]) == 2          # no folder
