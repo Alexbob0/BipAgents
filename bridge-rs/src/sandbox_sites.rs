@@ -14,13 +14,7 @@
 //!   asks itself (`sandbox_sites_request`, once a day at most).
 //! - **The agent asks first**: `sandbox_sites_request` (host + reason) raises the same card; `sandbox_sites` lists
 //!   what it may reach (both on the `bipagents_files` MCP entry of an isolated agent, sandbox.rs).
-//! - **The list in the apps** (« Sites autorisés » in each agent's options):
-//!
-//!     GET    /v1/agents/{agent}/sandbox/sites                    {registries, sites, pending, effective, why}
-//!     POST   /v1/agents/{agent}/sandbox/sites          {host}    added by the person (`*.domain` allowed)
-//!     DELETE /v1/agents/{agent}/sandbox/sites/{host}             removed
-//!     POST   /v1/agents/{agent}/sandbox/sites/requests/{id} {allow}   a card answered
-//!
+//! - **The list in the apps**: « Sites autorisés » in each agent's options (the routes below).
 //! - Never this machine: a name of a local network (`localhost`, `.local`, `.internal`…) or an address is refused here,
 //!   and the proxy refuses any name that resolves to a private, loopback or Tailscale address.
 //! - Isolation off, or no podman: the list is kept and shown, with no effect (`effective: false`).
@@ -28,6 +22,13 @@
 //! `<data>/sandbox-sites.json` (0600) keeps each agent's token, sites, refusals and the cards waiting;
 //! `<data>/sandbox-proxy/policy/sites.json` is what the proxy reads (the tokens' SHA-256 and the hosts, mounted
 //! read-only), `<data>/sandbox-proxy/reports/` what it writes.
+//!
+//! The routes (bridge key):
+//!
+//!     GET    /v1/agents/{agent}/sandbox/sites                    {registries, sites, pending, effective, why}
+//!     POST   /v1/agents/{agent}/sandbox/sites          {host}    added by the person (`*.domain` allowed)
+//!     DELETE /v1/agents/{agent}/sandbox/sites/{host}             removed
+//!     POST   /v1/agents/{agent}/sandbox/sites/requests/{id} {allow}   a card answered
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
