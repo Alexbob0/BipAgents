@@ -317,12 +317,20 @@ pub fn next_date(t: &Kind, record: &Dict) -> Option<NaiveDate> {
     NaiveDate::from_ymd_opt(y?, m, d)
 }
 
+static TIME: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"\b([01]?\d|2[0-3])[:hH]([0-5]\d)\b").expect("valid regex"));
+
+/// A date written YYYY-MM-DD (and its time HH:MM when it has one), when it can be read; else as it was.
 fn iso(text: &str) -> String {
     let text = text.trim();
     match super::date_in(text) {
-        Some((m, d, Some(y))) if text.len() <= 30 => NaiveDate::from_ymd_opt(y, m, d)
-            .map(|d| d.format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|| text.to_string()),
+        Some((m, d, Some(y))) if text.len() <= 30 => match NaiveDate::from_ymd_opt(y, m, d) {
+            Some(date) => match TIME.captures(text) {
+                Some(c) => format!("{} {:0>2}:{}", date.format("%Y-%m-%d"), &c[1], &c[2]),
+                None => date.format("%Y-%m-%d").to_string(),
+            },
+            None => text.to_string(),
+        },
         _ => text.to_string(),
     }
 }
@@ -417,7 +425,11 @@ pub fn upsert(
     };
     let was = record.clone();
     for (k, v) in &new {
-        record.insert(k.clone(), v.clone());
+        // the same value written another way (« lave linge » for « Lave-linge ») keeps the record's spelling
+        let kept = tk::str_or_empty(record.get(k));
+        if kept.is_empty() || fold(&kept) != fold(&tk::str_or_empty(Some(v))) {
+            record.insert(k.clone(), v.clone());
+        }
     }
     // the EU's legal guarantee (two years) when the end of warranty is unknown, or was computed from an older date
     if t.id == "purchase" {

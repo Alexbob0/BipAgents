@@ -28,7 +28,7 @@ def test_an_agent_makes_a_trip_page_the_apps_lay_out(bridge):
                            ("onsite", ["Restaurant Ramiro : fruits de mer"])]:
         assert call(bridge, "notebook_note", {"page": "Week-end à Lisbonne", "section": section, "facts": facts})["isError"] is False
     page = (notebook(bridge) / "carnet" / "Sujets" / "Week-end à Lisbonne.md").read_text()
-    assert "type: trip" in page and f"start: {start}" in page and "destination: Lisbonne, Portugal" in page
+    assert "type: trip" in page and f"start: {start}" in page and 'destination: "Lisbonne, Portugal"' in page
     assert "## À emporter\n- [ ] Passeport" in page
     # The same thing to pack is not added twice, ticked or not.
     ticked = bridge.post("/v1/notebook/check", json={"path": "Sujets/Week-end à Lisbonne.md", "item": "Passeport",
