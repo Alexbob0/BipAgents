@@ -27,7 +27,10 @@
 //! - **the network**: the sandbox joins `bipagents-sandbox`, a podman network without a route out (`--internal`), with
 //!   no DNS server. Its only way out is a small proxy (`bipagents-egress`, `assets/sandbox/egress_proxy.py`, in the
 //!   sandbox image), on that network and the ordinary one, which lets through the registries of `[sandbox]
-//!   registries` and nothing else; pip, npm, uv, cargo, go and apt find it through the usual proxy variables. When that
+//!   registries` and, since 2026-10-23, the sites the person allowed that agent (sandbox_sites.rs: each sandbox's
+//!   proxy variables carry its own credentials, `http://<agent>:<token>@…`, so the proxy knows who asks; a site it
+//!   refuses becomes a card for the person); pip, npm, uv, cargo, go and apt find it through the usual proxy
+//!   variables. When that
 //!   can't be set up, the sandbox gets no network at all (`docker_network: false`), never the open internet, and the
 //!   log says why; it is tried again every 10 minutes.
 //!

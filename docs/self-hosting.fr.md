@@ -140,7 +140,13 @@ root), le bridge le garde isolé : Hermes y fait alors le travail sans risque (`
 - **Pas d'internet, sauf les dépôts de paquets** : le bac à sable est sur `bipagents-sandbox`, un réseau podman sans
   route vers l'extérieur, et n'atteint que PyPI, npm, les crates Rust, Go et Debian, par un petit conteneur proxy
   (`bipagents-egress` ; `podman logs bipagents-egress` montre ce qu'il a laissé passer ou bloqué). La recherche web et
-  le navigateur visible de l'agent sont d'autres outils et marchent toujours.
+  le navigateur visible de l'agent sont d'autres outils et marchent toujours. Chaque agent peut aussi avoir **ses
+  propres sites** (HTTPS seulement) : chaque bac à sable a ses propres identifiants sur le proxy, qui sait donc quel
+  agent demande. Quand le proxy refuse un site aux programmes d'un agent, ou quand l'agent le demande d'avance
+  (`sandbox_sites_request`), tu reçois une seule carte dans l'app, « Autoriser toujours / Refuser » ; la liste est
+  dans les réglages de l'agent, « Sites autorisés », où tu retires un site ou en ajoutes un à la main
+  (`*.example.org` pour ses sous-domaines). Un nom de ton propre réseau (`localhost`, `.local`, une adresse privée ou
+  Tailscale) n'est jamais laissé passer.
 
 Les agents existants passent à ce mode au prochain démarrage du bridge (`bipbridge sandbox` le fait tout de suite et
 dit ce que chacun a reçu). La section `[sandbox]` de `bridge.example.toml` liste les réglages. Sur macOS, ou avec

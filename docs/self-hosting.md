@@ -139,7 +139,12 @@ you each time:
 - **no internet but the package registries**: the sandbox sits on `bipagents-sandbox`, a podman network without a
   route out, and reaches PyPI, npm, Rust crates, Go and Debian only, through a small proxy container
   (`bipagents-egress`, `podman logs bipagents-egress` shows what it let through or blocked). Web search and the
-  agent's own visible browser are separate tools and keep working.
+  agent's own visible browser are separate tools and keep working. Each agent can also have **sites of its own**
+  (HTTPS only): each sandbox gets its own proxy credentials, so the proxy knows which agent asks. When the proxy
+  refuses a site to an agent's programs, or when the agent asks first (`sandbox_sites_request`), you get one card in
+  the app, « Autoriser toujours / Refuser »; the list is in the agent's options, « Sites autorisés », where you can
+  remove a site or add one by hand (`*.example.org` for its subdomains). A name of your own network (`localhost`,
+  `.local`, a private or Tailscale address) is never let through.
 
 Existing agents switch at the bridge's next start (`bipbridge sandbox` does it now and prints what each one got). The
 `[sandbox]` section of `bridge.example.toml` lists the settings. On macOS, or with docker instead of podman, the
