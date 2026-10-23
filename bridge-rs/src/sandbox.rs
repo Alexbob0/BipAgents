@@ -15,11 +15,15 @@
 //!   list unchanged), and copied into a named volume of its own, `bipagents-files-<agent>`, mounted read-only at
 //!   `/fichiers`: the same paths as before (`/fichiers/2026-10/…`). The copy follows the folder: a new file, a file
 //!   removed after the time the person chose.
-//! - **shared folders** (`shares.rs`: what an agent shares, what it may read): no longer mounted. The agent reaches them
-//!   through the tools of a second MCP entry, `bipagents_files` (trust « untrusted »: Hermes asks the person before each
-//!   write or delete, the reads are marked read-only): `shared_files_list`, `shared_files_get` (copies a file into
-//!   `/fichiers/partages/<agent>/…`), `shared_files_write` (from `/envoi`, a second named volume it writes in, or a
-//!   short text), `shared_files_delete`. The links' permissions are checked at each call.
+//! - **shared folders** (`shares.rs`: what an agent shares, what it may read): podman volumes too,
+//!   `bipagents-share-<agent>`, mounted read-write at `/partage` in the source's sandbox and read-only at
+//!   `/lecture/<agent>` in the sandboxes of the readers the person linked (2026-10-23: from 2026-10-22 they were not
+//!   mounted at all, and a routine sharing at night had nobody to approve its writes). The same folders through the
+//!   tools of a second MCP entry, `bipagents_files` (trust « untrusted »: Hermes asks the person before a tool not
+//!   marked read-only): `shared_files_list`, `shared_files_get` (copies a file into `/fichiers/partages/<agent>/…`),
+//!   `shared_files_write` (from `/envoi`, a second named volume it writes in, or a short text; into its own shared
+//!   folder only, which it writes directly anyway: marked read-only, so never asked), `shared_files_delete` (asked).
+//!   The links' permissions are checked at each call.
 //! - **the network**: the sandbox joins `bipagents-sandbox`, a podman network without a route out (`--internal`), with
 //!   no DNS server. Its only way out is a small proxy (`bipagents-egress`, `assets/sandbox/egress_proxy.py`, in the
 //!   sandbox image), on that network and the ordinary one, which lets through the registries of `[sandbox]
@@ -31,6 +35,12 @@
 //! macOS (podman in a VM, or no sandbox at all: the installer turns the disk tools off there) and with docker, the
 //! sandboxes keep mounting the folders as before (`agents_admin::mount_uploads`, `shares::apply`), and Hermes keeps
 //! asking.
+//!
+//! Stepping back (`isolate = "off"`, or podman gone): at start, each sandbox the bridge had isolated gets back what it
+//! had before (`revert`): its uploads folder mounted, its shared folders mounted from this machine's folders (each
+//! volume's content copied back there first, `shares::revert_volumes`), and the bridge's network, proxy variables,
+//! `docker_network: false` and volumes taken out of its settings; the registries' proxy is stopped. The volumes
+//! themselves stay (turning isolation on again finds them).
 //!
 //! `<data>/sandbox.json` keeps each agent's volumes and the network's state; each change is logged
 //! (`bipbridge::sandbox`), and `bipbridge sandbox` applies it all and prints it.
@@ -333,11 +343,8 @@ pub async fn reset_network() {
 /// A `docker_volumes` entry the bridge owns (today's or the mounts it used to set): its uploads, shared folders and
 /// volumes.
 pub(crate) fn owned_volume(config: &Config, entry: &str) -> bool {
-    let root = shares::shares_root(config).to_string_lossy().into_owned();
     let target = entry.split(':').nth(1).unwrap_or("");
-    entry.starts_with(&format!("{root}/"))
-        || [RECEIVED, OUTBOX, "/partage"].contains(&target)
-        || target.starts_with("/lecture/")
+    shares::share_entry(config, entry) || [RECEIVED, OUTBOX].contains(&target)
 }
 
 /// What a sandbox reaches.
@@ -372,17 +379,24 @@ pub fn desktop_in_sandbox(config: &Config, folder: &Path) -> bool {
     false
 }
 
+/// The volumes an isolated sandbox mounts: the person's own entries, its files, its outbox, its shared folders.
+pub fn wanted_volumes(config: &Config, agent: &str, current: &[String], reads: &[(String, String)]) -> Vec<String> {
+    let mut volumes: Vec<String> = current.iter().filter(|v| !owned_volume(config, v)).cloned().collect();
+    volumes.push(format!("{}:{RECEIVED}:ro", files_volume(agent)));
+    volumes.push(format!("{}:{OUTBOX}", outbox_volume(agent)));
+    volumes.extend(shares::share_mounts(config, agent, reads, true));
+    volumes
+}
+
 /// The terminal settings an isolated sandbox gets, from the profile's current ones: the person's own entries kept.
-pub fn wanted_terminal(config: &Config, agent: &str, current: &Dict, net: Net) -> Dict {
+pub fn wanted_terminal(config: &Config, agent: &str, current: &Dict, net: Net, reads: &[(String, String)]) -> Dict {
     let list = |key: &str| -> Vec<String> {
         match current.get(key) {
             Some(Value::Array(items)) => items.iter().map(py::py_str).collect(),
             _ => Vec::new(),
         }
     };
-    let mut volumes: Vec<String> = list("docker_volumes").into_iter().filter(|v| !owned_volume(config, v)).collect();
-    volumes.push(format!("{}:{RECEIVED}:ro", files_volume(agent)));
-    volumes.push(format!("{}:{OUTBOX}", outbox_volume(agent)));
+    let volumes = wanted_volumes(config, agent, &list("docker_volumes"), reads);
     let ours = own_args();
     let mut extra: Vec<String> = list("docker_extra_args").into_iter().filter(|a| !ours.contains(a)).collect();
     let mut env: Dict = match current.get("docker_env") {
@@ -461,7 +475,8 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
         Some(Value::Object(map)) => map.clone(),
         _ => Dict::new(),
     };
-    let wanted = wanted_terminal(&config, &agent.name, &current, net);
+    let reads = shares::load(&config);
+    let wanted = wanted_terminal(&config, &agent.name, &current, net, &reads);
     let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let env = BTreeMap::from([("HERMES_HOME".to_string(), home)]);
     let mut changed: Vec<String> = Vec::new();
@@ -499,7 +514,7 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
                 Net::Registries(_) => "registries only",
                 Net::Closed => "none",
             },
-            "sandbox isolated: no folder of this machine inside, the files through the bridge's tools"
+            "sandbox isolated: no folder of this machine inside, its files and shared folders in podman volumes"
         );
     }
     let kept = host_mounts(&match wanted.get("docker_volumes") {
@@ -512,7 +527,6 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     if added + removed > 0 {
         tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, added, removed, "received files copied into the sandbox");
     }
-    let reads = shares::load(&config);
     let (c, name) = (config.clone(), agent.name.clone());
     let linked = reads.iter().any(|(a, b)| a == &agent.name || b == &agent.name);
     tokio::task::spawn_blocking(move || -> std::io::Result<()> {
@@ -535,10 +549,27 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     Ok(agent)
 }
 
-/// At start: every sandboxed agent isolated (or its uploads mounted as before where the install doesn't isolate);
-/// while the network can't be set up, tried again every 10 minutes.
+/// At start: every sandboxed agent isolated (or its uploads mounted as before where the install doesn't isolate, and
+/// what isolation set taken back: `revert`); while the network can't be set up, tried again every 10 minutes.
 pub async fn isolate_all(config: SharedConfig, run: Run) {
+    let current = config.get();
+    if engine(&current).is_none() {
+        let state = load_state(&current);
+        let had = state.get("agents").and_then(Value::as_object).is_some_and(|a| !a.is_empty())
+            || !shares::volume_folders(&current).is_empty();
+        let c = current.clone();
+        let _ = tokio::task::spawn_blocking(move || shares::revert_volumes(&c)).await;
+        crate::agents_admin::mount_all_uploads(config.clone(), run.clone()).await;
+        shares::heal_mounts(&config.get(), &run).await;
+        if had {
+            stop_proxy(&run).await;
+        }
+        return;
+    }
+    // The shared folders' volumes before the sandboxes that mount them.
+    shares::ensure_volumes(&current, &run, &shares::load(&current)).await;
     crate::agents_admin::mount_all_uploads(config.clone(), run.clone()).await;
+    shares::heal_mounts(&config.get(), &run).await;
     let current = config.get();
     let any = current.agents.values().any(|a| isolates(&current, a));
     if !any {
@@ -552,6 +583,90 @@ pub async fn isolate_all(config: SharedConfig, run: Run) {
             break;
         }
     }
+}
+
+/// The registries' proxy stopped, once the install no longer isolates (it would restart with the machine otherwise).
+async fn stop_proxy(run: &Run) {
+    let Some(podman) = crate::browsers::pyx::which("podman") else { return };
+    match run(args(&[&podman, "rm", "-f", "--ignore", PROXY]), BTreeMap::new()).await {
+        Ok(_) => {
+            tracing::info!(target: "bipbridge::sandbox", proxy = PROXY, "sandboxes not isolated any more: registries' proxy stopped")
+        }
+        Err(exc) => {
+            tracing::warn!(target: "bipbridge::sandbox", error = %crate::agents_admin::tail(&exc.to_string(), 200), "registries' proxy not stopped")
+        }
+    }
+}
+
+/// An agent this bridge had isolated whose sandbox it no longer isolates (`[sandbox] isolate = "off"`, podman gone,
+/// its desktop now in its sandbox): what isolation set taken out of its terminal settings (its volumes, the
+/// sandboxes' network and DNS, the proxy variables, `docker_network: false`), the person's own entries kept. Its
+/// uploads and shared folders are then mounted as before (`agents_admin::mount_uploads`, `shares::heal_mounts`).
+pub async fn revert(config: &Config, agent: &AgentConfig, folder: &Path, run: &Run) -> anyhow::Result<()> {
+    if load_state(config).get("agents").and_then(|a| a.get(&agent.name)).is_none() {
+        return Ok(());
+    }
+    let current = match shares::profile_config(folder).get("terminal") {
+        Some(Value::Object(map)) => map.clone(),
+        _ => Dict::new(),
+    };
+    let list = |key: &str| -> Vec<String> {
+        match current.get(key) {
+            Some(Value::Array(items)) => items.iter().map(py::py_str).collect(),
+            _ => Vec::new(),
+        }
+    };
+    let named = [files_volume(&agent.name), outbox_volume(&agent.name)];
+    let volumes: Vec<String> = list("docker_volumes")
+        .into_iter()
+        .filter(|v| {
+            let name = v.split(':').next().unwrap_or("");
+            !named.iter().any(|n| n == name) && !name.starts_with("bipagents-share-")
+        })
+        .collect();
+    let ours = own_args();
+    let extra: Vec<String> = list("docker_extra_args").into_iter().filter(|a| !ours.contains(a)).collect();
+    let mut env: Dict = match current.get("docker_env") {
+        Some(Value::Object(map)) => map.clone(),
+        _ => Dict::new(),
+    };
+    env.retain(|k, _| !PROXY_ENV.contains(&k.as_str()));
+    let mut wanted = Dict::new();
+    wanted.insert("docker_volumes".into(), json!(volumes));
+    wanted.insert("docker_extra_args".into(), json!(extra));
+    wanted.insert("docker_env".into(), Value::Object(env));
+    if current.get("docker_network") == Some(&json!(false)) {
+        wanted.insert("docker_network".into(), json!(true));
+    }
+    let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let env = BTreeMap::from([("HERMES_HOME".to_string(), home)]);
+    let mut changed: Vec<String> = Vec::new();
+    for (key, value) in &wanted {
+        let now = current.get(key).cloned().unwrap_or(Value::Null);
+        let empty =
+            matches!(value, Value::Array(a) if a.is_empty()) || matches!(value, Value::Object(o) if o.is_empty());
+        if &now == value || (now.is_null() && empty) {
+            continue;
+        }
+        let shown = match value {
+            Value::Bool(b) => b.to_string(),
+            other => py::dumps(other),
+        };
+        run(
+            args(&[&config.hermes.bin, "-p", &agent.name, "config", "set", &format!("terminal.{key}"), &shown]),
+            env.clone(),
+        )
+        .await?;
+        changed.push(key.clone());
+    }
+    tracing::info!(
+        target: "bipbridge::sandbox",
+        agent = %agent.name,
+        changed = %changed.join(","),
+        "sandbox not isolated any more: the bridge's network, proxy and volumes taken out, its folders mounted as before"
+    );
+    forget_state(config, &agent.name);
+    Ok(())
 }
 
 /// A deleted agent: its volumes go (the bridge kept the originals of what they held).
@@ -717,17 +832,19 @@ pub fn tools() -> Vec<Value> {
             }, "required": ["path"]},
             "annotations": read_only,
         }),
+        // Only into the agent's own shared folder, which its sandbox mounts read-write anyway (/partage): marked
+        // read-only so that Hermes doesn't ask the person (a routine shares at night, 2026-10-23).
         json!({
             "name": WRITE,
-            "description": format!("Put a file in your shared folder, for the agents the person allowed (they only \
-        read it). Copy the file right into {OUTBOX} (no folder) and give its path as `from`, or give a short text as `content`. The person \
-        approves it."),
+            "description": format!("Put a file in your shared folder (/partage), for the agents the person allowed \
+        (they only read it). Copy the file right into {OUTBOX} (no folder) and give its path as `from`, or give a short text as \
+        `content`. No approval needed."),
             "inputSchema": {"type": "object", "properties": {
                 "path": {"type": "string", "description": "where in your shared folder, e.g. resume/semaine.md"},
                 "from": {"type": "string", "description": format!("{OUTBOX}/<name>: a file you copied there")},
                 "content": {"type": "string", "description": "or the text itself"},
             }, "required": ["path"]},
-            "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
+            "annotations": {"readOnlyHint": true, "destructiveHint": false, "openWorldHint": false},
         }),
         json!({
             "name": DELETE,
@@ -808,19 +925,18 @@ fn error(text: &str) -> Dict {
 pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) -> Dict {
     let reads = shares::load(config);
     let text = |key: &str| arguments.get(key).and_then(Value::as_str).unwrap_or("").to_string();
-    let root = shares::shares_root(config);
     match name {
         LIST => {
             let mut out = vec![format!("Files the person sent you: in {RECEIVED} (read-only).")];
             let readers: Vec<&str> = reads.iter().filter(|(_, s)| s == &agent.name).map(|(r, _)| r.as_str()).collect();
-            let own = listing(&root.join(&agent.name));
+            let own = listing(&shares::share_dir(config, &agent.name));
             out.push(format!(
                 "\nYour shared folder (agent `{}`){}: {}",
                 agent.name,
                 if readers.is_empty() {
                     ", read by no agent yet".to_string()
                 } else {
-                    format!(", read by {}", readers.join(", "))
+                    format!(", at /partage, read by {}", readers.join(", "))
                 },
                 if own.is_empty() { "empty".to_string() } else { format!("{} file(s)", own.len()) }
             ));
@@ -828,9 +944,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             for (_, source) in reads.iter().filter(|(r, _)| r == &agent.name) {
                 let shown =
                     config.agent(Some(source)).map(|a| a.display_name.clone()).unwrap_or_else(|| source.clone());
-                let files = listing(&root.join(source));
+                let files = listing(&shares::share_dir(config, source));
                 out.push(format!(
-                    "\nShared with you by {shown} (agent `{source}`): {}",
+                    "\nShared with you by {shown} (agent `{source}`, at /lecture/{source}, read-only): {}",
                     if files.is_empty() { "empty".to_string() } else { format!("{} file(s)", files.len()) }
                 ));
                 out.extend(files);
@@ -846,7 +962,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             let Some(relative) = plain_relative(&text("path")) else {
                 return error("give the file's path, as shared_files_list shows it");
             };
-            let Some(file) = inside(&root.join(&source), &relative) else { return error("no such file") };
+            let Some(file) = inside(&shares::share_dir(config, &source), &relative) else {
+                return error("no such file");
+            };
             if !file.symlink_metadata().map(|m| m.is_file()).unwrap_or(false) {
                 return error("no such file (give a file, as shared_files_list shows it)");
             }
@@ -877,7 +995,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             let Some(relative) = plain_relative(&text("path")) else {
                 return error("give a path in your shared folder");
             };
-            let own = root.join(&agent.name);
+            let own = shares::share_dir(config, &agent.name);
             let Some(target) = inside(&own, &relative) else { return error("not a path in your shared folder") };
             if name == DELETE {
                 let meta = match target.symlink_metadata() {
@@ -887,6 +1005,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                 let gone = if meta.is_dir() { std::fs::remove_dir_all(&target) } else { std::fs::remove_file(&target) };
                 return match gone {
                     Ok(()) => {
+                        shares::mirror_one(config, &agent.name);
                         tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, path = %relative.to_string_lossy(), "shared file deleted");
                         tool_text(&format!("Deleted from your shared folder: {}", relative.to_string_lossy()), false)
                     }
@@ -930,6 +1049,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             };
             match written {
                 Ok(()) => {
+                    shares::mirror_one(config, &agent.name);
                     tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, path = %relative.to_string_lossy(), "shared file written");
                     tool_text(&format!("In your shared folder: {}", relative.to_string_lossy()), false)
                 }
@@ -940,17 +1060,23 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
     }
 }
 
-/// A file written into the agent's shared folder (readable by the sandboxes of agents set up by hand that mount it).
+/// A file written into the agent's shared folder, open to the sandboxes' users like the rest of it (its agent may
+/// change it from /partage).
 fn write_into(
     own: &Path,
     target: &Path,
     fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
+    let (dir_mode, file_mode) = shares::open_modes();
     std::fs::create_dir_all(own)?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
-        if parent != own {
-            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(SANDBOX_DIR_MODE))?;
+        let mut dir = parent;
+        while dir != own && dir.starts_with(own) {
+            // a folder its agent made is its agent's: left as it is
+            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(dir_mode));
+            let Some(up) = dir.parent() else { break };
+            dir = up;
         }
     }
     if target.symlink_metadata().map(|m| m.is_dir()).unwrap_or(false) {
@@ -960,7 +1086,7 @@ fn write_into(
     let result = (|| {
         let mut out = std::fs::File::create(&tmp)?;
         fill(&mut out)?;
-        out.set_permissions(std::fs::Permissions::from_mode(SANDBOX_FILE_MODE))?;
+        out.set_permissions(std::fs::Permissions::from_mode(file_mode))?;
         std::fs::rename(&tmp, target)
     })();
     if result.is_err() {
@@ -970,8 +1096,9 @@ fn write_into(
 }
 
 const INSTRUCTIONS: &str = "BipAgents files: the files your person sends you are in /fichiers (read-only). Shared \
-folders between agents: shared_files_list, shared_files_get (copies into /fichiers/partages/), and to share a file, \
-put it in /envoi then shared_files_write; the person approves writes and deletes. To give files to one of your \
+folders between agents, where the person set them up: yours at /partage (write there directly, no approval), the \
+ones shared with you at /lecture/<agent> (read-only). shared_files_list, shared_files_get and shared_files_write reach \
+them too; the person approves each shared_files_delete. To give files to one of your \
 other agents, put them in /envoi then use send_files_to_agent (bipagents tools). To give a file to your person, \
 put it in /envoi and end your reply with a line MEDIA:/envoi/<name>; a page goes through create_page. Your \
 sandbox reaches the package registries (pip, npm…) and nothing else on the internet: use your web tools for the \
@@ -1103,11 +1230,19 @@ mod tests {
             "docker_env": {"LANG": "fr_FR.UTF-8", "HTTPS_PROXY": "http://old"},
         }))
         .unwrap();
-        let wanted = wanted_terminal(&config, "vie", &current, Net::Registries("http://10.233.80.2:3128"));
+        let reads = vec![("vie".to_string(), "w".to_string()), ("budget".to_string(), "vie".to_string())];
+        let wanted = wanted_terminal(&config, "vie", &current, Net::Registries("http://10.233.80.2:3128"), &reads);
         assert_eq!(
             wanted["docker_volumes"],
-            json!(["/home/x/photos:/photos:ro", "bipagents-files-vie:/fichiers:ro", "bipagents-envoi-vie:/envoi"])
+            json!([
+                "/home/x/photos:/photos:ro",
+                "bipagents-files-vie:/fichiers:ro",
+                "bipagents-envoi-vie:/envoi",
+                "bipagents-share-vie:/partage",
+                "bipagents-share-w:/lecture/w:ro"
+            ])
         );
+        assert!(host_mounts(&wanted_volumes(&config, "vie", &[], &reads)).is_empty());
         assert_eq!(
             wanted["docker_extra_args"],
             json!(["--shm-size=2g", "--network=bipagents-sandbox", "--dns=127.0.0.1"])
@@ -1121,7 +1256,7 @@ mod tests {
             1
         );
         // No proxy: no network at all, never the open internet.
-        let closed = wanted_terminal(&config, "vie", &current, Net::Closed);
+        let closed = wanted_terminal(&config, "vie", &current, Net::Closed, &[]);
         assert_eq!(closed["docker_extra_args"], json!(["--shm-size=2g"]));
         assert_eq!(closed["docker_env"], json!({"LANG": "fr_FR.UTF-8"}));
         assert_eq!(closed["docker_network"], json!(false));

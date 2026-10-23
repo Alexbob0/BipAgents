@@ -8,6 +8,8 @@
 //!
 //! - `/envoi`: its isolated sandbox's outbox volume (`<data>/sandbox.json`), or `<data>/envoi/<agent>` for an agent
 //!   set up by hand (agent_files.rs);
+//! - `/partage` and `/lecture/<agent>`: its shared folder and the ones the person lets it read (shares.rs
+//!   `share_dir`: their podman volumes, or their folders on this machine);
 //! - `/workspace` and `/root`: Hermes' persistent docker sandbox folders under its profile,
 //!   `<profile>/sandboxes/docker/<task>/workspace` and `…/home` (tools/environments/docker.py at the pinned commit:
 //!   `container_persistent`, Hermes' default, which nothing of ours changes);
@@ -181,6 +183,15 @@ fn places(config: &Config, agent: &AgentConfig) -> Vec<(String, Vec<PathBuf>)> {
         names.dedup();
         for name in names {
             out.push((name.trim_end_matches('/').to_string(), vec![profile.clone()]));
+        }
+    }
+    if crate::shares::why_not(config, agent).is_none() {
+        // Its shared folder, and the ones it may read (a podman volume each, or a folder of this machine: shares.rs).
+        out.push(("/partage".into(), vec![crate::shares::share_dir(config, &agent.name)]));
+        for (_, source) in crate::shares::load(config).iter().filter(|(reader, _)| reader == &agent.name) {
+            if plain_relative(source).is_some_and(|r| r.components().count() == 1) {
+                out.push((format!("/lecture/{source}"), vec![crate::shares::share_dir(config, source)]));
+            }
         }
     }
     let host = agent.upload_dir_host.as_deref().filter(|h| !h.is_empty());

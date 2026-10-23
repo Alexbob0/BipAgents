@@ -854,6 +854,8 @@ pub async fn mount_uploads(
         // Linux with podman: no folder of this machine in the sandbox, its uploads copied into a volume (sandbox.rs).
         return crate::sandbox::isolate(shared, agent, run, save).await;
     }
+    // Isolated before (an install stepping back): what isolation set taken out first.
+    crate::sandbox::revert(&config, agent, &folder, run).await?;
     let root = host.clone();
     tokio::task::spawn_blocking(move || open_to_sandbox(&root)).await??;
     let terminal = crate::shares::profile_config(&folder).get("terminal").cloned().unwrap_or(Value::Null);
@@ -865,7 +867,11 @@ pub async fn mount_uploads(
     let volume = format!("{host}:{SANDBOX_UPLOADS}:ro,z");
     let mut wanted: Vec<String> =
         current.iter().filter(|v| v.split(':').nth(1) != Some(SANDBOX_UPLOADS)).cloned().collect();
-    wanted.push(volume);
+    wanted.push(volume.clone());
+    // Already there once (other mounts after it, such as the shared folders): left where it is.
+    if current.iter().filter(|v| v.split(':').nth(1) == Some(SANDBOX_UPLOADS)).collect::<Vec<_>>() == [&volume] {
+        wanted = current.clone();
+    }
     if wanted != current {
         let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         let value = crate::py::dumps(&json!(wanted));

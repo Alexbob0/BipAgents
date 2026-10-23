@@ -146,12 +146,13 @@ port = 8650
 # container_home = "/home/hermes/.hermes"   # the space's HERMES_HOME inside that container (attachments)
 
 # The agents' sandboxes (Hermes' docker backend with podman), isolated: no folder of this machine mounted in them
-# (the files the person sends are copied into a podman volume of the agent's own, read-only at /fichiers; shared
-# folders go through the bridge's shared_files_* tools, writes and deletes approved by the person), and no internet but
-# the package registries, through a small proxy container (bipagents-egress) on a network without a route out
-# (bipagents-sandbox). Hermes then runs harmless work there (python -c, execute_code, pip install) without asking.
+# (the files the person sends are copied into a podman volume of the agent's own, read-only at /fichiers; a shared
+# folder is a podman volume too, bipagents-share-<agent>, at /partage and read-only at /lecture/<agent> in its readers',
+# kept in step with <data>/shares/<agent>/ for backups), and no internet but the package registries, through a small
+# proxy container (bipagents-egress) on a network without a route out (bipagents-sandbox). Hermes then runs harmless
+# work there (python -c, execute_code, pip install) without asking.
 # [sandbox]
-# isolate = "auto"            # Linux with podman; "off": the folders mounted as before (Hermes asks before risky commands)
+# isolate = "auto"            # Linux with podman; "off" (then restart the bridge): the folders mounted as before, the network and proxy settings taken out (Hermes asks before risky commands)
 # subnet = "10.233.80.0/24"   # the sandboxes' network; the proxy takes its .2
 # registries = ["pypi.org", "files.pythonhosted.org", "registry.npmjs.org"]   # default: PyPI, npm, Rust crates, Go, Debian (no host that publishes but npm)
 # image = ""                  # the proxy's image (default: the agents' sandbox image)

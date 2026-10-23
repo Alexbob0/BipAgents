@@ -131,8 +131,11 @@ that sandbox isolated, so Hermes runs harmless work there (`python -c`, `execute
 you each time:
 
 - **no folder of this machine inside**: the files you send an agent are copied into a podman volume of its own
-  (`bipagents-files-<agent>`, read-only at `/fichiers`); folders shared between agents go through the bridge's
-  `shared_files_*` tools, and you approve each write or delete from the app;
+  (`bipagents-files-<agent>`, read-only at `/fichiers`); a folder an agent shares is a podman volume too
+  (`bipagents-share-<agent>`), at `/partage` in its sandbox and read-only at `/lecture/<agent>` in the sandboxes of
+  the agents you let read it. The bridge keeps `<data>/shares/<agent>/` in step with it (backups and exports take
+  that folder); the first time, that folder's content is copied into the volume and the folder kept as
+  `<agent>.before-volume`. The `shared_files_*` tools reach the same folders (you approve deletes from the app);
 - **no internet but the package registries**: the sandbox sits on `bipagents-sandbox`, a podman network without a
   route out, and reaches PyPI, npm, Rust crates, Go and Debian only, through a small proxy container
   (`bipagents-egress`, `podman logs bipagents-egress` shows what it let through or blocked). Web search and the
@@ -140,7 +143,9 @@ you each time:
 
 Existing agents switch at the bridge's next start (`bipbridge sandbox` does it now and prints what each one got). The
 `[sandbox]` section of `bridge.example.toml` lists the settings. On macOS, or with docker instead of podman, the
-sandboxes stay as they were (folders mounted, Hermes asks before risky commands).
+sandboxes stay as they were (folders mounted, Hermes asks before risky commands). To step back on Linux, set
+`[sandbox] isolate = "off"` and restart the bridge: each sandbox gets its folders mounted again (what the agents wrote
+in the volumes copied back first), and the network and proxy settings are taken out; the volumes stay.
 
 ### The Carnet (the agents' notebook)
 

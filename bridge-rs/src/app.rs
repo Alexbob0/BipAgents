@@ -331,6 +331,7 @@ impl AppState {
         });
         if config.hermes.enabled() {
             self.spawn(crate::sandbox::isolate_all(self.config.clone(), agents_admin::default_run()));
+            self.spawn(crate::shares::mirror_forever(self.config.clone()));
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
             let shared = self.config.clone();
             self.spawn(async move { crate::browsers::vault_only_all(&shared.get()).await });

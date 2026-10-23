@@ -108,6 +108,9 @@ def hermes():
             return
         import yaml
         path = folder / "config.yaml"
+        # One writer at a time (the bridge runs several `config set` at once at start: a lost write otherwise).
+        lock = open(Path(LOG).with_name("config-set.lock") if LOG else folder / ".config-set.lock", "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
         data = yaml.safe_load(path.read_text()) if path.exists() else None
         data = data if isinstance(data, dict) else {}
         node = data
