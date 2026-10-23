@@ -63,6 +63,15 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
 
 
 @pytest.mark.slow
+def test_a_task_asked_again_gets_a_numbered_conversation_when_its_title_is_taken(bridges, fakes):
+    bridge = with_device(bridges)
+    fakes.hermes.unique_titles = True
+    fakes.hermes.add_session("api_old", [], title="🧩 Écoles du quartier")   # the same task, cancelled before
+    started = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json=TASK)
+    assert started.status_code == 200, started.text
+    assert fakes.hermes.created == [("", {"title": "🧩 Écoles du quartier (2)"})]
+
+
 def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes):
     bridge = with_device(bridges)
     fakes.hermes.rounds, fakes.hermes.step = 50, 60_000
