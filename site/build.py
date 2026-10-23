@@ -246,7 +246,11 @@ def bipagents(version: str) -> Path:
     media = assets / "media"
     for lang in LANGS:
         copy(REPO / "App" / "Resources" / "Demo" / f"podcast-morning-{lang}.m4a", media / f"podcast-morning-{lang}.m4a")
-    copy(REPO / "docs" / "play" / "index.html", out / "play" / "index.html")
+    play = (REPO / "docs" / "play" / "index.html").read_text(encoding="utf-8")
+    if 'rel="icon"' not in play:   # the playground, with the site's icon
+        play = play.replace("<head>", '<head>\n<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">', 1)
+    (out / "play").mkdir(parents=True, exist_ok=True)
+    (out / "play" / "index.html").write_text(play, encoding="utf-8")
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
     map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")
