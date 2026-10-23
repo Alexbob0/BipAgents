@@ -167,6 +167,15 @@ proposes the task and the person starts it with one tap. A conversation's run th
 (default 15) tool calls or `handoff_seconds` (default 180) is told once to hand the rest over (`handoff = false` turns
 this off); the bridge logs `long run: handing over to a background task (steer)`.
 
+The records (« Fiches »: purchases, subscriptions, contracts, papers, bookings) can be filled from an agent's archive:
+`bipagents archive extract <agent> --archive <id> --sample 50` reads 50 likely documents with the agent's model and
+prints what it would record and the estimate for the whole archive, writing nothing; `--run --budget <€>` then fills
+them (a background job, paused at the cap), and the new documents are read each night. `--model <id>` picks another
+model of the agent's provider for the pass (with `--price-in`/`--price-out`, € per million tokens; a model on this
+machine is free). `[archive_records]`: `models = [{id, label, price_in, price_out}]` offered in the app,
+`unknown_price_in`/`unknown_price_out` (€ 3 / 15 by default, so a cap holds), `sample_cap_eur` (1), `nightly_cap_eur`
+(0.05 a night and archive). The documents' text goes to the model's provider.
+
 ## 5. Start at boot
 
 **macOS (Mac mini)**: two LaunchAgents.

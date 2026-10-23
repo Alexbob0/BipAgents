@@ -57,3 +57,21 @@ def test_archive_runs_the_bridge_with_the_accounts_config(monkeypatch, tmp_path)
     assert main.main(["archive", "refresh", "vie", "--id", "mails"]) == 0
     assert runs[-1][-2:] == ["--id", "mails"]
     assert main.main(["archive", "add", "vie"]) == 2          # no folder
+
+
+def test_archive_extract_passes_the_sample_and_the_run(monkeypatch, tmp_path):
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text("")
+    runs = []
+    monkeypatch.setattr(main.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(main.rustbridge, "cli", lambda home, *a: ["/bin/bipbridge"])
+    monkeypatch.setattr(main.rustbridge, "ensure", lambda home, *a: None)
+    monkeypatch.setattr(main.subprocess, "run", lambda cmd, **kw: runs.append(cmd) or SimpleNamespace(returncode=0))
+    assert main.main(["archive", "extract", "vie", "--archive", "mails", "--sample"]) == 0
+    assert runs[-1] == ["/bin/bipbridge", "archive", "extract", "--agent", "vie", "--config", str(config),
+                        "--id", "mails", "--sample", "50"]
+    assert main.main(["archive", "extract", "vie", "--sample", "20", "--model", "big-model"]) == 0
+    assert runs[-1][-4:] == ["--sample", "20", "--model", "big-model"]
+    assert main.main(["archive", "extract", "vie", "--run", "--budget", "3"]) == 0
+    assert runs[-1][-3:] == ["--run", "--budget", "3"]

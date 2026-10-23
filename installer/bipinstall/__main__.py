@@ -805,16 +805,25 @@ def sandbox_main(argv: List[str]) -> int:
 
 
 def archive_main(argv: List[str]) -> int:
-    """`bipagents archive add|list|remove|refresh <agent> [folder]`: the bridge's `archive` (bridge-rs/src/archives/),
-    with this account's config: a big folder of documents an agent searches where it is, instead of a copy."""
+    """`bipagents archive add|list|remove|refresh|extract <agent> [folder]`: the bridge's `archive`
+    (bridge-rs/src/archives/), with this account's config: a big folder of documents an agent searches where it is,
+    instead of a copy. `extract` fills the Carnet's records from it (records_fill.rs): `--sample N` first (writes
+    nothing, prints what it would record and the cost for the whole archive), then `--run --budget EUR`."""
     parser = argparse.ArgumentParser(prog="bipagents archive",
                                      description="Connect a folder of documents to an agent: indexed on this machine, "
                                                  "searched by the agent when you ask about the past")
-    parser.add_argument("action", choices=["add", "list", "remove", "refresh"])
+    parser.add_argument("action", choices=["add", "list", "remove", "refresh", "extract"])
     parser.add_argument("agent", help="the agent (its id, e.g. vie)")
     parser.add_argument("folder", nargs="?", help="add: the folder (/home/…, or /workspace/… as the agent sees it)")
     parser.add_argument("--name", help="add: the archive's name in the app (default: the folder's)")
-    parser.add_argument("--id", help="remove, refresh: the archive's id (from list)")
+    parser.add_argument("--id", "--archive", dest="id", help="remove, refresh, extract: the archive's id (from list)")
+    parser.add_argument("--sample", nargs="?", type=int, const=50, help="extract: try it on N documents (50), writing nothing")
+    parser.add_argument("--run", action="store_true", help="extract: fill the records from the whole archive (with --budget)")
+    parser.add_argument("--budget", help="extract --run: the cap in euros")
+    parser.add_argument("--model", help="extract: another model of the agent's provider (default: the agent's own)")
+    parser.add_argument("--price-in", help="extract: that model's price, euros per million tokens in")
+    parser.add_argument("--price-out", help="extract: that model's price, euros per million tokens out")
+    parser.add_argument("--nightly", choices=["on", "off"], help="extract: the nightly pass on new documents")
     parser.add_argument("--overview", action="store_true", help="add: a yearly overview page in the Carnet")
     args = parser.parse_args(argv)
     config = Path.home() / ".config" / "bipagents" / "bridge.toml"
@@ -832,6 +841,11 @@ def archive_main(argv: List[str]) -> int:
     command = rustbridge.cli(Path.home()) + ["archive", args.action, "--agent", args.agent, "--config", str(config)]
     command += ["--folder", args.folder] * bool(args.folder) + ["--name", args.name] * bool(args.name)
     command += ["--id", args.id] * bool(args.id) + ["--overview"] * args.overview
+    if args.action == "extract":
+        command += ["--sample", str(args.sample)] * (args.sample is not None) + ["--run"] * args.run
+        for flag, value in (("--budget", args.budget), ("--model", args.model), ("--price-in", args.price_in),
+                            ("--price-out", args.price_out), ("--nightly", args.nightly)):
+            command += [flag, value] * bool(value)
     return subprocess.run(command, cwd=REPO / "bridge", check=False).returncode
 
 

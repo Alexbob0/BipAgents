@@ -29,6 +29,16 @@ pub struct Hit {
     pub preview: String,
 }
 
+/// One document as the records' extraction sees it: its hit, its rowid, its kind of content and its file's state.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    pub id: i64,
+    pub hit: Hit,
+    pub category: String,
+    pub size: i64,
+    pub mtime: i64,
+}
+
 /// A document's key: 16 hex of its location (its path, `path#offset` in an mbox, `folder␟validity␟uid` in a
 /// mailbox), the same across rebuilds.
 pub fn key_of(loc: &str) -> String {
@@ -228,6 +238,40 @@ impl Index {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let total = self.conn.query_row(&count, params![expr, after, before], |r| r.get(0))?;
         Ok((hits, total))
+    }
+
+    /// Every document, the oldest first (those without a date last): what the records' extraction walks through.
+    pub fn rows(&self) -> rusqlite::Result<Vec<Row>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, key, loc, file, kind, title, sender, date, category, size, mtime, preview FROM docs
+             ORDER BY date = '', date, id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Row {
+                id: r.get(0)?,
+                hit: Hit {
+                    key: r.get(1)?,
+                    loc: r.get(2)?,
+                    file: r.get(3)?,
+                    kind: r.get(4)?,
+                    title: r.get(5)?,
+                    sender: r.get(6)?,
+                    date: r.get(7)?,
+                    preview: r.get(11)?,
+                },
+                category: r.get(8)?,
+                size: r.get(9)?,
+                mtime: r.get(10)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// The ids of the documents matching an FTS5 expression.
+    pub fn matching_ids(&self, expr: &str) -> rusqlite::Result<std::collections::HashSet<i64>> {
+        let mut stmt = self.conn.prepare("SELECT rowid FROM fts WHERE fts MATCH ?1")?;
+        let ids = stmt.query_map([expr], |r| r.get::<_, i64>(0))?;
+        ids.collect()
     }
 
     /// The index's size on disk (with its journal).

@@ -329,6 +329,7 @@ impl AppState {
         let jobs = jobs_of(self);
         self.spawn(async move {
             jobs.clone().resume_following().await;
+            crate::archives::records_fill::resume_all(jobs.config.get(), jobs.tell.clone());
             crate::notebook::fill::follow(&jobs);
         });
         if config.hermes.enabled() {
@@ -1520,6 +1521,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::calendar::router())
         .merge(crate::contacts::router())
         .merge(crate::archives::router())
+        .merge(crate::archives::records_fill::router())
         .merge(crate::health::router())
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())
