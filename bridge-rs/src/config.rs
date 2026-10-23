@@ -492,6 +492,42 @@ impl Default for JobsConfig {
     }
 }
 
+/// `[archive_records]`: records filled from an agent's archives (archives/records_fill.rs): the models the person may
+/// pick for the one-time pass, the price counted for a model whose price is unknown, the caps of a sample and of the
+/// nightly pass on new documents.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ArchiveRecordsConfig {
+    /// `[[archive_records.models]]`: {id, label, price_in, price_out} at the agents' own provider.
+    pub models: Vec<ExtractModel>,
+    /// Euros per million tokens counted for a model of unknown price (on the high side: the cap holds).
+    pub unknown_price_in: f64,
+    pub unknown_price_out: f64,
+    /// Euros a sample may take at most.
+    pub sample_cap_eur: f64,
+    /// Euros the nightly pass on new documents may take per archive and night (a local model: free).
+    pub nightly_cap_eur: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExtractModel {
+    pub id: String,
+    pub label: String,
+    pub price_in: f64,
+    pub price_out: f64,
+}
+
+impl Default for ArchiveRecordsConfig {
+    fn default() -> Self {
+        ArchiveRecordsConfig {
+            models: Vec::new(),
+            unknown_price_in: 3.0,
+            unknown_price_out: 15.0,
+            sample_cap_eur: 1.0,
+            nightly_cap_eur: 0.05,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub bridge_key: String,
@@ -546,6 +582,9 @@ pub struct Config {
     /// `[jobs]` (jobs.rs, runs.rs): not in the serialized form either.
     #[serde(skip)]
     pub jobs: JobsConfig,
+    /// `[archive_records]` (archives/records_fill.rs): not in the serialized form either.
+    #[serde(skip)]
+    pub archive_records: ArchiveRecordsConfig,
     /// `[vault] cards` (cards.rs): whether the person may turn card payments on in the app. "auto" (or "on"): yes,
     /// except on a place of the all-included offer or a « no computer » server; "off": never. Payments stay off
     /// until the person turns them on. Not in the serialized form either.
@@ -616,6 +655,7 @@ impl Config {
             maps: MapsConfig::default(),
             notebook: NotebookConfig::default(),
             jobs: JobsConfig::default(),
+            archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
             archives: Vec::new(),
             push_relay_url: None,
@@ -1162,6 +1202,32 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         handoff_seconds: f(jobs_t, "handoff_seconds", jd.handoff_seconds)?.clamp(5.0, 86_400.0),
     };
 
+    let records_t = table(data, "archive_records");
+    let rd = ArchiveRecordsConfig::default();
+    let mut extract_models = Vec::new();
+    if let Some(Value::Array(items)) = records_t.get("models") {
+        for item in items.iter().filter(|v| v.is_object()) {
+            let id = s(item, "id", "").trim().to_string();
+            if id.is_empty() {
+                return Err(ConfigError::new("archive_records.models: each model needs an id"));
+            }
+            let label = s(item, "label", &id);
+            extract_models.push(ExtractModel {
+                id,
+                label,
+                price_in: f(item, "price_in", rd.unknown_price_in)?.max(0.0),
+                price_out: f(item, "price_out", rd.unknown_price_out)?.max(0.0),
+            });
+        }
+    }
+    let archive_records = ArchiveRecordsConfig {
+        models: extract_models,
+        unknown_price_in: f(records_t, "unknown_price_in", rd.unknown_price_in)?.max(0.0),
+        unknown_price_out: f(records_t, "unknown_price_out", rd.unknown_price_out)?.max(0.0),
+        sample_cap_eur: f(records_t, "sample_cap_eur", rd.sample_cap_eur)?.clamp(0.0, 20.0),
+        nightly_cap_eur: f(records_t, "nightly_cap_eur", rd.nightly_cap_eur)?.clamp(0.0, 5.0),
+    };
+
     let cards = s(table(data, "vault"), "cards", "auto").to_lowercase();
     if !["auto", "on", "off"].contains(&cards.as_str()) {
         return Err(ConfigError::new("vault.cards must be 'auto', 'on' or 'off'"));
@@ -1217,6 +1283,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         maps,
         notebook,
         jobs,
+        archive_records,
         cards,
         archives: match data.get("archives") {
             Some(Value::Array(items)) => items.iter().filter(|v| v.is_object()).cloned().collect(),

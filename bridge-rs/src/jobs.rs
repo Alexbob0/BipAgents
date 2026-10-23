@@ -220,7 +220,7 @@ pub fn scan_view(job: &Dict, running: bool) -> Dict {
 }
 
 pub fn task_view(job: &Dict) -> Dict {
-    const KEEP: [&str; 18] = [
+    const KEEP: [&str; 24] = [
         "id",
         "kind",
         "agent",
@@ -239,6 +239,13 @@ pub fn task_view(job: &Dict) -> Dict {
         "report",
         "proposed_by",
         "runs",
+        // an extraction from an archive (archives/records_fill.rs): euros, its cap, documents read
+        "archive",
+        "eur",
+        "budget_eur",
+        "progress",
+        "model",
+        "counts",
     ];
     KEEP.iter().map(|k| (k.to_string(), job.get(*k).cloned().unwrap_or(Value::Null))).collect()
 }
@@ -499,6 +506,12 @@ impl Jobs {
         let Some(mut job) = job.filter(|j| state_of(j) == "proposed") else {
             return Err(job_error("this task isn't waiting to start"));
         };
+        if crate::archives::records_fill::is_extract(&job) {
+            if crate::archives::records_fill::running_for(&self.config.get(), &agent_of(&job)).is_some() {
+                return Err(job_error("this agent already fills its records from an archive"));
+            }
+            return crate::archives::records_fill::resume(self.config.get(), job_id, None, self.tell.clone());
+        }
         self.may_run(&agent_of(&job))?;
         if let Some(max) = max_tokens.filter(|m| *m != 0) {
             job.insert("max_tokens".into(), json!(max));
@@ -512,6 +525,7 @@ impl Jobs {
         let running: Vec<Dict> = tasks(&self.config.get())
             .into_iter()
             .filter(|j| ["running", "stopping"].contains(&state_of(j).as_str()))
+            .filter(|j| !crate::archives::records_fill::is_extract(j)) // no Hermes run: apart
             .collect();
         if running.iter().any(|j| agent_of(j) == agent) {
             return Err(JobError("this agent is already on a background task".into()));
@@ -604,7 +618,7 @@ impl Jobs {
         let mut count = 0;
         for job in tasks(&config) {
             let state = state_of(&job);
-            if !(state == "running" || state == "stopping") {
+            if !(state == "running" || state == "stopping") || crate::archives::records_fill::is_extract(&job) {
                 continue;
             }
             let Some(agent) = config.agent(Some(&agent_of(&job))) else { continue };
@@ -781,6 +795,9 @@ impl Jobs {
             return self.scan(job_id, "pause", None);
         }
         let Some(mut job) = load(&self.config.get(), job_id) else { return Err(job_error("unknown job")) };
+        if crate::archives::records_fill::is_extract(&job) {
+            return crate::archives::records_fill::pause(&self.config.get(), job_id);
+        }
         if state_of(&job) == "running" {
             let agent = self.agent(&agent_of(&job))?;
             self.stop(&agent, &mut job, "stopped").await;
@@ -794,8 +811,22 @@ impl Jobs {
         max_tokens: Option<i64>,
         message: Option<&str>,
     ) -> anyhow::Result<Dict> {
+        self.resume_with(job_id, max_tokens, message, None).await
+    }
+
+    /// `resume`, with a new cap in euros for an extraction from an archive.
+    pub async fn resume_with(
+        self: &Arc<Self>,
+        job_id: &str,
+        max_tokens: Option<i64>,
+        message: Option<&str>,
+        budget_eur: Option<f64>,
+    ) -> anyhow::Result<Dict> {
         if job_id.starts_with("mail-scan:") {
             return self.scan(job_id, "resume", max_tokens);
+        }
+        if load(&self.config.get(), job_id).is_some_and(|j| crate::archives::records_fill::is_extract(&j)) {
+            return crate::archives::records_fill::resume(self.config.get(), job_id, budget_eur, self.tell.clone());
         }
         let job = load(&self.config.get(), job_id);
         let Some(mut job) = job.filter(|j| ["paused", "failed", "done"].contains(&state_of(j).as_str())) else {
@@ -824,6 +855,7 @@ impl Jobs {
         }
         let config = self.config.get();
         let Some(job) = load(&config, job_id) else { return Err(job_error("unknown job")) };
+        // an extraction's worker stops when it finds its file gone
         let run_id = tk::str_or_empty(job.get("run_id"));
         if ["running", "stopping"].contains(&state_of(&job).as_str()) && !run_id.is_empty() {
             if let Ok(agent) = self.agent(&agent_of(&job)) {
@@ -1140,6 +1172,9 @@ pub struct Resume {
     pub max_tokens: Option<i64>,
     #[serde(default)]
     pub message: Option<String>,
+    /// An extraction from an archive: its new cap in euros.
+    #[serde(default)]
+    pub budget_eur: Option<f64>,
 }
 
 impl Validate for Resume {
@@ -1148,6 +1183,9 @@ impl Validate for Resume {
             check_range(errors, body_loc("max_tokens"), m as f64, Some(10_000.0), Some(200_000_000.0), json!(m));
         }
         check_max_len(errors, "message", self.message.as_deref(), 2000);
+        if let Some(b) = self.budget_eur {
+            check_range(errors, body_loc("budget_eur"), b, Some(0.01), Some(500.0), json!(b));
+        }
     }
 }
 
@@ -1209,11 +1247,12 @@ async fn resume_route(
     UrlPath(job_id): UrlPath<String>,
     OptionalJson(body): OptionalJson<Resume>,
 ) -> ApiResult<Response> {
-    let (max_tokens, message) = match body {
-        Some(b) => (b.max_tokens, b.message),
-        None => (None, None),
+    let (max_tokens, message, budget_eur) = match body {
+        Some(b) => (b.max_tokens, b.message, b.budget_eur),
+        None => (None, None, None),
     };
-    let job = jobs_of(&state).resume(&job_id, max_tokens, message.as_deref()).await.map_err(refused)?;
+    let job =
+        jobs_of(&state).resume_with(&job_id, max_tokens, message.as_deref(), budget_eur).await.map_err(refused)?;
     Ok(web::ok(Value::Object(job)))
 }
 

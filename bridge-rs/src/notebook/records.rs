@@ -363,6 +363,30 @@ fn read(config: &Config, t: &Kind) -> (String, Option<String>, Page, Table) {
     (path, before, page, table)
 }
 
+/// A record's fields as `upsert` keeps them: its type's fields only, one line each, dates written YYYY-MM-DD.
+pub fn prepare(t: &Kind, fields: &Dict) -> Dict {
+    let mut new = Dict::new();
+    for f in t.fields {
+        let value = tk::str_or_empty(fields.get(f.id));
+        let value = tk::head(&cell(&value), 300).to_string();
+        if !value.is_empty() {
+            let value = if DATES.contains(&f.id) { iso(&value) } else { value };
+            new.insert(f.id.into(), json!(value));
+        }
+    }
+    new
+}
+
+/// The row of `rows` that is the same record as `new` (prepared), on its type's key.
+pub fn find_same(t: &Kind, rows: &[Dict], new: &Dict) -> Option<usize> {
+    rows.iter().position(|r| same(t, r, new))
+}
+
+/// Whether `value` is one of the date fields (written YYYY-MM-DD).
+pub fn is_date_field(field: &str) -> bool {
+    DATES.contains(&field)
+}
+
 /// What `upsert` did.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Upserted {
@@ -385,15 +409,7 @@ pub fn upsert(
     let _guard = super::lock();
     let lang = super::language(config);
     let (path, before, mut page, mut table) = read(config, t);
-    let mut new = Dict::new();
-    for f in t.fields {
-        let value = tk::str_or_empty(fields.get(f.id));
-        let value = tk::head(&cell(&value), 300).to_string();
-        if !value.is_empty() {
-            let value = if DATES.contains(&f.id) { iso(&value) } else { value };
-            new.insert(f.id.into(), json!(value));
-        }
-    }
+    let new = prepare(t, fields);
     let id = id.trim();
     let index = if id.is_empty() {
         table.rows.iter().position(|r| same(t, r, &new))
@@ -513,6 +529,16 @@ pub fn records(config: &Config, t: &Kind) -> Vec<Dict> {
     }
 }
 
+static ARCHIVE_REF: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"archive:([A-Za-z0-9_.-]+/[a-z0-9-]+/[0-9a-fA-F]{16})\b").expect("valid regex")
+});
+
+/// The archive document a record comes from (`archive:<agent>/<archive>/<16 hex>` in its source, written by the
+/// extraction from the archives or by an agent): the apps open it read-only.
+pub fn source_ref(source: &str) -> Option<String> {
+    ARCHIVE_REF.captures(source).map(|c| c[1].to_lowercase())
+}
+
 fn item_view(t: &Kind, record: &Dict, today: NaiveDate) -> Value {
     let mut out = record.clone();
     let next = next_date(t, record);
@@ -521,6 +547,7 @@ fn item_view(t: &Kind, record: &Dict, today: NaiveDate) -> Value {
     let legal = t.id == "purchase"
         && super::WORDS.iter().any(|w| tk::str_or_empty(record.get("warranty_end")).contains(legal_word(w.lang)));
     out.insert("legal".into(), json!(legal));
+    out.insert("source_ref".into(), json!(source_ref(&tk::str_or_empty(record.get("source")))));
     for f in t.fields {
         out.entry(f.id.to_string()).or_insert(json!(""));
     }

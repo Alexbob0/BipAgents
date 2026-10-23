@@ -50,6 +50,7 @@
 
 pub mod extract;
 pub mod index;
+pub mod records_fill;
 pub mod sync;
 
 use std::collections::HashSet;
@@ -464,6 +465,10 @@ pub async fn scheduler(shared: SharedConfig) {
                 }
             });
             let _ = run.await;
+            // the records from the new documents, once a night (when a full pass was made: records_fill.rs)
+            if let Err(err) = records_fill::nightly(config.clone(), archive.clone()).await {
+                tracing::warn!(target: "bipbridge::archives", archive = %archive.id, error = %err, "records nightly pass failed");
+            }
         }
         tokio::time::sleep(Duration::from_secs(600)).await;
     }
@@ -534,7 +539,7 @@ pub fn view(config: &Config, archive: &Archive) -> Value {
 /// The tools of an agent with archives (their names in the description: a new archive is a new tools' version).
 pub fn tools(config: &Config, agent: &str) -> Vec<Value> {
     let names: Vec<String> = of_agent(config, agent).iter().map(|a| format!("« {} »", a.name)).collect();
-    vec![
+    let mut list = vec![
         json!({
             "name": SEARCH,
             "description": format!("Search your person's archives ({}): their old documents and e-mails, indexed on \
@@ -563,7 +568,11 @@ pub fn tools(config: &Config, agent: &str) -> Vec<Value> {
                 "required": ["ref"]},
             "annotations": {"readOnlyHint": true, "openWorldHint": false},
         }),
-    ]
+    ];
+    if crate::notebook::enabled(config, agent) {
+        list.push(records_fill::tool(config, agent));
+    }
+    list
 }
 
 /// What came from outside, its markers made harmless (a document can't close the block itself).
@@ -620,7 +629,7 @@ pub fn parse_ref(reference: &str) -> Option<(String, String, String)> {
 }
 
 /// A hit's or a document's text: read again from its file, or fetched from its mailbox (texts per location).
-fn texts(
+pub(crate) fn texts(
     config: &Config,
     archive: &Archive,
     hits: &[&Hit],
@@ -904,6 +913,7 @@ pub fn forget(config: &Config, agent: &str) {
         let _ = save(config, &list);
     }
     let _ = std::fs::remove_dir_all(PathBuf::from(config.data_dir()).join(INDEX_DIR).join(agent));
+    let _ = std::fs::remove_dir_all(PathBuf::from(config.data_dir()).join(records_fill::STORE_DIR).join(agent));
 }
 
 // -- the yearly overview in the Carnet -------------------------------------------------------------------------------
@@ -1100,9 +1110,12 @@ pub fn remove(config: &Config, agent: &str, id: &str) -> anyhow::Result<()> {
     let archive = list.remove(at);
     save(config, &list)?;
     let path = index_path(config, &archive);
+    let read = records_fill::store_path(config, &archive);
     for suffix in ["", "-wal", "-shm"] {
         let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        let _ = std::fs::remove_file(format!("{}{suffix}", read.display()));
     }
+    let _ = std::fs::remove_file(read.with_extension("lock"));
     tracing::info!(target: "bipbridge::archives", agent = %agent, archive = %id, "archive removed");
     Ok(())
 }
@@ -1256,7 +1269,9 @@ pub fn router() -> Router<AppState> {
 // -- the command line ------------------------------------------------------------------------------------------------
 
 const USAGE: &str = "usage: bipbridge archive list|add|remove|refresh --agent AGENT [--folder FOLDER] [--name NAME] \
-[--id ID] [--overview] [--config CONFIG]\n";
+[--id ID] [--overview] [--config CONFIG]
+       bipbridge archive extract --agent AGENT [--id ID] (--sample [N] | --run --budget EUR | --nightly on|off | --status)
+                 [--model MODEL] [--price-in EUR_PER_M --price-out EUR_PER_M] [--config CONFIG]\n";
 
 /// `bipbridge archive …`: an archive connected, listed, removed or indexed now, without the app (an install set up by
 /// hand). `add` registers the agent's tools at once; the running bridge indexes it within ten minutes (`refresh`: now,
@@ -1269,9 +1284,23 @@ pub fn cli(argv: &[String]) -> i32 {
     while i < argv.len() {
         let arg = argv[i].as_str();
         match arg {
-            "--config" | "--agent" | "--folder" | "--name" | "--id" if i + 1 < argv.len() => {
-                options.insert(arg.trim_start_matches('-').into(), argv[i + 1].clone());
+            "--config" | "--agent" | "--folder" | "--name" | "--id" | "--archive" | "--budget" | "--model"
+            | "--price-in" | "--price-out" | "--nightly"
+                if i + 1 < argv.len() =>
+            {
+                let key = if arg == "--archive" { "id" } else { arg.trim_start_matches('-') };
+                options.insert(key.into(), argv[i + 1].clone());
                 i += 1;
+            }
+            "--sample" => {
+                let n = argv.get(i + 1).filter(|v| v.parse::<usize>().is_ok());
+                options.insert("sample".into(), n.cloned().unwrap_or_else(|| records_fill::SAMPLE_SIZE.to_string()));
+                if n.is_some() {
+                    i += 1;
+                }
+            }
+            "--run" | "--status" => {
+                options.insert(arg.trim_start_matches('-').into(), "1".into());
             }
             "--overview" => overview = true,
             "-h" | "--help" => {
@@ -1352,6 +1381,7 @@ pub fn cli(argv: &[String]) -> i32 {
             register(&config);
             vec![format!("{}: archive {id} removed (its folder untouched)", agent.name)]
         }),
+        "extract" => return records_fill::cli(&config, &agent, &options),
         "refresh" => match of_agent(&config, &agent.name).into_iter().find(|a| a.id == id) {
             Some(archive) => update(&config, &archive, &crate::mailbox::default_connect()).map(|ran| {
                 let v = view(&config, &archive);

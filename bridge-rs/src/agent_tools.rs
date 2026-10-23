@@ -1284,6 +1284,12 @@ pub async fn call_tool(
         return crate::notebook::fill::tool_call(jobs.as_ref(), agent).await;
     }
     let config = maker.config.get();
+    if name == crate::archives::records_fill::TOOL {
+        if !crate::archives::enabled(&config, &agent.name) {
+            return Ok(tool_text("No archive is connected to you: the person adds one in your page of the app.", true));
+        }
+        return crate::archives::records_fill::tool_call(config, agent, arguments).await;
+    }
     if name == crate::weather::TOOL_NAME {
         if !crate::weather::enabled(&config, &agent.name) {
             return Ok(tool_text(
