@@ -316,6 +316,7 @@ impl AppState {
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
+        self.spawn(self.briefs.clone().sweep_forever());
         if self.sleep.enabled() {
             self.spawn(self.sleep.clone().run_forever());
         }

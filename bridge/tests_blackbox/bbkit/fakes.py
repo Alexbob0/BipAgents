@@ -267,6 +267,9 @@ class FakeHermes(Fake):
         self.chats: List[Dict[str, Any]] = []
         self.patched: List[Dict[str, Any]] = []
         self.deleted: List[str] = []
+        # Hermes' titler writing a deleted session that had a chat back (an empty row titled from the request, source
+        # « unknown »), `revive` times, `revive_after` seconds after its deletion.
+        self.revive, self.revive_after = 0, 1.0
         self.chat_reply = "- Alex prépare un podcast pour jeudi.\n- Il dort mal depuis lundi."
         self.capabilities: Dict[str, int] = {}          # agent -> status (default 200)
         self.toolsets = [{"name": "web", "label": "Web", "description": "Search", "enabled": True,
@@ -400,7 +403,19 @@ class FakeHermes(Fake):
             return JSONResponse({})
         if len(parts) == 3 and method == "DELETE":
             self.deleted.append(session_id)
-            mine.pop(session_id, None)
+            if mine.pop(session_id, None) is None:
+                return JSONResponse({"error": f"Session not found: {session_id}"}, status_code=404)
+            if self.revive and any(c["agent"] == agent and c["session"] == session_id for c in self.chats):
+                self.revive -= 1
+
+                def written_back() -> None:
+                    mine[session_id] = {"id": session_id, "title": "Notes on the podcast", "source": "unknown",
+                                        "message_count": 0, "started_at": time.time(), "last_active": time.time()}
+                    self.messages[(agent, session_id)] = []
+
+                timer = threading.Timer(self.revive_after, written_back)
+                timer.daemon = True
+                timer.start()
             return JSONResponse({})
         if len(parts) == 4 and parts[3] == "messages":
             return JSONResponse({"messages": self.messages.get((agent, session_id), [])})
