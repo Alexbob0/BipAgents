@@ -5,6 +5,7 @@
 //!     notebook_note     file facts about a person, a subject or an area (the page made if missing), its « En bref »
 //!     notebook_edit     correct or remove a fact, rewrite a section or the « En bref »
 //!     notebook_task     list, add (with a date: a phone reminder too) or tick off a task
+//!     notebook_record   precise records: purchases, subscriptions, contracts and insurance, papers, bookings
 //!
 //! No approval asked: filing is the point, and every change can be undone from the page's history. An agent the
 //! person gave their health to also reads and writes the private health part (`private: true`); no other agent sees
@@ -22,7 +23,8 @@ pub const READ: &str = "notebook_read";
 pub const NOTE: &str = "notebook_note";
 pub const EDIT: &str = "notebook_edit";
 pub const TASK: &str = "notebook_task";
-pub const TOOL_NAMES: [&str; 5] = [SEARCH, READ, NOTE, EDIT, TASK];
+pub const RECORD: &str = "notebook_record";
+pub const TOOL_NAMES: [&str; 6] = [SEARCH, READ, NOTE, EDIT, TASK, RECORD];
 
 fn private_property() -> Value {
     json!({"type": "boolean", "description": "true for health facts: they go to the person's private health part, \
@@ -40,7 +42,7 @@ pub fn tools(health: bool) -> Vec<Value> {
         Without words: the list of pages (of one kind if given).",
             "inputSchema": {"type": "object", "properties": {
                 "words": {"type": "string", "description": "a name, a nickname or a few words"},
-                "kind": {"type": "string", "enum": ["person", "subject", "area"]}}},
+                "kind": {"type": "string", "enum": ["person", "subject", "area", "trip"]}}},
         }),
         json!({
             "name": READ,
@@ -55,7 +57,9 @@ pub fn tools(health: bool) -> Vec<Value> {
             "description": "File durable facts in the Carnet: about your person themself (kind self: their « Toi » page; who \
         they are, family, work, likes and habits, goals, how their agents should behave with them), a person (birthday, \
         family, preferences, what was agreed, recent exchanges), a subject or project (decisions, status, next steps, people involved) or an area of life (home, \
-        money, work, family…). The page is found by its name, a nickname or the contact's id, and made if it doesn't exist. \
+        money, work, family…) or a trip (kind trip: a journey with dates, bookings, a destination; give start and end; a \
+        subject that turns out to be a trip becomes one when you file it with kind trip, its content kept). The page is found \
+        by its name, a nickname or the contact's id, and made if it doesn't exist. \
         Facts already there are not repeated. Every page has the same fixed sections for its kind: give the section \
         the facts belong to (one call per section); one short fact per item. Write each fact short and dated when it matters (« Anniversaire : 14 novembre », \
         « Devis plombier accepté le 22/10 : 480 € »); link pages with [[Name]]. Give the page's « En bref » when it changes: \
@@ -63,13 +67,16 @@ pub fn tools(health: bool) -> Vec<Value> {
         the person asked not to keep.",
             "inputSchema": {"type": "object", "properties": {
                 "page": {"type": "string", "description": "the person's, subject's or area's name (« Marc Dupont », « Rénovation cuisine », « Maison »)"},
-                "kind": {"type": "string", "enum": ["person", "subject", "area", "self"], "description": "for a new page; self: your person themself (their « Toi » page, one per Carnet)"},
+                "kind": {"type": "string", "enum": ["person", "subject", "area", "self", "trip"], "description": "for a new page; self: your person themself (their « Toi » page, one per Carnet); trip: a journey (also turns an existing subject into a trip)"},
                 "facts": {"type": "array", "items": {"type": "string"}, "maxItems": 20, "description": "short facts, one per item"},
                 "section": {"type": "string", "enum": super::template::all_ids(), "description": super::template::described()},
                 "summary": {"type": "string", "description": "the page's new « En bref », 2–3 short lines (when what matters most changes)"},
                 "aliases": {"type": "array", "items": {"type": "string"}, "description": "other names or nicknames"},
                 "contact": {"type": "string", "description": "the phone contact's id, when you know it (from contacts_search)"},
-                "close": {"type": "boolean", "description": "true when the person says this person is close to them (family, close friends): their dates (birthday…) are then shown in « Dates à venir »"}},
+                "close": {"type": "boolean", "description": "true when the person says this person is close to them (family, close friends): their dates (birthday…) are then shown in « Dates à venir »"},
+                "start": {"type": "string", "description": "a trip's first day, YYYY-MM-DD"},
+                "end": {"type": "string", "description": "a trip's last day, YYYY-MM-DD"},
+                "destination": {"type": "string", "description": "a trip's destination (« Kyoto, Japon »)"}},
                 "required": ["page", "facts"]},
         }),
         json!({
@@ -95,17 +102,38 @@ pub fn tools(health: bool) -> Vec<Value> {
         their reminders with you. To suggest a task yourself, first action propose (kind, title): only when clearly useful; \
         the Carnet says whether you may (a few a week at most, never a kind the person declined); if it gives an id, ask \
         the person in one sentence; yes: action add with origin accepted and that proposal id; no: action decline with the \
-        id (never: true when they don't want this kind at all). action done ticks one off (its id); action list: the open ones.",
+        id (never: true when they don't want this kind at all). action done ticks one off (its id); action list: the open ones, \
+        and the Carnet's own proposals waiting for the person's answer (a warranty ending, a renewal, a paper expiring).",
             "inputSchema": {"type": "object", "properties": {
                 "action": {"type": "string", "enum": ["add", "done", "list", "propose", "decline"]},
                 "title": {"type": "string"},
                 "due": {"type": "string"},
                 "page": {"type": "string", "description": "the page it belongs to (a person, a subject, an area)"},
                 "origin": {"type": "string", "enum": ["asked", "own", "accepted"]},
-                "kind": {"type": "string", "enum": ["birthday", "anniversary", "gift", "follow_up", "deadline", "other"], "description": "for propose"},
+                "kind": {"type": "string", "enum": super::PROPOSAL_KINDS, "description": "for propose"},
                 "proposal": {"type": "string", "description": "the proposal's id (for add with origin accepted, and decline)"},
                 "never": {"type": "boolean", "description": "for decline: the person doesn't want this kind of proposal any more"},
                 "id": {"type": "string", "description": "for done: the task's id (from list)"}},
+                "required": ["action"]},
+        }),
+        json!({
+            "name": RECORD,
+            "description": "Precise records in the person's Carnet, one line each with every detail, instead of vague \
+        facts: a purchase (date, item, store, price, end of warranty: leave it out when unknown, the EU's two-year legal \
+        guarantee is computed), a subscription (service, price, period, next renewal, how to cancel), a contract or an \
+        insurance (type, provider, number, end), a paper (document: passport, ID card, driving licence…, expiry) or a \
+        booking (date, with time if any: YYYY-MM-DD HH:MM; what, with whom, booking reference, the trip it belongs to). \
+        Dates as YYYY-MM-DD. source: the reference of the document it comes from when you have one. action add (the \
+        same record given twice is merged: same item and date, same service, same contract number, same document, same \
+        booking reference), update (its id, only the fields that change), remove (its id), list (one type, or all). \
+        The Carnet proposes the reminders itself (a warranty ending, a renewal, a paper expiring): don't add tasks for \
+        them. Never card numbers, codes or passwords.",
+            "inputSchema": {"type": "object", "properties": {
+                "action": {"type": "string", "enum": ["add", "update", "remove", "list"]},
+                "type": {"type": "string", "enum": super::records::TYPES.iter().map(|t| t.id).collect::<Vec<_>>()},
+                "id": {"type": "string", "description": "the record's id (from add or list), for update and remove"},
+                "fields": {"type": "object", "description": "the record's fields (those of its type)", "properties":
+                    super::records::all_fields().iter().map(|f| (f.to_string(), json!({"type": "string"}))).collect::<serde_json::Map<String, Value>>()}},
                 "required": ["action"]},
         }),
     ];
@@ -218,7 +246,10 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
             }
             let part = if private || (health && is_health_page) { Part::Health } else { Part::Main };
             let facts = args_list(arguments, "facts");
-            if facts.is_empty() && s(arguments, "summary").is_empty() && arguments.get("close").is_none() {
+            let trip_only =
+                kind == "trip" || ["start", "end", "destination"].iter().any(|k| !s(arguments, k).is_empty());
+            if facts.is_empty() && s(arguments, "summary").is_empty() && arguments.get("close").is_none() && !trip_only
+            {
                 return Ok(tool_text("give the facts to file", true));
             }
             match super::note(
@@ -240,8 +271,22 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                         super::set_close(config, &written.path, *close, &who)?;
                     }
                 }
+                // a trip's dates and destination, in its frontmatter
+                let (start, end, destination) =
+                    (s(arguments, "start"), s(arguments, "end"), s(arguments, "destination"));
+                if !(start.is_empty() && end.is_empty() && destination.is_empty()) {
+                    let changed =
+                        super::trip::set_details(config, part, &written.path, &start, &end, &destination, &who)?;
+                    if changed {
+                        return Ok(super::Written { changed: true, ..written });
+                    }
+                }
                 Ok(written)
             }) {
+                Ok(written) if written.added.is_empty() && !written.created && written.changed => Ok(tool_text(
+                    &format!("The Carnet's trip page is up to date: {} ({}).", written.title, written.path),
+                    false,
+                )),
                 Ok(written) if written.added.is_empty() && !written.created => {
                     Ok(tool_text(&format!("Already in the Carnet ({}): nothing new to file.", written.title), false))
                 }
@@ -302,6 +347,25 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                             let due = if task.due.is_empty() { String::new() } else { format!(" · due {}", task.due) };
                             lines.push(format!("- id {} · {}{due}{}", task.id, task.title, marker(*part)));
                         }
+                    }
+                    let waiting: Vec<String> = super::open_proposals(config)
+                        .iter()
+                        .filter(|p| tk::str_or_empty(p.get("agent")).is_empty())
+                        .map(|p| {
+                            format!(
+                                "- proposal {} · {} · due {}",
+                                tk::str_or_empty(p.get("id")),
+                                tk::str_or_empty(p.get("title")),
+                                tk::str_or_empty(p.get("due"))
+                            )
+                        })
+                        .collect();
+                    if !waiting.is_empty() {
+                        lines.push(format!(
+                            "Proposed by the Carnet, waiting for the person's answer (they answer in the app; if it fits \
+the conversation, ask them in one sentence: yes is action add with origin accepted and the proposal id):\n{}",
+                            waiting.join("\n")
+                        ));
                     }
                     if lines.is_empty() {
                         Ok(tool_text("No open task.", false))
@@ -371,6 +435,67 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                 _ => Ok(tool_text("action is add, done, list, propose or decline", true)),
             }
         }
+        RECORD => record(config, arguments, &who).or_else(caught),
         _ => Ok(tool_text(&format!("unknown tool: {name}"), true)),
+    }
+}
+
+fn record(config: &Config, arguments: &Dict, who: &Who) -> anyhow::Result<Dict> {
+    use super::records::{self, Upserted};
+    let action = s(arguments, "action");
+    let kind = records::kind(&s(arguments, "type"));
+    let fields: Dict = match arguments.get("fields") {
+        Some(Value::Object(f)) => f.clone(),
+        _ => Dict::new(),
+    };
+    match action.as_str() {
+        "list" => {
+            let kinds: Vec<&records::Kind> = match kind {
+                Some(k) => vec![k],
+                None => records::TYPES.iter().collect(),
+            };
+            let mut lines: Vec<String> = Vec::new();
+            for k in kinds {
+                for r in records::records(config, k) {
+                    lines.push(format!(
+                        "- {} id {} · {}",
+                        k.id,
+                        tk::str_or_empty(r.get("id")),
+                        records::summary_of(k, &r)
+                    ));
+                }
+            }
+            if lines.is_empty() {
+                return Ok(tool_text("No record yet.", false));
+            }
+            Ok(tool_text(&lines.join("\n"), false))
+        }
+        "add" | "update" => {
+            let Some(kind) = kind else {
+                return Ok(tool_text("type is purchase, subscription, contract, paper or booking", true));
+            };
+            let (record, done) = records::upsert(config, kind, &s(arguments, "id"), &fields, action == "update", who)?;
+            let line = records::summary_of(kind, &record);
+            let id = tk::str_or_empty(record.get("id"));
+            let what = match done {
+                Upserted::Added => "Recorded in the Carnet",
+                Upserted::Updated => "Updated in the Carnet",
+                Upserted::Same => "Already in the Carnet",
+            };
+            let mention = if done == Upserted::Same { String::new() } else { mention(config, &line) };
+            Ok(tool_text(&format!("{what}: {} (id {id}): {line}.{mention}", kind.id), false))
+        }
+        "remove" => {
+            let Some(kind) = kind else {
+                return Ok(tool_text("type is purchase, subscription, contract, paper or booking", true));
+            };
+            match records::remove(config, kind, &s(arguments, "id"), who)? {
+                Some(r) => {
+                    Ok(tool_text(&format!("Removed from the Carnet: {}.", records::summary_of(kind, &r)), false))
+                }
+                None => Ok(tool_text("unknown record id (action list gives them)", true)),
+            }
+        }
+        _ => Ok(tool_text("action is add, update, remove or list", true)),
     }
 }

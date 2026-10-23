@@ -49,12 +49,16 @@ id: person: who (how they relate, how they met, contact details), dates, family,
 allergies), gifts, agreed (promises, loans, appointments), exchanges (short dated lines), remember; subject: status, \
 decisions, next, people, budget, documents, history; area: matters, habits, contacts, ongoing; self (the person \
 themself, kind self, their one page « Toi »): about, family, work, habits, goals, agents (how their agents should \
-behave with them); other only when nothing fits. You may also get lines filed under « other »: move each to its section when one clearly fits. Answer \
+behave with them); trip (a journey: kind trip): dates, itinerary (one line a day, « J1 : … »), transport (flights and \
+trains: times, booking numbers), lodging, documents, packing, budget, onsite (contacts, addresses); other only when \
+nothing fits. You may also get lines filed under « other »: move each to its section when one clearly fits. A subject \
+that is clearly a trip (dates, bookings, a destination) becomes one with a « trip » line. Answer \
 with JSON lines only, one per line, nothing else:
-{\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area|self\", \"page\": \"<name>\", \"section\": \"<section id>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
+{\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area|self|trip\", \"page\": \"<name>\", \"section\": \"<section id>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
 {\"op\": \"refile\", \"page\": \"<name>\", \"fact\": \"<the line, exactly>\", \"section\": \"<section id>\"}
 {\"op\": \"task\", \"agent\": \"<agent id>\", \"origin\": \"asked|own\", \"title\": \"...\", \"due\": \"YYYY-MM-DD\", \"page\": \"<name, optional>\"}
 {\"op\": \"merge\", \"from\": \"<page name>\", \"into\": \"<page name>\"}   (two pages about the same person or subject)
+{\"op\": \"trip\", \"page\": \"<subject name>\"}   (a subject that is clearly a trip)
 Nothing worth filing: answer nothing.";
 
 static DURABLE: LazyLock<Regex> = LazyLock::new(|| {
@@ -362,6 +366,23 @@ async fn run_inner(
         move || super::clean_reminders(&c)
     })
     .await??;
+    // « Mode voyage »: the subjects that are clearly trips become trips; the records' reminders proposed (no model)
+    let trips = tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::trip::detect(&c)
+    })
+    .await??;
+    if trips > 0 {
+        record.insert("trips".into(), json!(trips));
+    }
+    let proposed = tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::records::propose_due(&c, Local::now().date_naive())
+    })
+    .await??;
+    if proposed > 0 {
+        record.insert("proposed".into(), json!(proposed));
+    }
     let seeded = tokio::task::spawn_blocking({
         let c = config.clone();
         move || super::seed(&c)
@@ -629,6 +650,7 @@ pub fn apply(
             }
             "refile" => super::refile_locked(config, &page, &s("fact"), &s("section"), &Who::tidy(config)),
             "merge" => super::merge_locked(config, Part::Main, &s("from"), &s("into"), &who).map(|m| m.is_some()),
+            "trip" => super::trip::convert_locked(config, &page, &Who::tidy(config)),
             _ => Ok(false),
         };
         match result {
