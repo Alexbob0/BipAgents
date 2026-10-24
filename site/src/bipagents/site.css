@@ -182,9 +182,9 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   .hero .cta-row .pill { width: 100%; }
 }
 
-.hero-stage { position: relative; height: 640px; display: grid; place-items: center; }
-@media (max-width: 1039px) { .hero-stage { height: auto; padding: 50px 0 90px; } }
-@media (max-width: 520px) { .hero-stage { padding: 72px 0 80px; } }
+.hero-stage { position: relative; height: 640px; display: grid; place-items: center; scroll-margin-top: 72px; }
+@media (max-width: 1039px) { .hero-stage { height: auto; padding: 36px 0 48px; } }
+@media (max-width: 520px) { .hero-stage { padding: 28px 0 40px; } }
 .phone {
   position: relative; border-radius: 56px; padding: 11px; background: #0D0E11;
   box-shadow: var(--shadow-big), inset 0 0 0 2px #2A2C33;
@@ -193,39 +193,31 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   background: #000; border-radius: 20px; z-index: 2; }
 .phone-screen { border-radius: 46px; overflow: hidden; background: var(--ground); }
 .phone-screen img { width: 100%; height: auto; }
-.float-bip { position: absolute; width: 130px; height: 130px; z-index: 3; animation: bob 6s ease-in-out infinite; }
-.fb-1 { left: 0; top: 4%; width: 140px; height: 140px; }
-.fb-2 { right: 0; top: 40%; width: 110px; height: 110px; animation-delay: -2s; }
-.fb-3 { left: 4%; bottom: 2%; width: 110px; height: 110px; animation-delay: -4s; }
-@keyframes bob { 50% { translate: 0 -14px; } }
+/* The hero: what the agents did, one result per kind of agent, like the phone's notifications. They come in one
+   after another on load (~120 ms apart), then stay still; with reduced motion they are simply there. A phone shows
+   the first four. */
+.results { list-style: none; margin: 0; padding: 0; width: min(440px, 100%); display: grid; gap: 12px; position: relative; z-index: 2; }
+.res { display: flex; align-items: center; gap: 14px; padding: 12px 16px 12px 12px; border-radius: 24px;
+  background: var(--card); box-shadow: var(--shadow-big); animation: res-in .5s cubic-bezier(.2, .8, .3, 1) both;
+  animation-delay: calc(var(--i, 0) * 120ms + 150ms); }
+.res:nth-child(even) { margin-left: 22px; margin-right: -22px; }
+.res-bip { flex: 0 0 52px; height: 52px; border-radius: 16px; background: var(--tint, var(--ground2)); touch-action: auto; }
+.res-txt { min-width: 0; flex: 1; }
+.res-head { display: flex; align-items: center; gap: 6px; font-size: 13.5px; line-height: 1.3; color: var(--ink2); }
+.res-head b { font-weight: 1000; color: var(--ink); }
+.res-head .ai { background: var(--tint, var(--ground2)); color: var(--ink2); }
+.res-head time { margin-left: auto; padding-left: 8px; color: var(--muted); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.res-line { margin-top: 3px; font-size: 15px; font-weight: 800; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; }
+.res-ic { margin-right: 6px; }
+@keyframes res-in { from { opacity: 0; transform: translateY(12px) scale(.98); } }
 @media (max-width: 520px) {
-  .float-bip { width: 78px !important; height: 78px !important; }
-  .fb-1 { left: -4%; top: 12%; } .fb-2 { right: -5%; top: 46%; } .fb-3 { left: -3%; bottom: 0; }
+  .res:nth-child(n+5) { display: none; }
+  .res:nth-child(even) { margin-left: 0; margin-right: 0; }
+  .res { padding: 11px 14px 11px 10px; gap: 12px; }
+  .res-bip { flex-basis: 46px; height: 46px; }
+  .res-line { font-size: 14.5px; }
 }
-
-/* The hero: an agent asks before booking, you tap « Once », it's booked. Without script or with reduced motion,
-   the whole exchange stays still; with it, the steps come in turn (site.js) and start again. */
-.ask { position: relative; z-index: 4; margin: 0; width: min(380px, 100%); border-radius: 32px; background: var(--ground);
-  box-shadow: var(--shadow-big), inset 0 0 0 1px var(--line); overflow: hidden;
-  --rx: 0deg; --ry: 0deg; transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry)) rotate(-2deg); transition: transform .25s ease-out; }
-.ask .chat-head { padding: 14px 16px; }
-.ask-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 14px 18px; min-height: 430px; justify-content: flex-end; }
-.ask .msg, .ask .tool, .ask .card-a { animation: none; }
-.ask .msg { font-size: 15px; }
-.ask .card-a { box-shadow: var(--shadow-big); }
-.ask .card-a p { margin-bottom: 8px; }
-.ask .card-a p.ask-head { font-size: 12.5px; font-weight: 800; color: var(--muted); margin-bottom: 4px; }
-.ask .card-a .btns span { font-size: 14px; padding: 11px 8px; position: relative; }
-.ask-once::after { content: ""; position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
-  background: color-mix(in srgb, var(--coral) 55%, transparent); opacity: 0; transform: scale(.3); pointer-events: none; }
-.ask.play [data-ask] { opacity: 0; transform: translateY(14px) scale(.97); transition: opacity .45s, transform .55s cubic-bezier(.25, 1.4, .4, 1); }
-.ask.play [data-ask].on { opacity: 1; transform: none; }
-.ask.play .ask-once:not(.chosen) { background: var(--ground2); color: var(--ink); transform: none; }
-.ask.play .ask-once.tap::after { animation: tap .6s ease-out; }
-@keyframes tap { 0% { opacity: .9; transform: scale(.3); } 100% { opacity: 0; transform: scale(1.8); } }
-.ask .msg.bot .txt b { font-weight: 1000; }
-@media (max-width: 520px) { .ask-body { min-height: 400px; } .ask .msg { font-size: 14.5px; } }
-@media (prefers-reduced-motion: reduce) { .ask { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .res { animation: none; } }
 
 /* -- Compared: Muse, dots, Grok Bot, BipAgents. A face-off (one product against BipAgents) picked in a segmented
    control, or the whole table; without the script, the whole table. Marks (check, cross, half, dash) always sit next
@@ -395,6 +387,23 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .tool.done .st { animation: none; border: 0; background: var(--green); position: relative; }
 .tool.done .st::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--on-pale); font-size: 11px; font-weight: 1000; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* The working line while the agent works (the apps' WorkingLine): its Bip and what it does now, a light sweeping
+   across the words; the finished steps fold under « Détail du travail » (closed, as in the app). */
+.working { align-self: flex-start; display: flex; align-items: center; gap: 8px; max-width: 92%; font-size: 14px; font-weight: 700; color: var(--muted); animation: pop-in .3s both; }
+.working .av { flex: 0 0 24px; height: 24px; display: grid; place-items: center; }
+.working .av svg { width: 24px; height: 24px; }
+.working .ph { background: linear-gradient(100deg, var(--muted) 35%, var(--ink) 50%, var(--muted) 65%) 0 0 / 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: sweep 1.8s linear infinite; }
+@keyframes sweep { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.work { align-self: flex-start; max-width: 92%; }
+.work summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; padding: 5px 12px; border-radius: 999px;
+  background: var(--ground2); color: var(--muted); font-size: 13px; font-weight: 800; }
+.work summary::-webkit-details-marker { display: none; }
+.work summary::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.work[open] summary::after { transform: translateY(1px) rotate(-135deg); }
+.work-rows { display: grid; gap: 6px; margin-top: 8px; }
+.work .tool { animation: none; }
+@media (prefers-reduced-motion: reduce) { .working, .working .ph { animation: none; } .working .ph { color: var(--muted); background: none; } }
 .card-q, .card-a { align-self: stretch; border-radius: 22px; background: var(--card); box-shadow: var(--shadow); padding: 16px; animation: pop-in .45s both; }
 .card-q p, .card-a p { font-weight: 900; margin-bottom: 12px; }
 .card-q .opts { display: grid; gap: 8px; }
@@ -467,7 +476,6 @@ a.store:hover { transform: translateY(-2px); }
 .progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; pointer-events: none; }
 .progress i { display: block; height: 100%; transform-origin: left; transform: scaleX(0);
   background: linear-gradient(90deg, var(--coral), var(--gold), var(--green), var(--teal), var(--violet)); }
-@media (prefers-reduced-motion: reduce) { .float-bip { animation: none; } }
 
 /* -- Pages in the chat: the walk's map, the page kit's page ------------------------------------------------------ */
 .page-card { align-self: stretch; margin-left: 39px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow); padding: 12px; animation: pop-in .5s both; flex: none; }
@@ -698,6 +706,7 @@ a.store:hover { transform: translateY(-2px); }
 @media (min-width: 960px) { .fam { grid-template-columns: .9fr 1.1fr; gap: 56px; } }
 .fam-stage { position: relative; display: grid; place-items: center; padding: 96px 0 24px; }
 .fam-stage::before { content: ""; position: absolute; width: min(400px, 92%); aspect-ratio: 1; border-radius: 50%; background: var(--green-tint); z-index: -1; }
+@keyframes bob { 50% { translate: 0 -14px; } }
 .fam-bip { position: absolute; width: 96px; height: 96px; z-index: 3; animation: bob 6s ease-in-out infinite; }
 .fam-bip-1 { left: 10%; top: 0; }
 .fam-bip-2 { right: 12%; top: 8px; width: 84px; height: 84px; animation-delay: -2s; }
@@ -752,24 +761,6 @@ a.store:hover { transform: translateY(-2px); }
 .priv-links { grid-column: 1 / -1; font-size: 14px; font-weight: 800; color: var(--muted); }
 .priv-links a { color: var(--ink); font-weight: 900; }
 @media (prefers-reduced-motion: reduce) { .priv { animation: none; } .priv-more i, .way-open i { transition: none; } }
-
-/* -- What they do: one card per kind of agent. A grid on a computer; on a phone a row to swipe, the next card showing. */
-.uses { margin: 0 -20px; padding: 0 20px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 20px; scrollbar-width: none; }
-.uses::-webkit-scrollbar { display: none; }
-.uses:focus-visible { outline-offset: -3px; border-radius: 28px; }
-.uses-list { list-style: none; margin: 0; padding: 4px 0 8px; display: flex; gap: 14px; }
-.use { flex: 0 0 min(82%, 340px); scroll-snap-align: start; border-radius: 28px; padding: 18px 20px 22px;
-  background: linear-gradient(var(--tint), var(--tint)) top / 100% 86px no-repeat, var(--card); box-shadow: var(--shadow); }
-.use .use-bip { width: 70px; height: 70px; touch-action: auto; }
-.use h3 { margin-top: 18px; font-size: 22px; }
-.use ul { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
-.use li { position: relative; padding-left: 20px; color: var(--ink2); font-weight: 700; font-size: 15.5px; line-height: 1.45; }
-.use li::before { content: ""; position: absolute; left: 2px; top: .55em; width: 9px; height: 9px; border-radius: 50%; background: var(--main); }
-@media (min-width: 900px) {
-  .uses { margin: 0; padding: 0; overflow: visible; }
-  .uses-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding: 0; }
-}
-.uses-more { margin-top: 26px; text-align: center; }
 
 /* -- Prices: two ways side by side, all included first (the main path), free on one's own computer next to it ------ */
 .mode-anchor { position: absolute; top: 0; left: 0; scroll-margin-top: 72px; }

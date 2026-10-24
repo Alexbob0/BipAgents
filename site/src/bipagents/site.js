@@ -1,4 +1,4 @@
-// bipagents.com: the hero's approval card and its « See more » on privacy, the agents' cards, the comparison, the
+// bipagents.com: the hero's results and its « See more » on privacy, the agents' cards, the comparison, the
 // two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
 // install. One script for every page: each part runs where its elements are. No framework, no network but this site.
 import { Bip, CATEGORIES, REDUCED, staticBip } from "./bips.js";
@@ -38,55 +38,147 @@ const revealer = new IntersectionObserver(entries => {
 }, { threshold: 0.12 });
 $$(".reveal").forEach(el => revealer.observe(el));
 
-// The hero card leans toward the pointer.
-const tilt = $("[data-tilt]");
-if (tilt && !REDUCED && matchMedia("(hover: hover)").matches) {
-  addEventListener("pointermove", e => {
-    const x = e.clientX / innerWidth - 0.5, y = e.clientY / innerHeight - 0.5;
-    tilt.style.setProperty("--rx", `${(-y * 6).toFixed(2)}deg`);
-    tilt.style.setProperty("--ry", `${(x * 8).toFixed(2)}deg`);
-  }, { passive: true });
-}
-
-// -- Hero: the approval moment, in a loop — you ask, the agent fills the form, asks « Book it in your name? », a tap
-// on « Once », booked. With reduced motion (or no script) the whole exchange stays still, « Once » chosen.
-(async function ask() {
-  const card = $(".ask");
-  if (!card || REDUCED) return;
-  const step = n => $(`[data-ask="${n}"]`, card), tool = step(2), once = $(".ask-once", card);
-  const parts = $$("[data-ask]", card);
-  let seen = true;   // paused while off screen (and in a background tab)
-  new IntersectionObserver(([e]) => { seen = e.isIntersecting; }).observe(card);
-  const visible = async () => { while (!seen || document.hidden) await new Promise(r => setTimeout(r, 400)); };
-  card.classList.add("play");
-  for (;;) {
-    parts.forEach(p => p.classList.remove("on"));
-    tool.classList.remove("done"); once.classList.remove("chosen", "tap");
-    await wait(700); await visible();
-    step(1).classList.add("on"); await wait(1100);
-    tool.classList.add("on"); await wait(1500);
-    tool.classList.add("done"); await wait(500);
-    step(3).classList.add("on"); await wait(2200); await visible();
-    once.classList.add("tap"); await wait(180);
-    once.classList.add("chosen"); await wait(900);
-    step(4).classList.add("on"); await wait(4200);
-    parts.forEach(p => p.classList.remove("on")); await wait(600);
-  }
-})();
-
 // -- An agent at work: the app's demo scenarios, played in a chat --------------------------------------------------
 const chat = $(".chat"), body = $(".chat-body"), wrap = $(".chat-wrap");
 let run = 0;
-const ICONS = { memory: "🧠", browser_navigate: "🌐", browser_snapshot: "👀", browser_click: "👆", calendar: "📅",
-                ha_get_state: "🏠", ha_call_service: "🔥", web_search: "🔎", email: "✉️", weather: "⛅", map_image: "🗺️",
-                health_read: "❤️", page: "🧩", todo: "✅", terminal: "⌨️" };
+// Tool rows in plain words, as the apps word them (ToolLabel.swift / ToolLabel.kt; the wording comes from
+// scripts/tool-labels.py): never a tool's own name. The working line under the thread says what the agent does now.
+const TOOLS = data.tools ?? { list: [], words: {}, extra: {} };
+const ICONS = { browser: "🌐", webSearch: "🔎", webRead: "📄", calendarRead: "📅", calendarChange: "📅", memory: "🧠",
+                weather: "⛅", health: "❤️", home: "🏠", todo: "✅", terminal: "⌨️", compute: "🧮", mailSearch: "✉️",
+                mailRead: "✉️", mailDraft: "✉️", readFile: "📄", prepareFile: "📝", messageAgent: "💬", schedule: "⏰",
+                createPage: "🧩", route: "🗺️", remindersAdd: "⏰", remindersRead: "⏰", notebookSearch: "📒",
+                notebookRead: "📒", notebookNote: "📒" };
+const ANY_KEYS = ["query", "words", "page", "title", "name", "subject", "path", "file", "url", "urls", "target", "agent",
+                  "to", "text", "message", "prompt", "goal", "question", "command", "place", "destination"];
+
+// `mcp__<server>__<tool>` (earlier `mcp_<server>_<tool>`) → the tool's own name.
+function plainTool(tool) {
+  if (tool.startsWith("mcp__")) {
+    const rest = tool.slice(5), cut = rest.indexOf("__");
+    return cut < 0 ? [null, rest] : [rest.slice(0, cut), rest.slice(cut + 2)];
+  }
+  for (const server of ["bipagents_files", "bipagents_pay", "bipagents", "stealth"]) {
+    if (tool.startsWith(`mcp_${server}_`)) return [server, tool.slice(server.length + 5)];
+  }
+  return [null, tool];
+}
+
+// Hermes' `tool_call` wraps the real call: {"calls": [{"name", "arguments"}]}, {"name", "arguments"}, or a label
+// (« Bipagents · notebook note +2 »). The first call stands for the row.
+function unwrapCall(tool, args) {
+  if (tool !== "tool_call" || !args) return [tool, args];
+  try {
+    const json = JSON.parse(args);
+    let calls = json?.calls;
+    if (typeof calls === "string") calls = JSON.parse(calls);
+    if (!calls && json?.name) calls = json;
+    const first = [].concat(calls ?? []).find(c => c && typeof c.name === "string" && c.name.trim());
+    if (first) return [first.name.trim(), first.arguments == null ? null : typeof first.arguments === "string" ? first.arguments : JSON.stringify(first.arguments)];
+  } catch {
+    if (!/^[{[]/.test(args.trim())) {
+      const label = args.trim().replace(/\s+\+\d+$/, "").split(" · ").pop();
+      return [label.toLowerCase().split(/[ -]+/).join("_"), null];
+    }
+  }
+  return [tool, null];
+}
+
+function kindOf(name, server) {
+  name = name.toLowerCase();
+  const row = TOOLS.list.find(k => k.names.includes(name)) ?? TOOLS.list.find(k => k.prefixes.some(p => name.startsWith(p)));
+  if (row) return row;
+  return server === "stealth" || name.includes("browser") ? TOOLS.list.find(k => k.id === "browser") : { id: "unknown", keys: ANY_KEYS };
+}
+
+// One short line: a path's file name, a link without « https://www. », an agent without its place.
+function shown(value, key) {
+  let text = String(value).split(/\r?\n/)[0].trim();
+  if (["path", "file", "file_path", "files", "text_name", "target", "agent"].includes(key)) text = text.split("/").filter(Boolean).pop() ?? text;
+  if (key === "url" || key === "urls") text = text.replace(/^[a-z]+:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+  text = text.replace(/\s+/g, " ");
+  if (!text) return null;
+  return text.length > 80 ? text.slice(0, 79) + "…" : text;
+}
+
+// The host of a call's page (WorkingStep.site): its url, any web address, or a bare host.
+function siteIn(args) {
+  const text = (args ?? "").trim();
+  for (const re of [/"urls?"\s*:\s*\[?\s*"(?:[a-zA-Z][a-zA-Z0-9+.-]*:\/\/)?([^/"?#\s:]+)/, /https?:\/\/([^/"?#\s:]+)/,
+                    /^(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)(?:[/?#]\S*)?$/]) {
+    const m = text.match(re);
+    if (!m) continue;
+    const host = m[1].toLowerCase().replace(/^www\./, "");
+    if (host.includes(".") && !host.endsWith(".") && /[a-z]/.test(host)) return host;
+  }
+  return null;
+}
+
+// A call → { kind, detail, title, site }: the row's first line in words, what it works on.
+function toolLabel(rawTool, rawArgs) {
+  const [tool, args] = unwrapCall(rawTool, rawArgs);
+  const [server, name] = plainTool(tool);
+  const row = kindOf(name, server), kind = row.id;
+  const text = (args ?? "").trim();
+  let detail = null;
+  if (text && kind !== "compute") {
+    let object = null;
+    if (text.startsWith("{")) { try { object = JSON.parse(text); } catch { object = null; } }
+    if (object && typeof object === "object") {
+      for (const key of row.keys) {
+        const v = object[key], value = Array.isArray(v) ? v.find(x => typeof x === "string" && x.trim()) : v;
+        if (typeof value === "string" && (detail = shown(value, key))) break;
+      }
+    } else if (!text.startsWith("{") && !text.startsWith("[")) {
+      detail = shown(text, "");
+    }
+  }
+  const words = TOOLS.words[kind] ?? {};
+  return { kind, detail, title: words.one ?? TOOLS.words.tool?.one ?? "", site: siteIn(args) };
+}
+
+// The finished rows of a turn, as the app folds them (ToolLabel.folds): three calls or more of one kind in a row make
+// one row, « Utilise le navigateur (3 étapes) », counting the pages or files for the kinds that count them.
+function foldRows(labels) {
+  const rows = [];
+  for (let start = 0; start < labels.length;) {
+    let end = start + 1;
+    while (end < labels.length && labels[end].kind === labels[start].kind) end++;
+    const run = labels.slice(start, end);
+    if (run.length < 3) rows.push(...run);
+    else {
+      const first = run[0], words = TOOLS.words[first.kind] ?? {};
+      const details = [...new Set(run.map(l => l.detail).filter(Boolean))];
+      const counts = TOOLS.list.find(k => k.id === first.kind)?.counts && details.length > 1;
+      const n = counts ? details.length : run.length;
+      const title = words.many && (counts || !TOOLS.list.find(k => k.id === first.kind)?.counts)
+        ? words.many.replace("{n}", n) : TOOLS.extra.toolrow_times.replace("{}", first.title).replace("{n}", run.length);
+      rows.push({ kind: first.kind, title, detail: details.at(-1) ?? null });
+    }
+    start = end;
+  }
+  return rows;
+}
+
+// The working line's words for the call running now (null: the agent thinks).
+function workingPhrase(label, site) {
+  const extra = TOOLS.extra;
+  if (!label) return extra.toolrow_now_thinking;
+  if (label.kind === "browser" && site) return extra.toolrow_now_browsing.replace("{}", site);
+  if (label.kind === "webRead" && site) return extra.toolrow_now_reading.replace("{}", site);
+  if (label.kind === "messageAgent" && label.detail) return extra.toolrow_now_writing_to.replace("{}", label.detail);
+  return (TOOLS.words[label.kind] ?? TOOLS.words.unknown).now;
+}
+
 const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n\n/g, "<br><br>").replace(/\n/g, "<br>");
 
-function add(html, cls) {
-  const el = document.createElement("div");
+// The working line stays under the thread while the agent works (WorkingLine in the apps).
+let workingLine = null;
+function add(html, cls, tag = "div") {
+  const el = document.createElement(tag);
   el.className = cls;
   el.innerHTML = html;
-  body.append(el);
+  if (workingLine?.isConnected) body.insertBefore(el, workingLine); else body.append(el);
   while (body.scrollHeight > body.clientHeight + 2 && body.children.length > 1) body.firstElementChild.remove();
   return el;
 }
@@ -124,12 +216,24 @@ async function play(id) {
   const alive = () => mine === run;
   await wait(500); if (!alive()) return;
   add(esc(scenario.prompt), "msg you");
-  let answer = "", madePage = null;
+  let answer = "", madePage = null, work = null, site = null;
   const fill = s => s.replaceAll("{answer}", answer);
+  workingLine = null;
+  // « Je réfléchis… », « Je navigue sur pastamia.fr… »: one line, a light sweeping across it.
+  function working(phrase) {
+    if (!alive()) return;
+    if (!workingLine?.isConnected) {
+      workingLine = add(`<span class="av">${staticBip(category)}</span><span class="ph"></span>`, "working");
+      workingLine.setAttribute("role", "status");
+    }
+    $(".ph", workingLine).textContent = phrase;
+  }
+  function rest() { if (alive()) { workingLine?.remove(); workingLine = null; } }
 
   async function say(text) {
-    const typing = add("<i></i><i></i><i></i>", "typing");
-    await wait(1000); typing.remove();
+    working(workingPhrase(null));
+    await wait(1000); rest();
+    work = null;   // the next steps fold under the next reply
     if (!alive()) return;
     add(`${avatar(category)}<span class="txt">${md(text)}</span>`, "msg bot");
     await wait(1100);
@@ -139,18 +243,30 @@ async function play(id) {
     for (const step of list) {
       if (!alive()) return false;
       if (step.think) {
-        const typing = add("<i></i><i></i><i></i>", "typing");
-        await wait(1100); typing.remove();
+        working(workingPhrase(null));
+        await wait(1100);
         add(esc(fill(step.think)), "think");
         await wait(1300);
       } else if (step.tool || step.page) {
-        const tool = step.tool ?? "page";
-        const el = add(`<span class="ic">${ICONS[tool] ?? "⚙️"}</span><span><b>${esc(tool)}</b><span>${esc(fill(step.preview ?? ""))}</span></span><i class="st"></i>`, "tool");
+        // In plain words as the app shows it: what it does now on the working line, then a row folded under
+        // « Détail du travail ».
+        const label = toolLabel(step.tool ?? "create_page", fill(step.arguments ?? step.preview ?? ""));
+        if (label.kind === "browser" || label.kind === "webRead") site = label.site ?? (label.kind === "browser" ? site : null);
+        working(workingPhrase(label, site));
         await wait(Math.max(700, (step.seconds ?? 1) * 1000));
-        el.classList.add("done");
+        if (!alive()) return false;
+        if (!work?.isConnected) {
+          work = add(`<summary>${esc(data.labels.work)}</summary><div class="work-rows"></div>`, "work", "details");
+          work.labels = [];
+        }
+        work.labels.push(label);
+        $(".work-rows", work).innerHTML = foldRows(work.labels).map(row =>
+          `<div class="tool done"><span class="ic">${ICONS[row.kind] ?? "⚙️"}</span><span><b>${esc(row.title)}</b>`
+          + `${row.detail ? `<span>${esc(row.detail)}</span>` : ""}</span><i class="st"></i></div>`).join("");
         if (step.page) madePage = step.page;
         await wait(250);
       } else if (step.ask) {
+        rest(); work = null;   // the steps after a question fold under it
         const card = add(`<p>${esc(step.ask.question)}</p><div class="opts">${step.ask.choices.map(o => `<span class="opt">${esc(o)}</span>`).join("")}</div>`, "card-q");
         await wait(1700); if (!alive()) return false;
         const choice = $$(".opt", card)[Math.min(1, step.ask.choices.length - 1)];
@@ -159,6 +275,7 @@ async function play(id) {
         await wait(900);
         if (step.then && !(await steps(step.then))) return false;
       } else if (step.approve) {
+        rest(); work = null;   // the steps after a question fold under it
         const card = add(`<p>${esc(fill(step.approve.description))}</p><code>${esc(fill(step.approve.command))}</code>`
           + `<div class="btns"><span>${esc(data.labels.once)}</span><span>${esc(data.labels.session)}</span><span>${esc(data.labels.deny)}</span></div>`, "card-a");
         await wait(1900); if (!alive()) return false;
@@ -180,6 +297,7 @@ async function play(id) {
     return true;
   }
   await steps(scenario.steps);
+  if (alive()) rest();
 }
 
 let current = "book_table";

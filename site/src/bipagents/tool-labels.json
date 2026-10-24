@@ -1,0 +1,1672 @@
+{
+ "_generated": "scripts/tool-labels.py: edit the table there",
+ "kinds": [
+  {
+   "id": "notebookSearch",
+   "names": [
+    "notebook_search"
+   ],
+   "prefixes": [],
+   "keys": [
+    "words"
+   ],
+   "counts": false
+  },
+  {
+   "id": "notebookRead",
+   "names": [
+    "notebook_read"
+   ],
+   "prefixes": [],
+   "keys": [
+    "page"
+   ],
+   "counts": true
+  },
+  {
+   "id": "notebookNote",
+   "names": [
+    "notebook_note"
+   ],
+   "prefixes": [],
+   "keys": [
+    "page",
+    "facts",
+    "summary"
+   ],
+   "counts": true
+  },
+  {
+   "id": "notebookEdit",
+   "names": [
+    "notebook_edit"
+   ],
+   "prefixes": [],
+   "keys": [
+    "page"
+   ],
+   "counts": true
+  },
+  {
+   "id": "notebookTask",
+   "names": [
+    "notebook_task"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title",
+    "page"
+   ],
+   "counts": false
+  },
+  {
+   "id": "sendFiles",
+   "names": [
+    "send_files_to_agent"
+   ],
+   "prefixes": [],
+   "keys": [
+    "agent",
+    "text_name",
+    "files"
+   ],
+   "counts": false
+  },
+  {
+   "id": "sharedFiles",
+   "names": [],
+   "prefixes": [
+    "shared_files_"
+   ],
+   "keys": [
+    "path",
+    "agent"
+   ],
+   "counts": true
+  },
+  {
+   "id": "createPage",
+   "names": [
+    "create_page"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false
+  },
+  {
+   "id": "pages",
+   "names": [
+    "read_page",
+    "list_pages",
+    "delete_page"
+   ],
+   "prefixes": [],
+   "keys": [
+    "page"
+   ],
+   "counts": false
+  },
+  {
+   "id": "weather",
+   "names": [
+    "weather"
+   ],
+   "prefixes": [
+    "weather_"
+   ],
+   "keys": [
+    "place"
+   ],
+   "counts": false
+  },
+  {
+   "id": "route",
+   "names": [
+    "route"
+   ],
+   "prefixes": [
+    "route_"
+   ],
+   "keys": [
+    "destination"
+   ],
+   "counts": false
+  },
+  {
+   "id": "contactsChange",
+   "names": [
+    "contacts_add",
+    "contacts_update"
+   ],
+   "prefixes": [],
+   "keys": [
+    "name",
+    "nickname"
+   ],
+   "counts": true
+  },
+  {
+   "id": "contactsRead",
+   "names": [],
+   "prefixes": [
+    "contacts"
+   ],
+   "keys": [
+    "query",
+    "group"
+   ],
+   "counts": false
+  },
+  {
+   "id": "calendarChange",
+   "names": [
+    "calendar_add",
+    "calendar_update",
+    "calendar_delete"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false
+  },
+  {
+   "id": "calendarRead",
+   "names": [],
+   "prefixes": [
+    "calendar"
+   ],
+   "keys": [
+    "from",
+    "calendar"
+   ],
+   "counts": false
+  },
+  {
+   "id": "remindersAdd",
+   "names": [
+    "reminders_add"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false
+  },
+  {
+   "id": "remindersDone",
+   "names": [
+    "reminders_complete"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false
+  },
+  {
+   "id": "remindersRead",
+   "names": [],
+   "prefixes": [
+    "reminders"
+   ],
+   "keys": [
+    "list"
+   ],
+   "counts": false
+  },
+  {
+   "id": "health",
+   "names": [],
+   "prefixes": [
+    "health"
+   ],
+   "keys": [
+    "categories"
+   ],
+   "counts": false
+  },
+  {
+   "id": "mailSearch",
+   "names": [
+    "mail_search"
+   ],
+   "prefixes": [],
+   "keys": [
+    "query",
+    "sender"
+   ],
+   "counts": false
+  },
+  {
+   "id": "mailRead",
+   "names": [
+    "mail_read"
+   ],
+   "prefixes": [],
+   "keys": [
+    "subject"
+   ],
+   "counts": false
+  },
+  {
+   "id": "mailDraft",
+   "names": [
+    "mail_draft"
+   ],
+   "prefixes": [],
+   "keys": [
+    "subject",
+    "to"
+   ],
+   "counts": false
+  },
+  {
+   "id": "createAudio",
+   "names": [
+    "create_audio",
+    "text_to_speech"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title",
+    "text"
+   ],
+   "counts": false
+  },
+  {
+   "id": "createPodcast",
+   "names": [
+    "create_podcast"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false
+  },
+  {
+   "id": "voices",
+   "names": [
+    "list_voices"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false
+  },
+  {
+   "id": "messageAgent",
+   "names": [
+    "message_agent"
+   ],
+   "prefixes": [],
+   "keys": [
+    "target",
+    "agent"
+   ],
+   "counts": false
+  },
+  {
+   "id": "delegate",
+   "names": [
+    "delegate_task"
+   ],
+   "prefixes": [],
+   "keys": [
+    "goal",
+    "tasks"
+   ],
+   "counts": false
+  },
+  {
+   "id": "webSearch",
+   "names": [
+    "web_search"
+   ],
+   "prefixes": [],
+   "keys": [
+    "query"
+   ],
+   "counts": false
+  },
+  {
+   "id": "webRead",
+   "names": [
+    "web_extract"
+   ],
+   "prefixes": [],
+   "keys": [
+    "urls",
+    "url"
+   ],
+   "counts": true
+  },
+  {
+   "id": "browser",
+   "names": [],
+   "prefixes": [
+    "browser_"
+   ],
+   "keys": [
+    "url",
+    "text",
+    "query",
+    "selector"
+   ],
+   "counts": false
+  },
+  {
+   "id": "terminal",
+   "names": [
+    "terminal",
+    "process_manage"
+   ],
+   "prefixes": [],
+   "keys": [
+    "command"
+   ],
+   "counts": false
+  },
+  {
+   "id": "compute",
+   "names": [
+    "execute_code"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false
+  },
+  {
+   "id": "prepareFile",
+   "names": [
+    "write_file",
+    "patch"
+   ],
+   "prefixes": [],
+   "keys": [
+    "path"
+   ],
+   "counts": true
+  },
+  {
+   "id": "readFile",
+   "names": [
+    "read_file",
+    "search_files"
+   ],
+   "prefixes": [],
+   "keys": [
+    "path",
+    "pattern"
+   ],
+   "counts": true
+  },
+  {
+   "id": "memory",
+   "names": [
+    "memory"
+   ],
+   "prefixes": [],
+   "keys": [
+    "content"
+   ],
+   "counts": false
+  },
+  {
+   "id": "knowledge",
+   "names": [],
+   "prefixes": [
+    "knowledge_"
+   ],
+   "keys": [
+    "query",
+    "path"
+   ],
+   "counts": false
+  },
+  {
+   "id": "sessionSearch",
+   "names": [
+    "session_search"
+   ],
+   "prefixes": [],
+   "keys": [
+    "query"
+   ],
+   "counts": false
+  },
+  {
+   "id": "skills",
+   "names": [
+    "skills_list"
+   ],
+   "prefixes": [
+    "skill_"
+   ],
+   "keys": [
+    "name"
+   ],
+   "counts": false
+  },
+  {
+   "id": "todo",
+   "names": [
+    "todo"
+   ],
+   "prefixes": [
+    "todo_"
+   ],
+   "keys": [],
+   "counts": false
+  },
+  {
+   "id": "schedule",
+   "names": [],
+   "prefixes": [
+    "cronjob"
+   ],
+   "keys": [
+    "name",
+    "prompt"
+   ],
+   "counts": false
+  },
+  {
+   "id": "proposeTask",
+   "names": [
+    "propose_task"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false
+  },
+  {
+   "id": "startTask",
+   "names": [
+    "start_task",
+    "notebook_fill"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false
+  },
+  {
+   "id": "payment",
+   "names": [
+    "list_cards",
+    "pay_with_card",
+    "confirm_payment",
+    "cancel_payment"
+   ],
+   "prefixes": [],
+   "keys": [
+    "merchant",
+    "card"
+   ],
+   "counts": false
+  },
+  {
+   "id": "image",
+   "names": [
+    "image_generate"
+   ],
+   "prefixes": [],
+   "keys": [
+    "prompt"
+   ],
+   "counts": false
+  },
+  {
+   "id": "vision",
+   "names": [
+    "vision_analyze"
+   ],
+   "prefixes": [],
+   "keys": [
+    "question"
+   ],
+   "counts": false
+  },
+  {
+   "id": "home",
+   "names": [],
+   "prefixes": [
+    "ha_"
+   ],
+   "keys": [
+    "entity_id",
+    "domain"
+   ],
+   "counts": false
+  },
+  {
+   "id": "sendMessage",
+   "names": [
+    "send_message"
+   ],
+   "prefixes": [],
+   "keys": [
+    "target",
+    "message"
+   ],
+   "counts": false
+  },
+  {
+   "id": "clarify",
+   "names": [
+    "clarify"
+   ],
+   "prefixes": [],
+   "keys": [
+    "question"
+   ],
+   "counts": false
+  },
+  {
+   "id": "findTool",
+   "names": [
+    "tool_search",
+    "tool_describe"
+   ],
+   "prefixes": [],
+   "keys": [
+    "queries",
+    "names"
+   ],
+   "counts": false
+  },
+  {
+   "id": "tool",
+   "names": [
+    "tool_call"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false
+  }
+ ],
+ "text": {
+  "fr": {
+   "kinds": {
+    "notebookSearch": {
+     "one": "Cherche dans ton Carnet",
+     "many": "Cherche {n} fois dans ton Carnet",
+     "now": "Je cherche dans ton Carnet…"
+    },
+    "notebookRead": {
+     "one": "Lit la fiche",
+     "many": "Lit {n} fiches du Carnet",
+     "now": "Je lis ton Carnet…"
+    },
+    "notebookNote": {
+     "one": "Note sur la fiche",
+     "many": "Note sur {n} fiches du Carnet",
+     "now": "Je prends des notes dans ton Carnet…"
+    },
+    "notebookEdit": {
+     "one": "Corrige la fiche",
+     "many": "Corrige {n} fiches du Carnet",
+     "now": "Je corrige ton Carnet…"
+    },
+    "notebookTask": {
+     "one": "Tâche du Carnet",
+     "many": "{n} tâches du Carnet",
+     "now": "Je mets à jour les tâches du Carnet…"
+    },
+    "sendFiles": {
+     "one": "Envoie des fichiers à",
+     "many": "Envoie des fichiers {n} fois",
+     "now": "J’envoie des fichiers…"
+    },
+    "sharedFiles": {
+     "one": "Dossiers partagés",
+     "many": "Dossiers partagés : {n} fichiers",
+     "now": "Je regarde les dossiers partagés…"
+    },
+    "createPage": {
+     "one": "Crée une page",
+     "many": "Crée {n} pages",
+     "now": "Je prépare une page…"
+    },
+    "pages": {
+     "one": "Regarde ses pages",
+     "many": null,
+     "now": "Je regarde mes pages…"
+    },
+    "weather": {
+     "one": "Regarde la météo",
+     "many": null,
+     "now": "Je regarde la météo…"
+    },
+    "route": {
+     "one": "Calcule un trajet",
+     "many": "Calcule {n} trajets",
+     "now": "Je calcule le trajet…"
+    },
+    "contactsChange": {
+     "one": "Met à jour tes contacts",
+     "many": "Met à jour {n} contacts",
+     "now": "Je mets à jour tes contacts…"
+    },
+    "contactsRead": {
+     "one": "Cherche dans tes contacts",
+     "many": "Cherche {n} fois dans tes contacts",
+     "now": "Je cherche dans tes contacts…"
+    },
+    "calendarChange": {
+     "one": "Modifie ton agenda",
+     "many": "Modifie {n} événements",
+     "now": "Je modifie ton agenda…"
+    },
+    "calendarRead": {
+     "one": "Regarde ton agenda",
+     "many": null,
+     "now": "Je regarde ton agenda…"
+    },
+    "remindersAdd": {
+     "one": "Ajoute un rappel",
+     "many": "Ajoute {n} rappels",
+     "now": "J’ajoute un rappel…"
+    },
+    "remindersDone": {
+     "one": "Coche un rappel",
+     "many": "Coche {n} rappels",
+     "now": "Je coche un rappel…"
+    },
+    "remindersRead": {
+     "one": "Regarde tes rappels",
+     "many": null,
+     "now": "Je regarde tes rappels…"
+    },
+    "health": {
+     "one": "Regarde tes données de santé",
+     "many": null,
+     "now": "Je regarde tes données de santé…"
+    },
+    "mailSearch": {
+     "one": "Cherche dans tes e-mails",
+     "many": "Cherche {n} fois dans tes e-mails",
+     "now": "Je cherche dans tes mails…"
+    },
+    "mailRead": {
+     "one": "Lit un e-mail",
+     "many": "Lit {n} e-mails",
+     "now": "Je lis tes mails…"
+    },
+    "mailDraft": {
+     "one": "Prépare un brouillon d’e-mail",
+     "many": "Prépare {n} brouillons d’e-mail",
+     "now": "Je prépare un brouillon de mail…"
+    },
+    "createAudio": {
+     "one": "Enregistre un audio",
+     "many": "Enregistre {n} audios",
+     "now": "J’enregistre un audio…"
+    },
+    "createPodcast": {
+     "one": "Prépare un podcast",
+     "many": null,
+     "now": "Je prépare un podcast…"
+    },
+    "voices": {
+     "one": "Regarde les voix disponibles",
+     "many": null,
+     "now": "Je choisis une voix…"
+    },
+    "messageAgent": {
+     "one": "Écrit à",
+     "many": "Écrit {n} fois à d’autres agents",
+     "now": "J’écris à un autre agent…"
+    },
+    "delegate": {
+     "one": "Confie une tâche à un assistant",
+     "many": "Confie {n} tâches à des assistants",
+     "now": "Je confie une tâche à un assistant…"
+    },
+    "webSearch": {
+     "one": "Cherche sur le web",
+     "many": "Cherche {n} fois sur le web",
+     "now": "Je cherche sur le web…"
+    },
+    "webRead": {
+     "one": "Lit une page web",
+     "many": "Lit {n} pages web",
+     "now": "Je lis une page web…"
+    },
+    "browser": {
+     "one": "Utilise le navigateur",
+     "many": "Utilise le navigateur ({n} étapes)",
+     "now": "J’utilise le navigateur…"
+    },
+    "terminal": {
+     "one": "Lance une commande",
+     "many": "Lance {n} commandes",
+     "now": "Je lance une commande…"
+    },
+    "compute": {
+     "one": "Fait un calcul",
+     "many": "Fait {n} calculs",
+     "now": "Je fais un calcul…"
+    },
+    "prepareFile": {
+     "one": "Prépare un fichier",
+     "many": "Prépare {n} fichiers",
+     "now": "Je prépare un fichier…"
+    },
+    "readFile": {
+     "one": "Lit un fichier",
+     "many": "Lit {n} fichiers",
+     "now": "Je lis un fichier…"
+    },
+    "memory": {
+     "one": "Met à jour sa mémoire",
+     "many": null,
+     "now": "Je note ça dans ma mémoire…"
+    },
+    "knowledge": {
+     "one": "Relit ses notes",
+     "many": null,
+     "now": "Je relis mes notes…"
+    },
+    "sessionSearch": {
+     "one": "Cherche dans vos anciennes discussions",
+     "many": null,
+     "now": "Je cherche dans nos anciennes discussions…"
+    },
+    "skills": {
+     "one": "Consulte ses savoir-faire",
+     "many": null,
+     "now": "Je consulte mes savoir-faire…"
+    },
+    "todo": {
+     "one": "Met à jour sa liste de tâches",
+     "many": null,
+     "now": "Je mets à jour ma liste de tâches…"
+    },
+    "schedule": {
+     "one": "Programme une tâche",
+     "many": null,
+     "now": "Je programme une tâche…"
+    },
+    "proposeTask": {
+     "one": "Propose une tâche de fond",
+     "many": null,
+     "now": "Je prépare une tâche de fond…"
+    },
+    "startTask": {
+     "one": "Lance une tâche de fond",
+     "many": null,
+     "now": "Je lance une tâche de fond…"
+    },
+    "payment": {
+     "one": "Paiement par carte",
+     "many": null,
+     "now": "Je prépare le paiement…"
+    },
+    "image": {
+     "one": "Crée une image",
+     "many": "Crée {n} images",
+     "now": "Je crée une image…"
+    },
+    "vision": {
+     "one": "Regarde une image",
+     "many": "Regarde {n} images",
+     "now": "Je regarde l’image…"
+    },
+    "home": {
+     "one": "Maison connectée",
+     "many": null,
+     "now": "Je pilote la maison connectée…"
+    },
+    "sendMessage": {
+     "one": "Envoie un message",
+     "many": null,
+     "now": "J’envoie un message…"
+    },
+    "clarify": {
+     "one": "Te pose une question",
+     "many": null,
+     "now": "J’ai une question pour toi…"
+    },
+    "findTool": {
+     "one": "Cherche le bon outil",
+     "many": null,
+     "now": "Je cherche le bon outil…"
+    },
+    "tool": {
+     "one": "Utilise un outil",
+     "many": null,
+     "now": "Je travaille…"
+    },
+    "unknown": {
+     "one": null,
+     "many": null,
+     "now": "Je travaille…"
+    }
+   },
+   "extra": {
+    "toolrow_unknown": "Outil : {}",
+    "toolrow_times": "{} ({n} fois)",
+    "toolrow_technical": "Détail technique",
+    "toolrow_show_technical": "Voir le détail technique",
+    "toolrow_now_thinking": "Je réfléchis…",
+    "toolrow_now_browsing": "Je navigue sur {}…",
+    "toolrow_now_reading": "Je lis {}…",
+    "toolrow_now_writing_to": "J’écris à {}…"
+   }
+  },
+  "en": {
+   "kinds": {
+    "notebookSearch": {
+     "one": "Searches your Notebook",
+     "many": "Searches your Notebook {n} times",
+     "now": "Searching your Notebook…"
+    },
+    "notebookRead": {
+     "one": "Reads the page",
+     "many": "Reads {n} Notebook pages",
+     "now": "Reading your Notebook…"
+    },
+    "notebookNote": {
+     "one": "Notes on the page",
+     "many": "Notes on {n} Notebook pages",
+     "now": "Taking notes in your Notebook…"
+    },
+    "notebookEdit": {
+     "one": "Corrects the page",
+     "many": "Corrects {n} Notebook pages",
+     "now": "Correcting your Notebook…"
+    },
+    "notebookTask": {
+     "one": "Notebook task",
+     "many": "{n} Notebook tasks",
+     "now": "Updating the Notebook’s tasks…"
+    },
+    "sendFiles": {
+     "one": "Sends files to",
+     "many": "Sends files {n} times",
+     "now": "Sending files…"
+    },
+    "sharedFiles": {
+     "one": "Shared folders",
+     "many": "Shared folders: {n} files",
+     "now": "Looking at the shared folders…"
+    },
+    "createPage": {
+     "one": "Creates a page",
+     "many": "Creates {n} pages",
+     "now": "Preparing a page…"
+    },
+    "pages": {
+     "one": "Looks at its pages",
+     "many": null,
+     "now": "Looking at my pages…"
+    },
+    "weather": {
+     "one": "Checks the weather",
+     "many": null,
+     "now": "Checking the weather…"
+    },
+    "route": {
+     "one": "Plans a route",
+     "many": "Plans {n} routes",
+     "now": "Planning the route…"
+    },
+    "contactsChange": {
+     "one": "Updates your contacts",
+     "many": "Updates {n} contacts",
+     "now": "Updating your contacts…"
+    },
+    "contactsRead": {
+     "one": "Searches your contacts",
+     "many": "Searches your contacts {n} times",
+     "now": "Searching your contacts…"
+    },
+    "calendarChange": {
+     "one": "Updates your calendar",
+     "many": "Updates {n} events",
+     "now": "Updating your calendar…"
+    },
+    "calendarRead": {
+     "one": "Checks your calendar",
+     "many": null,
+     "now": "Checking your calendar…"
+    },
+    "remindersAdd": {
+     "one": "Adds a reminder",
+     "many": "Adds {n} reminders",
+     "now": "Adding a reminder…"
+    },
+    "remindersDone": {
+     "one": "Ticks off a reminder",
+     "many": "Ticks off {n} reminders",
+     "now": "Ticking off a reminder…"
+    },
+    "remindersRead": {
+     "one": "Checks your reminders",
+     "many": null,
+     "now": "Checking your reminders…"
+    },
+    "health": {
+     "one": "Checks your health data",
+     "many": null,
+     "now": "Looking at your health data…"
+    },
+    "mailSearch": {
+     "one": "Searches your e-mails",
+     "many": "Searches your e-mails {n} times",
+     "now": "Searching your emails…"
+    },
+    "mailRead": {
+     "one": "Reads an e-mail",
+     "many": "Reads {n} e-mails",
+     "now": "Reading your emails…"
+    },
+    "mailDraft": {
+     "one": "Drafts an e-mail",
+     "many": "Drafts {n} e-mails",
+     "now": "Drafting an email…"
+    },
+    "createAudio": {
+     "one": "Records an audio",
+     "many": "Records {n} audios",
+     "now": "Recording an audio…"
+    },
+    "createPodcast": {
+     "one": "Makes a podcast",
+     "many": null,
+     "now": "Preparing a podcast…"
+    },
+    "voices": {
+     "one": "Looks at the voices",
+     "many": null,
+     "now": "Picking a voice…"
+    },
+    "messageAgent": {
+     "one": "Writes to",
+     "many": "Writes to other agents {n} times",
+     "now": "Writing to another agent…"
+    },
+    "delegate": {
+     "one": "Hands a task to a helper",
+     "many": "Hands {n} tasks to helpers",
+     "now": "Handing a task to a helper…"
+    },
+    "webSearch": {
+     "one": "Searches the web",
+     "many": "Searches the web {n} times",
+     "now": "Searching the web…"
+    },
+    "webRead": {
+     "one": "Reads a web page",
+     "many": "Reads {n} web pages",
+     "now": "Reading a web page…"
+    },
+    "browser": {
+     "one": "Uses the browser",
+     "many": "Uses the browser ({n} steps)",
+     "now": "Using the browser…"
+    },
+    "terminal": {
+     "one": "Runs a command",
+     "many": "Runs {n} commands",
+     "now": "Running a command…"
+    },
+    "compute": {
+     "one": "Does a calculation",
+     "many": "Does {n} calculations",
+     "now": "Working it out…"
+    },
+    "prepareFile": {
+     "one": "Prepares a file",
+     "many": "Prepares {n} files",
+     "now": "Preparing a file…"
+    },
+    "readFile": {
+     "one": "Reads a file",
+     "many": "Reads {n} files",
+     "now": "Reading a file…"
+    },
+    "memory": {
+     "one": "Updates its memory",
+     "many": null,
+     "now": "Saving this to my memory…"
+    },
+    "knowledge": {
+     "one": "Reads its notes",
+     "many": null,
+     "now": "Going over my notes…"
+    },
+    "sessionSearch": {
+     "one": "Searches your past conversations",
+     "many": null,
+     "now": "Searching our past conversations…"
+    },
+    "skills": {
+     "one": "Checks its skills",
+     "many": null,
+     "now": "Checking my know-how…"
+    },
+    "todo": {
+     "one": "Updates its to-do list",
+     "many": null,
+     "now": "Updating my to-do list…"
+    },
+    "schedule": {
+     "one": "Schedules a task",
+     "many": null,
+     "now": "Scheduling a task…"
+    },
+    "proposeTask": {
+     "one": "Suggests a background task",
+     "many": null,
+     "now": "Preparing a background task…"
+    },
+    "startTask": {
+     "one": "Starts a background task",
+     "many": null,
+     "now": "Starting a background task…"
+    },
+    "payment": {
+     "one": "Card payment",
+     "many": null,
+     "now": "Preparing the payment…"
+    },
+    "image": {
+     "one": "Creates an image",
+     "many": "Creates {n} images",
+     "now": "Creating an image…"
+    },
+    "vision": {
+     "one": "Looks at an image",
+     "many": "Looks at {n} images",
+     "now": "Looking at the image…"
+    },
+    "home": {
+     "one": "Smart home",
+     "many": null,
+     "now": "Controlling the smart home…"
+    },
+    "sendMessage": {
+     "one": "Sends a message",
+     "many": null,
+     "now": "Sending a message…"
+    },
+    "clarify": {
+     "one": "Asks you a question",
+     "many": null,
+     "now": "I have a question for you…"
+    },
+    "findTool": {
+     "one": "Looks for the right tool",
+     "many": null,
+     "now": "Finding the right tool…"
+    },
+    "tool": {
+     "one": "Uses a tool",
+     "many": null,
+     "now": "Working…"
+    },
+    "unknown": {
+     "one": null,
+     "many": null,
+     "now": "Working…"
+    }
+   },
+   "extra": {
+    "toolrow_unknown": "Tool: {}",
+    "toolrow_times": "{} ({n} times)",
+    "toolrow_technical": "Technical detail",
+    "toolrow_show_technical": "Show the technical detail",
+    "toolrow_now_thinking": "Thinking…",
+    "toolrow_now_browsing": "Browsing {}…",
+    "toolrow_now_reading": "Reading {}…",
+    "toolrow_now_writing_to": "Writing to {}…"
+   }
+  },
+  "de": {
+   "kinds": {
+    "notebookSearch": {
+     "one": "Sucht in deinem Notizbuch",
+     "many": "Sucht {n}-mal in deinem Notizbuch",
+     "now": "Ich suche in deinem Notizbuch…"
+    },
+    "notebookRead": {
+     "one": "Liest die Seite",
+     "many": "Liest {n} Seiten im Notizbuch",
+     "now": "Ich lese dein Notizbuch…"
+    },
+    "notebookNote": {
+     "one": "Notiert auf der Seite",
+     "many": "Notiert auf {n} Seiten im Notizbuch",
+     "now": "Ich mache Notizen in deinem Notizbuch…"
+    },
+    "notebookEdit": {
+     "one": "Korrigiert die Seite",
+     "many": "Korrigiert {n} Seiten im Notizbuch",
+     "now": "Ich korrigiere dein Notizbuch…"
+    },
+    "notebookTask": {
+     "one": "Aufgabe im Notizbuch",
+     "many": "{n} Aufgaben im Notizbuch",
+     "now": "Ich aktualisiere die Aufgaben im Notizbuch…"
+    },
+    "sendFiles": {
+     "one": "Schickt Dateien an",
+     "many": "Schickt {n}-mal Dateien",
+     "now": "Ich schicke Dateien…"
+    },
+    "sharedFiles": {
+     "one": "Geteilte Ordner",
+     "many": "Geteilte Ordner: {n} Dateien",
+     "now": "Ich sehe mir die geteilten Ordner an…"
+    },
+    "createPage": {
+     "one": "Erstellt eine Seite",
+     "many": "Erstellt {n} Seiten",
+     "now": "Ich bereite eine Seite vor…"
+    },
+    "pages": {
+     "one": "Sieht seine Seiten an",
+     "many": null,
+     "now": "Ich sehe mir meine Seiten an…"
+    },
+    "weather": {
+     "one": "Schaut nach dem Wetter",
+     "many": null,
+     "now": "Ich schaue nach dem Wetter…"
+    },
+    "route": {
+     "one": "Berechnet eine Route",
+     "many": "Berechnet {n} Routen",
+     "now": "Ich berechne die Route…"
+    },
+    "contactsChange": {
+     "one": "Aktualisiert deine Kontakte",
+     "many": "Aktualisiert {n} Kontakte",
+     "now": "Ich aktualisiere deine Kontakte…"
+    },
+    "contactsRead": {
+     "one": "Sucht in deinen Kontakten",
+     "many": "Sucht {n}-mal in deinen Kontakten",
+     "now": "Ich suche in deinen Kontakten…"
+    },
+    "calendarChange": {
+     "one": "Ändert deinen Kalender",
+     "many": "Ändert {n} Termine",
+     "now": "Ich ändere deinen Kalender…"
+    },
+    "calendarRead": {
+     "one": "Schaut in deinen Kalender",
+     "many": null,
+     "now": "Ich schaue in deinen Kalender…"
+    },
+    "remindersAdd": {
+     "one": "Fügt eine Erinnerung hinzu",
+     "many": "Fügt {n} Erinnerungen hinzu",
+     "now": "Ich füge eine Erinnerung hinzu…"
+    },
+    "remindersDone": {
+     "one": "Hakt eine Erinnerung ab",
+     "many": "Hakt {n} Erinnerungen ab",
+     "now": "Ich hake eine Erinnerung ab…"
+    },
+    "remindersRead": {
+     "one": "Schaut deine Erinnerungen an",
+     "many": null,
+     "now": "Ich sehe mir deine Erinnerungen an…"
+    },
+    "health": {
+     "one": "Schaut deine Gesundheitsdaten an",
+     "many": null,
+     "now": "Ich sehe mir deine Gesundheitsdaten an…"
+    },
+    "mailSearch": {
+     "one": "Durchsucht deine E-Mails",
+     "many": "Durchsucht {n}-mal deine E-Mails",
+     "now": "Ich durchsuche deine E-Mails…"
+    },
+    "mailRead": {
+     "one": "Liest eine E-Mail",
+     "many": "Liest {n} E-Mails",
+     "now": "Ich lese deine E-Mails…"
+    },
+    "mailDraft": {
+     "one": "Entwirft eine E-Mail",
+     "many": "Entwirft {n} E-Mails",
+     "now": "Ich entwerfe eine E-Mail…"
+    },
+    "createAudio": {
+     "one": "Nimmt ein Audio auf",
+     "many": "Nimmt {n} Audios auf",
+     "now": "Ich nehme ein Audio auf…"
+    },
+    "createPodcast": {
+     "one": "Erstellt einen Podcast",
+     "many": null,
+     "now": "Ich bereite einen Podcast vor…"
+    },
+    "voices": {
+     "one": "Sieht sich die Stimmen an",
+     "many": null,
+     "now": "Ich wähle eine Stimme…"
+    },
+    "messageAgent": {
+     "one": "Schreibt an",
+     "many": "Schreibt {n}-mal anderen Agenten",
+     "now": "Ich schreibe einem anderen Agenten…"
+    },
+    "delegate": {
+     "one": "Gibt eine Aufgabe an einen Helfer",
+     "many": "Gibt {n} Aufgaben an Helfer",
+     "now": "Ich gebe eine Aufgabe an einen Helfer…"
+    },
+    "webSearch": {
+     "one": "Sucht im Web",
+     "many": "Sucht {n}-mal im Web",
+     "now": "Ich suche im Web…"
+    },
+    "webRead": {
+     "one": "Liest eine Webseite",
+     "many": "Liest {n} Webseiten",
+     "now": "Ich lese eine Webseite…"
+    },
+    "browser": {
+     "one": "Benutzt den Browser",
+     "many": "Benutzt den Browser ({n} Schritte)",
+     "now": "Ich benutze den Browser…"
+    },
+    "terminal": {
+     "one": "Führt einen Befehl aus",
+     "many": "Führt {n} Befehle aus",
+     "now": "Ich führe einen Befehl aus…"
+    },
+    "compute": {
+     "one": "Rechnet etwas aus",
+     "many": "Rechnet {n}-mal",
+     "now": "Ich rechne…"
+    },
+    "prepareFile": {
+     "one": "Bereitet eine Datei vor",
+     "many": "Bereitet {n} Dateien vor",
+     "now": "Ich bereite eine Datei vor…"
+    },
+    "readFile": {
+     "one": "Liest eine Datei",
+     "many": "Liest {n} Dateien",
+     "now": "Ich lese eine Datei…"
+    },
+    "memory": {
+     "one": "Aktualisiert sein Gedächtnis",
+     "many": null,
+     "now": "Ich merke mir das…"
+    },
+    "knowledge": {
+     "one": "Liest seine Notizen",
+     "many": null,
+     "now": "Ich lese meine Notizen…"
+    },
+    "sessionSearch": {
+     "one": "Durchsucht eure früheren Unterhaltungen",
+     "many": null,
+     "now": "Ich durchsuche unsere früheren Unterhaltungen…"
+    },
+    "skills": {
+     "one": "Schaut seine Fähigkeiten an",
+     "many": null,
+     "now": "Ich schaue in mein Know-how…"
+    },
+    "todo": {
+     "one": "Aktualisiert seine Aufgabenliste",
+     "many": null,
+     "now": "Ich aktualisiere meine Aufgabenliste…"
+    },
+    "schedule": {
+     "one": "Plant eine Aufgabe",
+     "many": null,
+     "now": "Ich plane eine Aufgabe ein…"
+    },
+    "proposeTask": {
+     "one": "Schlägt eine Hintergrundaufgabe vor",
+     "many": null,
+     "now": "Ich bereite eine Hintergrundaufgabe vor…"
+    },
+    "startTask": {
+     "one": "Startet eine Hintergrundaufgabe",
+     "many": null,
+     "now": "Ich starte eine Hintergrundaufgabe…"
+    },
+    "payment": {
+     "one": "Kartenzahlung",
+     "many": null,
+     "now": "Ich bereite die Zahlung vor…"
+    },
+    "image": {
+     "one": "Erstellt ein Bild",
+     "many": "Erstellt {n} Bilder",
+     "now": "Ich erstelle ein Bild…"
+    },
+    "vision": {
+     "one": "Sieht sich ein Bild an",
+     "many": "Sieht sich {n} Bilder an",
+     "now": "Ich sehe mir das Bild an…"
+    },
+    "home": {
+     "one": "Smart Home",
+     "many": null,
+     "now": "Ich steuere das Smart Home…"
+    },
+    "sendMessage": {
+     "one": "Sendet eine Nachricht",
+     "many": null,
+     "now": "Ich schicke eine Nachricht…"
+    },
+    "clarify": {
+     "one": "Stellt dir eine Frage",
+     "many": null,
+     "now": "Ich habe eine Frage an dich…"
+    },
+    "findTool": {
+     "one": "Sucht das passende Werkzeug",
+     "many": null,
+     "now": "Ich suche das passende Werkzeug…"
+    },
+    "tool": {
+     "one": "Benutzt ein Werkzeug",
+     "many": null,
+     "now": "Ich arbeite…"
+    },
+    "unknown": {
+     "one": null,
+     "many": null,
+     "now": "Ich arbeite…"
+    }
+   },
+   "extra": {
+    "toolrow_unknown": "Werkzeug: {}",
+    "toolrow_times": "{} ({n}-mal)",
+    "toolrow_technical": "Technische Details",
+    "toolrow_show_technical": "Technische Details anzeigen",
+    "toolrow_now_thinking": "Ich denke nach…",
+    "toolrow_now_browsing": "Ich bin auf {}…",
+    "toolrow_now_reading": "Ich lese {}…",
+    "toolrow_now_writing_to": "Ich schreibe {}…"
+   }
+  },
+  "es": {
+   "kinds": {
+    "notebookSearch": {
+     "one": "Busca en tu Cuaderno",
+     "many": "Busca {n} veces en tu Cuaderno",
+     "now": "Buscando en tu Cuaderno…"
+    },
+    "notebookRead": {
+     "one": "Lee la ficha",
+     "many": "Lee {n} fichas del Cuaderno",
+     "now": "Leyendo tu Cuaderno…"
+    },
+    "notebookNote": {
+     "one": "Anota en la ficha",
+     "many": "Anota en {n} fichas del Cuaderno",
+     "now": "Tomando notas en tu Cuaderno…"
+    },
+    "notebookEdit": {
+     "one": "Corrige la ficha",
+     "many": "Corrige {n} fichas del Cuaderno",
+     "now": "Corrigiendo tu Cuaderno…"
+    },
+    "notebookTask": {
+     "one": "Tarea del Cuaderno",
+     "many": "{n} tareas del Cuaderno",
+     "now": "Actualizando las tareas del Cuaderno…"
+    },
+    "sendFiles": {
+     "one": "Envía archivos a",
+     "many": "Envía archivos {n} veces",
+     "now": "Enviando archivos…"
+    },
+    "sharedFiles": {
+     "one": "Carpetas compartidas",
+     "many": "Carpetas compartidas: {n} archivos",
+     "now": "Mirando las carpetas compartidas…"
+    },
+    "createPage": {
+     "one": "Crea una página",
+     "many": "Crea {n} páginas",
+     "now": "Preparando una página…"
+    },
+    "pages": {
+     "one": "Mira sus páginas",
+     "many": null,
+     "now": "Mirando mis páginas…"
+    },
+    "weather": {
+     "one": "Mira el tiempo",
+     "many": null,
+     "now": "Mirando el tiempo…"
+    },
+    "route": {
+     "one": "Calcula un trayecto",
+     "many": "Calcula {n} trayectos",
+     "now": "Calculando el trayecto…"
+    },
+    "contactsChange": {
+     "one": "Actualiza tus contactos",
+     "many": "Actualiza {n} contactos",
+     "now": "Actualizando tus contactos…"
+    },
+    "contactsRead": {
+     "one": "Busca en tus contactos",
+     "many": "Busca {n} veces en tus contactos",
+     "now": "Buscando en tus contactos…"
+    },
+    "calendarChange": {
+     "one": "Modifica tu agenda",
+     "many": "Modifica {n} eventos",
+     "now": "Modificando tu agenda…"
+    },
+    "calendarRead": {
+     "one": "Mira tu agenda",
+     "many": null,
+     "now": "Mirando tu agenda…"
+    },
+    "remindersAdd": {
+     "one": "Añade un recordatorio",
+     "many": "Añade {n} recordatorios",
+     "now": "Añadiendo un recordatorio…"
+    },
+    "remindersDone": {
+     "one": "Marca un recordatorio",
+     "many": "Marca {n} recordatorios",
+     "now": "Marcando un recordatorio…"
+    },
+    "remindersRead": {
+     "one": "Mira tus recordatorios",
+     "many": null,
+     "now": "Mirando tus recordatorios…"
+    },
+    "health": {
+     "one": "Mira tus datos de salud",
+     "many": null,
+     "now": "Mirando tus datos de salud…"
+    },
+    "mailSearch": {
+     "one": "Busca en tus correos",
+     "many": "Busca {n} veces en tus correos",
+     "now": "Buscando en tus correos…"
+    },
+    "mailRead": {
+     "one": "Lee un correo",
+     "many": "Lee {n} correos",
+     "now": "Leyendo tus correos…"
+    },
+    "mailDraft": {
+     "one": "Prepara un borrador de correo",
+     "many": "Prepara {n} borradores de correo",
+     "now": "Preparando un borrador de correo…"
+    },
+    "createAudio": {
+     "one": "Graba un audio",
+     "many": "Graba {n} audios",
+     "now": "Grabando un audio…"
+    },
+    "createPodcast": {
+     "one": "Prepara un pódcast",
+     "many": null,
+     "now": "Preparando un pódcast…"
+    },
+    "voices": {
+     "one": "Mira las voces disponibles",
+     "many": null,
+     "now": "Eligiendo una voz…"
+    },
+    "messageAgent": {
+     "one": "Escribe a",
+     "many": "Escribe {n} veces a otros agentes",
+     "now": "Escribiendo a otro agente…"
+    },
+    "delegate": {
+     "one": "Encarga una tarea a un ayudante",
+     "many": "Encarga {n} tareas a ayudantes",
+     "now": "Encargando una tarea a un asistente…"
+    },
+    "webSearch": {
+     "one": "Busca en la web",
+     "many": "Busca {n} veces en la web",
+     "now": "Buscando en la web…"
+    },
+    "webRead": {
+     "one": "Lee una página web",
+     "many": "Lee {n} páginas web",
+     "now": "Leyendo una página web…"
+    },
+    "browser": {
+     "one": "Usa el navegador",
+     "many": "Usa el navegador ({n} pasos)",
+     "now": "Usando el navegador…"
+    },
+    "terminal": {
+     "one": "Ejecuta un comando",
+     "many": "Ejecuta {n} comandos",
+     "now": "Ejecutando un comando…"
+    },
+    "compute": {
+     "one": "Hace un cálculo",
+     "many": "Hace {n} cálculos",
+     "now": "Haciendo un cálculo…"
+    },
+    "prepareFile": {
+     "one": "Prepara un archivo",
+     "many": "Prepara {n} archivos",
+     "now": "Preparando un archivo…"
+    },
+    "readFile": {
+     "one": "Lee un archivo",
+     "many": "Lee {n} archivos",
+     "now": "Leyendo un archivo…"
+    },
+    "memory": {
+     "one": "Actualiza su memoria",
+     "many": null,
+     "now": "Guardándolo en mi memoria…"
+    },
+    "knowledge": {
+     "one": "Lee sus notas",
+     "many": null,
+     "now": "Repasando mis notas…"
+    },
+    "sessionSearch": {
+     "one": "Busca en vuestras conversaciones anteriores",
+     "many": null,
+     "now": "Buscando en nuestras conversaciones anteriores…"
+    },
+    "skills": {
+     "one": "Consulta sus habilidades",
+     "many": null,
+     "now": "Consultando mis habilidades…"
+    },
+    "todo": {
+     "one": "Actualiza su lista de tareas",
+     "many": null,
+     "now": "Actualizando mi lista de tareas…"
+    },
+    "schedule": {
+     "one": "Programa una tarea",
+     "many": null,
+     "now": "Programando una tarea…"
+    },
+    "proposeTask": {
+     "one": "Propone una tarea en segundo plano",
+     "many": null,
+     "now": "Preparando una tarea en segundo plano…"
+    },
+    "startTask": {
+     "one": "Inicia una tarea en segundo plano",
+     "many": null,
+     "now": "Iniciando una tarea en segundo plano…"
+    },
+    "payment": {
+     "one": "Pago con tarjeta",
+     "many": null,
+     "now": "Preparando el pago…"
+    },
+    "image": {
+     "one": "Crea una imagen",
+     "many": "Crea {n} imágenes",
+     "now": "Creando una imagen…"
+    },
+    "vision": {
+     "one": "Mira una imagen",
+     "many": "Mira {n} imágenes",
+     "now": "Mirando la imagen…"
+    },
+    "home": {
+     "one": "Casa conectada",
+     "many": null,
+     "now": "Controlando la casa conectada…"
+    },
+    "sendMessage": {
+     "one": "Envía un mensaje",
+     "many": null,
+     "now": "Enviando un mensaje…"
+    },
+    "clarify": {
+     "one": "Te hace una pregunta",
+     "many": null,
+     "now": "Tengo una pregunta para ti…"
+    },
+    "findTool": {
+     "one": "Busca la herramienta adecuada",
+     "many": null,
+     "now": "Buscando la herramienta adecuada…"
+    },
+    "tool": {
+     "one": "Usa una herramienta",
+     "many": null,
+     "now": "Trabajando…"
+    },
+    "unknown": {
+     "one": null,
+     "many": null,
+     "now": "Trabajando…"
+    }
+   },
+   "extra": {
+    "toolrow_unknown": "Herramienta: {}",
+    "toolrow_times": "{} ({n} veces)",
+    "toolrow_technical": "Detalle técnico",
+    "toolrow_show_technical": "Ver el detalle técnico",
+    "toolrow_now_thinking": "Pensando…",
+    "toolrow_now_browsing": "Navegando por {}…",
+    "toolrow_now_reading": "Leyendo {}…",
+    "toolrow_now_writing_to": "Escribiendo a {}…"
+   }
+  }
+ }
+}

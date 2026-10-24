@@ -40,16 +40,38 @@
     "soon": "Muy pronto en",
     "get": "Descárgalo en"
   },
-  "ask": {
-    "a11y": "Un agente pregunta antes de reservar: «¿Reservo la mesa a tu nombre?». Tocas Una vez, y la mesa queda reservada.",
-    "agent": "Día a día",
-    "you": "Reserva una mesa el viernes por la noche",
-    "toolName": "Navegador",
-    "tool": "Pasta Mia · 20:30 · formulario rellenado",
-    "head": "Día a día te pregunta",
-    "q": "¿Reservo la mesa a tu nombre?",
-    "detail": "Pasta Mia · viernes 20:30 · 2 personas",
-    "done": "¡Reservado! ✅ <b>Pasta Mia</b>, viernes 20:30, para 2. Ya está en tu agenda."
+  "results": {
+    "a11y": "Lo que tus agentes han hecho por ti, en ejemplos",
+    "daily": {
+      "agent": "Día a día",
+      "time": "20:31",
+      "line": "Mesa reservada: Pasta Mia, viernes 20:30, 2 pers."
+    },
+    "wellness": {
+      "agent": "Coach",
+      "time": "8:02",
+      "line": "Has dormido 7 h 12 min, 25 min más que la semana pasada"
+    },
+    "finance": {
+      "agent": "Presupuesto",
+      "time": "hace 5 min",
+      "line": "Cargo inusual: 49,99 € de StreamMax. ¿Lo marco?"
+    },
+    "family": {
+      "agent": "Familia",
+      "time": "hace 12 min",
+      "line": "Sam ya lo sabe: ha llamado el colegio"
+    },
+    "work": {
+      "agent": "Trabajo",
+      "time": "9:10",
+      "line": "3 correos del trabajo resumidos, una respuesta lista para revisar"
+    },
+    "learning": {
+      "agent": "Profe",
+      "time": "ayer",
+      "line": "Quiz de inglés: 8/10. ¿Repasamos los verbos mañana?"
+    }
   },
   "vs": {
     "kicker": "Comparar",
@@ -143,57 +165,10 @@
     "replay": "Repetir",
     "placeholder": "Mensaje…",
     "open": "Abrir",
-    "ctaTitle": "Tus Bips, de verdad."
+    "ctaTitle": "Tus Bips, de verdad.",
+    "work": "Detalle del trabajo"
   },
   "ai": "IA",
-  "uses": {
-    "kicker": "Qué hacen",
-    "title": "Un agente para cada parte de tu vida.",
-    "sub": "Cada Bip tiene su terreno. Así te ayudan, en el día a día.",
-    "demo": "Verlos trabajar en la demo",
-    "daily": {
-      "title": "Día a día",
-      "b1": "Ordena tu correo y te dice lo importante",
-      "b2": "Lleva tu agenda y tus recordatorios",
-      "b3": "Reserva una mesa o un tren, con tu visto bueno",
-      "b4": "Archiva tus papeles y archivos en el Cuaderno"
-    },
-    "wellness": {
-      "title": "Bienestar",
-      "b1": "Sigue tu sueño y tu actividad, desde Salud o Health Connect si lo permites",
-      "b2": "Te propone entrenamientos a tu ritmo",
-      "b3": "Te ayuda a comer mejor, con ideas sencillas",
-      "b4": "Consejos realistas, sin hacer de médico"
-    },
-    "finance": {
-      "title": "Finanzas",
-      "b1": "Detecta en tu correo las facturas y los cargos que vienen",
-      "b2": "Lleva la lista de tus suscripciones y sus renovaciones",
-      "b3": "Hace balance de tus gastos, con cifras y fuentes",
-      "b4": "Nunca hace transferencias ni compras"
-    },
-    "family": {
-      "title": "Familia",
-      "b1": "Propone avisar a un familiar cuando le concierne",
-      "b2": "Nada sale sin tu «Enviar»",
-      "b3": "Da las fechas de las vacaciones a toda la familia",
-      "b4": "Cada uno conserva su espacio y sus agentes"
-    },
-    "work": {
-      "title": "Trabajo",
-      "b1": "Resume tu correo del trabajo y prepara las respuestas",
-      "b2": "Tú lo revisas antes de enviar nada en tu nombre",
-      "b3": "Prepara tus reuniones y anota los siguientes pasos",
-      "b4": "Lee y resume tus documentos, PDF incluidos"
-    },
-    "learning": {
-      "title": "Aprender",
-      "b1": "Explica de forma sencilla, a tu nivel",
-      "b2": "Te hace repasar con cuestionarios",
-      "b3": "Repasa contigo en voz alta, en Live",
-      "b4": "Convierte tus documentos en una ficha o una clase"
-    }
-  },
   "control": {
     "once": "Una vez",
     "session": "Esta sesión",

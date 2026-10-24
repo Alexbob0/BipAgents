@@ -40,16 +40,38 @@
     "soon": "Coming soon to",
     "get": "Download on"
   },
-  "ask": {
-    "a11y": "An agent asks before booking: “Book the table in your name?” You tap Once, and the table is booked.",
-    "agent": "Daily",
-    "you": "Book a table for Friday night",
-    "toolName": "Browser",
-    "tool": "Pasta Mia · 8:30 pm · form filled in",
-    "head": "Daily is asking",
-    "q": "Book the table in your name?",
-    "detail": "Pasta Mia · Friday 8:30 pm · 2 people",
-    "done": "Booked ✅ <b>Pasta Mia</b>, Friday 8:30 pm, for 2. It’s in your calendar."
+  "results": {
+    "a11y": "What your agents did for you, as examples",
+    "daily": {
+      "agent": "Daily",
+      "time": "8:31 pm",
+      "line": "Table booked: Pasta Mia, Friday 8:30 pm, for 2"
+    },
+    "wellness": {
+      "agent": "Coach",
+      "time": "8:02 am",
+      "line": "You slept 7 h 12 min, 25 min more than last week"
+    },
+    "finance": {
+      "agent": "Budget",
+      "time": "5 min ago",
+      "line": "Unusual charge: €49.99 from StreamMax. Want me to flag it?"
+    },
+    "family": {
+      "agent": "Family",
+      "time": "12 min ago",
+      "line": "Sam knows: the school called"
+    },
+    "work": {
+      "agent": "Work",
+      "time": "9:10 am",
+      "line": "3 work emails summed up, one reply ready for you to check"
+    },
+    "learning": {
+      "agent": "Tutor",
+      "time": "Yesterday",
+      "line": "Spanish quiz: 8/10. Go over the verbs tomorrow?"
+    }
   },
   "vs": {
     "kicker": "Compared",
@@ -143,57 +165,10 @@
     "replay": "Replay",
     "placeholder": "Message…",
     "open": "Open",
-    "ctaTitle": "Your Bips, for real."
+    "ctaTitle": "Your Bips, for real.",
+    "work": "Work details"
   },
   "ai": "AI",
-  "uses": {
-    "kicker": "What they do",
-    "title": "An agent for each part of your life.",
-    "sub": "Each Bip has its own area. Here is how they help, day to day.",
-    "demo": "See them at work in the demo",
-    "daily": {
-      "title": "Daily",
-      "b1": "Sorts your email and tells you what matters",
-      "b2": "Keeps your calendar and reminders",
-      "b3": "Books a table or a train, with your OK",
-      "b4": "Files your papers and documents in the Notebook"
-    },
-    "wellness": {
-      "title": "Wellness",
-      "b1": "Follows your sleep and activity, from Apple Health or Health Connect if you allow it",
-      "b2": "Suggests workouts at your own pace",
-      "b3": "Helps you eat better, with simple ideas",
-      "b4": "Realistic advice, never playing doctor"
-    },
-    "finance": {
-      "title": "Money",
-      "b1": "Spots bills and upcoming direct debits in your email",
-      "b2": "Keeps a list of your subscriptions and their renewals",
-      "b3": "Sums up your spending, with numbers and sources",
-      "b4": "Never makes a transfer or a purchase"
-    },
-    "family": {
-      "title": "Family",
-      "b1": "Offers to let a loved one know when it concerns them",
-      "b2": "Nothing leaves without your “Send”",
-      "b3": "Gives the holiday dates to the whole family",
-      "b4": "Everyone keeps their own space and agents"
-    },
-    "work": {
-      "title": "Work",
-      "b1": "Sums up your work email and drafts the replies",
-      "b2": "You read it over before anything goes out in your name",
-      "b3": "Prepares your meetings and notes the next steps",
-      "b4": "Reads and sums up your documents, PDFs included"
-    },
-    "learning": {
-      "title": "Learning",
-      "b1": "Explains simply, at your level",
-      "b2": "Quizzes you to help you revise",
-      "b3": "Revises with you out loud, in Live",
-      "b4": "Turns your documents into a revision sheet or a lesson"
-    }
-  },
   "control": {
     "once": "Once",
     "session": "This session",

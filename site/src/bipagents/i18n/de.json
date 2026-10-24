@@ -40,16 +40,38 @@
     "soon": "Bald im",
     "get": "Laden im"
   },
-  "ask": {
-    "a11y": "Ein Agent fragt vor dem Reservieren: „Den Tisch auf deinen Namen reservieren?“ Du tippst auf Einmal, und der Tisch ist reserviert.",
-    "agent": "Alltag",
-    "you": "Reservier einen Tisch für Freitagabend",
-    "toolName": "Browser",
-    "tool": "Pasta Mia · 20:30 · Formular ausgefüllt",
-    "head": "Alltag fragt",
-    "q": "Den Tisch auf deinen Namen reservieren?",
-    "detail": "Pasta Mia · Freitag 20:30 · 2 Personen",
-    "done": "Reserviert ✅ <b>Pasta Mia</b>, Freitag 20:30, für 2. Steht in deinem Kalender."
+  "results": {
+    "a11y": "Was deine Agenten für dich erledigt haben, als Beispiele",
+    "daily": {
+      "agent": "Alltag",
+      "time": "20:31",
+      "line": "Tisch reserviert: Pasta Mia, Freitag 20:30 Uhr, 2 Pers."
+    },
+    "wellness": {
+      "agent": "Coach",
+      "time": "8:02",
+      "line": "Du hast 7 Std. 12 Min. geschlafen, 25 Min. mehr als letzte Woche"
+    },
+    "finance": {
+      "agent": "Budget",
+      "time": "vor 5 Min.",
+      "line": "Ungewöhnliche Abbuchung: 49,99 € StreamMax. Soll ich sie markieren?"
+    },
+    "family": {
+      "agent": "Familie",
+      "time": "vor 12 Min.",
+      "line": "Sam weiß Bescheid: Die Schule hat angerufen"
+    },
+    "work": {
+      "agent": "Arbeit",
+      "time": "9:10",
+      "line": "3 Arbeitsmails zusammengefasst, eine Antwort liegt zum Lesen bereit"
+    },
+    "learning": {
+      "agent": "Lehrer",
+      "time": "gestern",
+      "line": "Spanisch-Quiz: 8/10. Morgen die Verben wiederholen?"
+    }
   },
   "vs": {
     "kicker": "Vergleich",
@@ -143,57 +165,10 @@
     "replay": "Nochmal",
     "placeholder": "Nachricht …",
     "open": "Öffnen",
-    "ctaTitle": "Deine Bips, ganz echt."
+    "ctaTitle": "Deine Bips, ganz echt.",
+    "work": "Arbeitsdetails"
   },
   "ai": "KI",
-  "uses": {
-    "kicker": "Was sie tun",
-    "title": "Ein Agent für jeden Teil deines Lebens.",
-    "sub": "Jeder Bip hat sein Gebiet. So helfen sie dir im Alltag.",
-    "demo": "Sieh sie in der Demo bei der Arbeit",
-    "daily": {
-      "title": "Alltag",
-      "b1": "Sortiert deine Mails und sagt dir, was zählt",
-      "b2": "Führt deinen Kalender und deine Erinnerungen",
-      "b3": "Reserviert einen Tisch oder einen Zug, mit deinem Okay",
-      "b4": "Legt deine Unterlagen und Dateien im Notizbuch ab"
-    },
-    "wellness": {
-      "title": "Wohlbefinden",
-      "b1": "Verfolgt deinen Schlaf und deine Aktivität, aus Apple Health oder Health Connect, wenn du es erlaubst",
-      "b2": "Schlägt dir Training in deinem Tempo vor",
-      "b3": "Hilft dir, besser zu essen, mit einfachen Ideen",
-      "b4": "Realistische Tipps, ohne Arzt zu spielen"
-    },
-    "finance": {
-      "title": "Finanzen",
-      "b1": "Findet in deinen Mails Rechnungen und anstehende Lastschriften",
-      "b2": "Führt die Liste deiner Abos und ihrer Verlängerungen",
-      "b3": "Fasst deine Ausgaben zusammen, mit Zahlen und Quellen",
-      "b4": "Macht nie eine Überweisung oder einen Kauf"
-    },
-    "family": {
-      "title": "Familie",
-      "b1": "Schlägt vor, jemanden aus der Familie zu informieren, wenn es ihn betrifft",
-      "b2": "Nichts geht raus ohne dein „Senden“",
-      "b3": "Gibt die Urlaubsdaten an die ganze Familie weiter",
-      "b4": "Jeder behält seinen Bereich und seine Agenten"
-    },
-    "work": {
-      "title": "Arbeit",
-      "b1": "Fasst deine beruflichen Mails zusammen und entwirft die Antworten",
-      "b2": "Du liest gegen, bevor etwas in deinem Namen rausgeht",
-      "b3": "Bereitet deine Meetings vor und notiert die nächsten Schritte",
-      "b4": "Liest und fasst deine Dokumente zusammen, PDFs inklusive"
-    },
-    "learning": {
-      "title": "Lernen",
-      "b1": "Erklärt einfach, auf deinem Niveau",
-      "b2": "Fragt dich mit Quiz ab",
-      "b3": "Übt mit dir laut, in Live",
-      "b4": "Macht aus deinen Unterlagen einen Lernzettel oder eine Unterrichtsstunde"
-    }
-  },
   "control": {
     "once": "Einmal",
     "session": "Diese Sitzung",
