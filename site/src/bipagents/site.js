@@ -433,6 +433,8 @@ const region = (function () {
   function show() {
     const here = R.find(r => r.lang === data.lang && r.currency === currency) || R.find(r => r.lang === data.lang && r.id === "eu");
     if (summary && here) summary.textContent = here.short;
+    // What only holds in Europe (who can get each agent there) is hidden for the other regions: [data-only="eu"].
+    document.documentElement.dataset.region = here ? here.id : "eu";
     for (const a of links) {
       if (here && a.lang === here.lang && a.dataset.region === here.id) a.setAttribute("aria-current", "page");
       else a.removeAttribute("aria-current");

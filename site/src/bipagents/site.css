@@ -781,3 +781,6 @@ a.store:hover { transform: translateY(-2px); }
 .self-panel { max-width: 1080px; margin: 22px auto 0; scroll-margin-top: 100px; animation: pop-in .45s cubic-bezier(.2, .8, .3, 1) both; }
 @media (prefers-reduced-motion: reduce) { .self-panel { animation: none; } }
 .plans-title { text-align: center; margin: 56px auto 18px; font-size: clamp(24px, 2.6vw, 32px); letter-spacing: -.02em; scroll-margin-top: 84px; }
+
+/* Rows that only hold in Europe (who can get each agent there), hidden for the other regions (site.js sets the region). */
+html[data-region]:not([data-region="eu"]) [data-only="eu"] { display: none !important; }

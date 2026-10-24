@@ -92,7 +92,7 @@
     "g2": "Ta vie privée",
     "grokFr": "Grok Bot utilisable depuis la France, vérifié le 24/10/2026",
     "r1": {
-      "label": "Pour les particuliers en France",
+      "label": "Pour les particuliers en Europe",
       "c1": "Non : États-Unis et Canada",
       "c2": "Non : ChatGPT Pro exclut l’Europe",
       "c3": "Oui",
