@@ -93,9 +93,14 @@ section[id] { scroll-margin-top: 72px; }
 .lang summary::-webkit-details-marker { display: none; }
 .lang-menu {
   position: absolute; right: 0; top: 46px; background: var(--card); border-radius: 18px; padding: 6px; box-shadow: var(--shadow-big);
-  display: grid; min-width: 160px;
+  display: grid; min-width: 232px; max-height: calc(100vh - 80px); overflow-y: auto;
 }
-.lang-menu a { text-decoration: none; padding: 9px 12px; border-radius: 12px; font-weight: 800; font-size: 15px; }
+.lang-menu a {
+  text-decoration: none; padding: 9px 12px; border-radius: 12px; font-weight: 800; font-size: 15px; display: flex;
+  justify-content: space-between; gap: 16px;
+}
+.lang-menu a span { white-space: nowrap; }
+.lang-menu a small { color: var(--muted); font-weight: 800; }
 .lang-menu a:hover, .lang-menu a[aria-current] { background: var(--ground2); }
 @media (min-width: 900px) { .top-links { display: flex; } }
 

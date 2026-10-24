@@ -308,6 +308,74 @@ if (chat) once(chat, () => play(current), 0.35);   // the demo has its own page 
 const compare = $(".compare");
 if (compare) once(compare, () => compare.classList.add("go"), 0.4);
 
+// -- The visitor's region: the menu's language and country, the currency that follows ------------------------------
+// A choice made here before (the menu or the price picker), else where the visitor most likely is: the time zone
+// (Europe/Paris with an en-GB browser: euros), else the browser's region (en-US → USD, he → ILS…), else the default.
+// A menu link (?region=uk) keeps its currency and leaves the page's own address.
+const region = (function () {
+  const R = data.regions || [], KEY = "bipagents.currency", listeners = [];
+  const kept = () => { try { return localStorage.getItem(KEY); } catch (e) { return null; } };
+  const keep = code => { try { localStorage.setItem(KEY, code); } catch (e) { /* private mode: not kept */ } };
+  const currencyOf = country => (R.find(r => r.country === country) || {}).currency;
+  const ZONES = [
+    ["GB", /^(Europe\/(London|Belfast|Guernsey|Jersey|Isle_of_Man)|GB|GB-Eire)$/],
+    ["IL", /^(Asia\/(Jerusalem|Tel_Aviv)|Israel)$/],
+    ["SG", /^(Asia\/Singapore|Singapore)$/],
+    ["CA", /^(Canada\/.+|America\/(Toronto|Montreal|Vancouver|Edmonton|Winnipeg|Regina|Halifax|St_Johns|Moncton|Glace_Bay|Goose_Bay|Whitehorse|Dawson|Dawson_Creek|Fort_Nelson|Creston|Iqaluit|Rankin_Inlet|Resolute|Cambridge_Bay|Inuvik|Yellowknife|Swift_Current|Thunder_Bay|Nipigon|Rainy_River|Atikokan|Blanc-Sablon|Pangnirtung|Coral_Harbour))$/],
+    ["US", /^(US\/.+|Pacific\/Honolulu|America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Juneau|Sitka|Yakutat|Nome|Metlakatla|Adak|Boise|Detroit|Menominee|Indianapolis|Louisville|Fort_Wayne|Knox_IN|Indiana\/.+|Kentucky\/.+|North_Dakota\/.+))$/],
+  ];
+  function guess() {
+    let zone = "";
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { /* no time zone: the languages */ }
+    const hit = ZONES.find(([, re]) => re.test(zone));
+    if (hit) return currencyOf(hit[0]) || data.currency;
+    if (/^(Europe\/|Atlantic\/(Canary|Madeira|Azores))/.test(zone)) return data.currency;   // in Europe, whatever the language
+    for (const tag of navigator.languages || [navigator.language || ""]) {
+      const parts = String(tag).split(/[-_]/);
+      const country = (parts.slice(1).find(p => /^[A-Za-z]{2}$/.test(p)) || "").toUpperCase()
+        || ({ he: "IL", iw: "IL" })[parts[0].toLowerCase()];
+      const found = country && currencyOf(country);
+      if (found) return found;
+      if (country) break;   // a region (fr-FR, de-AT…) no other currency claims: the default
+    }
+    return data.currency;
+  }
+  const known = code => (data.currencies || []).includes(code);
+  const params = new URLSearchParams(location.search);
+  const asked = params.get("region"), chosen = R.find(r => r.id === asked && r.lang === data.lang);
+  if (asked !== null) {
+    if (chosen) keep(chosen.currency);
+    params.delete("region");
+    const rest = params.toString();
+    try { history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash); } catch (e) { /* file:// */ }
+  }
+  let currency = chosen ? chosen.currency : known(kept()) ? kept() : guess();
+  const summary = $(".lang summary"), links = $$(".lang-menu a[data-region]");
+  function show() {
+    const here = R.find(r => r.lang === data.lang && r.currency === currency) || R.find(r => r.lang === data.lang && r.id === "eu");
+    if (summary && here) summary.textContent = here.short;
+    for (const a of links) {
+      if (here && a.lang === here.lang && a.dataset.region === here.id) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    }
+  }
+  function set(code) {
+    if (!known(code)) return;
+    currency = code; keep(code); show();
+    listeners.forEach(fn => fn(code));
+  }
+  // Another country in this language: no reload, the prices follow.
+  for (const a of links) a.addEventListener("click", e => {
+    const r = R.find(x => x.id === a.dataset.region && x.lang === a.lang);
+    if (!r || r.lang !== data.lang) return;
+    e.preventDefault();
+    set(r.currency);
+    a.closest("details").open = false;
+  });
+  show();
+  return { get currency() { return currency; }, set, onChange: fn => listeners.push(fn) };
+})();
+
 // -- The plan picker: the price, live ------------------------------------------------------------------------------
 (function pricing() {
   const root = $(".pricing");
@@ -322,24 +390,8 @@ if (compare) once(compare, () => compare.classList.add("go"), 0.4);
   };
   const say = (template, x) => template.replace("{x}", x);
 
-  // The visitor's currency: the one chosen here before, else the browser's region (en-US → USD, *-CA → CAD, he → ILS…),
-  // else the default (EUR).
-  const KEY = "bipagents.currency";
-  const remembered = () => { try { return localStorage.getItem(KEY); } catch (e) { return null; } };
-  const remember = code => { try { localStorage.setItem(KEY, code); } catch (e) { /* private mode: not kept */ } };
-  function guess() {
-    for (const tag of navigator.languages || [navigator.language || ""]) {
-      const parts = String(tag).split(/[-_]/);
-      const region = (parts.slice(1).find(p => /^[A-Za-z]{2}$/.test(p)) || "").toUpperCase();
-      const country = region || ({ he: "IL", iw: "IL" })[parts[0].toLowerCase()];
-      const found = country && Object.keys(P.currencies).find(c => (P.currencies[c].countries || []).includes(country));
-      if (found) return found;
-      if (region) break;   // a region (fr-FR, de-AT…) no other currency claims: the default
-    }
-    return P.default;
-  }
-  const kept = remembered();
-  const state = { plan: "famille", period: "year", currency: P.currencies[kept] ? kept : guess() };
+  // The visitor's currency (the region above): the picker and the header's menu stay together.
+  const state = { plan: "famille", period: "year", currency: P.currencies[region.currency] ? region.currency : P.default };
   const buy = $("#buy"), sticky = $(".sticky-buy"), picker = $("select[data-currency]", root);
   const fineTax = $(".fine-tax"), fineDefault = fineTax && fineTax.textContent;
 
@@ -390,10 +442,8 @@ if (compare) once(compare, () => compare.classList.add("go"), 0.4);
         : (C.tax === "exclusive" ? L.taxExcl : L.taxIncl).replace("{currency}", name);
     }
   }
-  if (picker) picker.addEventListener("change", () => {
-    if (!P.currencies[picker.value]) return;
-    state.currency = picker.value; remember(picker.value); render();
-  });
+  if (picker) picker.addEventListener("change", () => region.set(picker.value));
+  region.onChange(code => { if (P.currencies[code]) { state.currency = code; render(); } });
   $$("[data-period]", root).forEach(b => b.addEventListener("click", () => { state.period = b.dataset.period; render(); }));
   const plans = $$(".plan", root);
   plans.forEach((b, i) => {

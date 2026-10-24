@@ -34,6 +34,15 @@ COLORS = {  # main, deep, tint variable (site.css)
     "creative": ("#F2649E", "#C23774", "pink"), "tech": ("#6B7489", "#3F4659", "blue"),
 }
 CURRENT = ' aria-current="page"'
+# The header's menu: each language with the countries it is sold in, the currency following (the country's in
+# site/config.json, else the default). (language, id in ?region=, country, label, short label in the header)
+REGIONS = [
+    ("en", "us", "US", "English (US)", "EN-US"), ("en", "uk", "GB", "English (UK)", "EN-UK"),
+    ("en", "ca", "CA", "English (Canada)", "EN-CA"), ("en", "sg", "SG", "English (Singapore)", "EN-SG"),
+    ("en", "il", "IL", "English (Israel)", "EN-IL"), ("en", "eu", "", "English (Europe)", "EN-EU"),
+    ("fr", "eu", "", "Français", "FR"), ("fr", "ca", "CA", "Français (Canada)", "FR-CA"),
+    ("de", "eu", "", "Deutsch", "DE"), ("es", "eu", "", "Español", "ES"),
+]
 
 
 def french_spaces(text: str) -> str:
@@ -160,9 +169,9 @@ def config() -> Dict[str, Any]:
     return cfg
 
 
-def money(value: float, lang: str) -> str:
-    """6.49 → « 6,49 € » (fr, de, es) or « €6.49 » (en)."""
-    text = f"{value:,.2f}"
+def money(value: float, lang: str, cents: bool = True) -> str:
+    """6.49 → « 6,49 € » (fr, de, es) or « €6.49 » (en); 1000 without cents → « 1 000 € », « €1,000 »."""
+    text = f"{value:,.2f}" if cents else f"{value:,.0f}"
     if lang == "en":
         return "€" + text
     return text.replace(",", " ").replace(".", ",") + " €"
@@ -282,6 +291,10 @@ def bipagents(version: str) -> Path:
     currencies = prices["currencies"]
     default_currency = next(code for code, c in currencies.items() if not c.get("countries"))
     base = currencies[default_currency]
+    regions = [{"id": rid, "lang": l, "country": country, "short": short,
+                "currency": next((code for code, c in currencies.items() if country and country in c.get("countries", [])),
+                                 default_currency)}
+               for l, rid, country, _, short in REGIONS]
     (assets / "pages").mkdir()
     for lang in LANGS:
         t = texts[lang]
@@ -324,12 +337,13 @@ def bipagents(version: str) -> Path:
                     f'<p class="soon-web">{t["pricing"]["soon"]}</p><div class="cta-row center">{badges}</div>'),
             "checkoutstate": "on" if default_url else "off",
             "company": (f'{html.escape(company["name"])}, {html.escape(company["form"])} · {html.escape(t["foot"]["capital"])} '
-                        f'{todo(money(float(company["capital"]), lang).replace(",00", "").replace(".00", "") if company["capital"] else "", "capital")} · RCS '
+                        f'{todo(money(float(company["capital"]), lang, cents=False) if company["capital"] else "", "capital")} · RCS '
                         f'{todo(company["rcsCity"], "RCS")} {todo(company["siren"], "SIREN")} · '
                         f'{todo(company["address"], t["foot"]["address"])}'),
             "contact": cfg["contact"]["general"],
         })
-        common = {"lang": lang, "lines": t["lines"]}
+        common = {"lang": lang, "lines": t["lines"], "regions": regions, "currency": default_currency,
+                  "currencies": list(currencies)}
         scenarios = {}
         for scenario, agent in DEMO_TABS:
             s = localized(demo["scenarios"][scenario], lang)
@@ -365,8 +379,11 @@ def bipagents(version: str) -> Path:
                 "pagedesc": values["meta.description"] if name == "home" else values[f"page.{name}.description"],
                 "hreflang": "\n".join([f'<link rel="alternate" hreflang="{l}" href="{BIPAGENTS}{here[l]}">' for l in LANGS]
                                       + [f'<link rel="alternate" hreflang="x-default" href="{BIPAGENTS}{here["en"]}">']),
-                "langmenu": "".join(f'<a href="{here[l]}" lang="{l}" hreflang="{l}"{CURRENT if l == lang else ""}>'
-                                    f'{html.escape(texts[l]["lang"]["name"])}</a>' for l in LANGS),
+                # Each entry its language's page with ?region= (site.js keeps the currency and cleans the address).
+                "langmenu": "".join(f'<a href="{here[l]}?region={rid}" lang="{l}" hreflang="{l}-{country or "150"}" '
+                                    f'data-region="{rid}"{CURRENT if l == lang and rid == "eu" else ""}>'
+                                    f'<span>{html.escape(label)}</span><small>{html.escape(currencies[r["currency"]]["symbol"])}</small></a>'
+                                    for (l, rid, country, label, _), r in zip(REGIONS, regions)),
                 "cur.demo": CURRENT if name == "demo" else "", "cur.faq": CURRENT if name == "faq" else "",
                 "data": json.dumps(data.get(name, common), ensure_ascii=False).replace("</", "<\\/"),
             })
