@@ -15,6 +15,7 @@
   "terms": "Nutzungsbedingungen",
   "offer": "Bedingungen des Alles-inklusive-Angebots",
   "acceptableUse": "Zulässige Nutzung",
+  "beta": "Beta-Bedingungen",
   "notice": "Impressum (Französisch)",
   "fine": "Keine Cookies und keine Tracker auf dieser Seite."
  },
@@ -26,7 +27,7 @@
   "appsTitle": "Zwei Apps für den Alltag.",
   "bip": {
    "tag": "KI-Agenten",
-   "pitch": "Ihre eigenen KI-Agenten, die Bips: Sie reservieren, sortieren Ihre Mails, führen Kalender und Notizbuch und fragen, bevor sie handeln. Gebaut auf Hermes Agent.",
+   "pitch": "Ihre eigenen KI-Agenten, die Bips: Sie reservieren, sortieren Ihre Mails, führen Kalender und Memo und fragen, bevor sie handeln. Gebaut auf Hermes Agent.",
    "points": [
     "Schreiben, sprechen oder Live",
     "Ihr Bereich in Europa, den wir nicht lesen",

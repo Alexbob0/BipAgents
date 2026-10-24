@@ -15,6 +15,7 @@
   "terms": "Conditions d’utilisation",
   "offer": "Conditions de l’offre tout compris",
   "acceptableUse": "Usage acceptable",
+  "beta": "Conditions de la bêta",
   "notice": "Mentions légales",
   "fine": "Aucun cookie et aucun traceur sur ce site."
  },
@@ -26,7 +27,7 @@
   "appsTitle": "Deux apps pour la vie de tous les jours.",
   "bip": {
    "tag": "Agents IA",
-   "pitch": "Vos propres agents IA, les Bips : ils réservent, trient vos mails, tiennent votre agenda et votre Carnet, et vous demandent avant d’agir. Construit sur Hermes Agent.",
+   "pitch": "Vos propres agents IA, les Bips : ils réservent, trient vos mails, tiennent votre agenda et votre Mémo, et vous demandent avant d’agir. Construit sur Hermes Agent.",
    "points": [
     "Écris, parle ou passe en Live",
     "Votre espace en Europe, que nous ne lisons pas",
