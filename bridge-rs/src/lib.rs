@@ -89,6 +89,7 @@ pub mod agent_tools;
 pub mod archives;
 pub mod assistant_import;
 pub mod favicons;
+pub mod guide;
 pub mod health;
 pub mod jobs;
 pub mod mail_scan;

@@ -407,6 +407,8 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if crate::archives::enabled(config, &agent.name) {
         tools.extend(crate::archives::tools(config, &agent.name));
     }
+    // the guide's (propose_agent, suggest_switch), or propose_profile while it has no role or a generic name
+    tools.extend(crate::guide::tools(config, agent));
     tools
 }
 
@@ -1315,6 +1317,10 @@ pub async fn call_tool(
     }
     if name == crate::maps::TOOL_NAME {
         return Ok(crate::maps::call(&config, &agent.name, arguments).await);
+    }
+    if crate::guide::TOOL_NAMES.contains(&name) {
+        let (config, agent, name, arguments) = (config.clone(), agent.clone(), name.to_string(), arguments.clone());
+        return blocking(move || crate::guide::call(&config, &agent, &name, &arguments)).await;
     }
     let (agent_c, name_c, arguments_c) = (agent.clone(), name.to_string(), arguments.clone());
     if name == crate::health::TOOL_NAME {

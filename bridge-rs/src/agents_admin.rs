@@ -171,6 +171,8 @@ fn check_pattern(errors: &mut Vec<FieldError>, field: &str, value: &str, pattern
 /// « Autre »: the role, tone and rules the person wrote.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CustomAgent {
+    /// Empty: the agent asks on its first open, then proposes one (guide.rs).
+    #[serde(default)]
     pub role: String,
     #[serde(default)]
     pub tone: String,
@@ -187,7 +189,7 @@ fn default_category() -> String {
     "tech".into()
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct NewAgent {
     pub name: String,
     #[serde(default)]
@@ -201,6 +203,11 @@ pub struct NewAgent {
     /// Its group on the home screen (agent_groups.rs), none when empty.
     #[serde(default)]
     pub group: Option<String>,
+    /// A kind's agent: what the person expects from it and its tone, both optional (added to its personality).
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub tone: Option<String>,
 }
 
 impl Validate for NewAgent {
@@ -208,9 +215,14 @@ impl Validate for NewAgent {
         check_min_len(errors, "name", Some(&self.name), 1);
         check_max_len(errors, "name", Some(&self.name), 40);
         check_max_len(errors, "group", self.group.as_deref().map(str::trim), crate::agent_groups::MAX_LEN);
+        check_max_len(errors, "role", self.role.as_deref(), 600);
+        check_max_len(errors, "tone", self.tone.as_deref(), 200);
         if let Some(c) = &self.custom {
             nested(errors, "custom", |errors| {
-                check_min_len(errors, "role", Some(&c.role), 3);
+                if !c.role.is_empty() {
+                    // optional (the agent asks), but never a word or two
+                    check_min_len(errors, "role", Some(&c.role), 3);
+                }
                 check_max_len(errors, "role", Some(&c.role), 600);
                 check_max_len(errors, "tone", Some(&c.tone), 200);
                 check_max_len(errors, "rules", Some(&c.rules), 600);
@@ -454,7 +466,12 @@ pub fn plan_agent(config: &Config, body: &NewAgent) -> anyhow::Result<PlannedAge
             return Err(AgentError("unknown kind".into()).into());
         };
         let soul = crate::souls::soul_for(&name, kind, Some(&lang)).map_err(|e| AgentError(e.to_string()))?;
-        (soul, found.get("description").map(crate::py::py_str).unwrap_or_default())
+        let soul = crate::souls::with_expectations(&soul, body.role.as_deref(), body.tone.as_deref(), Some(&lang));
+        let description = match body.role.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+            Some(role) => head(role, 120),
+            None => found.get("description").map(crate::py::py_str).unwrap_or_default(),
+        };
+        (soul, description)
     } else {
         return Err(AgentError("a kind or a custom description is needed".into()).into());
     };
@@ -503,8 +520,21 @@ pub async fn create_agent(
 ) -> anyhow::Result<AgentConfig> {
     let config = shared.get();
     let planned = plan_agent(&config, body)?;
+    let roleless = body.custom.as_ref().is_some_and(|c| c.role.trim().is_empty());
+    if roleless {
+        // before its tools are given: `propose_profile` is listed for it
+        crate::guide::mark_roleless(&config, &planned.profile)?;
+    }
     let agent = hub_agent(&config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
-    let agent = make_profile(shared, &planned, agent, http, run, false).await?;
+    let agent = match make_profile(shared, &planned, agent, http, run, false).await {
+        Ok(agent) => agent,
+        Err(exc) => {
+            if roleless {
+                crate::guide::forget(&shared.get(), &planned.profile);
+            }
+            return Err(exc);
+        }
+    };
     if let Some(group) = body.group.as_deref().filter(|g| !g.trim().is_empty()) {
         crate::agent_groups::set_group(&config, &agent.name, group)?;
     }
@@ -569,6 +599,7 @@ pub async fn make_profile(
     } else {
         reserve_agent(shared, &agent)?;
     }
+    crate::guide::refresh(&shared.get()); // its blocks, and the guide's list of agents
     give_tools(&shared.get(), &agent, run).await?;
     Ok(agent)
 }
@@ -945,7 +976,11 @@ pub fn save_agent(config: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<
         remove_agent_section(path, &agent.name)?;
         append_agent(path, agent, &kept)?;
     }
+    let renamed = config.get().agents.get(&agent.name).is_some_and(|a| a.display_name != agent.display_name);
     config.put_agent(agent.clone());
+    if renamed {
+        crate::guide::refresh(&config.get()); // the guide's list of agents
+    }
     Ok(())
 }
 
@@ -1151,11 +1186,13 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
+    let soul = crate::guide::split_blocks(&soul);
+    let guide = json!({"on": crate::guide::is_guide(config, &agent.name)});
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         // set up by hand: its tools are its administrator's
         return Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
                          "thinking": read_thinking(config, agent), "model": null, "by_hand": true, "toolsets": [],
-                         "isolated": agent.isolated,
+                         "isolated": agent.isolated, "guide": guide,
                          "protected": true, "services": []}));
     }
     let resp = http
@@ -1196,6 +1233,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
                          "categories": crate::health::categories(config, agent.name.as_str())},
               "weather": {"on": crate::weather::enabled(config, agent.name.as_str())},
               "notebook": {"on": crate::notebook::enabled(config, agent.name.as_str())},
+              "guide": guide,
               "group": crate::agent_groups::group_of(config, &agent.name)}))
 }
 
@@ -1310,7 +1348,18 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     let text = crate::souls::with_archives(&text, crate::archives::enabled(config, &agent.name));
     let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
     let text = crate::dates::with_dates(&text, line.as_deref());
+    let text = crate::guide::with_blocks(config, agent, &text);
     std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)
+}
+
+/// The personality as the person sees and edits it: without the bridge's blocks.
+pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<String> {
+    let (soul, _) = crate::souls::split_language(&read_soul(config, agent)?);
+    let (soul, _) = crate::souls::split_health(&soul);
+    let (soul, _) = crate::souls::split_notebook(&soul);
+    let (soul, _) = crate::souls::split_archives(&soul);
+    let (soul, _) = crate::dates::split_dates(&soul);
+    Ok(crate::guide::split_blocks(&soul))
 }
 
 /// « Santé » on or off: the switch, the rule in its personality, and its tools' entry (the `health` tool listed or
@@ -1372,6 +1421,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     crate::agent_tools::forget(&config, &agent.name);
     crate::health::forget(&config, &agent.name);
     crate::weather::forget(&config, &agent.name);
+    crate::guide::forget(&config, &agent.name);
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, "agent deleted");
     Ok(())
 }

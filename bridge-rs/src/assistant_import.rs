@@ -1043,6 +1043,7 @@ async fn create(state: &AppState, body: &Apply, source: &str) -> ApiResult<Agent
             category,
         }),
         group: body.group.clone(),
+        ..Default::default()
     };
     let _guard = crate::agents_admin::LOCK.lock().await;
     match crate::agents_admin::create_agent(&state.config, &request, &state.http, &crate::agents_admin::default_run())

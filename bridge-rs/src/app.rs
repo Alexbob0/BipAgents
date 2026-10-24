@@ -1492,7 +1492,8 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     let config = state.config();
     agents_admin::heal_thinking(&config);
     agents_admin::heal_souls(&config);
-    // The skills about other agents as this bridge writes them (an update may have changed their words).
+    crate::guide::refresh(&config); // the guide's list of agents and the setup blocks, as this bridge writes them
+                                    // The skills about other agents as this bridge writes them (an update may have changed their words).
     crate::peers::write_contacts(&config, &crate::peers::links_of(&state.links.load()), Some(&state.households));
     crate::shares::heal_skills(&config);
     if options.start_background {
@@ -1530,6 +1531,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::jobs::router())
         .merge(crate::notes_import::router())
         .merge(crate::assistant_import::router())
+        .merge(crate::guide::router())
         .merge(crate::reminders::router())
         .merge(crate::notebook::api::router())
         .merge(crate::calendar::router())

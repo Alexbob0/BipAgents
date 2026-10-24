@@ -169,7 +169,7 @@ def test_settings_and_delete(bridges, fakes):
     assert data["toolsets"] == [{"name": "web", "label": "Web", "description": "Search", "enabled": True, "configured": True}]
     assert data["id"] == "budget" and data["name"] == "Budget" and data["thinking"] is None and data["model"] is None
     assert data["isolated"] is False and data["protected"] is False and data["skills"] == []
-    assert set(data) - {"health", "weather", "notebook", "group"} == {"id", "name", "soul", "language", "thinking", "model", "toolsets",
+    assert set(data) - {"health", "weather", "notebook", "group", "guide"} == {"id", "name", "soul", "language", "thinking", "model", "toolsets",
                                                "isolated", "protected", "services", "skills", "browser"}   # Rust: +3
     assert fakes.hermes.seen("/p/budget/v1/toolsets")
     bridge.commands.clear()
@@ -318,7 +318,7 @@ def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(bridg
     # its personality got the bridge's rules at start (every agent talks plainly), in the place's language
     assert settings.json() == {"id": "vie", "name": "Vie", "soul": "Tu es Vie.", "language": "en", "thinking": "medium",
                                "model": None, "by_hand": True, "toolsets": [], "isolated": True, "protected": True,
-                               "services": []}
+                               "services": [], "guide": {"on": False}}
     assert not fakes.hermes.seen("/p/vie/v1/toolsets")   # its gateway isn't asked for its tools
     assert bridge.put("/v1/agents/vie/language", headers=AUTH, json={"lang": "fr"}).json() == {"id": "vie", "language": "fr"}
     bridge.patch("/v1/agents/vie/settings", headers=AUTH, json={"soul": "Tu es Vie, brève."})

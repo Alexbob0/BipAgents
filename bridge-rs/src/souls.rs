@@ -429,8 +429,9 @@ pub fn custom_soul(name: &str, role: &str, tone: &str, rules: &str, lang: Option
     let mut soul;
     if language(lang) == "fr" {
         let tone = if tone.is_empty() { "clair et bienveillant" } else { tone };
+        let role = if role.is_empty() { String::new() } else { format!(" Ton rôle : {role}.") };
         soul = format!(
-            "Tu es {name}, un agent personnel de ton utilisateur. Ton rôle : {role}.\nTon ton : {}. Tu réponds de façon concise.\n",
+            "Tu es {name}, un agent personnel de ton utilisateur.{role}\nTon ton : {}. Tu réponds de façon concise.\n",
             tone.trim()
         );
         if !rules.is_empty() {
@@ -439,8 +440,9 @@ pub fn custom_soul(name: &str, role: &str, tone: &str, rules: &str, lang: Option
         soul.push_str("Tu demandes avant toute action irréversible (envoyer, acheter, supprimer).\n");
     } else {
         let tone = if tone.is_empty() { "clear and kind" } else { tone };
+        let role = if role.is_empty() { String::new() } else { format!(" Your role: {role}.") };
         soul = format!(
-            "You are {name}, your user's personal agent. Your role: {role}.\nYour tone: {}. You answer concisely.\n",
+            "You are {name}, your user's personal agent.{role}\nYour tone: {}. You answer concisely.\n",
             tone.trim()
         );
         if !rules.is_empty() {
@@ -449,6 +451,33 @@ pub fn custom_soul(name: &str, role: &str, tone: &str, rules: &str, lang: Option
         soul.push_str("You ask before anything irreversible (sending, buying, deleting).\n");
     }
     with_language(&soul, lang)
+}
+
+/// A kind's personality with what the person expects from the agent and its tone, when they gave them (both
+/// optional), before the language block.
+pub fn with_expectations(soul: &str, role: Option<&str>, tone: Option<&str>, lang: Option<&str>) -> String {
+    let (role, tone) = (strip_dots(role.unwrap_or("")), strip_dots(tone.unwrap_or("")));
+    if role.is_empty() && tone.is_empty() {
+        return soul.to_string();
+    }
+    let fr = language(lang) == "fr";
+    let mut lines = Vec::new();
+    if !role.is_empty() {
+        lines.push(if fr {
+            format!("Ce que ton utilisateur attend de toi : {role}.")
+        } else {
+            format!("What your user expects from you: {role}.")
+        });
+    }
+    if !tone.is_empty() {
+        lines.push(if fr { format!("Ton ton : {tone}.") } else { format!("Your tone: {tone}.") });
+    }
+    let (body, block_lang) = split_language(soul);
+    let text = format!("{}\n{}\n", body.trim_end(), lines.join("\n"));
+    match block_lang {
+        Some(_) => with_language(&text, lang),
+        None => text,
+    }
 }
 
 /// « Léa » → « lea », « Mon coach » → « mon-coach »: the profile (and bridge) id of a name the person chose.

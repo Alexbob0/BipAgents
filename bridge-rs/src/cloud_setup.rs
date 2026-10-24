@@ -542,6 +542,7 @@ pub async fn claim_server(
             lang: request.language.clone(),
             custom: None,
             group: None,
+            ..Default::default()
         };
         let agent = create_agent(config, &body, http, &run).await?;
         created.insert(index.to_string(), json!(agent.name));
@@ -659,6 +660,7 @@ pub async fn prepare_place(
         lang: None,
         custom: None,
         group: None,
+        ..Default::default()
     };
     let mut planned = plan_agent(&snapshot, &body)?;
     // a profile left by a preparation cut short (the bridge restarted by the installer): another id
@@ -918,6 +920,7 @@ async fn claim_prepared(
             lang: Some(lang.clone()),
             custom: None,
             group: None,
+            ..Default::default()
         };
         let planned = plan_agent(&config.get(), &body)?;
         let agent = hub_agent(&config.get(), &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
@@ -983,6 +986,7 @@ pub async fn finish_pending(config: &SharedConfig, http: &reqwest::Client, run: 
                 lang: entry["lang"].as_str().map(str::to_string),
                 custom: None,
                 group: None,
+                ..Default::default()
             };
             let mut planned = plan_agent(&config.get(), &body)?;
             planned.profile = id.clone();
