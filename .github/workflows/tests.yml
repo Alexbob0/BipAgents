@@ -37,6 +37,10 @@ jobs:
         run: PYTHONPATH=installer python -m pytest -q installer/tests
       - name: Bridge (black-box suite, the HTTP contract)
         working-directory: bridge
+        # The runner's /usr/bin/chromium is a bare snapshot without a setuid sandbox (« No usable sandbox! », the VM
+        # refuses unprivileged user namespaces); Google Chrome's .deb ships chrome-sandbox setuid.
+        env:
+          BIP_CHROME: /usr/bin/google-chrome
         run: python -m pytest tests_blackbox -q -p no:cacheprovider
 
   relay:
