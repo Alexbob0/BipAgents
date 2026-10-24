@@ -251,7 +251,7 @@ pub fn write_notes(folder: &Path, source: &str, notes: &[Note]) -> anyhow::Resul
 }
 
 /// Python's `base64.b64decode(data, validate=True)`.
-fn b64decode(data: &str) -> Option<Vec<u8>> {
+pub(crate) fn b64decode(data: &str) -> Option<Vec<u8>> {
     if !BASE64.is_match(data) {
         return None;
     }
