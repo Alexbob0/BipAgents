@@ -78,6 +78,7 @@
     },
     {
       "id": "budget",
+      "unread": true,
       "category": "finance",
       "name": {
         "fr": "Budget",
