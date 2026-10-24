@@ -114,7 +114,8 @@ def test_a_sample_reports_without_writing_then_the_full_pass_fills_the_records(b
     assert document["title"] == "Votre commande Vélo"
     assert [b["reference"] for b in found["booking"]] == ["LIS7Q2", "HTL889"]
     # the flight and the hotel make one trip (time away), named by its city and month, linked to its document
-    trips = list((bridge.state_dir / "notebook" / "carnet" / "Trips").glob("Lisbon — *.md"))
+    # « Lisbon — Dec 2026 », or « Weekend in Lisbon — … » when the 40 days ahead land on a Thursday to Saturday
+    trips = list((bridge.state_dir / "notebook" / "carnet" / "Trips").glob("*Lisbon — *.md"))
     assert len(trips) == 1, trips
     page = trips[0].read_text()
     assert "type: trip" in page and "LIS7Q2" in page and "HTL889" in page and "[[archive:" in page
