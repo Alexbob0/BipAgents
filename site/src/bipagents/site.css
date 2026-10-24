@@ -227,37 +227,109 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 @media (max-width: 520px) { .ask-body { min-height: 400px; } .ask .msg { font-size: 14.5px; } }
 @media (prefers-reduced-motion: reduce) { .ask { transition: none; } }
 
-/* -- Compared: chatbots, do-it-yourself agents, BipAgents (a table; one card per row on a phone) ------------------- */
+/* -- Compared: Muse, dots, Grok Bot, BipAgents. A face-off (one product against BipAgents) picked in a segmented
+   control, or the whole table; without the script, the whole table. Marks (check, cross, half, dash) always sit next
+   to the words, never instead of them. One card per row on a phone. ----------------------------------------------- */
 .vs { max-width: 1180px; margin: 0 auto; }
 .vs table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
-.vs th, .vs td { text-align: left; vertical-align: top; padding: 14px 16px; font-size: 15px; line-height: 1.4; }
+.vs th, .vs td { text-align: left; vertical-align: top; padding: 14px 16px; font-size: 14.5px; line-height: 1.4; }
 .vs thead th { font-size: 15.5px; font-weight: 1000; color: var(--ink); padding-bottom: 12px; vertical-align: bottom; }
-.vs thead td { width: 17%; }
-.vs th, .vs td { font-size: 14.5px; }
-.vs-sources { margin: 14px 16px 6px; font-size: 13px; color: var(--muted); }
-.vs-sources summary { cursor: pointer; font-weight: 800; }
-.vs-sources p { margin: 8px 0 0; line-height: 1.5; }
-.vs-sources a { color: inherit; }
+.vs thead td { width: 19%; }
+.vs[data-pick^="c"] thead td { width: 30%; }
 .vs tbody th { font-weight: 1000; color: var(--ink); }
 .vs tbody td { color: var(--ink2); font-weight: 700; }
-.vs tbody tr + tr > * { border-top: 1px solid var(--line); }
+.vs tbody tr:not(.vs-group) + tr > * { border-top: 1px solid var(--line); }
 .vs .vs-us { background: var(--green-tint); color: var(--ink); font-weight: 800; }
-.vs thead .vs-us { border-radius: 22px 22px 0 0; padding-top: 16px; }
+.vs thead .vs-us { border-radius: 22px; padding-top: 12px; }
+.vs .vs-group + tr .vs-us { border-radius: 22px 22px 0 0; }
 .vs tbody tr:last-child .vs-us { border-radius: 0 0 22px 22px; }
-.vs-bip { display: inline-block; width: 30px; height: 30px; vertical-align: -9px; margin-right: 8px; }
-.vs-bip svg { width: 100%; height: 100%; }
+.vs .vs-group th { padding: 26px 16px 8px; }
+.vs .vs-group span { display: inline-block; font-size: 12.5px; font-weight: 1000; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink2); background: var(--ground2); padding: 5px 12px; border-radius: 999px; }
+.vs-name { display: inline-flex; align-items: center; gap: 9px; }
+.vs-cell { display: flex; gap: 9px; align-items: flex-start; }
+.vs-m { flex: none; width: 20px; height: 20px; margin-top: 0; }
+.vs-m .bg { fill: var(--ground2); }
+.vs-m path, .vs-m circle:not(.bg) { fill: none; stroke: var(--on-pale); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.vs-m .fill { fill: var(--on-pale); stroke: none; }
+.vs-m[data-m="yes"] .bg { fill: var(--green); }
+.vs-m[data-m="no"] .bg { fill: var(--coral); }
+.vs-m[data-m="part"] .bg { fill: var(--gold); }
+.vs-m[data-m="unk"] path { stroke: var(--muted); }
+.vs[data-pick="c1"] :is([data-p="c2"], [data-p="c3"]),
+.vs[data-pick="c2"] :is([data-p="c1"], [data-p="c3"]),
+.vs[data-pick="c3"] :is([data-p="c1"], [data-p="c2"]) { display: none; }
+.vs[data-pick^="c"] tbody td { font-size: 15.5px; }
+.vs.switched tbody td, .vs.switched thead th { animation: vs-in .35s ease-out; }
+@keyframes vs-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .vs.switched tbody td, .vs.switched thead th { animation: none; } }
+
+/* the products' badges: neutral monograms in their colour families, never their logos; BipAgents is its own Bip */
+.vs-badge { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+  font-size: 16px; font-weight: 1000; line-height: 1; color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+.vs-b1 { background: linear-gradient(135deg, #5D74E8, #8D63E0); }
+.vs-b2 { background: #0E0F12; }
+.vs-b2 svg { width: 22px; height: 22px; fill: #fff; }
+.vs-b3 { background: #2B2D33; font-size: 17px; }
+.vs-ball { background: var(--ground2); color: var(--ink2); grid-template-columns: 7px 7px; gap: 3px; place-content: center; box-shadow: none; }
+.vs-ball i { width: 7px; height: 7px; border-radius: 2px; background: currentColor; opacity: .55; }
+.vs-bbip { background: none; box-shadow: none; }
+.vs-bbip svg { width: 100%; height: 100%; }
+.vs-bip { flex: none; display: inline-block; width: 34px; height: 34px; }
+
+/* the segmented control */
+.vs-pick { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; margin: 6px 0 18px; }
+.vs-pick[hidden] { display: none; }
+.vs-pick-label { font-size: 14.5px; font-weight: 900; color: var(--ink2); }
+.vs-seg { display: inline-flex; gap: 4px; padding: 5px; border-radius: 999px; background: var(--ground2); }
+.vs-seg button { display: inline-flex; align-items: center; gap: 8px; border: 0; margin: 0; cursor: pointer; font: inherit;
+  font-size: 15px; font-weight: 900; color: var(--ink2); background: transparent; padding: 6px 16px 6px 7px; border-radius: 999px;
+  transition: background .2s, color .2s; }
+.vs-seg button .vs-badge { width: 26px; height: 26px; font-size: 14px; border-radius: 8px; }
+.vs-seg button .vs-b2 svg { width: 19px; height: 19px; }
+.vs-seg button:hover { color: var(--ink); background: var(--card); }
+.vs-seg button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+.vs-seg button[aria-pressed="true"] .vs-badge { box-shadow: 0 0 0 1.5px var(--ground); }
+.vs-seg button:focus-visible { outline-offset: 2px; border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) { .vs-seg button { transition: none; } }
+
+.vs-sources { margin: 14px 16px 6px; font-size: 13px; color: var(--muted); }
+.vs-sources summary { cursor: pointer; font-weight: 800; }
+.vs-src { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
+.vs-src .vs-badge { width: 22px; height: 22px; font-size: 12px; border-radius: 7px; }
+.vs-src .vs-b2 svg { width: 16px; height: 16px; }
+.vs-sources p { margin: 1px 0 0; line-height: 1.5; }
+.vs-sources a { color: inherit; }
 @media (min-width: 761px) { .vs { padding: 10px 14px; border-radius: 30px; background: var(--card); box-shadow: var(--shadow); } }
 @media (max-width: 760px) {
-  .vs table, .vs tbody, .vs tr, .vs th, .vs td { display: block; width: auto; }
+  .vs table, .vs thead, .vs tbody, .vs tr, .vs th, .vs td { display: block; width: auto; }
   .vs thead { display: none; }
   .vs tbody { display: grid; gap: 12px; }
+  .vs tbody + tbody { margin-top: 6px; }
   .vs tbody tr { border-radius: 24px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
-  .vs tbody tr + tr > * { border-top: 0; }
+  .vs tbody tr.vs-group { background: none; box-shadow: none; border-radius: 0; }
+  .vs .vs-group th { padding: 14px 4px 0; }
+  .vs tbody tr + tr > * { border-top: 0 !important; }
   .vs tbody th { padding: 14px 16px 6px; font-size: 16px; }
   .vs tbody td { padding: 6px 16px 10px; font-size: 14.5px; }
-  .vs tbody td::before { content: attr(data-col); display: block; font-size: 12px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+  .vs[data-pick^="c"] tbody td { font-size: 14.5px; }
+  .vs tbody td::before { content: attr(data-col); display: block; font-size: 12px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
   .vs tbody td.vs-us { padding: 10px 16px 14px; border-radius: 0 !important; }
   .vs tbody td.vs-us::before { color: var(--green-deep); }
+  /* the face-off: the two answers side by side, under the row's question; its header becomes a small duel card */
+  .vs[data-pick^="c"] thead { display: block; margin-bottom: 12px; }
+  .vs[data-pick^="c"] thead tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-radius: 24px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
+  .vs[data-pick^="c"] thead td { display: none; }
+  .vs[data-pick^="c"] thead th { padding: 12px 14px; font-size: 15px; }
+  .vs[data-pick^="c"] thead .vs-us { border-radius: 0; }
+  .vs[data-pick^="c"] tbody tr:not(.vs-group) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .vs[data-pick^="c"] tbody tr:not(.vs-group) th { grid-column: 1 / -1; }
+  .vs[data-pick^="c"] tbody td { padding: 6px 14px 14px; }
+  .vs[data-pick^="c"] tbody td.vs-us { padding: 6px 14px 14px; }
+  .vs-pick { flex-direction: column; gap: 8px; }
+  .vs-seg { display: grid; grid-template-columns: repeat(4, 1fr); width: 100%; border-radius: 22px; }
+  .vs-seg button { flex-direction: column; gap: 4px; padding: 8px 4px 7px; font-size: 13px; border-radius: 18px; text-align: center; }
+  .vs-seg button:focus-visible { border-radius: 18px; }
 }
 .hermes-line + .badge { margin-top: 14px; }
 .foot-badge { margin-top: 16px; }

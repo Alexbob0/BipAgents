@@ -319,6 +319,24 @@ if (chat) once(chat, () => play(current), 0.35);   // the demo has its own page 
 const compare = $(".compare");
 if (compare) once(compare, () => compare.classList.add("go"), 0.4);
 
+// -- Compared: one product face to face with BipAgents (Grok Bot first, the closest), or all of them. Without the
+// script the whole table shows and the control stays hidden. ---------------------------------------------------------
+(() => {
+  const vs = $(".vs"), pick = vs && $(".vs-pick", vs);
+  if (!pick) return;
+  const buttons = $$("button[data-pick]", pick);
+  const show = (which, animate) => {
+    vs.dataset.pick = which;
+    for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.pick === which));
+    // a fixed table counts its columns from the widest row: the group headings span only what shows
+    for (const th of $$(".vs-group th", vs)) th.colSpan = which === "all" ? 5 : 3;
+    if (animate) { vs.classList.remove("switched"); void vs.offsetWidth; vs.classList.add("switched"); }
+  };
+  for (const b of buttons) b.addEventListener("click", () => show(b.dataset.pick, true));
+  pick.hidden = false;
+  show("c3", false);
+})();
+
 // -- The visitor's region: the menu's language and country, the currency that follows ------------------------------
 // A choice made here before (the menu or the price picker), else where the visitor most likely is: the time zone
 // (Europe/Paris with an en-GB browser: euros), else the browser's region (en-US → USD, he → ILS…), else the default.
