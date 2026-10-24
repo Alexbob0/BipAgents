@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -97,8 +98,9 @@ def profile(home: Path, name: str) -> Path:
 
 
 def wait_registered(bridge: Bridge, agents) -> None:
-    """At start, the bridge gives each agent it manages its tools (three `hermes config set`, in the background):
-    waited for, so a test's own commands come after them."""
+    """At start, the bridge gives each agent it manages its tools (three `hermes config set`, in the background, then
+    the card payment and vault account entries where they are offered): waited for, so a test's own commands come
+    after them."""
     from bbkit.servers import wait_until
 
     def done() -> bool:
@@ -108,3 +110,12 @@ def wait_registered(bridge: Bridge, agents) -> None:
         kept = set(json.loads(tokens.read_text())["tokens"]) if tokens.exists() else set()
         return set(agents) <= seen and set(agents) <= kept
     assert wait_until(done, timeout=15), bridge.commands.of("hermes")
+    # The other entries follow the `bipagents` one: done when no new command came for a while (a slow runner).
+    count = [len(bridge.commands.of("hermes")), time.monotonic()]
+
+    def quiet() -> bool:
+        now = len(bridge.commands.of("hermes"))
+        if now != count[0]:
+            count[:] = [now, time.monotonic()]
+        return time.monotonic() - count[1] > 0.5
+    assert wait_until(quiet, timeout=15), bridge.commands.of("hermes")
