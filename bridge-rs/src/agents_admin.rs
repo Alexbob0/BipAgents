@@ -1150,6 +1150,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
+    let (soul, _) = crate::dates::split_dates(&soul);
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         // set up by hand: its tools are its administrator's
         return Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
@@ -1261,6 +1262,8 @@ pub async fn write_settings(
         let text = crate::souls::with_health(&text, crate::health::enabled(&config, &agent.name));
         let text = crate::souls::with_notebook(&text, crate::notebook::enabled(&config, &agent.name));
         let text = crate::souls::with_archives(&text, crate::archives::enabled(&config, &agent.name));
+        let line = crate::dates::agent_line(&config, &crate::dates::load(&config), &text);
+        let text = crate::dates::with_dates(&text, line.as_deref());
         std::fs::write(profile_folder(&config, agent).join("SOUL.md"), text)?;
     }
     if let Some(on) = body.health {

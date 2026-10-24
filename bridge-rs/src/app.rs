@@ -314,6 +314,7 @@ impl AppState {
         }
         self.spawn(purge_loop(self.clone()));
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
+        self.spawn(crate::dates::run_forever(self.clone()));
         self.spawn(crate::archives::scheduler(self.config.clone()));
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
@@ -1205,7 +1206,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         // The space encrypted at rest (space.rs): « on » or « off » (a locked bridge answers « locked » itself).
         "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
-        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts"],
+        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone"],
     })))
 }
 
@@ -1513,6 +1514,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(agents_admin::router())
         .merge(crate::agent_groups::router())
         .merge(crate::files_kept::router())
+        .merge(crate::dates::router())
         .merge(crate::vault::router())
         .merge(crate::card_pay::app_router())
         .merge(crate::vault_logins::app_router())

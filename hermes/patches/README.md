@@ -29,6 +29,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0005 vault fill re-attach | applies | not checked yet |
 | 0006 synchronous peer reply | applies | applies (`f86276d2eb`, 2026-10-13) |
 | 0007 browser vault only | applies | applies (`97a9ae8ee`, checked 2026-10-22) |
+| 0008 time zone, routines, wall clock | applies | applies (`97a9ae8ee`, checked 2026-10-24) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -139,3 +140,39 @@ and at the bridge's start for those set up before).
 **Files.** `model_tools.py` (`_select_tool_names`).
 
 **Tests.** None upstream; checked with `patch --dry-run` on `517b5e10f` and `97a9ae8ee`.
+
+## 0008 — the person's time zone: terminal, routines kept at home time, one run per wall-clock time
+
+**Problems.** (1) The configured `timezone` reaches the prompts, cron and `execute_code`, but not the terminal: `date`
+or a script run with the terminal tool tells the server's time (or the container's UTC). (2) Hermes caches the zone per
+config path: a bridge that rewrites `timezone` (the person's phone moved to another zone) is not followed until the
+gateway restarts. (3) One zone for everything: someone who travels gets either their routines moved silently, or a
+« now » that stays at home time. (4) The autumn clock change ran some routines twice. Europe leaves summer time on
+Sunday 25 October 2026 (03:00 CEST → 02:00 CET): a routine at `30 2 * * *` whose run ended in the repeated hour, or
+`59 2 * * *` even with a one-minute run, got 02:30 / 02:59 *winter* time the same night, because `compute_next_run`
+takes the second fold of the wall clock when the first one is already past (any recompute from « now » in the
+repeated hour does the same: the end of a run, `advance`, a restart). Measured with a 30-second tick simulation on
+`517b5e10f`: `30 2` (45-minute run) and `59 2` fired twice; `0 2`, `0 3` and `0 1` once. US: the same on 1 November
+2026 at 01:xx.
+
+**What the patch does.**
+- `cron.timezone` (new key, `""` by default = the profile's `timezone`): the zone cron schedules are read in
+  (`hermes_time.get_cron_timezone()`), used by `compute_next_run` and by the stale-schedule check.
+- `compute_next_run`: a job pinned to given hours (hour field not a wildcard) runs once per wall-clock time — the
+  repeated hour's second pass is never chosen for it; a job whose hour field is a wildcard (`*/15 * * * *`) keeps
+  running in the second pass, as cron does. The spring gap is unchanged (02:30 that does not exist runs at 03:30).
+- The zone cache is keyed by the config file's modification time: a rewritten `timezone` or `cron.timezone` applies
+  at the next call, without a restart.
+- Terminal commands (every backend: local, docker, ssh…) run after `export TZ=<the profile's zone>` when one is
+  configured (not on Windows); an inline `TZ=… cmd` still wins.
+
+**Files.** `hermes_time.py`, `cron/jobs.py`, `tools/environments/base.py`, `hermes_cli/config_defaults.py`; new
+`tests/cron/test_cron_wall_clock_once_and_zone.py` (fall-back runs once with 1- and 45-minute runs, a base in the
+second pass, hour-wildcard jobs, the spring gap, `cron.timezone`, a rewritten zone without restart, the terminal TZ).
+
+**Tests.** The new file, and `tests/cron/` plus the timezone, system prompt, timestamp and environment suites: 1648
+passed, 55 skipped (Python 3.14). Applies with `patch --dry-run` on `517b5e10f` and `97a9ae8ee`.
+
+**Bridge side.** The bridge writes `timezone` (the phone's zone, at once) and `cron.timezone` (the routines' zone, which
+changes only when the person answers the travel question) in each agent's profile; without this patch it restarts the
+agent's gateway instead so `timezone` is read again, and `cron.timezone` is ignored (routines follow `timezone`).

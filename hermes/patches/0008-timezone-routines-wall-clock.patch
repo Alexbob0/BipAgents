@@ -1,0 +1,341 @@
+--- a/cron/jobs.py
++++ b/cron/jobs.py
+@@ -38,7 +38,7 @@
+ logger = logging.getLogger(__name__)
+ 
+ from hermes_time import now as _hermes_now
+-from hermes_time import get_timezone
++from hermes_time import get_cron_timezone
+ from hermes_cli.observability.shared_metrics_gateway import record_cron_missed
+ from utils import atomic_replace, atomic_write_text, fsync_directory, mkstemp_beside
+ 
+@@ -1103,6 +1103,11 @@
+     if not expr or not _ensure_croniter() or croniter is None:
+         return True
+     try:
++        # Read the instant on the schedule's own wall clock (``cron.timezone`` may differ from the
++        # profile zone the stored value was normalized to).
++        zone = get_cron_timezone()
++        if zone is not None and next_run_dt.tzinfo is not None:
++            next_run_dt = next_run_dt.astimezone(zone)
+         # Last occurrence at-or-before the instant: base one second past it so an exact hit is
+         # included, then compare at second granularity (croniter is second-precision).
+         prev = croniter(str(expr), next_run_dt + timedelta(seconds=1)).get_prev(datetime)
+@@ -1173,6 +1178,13 @@
+         "timezone_migration_catchups": _timezone_migration_catchups,
+         "recent": list(_timezone_migration_catchups_recent),
+     }
++
++
++def _cron_repeats_within_hours(expr: str) -> bool:
++    """Whether the hour field is a wildcard (``*``, ``*/2``): such a job also runs in the repeated
++    autumn hour, as cron does; a job pinned to given hours runs once at each wall-clock time."""
++    fields = str(expr).split()
++    return len(fields) >= 5 and fields[1].startswith("*")
+ 
+ 
+ def compute_next_run(schedule: dict[str, Any], last_run_at: Optional[str] = None) -> Optional[str]:
+@@ -1214,21 +1226,26 @@
+         # wall clock for croniter, then re-attach the zone to the result, so
+         # the wall-clock hour stays correct every calendar day, including DST
+         # boundaries (morning-routine 09:00 America/Toronto).
+-        # Fall back to the base's own zone only when nothing is configured.
+-        zone = get_timezone() or base_time.tzinfo
++        # Fall back to the base's own zone only when nothing is configured. ``cron.timezone``, when
++        # set, is the routines' zone (someone travelling keeps them at home time).
++        zone = get_cron_timezone() or base_time.tzinfo
+         base_wall = base_time.astimezone(zone).replace(tzinfo=None)
+         it = croniter(expr, base_wall)
+         # Strictly-after guard for the DST fall-back hour (qwen-code#11723 class):
+         # attaching the zone to a naive wall clock resolves the repeated autumn hour
+         # to its EARLIER occurrence (fold=0), so a base inside the second occurrence
+         # got a "next run" up to an hour in the PAST — the fire path would re-fire
+-        # immediately and re-anchor, looping. Try both folds of each candidate wall
+-        # clock and return the earliest instant strictly after the base; a repeated
+-        # hour has two instants, so two candidates always suffice.
++        # immediately and re-anchor, looping. Return the earliest instant strictly
++        # after the base. A wall clock the repeated hour shows twice is ONE occurrence
++        # for a job pinned to given hours (`30 2 * * *` ran at 02:30 summer time: a base
++        # in the second pass, the end of a long run or a recompute from "now", must not
++        # schedule 02:30 winter time the same night); an hour-wildcard job (`*/15 * * * *`)
++        # whose base is already in the second pass keeps running there.
+         base_ts = base_time.timestamp()
++        both_passes = _cron_repeats_within_hours(expr)
+         next_wall = it.get_next(datetime)
+-        for _ in range(2):
+-            for fold in (0, 1):
++        for _ in range(4):
++            for fold in ((0, 1) if both_passes else (0,)):
+                 candidate = next_wall.replace(tzinfo=zone, fold=fold)
+                 if candidate.timestamp() > base_ts:
+                     return candidate.isoformat()
+--- a/hermes_cli/config_defaults.py
++++ b/hermes_cli/config_defaults.py
+@@ -1799,6 +1799,9 @@
+ 
+     "cron": {
+         "catch_up_missed": True,  # False skips recurring misses beyond the local grace window.
++        # IANA zone cron schedules are read in; "" = the profile's `timezone`. Lets someone who
++        # travels keep their routines at home time while the agent tells the local time.
++        "timezone": "",
+         # Let cron-spawned agents use the cronjob toolset (the "cron-librarian" pattern). Off by
+         # default: policy-denied in cron context to prevent unattended scheduling loops. Jobs
+         # created this way are user-owned in the same flat jobs table. Interactive toolsets
+--- a/hermes_time.py
++++ b/hermes_time.py
+@@ -75,16 +75,24 @@
+     return os.getenv("HERMES_TIMEZONE", "").strip()
+ 
+ 
++def _config_identity() -> str:
++    """The config file's path and modification time: an app or a bridge that rewrites ``timezone``
++    (the person flew to another zone) is followed at the next call, without a gateway restart."""
++    path = get_config_path()
++    try:
++        stamp = path.stat().st_mtime_ns
++    except OSError:
++        stamp = 0
++    return f"{path}\0{stamp}"
++
++
+ def _timezone_cache_identity() -> tuple[str, str]:
+     tz_env = _env_timezone()
+-    return ("environment", tz_env) if tz_env else ("config", str(get_config_path()))
++    return ("environment", tz_env) if tz_env else ("config", _config_identity())
+ 
+ 
+-def _resolve_timezone_name() -> str:
+-    """Read the configured IANA timezone string (or ``""``). Does file I/O — callers cache."""
+-    tz_env = _env_timezone()
+-    if tz_env:
+-        return tz_env
++def _load_config() -> dict:
++    """The active profile's effective config (``{}`` when unreadable). Does file I/O — callers cache."""
+     try:
+         # Prefer the shared cached effective-config loader (mtime-keyed + libyaml, managed overlay
+         # included so an administrator can pin ``timezone``): a direct safe_load of a large
+@@ -97,12 +105,19 @@
+             import hermes_yaml as yaml
+             config_path = get_config_path()
+             cfg = (yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}) if config_path.exists() else {}
+-        if cfg:
+-            tz_cfg = cfg.get("timezone", "")
+-            if isinstance(tz_cfg, str) and tz_cfg.strip():
+-                return tz_cfg.strip()
++        return cfg if isinstance(cfg, dict) else {}
+     except Exception:
+-        pass
++        return {}
++
++
++def _resolve_timezone_name() -> str:
++    """Read the configured IANA timezone string (or ``""``). Does file I/O — callers cache."""
++    tz_env = _env_timezone()
++    if tz_env:
++        return tz_env
++    tz_cfg = _load_config().get("timezone", "")
++    if isinstance(tz_cfg, str) and tz_cfg.strip():
++        return tz_cfg.strip()
+     return ""
+ 
+ 
+@@ -137,6 +152,29 @@
+     return _timezone_entry()[0]
+ 
+ 
++def get_cron_timezone() -> Optional[ZoneInfo]:
++    """The zone cron schedules are read in: ``cron.timezone`` when set, else :func:`get_timezone`.
++
++    Apart from ``timezone`` so that someone who travels gets the time of where they are at once
++    (prompts, terminal) while their routines stay at home time until they choose to move them."""
++    identity = ("cron", _config_identity())
++    with _cache_lock:
++        entry = _tz_cache.get(identity)
++    if entry is None:
++        section = _load_config().get("cron")
++        name = section.get("timezone", "") if isinstance(section, dict) else ""
++        name = name.strip() if isinstance(name, str) else ""
++        tz = None
++        if name:
++            try:
++                tz = ZoneInfo(name)
++            except Exception as exc:
++                logger.warning("Invalid cron.timezone '%s': %s. Using the profile timezone.", name, exc)
++        with _cache_lock:
++            entry = _tz_cache.setdefault(identity, (name, tz))
++    return entry[1] or get_timezone()
++
++
+ def reset_cache() -> None:
+     """Clear the cached timezone so the next call re-resolves it (after config/env changes)."""
+     with _cache_lock:
+--- a/tools/environments/base.py
++++ b/tools/environments/base.py
+@@ -220,7 +220,25 @@
+ # ---------------------------------------------------------------------------
+ # BaseEnvironment
+ # ---------------------------------------------------------------------------
++
++
++def _with_profile_tz(command: str) -> str:
++    """``command`` after an ``export TZ=`` of the active profile's configured zone, so ``date`` and
++    every program the agent runs (local, docker, ssh…) tell the person's time, as execute_code
++    already does. After the snapshot is sourced, so a zone changed mid-session is followed at the
++    next command; an inline ``TZ=… cmd`` still wins. Unconfigured, or on Windows: unchanged."""
++    if os.name == "nt":
++        return command
++    try:
++        from hermes_time import get_timezone_name
+ 
++        name = get_timezone_name()
++    except Exception:
++        return command
++    if not name:
++        return command
++    return f"export TZ={shlex.quote(name)}\n{command}"
++
+ 
+ class BaseEnvironment(ABC):
+     """Common interface and unified execution flow for all Hermes backends. Subclasses
+@@ -417,7 +435,7 @@
+     def _wrap_command(self, command: str, cwd: str) -> str:
+         """Full bash script: source snapshot, cd, run, re-dump env, emit CWD markers."""
+         return _wrap_command_script(
+-            command,
++            _with_profile_tz(command),
+             passthrough_names=self._snapshot_excluded_passthrough_names(),
+             snapshot_ready=self._snapshot_ready,
+             **self._snapshot_script_kwargs(cwd))
+--- /dev/null
++++ b/tests/cron/test_cron_wall_clock_once_and_zone.py
+@@ -0,0 +1,130 @@
++"""A routine pinned to given hours runs once at each wall-clock time across the autumn fall-back,
++whatever recomputes its next run (the claim at the slot, the end of a long run, a recompute
++from "now"), and ``cron.timezone`` keeps routines on another zone than the profile's.
++
++Europe/Paris leaves summer time on Sunday 25 October 2026 (03:00 CEST → 02:00 CET): before,
++``30 2 * * *`` whose run ended in the repeated hour got 02:30 CET the same night (it ran twice),
++and ``59 2 * * *`` ran twice even with a one-minute run.
++"""
++
++from datetime import datetime, timedelta
++from zoneinfo import ZoneInfo
++
++import pytest
++
++pytest.importorskip("croniter")
++
++import hermes_time
++from cron import jobs
++from cron.jobs import compute_next_run
++
++PARIS = ZoneInfo("Europe/Paris")
++TOKYO = ZoneInfo("Asia/Tokyo")
++
++
++@pytest.fixture
++def paris(monkeypatch):
++    monkeypatch.setenv("HERMES_TIMEZONE", "Europe/Paris")
++    hermes_time.reset_cache()
++    yield
++    hermes_time.reset_cache()
++
++
++def _fires(monkeypatch, expr: str, start: datetime, hours: int, run_minutes: int) -> list[datetime]:
++    """Ticks every 30 s: the claim computes the next run from the fire time, the end of the run
++    from its end time (mark_job_run)."""
++    schedule = {"kind": "cron", "expr": expr}
++    start = start.astimezone(ZoneInfo("UTC"))  # ticks in real time, not wall time
++    clock = [start]
++    monkeypatch.setattr(jobs, "_hermes_now", lambda: clock[0])
++    nxt = compute_next_run(schedule)
++    fires, busy_until, t = [], None, start
++    while t < start + timedelta(hours=hours):
++        clock[0] = t
++        if busy_until and t >= busy_until:
++            nxt, busy_until = compute_next_run(schedule, t.isoformat()), None
++        if not busy_until and nxt and t >= datetime.fromisoformat(nxt):
++            fires.append(t)
++            nxt = compute_next_run(schedule, t.isoformat())
++            busy_until = t + timedelta(minutes=run_minutes)
++        t += timedelta(seconds=30)
++    return fires
++
++
++@pytest.mark.parametrize("expr", ["30 2 * * *", "0 2 * * *", "59 2 * * *", "15 2 * * *"])
++@pytest.mark.parametrize("run_minutes", [1, 45])
++def test_a_routine_in_the_repeated_hour_runs_once(paris, monkeypatch, expr, run_minutes):
++    start = datetime(2026, 10, 24, 20, 0, tzinfo=PARIS)
++    fires = _fires(monkeypatch, expr, start, hours=12, run_minutes=run_minutes)
++    assert len(fires) == 1, [f.isoformat() for f in fires]
++    wall = fires[0].astimezone(PARIS)
++    assert (wall.hour, wall.minute) == tuple(int(x) for x in reversed(expr.split()[:2]))
++    assert wall.utcoffset() == timedelta(hours=2)  # the first pass, summer time
++
++
++def test_a_base_in_the_second_pass_waits_for_the_next_day(paris):
++    base = datetime(2026, 10, 25, 2, 10, tzinfo=PARIS, fold=1)  # 02:10 CET, after 02:30 CEST ran
++    nxt = datetime.fromisoformat(compute_next_run({"kind": "cron", "expr": "30 2 * * *"}, base.isoformat()))
++    assert nxt.astimezone(PARIS).isoformat() == "2026-10-26T02:30:00+01:00"
++
++
++def test_an_hour_wildcard_job_keeps_running_in_the_second_pass(paris):
++    base = datetime(2026, 10, 25, 2, 10, tzinfo=PARIS, fold=1)
++    nxt = datetime.fromisoformat(compute_next_run({"kind": "cron", "expr": "*/15 * * * *"}, base.isoformat()))
++    assert nxt.astimezone(PARIS).isoformat() == "2026-10-25T02:15:00+01:00"
++
++
++def test_spring_forward_runs_once_after_the_gap(paris, monkeypatch):
++    start = datetime(2027, 3, 27, 20, 0, tzinfo=PARIS)
++    fires = _fires(monkeypatch, "30 2 * * *", start, hours=12, run_minutes=1)
++    assert [f.astimezone(PARIS).isoformat() for f in fires] == ["2027-03-28T03:30:00+02:00"]
++
++
++def test_cron_timezone_keeps_routines_on_another_zone(monkeypatch, tmp_path):
++    (tmp_path / "config.yaml").write_text("timezone: Asia/Tokyo\ncron:\n  timezone: Europe/Paris\n")
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    monkeypatch.delenv("HERMES_TIMEZONE", raising=False)
++    hermes_time.reset_cache()
++    try:
++        assert hermes_time.get_timezone_name() == "Asia/Tokyo"
++        assert hermes_time.get_cron_timezone() == PARIS
++        base = datetime(2026, 10, 24, 12, 0, tzinfo=TOKYO)
++        nxt = datetime.fromisoformat(compute_next_run({"kind": "cron", "expr": "0 7 * * *"}, base.isoformat()))
++        assert nxt.astimezone(PARIS).isoformat() == "2026-10-24T07:00:00+02:00"  # 12:00 Tokyo = 05:00 Paris
++        assert jobs._cron_next_run_matches_expr({"kind": "cron", "expr": "0 7 * * *"}, nxt.astimezone(TOKYO))
++    finally:
++        hermes_time.reset_cache()
++
++
++def test_a_rewritten_timezone_is_read_without_a_restart(monkeypatch, tmp_path):
++    config = tmp_path / "config.yaml"
++    config.write_text("timezone: Europe/Paris\n")
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    monkeypatch.delenv("HERMES_TIMEZONE", raising=False)
++    hermes_time.reset_cache()
++    try:
++        assert hermes_time.get_timezone_name() == "Europe/Paris"
++        config.write_text("timezone: Asia/Tokyo\n")
++        stat = config.stat()
++        import os
++
++        os.utime(config, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
++        assert hermes_time.get_timezone_name() == "Asia/Tokyo"
++        assert hermes_time.get_cron_timezone() == TOKYO  # no cron.timezone: the profile's
++    finally:
++        hermes_time.reset_cache()
++
++
++def test_terminal_commands_get_the_profile_zone(monkeypatch):
++    from tools.environments import base
++
++    monkeypatch.setenv("HERMES_TIMEZONE", "America/New_York")
++    hermes_time.reset_cache()
++    try:
++        assert base._with_profile_tz("date") == "export TZ=America/New_York\ndate"
++        monkeypatch.setenv("HERMES_TIMEZONE", "")
++        hermes_time.reset_cache()
++        monkeypatch.setattr(hermes_time, "get_timezone_name", lambda: "")
++        assert base._with_profile_tz("date") == "date"
++    finally:
++        hermes_time.reset_cache()

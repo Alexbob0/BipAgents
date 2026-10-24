@@ -16,7 +16,8 @@
 //!     GET    /v1/notebook/tasks                open and recent tasks
 //!     POST   /v1/notebook/tasks                {title, due?, page?, private?}
 //!     POST   /v1/notebook/tasks/{id}           {done}
-//!     GET    /v1/notebook/dates?days=&all=     « Dates à venir »: dated facts (close people's by default), not tasks
+//!     GET    /v1/notebook/dates?days=&all=&standard=   « Dates à venir »: dated facts (close people's by default), not
+//!                                              tasks, and the standard dates (dates/: `computed: true`; standard=0: not)
 //!     POST   /v1/notebook/close                {path, close}   a person marked close (« proche ») or not
 //!     POST   /v1/notebook/icon                 {path, icon}    a subject's or area's icon, the person's choice ("": automatic)
 //!     GET    /v1/notebook/proposals            the agents' task proposals, the kinds declined
@@ -126,7 +127,10 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         let upcoming: Vec<Value> = upcoming.iter().take(10).map(|t| t.view()).collect();
         // « Dates à venir »: close people's dated facts in the next 30 days (facts, not tasks)
         let today = chrono::Local::now().date_naive();
-        let dates = super::upcoming_dates(&config, 30, false, today);
+        let mut dates = super::upcoming_dates(&config, 30, false, today);
+        // and the standard dates (holidays, school holidays, clock changes): computed for the person, not saved
+        dates.extend(crate::dates::notebook_entries(&config, 30));
+        dates.sort_by_key(|d| d.get("in_days").and_then(Value::as_i64).unwrap_or(0));
         // « Mode voyage »: the trips within 30 days or under way; the records by type; the proposals to answer
         let trips = super::trip::upcoming(&config, today);
         let records = super::records::home(&config, today);
@@ -568,8 +572,15 @@ async fn dates(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response
     let config = state.config();
     let days = q.get("days").and_then(|d| d.parse::<i64>().ok()).unwrap_or(60).clamp(1, 366);
     let all = matches!(q.get("all"), Some("1" | "true" | "yes"));
+    let standard = !matches!(q.get("standard"), Some("0" | "false" | "no"));
     let view = blocking(move || {
-        Ok(json!({"dates": super::upcoming_dates(&config, days, all, chrono::Local::now().date_naive())}))
+        // the person's dates, then the standard ones (holidays, school holidays, clock changes: computed, not saved)
+        let mut dates = super::upcoming_dates(&config, days, all, chrono::Local::now().date_naive());
+        if standard {
+            dates.extend(crate::dates::notebook_entries(&config, days));
+            dates.sort_by_key(|d| d.get("in_days").and_then(Value::as_i64).unwrap_or(0));
+        }
+        Ok(json!({"dates": dates}))
     })
     .await?;
     Ok(web::ok(view))

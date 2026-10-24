@@ -263,6 +263,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.push(crate::jobs::start_task_tool());
     tools.push(crate::routes::route_tool());
     tools.push(crate::maps::tool());
+    tools.push(crate::dates::tool());
     tools
 });
 
@@ -1306,6 +1307,11 @@ pub async fn call_tool(
     }
     if name == crate::routes::TOOL_NAME {
         return Ok(crate::routes::call(crate::weather::http(), &config, arguments).await);
+    }
+    if name == crate::dates::TOOL_NAME {
+        let (config, agent) = (config.clone(), agent.clone());
+        let arguments = arguments.clone();
+        return blocking(move || Ok(crate::dates::call(&config, &agent, &arguments))).await;
     }
     if name == crate::maps::TOOL_NAME {
         return Ok(crate::maps::call(&config, &agent.name, arguments).await);

@@ -1,0 +1,361 @@
+{
+ "meta": {
+  "source": "Ministère de l'Éducation nationale, « Calendrier scolaire » (fr-en-calendrier-scolaire), data.education.gouv.fr",
+  "licence": "Licence Ouverte / Open Licence 2.0 (Etalab)",
+  "note": "start: the day after the last day of classes; end: the day classes resume",
+  "generated": "2026-10-24",
+  "generator": "scripts/standard-dates.py"
+ },
+ "zones": {
+  "A": [
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2026-02-07",
+    "end": "2026-02-23",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2026-04-04",
+    "end": "2026-04-20",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2026-05-14",
+    "end": "2026-05-18",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances d'Été",
+    "start": "2026-07-04",
+    "end": "2026-09-01",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances de la Toussaint",
+    "start": "2026-10-17",
+    "end": "2026-11-02",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de Noël",
+    "start": "2026-12-19",
+    "end": "2027-01-04",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2027-02-13",
+    "end": "2027-03-01",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2027-04-10",
+    "end": "2027-04-26",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2027-05-07",
+    "end": "2027-05-07",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances d'Été",
+    "start": "2027-07-03",
+    "end": "2027-09-02",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de la Toussaint",
+    "start": "2027-10-23",
+    "end": "2027-11-08",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances de Noël",
+    "start": "2027-12-18",
+    "end": "2028-01-03",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2028-02-19",
+    "end": "2028-03-06",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2028-04-22",
+    "end": "2028-05-09",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2028-05-25",
+    "end": "2028-05-29",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Début des Vacances d'Été",
+    "start": "2028-07-04",
+    "end": "2028-07-04",
+    "year": "2027-2028"
+   }
+  ],
+  "B": [
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2026-02-14",
+    "end": "2026-03-02",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2026-04-11",
+    "end": "2026-04-27",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2026-05-14",
+    "end": "2026-05-18",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances d'Été",
+    "start": "2026-07-04",
+    "end": "2026-09-01",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances de la Toussaint",
+    "start": "2026-10-17",
+    "end": "2026-11-02",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de Noël",
+    "start": "2026-12-19",
+    "end": "2027-01-04",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2027-02-20",
+    "end": "2027-03-08",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2027-04-17",
+    "end": "2027-05-03",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2027-05-07",
+    "end": "2027-05-07",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances d'Été",
+    "start": "2027-07-03",
+    "end": "2027-09-02",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de la Toussaint",
+    "start": "2027-10-23",
+    "end": "2027-11-08",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances de Noël",
+    "start": "2027-12-18",
+    "end": "2028-01-03",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2028-02-05",
+    "end": "2028-02-21",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2028-04-08",
+    "end": "2028-04-24",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2028-05-25",
+    "end": "2028-05-29",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Début des Vacances d'Été",
+    "start": "2028-07-04",
+    "end": "2028-07-04",
+    "year": "2027-2028"
+   }
+  ],
+  "C": [
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2026-02-21",
+    "end": "2026-03-09",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2026-04-18",
+    "end": "2026-05-04",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2026-05-14",
+    "end": "2026-05-18",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances d'Été",
+    "start": "2026-07-04",
+    "end": "2026-09-01",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances de la Toussaint",
+    "start": "2026-10-17",
+    "end": "2026-11-02",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de Noël",
+    "start": "2026-12-19",
+    "end": "2027-01-04",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2027-02-06",
+    "end": "2027-02-22",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2027-04-03",
+    "end": "2027-04-19",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2027-05-07",
+    "end": "2027-05-07",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances d'Été",
+    "start": "2027-07-03",
+    "end": "2027-09-02",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de la Toussaint",
+    "start": "2027-10-23",
+    "end": "2027-11-08",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances de Noël",
+    "start": "2027-12-18",
+    "end": "2028-01-03",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2028-02-12",
+    "end": "2028-02-28",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2028-04-15",
+    "end": "2028-05-02",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2028-05-25",
+    "end": "2028-05-29",
+    "year": "2027-2028"
+   },
+   {
+    "name": "Début des Vacances d'Été",
+    "start": "2028-07-04",
+    "end": "2028-07-04",
+    "year": "2027-2028"
+   }
+  ],
+  "Corse": [
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2026-02-14",
+    "end": "2026-03-02",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2026-04-11",
+    "end": "2026-04-27",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2026-05-15",
+    "end": "2026-05-15",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances d'Été",
+    "start": "2026-07-04",
+    "end": "2026-09-03",
+    "year": "2025-2026"
+   },
+   {
+    "name": "Vacances de la Toussaint",
+    "start": "2026-10-17",
+    "end": "2026-11-02",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de Noël",
+    "start": "2026-12-19",
+    "end": "2027-01-04",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances d'Hiver",
+    "start": "2027-02-13",
+    "end": "2027-03-01",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Vacances de Printemps",
+    "start": "2027-04-10",
+    "end": "2027-04-26",
+    "year": "2026-2027"
+   },
+   {
+    "name": "Pont de l'Ascension",
+    "start": "2027-05-07",
+    "end": "2027-05-10",
+    "year": "2026-2027"
+   }
+  ]
+ }
+}
