@@ -68,10 +68,9 @@ access must be requested) is only needed to **create** new voices, see [`voices/
   generation stops if the client disconnects (voice interruption, cancelled reply)
 
 `voice`: `colibri` (French) or `<code>/colibri` with `en`, `es`, `de`. Unknown voice → 404; the bridge then returns
-an error and the app reads the text with the iPhone's voice. The text arrives already prepared by the bridge (numbers
+an error and the app reads the text with the phone's own voice. The text arrives already prepared by the bridge (numbers
 spelled out, symbols, abbreviations).
 
-Tests (no model, no download): `python -m pytest pocket/tests` (with `fastapi`, `httpx` and `pytest`, for
-example from the bridge's venv).
+Tests (no model, no download): `python -m pytest pocket/tests` (with `fastapi`, `httpx` and `pytest`).
 
 Licenses: code MIT; Pocket TTS weights CC-BY-4.0 (Kyutai); Bips' voices: see `voices/`.

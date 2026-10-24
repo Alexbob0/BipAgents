@@ -73,7 +73,7 @@ with a dark look that follows the system.
 `hosting.py` adds to each a `.htaccess` (one redirect to `https://<apex>/` from http and www; HSTS, short at first;
 nosniff, Referrer-Policy, a Content-Security-Policy with no third party and the hashes of the pages' own inline scripts;
 a year of cache for `?v=` stylesheets and scripts, a week for pictures and fonts, none for pages), a `404.html` and
-`/.well-known/security.txt`. The private `scripts/deploy-sites.py` mirrors them to the hostings over SFTP (OVH offers no
+`/.well-known/security.txt`. A private script of the publisher mirrors them to the hostings over SFTP (OVH offers no
 FTP over TLS) and checks each home page. The pages already link to each other by their final addresses.
 
 The Bips' drawings, their voices, the recordings and the screenshots are not under the MIT license

@@ -3,8 +3,9 @@
 # Le navigateur visible des agents
 
 Chaque agent peut avoir son propre navigateur : un vrai Google Chrome (Chromium sur ARM, où Google n'en publie pas pour
-Linux) sur un bureau à lui. Tu le regardes en direct dans l'app (« Bureau », derrière Face ID) et tu peux prendre la
-souris et le clavier : pour passer un captcha, vérifier quelque chose ou finir une étape toi-même. C'est un navigateur
+Linux) sur un bureau à lui. Tu le regardes en direct dans l'app, dans la conversation même ou dans le « Bureau » de
+l'agent, et tu peux prendre la souris et le clavier (« Prendre la main », derrière Face ID ou le verrouillage du
+téléphone) : pour passer un captcha, vérifier quelque chose ou finir une étape toi-même. C'est un navigateur
 qu'on voit et qu'on peut piloter, pas un moyen de contourner les règles des sites : un agent qui tombe sur un captcha
 te le demande, il ne le résout jamais.
 

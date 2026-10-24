@@ -29,4 +29,4 @@ lecture. Phrases de test :
 - es : « ¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde. »
 - de : « Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag. »
 
-Les aperçus de l'app sont `App/Resources/Voices/voice-<voix>-<code>.m4a` (convertis depuis `<voix>_sample.wav`).
+Les aperçus des apps (`voice-<voix>-<code>.m4a`, dans le code des apps) sont convertis depuis `<voix>_sample.wav`.

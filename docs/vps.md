@@ -4,7 +4,8 @@
 
 No machine running at home? A small rented server does it: your agents run in a datacenter, and the app reaches them
 through Tailscale, as at home. Nothing is open on the Internet but SSH, and even SSH can be closed once Tailscale is
-in place.
+in place. Rather not look after a server at all? That is Kerfy Studio's all-included offer, coming soon on
+[bipagents.com](https://bipagents.com).
 
 ## Before you start
 
@@ -14,8 +15,7 @@ in place.
   **a PC at home** reached through Tailscale (the installer then asks for its address on your tailnet). In the cloud,
   each message goes to the model's provider to be answered: with OpenRouter, pick providers that keep nothing in its
   privacy settings (zero data retention).
-- **Notifications** go through Apple with a developer key, or through the relay of another BipAgents install (a
-  relative's: `family add`).
+- **Notifications** go through Kerfy Studio's [push relay](../relay/README.md), which forwards no message text.
 - **Cost**: the server, from ≈ €8 a month (2 vCPU, 4 GB) to ≈ €15 (4 vCPU, 8 GB, with the visible browsers); the
   model, paid as you use it at OpenRouter. The
   Bips' voices run on the server's CPU, at no extra cost.
@@ -77,5 +77,5 @@ first. It also offers each agent's visible browser, since podman is there. At th
   come along, memory and logins included ([moving](../installer/README.md#moving-to-another-machine)).
 - **Updates**: the system updates itself. For BipAgents: `bipagents update` in the `bip` account (it restarts only
   what changed); the first time, it offers to do it every night.
-- **Uninstall**: `bash ~/BipAgents/install.sh uninstall` in the `bip` account, then delete the server at the
+- **Uninstall**: `bipagents uninstall` in the `bip` account, then delete the server at the
   provider.

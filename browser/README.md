@@ -3,8 +3,8 @@
 # The agents' visible browser
 
 Each agent can have a browser of its own: a real Google Chrome (Chromium on ARM, where Google ships none for Linux)
-on a desktop of its own. You watch it live in the app (« Bureau », behind Face ID) and can take over the mouse and
-keyboard: to pass a captcha, check something, or finish a step yourself. It is a browser someone can see and drive,
+on a desktop of its own. You watch it live in the app, right in the conversation or in the agent's « Bureau », and can
+take over the mouse and keyboard (« Take over », behind Face ID or the phone's lock): to pass a captcha, check something, or finish a step yourself. It is a browser someone can see and drive,
 not a way around websites' rules: an agent that meets a captcha asks you, it never solves one.
 
 ## How it fits together

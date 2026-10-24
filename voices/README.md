@@ -29,4 +29,4 @@ sentences:
 - es: "¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde."
 - de: "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag."
 
-The app's previews are `App/Resources/Voices/voice-<voice>-<code>.m4a` (converted from `<voice>_sample.wav`).
+The apps' previews (`voice-<voice>-<code>.m4a`, in the apps' own source) are converted from `<voice>_sample.wav`.

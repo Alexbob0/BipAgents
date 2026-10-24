@@ -11,8 +11,9 @@ registers its device token and gets back a *relay token* (the device token seale
 its bridge sends that relay token with each notification. No message text goes through: previews are replaced by the
 generic, translated text, and the app's notification extension fetches the content from the person's own bridge.
 
-While the app is used only by its author, the bridge can keep sending to Apple itself with the team's key (decision of
-2026-10-04); the relay is for the public release.
+The bridge still sends to Apple itself when its config holds the team's key (`[apns]`, the publisher's own installs);
+every other install sends through the relay (`[push] service_url`), which the installer sets once the relay is online,
+for the apps' store release.
 
 ## Orders of magnitude (to be rechecked at launch)
 - One copy (≈ 4 MB of memory) covers a large number of installs; it can run as a serverless container that stops

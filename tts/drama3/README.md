@@ -16,5 +16,5 @@ first time), 1.2× real time.
 BipAgents does not install it any more (since 2026-10-15): run it yourself, then connect it as your own voice model
 (`install.sh voice`, port 8099 found on its own). The installer that set it up — build with these patches, model
 download and check, tower requantization, rootless podman service on an internal network, voice prewarming — is in
-the history: `git show c684636:installer/bipinstall/drama.py`. Its 14 voices (`voices/drama/`) are reference clips
+the history (`installer/bipinstall/drama.py`, removed on 2026-10-15: `git log -- installer/bipinstall/drama.py` finds it). Its 14 voices (`voices/drama/`) are reference clips
 for audio.cpp's `voice_presets`; the app shows them as « Voix 1… » with their bundled previews.
