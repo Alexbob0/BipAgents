@@ -148,7 +148,9 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - **In Nachrichten**: Die App zeigt das Guthaben als **geschätzte Zahl von Nachrichten** mit dem gewählten Modell. Mit
   dem Standardmodell runden die Seiten des Angebots ab: **etwa 1.000 Nachrichten pro Monat für Solo, 2.000 für Duo und
   6.000 für die ganze Familie**. Es ist eine Schätzung, kein Versprechen: Was eine Nachricht kostet, hängt von ihrer
-  Länge, den angehängten Dateien und dem Modell ab.
+  Länge, den angehängten Dateien und dem Modell ab. Eine Nachricht ist hier ein einfacher Austausch: Eine **Aufgabe im
+  Browser** oder eine **Hintergrundaufgabe** reiht viele Aufrufe des Modells aneinander und zählt viel mehr, oft so
+  viel wie mehrere Dutzend Nachrichten; die App zeigt laufend, was übrig ist.
 - **Übertrag**: Das Guthaben des Tarifs, das du nicht genutzt hast, geht in den nächsten Monat über, für höchstens
   einen Monat mehr.
 - **Zusätzliches Guthaben**: Du kannst in der App welches kaufen (Einstellungen › Alles-inklusive-Angebot ›

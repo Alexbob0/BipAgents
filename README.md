@@ -39,8 +39,8 @@ Nothing to install: download the app, pick a plan, your Bips say hello. Each per
 own on a server in the European Union**, looked after by Kerfy Studio (updates, hourly encrypted backups, support).
 
 - **Solo**, **Duo** or **Famille** (up to 6 people, each with their own space, agents and privacy).
-- **AI credit included every month**, shared by everyone in the plan: about 1,000, 2,000 or 6,000 messages a month
-  with the default model. Unused credit carries over a month.
+- **AI credit included every month**, shared by everyone in the plan; the app shows it as an estimated number of
+  messages (a task in the browser uses more than a simple message). Unused credit carries over a month.
 - **Lower prices on the website** than in the App Store and Google Play; a free week may start a plan.
 
 It is **not on sale yet**: the apps are in testing (TestFlight, Google Play internal testing) and the web checkout is
@@ -88,7 +88,7 @@ machine. All of it in the [installer's guide](installer/README.md); by hand: [se
   and Apple Health or Health Connect by category — each one only for the agents you pick.
 - 🖥️ **A real browser for each agent**: you see it browse right in the conversation, and **take over** with Face ID
   (or your phone's lock) to sign in. Its **vault** fills passwords and creates logins without the agent ever seeing
-  them; a payment card in it is used only after you approve each payment.
+  them; a payment card in it (where cards are turned on) is used only after you approve each payment.
 - ✅ **Approvals before actions**, in plain words (« Daily wants to change your calendar »), from the lock screen; and
   the agent can ask you a question with one button per choice.
 - 🧩 **Background tasks** for long work, with the cost shown before and after, and a notification when done.

@@ -145,7 +145,9 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - **En mensajes**: la app muestra el crédito como un **número estimado de mensajes** con el modelo elegido. Con el
   modelo por defecto, las páginas de la oferta lo redondean a la baja: **unos 1.000 mensajes al mes para Solo, 2.000
   para Duo y 6.000 para toda la familia**. Es una estimación, no una promesa: el coste de un mensaje depende de su
-  longitud, de los archivos adjuntos y del modelo.
+  longitud, de los archivos adjuntos y del modelo. Aquí, un mensaje es un intercambio sencillo: una **tarea en el
+  navegador** o una **tarea en segundo plano** encadena muchas llamadas al modelo y cuenta mucho más, a menudo lo
+  que varias decenas de mensajes; la app muestra lo que queda en todo momento.
 - **Traspaso**: el crédito del plan que no has usado pasa al mes siguiente, por un mes más como máximo.
 - **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), 2,99 € IVA
   incluido por 2 € de crédito, es decir, **unos 4.000 mensajes** con el modelo por defecto (la misma estimación que arriba). Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda

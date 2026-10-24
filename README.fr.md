@@ -41,8 +41,8 @@ propre espace privé sur un serveur dans l'Union européenne**, entretenu par Ke
 chiffrées toutes les heures, assistance).
 
 - **Solo**, **Duo** ou **Famille** (jusqu'à 6 personnes, chacune avec son espace, ses agents et sa vie privée).
-- **Crédit IA inclus chaque mois**, partagé par toute la formule : environ 1 000, 2 000 ou 6 000 messages par mois
-  avec le modèle par défaut. Le crédit non utilisé est reporté d'un mois.
+- **Crédit IA inclus chaque mois**, partagé par toute la formule ; l'app l'affiche en nombre estimé de messages (une
+  tâche dans le navigateur en utilise plus qu'un simple message). Le crédit non utilisé est reporté d'un mois.
 - **Moins cher sur le site** que sur l'App Store et Google Play ; une semaine offerte peut ouvrir la formule.
 
 **Pas encore en vente** : les apps sont en test (TestFlight, test interne Google Play) et le paiement sur le site est
@@ -96,8 +96,8 @@ autre machine. Tout est dans le [guide de l'installateur](installer/README.fr.md
   contacts, météo, et Santé d'Apple ou Health Connect par catégorie — chacun seulement pour les agents que tu choisis.
 - 🖥️ **Un vrai navigateur par agent** : tu le vois naviguer dans la conversation, et tu **prends la main** avec
   Face ID (ou le verrouillage de ton téléphone) pour te connecter. Son **coffre** remplit les mots de passe et crée
-  des comptes sans que l'agent les voie jamais ; une carte de paiement n'y sert qu'après ton accord pour chaque
-  paiement.
+  des comptes sans que l'agent les voie jamais ; une carte de paiement (là où les cartes sont activées) n'y sert
+  qu'après ton accord pour chaque paiement.
 - ✅ **Ton accord avant d'agir**, en mots simples (« Daily veut modifier ton agenda »), depuis l'écran verrouillé ; et
   l'agent peut te poser une question avec un bouton par choix.
 - 🧩 **Des tâches de fond** pour les longs travaux, avec le coût affiché avant et après, et une notification à la fin.

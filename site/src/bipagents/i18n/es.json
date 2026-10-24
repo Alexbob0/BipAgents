@@ -323,7 +323,7 @@
     },
     "3": {
       "q": "¿Cuántos mensajes al mes?",
-      "a": "Unos 1.000 al mes con Solo, 2.000 con Dúo y 6.000 con Familia, para toda la familia. Es una estimación con el modelo por defecto, redondeada a la baja: un modelo más potente los gasta más rápido, y la app te muestra la cuenta con el tuyo. En Dúo y Familia el crédito de IA es común: la persona que paga ve cuánto usa cada persona, nunca lo que escribe, y puede poner un límite por persona. Lo que sobra pasa al mes siguiente. ¿Necesitas más? Unos 4.000 mensajes por 2,99 € en la app, que nunca caducan. Sin crédito: los agentes hacen una pausa hasta el mes siguiente, no se pierde nada."
+      "a": "Unos 1.000 al mes con Solo, 2.000 con Dúo y 6.000 con Familia, para toda la familia. Es una estimación con el modelo por defecto, redondeada a la baja: un modelo más potente los gasta más rápido, una tarea en el navegador cuenta mucho más que un mensaje (a menudo varias decenas), y la app te muestra la cuenta con el tuyo. En Dúo y Familia el crédito de IA es común: la persona que paga ve cuánto usa cada persona, nunca lo que escribe, y puede poner un límite por persona. Lo que sobra pasa al mes siguiente. ¿Necesitas más? Unos 4.000 mensajes por 2,99 € en la app, que nunca caducan. Sin crédito: los agentes hacen una pausa hasta el mes siguiente, no se pierde nada."
     },
     "4": {
       "q": "¿Quién puede leer mis conversaciones?",

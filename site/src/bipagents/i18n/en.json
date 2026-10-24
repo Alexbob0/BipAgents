@@ -323,7 +323,7 @@
     },
     "3": {
       "q": "How many messages a month?",
-      "a": "About 1,000 a month with Solo, 2,000 with Duo and 6,000 with Family, for the whole family. It’s an estimate with the default model, rounded down: a more powerful model uses them up faster, and the app shows you the count with yours. In Duo and Family the AI credit is shared: the person who pays sees how much each person uses, never what they write, and can set a limit per person. What’s left carries over to the next month. Need more: about 4,000 messages for €2.99 in the app, and they never expire. Out of credit: the agents take a break until next month, nothing is lost."
+      "a": "About 1,000 a month with Solo, 2,000 with Duo and 6,000 with Family, for the whole family. It’s an estimate with the default model, rounded down: a more powerful model uses them up faster, a task in the browser counts for much more than one message (often several dozen), and the app shows you the count with yours. In Duo and Family the AI credit is shared: the person who pays sees how much each person uses, never what they write, and can set a limit per person. What’s left carries over to the next month. Need more: about 4,000 messages for €2.99 in the app, and they never expire. Out of credit: the agents take a break until next month, nothing is lost."
     },
     "4": {
       "q": "Who can read my conversations?",

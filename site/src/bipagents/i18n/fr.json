@@ -323,7 +323,7 @@
     },
     "3": {
       "q": "Combien de messages par mois ?",
-      "a": "Environ 1 000 par mois avec Solo, 2 000 avec Duo et 6 000 avec Famille, pour toute la famille. C’est une estimation avec le modèle par défaut, arrondie vers le bas : un modèle plus puissant en consomme plus vite, et l’app te montre le compte avec le tien. En Duo et Famille, le crédit d’IA est commun : la personne qui paie voit combien chacun en utilise, jamais ce qu’il écrit, et peut mettre une limite par personne. Ce qui reste passe au mois suivant. Besoin de plus : environ 4 000 messages pour 2,99 € dans l’app, qui ne périment jamais. Crédit épuisé : les agents font une pause jusqu’au mois suivant, rien n’est perdu."
+      "a": "Environ 1 000 par mois avec Solo, 2 000 avec Duo et 6 000 avec Famille, pour toute la famille. C’est une estimation avec le modèle par défaut, arrondie vers le bas : un modèle plus puissant en consomme plus vite, une tâche dans le navigateur compte pour bien plus qu’un message (souvent plusieurs dizaines), et l’app te montre le compte avec le tien. En Duo et Famille, le crédit d’IA est commun : la personne qui paie voit combien chacun en utilise, jamais ce qu’il écrit, et peut mettre une limite par personne. Ce qui reste passe au mois suivant. Besoin de plus : environ 4 000 messages pour 2,99 € dans l’app, qui ne périment jamais. Crédit épuisé : les agents font une pause jusqu’au mois suivant, rien n’est perdu."
     },
     "4": {
       "q": "Qui peut lire mes conversations ?",
