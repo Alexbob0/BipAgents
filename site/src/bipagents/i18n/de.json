@@ -34,7 +34,11 @@
     "watch": "Demo ansehen",
     "watchTime": "1 Min.",
     "price": "Kostenlose Beta für iPhone und Android · begrenzte Plätze · ohne Kreditkarte",
-    "beta": "Kostenlose Beta"
+    "beta": "Kostenlose Beta",
+    "free": "Kostenlos",
+    "freeWhere": "auf deinem Computer",
+    "fromPre": "oder alles inklusive ab",
+    "fromPost": " im Monat"
   },
   "store": {
     "soon": "Bald im",

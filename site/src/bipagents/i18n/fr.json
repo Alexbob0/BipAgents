@@ -34,7 +34,11 @@
     "watch": "Voir la démo",
     "watchTime": "1 min",
     "price": "Bêta gratuite sur iPhone et Android · places limitées · sans carte bancaire",
-    "beta": "Bêta gratuite"
+    "beta": "Bêta gratuite",
+    "free": "Gratuit",
+    "freeWhere": "sur ton ordinateur",
+    "fromPre": "ou tout compris dès",
+    "fromPost": " par mois"
   },
   "store": {
     "soon": "Bientôt sur",

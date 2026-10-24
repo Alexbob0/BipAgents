@@ -138,6 +138,11 @@ section[id] { scroll-margin-top: 72px; }
   position: relative; display: grid; gap: 30px; padding: 40px 20px 80px; max-width: 1240px; margin: 0 auto; align-items: center;
 }
 @media (min-width: 1040px) { .hero { grid-template-columns: 1.05fr .95fr; padding: 64px 32px 72px; min-height: calc(100svh - 70px); } }
+.hero-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 20px; }
+.hero-top .chip-beta { margin-bottom: 0; }
+.hero-from { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 15px; font-weight: 700; color: var(--ink2); }
+.hero-from b { color: var(--ink); font-weight: 900; }
+.hero-from .dot { color: var(--muted); }
 .chip-beta { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 16px; margin-bottom: 20px;
   background: var(--green-tint); color: var(--green-deep); font-size: 14px; font-weight: 900; }
 
@@ -784,3 +789,9 @@ a.store:hover { transform: translateY(-2px); }
 
 /* Rows that only hold in Europe (who can get each agent there), hidden for the other regions (site.js sets the region). */
 html[data-region]:not([data-region="eu"]) [data-only="eu"] { display: none !important; }
+
+/* On a phone, the two ways one under the other, without the middle dot. */
+@media (max-width: 520px) {
+  .hero-from { flex-direction: column; gap: 2px; }
+  .hero-from .dot { display: none; }
+}

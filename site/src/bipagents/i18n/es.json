@@ -34,7 +34,11 @@
     "watch": "Ver la demo",
     "watchTime": "1 min",
     "price": "Beta gratuita en iPhone y Android · plazas limitadas · sin tarjeta",
-    "beta": "Beta gratuita"
+    "beta": "Beta gratuita",
+    "free": "Gratis",
+    "freeWhere": "en tu ordenador",
+    "fromPre": "o todo incluido desde",
+    "fromPost": " al mes"
   },
   "store": {
     "soon": "Muy pronto en",

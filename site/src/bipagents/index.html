@@ -2,7 +2,11 @@
 <!-- ============================================================ HERO: why (private, in Europe) on the left, what it does on the right -->
 <section class="hero">
   <div class="hero-copy reveal">
-    <p class="chip-beta">{{hero.beta}}</p>
+    <div class="hero-top">
+      <p class="chip-beta">{{hero.beta}}</p>
+      <!-- The two ways, at a glance: free on one's computer, or all included (the web price, the visitor's currency). -->
+      <p class="hero-from"><span><b>{{hero.free}}</b> {{hero.freeWhere}}</span><span class="dot" aria-hidden="true">·</span><span>{{hero.fromPre}} <b>{{p.from}}</b>{{hero.fromPost}}</span></p>
+    </div>
     <h1>
       <span class="h-line">{{hero.line1}}</span>
       <span class="h-line"><span class="h-hl">{{hero.line2}}</span></span>
