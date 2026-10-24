@@ -53,53 +53,62 @@
   },
   "vs": {
     "kicker": "Comparar",
-    "title": "¿Asistente de IA, agente que montas tú o BipAgents?",
-    "sub": "Por grandes categorías, a octubre de 2026: cada servicio tiene sus propios planes.",
-    "what": "Qué cambia",
-    "c1": "Asistentes de IA (ChatGPT, Grok…)",
-    "c2": "Agentes que montas tú",
-    "c3": "BipAgents",
+    "title": "¿Muse, dots, Grok Bot o BipAgents?",
+    "sub": "A 24 de octubre de 2026, según las páginas de los fabricantes y la prensa: las fuentes están debajo de la tabla.",
+    "what": "Lo que cambia",
+    "c1": "Muse (Meta)",
+    "c2": "dots (OpenAI)",
+    "c3": "Grok Bot (xAI)",
+    "c4": "BipAgents",
+    "sources": "Fuentes a 24 de octubre de 2026",
     "r1": {
-      "label": "Actúa por ti",
-      "c1": "Sobre todo responden; algunos actúan en un navegador, en planes de pago (el agente de ChatGPT, Grok Bot)",
-      "c2": "Sí, con las herramientas que conectes",
-      "c3": "Sí: correo, agenda, reservas, un navegador de verdad"
+      "label": "Para particulares en España",
+      "c1": "No: Estados Unidos y Canadá",
+      "c2": "No: ChatGPT Pro excluye Europa",
+      "c3": "No hay lista de países publicada",
+      "c4": "Sí, desde la apertura de la beta"
     },
     "r2": {
-      "label": "Pregunta antes de actuar",
-      "c1": "Algunos: el agente de ChatGPT pregunta antes de pasos importantes, como una compra",
-      "c2": "Depende de cómo lo configures",
-      "c3": "Sí, antes de enviar, reservar o pagar: una vez, para la sesión, o no"
+      "label": "Precio para tener el agente",
+      "c1": "Gratis limitado, luego 20 $ o 100 $ al mes",
+      "c2": "Con ChatGPT Pro, 100 $ o más al mes",
+      "c3": "Incluido en X Premium, unos 30 $ al mes, más crédito si te pasas",
+      "c4": "Desde {{p.from}} al mes, crédito de IA incluido"
     },
     "r3": {
-      "label": "Puesta en marcha",
-      "c1": "Un minuto: creas una cuenta",
-      "c2": "Variable: lo instalas, lo conectas y lo proteges tú",
-      "c3": "Alrededor de un minuto, en la app"
+      "label": "Dónde están tus datos",
+      "c1": "Región no publicada",
+      "c2": "Región no publicada",
+      "c3": "Región no publicada",
+      "c4": "Tu propio espacio en un servidor de la UE, o tu ordenador"
     },
     "r4": {
-      "label": "Dónde están tus datos",
-      "c1": "En los servidores de la empresa, a menudo en EE. UU.; almacenamiento en Europa sobre todo para empresas",
-      "c2": "Donde lo alojes",
-      "c3": "Tu propio espacio en un servidor en Europa, o tu ordenador"
+      "label": "Un plan para la familia",
+      "c1": "No",
+      "c2": "No",
+      "c3": "No: agentes compartidos solo para empresas",
+      "c4": "Dúo y Familia, hasta 6 personas, cada una con su espacio"
     },
     "r5": {
-      "label": "En familia",
-      "c1": "En algunos planes (p. ej., Google AI Pro, con hasta 5 personas más)",
-      "c2": "Te toca organizarlo",
-      "c3": "Dúo y Familia: hasta 6 personas, cada una con su espacio"
+      "label": "Los agentes de la familia se avisan",
+      "c1": "No",
+      "c2": "No",
+      "c3": "No: sus agentes hablan entre ellos, pero no entre miembros de una familia",
+      "c4": "Sí, con tu permiso: nada sale sin «Enviar»"
     },
     "r6": {
-      "label": "Precio",
-      "c1": "Planes gratis o baratos; con un agente que actúa, de 23 € a más de 30 € al mes (ChatGPT Plus, SuperGrok)",
-      "c2": "Software gratuito; pagas el servidor y el modelo de IA",
-      "c3": "Desde {{p.from}} al mes, crédito de IA incluido"
+      "label": "Lo que guarda para ti",
+      "c1": "Una memoria que puedes consultar",
+      "c2": "Una memoria, no consultable una a una",
+      "c3": "Resúmenes por agente",
+      "c4": "El Cuaderno: recordatorios, viajes, garantías, contratos, archivo"
     },
     "r7": {
-      "label": "Publicidad",
-      "c1": "En ChatGPT Free y Go en Europa, desde agosto de 2026",
-      "c2": "Ninguna",
-      "c3": "Ninguna"
+      "label": "Código abierto, en tu casa",
+      "c1": "No, en los servidores de Meta",
+      "c2": "No, en los servidores de OpenAI",
+      "c3": "No, en los servidores de Cursor",
+      "c4": "Sí: construido sobre Hermes Agent, gratis en tu ordenador"
     }
   },
   "marquee": [

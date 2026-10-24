@@ -228,11 +228,16 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 @media (prefers-reduced-motion: reduce) { .ask { transition: none; } }
 
 /* -- Compared: chatbots, do-it-yourself agents, BipAgents (a table; one card per row on a phone) ------------------- */
-.vs { max-width: 1080px; margin: 0 auto; }
+.vs { max-width: 1180px; margin: 0 auto; }
 .vs table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .vs th, .vs td { text-align: left; vertical-align: top; padding: 14px 16px; font-size: 15px; line-height: 1.4; }
 .vs thead th { font-size: 15.5px; font-weight: 1000; color: var(--ink); padding-bottom: 12px; vertical-align: bottom; }
-.vs thead td { width: 19%; }
+.vs thead td { width: 17%; }
+.vs th, .vs td { font-size: 14.5px; }
+.vs-sources { margin: 14px 16px 6px; font-size: 13px; color: var(--muted); }
+.vs-sources summary { cursor: pointer; font-weight: 800; }
+.vs-sources p { margin: 8px 0 0; line-height: 1.5; }
+.vs-sources a { color: inherit; }
 .vs tbody th { font-weight: 1000; color: var(--ink); }
 .vs tbody td { color: var(--ink2); font-weight: 700; }
 .vs tbody tr + tr > * { border-top: 1px solid var(--line); }

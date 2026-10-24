@@ -52,54 +52,63 @@
     "done": "Reserviert ✅ <b>Pasta Mia</b>, Freitag 20:30, für 2. Steht in deinem Kalender."
   },
   "vs": {
-    "kicker": "Im Vergleich",
-    "title": "KI-Assistent, Agent zum Selbstbauen oder BipAgents?",
-    "sub": "Nach großen Kategorien, Stand Oktober 2026: Jeder Dienst hat eigene Tarife.",
+    "kicker": "Vergleich",
+    "title": "Muse, dots, Grok Bot oder BipAgents?",
+    "sub": "Stand 24. Oktober 2026, nach den Seiten der Anbieter und der Presse: die Quellen stehen unter der Tabelle.",
     "what": "Was sich ändert",
-    "c1": "KI-Assistenten (ChatGPT, Grok …)",
-    "c2": "Agenten zum Selbstbauen",
-    "c3": "BipAgents",
+    "c1": "Muse (Meta)",
+    "c2": "dots (OpenAI)",
+    "c3": "Grok Bot (xAI)",
+    "c4": "BipAgents",
+    "sources": "Quellen, Stand 24. Oktober 2026",
     "r1": {
-      "label": "Handelt für dich",
-      "c1": "Meist Antworten; manche handeln in einem Browser, in Bezahltarifen (der Agent von ChatGPT, Grok Bot)",
-      "c2": "Ja, mit den Tools, die du anbindest",
-      "c3": "Ja: Mails, Kalender, Reservierungen, ein echter Browser"
+      "label": "Für Privatpersonen in Deutschland",
+      "c1": "Nein: USA und Kanada",
+      "c2": "Nein: ChatGPT Pro schließt Europa aus",
+      "c3": "Keine Länderliste veröffentlicht",
+      "c4": "Ja, ab dem Start der Beta"
     },
     "r2": {
-      "label": "Fragt vor dem Handeln",
-      "c1": "Manche: Der Agent von ChatGPT fragt vor wichtigen Schritten wie einem Kauf",
-      "c2": "Je nachdem, wie du es einrichtest",
-      "c3": "Ja, vor dem Senden, Reservieren oder Bezahlen: einmal, für die Sitzung oder nein"
+      "label": "Preis für den Agenten",
+      "c1": "Begrenzt gratis, dann 20 $ oder 100 $ im Monat",
+      "c2": "Mit ChatGPT Pro, 100 $ oder mehr im Monat",
+      "c3": "In X Premium enthalten, etwa 30 $ im Monat, darüber hinaus Guthaben",
+      "c4": "Ab {{p.from}} im Monat, KI-Guthaben inklusive"
     },
     "r3": {
-      "label": "Einrichtung",
-      "c1": "Eine Minute: Konto anlegen",
-      "c2": "Unterschiedlich: Du installierst, verbindest und sicherst alles selbst ab",
-      "c3": "Etwa eine Minute, in der App"
+      "label": "Wo deine Daten liegen",
+      "c1": "Region nicht veröffentlicht",
+      "c2": "Region nicht veröffentlicht",
+      "c3": "Region nicht veröffentlicht",
+      "c4": "Dein eigener Bereich auf einem Server in der EU, oder dein Computer"
     },
     "r4": {
-      "label": "Wo deine Daten liegen",
-      "c1": "Auf den Servern des Anbieters, oft in den USA; Speicherung in Europa vor allem für Geschäftskunden",
-      "c2": "Dort, wo du es hostest",
-      "c3": "Dein eigener Bereich auf einem Server in Europa, oder dein Computer"
+      "label": "Ein Tarif für die Familie",
+      "c1": "Nein",
+      "c2": "Nein",
+      "c3": "Nein: geteilte Agenten nur für Firmen",
+      "c4": "Duo und Familie, bis zu 6 Personen, jede mit eigenem Bereich"
     },
     "r5": {
-      "label": "Für die Familie",
-      "c1": "In manchen Tarifen (z. B. Google AI Pro, mit bis zu 5 weiteren Personen)",
-      "c2": "Musst du selbst einrichten",
-      "c3": "Duo und Familie: bis zu 6 Personen, jede mit eigenem Bereich"
+      "label": "Die Agenten der Familie sagen sich Bescheid",
+      "c1": "Nein",
+      "c2": "Nein",
+      "c3": "Nein: seine Agenten sprechen miteinander, aber nicht zwischen Familienmitgliedern",
+      "c4": "Ja, mit deinem OK: Nichts geht ohne „Senden“ raus"
     },
     "r6": {
-      "label": "Preis",
-      "c1": "Gratis- oder günstige Tarife; mit einem handelnden Agenten 23 € bis über 30 € im Monat (ChatGPT Plus, SuperGrok)",
-      "c2": "Freie Software; du zahlst Server und KI-Modell",
-      "c3": "Ab {{p.from}} im Monat, KI-Guthaben inklusive"
+      "label": "Was er für dich aufbewahrt",
+      "c1": "Ein einsehbares Gedächtnis",
+      "c2": "Ein Gedächtnis, nicht einzeln einsehbar",
+      "c3": "Zusammenfassungen pro Agent",
+      "c4": "Das Notizbuch: Erinnerungen, Reisen, Garantien, Verträge, Archiv"
     },
     "r7": {
-      "label": "Werbung",
-      "c1": "Bei ChatGPT Free und Go in Europa, seit August 2026",
-      "c2": "Keine",
-      "c3": "Keine"
+      "label": "Offener Code, bei dir",
+      "c1": "Nein, auf den Servern von Meta",
+      "c2": "Nein, auf den Servern von OpenAI",
+      "c3": "Nein, auf den Servern von Cursor",
+      "c4": "Ja: auf Hermes Agent gebaut, gratis auf deinem Computer"
     }
   },
   "marquee": [

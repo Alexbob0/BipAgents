@@ -53,53 +53,62 @@
   },
   "vs": {
     "kicker": "Compared",
-    "title": "AI assistant, do-it-yourself, or BipAgents?",
-    "sub": "Broad categories, as of October 2026: each service has its own plans.",
+    "title": "Muse, dots, Grok Bot, or BipAgents?",
+    "sub": "As of 24 October 2026, from the makers’ pages and the press: sources are under the table.",
     "what": "What changes",
-    "c1": "AI assistants (ChatGPT, Grok…)",
-    "c2": "Do-it-yourself agents",
-    "c3": "BipAgents",
+    "c1": "Muse (Meta)",
+    "c2": "dots (OpenAI)",
+    "c3": "Grok Bot (xAI)",
+    "c4": "BipAgents",
+    "sources": "Sources as of 24 October 2026",
     "r1": {
-      "label": "Acts for you",
-      "c1": "Mostly answers; some act in a browser on paid plans (ChatGPT’s agent, Grok Bot)",
-      "c2": "Yes, with the tools you connect",
-      "c3": "Yes: email, calendar, bookings, a real browser"
+      "label": "For individuals in France",
+      "c1": "No: US and Canada",
+      "c2": "No: ChatGPT Pro excludes Europe",
+      "c3": "No country list published",
+      "c4": "Yes, from the beta’s opening"
     },
     "r2": {
-      "label": "Asks before acting",
-      "c1": "Some do: ChatGPT’s agent asks before important steps, like a purchase",
-      "c2": "Depends on how you set it up",
-      "c3": "Yes, before sending, booking or paying: once, for this session, or no"
+      "label": "Price to get the agent",
+      "c1": "Limited free tier, then $20 or $100 a month",
+      "c2": "With ChatGPT Pro, $100 or more a month",
+      "c3": "Included in X Premium, about $30 a month, plus credit beyond",
+      "c4": "From {{p.from}} a month, AI credit included"
     },
     "r3": {
-      "label": "Setup",
-      "c1": "A minute: you create an account",
-      "c2": "Varies: you install, connect and secure it yourself",
-      "c3": "About a minute, in the app"
+      "label": "Where your data lives",
+      "c1": "Region not published",
+      "c2": "Region not published",
+      "c3": "Region not published",
+      "c4": "Your own space on a server in the EU, or your computer"
     },
     "r4": {
-      "label": "Where your data lives",
-      "c1": "On the company’s servers, often in the US; storage in Europe mostly for business plans",
-      "c2": "Wherever you host it",
-      "c3": "Your own space on a server in Europe, or your own computer"
+      "label": "A plan for the family",
+      "c1": "No",
+      "c2": "No",
+      "c3": "No: shared agents for companies only",
+      "c4": "Duo and Family, up to 6 people, each with their own space"
     },
     "r5": {
-      "label": "Family sharing",
-      "c1": "On some plans (e.g. Google AI Pro, with up to 5 others)",
-      "c2": "Up to you to set up",
-      "c3": "Duo and Family: up to 6 people, each with their own space"
+      "label": "Family agents keep each other posted",
+      "c1": "No",
+      "c2": "No",
+      "c3": "No: its agents talk to each other, not between family members",
+      "c4": "Yes, with your OK: nothing goes without « Send »"
     },
     "r6": {
-      "label": "Price",
-      "c1": "Free or low-cost plans; with an agent that acts, about $20–30 a month (ChatGPT Plus, SuperGrok)",
-      "c2": "Free software; you pay for the server and the AI model",
-      "c3": "From {{p.from}} a month, AI credit included"
+      "label": "What it keeps for you",
+      "c1": "A memory you can view",
+      "c2": "A memory, not viewable item by item",
+      "c3": "Summaries per agent",
+      "c4": "The Notebook: reminders, trips, warranties, contracts, archives"
     },
     "r7": {
-      "label": "Ads",
-      "c1": "On ChatGPT Free and Go in Europe, since August 2026",
-      "c2": "None",
-      "c3": "None"
+      "label": "Open source, at home",
+      "c1": "No, on Meta’s servers",
+      "c2": "No, on OpenAI’s servers",
+      "c3": "No, on Cursor’s servers",
+      "c4": "Yes: built on Hermes Agent, free on your computer"
     }
   },
   "marquee": [
