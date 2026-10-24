@@ -5,7 +5,7 @@
   },
   "meta": {
     "title": "BipAgents — private and secure AI agents, in Europe or at home",
-    "description": "BipAgents gives you your own AI agents, the Bips: private and secure, in Europe or at home. They book, sort your email, keep your calendar and your Memo, and ask before they act. No ads, no tracking. Built on Hermes Agent."
+    "description": "BipAgents gives you your own AI agents, the Bips: private and secure, in Europe or at home. They book, sort your email, keep your calendar and your Notebook, and ask before they act. No ads, no tracking. Built on Hermes Agent."
   },
   "a11y": {
     "skip": "Skip to content",
@@ -29,7 +29,7 @@
     "proof1": "<b>They act for you:</b> email, calendar, bookings, a real browser",
     "proof2": "<b>Your OK first:</b> they ask before sending or paying",
     "proof3": "<b>Your own space</b>, private, in Europe or on your computer, no ads",
-    "words": "<b>Bips</b>: your AI assistants, one per agent · <b>Live</b>: talk to them out loud · <b>Memo</b>: what your agents keep for you",
+    "words": "<b>Bips</b>: your AI assistants, one per agent · <b>Live</b>: talk to them out loud · <b>Notebook</b>: what your agents keep for you",
     "cta": "Choose my plan",
     "watch": "See the demo",
     "watchTime": "1 min",
@@ -109,7 +109,7 @@
     "Podcast",
     "Email",
     "Calendar",
-    "Memo",
+    "Notebook",
     "Reminders",
     "Browser",
     "Maps",
@@ -246,7 +246,7 @@
     "inc1": "Your Bips, your AI agents, ready in a minute",
     "inc2": "AI credit every month, shared in Duo and Family, carried over if some is left",
     "inc3": "Live, the Bips’ voices and the morning podcast",
-    "inc4": "Memo, email, calendar, reminders, browser and background tasks",
+    "inc4": "Notebook, email, calendar, reminders, browser and background tasks",
     "inc5": "An encrypted backup every hour",
     "inc6": "Your space on a server in Europe",
     "currencyLabel": "Currency",
@@ -479,11 +479,11 @@
     "sticky": "Free beta",
     "stickySub": "limited places"
   },
-  "memo": {
-    "kicker": "Memo",
+  "notebook": {
+    "kicker": "Notebook",
     "title": "Your life, in order.",
-    "sub": "Your agents keep what matters to you in one place you can read: the Memo. They fill it from your email and your conversations.",
-    "a11y": "The app’s Memo screen: today’s reminders, the next trip with its tickets and hotel, purchases and warranties, subscriptions, contracts and papers, bookings, and the archives.",
+    "sub": "Your agents keep what matters to you in one place you can read: the Notebook. They fill it from your email and your conversations.",
+    "a11y": "The app’s Notebook screen: today’s reminders, the next trip with its tickets and hotel, purchases and warranties, subscriptions, contracts and papers, bookings, and the archives.",
     "i1": "<b>Reminders</b>: what you have to do, and when",
     "i2": "<b>Your next trip</b>: tickets, places to stay, what to pack",
     "i3": "<b>Purchases and warranties</b>, with the end of the warranty",
@@ -493,7 +493,7 @@
     "line1": "What’s past moves to the Archives: nothing is deleted.",
     "line2": "You can search it and correct it, and it’s yours: take it with you whenever you like.",
     "shot": {
-      "title": "Memo",
+      "title": "Notebook",
       "search": "Search",
       "today": "Today",
       "t1": "Renew the car insurance",

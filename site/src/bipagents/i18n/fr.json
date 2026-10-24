@@ -5,7 +5,7 @@
   },
   "meta": {
     "title": "BipAgents — des agents IA privés et sécurisés, en Europe ou chez toi",
-    "description": "BipAgents, ce sont tes propres agents IA, les Bips : privés et sécurisés, en Europe ou chez toi. Ils réservent, trient tes mails, tiennent ton agenda et ton Mémo, et te demandent avant d’agir. Sans pub ni pistage. Construit sur Hermes Agent."
+    "description": "BipAgents, ce sont tes propres agents IA, les Bips : privés et sécurisés, en Europe ou chez toi. Ils réservent, trient tes mails, tiennent ton agenda et ton Carnet, et te demandent avant d’agir. Sans pub ni pistage. Construit sur Hermes Agent."
   },
   "a11y": {
     "skip": "Aller au contenu",
@@ -29,7 +29,7 @@
     "proof1": "<b>Ils agissent pour toi :</b> mails, agenda, réservations, un vrai navigateur",
     "proof2": "<b>Ton accord d’abord :</b> ils te demandent avant d’envoyer ou de payer",
     "proof3": "<b>Ton propre espace</b>, privé, en Europe ou sur ton ordinateur, sans pub",
-    "words": "<b>Bips</b> : tes assistants IA, un par agent · <b>Live</b> : tu leur parles à voix haute · <b>Mémo</b> : ce que tes agents gardent pour toi",
+    "words": "<b>Bips</b> : tes assistants IA, un par agent · <b>Live</b> : tu leur parles à voix haute · <b>Carnet</b> : ce que tes agents gardent pour toi",
     "cta": "Choisir ma formule",
     "watch": "Voir la démo",
     "watchTime": "1 min",
@@ -109,7 +109,7 @@
     "Podcast",
     "Mails",
     "Agenda",
-    "Mémo",
+    "Carnet",
     "Rappels",
     "Navigateur",
     "Cartes",
@@ -246,7 +246,7 @@
     "inc1": "Tes Bips, tes agents IA, prêts en une minute",
     "inc2": "Un crédit d’IA chaque mois, commun en Duo et Famille, reporté s’il en reste",
     "inc3": "Live, les voix des Bips et le podcast du matin",
-    "inc4": "Mémo, mails, agenda, rappels, navigateur et tâches de fond",
+    "inc4": "Carnet, mails, agenda, rappels, navigateur et tâches de fond",
     "inc5": "Une sauvegarde chiffrée toutes les heures",
     "inc6": "Ton espace sur un serveur en Europe",
     "currencyLabel": "Devise",
@@ -479,11 +479,11 @@
     "sticky": "Bêta gratuite",
     "stickySub": "places limitées"
   },
-  "memo": {
-    "kicker": "Mémo",
+  "notebook": {
+    "kicker": "Carnet",
     "title": "Ta vie, bien rangée.",
-    "sub": "Tes agents gardent ce qui compte pour toi au même endroit, que tu peux lire : le Mémo. Ils le remplissent à partir de tes mails et de vos conversations.",
-    "a11y": "L’écran Mémo de l’app : les rappels du jour, le prochain voyage avec ses billets et son hôtel, les achats et garanties, les abonnements, les contrats et papiers, les réservations, et les archives.",
+    "sub": "Tes agents gardent ce qui compte pour toi au même endroit, que tu peux lire : le Carnet. Ils le remplissent à partir de tes mails et de vos conversations.",
+    "a11y": "L’écran Carnet de l’app : les rappels du jour, le prochain voyage avec ses billets et son hôtel, les achats et garanties, les abonnements, les contrats et papiers, les réservations, et les archives.",
     "i1": "<b>Rappels</b> : ce que tu as à faire, et quand",
     "i2": "<b>Ton prochain voyage</b> : billets, hébergements, quoi emporter",
     "i3": "<b>Achats et garanties</b>, avec la date de fin de garantie",
@@ -493,7 +493,7 @@
     "line1": "Ce qui est passé part dans les Archives : rien n’est effacé.",
     "line2": "Tu cherches dedans, tu le corriges, et il est à toi : tu peux l’emporter quand tu veux.",
     "shot": {
-      "title": "Mémo",
+      "title": "Carnet",
       "search": "Rechercher",
       "today": "Aujourd’hui",
       "t1": "Renouveler l’assurance auto",

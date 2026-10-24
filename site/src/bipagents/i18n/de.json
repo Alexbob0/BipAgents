@@ -5,7 +5,7 @@
   },
   "meta": {
     "title": "BipAgents — private und sichere KI-Agenten, in Europa oder bei dir zu Hause",
-    "description": "BipAgents gibt dir deine eigenen KI-Agenten, die Bips: privat und sicher, in Europa oder bei dir zu Hause. Sie reservieren, sortieren deine Mails, führen Kalender und Memo und fragen, bevor sie handeln. Ohne Werbung und Tracking. Gebaut auf Hermes Agent."
+    "description": "BipAgents gibt dir deine eigenen KI-Agenten, die Bips: privat und sicher, in Europa oder bei dir zu Hause. Sie reservieren, sortieren deine Mails, führen Kalender und Notizbuch und fragen, bevor sie handeln. Ohne Werbung und Tracking. Gebaut auf Hermes Agent."
   },
   "a11y": {
     "skip": "Zum Inhalt",
@@ -29,7 +29,7 @@
     "proof1": "<b>Sie handeln für dich:</b> Mails, Kalender, Reservierungen, ein echter Browser",
     "proof2": "<b>Erst dein Okay:</b> Sie fragen, bevor sie etwas senden oder bezahlen",
     "proof3": "<b>Dein eigener Bereich</b>, privat, in Europa oder auf deinem Computer, ohne Werbung",
-    "words": "<b>Bips</b>: deine KI-Assistenten, einer pro Agent · <b>Live</b>: du sprichst einfach mit ihnen · <b>Memo</b>: was deine Agenten für dich festhalten",
+    "words": "<b>Bips</b>: deine KI-Assistenten, einer pro Agent · <b>Live</b>: du sprichst einfach mit ihnen · <b>Notizbuch</b>: was deine Agenten für dich festhalten",
     "cta": "Tarif wählen",
     "watch": "Demo ansehen",
     "watchTime": "1 Min.",
@@ -109,7 +109,7 @@
     "Podcast",
     "Mails",
     "Kalender",
-    "Memo",
+    "Notizbuch",
     "Erinnerungen",
     "Browser",
     "Karten",
@@ -246,7 +246,7 @@
     "inc1": "Deine Bips, deine KI-Agenten, in einer Minute bereit",
     "inc2": "KI-Guthaben jeden Monat, bei Duo und Familie gemeinsam, Reste gehen in den nächsten Monat",
     "inc3": "Live, die Stimmen der Bips und der Morgen-Podcast",
-    "inc4": "Memo, Mails, Kalender, Erinnerungen, Browser und Hintergrundaufgaben",
+    "inc4": "Notizbuch, Mails, Kalender, Erinnerungen, Browser und Hintergrundaufgaben",
     "inc5": "Jede Stunde eine verschlüsselte Sicherung",
     "inc6": "Dein Bereich auf einem Server in Europa",
     "currencyLabel": "Währung",
@@ -479,11 +479,11 @@
     "sticky": "Kostenlose Beta",
     "stickySub": "begrenzte Plätze"
   },
-  "memo": {
-    "kicker": "Memo",
+  "notebook": {
+    "kicker": "Notizbuch",
     "title": "Dein Leben, gut sortiert.",
-    "sub": "Deine Agenten halten an einem Ort fest, was für dich zählt, und du kannst es lesen: das Memo. Sie füllen es aus deinen Mails und euren Gesprächen.",
-    "a11y": "Der Memo-Bildschirm der App: die Erinnerungen von heute, die nächste Reise mit Tickets und Hotel, Käufe und Garantien, Abos, Verträge und Unterlagen, Reservierungen und das Archiv.",
+    "sub": "Deine Agenten halten an einem Ort fest, was für dich zählt, und du kannst es lesen: das Notizbuch. Sie füllen es aus deinen Mails und euren Gesprächen.",
+    "a11y": "Der Notizbuch-Bildschirm der App: die Erinnerungen von heute, die nächste Reise mit Tickets und Hotel, Käufe und Garantien, Abos, Verträge und Unterlagen, Reservierungen und das Archiv.",
     "i1": "<b>Erinnerungen</b>: was zu tun ist, und wann",
     "i2": "<b>Deine nächste Reise</b>: Tickets, Unterkünfte, was du einpacken musst",
     "i3": "<b>Käufe und Garantien</b>, mit dem Ende der Garantie",
@@ -493,7 +493,7 @@
     "line1": "Was vorbei ist, kommt ins Archiv: Nichts wird gelöscht.",
     "line2": "Du kannst darin suchen und es korrigieren, und es gehört dir: Du kannst es jederzeit mitnehmen.",
     "shot": {
-      "title": "Memo",
+      "title": "Notizbuch",
       "search": "Suchen",
       "today": "Heute",
       "t1": "Kfz-Versicherung verlängern",

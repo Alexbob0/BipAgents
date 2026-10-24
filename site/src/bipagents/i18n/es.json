@@ -5,7 +5,7 @@
   },
   "meta": {
     "title": "BipAgents — agentes de IA privados y seguros, en Europa o en tu casa",
-    "description": "BipAgents te da tus propios agentes de IA, los Bips: privados y seguros, en Europa o en tu casa. Reservan, ordenan tu correo, llevan tu agenda y tu Memo, y te preguntan antes de actuar. Sin anuncios ni rastreo. Construido sobre Hermes Agent."
+    "description": "BipAgents te da tus propios agentes de IA, los Bips: privados y seguros, en Europa o en tu casa. Reservan, ordenan tu correo, llevan tu agenda y tu Cuaderno, y te preguntan antes de actuar. Sin anuncios ni rastreo. Construido sobre Hermes Agent."
   },
   "a11y": {
     "skip": "Ir al contenido",
@@ -29,7 +29,7 @@
     "proof1": "<b>Actúan por ti:</b> correo, agenda, reservas, un navegador de verdad",
     "proof2": "<b>Primero, tu visto bueno:</b> te preguntan antes de enviar o pagar",
     "proof3": "<b>Tu propio espacio</b>, privado, en Europa o en tu ordenador, sin anuncios",
-    "words": "<b>Bips</b>: tus asistentes de IA, uno por agente · <b>Live</b>: les hablas en voz alta · <b>Memo</b>: lo que tus agentes guardan para ti",
+    "words": "<b>Bips</b>: tus asistentes de IA, uno por agente · <b>Live</b>: les hablas en voz alta · <b>Cuaderno</b>: lo que tus agentes guardan para ti",
     "cta": "Elegir mi plan",
     "watch": "Ver la demo",
     "watchTime": "1 min",
@@ -109,7 +109,7 @@
     "Pódcast",
     "Correo",
     "Agenda",
-    "Memo",
+    "Cuaderno",
     "Recordatorios",
     "Navegador",
     "Mapas",
@@ -246,7 +246,7 @@
     "inc1": "Tus Bips, tus agentes de IA, listos en un minuto",
     "inc2": "Crédito de IA cada mes, común en Dúo y Familia, y lo que sobra pasa al mes siguiente",
     "inc3": "Live, las voces de los Bips y el pódcast de la mañana",
-    "inc4": "Memo, correo, agenda, recordatorios, navegador y tareas en segundo plano",
+    "inc4": "Cuaderno, correo, agenda, recordatorios, navegador y tareas en segundo plano",
     "inc5": "Una copia de seguridad cifrada cada hora",
     "inc6": "Tu espacio en un servidor en Europa",
     "currencyLabel": "Moneda",
@@ -479,11 +479,11 @@
     "sticky": "Beta gratuita",
     "stickySub": "plazas limitadas"
   },
-  "memo": {
-    "kicker": "Memo",
+  "notebook": {
+    "kicker": "Cuaderno",
     "title": "Tu vida, en orden.",
-    "sub": "Tus agentes guardan lo que importa para ti en un solo sitio que puedes leer: el Memo. Lo llenan a partir de tu correo y de vuestras conversaciones.",
-    "a11y": "La pantalla Memo de la app: los recordatorios de hoy, el próximo viaje con sus billetes y su hotel, compras y garantías, suscripciones, contratos y papeles, reservas, y el archivo.",
+    "sub": "Tus agentes guardan lo que importa para ti en un solo sitio que puedes leer: el Cuaderno. Lo llenan a partir de tu correo y de vuestras conversaciones.",
+    "a11y": "La pantalla Cuaderno de la app: los recordatorios de hoy, el próximo viaje con sus billetes y su hotel, compras y garantías, suscripciones, contratos y papeles, reservas, y el archivo.",
     "i1": "<b>Recordatorios</b>: lo que tienes que hacer, y cuándo",
     "i2": "<b>Tu próximo viaje</b>: billetes, alojamientos, qué llevar",
     "i3": "<b>Compras y garantías</b>, con el fin de la garantía",
@@ -493,7 +493,7 @@
     "line1": "Lo pasado se va al Archivo: no se borra nada.",
     "line2": "Puedes buscar en él y corregirlo, y es tuyo: llévatelo cuando quieras.",
     "shot": {
-      "title": "Memo",
+      "title": "Cuaderno",
       "search": "Buscar",
       "today": "Hoy",
       "t1": "Renovar el seguro del coche",

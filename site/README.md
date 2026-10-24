@@ -13,7 +13,7 @@
   playing in a chat: four scenarios, with the walk's map and the page kit's « Your runs » page inside the replies),
   `/faq/` (every question), `/beta/` (the public beta: what it is, what testers get, what we ask, TestFlight and
   Google Play badges, its terms on kerfystudio.com `/beta/`; « Join the beta » is the main button everywhere, the
-  Mémo section after the comparison shows what the agents keep); `/install/` only sends to the home's `#install`. English at `/`, French, German and
+  Carnet section after the comparison shows what the agents keep); `/install/` only sends to the home's `#install`. English at `/`, French, German and
   Spanish at `/fr/`, `/de/`, `/es/` (and `/fr/demo/`, `/fr/faq/`…).
 - **kerfystudio.com** — the publisher: its two apps (BipAgents, Tablée), how it works, the company's details (what Apple
   and Google check for an organization), contact, support, the privacy policy and terms in four languages and the
