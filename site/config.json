@@ -14,8 +14,10 @@
   },
   "contact": {
     "general": "contact@kerfystudio.com",
-    "support": "support@kerfystudio.com",
-    "abuse": "abuse@kerfystudio.com"
+    "support": "support@bipagents.com",
+    "abuse": "abuse@bipagents.com",
+    "privacy": "privacy@bipagents.com",
+    "security": "security@bipagents.com"
   },
   "repo": "https://github.com/Alexbob0/BipAgents",
   "stores": {

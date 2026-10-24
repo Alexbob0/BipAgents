@@ -130,13 +130,13 @@
     "title": "Tus datos",
     "text": [
      "En la app: borra un agente, o desinstala la app para borrarlo todo del teléfono. En tu servidor: <code>bipagents uninstall --all</code>.",
-     "Para los pocos datos que recibimos (correos, avisos), escríbenos: los borramos."
+     "Para los pocos datos que recibimos (correos, avisos), escribe a privacy@bipagents.com: los borramos."
     ]
    },
    {
     "title": "Seguridad",
     "text": [
-     "¿Has encontrado un fallo? Escribe a support@kerfystudio.com con el asunto «Security»: estos avisos se tratan con prioridad.",
+     "¿Has encontrado un fallo? Escribe a security@bipagents.com: estos avisos se tratan con prioridad.",
      "Nuestro contacto de seguridad también está en <a href=\"/.well-known/security.txt\">security.txt</a>."
     ]
    },
@@ -148,7 +148,7 @@
    }
   ],
   "whoTitle": "Quiénes somos",
-  "who": "Kerfy Studio · <mark class=\"todo\">[dirección del domicilio social]</mark> · <mark class=\"todo\">[número de teléfono]</mark> · support@kerfystudio.com"
+  "who": "Kerfy Studio · <mark class=\"todo\">[dirección del domicilio social]</mark> · <mark class=\"todo\">[número de teléfono]</mark> · support@bipagents.com"
  },
  "store": {
   "soon": "Muy pronto en",

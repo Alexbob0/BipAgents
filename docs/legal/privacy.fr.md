@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : [date].
+> Dernière mise à jour : 24 octobre 2026.
 
 ## En bref
 
@@ -26,10 +26,10 @@
 ## 1. Qui est responsable
 
 **Kerfy Studio**, SAS au capital de [capital] €, dont le siège est situé [adresse du siège], immatriculée au RCS de
-[ville du greffe] sous le numéro [SIREN] (« Kerfy Studio », « nous »). Contact : **support@kerfystudio.com**.
+[ville du greffe] sous le numéro [SIREN] (« Kerfy Studio », « nous »). Contact : **privacy@bipagents.com**.
 
 Kerfy Studio n'a pas désigné de délégué à la protection des données : ce n'est pas obligatoire pour son activité
-(article 37 du RGPD). Pour toute question sur tes données : support@kerfystudio.com. Pour la loi de Singapour (Personal
+(article 37 du RGPD). Pour toute question sur tes données : privacy@bipagents.com. Pour la loi de Singapour (Personal
 Data Protection Act), qui demande une personne chargée de la protection des données, c'est le président de Kerfy
 Studio, [Prénom Nom], joignable à la même adresse. Il est aussi la personne responsable de la protection des
 renseignements personnels au sens de la loi du Québec, et la personne chargée de veiller au respect de la loi
@@ -215,14 +215,15 @@ oublie tout.
 **Ce qui est conservé.** Le relais n'a pas de base de données. Le jeton scellé est conservé sur ton téléphone et sur
 ton serveur ; avec l'offre tout compris, le guichet de Kerfy Studio le garde aussi, toujours scellé (section 5.6). Les
 journaux techniques du relais contiennent la plateforme, une empreinte de 4 octets du jeton et la réponse d'Apple ou
-de Google ; ils sont conservés **6 mois au plus**. L'hébergeur du relais peut journaliser les adresses IP des
-requêtes : [ce que l'hébergeur du relais journalise, et pendant combien de temps].
+de Google ; ils sont conservés **6 mois au plus**. L'hébergeur du relais peut journaliser les adresses IP des requêtes. Le relais n'est pas encore en service : son
+hébergeur, ce qu'il journalise et pendant combien de temps seront indiqués ici avant sa mise en service.
 
 **Finalités et bases légales.** Acheminer les notifications que tu as activées : exécution des conditions
 d'utilisation (article 6.1.b du RGPD). Limiter les abus et protéger le service : intérêt légitime de Kerfy Studio
 (article 6.1.f).
 
-**Sous-traitants.** [hébergeur du relais] (Union européenne) et Google (Firebase Cloud Messaging), liés à Kerfy
+**Sous-traitants.** L'hébergeur du relais, dans l'Union européenne (pas encore en service ; il sera indiqué ici avant
+sa mise en service), et Google (Firebase Cloud Messaging), liés à Kerfy
 Studio par un contrat conforme à l'article 28 du RGPD. Apple achemine les notifications vers les iPhone par son
 service APNs.
 
@@ -234,7 +235,7 @@ l'oublie. Si tu compiles l'app toi-même avec ton propre compte Apple, le relais
 
 ### 4.2 Le support et les signalements
 
-- **Réglages › Contacter le support** prépare un e-mail à support@kerfystudio.com avec un diagnostic que tu peux lire
+- **Réglages › Contacter le support** prépare un e-mail à support@bipagents.com avec un diagnostic que tu peux lire
   avant l'envoi : version de l'app, modèle et version du téléphone, langue, style d'affichage, mode démo ou non, état
   des notifications et, pour chaque agent, sa catégorie, s'il répond, s'il a un bridge et une porte sur le réseau
   local, et sa voix. **Aucune conversation, aucun nom d'agent, aucune adresse, aucune clé.** Rien ne part tant que tu
@@ -258,8 +259,7 @@ dans les précisions que ce qui est utile. Nous effaçons ce qui ne sert pas à 
 répondre et à rendre l'app plus sûre (article 6.1.f du RGPD). Répondre à une demande d'exercice de tes droits :
 obligation légale (article 6.1.c ; articles 12 à 22 du RGPD).
 **Durée.** Support : 2 ans après le dernier échange. Signalements : 1 an après leur traitement.
-**Destinataires.** Kerfy Studio et ses sous-traitants : son prestataire de messagerie ([prestataire de messagerie],
-[pays]) et l'hébergeur du relais, par lequel passent les signalements.
+**Destinataires.** Kerfy Studio et ses sous-traitants : son prestataire de messagerie (Proton AG, Suisse) et l'hébergeur du relais, par lequel passent les signalements.
 
 ### 4.3 Les rapports de plantage
 
@@ -415,7 +415,8 @@ qui reste sur la place et sur tes appareils, plus une copie de cette clé chiffr
 Kerfy Studio : la clé y est donc présente, et
 techniquement l'hébergeur comme Kerfy Studio pourraient y accéder ; notre logiciel ne lit ni ta place ni ses
 sauvegardes, et nous ne le ferions que si la loi nous y oblige.
-Kerfy Studio garde ces sauvegardes chez [à compléter : hébergeur des sauvegardes] sans pouvoir les lire : une par heure
+Kerfy Studio garde ces sauvegardes chez un hébergeur de sauvegardes (pas encore en service ; il sera indiqué ici avant sa mise en service) sans pouvoir
+les lire : une par heure
 pendant 48 heures, une par jour pendant 30 jours, une par semaine pendant 12 semaines. Elles sont effacées avec ta
 place.
 
@@ -506,9 +507,9 @@ BipAgents n'y efface rien et Kerfy Studio n'en garde rien.
 | Hetzner Online GmbH (Gunzenhausen, Allemagne) | Héberge des serveurs de places et le serveur de messagerie des agents | Contenu des places ; boîtes e-mail des agents et journaux de sécurité du serveur de messagerie | Allemagne, Finlande |
 | EUrouter B.V. (Amsterdam, Pays-Bas) | Routeur d'IA | Messages envoyés au modèle, métadonnées | Union européenne |
 | Fournisseurs des modèles : [à compléter] | Font tourner le modèle choisi | Messages envoyés au modèle | [à compléter] |
-| [à compléter : hébergeur des sauvegardes] | Garde les sauvegardes | Sauvegardes chiffrées, illisibles pour lui et pour Kerfy Studio | [à compléter] |
-| [hébergeur du relais] | Héberge le guichet et le relais | Compte, abonnement, données techniques | Union européenne |
-| [à compléter : prestataire d'envoi des e-mails] | Envoie les codes, les avis de sécurité, les invitations, la confirmation d'achat, l'accusé de rétractation et les avis de suppression | Adresse e-mail, contenu de ces e-mails | [à compléter] |
+| Hébergeur des sauvegardes : pas encore en service ; il sera indiqué ici avant sa mise en service | Garde les sauvegardes | Sauvegardes chiffrées, illisibles pour lui et pour Kerfy Studio | Indiqué avec lui |
+| Hébergeur du guichet et du relais : pas encore en service ; il sera indiqué ici avant sa mise en service | Héberge le guichet et le relais | Compte, abonnement, données techniques | Union européenne |
+| Prestataire d'envoi des e-mails : pas encore en service ; il sera indiqué ici avant sa mise en service | Envoie les codes, les avis de sécurité, les invitations, la confirmation d'achat, l'accusé de rétractation et les avis de suppression | Adresse e-mail, contenu de ces e-mails | Indiqué avec lui |
 | Stripe Payments Europe, Ltd. (Dublin, Irlande) | Paiement des achats sur le site bipagents.com, calcul des taxes, contrôles contre la fraude, factures | Adresse e-mail, adresse ou pays de facturation, données de carte, adresse IP | Union européenne ; possiblement hors de l'Union (section 11) |
 
 Ils sont liés à Kerfy Studio par un contrat conforme à l'article 28 du RGPD ; Stripe agit en plus comme responsable
@@ -593,7 +594,8 @@ sera annoncé comme indiqué à la section 17.
 
 ## 11. Transferts hors de l'Union européenne
 
-Le relais de notifications est hébergé dans l'Union européenne ([hébergeur du relais]). Pour acheminer les
+Le relais de notifications sera hébergé dans l'Union européenne (pas encore en service ; son hébergeur sera indiqué
+ici avant sa mise en service). Pour acheminer les
 notifications, Apple et Google peuvent traiter le jeton et la notification hors de l'Union européenne, notamment aux
 États-Unis :
 
@@ -625,8 +627,10 @@ contractuelles, et régime juridique du pays de destination) et ne fait le trans
 protection adéquate (article 17 de la Loi sur la protection des renseignements personnels dans le secteur privé). Tu
 peux nous demander un résumé de cette évaluation.
 
-Prestataire de messagerie : [pays ; garantie]. Prestataire d'envoi des e-mails et hébergeur des sauvegardes : [à
-compléter : pays ; garantie]. Tu peux nous demander une copie des garanties applicables.
+Prestataire de messagerie : Proton AG, en Suisse, pays que la Commission européenne reconnaît comme offrant une
+protection adéquate (décision 2000/518/CE, maintenue par l'article 45, paragraphe 9, du RGPD). Prestataire d'envoi des
+e-mails et hébergeur des sauvegardes : pas encore en service ; leur pays et la garantie applicable seront indiqués ici
+avant leur mise en service. Tu peux nous demander une copie des garanties applicables.
 
 ## 12. Durées de conservation
 
@@ -664,7 +668,7 @@ Le relais n'accepte que des connexions chiffrées (HTTPS), scelle les jetons (XC
 données et n'écrit jamais un jeton en clair. Dans l'app, les clés de tes agents sont protégées par le Trousseau ou le
 Keystore, et la connexion à ton serveur passe par Tailscale ou par une porte HTTPS sur ton réseau local, qui
 n'accepte que le certificat de ton serveur. Le code de l'app, du serveur et du relais est public : [URL du dépôt].
-Pour signaler une faille de sécurité : **support@kerfystudio.com** (voir le fichier SECURITY.md du dépôt).
+Pour signaler une faille de sécurité : **security@bipagents.com** (voir le fichier SECURITY.md du dépôt).
 
 Avec l'offre tout compris, chaque place est un compte séparé du serveur, sans droits d'administrateur ; Kerfy Studio
 n'a pas de clé SSH sur les serveurs, et un serveur n'exécute que des ordres signés par le guichet. L'app se connecte à
@@ -690,7 +694,7 @@ portabilité, et donner des directives sur le sort de tes données après ton d�
 traitements fondés sur notre intérêt légitime (limitation des abus, e-mails, signalements, rapports de plantage,
 limite des semaines gratuites).
 
-Écris à **support@kerfystudio.com**. Nous répondons dans un délai d'un mois, prolongeable de deux mois pour une
+Écris à **privacy@bipagents.com**. Nous répondons dans un délai d'un mois, prolongeable de deux mois pour une
 demande complexe ; nous pouvons te demander de quoi vérifier ton identité.
 
 Avec ton propre serveur, comme nous ne conservons rien qui relie un jeton de notification ou un signalement à une
@@ -705,7 +709,7 @@ supprimer ton compte : section 5.2.
 **Si tu vis en Californie ou ailleurs aux États-Unis.** Kerfy Studio ne vend ni ne partage tes données personnelles au
 sens de la loi californienne (California Consumer Privacy Act) et ne fait aucune publicité ciblée. L'app et nos sites
 ne te suivent pas d'un site à l'autre : un signal « Do Not Track » de ton navigateur ne change donc rien à ce que nous
-faisons (California Online Privacy Protection Act). Tu exerces les droits de cette section à support@kerfystudio.com.
+faisons (California Online Privacy Protection Act). Tu exerces les droits de cette section à privacy@bipagents.com.
 
 **Si tu vis au Canada.** Les lois canadiennes reposent sur le consentement : en utilisant l'app et en souscrivant
 après avoir vu cette politique, tu consens aux traitements qu'elle décrit, pour les fins qu'elle indique. Tu as les
@@ -753,7 +757,7 @@ change à chaque fois. Un changement important est annoncé dans l'app au moins 
 
 ## 18. Contact
 
-Kerfy Studio — [adresse du siège] — **support@kerfystudio.com** — abus : **abuse@kerfystudio.com**
+Kerfy Studio — [adresse du siège] — **privacy@bipagents.com** — abus : **abuse@bipagents.com**
 
 Cette politique, les conditions d'utilisation, les [conditions de l'offre tout compris](offer.fr.md), la
 [politique d'usage acceptable](acceptable-use.fr.md) et les mentions légales sont aussi dans l'app : Réglages ›

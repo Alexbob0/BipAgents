@@ -2,7 +2,7 @@
 
 # Política de uso aceptable de la oferta todo incluido
 
-> Última actualización: [fecha].
+> Última actualización: 24 de octubre de 2026.
 
 ## 1. Para qué sirve
 
@@ -50,8 +50,8 @@ los accesos que necesita (condiciones de uso, sección 9).
 Cualquier persona puede denunciar un abuso que salga de un servidor de la oferta, aunque no use BipAgents, al igual
 que los proveedores de alojamiento y las autoridades.
 
-- **Dónde**: **abuse@kerfystudio.com**, o por correo postal a Kerfy Studio, [dirección del domicilio social]. Idiomas:
-  francés, inglés. Las autoridades también pueden usar el punto de contacto **support@kerfystudio.com** (Reglamento
+- **Dónde**: **abuse@bipagents.com**, o por correo postal a Kerfy Studio, [dirección del domicilio social]. Idiomas:
+  francés, inglés. Las autoridades también pueden usar el punto de contacto **contact@kerfystudio.com** (Reglamento
   (UE) 2022/2065, artículos 11 y 12).
 - **Qué** (artículo 16 del Reglamento (UE) 2022/2065):
   - por qué consideras que es ilícito o abusivo;
@@ -75,7 +75,7 @@ emergencia (112).**
   toma una persona.
 - **Motivos**: Kerfy Studio te dice sin demora lo que se ha hecho, por qué (los hechos, la regla en cuestión) y cómo
   impugnarlo, salvo si la ley o una autoridad lo prohíbe (artículo 17 del Reglamento (UE) 2022/2065).
-- **Impugnar**: responde a ese mensaje o escribe a abuse@kerfystudio.com. Una persona vuelve a examinar la decisión. Si
+- **Impugnar**: responde a ese mensaje o escribe a abuse@bipagents.com. Una persona vuelve a examinar la decisión. Si
   el abuso venía de un agente desviado o de un acceso robado, te ayudamos a poner tu plaza en orden; si la suspensión
   no estaba justificada, tu plaza se restablece lo antes posible.
 - **Fin de la suscripción**: por un incumplimiento grave o repetido, Kerfy Studio puede poner fin a la suscripción,
@@ -89,5 +89,5 @@ emergencia (112).**
 
 ## 6. Contacto
 
-Abusos: **abuse@kerfystudio.com** — Kerfy Studio, [dirección del domicilio social] — otras preguntas:
-**support@kerfystudio.com**
+Abusos: **abuse@bipagents.com** — Kerfy Studio, [dirección del domicilio social] — otras preguntas:
+**support@bipagents.com**

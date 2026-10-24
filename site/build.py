@@ -423,6 +423,10 @@ def main(argv: List[str]) -> int:
         sys.path.insert(0, str(kerfy))
         from kerfy_build import build as kerfy_build   # the publisher's site (its own module)
         built.append(kerfy_build(ROOT, REPO, version))
+    sys.path.insert(0, str(ROOT))
+    import hosting   # OVH's Apache: .htaccess (CSP with the inline scripts' hashes), 404 page, security.txt
+    for path in built:
+        hosting.finish(path, path.name, config())
     for path in built:
         print(f"built {path.relative_to(REPO)}")
     if "--serve" in argv:

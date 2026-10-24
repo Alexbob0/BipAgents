@@ -130,13 +130,13 @@
     "title": "Your data",
     "text": [
      "In the app: delete an agent, or uninstall the app to erase everything from the phone. On your server: <code>bipagents uninstall --all</code>.",
-     "For the little data we receive (e-mails, reports), write to us: we delete it."
+     "For the little data we receive (e-mails, reports), write to privacy@bipagents.com: we delete it."
     ]
    },
    {
     "title": "Security",
     "text": [
-     "Found a vulnerability? Write to support@kerfystudio.com with the subject « Security »: these reports are handled first.",
+     "Found a vulnerability? Write to security@bipagents.com: these reports are handled first.",
      "Our security contact is also published in <a href=\"/.well-known/security.txt\">security.txt</a>."
     ]
    },
@@ -148,7 +148,7 @@
    }
   ],
   "whoTitle": "Who we are",
-  "who": "Kerfy Studio · <mark class=\"todo\">[registered office address]</mark> · <mark class=\"todo\">[phone number]</mark> · support@kerfystudio.com"
+  "who": "Kerfy Studio · <mark class=\"todo\">[registered office address]</mark> · <mark class=\"todo\">[phone number]</mark> · support@bipagents.com"
  },
  "store": {
   "soon": "Coming soon to",

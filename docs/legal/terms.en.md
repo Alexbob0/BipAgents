@@ -2,7 +2,7 @@ English · [Français](terms.fr.md) · [Deutsch](terms.de.md) · [Español](term
 
 # BipAgents terms of use
 
-> Last updated: [date].
+> Last updated: 24 October 2026.
 
 ## 1. Purpose
 
@@ -18,7 +18,7 @@ without connecting an agent. If you subscribe to the all-included offer, its [te
 
 **Kerfy Studio**, a French SAS with a share capital of [capital] €, registered office: [registered office address],
 registered with the RCS of [registry city] under number [SIREN], phone: [phone number], publication director:
-[First name Last name], president. Contact: **support@kerfystudio.com**; abuse reports: **abuse@kerfystudio.com**.
+[First name Last name], president. Contact: **support@bipagents.com**; abuse reports: **abuse@bipagents.com**.
 See also the [mentions légales](mentions-legales.fr.md) (in French).
 
 ## 3. What BipAgents does
@@ -148,14 +148,14 @@ a professional context, the obligations of the "deployer" under the European reg
 deep fakes, apply to you.
 
 With the all-included offer, the [acceptable use policy](acceptable-use.en.md) sets out these rules for your place
-(spam, attacks, cryptocurrency mining, reselling…) and says how to report abuse: **abuse@kerfystudio.com**.
+(spam, attacks, cryptocurrency mining, reselling…) and says how to report abuse: **abuse@bipagents.com**.
 
 ## 11. Reporting content
 
 - In the app: **long press a reply › Report this reply**. The report goes from the app, through Kerfy Studio's relay,
   to Kerfy Studio only, with the reply's text; if the relay does not answer, the app offers to send it by email. Also
   tell your agent so it doesn't do it again.
-- Or write to **support@kerfystudio.com**.
+- Or write to **support@bipagents.com**.
 
 Your agents' replies are produced on your server, or on your place with the all-included offer, by the chosen model:
 Kerfy Studio does not read them and does not intervene in them. Reports help us improve the app, its defaults and its
@@ -179,9 +179,9 @@ Regulation (EU) 2022/2065 on digital services. It also forwards to Kerfy Studio 
 - **Limits**: quotas per device and per server; beyond them, notifications are refused.
 - **Blocking**: in case of a breach of section 10, Kerfy Studio may refuse the notifications of a device or a server;
   this decision is made by a person. You can contest it by writing to the point of contact.
-- **Points of contact** (articles 11 and 12 of the regulation): for authorities and for users,
-  **support@kerfystudio.com** or by post to Kerfy Studio, [registered office address]. Languages: French, English. To
-  report abuse coming from a server of the all-included offer: **abuse@kerfystudio.com**
+- **Points of contact** (articles 11 and 12 of the regulation): for authorities, **contact@kerfystudio.com**; for users,
+  **support@bipagents.com**; or by post to Kerfy Studio, [registered office address]. Languages: French, English. To
+  report abuse coming from a server of the all-included offer: **abuse@bipagents.com**
   ([acceptable use policy](acceptable-use.en.md)).
 
 The relay is provided on a **best-effort** basis. It depends on Apple and Google and may be interrupted, in particular
@@ -243,7 +243,7 @@ page. If you do not agree, you can stop using the app and uninstall it at any ti
 
 These terms are governed by **French law**. If you are a consumer living in another country of the European Union,
 you also keep the protection of that country's mandatory rules. In case of a dispute, first write to us at
-support@kerfystudio.com to look for an amicable solution. If you are a consumer, you may go, as you choose, to the
+support@bipagents.com to look for an amicable solution. If you are a consumer, you may go, as you choose, to the
 court where you live or to the court of Kerfy Studio's registered office (in France, also the court of the place
 where you lived when you accepted these terms or when the damage occurred); Kerfy Studio may only bring an action
 against you before the court where you live. For the free use of the app, the consumer mediation of articles L611-1
@@ -252,5 +252,5 @@ the all-included offer, its terms name the consumer mediator (section 16).
 
 ## 21. Contact
 
-Kerfy Studio — [registered office address] — [phone number] — **support@kerfystudio.com** — abuse:
-**abuse@kerfystudio.com**
+Kerfy Studio — [registered office address] — [phone number] — **support@bipagents.com** — abuse:
+**abuse@bipagents.com**

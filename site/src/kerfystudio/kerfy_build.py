@@ -210,7 +210,8 @@ LEGAL_FILL = {
     "address": ("adresse du siège", "registered office address", "Adresse des Sitzes", "dirección del domicilio social"),
     "rcsCity": ("ville du greffe", "registry city", "Ort des Handelsregisters", "ciudad del registro"),
     "phone": ("numéro de téléphone", "phone number", "Telefonnummer", "número de teléfono"),
-    "president": ("Prénom Nom", "First name Last name", "Vorname Nachname", "Vorname Name", "Nombre Apellido", "NOM DU PRÉSIDENT"),
+    "president": ("Prénom Nom", "First name Last name", "Vorname Nachname", "Vorname Name", "Nombre Apellido",
+                  "first and last name", "nombre y apellidos", "NOM DU PRÉSIDENT"),
     "vat": ("numéro de TVA intracommunautaire ; supprimer cette ligne si aucun numéro n'est attribué",),
     "repo": ("URL du dépôt", "repository URL", "URL des Repositorys", "URL del repositorio"),
 }
@@ -418,11 +419,6 @@ def build(root: Path, repo: Path, version: str) -> Path:
                                       f'<article class="legal">{markdown(notice, links).replace(PHONE_TOKEN, phone_html(cfg, "fr"))}'
                                       f'</article>{PHONE_SCRIPT}', "/mentions-legales/",
                                       version, {"fr": "/mentions-legales/"}, "doc"))
-    well_known = out / ".well-known"
-    well_known.mkdir()
-    (well_known / "security.txt").write_text(
-        f"Contact: mailto:{cfg['contact']['support']}\nExpires: 2027-10-01T00:00:00.000Z\nPreferred-Languages: fr, en\n"
-        f"Canonical: {SITE}/.well-known/security.txt\nPolicy: https://github.com/Alexbob0/BipAgents/blob/main/SECURITY.md\n",
-        encoding="utf-8")
+    # .well-known/security.txt, the 404 page and the .htaccess: site/hosting.py, for both sites.
     (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\n", encoding="utf-8")
     return out

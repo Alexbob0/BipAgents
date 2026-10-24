@@ -179,7 +179,7 @@ Used only when the build sets a relay host (`BIPPushRelayHost` / `push.relayHost
   agent's category, app version, phone model (iOS: hardware id such as `iPhone17,1`; Android: manufacturer + model),
   platform, language. There is no name, address or account. The relay forwards it to the guichet's `/v1/reports`
   (`relay/src/routes.rs`). If the relay is not set up or does not answer, the app opens an e-mail to
-  support@kerfystudio.com with the same text instead. **This is the one case where conversation text reaches Kerfy
+  support@bipagents.com with the same text instead. **This is the one case where conversation text reaches Kerfy
   Studio, and only when the person sends it.**
 - Pushes themselves are sent by the bridge or the guichet, not by the app. The relay keeps only ids, the agent's name in
   the title and a fixed list of generic texts (`relay/src/payload.rs`).

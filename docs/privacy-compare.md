@@ -6,7 +6,7 @@
 few AI assistants do **by default**, from their own pages, with what BipAgents does, from its
 [privacy policy](legal/privacy.en.md) and [what the apps send](app-data.md). These companies' business or API offers
 often have other rules. The rules change: each line points to its source and its date. If you spot a mistake, write to
-support@kerfystudio.com.
+support@bipagents.com.
 
 ## At a glance
 

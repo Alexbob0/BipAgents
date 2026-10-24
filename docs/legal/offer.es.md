@@ -2,7 +2,7 @@
 
 # Condiciones generales de venta de la oferta todo incluido
 
-> Última actualización: [fecha].
+> Última actualización: 24 de octubre de 2026.
 
 ## 1. Objeto
 
@@ -40,7 +40,7 @@ condiciones.
 - **Kerfy Studio presta el servicio**: tu plaza, tu crédito de IA, las copias de seguridad y el soporte. Kerfy Studio,
   SAS (sociedad por acciones simplificada francesa) con un capital de [capital] €, domicilio social: [dirección del
   domicilio social], inscrita en el RCS de [ciudad del registro] con el número [SIREN], teléfono: [número de
-  teléfono]. Contacto: **support@kerfystudio.com**. Denuncia de abusos: **abuse@kerfystudio.com**.
+  teléfono]. Contacto: **support@bipagents.com**. Denuncia de abusos: **abuse@bipagents.com**.
 - **En la app, la tienda cobra el precio.** La compra se hace en el App Store de Apple o en Google Play, con tu cuenta
   en ellos: la tienda factura, cobra el precio y el IVA, y reembolsa según sus propias reglas. En el App Store, Apple
   actúa como mandatario de Kerfy Studio y, para la Unión Europea, el vendedor es Apple Distribution International Ltd.
@@ -299,7 +299,7 @@ hora de tu decisión.
   tus pagos; el dinero vuelve a tu medio de pago en un plazo de 5 a 10 días. Un reembolso completo, por ejemplo hecho
   por el soporte, también detiene la suscripción.
 
-También puedes desistir del contrato con cualquier declaración clara: un correo a support@kerfystudio.com o el
+También puedes desistir del contrato con cualquier declaración clara: un correo a support@bipagents.com o el
 formulario del anexo; o pedir directamente el reembolso a la tienda (App Store: historial de compras de tu cuenta de
 Apple; Google Play: página «Solicitar un reembolso»). En todos los casos, tu plaza se conserva 30 días para que
 recuperes tus datos, y después se borra con sus copias de seguridad (sección 11).
@@ -310,7 +310,7 @@ recuperes tus datos, y después se borra con sus copias de seguridad (sección 1
   las faltas de conformidad que aparezcan durante ese tiempo (artículos L224-25-12 a L224-25-14 del Código de Consumo
   francés). En caso de falta de conformidad, puedes pedir que se ponga en conformidad, sin coste y sin demora
   injustificada; si no, una reducción del precio o la resolución del contrato, con el reembolso de las cantidades
-  debidas en 14 días (artículos L224-25-17 a L224-25-23). Escribe a support@kerfystudio.com.
+  debidas en 14 días (artículos L224-25-17 a L224-25-23). Escribe a support@bipagents.com.
 - Las respuestas de los agentes las produce un modelo de IA y pueden ser falsas (condiciones de uso, sección 8): es una
   característica del servicio, descrita antes de la compra.
 - **Actualizaciones**: Kerfy Studio mantiene tu plaza al día (seguridad, compatibilidad, correcciones). También puede
@@ -347,7 +347,7 @@ estás de acuerdo, puedes cancelar sin coste antes de que se aplique.
 
 ## 16. Reclamaciones, mediación, ley aplicable
 
-- Si hay un problema, escribe primero a **support@kerfystudio.com** para buscar una solución.
+- Si hay un problema, escribe primero a **support@bipagents.com** para buscar una solución.
 - **Mediación**: si tu reclamación escrita no ha dado resultado, puedes acudir gratis al mediador de consumo de Kerfy
   Studio: [por completar: nombre del mediador, dirección postal, sitio web]. Debes hacerlo en el año siguiente a tu
   reclamación escrita (artículos L612-1, L612-2, L616-1 y R616-1 del Código de Consumo francés).
@@ -378,7 +378,7 @@ los impuestos de tu país, calculados por Stripe Tax, y cancelas en la página d
   de tu condado para una demanda que sea de su competencia. Kerfy Studio asume los gastos del organismo de arbitraje
   por encima de lo que pagarías por acudir a un tribunal. **Renuncias a actuar en el marco de una acción colectiva**
   (class action) o de un arbitraje colectivo, como parte o como miembro. Puedes rechazar esta cláusula de arbitraje
-  escribiendo a support@kerfystudio.com en los 30 días siguientes a tu contratación; el resto del contrato no cambia.
+  escribiendo a support@bipagents.com en los 30 días siguientes a tu contratación; el resto del contrato no cambia.
 - **Responsabilidad**: en la medida en que lo permita la ley de tu estado, la responsabilidad total de Kerfy Studio
   frente a ti se limita al importe que hayas pagado por la oferta durante los 12 meses anteriores al hecho en cuestión,
   y Kerfy Studio no responde de los daños indirectos; para ti, esta regla sustituye a la frase de la sección 14 sobre
@@ -409,8 +409,8 @@ Estados Unidos, 116 123 en el Reino Unido, 1201 en Israel, 1767 en Singapur, 311
 
 ## 18. Contacto
 
-Kerfy Studio — [dirección del domicilio social] — [número de teléfono] — **support@kerfystudio.com** — abusos:
-**abuse@kerfystudio.com**
+Kerfy Studio — [dirección del domicilio social] — [número de teléfono] — **support@bipagents.com** — abusos:
+**abuse@bipagents.com**
 
 ## Anexo: formulario de desistimiento
 
@@ -419,7 +419,7 @@ B, de la Directiva 2011/83/UE), rellenado para la oferta. Es facultativo: basta 
 
 (sólo debe cumplimentar y enviar el presente formulario si desea desistir del contrato)
 
-- A la atención de Kerfy Studio, [dirección del domicilio social], support@kerfystudio.com:
+- A la atención de Kerfy Studio, [dirección del domicilio social], support@bipagents.com:
 - Por la presente le comunico que desisto de mi contrato de prestación del siguiente servicio: oferta todo incluido
   de BipAgents, plan … (o crédito de IA comprado el …)
 - Pedido el

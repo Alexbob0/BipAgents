@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: [date].
+> Last updated: 24 October 2026.
 
 ## In short
 
@@ -25,10 +25,10 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 **Kerfy Studio**, a French SAS with a share capital of [capital] €, registered office at [registered office address],
 registered with the RCS of [registry city] under number [SIREN] ("Kerfy Studio", "we"). Contact:
-**support@kerfystudio.com**.
+**privacy@bipagents.com**.
 
 Kerfy Studio has not appointed a data protection officer: its activity does not require one (GDPR article 37). For
-any question about your data: support@kerfystudio.com. For Singapore's law (Personal Data Protection Act), which
+any question about your data: privacy@bipagents.com. For Singapore's law (Personal Data Protection Act), which
 requires a person in charge of data protection, this is Kerfy Studio's president, [first and last name], reachable
 at the same address. He is also the person in charge of the protection of personal information under Quebec's law,
 and the individual accountable for compliance with Canada's law (Personal Information Protection and Electronic
@@ -204,13 +204,14 @@ everything.
 **What is kept.** The relay has no database. The sealed token is kept on your phone and on your server; with the
 all-included offer, Kerfy Studio's guichet keeps it too, still sealed (section 5.6).
 The relay's technical logs contain the platform, a 4-byte fingerprint of the token and Apple's or Google's answer;
-they are kept for **6 months at most**. The relay's hosting provider may log the IP addresses of requests: [what the
-relay's hosting provider logs, and for how long].
+they are kept for **6 months at most**. The relay's hosting provider may log the IP addresses of requests. The relay is not in service yet: its hosting
+provider, what it logs and for how long will be stated here before it goes into service.
 
 **Purposes and legal bases.** Delivering the notifications you turned on: performance of the terms of use (GDPR
 article 6(1)(b)). Limiting abuse and protecting the service: Kerfy Studio's legitimate interest (article 6(1)(f)).
 
-**Processors.** [relay hosting provider] (European Union) and Google (Firebase Cloud Messaging), bound to Kerfy Studio
+**Processors.** The relay's hosting provider, in the European Union (not in service yet; it will be named here before
+it goes into service), and Google (Firebase Cloud Messaging), bound to Kerfy Studio
 by a contract that complies with GDPR article 28. Apple delivers notifications to iPhones through its APNs service.
 
 **Without notifications.** You can refuse or turn off notifications in your phone's settings: the app works without
@@ -221,7 +222,7 @@ the app yourself with your own Apple account, Kerfy Studio's relay is not used.
 
 ### 4.2 Support and reports
 
-- **Settings › Contact support** prepares an email to support@kerfystudio.com with a diagnostic you can read before
+- **Settings › Contact support** prepares an email to support@bipagents.com with a diagnostic you can read before
   sending: app version, phone model and system version, language, display style, demo mode or not, notification
   status and, for each agent, its category, whether it answers, whether it has a bridge and a local-network door, and
   its voice. **No conversation, no agent name, no address, no key.** Nothing is sent until you tap "Send" in your
@@ -244,7 +245,7 @@ only write what is useful in the details. We delete whatever is not needed to ha
 you and making the app safer (GDPR article 6(1)(f)). Answering a request to exercise your rights: legal obligation
 (article 6(1)(c); GDPR articles 12 to 22).
 **Retention.** Support: 2 years after the last exchange. Reports: 1 year after they were handled.
-**Recipients.** Kerfy Studio and its processors: its email provider ([email provider], [country]) and the relay's
+**Recipients.** Kerfy Studio and its processors: its email provider (Proton AG, Switzerland) and the relay's
 hosting provider, through which reports travel.
 
 ### 4.3 Crash reports
@@ -396,7 +397,8 @@ on the place and on your devices, plus a copy of this key encrypted with your re
 Studio cannot open. On the all-included offer the place is on a server Kerfy Studio rents, so the key is there too, and
 technically the host as well as Kerfy Studio could access it; our software reads neither your place nor its backups,
 and we would only do so if the law required it. Kerfy Studio keeps these
-backups at [to be completed: backup hosting provider] without being able to read them: one per hour for 48 hours, one
+backups at a backup hosting provider (not in service yet; it will be named here before it goes into service) without
+being able to read them: one per hour for 48 hours, one
 per day for 30 days, one per week for 12 weeks. They are erased with your place.
 
 **OVHcloud's daily image.** On its servers, OVHcloud also makes a daily image of the whole server, which it keeps on
@@ -481,9 +483,9 @@ Kerfy Studio keeps nothing of it.
 | Hetzner Online GmbH (Gunzenhausen, Germany) | Hosts some of the places' servers and the agents' mail server | Content of the places; the agents' mailboxes and the mail server's security logs | Germany, Finland |
 | EUrouter B.V. (Amsterdam, Netherlands) | AI router | Messages sent to the model, metadata | European Union |
 | Model providers: [to be completed] | Run the chosen model | Messages sent to the model | [to be completed] |
-| [to be completed: backup hosting provider] | Keeps the backups | Encrypted backups, unreadable for it and for Kerfy Studio | [to be completed] |
-| [relay hosting provider] | Hosts the guichet and the relay | Account, subscription, technical data | European Union |
-| [to be completed: email sending provider] | Sends the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices | Email address, content of these emails | [to be completed] |
+| Backup hosting provider: not in service yet; it will be named here before it goes into service | Keeps the backups | Encrypted backups, unreadable for it and for Kerfy Studio | Stated with it |
+| Hosting provider of the guichet and the relay: not in service yet; it will be named here before it goes into service | Hosts the guichet and the relay | Account, subscription, technical data | European Union |
+| Email sending provider: not in service yet; it will be named here before it goes into service | Sends the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices | Email address, content of these emails | Stated with it |
 | Stripe Payments Europe, Ltd. (Dublin, Ireland) | Payment of purchases on the bipagents.com website, tax calculation, fraud checks, invoices | Email address, billing address or country, card details, IP address | European Union; possibly outside the Union (section 11) |
 
 They are bound to Kerfy Studio by a contract that complies with GDPR article 28; Stripe also acts as an independent
@@ -562,7 +564,8 @@ be announced as described in section 17.
 
 ## 11. Transfers outside the European Union
 
-The notification relay is hosted in the European Union ([relay hosting provider]). To deliver notifications, Apple and
+The notification relay will be hosted in the European Union (not in service yet; its hosting provider will be named
+here before it goes into service). To deliver notifications, Apple and
 Google may process the token and the notification outside the European Union, notably in the United States:
 
 - Google LLC (Firebase Cloud Messaging) is certified under the "EU-U.S. Data Privacy Framework", recognised as
@@ -592,8 +595,10 @@ legal framework of the country of destination) and makes the transfer only if th
 protection (section 17 of the Act respecting the protection of personal information in the private sector). You can
 ask us for a summary of this assessment.
 
-Email provider: [country; safeguard]. Email sending provider and backup hosting provider: [to be completed: country;
-safeguard]. You can ask us for a copy of the applicable safeguards.
+Email provider: Proton AG, in Switzerland, a country the European Commission recognises as providing adequate
+protection (decision 2000/518/EC, kept in force by GDPR article 45(9)). Email sending provider and backup hosting
+provider: not in service yet; their country and the applicable safeguard will be stated here before they go into
+service. You can ask us for a copy of the applicable safeguards.
 
 ## 12. Retention periods
 
@@ -631,7 +636,7 @@ The relay only accepts encrypted connections (HTTPS), seals tokens (XChaCha20-Po
 writes a token in clear. In the app, your agents' keys are protected by the Keychain or the Keystore, and the
 connection to your server goes through Tailscale or through an HTTPS door on your local network that only accepts your
 server's certificate. The code of the app, the server side and the relay is public: [repository URL]. To report a
-security flaw: **support@kerfystudio.com** (see the SECURITY.md file in the repository).
+security flaw: **security@bipagents.com** (see the SECURITY.md file in the repository).
 
 With the all-included offer, each place is a separate account on the server, without administrator rights; Kerfy
 Studio has no SSH key on the servers, and a server only carries out orders signed by the guichet. The app connects to
@@ -654,7 +659,7 @@ portability, and give instructions about your data after your death (French law)
 **Right to object.** You can object at any time, on grounds relating to your particular situation, to processing
 based on our legitimate interest (limiting abuse, emails, reports, crash reports, limiting free weeks).
 
-Write to **support@kerfystudio.com**. We answer within one month, which can be extended by two months for a complex
+Write to **privacy@bipagents.com**. We answer within one month, which can be extended by two months for a complex
 request; we may ask for what we need to check your identity.
 
 With your own server, since we keep nothing that links a notification token or a report to a person, we usually
@@ -669,7 +674,7 @@ To delete your account: section 5.2.
 data within the meaning of California law (California Consumer Privacy Act) and does no targeted advertising. The app
 and our websites do not track you from one site to another: a "Do Not Track" signal from your browser therefore
 changes nothing in what we do (California Online Privacy Protection Act). You exercise the rights in this section at
-support@kerfystudio.com.
+privacy@bipagents.com.
 
 **If you live in Canada.** Canadian laws rest on consent: by using the app and subscribing after seeing this policy,
 you consent to the processing it describes, for the purposes it states. You have the rights of access and correction
@@ -714,7 +719,7 @@ significant change is announced in the app at least 30 days before it applies.
 
 ## 18. Contact
 
-Kerfy Studio — [registered office address] — **support@kerfystudio.com** — abuse: **abuse@kerfystudio.com**
+Kerfy Studio — [registered office address] — **privacy@bipagents.com** — abuse: **abuse@bipagents.com**
 
 This policy, the terms of use, the [terms of the all-included offer](offer.en.md), the
 [acceptable use policy](acceptable-use.en.md) and the mentions légales (legal notice) are also in the app: Settings ›

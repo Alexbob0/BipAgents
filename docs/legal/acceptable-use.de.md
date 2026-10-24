@@ -2,7 +2,7 @@
 
 # Richtlinie zur zulässigen Nutzung des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: [Datum].
+> Zuletzt aktualisiert: 24. Oktober 2026.
 
 ## 1. Wozu sie dient
 
@@ -52,8 +52,8 @@ Agenten nur die Zugänge, die er braucht (Nutzungsbedingungen, Abschnitt 9).
 Jeder kann einen Missbrauch melden, der von einem Server des Angebots ausgeht, auch ohne BipAgents zu nutzen, ebenso
 Hoster und Behörden.
 
-- **Wo**: **abuse@kerfystudio.com** oder per Post an Kerfy Studio, [Adresse des Sitzes]. Sprachen: Französisch,
-  Englisch. Behörden können auch die Kontaktstelle **support@kerfystudio.com** nutzen (Verordnung (EU) 2022/2065,
+- **Wo**: **abuse@bipagents.com** oder per Post an Kerfy Studio, [Adresse des Sitzes]. Sprachen: Französisch,
+  Englisch. Behörden können auch die Kontaktstelle **contact@kerfystudio.com** nutzen (Verordnung (EU) 2022/2065,
   Art. 11 und 12).
 - **Was** (Art. 16 der Verordnung (EU) 2022/2065):
   - warum du es für rechtswidrig oder missbräuchlich hältst;
@@ -78,7 +78,7 @@ Notruf (112).**
 - **Begründung**: Kerfy Studio teilt dir unverzüglich mit, was getan wurde, warum (die Tatsachen, die betroffene
   Regel) und wie du widersprechen kannst, außer wenn das Gesetz oder eine Behörde es verbietet (Art. 17 der Verordnung
   (EU) 2022/2065).
-- **Widersprechen**: Antworte auf diese Nachricht oder schreib an abuse@kerfystudio.com. Ein Mensch prüft die
+- **Widersprechen**: Antworte auf diese Nachricht oder schreib an abuse@bipagents.com. Ein Mensch prüft die
   Entscheidung erneut. Kam der Missbrauch von einem missbrauchten Agenten oder einem gestohlenen Zugang, helfen wir dir,
   deinen Platz wieder in Ordnung zu bringen; war die Sperre nicht gerechtfertigt, wird dein Platz so schnell wie möglich
   wiederhergestellt.
@@ -93,5 +93,5 @@ Notruf (112).**
 
 ## 6. Kontakt
 
-Missbrauch: **abuse@kerfystudio.com** — Kerfy Studio, [Adresse des Sitzes] — andere Fragen:
-**support@kerfystudio.com**
+Missbrauch: **abuse@bipagents.com** — Kerfy Studio, [Adresse des Sitzes] — andere Fragen:
+**support@bipagents.com**
