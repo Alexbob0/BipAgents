@@ -42,6 +42,7 @@
     "a11y": "Ein Agent fragt vor dem Reservieren: „Den Tisch auf deinen Namen reservieren?“ Du tippst auf Einmal, und der Tisch ist reserviert.",
     "agent": "Alltag",
     "you": "Reservier einen Tisch für Freitagabend",
+    "toolName": "Browser",
     "tool": "Pasta Mia · 20:30 · Formular ausgefüllt",
     "head": "Alltag fragt",
     "q": "Den Tisch auf deinen Namen reservieren?",

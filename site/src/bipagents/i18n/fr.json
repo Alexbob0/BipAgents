@@ -42,6 +42,7 @@
     "a11y": "Un agent demande avant de réserver : « Je réserve la table à ton nom ? » Tu touches Une fois, et la table est réservée.",
     "agent": "Quotidien",
     "you": "Réserve une table vendredi soir",
+    "toolName": "Navigateur",
     "tool": "Pasta Mia · 20 h 30 · formulaire rempli",
     "head": "Quotidien te demande",
     "q": "Je réserve la table à ton nom ?",

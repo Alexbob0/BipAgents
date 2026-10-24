@@ -42,6 +42,7 @@
     "a11y": "An agent asks before booking: “Book the table in your name?” You tap Once, and the table is booked.",
     "agent": "Daily",
     "you": "Book a table for Friday night",
+    "toolName": "Browser",
     "tool": "Pasta Mia · 8:30 pm · form filled in",
     "head": "Daily is asking",
     "q": "Book the table in your name?",

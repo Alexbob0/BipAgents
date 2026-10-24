@@ -17,7 +17,7 @@
     <div class="cta-row">
       <a class="pill pill-buy" href="{{demohref}}">{{hero.watch}} <small class="pill-time">{{hero.watchTime}}</small> <span aria-hidden="true">→</span></a>
       <a class="pill pill-soft" href="#pricing">{{hero.cta}}</a>
-      <a class="pill pill-soft" href="#install">💻 {{pricing.mode.self}}</a>
+      <a class="pill pill-soft" href="#install"><span aria-hidden="true">💻</span>{{pricing.mode.self}}</a>
     </div>
     <p class="hero-price">{{hero.price}}</p>
   </div>
@@ -33,7 +33,7 @@
         </div>
         <div class="ask-body">
           <div class="msg you" data-ask="1">{{ask.you}}</div>
-          <div class="tool done" data-ask="2"><span class="ic">🌐</span><span><b>browser_click</b><span>{{ask.tool}}</span></span><i class="st"></i></div>
+          <div class="tool done" data-ask="2"><span class="ic">🌐</span><span><b>{{ask.toolName}}</b><span>{{ask.tool}}</span></span><i class="st"></i></div>
           <div class="card-a" data-ask="3">
             <p class="ask-head">🔒 {{ask.head}}</p>
             <p>{{ask.q}}</p>

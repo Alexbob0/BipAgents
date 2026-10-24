@@ -42,6 +42,7 @@
     "a11y": "Un agente pregunta antes de reservar: «¿Reservo la mesa a tu nombre?». Tocas Una vez, y la mesa queda reservada.",
     "agent": "Día a día",
     "you": "Reserva una mesa el viernes por la noche",
+    "toolName": "Navegador",
     "tool": "Pasta Mia · 20:30 · formulario rellenado",
     "head": "Día a día te pregunta",
     "q": "¿Reservo la mesa a tu nombre?",
