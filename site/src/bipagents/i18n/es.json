@@ -4,8 +4,8 @@
     "name": "Español"
   },
   "meta": {
-    "title": "BipAgents — agentes de IA que actúan por ti, en Europa",
-    "description": "BipAgents te da tus propios agentes de IA, los Bips: reservan, ordenan tu correo, llevan tu agenda y tu Cuaderno, y te preguntan antes de actuar. Todo incluido en tu propio espacio en Europa, sin anuncios ni rastreo. Construido sobre Hermes Agent."
+    "title": "BipAgents — agentes de IA privados y seguros, en Europa o en tu casa",
+    "description": "BipAgents te da tus propios agentes de IA, los Bips: privados y seguros, en Europa o en tu casa. Reservan, ordenan tu correo, llevan tu agenda y tu Cuaderno, y te preguntan antes de actuar. Sin anuncios ni rastreo. Construido sobre Hermes Agent."
   },
   "a11y": {
     "skip": "Ir al contenido",
@@ -18,21 +18,23 @@
     "privacy": "Privado",
     "pricing": "Precios",
     "faq": "Preguntas",
-    "cta": "Suscribirme"
+    "cta": "Unirse a la beta",
+    "ctaShort": "La beta"
   },
   "hero": {
     "badge": "Construido sobre Hermes Agent",
-    "line1": "Tus agentes de IA hacen tus trámites",
-    "line2": "y te preguntan antes de actuar.",
-    "lede": "Correo ordenado, agenda al día, reservas hechas. Privado, en Europa: no leemos tus conversaciones.",
+    "line1": "Tus agentes de IA hacen tus trámites.",
+    "line2": "Privados y seguros, en Europa o en tu casa.",
+    "lede": "Y te preguntan antes de actuar. Correo ordenado, agenda al día, reservas hechas: no leemos tus conversaciones.",
     "proof1": "<b>Actúan por ti:</b> correo, agenda, reservas, un navegador de verdad",
     "proof2": "<b>Primero, tu visto bueno:</b> te preguntan antes de enviar o pagar",
-    "proof3": "<b>Tu propio espacio</b>, privado, en Europa, sin anuncios",
+    "proof3": "<b>Tu propio espacio</b>, privado, en Europa o en tu ordenador, sin anuncios",
     "words": "<b>Bips</b>: tus asistentes de IA, uno por agente · <b>Live</b>: les hablas en voz alta · <b>Cuaderno</b>: lo que tus agentes guardan para ti",
     "cta": "Elegir mi plan",
     "watch": "Ver la demo",
     "watchTime": "1 min",
-    "price": "Pronto en iPhone y Android · desde {{p.from}} al mes"
+    "price": "Beta gratuita en iPhone y Android · plazas limitadas · sin tarjeta",
+    "beta": "Beta gratuita"
   },
   "store": {
     "soon": "Muy pronto en",
@@ -256,7 +258,14 @@
       "plusTax": "+ impuestos",
       "taxIncl": "Precios en {currency}, impuestos incluidos.",
       "taxExcl": "Precios en {currency} sin impuestos: el impuesto sobre las ventas de tu estado o provincia se añade al pagar.",
-      "currencies": {"EUR": "euros", "USD": "dólares estadounidenses", "CAD": "dólares canadienses", "GBP": "libras esterlinas", "SGD": "dólares de Singapur", "ILS": "séqueles israelíes"},
+      "currencies": {
+        "EUR": "euros",
+        "USD": "dólares estadounidenses",
+        "CAD": "dólares canadienses",
+        "GBP": "libras esterlinas",
+        "SGD": "dólares de Singapur",
+        "ILS": "séqueles israelíes"
+      },
       "perMonth": "/mes",
       "perYear": "/año",
       "equiv": "o sea {x} al mes",
@@ -280,7 +289,8 @@
       "offerSub": "nos ocupamos de todo, desde {{p.from}}/mes",
       "self": "En mi ordenador",
       "selfSub": "gratis, lo alojas tú"
-    }
+    },
+    "afterBeta": "Las suscripciones abren después de la beta. Hasta entonces, es gratis para quienes la prueban."
   },
   "install": {
     "title": "¿Tu propio ordenador? La app es gratis.",
@@ -378,7 +388,8 @@
     "fine": "© 2026 Kerfy Studio. Precios con impuestos incluidos, salvo en dólares estadounidenses y canadienses: el impuesto sobre las ventas se añade al pagar. El pódcast de la demo: Built with Fish Audio. Las voces de los Bips: Pocket TTS, de Kyutai. Mapa de la demo © OpenStreetMap. Sin cookies ni rastreadores en este sitio.",
     "demo": "La demo",
     "faq": "Preguntas",
-    "install": "Instalar en casa"
+    "install": "Instalar en casa",
+    "beta": "Condiciones de la beta"
   },
   "lines": {
     "hop": [
@@ -435,6 +446,95 @@
     "install": {
       "title": "Instalar en casa — BipAgents",
       "description": "La app BipAgents es gratis en tu propio ordenador o servidor: un comando instala Hermes Agent y el bridge, solo pagas tu modelo de IA."
+    },
+    "beta": {
+      "title": "La beta — BipAgents",
+      "description": "La beta pública de BipAgents: gratuita, en iPhone y Android, plazas limitadas, sin tarjeta. Tu espacio privado en Europa, con un crédito de IA."
+    }
+  },
+  "beta": {
+    "kicker": "Beta",
+    "title": "Prueba BipAgents antes que nadie.",
+    "sub": "La beta pública es gratuita, en iPhone y Android. Las plazas son limitadas y no se pide ninguna tarjeta.",
+    "whatTitle": "Qué es",
+    "what1": "Gratuita durante toda la beta",
+    "what2": "En iPhone y Android",
+    "what3": "Plazas limitadas",
+    "what4": "Sin tarjeta",
+    "getTitle": "Qué recibes",
+    "get1": "Tu espacio privado, en un servidor en Europa",
+    "get2": "Un crédito de IA para tus agentes",
+    "get3": "Tus Bips, listos en un minuto",
+    "askTitle": "Qué te pedimos",
+    "ask1": "Tus comentarios: lo que funciona, lo que falta, lo que molesta",
+    "ask2": "Un poco de paciencia: es una beta, algo puede fallar",
+    "getIt": "Instalar la beta",
+    "soon": "Próxima apertura.",
+    "storeSoon": "Próximamente en",
+    "storeGet": "La beta en",
+    "cap": "Plazas: {cap}",
+    "terms": "Condiciones de la beta",
+    "after": "Después de la beta, la oferta todo incluido pasa a ser de pago.",
+    "afterCta": "Ver los precios",
+    "sticky": "Beta gratuita",
+    "stickySub": "plazas limitadas"
+  },
+  "notebook": {
+    "kicker": "Cuaderno",
+    "title": "Tu vida, en orden.",
+    "sub": "Tus agentes guardan lo que importa para ti en un solo sitio que puedes leer: el Cuaderno. Lo llenan a partir de tu correo y de vuestras conversaciones.",
+    "a11y": "La pantalla Cuaderno de la app: los recordatorios de hoy, el próximo viaje con sus billetes y su hotel, compras y garantías, suscripciones, contratos y papeles, reservas, y el archivo.",
+    "i1": "<b>Recordatorios</b>: lo que tienes que hacer, y cuándo",
+    "i2": "<b>Tu próximo viaje</b>: billetes, alojamientos, qué llevar",
+    "i3": "<b>Compras y garantías</b>, con el fin de la garantía",
+    "i4": "<b>Suscripciones</b>: precio, próxima renovación, cómo cancelar",
+    "i5": "<b>Contratos y papeles</b>, con sus vencimientos",
+    "i6": "<b>Reservas</b>: fechas, referencias, con quién",
+    "line1": "Lo pasado se va al Archivo: no se borra nada.",
+    "line2": "Puedes buscar en él y corregirlo, y es tuyo: llévatelo cuando quieras.",
+    "shot": {
+      "title": "Cuaderno",
+      "search": "Buscar",
+      "today": "Hoy",
+      "t1": "Renovar el seguro del coche",
+      "t1s": "antes de las 18 h",
+      "t2": "Llamar al fontanero",
+      "t3": "Devolver los libros",
+      "trip": "Lisboa · en 12 días",
+      "tripSub": "Billetes, hotel y qué llevar",
+      "k1": "Compras y garantías",
+      "k2": "Suscripciones",
+      "k3": "Contratos y papeles",
+      "k4": "Reservas",
+      "archives": "Archivo",
+      "archivesSub": "lo pasado"
+    }
+  },
+  "family": {
+    "kicker": "Dúo y Familia",
+    "title": "En familia, vuestros agentes hablan entre sí.",
+    "sub": "Cada uno conserva su espacio privado y sus agentes. Cuando lo que le dices a tu agente afecta a alguien de la familia, te propone pasárselo a su agente: lo lees, eliges a quién, y nada sale sin tu «Enviar».",
+    "s1t": "Ha llamado el colegio",
+    "s1": "Se lo dices a tu agente: te propone avisar a Sam. Lo lees, lo envías; Sam se entera y su agente también.",
+    "s2t": "Las vacaciones",
+    "s2": "Has reservado del 12 al 19 de agosto: tu agente propone dar las fechas a toda la familia, y cada agente las tiene.",
+    "s3t": "La comida",
+    "s3": "«Hoy pido comida a domicilio»: tu agente pregunta si avisa a los demás. Un «No, gracias», y no vuelve a sacarlo.",
+    "p1": "El texto y los destinatarios se pueden cambiar antes de enviar",
+    "p2": "Sin respuesta, una propuesta desaparece al cabo de un día",
+    "p3": "Tus propios agentes se escriben y se pasan archivos solo donde tú lo has permitido: «Quién puede escribir a quién»",
+    "p4": "Familia: hasta 6 personas, cada una con su espacio, y un crédito de IA común",
+    "cta": "Ver Dúo y Familia",
+    "a11y": "En la conversación, el agente Día a día propone: ¿avisar a Sam? El texto «Ha llamado el colegio: Léa tiene fiebre, voy a recogerla», Sam como destinatario y los botones Enviar y No, gracias. En casa de Sam llega la notificación.",
+    "mock": {
+      "agent": "Día a día",
+      "ask": "¿Avisar a Sam?",
+      "words": "Ha llamado el colegio: Léa tiene fiebre, voy a recogerla.",
+      "to": "Para:",
+      "send": "Enviar",
+      "no": "No, gracias",
+      "at": "En casa de Sam",
+      "notif": "Camille: Ha llamado el colegio: Léa tiene fiebre, voy a recogerla."
     }
   }
 }
