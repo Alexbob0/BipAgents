@@ -1,15 +1,16 @@
 diff --git a/src/browser_manager.py b/src/browser_manager.py
-index a614108..6df82ad 100644
+index a614108..37d8328 100644
 --- a/src/browser_manager.py
 +++ b/src/browser_manager.py
-@@ -56,6 +56,95 @@ def _parse_nonnegative_int_env(
+@@ -56,6 +56,207 @@ def _parse_nonnegative_int_env(
      return parsed
  
  
 +# ---- BipAgents patch (browser/stealth.patch): one browser per agent, in its own container ----
-+# STEALTH_CDP_PORT: the first Chrome started listens on this DevTools port, so Hermes (browser.cdp_url) and its vault
-+# fill drive the same browser. nodriver connects instead of launching when given a host and port, so only its choice
-+# of a free port is replaced, for the time of the launch. Later instances (or a port already taken) keep a random one.
++# STEALTH_CDP_PORT: the container's Chrome listens on this DevTools port, so Hermes (browser.cdp_url) and its vault
++# fill drive the same browser. nodriver connects instead of launching when given a host and port: spawn_browser
++# starts that Chrome apart (below) when none runs, then connects to it. A port taken by something else than a Chrome
++# falls back to nodriver's own launch on a random port.
 +_fixed_port_lock = asyncio.Lock()
 +
 +
@@ -47,29 +48,123 @@ index a614108..6df82ad 100644
 +        return False
 +
 +
++OPEN_BROWSER = "/opt/stealth/open_browser.sh"
++# The agent's browser outlives this server: Hermes restarts its MCP servers (a gateway restart, a stdio reconnect, a
++# `hermes chat` that ends), and a Chrome started as this server's child died with it, the agent's page and instance
++# with it. So Chrome is started apart (open_browser.sh, detached: the container's first process adopts it), this
++# server only connects to it, and its instance keeps one id for the container's life (_STATE): after a restart, the
++# agent's next call with that id finds the same Chrome and the same page.
++_STATE = os.environ.get("STEALTH_STATE_FILE", "/tmp/bipagents-browser.json")
++_CHROME_LOCK = "/tmp/bipagents-chrome.lock"   # two servers (the gateway's, a `hermes chat`) never start two Chromes
++
++
++def _fixed_port() -> Optional[int]:
++    raw = os.environ.get("STEALTH_CDP_PORT", "").strip()
++    return int(raw) if raw.isdigit() else None
++
++
++def _read_state() -> dict:
++    try:
++        with open(_STATE) as handle:
++            state = json.load(handle)
++        return state if isinstance(state, dict) else {}
++    except (OSError, ValueError):
++        return {}
++
++
++def _write_state(**changes) -> None:
++    state = _read_state()
++    if all(state.get(key) == value for key, value in changes.items()):
++        return
++    state.update(changes)
++    try:
++        partial = f"{_STATE}.{os.getpid()}"
++        with open(partial, "w") as handle:
++            json.dump(state, handle)
++        os.replace(partial, _STATE)
++    except OSError as e:
++        debug_logger.log_warning("browser_manager", "state", f"instance state not saved: {e}")
++
++
++def _stable_instance_id() -> Optional[str]:
++    """The id the agent was given for this container's Chrome, if it was given one."""
++    if _fixed_port() is None:
++        return None
++    value = _read_state().get("instance_id")
++    return value if isinstance(value, str) and value else None
++
++
++def _shared_chrome(browser) -> bool:
++    """A Chrome this server connected to (on the fixed port) rather than launched: never quit with an instance."""
++    port = _fixed_port()
++    return (port is not None and getattr(browser, "_process", None) is None
++            and getattr(getattr(browser, "config", None), "port", None) == port)
++
++
++def _connection_lost(browser) -> bool:
++    websocket = getattr(getattr(browser, "connection", None), "websocket", None)
++    return websocket is not None and getattr(websocket, "close_code", None) is not None
++
++
++def _launch_detached(args) -> None:
++    """open_browser.sh with nodriver's own flags, in a session of its own and left behind at once: Chrome is never a
++    child of this server, so it stays when the server ends."""
++    import subprocess
++    subprocess.run(["sh", "-c", '"$0" "$@" </dev/null >/dev/null 2>&1 &', OPEN_BROWSER, *args],
++                   start_new_session=True, check=False, timeout=10)
++
++
++async def _wait_for_chrome(port: int, seconds: float) -> bool:
++    deadline = time.monotonic() + seconds
++    while time.monotonic() < deadline:
++        if await asyncio.to_thread(_chrome_answers, port):
++            return True
++        await asyncio.sleep(0.25)
++    return False
++
++
++class _FileLock:
++    def __init__(self, path: str):
++        self.path, self.handle = path, None
++
++    def __enter__(self):
++        import fcntl
++        self.handle = open(self.path, "a")
++        fcntl.flock(self.handle, fcntl.LOCK_EX)
++        return self
++
++    def __exit__(self, *exc):
++        import fcntl
++        fcntl.flock(self.handle, fcntl.LOCK_UN)
++        self.handle.close()
++
++
 +async def _start_on_fixed_port(config):
 +    _patient_connection(config)
-+    raw = os.environ.get("STEALTH_CDP_PORT", "").strip()
-+    if not raw.isdigit():
++    port = _fixed_port()
++    if port is None:
 +        return await uc.start(config=config)
-+    port = int(raw)
++    raw = os.environ.get("STEALTH_CONNECT_SECONDS", "").strip()
++    seconds = float(raw) if raw.replace(".", "", 1).isdigit() else 45.0
 +    async with _fixed_port_lock:
-+        if not _port_free(port):
-+            if _chrome_answers(port):
-+                # A Chrome the person opened from the app (open_browser.sh) on this profile and port: connected to,
-+                # never launched a second time (Chrome's singleton would hand the launch over to it, and exit).
-+                config.host, config.port = "127.0.0.1", port
-+                return await uc.start(config=config)
-+            debug_logger.log_warning("browser_manager", "spawn_browser",
-+                                     f"STEALTH_CDP_PORT {port} already in use: random debugging port for this instance")
-+            return await uc.start(config=config)
-+        from nodriver.core import util as nd_util
-+        original = nd_util.free_port
-+        nd_util.free_port = lambda: port
++        lock = _FileLock(_CHROME_LOCK)
++        await asyncio.to_thread(lock.__enter__)
 +        try:
++            if not await asyncio.to_thread(_chrome_answers, port):
++                if not _port_free(port):
++                    debug_logger.log_warning("browser_manager", "spawn_browser",
++                                             f"STEALTH_CDP_PORT {port} already in use: random debugging port for this instance")
++                    return await uc.start(config=config)
++                # None runs yet: started apart with the flags nodriver would have used, then connected to like a
++                # Chrome the person opened from the app (open_browser.sh with no flags).
++                config.host, config.port = "127.0.0.1", port
++                _launch_detached(config())
++                if not await _wait_for_chrome(port, seconds):
++                    raise Exception(f"Chrome did not open its DevTools on port {port} within {seconds:.0f} s")
++            config.host, config.port = "127.0.0.1", port
 +            return await uc.start(config=config)
 +        finally:
-+            nd_util.free_port = original
++            lock.__exit__(None, None, None)
 +
 +
 +def _apply_container_defaults(options) -> None:
@@ -95,18 +190,132 @@ index a614108..6df82ad 100644
 +    return [a for a in args if a not in dropped]
 +
 +
++async def _bip_last_tab(browser):
++    """In a Chrome connected to again, the tab the agent last used (its target id in _STATE), if it is still open."""
++    if not _shared_chrome(browser):
++        return None
++    wanted = _read_state().get("tab")
++    if not wanted:
++        return None
++    try:
++        await browser.update_targets()
++        for tab in browser.tabs:
++            if str(getattr(getattr(tab, "target", None), "target_id", "")) == wanted:
++                return tab
++    except Exception as e:
++        debug_logger.log_warning("browser_manager", "last_tab", f"tabs not listed: {e}")
++    return None
++
++
  class BrowserManager:
      """Manages multiple browser instances."""
  
-@@ -266,6 +355,7 @@ class BrowserManager:
+@@ -78,6 +279,72 @@ class BrowserManager:
+             minimum=1,
+         )
+         self._idle_reaper_task: Optional[asyncio.Task] = None
++        self._bip_attach_lock = asyncio.Lock()
++        self._bip_intercepted: set = set()   # server.py: instances whose tab already has its network interception
++
++    # ---- BipAgents: the container's Chrome, connected to again under the agent's id ----
++    async def _bip_list_running(self) -> None:
++        """list_instances: the container's Chrome, connected to again if an earlier server opened it."""
++        stable = _stable_instance_id()
++        if stable is not None and stable not in self._instances and await asyncio.to_thread(_chrome_answers, _fixed_port()):
++            await self.get_instance(stable)
++
++    async def _bip_attach(self, instance_id: str, options: Optional[BrowserOptions] = None) -> None:
++        """The agent's id from an earlier server (or a Chrome that closed since): connected to the container's
++        Chrome again, started if none runs, on the tab it last used."""
++        async with self._bip_attach_lock:
++            async with self._lock:
++                data = self._instances.get(instance_id)
++            if data is not None and not _connection_lost(data["browser"]):
++                return
++            if data is not None:
++                await self._bip_release(instance_id, keep_pages=True)
++            await self.spawn_browser(options or BrowserOptions(sandbox=False), instance_id=instance_id)
++
++    async def _bip_release(self, instance_id: str, keep_pages: bool) -> bool:
++        """An instance on the container's Chrome let go without quitting Chrome. keep_pages=False (the agent's
++        close_instance): its tabs closed, a blank one left (Chrome quits with its last tab). keep_pages=True (this
++        server ending, the idle reaper): only the connection goes; the next server finds the same pages."""
++        async with self._lock:
++            data = self._instances.pop(instance_id, None)
++        if data is None:
++            return False
++        browser = data["browser"]
++        if not keep_pages and not _connection_lost(browser):
++            try:
++                blank = await asyncio.wait_for(browser.get("about:blank", new_tab=True), timeout=10)
++                await browser.update_targets()
++                for tab in list(browser.tabs):
++                    if self._get_tab_target_id(tab) != self._get_tab_target_id(blank):
++                        try:
++                            await tab.close()
++                        except Exception:
++                            pass
++                _write_state(tab=self._get_tab_target_id(blank))
++            except Exception as e:
++                debug_logger.log_warning("browser_manager", "release", f"pages not closed: {e}")
++        try:
++            await dynamic_hook_system.cleanup_instance(instance_id)
++        except Exception:
++            pass
++        for connection in [getattr(browser, "connection", None), *getattr(browser, "targets", [])]:
++            try:
++                if connection is not None and getattr(connection, "websocket", None) is not None:
++                    await asyncio.wait_for(connection.disconnect(), timeout=2)
++            except Exception:
++                pass
++        try:
++            await self._close_proxy_forwarder(instance_id)
++        except Exception:
++            pass
++        try:
++            uc.util.get_registered_instances().discard(browser)
++        except Exception:
++            pass
++        self._spawn_diagnostics.pop(instance_id, None)
++        self._bip_intercepted.discard(instance_id)
++        persistent_storage.remove_instance(instance_id)
++        return True
+ 
+     @staticmethod
+     def _append_user_agent_arg(args: List[str], user_agent: Optional[str]) -> List[str]:
+@@ -255,7 +522,7 @@ class BrowserManager:
+             pass
+         self._idle_reaper_task = None
+ 
+-    async def spawn_browser(self, options: BrowserOptions) -> BrowserInstance:
++    async def spawn_browser(self, options: BrowserOptions, instance_id: Optional[str] = None) -> BrowserInstance:
+         """
+         Spawn a new browser instance with given options.
+ 
+@@ -265,7 +532,21 @@ class BrowserManager:
+         Returns:
              BrowserInstance: The spawned browser instance.
          """
-         instance_id = str(uuid.uuid4())
+-        instance_id = str(uuid.uuid4())
++        # BipAgents: one Chrome per container, its instance always under the same id; a running one is reused.
++        if instance_id is None and _fixed_port() is not None:
++            stable = _stable_instance_id()
++            if stable is None:
++                stable = str(uuid.uuid4())
++                _write_state(instance_id=stable)
++            await self._bip_attach(stable, options)
++            async with self._lock:
++                data = self._instances.get(stable)
++            if data is None:
++                raise Exception("the browser did not start")
++            data["instance"].update_activity()
++            return data["instance"]
++        instance_id = instance_id or str(uuid.uuid4())
 +        _apply_container_defaults(options)   # BipAgents: the container's profile, flags and time zone
  
          instance = BrowserInstance(
              instance_id=instance_id,
-@@ -321,7 +411,7 @@ class BrowserManager:
+@@ -321,7 +602,7 @@ class BrowserManager:
                  caller_args,
                  launch_proxy_server,
              )
@@ -115,12 +324,144 @@ index a614108..6df82ad 100644
              
              config = uc.Config(
                  headless=options.headless,
-@@ -331,7 +421,7 @@ class BrowserManager:
+@@ -331,8 +612,8 @@ class BrowserManager:
                  browser_args=launch_args
              )
  
 -            browser = await uc.start(config=config)
+-            tab = browser.main_tab
 +            browser = await _start_on_fixed_port(config)   # BipAgents: STEALTH_CDP_PORT
-             tab = browser.main_tab
++            tab = await _bip_last_tab(browser) or browser.main_tab   # BipAgents: the page the agent was on
              config_obj = getattr(browser, "config", None)
              actual_user_data_dir = getattr(config_obj, "user_data_dir", options.user_data_dir)
+             uses_custom_data_dir = getattr(
+@@ -404,6 +685,8 @@ class BrowserManager:
+ 
+             instance.state = BrowserState.READY
+             instance.update_activity()
++            if _shared_chrome(browser):   # BipAgents: the id the next server gives this Chrome again
++                _write_state(instance_id=instance_id, tab=self._get_tab_target_id(tab))
+ 
+             persistent_storage.store_instance(instance_id, {
+                 'state': instance.state.value,
+@@ -470,7 +753,17 @@ class BrowserManager:
+             Optional[dict]: The browser instance data if found, else None.
+         """
+         async with self._lock:
+-            return self._instances.get(instance_id)
++            data = self._instances.get(instance_id)
++        # BipAgents: the agent's id after this server restarted, or after its Chrome closed: the same Chrome again.
++        if (data is None or _connection_lost(data["browser"])) and instance_id == _stable_instance_id():
++            try:
++                await self._bip_attach(instance_id)
++            except Exception as e:
++                debug_logger.log_error("browser_manager", "attach", e)
++                return None
++            async with self._lock:
++                data = self._instances.get(instance_id)
++        return data
+ 
+     async def list_instances(self) -> List[BrowserInstance]:
+         """
+@@ -479,10 +772,11 @@ class BrowserManager:
+         Returns:
+             List[BrowserInstance]: List of all browser instances.
+         """
++        await self._bip_list_running()   # BipAgents: the container's Chrome, even when an earlier server opened it
+         async with self._lock:
+             return [data['instance'] for data in self._instances.values()]
+ 
+-    async def close_instance(self, instance_id: str) -> bool:
++    async def close_instance(self, instance_id: str, keep_pages: bool = False, quit_browser: bool = False) -> bool:
+         """
+         Close and remove a browser instance.
+ 
+@@ -493,7 +787,13 @@ class BrowserManager:
+             bool: True if closed successfully, False otherwise.
+         """
+         import asyncio
+-        
++
++        # BipAgents: the container's Chrome stays (only quit_browser, the person's request, quits it).
++        async with self._lock:
++            data = self._instances.get(instance_id)
++        if data is not None and not quit_browser and _shared_chrome(data["browser"]):
++            return await self._bip_release(instance_id, keep_pages=keep_pages)
++
+         async def _do_close():
+             async with self._lock:
+                 if instance_id not in self._instances:
+@@ -924,6 +1224,8 @@ class BrowserManager:
+         if data:
+             if touch_activity:
+                 await self.touch_instance(instance_id)
++            if _shared_chrome(data['browser']):   # BipAgents: the page the next server goes back to
++                _write_state(tab=self._get_tab_target_id(data['tab']))
+             return data['tab']
+         return None
+ 
+@@ -1214,7 +1516,7 @@ class BrowserManager:
+                     to_close.append(instance_id)
+ 
+         for instance_id in to_close:
+-            await self.close_instance(instance_id)
++            await self.close_instance(instance_id, keep_pages=True)   # BipAgents: let go, its pages kept
+ 
+         return len(to_close)
+ 
+@@ -1226,4 +1528,4 @@ class BrowserManager:
+         """
+         instance_ids = list(self._instances.keys())
+         for instance_id in instance_ids:
+-            await self.close_instance(instance_id)
++            await self.close_instance(instance_id, keep_pages=True)   # BipAgents: the server ends, Chrome stays
+diff --git a/src/server.py b/src/server.py
+index b5ad386..b0c4c28 100644
+--- a/src/server.py
++++ b/src/server.py
+@@ -183,7 +183,8 @@ async def spawn_browser(
+     sandbox: Optional[Any] = None
+ ) -> Dict[str, Any]:
+     """
+-    Spawn a new browser instance.
++    Spawn a new browser instance, or (BipAgents) return the one already open: this container has one browser, and
++    its instance_id stays the same for every task, even after a pause.
+ 
+     Args:
+         headless (bool): Run in headless mode.
+@@ -230,10 +231,11 @@ async def spawn_browser(
+         )
+         instance = await browser_manager.spawn_browser(options)
+         tab = await browser_manager.get_tab(instance.instance_id)
+-        if tab:
++        if tab and instance.instance_id not in browser_manager._bip_intercepted:   # BipAgents: a reused one has it
+             await network_interceptor.setup_interception(
+                 tab, instance.instance_id, block_resources
+             )
++            browser_manager._bip_intercepted.add(instance.instance_id)
+         spawn_diagnostics = await browser_manager.get_spawn_diagnostics(instance.instance_id)
+         return {
+             "instance_id": instance.instance_id,
+@@ -277,17 +279,19 @@ async def list_instances() -> List[Dict[str, Any]]:
+     return result
+ 
+ @section_tool("browser-management")
+-async def close_instance(instance_id: str) -> bool:
++async def close_instance(instance_id: str, quit_browser: bool = False) -> bool:
+     """
+-    Close a browser instance.
++    Close a browser instance: its pages close, the browser itself stays open on a blank page, ready for the next task
++    (BipAgents). Only when the person asks to quit the browser, pass quit_browser=True.
+ 
+     Args:
+         instance_id (str): Browser instance ID.
++        quit_browser (bool): Quit the browser itself (only when the person asks for it).
+ 
+     Returns:
+         bool: True if closed successfully.
+     """
+-    success = await browser_manager.close_instance(instance_id)
++    success = await browser_manager.close_instance(instance_id, quit_browser=quit_browser)
+     if success:
+         await network_interceptor.clear_instance_data(instance_id)
+     return success
