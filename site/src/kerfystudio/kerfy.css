@@ -175,3 +175,6 @@ mark.todo { background: var(--todo); color: inherit; padding: 0 4px; border-radi
 .foot nav { display: grid; gap: 6px; align-content: start; font-weight: 800; }
 .foot nav a { text-decoration: none; color: var(--ink2); }
 .foot .fine { grid-column: 1 / -1; color: var(--muted); font-size: 13px; margin: 0; }
+
+/* the phone in the legal texts, shown on request (kerfy_build.py PHONE_SCRIPT) */
+.phone-show { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }

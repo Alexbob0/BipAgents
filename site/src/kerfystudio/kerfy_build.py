@@ -3,6 +3,7 @@ their Markdown), in French at the root and in English, German and Spanish under 
 site/build.py."""
 from __future__ import annotations
 
+import base64
 import html
 import json
 import re
@@ -148,6 +149,7 @@ def shell(t: Dict, lang: str, title: str, body: str, path: str, version: str, al
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{html.escape(title)}</title>
 <meta name="description" content="{html.escape(t['meta']['description'])}">
+{'<meta name="robots" content="noindex">' if page_class == "doc" else ""}
 <link rel="canonical" href="{SITE}{path}">
 {alt}
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
@@ -214,8 +216,28 @@ LEGAL_FILL = {
 }
 
 
+# The phone only in the legal texts (the law asks for it there), never as plain text: a button shows it, so crawlers
+# reading the HTML don't harvest it (owner's choice, 2026-10-24). The texts get this token, the page its button.
+PHONE_TOKEN = "@@KERFY-PHONE@@"
+PHONE_LABEL = {"fr": "afficher le numéro", "en": "show the number", "de": "Nummer anzeigen", "es": "mostrar el número"}
+PHONE_SCRIPT = ("<script>document.addEventListener('click',e=>{const b=e.target.closest('.phone-show');if(!b)return;"
+                "const s=b.parentElement,n=atob(s.dataset.n).split('').reverse().join(''),a=document.createElement('a');"
+                "a.href='tel:'+n.replace(/[^+0-9]/g,'').replace(/^0/,'+33');a.textContent=n;s.replaceChildren(a);});</script>")
+
+
+def phone_html(cfg: Dict, lang: str) -> str:
+    phone = cfg["company"].get("phone", "")
+    if not phone:
+        return '<mark class="todo">[téléphone]</mark>'
+    encoded = base64.b64encode(phone[::-1].encode()).decode()
+    return (f'<span class="phone" data-n="{encoded}"><button type="button" class="phone-show">'
+            f'{esc(PHONE_LABEL.get(lang, PHONE_LABEL["en"]))}</button></span>')
+
+
 def fill_company(text: str, cfg: Dict) -> str:
     values = dict(cfg["company"], repo=cfg.get("repo", ""))
+    if values.get("phone"):
+        values["phone"] = PHONE_TOKEN
     for key, labels in LEGAL_FILL.items():
         if not values.get(key):
             continue
@@ -252,8 +274,7 @@ def home_body(t: Dict, lang: str, cfg: Dict) -> str:
             (r["capital"], company_value(company, "capital", "capital") + (" €" if company.get("capital") else "")),
             (r["address"], company_value(company, "address", "adresse du siège")), (r["rcs"], rcs),
             (r["vat"], company_value(company, "vat", "TVA")), (r["president"], company_value(company, "president", "Prénom Nom")),
-            (r["contact"], f'<a href="mailto:{contact["general"]}">{contact["general"]}</a>'
-                           + (f' · {esc(company["phone"])}' if company.get("phone") else "")),
+            (r["contact"], f'<a href="mailto:{contact["general"]}">{contact["general"]}</a>'),
             (r["support"], f'<a href="mailto:{contact["support"]}">{contact["support"]}</a>')]
     table = "".join(f"<div><dt>{esc(k)}</dt><dd>{v}</dd></div>" for k, v in rows)
     m = lambda pair: f'<p class="t-meal"><small>{esc(pair[0])}</small><b>{esc(pair[1])}</b></p>'
@@ -339,7 +360,7 @@ def support_body(t: Dict, lang: str, cfg: Dict) -> str:
                      for b in s["blocks"])
     who = (f'{esc(company["name"])} ({esc(company["form"])}) · {company_value(company, "address", "adresse du siège")} · '
            f'RCS {company_value(company, "rcsCity", "ville du greffe")} {company_value(company, "siren", "SIREN")} · '
-           f'{company_value(company, "phone", "téléphone")} · <a href="mailto:{contact["support"]}">{contact["support"]}</a> · '
+           f'<a href="mailto:{contact["support"]}">{contact["support"]}</a> · '
            f'<a href="mailto:{contact["general"]}">{contact["general"]}</a>')
     return f"""<section class="page-head">
   <p class="kicker">{s['kicker']}</p>
@@ -389,11 +410,13 @@ def build(root: Path, repo: Path, version: str) -> Path:
             text = fill_company(text, cfg)
             title = re.search(r"^#\s+(.*)$", text, re.M).group(1)
             pages = {l: f"{prefix(l)}/{name}/" for l in LANGS}
-            write(pages[lang], shell(t, lang, f"{title} · Kerfy Studio", f'<article class="legal">{markdown(text, links)}</article>',
-                                     pages[lang], version, pages, "doc"))
+            body = markdown(text, links).replace(PHONE_TOKEN, phone_html(cfg, lang))
+            write(pages[lang], shell(t, lang, f"{title} · Kerfy Studio", f'<article class="legal">{body}</article>'
+                                     + (PHONE_SCRIPT if "phone-show" in body else ""), pages[lang], version, pages, "doc"))
     notice = fill_company((repo / "docs" / "legal" / "mentions-legales.fr.md").read_text(encoding="utf-8"), cfg)
     write("/mentions-legales/", shell(texts["fr"], "fr", "Mentions légales · Kerfy Studio",
-                                      f'<article class="legal">{markdown(notice, links)}</article>', "/mentions-legales/",
+                                      f'<article class="legal">{markdown(notice, links).replace(PHONE_TOKEN, phone_html(cfg, "fr"))}'
+                                      f'</article>{PHONE_SCRIPT}', "/mentions-legales/",
                                       version, {"fr": "/mentions-legales/"}, "doc"))
     well_known = out / ".well-known"
     well_known.mkdir()

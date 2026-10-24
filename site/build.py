@@ -149,7 +149,15 @@ p {{ font-size: 26px; font-weight: 800; color: #4A5163; margin: 30px 0 0; }}
 # -- Config: the owner's one place (site/config.json) ----------------------------------------------------------------
 
 def config() -> Dict[str, Any]:
-    return json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+    """site/config.json, with the company details kept out of the public repository (the president's name, the
+    phone) laid over it from internal/site-private.json when that file is there (the private checkout only)."""
+    cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+    private = ROOT.parent / "internal" / "site-private.json"
+    if private.is_file():
+        for key, value in json.loads(private.read_text(encoding="utf-8")).get("company", {}).items():
+            if value:
+                cfg["company"][key] = value
+    return cfg
 
 
 def money(value: float, lang: str) -> str:
