@@ -170,7 +170,14 @@ quand la personne l'a demandé, dans la limite de `[jobs] direct_budget_eur` (�
 `[notebook]`) ; au-delà, il propose la tâche et la personne la lance d'un geste. Un tour de conversation qui dépasse
 `handoff_tool_calls` (15 par défaut) appels d'outils ou `handoff_seconds` (180 par défaut) reçoit une fois la consigne
 de passer la suite en tâche de fond (`handoff = false` le coupe) ; le pont écrit
-`long run: handing over to a background task (steer)` dans le journal.
+`long run: handing over to a background task (steer)` dans le journal. Jamais pendant qu'un sous-agent
+(`delegate_task`) travaille pour ce tour, et ni ses appels ni son temps ne comptent. Un tour qui navigue avec le
+navigateur visible de l'agent (un outil de navigateur parmi ses `handoff_browser_window` derniers appels, 5 par défaut)
+se regarde en direct : seuls ses propres seuils comptent, `handoff_browser_tool_calls` et `handoff_browser_seconds`
+(0 par défaut : jamais). Un tour qui a reçu la consigne et se termine quand même sans passer la main (ni vraie réponse)
+voit sa tâche de fond lancée par le pont, avec la demande de la personne et ce qui a déjà été fait, dans la limite de
+`direct_budget_eur` (`handoff_rescue = false` le coupe) ; si elle ne peut pas démarrer, elle est proposée
+(« Démarrer » dans la conversation), et la conversation comme une notification le disent.
 
 Les fiches (achats, abonnements, contrats, papiers, réservations) peuvent être remplies depuis une archive d'un agent :
 `bipagents archive extract <agent> --archive <id> --sample 50` lit 50 documents probables avec le modèle de l'agent et

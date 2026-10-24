@@ -1119,13 +1119,16 @@ pub fn jobs_of(state: &AppState) -> Arc<Jobs> {
     state
         .jobs
         .get_or_init(|| {
-            Arc::new(Jobs::new(
+            let jobs = Arc::new(Jobs::new(
                 state.config.clone(),
                 state.hermes.clone(),
                 Some(state.hub.clone()),
                 Some(state.push.clone()),
                 Some(crate::mail_scan::scans_of(state)),
-            ))
+            ));
+            // The safety net's rescue starts tasks for runs that stopped without handing over (runs.rs).
+            let _ = state.hub.jobs.set(Arc::downgrade(&jobs));
+            jobs
         })
         .clone()
 }

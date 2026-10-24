@@ -479,7 +479,11 @@ impl Default for NotebookConfig {
 /// `[jobs]`: long work handed to background tasks (jobs.rs, decided 2026-10-22). An agent starts a task by itself only
 /// when the person asked for that work, within `direct_budget_eur` (counted at the `[notebook]` prices, the bridge's
 /// one price list); above it, it proposes. The bridge's safety net (runs.rs) steers once into a conversation's run
-/// that goes past `handoff_tool_calls` tool calls or `handoff_seconds`, asking the agent to hand the rest over.
+/// that goes past `handoff_tool_calls` tool calls or `handoff_seconds`, asking the agent to hand the rest over. Never
+/// while a sub-agent (`delegate_task`) works for the run; a run browsing with the agent's visible browser (a browser
+/// tool among its last `handoff_browser_window` calls: the person watches it live) has its own thresholds,
+/// `handoff_browser_tool_calls` / `handoff_browser_seconds` (0: never steered, the default). A steered run that ends
+/// without handing over has its task started by the bridge (`handoff_rescue`, 2026-10-24).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct JobsConfig {
     /// Euros of tokens a task the person asked for may take without their go (≈ 0.20 €).
@@ -488,11 +492,27 @@ pub struct JobsConfig {
     pub handoff: bool,
     pub handoff_tool_calls: u32,
     pub handoff_seconds: f64,
+    /// A browsing run's thresholds (0: none of that kind; both 0: a browsing run is never steered).
+    pub handoff_browser_tool_calls: u32,
+    pub handoff_browser_seconds: f64,
+    /// How many of the run's last tool calls are looked at to tell a browsing run.
+    pub handoff_browser_window: u32,
+    /// A steered run that ended without handing over: the bridge starts (or proposes) the task itself.
+    pub handoff_rescue: bool,
 }
 
 impl Default for JobsConfig {
     fn default() -> Self {
-        JobsConfig { direct_budget_eur: 0.20, handoff: true, handoff_tool_calls: 15, handoff_seconds: 180.0 }
+        JobsConfig {
+            direct_budget_eur: 0.20,
+            handoff: true,
+            handoff_tool_calls: 15,
+            handoff_seconds: 180.0,
+            handoff_browser_tool_calls: 0,
+            handoff_browser_seconds: 0.0,
+            handoff_browser_window: 5,
+            handoff_rescue: true,
+        }
     }
 }
 
@@ -1205,6 +1225,12 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         handoff: b(jobs_t, "handoff", jd.handoff),
         handoff_tool_calls: i(jobs_t, "handoff_tool_calls", jd.handoff_tool_calls as i64)?.clamp(1, 10_000) as u32,
         handoff_seconds: f(jobs_t, "handoff_seconds", jd.handoff_seconds)?.clamp(5.0, 86_400.0),
+        handoff_browser_tool_calls: i(jobs_t, "handoff_browser_tool_calls", jd.handoff_browser_tool_calls as i64)?
+            .clamp(0, 10_000) as u32,
+        handoff_browser_seconds: f(jobs_t, "handoff_browser_seconds", jd.handoff_browser_seconds)?.clamp(0.0, 86_400.0),
+        handoff_browser_window: i(jobs_t, "handoff_browser_window", jd.handoff_browser_window as i64)?.clamp(1, 100)
+            as u32,
+        handoff_rescue: b(jobs_t, "handoff_rescue", jd.handoff_rescue),
     };
 
     let records_t = table(data, "archive_records");

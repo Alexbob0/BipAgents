@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.6.0
+version: 1.7.0
 author: BipAgents
 license: MIT
 metadata:
@@ -20,6 +20,12 @@ over the mouse and keyboard.
 Call `spawn_browser` with no arguments, never `headless`: the profile (cookies and logins kept between tasks), the
 window, the language and the time zone are already set, and the browser always shows on your desktop. Keep the `instance_id` it returns for every later call. Never start a second
 browser while one runs: reuse the instance (`list_instances` tells you if one is already open).
+
+## 1b. Browse yourself, never through a sub-agent
+Do the browsing yourself, in this conversation, with these tools: the person watches it live. Never hand it to a
+sub-agent (`delegate_task`): its steps don't show in the conversation, it runs apart from your turn, and its result
+only comes back when the person writes again, so for them the work just stops. When the browsing is long (many sites,
+many pages), start a background task (`start_task`) that browses instead, and tell the person in one sentence.
 
 ## 2. Browse
 - After opening a page of a site that checks for robots, wait 5 to 10 seconds before reading it.
