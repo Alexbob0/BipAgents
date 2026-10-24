@@ -91,7 +91,7 @@
       "label": "Precio",
       "c1": "Versión gratis; planes de pago de unos 20 $ o 23 € al mes",
       "c2": "Software gratuito; pagas el servidor y el modelo de IA",
-      "c3": "Desde {{p.from}} al mes, unos 1.000 mensajes de IA incluidos"
+      "c3": "Desde {{p.from}} al mes, crédito de IA incluido"
     }
   },
   "marquee": [
@@ -213,17 +213,17 @@
     "solo": {
       "name": "Solo",
       "who": "1 persona",
-      "blurb": "Tus agentes, solo para ti. Unos 1.000 mensajes de IA al mes."
+      "blurb": "Tus agentes, solo para ti."
     },
     "duo": {
       "name": "Dúo",
       "who": "2 personas",
-      "blurb": "Cada uno con sus agentes y su espacio. Unos 2.000 mensajes de IA al mes para los dos."
+      "blurb": "Cada uno con sus agentes y su espacio."
     },
     "famille": {
       "name": "Familia",
       "who": "hasta 6 personas",
-      "blurb": "Un servidor solo para vosotros, cada uno con su espacio. Unos 6.000 mensajes de IA al mes para toda la familia.",
+      "blurb": "Un servidor solo para vosotros, un espacio para cada uno.",
       "flag": "El mejor precio por persona"
     },
     "perYear": "/año",
@@ -236,7 +236,7 @@
     "cancel": "Cancela cuando quieras: tu espacio se guarda 30 días para que te lleves todo (3 días tras una semana gratis que no continuaste).",
     "includedTitle": "Incluido en cada plan",
     "inc1": "Tus Bips, tus agentes de IA, listos en un minuto",
-    "inc2": "Mensajes de IA cada mes, compartidos en Dúo y Familia, y lo que sobra pasa al mes siguiente",
+    "inc2": "Crédito de IA cada mes, común en Dúo y Familia, y lo que sobra pasa al mes siguiente",
     "inc3": "Live, las voces de los Bips y el pódcast de la mañana",
     "inc4": "Cuaderno, correo, agenda, recordatorios, navegador y tareas en segundo plano",
     "inc5": "Una copia de seguridad cifrada cada hora",
@@ -323,7 +323,7 @@
     },
     "3": {
       "q": "¿Cuántos mensajes al mes?",
-      "a": "Unos 1.000 al mes con Solo, 2.000 con Dúo y 6.000 con Familia, para toda la familia. Es una estimación con el modelo por defecto, redondeada a la baja: un modelo más potente los gasta más rápido, una tarea en el navegador cuenta mucho más que un mensaje (a menudo varias decenas), y la app te muestra la cuenta con el tuyo. En Dúo y Familia el crédito de IA es común: la persona que paga ve cuánto usa cada persona, nunca lo que escribe, y puede poner un límite por persona. Lo que sobra pasa al mes siguiente. ¿Necesitas más? Unos 4.000 mensajes por 2,99 € en la app, que nunca caducan. Sin crédito: los agentes hacen una pausa hasta el mes siguiente, no se pierde nada."
+      "a": "Cada plan tiene su crédito de IA del mes: 0,50 € para Solo, 1 € para Dúo, 3 € para Familia, común para todas sus personas. La app te lo muestra como número estimado de mensajes con tu modelo: un intercambio sencillo cuenta uno, una tarea en el navegador mucho más (a menudo varias decenas). En Dúo y Familia, la persona que paga ve cuánto usa cada persona, nunca lo que escribe, y puede poner un límite por persona. Lo que sobra pasa al mes siguiente. ¿Necesitas más? Crédito adicional en la app, que nunca caduca. Sin crédito: los agentes hacen una pausa hasta el mes siguiente, no se pierde nada."
     },
     "4": {
       "q": "¿Quién puede leer mis conversaciones?",

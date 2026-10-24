@@ -135,8 +135,8 @@ section 6); the services you connect to your agents and their own subscriptions.
 - Each plan has an **AI credit per month: €0.50 for Solo, €1.00 for Duo, €3.00 for Family**: AI model use counted at
   the price the provider charges Kerfy Studio. On a Duo or a Family plan, this credit **belongs to everyone in the
   plan**: their agents use it together, with no fixed share for each person.
-- **As messages**: the app shows the credit as an **estimated number of messages** with the chosen model. With the
-  default model, the offer's pages round it down: **about 1,000 messages a month for Solo, 2,000 for Duo and 6,000 for
+- **As messages**: the app shows the credit as an **estimated number of messages** with the chosen model. As a guide, with the
+  default model and rounded down: **about 1,000 messages a month for Solo, 2,000 for Duo and 6,000 for
   the whole family**. It is an estimate, not a promise: the cost of a message depends on its length, on the attached
   files and on the model. A message, here, is a simple exchange: a **task in the browser** or a
   **background task** chains many calls to the model and counts for much more, often as much as several dozen

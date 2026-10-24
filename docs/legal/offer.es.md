@@ -142,8 +142,8 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - Cada plan tiene un **crédito de IA al mes: 0,50 € para Solo, 1,00 € para Duo, 3,00 € para Familia**: uso del modelo
   contado al precio que el proveedor factura a Kerfy Studio. En un Duo o una Familia, este crédito **es de todas las
   personas del plan**: sus agentes lo usan juntos, sin una parte fija para cada una.
-- **En mensajes**: la app muestra el crédito como un **número estimado de mensajes** con el modelo elegido. Con el
-  modelo por defecto, las páginas de la oferta lo redondean a la baja: **unos 1.000 mensajes al mes para Solo, 2.000
+- **En mensajes**: la app muestra el crédito como un **número estimado de mensajes** con el modelo elegido. A título orientativo,
+  con el modelo por defecto y redondeado a la baja: **unos 1.000 mensajes al mes para Solo, 2.000
   para Duo y 6.000 para toda la familia**. Es una estimación, no una promesa: el coste de un mensaje depende de su
   longitud, de los archivos adjuntos y del modelo. Aquí, un mensaje es un intercambio sencillo: una **tarea en el
   navegador** o una **tarea en segundo plano** encadena muchas llamadas al modelo y cuenta mucho más, a menudo lo

@@ -144,8 +144,8 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   l'utilisation du modèle comptée au prix que le fournisseur facture à Kerfy Studio. Sur un Duo ou une Famille, ce
   crédit est **celui de toutes les personnes du forfait** : leurs agents l'utilisent ensemble, sans part fixe pour
   chacun.
-- **En messages** : l'app affiche le crédit en **nombre estimé de messages** avec le modèle choisi. Avec le modèle par
-  défaut, les pages de l'offre l'arrondissent vers le bas : **environ 1 000 messages par mois pour Solo, 2 000 pour
+- **En messages** : l'app affiche le crédit en **nombre estimé de messages** avec le modèle choisi. À titre indicatif, avec le
+  modèle par défaut et arrondi vers le bas : **environ 1 000 messages par mois pour Solo, 2 000 pour
   Duo et 6 000 pour toute la famille**. C'est une estimation, pas une promesse : le coût d'un message dépend de sa
   longueur, des fichiers joints et du modèle. Un message, ici, c'est un échange simple : une **tâche dans le
   navigateur** ou une **tâche de fond** enchaîne de nombreux appels au modèle et compte pour bien plus, souvent

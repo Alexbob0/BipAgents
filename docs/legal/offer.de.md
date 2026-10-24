@@ -145,8 +145,8 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - Jeder Tarif hat ein **KI-Guthaben pro Monat: 0,50 € für Solo, 1,00 € für Duo, 3,00 € für Familie**: Nutzung des
   Modells, berechnet zu dem Preis, den der Anbieter Kerfy Studio in Rechnung stellt. Bei Duo oder Familie **gehört
   dieses Guthaben allen Personen des Tarifs**: Ihre Agenten nutzen es gemeinsam, ohne festen Anteil für jede Person.
-- **In Nachrichten**: Die App zeigt das Guthaben als **geschätzte Zahl von Nachrichten** mit dem gewählten Modell. Mit
-  dem Standardmodell runden die Seiten des Angebots ab: **etwa 1.000 Nachrichten pro Monat für Solo, 2.000 für Duo und
+- **In Nachrichten**: Die App zeigt das Guthaben als **geschätzte Zahl von Nachrichten** mit dem gewählten Modell. Als Anhaltspunkt,
+  mit dem Standardmodell und abgerundet: **etwa 1.000 Nachrichten pro Monat für Solo, 2.000 für Duo und
   6.000 für die ganze Familie**. Es ist eine Schätzung, kein Versprechen: Was eine Nachricht kostet, hängt von ihrer
   Länge, den angehängten Dateien und dem Modell ab. Eine Nachricht ist hier ein einfacher Austausch: Eine **Aufgabe im
   Browser** oder eine **Hintergrundaufgabe** reiht viele Aufrufe des Modells aneinander und zählt viel mehr, oft so
