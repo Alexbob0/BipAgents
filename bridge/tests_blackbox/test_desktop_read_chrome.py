@@ -49,21 +49,26 @@ def chromium():
             pass
         time.sleep(0.2)
     time.sleep(0.5)
+    page_eval(port, "window.changes = 0; window.events = 0")   # the browser's own resizes once the window settles
     yield port
     proc.terminate()
     proc.wait(timeout=10)
 
 
-def page_counters(port):
-    """What the page's own scripts saw: DOM changes and focus/scroll/resize events."""
+def page_eval(port, expression):
     tab = next(t for t in httpx.get(f"http://127.0.0.1:{port}/json/list").json() if t["type"] == "page")
     with connect(tab["webSocketDebuggerUrl"], max_size=None) as ws:
         ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {
-            "expression": "[window.changes, window.events, document.activeElement.id]", "returnByValue": True}}))
+            "expression": expression, "returnByValue": True}}))
         while True:
             answer = json.loads(ws.recv(timeout=10))
             if answer.get("id") == 1:
-                return answer["result"]["result"]["value"]
+                return answer["result"]["result"].get("value")
+
+
+def page_counters(port):
+    """What the page's own scripts saw: DOM changes and focus/scroll/resize events."""
+    return page_eval(port, "[window.changes, window.events, document.activeElement.id]")
 
 
 def test_a_real_page_read_and_followed_without_being_touched(bridges, fakes, chromium):
