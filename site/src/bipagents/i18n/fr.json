@@ -61,11 +61,19 @@
     "c3": "Grok Bot (xAI)",
     "c4": "BipAgents",
     "sources": "Sources au 24 octobre 2026",
+    "pick": "Comparer avec :",
+    "n1": "Muse",
+    "n2": "dots",
+    "n3": "Grok Bot",
+    "all": "Tous",
+    "g1": "Ce qu’il fait",
+    "g2": "Ta vie privée",
+    "grokFr": "Grok Bot utilisable depuis la France, vérifié le 24/10/2026",
     "r1": {
       "label": "Pour les particuliers en France",
       "c1": "Non : États-Unis et Canada",
       "c2": "Non : ChatGPT Pro exclut l’Europe",
-      "c3": "Pas de liste de pays publiée",
+      "c3": "Oui",
       "c4": "Oui, dès l’ouverture de la bêta"
     },
     "r2": {
@@ -109,6 +117,13 @@
       "c2": "Non, sur les serveurs d’OpenAI",
       "c3": "Non, sur les serveurs de Cursor",
       "c4": "Oui : construit sur Hermes Agent, gratuit sur ton ordinateur"
+    },
+    "r8": {
+      "label": "Tes conversations servent à entraîner une IA",
+      "c1": "Oui par défaut, désactivable",
+      "c2": "Selon le réglage « Améliorer le modèle »",
+      "c3": "Selon le mode confidentialité",
+      "c4": "Jamais par Kerfy Studio"
     }
   },
   "marquee": [
