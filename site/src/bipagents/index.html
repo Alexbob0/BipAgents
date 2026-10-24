@@ -1,8 +1,8 @@
 {{>top}}
 <!-- ============================================================ HERO -->
 <section class="hero">
-  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="hero-copy reveal">
+    <p class="chip-beta">{{hero.beta}}</p>
     <h1>
       <span class="h-line">{{hero.line1}}</span>
       <span class="h-line"><span class="h-hl">{{hero.line2}}</span></span>
@@ -15,8 +15,8 @@
     </ul>
     <p class="words">{{hero.words}}</p>
     <div class="cta-row">
-      <a class="pill pill-buy" href="{{demohref}}">{{hero.watch}} <small class="pill-time">{{hero.watchTime}}</small> <span aria-hidden="true">→</span></a>
-      <a class="pill pill-soft" href="#pricing">{{hero.cta}}</a>
+      <a class="pill pill-buy" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
+      <a class="pill pill-soft" href="{{demohref}}">{{hero.watch}} <small class="pill-time">{{hero.watchTime}}</small></a>
       <a class="pill pill-soft" href="#install"><span aria-hidden="true">💻</span>{{pricing.mode.self}}</a>
     </div>
     <p class="hero-price">{{hero.price}}</p>
@@ -24,7 +24,6 @@
 
   <!-- The moment that matters: an agent asks, you tap « Once », it's done (a loop; still for reduced motion). -->
   <div class="hero-stage">
-    <div class="halo" aria-hidden="true"></div>
     <figure class="ask" role="img" aria-label="{{ask.a11y}}" data-tilt>
       <div class="ask-inner" aria-hidden="true">
         <div class="chat-head">
@@ -72,6 +71,43 @@
         <tr><th scope="row">{{vs.r7.label}}</th><td data-col="{{vs.c1}}">{{vs.r7.c1}}</td><td data-col="{{vs.c2}}">{{vs.r7.c2}}</td><td class="vs-us" data-col="{{vs.c3}}">{{vs.r7.c3}}</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<!-- ============================================================ THE MÉMO (what sets BipAgents apart: the app's Notebook) -->
+<section class="section memo-section" id="memo">
+  <div class="memo">
+    <div class="memo-copy reveal">
+      <p class="kicker">{{memo.kicker}}</p>
+      <h2>{{memo.title}}</h2>
+      <p class="sub">{{memo.sub}}</p>
+      <ul class="memo-list">
+        <li>{{memo.i1}}</li><li>{{memo.i2}}</li><li>{{memo.i3}}</li>
+        <li>{{memo.i4}}</li><li>{{memo.i5}}</li><li>{{memo.i6}}</li>
+      </ul>
+      <p class="memo-line"><span aria-hidden="true">🗂️</span>{{memo.line1}}</p>
+      <p class="memo-line"><span aria-hidden="true">🔎</span>{{memo.line2}}</p>
+    </div>
+    <figure class="memo-shot reveal" role="img" aria-label="{{memo.a11y}}">
+      <div class="ms" aria-hidden="true">
+        <div class="ms-top"><span class="ms-av">A</span><span class="ms-search"><svg width="18" height="18" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+        <p class="ms-title">{{memo.shot.title}}</p>
+        <div class="ms-card">
+          <p class="ms-label">{{memo.shot.today}}</p>
+          <p class="ms-task"><i></i><span>{{memo.shot.t1}}</span><small>{{memo.shot.t1s}}</small></p>
+          <p class="ms-task"><i></i><span>{{memo.shot.t2}}</span></p>
+          <p class="ms-task done"><i></i><span>{{memo.shot.t3}}</span></p>
+        </div>
+        <div class="ms-trip"><span class="ms-trip-bip" data-bip-static="home"></span><span><b>{{memo.shot.trip}}</b><small>{{memo.shot.tripSub}}</small></span></div>
+        <div class="ms-card ms-kinds">
+          <p><span>{{memo.shot.k1}}</span><b>12</b></p>
+          <p><span>{{memo.shot.k2}}</span><b>7</b></p>
+          <p><span>{{memo.shot.k3}}</span><b>9</b></p>
+          <p><span>{{memo.shot.k4}}</span><b>2</b></p>
+          <p class="ms-arch"><span>{{memo.shot.archives}}</span><small>{{memo.shot.archivesSub}}</small></p>
+        </div>
+      </div>
+    </figure>
   </div>
 </section>
 
@@ -147,7 +183,7 @@
       <div class="cmp-flow" aria-hidden="true">
         <div class="cmp-node cmp-small"><svg class="cmp-pic" viewBox="0 0 30 50" width="30" height="50"><rect x="1.25" y="1.25" width="27.5" height="47.5" rx="7" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/><rect x="8" y="17" width="14" height="6" rx="3" fill="var(--blue)"/><rect x="8" y="27" width="14" height="6" rx="3" fill="var(--muted)" opacity=".5"/></svg><b>{{compare.you}}</b></div>
         <div class="cmp-arrow cmp-arrow-grey"><i></i><span class="packet"></span></div>
-        <div class="cmp-node cmp-wide cmp-crowd"><svg class="cmp-pic" viewBox="0 0 112 62" width="112" height="62"><rect x="54.5" y="0" width="3" height="8" rx="1.5" fill="#6B7489"/><rect x="1.25" y="8.25" width="109.5" height="52.5" rx="9" fill="var(--ground2)" stroke="#6B7489" stroke-width="2.5"/><g class="crowd"><rect x="12" y="16" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="31" y="16" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="50" y="16" width="14" height="8" rx="3" fill="#3CC37A"/><rect x="69" y="16" width="14" height="8" rx="3" fill="#4F7CFF"/><rect x="88" y="16" width="14" height="8" rx="3" fill="#F6B826"/><rect x="12" y="30" width="14" height="8" rx="3" fill="#8E6CF5"/><rect x="31" y="30" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="50" y="30" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="69" y="30" width="14" height="8" rx="3" fill="#3CC37A"/><rect x="88" y="30" width="14" height="8" rx="3" fill="#4F7CFF"/><rect x="12" y="44" width="14" height="8" rx="3" fill="#F2649E"/><rect x="31" y="44" width="14" height="8" rx="3" fill="#8E6CF5"/><rect x="50" y="44" width="14" height="8" rx="3" fill="#FF7B5C"/><rect x="69" y="44" width="14" height="8" rx="3" fill="#1FB2C1"/><rect x="88" y="44" width="14" height="8" rx="3" class="mine" fill="#4F7CFF"/></g></svg><b>{{compare.theirServers}}</b><small>{{compare.everyones}}</small></div>
+        <div class="cmp-node cmp-wide cmp-crowd"><svg class="cmp-pic" viewBox="0 0 112 62" width="112" height="62"><rect x="54.5" y="0" width="3" height="8" rx="1.5" fill="#6B7489"/><rect x="1.25" y="8.25" width="109.5" height="52.5" rx="9" fill="var(--ground2)" stroke="#6B7489" stroke-width="2.5"/><g class="crowd"><rect x="12" y="16" width="14" height="8" rx="3" fill="#F4B5A3"/><rect x="31" y="16" width="14" height="8" rx="3" fill="#9FD6DA"/><rect x="50" y="16" width="14" height="8" rx="3" fill="#A9D9B8"/><rect x="69" y="16" width="14" height="8" rx="3" fill="#B3C4F5"/><rect x="88" y="16" width="14" height="8" rx="3" fill="#F2D48E"/><rect x="12" y="30" width="14" height="8" rx="3" fill="#CABCF3"/><rect x="31" y="30" width="14" height="8" rx="3" fill="#F4B5A3"/><rect x="50" y="30" width="14" height="8" rx="3" fill="#9FD6DA"/><rect x="69" y="30" width="14" height="8" rx="3" fill="#A9D9B8"/><rect x="88" y="30" width="14" height="8" rx="3" fill="#B3C4F5"/><rect x="12" y="44" width="14" height="8" rx="3" fill="#F2B5CE"/><rect x="31" y="44" width="14" height="8" rx="3" fill="#CABCF3"/><rect x="50" y="44" width="14" height="8" rx="3" fill="#F4B5A3"/><rect x="69" y="44" width="14" height="8" rx="3" fill="#9FD6DA"/><rect x="88" y="44" width="14" height="8" rx="3" class="mine" fill="#B3C4F5"/></g></svg><b>{{compare.theirServers}}</b><small>{{compare.everyones}}</small></div>
         <div class="cmp-arrow cmp-arrow-grey"><i></i><span class="packet"></span></div>
         <div class="cmp-node cmp-side"><span class="cmp-badge cmp-violet">🧠</span><b>{{compare.theirAi}}</b><small>{{compare.mayTrain}}</small></div>
       </div>
@@ -195,6 +231,7 @@
   <div class="section-head reveal">
     <h2>{{pricing.title}}</h2>
     <p class="sub">{{pricing.sub}}</p>
+    <p class="after-beta">{{pricing.afterBeta}} <a href="{{betahref}}">{{nav.cta}}</a></p>
   </div>
   <div class="pricing reveal">
     <div class="pricing-bar">
@@ -206,7 +243,7 @@
         <select data-currency>{{currencyoptions}}</select></label>
     </div>
     <div class="plans" role="radiogroup" aria-label="{{pricing.planLabel}}">
-      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo" style="--main:#FF7B5C;--tint:var(--coral-tint)">
+      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo" style="--main:var(--coral);--tint:var(--coral-tint)">
         <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i></span>
         <span class="plan-name">{{pricing.solo.name}}</span>
         <span class="plan-who">{{pricing.solo.who}}</span>
@@ -215,7 +252,7 @@
         <span class="plan-store" data-store="solo">{{pricing.inApp}} {{p.store.year.solo}}</span>
         <span class="plan-blurb">{{pricing.solo.blurb}}</span>
       </button>
-      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="duo" style="--main:#4F7CFF;--tint:var(--blue-tint)">
+      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="duo" style="--main:var(--blue);--tint:var(--blue-tint)">
         <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="work"></i></span>
         <span class="plan-name">{{pricing.duo.name}}</span>
         <span class="plan-who">{{pricing.duo.who}}</span>
@@ -224,7 +261,7 @@
         <span class="plan-store" data-store="duo">{{pricing.inApp}} {{p.store.year.duo}}</span>
         <span class="plan-blurb">{{pricing.duo.blurb}}</span>
       </button>
-      <button type="button" class="plan plan-best" role="radio" aria-checked="true" data-plan="famille" style="--main:#3CC37A;--tint:var(--green-tint)">
+      <button type="button" class="plan plan-best" role="radio" aria-checked="true" data-plan="famille" style="--main:var(--green);--tint:var(--green-tint)">
         <span class="plan-flag">{{pricing.famille.flag}}</span>
         <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="finance"></i><i data-bip-static="home"></i></span>
         <span class="plan-name">{{pricing.famille.name}}</span>
@@ -339,8 +376,8 @@
 </section>
 
 <div class="sticky-buy" aria-hidden="true">
-  <span class="sb-copy"><b class="sb-plan">{{pricing.famille.name}}</b><span class="sb-price">{{p.web.yearmonth.famille}} {{pricing.perMonthShort}}</span></span>
-  <a class="pill pill-buy small" href="#pricing" tabindex="-1">{{nav.cta}}</a>
+  <span class="sb-copy"><b class="sb-plan">{{beta.sticky}}</b><span class="sb-price">{{beta.stickySub}}</span></span>
+  <a class="pill pill-buy small top-cta" href="{{betahref}}" tabindex="-1"><span class="cta-long">{{nav.cta}}</span><span class="cta-short">{{nav.ctaShort}}</span></a>
 </div>
 
 {{>foot}}

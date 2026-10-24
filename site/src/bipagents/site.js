@@ -117,7 +117,7 @@ async function play(id) {
   const scenario = data.scenarios[id], category = scenario.category, c = CATEGORIES[category];
   for (const el of [chat, wrap]) el.style.setProperty("--chat-tint", `var(--${TONE[category]}-tint)`);
   chat.style.setProperty("--chat-main", c.main);
-  chat.style.setProperty("--chat-deep", c.deep);
+  chat.style.setProperty("--chat-deep", `var(--${TONE[category]}-deep)`);   // the text-safe shade (site.css)
   $(".chat-avatar").innerHTML = staticBip(category);
   $(".chat-name").textContent = scenario.agent;
   body.innerHTML = "";
@@ -444,8 +444,6 @@ const region = (function () {
       buy.href = withCurrency(data.checkout[plan][period], currency) || buy.href;
       $(".buy-label", buy).textContent = L.buy.replace("{plan}", L.names[plan]).replace("{period}", L.period[period]);
     }
-    $(".sb-plan", sticky).textContent = L.names[plan];
-    $(".sb-price", sticky).textContent = (period === "year" ? m(price / 12) : m(price)) + " " + L.perMonth + tax;
     $$("[data-from]").forEach(el => { el.textContent = m(web.month[P.plans[0]]); });
     if (fineTax) {
       const name = (L.currencies || {})[currency] || currency;

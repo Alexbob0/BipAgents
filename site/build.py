@@ -27,11 +27,11 @@ DIST = ROOT / "dist"
 LANGS = ["en", "fr", "de", "es"]
 BIPAGENTS = "https://bipagents.com"
 CATEGORY_ORDER = ["daily", "wellness", "finance", "home", "work", "learning", "creative", "tech"]
-COLORS = {  # main, deep, tint variable (site.css)
-    "daily": ("#FF7B5C", "#C9472A", "coral"), "wellness": ("#3CC37A", "#1D8A4F", "green"),
-    "finance": ("#F6B826", "#9A6A00", "gold"), "home": ("#1FB2C1", "#0D7F8B", "teal"),
-    "work": ("#4F7CFF", "#2B55D4", "blue"), "learning": ("#8E6CF5", "#6142D2", "violet"),
-    "creative": ("#F2649E", "#C23774", "pink"), "tech": ("#6B7489", "#3F4659", "blue"),
+COLORS = {  # main, deep, tint variable (site.css): the apps' pale palette (2026-10-24, the « sober » direction)
+    "daily": ("#F4B5A3", "#C9775F", "coral"), "wellness": ("#A9D9B8", "#5E9E73", "green"),
+    "finance": ("#F2D48E", "#B08A2E", "gold"), "home": ("#9FD6DA", "#4E9AA0", "teal"),
+    "work": ("#B3C4F5", "#6F86C9", "blue"), "learning": ("#CABCF3", "#8873C9", "violet"),
+    "creative": ("#F2B5CE", "#C47396", "pink"), "tech": ("#C3C8D3", "#7F8696", "blue"),
 }
 CURRENT = ' aria-current="page"'
 # The header's menu: each language, under it the countries it is sold in; the currency follows (the country's in
@@ -105,7 +105,7 @@ def favicon(category: str = "daily") -> str:
     inner = re.sub(r"^<svg[^>]*>|</svg>$", "", drawn)
     main = COLORS[category][0]
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">'
-            f'<rect width="120" height="120" rx="30" fill="#FFF3EE"/>'
+            f'<rect width="120" height="120" rx="30" fill="#FBEFEA"/>'
             f'<g transform="translate(6 2) scale(.9)">{inner}</g></svg>' if inner else
             f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" rx="30" fill="{main}"/></svg>')
 
@@ -140,11 +140,11 @@ def og_image(t: Dict[str, Any], lang: str, target: Path) -> None:
     page.write_text(f"""<!doctype html><meta charset="utf-8"><style>
 @font-face {{ font-family: N; src: url("{font}"); font-weight: 200 1000; }}
 html, body {{ margin: 0; width: 1200px; height: 630px; overflow: hidden; }}
-body {{ font-family: N, sans-serif; background: linear-gradient(135deg, #FFE8E0, #FFF3D1 45%, #E2F5EA); color: #16181D; position: relative; }}
+body {{ font-family: N, sans-serif; background: #F7F6F3; color: #1D1F24; position: relative; }}
 .copy {{ position: absolute; left: 72px; top: 70px; width: 640px; }}
 .brand {{ font-size: 34px; font-weight: 800; letter-spacing: -.02em; }} .brand b {{ font-weight: 1000; }}
 h1 {{ font-size: 62px; line-height: 1.02; letter-spacing: -.045em; font-weight: 1000; margin: 34px 0 0; }}
-p {{ font-size: 26px; font-weight: 800; color: #4A5163; margin: 30px 0 0; }}
+p {{ font-size: 26px; font-weight: 800; color: #555B68; margin: 30px 0 0; }}
 .b {{ position: absolute; width: 230px; height: 230px; }} .b svg {{ width: 100%; height: 100%; overflow: visible; }}
 .b0 {{ left: 760px; top: 60px; }} .b1 {{ left: 940px; top: 150px; width: 200px; height: 200px; }} .b2 {{ left: 800px; top: 300px; }}
 .b3 {{ left: 990px; top: 380px; width: 180px; height: 180px; }} .b4 {{ left: 690px; top: 430px; width: 160px; height: 160px; }}
@@ -219,10 +219,11 @@ PLAY = ('<svg viewBox="0 0 24 24" width="22" height="22"><path fill="#34A853" d=
         '<path fill="#EA4335" d="M3.6 1.8c.4-.3.9-.3 1.4 0l11.8 6.8-3.4 3.4z"/></svg>')
 
 
-def store_badges(links: Dict[str, str], soon: str, get: str) -> str:
-    """The two store badges: links once the owner has set them, « coming soon » until then."""
+def store_badges(links: Dict[str, str], soon: str, get: str, apple: str = "App Store") -> str:
+    """The two store badges: links once the owner has set them, « coming soon » until then (apple: the Apple badge's
+    name, « TestFlight » for the beta)."""
     out = []
-    for key, name, glyph in (("appStore", "App Store", APPLE), ("googlePlay", "Google Play", PLAY)):
+    for key, name, glyph in (("appStore", apple, APPLE), ("googlePlay", "Google Play", PLAY)):
         url = links.get(key, "")
         inner = (f'<span class="store-glyph" aria-hidden="true">{glyph}</span><span class="store-text">'
                  f'<span class="store-kicker">{html.escape(get if url else soon)}</span>'
@@ -266,7 +267,7 @@ DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach")
 # too (« on my computer », #install); the demo and every question have their own pages, sharing the header and the
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
-         ("install", "install.html", "install/"))
+         ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"))
 FAQ_HOME = (1, 3, 2, 6, 4, 5)   # what's included, AI credit, free week, stopping, privacy, Duo/Famille
 FAQ_COUNT = 10
 
@@ -350,6 +351,10 @@ def bipagents(version: str) -> Path:
             for code, c in currencies.items())
         default_url = checkout_url(cfg, "famille", "year", lang)
         badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
+        # The public beta (site/config.json « beta »): TestFlight and Google Play's testing links once they are set.
+        beta = cfg.get("beta", {})
+        cap = beta.get("cap") or ""
+        cap = (cap.get(lang) or "") if isinstance(cap, dict) else cap
 
         def faq(numbers: Any) -> str:
             return "\n    ".join(f'<details><summary>{values[f"faq.{n}.q"]}</summary><p>{values[f"faq.{n}.a"]}</p></details>'
@@ -361,6 +366,11 @@ def bipagents(version: str) -> Path:
             "marquee": "".join(f'<span>{html.escape(word)}<i style="background:{COLORS[CATEGORY_ORDER[i % 8]][0]}"></i></span>'
                                for i, word in enumerate(t["marquee"])),
             "storebadges": badges,
+            "betahref": f"{paths[lang]}beta/",
+            "betabadges": store_badges({"appStore": beta.get("testflight", ""), "googlePlay": beta.get("play", "")},
+                                       t["beta"]["storeSoon"], t["beta"]["storeGet"], "TestFlight"),
+            "betasoon": "" if beta.get("testflight") or beta.get("play") else f'<p class="beta-soon">{values["beta.soon"]}</p>',
+            "betacap": f'<p class="beta-cap">{html.escape(values["beta.cap"].replace("{cap}", cap))}</p>' if cap else "",
             # The home keeps the questions that settle a purchase; /faq/ has them all.
             "faqhome": faq(FAQ_HOME), "faqall": faq(range(1, FAQ_COUNT + 1)),
             "buy": (f'<a class="pill pill-buy" id="buy" href="{html.escape(default_url)}" rel="noopener">'
@@ -413,6 +423,7 @@ def bipagents(version: str) -> Path:
                                       + [f'<link rel="alternate" hreflang="x-default" href="{BIPAGENTS}{here["en"]}">']),
                 "langmenu": lang_menu(here, lang, texts, regions, currencies),
                 "cur.demo": CURRENT if name == "demo" else "", "cur.faq": CURRENT if name == "faq" else "",
+                "cur.beta": CURRENT if name == "beta" else "",
                 "data": json.dumps(data.get(name, common), ensure_ascii=False).replace("</", "<\\/"),
             })
             # Twice: the texts themselves may carry {{…}} (the prices).

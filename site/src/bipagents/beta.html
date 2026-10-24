@@ -1,0 +1,39 @@
+{{>top}}
+<!-- ============================================================ THE PUBLIC BETA (links in site/config.json « beta ») -->
+<section class="section page-section beta-section" id="beta">
+  <div class="section-head">
+    <p class="chip-beta">{{hero.beta}}</p>
+    <h1 class="page-h1">{{beta.title}}</h1>
+    <p class="sub">{{beta.sub}}</p>
+  </div>
+  <div class="beta-cards">
+    <div class="beta-card" style="--tint:var(--coral-tint);--deep:var(--coral-deep)">
+      <h2 class="beta-h">{{beta.whatTitle}}</h2>
+      <ul class="beta-list">
+        <li>{{beta.what1}}</li><li>{{beta.what2}}</li><li>{{beta.what3}}</li><li>{{beta.what4}}</li>
+      </ul>
+    </div>
+    <div class="beta-card" style="--tint:var(--green-tint);--deep:var(--green-deep)">
+      <h2 class="beta-h">{{beta.getTitle}}</h2>
+      <ul class="beta-list">
+        <li>{{beta.get1}}</li><li>{{beta.get2}}</li><li>{{beta.get3}}</li>
+      </ul>
+    </div>
+    <div class="beta-card" style="--tint:var(--teal-tint);--deep:var(--teal-deep)">
+      <h2 class="beta-h">{{beta.askTitle}}</h2>
+      <ul class="beta-list">
+        <li>{{beta.ask1}}</li><li>{{beta.ask2}}</li>
+      </ul>
+    </div>
+  </div>
+  <div class="beta-get">
+    <div class="beta-get-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="home"></i></div>
+    <h2 class="h2-small">{{beta.getIt}}</h2>
+    {{betasoon}}
+    <div class="cta-row center">{{betabadges}}</div>
+    {{betacap}}
+    <p class="beta-fine"><a href="https://kerfystudio.com{{legalprefix}}/beta/">{{beta.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
+  </div>
+  <p class="install-more">{{beta.after}} <a href="{{home}}#pricing">{{beta.afterCta}}</a></p>
+</section>
+{{>foot}}

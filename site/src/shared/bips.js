@@ -3,15 +3,17 @@
 // InteractiveMascot.swift, same « Animalese » as BipBabble.swift (docs/play/index.html is the playground).
 
 export const INK = "#16181D";
+// main, deep, tint: the apps' pale palette (the « sober » direction, 2026-10-24). deep is for drawing only: as text on
+// the site, use site.css's --<tone>-deep, which is dark enough to read.
 export const CATEGORIES = {
-  wellness: { main: "#3CC37A", deep: "#1D8A4F", tint: "#E2F5EA", body: "blob", acc: "sprout", pitch: 520, voice: "mousse" },
-  finance: { main: "#F6B826", deep: "#9A6A00", tint: "#FFF3D1", body: "squircle", acc: "coin", pitch: 410, voice: "ours" },
-  daily: { main: "#FF7B5C", deep: "#C9472A", tint: "#FFE8E0", body: "egg", acc: "ears", pitch: 600, voice: "colibri" },
-  work: { main: "#4F7CFF", deep: "#2B55D4", tint: "#E4EBFF", body: "squircle", acc: "antenna", pitch: 450, voice: "galet" },
-  learning: { main: "#8E6CF5", deep: "#6142D2", tint: "#EDE7FF", body: "cloud", acc: "tuft", pitch: 560, voice: "lumen" },
-  home: { main: "#1FB2C1", deep: "#0D7F8B", tint: "#DDF4F6", body: "egg", acc: "roof", pitch: 490, voice: "ours" },
-  creative: { main: "#F2649E", deep: "#C23774", tint: "#FDE4EE", body: "blob", acc: "star", pitch: 640, voice: "lumen" },
-  tech: { main: "#6B7489", deep: "#3F4659", tint: "#E7E9EE", body: "squircle", acc: "antenna", pitch: 470, voice: "galet" },
+  wellness: { main: "#A9D9B8", deep: "#5E9E73", tint: "#EEF6EA", body: "blob", acc: "sprout", pitch: 520, voice: "mousse" },
+  finance: { main: "#F2D48E", deep: "#B08A2E", tint: "#FAF3E3", body: "squircle", acc: "coin", pitch: 410, voice: "ours" },
+  daily: { main: "#F4B5A3", deep: "#C9775F", tint: "#FBEFEA", body: "egg", acc: "ears", pitch: 600, voice: "colibri" },
+  work: { main: "#B3C4F5", deep: "#6F86C9", tint: "#ECF0FD", body: "squircle", acc: "antenna", pitch: 450, voice: "galet" },
+  learning: { main: "#CABCF3", deep: "#8873C9", tint: "#F2EFFB", body: "cloud", acc: "tuft", pitch: 560, voice: "lumen" },
+  home: { main: "#9FD6DA", deep: "#4E9AA0", tint: "#E9F5F4", body: "egg", acc: "roof", pitch: 490, voice: "ours" },
+  creative: { main: "#F2B5CE", deep: "#C47396", tint: "#FBEDF2", body: "blob", acc: "star", pitch: 640, voice: "lumen" },
+  tech: { main: "#C3C8D3", deep: "#7F8696", tint: "#F1F2F5", body: "squircle", acc: "antenna", pitch: 470, voice: "galet" },
 };
 Object.entries(CATEGORIES).forEach(([id, c], i) => { c.id = id; c.index = i; });
 

@@ -4,8 +4,8 @@
     "name": "Français"
   },
   "meta": {
-    "title": "BipAgents — des agents IA qui agissent pour toi, en Europe",
-    "description": "BipAgents, ce sont tes propres agents IA, les Bips : ils réservent, trient tes mails, tiennent ton agenda et ton Carnet, et te demandent avant d’agir. Tout compris dans ton espace en Europe, sans pub ni pistage. Construit sur Hermes Agent."
+    "title": "BipAgents — des agents IA privés et sécurisés, en Europe ou chez toi",
+    "description": "BipAgents, ce sont tes propres agents IA, les Bips : privés et sécurisés, en Europe ou chez toi. Ils réservent, trient tes mails, tiennent ton agenda et ton Mémo, et te demandent avant d’agir. Sans pub ni pistage. Construit sur Hermes Agent."
   },
   "a11y": {
     "skip": "Aller au contenu",
@@ -18,21 +18,23 @@
     "privacy": "Privé",
     "pricing": "Prix",
     "faq": "Questions",
-    "cta": "S’abonner"
+    "cta": "Rejoindre la bêta",
+    "ctaShort": "La bêta"
   },
   "hero": {
     "badge": "Construit sur Hermes Agent",
-    "line1": "Tes agents IA font tes démarches,",
-    "line2": "et te demandent avant d’agir.",
-    "lede": "Mails triés, agenda tenu, réservations faites. Privé, en Europe : nous ne lisons pas tes conversations.",
+    "line1": "Tes agents IA font tes démarches.",
+    "line2": "Privés et sécurisés, en Europe ou chez toi.",
+    "lede": "Et ils te demandent avant d’agir. Mails triés, agenda tenu, réservations faites : nous ne lisons pas tes conversations.",
     "proof1": "<b>Ils agissent pour toi :</b> mails, agenda, réservations, un vrai navigateur",
     "proof2": "<b>Ton accord d’abord :</b> ils te demandent avant d’envoyer ou de payer",
-    "proof3": "<b>Ton propre espace</b>, privé, en Europe, sans pub",
-    "words": "<b>Bips</b> : tes assistants IA, un par agent · <b>Live</b> : tu leur parles à voix haute · <b>Carnet</b> : ce que tes agents gardent pour toi",
+    "proof3": "<b>Ton propre espace</b>, privé, en Europe ou sur ton ordinateur, sans pub",
+    "words": "<b>Bips</b> : tes assistants IA, un par agent · <b>Live</b> : tu leur parles à voix haute · <b>Mémo</b> : ce que tes agents gardent pour toi",
     "cta": "Choisir ma formule",
     "watch": "Voir la démo",
     "watchTime": "1 min",
-    "price": "Bientôt sur iPhone et Android · dès {{p.from}} par mois"
+    "price": "Bêta gratuite sur iPhone et Android · places limitées · sans carte bancaire",
+    "beta": "Bêta gratuite"
   },
   "store": {
     "soon": "Bientôt sur",
@@ -107,7 +109,7 @@
     "Podcast",
     "Mails",
     "Agenda",
-    "Carnet",
+    "Mémo",
     "Rappels",
     "Navigateur",
     "Cartes",
@@ -244,7 +246,7 @@
     "inc1": "Tes Bips, tes agents IA, prêts en une minute",
     "inc2": "Un crédit d’IA chaque mois, commun en Duo et Famille, reporté s’il en reste",
     "inc3": "Live, les voix des Bips et le podcast du matin",
-    "inc4": "Carnet, mails, agenda, rappels, navigateur et tâches de fond",
+    "inc4": "Mémo, mails, agenda, rappels, navigateur et tâches de fond",
     "inc5": "Une sauvegarde chiffrée toutes les heures",
     "inc6": "Ton espace sur un serveur en Europe",
     "currencyLabel": "Devise",
@@ -256,7 +258,14 @@
       "plusTax": "+ taxes",
       "taxIncl": "Prix en {currency}, taxes comprises.",
       "taxExcl": "Prix en {currency} hors taxes : la taxe de vente de ton État ou de ta province s’ajoute au paiement.",
-      "currencies": {"EUR": "euros", "USD": "dollars américains", "CAD": "dollars canadiens", "GBP": "livres sterling", "SGD": "dollars de Singapour", "ILS": "shekels israéliens"},
+      "currencies": {
+        "EUR": "euros",
+        "USD": "dollars américains",
+        "CAD": "dollars canadiens",
+        "GBP": "livres sterling",
+        "SGD": "dollars de Singapour",
+        "ILS": "shekels israéliens"
+      },
       "perMonth": "/mois",
       "perYear": "/an",
       "equiv": "soit {x} par mois",
@@ -280,7 +289,8 @@
       "offerSub": "on s’occupe de tout, dès {{p.from}}/mois",
       "self": "Sur mon ordinateur",
       "selfSub": "gratuit, tu héberges toi-même"
-    }
+    },
+    "afterBeta": "Les abonnements ouvrent après la bêta. D’ici là, c’est gratuit pour celles et ceux qui la testent."
   },
   "install": {
     "title": "Ton propre ordinateur ? L’app est gratuite.",
@@ -378,7 +388,8 @@
     "fine": "© 2026 Kerfy Studio. Prix TTC, sauf en dollars américains et canadiens : la taxe de vente s’ajoute au paiement. Le podcast de la démo : Built with Fish Audio. Les voix des Bips : Pocket TTS, de Kyutai. Carte de la démo © OpenStreetMap. Aucun cookie et aucun traceur sur ce site.",
     "demo": "La démo",
     "faq": "Questions",
-    "install": "Installer chez toi"
+    "install": "Installer chez toi",
+    "beta": "Conditions de la bêta"
   },
   "lines": {
     "hop": [
@@ -435,6 +446,68 @@
     "install": {
       "title": "Installer chez toi — BipAgents",
       "description": "L’app BipAgents est gratuite sur ton propre ordinateur ou serveur : une commande installe Hermes Agent et le bridge, tu ne paies que ton modèle d’IA."
+    },
+    "beta": {
+      "title": "La bêta — BipAgents",
+      "description": "La bêta publique de BipAgents : gratuite, sur iPhone et Android, places limitées, sans carte bancaire. Ton espace privé en Europe, avec un crédit d’IA."
+    }
+  },
+  "beta": {
+    "kicker": "Bêta",
+    "title": "Essaie BipAgents avant tout le monde.",
+    "sub": "La bêta publique est gratuite, sur iPhone et Android. Les places sont limitées, et aucune carte bancaire n’est demandée.",
+    "whatTitle": "Ce que c’est",
+    "what1": "Gratuite pendant toute la bêta",
+    "what2": "Sur iPhone et Android",
+    "what3": "Places limitées",
+    "what4": "Sans carte bancaire",
+    "getTitle": "Ce que tu reçois",
+    "get1": "Ton espace privé, sur un serveur en Europe",
+    "get2": "Un crédit d’IA pour tes agents",
+    "get3": "Tes Bips, prêts en une minute",
+    "askTitle": "Ce qu’on te demande",
+    "ask1": "Tes retours : ce qui marche, ce qui manque, ce qui gêne",
+    "ask2": "Un peu d’indulgence : c’est une bêta, des choses peuvent casser",
+    "getIt": "Installer la bêta",
+    "soon": "Ouverture dans quelques jours.",
+    "storeSoon": "Bientôt sur",
+    "storeGet": "La bêta sur",
+    "cap": "Places : {cap}",
+    "terms": "Conditions de la bêta",
+    "after": "Après la bêta, l’offre tout compris devient payante.",
+    "afterCta": "Voir les prix",
+    "sticky": "Bêta gratuite",
+    "stickySub": "places limitées"
+  },
+  "memo": {
+    "kicker": "Mémo",
+    "title": "Ta vie, bien rangée.",
+    "sub": "Tes agents gardent ce qui compte pour toi au même endroit, que tu peux lire : le Mémo. Ils le remplissent à partir de tes mails et de vos conversations.",
+    "a11y": "L’écran Mémo de l’app : les rappels du jour, le prochain voyage avec ses billets et son hôtel, les achats et garanties, les abonnements, les contrats et papiers, les réservations, et les archives.",
+    "i1": "<b>Rappels</b> : ce que tu as à faire, et quand",
+    "i2": "<b>Ton prochain voyage</b> : billets, hébergements, quoi emporter",
+    "i3": "<b>Achats et garanties</b>, avec la date de fin de garantie",
+    "i4": "<b>Abonnements</b> : prix, prochain renouvellement, comment résilier",
+    "i5": "<b>Contrats et papiers</b>, avec leurs échéances",
+    "i6": "<b>Réservations</b> : dates, références, avec qui",
+    "line1": "Ce qui est passé part dans les Archives : rien n’est effacé.",
+    "line2": "Tu cherches dedans, tu le corriges, et il est à toi : tu peux l’emporter quand tu veux.",
+    "shot": {
+      "title": "Mémo",
+      "search": "Rechercher",
+      "today": "Aujourd’hui",
+      "t1": "Renouveler l’assurance auto",
+      "t1s": "avant 18 h",
+      "t2": "Appeler le plombier",
+      "t3": "Rendre les livres",
+      "trip": "Lisbonne · dans 12 jours",
+      "tripSub": "Billets, hôtel et quoi emporter",
+      "k1": "Achats et garanties",
+      "k2": "Abonnements",
+      "k3": "Contrats et papiers",
+      "k4": "Réservations",
+      "archives": "Archives",
+      "archivesSub": "ce qui est passé"
     }
   }
 }

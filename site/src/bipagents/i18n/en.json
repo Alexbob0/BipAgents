@@ -4,8 +4,8 @@
     "name": "English"
   },
   "meta": {
-    "title": "BipAgents — AI agents that act for you, in Europe",
-    "description": "BipAgents gives you your own AI agents, the Bips: they book, sort your email, keep your calendar and your Notebook, and ask before they act. All included in your own space in Europe, no ads, no tracking. Built on Hermes Agent."
+    "title": "BipAgents — private and secure AI agents, in Europe or at home",
+    "description": "BipAgents gives you your own AI agents, the Bips: private and secure, in Europe or at home. They book, sort your email, keep your calendar and your Memo, and ask before they act. No ads, no tracking. Built on Hermes Agent."
   },
   "a11y": {
     "skip": "Skip to content",
@@ -18,21 +18,23 @@
     "privacy": "Private",
     "pricing": "Pricing",
     "faq": "Questions",
-    "cta": "Subscribe"
+    "cta": "Join the beta",
+    "ctaShort": "The beta"
   },
   "hero": {
     "badge": "Built on Hermes Agent",
-    "line1": "Your AI agents do your admin,",
-    "line2": "and ask before they act.",
-    "lede": "Email sorted, calendar kept, bookings made. Private, in Europe: we don’t read your conversations.",
+    "line1": "Your AI agents do your admin.",
+    "line2": "Private and secure, in Europe or at home.",
+    "lede": "And they ask before they act. Email sorted, calendar kept, bookings made: we don’t read your conversations.",
     "proof1": "<b>They act for you:</b> email, calendar, bookings, a real browser",
     "proof2": "<b>Your OK first:</b> they ask before sending or paying",
-    "proof3": "<b>Your own space</b>, private, in Europe, no ads",
-    "words": "<b>Bips</b>: your AI assistants, one per agent · <b>Live</b>: talk to them out loud · <b>Notebook</b>: what your agents keep for you",
+    "proof3": "<b>Your own space</b>, private, in Europe or on your computer, no ads",
+    "words": "<b>Bips</b>: your AI assistants, one per agent · <b>Live</b>: talk to them out loud · <b>Memo</b>: what your agents keep for you",
     "cta": "Choose my plan",
     "watch": "See the demo",
     "watchTime": "1 min",
-    "price": "Coming soon to iPhone and Android · from {{p.from}} a month"
+    "price": "Free beta on iPhone and Android · limited places · no card needed",
+    "beta": "Free beta"
   },
   "store": {
     "soon": "Coming soon to",
@@ -107,7 +109,7 @@
     "Podcast",
     "Email",
     "Calendar",
-    "Notebook",
+    "Memo",
     "Reminders",
     "Browser",
     "Maps",
@@ -244,7 +246,7 @@
     "inc1": "Your Bips, your AI agents, ready in a minute",
     "inc2": "AI credit every month, shared in Duo and Family, carried over if some is left",
     "inc3": "Live, the Bips’ voices and the morning podcast",
-    "inc4": "Notebook, email, calendar, reminders, browser and background tasks",
+    "inc4": "Memo, email, calendar, reminders, browser and background tasks",
     "inc5": "An encrypted backup every hour",
     "inc6": "Your space on a server in Europe",
     "currencyLabel": "Currency",
@@ -256,7 +258,14 @@
       "plusTax": "+ tax",
       "taxIncl": "Prices in {currency}, taxes included.",
       "taxExcl": "Prices in {currency} before tax: your state’s or province’s sales tax is added at checkout.",
-      "currencies": {"EUR": "euros", "USD": "US dollars", "CAD": "Canadian dollars", "GBP": "pounds sterling", "SGD": "Singapore dollars", "ILS": "Israeli shekels"},
+      "currencies": {
+        "EUR": "euros",
+        "USD": "US dollars",
+        "CAD": "Canadian dollars",
+        "GBP": "pounds sterling",
+        "SGD": "Singapore dollars",
+        "ILS": "Israeli shekels"
+      },
       "perMonth": "/month",
       "perYear": "/year",
       "equiv": "that’s {x} a month",
@@ -280,7 +289,8 @@
       "offerSub": "we handle everything, from {{p.from}}/month",
       "self": "On my computer",
       "selfSub": "free, you host it yourself"
-    }
+    },
+    "afterBeta": "Subscriptions open after the beta. Until then, it’s free for the people testing it."
   },
   "install": {
     "title": "Your own computer? The app is free.",
@@ -378,7 +388,8 @@
     "fine": "© 2026 Kerfy Studio. Prices include VAT or GST, except in US and Canadian dollars: sales tax is added at checkout. The demo podcast: Built with Fish Audio. The Bips’ voices: Pocket TTS, by Kyutai. Demo map © OpenStreetMap. No cookies and no trackers on this site.",
     "demo": "The demo",
     "faq": "Questions",
-    "install": "Install at home"
+    "install": "Install at home",
+    "beta": "Beta terms"
   },
   "lines": {
     "hop": [
@@ -435,6 +446,68 @@
     "install": {
       "title": "Install at home — BipAgents",
       "description": "The BipAgents app is free on your own computer or server: one command installs Hermes Agent and the bridge, you only pay for your AI model."
+    },
+    "beta": {
+      "title": "The beta — BipAgents",
+      "description": "The BipAgents public beta: free, on iPhone and Android, limited places, no card needed. Your private space in Europe, with an AI credit."
+    }
+  },
+  "beta": {
+    "kicker": "Beta",
+    "title": "Try BipAgents before everyone else.",
+    "sub": "The public beta is free, on iPhone and Android. Places are limited, and no card is needed.",
+    "whatTitle": "What it is",
+    "what1": "Free for the whole beta",
+    "what2": "On iPhone and Android",
+    "what3": "Limited places",
+    "what4": "No card needed",
+    "getTitle": "What you get",
+    "get1": "Your private space, on a server in Europe",
+    "get2": "An AI credit for your agents",
+    "get3": "Your Bips, ready in a minute",
+    "askTitle": "What we ask",
+    "ask1": "Your feedback: what works, what’s missing, what gets in the way",
+    "ask2": "A little patience: it’s a beta, things may break",
+    "getIt": "Install the beta",
+    "soon": "Opening in a few days.",
+    "storeSoon": "Coming soon on",
+    "storeGet": "The beta on",
+    "cap": "Places: {cap}",
+    "terms": "Beta terms",
+    "after": "After the beta, the all-included offer becomes paid.",
+    "afterCta": "See the prices",
+    "sticky": "Free beta",
+    "stickySub": "limited places"
+  },
+  "memo": {
+    "kicker": "Memo",
+    "title": "Your life, in order.",
+    "sub": "Your agents keep what matters to you in one place you can read: the Memo. They fill it from your email and your conversations.",
+    "a11y": "The app’s Memo screen: today’s reminders, the next trip with its tickets and hotel, purchases and warranties, subscriptions, contracts and papers, bookings, and the archives.",
+    "i1": "<b>Reminders</b>: what you have to do, and when",
+    "i2": "<b>Your next trip</b>: tickets, places to stay, what to pack",
+    "i3": "<b>Purchases and warranties</b>, with the end of the warranty",
+    "i4": "<b>Subscriptions</b>: price, next renewal, how to cancel",
+    "i5": "<b>Contracts and papers</b>, with their deadlines",
+    "i6": "<b>Bookings</b>: dates, references, with whom",
+    "line1": "What’s past moves to the Archives: nothing is deleted.",
+    "line2": "You can search it and correct it, and it’s yours: take it with you whenever you like.",
+    "shot": {
+      "title": "Memo",
+      "search": "Search",
+      "today": "Today",
+      "t1": "Renew the car insurance",
+      "t1s": "before 6 pm",
+      "t2": "Call the plumber",
+      "t3": "Return the library books",
+      "trip": "Lisbon · in 12 days",
+      "tripSub": "Tickets, hotel and what to pack",
+      "k1": "Purchases and warranties",
+      "k2": "Subscriptions",
+      "k3": "Contracts and papers",
+      "k4": "Bookings",
+      "archives": "Archives",
+      "archivesSub": "what’s past"
     }
   }
 }

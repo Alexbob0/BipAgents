@@ -11,7 +11,9 @@
   command to copy, Windows, and what one then does oneself; `#install` opens that side), six questions that settle a purchase, the footer (store badges, company, links). On a
   phone, a bar at the bottom keeps the chosen plan and its button. Their own pages: `/demo/` (the app's own demo
   playing in a chat: four scenarios, with the walk's map and the page kit's « Your runs » page inside the replies),
-  `/faq/` (every question); `/install/` only sends to the home's `#install`. English at `/`, French, German and
+  `/faq/` (every question), `/beta/` (the public beta: what it is, what testers get, what we ask, TestFlight and
+  Google Play badges, its terms on kerfystudio.com `/beta/`; « Join the beta » is the main button everywhere, the
+  Mémo section after the comparison shows what the agents keep); `/install/` only sends to the home's `#install`. English at `/`, French, German and
   Spanish at `/fr/`, `/de/`, `/es/` (and `/fr/demo/`, `/fr/faq/`…).
 - **kerfystudio.com** — the publisher: its two apps (BipAgents, Tablée), how it works, the company's details (what Apple
   and Google check for an organization), contact, support, the privacy policy and terms in four languages and the
@@ -35,6 +37,9 @@ One file, read by both sites:
 - **`contact`** — `general` (contact@kerfystudio.com: the publisher, authorities), `support` (support@bipagents.com:
   the app), `abuse`, `privacy`, `security` (all @bipagents.com; `security` goes into security.txt).
 - **`stores`** — App Store and Google Play links for BipAgents and for Tablée. Empty = « Coming soon to » badges.
+- **`beta`** — `testflight` (TestFlight public link) and `play` (Google Play testing link) for the `/beta/` page; both
+  empty = « Coming soon on » badges and « Opening in a few days ». `cap` = the places line (« Places: … »), one text
+  or one per language; empty = no line.
 - **`checkout.url`** — the web checkout, one template for every plan and period:
   `https://…/v1/web/checkout?plan={plan}&period={period}&lang={lang}` (the page adds `&currency=`) (`plan` = solo | duo | famille, `period` = month |
   year). `checkout.links.<plan>.<period>` overrides one of them. Empty = no « Subscribe » button: the price block shows
@@ -52,7 +57,7 @@ One file, read by both sites:
 
 ## Where things come from
 
-The pages are `src/bipagents/{index,demo,faq}.html` (and `install.html`, the redirect to `#install`), sharing `partials/top.html` (head, header) and
+The pages are `src/bipagents/{index,demo,faq,beta}.html` (and `install.html`, the redirect to `#install`), sharing `partials/top.html` (head, header) and
 `partials/foot.html` (footer, script) through `{{>top}}` / `{{>foot}}`; `PAGES` in `build.py` lists them, and
 `FAQ_HOME` picks the home's questions. One `site.js` for all: each part runs where its elements are.
 
