@@ -150,7 +150,7 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   longueur, des fichiers joints et du modèle.
 - **Report** : le crédit du forfait que tu n'as pas utilisé passe au mois suivant, pour un mois de plus au maximum.
 - **Crédit en plus** : tu peux en acheter dans l'app (Réglages › Offre tout compris › Ajouter du crédit d'IA), 2,99 €
-  TTC pour 2 € de crédit. Il s'ajoute au crédit du forfait, pour toutes ses personnes. **Il ne périme jamais** :
+  TTC pour 2 € de crédit, soit **environ 4 000 messages** avec le modèle par défaut (même estimation que plus haut). Il s'ajoute au crédit du forfait, pour toutes ses personnes. **Il ne périme jamais** :
   s'il en reste quand l'abonnement prend fin, il est gardé sur ton compte et revient avec ton prochain abonnement. Il
   n'est perdu que si tu supprimes ton compte.
 - **Crédit épuisé** : les agents de toutes les personnes du forfait n'appellent plus le modèle d'IA jusqu'au mois

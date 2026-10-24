@@ -152,7 +152,7 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - **Übertrag**: Das Guthaben des Tarifs, das du nicht genutzt hast, geht in den nächsten Monat über, für höchstens
   einen Monat mehr.
 - **Zusätzliches Guthaben**: Du kannst in der App welches kaufen (Einstellungen › Alles-inklusive-Angebot ›
-  KI-Guthaben hinzufügen), 2,99 € inkl. MwSt. für 2 € Guthaben. Es kommt zum Guthaben des Tarifs hinzu, für alle seine Personen. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
+  KI-Guthaben hinzufügen), 2,99 € inkl. MwSt. für 2 € Guthaben, also **etwa 4.000 Nachrichten** mit dem Standardmodell (dieselbe Schätzung wie oben). Es kommt zum Guthaben des Tarifs hinzu, für alle seine Personen. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
   und kommt mit deinem nächsten Abo zurück. Es geht nur verloren, wenn du dein Konto löschst.
 - **Guthaben aufgebraucht**: Die Agenten aller Personen des Tarifs rufen das KI-Modell nicht mehr auf, bis zum
   nächsten Monat oder bis die Person, die zahlt, Guthaben hinzufügt. Die Plätze, die Dateien und die Sicherungen

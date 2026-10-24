@@ -91,7 +91,7 @@
       "label": "Price",
       "c1": "Free tier; paid plans around $20 or €23 a month",
       "c2": "Free software; you pay for the server and the AI model",
-      "c3": "From {{p.from}} a month, AI credit included"
+      "c3": "From {{p.from}} a month, about 1,000 AI messages included"
     }
   },
   "marquee": [
@@ -213,17 +213,17 @@
     "solo": {
       "name": "Solo",
       "who": "1 person",
-      "blurb": "Your agents, all yours."
+      "blurb": "Your agents, yours alone. About 1,000 AI messages a month."
     },
     "duo": {
       "name": "Duo",
       "who": "2 people",
-      "blurb": "Each with their own agents and space."
+      "blurb": "Each with their own agents and space. About 2,000 AI messages a month for the two of you."
     },
     "famille": {
       "name": "Family",
       "who": "up to 6 people",
-      "blurb": "A server just for you, a space for each.",
+      "blurb": "A server that’s yours alone, each with their own space. About 6,000 AI messages a month for the whole family.",
       "flag": "Best price per person"
     },
     "perYear": "/year",
@@ -234,9 +234,9 @@
     "soon": "<b>The web subscription is coming very soon.</b> Meanwhile, BipAgents is coming to the stores, where you’ll subscribe in the app:",
     "trial": "A free week to start, while there are some left this month: we tell you before you pay whether it applies, and nothing is charged if you stop before it ends.",
     "cancel": "Cancel anytime: your space is kept 30 days so you can take everything with you (3 days after a free week you didn’t continue).",
-    "includedTitle": "Included for each person",
+    "includedTitle": "Included in every plan",
     "inc1": "Your Bips, your AI agents, ready in a minute",
-    "inc2": "AI credit every month, carried over if some is left",
+    "inc2": "AI messages every month, shared in Duo and Family, carried over if some are left",
     "inc3": "Live, the Bips’ voices and the morning podcast",
     "inc4": "Notebook, email, calendar, reminders, browser and background tasks",
     "inc5": "An encrypted backup every hour",
@@ -323,7 +323,7 @@
     },
     "3": {
       "q": "How many messages a month?",
-      "a": "Each person gets €0.50 of AI credit a month, counted at the chosen model’s price; the app shows it as an estimated number of messages. What’s left carries over to the next month. Need more: €2 of credit for €2.99 in the app, and it never expires. Out of credit: your agents take a break until next month, nothing is lost."
+      "a": "About 1,000 a month with Solo, 2,000 with Duo and 6,000 with Family, for the whole family. It’s an estimate with the default model, rounded down: a more powerful model uses them up faster, and the app shows you the count with yours. In Duo and Family the AI credit is shared: the person who pays sees how much each person uses, never what they write, and can set a limit per person. What’s left carries over to the next month. Need more: about 4,000 messages for €2.99 in the app, and they never expire. Out of credit: the agents take a break until next month, nothing is lost."
     },
     "4": {
       "q": "Who can read my conversations?",
@@ -331,7 +331,7 @@
     },
     "5": {
       "q": "How do Duo and Family work?",
-      "a": "Each invited person has their own account, space, agents and AI credit. Neither the person who pays nor we read anyone else’s. With Family, up to six people share a server that’s yours alone."
+      "a": "Each invited person has their own account, space and agents; the plan’s AI credit is shared. Neither the person who pays nor we read anyone else’s conversations: the person who pays only sees how much credit each person uses. With Family, up to six people share a server that’s yours alone."
     },
     "6": {
       "q": "Can I stop whenever I want?",

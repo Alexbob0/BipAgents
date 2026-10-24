@@ -141,7 +141,7 @@ section 6); the services you connect to your agents and their own subscriptions.
   files and on the model.
 - **Carry-over**: the plan's credit you did not use carries over to the next month, for one more month at most.
 - **Extra credit**: you can buy some in the app (Settings › All-included plan › Add AI credit), €2.99 VAT included for
-  €2 of credit. It is added to the plan's credit, for everyone in it. **It never expires**: if some is
+  €2 of credit, that is **about 4,000 messages** with the default model (the same estimate as above). It is added to the plan's credit, for everyone in it. **It never expires**: if some is
   left when the subscription ends, it is kept on your account and comes back with your next subscription. It is only
   lost if you delete your account.
 - **Credit used up**: the agents of everyone in the plan no longer call the AI model until the next month or until the

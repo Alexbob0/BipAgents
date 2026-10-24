@@ -91,7 +91,7 @@
       "label": "Prix",
       "c1": "Version gratuite ; formules payantes autour de 20 $ ou 23 € par mois",
       "c2": "Logiciel gratuit ; tu paies le serveur et le modèle d’IA",
-      "c3": "Dès {{p.from}} par mois, crédit IA compris"
+      "c3": "Dès {{p.from}} par mois, environ 1 000 messages d’IA compris"
     }
   },
   "marquee": [
@@ -213,17 +213,17 @@
     "solo": {
       "name": "Solo",
       "who": "1 personne",
-      "blurb": "Tes agents, rien qu’à toi."
+      "blurb": "Tes agents, rien qu’à toi. Environ 1 000 messages d’IA par mois."
     },
     "duo": {
       "name": "Duo",
       "who": "2 personnes",
-      "blurb": "Chacun ses agents et son espace."
+      "blurb": "Chacun ses agents et son espace. Environ 2 000 messages d’IA par mois, à vous deux."
     },
     "famille": {
       "name": "Famille",
       "who": "jusqu’à 6 personnes",
-      "blurb": "Un serveur rien qu’à vous, chacun son espace.",
+      "blurb": "Un serveur rien qu’à vous, chacun son espace. Environ 6 000 messages d’IA par mois pour toute la famille.",
       "flag": "Le meilleur prix par personne"
     },
     "perYear": "/an",
@@ -234,9 +234,9 @@
     "soon": "<b>L’abonnement sur le web arrive très bientôt.</b> En attendant, BipAgents arrive sur les stores, où tu pourras t’abonner dans l’app :",
     "trial": "Une semaine gratuite pour commencer, quand il en reste ce mois-ci : on te dit avant de payer si elle s’applique, et rien n’est prélevé si tu arrêtes avant la fin.",
     "cancel": "Résiliable à tout moment : ton espace est gardé 30 jours, le temps de tout récupérer (3 jours après une semaine gratuite sans suite).",
-    "includedTitle": "Compris pour chaque personne",
+    "includedTitle": "Compris dans chaque formule",
     "inc1": "Tes Bips, tes agents IA, prêts en une minute",
-    "inc2": "Un crédit d’IA chaque mois, reporté s’il en reste",
+    "inc2": "Des messages d’IA chaque mois, communs en Duo et Famille, reportés s’il en reste",
     "inc3": "Live, les voix des Bips et le podcast du matin",
     "inc4": "Carnet, mails, agenda, rappels, navigateur et tâches de fond",
     "inc5": "Une sauvegarde chiffrée toutes les heures",
@@ -323,7 +323,7 @@
     },
     "3": {
       "q": "Combien de messages par mois ?",
-      "a": "Chaque personne a 0,50 € de crédit d’IA par mois, compté au prix du modèle choisi ; l’app te l’affiche en nombre de messages estimé. Ce qui reste passe au mois suivant. Besoin de plus : 2 € de crédit pour 2,99 € dans l’app, qui ne périme jamais. Crédit épuisé : tes agents font une pause jusqu’au mois suivant, rien n’est perdu."
+      "a": "Environ 1 000 par mois avec Solo, 2 000 avec Duo et 6 000 avec Famille, pour toute la famille. C’est une estimation avec le modèle par défaut, arrondie vers le bas : un modèle plus puissant en consomme plus vite, et l’app te montre le compte avec le tien. En Duo et Famille, le crédit d’IA est commun : la personne qui paie voit combien chacun en utilise, jamais ce qu’il écrit, et peut mettre une limite par personne. Ce qui reste passe au mois suivant. Besoin de plus : environ 4 000 messages pour 2,99 € dans l’app, qui ne périment jamais. Crédit épuisé : les agents font une pause jusqu’au mois suivant, rien n’est perdu."
     },
     "4": {
       "q": "Qui peut lire mes conversations ?",
@@ -331,7 +331,7 @@
     },
     "5": {
       "q": "Comment marchent Duo et Famille ?",
-      "a": "Chaque personne invitée a son propre compte, son espace, ses agents et son crédit d’IA. Ni la personne qui paie ni nous ne lisons ceux des autres. Avec Famille, jusqu’à six personnes partagent un serveur rien qu’à vous."
+      "a": "Chaque personne invitée a son propre compte, son espace et ses agents ; le crédit d’IA du forfait est commun. Ni la personne qui paie ni nous ne lisons les conversations des autres : la personne qui paie voit seulement combien de crédit chacun utilise. Avec Famille, jusqu’à six personnes partagent un serveur rien qu’à vous."
     },
     "6": {
       "q": "Je peux arrêter quand je veux ?",

@@ -148,7 +148,7 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   longitud, de los archivos adjuntos y del modelo.
 - **Traspaso**: el crédito del plan que no has usado pasa al mes siguiente, por un mes más como máximo.
 - **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), 2,99 € IVA
-  incluido por 2 € de crédito. Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
+  incluido por 2 € de crédito, es decir, **unos 4.000 mensajes** con el modelo por defecto (la misma estimación que arriba). Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
   cuando la suscripción termina, se conserva en tu cuenta y vuelve con tu próxima suscripción. Solo se pierde si
   eliminas tu cuenta.
 - **Crédito agotado**: los agentes de todas las personas del plan dejan de llamar al modelo de IA hasta el mes

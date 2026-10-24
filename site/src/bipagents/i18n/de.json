@@ -91,7 +91,7 @@
       "label": "Preis",
       "c1": "Gratisversion; Bezahltarife um 20 $ bzw. 23 € im Monat",
       "c2": "Freie Software; du zahlst Server und KI-Modell",
-      "c3": "Ab {{p.from}} im Monat, KI-Guthaben inklusive"
+      "c3": "Ab {{p.from}} im Monat, etwa 1.000 KI-Nachrichten inklusive"
     }
   },
   "marquee": [
@@ -213,17 +213,17 @@
     "solo": {
       "name": "Solo",
       "who": "1 Person",
-      "blurb": "Deine Agenten, nur für dich."
+      "blurb": "Deine Agenten, nur für dich. Etwa 1.000 KI-Nachrichten im Monat."
     },
     "duo": {
       "name": "Duo",
       "who": "2 Personen",
-      "blurb": "Jeder mit eigenen Agenten und eigenem Bereich."
+      "blurb": "Jeder mit eigenen Agenten und eigenem Bereich. Etwa 2.000 KI-Nachrichten im Monat für euch zwei."
     },
     "famille": {
       "name": "Familie",
       "who": "bis zu 6 Personen",
-      "blurb": "Ein Server nur für euch, ein Bereich für jeden.",
+      "blurb": "Ein Server nur für euch, jeder mit eigenem Bereich. Etwa 6.000 KI-Nachrichten im Monat für die ganze Familie.",
       "flag": "Bester Preis pro Person"
     },
     "perYear": "/Jahr",
@@ -234,9 +234,9 @@
     "soon": "<b>Das Web-Abo kommt sehr bald.</b> Bis dahin kommt BipAgents in die Stores, wo du in der App abonnierst:",
     "trial": "Eine Gratiswoche zum Start, solange es diesen Monat noch welche gibt: Wir sagen dir vor dem Bezahlen, ob sie gilt, und nichts wird abgebucht, wenn du vorher aufhörst.",
     "cancel": "Jederzeit kündbar: Dein Bereich bleibt 30 Tage erhalten, damit du alles mitnehmen kannst (3 Tage nach einer Gratiswoche ohne Abo).",
-    "includedTitle": "Für jede Person inklusive",
+    "includedTitle": "In jedem Tarif enthalten",
     "inc1": "Deine Bips, deine KI-Agenten, in einer Minute bereit",
-    "inc2": "KI-Guthaben jeden Monat, Rest wird übertragen",
+    "inc2": "KI-Nachrichten jeden Monat, bei Duo und Familie gemeinsam, Reste gehen in den nächsten Monat",
     "inc3": "Live, die Stimmen der Bips und der Morgen-Podcast",
     "inc4": "Notizbuch, Mails, Kalender, Erinnerungen, Browser und Hintergrundaufgaben",
     "inc5": "Jede Stunde eine verschlüsselte Sicherung",
@@ -323,7 +323,7 @@
     },
     "3": {
       "q": "Wie viele Nachrichten im Monat?",
-      "a": "Jede Person hat 0,50 € KI-Guthaben im Monat, berechnet zum Preis des gewählten Modells; die App zeigt es als geschätzte Zahl von Nachrichten. Der Rest wird in den nächsten Monat übertragen. Mehr gefällig: 2 € Guthaben für 2,99 € in der App, verfällt nie. Ist es aufgebraucht, pausieren deine Agenten bis zum nächsten Monat, nichts geht verloren."
+      "a": "Etwa 1.000 im Monat mit Solo, 2.000 mit Duo und 6.000 mit Familie, für die ganze Familie. Das ist eine Schätzung mit dem Standardmodell, abgerundet: Ein stärkeres Modell verbraucht sie schneller, und die App zeigt dir die Zahl mit deinem. Bei Duo und Familie ist das KI-Guthaben gemeinsam: Die zahlende Person sieht, wie viel jede Person verbraucht, nie, was sie schreibt, und kann pro Person ein Limit setzen. Was übrig bleibt, geht in den nächsten Monat. Mehr gebraucht: etwa 4.000 Nachrichten für 2,99 € in der App, sie verfallen nie. Guthaben aufgebraucht: Die Agenten pausieren bis zum nächsten Monat, nichts geht verloren."
     },
     "4": {
       "q": "Wer kann meine Unterhaltungen lesen?",
@@ -331,7 +331,7 @@
     },
     "5": {
       "q": "Wie funktionieren Duo und Familie?",
-      "a": "Jede eingeladene Person hat ihr eigenes Konto, ihren Bereich, ihre Agenten und ihr KI-Guthaben. Weder die zahlende Person noch wir lesen die der anderen. Mit Familie teilen sich bis zu sechs Personen einen Server nur für euch."
+      "a": "Jede eingeladene Person hat ihr eigenes Konto, ihren Bereich und ihre Agenten; das KI-Guthaben des Tarifs ist gemeinsam. Weder die zahlende Person noch wir lesen die Unterhaltungen der anderen: Die zahlende Person sieht nur, wie viel Guthaben jede Person verbraucht. Mit Familie teilen sich bis zu sechs Personen einen Server nur für euch."
     },
     "6": {
       "q": "Kann ich jederzeit aufhören?",
