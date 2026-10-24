@@ -2,7 +2,7 @@ English · [Français](acceptable-use.fr.md) · [Deutsch](acceptable-use.de.md) 
 
 # Acceptable use policy of the all-included offer
 
-> Last updated: [date].
+> Last updated: 24 October 2026.
 
 ## 1. What it is for
 
@@ -47,8 +47,8 @@ use, section 9).
 Anyone can report abuse coming from a server of the offer, even without using BipAgents, and so can hosting providers
 and authorities.
 
-- **Where**: **abuse@kerfystudio.com**, or by post to Kerfy Studio, [registered office address]. Languages: French,
-  English. Authorities can also use the point of contact **support@kerfystudio.com** (Regulation (EU) 2022/2065,
+- **Where**: **abuse@bipagents.com**, or by post to Kerfy Studio, [registered office address]. Languages: French,
+  English. Authorities can also use the point of contact **contact@kerfystudio.com** (Regulation (EU) 2022/2065,
   articles 11 and 12).
 - **What** (article 16 of Regulation (EU) 2022/2065):
   - why you consider it illegal or abusive;
@@ -70,7 +70,7 @@ section 11). **If someone's life or safety is threatened, first call emergency s
   exchange, to stop the abuse and protect the other people on the server. This decision is made by a person.
 - **Reasons**: Kerfy Studio tells you without delay what was done, why (the facts, the rule at stake) and how to
   contest it, unless the law or an authority forbids it (article 17 of Regulation (EU) 2022/2065).
-- **Contesting**: reply to that message or write to abuse@kerfystudio.com. A person reviews the decision. If the abuse
+- **Contesting**: reply to that message or write to abuse@bipagents.com. A person reviews the decision. If the abuse
   came from a hijacked agent or stolen access, we help you put your place back in order; if the suspension was not
   justified, your place is restored as soon as possible.
 - **End of the subscription**: for a serious or repeated breach, Kerfy Studio may end the subscription, after giving
@@ -84,5 +84,5 @@ section 11). **If someone's life or safety is threatened, first call emergency s
 
 ## 6. Contact
 
-Abuse: **abuse@kerfystudio.com** — Kerfy Studio, [registered office address] — other questions:
-**support@kerfystudio.com**
+Abuse: **abuse@bipagents.com** — Kerfy Studio, [registered office address] — other questions:
+**support@bipagents.com**

@@ -2,7 +2,7 @@
 
 # Allgemeine Verkaufsbedingungen des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: [Datum].
+> Zuletzt aktualisiert: 24. Oktober 2026.
 
 ## 1. Gegenstand
 
@@ -41,7 +41,7 @@ diese Bedingungen.
 - **Kerfy Studio erbringt den Dienst**: deinen Platz, dein KI-Guthaben, die Sicherungen und den Support. Kerfy Studio,
   SAS (französische vereinfachte Aktiengesellschaft) mit einem Kapital von [Kapital] €, Sitz: [Adresse des Sitzes],
   eingetragen im RCS [Ort des Handelsregisters] unter der Nummer [SIREN], Telefon: [Telefonnummer]. Kontakt:
-  **support@kerfystudio.com**. Missbrauch melden: **abuse@kerfystudio.com**.
+  **support@bipagents.com**. Missbrauch melden: **abuse@bipagents.com**.
 - **In der App kassiert der Store den Preis.** Du kaufst im App Store von Apple oder bei Google Play, mit deinem Konto
   dort: Der Store stellt die Rechnung, kassiert den Preis und die Mehrwertsteuer und erstattet nach seinen eigenen
   Regeln. Im App Store handelt Apple als Vertreter von Kerfy Studio, und für die Europäische Union ist der Verkäufer
@@ -310,7 +310,7 @@ E-Mail, mit Datum und Uhrzeit deiner Entscheidung.
   vollständig; das Geld kommt innerhalb von 5 bis 10 Tagen auf dein Zahlungsmittel zurück. Eine vollständige Erstattung,
   zum Beispiel durch den Support, beendet das Abo ebenfalls.
 
-Du kannst den Vertrag auch mit jeder eindeutigen Erklärung widerrufen: einer E-Mail an support@kerfystudio.com oder dem
+Du kannst den Vertrag auch mit jeder eindeutigen Erklärung widerrufen: einer E-Mail an support@bipagents.com oder dem
 Formular im Anhang; oder die Erstattung direkt beim Store beantragen (App Store: Kaufhistorie deines Apple-Kontos;
 Google Play: Seite „Erstattung beantragen“). In jedem Fall wird dein Platz 30 Tage aufbewahrt, damit du deine Daten
 herunterladen kannst, und dann mit seinen Sicherungen gelöscht (Abschnitt 11).
@@ -322,7 +322,7 @@ herunterladen kannst, und dann mit seinen Sicherungen gelöscht (Abschnitt 11).
   Verbrauchergesetzbuchs). Bei einer Vertragswidrigkeit kannst du verlangen, dass der vertragsgemäße Zustand
   hergestellt wird, kostenlos und ohne unangemessene Verzögerung; andernfalls eine Preisminderung oder die Beendigung
   des Vertrags, mit Erstattung der geschuldeten Beträge innerhalb von 14 Tagen (Art. L224-25-17 bis L224-25-23).
-  Schreib an support@kerfystudio.com.
+  Schreib an support@bipagents.com.
 - Die Antworten der Agenten werden von einem KI-Modell erzeugt und können falsch sein (Nutzungsbedingungen,
   Abschnitt 8): Das ist eine Eigenschaft des Dienstes, die vor dem Kauf beschrieben wird.
 - **Updates**: Kerfy Studio hält deinen Platz aktuell (Sicherheit, Kompatibilität, Fehlerbehebungen). Es kann den
@@ -360,7 +360,7 @@ Inkrafttreten kostenlos kündigen.
 
 ## 16. Beschwerden, Schlichtung, anwendbares Recht
 
-- Bei einem Problem schreib zuerst an **support@kerfystudio.com**, um eine Lösung zu suchen.
+- Bei einem Problem schreib zuerst an **support@bipagents.com**, um eine Lösung zu suchen.
 - **Schlichtung**: Hat deine schriftliche Beschwerde nichts gebracht, kannst du dich kostenlos an die
   Verbraucherschlichtungsstelle von Kerfy Studio wenden: [zu ergänzen: Name der Schlichtungsstelle, Postanschrift,
   Website]. Das musst du innerhalb eines Jahres nach deiner schriftlichen Beschwerde tun (Art. L612-1, L612-2, L616-1
@@ -394,7 +394,7 @@ Stripe (Abschnitte 2 und 11).
   Gebühren der Schiedsstelle, soweit sie über das hinausgehen, was du für die Anrufung eines Gerichts zahlen würdest.
   **Du verzichtest auf jede Sammelklage** (class action) und jedes Sammelschiedsverfahren, als Partei oder als Mitglied.
   Du kannst diese Schiedsklausel ablehnen, indem du innerhalb von 30 Tagen nach deinem Abschluss an
-  support@kerfystudio.com schreibst; der Rest des Vertrags ändert sich nicht.
+  support@bipagents.com schreibst; der Rest des Vertrags ändert sich nicht.
 - **Haftung**: Soweit das Recht deines Bundesstaats es erlaubt, ist die gesamte Haftung von Kerfy Studio dir gegenüber
   auf den Betrag begrenzt, den du in den 12 Monaten vor dem betreffenden Ereignis für das Angebot bezahlt hast, und
   Kerfy Studio haftet nicht für indirekte Schäden; diese Regel ersetzt für dich den Satz in Abschnitt 14, nach dem die
@@ -424,8 +424,8 @@ USA, 116 123 im Vereinigten Königreich, 1201 in Israel, 1767 in Singapur, 3114 
 
 ## 18. Kontakt
 
-Kerfy Studio — [Adresse des Sitzes] — [Telefonnummer] — **support@kerfystudio.com** — Missbrauch:
-**abuse@kerfystudio.com**
+Kerfy Studio — [Adresse des Sitzes] — [Telefonnummer] — **support@bipagents.com** — Missbrauch:
+**abuse@bipagents.com**
 
 ## Anhang: Widerrufsformular
 
@@ -434,7 +434,7 @@ Angebot ausgefüllt. Es ist freiwillig: Eine eindeutige E-Mail genügt.
 
 (Wenn Sie den Vertrag widerrufen wollen, dann füllen Sie bitte dieses Formular aus und senden Sie es zurück.)
 
-- An Kerfy Studio, [Adresse des Sitzes], support@kerfystudio.com:
+- An Kerfy Studio, [Adresse des Sitzes], support@bipagents.com:
 - Hiermit widerrufe ich den von mir abgeschlossenen Vertrag über die Erbringung der folgenden Dienstleistung:
   Alles-inklusive-Angebot von BipAgents, Tarif … (oder am … gekauftes KI-Guthaben)
 - Bestellt am

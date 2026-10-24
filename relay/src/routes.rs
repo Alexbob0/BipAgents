@@ -159,7 +159,7 @@ async fn register(
         }
     };
     if relay.is_blocked(&device.token) {
-        return refuse(StatusCode::FORBIDDEN, "this device is blocked on the relay: write to support@kerfystudio.com");
+        return refuse(StatusCode::FORBIDDEN, "this device is blocked on the relay: write to support@bipagents.com");
     }
     tracing::info!(platform = ?device.platform, device = %fingerprint(&device.token), "device registered");
     Json(json!({"relay_token": relay.sealer.seal(&device)})).into_response()
@@ -207,7 +207,7 @@ async fn push(
     }
     if relay.is_blocked(&device.token) {
         tracing::info!(device = %fingerprint(&device.token), "push refused: device blocked");
-        return refuse(StatusCode::FORBIDDEN, "this device is blocked on the relay: write to support@kerfystudio.com");
+        return refuse(StatusCode::FORBIDDEN, "this device is blocked on the relay: write to support@bipagents.com");
     }
     if !relay.per_ip_push.allow(relay.client_ip(peer, &headers).as_bytes())
         || !relay.per_device.allow(device.token.as_bytes())

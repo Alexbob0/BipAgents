@@ -247,7 +247,7 @@ async fn a_device_blocked_for_abuse_gets_nothing() {
     let h = harness_with(100, vec![fingerprint], key.clone()).await;
     let (status, body) = h.post("/v1/register", json!({"platform": "apns", "token": device})).await;
     assert_eq!(status, 403, "{body}");
-    assert!(body["detail"].as_str().unwrap().contains("support@kerfystudio.com"));
+    assert!(body["detail"].as_str().unwrap().contains("support@bipagents.com"));
     // A token sealed before it was blocked: refused too, nothing reaches Apple.
     let sealed = Sealer::from_base64_list(&key).unwrap().seal(&bipagents_relay::seal::Device {
         platform: bipagents_relay::seal::Platform::Apns,

@@ -32,7 +32,8 @@ One file, read by both sites:
 - **`company`** — capital, SIREN, RCS city, registered office, phone, VAT number, president. Shown in both footers, on
   kerfystudio.com's company block and support page, and written into the legal texts' placeholders (`[SIREN]`,
   `[adresse du siège]`, `[Prénom Nom]`… in the four languages). Empty = a yellow `[TODO]` mark stays visible.
-- **`contact`** — `contact@` (general), `support@`, `abuse@`.
+- **`contact`** — `general` (contact@kerfystudio.com: the publisher, authorities), `support` (support@bipagents.com:
+  the app), `abuse`, `privacy`, `security` (all @bipagents.com; `security` goes into security.txt).
 - **`stores`** — App Store and Google Play links for BipAgents and for Tablée. Empty = « Coming soon to » badges.
 - **`checkout.url`** — the web checkout, one template for every plan and period:
   `https://…/v1/web/checkout?plan={plan}&period={period}&lang={lang}` (the page adds `&currency=`) (`plan` = solo | duo | famille, `period` = month |
@@ -68,8 +69,12 @@ banner is needed.
 with arrow keys), decorative animations are `aria-hidden`, and `prefers-reduced-motion` stops them. Light by default,
 with a dark look that follows the system.
 
-**Hosting**: `site/dist/<site>` is plain static files, for any static host (GitHub Pages, Cloudflare Pages, Netlify…).
-Point the domains at it once bought. The pages already link to each other by their final addresses.
+**Hosting**: `site/dist/<site>` is plain static files. Both sites live on OVH's free web hosting (Apache), so
+`hosting.py` adds to each a `.htaccess` (one redirect to `https://<apex>/` from http and www; HSTS, short at first;
+nosniff, Referrer-Policy, a Content-Security-Policy with no third party and the hashes of the pages' own inline scripts;
+a year of cache for `?v=` stylesheets and scripts, a week for pictures and fonts, none for pages), a `404.html` and
+`/.well-known/security.txt`. The private `scripts/deploy-sites.py` mirrors them to the hostings over SFTP (OVH offers no
+FTP over TLS) and checks each home page. The pages already link to each other by their final addresses.
 
 The Bips' drawings, their voices, the recordings and the screenshots are not under the MIT license
 ([LICENSE-ASSETS](../LICENSE-ASSETS)).

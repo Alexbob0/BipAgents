@@ -6,7 +6,7 @@
 payantes pour particuliers) de quelques assistants d'IA, d'après leurs propres pages, et ce que fait BipAgents, d'après
 sa [politique de confidentialité](legal/privacy.fr.md) et [ce que les apps envoient](app-data.fr.md). Les offres
 entreprise ou API de ces sociétés ont souvent d'autres règles. Ces règles changent : chaque ligne renvoie à sa source et
-à sa date. Si tu vois une erreur, écris à support@kerfystudio.com.
+à sa date. Si tu vois une erreur, écris à support@bipagents.com.
 
 ## En un coup d'œil
 

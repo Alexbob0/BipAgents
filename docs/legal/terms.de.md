@@ -2,7 +2,7 @@
 
 # Nutzungsbedingungen von BipAgents
 
-> Zuletzt aktualisiert: [Datum].
+> Zuletzt aktualisiert: 24. Oktober 2026.
 
 ## 1. Gegenstand
 
@@ -20,7 +20,7 @@ Diese Texte, die Datenschutzerklärung und das Impressum bleiben unter Einstellu
 **Kerfy Studio**, SAS (französische vereinfachte Aktiengesellschaft) mit einem Kapital von [Kapital] €, Sitz:
 [Adresse des Sitzes], eingetragen im RCS [Ort des Handelsregisters] unter der Nummer [SIREN], Telefon:
 [Telefonnummer], verantwortlich für die Veröffentlichung: [Vorname Nachname], Präsident. Kontakt:
-**support@kerfystudio.com**; Missbrauch melden: **abuse@kerfystudio.com**. Siehe auch das
+**support@bipagents.com**; Missbrauch melden: **abuse@bipagents.com**. Siehe auch das
 [Impressum](mentions-legales.fr.md) (auf Französisch).
 
 ## 3. Was BipAgents tut
@@ -168,14 +168,14 @@ insbesondere für Deepfakes.
 
 Mit dem Alles-inklusive-Angebot präzisiert die [Richtlinie zur zulässigen Nutzung](acceptable-use.de.md) diese Regeln
 für deinen Platz (Spam, Angriffe, Kryptomining, Weiterverkauf …) und sagt, wie du Missbrauch meldest:
-**abuse@kerfystudio.com**.
+**abuse@bipagents.com**.
 
 ## 11. Inhalte melden
 
 - In der App: **lange auf eine Antwort drücken › Diese Antwort melden**. Die Meldung geht aus der App, über das Relay
   von Kerfy Studio, nur an Kerfy Studio, mit dem Text der Antwort; wenn das Relay nicht antwortet, bietet dir die App
   an, sie per E-Mail zu schicken. Sag es auch deinem Agenten, damit er es nicht wieder tut.
-- Oder schreib an **support@kerfystudio.com**.
+- Oder schreib an **support@bipagents.com**.
 
 Die Antworten deiner Agenten werden auf deinem Server, oder mit dem Alles-inklusive-Angebot auf deinem Platz, von dem
 gewählten Modell erzeugt: Kerfy Studio liest sie nicht und greift nicht in sie ein. Meldungen helfen uns, die App, ihre
@@ -201,9 +201,9 @@ Meldungen an Kerfy Studio weiter (Abschnitt 11).
 - **Sperre**: Bei einem Verstoß gegen Abschnitt 10 kann Kerfy Studio die Benachrichtigungen eines Geräts oder eines
   Servers ablehnen; diese Entscheidung trifft ein Mensch. Du kannst ihr widersprechen, indem du an die Kontaktstelle
   schreibst.
-- **Kontaktstellen** (Art. 11 und 12 der Verordnung): für Behörden und für Nutzer **support@kerfystudio.com** oder per
-  Post an Kerfy Studio, [Adresse des Sitzes]. Sprachen: Französisch, Englisch. Um Missbrauch zu melden, der von einem
-  Server des Alles-inklusive-Angebots ausgeht: **abuse@kerfystudio.com**
+- **Kontaktstellen** (Art. 11 und 12 der Verordnung): für Behörden **contact@kerfystudio.com**, für Nutzer
+  **support@bipagents.com**, oder per Post an Kerfy Studio, [Adresse des Sitzes]. Sprachen: Französisch, Englisch. Um Missbrauch zu melden, der von einem
+  Server des Alles-inklusive-Angebots ausgeht: **abuse@bipagents.com**
   ([Richtlinie zur zulässigen Nutzung](acceptable-use.de.md)).
 
 Das Relay wird **nach bestem Bemühen** bereitgestellt. Es hängt von Apple und Google ab und kann unterbrochen werden,
@@ -270,7 +270,7 @@ App jederzeit ohne Kosten nicht mehr nutzen und deinstallieren.
 
 Diese Bedingungen unterliegen **französischem Recht**. Wenn du Verbraucher bist und in einem anderen Land der
 Europäischen Union wohnst, behältst du zusätzlich den Schutz der zwingenden Vorschriften dieses Landes. Bei einem
-Streit schreib uns zuerst an support@kerfystudio.com, um eine gütliche Lösung zu suchen. Als Verbraucher kannst du
+Streit schreib uns zuerst an support@bipagents.com, um eine gütliche Lösung zu suchen. Als Verbraucher kannst du
 nach deiner Wahl das Gericht deines Wohnorts oder das Gericht am Sitz von Kerfy Studio anrufen (in Frankreich auch das
 Gericht des Ortes, an dem du bei der Annahme dieser Bedingungen oder beim Eintritt des Schadens gewohnt hast); Kerfy
 Studio kann gegen dich nur vor dem Gericht deines Wohnorts klagen. Für die kostenlose Nutzung der App gilt die
@@ -280,5 +280,5 @@ Verbraucherschlichtungsstelle (Abschnitt 16).
 
 ## 21. Kontakt
 
-Kerfy Studio — [Adresse des Sitzes] — [Telefonnummer] — **support@kerfystudio.com** — Missbrauch:
-**abuse@kerfystudio.com**
+Kerfy Studio — [Adresse des Sitzes] — [Telefonnummer] — **support@bipagents.com** — Missbrauch:
+**abuse@bipagents.com**

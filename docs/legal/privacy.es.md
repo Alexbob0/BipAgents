@@ -2,7 +2,7 @@
 
 # Política de privacidad de BipAgents
 
-> Última actualización: [fecha].
+> Última actualización: 24 de octubre de 2026.
 
 ## En resumen
 
@@ -27,10 +27,10 @@
 
 **Kerfy Studio**, SAS (sociedad por acciones simplificada francesa) con un capital de [capital] €, con domicilio
 social en [dirección del domicilio social], inscrita en el RCS de [ciudad del registro] con el número [SIREN]
-(«Kerfy Studio», «nosotros»). Contacto: **support@kerfystudio.com**.
+(«Kerfy Studio», «nosotros»). Contacto: **privacy@bipagents.com**.
 
 Kerfy Studio no ha designado un delegado de protección de datos: no es obligatorio para su actividad (artículo 37 del
-RGPD). Para cualquier pregunta sobre tus datos: support@kerfystudio.com. Para la ley de Singapur (Personal Data
+RGPD). Para cualquier pregunta sobre tus datos: privacy@bipagents.com. Para la ley de Singapur (Personal Data
 Protection Act), que exige una persona encargada de la protección de datos, es el presidente de Kerfy Studio,
 [nombre y apellidos], a quien puedes contactar en la misma dirección.
 
@@ -209,12 +209,14 @@ olvida todo.
 la oferta todo incluido, el guichet de Kerfy Studio también lo guarda, siempre sellado (sección 5.6). Los registros
 técnicos del relé contienen la plataforma, una huella de 4 bytes del token y la respuesta de Apple o de Google; se
 conservan **6 meses como máximo**. El proveedor de alojamiento del relé puede registrar las direcciones IP de las
-solicitudes: [lo que registra el proveedor de alojamiento del relé y durante cuánto tiempo].
+solicitudes. El relé todavía no está en servicio: su proveedor de alojamiento, lo que registra y durante cuánto tiempo
+se indicarán aquí antes de su puesta en servicio.
 
 **Finalidades y bases jurídicas.** Entregar las notificaciones que has activado: ejecución de las condiciones de uso
 (artículo 6.1.b del RGPD). Limitar abusos y proteger el servicio: interés legítimo de Kerfy Studio (artículo 6.1.f).
 
-**Encargados del tratamiento.** [proveedor de alojamiento del relé] (Unión Europea) y Google (Firebase Cloud
+**Encargados del tratamiento.** El proveedor de alojamiento del relé, en la Unión Europea (todavía no en servicio; se
+indicará aquí antes de su puesta en servicio), y Google (Firebase Cloud
 Messaging), vinculados a Kerfy Studio por un contrato conforme al artículo 28 del RGPD. Apple entrega las
 notificaciones a los iPhone a través de su servicio APNs.
 
@@ -226,7 +228,7 @@ la app tú mismo con tu propia cuenta de Apple, no se usa el relé de Kerfy Stud
 
 ### 4.2 El soporte y las denuncias
 
-- **Ajustes › Contactar con soporte** prepara un correo a support@kerfystudio.com con un diagnóstico que puedes leer
+- **Ajustes › Contactar con soporte** prepara un correo a support@bipagents.com con un diagnóstico que puedes leer
   antes de enviarlo: versión de la app, modelo y versión del sistema del teléfono, idioma, estilo de visualización,
   modo demo o no, estado de las notificaciones y, para cada agente, su categoría, si responde, si tiene un bridge y
   una puerta en la red local, y su voz. **Ninguna conversación, ningún nombre de agente, ninguna dirección, ninguna
@@ -250,8 +252,7 @@ en las precisiones solo lo que sea útil. Borramos lo que no sirve para tramitar
 responderte y hacer la app más segura (artículo 6.1.f del RGPD). Responder a una solicitud de ejercicio de tus
 derechos: obligación legal (artículo 6.1.c; artículos 12 a 22 del RGPD).
 **Plazo.** Soporte: 2 años después del último intercambio. Denuncias: 1 año después de su tramitación.
-**Destinatarios.** Kerfy Studio y sus encargados del tratamiento: su proveedor de correo ([proveedor de correo],
-[país]) y el proveedor de alojamiento del relé, por el que pasan las denuncias.
+**Destinatarios.** Kerfy Studio y sus encargados del tratamiento: su proveedor de correo (Proton AG, Suiza) y el proveedor de alojamiento del relé, por el que pasan las denuncias.
 
 ### 4.3 Los informes de fallos
 
@@ -407,7 +408,8 @@ se queda en la plaza y en tus dispositivos, más una copia de esa clave cifrada 
 Studio: la clave también está allí y,
 técnicamente, el proveedor y Kerfy Studio podrían acceder a ella; nuestro software no lee ni tu plaza ni sus copias, y
 solo lo haríamos si la ley nos obligara. Kerfy
-Studio guarda estas copias en [por completar: proveedor de alojamiento de las copias de seguridad] sin poder leerlas:
+Studio guarda estas copias en un proveedor de alojamiento de copias de seguridad (todavía no en servicio; se indicará aquí antes de su puesta en
+servicio) sin poder leerlas:
 una por hora durante 48 horas, una por día durante 30 días, una por semana durante 12 semanas. Se borran con tu plaza.
 
 **La imagen diaria de OVHcloud.** En sus servidores, OVHcloud hace además una imagen diaria del servidor entero, que
@@ -493,9 +495,9 @@ no borra nada en él y Kerfy Studio no guarda nada de él.
 | Hetzner Online GmbH (Gunzenhausen, Alemania) | Aloja parte de los servidores de las plazas y el servidor de correo de los agentes | Contenido de las plazas; buzones de los agentes y registros de seguridad del servidor de correo | Alemania, Finlandia |
 | EUrouter B.V. (Ámsterdam, Países Bajos) | Enrutador de IA | Mensajes enviados al modelo, metadatos | Unión Europea |
 | Proveedores de los modelos: [por completar] | Hacen funcionar el modelo elegido | Mensajes enviados al modelo | [por completar] |
-| [por completar: proveedor de alojamiento de las copias de seguridad] | Guarda las copias de seguridad | Copias de seguridad cifradas, ilegibles para él y para Kerfy Studio | [por completar] |
-| [proveedor de alojamiento del relé] | Aloja el guichet y el relé | Cuenta, suscripción, datos técnicos | Unión Europea |
-| [por completar: proveedor de envío de correos] | Envía los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación | Dirección de correo, contenido de esos correos | [por completar] |
+| Proveedor de alojamiento de las copias de seguridad: todavía no en servicio; se indicará aquí antes de su puesta en servicio | Guarda las copias de seguridad | Copias de seguridad cifradas, ilegibles para él y para Kerfy Studio | Se indicará con él |
+| Proveedor de alojamiento del guichet y del relé: todavía no en servicio; se indicará aquí antes de su puesta en servicio | Aloja el guichet y el relé | Cuenta, suscripción, datos técnicos | Unión Europea |
+| Proveedor de envío de correos: todavía no en servicio; se indicará aquí antes de su puesta en servicio | Envía los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación | Dirección de correo, contenido de esos correos | Se indicará con él |
 | Stripe Payments Europe, Ltd. (Dublín, Irlanda) | Pago de las compras en el sitio bipagents.com, cálculo de impuestos, controles contra el fraude, facturas | Dirección de correo, dirección o país de facturación, datos de tarjeta, dirección IP | Unión Europea; posiblemente fuera de la Unión (sección 11) |
 
 Están vinculados a Kerfy Studio por un contrato conforme al artículo 28 del RGPD; Stripe actúa además como responsable
@@ -578,7 +580,8 @@ anunciará como se indica en la sección 17.
 
 ## 11. Transferencias fuera de la Unión Europea
 
-El relé de notificaciones está alojado en la Unión Europea ([proveedor de alojamiento del relé]). Para entregar las
+El relé de notificaciones estará alojado en la Unión Europea (todavía no en servicio; su proveedor de alojamiento se
+indicará aquí antes de su puesta en servicio). Para entregar las
 notificaciones, Apple y Google pueden tratar el token y la notificación fuera de la Unión Europea, en particular en
 Estados Unidos:
 
@@ -600,8 +603,10 @@ Europea, donde Kerfy Studio los trata conforme al RGPD, que se aplica a todos su
 reconocen que la Unión Europea ofrece una protección adecuada; para Singapur, ese nivel de protección y nuestros
 contratos con nuestros prestadores dan la protección comparable que exige la ley de Singapur.
 
-Proveedor de correo: [país; garantía]. Proveedor de envío de correos y proveedor de alojamiento de las copias de
-seguridad: [por completar: país; garantía]. Puedes pedirnos una copia de las garantías aplicables.
+Proveedor de correo: Proton AG, en Suiza, país que la Comisión Europea reconoce como con un nivel de protección
+adecuado (Decisión 2000/518/CE, mantenida en vigor por el artículo 45, apartado 9, del RGPD). Proveedor de envío de
+correos y proveedor de alojamiento de las copias de seguridad: todavía no en servicio; su país y la garantía aplicable
+se indicarán aquí antes de su puesta en servicio. Puedes pedirnos una copia de las garantías aplicables.
 
 ## 12. Plazos de conservación
 
@@ -639,7 +644,7 @@ El relé solo acepta conexiones cifradas (HTTPS), sella los tokens (XChaCha20-Po
 nunca escribe un token en claro. En la app, las claves de tus agentes están protegidas por el Llavero o el Keystore,
 y la conexión con tu servidor pasa por Tailscale o por una puerta HTTPS en tu red local, que solo acepta el
 certificado de tu servidor. El código de la app, del servidor y del relé es público: [URL del repositorio]. Para
-informar de un fallo de seguridad: **support@kerfystudio.com** (consulta el archivo SECURITY.md del repositorio).
+informar de un fallo de seguridad: **security@bipagents.com** (consulta el archivo SECURITY.md del repositorio).
 
 Con la oferta todo incluido, cada plaza es una cuenta separada del servidor, sin derechos de administrador; Kerfy
 Studio no tiene ninguna clave SSH en los servidores, y un servidor solo ejecuta órdenes firmadas por el guichet. La
@@ -661,7 +666,7 @@ portabilidad, y dar instrucciones sobre el destino de tus datos después de tu f
 a los tratamientos basados en nuestro interés legítimo (limitación de abusos, correos, denuncias, informes de
 fallos, límite de las semanas gratis).
 
-Escribe a **support@kerfystudio.com**. Respondemos en el plazo de un mes, prorrogable dos meses para una solicitud
+Escribe a **privacy@bipagents.com**. Respondemos en el plazo de un mes, prorrogable dos meses para una solicitud
 compleja; podemos pedirte lo necesario para verificar tu identidad.
 
 Con tu propio servidor, como no conservamos nada que relacione un token de notificación o una denuncia con una
@@ -677,7 +682,7 @@ Para eliminar tu cuenta: sección 5.2.
 en el sentido de la ley californiana (California Consumer Privacy Act) y no hace ninguna publicidad dirigida. La app y
 nuestros sitios no te rastrean de un sitio a otro: por eso una señal «Do Not Track» de tu navegador no cambia nada de
 lo que hacemos (California Online Privacy Protection Act). Puedes ejercer los derechos de esta sección escribiendo a
-support@kerfystudio.com.
+privacy@bipagents.com.
 
 ## 15. Reclamación
 
@@ -714,7 +719,7 @@ cambia cada vez. Un cambio importante se anuncia en la app al menos 30 días ant
 
 ## 18. Contacto
 
-Kerfy Studio — [dirección del domicilio social] — **support@kerfystudio.com** — abusos: **abuse@kerfystudio.com**
+Kerfy Studio — [dirección del domicilio social] — **privacy@bipagents.com** — abusos: **abuse@bipagents.com**
 
 Esta política, las condiciones de uso, las [condiciones de la oferta todo incluido](offer.es.md), la
 [política de uso aceptable](acceptable-use.es.md) y el aviso legal (mentions légales, en francés) también están en la

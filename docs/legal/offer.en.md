@@ -2,7 +2,7 @@ English · [Français](offer.fr.md) · [Deutsch](offer.de.md) · [Español](offe
 
 # Terms of sale of the all-included offer
 
-> Last updated: [date].
+> Last updated: 24 October 2026.
 
 ## 1. Purpose
 
@@ -35,8 +35,8 @@ Using BipAgents with your own computer or your own server stays free and is not 
 
 - **Kerfy Studio provides the service**: your place, your AI credit, the backups and support. Kerfy Studio, a French
   SAS with a share capital of [capital] €, registered office: [registered office address], registered with the RCS of
-  [registry city] under number [SIREN], phone: [phone number]. Contact: **support@kerfystudio.com**. Abuse reports:
-  **abuse@kerfystudio.com**.
+  [registry city] under number [SIREN], phone: [phone number]. Contact: **support@bipagents.com**. Abuse reports:
+  **abuse@bipagents.com**.
 - **In the app, the store collects the price.** You buy in Apple's App Store or on Google Play, with your account there:
   the store bills you, collects the price and the VAT, and refunds under its own rules. On the App Store, Apple acts as
   Kerfy Studio's agent and, for the European Union, the seller is Apple Distribution International Ltd. (Ireland); on
@@ -285,7 +285,7 @@ the date and time of your decision.
   once; the money comes back to your payment method within 5 to 10 days. A full refund, for instance made by support,
   also stops the subscription.
 
-You can also withdraw from the contract with any clear statement: an email to support@kerfystudio.com or the form in
+You can also withdraw from the contract with any clear statement: an email to support@bipagents.com or the form in
 the annex; or ask the store for the refund directly (App Store: your Apple account's purchase history; Google Play:
 the "Request a refund" page). In every case, your place is kept for 30 days so that you can get your data back, then
 it is erased with its backups (section 11).
@@ -296,7 +296,7 @@ it is erased with its backups (section 11).
   and is liable for any lack of conformity that appears during that time (articles L224-25-12 to L224-25-14 of the
   French Consumer Code). In case of a lack of conformity, you can ask for it to be brought into conformity, at no cost
   and without undue delay; failing that, a price reduction or the termination of the contract, with a refund of the
-  sums due within 14 days (articles L224-25-17 to L224-25-23). Write to support@kerfystudio.com.
+  sums due within 14 days (articles L224-25-17 to L224-25-23). Write to support@bipagents.com.
 - The agents' replies are produced by an AI model and can be wrong (terms of use, section 8): this is a characteristic
   of the service, described before the purchase.
 - **Updates**: Kerfy Studio keeps your place up to date (security, compatibility, fixes). It may also change the
@@ -333,7 +333,7 @@ paid. If you do not agree, you can cancel at no cost before it applies.
 
 ## 16. Complaints, mediation, governing law
 
-- If there is a problem, first write to **support@kerfystudio.com** to look for a solution.
+- If there is a problem, first write to **support@bipagents.com** to look for a solution.
 - **Mediation**: if your written complaint did not settle the matter, you can go, free of charge, to Kerfy Studio's
   consumer mediator: [to be completed: name of the mediator, postal address, website]. You must do so within one year
   of your written complaint (articles L612-1, L612-2, L616-1 and R616-1 of the French Consumer Code).
@@ -360,7 +360,7 @@ your country's taxes, calculated by Stripe Tax, and you cancel on Stripe's custo
   court. You can always go to your county's small claims court for a claim within its jurisdiction. Kerfy Studio pays
   the arbitration body's fees beyond what you would pay to go to court. **You waive the right to act in a class
   action** or a class arbitration, as a party or as a member. You can opt out of this arbitration clause by writing to
-  support@kerfystudio.com within 30 days of subscribing; the rest of the contract does not change.
+  support@bipagents.com within 30 days of subscribing; the rest of the contract does not change.
 - **Liability**: to the extent the law of your state allows, Kerfy Studio's total liability to you is limited to the
   amount you paid for the offer during the 12 months before the event in question, and Kerfy Studio is not liable for
   indirect damage; for you, this rule replaces the sentence of section 14 saying that its liability is not capped.
@@ -411,8 +411,8 @@ United States and Canada, 116 123 in the United Kingdom, 1201 in Israel, 1767 in
 
 ## 18. Contact
 
-Kerfy Studio — [registered office address] — [phone number] — **support@kerfystudio.com** — abuse:
-**abuse@kerfystudio.com**
+Kerfy Studio — [registered office address] — [phone number] — **support@bipagents.com** — abuse:
+**abuse@bipagents.com**
 
 ## Annex: withdrawal form
 
@@ -421,7 +421,7 @@ enough.
 
 (complete and return this form only if you wish to withdraw from the contract)
 
-- To Kerfy Studio, [registered office address], support@kerfystudio.com:
+- To Kerfy Studio, [registered office address], support@bipagents.com:
 - I hereby give notice that I withdraw from my contract for the provision of the following service: BipAgents
   all-included offer, … plan (or AI credit bought on …)
 - Ordered on:

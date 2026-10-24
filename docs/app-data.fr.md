@@ -191,7 +191,7 @@ Il n’est utilisé que si la version de l’app définit un hôte de relais (`B
   facultatif, la catégorie de l’agent, la version de l’app, le modèle du téléphone (iOS : identifiant matériel comme
   `iPhone17,1` ; Android : fabricant + modèle), la plateforme et la langue. Il n’y a ni nom, ni adresse, ni compte. Le
   relais transmet le tout à `/v1/reports` sur le guichet (`relay/src/routes.rs`). Si le relais n’est pas configuré ou
-  ne répond pas, l’app ouvre à la place un e-mail à support@kerfystudio.com avec le même texte. **C’est le seul cas où
+  ne répond pas, l’app ouvre à la place un e-mail à support@bipagents.com avec le même texte. **C’est le seul cas où
   un texte de conversation arrive chez Kerfy Studio, et seulement quand la personne l’envoie.**
 - Les notifications elles-mêmes sont envoyées par le bridge ou le guichet, pas par l’app. Le relais ne garde que des
   identifiants, le nom de l’agent dans le titre et une liste fixe de textes génériques (`relay/src/payload.rs`).

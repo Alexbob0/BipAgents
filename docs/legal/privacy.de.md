@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: [Datum].
+> Zuletzt aktualisiert: 24. Oktober 2026.
 
 ## Kurz gesagt
 
@@ -27,10 +27,10 @@
 
 **Kerfy Studio**, SAS (französische vereinfachte Aktiengesellschaft) mit einem Kapital von [Kapital] €, Sitz:
 [Adresse des Sitzes], eingetragen im RCS [Ort des Handelsregisters] unter der Nummer [SIREN] („Kerfy Studio“, „wir“).
-Kontakt: **support@kerfystudio.com**.
+Kontakt: **privacy@bipagents.com**.
 
 Kerfy Studio hat keinen Datenschutzbeauftragten benannt: Für seine Tätigkeit ist das nicht vorgeschrieben (Art. 37
-DSGVO). Für alle Fragen zu deinen Daten: support@kerfystudio.com. Für das Recht von Singapur (Personal Data Protection
+DSGVO). Für alle Fragen zu deinen Daten: privacy@bipagents.com. Für das Recht von Singapur (Personal Data Protection
 Act), das eine für den Datenschutz zuständige Person verlangt, ist das der Präsident von Kerfy Studio, [Vorname Name],
 erreichbar unter derselben Adresse.
 
@@ -220,14 +220,15 @@ es, leitet an Apple oder Google weiter und vergisst dann alles.
 Server gespeichert; mit dem Alles-inklusive-Angebot bewahrt es auch der Guichet von Kerfy Studio auf, weiterhin
 versiegelt (Abschnitt 5.6). Die technischen Protokolle des Relays enthalten die Plattform, einen 4-Byte-
 Fingerabdruck des Tokens und die Antwort von Apple oder Google; sie werden **höchstens 6 Monate** aufbewahrt. Der
-Hoster des Relays kann die IP-Adressen der Anfragen protokollieren: [was der Hoster des Relays protokolliert und wie
-lange].
+Hoster des Relays kann die IP-Adressen der Anfragen protokollieren. Das Relay ist noch nicht in Betrieb: sein Hoster,
+was er protokolliert und wie lange, werden hier vor der Inbetriebnahme angegeben.
 
 **Zwecke und Rechtsgrundlagen.** Die Benachrichtigungen zustellen, die du eingeschaltet hast: Erfüllung der
 Nutzungsbedingungen (Art. 6 Abs. 1 lit. b DSGVO). Missbrauch begrenzen und den Dienst schützen: berechtigtes Interesse
 von Kerfy Studio (Art. 6 Abs. 1 lit. f DSGVO).
 
-**Auftragsverarbeiter.** [Hoster des Relays] (Europäische Union) und Google (Firebase Cloud Messaging), mit Kerfy
+**Auftragsverarbeiter.** Der Hoster des Relays, in der Europäischen Union (noch nicht in Betrieb; er wird hier vor der
+Inbetriebnahme genannt), und Google (Firebase Cloud Messaging), mit Kerfy
 Studio durch einen Vertrag nach Art. 28 DSGVO verbunden. Apple stellt die Benachrichtigungen über seinen Dienst APNs
 auf iPhones zu.
 
@@ -240,7 +241,7 @@ Relay von Kerfy Studio nicht genutzt.
 
 ### 4.2 Support und Meldungen
 
-- **Einstellungen › Support kontaktieren** bereitet eine E-Mail an support@kerfystudio.com vor, mit einer Diagnose,
+- **Einstellungen › Support kontaktieren** bereitet eine E-Mail an support@bipagents.com vor, mit einer Diagnose,
   die du vor dem Senden lesen kannst: Version der App, Modell und Systemversion des Telefons, Sprache, Anzeigestil,
   Demo-Modus oder nicht, Status der Benachrichtigungen und für jeden Agenten seine Kategorie, ob er antwortet, ob er
   eine Bridge und eine Tür im lokalen Netz hat, und seine Stimme. **Keine Unterhaltung, kein Agentenname, keine
@@ -265,7 +266,7 @@ nötig ist.
 Studio, dir zu antworten und die App sicherer zu machen (Art. 6 Abs. 1 lit. f DSGVO). Auf einen Antrag zur Ausübung
 deiner Rechte antworten: rechtliche Verpflichtung (Art. 6 Abs. 1 lit. c; Art. 12 bis 22 DSGVO).
 **Dauer.** Support: 2 Jahre nach dem letzten Austausch. Meldungen: 1 Jahr nach ihrer Bearbeitung.
-**Empfänger.** Kerfy Studio und seine Auftragsverarbeiter: sein E-Mail-Anbieter ([E-Mail-Anbieter], [Land]) und der
+**Empfänger.** Kerfy Studio und seine Auftragsverarbeiter: sein E-Mail-Anbieter (Proton AG, Schweiz) und der
 Hoster des Relays, über das die Meldungen laufen.
 
 ### 4.3 Absturzberichte
@@ -429,8 +430,8 @@ einem Schlüssel, der auf dem Platz und auf deinen Geräten bleibt, plus einer K
 Wiederherstellungscode verschlüsselt ist (Abschnitt 5.2) und die Kerfy Studio nicht öffnen kann. Beim Komplettangebot
 liegt der Platz auf einem von Kerfy Studio gemieteten Server: Der Schlüssel ist also auch dort, und
 technisch könnten der Hoster wie Kerfy Studio darauf zugreifen; unsere Software liest weder deinen Platz noch seine
-Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei [zu ergänzen: Hoster der Sicherungen]
-auf, ohne sie lesen zu können: eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, eine pro Woche für 12 Wochen.
+Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei einem Hoster für Sicherungen auf (noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt), ohne sie
+lesen zu können: eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, eine pro Woche für 12 Wochen.
 Sie werden mit deinem Platz gelöscht.
 
 **Das tägliche Abbild von OVHcloud.** Auf seinen Servern erstellt OVHcloud außerdem ein tägliches Abbild des ganzen
@@ -520,9 +521,9 @@ dieses Anbieters, BipAgents löscht darin nichts, und Kerfy Studio bewahrt nicht
 | Hetzner Online GmbH (Gunzenhausen, Deutschland) | Hostet einen Teil der Server der Plätze und den Mailserver der Agenten | Inhalt der Plätze; Postfächer der Agenten und Sicherheitsprotokolle des Mailservers | Deutschland, Finnland |
 | EUrouter B.V. (Amsterdam, Niederlande) | KI-Router | An das Modell geschickte Nachrichten, Metadaten | Europäische Union |
 | Anbieter der Modelle: [zu ergänzen] | Betreiben das gewählte Modell | An das Modell geschickte Nachrichten | [zu ergänzen] |
-| [zu ergänzen: Hoster der Sicherungen] | Bewahrt die Sicherungen auf | Verschlüsselte Sicherungen, für ihn und für Kerfy Studio unlesbar | [zu ergänzen] |
-| [Hoster des Relays] | Hostet den Guichet und das Relay | Konto, Abo, technische Daten | Europäische Union |
-| [zu ergänzen: Anbieter für den E-Mail-Versand] | Verschickt die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung | E-Mail-Adresse, Inhalt dieser E-Mails | [zu ergänzen] |
+| Hoster der Sicherungen: noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt | Bewahrt die Sicherungen auf | Verschlüsselte Sicherungen, für ihn und für Kerfy Studio unlesbar | Mit ihm angegeben |
+| Hoster des Guichets und des Relays: noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt | Hostet den Guichet und das Relay | Konto, Abo, technische Daten | Europäische Union |
+| Anbieter für den E-Mail-Versand: noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt | Verschickt die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung | E-Mail-Adresse, Inhalt dieser E-Mails | Mit ihm angegeben |
 | Stripe Payments Europe, Ltd. (Dublin, Irland) | Zahlung der Käufe auf der Website bipagents.com, Steuerberechnung, Betrugsprüfung, Rechnungen | E-Mail-Adresse, Rechnungsadresse oder -land, Kartendaten, IP-Adresse | Europäische Union; möglicherweise außerhalb der Union (Abschnitt 11) |
 
 Sie sind mit Kerfy Studio durch einen Vertrag nach Art. 28 DSGVO verbunden; Stripe handelt außerdem für seine eigenen
@@ -608,7 +609,8 @@ wird wie in Abschnitt 17 beschrieben angekündigt.
 
 ## 11. Übermittlungen außerhalb der Europäischen Union
 
-Das Relay für Benachrichtigungen wird in der Europäischen Union gehostet ([Hoster des Relays]). Um Benachrichtigungen
+Das Relay für Benachrichtigungen wird in der Europäischen Union gehostet werden (noch nicht in Betrieb; sein Hoster
+wird hier vor der Inbetriebnahme genannt). Um Benachrichtigungen
 zuzustellen, können Apple und Google das Token und die Benachrichtigung außerhalb der Europäischen Union verarbeiten,
 insbesondere in den USA:
 
@@ -631,8 +633,10 @@ Vereinigte Königreich und Israel erkennen an, dass die Europäische Union ein a
 Singapur sorgen dieses Schutzniveau und unsere Verträge mit unseren Dienstleistern für den vergleichbaren Schutz, den
 das Recht von Singapur verlangt.
 
-E-Mail-Anbieter: [Land; Garantie]. Anbieter für den E-Mail-Versand und Hoster der Sicherungen: [zu ergänzen: Land;
-Garantie]. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
+E-Mail-Anbieter: Proton AG, in der Schweiz, einem Land, dem die Europäische Kommission ein angemessenes Schutzniveau
+bescheinigt (Entscheidung 2000/518/EG, nach Art. 45 Abs. 9 DSGVO weiter in Kraft). Anbieter für den E-Mail-Versand
+und Hoster der Sicherungen: noch nicht in Betrieb; ihr Land und die geltende Garantie werden hier vor der
+Inbetriebnahme angegeben. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
 
 ## 12. Speicherdauer
 
@@ -671,7 +675,7 @@ Datenbank und schreibt nie ein Token im Klartext. In der App sind die Schlüssel
 Schlüsselbund oder den Keystore geschützt, und die Verbindung zu deinem Server läuft über Tailscale oder über eine
 HTTPS-Tür in deinem lokalen Netz, die nur das Zertifikat deines Servers akzeptiert. Der Code der App, der
 Serverseite und des Relays ist öffentlich: [URL des Repositorys]. Um eine Sicherheitslücke zu melden:
-**support@kerfystudio.com** (siehe die Datei SECURITY.md im Repository).
+**security@bipagents.com** (siehe die Datei SECURITY.md im Repository).
 
 Mit dem Alles-inklusive-Angebot ist jeder Platz ein eigenes Konto auf dem Server, ohne Administratorrechte; Kerfy
 Studio hat keinen SSH-Schlüssel auf den Servern, und ein Server führt nur Befehle aus, die der Guichet signiert hat.
@@ -694,7 +698,7 @@ Recht).
 Verarbeitungen widersprechen, die auf unserem berechtigten Interesse beruhen (Begrenzung von Missbrauch, E-Mails,
 Meldungen, Absturzberichte, Begrenzung der kostenlosen Wochen).
 
-Schreib an **support@kerfystudio.com**. Wir antworten innerhalb eines Monats; bei einem komplexen Antrag kann sich die
+Schreib an **privacy@bipagents.com**. Wir antworten innerhalb eines Monats; bei einem komplexen Antrag kann sich die
 Frist um zwei Monate verlängern. Wir können dich um Angaben bitten, um deine Identität zu prüfen.
 
 Mit deinem eigenen Server speichern wir nichts, das ein Benachrichtigungstoken oder eine Meldung mit einer Person
@@ -710,7 +714,7 @@ ihn jederzeit kopieren. Um dein Konto zu löschen: Abschnitt 5.2.
 nicht im Sinne des kalifornischen Rechts (California Consumer Privacy Act) und macht keine zielgerichtete Werbung. Die
 App und unsere Websites verfolgen dich nicht von einer Website zur anderen: Ein „Do Not Track“-Signal deines Browsers
 ändert daher nichts an dem, was wir tun (California Online Privacy Protection Act). Die Rechte aus diesem Abschnitt übst
-du unter support@kerfystudio.com aus.
+du unter privacy@bipagents.com aus.
 
 ## 15. Beschwerde
 
@@ -748,7 +752,7 @@ Seite ändert sich jedes Mal. Eine wichtige Änderung wird mindestens 30 Tage, b
 
 ## 18. Kontakt
 
-Kerfy Studio — [Adresse des Sitzes] — **support@kerfystudio.com** — Missbrauch: **abuse@kerfystudio.com**
+Kerfy Studio — [Adresse des Sitzes] — **privacy@bipagents.com** — Missbrauch: **abuse@bipagents.com**
 
 Diese Datenschutzerklärung, die Nutzungsbedingungen, die [Bedingungen des Alles-inklusive-Angebots](offer.de.md), die
 [Richtlinie zur zulässigen Nutzung](acceptable-use.de.md) und das Impressum (mentions légales, auf Französisch) findest

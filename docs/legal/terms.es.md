@@ -2,7 +2,7 @@
 
 # Condiciones de uso de BipAgents
 
-> Última actualización: [fecha].
+> Última actualización: 24 de octubre de 2026.
 
 ## 1. Objeto
 
@@ -19,7 +19,7 @@ política de privacidad y el aviso legal siguen disponibles en Ajustes › Acerc
 **Kerfy Studio**, SAS (sociedad por acciones simplificada francesa) con un capital de [capital] €, domicilio social:
 [dirección del domicilio social], inscrita en el RCS de [ciudad del registro] con el número [SIREN], teléfono:
 [número de teléfono], director de la publicación: [Nombre Apellido], presidente. Contacto:
-**support@kerfystudio.com**; denuncia de abusos: **abuse@kerfystudio.com**. Consulta también el
+**support@bipagents.com**; denuncia de abusos: **abuse@bipagents.com**. Consulta también el
 [aviso legal](mentions-legales.fr.md) (en francés).
 
 ## 3. Qué hace BipAgents
@@ -160,14 +160,14 @@ profesional, se te aplican las obligaciones del «responsable del despliegue» p
 IA, en particular para las ultrasuplantaciones.
 
 Con la oferta todo incluido, la [política de uso aceptable](acceptable-use.es.md) precisa estas reglas para tu plaza
-(spam, ataques, minería de criptomonedas, reventa…) y dice cómo denunciar un abuso: **abuse@kerfystudio.com**.
+(spam, ataques, minería de criptomonedas, reventa…) y dice cómo denunciar un abuso: **abuse@bipagents.com**.
 
 ## 11. Denunciar un contenido
 
 - En la app: **mantén pulsada una respuesta › Denunciar esta respuesta**. La denuncia sale desde la app, a través del
   relé de Kerfy Studio, solo a Kerfy Studio, con el texto de la respuesta; si el relé no responde, la app te propone
   enviarla por correo. Díselo también a tu agente para que no vuelva a hacerlo.
-- O escribe a **support@kerfystudio.com**.
+- O escribe a **support@bipagents.com**.
 
 Las respuestas de tus agentes se producen en tu servidor, o en tu plaza con la oferta todo incluido, con el modelo
 elegido: Kerfy Studio no las lee y no interviene en ellas. Las denuncias nos sirven para mejorar la app, sus ajustes por
@@ -192,9 +192,9 @@ app (sección 11).
 - **Bloqueo**: en caso de incumplimiento de la sección 10, Kerfy Studio puede rechazar las notificaciones de un
   dispositivo o de un servidor; esta decisión la toma una persona. Puedes impugnarla escribiendo al punto de
   contacto.
-- **Puntos de contacto** (artículos 11 y 12 del reglamento): para las autoridades y para los usuarios,
-  **support@kerfystudio.com** o por correo postal a Kerfy Studio, [dirección del domicilio social]. Idiomas: francés,
-  inglés. Para denunciar un abuso que sale de un servidor de la oferta todo incluido: **abuse@kerfystudio.com**
+- **Puntos de contacto** (artículos 11 y 12 del reglamento): para las autoridades, **contact@kerfystudio.com**; para los
+  usuarios, **support@bipagents.com**; o por correo postal a Kerfy Studio, [dirección del domicilio social]. Idiomas: francés,
+  inglés. Para denunciar un abuso que sale de un servidor de la oferta todo incluido: **abuse@bipagents.com**
   ([política de uso aceptable](acceptable-use.es.md)).
 
 El relé se ofrece **lo mejor posible**. Depende de Apple y de Google y puede interrumpirse, en particular por
@@ -258,7 +258,7 @@ momento, sin coste.
 
 Estas condiciones se rigen por el **derecho francés**. Si eres consumidor y resides en otro país de la Unión Europea,
 conservas además la protección de las normas imperativas de ese país. En caso de desacuerdo, escríbenos primero a
-support@kerfystudio.com para buscar una solución amistosa. Si eres consumidor, puedes acudir, a tu elección, al
+support@bipagents.com para buscar una solución amistosa. Si eres consumidor, puedes acudir, a tu elección, al
 tribunal de tu lugar de residencia o al del domicilio social de Kerfy Studio (en Francia, también al del lugar donde
 vivías al aceptar estas condiciones o cuando se produjo el hecho dañoso); Kerfy Studio solo puede actuar contra ti
 ante el tribunal de tu lugar de residencia. Para el uso gratuito de la app, la mediación de consumo de los artículos
@@ -267,5 +267,5 @@ aplica; para la oferta todo incluido, sus condiciones indican el mediador de con
 
 ## 21. Contacto
 
-Kerfy Studio — [dirección del domicilio social] — [número de teléfono] — **support@kerfystudio.com** — abusos:
-**abuse@kerfystudio.com**
+Kerfy Studio — [dirección del domicilio social] — [número de teléfono] — **support@bipagents.com** — abusos:
+**abuse@bipagents.com**

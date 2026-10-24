@@ -6,8 +6,8 @@ very welcome.
 ## Reporting a vulnerability
 
 Please **don't open a public issue**. Use GitHub's private reporting instead:
-[**Report a vulnerability**](https://github.com/Alexbob0/BipAgents/security/advisories/new). We aim to answer
-within a week. Once a fix is out, the advisory is published, with your name if you want it.
+[**Report a vulnerability**](https://github.com/Alexbob0/BipAgents/security/advisories/new). Or write to **security@bipagents.com** (also in
+[security.txt](https://kerfystudio.com/.well-known/security.txt)). We aim to answer within a week. Once a fix is out, the advisory is published, with your name if you want it.
 
 A problem in Hermes Agent itself goes to [its own security policy](https://github.com/NousResearch/hermes-agent/security).
 

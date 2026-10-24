@@ -2,7 +2,7 @@
 
 # Politique d'usage acceptable de l'offre tout compris
 
-> Dernière mise à jour : [date].
+> Dernière mise à jour : 24 octobre 2026.
 
 ## 1. À quoi elle sert
 
@@ -50,8 +50,8 @@ que les accès dont il a besoin (conditions d'utilisation, section 9).
 Toute personne peut signaler un abus venu d'un serveur de l'offre, même sans utiliser BipAgents, ainsi que les
 hébergeurs et les autorités.
 
-- **Où** : **abuse@kerfystudio.com**, ou par courrier à Kerfy Studio, [adresse du siège]. Langues : français, anglais.
-  Les autorités peuvent aussi utiliser le point de contact **support@kerfystudio.com** (règlement (UE) 2022/2065,
+- **Où** : **abuse@bipagents.com**, ou par courrier à Kerfy Studio, [adresse du siège]. Langues : français, anglais.
+  Les autorités peuvent aussi utiliser le point de contact **contact@kerfystudio.com** (règlement (UE) 2022/2065,
   articles 11 et 12).
 - **Quoi** (article 16 du règlement (UE) 2022/2065) :
   - pourquoi tu estimes que c'est illicite ou abusif ;
@@ -75,7 +75,7 @@ les secours (112).**
   personne.
 - **Motifs** : Kerfy Studio te dit sans tarder ce qui a été fait, pourquoi (les faits, la règle en cause) et comment
   contester, sauf si la loi ou une autorité l'interdit (article 17 du règlement (UE) 2022/2065).
-- **Contester** : réponds à ce message ou écris à abuse@kerfystudio.com. Une personne réexamine la décision. Si l'abus
+- **Contester** : réponds à ce message ou écris à abuse@bipagents.com. Une personne réexamine la décision. Si l'abus
   venait d'un agent détourné ou d'un accès volé, nous t'aidons à remettre ta place en ordre ; si la suspension n'était
   pas justifiée, ta place est rétablie au plus vite.
 - **Fin de l'abonnement** : pour un manquement grave ou répété, Kerfy Studio peut mettre fin à l'abonnement, après
@@ -89,4 +89,4 @@ les secours (112).**
 
 ## 6. Contact
 
-Abus : **abuse@kerfystudio.com** — Kerfy Studio, [adresse du siège] — autres questions : **support@kerfystudio.com**
+Abus : **abuse@bipagents.com** — Kerfy Studio, [adresse du siège] — autres questions : **support@bipagents.com**
