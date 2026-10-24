@@ -26,7 +26,6 @@ SRC = ROOT / "src"
 DIST = ROOT / "dist"
 LANGS = ["en", "fr", "de", "es"]
 BIPAGENTS = "https://bipagents.com"
-CATEGORY_ORDER = ["daily", "wellness", "finance", "home", "work", "learning", "creative", "tech"]
 COLORS = {  # main, deep, tint variable (site.css): the apps' pale palette (2026-10-24, the « sober » direction)
     "daily": ("#F4B5A3", "#C9775F", "coral"), "wellness": ("#A9D9B8", "#5E9E73", "green"),
     "finance": ("#F2D48E", "#B08A2E", "gold"), "home": ("#9FD6DA", "#4E9AA0", "teal"),
@@ -269,7 +268,7 @@ DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach")
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
          ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"))
 FAQ_HOME = (1, 3, 2, 6, 4, 5)   # what's included, AI credit, free week, stopping, privacy, Duo/Famille
-FAQ_COUNT = 10
+FAQ_COUNT = 11
 
 
 def bipagents(version: str) -> Path:
@@ -303,8 +302,6 @@ def bipagents(version: str) -> Path:
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
     map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")
-    # When each Bip speaks in the podcast (scripts/podcast-timeline.py).
-    timeline = json.loads((src / "podcast-timeline.json").read_text(encoding="utf-8"))
     agents = {a["id"]: a for a in demo["agents"]}
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / "partials").glob("*.html")}
     templates = {name: re.sub(r"\{\{>(\w+)\}\}", lambda m: partials[m.group(1)], (src / file).read_text(encoding="utf-8"))
@@ -331,7 +328,7 @@ def bipagents(version: str) -> Path:
         t = texts[lang]
         # A page the demo's agent makes (the page kit's real output), shown in a frame in the chat.
         (assets / "pages" / f"runs-{lang}.html").write_text(demo_page(demo, "runs", lang), encoding="utf-8")
-        values = flatten({k: v for k, v in t.items() if k not in ("marquee", "lines", "liveDialog")})
+        values = flatten({k: v for k, v in t.items() if k != "lines"})
         for where in ("web", "store"):
             for period in ("month", "year"):
                 for plan in prices["plans"]:
@@ -342,8 +339,6 @@ def bipagents(version: str) -> Path:
             values[f"p.web.yearmonth.{plan}"] = money(round(base["web"]["year"][plan] / 12, 2), lang)
         # « from 6,49 € »: the lowest monthly price, which the script follows in the visitor's currency
         values["p.from"] = f'<span data-from>{money(base["web"]["month"][prices["plans"][0]], lang)}</span>'
-        values["livefirst.you"] = html.escape(t["liveDialog"][0]["you"])
-        values["livefirst.bip"] = html.escape(t["liveDialog"][0]["bip"])
         if lang == "fr":   # « ? », « : »… never alone at the start of a line
             values = {k: french_spaces(v) if isinstance(v, str) else v for k, v in values.items()}
         values["currencyoptions"] = "".join(
@@ -363,8 +358,6 @@ def bipagents(version: str) -> Path:
             "lang": lang, "home": paths[lang], "version": version,
             "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}#install",
             "legalprefix": "" if lang == "fr" else f"/{lang}",
-            "marquee": "".join(f'<span>{html.escape(word)}<i style="background:{COLORS[CATEGORY_ORDER[i % 8]][0]}"></i></span>'
-                               for i, word in enumerate(t["marquee"])),
             "storebadges": badges,
             "betahref": f"{paths[lang]}beta/",
             "betabadges": store_badges({"appStore": beta.get("testflight", ""), "googlePlay": beta.get("play", "")},
@@ -394,10 +387,9 @@ def bipagents(version: str) -> Path:
         walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
         stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
                            demo["pages"]["walk"]["template"])
-        # Each page gets the data its script needs: the home its podcast, Live and prices, the demo its scenarios.
+        # Each page gets the data its script needs: the home its prices, the demo its scenarios.
         data = {
-            "home": {**common, "live": t["liveDialog"], "podcast": timeline.get(lang, [[0, 0]]),
-                     "prices": {**{k: v for k, v in prices.items() if not k.startswith("_")},
+            "home": {**common, "prices": {**{k: v for k, v in prices.items() if not k.startswith("_")},
                                 "default": default_currency},
                      "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}
                                   for plan in prices["plans"]},

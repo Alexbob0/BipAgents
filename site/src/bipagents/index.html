@@ -1,5 +1,5 @@
 {{>top}}
-<!-- ============================================================ HERO -->
+<!-- ============================================================ HERO: why (private, in Europe) on the left, what it does on the right -->
 <section class="hero">
   <div class="hero-copy reveal">
     <p class="chip-beta">{{hero.beta}}</p>
@@ -9,10 +9,12 @@
     </h1>
     <p class="lede">{{hero.lede}}</p>
     <ul class="proofs">
-      <li><span aria-hidden="true">🤖</span><p>{{hero.proof1}}</p></li>
-      <li><span aria-hidden="true">✋</span><p>{{hero.proof2}}</p></li>
       <li><span aria-hidden="true">🇪🇺</span><p>{{hero.proof3}}</p></li>
+      <li><span aria-hidden="true">✋</span><p>{{hero.proof2}}</p></li>
+      <li><span aria-hidden="true">🤖</span><p>{{hero.proof1}}</p></li>
     </ul>
+    <p class="priv-ask"><span id="priv-q">{{private.ask}}</span>
+      <button type="button" class="priv-more" aria-expanded="false" aria-controls="private" aria-describedby="priv-q" data-more="{{private.more}}" data-less="{{private.less}}"><span class="priv-label">{{private.more}}</span><i aria-hidden="true"></i></button></p>
     <p class="words">{{hero.words}}</p>
     <div class="cta-row">
       <a class="pill pill-buy" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
@@ -20,6 +22,28 @@
       <a class="pill pill-soft" href="#install"><span aria-hidden="true">💻</span>{{pricing.mode.self}}</a>
     </div>
     <p class="hero-price">{{hero.price}}</p>
+  </div>
+
+  <!-- « See more »: where your data is, who can access it (docs/legal/offer.en.md §9, privacy.en.md §5.4,
+       docs/privacy-compare.md « What BipAgents does not promise »). Opens in place, under the first screen. -->
+  <div class="priv" id="private" role="region" aria-labelledby="priv-q" hidden>
+    <div class="priv-card priv-where">
+      <h2 id="priv-where"><span aria-hidden="true">📍</span>{{private.whereTitle}}</h2>
+      <ul>
+        <li>{{private.where1}}</li>
+        <li>{{private.where2}}</li>
+        <li>{{private.where3}}</li>
+      </ul>
+    </div>
+    <div class="priv-card priv-who">
+      <h2><span aria-hidden="true">👀</span>{{private.whoTitle}}</h2>
+      <ul>
+        <li>{{private.who1}}</li>
+        <li>{{private.who2}}</li>
+        <li>{{private.who3}}</li>
+      </ul>
+    </div>
+    <p class="priv-links"><a href="{{private.href}}">{{private.compare}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
   </div>
 
   <!-- The moment that matters: an agent asks, you tap « Once », it's done (a loop; still for reduced motion). -->
@@ -49,50 +73,50 @@
   </div>
 </section>
 
-<!-- ============================================================ COMPARED (named products, sourced: scratchpad comparatif-concurrents.md of 2026-10-24) -->
-<section class="section vs-section" id="compared">
+
+<!-- ============================================================ WHAT THEY DO: one card per kind of agent (bridge-rs
+     agent_templates.yaml; mail_scan, calendar, reminders, health, family_news, notebook records, the browser's approvals) -->
+<section class="section uses-section" id="uses">
   <div class="section-head reveal">
-    <p class="kicker">{{vs.kicker}}</p>
-    <h2 class="h2-small">{{vs.title}}</h2>
-    <p class="sub">{{vs.sub}}</p>
+    <p class="kicker">{{uses.kicker}}</p>
+    <h2>{{uses.title}}</h2>
+    <p class="sub">{{uses.sub}}</p>
   </div>
-  <div class="vs reveal">
-    <div class="vs-pick" role="group" aria-label="{{vs.pick}}" hidden>
-      <span class="vs-pick-label" aria-hidden="true">{{vs.pick}}</span>
-      <div class="vs-seg">
-        <button type="button" data-pick="c1" aria-pressed="false" aria-controls="vs-table"><span class="vs-badge vs-b1" aria-hidden="true">M</span><span>{{vs.n1}}</span></button>
-        <button type="button" data-pick="c2" aria-pressed="false" aria-controls="vs-table"><span class="vs-badge vs-b2" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="15.5" cy="8" r="1.8"/><circle cx="12" cy="15.5" r="2.2"/></svg></span><span>{{vs.n2}}</span></button>
-        <button type="button" data-pick="c3" aria-pressed="false" aria-controls="vs-table"><span class="vs-badge vs-b3" aria-hidden="true">G</span><span>{{vs.n3}}</span></button>
-        <button type="button" data-pick="all" aria-pressed="false" aria-controls="vs-table"><span class="vs-badge vs-ball" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>{{vs.all}}</span></button>
-      </div>
-    </div>
-    <table id="vs-table">
-      <thead>
-        <tr><td></td><th scope="col" data-p="c1"><span class="vs-name"><span class="vs-badge vs-b1" aria-hidden="true">M</span><span>{{vs.c1}}</span></span></th><th scope="col" data-p="c2"><span class="vs-name"><span class="vs-badge vs-b2" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="15.5" cy="8" r="1.8"/><circle cx="12" cy="15.5" r="2.2"/></svg></span><span>{{vs.c2}}</span></span></th><th scope="col" data-p="c3"><span class="vs-name"><span class="vs-badge vs-b3" aria-hidden="true">G</span><span>{{vs.c3}}</span></span></th><th scope="col" class="vs-us" data-p="c4"><span class="vs-name"><span class="vs-bip" data-bip="daily" aria-hidden="true"></span><span>{{vs.c4}}</span></span></th></tr>
-      </thead>
-      <tbody>
-        <tr class="vs-group"><th scope="rowgroup" colspan="5"><span>{{vs.g1}}</span></th></tr>
-        <tr><th scope="row">{{vs.r2.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><span>{{vs.r2.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><span>{{vs.r2.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><span>{{vs.r2.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><span>{{vs.r2.c4}}</span></span></td></tr>
-        <tr><th scope="row">{{vs.r1.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r1.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r1.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r1.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r1.c4}}</span></span></td></tr>
-        <tr><th scope="row">{{vs.r4.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r4.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r4.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r4.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r4.c4}}</span></span></td></tr>
-        <tr><th scope="row">{{vs.r5.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r5.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r5.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r5.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r5.c4}}</span></span></td></tr>
-        <tr><th scope="row">{{vs.r6.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r6.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r6.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r6.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r6.c4}}</span></span></td></tr>
-      </tbody>
-      <tbody>
-        <tr class="vs-group"><th scope="rowgroup" colspan="5"><span>{{vs.g2}}</span></th></tr>
-        <tr><th scope="row">{{vs.r3.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="unk" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.5 10h7"/></svg><span>{{vs.r3.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="unk" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.5 10h7"/></svg><span>{{vs.r3.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="unk" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.5 10h7"/></svg><span>{{vs.r3.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r3.c4}}</span></span></td></tr>
-        <tr><th scope="row">{{vs.r8.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r8.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r8.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r8.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r8.c4}}</span></span></td></tr>
-        <tr><th scope="row">{{vs.r7.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r7.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r7.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r7.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r7.c4}}</span></span></td></tr>
-      </tbody>
-    </table>
-    <details class="vs-sources">
-      <summary>{{vs.sources}}</summary>
-      <div class="vs-src"><span class="vs-badge vs-b1" aria-hidden="true">M</span><p><b>Meta Muse</b> — <a href="https://techcrunch.com/2026/09/08/meta-debuts-its-muse-ai-agent-will-consumers-trust-it/" rel="noopener nofollow">TechCrunch, 8/09/2026</a> · <a href="https://www.clubic.com/actualite-633153-muse-de-meta-passe-a-la-vitesse-superieure-mais-l-europe-devra-encore-patienter.html" rel="noopener nofollow">Clubic, 8/10/2026</a> · <a href="https://www.iphoneincanada.ca/2026/09/18/metas-muse-ai-agent-is-now-available-in-canada/" rel="noopener nofollow">iPhone in Canada, 18/09/2026</a> · <a href="https://www.deeplearning.ai/the-batch/how-to-secure-agents-for-the-masses" rel="noopener nofollow">The Batch, 18/09/2026</a> · <a href="https://captaincompliance.com/?p=13651" rel="noopener nofollow">Captain Compliance (Meta help pages), 09–10/2026</a> · <a href="https://cryptobriefing.com/meta-muse-ai-privacy-features/" rel="noopener nofollow">Crypto Briefing, 09–10/2026</a></p></div>
-      <div class="vs-src"><span class="vs-badge vs-b2" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="15.5" cy="8" r="1.8"/><circle cx="12" cy="15.5" r="2.2"/></svg></span><p><b>OpenAI dots</b> — <a href="https://help.openai.com/en/articles/20001530" rel="noopener nofollow">OpenAI Help Center</a> · <a href="https://help.openai.com/en/articles/20001529-dots-privacy-security-and-safety-faqs" rel="noopener nofollow">OpenAI, dots privacy FAQ</a> · <a href="https://thenextweb.com/news/openai-dots-always-on-ai-agents-cloud-computers-devday" rel="noopener nofollow">The Next Web, 29/09/2026</a> · <a href="https://benchlm.ai/blog/posts/openai-dots-guide" rel="noopener nofollow">BenchLM, 30/09/2026</a></p></div>
-      <div class="vs-src"><span class="vs-badge vs-b3" aria-hidden="true">G</span><p><b>xAI Grok Bot</b> — <a href="https://x.ai/news/introducing-grok-bot" rel="noopener nofollow">xAI, 11/08/2026</a> · <a href="https://docs.x.ai/grok-bot/teams-and-enterprises" rel="noopener nofollow">xAI docs, teams</a> · <a href="https://cursor.com/help/grok-bot/plans" rel="noopener nofollow">Cursor Help, plans</a> · <a href="https://forum.cursor.com/t/privacy-and-term-of-use-of-grok-bot-with-cursor-account/168075" rel="noopener nofollow">Cursor Forum, privacy</a> · <a href="https://www.basenor.com/blogs/news/x-launches-the-x-subscription-grok-cursor-and-premium-in-one-plan-from-8-month" rel="noopener nofollow">Basenor, 12/10/2026</a> · {{vs.grokFr}}</p></div>
-      <div class="vs-src"><span class="vs-badge vs-bbip" data-bip-static="daily" aria-hidden="true"></span><p><b>BipAgents</b> — <a href="https://kerfystudio.com/offer/">kerfystudio.com/offer</a> · <a href="https://kerfystudio.com/privacy/">kerfystudio.com/privacy</a> · <a href="https://github.com/Alexbob0/BipAgents">github.com/Alexbob0/BipAgents</a></p></div>
-    </details>
+  <div class="uses reveal" role="region" aria-label="{{uses.title}}" tabindex="0">
+    <ul class="uses-list">
+      <li class="use" style="--tint:var(--coral-tint);--main:var(--coral)">
+        <div class="use-bip" data-bip="daily" aria-hidden="true"></div>
+        <h3>{{uses.daily.title}}</h3>
+        <ul><li>{{uses.daily.b1}}</li><li>{{uses.daily.b2}}</li><li>{{uses.daily.b3}}</li><li>{{uses.daily.b4}}</li></ul>
+      </li>
+      <li class="use" style="--tint:var(--green-tint);--main:var(--green)">
+        <div class="use-bip" data-bip="wellness" aria-hidden="true"></div>
+        <h3>{{uses.wellness.title}}</h3>
+        <ul><li>{{uses.wellness.b1}}</li><li>{{uses.wellness.b2}}</li><li>{{uses.wellness.b3}}</li><li>{{uses.wellness.b4}}</li></ul>
+      </li>
+      <li class="use" style="--tint:var(--gold-tint);--main:var(--gold)">
+        <div class="use-bip" data-bip="finance" aria-hidden="true"></div>
+        <h3>{{uses.finance.title}}</h3>
+        <ul><li>{{uses.finance.b1}}</li><li>{{uses.finance.b2}}</li><li>{{uses.finance.b3}}</li><li>{{uses.finance.b4}}</li></ul>
+      </li>
+      <li class="use" style="--tint:var(--teal-tint);--main:var(--teal)">
+        <div class="use-bip" data-bip="home" aria-hidden="true"></div>
+        <h3>{{uses.family.title}}</h3>
+        <ul><li>{{uses.family.b1}}</li><li>{{uses.family.b2}}</li><li>{{uses.family.b3}}</li><li>{{uses.family.b4}}</li></ul>
+      </li>
+      <li class="use" style="--tint:var(--blue-tint);--main:var(--blue)">
+        <div class="use-bip" data-bip="work" aria-hidden="true"></div>
+        <h3>{{uses.work.title}}</h3>
+        <ul><li>{{uses.work.b1}}</li><li>{{uses.work.b2}}</li><li>{{uses.work.b3}}</li><li>{{uses.work.b4}}</li></ul>
+      </li>
+      <li class="use" style="--tint:var(--violet-tint);--main:var(--violet)">
+        <div class="use-bip" data-bip="learning" aria-hidden="true"></div>
+        <h3>{{uses.learning.title}}</h3>
+        <ul><li>{{uses.learning.b1}}</li><li>{{uses.learning.b2}}</li><li>{{uses.learning.b3}}</li><li>{{uses.learning.b4}}</li></ul>
+      </li>
+    </ul>
   </div>
+  <p class="uses-more reveal"><a class="pill pill-soft" href="{{demohref}}">{{uses.demo}} <span aria-hidden="true">→</span></a></p>
 </section>
 
 <!-- ============================================================ THE CARNET (what sets BipAgents apart: the app's Notebook) -->
@@ -170,128 +194,143 @@
   </div>
 </section>
 
-<!-- ============================================================ MARQUEE -->
-<div class="marquee" aria-hidden="true"><div class="marquee-track">{{marquee}}{{marquee}}</div></div>
-
-<!-- ============================================================ A DAY WITH THE BIPS (scroll story, its three strongest scenes) -->
-<section class="section day-section" id="day">
+<!-- ============================================================ COMPARED (named products, sourced: scratchpad comparatif-concurrents.md of 2026-10-24) -->
+<section class="section vs-section" id="compared">
   <div class="section-head reveal">
-    <p class="kicker">{{day.kicker}}</p>
-    <h2>{{day.title}}</h2>
-    <p class="sub">{{day.sub}}</p>
+    <p class="kicker">{{vs.kicker}}</p>
+    <h2 class="h2-small">{{vs.title}}</h2>
+    <p class="sub">{{vs.sub}}</p>
   </div>
-  <div class="day">
-    <div class="day-stage" aria-hidden="true">
-      <div class="phone phone-day">
-        <div class="phone-screen day-screen">
-          <div class="day-status"><b class="day-clock">9:00</b><span class="day-sig"><i></i><i></i><i></i><i></i></span></div>
-
-          <div class="scene" data-scene="0">
-            <div class="s-head"><span class="s-ic" data-bip-static="daily"></span><b>{{day.s2.head}}</b></div>
-            <div class="s-mail"><span class="s-dot coral"></span><span><b>{{day.s2.m1}}</b><small>{{day.s2.m1s}}</small></span></div>
-            <div class="s-mail"><span class="s-dot violet"></span><span><b>{{day.s2.m2}}</b><small>{{day.s2.m2s}}</small></span></div>
-            <div class="s-mail"><span class="s-dot teal"></span><span><b>{{day.s2.m3}}</b><small>{{day.s2.m3s}}</small></span></div>
-            <div class="s-rest">{{day.s2.rest}}</div>
-            <div class="s-chip">🗓️ {{day.s2.agenda}}</div>
-          </div>
-
-          <div class="scene" data-scene="1">
-            <div class="s-desk">
-              <div class="s-desk-bar"><i></i><i></i><i></i><span>{{day.s4.url}}</span></div>
-              <div class="s-desk-page"><b></b><b class="w2"></b><span class="s-field"></span><span class="s-field"></span><span class="s-btn"></span><em class="s-cursor"></em></div>
-            </div>
-            <div class="s-live"><span class="s-rec"></span>{{day.s4.live}}<span class="s-take">✋ {{day.s4.take}}</span></div>
-            <div class="s-approve late">
-              <p class="s-small">🔒 {{day.s5.head}}</p>
-              <b>{{day.s5.title}}</b>
-              <code>{{day.s5.detail}}</code>
-              <div class="s-btns"><span class="on">{{control.once}}</span><span>{{control.session}}</span><span>{{control.deny}}</span></div>
-            </div>
-          </div>
-
-          <div class="scene s-call" data-scene="2">
-            <p class="s-call-top"><span class="s-rec"></span>{{day.call.label}}</p>
-            <div class="s-call-stage"><div class="rings"><i></i><i></i><i></i></div><span class="s-call-bip" data-bip-static="daily"></span></div>
-            <p class="s-cap you">{{livefirst.you}}</p>
-            <p class="s-cap bip">{{livefirst.bip}}</p>
-            <div class="s-call-btns"><span></span><span class="end"></span><span></span></div>
-          </div>
-        </div>
+  <div class="vs reveal">
+    <div class="vs-pick" role="group" aria-label="{{vs.pick}}" hidden>
+      <span class="vs-pick-label" aria-hidden="true">{{vs.pick}}</span>
+      <div class="vs-seg">
+        <button type="button" data-pick="c1" aria-pressed="false" aria-controls="vs-table"><span class="vs-badge vs-b1" aria-hidden="true">M</span><span>{{vs.n1}}</span></button>
+        <button type="button" data-pick="c2" aria-pressed="false" aria-controls="vs-table"><span class="vs-badge vs-b2" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="15.5" cy="8" r="1.8"/><circle cx="12" cy="15.5" r="2.2"/></svg></span><span>{{vs.n2}}</span></button>
+        <button type="button" data-pick="c3" aria-pressed="false" aria-controls="vs-table"><span class="vs-badge vs-b3" aria-hidden="true">G</span><span>{{vs.n3}}</span></button>
+        <button type="button" data-pick="all" aria-pressed="false" aria-controls="vs-table"><span class="vs-badge vs-ball" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>{{vs.all}}</span></button>
       </div>
-      <div class="day-bip" data-bip="daily"></div>
     </div>
-
-    <ol class="day-steps">
-      <li class="day-step" data-step="0" data-time="9:00" data-cat="daily"><span class="day-time">9:00</span><h3>{{day.s2.title}}</h3><p>{{day.s2.text}}</p></li>
-      <li class="day-step" data-step="1" data-time="15:00" data-cat="work"><span class="day-time">15:00</span><h3>{{day.s4.title}}</h3><p>{{day.s4.text}}</p></li>
-      <li class="day-step" data-step="2" data-time="18:30" data-cat="daily"><span class="day-time">18:30</span><h3>{{day.call.title}}</h3><p>{{day.call.text}}</p></li>
-    </ol>
+    <table id="vs-table">
+      <thead>
+        <tr><td></td><th scope="col" data-p="c1"><span class="vs-name"><span class="vs-badge vs-b1" aria-hidden="true">M</span><span>{{vs.c1}}</span></span></th><th scope="col" data-p="c2"><span class="vs-name"><span class="vs-badge vs-b2" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="15.5" cy="8" r="1.8"/><circle cx="12" cy="15.5" r="2.2"/></svg></span><span>{{vs.c2}}</span></span></th><th scope="col" data-p="c3"><span class="vs-name"><span class="vs-badge vs-b3" aria-hidden="true">G</span><span>{{vs.c3}}</span></span></th><th scope="col" class="vs-us" data-p="c4"><span class="vs-name"><span class="vs-bip" data-bip="daily" aria-hidden="true"></span><span>{{vs.c4}}</span></span></th></tr>
+      </thead>
+      <tbody>
+        <tr class="vs-group"><th scope="rowgroup" colspan="5"><span>{{vs.g1}}</span></th></tr>
+        <tr><th scope="row">{{vs.r2.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><span>{{vs.r2.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><span>{{vs.r2.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><span>{{vs.r2.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><span>{{vs.r2.c4}}</span></span></td></tr>
+        <tr><th scope="row">{{vs.r1.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r1.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r1.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r1.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r1.c4}}</span></span></td></tr>
+        <tr><th scope="row">{{vs.r4.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r4.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r4.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r4.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r4.c4}}</span></span></td></tr>
+        <tr><th scope="row">{{vs.r5.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r5.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r5.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r5.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r5.c4}}</span></span></td></tr>
+        <tr><th scope="row">{{vs.r6.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r6.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r6.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r6.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r6.c4}}</span></span></td></tr>
+      </tbody>
+      <tbody>
+        <tr class="vs-group"><th scope="rowgroup" colspan="5"><span>{{vs.g2}}</span></th></tr>
+        <tr><th scope="row">{{vs.r3.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="unk" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.5 10h7"/></svg><span>{{vs.r3.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="unk" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.5 10h7"/></svg><span>{{vs.r3.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="unk" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.5 10h7"/></svg><span>{{vs.r3.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r3.c4}}</span></span></td></tr>
+        <tr><th scope="row">{{vs.r8.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r8.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r8.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="part" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><circle cx="10" cy="10" r="4.6"/><path class="fill" d="M10 5.4a4.6 4.6 0 0 0 0 9.2z"/></svg><span>{{vs.r8.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r8.c4}}</span></span></td></tr>
+        <tr><th scope="row">{{vs.r7.label}}</th><td data-p="c1" data-col="{{vs.c1}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r7.c1}}</span></span></td><td data-p="c2" data-col="{{vs.c2}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r7.c2}}</span></span></td><td data-p="c3" data-col="{{vs.c3}}"><span class="vs-cell"><svg class="vs-m" data-m="no" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M7.2 7.2l5.6 5.6M12.8 7.2l-5.6 5.6"/></svg><span>{{vs.r7.c3}}</span></span></td><td class="vs-us" data-p="c4" data-col="{{vs.c4}}"><span class="vs-cell"><svg class="vs-m" data-m="yes" viewBox="0 0 20 20" aria-hidden="true"><circle class="bg" cx="10" cy="10" r="10"/><path d="M6.2 10.4l2.6 2.6 5-5.4"/></svg><span>{{vs.r7.c4}}</span></span></td></tr>
+      </tbody>
+    </table>
+    <details class="vs-sources">
+      <summary>{{vs.sources}}</summary>
+      <div class="vs-src"><span class="vs-badge vs-b1" aria-hidden="true">M</span><p><b>Meta Muse</b> — <a href="https://techcrunch.com/2026/09/08/meta-debuts-its-muse-ai-agent-will-consumers-trust-it/" rel="noopener nofollow">TechCrunch, 8/09/2026</a> · <a href="https://www.clubic.com/actualite-633153-muse-de-meta-passe-a-la-vitesse-superieure-mais-l-europe-devra-encore-patienter.html" rel="noopener nofollow">Clubic, 8/10/2026</a> · <a href="https://www.iphoneincanada.ca/2026/09/18/metas-muse-ai-agent-is-now-available-in-canada/" rel="noopener nofollow">iPhone in Canada, 18/09/2026</a> · <a href="https://www.deeplearning.ai/the-batch/how-to-secure-agents-for-the-masses" rel="noopener nofollow">The Batch, 18/09/2026</a> · <a href="https://captaincompliance.com/?p=13651" rel="noopener nofollow">Captain Compliance (Meta help pages), 09–10/2026</a> · <a href="https://cryptobriefing.com/meta-muse-ai-privacy-features/" rel="noopener nofollow">Crypto Briefing, 09–10/2026</a></p></div>
+      <div class="vs-src"><span class="vs-badge vs-b2" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.6"/><circle cx="15.5" cy="8" r="1.8"/><circle cx="12" cy="15.5" r="2.2"/></svg></span><p><b>OpenAI dots</b> — <a href="https://help.openai.com/en/articles/20001530" rel="noopener nofollow">OpenAI Help Center</a> · <a href="https://help.openai.com/en/articles/20001529-dots-privacy-security-and-safety-faqs" rel="noopener nofollow">OpenAI, dots privacy FAQ</a> · <a href="https://thenextweb.com/news/openai-dots-always-on-ai-agents-cloud-computers-devday" rel="noopener nofollow">The Next Web, 29/09/2026</a> · <a href="https://benchlm.ai/blog/posts/openai-dots-guide" rel="noopener nofollow">BenchLM, 30/09/2026</a></p></div>
+      <div class="vs-src"><span class="vs-badge vs-b3" aria-hidden="true">G</span><p><b>xAI Grok Bot</b> — <a href="https://x.ai/news/introducing-grok-bot" rel="noopener nofollow">xAI, 11/08/2026</a> · <a href="https://docs.x.ai/grok-bot/teams-and-enterprises" rel="noopener nofollow">xAI docs, teams</a> · <a href="https://cursor.com/help/grok-bot/plans" rel="noopener nofollow">Cursor Help, plans</a> · <a href="https://forum.cursor.com/t/privacy-and-term-of-use-of-grok-bot-with-cursor-account/168075" rel="noopener nofollow">Cursor Forum, privacy</a> · <a href="https://www.basenor.com/blogs/news/x-launches-the-x-subscription-grok-cursor-and-premium-in-one-plan-from-8-month" rel="noopener nofollow">Basenor, 12/10/2026</a> · {{vs.grokFr}}</p></div>
+      <div class="vs-src"><span class="vs-badge vs-bbip" data-bip-static="daily" aria-hidden="true"></span><p><b>BipAgents</b> — <a href="https://kerfystudio.com/offer/">kerfystudio.com/offer</a> · <a href="https://kerfystudio.com/privacy/">kerfystudio.com/privacy</a> · <a href="https://github.com/Alexbob0/BipAgents">github.com/Alexbob0/BipAgents</a></p></div>
+    </details>
   </div>
-  <p class="day-more reveal">{{day.more}} <a class="pill pill-soft" href="{{demohref}}">{{day.moreCta}}</a></p>
 </section>
 
-<!-- ============================================================ WHY IT'S PRIVATE (the apps' PrivacyDiagram, animated) -->
-<section class="section compare-section" id="private">
-  <div class="section-head reveal">
-    <p class="kicker">{{compare.kicker}}</p>
-    <h2>{{compare.title}}</h2>
-  </div>
-  <figure class="compare reveal" role="img" aria-label="{{compare.a11y}}">
-    <div class="cmp-row cmp-usual">
-      <p class="cmp-title"><span class="cmp-dot cmp-grey" aria-hidden="true">▦</span>{{compare.usual}}</p>
-      <div class="cmp-flow" aria-hidden="true">
-        <div class="cmp-node cmp-small"><svg class="cmp-pic" viewBox="0 0 30 50" width="30" height="50"><rect x="1.25" y="1.25" width="27.5" height="47.5" rx="7" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/><rect x="8" y="17" width="14" height="6" rx="3" fill="var(--blue)"/><rect x="8" y="27" width="14" height="6" rx="3" fill="var(--muted)" opacity=".5"/></svg><b>{{compare.you}}</b></div>
-        <div class="cmp-arrow cmp-arrow-grey"><i></i><span class="packet"></span></div>
-        <div class="cmp-node cmp-wide cmp-crowd"><svg class="cmp-pic" viewBox="0 0 112 62" width="112" height="62"><rect x="54.5" y="0" width="3" height="8" rx="1.5" fill="#6B7489"/><rect x="1.25" y="8.25" width="109.5" height="52.5" rx="9" fill="var(--ground2)" stroke="#6B7489" stroke-width="2.5"/><g class="crowd"><rect x="12" y="16" width="14" height="8" rx="3" fill="#F4B5A3"/><rect x="31" y="16" width="14" height="8" rx="3" fill="#9FD6DA"/><rect x="50" y="16" width="14" height="8" rx="3" fill="#A9D9B8"/><rect x="69" y="16" width="14" height="8" rx="3" fill="#B3C4F5"/><rect x="88" y="16" width="14" height="8" rx="3" fill="#F2D48E"/><rect x="12" y="30" width="14" height="8" rx="3" fill="#CABCF3"/><rect x="31" y="30" width="14" height="8" rx="3" fill="#F4B5A3"/><rect x="50" y="30" width="14" height="8" rx="3" fill="#9FD6DA"/><rect x="69" y="30" width="14" height="8" rx="3" fill="#A9D9B8"/><rect x="88" y="30" width="14" height="8" rx="3" fill="#B3C4F5"/><rect x="12" y="44" width="14" height="8" rx="3" fill="#F2B5CE"/><rect x="31" y="44" width="14" height="8" rx="3" fill="#CABCF3"/><rect x="50" y="44" width="14" height="8" rx="3" fill="#F4B5A3"/><rect x="69" y="44" width="14" height="8" rx="3" fill="#9FD6DA"/><rect x="88" y="44" width="14" height="8" rx="3" class="mine" fill="#B3C4F5"/></g></svg><b>{{compare.theirServers}}</b><small>{{compare.everyones}}</small></div>
-        <div class="cmp-arrow cmp-arrow-grey"><i></i><span class="packet"></span></div>
-        <div class="cmp-node cmp-side"><span class="cmp-badge cmp-violet">🧠</span><b>{{compare.theirAi}}</b><small>{{compare.mayTrain}}</small></div>
-      </div>
-    </div>
-    <div class="cmp-row cmp-bip">
-      <p class="cmp-title"><span class="cmp-dot cmp-green" aria-hidden="true">🔒</span>BipAgents</p>
-      <div class="cmp-flow" aria-hidden="true">
-        <div class="cmp-node cmp-small"><svg class="cmp-pic" viewBox="0 0 30 50" width="30" height="50"><rect x="1.25" y="1.25" width="27.5" height="47.5" rx="7" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/><rect x="8" y="17" width="14" height="6" rx="3" fill="var(--blue)"/><rect x="8" y="27" width="14" height="6" rx="3" fill="var(--muted)" opacity=".5"/></svg><b>{{compare.you}}</b></div>
-        <div class="cmp-arrow cmp-arrow-green"><i></i><span class="packet"></span></div>
-        <div class="cmp-node cmp-wide"><span class="cmp-house"><svg viewBox="0 0 64 58" width="64" height="58"><path d="M32 1 L63 24 L58 24 L58 57 L6 57 L6 24 L1 24 Z" fill="var(--card)" stroke="var(--green-deep)" stroke-width="2.5" stroke-linejoin="round"/></svg><i data-bip-static="wellness"></i><em>🔒</em></span><b>{{compare.yourPlace}}</b><small>{{compare.yoursAlone}}</small></div>
-        <div class="cmp-arrow cmp-arrow-pink cmp-both"><i></i><span class="packet"></span></div>
-        <div class="cmp-node cmp-side"><span class="cmp-badge cmp-pink">✦</span><b>{{compare.theAi}}</b><small>{{compare.readsToAnswer}}</small></div>
-      </div>
-      <p class="cmp-kerfy"><b>Kerfy Studio</b> · {{compare.kerfy}}</p>
-    </div>
-  </figure>
-  <ul class="cmp-lines reveal">
-    <li><span aria-hidden="true">🇪🇺</span>{{compare.line1}}</li>
-    <li><span aria-hidden="true">🙈</span>{{compare.line2}}</li>
-    <li><span aria-hidden="true">🧳</span>{{compare.line3}}</li>
-  </ul>
-  <p class="cmp-note reveal"><a href="{{compare.href}}">{{compare.more}}</a></p>
-</section>
-
-<!-- ============================================================ PRICING -->
-<!-- Two ways in one section: the all-included offer, or the free app on one's own computer (#install opens it). -->
-<section class="section pricing-section" id="pricing" data-mode="offer">
+<!-- ============================================================ PRICING: two ways side by side — all included (the
+     main path, the plans below) or free on one's own computer (its install opens in place; #install opens it). -->
+<section class="section pricing-section" id="pricing">
   <span class="mode-anchor" id="install"></span>
-  <div class="mode-head reveal">
-    <p class="kicker">{{pricing.kicker}}</p>
-    <div class="mode" role="tablist" aria-label="{{pricing.mode.label}}">
-      <span class="mode-thumb" aria-hidden="true"></span>
-      <button type="button" role="tab" id="tab-offer" aria-controls="panel-offer" aria-selected="true" data-mode="offer">
-        <span class="mode-ic" aria-hidden="true">✨</span>
-        <span class="mode-txt"><b>{{pricing.mode.offer}}</b><small>{{pricing.mode.offerSub}}</small></span>
-      </button>
-      <button type="button" role="tab" id="tab-self" aria-controls="panel-self" aria-selected="false" tabindex="-1" data-mode="self">
-        <span class="mode-ic" aria-hidden="true">💻</span>
-        <span class="mode-txt"><b>{{pricing.mode.self}}</b><small>{{pricing.mode.selfSub}}</small></span>
-      </button>
-    </div>
-  </div>
-  <div class="mode-stage">
-  <div class="mode-panel" id="panel-offer" role="tabpanel" aria-labelledby="tab-offer">
   <div class="section-head reveal">
-    <h2>{{pricing.title}}</h2>
-    <p class="sub">{{pricing.sub}}</p>
+    <p class="kicker">{{pricing.kicker}}</p>
+    <h2>{{pricing.ways.title}}</h2>
+    <p class="sub">{{pricing.ways.sub}}</p>
     <p class="after-beta">{{pricing.afterBeta}} <a href="{{betahref}}">{{nav.cta}}</a></p>
   </div>
+  <div class="ways reveal">
+    <div class="way way-offer">
+      <p class="way-tag">{{pricing.ways.offerTag}}</p>
+      <h3><span aria-hidden="true">✨</span>{{pricing.mode.offer}}</h3>
+      <p class="way-lead">{{pricing.ways.offerLead}}</p>
+      <p class="way-price">{{pricing.ways.offerFrom}}</p>
+      <ul class="way-list">
+        <li>{{pricing.ways.offer1}}</li><li>{{pricing.ways.offer2}}</li><li>{{pricing.ways.offer3}}</li>
+      </ul>
+      <a class="pill pill-ink" href="#plans">{{pricing.ways.offerCta}} <span aria-hidden="true">↓</span></a>
+    </div>
+    <div class="way way-self">
+      <h3><span aria-hidden="true">💻</span>{{pricing.ways.selfTitle}}</h3>
+      <p class="way-lead">{{pricing.ways.selfLead}}</p>
+      <p class="way-price">{{pricing.ways.selfPrice}}</p>
+      <ul class="way-list">
+        <li>{{pricing.ways.self1}}</li><li>{{pricing.ways.self2}}</li><li>{{pricing.ways.self3}}</li>
+      </ul>
+      <button type="button" class="pill pill-soft way-open" aria-expanded="false" aria-controls="panel-self">{{pricing.ways.selfCta}}<i aria-hidden="true"></i></button>
+    </div>
+  </div>
+
+  <div class="self-panel" id="panel-self" role="region" aria-label="{{pricing.ways.selfTitle}}" hidden>
+  <div class="own">
+    <div class="own-cards">
+      <div class="own-card">
+        <h3>{{install.whatTitle}}</h3>
+        <ul class="own-list">
+          <li><span aria-hidden="true">🆓</span>{{install.what1}}</li>
+          <li><span aria-hidden="true">💻</span>{{install.what2}}</li>
+          <li><span aria-hidden="true">🧠</span>{{install.what3}}</li>
+          <li><span aria-hidden="true">🎙️</span>{{install.what4}}</li>
+        </ul>
+      </div>
+      <div class="own-card">
+        <h3>{{install.needTitle}}</h3>
+        <ul class="own-list">
+          <li><span aria-hidden="true">🖥️</span>{{install.need1}}</li>
+          <li><span aria-hidden="true">🧮</span>{{install.need2}}</li>
+          <li><span aria-hidden="true">🔒</span>{{install.need3}}</li>
+          <li><span aria-hidden="true">🔑</span>{{install.need4}}</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="own-install">
+      <div class="own-steps">
+        <h3>{{install.stepsTitle}}</h3>
+        <ol>
+          <li><span aria-hidden="true">1</span><p>{{install.step1}}</p></li>
+          <li><span aria-hidden="true">2</span><p>{{install.step2}}</p></li>
+          <li><span aria-hidden="true">3</span><p>{{install.step3}}</p></li>
+        </ol>
+        <p class="hermes-line">🧩 {{install.hermes}}</p>
+        <a class="badge" href="https://github.com/NousResearch/hermes-agent" rel="noopener"><span class="badge-dot"></span>{{hero.badge}}</a>
+      </div>
+      <div class="terminal">
+        <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
+        <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
+<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span></code></pre>
+        <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
+      </div>
+    </div>
+    <p class="windows">{{install.windows}} <code>irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex</code> · <a href="https://github.com/Alexbob0/BipAgents/blob/main/docs/self-hosting.md" rel="noopener">{{install.guide}}</a></p>
+
+    <div class="own-card own-yourself">
+      <div class="own-yourself-head">
+        <h3>{{install.yourselfTitle}}</h3>
+        <p>{{install.yourselfSub}}</p>
+      </div>
+      <ul class="own-list">
+        <li><span aria-hidden="true">🔄</span>{{install.yourself1}}</li>
+        <li><span aria-hidden="true">🛡️</span>{{install.yourself2}}</li>
+        <li><span aria-hidden="true">📶</span>{{install.yourself3}}</li>
+        <li><span aria-hidden="true">💳</span>{{install.yourself4}}</li>
+      </ul>
+    </div>
+  </div>
+  </div>
+
+  <h3 class="plans-title reveal" id="plans">{{pricing.ways.plansTitle}}</h3>
   <div class="pricing reveal">
     <div class="pricing-bar">
       <div class="period" role="radiogroup" aria-label="{{pricing.periodLabel}}">
@@ -354,71 +393,6 @@
       </ul>
     </div>
     <p class="fine-print"><span class="fine-tax">{{pricing.fineTax}}</span> {{pricing.fine}} <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{pricing.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
-  </div>
-  </div>
-
-  <div class="mode-panel" id="panel-self" role="tabpanel" aria-labelledby="tab-self" hidden>
-  <div class="section-head">
-    <h2>{{install.title}}</h2>
-    <p class="sub">{{install.sub}}</p>
-  </div>
-  <div class="own">
-    <div class="own-cards">
-      <div class="own-card">
-        <h3>{{install.whatTitle}}</h3>
-        <ul class="own-list">
-          <li><span aria-hidden="true">🆓</span>{{install.what1}}</li>
-          <li><span aria-hidden="true">💻</span>{{install.what2}}</li>
-          <li><span aria-hidden="true">🧠</span>{{install.what3}}</li>
-          <li><span aria-hidden="true">🎙️</span>{{install.what4}}</li>
-        </ul>
-      </div>
-      <div class="own-card">
-        <h3>{{install.needTitle}}</h3>
-        <ul class="own-list">
-          <li><span aria-hidden="true">🖥️</span>{{install.need1}}</li>
-          <li><span aria-hidden="true">🧮</span>{{install.need2}}</li>
-          <li><span aria-hidden="true">🔒</span>{{install.need3}}</li>
-          <li><span aria-hidden="true">🔑</span>{{install.need4}}</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="own-install">
-      <div class="own-steps">
-        <h3>{{install.stepsTitle}}</h3>
-        <ol>
-          <li><span aria-hidden="true">1</span><p>{{install.step1}}</p></li>
-          <li><span aria-hidden="true">2</span><p>{{install.step2}}</p></li>
-          <li><span aria-hidden="true">3</span><p>{{install.step3}}</p></li>
-        </ol>
-        <p class="hermes-line">🧩 {{install.hermes}}</p>
-        <a class="badge" href="https://github.com/NousResearch/hermes-agent" rel="noopener"><span class="badge-dot"></span>{{hero.badge}}</a>
-      </div>
-      <div class="terminal">
-        <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
-        <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
-<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span></code></pre>
-        <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
-      </div>
-    </div>
-    <p class="windows">{{install.windows}} <code>irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex</code> · <a href="https://github.com/Alexbob0/BipAgents/blob/main/docs/self-hosting.md" rel="noopener">{{install.guide}}</a></p>
-
-    <div class="own-card own-yourself">
-      <div class="own-yourself-head">
-        <h3>{{install.yourselfTitle}}</h3>
-        <p>{{install.yourselfSub}}</p>
-      </div>
-      <ul class="own-list">
-        <li><span aria-hidden="true">🔄</span>{{install.yourself1}}</li>
-        <li><span aria-hidden="true">🛡️</span>{{install.yourself2}}</li>
-        <li><span aria-hidden="true">📶</span>{{install.yourself3}}</li>
-        <li><span aria-hidden="true">💳</span>{{install.yourself4}}</li>
-      </ul>
-    </div>
-    <p class="install-more">{{install.more}} <a href="#pricing" data-mode-go="offer">{{install.moreCta}}</a></p>
-  </div>
-  </div>
   </div>
 </section>
 
