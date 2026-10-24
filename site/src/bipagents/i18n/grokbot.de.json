@@ -1,0 +1,29 @@
+{
+  "page": {
+    "grokbot": {
+      "title": "Von Grok Bot umziehen — BipAgents",
+      "description": "Nimm deinen Bot mit zu BipAgents: Eine Nachricht in Grok Bot lässt ihn sein Gedächtnis, seine Regeln, Routinen und Fähigkeiten in eine ZIP-Datei schreiben, die die App importiert."
+    }
+  },
+  "foot": { "grokbot": "Von Grok Bot umziehen" },
+  "grokbot": {
+    "kicker": "Umzug",
+    "title": "Von Grok Bot umziehen.",
+    "sub": "Grok Bot hat keinen Export-Knopf. Also bitten wir deinen Bot, alles selbst aufzuschreiben: seine Rolle, was er über dich weiß, die Personen, die Aufgaben, seine Routinen und Fähigkeiten. Klappt auch mit ChatGPT, Muse oder einem anderen Agenten.",
+    "step1Title": "Kopiere diese Nachricht",
+    "step1": "Eine einzige Nachricht, so wie sie ist.",
+    "copy": "Nachricht kopieren",
+    "copied": "Kopiert ✓",
+    "step2Title": "Füge sie in Grok Bot ein",
+    "step2": "In die Unterhaltung mit deinem Bot (ein Bot nach dem anderen). Er schreibt seine Dateien und gibt dir bipagents-export.zip: Lade sie herunter.",
+    "step3Title": "Öffne BipAgents",
+    "step3": "Agent hinzufügen › Von einem anderen Assistenten kommen › Datei importieren, und wähle die ZIP-Datei. Du siehst alles, was angelegt wird, bevor du bestätigst.",
+    "safeTitle": "Was beim Ankommen passiert",
+    "safe1": "Nichts wird gespeichert, bevor du es gelesen und angehakt hast.",
+    "safe2": "Seine Fähigkeiten kommen ausgeschaltet an, seine Routinen warten auf dein Ja.",
+    "safe3": "Was wie ein Passwort, ein Schlüssel oder eine Kartennummer aussieht, wird entfernt.",
+    "safe4": "Was dein Bot schreibt, ist seine Fassung seines Gedächtnisses: Sie kann unvollständig sein.",
+    "cta": "Die Beta ausprobieren",
+    "messageLabel": "Die Nachricht zum Kopieren"
+  }
+}

@@ -251,6 +251,23 @@ def walk_map(demo: Dict[str, Any], target: Path) -> str:
     return png.name
 
 
+def merged(base: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
+    """`extra` laid over `base`, dict by dict (a page's own texts file next to the site's)."""
+    out = dict(base)
+    for key, value in extra.items():
+        out[key] = merged(out[key], value) if isinstance(value, dict) and isinstance(out.get(key), dict) else value
+    return out
+
+
+def migrate_prompt(lang: str) -> str:
+    """The message to paste into Grok Bot (docs/migrate/grok-bot.<lang>.md's text block, also served by the bridge)."""
+    doc = (REPO / "docs" / "migrate" / f"grok-bot.{lang}.md").read_text(encoding="utf-8")
+    found = re.search(r"```text\n(.*?)\n```", doc, re.S)
+    if not found:
+        raise ValueError(f"docs/migrate/grok-bot.{lang}.md: no ```text block")
+    return found.group(1)
+
+
 def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
     """One of the demo's pages (made with the page kit, like the agents' own pages), filled in one language."""
     page = demo["pages"][name]
@@ -266,7 +283,8 @@ DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach")
 # too (« on my computer », #install); the demo and every question have their own pages, sharing the header and the
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
-         ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"))
+         ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"),
+         ("grokbot", "grok-bot.html", "grok-bot/"))
 FAQ_HOME = (1, 3, 2, 6, 4, 5)   # what's included, AI credit, free week, stopping, privacy, Duo/Famille
 FAQ_COUNT = 11
 
@@ -307,6 +325,10 @@ def bipagents(version: str) -> Path:
     templates = {name: re.sub(r"\{\{>(\w+)\}\}", lambda m: partials[m.group(1)], (src / file).read_text(encoding="utf-8"))
                  for name, file, _ in PAGES}
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
+    # Pages with texts of their own (i18n/<page>.<lang>.json), kept apart from the home's.
+    for lang in LANGS:
+        for extra in sorted((src / "i18n").glob(f"*.{lang}.json")):
+            texts[lang] = merged(texts[lang], json.loads(extra.read_text(encoding="utf-8")))
     paths = {lang: "/" if lang == "en" else f"/{lang}/" for lang in LANGS}
     prices, company = cfg["prices"], cfg["company"]
     # Built in the default currency (the one without countries); the script switches to the visitor's.
@@ -360,6 +382,8 @@ def bipagents(version: str) -> Path:
             "legalprefix": "" if lang == "fr" else f"/{lang}",
             "storebadges": badges,
             "betahref": f"{paths[lang]}beta/",
+            "grokbothref": f"{paths[lang]}grok-bot/",
+            "grokbotprompt": html.escape(migrate_prompt(lang), quote=False),
             "betabadges": store_badges({"appStore": beta.get("testflight", ""), "googlePlay": beta.get("play", "")},
                                        t["beta"]["storeSoon"], t["beta"]["storeGet"], "TestFlight"),
             "betasoon": "" if beta.get("testflight") or beta.get("play") else f'<p class="beta-soon">{values["beta.soon"]}</p>',

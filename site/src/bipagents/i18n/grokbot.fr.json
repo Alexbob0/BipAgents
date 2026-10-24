@@ -1,0 +1,29 @@
+{
+  "page": {
+    "grokbot": {
+      "title": "Venir de Grok Bot — BipAgents",
+      "description": "Emporte ton Bot dans BipAgents : un message à coller dans Grok Bot lui fait écrire sa mémoire, ses règles, ses routines et ses compétences dans un zip, que l’app importe."
+    }
+  },
+  "foot": { "grokbot": "Venir de Grok Bot" },
+  "grokbot": {
+    "kicker": "Déménagement",
+    "title": "Venir de Grok Bot.",
+    "sub": "Grok Bot n’a pas de bouton d’export. Alors on demande à ton Bot de tout écrire lui-même : son rôle, ce qu’il sait de toi, les personnes, les tâches, ses routines et ses compétences. Marche aussi avec ChatGPT, Muse ou un autre agent.",
+    "step1Title": "Copie ce message",
+    "step1": "Un seul message, à coller tel quel.",
+    "copy": "Copier le message",
+    "copied": "Copié ✓",
+    "step2Title": "Colle-le dans Grok Bot",
+    "step2": "Dans la conversation de ton Bot (un Bot à la fois). Il écrit ses fichiers puis te donne bipagents-export.zip : télécharge-le.",
+    "step3Title": "Ouvre BipAgents",
+    "step3": "Ajouter un agent › Venir d’un autre assistant › Importer le fichier, et choisis le zip. Tu vois tout ce qui sera créé avant de valider.",
+    "safeTitle": "Ce qui se passe à l’arrivée",
+    "safe1": "Rien n’est enregistré avant que tu aies relu et coché.",
+    "safe2": "Ses compétences arrivent éteintes, ses routines attendent ton oui.",
+    "safe3": "Ce qui ressemble à un mot de passe, une clé ou un numéro de carte est retiré.",
+    "safe4": "Ce que ton Bot écrit est sa version de sa mémoire : elle peut être incomplète.",
+    "cta": "Essayer la bêta",
+    "messageLabel": "Le message à copier"
+  }
+}

@@ -1154,7 +1154,7 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> ApiResult<T> + Send 
 }
 
 /// Its tools' entry and its rule changed (archives or none, their names): its Hermes fetches the list again.
-async fn reregister(state: &AppState, agent: &AgentConfig) {
+pub(crate) async fn reregister(state: &AppState, agent: &AgentConfig) {
     let config = state.config();
     sync_soul(&config, agent);
     if let Err(exc) = crate::agent_tools::register(&config, agent, &crate::agents_admin::default_run()).await {

@@ -3352,39 +3352,7 @@ pub fn seed(config: &Config) -> anyhow::Result<usize> {
             }
         }
         done.push(agent.name.clone());
-        if entries.is_empty() {
-            continue;
-        }
-        let lang = fix_language(config)?;
-        let w = words(&lang);
-        let who = Who::agent(config, &agent.name);
-        let path = w.inbox_path();
-        let before = read_page_text(config, Part::Main, &path);
-        let mut page = match &before {
-            Some(t) => Page::parse(t, w.inbox),
-            None => {
-                let mut p = Page::new("inbox", w.inbox);
-                p.front.remove("aliases");
-                p
-            }
-        };
-        let (body, added) = add_facts(&page.body, &agent.display_name, &entries, &who, &today());
-        if added.is_empty() {
-            continue;
-        }
-        page.body = body;
-        page.touch();
-        commit(
-            config,
-            Part::Main,
-            &path,
-            before.as_deref(),
-            Some(&page.render()),
-            &who,
-            "seed",
-            &format!("{} entries", added.len()),
-        )?;
-        copied += added.len();
+        copied += inbox_add_locked(config, agent, &entries, "seed")?;
     }
     if done != seeded {
         update_state(config, |s| {
@@ -3395,6 +3363,68 @@ pub fn seed(config: &Config) -> anyhow::Result<usize> {
         tracing::info!(entries = copied, "notebook seeded from the agents' memories");
     }
     Ok(copied)
+}
+
+/// `entries` added under the agent's name at the end of « À ranger » (those already there left out), for the nightly
+/// pass to sort. Returns how many were added.
+fn inbox_add_locked(
+    config: &Config,
+    agent: &crate::config::AgentConfig,
+    entries: &[String],
+    action: &str,
+) -> anyhow::Result<usize> {
+    if entries.is_empty() {
+        return Ok(0);
+    }
+    let lang = fix_language(config)?;
+    let w = words(&lang);
+    let who = Who::agent(config, &agent.name);
+    let path = w.inbox_path();
+    let before = read_page_text(config, Part::Main, &path);
+    let mut page = match &before {
+        Some(t) => Page::parse(t, w.inbox),
+        None => {
+            let mut p = Page::new("inbox", w.inbox);
+            p.front.remove("aliases");
+            p
+        }
+    };
+    let (body, added) = add_facts(&page.body, &agent.display_name, entries, &who, &today());
+    if added.is_empty() {
+        return Ok(0);
+    }
+    page.body = body;
+    page.touch();
+    commit(
+        config,
+        Part::Main,
+        &path,
+        before.as_deref(),
+        Some(&page.render()),
+        &who,
+        action,
+        &format!("{} entries", added.len()),
+    )?;
+    Ok(added.len())
+}
+
+/// What an agent brought from elsewhere (assistant_import.rs), put in « À ranger » for the nightly pass; the agent is
+/// then counted as seeded (its memory, filled by the same import, is not copied a second time). Nothing when the
+/// agent has no Carnet, or holds health data. Returns how many lines were added.
+pub fn inbox_import(config: &Config, agent: &crate::config::AgentConfig, entries: &[String]) -> anyhow::Result<usize> {
+    if !enabled(config, &agent.name) || health_agent(config, &agent.name) {
+        return Ok(0);
+    }
+    let _guard = lock();
+    let added = inbox_add_locked(config, agent, entries, "import")?;
+    let mut seeded = strings(read_state(config).get("seeded"));
+    if !seeded.contains(&agent.name) {
+        seeded.push(agent.name.clone());
+        update_state(config, |s| {
+            s.insert("seeded".into(), json!(seeded));
+        })?;
+    }
+    Ok(added)
 }
 
 /// The « À ranger » page's lines (its facts), for the nightly pass.
