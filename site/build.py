@@ -34,14 +34,14 @@ COLORS = {  # main, deep, tint variable (site.css)
     "creative": ("#F2649E", "#C23774", "pink"), "tech": ("#6B7489", "#3F4659", "blue"),
 }
 CURRENT = ' aria-current="page"'
-# The header's menu: each language with the countries it is sold in, the currency following (the country's in
-# site/config.json, else the default). (language, id in ?region=, country, label, short label in the header)
+# The header's menu: each language, under it the countries it is sold in; the currency follows (the country's in
+# site/config.json, else the default). (language, id in ?region=, country, its name in the menu, short label in the
+# header). A language with one entry shows its name alone.
 REGIONS = [
-    ("en", "us", "US", "English (US)", "EN-US"), ("en", "uk", "GB", "English (UK)", "EN-UK"),
-    ("en", "ca", "CA", "English (Canada)", "EN-CA"), ("en", "sg", "SG", "English (Singapore)", "EN-SG"),
-    ("en", "il", "IL", "English (Israel)", "EN-IL"), ("en", "eu", "", "English (Europe)", "EN-EU"),
-    ("fr", "eu", "", "Français", "FR"), ("fr", "ca", "CA", "Français (Canada)", "FR-CA"),
-    ("de", "eu", "", "Deutsch", "DE"), ("es", "eu", "", "Español", "ES"),
+    ("en", "us", "US", "US", "EN-US"), ("en", "uk", "GB", "UK", "EN-UK"), ("en", "ca", "CA", "Canada", "EN-CA"),
+    ("en", "eu", "", "Europe", "EN-EU"), ("en", "sg", "SG", "Singapore", "EN-SG"), ("en", "il", "IL", "Israel", "EN-IL"),
+    ("fr", "eu", "", "France", "FR"), ("fr", "ca", "CA", "Canada", "FR-CA"),
+    ("de", "eu", "", "Deutschland", "DE"), ("es", "eu", "", "España", "ES"),
 ]
 
 
@@ -175,6 +175,30 @@ def money(value: float, lang: str, cents: bool = True) -> str:
     if lang == "en":
         return "€" + text
     return text.replace(",", " ").replace(".", ",") + " €"
+
+
+def lang_menu(here: Dict[str, str], lang: str, texts: Dict[str, Any], regions: List[Dict[str, Any]],
+              currencies: Dict[str, Any]) -> str:
+    """The header's menu: a language, then its countries on one line (each its page with ?region=, which site.js turns
+    into the currency and cleans from the address); a language sold in one place is its name alone."""
+    out = []
+    for l in LANGS:
+        mine = [(r, row) for r, row in zip(regions, REGIONS) if r["lang"] == l]
+        name = html.escape(texts[l]["lang"]["name"])
+        current = CURRENT if l == lang else ""
+        if len(mine) == 1:
+            r = mine[0][0]
+            out.append(f'<div class="lang-group"><a class="lang-name" href="{here[l]}?region={r["id"]}" lang="{l}" '
+                       f'hreflang="{l}" data-region="{r["id"]}"{current}>{name}</a></div>')
+            continue
+        places = "".join(
+            f'<a href="{here[l]}?region={r["id"]}" lang="{l}" hreflang="{l}-{r["country"] or "150"}" data-region="{r["id"]}"'
+            f'{CURRENT if l == lang and r["id"] == "eu" else ""}>{html.escape(row[3])} '
+            f'<small>{html.escape(currencies[r["currency"]]["symbol"])}</small></a>'
+            for r, row in mine)
+        out.append(f'<div class="lang-group"><a class="lang-name" href="{here[l]}" lang="{l}" hreflang="{l}">{name}</a>'
+                   f'<div class="lang-places">{places}</div></div>')
+    return "".join(out)
 
 
 def todo(value: str, label: str) -> str:
@@ -379,11 +403,7 @@ def bipagents(version: str) -> Path:
                 "pagedesc": values["meta.description"] if name == "home" else values[f"page.{name}.description"],
                 "hreflang": "\n".join([f'<link rel="alternate" hreflang="{l}" href="{BIPAGENTS}{here[l]}">' for l in LANGS]
                                       + [f'<link rel="alternate" hreflang="x-default" href="{BIPAGENTS}{here["en"]}">']),
-                # Each entry its language's page with ?region= (site.js keeps the currency and cleans the address).
-                "langmenu": "".join(f'<a href="{here[l]}?region={rid}" lang="{l}" hreflang="{l}-{country or "150"}" '
-                                    f'data-region="{rid}"{CURRENT if l == lang and rid == "eu" else ""}>'
-                                    f'<span>{html.escape(label)}</span><small>{html.escape(currencies[r["currency"]]["symbol"])}</small></a>'
-                                    for (l, rid, country, label, _), r in zip(REGIONS, regions)),
+                "langmenu": lang_menu(here, lang, texts, regions, currencies),
                 "cur.demo": CURRENT if name == "demo" else "", "cur.faq": CURRENT if name == "faq" else "",
                 "data": json.dumps(data.get(name, common), ensure_ascii=False).replace("</", "<\\/"),
             })
