@@ -2084,5 +2084,68 @@
         }
       }
     }
+  },
+  "guide": {
+    "agent": "daily",
+    "intro": {
+      "fr": "Bonjour ! Je m’occupe de ton quotidien et je t’aide à mettre en place les bons agents. Pour commencer, dis-m’en un peu plus : qu’est-ce qui te prend du temps en ce moment ? Famille, travail, santé, budget, maison…",
+      "en": "Hi! I take care of your everyday life and help you set up the right agents. To start, tell me a bit more: what takes your time these days? Family, work, health, budget, home…",
+      "de": "Hallo! Ich kümmere mich um deinen Alltag und helfe dir, die richtigen Agenten einzurichten. Erzähl mir zuerst ein bisschen: Was kostet dich gerade Zeit? Familie, Arbeit, Gesundheit, Budget, Zuhause…",
+      "es": "¡Hola! Me ocupo de tu día a día y te ayudo a preparar los agentes adecuados. Para empezar, cuéntame un poco: ¿qué te quita tiempo ahora mismo? Familia, trabajo, salud, presupuesto, casa…"
+    },
+    "answer": {
+      "fr": "Je voudrais apprendre l’espagnol avant les vacances.",
+      "en": "I’d like to learn Spanish before the holidays.",
+      "de": "Ich möchte vor den Ferien Spanisch lernen.",
+      "es": "Quiero aprender italiano antes de las vacaciones."
+    },
+    "reply": {
+      "fr": "Bonne idée ! Un agent pour apprendre te suivra mieux que moi, un peu chaque jour. Je te le propose ci-dessous : rien n’est créé sans ton accord.",
+      "en": "Great idea! A learning agent will follow you better than me, a little every day. I suggest one below: nothing is created without your go.",
+      "de": "Gute Idee! Ein Lern-Agent begleitet dich besser als ich, jeden Tag ein bisschen. Ich schlage dir unten einen vor: Nichts wird ohne dein Okay erstellt.",
+      "es": "¡Buena idea! Un agente para aprender te seguirá mejor que yo, un poco cada día. Te lo propongo abajo: no se crea nada sin tu visto bueno."
+    },
+    "proposal": {
+      "kind": "learning",
+      "name": {
+        "fr": "Prof",
+        "en": "Tutor",
+        "de": "Lehrer",
+        "es": "Profe"
+      },
+      "role": {
+        "fr": "T’aide à apprendre l’espagnol avant les vacances, 15 minutes par jour",
+        "en": "Helps you learn Spanish before the holidays, 15 minutes a day",
+        "de": "Hilft dir, vor den Ferien Spanisch zu lernen, 15 Minuten am Tag",
+        "es": "Te ayuda a aprender italiano antes de las vacaciones, 15 minutos al día"
+      },
+      "handover": {
+        "fr": "Veut apprendre l’espagnol avant les vacances de juillet ; débutant.",
+        "en": "Wants to learn Spanish before the July holidays; beginner.",
+        "de": "Möchte vor den Sommerferien im Juli Spanisch lernen; Anfänger.",
+        "es": "Quiere aprender italiano antes de las vacaciones de julio; principiante."
+      }
+    },
+    "switch": {
+      "agent": "coach",
+      "answer": {
+        "fr": "Je dors mal ces temps-ci, et je voudrais courir le matin.",
+        "en": "I’ve been sleeping badly, and I’d like to run in the mornings.",
+        "de": "Ich schlafe zurzeit schlecht und würde gern morgens laufen.",
+        "es": "Duermo mal últimamente y me gustaría correr por las mañanas."
+      },
+      "reply": {
+        "fr": "Coach s’occupe déjà de ton sommeil et de ton sport : tu veux continuer avec lui ? Je lui passe le contexte.",
+        "en": "Coach already looks after your sleep and exercise: want to continue with him? I’ll hand him the context.",
+        "de": "Coach kümmert sich schon um deinen Schlaf und deinen Sport: Willst du mit ihm weitermachen? Ich gebe ihm den Zusammenhang weiter.",
+        "es": "Coach ya se ocupa de tu sueño y tu deporte: ¿quieres seguir con él? Le paso el contexto."
+      },
+      "summary": {
+        "fr": "Dort mal ces temps-ci, veut courir le matin, 3 fois par semaine.",
+        "en": "Sleeping badly lately, wants to run in the mornings, 3 times a week.",
+        "de": "Schläft zurzeit schlecht, möchte morgens laufen, 3-mal pro Woche.",
+        "es": "Duerme mal últimamente, quiere correr por las mañanas, 3 veces por semana."
+      }
+    }
   }
 }
