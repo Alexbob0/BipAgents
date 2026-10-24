@@ -3,47 +3,81 @@
 <section class="hero">
   <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="hero-copy reveal">
-    <a class="badge" href="https://github.com/NousResearch/hermes-agent" rel="noopener">
-      <span class="badge-dot"></span>{{hero.badge}}
-    </a>
     <h1>
       <span class="h-line">{{hero.line1}}</span>
-      <span class="h-line h-mark mark-green">{{hero.line2}}</span>
-      <span class="h-line h-mark mark-coral">{{hero.line3}}</span>
+      <span class="h-line"><span class="h-hl">{{hero.line2}}</span></span>
     </h1>
     <p class="lede">{{hero.lede}}</p>
+    <ul class="proofs">
+      <li><span aria-hidden="true">🤖</span><p>{{hero.proof1}}</p></li>
+      <li><span aria-hidden="true">✋</span><p>{{hero.proof2}}</p></li>
+      <li><span aria-hidden="true">🇪🇺</span><p>{{hero.proof3}}</p></li>
+    </ul>
+    <p class="words">{{hero.words}}</p>
     <div class="cta-row">
-      <a class="pill pill-buy" href="#pricing">{{hero.cta}} <span aria-hidden="true">→</span></a>
-      <a class="pill pill-soft" href="{{demohref}}">{{hero.watch}} <span aria-hidden="true">→</span></a>
+      <a class="pill pill-buy" href="{{demohref}}">{{hero.watch}} <small class="pill-time">{{hero.watchTime}}</small> <span aria-hidden="true">→</span></a>
+      <a class="pill pill-soft" href="#pricing">{{hero.cta}}</a>
+      <a class="pill pill-soft" href="#install">💻 {{pricing.mode.self}}</a>
     </div>
     <p class="hero-price">{{hero.price}}</p>
-    <ul class="trust">
-      <li>{{hero.trust1}}</li><li>{{hero.trust2}}</li><li>{{hero.trust3}}</li><li>{{hero.trust4}}</li>
-    </ul>
   </div>
 
-  <div class="hero-stage" aria-hidden="true">
-    <div class="halo"></div>
-    <div class="phone phone-hero" data-tilt>
-      <div class="phone-screen"><img src="/assets/shots/home-{{lang}}.jpg" alt="" width="900" height="1957" fetchpriority="high"></div>
-    </div>
-    <div class="float-bip fb-1" data-bip="wellness" data-interactive data-parallax="-0.12"></div>
-    <div class="float-bip fb-2" data-bip="finance" data-interactive data-parallax="0.1"></div>
-    <div class="float-bip fb-3" data-bip="home" data-interactive data-parallax="0.16"></div>
-    <div class="float-bip fb-4" data-bip="creative" data-interactive data-parallax="-0.08"></div>
-    <div class="toasts">
-      <div class="toast" data-cat="daily"><span class="toast-bip" data-bip-static="daily"></span><span><b>{{toast.1.from}}</b><small>{{toast.now}}</small><em>{{toast.1.text}}</em></span></div>
-      <div class="toast" data-cat="finance"><span class="toast-bip" data-bip-static="finance"></span><span><b>{{toast.2.from}}</b><small>{{toast.now}}</small><em>{{toast.2.text}}</em></span></div>
-      <div class="toast" data-cat="wellness"><span class="toast-bip" data-bip-static="wellness"></span><span><b>{{toast.3.from}}</b><small>{{toast.now}}</small><em>{{toast.3.text}}</em></span></div>
-      <div class="toast" data-cat="home"><span class="toast-bip" data-bip-static="home"></span><span><b>{{toast.4.from}}</b><small>{{toast.now}}</small><em>{{toast.4.text}}</em></span></div>
-    </div>
+  <!-- The moment that matters: an agent asks, you tap « Once », it's done (a loop; still for reduced motion). -->
+  <div class="hero-stage">
+    <div class="halo" aria-hidden="true"></div>
+    <figure class="ask" role="img" aria-label="{{ask.a11y}}" data-tilt>
+      <div class="ask-inner" aria-hidden="true">
+        <div class="chat-head">
+          <span class="chat-avatar" data-bip-static="daily"></span>
+          <span class="chat-title"><span><b>{{ask.agent}}</b> <span class="ai">{{ai}}</span></span><small>{{demo.chatSub}}</small></span>
+        </div>
+        <div class="ask-body">
+          <div class="msg you" data-ask="1">{{ask.you}}</div>
+          <div class="tool done" data-ask="2"><span class="ic">🌐</span><span><b>browser_click</b><span>{{ask.tool}}</span></span><i class="st"></i></div>
+          <div class="card-a" data-ask="3">
+            <p class="ask-head">🔒 {{ask.head}}</p>
+            <p>{{ask.q}}</p>
+            <code>{{ask.detail}}</code>
+            <div class="btns"><span class="ask-once chosen">{{control.once}}</span><span>{{control.deny}}</span></div>
+          </div>
+          <div class="msg bot" data-ask="4"><span class="av" data-bip-static="daily"></span><span class="txt">{{ask.done}}</span></div>
+        </div>
+      </div>
+    </figure>
+    <div class="float-bip fb-1" data-bip="daily" data-interactive data-parallax="-0.08" aria-hidden="true"></div>
+    <div class="float-bip fb-2" data-bip="finance" data-interactive data-parallax="0.1" aria-hidden="true"></div>
+    <div class="float-bip fb-3" data-bip="home" data-interactive data-parallax="-0.06" aria-hidden="true"></div>
+  </div>
+</section>
+
+<!-- ============================================================ COMPARED (category-level, sources in the commit's report) -->
+<section class="section vs-section" id="compared">
+  <div class="section-head reveal">
+    <p class="kicker">{{vs.kicker}}</p>
+    <h2 class="h2-small">{{vs.title}}</h2>
+    <p class="sub">{{vs.sub}}</p>
+  </div>
+  <div class="vs reveal">
+    <table>
+      <thead>
+        <tr><td></td><th scope="col">{{vs.c1}}</th><th scope="col">{{vs.c2}}</th><th scope="col" class="vs-us"><span class="vs-bip" data-bip-static="daily" aria-hidden="true"></span>{{vs.c3}}</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">{{vs.r1.label}}</th><td data-col="{{vs.c1}}">{{vs.r1.c1}}</td><td data-col="{{vs.c2}}">{{vs.r1.c2}}</td><td class="vs-us" data-col="{{vs.c3}}">{{vs.r1.c3}}</td></tr>
+        <tr><th scope="row">{{vs.r2.label}}</th><td data-col="{{vs.c1}}">{{vs.r2.c1}}</td><td data-col="{{vs.c2}}">{{vs.r2.c2}}</td><td class="vs-us" data-col="{{vs.c3}}">{{vs.r2.c3}}</td></tr>
+        <tr><th scope="row">{{vs.r3.label}}</th><td data-col="{{vs.c1}}">{{vs.r3.c1}}</td><td data-col="{{vs.c2}}">{{vs.r3.c2}}</td><td class="vs-us" data-col="{{vs.c3}}">{{vs.r3.c3}}</td></tr>
+        <tr><th scope="row">{{vs.r4.label}}</th><td data-col="{{vs.c1}}">{{vs.r4.c1}}</td><td data-col="{{vs.c2}}">{{vs.r4.c2}}</td><td class="vs-us" data-col="{{vs.c3}}">{{vs.r4.c3}}</td></tr>
+        <tr><th scope="row">{{vs.r5.label}}</th><td data-col="{{vs.c1}}">{{vs.r5.c1}}</td><td data-col="{{vs.c2}}">{{vs.r5.c2}}</td><td class="vs-us" data-col="{{vs.c3}}">{{vs.r5.c3}}</td></tr>
+        <tr><th scope="row">{{vs.r6.label}}</th><td data-col="{{vs.c1}}">{{vs.r6.c1}}</td><td data-col="{{vs.c2}}">{{vs.r6.c2}}</td><td class="vs-us" data-col="{{vs.c3}}">{{vs.r6.c3}}</td></tr>
+      </tbody>
+    </table>
   </div>
 </section>
 
 <!-- ============================================================ MARQUEE -->
 <div class="marquee" aria-hidden="true"><div class="marquee-track">{{marquee}}{{marquee}}</div></div>
 
-<!-- ============================================================ A DAY WITH THE BIPS (scroll story) -->
+<!-- ============================================================ A DAY WITH THE BIPS (scroll story, its three strongest scenes) -->
 <section class="section day-section" id="day">
   <div class="section-head reveal">
     <p class="kicker">{{day.kicker}}</p>
@@ -54,18 +88,9 @@
     <div class="day-stage" aria-hidden="true">
       <div class="phone phone-day">
         <div class="phone-screen day-screen">
-          <div class="day-status"><b class="day-clock">7:30</b><span class="day-sig"><i></i><i></i><i></i><i></i></span></div>
+          <div class="day-status"><b class="day-clock">9:00</b><span class="day-sig"><i></i><i></i><i></i><i></i></span></div>
 
           <div class="scene" data-scene="0">
-            <div class="s-notif"><span class="s-ic" data-bip-static="daily"></span><span><b>{{day.s1.from}}</b><em>{{day.s1.notif}}</em></span></div>
-            <div class="s-pod">
-              <div class="s-pod-bips"><span data-bip-static="daily"></span><span data-bip-static="wellness"></span></div>
-              <b>{{day.s1.card}}</b><small>{{day.s1.meta}}</small>
-              <div class="s-pod-bar"><span class="s-play"></span><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-            </div>
-          </div>
-
-          <div class="scene" data-scene="1">
             <div class="s-head"><span class="s-ic" data-bip-static="daily"></span><b>{{day.s2.head}}</b></div>
             <div class="s-mail"><span class="s-dot coral"></span><span><b>{{day.s2.m1}}</b><small>{{day.s2.m1s}}</small></span></div>
             <div class="s-mail"><span class="s-dot violet"></span><span><b>{{day.s2.m2}}</b><small>{{day.s2.m2s}}</small></span></div>
@@ -74,23 +99,7 @@
             <div class="s-chip">🗓️ {{day.s2.agenda}}</div>
           </div>
 
-          <div class="scene" data-scene="2">
-            <div class="s-carnet">
-              <p class="s-kind">📓 {{day.s3.kind}}</p>
-              <h4>✈️ {{day.s3.title}}</h4>
-              <p class="s-status"><b>{{day.s3.statusT}}</b>{{day.s3.status}}</p>
-              <p class="s-sec">{{day.s3.nextT}}</p>
-              <p class="s-task"><i></i>{{day.s3.next1}}</p>
-              <p class="s-task done"><i></i>{{day.s3.next2}}</p>
-              <p class="s-sec">{{day.s3.budgetT}}</p>
-              <div class="s-budget"><span style="--w:96%"></span></div>
-              <p class="s-small">{{day.s3.budget}}</p>
-              <p class="s-sec">{{day.s3.docsT}}</p>
-              <div class="s-docs"><span>📄 {{day.s3.doc1}}</span><span>🧾 {{day.s3.doc2}}</span></div>
-            </div>
-          </div>
-
-          <div class="scene" data-scene="3">
+          <div class="scene" data-scene="1">
             <div class="s-desk">
               <div class="s-desk-bar"><i></i><i></i><i></i><span>{{day.s4.url}}</span></div>
               <div class="s-desk-page"><b></b><b class="w2"></b><span class="s-field"></span><span class="s-field"></span><span class="s-btn"></span><em class="s-cursor"></em></div>
@@ -104,34 +113,12 @@
             </div>
           </div>
 
-          <div class="scene" data-scene="4">
-            <div class="s-head"><span class="s-ic" data-bip-static="finance"></span><b>{{day.s6.head}}</b></div>
-            <div class="s-task-card">
-              <b>{{day.s6.title}}</b>
-              <div class="s-progress"><span></span></div>
-              <p class="s-small">{{day.s6.progress}}</p>
-              <p class="s-budget-line">💶 {{day.s6.budget}}</p>
-            </div>
-            <div class="s-chip">✅ {{day.s6.done}}</div>
-          </div>
-
-          <div class="scene s-call" data-scene="5">
+          <div class="scene s-call" data-scene="2">
             <p class="s-call-top"><span class="s-rec"></span>{{day.call.label}}</p>
             <div class="s-call-stage"><div class="rings"><i></i><i></i><i></i></div><span class="s-call-bip" data-bip-static="daily"></span></div>
             <p class="s-cap you">{{livefirst.you}}</p>
             <p class="s-cap bip">{{livefirst.bip}}</p>
             <div class="s-call-btns"><span></span><span class="end"></span><span></span></div>
-          </div>
-
-          <div class="scene" data-scene="6">
-            <div class="s-head"><span class="s-ic" data-bip-static="home"></span><b>{{day.s7.head}}</b></div>
-            <div class="s-list">
-              <p><i class="tick"></i>{{day.s7.i1}}<span data-bip-static="daily"></span></p>
-              <p><i></i>{{day.s7.i2}}<span data-bip-static="wellness"></span></p>
-              <p><i></i>{{day.s7.i3}}<span data-bip-static="creative"></span></p>
-              <p class="new"><i></i>{{day.s7.i4}}<span data-bip-static="learning"></span></p>
-            </div>
-            <div class="s-chip">👨‍👩‍👧‍👦 {{day.s7.chip}}</div>
           </div>
         </div>
       </div>
@@ -139,19 +126,9 @@
     </div>
 
     <ol class="day-steps">
-      <li class="day-step" data-step="0" data-time="7:30" data-cat="daily"><span class="day-time">7:30</span><h3>{{day.s1.title}}</h3><p>{{day.s1.text}}</p>
-        <div class="listen-row">
-          <button class="listen" type="button" data-pause="{{day.s1.pause}}"><span class="listen-ic" aria-hidden="true"><span class="i-play"></span></span><span class="listen-label">{{day.s1.listen}}</span><span class="listen-time" aria-hidden="true"></span></button>
-          <small class="listen-credit">{{day.s1.credit}}</small>
-        </div>
-        <audio preload="none" src="/assets/media/podcast-morning-{{lang}}.m4a"></audio>
-      </li>
-      <li class="day-step" data-step="1" data-time="9:00" data-cat="daily"><span class="day-time">9:00</span><h3>{{day.s2.title}}</h3><p>{{day.s2.text}}</p></li>
-      <li class="day-step" data-step="2" data-time="12:30" data-cat="learning"><span class="day-time">12:30</span><h3>{{day.s3.title2}}</h3><p>{{day.s3.text}}</p></li>
-      <li class="day-step" data-step="3" data-time="15:00" data-cat="work"><span class="day-time">15:00</span><h3>{{day.s4.title}}</h3><p>{{day.s4.text}}</p></li>
-      <li class="day-step" data-step="4" data-time="18:00" data-cat="finance"><span class="day-time">18:00</span><h3>{{day.s6.title2}}</h3><p>{{day.s6.text}}</p></li>
-      <li class="day-step" data-step="5" data-time="18:30" data-cat="daily"><span class="day-time">18:30</span><h3>{{day.call.title}}</h3><p>{{day.call.text}}</p></li>
-      <li class="day-step" data-step="6" data-time="20:00" data-cat="home"><span class="day-time">20:00</span><h3>{{day.s7.title}}</h3><p>{{day.s7.text}}</p></li>
+      <li class="day-step" data-step="0" data-time="9:00" data-cat="daily"><span class="day-time">9:00</span><h3>{{day.s2.title}}</h3><p>{{day.s2.text}}</p></li>
+      <li class="day-step" data-step="1" data-time="15:00" data-cat="work"><span class="day-time">15:00</span><h3>{{day.s4.title}}</h3><p>{{day.s4.text}}</p></li>
+      <li class="day-step" data-step="2" data-time="18:30" data-cat="daily"><span class="day-time">18:30</span><h3>{{day.call.title}}</h3><p>{{day.call.text}}</p></li>
     </ol>
   </div>
   <p class="day-more reveal">{{day.more}} <a class="pill pill-soft" href="{{demohref}}">{{day.moreCta}}</a></p>
@@ -263,6 +240,7 @@
         <p class="sum" aria-live="polite"><span class="sum-plan">{{pricing.famille.name}}</span> · <span class="sum-price">{{p.web.year.famille}}</span><span class="sum-unit"> {{pricing.perYear}}</span></p>
         <p class="save" aria-live="polite"></p>
         <p class="trial">🎁 {{pricing.trial}}</p>
+        <p class="trial">🧳 {{pricing.cancel}}</p>
       </div>
       <div class="checkout-act">{{buy}}</div>
     </div>
@@ -318,6 +296,7 @@
           <li><span aria-hidden="true">3</span><p>{{install.step3}}</p></li>
         </ol>
         <p class="hermes-line">🧩 {{install.hermes}}</p>
+        <a class="badge" href="https://github.com/NousResearch/hermes-agent" rel="noopener"><span class="badge-dot"></span>{{hero.badge}}</a>
       </div>
       <div class="terminal">
         <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>

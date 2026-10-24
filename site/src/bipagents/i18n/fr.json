@@ -22,39 +22,75 @@
   },
   "hero": {
     "badge": "Construit sur Hermes Agent",
-    "line1": "Tes agents IA.",
-    "line2": "Ils agissent.",
-    "line3": "Tu décides.",
-    "lede": "Écris-leur, parle-leur ou passe en Live : tes Bips réservent, trient tes mails, tiennent ton agenda et ton Carnet, et te demandent toujours avant d’agir. Tout est compris, dans ton propre espace en Europe, que nous ne lisons pas.",
+    "line1": "Tes agents IA font tes démarches,",
+    "line2": "et te demandent avant d’agir.",
+    "lede": "Mails triés, agenda tenu, réservations faites. Privé, en Europe : nous ne lisons pas tes conversations.",
+    "proof1": "<b>Ils agissent pour toi :</b> mails, agenda, réservations, un vrai navigateur",
+    "proof2": "<b>Ton accord d’abord :</b> ils te demandent avant d’envoyer ou de payer",
+    "proof3": "<b>Ton propre espace</b>, privé, en Europe, sans pub",
+    "words": "<b>Bips</b> : tes assistants IA, un par agent · <b>Live</b> : tu leur parles à voix haute · <b>Carnet</b> : ce que tes agents gardent pour toi",
     "cta": "Choisir ma formule",
     "watch": "Voir la démo",
-    "price": "Dès {{p.from}} par mois sur le web · moins cher que sur les stores · sans engagement",
-    "trust1": "Serveurs en Europe",
-    "trust2": "Sans pub ni pistage",
-    "trust3": "Code open source",
-    "trust4": "Résiliable à tout moment"
+    "watchTime": "1 min",
+    "price": "Bientôt sur iPhone et Android · prix de lancement dès {{p.from}} par mois"
   },
   "store": {
     "soon": "Bientôt sur",
     "get": "Télécharger sur"
   },
-  "toast": {
-    "now": "maintenant",
-    "1": {
-      "from": "Quotidien · IA",
-      "text": "C’est réservé ✅ Pasta Mia, vendredi 20 h 30, pour 2."
+  "ask": {
+    "a11y": "Un agent demande avant de réserver : « Je réserve la table à ton nom ? » Tu touches Une fois, et la table est réservée.",
+    "agent": "Quotidien",
+    "you": "Réserve une table vendredi soir",
+    "tool": "Pasta Mia · 20 h 30 · formulaire rempli",
+    "head": "Quotidien te demande",
+    "q": "Je réserve la table à ton nom ?",
+    "detail": "Pasta Mia · vendredi 20 h 30 · 2 personnes",
+    "done": "C’est réservé ✅ <b>Pasta Mia</b>, vendredi 20 h 30, pour 2. C’est dans ton agenda."
+  },
+  "vs": {
+    "kicker": "Comparer",
+    "title": "Chatbot, agent à monter soi-même, ou BipAgents ?",
+    "sub": "Par grandes familles, en octobre 2026 : chaque service a ses propres formules.",
+    "what": "Ce qui change",
+    "c1": "Chatbots IA (ChatGPT, etc.)",
+    "c2": "Agents à monter soi-même",
+    "c3": "BipAgents",
+    "r1": {
+      "label": "Agit pour toi",
+      "c1": "Surtout des réponses ; certains agissent dans un navigateur (l’agent de ChatGPT, formules payantes)",
+      "c2": "Oui, avec les outils que tu branches",
+      "c3": "Oui : mails, agenda, réservations, un vrai navigateur"
     },
-    "2": {
-      "from": "Budget · IA",
-      "text": "Prélèvement inhabituel : 49,99 € « StreamMax ». Tu le connais ?"
+    "r2": {
+      "label": "Demande avant d’agir",
+      "c1": "Certains : l’agent de ChatGPT demande avant les étapes importantes, comme un achat",
+      "c2": "Selon tes réglages",
+      "c3": "Oui, avant d’envoyer, de réserver ou de payer : une fois, pour la session, ou non"
     },
-    "3": {
-      "from": "Coach · IA",
-      "text": "4 séances sur 4 cette semaine 💪 Continue comme ça !"
+    "r3": {
+      "label": "Mise en route",
+      "c1": "Une minute : tu crées un compte",
+      "c2": "Variable : tu installes, branches et sécurises tout toi-même",
+      "c3": "Environ une minute, dans l’app"
     },
-    "4": {
-      "from": "Maison · IA",
-      "text": "La machine est terminée. Pense à étendre le linge !"
+    "r4": {
+      "label": "Où sont tes données",
+      "c1": "Sur les serveurs de l’entreprise, souvent aux États-Unis ; stockage en Europe surtout pour les offres pros",
+      "c2": "Là où tu l’héberges",
+      "c3": "Ton propre espace sur un serveur en Europe, ou ton ordinateur"
+    },
+    "r5": {
+      "label": "En famille",
+      "c1": "Selon les formules (par ex. Google AI Pro, à partager avec 5 personnes)",
+      "c2": "À toi de l’organiser",
+      "c3": "Duo et Famille : jusqu’à 6 personnes, chacune avec son espace"
+    },
+    "r6": {
+      "label": "Prix",
+      "c1": "Version gratuite ; formules payantes autour de 20 $ ou 23 € par mois",
+      "c2": "Logiciel gratuit ; tu paies le serveur et le modèle d’IA",
+      "c3": "Dès {{p.from}} par mois, crédit IA compris"
     }
   },
   "marquee": [
@@ -94,18 +130,7 @@
   "day": {
     "kicker": "Une journée avec tes Bips",
     "title": "Ils s’occupent du reste.",
-    "sub": "Du café du matin au dîner, voilà ce que tes agents font pour toi, et ce que tu gardes en main.",
-    "s1": {
-      "title": "Ton point du matin, en podcast",
-      "text": "Rendez-vous, météo, colis : ton agent écrit le point de ta journée, et deux voix te le lisent pendant le café. Écoute celui de la démo.",
-      "from": "Quotidien",
-      "notif": "Ton podcast du matin est prêt ☕",
-      "card": "Ton point du matin",
-      "meta": "Mardi · deux voix",
-      "listen": "Écouter un extrait",
-      "pause": "Mettre en pause",
-      "credit": "Voix : Fish Audio Drama 3 · Built with Fish Audio"
-    },
+    "sub": "Trois moments d’une journée : ce que tes agents font pour toi, et ce que tu gardes en main.",
     "s2": {
       "title": "Tes mails triés, ton agenda tenu",
       "text": "Il lit ta boîte mail, sort ce qui compte et note les rendez-vous. Il prépare les réponses : tu les relis avant tout envoi.",
@@ -119,22 +144,6 @@
       "rest": "38 autres : newsletters et promos, rangées",
       "agenda": "Ajouté à l’agenda : sortie scolaire, jeudi 8 h"
     },
-    "s3": {
-      "title2": "Le Carnet : il n’oublie rien",
-      "text": "Personnes, sujets, tâches, voyages, achats et garanties : tes agents tiennent ton Carnet à jour, et tu le lis comme un vrai carnet.",
-      "kind": "Carnet · Sujet",
-      "title": "Voyage au Japon",
-      "statusT": "Où on en est : ",
-      "status": "vols réservés, hôtel de Kyoto à choisir",
-      "nextT": "Prochaines étapes",
-      "next1": "Choisir l’hôtel de Kyoto",
-      "next2": "Vérifier la date des passeports",
-      "budgetT": "Chiffres et budget",
-      "budget": "3 830 € sur 4 000 € · pour deux",
-      "docsT": "Documents",
-      "doc1": "Billets d’avion.pdf",
-      "doc2": "Assurance voyage.pdf"
-    },
     "s4": {
       "title": "Il navigue, tu gardes la main",
       "text": "Chaque agent a son propre navigateur : regarde-le remplir un formulaire en direct, et prends la main quand tu veux. Avant de réserver, payer ou envoyer, il te demande : une fois, pour la session, ou non, même depuis la notification.",
@@ -147,32 +156,13 @@
       "title": "Envoyer la réservation en ton nom ?",
       "detail": "Paris → Lyon · samedi 9 h 04\n2 adultes · 58,00 €"
     },
-    "s6": {
-      "title2": "Des tâches de fond, avec un budget",
-      "text": "Une longue recherche ? Il la mène en arrière-plan, sans dépasser le budget que tu lui donnes, et te prévient quand c’est prêt.",
-      "head": "Tâche de fond · Budget",
-      "title": "Comparer 5 assurances habitation",
-      "progress": "3 sites sur 5 vérifiés",
-      "budget": "Budget 0,20 € · utilisé 0,08 €",
-      "done": "Je te préviens quand c’est prêt"
-    },
-    "s7": {
-      "title": "En famille",
-      "text": "Avec Famille, jusqu’à six personnes ont chacune leurs agents et leur espace. Et ce que vous partagez, comme la liste de courses, se remplit à plusieurs.",
-      "head": "Liste de courses · partagée",
-      "i1": "Lait",
-      "i2": "Basilic",
-      "i3": "Parmesan",
-      "i4": "Bougies d’anniversaire",
-      "chip": "Famille : jusqu’à 6 personnes"
-    },
     "call": {
       "title": "En voiture, un appel Live avec ton Bip",
       "text": "Les mains sur le volant, passe en Live et parle, tout simplement : aucun bouton à tenir, il te répond à voix haute, et tu l’interromps en parlant. En français, anglais, allemand et espagnol.",
       "label": "Live · Quotidien"
     },
-    "more": "Envie de le voir en vrai ?",
-    "moreCta": "Voir la démo de l’app →"
+    "more": "Envie d’en voir plus ?",
+    "moreCta": "Voir la démo complète →"
   },
   "liveDialog": [
     {
@@ -242,6 +232,7 @@
     "cta": "S’abonner",
     "soon": "<b>L’abonnement sur le web arrive très bientôt.</b> En attendant, BipAgents arrive sur les stores, où tu pourras t’abonner dans l’app :",
     "trial": "Une semaine gratuite pour commencer, quand il en reste ce mois-ci : on te dit avant de payer si elle s’applique, et rien n’est prélevé si tu arrêtes avant la fin.",
+    "cancel": "Résiliable à tout moment : ton espace est gardé 30 jours, le temps de tout récupérer (3 jours après une semaine gratuite sans suite).",
     "includedTitle": "Compris pour chaque personne",
     "inc1": "Tes Bips, tes agents IA, prêts en une minute",
     "inc2": "Un crédit d’IA chaque mois, reporté s’il en reste",

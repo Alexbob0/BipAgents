@@ -38,7 +38,7 @@ const revealer = new IntersectionObserver(entries => {
 }, { threshold: 0.12 });
 $$(".reveal").forEach(el => revealer.observe(el));
 
-// The hero phone leans toward the pointer.
+// The hero card leans toward the pointer.
 const tilt = $("[data-tilt]");
 if (tilt && !REDUCED && matchMedia("(hover: hover)").matches) {
   addEventListener("pointermove", e => {
@@ -48,18 +48,29 @@ if (tilt && !REDUCED && matchMedia("(hover: hover)").matches) {
   }, { passive: true });
 }
 
-// -- Hero: notifications arriving one after the other ---------------------------------------------------------------
-(async function toasts() {
-  const all = $$(".toast");
-  if (!all.length) return;
-  await wait(900);
-  for (let i = 0; ; i++) {
-    const toast = all[i % all.length];
-    toast.classList.remove("leave"); toast.classList.add("show");
-    await wait(3600);
-    toast.classList.add("leave"); toast.classList.remove("show");
-    await wait(500);
-    toast.classList.remove("leave");
+// -- Hero: the approval moment, in a loop — you ask, the agent fills the form, asks « Book it in your name? », a tap
+// on « Once », booked. With reduced motion (or no script) the whole exchange stays still, « Once » chosen.
+(async function ask() {
+  const card = $(".ask");
+  if (!card || REDUCED) return;
+  const step = n => $(`[data-ask="${n}"]`, card), tool = step(2), once = $(".ask-once", card);
+  const parts = $$("[data-ask]", card);
+  let seen = true;   // paused while off screen (and in a background tab)
+  new IntersectionObserver(([e]) => { seen = e.isIntersecting; }).observe(card);
+  const visible = async () => { while (!seen || document.hidden) await new Promise(r => setTimeout(r, 400)); };
+  card.classList.add("play");
+  for (;;) {
+    parts.forEach(p => p.classList.remove("on"));
+    tool.classList.remove("done"); once.classList.remove("chosen", "tap");
+    await wait(700); await visible();
+    step(1).classList.add("on"); await wait(1100);
+    tool.classList.add("on"); await wait(1500);
+    tool.classList.add("done"); await wait(500);
+    step(3).classList.add("on"); await wait(2200); await visible();
+    once.classList.add("tap"); await wait(180);
+    once.classList.add("chosen"); await wait(900);
+    step(4).classList.add("on"); await wait(4200);
+    parts.forEach(p => p.classList.remove("on")); await wait(600);
   }
 })();
 

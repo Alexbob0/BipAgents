@@ -144,7 +144,7 @@ section[id] { scroll-margin-top: 72px; }
   background: var(--card); box-shadow: var(--shadow); font-size: 14px; font-weight: 900; color: var(--ink2);
 }
 .badge-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-tint); }
-h1 { font-size: clamp(46px, 5.6vw, 84px); line-height: .96; letter-spacing: -.045em; margin: 26px 0 26px; }
+h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em; margin: 0 0 24px; overflow-wrap: break-word; }
 .h-line { display: block; }
 .h-mark { position: relative; width: fit-content; z-index: 0; }
 .h-mark::after {
@@ -154,15 +154,30 @@ h1 { font-size: clamp(46px, 5.6vw, 84px); line-height: .96; letter-spacing: -.04
 .mark-green::after { background: color-mix(in srgb, var(--green) 45%, transparent); }
 .mark-coral::after { background: color-mix(in srgb, var(--coral) 45%, transparent); transition-delay: .6s; }
 .in .h-mark::after { transform: scaleX(1); }
+/* A highlight that follows the words when the line wraps (the hero's second half). */
+.h-hl { background: linear-gradient(color-mix(in srgb, var(--coral) 45%, transparent), color-mix(in srgb, var(--coral) 45%, transparent)) no-repeat 0 88% / 0% .3em;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone; transition: background-size .9s cubic-bezier(.2, .9, .2, 1) .5s; }
+.in .h-hl { background-size: 100% .3em; }
+@media (prefers-reduced-motion: reduce) { .h-hl { transition: none; } }
 .lede { font-size: clamp(18px, 1.6vw, 21px); color: var(--ink2); max-width: 560px; line-height: 1.5; }
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; align-items: center; }
 .cta-row.center { justify-content: center; }
-.trust { list-style: none; padding: 0; margin: 26px 0 0; display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--muted); font-size: 15px; font-weight: 800; }
-.trust li::before { content: "✓"; color: var(--green-deep); margin-right: 7px; font-weight: 1000; }
+/* Three proof points, then the house words (Bips, Live, Notebook) explained once. */
+.proofs { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 10px; max-width: 560px; }
+.proofs li { display: flex; gap: 12px; align-items: center; font-weight: 700; color: var(--ink2); font-size: 16.5px; line-height: 1.4; }
+.proofs li > span { flex: none; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; background: var(--card); box-shadow: var(--shadow); }
+.proofs b { color: var(--ink); font-weight: 1000; }
+.words { margin-top: 16px; max-width: 560px; color: var(--muted); font-size: 14px; font-weight: 700; line-height: 1.5; }
+.words b { color: var(--ink2); font-weight: 900; }
+.pill-time { font-size: 12.5px; font-weight: 900; padding: 3px 8px; border-radius: 999px; background: rgba(255, 255, 255, .24); }
+@media (max-width: 520px) {   /* the three buttons stack, full width, on a phone */
+  .hero .cta-row { display: grid; grid-template-columns: 1fr; }
+  .hero .cta-row .pill { width: 100%; }
+}
 
 .hero-stage { position: relative; height: 640px; display: grid; place-items: center; }
-@media (max-width: 1039px) { .hero-stage { height: 600px; margin-top: 10px; } }
-@media (max-width: 520px) { .hero-stage { height: 540px; } }
+@media (max-width: 1039px) { .hero-stage { height: auto; padding: 50px 0 90px; } }
+@media (max-width: 520px) { .hero-stage { padding: 40px 0 80px; } }
 .halo { position: absolute; width: 520px; height: 520px; border-radius: 50%;
   background: radial-gradient(circle, color-mix(in srgb, var(--coral) 30%, transparent), transparent 65%); filter: blur(10px); }
 .phone {
@@ -173,38 +188,70 @@ h1 { font-size: clamp(46px, 5.6vw, 84px); line-height: .96; letter-spacing: -.04
   background: #000; border-radius: 20px; z-index: 2; }
 .phone-screen { border-radius: 46px; overflow: hidden; background: var(--ground); }
 .phone-screen img { width: 100%; height: auto; }
-.phone-hero { width: min(300px, 70vw); transform: rotate(-4deg); animation: phone-float 7s ease-in-out infinite; }
-@keyframes phone-float { 50% { transform: rotate(-3deg) translateY(-12px); } }
 .float-bip { position: absolute; width: 130px; height: 130px; z-index: 3; animation: bob 6s ease-in-out infinite; }
-.fb-1 { left: 2%; top: 13%; width: 150px; height: 150px; }
-.fb-2 { right: 1%; top: 30%; animation-delay: -2s; }
-.fb-3 { left: 6%; bottom: 10%; width: 120px; height: 120px; animation-delay: -4s; }
-.fb-4 { right: 8%; bottom: 4%; width: 110px; height: 110px; animation-delay: -1s; }
+.fb-1 { left: 0; top: 4%; width: 140px; height: 140px; }
+.fb-2 { right: 0; top: 40%; width: 110px; height: 110px; animation-delay: -2s; }
+.fb-3 { left: 4%; bottom: 2%; width: 110px; height: 110px; animation-delay: -4s; }
 @keyframes bob { 50% { translate: 0 -14px; } }
 @media (max-width: 520px) {
-  .float-bip { width: 92px !important; height: 92px !important; }
-  .fb-1 { left: -2%; } .fb-2 { right: -3%; }
+  .float-bip { width: 78px !important; height: 78px !important; }
+  .fb-1 { left: -4%; top: 0; } .fb-2 { right: -5%; top: 46%; } .fb-3 { left: -3%; bottom: 0; }
 }
-.toasts { position: absolute; top: 6%; left: 50%; width: min(360px, 88vw); translate: -50% 0; z-index: 4; height: 90px; }
-.toast {
-  position: absolute; inset: 0 auto auto 0; width: 100%; display: flex; gap: 12px; align-items: center; padding: 12px 14px;
-  border-radius: 24px; background: color-mix(in srgb, var(--card) 82%, transparent); backdrop-filter: blur(22px) saturate(1.8);
-  -webkit-backdrop-filter: blur(22px) saturate(1.8); box-shadow: var(--shadow-big); opacity: 0; transform: translateY(-30px) scale(.94);
-  transition: opacity .5s, transform .6s cubic-bezier(.25, 1.4, .4, 1);
-}
-.toast.show { opacity: 1; transform: none; }
-.toast.leave { opacity: 0; transform: translateY(16px) scale(.96); }
-.toast-bip { flex: 0 0 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; }
-.toast[data-cat="daily"] .toast-bip { background: var(--coral-tint); }
-.toast[data-cat="finance"] .toast-bip { background: var(--gold-tint); }
-.toast[data-cat="wellness"] .toast-bip { background: var(--green-tint); }
-.toast[data-cat="home"] .toast-bip { background: var(--teal-tint); }
-.toast-bip svg { width: 38px; height: 38px; }
-.toast > span:last-child { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; font-size: 14px; line-height: 1.3; min-width: 0; }
-.toast b { font-weight: 900; }
-.toast small { color: var(--muted); font-weight: 700; font-size: 12px; }
-.toast em { grid-column: 1 / -1; font-style: normal; color: var(--ink2); font-weight: 700; }
 
+/* The hero: an agent asks before booking, you tap « Once », it's booked. Without script or with reduced motion,
+   the whole exchange stays still; with it, the steps come in turn (site.js) and start again. */
+.ask { position: relative; z-index: 4; margin: 0; width: min(380px, 100%); border-radius: 32px; background: var(--ground);
+  box-shadow: var(--shadow-big), inset 0 0 0 1px var(--line); overflow: hidden;
+  --rx: 0deg; --ry: 0deg; transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry)) rotate(-2deg); transition: transform .25s ease-out; }
+.ask .chat-head { padding: 14px 16px; }
+.ask-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 14px 18px; min-height: 430px; justify-content: flex-end; }
+.ask .msg, .ask .tool, .ask .card-a { animation: none; }
+.ask .msg { font-size: 15px; }
+.ask .card-a { box-shadow: var(--shadow-big); }
+.ask .card-a p { margin-bottom: 8px; }
+.ask .card-a p.ask-head { font-size: 12.5px; font-weight: 800; color: var(--muted); margin-bottom: 4px; }
+.ask .card-a .btns span { font-size: 14px; padding: 11px 8px; position: relative; }
+.ask-once::after { content: ""; position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+  background: color-mix(in srgb, var(--coral) 55%, transparent); opacity: 0; transform: scale(.3); pointer-events: none; }
+.ask.play [data-ask] { opacity: 0; transform: translateY(14px) scale(.97); transition: opacity .45s, transform .55s cubic-bezier(.25, 1.4, .4, 1); }
+.ask.play [data-ask].on { opacity: 1; transform: none; }
+.ask.play .ask-once:not(.chosen) { background: var(--ground2); color: var(--ink); transform: none; }
+.ask.play .ask-once.tap::after { animation: tap .6s ease-out; }
+@keyframes tap { 0% { opacity: .9; transform: scale(.3); } 100% { opacity: 0; transform: scale(1.8); } }
+.ask .msg.bot .txt b { font-weight: 1000; }
+@media (max-width: 520px) { .ask-body { min-height: 400px; } .ask .msg { font-size: 14.5px; } }
+@media (prefers-reduced-motion: reduce) { .ask { transition: none; } }
+
+/* -- Compared: chatbots, do-it-yourself agents, BipAgents (a table; one card per row on a phone) ------------------- */
+.vs { max-width: 1080px; margin: 0 auto; }
+.vs table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.vs th, .vs td { text-align: left; vertical-align: top; padding: 14px 16px; font-size: 15px; line-height: 1.4; }
+.vs thead th { font-size: 15.5px; font-weight: 1000; color: var(--ink); padding-bottom: 12px; vertical-align: bottom; }
+.vs thead td { width: 19%; }
+.vs tbody th { font-weight: 1000; color: var(--ink); }
+.vs tbody td { color: var(--ink2); font-weight: 700; }
+.vs tbody tr + tr > * { border-top: 1px solid var(--line); }
+.vs .vs-us { background: var(--green-tint); color: var(--ink); font-weight: 800; }
+.vs thead .vs-us { border-radius: 22px 22px 0 0; padding-top: 16px; }
+.vs tbody tr:last-child .vs-us { border-radius: 0 0 22px 22px; }
+.vs-bip { display: inline-block; width: 30px; height: 30px; vertical-align: -9px; margin-right: 8px; }
+.vs-bip svg { width: 100%; height: 100%; }
+@media (min-width: 761px) { .vs { padding: 10px 14px; border-radius: 30px; background: var(--card); box-shadow: var(--shadow); } }
+@media (max-width: 760px) {
+  .vs table, .vs tbody, .vs tr, .vs th, .vs td { display: block; width: auto; }
+  .vs thead { display: none; }
+  .vs tbody { display: grid; gap: 12px; }
+  .vs tbody tr { border-radius: 24px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
+  .vs tbody tr + tr > * { border-top: 0; }
+  .vs tbody th { padding: 14px 16px 6px; font-size: 16px; }
+  .vs tbody td { padding: 6px 16px 10px; font-size: 14.5px; }
+  .vs tbody td::before { content: attr(data-col); display: block; font-size: 12px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+  .vs tbody td.vs-us { padding: 10px 16px 14px; border-radius: 0 !important; }
+  .vs tbody td.vs-us::before { color: var(--green-deep); }
+}
+@media (prefers-color-scheme: dark) { .vs tbody td.vs-us::before { color: var(--green); } }
+.hermes-line + .badge { margin-top: 14px; }
+.foot-badge { margin-top: 16px; }
 /* -- Marquee --------------------------------------------------------------------------------------------------- */
 .marquee { overflow: hidden; padding: 22px 0; background: var(--ink); color: var(--ground); transform: rotate(-1.5deg); margin: 0 -10px; }
 .marquee-track { display: flex; gap: 40px; width: max-content; animation: marquee 38s linear infinite; font-size: clamp(26px, 3.4vw, 40px); font-weight: 1000; letter-spacing: -.02em; }
@@ -397,16 +444,12 @@ mark.todo { background: #FFE58A; color: #5A4300; border-radius: 4px; padding: 0 
 a.store { transition: transform .2s; }
 a.store:hover { transform: translateY(-2px); }
 .hero-price { margin-top: 18px; font-weight: 900; color: var(--ink2); font-size: 15.5px; }
-.trust { margin-top: 18px; }
 
 /* -- Header progress, phone tilt --------------------------------------------------------------------------------- */
 .progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; pointer-events: none; }
 .progress i { display: block; height: 100%; transform-origin: left; transform: scaleX(0);
   background: linear-gradient(90deg, var(--coral), var(--gold), var(--green), var(--teal), var(--violet)); }
-.phone-hero { --rx: 0deg; --ry: 0deg; transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry)) rotate(-4deg);
-  animation: phone-bob 7s ease-in-out infinite; transition: transform .25s ease-out; }
-@keyframes phone-bob { 50% { translate: 0 -12px; } }
-@media (prefers-reduced-motion: reduce) { .phone-hero, .float-bip { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .float-bip { animation: none; } }
 
 /* -- Pages in the chat: the walk's map, the page kit's page ------------------------------------------------------ */
 .page-card { align-self: stretch; margin-left: 39px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow); padding: 12px; animation: pop-in .5s both; flex: none; }
