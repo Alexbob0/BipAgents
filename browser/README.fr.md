@@ -21,7 +21,10 @@ te le demande, il ne le résout jamais.
   seul conteneur. Une page qu'il ouvre, `file://` compris, voit le conteneur, jamais l'hôte et ses clés.
 - **Piloté par [stealth-browser-mcp](https://github.com/vibheksoni/stealth-browser-mcp)** (MIT), un serveur MCP basé
   sur nodriver : l'agent reçoit ses outils (`spawn_browser`, `navigate`, `click_element`, `type_text`…) sous le nom
-  `stealth`. Le serveur tourne dans le conteneur, à côté de Chrome ; Hermes le lance avec `podman exec`.
+  `stealth`. Le serveur tourne dans le conteneur, à côté de Chrome ; Hermes le lance avec `podman exec`. Chrome n'est
+  jamais l'enfant du serveur : `spawn_browser` le lance à part (`open_browser.sh`) et s'y connecte, il survit donc au
+  serveur quand Hermes le redémarre, et l'instance de l'agent garde le même identifiant (et sa page). `close_instance`
+  ferme les pages et laisse Chrome ; seul `quit_browser` le quitte.
 - **Le coffre** remplit les mots de passe dans ce même Chrome : Hermes joint son port DevTools (`browser.cdp_url`) et
   remplit le champ sur le site exact de l'identifiant, sans que l'agent voie jamais le mot de passe. Le gestionnaire
   de mots de passe et la saisie automatique de Chrome sont coupés (règles dans l'image) : c'est le coffre qui les garde.
@@ -81,7 +84,7 @@ au commit testé avec BipAgents (`a7b9eea`, fixé dans le `Containerfile`), et a
   est sous GNU AGPL v3** et certifi sous MPL 2.0 : tous deux installés sans modification, comme paquets séparés.
 - `entrypoint.sh` (l'écran, le serveur VNC), `devtools_relay.py` (les DevTools de Chrome depuis l'hôte, à une adresse
   qui survit aux redémarrages de Chrome), `open_browser.sh` (Chrome lancé sur l'écran quand la personne ouvre le
-  navigateur depuis l'app ; le `spawn_browser` de l'agent s'y connecte ensuite), `mcp.sh` (le serveur avec seulement ce qu'il faut pour naviguer : ni copie
+  navigateur depuis l'app, ou par le `spawn_browser` de l'agent, détaché, avec les options de nodriver), `mcp.sh` (le serveur avec seulement ce qu'il faut pour naviguer : ni copie
   d'éléments, ni extraction de fichiers, ni interception réseau, ni CDP brut, ni crochets de débogage) et la consigne
   qui explique à l'agent son navigateur (`bridge-rs/assets/skills/visible-browser/SKILL.md`, copiée dans son profil Hermes).
 

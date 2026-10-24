@@ -20,7 +20,10 @@ not a way around websites' rules: an agent that meets a captcha asks you, it nev
   that container only. A page it opens, `file://` included, sees the container, never the host and its keys.
 - **Driven by [stealth-browser-mcp](https://github.com/vibheksoni/stealth-browser-mcp)** (MIT), an MCP server built on
   nodriver: the agent gets its tools (`spawn_browser`, `navigate`, `click_element`, `type_text`…) under the name
-  `stealth`. The server runs inside the container, next to Chrome; Hermes starts it with `podman exec`.
+  `stealth`. The server runs inside the container, next to Chrome; Hermes starts it with `podman exec`. Chrome is
+  never the server's child: `spawn_browser` starts it apart (`open_browser.sh`) and connects to it, so it outlives the
+  server when Hermes restarts it, and the agent's instance keeps one id (its page with it). `close_instance` closes
+  the pages and leaves Chrome; only `quit_browser` quits it.
 - **The vault** fills passwords in this same Chrome: Hermes reaches its DevTools port (`browser.cdp_url`) and fills
   the field on the exact site the item was saved for, without the agent ever seeing the password. Chrome's own
   password manager and autofill are turned off (policies in the image): the vault keeps them.
@@ -77,7 +80,7 @@ commit BipAgents is tested with (`a7b9eea`, set in the `Containerfile`) and appl
   under the GNU AGPL v3** and certifi under the MPL 2.0: both are installed unmodified, as separate packages.
 - `entrypoint.sh` (the screen, the VNC server), `devtools_relay.py` (Chrome's DevTools from the host, at an address
   that outlives Chrome's restarts), `open_browser.sh` (Chrome started on the screen when the person opens the browser
-  from the app; the agent's `spawn_browser` then connects to it), `mcp.sh` (the server with only what browsing needs:
+  from the app, or by the agent's `spawn_browser`, detached, with nodriver's flags), `mcp.sh` (the server with only what browsing needs:
   no element cloning, file extraction, network interception, raw CDP or debugging hooks) and the skill telling the
   agent how to use its browser (`bridge-rs/assets/skills/visible-browser/SKILL.md`, copied into its Hermes profile).
 

@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.6.0
+version: 1.7.0
 author: BipAgents
 license: MIT
 metadata:
@@ -16,10 +16,13 @@ You have a real Google Chrome (Chromium on some machines) on a desktop of your o
 list_tabs, execute_script, close_instance…). The person can watch this browser live in the app (« Bureau ») and take
 over the mouse and keyboard.
 
-## 1. Start it once per task
+## 1. One browser, always the same
 Call `spawn_browser` with no arguments, never `headless`: the profile (cookies and logins kept between tasks), the
-window, the language and the time zone are already set, and the browser always shows on your desktop. Keep the `instance_id` it returns for every later call. Never start a second
-browser while one runs: reuse the instance (`list_instances` tells you if one is already open).
+window, the language and the time zone are already set, and the browser always shows on your desktop. It returns the
+`instance_id` of your one browser: the same id every time, the browser already open if it is (on the page you left).
+Keep that id and use it for every later call, in this task and the next ones; you never need a second browser.
+Do not close the browser between the steps of a task, or between two messages of the same conversation: each new
+start costs the person time.
 
 ## 2. Browse
 - After opening a page of a site that checks for robots, wait 5 to 10 seconds before reading it.
@@ -70,7 +73,10 @@ Never pay, order, send or delete on a website without the person's explicit go f
 confirmation page and tell them what is about to happen.
 
 ## 6. When you are done
-Leave the browser open if the person is likely to continue; otherwise `close_instance`. It also closes by itself after
-10 minutes without use (your desktop stops to free the machine's memory; your profile and logins stay). After such a
-pause, a call naming your old `instance_id` answers that it does not exist: call `spawn_browser` again and continue
-with the new id; the first call after a pause takes a few seconds longer.
+Leave the browser as it is: never call `close_instance` at the end of a step or of an answer. It stops by itself
+after some minutes without use (your desktop stops to free the machine's memory; your profile and logins stay). After
+such a pause the first call takes a few seconds longer and the page you were on is gone (open it again); if a call
+ever answers that your instance does not exist, call `spawn_browser` and continue with the id it returns.
+`close_instance` only closes your pages (the browser stays open on a blank page); use it when the person asks you to
+close what you opened. `close_instance` with `quit_browser: true` quits the browser itself: only when the person asks
+for exactly that.

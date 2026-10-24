@@ -54,6 +54,8 @@ RUN chmod 755 /opt/stealth/entrypoint.sh /opt/stealth/mcp.sh /opt/stealth/open_b
 # the flags the server adds in any container that this one does without (a single process, no GPU at all, and a
 # redundant one Chrome shows a warning bar for), a browser always shown on the screen (an agent's headless ignored), and
 # how long a starting Chrome may take to open its DevTools (nodriver's own ~3 s failed cold starts on a loaded server).
+# BROWSER_IDLE_TIMEOUT=0: the server's own reaper never lets go of the agent's browser; the bridge stops the whole
+# container once nobody uses it (bip-browser-mcp's `idle`).
 ENV DISPLAY=:99 \
     STEALTH_CDP_PORT=9222 \
     STEALTH_USER_DATA_DIR=/home/bip/profile \
@@ -61,7 +63,7 @@ ENV DISPLAY=:99 \
     STEALTH_DROP_ARGS="--single-process;--disable-gpu;--disable-setuid-sandbox" \
     STEALTH_HEADFUL=1 \
     STEALTH_CONNECT_SECONDS=45 \
-    BROWSER_IDLE_TIMEOUT=1800 \
+    BROWSER_IDLE_TIMEOUT=0 \
     PYTHONWARNINGS=ignore \
     PYTHONUNBUFFERED=1
 
