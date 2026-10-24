@@ -387,6 +387,23 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .tool.done .st { animation: none; border: 0; background: var(--green); position: relative; }
 .tool.done .st::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--on-pale); font-size: 11px; font-weight: 1000; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* The working line while the agent works (the apps' WorkingLine): its Bip and what it does now, a light sweeping
+   across the words; the finished steps fold under « Détail du travail » (closed, as in the app). */
+.working { align-self: flex-start; display: flex; align-items: center; gap: 8px; max-width: 92%; font-size: 14px; font-weight: 700; color: var(--muted); animation: pop-in .3s both; }
+.working .av { flex: 0 0 24px; height: 24px; display: grid; place-items: center; }
+.working .av svg { width: 24px; height: 24px; }
+.working .ph { background: linear-gradient(100deg, var(--muted) 35%, var(--ink) 50%, var(--muted) 65%) 0 0 / 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: sweep 1.8s linear infinite; }
+@keyframes sweep { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.work { align-self: flex-start; max-width: 92%; }
+.work summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; padding: 5px 12px; border-radius: 999px;
+  background: var(--ground2); color: var(--muted); font-size: 13px; font-weight: 800; }
+.work summary::-webkit-details-marker { display: none; }
+.work summary::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.work[open] summary::after { transform: translateY(1px) rotate(-135deg); }
+.work-rows { display: grid; gap: 6px; margin-top: 8px; }
+.work .tool { animation: none; }
+@media (prefers-reduced-motion: reduce) { .working, .working .ph { animation: none; } .working .ph { color: var(--muted); background: none; } }
 .card-q, .card-a { align-self: stretch; border-radius: 22px; background: var(--card); box-shadow: var(--shadow); padding: 16px; animation: pop-in .45s both; }
 .card-q p, .card-a p { font-weight: 900; margin-bottom: 12px; }
 .card-q .opts { display: grid; gap: 8px; }

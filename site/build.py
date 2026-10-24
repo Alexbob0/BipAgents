@@ -403,6 +403,7 @@ def bipagents(version: str) -> Path:
         })
         common = {"lang": lang, "lines": t["lines"], "regions": regions, "currency": default_currency,
                   "currencies": list(currencies)}
+        tool_labels = json.loads((SRC / "bipagents" / "tool-labels.json").read_text())
         scenarios = {}
         for scenario, agent in DEMO_TABS:
             s = localized(demo["scenarios"][scenario], lang)
@@ -420,7 +421,10 @@ def bipagents(version: str) -> Path:
                      "pricing": t["pricing"]["js"]},
             "demo": {**common, "scenarios": scenarios,
                      "labels": {"once": t["control"]["once"], "session": t["control"]["session"], "deny": t["control"]["deny"],
-                                "open": t["demo"]["open"]},
+                                "open": t["demo"]["open"], "work": t["demo"]["work"]},
+                     # tool rows and the working line in plain words, as the apps word them (scripts/tool-labels.py)
+                     "tools": {"list": tool_labels["kinds"], "words": tool_labels["text"][lang]["kinds"],
+                               "extra": tool_labels["text"][lang]["extra"]},
                      "pages": {"runs": {"src": f"/assets/pages/runs-{lang}.html",
                                         "title": localized(demo["pages"]["runs"]["values"]["title"], lang)},
                                "walk": {"src": f"/assets/showcase/{map_file}", "title": walk["title"], "subtitle": walk["subtitle"],
