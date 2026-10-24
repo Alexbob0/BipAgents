@@ -57,6 +57,8 @@ pub const BUSY_SECONDS: u64 = 15;
 pub const WORKING_SECONDS: u64 = 60;
 /// At most this many frames per second reach the phone (Chrome waits for each frame's ack before the next).
 pub const FRAME_INTERVAL: Duration = Duration::from_millis(200);
+/// The card in the conversation (`?card=1`): about one small frame a second, light on the phone's battery and data.
+pub const CARD_FRAME_INTERVAL: Duration = Duration::from_millis(1000);
 /// The viewer page (`assets/desktop_page.html`).
 pub static PAGE: LazyLock<String> = LazyLock::new(|| include_str!("../assets/desktop_page.html").to_string());
 
@@ -360,10 +362,14 @@ fn frame_session(message: &Value) -> Option<Value> {
 }
 
 /// What a phone asks for its page view (`?mobile=1&w=390&h=760&dpr=3`): the size it renders a taken-over tab at.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
+/// `?card=1&w=360&dpr=2`: the small live card in the conversation, to watch only (slow, small frames; the agent's tab
+/// is never rendered as a phone for it).
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Deserialize)]
 pub struct Phone {
     #[serde(default)]
     pub mobile: Option<u8>,
+    #[serde(default)]
+    pub card: Option<u8>,
     #[serde(default)]
     pub w: Option<f64>,
     #[serde(default)]
@@ -374,7 +380,16 @@ pub struct Phone {
 
 impl Phone {
     pub fn wanted(&self) -> bool {
-        self.mobile == Some(1)
+        self.mobile == Some(1) && !self.is_card()
+    }
+    pub fn is_card(&self) -> bool {
+        self.card == Some(1)
+    }
+    /// The card's screencast (as wide as the card in pixels, 900 at most, lower quality) and the time between frames.
+    pub fn card_cast(&self) -> (Value, Duration) {
+        let width = self.w.unwrap_or(360.0).clamp(200.0, 600.0) * self.dpr.unwrap_or(2.0).clamp(1.0, 2.0);
+        let width = width.min(900.0).round() as u32;
+        (json!({"format": "jpeg", "quality": 45, "maxWidth": width, "maxHeight": width * 2}), CARD_FRAME_INTERVAL)
     }
     /// Its width and height in CSS pixels, and its pixel ratio (2 at most: lighter frames, still sharp).
     pub fn metrics(&self, desktop_height: f64) -> (u32, u32, f64) {
@@ -683,11 +698,14 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
             }
         }
         let (width, height, ratio) = phone.metrics(desktop_height);
-        let cast = if mobile {
-            json!({"format": "jpeg", "quality": 60, "maxWidth": (width as f64 * ratio) as u32,
-                   "maxHeight": (height as f64 * ratio) as u32})
+        let (cast, interval) = if phone.is_card() {
+            phone.card_cast()
+        } else if mobile {
+            let cast = json!({"format": "jpeg", "quality": 60, "maxWidth": (width as f64 * ratio) as u32,
+                              "maxHeight": (height as f64 * ratio) as u32});
+            (cast, FRAME_INTERVAL)
         } else {
-            json!({"format": "jpeg", "quality": 55, "maxWidth": 1366, "maxHeight": 1366})
+            (json!({"format": "jpeg", "quality": 55, "maxWidth": 1366, "maxHeight": 1366}), FRAME_INTERVAL)
         };
         if cdp.send("Page.startScreencast", cast).await.is_err() {
             continue;
@@ -737,7 +755,7 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                     }
                     pending = params.get("sessionId").cloned();
                     changed = true;
-                    next_ack = Instant::now() + FRAME_INTERVAL;
+                    next_ack = Instant::now() + interval;
                     if touched.is_none_or(|t| t.elapsed() > Duration::from_secs(60)) {
                         touched = Some(Instant::now());
                         crate::browsers::busy(&state.config(), &agent); // watched: not stopped as unused
@@ -879,17 +897,30 @@ mod tests {
 
     #[test]
     fn a_phone_renders_at_its_own_size_within_the_screen() {
-        let phone = Phone { mobile: Some(1), w: Some(393.0), h: Some(852.0), dpr: Some(3.0) };
+        let phone = Phone { mobile: Some(1), w: Some(393.0), h: Some(852.0), dpr: Some(3.0), ..Phone::default() };
         assert!(phone.wanted());
         assert_eq!(phone.metrics(640.0), (393, 640, 2.0));
-        assert_eq!(Phone { mobile: None, w: None, h: None, dpr: None }.metrics(2000.0), (390, 760, 2.0));
+        assert_eq!(Phone::default().metrics(2000.0), (390, 760, 2.0));
         assert_eq!(
-            Phone { mobile: Some(1), w: Some(9999.0), h: Some(1.0), dpr: Some(0.5) }.metrics(900.0),
+            Phone { mobile: Some(1), w: Some(9999.0), h: Some(1.0), dpr: Some(0.5), ..Phone::default() }.metrics(900.0),
             (600, 400, 1.0)
         );
         let (agent, major) = mobile_user_agent("Chrome/131.0.6778.85");
         assert_eq!(major, "131");
         assert!(agent.contains("Android") && agent.contains("Chrome/131.0.0.0 Mobile Safari"));
         assert_eq!(mobile_user_agent("").1, "130");
+    }
+
+    #[test]
+    fn the_conversation_card_gets_small_slow_frames_and_never_a_phone_tab() {
+        let card = Phone { card: Some(1), mobile: Some(1), w: Some(358.0), dpr: Some(3.0), ..Phone::default() };
+        assert!(card.is_card() && !card.wanted());
+        let (cast, interval) = card.card_cast();
+        assert_eq!(cast["maxWidth"], 716);
+        assert_eq!(cast["quality"], 45);
+        assert_eq!(interval, CARD_FRAME_INTERVAL);
+        assert!(CARD_FRAME_INTERVAL > FRAME_INTERVAL);
+        let wide = Phone { card: Some(1), w: Some(5000.0), dpr: Some(2.0), ..Phone::default() };
+        assert_eq!(wide.card_cast().0["maxWidth"], 900);
     }
 }
