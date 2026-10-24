@@ -509,5 +509,32 @@
       "archives": "Archiv",
       "archivesSub": "was vorbei ist"
     }
+  },
+  "family": {
+    "kicker": "Duo und Familie",
+    "title": "In der Familie reden eure Agenten miteinander.",
+    "sub": "Alle behalten ihren eigenen privaten Bereich und ihre Agenten. Wenn das, was du deinem Agenten sagst, jemanden aus der Familie betrifft, schlägt er vor, es an dessen Agenten weiterzugeben: Du liest es, du wählst, an wen, und nichts geht raus ohne dein „Senden“.",
+    "s1t": "Die Schule hat angerufen",
+    "s1": "Du sagst es deinem Agenten: Er schlägt vor, Sam Bescheid zu geben. Du liest, du sendest; Sam weiß Bescheid, und Sams Agent auch.",
+    "s2t": "Die Ferien",
+    "s2": "Du hast vom 12. bis 19. August gebucht: Dein Agent schlägt vor, der ganzen Familie die Daten zu geben, und jeder Agent hat sie.",
+    "s3t": "Das Mittagessen",
+    "s3": "„Ich bestelle heute Mittag Essen“: Dein Agent fragt, ob er die anderen informieren soll. Ein „Nein danke“, und er fragt nicht wieder.",
+    "p1": "Text und Empfänger lassen sich vor dem Senden ändern",
+    "p2": "Ohne Antwort verschwindet ein Vorschlag nach einem Tag",
+    "p3": "Deine eigenen Agenten schreiben sich und geben Dateien nur dort weiter, wo du es erlaubt hast: „Wer darf wem schreiben“",
+    "p4": "Familie: bis zu 6 Personen, jede mit eigenem Bereich, und ein gemeinsames KI-Guthaben",
+    "cta": "Duo und Familie ansehen",
+    "a11y": "In der Unterhaltung schlägt der Agent Alltag vor: Sam Bescheid geben? Der Text „Die Schule hat angerufen: Léa hat Fieber, ich hole sie ab“, Sam als Empfänger und die Knöpfe Senden und Nein danke. Bei Sam kommt die Mitteilung an.",
+    "mock": {
+      "agent": "Alltag",
+      "ask": "Sam Bescheid geben?",
+      "words": "Die Schule hat angerufen: Léa hat Fieber, ich hole sie ab.",
+      "to": "An:",
+      "send": "Senden",
+      "no": "Nein danke",
+      "at": "Bei Sam",
+      "notif": "Alex: Die Schule hat angerufen: Léa hat Fieber, ich hole sie ab."
+    }
   }
 }

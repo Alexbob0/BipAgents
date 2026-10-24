@@ -509,5 +509,32 @@
       "archives": "Archives",
       "archivesSub": "what’s past"
     }
+  },
+  "family": {
+    "kicker": "Duo and Family",
+    "title": "In a family, your agents talk to each other.",
+    "sub": "Everyone keeps their own private space and agents. When what you tell your agent concerns someone in the family, it offers to pass it on to their agent: you read it, you choose who gets it, and nothing leaves until you tap “Send”.",
+    "s1t": "The school called",
+    "s1": "You tell your agent: it offers to let Sam know. You read it, you send it; Sam is told and Sam’s agent knows.",
+    "s2t": "The holidays",
+    "s2": "You booked 12 to 19 August: your agent offers to give the dates to the whole family, and every agent has them.",
+    "s3t": "Lunch",
+    "s3": "“I’m ordering lunch today”: your agent asks whether to tell the others. One “No thanks”, and it won’t bring it up again.",
+    "p1": "The words and the recipients can be changed before sending",
+    "p2": "Left unanswered, a proposal goes away after a day",
+    "p3": "Your own agents write to each other and pass files only where you allowed it: “Who can write to whom”",
+    "p4": "Family: up to 6 people, each with their own space, and a shared AI credit",
+    "cta": "See Duo and Family",
+    "a11y": "In the conversation, the Daily agent offers: let Sam know? The words “The school called: Léa has a fever, I’m picking her up”, Sam as the recipient, and the Send and No thanks buttons. At Sam’s, the notification arrives.",
+    "mock": {
+      "agent": "Daily",
+      "ask": "Let Sam know?",
+      "words": "The school called: Léa has a fever, I’m picking her up.",
+      "to": "To:",
+      "send": "Send",
+      "no": "No thanks",
+      "at": "At Sam’s",
+      "notif": "Alex: The school called: Léa has a fever, I’m picking her up."
+    }
   }
 }

@@ -509,5 +509,32 @@
       "archives": "Archivo",
       "archivesSub": "lo pasado"
     }
+  },
+  "family": {
+    "kicker": "Dúo y Familia",
+    "title": "En familia, vuestros agentes hablan entre sí.",
+    "sub": "Cada uno conserva su espacio privado y sus agentes. Cuando lo que le dices a tu agente afecta a alguien de la familia, te propone pasárselo a su agente: lo lees, eliges a quién, y nada sale sin tu «Enviar».",
+    "s1t": "Ha llamado el colegio",
+    "s1": "Se lo dices a tu agente: te propone avisar a Sam. Lo lees, lo envías; Sam se entera y su agente también.",
+    "s2t": "Las vacaciones",
+    "s2": "Has reservado del 12 al 19 de agosto: tu agente propone dar las fechas a toda la familia, y cada agente las tiene.",
+    "s3t": "La comida",
+    "s3": "«Hoy pido comida a domicilio»: tu agente pregunta si avisa a los demás. Un «No, gracias», y no vuelve a sacarlo.",
+    "p1": "El texto y los destinatarios se pueden cambiar antes de enviar",
+    "p2": "Sin respuesta, una propuesta desaparece al cabo de un día",
+    "p3": "Tus propios agentes se escriben y se pasan archivos solo donde tú lo has permitido: «Quién puede escribir a quién»",
+    "p4": "Familia: hasta 6 personas, cada una con su espacio, y un crédito de IA común",
+    "cta": "Ver Dúo y Familia",
+    "a11y": "En la conversación, el agente Día a día propone: ¿avisar a Sam? El texto «Ha llamado el colegio: Léa tiene fiebre, voy a recogerla», Sam como destinatario y los botones Enviar y No, gracias. En casa de Sam llega la notificación.",
+    "mock": {
+      "agent": "Día a día",
+      "ask": "¿Avisar a Sam?",
+      "words": "Ha llamado el colegio: Léa tiene fiebre, voy a recogerla.",
+      "to": "Para:",
+      "send": "Enviar",
+      "no": "No, gracias",
+      "at": "En casa de Sam",
+      "notif": "Alex: Ha llamado el colegio: Léa tiene fiebre, voy a recogerla."
+    }
   }
 }

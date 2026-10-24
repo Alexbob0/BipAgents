@@ -509,5 +509,32 @@
       "archives": "Archives",
       "archivesSub": "ce qui est passé"
     }
+  },
+  "family": {
+    "kicker": "Duo et Famille",
+    "title": "En famille, vos agents se parlent.",
+    "sub": "Chacun garde son espace privé et ses agents. Quand ce que tu dis à ton agent concerne quelqu’un de la famille, il propose de le transmettre à son agent : tu relis, tu choisis à qui, et rien ne part sans ton « Envoyer ».",
+    "s1t": "L’école a appelé",
+    "s1": "Tu le dis à ton agent : il propose de prévenir Sam. Tu relis, tu envoies ; Sam est prévenu et son agent est au courant.",
+    "s2t": "Les vacances",
+    "s2": "Tu as réservé du 12 au 19 août : ton agent propose de donner les dates à toute la famille, et chaque agent les a.",
+    "s3t": "Le repas de midi",
+    "s3": "« Je commande à manger ce midi » : ton agent demande s’il prévient les autres. Un « Non merci », et il n’en reparle pas.",
+    "p1": "Les mots et les destinataires se modifient avant d’envoyer",
+    "p2": "Sans réponse, une proposition s’efface au bout d’un jour",
+    "p3": "Tes propres agents s’écrivent et se passent des fichiers seulement là où tu l’as permis : « Qui peut écrire à qui »",
+    "p4": "Famille : jusqu’à 6 personnes, chacune son espace, et un crédit d’IA commun",
+    "cta": "Voir Duo et Famille",
+    "a11y": "Dans la conversation, l’agent Quotidien propose : prévenir Sam ? Les mots « L’école a appelé : Léa a de la fièvre, je vais la chercher », Sam comme destinataire, et les boutons Envoyer et Non merci. Chez Sam, la notification arrive.",
+    "mock": {
+      "agent": "Quotidien",
+      "ask": "Prévenir Sam ?",
+      "words": "L’école a appelé : Léa a de la fièvre, je vais la chercher.",
+      "to": "À :",
+      "send": "Envoyer",
+      "no": "Non merci",
+      "at": "Chez Sam",
+      "notif": "Alex : L’école a appelé : Léa a de la fièvre, je vais la chercher."
+    }
   }
 }

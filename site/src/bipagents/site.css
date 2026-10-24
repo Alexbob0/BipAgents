@@ -858,3 +858,38 @@ a.store:hover { transform: translateY(-2px); }
 @media (max-width: 520px) { .top-cta .cta-long { display: none; } .top-cta .cta-short { display: inline; } }
 /* The checkout card is ink: light in the light theme, so its savings line turns dark green in the dark theme. */
 @media (prefers-color-scheme: dark) { .checkout .save { color: #2F6338; } }
+
+/* -- Duo and Family: an agent offers to pass news on to a family member's agent; you send it or not --------------- */
+.fam { display: grid; gap: 40px; align-items: center; max-width: 1080px; margin: 0 auto; }
+@media (min-width: 960px) { .fam { grid-template-columns: .9fr 1.1fr; gap: 56px; } }
+.fam-stage { position: relative; display: grid; place-items: center; padding: 96px 0 24px; }
+.fam-stage::before { content: ""; position: absolute; width: min(400px, 92%); aspect-ratio: 1; border-radius: 50%; background: var(--green-tint); z-index: -1; }
+.fam-bip { position: absolute; width: 96px; height: 96px; z-index: 3; animation: bob 6s ease-in-out infinite; }
+.fam-bip-1 { left: 10%; top: 0; }
+.fam-bip-2 { right: 12%; top: 8px; width: 84px; height: 84px; animation-delay: -2s; }
+.fam-bip-3 { left: 0; bottom: 0; width: 80px; height: 80px; animation-delay: -4s; }
+@media (max-width: 520px) { .fam-bip { width: 68px !important; height: 68px !important; } .fam-stage { padding-top: 76px; } .fam-bip-1 { left: 6%; } .fam-bip-2 { right: 6%; } .fam-bip-3 { left: -2%; } }
+@media (prefers-reduced-motion: reduce) { .fam-bip { animation: none; } }
+.fam-mock { position: relative; z-index: 4; margin: 0; width: min(330px, 100%); display: grid; gap: 12px; }
+.fam-card { background: var(--card); border-radius: 26px; padding: 16px; box-shadow: var(--shadow-big); display: grid; gap: 10px; }
+.fam-from { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 900; color: var(--coral-deep); }
+.fam-av { width: 28px; height: 28px; border-radius: 50%; background: var(--coral-tint); display: grid; place-items: center; }
+.fam-av svg { width: 24px; height: 24px; }
+.fam-ask { font-size: 17px; font-weight: 1000; }
+.fam-words { font-size: 14.5px; font-weight: 700; line-height: 1.4; padding: 10px 12px; border-radius: 14px; background: var(--ground); box-shadow: inset 0 0 0 1px var(--line); }
+.fam-to { font-size: 13.5px; font-weight: 800; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.fam-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--green-tint); color: var(--green-deep); font-weight: 900; }
+.fam-chip i { font-style: normal; opacity: .7; }
+.fam-btns { display: flex; gap: 8px; }
+.fam-btns span { flex: 1; text-align: center; padding: 10px 8px; border-radius: 999px; font-weight: 900; font-size: 14px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
+.fam-btns .on { background: var(--ink); color: var(--ground); box-shadow: none; }
+.fam-notif { justify-self: end; width: 88%; display: grid; gap: 2px; padding: 10px 14px; border-radius: 18px; background: color-mix(in srgb, var(--card) 92%, transparent); box-shadow: var(--shadow); font-size: 13px; font-weight: 700; line-height: 1.35; }
+.fam-notif small { font-size: 11.5px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.fam-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.fam-steps li { border-radius: 22px; padding: 16px 18px; background: var(--tint); }
+.fam-steps h3 { font-size: 18px; }
+.fam-steps p { margin-top: 4px; color: var(--ink2); font-weight: 700; font-size: 15.5px; line-height: 1.45; }
+.fam-points { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; }
+.fam-points li { position: relative; padding-left: 24px; font-weight: 800; color: var(--ink2); font-size: 15px; line-height: 1.45; }
+.fam-points li::before { content: "✓"; position: absolute; left: 0; color: var(--green-deep); font-weight: 1000; }
+.fam-cta { margin-top: 20px; }

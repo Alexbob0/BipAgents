@@ -111,6 +111,44 @@
   </div>
 </section>
 
+<!-- ============================================================ FAMILY: agents that pass news on, after you approve
+     (bridge-rs family_news.rs, peers.rs, shares.rs; no group chats yet) -->
+<section class="section fam-section" id="family">
+  <div class="section-head reveal">
+    <p class="kicker">{{family.kicker}}</p>
+    <h2>{{family.title}}</h2>
+    <p class="sub">{{family.sub}}</p>
+  </div>
+  <div class="fam">
+    <div class="fam-stage reveal">
+      <div class="fam-bip fam-bip-1" data-bip="daily" data-interactive aria-hidden="true"></div>
+      <div class="fam-bip fam-bip-2" data-bip="wellness" data-interactive aria-hidden="true"></div>
+      <div class="fam-bip fam-bip-3" data-bip="home" data-interactive aria-hidden="true"></div>
+      <figure class="fam-mock" role="img" aria-label="{{family.a11y}}">
+        <div class="fam-card" aria-hidden="true">
+          <p class="fam-from"><span class="fam-av" data-bip-static="daily"></span>{{family.mock.agent}}</p>
+          <p class="fam-ask">{{family.mock.ask}}</p>
+          <p class="fam-words">{{family.mock.words}}</p>
+          <p class="fam-to">{{family.mock.to}} <span class="fam-chip">Sam <i>×</i></span></p>
+          <div class="fam-btns"><span class="on">{{family.mock.send}}</span><span>{{family.mock.no}}</span></div>
+        </div>
+        <div class="fam-notif" aria-hidden="true"><small>{{family.mock.at}}</small><span>🔔 {{family.mock.notif}}</span></div>
+      </figure>
+    </div>
+    <div class="fam-copy">
+      <ol class="fam-steps reveal">
+        <li style="--tint:var(--coral-tint)"><h3>{{family.s1t}}</h3><p>{{family.s1}}</p></li>
+        <li style="--tint:var(--teal-tint)"><h3>{{family.s2t}}</h3><p>{{family.s2}}</p></li>
+        <li style="--tint:var(--gold-tint)"><h3>{{family.s3t}}</h3><p>{{family.s3}}</p></li>
+      </ol>
+      <ul class="fam-points reveal">
+        <li>{{family.p1}}</li><li>{{family.p2}}</li><li>{{family.p3}}</li><li>{{family.p4}}</li>
+      </ul>
+      <p class="fam-cta reveal"><a class="pill pill-soft" href="#pricing">{{family.cta}}</a></p>
+    </div>
+  </div>
+</section>
+
 <!-- ============================================================ MARQUEE -->
 <div class="marquee" aria-hidden="true"><div class="marquee-track">{{marquee}}{{marquee}}</div></div>
 
