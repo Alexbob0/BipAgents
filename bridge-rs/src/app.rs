@@ -1529,6 +1529,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::mail_scan::router())
         .merge(crate::jobs::router())
         .merge(crate::notes_import::router())
+        .merge(crate::assistant_import::router())
         .merge(crate::reminders::router())
         .merge(crate::notebook::api::router())
         .merge(crate::calendar::router())

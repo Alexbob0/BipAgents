@@ -1,0 +1,58 @@
+{{>top}}
+<!-- ============================================================ COMING FROM GROK BOT (the message: docs/migrate/grok-bot.<lang>.md) -->
+<style>
+.move-steps { display: grid; gap: 14px; max-width: 940px; margin: 0 auto; padding: 0; list-style: none; counter-reset: step; }
+.move-step { border-radius: 24px; padding: 22px; background: var(--tint); }
+.move-step h2 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.02em; }
+.move-step h2::before { counter-increment: step; content: counter(step) ". "; color: var(--deep); }
+.move-step p { margin: 0; font-weight: 700; color: var(--ink2); }
+.move-message { margin: 14px 0 0; padding: 16px; max-height: 340px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font: 600 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); background: var(--ground);
+  border-radius: 16px; }
+.move-copy { margin-top: 12px; border: 0; cursor: pointer; font: inherit; }
+.move-safe { max-width: 940px; margin: 18px auto 0; }
+.move-safe ul { margin: 8px 0 0; padding-left: 20px; font-weight: 700; color: var(--ink2); }
+</style>
+<section class="section page-section" id="grok-bot">
+  <div class="section-head">
+    <p class="chip-beta">{{grokbot.kicker}}</p>
+    <h1 class="page-h1">{{grokbot.title}}</h1>
+    <p class="sub">{{grokbot.sub}}</p>
+  </div>
+  <ol class="move-steps" role="list">
+    <li class="move-step" style="--tint:var(--coral-tint);--deep:var(--coral-deep)">
+      <h2>{{grokbot.step1Title}}</h2>
+      <p>{{grokbot.step1}}</p>
+      <pre class="move-message" id="move-message" tabindex="0" aria-label="{{grokbot.messageLabel}}">{{grokbotprompt}}</pre>
+      <button class="pill pill-ink small move-copy" type="button" id="move-copy" data-done="{{grokbot.copied}}">{{grokbot.copy}}</button>
+    </li>
+    <li class="move-step" style="--tint:var(--green-tint);--deep:var(--green-deep)">
+      <h2>{{grokbot.step2Title}}</h2>
+      <p>{{grokbot.step2}}</p>
+    </li>
+    <li class="move-step" style="--tint:var(--teal-tint);--deep:var(--teal-deep)">
+      <h2>{{grokbot.step3Title}}</h2>
+      <p>{{grokbot.step3}}</p>
+    </li>
+  </ol>
+  <div class="move-safe">
+    <h2 class="h2-small">{{grokbot.safeTitle}}</h2>
+    <ul>
+      <li>{{grokbot.safe1}}</li><li>{{grokbot.safe2}}</li><li>{{grokbot.safe3}}</li><li>{{grokbot.safe4}}</li>
+    </ul>
+  </div>
+  <p class="install-more"><a href="{{betahref}}">{{grokbot.cta}}</a></p>
+</section>
+<script>
+document.getElementById("move-copy").addEventListener("click", async (event) => {
+  const button = event.currentTarget, label = button.textContent;
+  const text = document.getElementById("move-message").textContent;
+  try { await navigator.clipboard.writeText(text); } catch (e) {
+    const range = document.createRange(); range.selectNodeContents(document.getElementById("move-message"));
+    const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); document.execCommand("copy");
+  }
+  button.textContent = button.dataset.done;
+  setTimeout(() => { button.textContent = label; }, 2000);
+});
+</script>
+{{>foot}}

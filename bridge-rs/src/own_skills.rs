@@ -184,6 +184,26 @@ pub fn set_enabled(profile: &Path, changes: &IndexMap<String, bool>) -> anyhow::
     Ok(())
 }
 
+/// Names listed as switched off in the profile's `skills.disabled` before their skills exist (an import writes them
+/// off: they are never on, not even for a moment).
+pub fn disable(profile: &Path, names: &[String]) -> anyhow::Result<()> {
+    let mut data = config(profile);
+    let mut off = disabled(&data);
+    for name in names {
+        if !off.contains(name) {
+            off.push(name.clone());
+        }
+    }
+    let mut section = match data.get("skills") {
+        Some(s @ Yaml::Map(_)) => s.clone(),
+        _ => Yaml::map(),
+    };
+    section.insert("disabled", Yaml::Seq(off.into_iter().map(Yaml::Str).collect()));
+    data.insert("skills", section);
+    std::fs::write(profile.join("config.yaml"), pyyaml::dump(&data))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

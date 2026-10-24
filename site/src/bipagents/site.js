@@ -1,7 +1,7 @@
-// bipagents.com: a day with the Bips (with the morning podcast and a Live call in it), the privacy picture, the plan
-// picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
+// bipagents.com: the hero's approval card and its « See more » on privacy, the agents' cards, the comparison, the
+// two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
 // install. One script for every page: each part runs where its elements are. No framework, no network but this site.
-import { Bip, CATEGORIES, REDUCED, audioContext, staticBip } from "./bips.js";
+import { Bip, CATEGORIES, REDUCED, staticBip } from "./bips.js";
 
 const data = JSON.parse(document.getElementById("site-data").textContent);
 const $ = (s, root = document) => root.querySelector(s);
@@ -117,7 +117,7 @@ async function play(id) {
   const scenario = data.scenarios[id], category = scenario.category, c = CATEGORIES[category];
   for (const el of [chat, wrap]) el.style.setProperty("--chat-tint", `var(--${TONE[category]}-tint)`);
   chat.style.setProperty("--chat-main", c.main);
-  chat.style.setProperty("--chat-deep", c.deep);
+  chat.style.setProperty("--chat-deep", `var(--${TONE[category]}-deep)`);   // the text-safe shade (site.css)
   $(".chat-avatar").innerHTML = staticBip(category);
   $(".chat-name").textContent = scenario.agent;
   body.innerHTML = "";
@@ -202,122 +202,72 @@ tabs.forEach((tab, i) => {
 $(".replay")?.addEventListener("click", () => play(current));
 if (chat) once(chat, () => play(current), 0.35);   // the demo has its own page (/demo/)
 
-// -- A day with the Bips: the phone follows the story -------------------------------------------------------------
-(function day() {
-  const steps = $$(".day-step"), scenes = $$(".scene"), clock = $(".day-clock"), stage = $(".day-stage");
-  if (!steps.length) return;
-  const bip = bips.get($(".day-bip"));
-  // On a phone, each step carries its own copy of the screen (the sticky phone is for wide screens).
-  steps.forEach((step, i) => {
-    const copy = document.createElement("div");
-    copy.className = "day-inline";
-    copy.setAttribute("aria-hidden", "true");
-    copy.append(scenes[i].cloneNode(true));
-    step.prepend(copy);
-  });
-  let active = -1;
-  const catOf = i => steps[i].dataset.cat;
-  function show(i) {
-    if (i === active) return;
-    active = i;
-    steps.forEach((s, j) => s.classList.toggle("on", j === i));
-    scenes.forEach((s, j) => s.classList.toggle("on", j === i));
-    clock.textContent = steps[i].dataset.time;
-    stage.style.setProperty("--day-tint", `var(--${TONE[catOf(i)]}-tint)`);
-    if (bip) { bip.c = CATEGORIES[catOf(i)]; bip.mood = "happy"; bip.level = null; if (!REDUCED) bip.jump(18); }
+// -- Open in place: a button that shows or hides the part it controls (aria-expanded), opened as well by its address
+// (#private, #install) on arrival and from any link to it on the page. Its label may change (« See more » / « See less »).
+function disclosure(button, { hash, onOpen } = {}) {
+  const panel = document.getElementById(button.getAttribute("aria-controls"));
+  if (!panel) return null;
+  const label = $(".priv-label", button) || null;
+  function set(open, { scroll = false, instant = false } = {}) {
+    button.setAttribute("aria-expanded", String(open));
+    panel.hidden = !open;
+    if (label && button.dataset.more) label.textContent = open ? button.dataset.less : button.dataset.more;
+    if (open) {
+      $$(".reveal", panel).forEach(el => el.classList.add("in"));
+      if (onOpen) onOpen(panel);
+      if (scroll) requestAnimationFrame(() => panel.scrollIntoView({ behavior: REDUCED || instant ? "auto" : "smooth", block: "start" }));
+    }
   }
-  const io = new IntersectionObserver(entries => {
-    for (const e of entries) if (e.isIntersecting) show(+e.target.dataset.step);
-  }, { rootMargin: "-45% 0px -45% 0px" });
-  steps.forEach(s => io.observe(s));
-  show(0);
-
-  // 7:30 — the demo's morning podcast. While it plays, the Bip beside the phone speaks with the audio, in the colour
-  // of whichever host is talking (scripts/podcast-timeline.py found each turn in the recording).
-  const audio = $("audio", steps[0]), button = $(".listen", steps[0]);
-  if (audio && button) {
-    const label = $(".listen-label", button), time = $(".listen-time", button);
-    const playText = label.textContent, pauseText = button.dataset.pause;
-    const HOSTS = ["daily", "wellness"], turns = data.podcast || [[0, 0]];
-    const speakerAt = t => turns.reduce((who, [start, host]) => (t + 0.05 >= start ? host : who), turns[0][1]);
-    const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-    let analyser, wave, raf;
-    const stop = () => {
-      cancelAnimationFrame(raf);
-      button.classList.remove("playing");
-      label.textContent = playText;
-      if (bip && active >= 0) { bip.mood = "happy"; bip.level = null; bip.c = CATEGORIES[catOf(active)]; }
-    };
-    audio.addEventListener("pause", stop);
-    audio.addEventListener("ended", stop);
-    button.addEventListener("click", async () => {
-      if (!audio.paused) { audio.pause(); return; }
-      if (!analyser) {
-        try {
-          const ctx = audioContext();
-          analyser = ctx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0.6;
-          ctx.createMediaElementSource(audio).connect(analyser); analyser.connect(ctx.destination);
-          wave = new Uint8Array(analyser.fftSize);
-        } catch { analyser = null; }
-      }
-      button.classList.add("playing");
-      label.textContent = pauseText;
-      try { await audio.play(); } catch { stop(); return; }
-      (function frame() {
-        let level = 0.5;
-        if (analyser) {
-          analyser.getByteTimeDomainData(wave);
-          let peak = 0;
-          for (const v of wave) peak = Math.max(peak, Math.abs(v - 128));
-          level = Math.min(1, peak / 45);
-        }
-        if (bip && active === 0) {
-          bip.c = CATEGORIES[HOSTS[speakerAt(audio.currentTime)] ?? "daily"];
-          bip.mood = level > 0.06 ? "speaking" : "happy"; bip.level = level > 0.06 ? level : null;
-        }
-        time.textContent = audio.duration ? `${fmt(audio.currentTime)} / ${fmt(audio.duration)}` : fmt(audio.currentTime);
-        raf = requestAnimationFrame(frame);
-      })();
+  button.addEventListener("click", () => set(button.getAttribute("aria-expanded") !== "true"));
+  if (hash) {
+    const fromHash = (h, instant) => { if (h === hash) set(true, { scroll: true, instant }); };
+    // on arrival, once the page is laid out (the browser could not scroll to a part that was still hidden)
+    if (document.readyState === "complete") fromHash(location.hash, true);
+    else addEventListener("load", () => fromHash(location.hash, true), { once: true });
+    addEventListener("hashchange", () => fromHash(location.hash));
+    document.addEventListener("click", e => {
+      const a = e.target.closest(`a[href$="${hash}"]`);
+      if (!a || a.pathname !== location.pathname) return;
+      e.preventDefault();
+      set(true, { scroll: true });
+      try { history.replaceState(null, "", hash); } catch (err) { /* file:// */ }
     });
   }
+  return { set };
+}
 
-  // 18:30 — a Live call in the car: what you say, what your Bip answers, in a loop while it's on screen.
-  const calls = $$(".s-call"), turns = data.live || [];
-  if (calls.length && turns.length && !REDUCED) {
-    const inline = calls.find(c => c.closest(".day-inline"));
-    let inlineSeen = false;
-    if (inline) new IntersectionObserver(([e]) => { inlineSeen = e.isIntersecting; }).observe(inline);
-    const step = scenes.indexOf(calls.find(c => !c.closest(".day-inline")));
-    const each = fn => calls.forEach(fn);
-    const setText = (who, text) => each(c => { $(`.s-cap.${who}`, c).textContent = text; });
-    (async function loop() {
-      for (let i = 0; ; i++) {
-        if (active !== step && !inlineSeen) {   // off screen: the last exchange stays, whole
-          each(c => c.classList.remove("anim"));
-          while (active !== step && !inlineSeen) await wait(400);
-        }
-        each(c => c.classList.add("anim"));
-        const turn = turns[i % turns.length], live = active === step && bip;
-        setText("you", turn.you); setText("bip", turn.bip);
-        each(c => { c.classList.remove("speaking", "answer"); c.classList.add("asking"); });
-        if (live) bip.mood = "listening";
-        await wait(2300);
-        if (active === step && bip) bip.mood = "thinking";
-        await wait(800);
-        each(c => { c.classList.add("speaking", "answer"); });
-        if (active === step && bip) bip.mood = "speaking";
-        await wait(3600);
-        each(c => c.classList.remove("asking", "answer", "speaking"));
-        if (active === step && bip) bip.mood = "happy";
-        await wait(700);
-      }
-    })();
-  }
+// -- Hero: « See more », where your data is and who can read it, under the first screen ------------------------------
+const privMore = $(".priv-more");
+if (privMore) disclosure(privMore, { hash: "#private" });
+
+// -- What they do: a grid on a computer, a row to swipe on a phone (focusable only when it scrolls) ----------------
+const uses = $(".uses");
+if (uses) {
+  const focusable = () => {
+    const scrolls = uses.scrollWidth > uses.clientWidth + 2;
+    if (scrolls) uses.setAttribute("tabindex", "0"); else uses.removeAttribute("tabindex");
+  };
+  focusable();
+  addEventListener("resize", focusable, { passive: true });
+}
+
+// -- Compared: one product face to face with BipAgents (Grok Bot first, the closest), or all of them. Without the
+// script the whole table shows and the control stays hidden. ---------------------------------------------------------
+(() => {
+  const vs = $(".vs"), pick = vs && $(".vs-pick", vs);
+  if (!pick) return;
+  const buttons = $$("button[data-pick]", pick);
+  const show = (which, animate) => {
+    vs.dataset.pick = which;
+    for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.pick === which));
+    // a fixed table counts its columns from the widest row: the group headings span only what shows
+    for (const th of $$(".vs-group th", vs)) th.colSpan = which === "all" ? 5 : 3;
+    if (animate) { vs.classList.remove("switched"); void vs.offsetWidth; vs.classList.add("switched"); }
+  };
+  for (const b of buttons) b.addEventListener("click", () => show(b.dataset.pick, true));
+  pick.hidden = false;
+  show("c3", false);
 })();
-
-// -- Why it's private: the message travels, once the picture is on screen ----------------------------------------
-const compare = $(".compare");
-if (compare) once(compare, () => compare.classList.add("go"), 0.4);
 
 // -- The visitor's region: the menu's language and country, the currency that follows ------------------------------
 // A choice made here before (the menu or the price picker), else where the visitor most likely is: the time zone
@@ -444,8 +394,6 @@ const region = (function () {
       buy.href = withCurrency(data.checkout[plan][period], currency) || buy.href;
       $(".buy-label", buy).textContent = L.buy.replace("{plan}", L.names[plan]).replace("{period}", L.period[period]);
     }
-    $(".sb-plan", sticky).textContent = L.names[plan];
-    $(".sb-price", sticky).textContent = (period === "year" ? m(price / 12) : m(price)) + " " + L.perMonth + tax;
     $$("[data-from]").forEach(el => { el.textContent = m(web.month[P.plans[0]]); });
     if (fineTax) {
       const name = (L.currencies || {})[currency] || currency;
@@ -469,11 +417,10 @@ const region = (function () {
   });
   render();
 
-  // The bar at the bottom of a phone's screen: once past the top, until the prices are in view; never while
-  // « on my computer » is chosen (nothing to buy there).
+  // The bar at the bottom of a phone's screen: once past the top, until the prices are in view.
   const seen = new Set(), section = $("#pricing");
   const showSticky = () => {
-    const show = scrollY > 300 && !seen.size && section.dataset.mode !== "self";
+    const show = scrollY > 300 && !seen.size;
     sticky.classList.toggle("show", show);
     sticky.setAttribute("aria-hidden", String(!show));
     $("a", sticky).tabIndex = show ? 0 : -1;
@@ -483,75 +430,11 @@ const region = (function () {
     showSticky();
   });
   [$(".hero"), section, $(".foot")].forEach(el => el && io.observe(el));
-  section.addEventListener("modechange", showSticky);
 })();
 
-// -- The prices' switch: all included, or on my computer (#pricing / #install) --------------------------------------
-(function modes() {
-  const section = $("#pricing"), stage = $(".mode-stage");
-  if (!section || !stage) return;
-  const tabs = $$('[role="tab"]', section);
-  const panels = { offer: $("#panel-offer"), self: $("#panel-self") };
-
-  function choose(mode, { focus = false, animate = true } = {}) {
-    if (section.dataset.mode === mode) return;
-    const from = stage.offsetHeight;
-    section.dataset.mode = mode;
-    tabs.forEach(t => {
-      const on = t.dataset.mode === mode;
-      t.setAttribute("aria-selected", String(on));
-      t.tabIndex = on ? 0 : -1;
-      if (on && focus) t.focus();
-    });
-    for (const [name, panel] of Object.entries(panels)) panel.hidden = name !== mode;
-    const shown = panels[mode];
-    $$(".reveal", shown).forEach(el => el.classList.add("in"));
-    section.dispatchEvent(new Event("modechange"));
-    if (!animate || REDUCED) return;
-    // The height goes from the old panel's to the new one's, the new panel rises in.
-    shown.classList.remove("enter"); void shown.offsetWidth; shown.classList.add("enter");
-    const to = stage.offsetHeight;
-    stage.classList.remove("moving");
-    stage.style.height = from + "px";
-    void stage.offsetHeight;
-    stage.classList.add("moving");
-    stage.style.height = to + "px";
-    const done = e => {
-      if (e && e.target !== stage) return;
-      stage.classList.remove("moving"); stage.style.height = ""; stage.removeEventListener("transitionend", done);
-    };
-    stage.addEventListener("transitionend", done);
-    setTimeout(done, 700);
-  }
-
-  tabs.forEach((t, i) => {
-    t.addEventListener("click", () => choose(t.dataset.mode));
-    t.addEventListener("keydown", e => {   // a tab list: arrows, Home and End move and choose
-      const next = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
-      if (next === undefined) return;
-      e.preventDefault();
-      choose(tabs[(next + tabs.length) % tabs.length].dataset.mode, { focus: true });
-    });
-  });
-
-  // Deep links: #install opens « on my computer », #pricing the offer — on arrival, and from any link on the page.
-  const fromHash = (hash, animate) => {
-    if (hash === "#install") choose("self", { animate });
-    else if (hash === "#pricing") choose("offer", { animate });
-  };
-  fromHash(location.hash, false);
-  addEventListener("hashchange", () => fromHash(location.hash, true));
-  document.addEventListener("click", e => {
-    const a = e.target.closest('a[href$="#install"], a[href$="#pricing"]');
-    if (!a || a.pathname !== location.pathname) return;
-    fromHash(a.hash, true);
-    if (a.hasAttribute("data-mode-go")) {   // switching from inside the section: stay at its top
-      e.preventDefault();
-      section.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth" });
-      $('[role="tab"][aria-selected="true"]', section).focus({ preventScroll: true });
-    }
-  });
-})();
+// -- Prices: « On your computer » opens its install in place (#install opens it too) --------------------------------
+const selfOpen = $(".way-open");
+if (selfOpen) disclosure(selfOpen, { hash: "#install" });
 
 // -- Install: the command typed, then what it says -------------------------------------------------------------------
 (function terminal() {

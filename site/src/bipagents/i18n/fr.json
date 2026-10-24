@@ -4,8 +4,8 @@
     "name": "Français"
   },
   "meta": {
-    "title": "BipAgents — des agents IA qui agissent pour toi, en Europe",
-    "description": "BipAgents, ce sont tes propres agents IA, les Bips : ils réservent, trient tes mails, tiennent ton agenda et ton Carnet, et te demandent avant d’agir. Tout compris dans ton espace en Europe, sans pub ni pistage. Construit sur Hermes Agent."
+    "title": "BipAgents — des agents IA privés et sécurisés, en Europe ou chez toi",
+    "description": "BipAgents, ce sont tes propres agents IA, les Bips : privés et sécurisés, en Europe ou chez toi. Ils réservent, trient tes mails, tiennent ton agenda et ton Carnet, et te demandent avant d’agir. Sans pub ni pistage. Construit sur Hermes Agent."
   },
   "a11y": {
     "skip": "Aller au contenu",
@@ -18,21 +18,23 @@
     "privacy": "Privé",
     "pricing": "Prix",
     "faq": "Questions",
-    "cta": "S’abonner"
+    "cta": "Rejoindre la bêta",
+    "ctaShort": "La bêta"
   },
   "hero": {
     "badge": "Construit sur Hermes Agent",
-    "line1": "Tes agents IA font tes démarches,",
-    "line2": "et te demandent avant d’agir.",
-    "lede": "Mails triés, agenda tenu, réservations faites. Privé, en Europe : nous ne lisons pas tes conversations.",
+    "line1": "Tes agents IA font tes démarches.",
+    "line2": "Privés et sécurisés, en Europe ou chez toi.",
+    "lede": "Et ils te demandent avant d’agir. Mails triés, agenda tenu, réservations faites : nous ne lisons pas tes conversations.",
     "proof1": "<b>Ils agissent pour toi :</b> mails, agenda, réservations, un vrai navigateur",
     "proof2": "<b>Ton accord d’abord :</b> ils te demandent avant d’envoyer ou de payer",
-    "proof3": "<b>Ton propre espace</b>, privé, en Europe, sans pub",
+    "proof3": "<b>Ton propre espace</b>, privé, en Europe ou sur ton ordinateur, sans pub",
     "words": "<b>Bips</b> : tes assistants IA, un par agent · <b>Live</b> : tu leur parles à voix haute · <b>Carnet</b> : ce que tes agents gardent pour toi",
     "cta": "Choisir ma formule",
     "watch": "Voir la démo",
     "watchTime": "1 min",
-    "price": "Bientôt sur iPhone et Android · dès {{p.from}} par mois"
+    "price": "Bêta gratuite sur iPhone et Android · places limitées · sans carte bancaire",
+    "beta": "Bêta gratuite"
   },
   "store": {
     "soon": "Bientôt sur",
@@ -51,69 +53,79 @@
   },
   "vs": {
     "kicker": "Comparer",
-    "title": "Assistant IA, agent à monter soi-même, ou BipAgents ?",
-    "sub": "Par grandes familles, en octobre 2026 : chaque service a ses propres formules.",
+    "title": "Muse, dots, Grok Bot ou BipAgents ?",
+    "sub": "Au 24 octobre 2026, d’après les pages des éditeurs et la presse : les sources sont sous le tableau.",
     "what": "Ce qui change",
-    "c1": "Assistants IA (ChatGPT, Grok…)",
-    "c2": "Agents à monter soi-même",
-    "c3": "BipAgents",
+    "c1": "Muse (Meta)",
+    "c2": "dots (OpenAI)",
+    "c3": "Grok Bot (xAI)",
+    "c4": "BipAgents",
+    "sources": "Sources au 24 octobre 2026",
+    "pick": "Comparer avec :",
+    "n1": "Muse",
+    "n2": "dots",
+    "n3": "Grok Bot",
+    "all": "Tous",
+    "g1": "Ce qu’il fait",
+    "g2": "Ta vie privée",
+    "grokFr": "Grok Bot utilisable depuis la France, vérifié le 24/10/2026",
     "r1": {
-      "label": "Agit pour toi",
-      "c1": "Surtout des réponses ; certains agissent dans un navigateur, sur les formules payantes (l’agent de ChatGPT, Grok Bot)",
-      "c2": "Oui, avec les outils que tu branches",
-      "c3": "Oui : mails, agenda, réservations, un vrai navigateur"
+      "label": "Pour les particuliers en France",
+      "c1": "Non : États-Unis et Canada",
+      "c2": "Non : ChatGPT Pro exclut l’Europe",
+      "c3": "Oui",
+      "c4": "Oui, dès l’ouverture de la bêta"
     },
     "r2": {
-      "label": "Demande avant d’agir",
-      "c1": "Certains : l’agent de ChatGPT demande avant les étapes importantes, comme un achat",
-      "c2": "Selon tes réglages",
-      "c3": "Oui, avant d’envoyer, de réserver ou de payer : une fois, pour la session, ou non"
+      "label": "Prix pour avoir l’agent",
+      "c1": "Gratuit limité, puis 20 $ ou 100 $ par mois",
+      "c2": "Avec ChatGPT Pro, 100 $ ou plus par mois",
+      "c3": "Inclus dans X Premium, environ 30 $ par mois, plus du crédit au-delà",
+      "c4": "Dès {{p.from}} par mois, crédit d’IA compris"
     },
     "r3": {
-      "label": "Mise en route",
-      "c1": "Une minute : tu crées un compte",
-      "c2": "Variable : tu installes, branches et sécurises tout toi-même",
-      "c3": "Environ une minute, dans l’app"
+      "label": "Où sont tes données",
+      "c1": "Région non publiée",
+      "c2": "Région non publiée",
+      "c3": "Région non publiée",
+      "c4": "Ton espace sur un serveur dans l’UE, ou ton ordinateur"
     },
     "r4": {
-      "label": "Où sont tes données",
-      "c1": "Sur les serveurs de l’entreprise, souvent aux États-Unis ; stockage en Europe surtout pour les offres pros",
-      "c2": "Là où tu l’héberges",
-      "c3": "Ton propre espace sur un serveur en Europe, ou ton ordinateur"
+      "label": "Formule pour la famille",
+      "c1": "Non",
+      "c2": "Non",
+      "c3": "Non : agents partagés en entreprise seulement",
+      "c4": "Duo et Famille, jusqu’à 6 personnes, chacune son espace"
     },
     "r5": {
-      "label": "En famille",
-      "c1": "Selon les formules (par ex. Google AI Pro, à partager avec 5 personnes)",
-      "c2": "À toi de l’organiser",
-      "c3": "Duo et Famille : jusqu’à 6 personnes, chacune avec son espace"
+      "label": "Les agents de la famille se préviennent",
+      "c1": "Non",
+      "c2": "Non",
+      "c3": "Non : ses agents se parlent, mais pas entre membres d’une famille",
+      "c4": "Oui, avec ton accord : rien ne part sans « Envoyer »"
     },
     "r6": {
-      "label": "Prix",
-      "c1": "Formules gratuites ou à petit prix ; avec un agent qui agit, de 23 € à plus de 30 € par mois (ChatGPT Plus, SuperGrok)",
-      "c2": "Logiciel gratuit ; tu paies le serveur et le modèle d’IA",
-      "c3": "Dès {{p.from}} par mois, crédit IA compris"
+      "label": "Ce qu’il garde pour toi",
+      "c1": "Une mémoire consultable",
+      "c2": "Une mémoire, pas consultable une à une",
+      "c3": "Des résumés par agent",
+      "c4": "Le Carnet : rappels, voyages, garanties, contrats, archives"
     },
     "r7": {
-      "label": "Publicité",
-      "c1": "Sur ChatGPT Free et Go en Europe, depuis août 2026",
-      "c2": "Aucune",
-      "c3": "Aucune"
+      "label": "Code ouvert, chez toi",
+      "c1": "Non, sur les serveurs de Meta",
+      "c2": "Non, sur les serveurs d’OpenAI",
+      "c3": "Non, sur les serveurs de Cursor",
+      "c4": "Oui : construit sur Hermes Agent, gratuit sur ton ordinateur"
+    },
+    "r8": {
+      "label": "Tes conversations servent à entraîner une IA",
+      "c1": "Oui par défaut, désactivable",
+      "c2": "Selon le réglage « Améliorer le modèle »",
+      "c3": "Selon le mode confidentialité",
+      "c4": "Jamais par Kerfy Studio"
     }
   },
-  "marquee": [
-    "Écris",
-    "Parle",
-    "Live",
-    "Podcast",
-    "Mails",
-    "Agenda",
-    "Carnet",
-    "Rappels",
-    "Navigateur",
-    "Cartes",
-    "Mini-apps",
-    "Famille"
-  ],
   "demo": {
     "kicker": "En action",
     "title": "Tu demandes. Il s’en occupe. Tu décides.",
@@ -134,83 +146,76 @@
     "ctaTitle": "Tes Bips, pour de vrai."
   },
   "ai": "IA",
-  "day": {
-    "kicker": "Une journée avec tes Bips",
-    "title": "Ils s’occupent du reste.",
-    "sub": "Trois moments d’une journée : ce que tes agents font pour toi, et ce que tu gardes en main.",
-    "s2": {
-      "title": "Tes mails triés, ton agenda tenu",
-      "text": "Il lit ta boîte mail, sort ce qui compte et note les rendez-vous. Il prépare les réponses : tu les relis avant tout envoi.",
-      "head": "3 mails importants sur 41",
-      "m1": "Facture d’électricité",
-      "m1s": "à payer avant le 30 · 68,40 €",
-      "m2": "École : sortie jeudi",
-      "m2s": "autorisation à signer",
-      "m3": "Ton colis",
-      "m3s": "livré demain entre 9 h et 13 h",
-      "rest": "38 autres : newsletters et promos, rangées",
-      "agenda": "Ajouté à l’agenda : sortie scolaire, jeudi 8 h"
+  "uses": {
+    "kicker": "Ce qu’ils font",
+    "title": "Un agent pour chaque partie de ta vie.",
+    "sub": "Chaque Bip a son domaine. Voici comment ils t’aident, au quotidien.",
+    "demo": "Les voir à l’œuvre dans la démo",
+    "daily": {
+      "title": "Quotidien",
+      "b1": "Trie tes mails et te dit ce qui compte",
+      "b2": "Tient ton agenda et tes rappels",
+      "b3": "Réserve une table ou un train, avec ton accord",
+      "b4": "Range tes papiers et tes fichiers dans le Carnet"
     },
-    "s4": {
-      "title": "Il navigue, tu gardes la main",
-      "text": "Chaque agent a son propre navigateur : regarde-le remplir un formulaire en direct, et prends la main quand tu veux. Avant de réserver, payer ou envoyer, il te demande : une fois, pour la session, ou non, même depuis la notification.",
-      "url": "trains.exemple",
-      "live": "En direct · Quotidien",
-      "take": "Prendre la main"
+    "wellness": {
+      "title": "Bien-être",
+      "b1": "Suit ton sommeil et ton activité, depuis Santé ou Health Connect si tu le permets",
+      "b2": "Te propose des séances de sport à ton rythme",
+      "b3": "T’aide à mieux manger, avec des idées simples",
+      "b4": "Des conseils réalistes, sans jouer au médecin"
     },
-    "s5": {
-      "head": "Quotidien te demande",
-      "title": "Envoyer la réservation en ton nom ?",
-      "detail": "Paris → Lyon · samedi 9 h 04\n2 adultes · 58,00 €"
+    "finance": {
+      "title": "Finances",
+      "b1": "Repère dans tes mails les factures et les prélèvements à venir",
+      "b2": "Tient la liste de tes abonnements et de leurs renouvellements",
+      "b3": "Fait le point sur tes dépenses, chiffres et sources à l’appui",
+      "b4": "Ne fait jamais de virement ni d’achat"
     },
-    "call": {
-      "title": "En voiture, un appel Live avec ton Bip",
-      "text": "Les mains sur le volant, passe en Live et parle, tout simplement : aucun bouton à tenir, il te répond à voix haute, et tu l’interromps en parlant. En français, anglais, allemand et espagnol.",
-      "label": "Live · Quotidien"
+    "family": {
+      "title": "Famille",
+      "b1": "Propose de prévenir un proche quand ça le concerne",
+      "b2": "Rien ne part sans ton « Envoyer »",
+      "b3": "Donne les dates des vacances à toute la famille",
+      "b4": "Chacun garde son espace et ses agents"
     },
-    "more": "Envie d’en voir plus ?",
-    "moreCta": "Voir la démo complète →"
-  },
-  "liveDialog": [
-    {
-      "you": "J’ai quoi demain ?",
-      "bip": "Deux rendez-vous, et de la pluie vers 17 h. Je te rappelle de prendre un parapluie ?"
+    "work": {
+      "title": "Travail",
+      "b1": "Résume tes mails pro et prépare les réponses",
+      "b2": "Tu relis avant tout envoi en ton nom",
+      "b3": "Prépare tes réunions et note la suite à donner",
+      "b4": "Lit et résume tes documents, PDF compris"
     },
-    {
-      "you": "Rappelle-moi d’appeler maman à 19 h.",
-      "bip": "C’est noté : un rappel à 19 h, avec son numéro."
+    "learning": {
+      "title": "Apprendre",
+      "b1": "Explique simplement, à ton niveau",
+      "b2": "Te fait réviser avec des quiz",
+      "b3": "Révise avec toi à voix haute, en Live",
+      "b4": "Prépare une fiche ou un cours à partir de tes documents"
     }
-  ],
+  },
   "control": {
     "once": "Une fois",
     "session": "Cette session",
     "deny": "Refuser"
   },
-  "compare": {
-    "kicker": "Pourquoi c’est privé",
-    "title": "À toi. Pas à tout le monde.",
-    "a11y": "Un assistant classique : tes messages vont sur les serveurs de l’entreprise, avec les conversations de tout le monde, et peuvent servir à entraîner son IA. BipAgents : tes messages vont dans ton espace, rien qu’à toi ; l’IA les lit pour te répondre ; Kerfy Studio garde ton compte et ton abonnement, pas tes conversations.",
-    "usual": "Un assistant classique",
-    "you": "Toi",
-    "theirServers": "Leurs serveurs",
-    "everyones": "les conversations de tout le monde",
-    "theirAi": "Leur IA",
-    "mayTrain": "peut s’entraîner dessus",
-    "yourPlace": "Ton espace",
-    "yoursAlone": "rien qu’à toi",
-    "theAi": "L’IA",
-    "readsToAnswer": "lit pour te répondre",
-    "kerfy": "ton compte et ton abonnement, pas tes conversations",
-    "line1": "Ton espace, séparé de celui des autres, sur un serveur en Europe (OVHcloud ou Hetzner) ou sur ton propre ordinateur.",
-    "line2": "Nous ne lisons pas tes conversations et n’entraînons aucune IA avec : l’IA les lit seulement pour te répondre.",
-    "line3": "Nous gardons ton compte, pas tes conversations. Tu peux tout récupérer et partir.",
-    "more": "La comparaison d’octobre 2026, ses sources et nos limites →",
+  "private": {
+    "ask": "Où sont tes données ? Qui peut les lire ?",
+    "more": "Voir plus",
+    "less": "Voir moins",
+    "whereTitle": "Où sont tes données ?",
+    "where1": "Dans ton propre espace, séparé de celui des autres, sur un serveur dans l’Union européenne (OVHcloud ou Hetzner). Ou sur ton propre ordinateur, si tu l’installes chez toi.",
+    "where2": "Avec Tout compris, une sauvegarde chiffrée toutes les heures, avec une clé que seuls tes appareils ont : nous la gardons sans pouvoir la lire.",
+    "where3": "Tout est à toi : tu peux tout récupérer et partir quand tu veux.",
+    "whoTitle": "Qui peut les lire ?",
+    "who1": "Pas nous : Kerfy Studio ne lit pas tes conversations et n’entraîne aucune IA avec. Sans pub ni pistage.",
+    "who2": "L’IA lit ce que ton agent lui envoie, pour te répondre : via EUrouter, un routeur d’IA européen, puis l’entreprise du modèle choisi. L’app te les nomme avant ton premier message.",
+    "who3": "Notre limite, dite franchement : comme pour tout serveur loué, l’hébergeur et nous pourrions techniquement y entrer. Notre logiciel ne le fait pas, et nous ne le ferions que si la loi l’exige.",
+    "compare": "Comparer avec ChatGPT, Gemini et les autres, sources à l’appui →",
     "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.fr.md"
   },
   "pricing": {
     "kicker": "Prix",
-    "title": "Tout compris. Sans engagement.",
-    "sub": "Tes agents, leur espace en Europe, leur crédit d’IA, les voix des Bips et les sauvegardes : un seul prix, plus doux sur le web que dans l’app.",
     "periodLabel": "Payer",
     "monthly": "Au mois",
     "yearly": "À l’année",
@@ -256,7 +261,14 @@
       "plusTax": "+ taxes",
       "taxIncl": "Prix en {currency}, taxes comprises.",
       "taxExcl": "Prix en {currency} hors taxes : la taxe de vente de ton État ou de ta province s’ajoute au paiement.",
-      "currencies": {"EUR": "euros", "USD": "dollars américains", "CAD": "dollars canadiens", "GBP": "livres sterling", "SGD": "dollars de Singapour", "ILS": "shekels israéliens"},
+      "currencies": {
+        "EUR": "euros",
+        "USD": "dollars américains",
+        "CAD": "dollars canadiens",
+        "GBP": "livres sterling",
+        "SGD": "dollars de Singapour",
+        "ILS": "shekels israéliens"
+      },
       "perMonth": "/mois",
       "perYear": "/an",
       "equiv": "soit {x} par mois",
@@ -275,16 +287,32 @@
       }
     },
     "mode": {
-      "label": "Choisir comment utiliser BipAgents",
       "offer": "Tout compris",
-      "offerSub": "on s’occupe de tout, dès {{p.from}}/mois",
-      "self": "Sur mon ordinateur",
-      "selfSub": "gratuit, tu héberges toi-même"
+      "self": "Sur mon ordinateur"
+    },
+    "afterBeta": "Les abonnements ouvrent après la bêta. D’ici là, c’est gratuit pour celles et ceux qui la testent.",
+    "ways": {
+      "title": "Deux façons d’avoir tes agents.",
+      "sub": "Sur ton ordinateur, c’est gratuit. Ou on s’occupe de tout pour toi.",
+      "offerTag": "Le plus simple",
+      "offerLead": "Prêt en une minute : rien à installer, on s’occupe du serveur, des mises à jour et des sauvegardes.",
+      "offerFrom": "dès {{p.from}}/mois",
+      "offer1": "Ton espace privé, sur un serveur en Europe",
+      "offer2": "Pour toi seul, à deux, ou en famille jusqu’à 6",
+      "offer3": "Sans engagement : tu arrêtes quand tu veux",
+      "offerCta": "Voir les formules",
+      "selfTitle": "Sur ton ordinateur",
+      "selfLead": "Tu l’installes toi-même, avec Hermes Agent : une commande installe tout.",
+      "selfPrice": "Gratuit",
+      "self1": "L’app est gratuite : tu ne paies que ton modèle d’IA, à son fournisseur",
+      "self2": "Tes agents et leurs fichiers restent chez toi",
+      "self3": "Tu as déjà Hermes Agent ? La même commande y branche l’app",
+      "selfCta": "Voir comment l’installer",
+      "plansTitle": "Les formules Tout compris"
     }
   },
   "install": {
     "title": "Ton propre ordinateur ? L’app est gratuite.",
-    "sub": "Tes agents tournent chez toi, avec Hermes Agent. Tu choisis ton modèle d’IA et tu ne paies que lui : rien à Kerfy Studio.",
     "hermes": "Tu as déjà Hermes Agent ? La même commande y branche l’app, sans toucher à ton modèle ni à tes agents.",
     "out1": "✓ Hermes Agent, le cerveau des agents",
     "out2": "✓ Le bridge et les voix des Bips",
@@ -293,8 +321,6 @@
     "copied": "Copié ✓",
     "windows": "Sur Windows 11, dans PowerShell ouvert en administrateur :",
     "guide": "Le guide complet",
-    "more": "Tu préfères qu’on s’occupe de tout ? Avec l’abonnement, rien à installer.",
-    "moreCta": "Voir les formules →",
     "whatTitle": "Ce que ça veut dire",
     "what1": "L’app est gratuite. Tu ne paies rien à Kerfy Studio.",
     "what2": "Tes agents, leur mémoire et leurs fichiers vivent sur ton ordinateur, avec Hermes Agent.",
@@ -359,6 +385,10 @@
       "q": "Et avec mon propre ordinateur ?",
       "a": "L’app est gratuite : une commande l’installe sur ton ordinateur ou ton serveur, et tu ne paies que le modèle d’IA de ton choix. L’abonnement, lui, t’évite tout ça."
     },
+    "11": {
+      "q": "Quel modèle d’IA, et est-il bon ?",
+      "a": "Par défaut GLM-5.3 Flash. Tu peux en choisir un autre dans l’app, comme DeepSeek, avec son prix affiché. Pour les tâches de tous les jours (mails, agenda, recherches, réservations), il est très proche des meilleurs modèles. Un modèle plus puissant use ton crédit d’IA plus vite. Avant ton premier message, l’app te nomme le routeur et l’entreprise du modèle. Sur ton propre ordinateur, tu apportes le modèle de ton choix."
+    },
     "all": "Toutes les questions →",
     "more": "Une autre question ? Écris-nous :"
   },
@@ -378,7 +408,8 @@
     "fine": "© 2026 Kerfy Studio. Prix TTC, sauf en dollars américains et canadiens : la taxe de vente s’ajoute au paiement. Le podcast de la démo : Built with Fish Audio. Les voix des Bips : Pocket TTS, de Kyutai. Carte de la démo © OpenStreetMap. Aucun cookie et aucun traceur sur ce site.",
     "demo": "La démo",
     "faq": "Questions",
-    "install": "Installer chez toi"
+    "install": "Installer chez toi",
+    "beta": "Conditions de la bêta"
   },
   "lines": {
     "hop": [
@@ -435,6 +466,95 @@
     "install": {
       "title": "Installer chez toi — BipAgents",
       "description": "L’app BipAgents est gratuite sur ton propre ordinateur ou serveur : une commande installe Hermes Agent et le bridge, tu ne paies que ton modèle d’IA."
+    },
+    "beta": {
+      "title": "La bêta — BipAgents",
+      "description": "La bêta publique de BipAgents : gratuite, sur iPhone et Android, places limitées, sans carte bancaire. Ton espace privé en Europe, avec un crédit d’IA."
+    }
+  },
+  "beta": {
+    "kicker": "Bêta",
+    "title": "Essaie BipAgents avant tout le monde.",
+    "sub": "La bêta publique est gratuite, sur iPhone et Android. Les places sont limitées, et aucune carte bancaire n’est demandée.",
+    "whatTitle": "Ce que c’est",
+    "what1": "Gratuite pendant toute la bêta",
+    "what2": "Sur iPhone et Android",
+    "what3": "Places limitées",
+    "what4": "Sans carte bancaire",
+    "getTitle": "Ce que tu reçois",
+    "get1": "Ton espace privé, sur un serveur en Europe",
+    "get2": "Un crédit d’IA pour tes agents",
+    "get3": "Tes Bips, prêts en une minute",
+    "askTitle": "Ce qu’on te demande",
+    "ask1": "Tes retours : ce qui marche, ce qui manque, ce qui gêne",
+    "ask2": "Un peu d’indulgence : c’est une bêta, des choses peuvent casser",
+    "getIt": "Installer la bêta",
+    "soon": "Ouverture prochaine.",
+    "storeSoon": "Bientôt sur",
+    "storeGet": "La bêta sur",
+    "cap": "Places : {cap}",
+    "terms": "Conditions de la bêta",
+    "after": "Après la bêta, l’offre tout compris devient payante.",
+    "afterCta": "Voir les prix",
+    "sticky": "Bêta gratuite",
+    "stickySub": "places limitées"
+  },
+  "notebook": {
+    "kicker": "Carnet",
+    "title": "Ta vie, bien rangée.",
+    "sub": "Tes agents gardent ce qui compte pour toi au même endroit, que tu peux lire : le Carnet. Ils le remplissent à partir de tes mails et de vos conversations.",
+    "a11y": "L’écran Carnet de l’app : les rappels du jour, le prochain voyage avec ses billets et son hôtel, les achats et garanties, les abonnements, les contrats et papiers, les réservations, et les archives.",
+    "i1": "<b>Rappels</b> : ce que tu as à faire, et quand",
+    "i2": "<b>Ton prochain voyage</b> : billets, hébergements, quoi emporter",
+    "i3": "<b>Achats et garanties</b>, avec la date de fin de garantie",
+    "i4": "<b>Abonnements</b> : prix, prochain renouvellement, comment résilier",
+    "i5": "<b>Contrats et papiers</b>, avec leurs échéances",
+    "i6": "<b>Réservations</b> : dates, références, avec qui",
+    "line1": "Ce qui est passé part dans les Archives : rien n’est effacé.",
+    "line2": "Tu cherches dedans, tu le corriges, et il est à toi : tu peux l’emporter quand tu veux.",
+    "shot": {
+      "title": "Carnet",
+      "search": "Rechercher",
+      "today": "Aujourd’hui",
+      "t1": "Renouveler l’assurance auto",
+      "t1s": "avant 18 h",
+      "t2": "Appeler le plombier",
+      "t3": "Rendre les livres",
+      "trip": "Lisbonne · dans 12 jours",
+      "tripSub": "Billets, hôtel et quoi emporter",
+      "k1": "Achats et garanties",
+      "k2": "Abonnements",
+      "k3": "Contrats et papiers",
+      "k4": "Réservations",
+      "archives": "Archives",
+      "archivesSub": "ce qui est passé"
+    }
+  },
+  "family": {
+    "kicker": "Duo et Famille",
+    "title": "En famille, vos agents se parlent.",
+    "sub": "Chacun garde son espace privé et ses agents. Quand ce que tu dis à ton agent concerne quelqu’un de la famille, il propose de le transmettre à son agent : tu relis, tu choisis à qui, et rien ne part sans ton « Envoyer ».",
+    "s1t": "L’école a appelé",
+    "s1": "Tu le dis à ton agent : il propose de prévenir Sam. Tu relis, tu envoies ; Sam est prévenu et son agent est au courant.",
+    "s2t": "Les vacances",
+    "s2": "Tu as réservé du 12 au 19 août : ton agent propose de donner les dates à toute la famille, et chaque agent les a.",
+    "s3t": "Le repas de midi",
+    "s3": "« Je commande à manger ce midi » : ton agent demande s’il prévient les autres. Un « Non merci », et il n’en reparle pas.",
+    "p1": "Les mots et les destinataires se modifient avant d’envoyer",
+    "p2": "Sans réponse, une proposition s’efface au bout d’un jour",
+    "p3": "Tes propres agents s’écrivent et se passent des fichiers seulement là où tu l’as permis : « Qui peut écrire à qui »",
+    "p4": "Famille : jusqu’à 6 personnes, chacune son espace, et un crédit d’IA commun",
+    "cta": "Voir Duo et Famille",
+    "a11y": "Dans la conversation, l’agent Quotidien propose : prévenir Sam ? Les mots « L’école a appelé : Léa a de la fièvre, je vais la chercher », Sam comme destinataire, et les boutons Envoyer et Non merci. Chez Sam, la notification arrive.",
+    "mock": {
+      "agent": "Quotidien",
+      "ask": "Prévenir Sam ?",
+      "words": "L’école a appelé : Léa a de la fièvre, je vais la chercher.",
+      "to": "À :",
+      "send": "Envoyer",
+      "no": "Non merci",
+      "at": "Chez Sam",
+      "notif": "Camille : L’école a appelé : Léa a de la fièvre, je vais la chercher."
     }
   }
 }

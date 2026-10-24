@@ -30,6 +30,12 @@
       "googlePlay": "https://play.google.com/store/apps/details?id=net.tablee.app"
     }
   },
+  "beta": {
+    "_readme": "The public beta (the site's « Join the beta » page, /beta/). testflight: the TestFlight public link (https://testflight.apple.com/join/…); play: the Google Play testing link (https://play.google.com/apps/testing/…). Empty: the badge reads « coming soon » and the page says the beta opens in a few days. cap: the places, as the page shows them after « Places: » (e.g. « 500 », « 120 left »), one text for every language or {\"en\": …, \"fr\": …, \"de\": …, \"es\": …}; empty: no line.",
+    "testflight": "",
+    "play": "",
+    "cap": ""
+  },
   "checkout": {
     "_readme": "url: one template for every plan and period, {plan} = solo|duo|famille, {period} = month|year, {lang} = en|fr|de|es; the page adds &currency=EUR|USD|… (the visitor's choice; or put {currency} in the template). links: optional per plan/period overrides, e.g. {\"duo\": {\"year\": \"https://…\"}}. Both empty = no web checkout yet. The guichet answers « bientôt sur le site » until its [web] enabled is on, and « complet » when the offer is full.",
     "url": "",

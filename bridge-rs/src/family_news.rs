@@ -5,7 +5,7 @@
 //! - The agent calls `tell_family` (MCP, agent_tools.rs; listed only when this install has a linked household, see
 //!   households.rs): the recipients and the exact words. It is only a proposal: the app shows it in the conversation
 //!   (« Prévenir Léa ? », the words editable, the recipients removable, « Envoyer » / « Non merci »). `family_members`
-//!   lists who can be told. A proposal waits 24 hours, then goes.
+//!   lists who can be told. A proposal waits 24 hours for the person, then is dropped unsent.
 //! - Sent: each recipient household's bridge gets it over the household link (`POST /family/tell`, the key it gave
 //!   us), keeps it (who, when, the words), notifies its person (« Alex : je commande à manger ce midi ») and keeps a
 //!   short note for its agent. The note joins the next message the person writes to that agent, for the agent only
@@ -46,7 +46,7 @@ use crate::{py, Dict};
 pub const TELL_FAMILY: &str = "tell_family";
 pub const FAMILY_MEMBERS: &str = "family_members";
 pub const TOOL_NAMES: [&str; 2] = [TELL_FAMILY, FAMILY_MEMBERS];
-/// A proposal waits a day for the person, then goes.
+/// A proposal waits a day for the person, then is dropped (never sent without their « Envoyer »).
 pub const PROPOSAL_SECONDS: f64 = 24.0 * 3600.0;
 pub const TEXT_MAX: usize = 1000;
 /// An agent's proposals waiting at once.

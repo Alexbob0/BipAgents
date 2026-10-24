@@ -4,8 +4,8 @@
     "name": "English"
   },
   "meta": {
-    "title": "BipAgents — AI agents that act for you, in Europe",
-    "description": "BipAgents gives you your own AI agents, the Bips: they book, sort your email, keep your calendar and your Notebook, and ask before they act. All included in your own space in Europe, no ads, no tracking. Built on Hermes Agent."
+    "title": "BipAgents — private and secure AI agents, in Europe or at home",
+    "description": "BipAgents gives you your own AI agents, the Bips: private and secure, in Europe or at home. They book, sort your email, keep your calendar and your Notebook, and ask before they act. No ads, no tracking. Built on Hermes Agent."
   },
   "a11y": {
     "skip": "Skip to content",
@@ -18,21 +18,23 @@
     "privacy": "Private",
     "pricing": "Pricing",
     "faq": "Questions",
-    "cta": "Subscribe"
+    "cta": "Join the beta",
+    "ctaShort": "The beta"
   },
   "hero": {
     "badge": "Built on Hermes Agent",
-    "line1": "Your AI agents do your admin,",
-    "line2": "and ask before they act.",
-    "lede": "Email sorted, calendar kept, bookings made. Private, in Europe: we don’t read your conversations.",
+    "line1": "Your AI agents do your admin.",
+    "line2": "Private and secure, in Europe or at home.",
+    "lede": "And they ask before they act. Email sorted, calendar kept, bookings made: we don’t read your conversations.",
     "proof1": "<b>They act for you:</b> email, calendar, bookings, a real browser",
     "proof2": "<b>Your OK first:</b> they ask before sending or paying",
-    "proof3": "<b>Your own space</b>, private, in Europe, no ads",
+    "proof3": "<b>Your own space</b>, private, in Europe or on your computer, no ads",
     "words": "<b>Bips</b>: your AI assistants, one per agent · <b>Live</b>: talk to them out loud · <b>Notebook</b>: what your agents keep for you",
     "cta": "Choose my plan",
     "watch": "See the demo",
     "watchTime": "1 min",
-    "price": "Coming soon to iPhone and Android · from {{p.from}} a month"
+    "price": "Free beta on iPhone and Android · limited places · no card needed",
+    "beta": "Free beta"
   },
   "store": {
     "soon": "Coming soon to",
@@ -51,69 +53,79 @@
   },
   "vs": {
     "kicker": "Compared",
-    "title": "AI assistant, do-it-yourself, or BipAgents?",
-    "sub": "Broad categories, as of October 2026: each service has its own plans.",
+    "title": "Muse, dots, Grok Bot, or BipAgents?",
+    "sub": "As of 24 October 2026, from the makers’ pages and the press: sources are under the table.",
     "what": "What changes",
-    "c1": "AI assistants (ChatGPT, Grok…)",
-    "c2": "Do-it-yourself agents",
-    "c3": "BipAgents",
+    "c1": "Muse (Meta)",
+    "c2": "dots (OpenAI)",
+    "c3": "Grok Bot (xAI)",
+    "c4": "BipAgents",
+    "sources": "Sources as of 24 October 2026",
+    "pick": "Compare with:",
+    "n1": "Muse",
+    "n2": "dots",
+    "n3": "Grok Bot",
+    "all": "All",
+    "g1": "What it does",
+    "g2": "Your privacy",
+    "grokFr": "Grok Bot usable from France, checked on 24 October 2026",
     "r1": {
-      "label": "Acts for you",
-      "c1": "Mostly answers; some act in a browser on paid plans (ChatGPT’s agent, Grok Bot)",
-      "c2": "Yes, with the tools you connect",
-      "c3": "Yes: email, calendar, bookings, a real browser"
+      "label": "For individuals in France",
+      "c1": "No: US and Canada",
+      "c2": "No: ChatGPT Pro excludes Europe",
+      "c3": "Yes",
+      "c4": "Yes, from the beta’s opening"
     },
     "r2": {
-      "label": "Asks before acting",
-      "c1": "Some do: ChatGPT’s agent asks before important steps, like a purchase",
-      "c2": "Depends on how you set it up",
-      "c3": "Yes, before sending, booking or paying: once, for this session, or no"
+      "label": "Price to get the agent",
+      "c1": "Limited free tier, then $20 or $100 a month",
+      "c2": "With ChatGPT Pro, $100 or more a month",
+      "c3": "Included in X Premium, about $30 a month, plus credit beyond",
+      "c4": "From {{p.from}} a month, AI credit included"
     },
     "r3": {
-      "label": "Setup",
-      "c1": "A minute: you create an account",
-      "c2": "Varies: you install, connect and secure it yourself",
-      "c3": "About a minute, in the app"
+      "label": "Where your data lives",
+      "c1": "Region not published",
+      "c2": "Region not published",
+      "c3": "Region not published",
+      "c4": "Your own space on a server in the EU, or your computer"
     },
     "r4": {
-      "label": "Where your data lives",
-      "c1": "On the company’s servers, often in the US; storage in Europe mostly for business plans",
-      "c2": "Wherever you host it",
-      "c3": "Your own space on a server in Europe, or your own computer"
+      "label": "A plan for the family",
+      "c1": "No",
+      "c2": "No",
+      "c3": "No: shared agents for companies only",
+      "c4": "Duo and Family, up to 6 people, each with their own space"
     },
     "r5": {
-      "label": "Family sharing",
-      "c1": "On some plans (e.g. Google AI Pro, with up to 5 others)",
-      "c2": "Up to you to set up",
-      "c3": "Duo and Family: up to 6 people, each with their own space"
+      "label": "Family agents keep each other posted",
+      "c1": "No",
+      "c2": "No",
+      "c3": "No: its agents talk to each other, not between family members",
+      "c4": "Yes, with your OK: nothing goes without « Send »"
     },
     "r6": {
-      "label": "Price",
-      "c1": "Free or low-cost plans; with an agent that acts, about $20–30 a month (ChatGPT Plus, SuperGrok)",
-      "c2": "Free software; you pay for the server and the AI model",
-      "c3": "From {{p.from}} a month, AI credit included"
+      "label": "What it keeps for you",
+      "c1": "A memory you can view",
+      "c2": "A memory, not viewable item by item",
+      "c3": "Summaries per agent",
+      "c4": "The Notebook: reminders, trips, warranties, contracts, archives"
     },
     "r7": {
-      "label": "Ads",
-      "c1": "On ChatGPT Free and Go in Europe, since August 2026",
-      "c2": "None",
-      "c3": "None"
+      "label": "Open source, at home",
+      "c1": "No, on Meta’s servers",
+      "c2": "No, on OpenAI’s servers",
+      "c3": "No, on Cursor’s servers",
+      "c4": "Yes: built on Hermes Agent, free on your computer"
+    },
+    "r8": {
+      "label": "Your conversations train an AI",
+      "c1": "Yes by default, can be turned off",
+      "c2": "Depends on the « Improve the model » setting",
+      "c3": "Depends on Privacy Mode",
+      "c4": "Never by Kerfy Studio"
     }
   },
-  "marquee": [
-    "Write",
-    "Talk",
-    "Live",
-    "Podcast",
-    "Email",
-    "Calendar",
-    "Notebook",
-    "Reminders",
-    "Browser",
-    "Maps",
-    "Mini apps",
-    "Family"
-  ],
   "demo": {
     "kicker": "In action",
     "title": "You ask. It handles it. You decide.",
@@ -134,83 +146,76 @@
     "ctaTitle": "Your Bips, for real."
   },
   "ai": "AI",
-  "day": {
-    "kicker": "A day with your Bips",
-    "title": "They take care of the rest.",
-    "sub": "Three moments of a day: what your agents do for you, and what stays in your hands.",
-    "s2": {
-      "title": "Email sorted, calendar kept",
-      "text": "It reads your inbox, pulls out what matters and notes appointments. It drafts replies: you read them before anything is sent.",
-      "head": "3 important emails out of 41",
-      "m1": "Electricity bill",
-      "m1s": "due by the 30th · €68.40",
-      "m2": "School: trip on Thursday",
-      "m2s": "permission slip to sign",
-      "m3": "Your parcel",
-      "m3s": "arrives tomorrow, 9 am – 1 pm",
-      "rest": "38 others: newsletters and deals, filed away",
-      "agenda": "Added to your calendar: school trip, Thursday 8 am"
+  "uses": {
+    "kicker": "What they do",
+    "title": "An agent for each part of your life.",
+    "sub": "Each Bip has its own area. Here is how they help, day to day.",
+    "demo": "See them at work in the demo",
+    "daily": {
+      "title": "Daily",
+      "b1": "Sorts your email and tells you what matters",
+      "b2": "Keeps your calendar and reminders",
+      "b3": "Books a table or a train, with your OK",
+      "b4": "Files your papers and documents in the Notebook"
     },
-    "s4": {
-      "title": "It browses, you stay in charge",
-      "text": "Each agent has its own browser: watch it fill in a form live, and take over whenever you like. Before booking, paying or sending, it asks: once, for the session, or no, even from the notification.",
-      "url": "trains.example",
-      "live": "Live · Daily",
-      "take": "Take over"
+    "wellness": {
+      "title": "Wellness",
+      "b1": "Follows your sleep and activity, from Apple Health or Health Connect if you allow it",
+      "b2": "Suggests workouts at your own pace",
+      "b3": "Helps you eat better, with simple ideas",
+      "b4": "Realistic advice, never playing doctor"
     },
-    "s5": {
-      "head": "Daily is asking",
-      "title": "Send the booking in your name?",
-      "detail": "Paris → Lyon · Saturday 9:04 am\n2 adults · €58.00"
+    "finance": {
+      "title": "Money",
+      "b1": "Spots bills and upcoming direct debits in your email",
+      "b2": "Keeps a list of your subscriptions and their renewals",
+      "b3": "Sums up your spending, with numbers and sources",
+      "b4": "Never makes a transfer or a purchase"
     },
-    "call": {
-      "title": "In the car, a Live call with your Bip",
-      "text": "Hands on the wheel, go Live and just talk: no button to hold, it answers out loud, and you interrupt it simply by speaking. In English, French, German and Spanish.",
-      "label": "Live · Daily"
+    "family": {
+      "title": "Family",
+      "b1": "Offers to let a loved one know when it concerns them",
+      "b2": "Nothing leaves without your “Send”",
+      "b3": "Gives the holiday dates to the whole family",
+      "b4": "Everyone keeps their own space and agents"
     },
-    "more": "Want to see more?",
-    "moreCta": "See the full demo →"
-  },
-  "liveDialog": [
-    {
-      "you": "What’s on tomorrow?",
-      "bip": "Two meetings, and rain around 5 pm. Shall I remind you to take an umbrella?"
+    "work": {
+      "title": "Work",
+      "b1": "Sums up your work email and drafts the replies",
+      "b2": "You read it over before anything goes out in your name",
+      "b3": "Prepares your meetings and notes the next steps",
+      "b4": "Reads and sums up your documents, PDFs included"
     },
-    {
-      "you": "Remind me to call Mum at 7.",
-      "bip": "Done: a reminder at 7 pm, with her number."
+    "learning": {
+      "title": "Learning",
+      "b1": "Explains simply, at your level",
+      "b2": "Quizzes you to help you revise",
+      "b3": "Revises with you out loud, in Live",
+      "b4": "Turns your documents into a revision sheet or a lesson"
     }
-  ],
+  },
   "control": {
     "once": "Once",
     "session": "This session",
     "deny": "Deny"
   },
-  "compare": {
-    "kicker": "Why it’s private",
-    "title": "Yours. Not everyone’s.",
-    "a11y": "A usual assistant: your messages go to the company’s servers, with everyone’s conversations, and may be used to train its AI. BipAgents: your messages go to your space, yours alone; the AI reads them to answer you; Kerfy Studio keeps your account and your subscription, not your conversations.",
-    "usual": "A usual assistant",
-    "you": "You",
-    "theirServers": "Their servers",
-    "everyones": "everyone’s conversations",
-    "theirAi": "Their AI",
-    "mayTrain": "may train on them",
-    "yourPlace": "Your space",
-    "yoursAlone": "yours alone",
-    "theAi": "The AI",
-    "readsToAnswer": "reads to answer you",
-    "kerfy": "your account and subscription, not your conversations",
-    "line1": "Your space, separate from everyone else’s, on a server in Europe (OVHcloud or Hetzner) or on your own computer.",
-    "line2": "We don’t read your conversations and train no AI with them: the AI reads them only to answer you.",
-    "line3": "We keep your account, not your conversations. You can take everything and leave.",
-    "more": "The October 2026 comparison, its sources and our limits →",
+  "private": {
+    "ask": "Where is your data? Who can read it?",
+    "more": "See more",
+    "less": "See less",
+    "whereTitle": "Where is your data?",
+    "where1": "In your own space, separate from everyone else’s, on a server in the European Union (OVHcloud or Hetzner). Or on your own computer, if you install it at home.",
+    "where2": "With All included, an encrypted backup every hour, with a key only your devices hold: we keep it without being able to read it.",
+    "where3": "It’s all yours: you can take everything and leave whenever you like.",
+    "whoTitle": "Who can read it?",
+    "who1": "Not us: Kerfy Studio doesn’t read your conversations and trains no AI with them. No ads, no tracking.",
+    "who2": "The AI reads what your agent sends it, to answer you: through EUrouter, a European AI router, then the company running the model you chose. The app names them before your first message.",
+    "who3": "Our limit, said plainly: as with any rented server, the host and we could technically get in. Our software doesn’t, and we only would if the law required it.",
+    "compare": "Compared with ChatGPT, Gemini and others, with sources →",
     "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
   },
   "pricing": {
     "kicker": "Pricing",
-    "title": "All included. Cancel anytime.",
-    "sub": "Your agents, their space in Europe, their AI credit, the Bips’ voices and the backups: one price, and a lower one on the web than in the app.",
     "periodLabel": "Pay",
     "monthly": "Monthly",
     "yearly": "Yearly",
@@ -256,7 +261,14 @@
       "plusTax": "+ tax",
       "taxIncl": "Prices in {currency}, taxes included.",
       "taxExcl": "Prices in {currency} before tax: your state’s or province’s sales tax is added at checkout.",
-      "currencies": {"EUR": "euros", "USD": "US dollars", "CAD": "Canadian dollars", "GBP": "pounds sterling", "SGD": "Singapore dollars", "ILS": "Israeli shekels"},
+      "currencies": {
+        "EUR": "euros",
+        "USD": "US dollars",
+        "CAD": "Canadian dollars",
+        "GBP": "pounds sterling",
+        "SGD": "Singapore dollars",
+        "ILS": "Israeli shekels"
+      },
       "perMonth": "/month",
       "perYear": "/year",
       "equiv": "that’s {x} a month",
@@ -275,16 +287,32 @@
       }
     },
     "mode": {
-      "label": "Choose how to use BipAgents",
       "offer": "All included",
-      "offerSub": "we handle everything, from {{p.from}}/month",
-      "self": "On my computer",
-      "selfSub": "free, you host it yourself"
+      "self": "On my computer"
+    },
+    "afterBeta": "Subscriptions open after the beta. Until then, it’s free for the people testing it.",
+    "ways": {
+      "title": "Two ways to have your agents.",
+      "sub": "On your own computer, it’s free. Or we take care of everything for you.",
+      "offerTag": "The simplest",
+      "offerLead": "Ready in a minute: nothing to install, we take care of the server, the updates and the backups.",
+      "offerFrom": "from {{p.from}}/month",
+      "offer1": "Your private space, on a server in Europe",
+      "offer2": "Just you, the two of you, or a family of up to 6",
+      "offer3": "No commitment: stop whenever you like",
+      "offerCta": "See the plans",
+      "selfTitle": "On your computer",
+      "selfLead": "You install it yourself, with Hermes Agent: one command installs everything.",
+      "selfPrice": "Free",
+      "self1": "The app is free: you only pay for your AI model, to its provider",
+      "self2": "Your agents and their files stay at home",
+      "self3": "Already have Hermes Agent? The same command plugs the app into it",
+      "selfCta": "See how to install it",
+      "plansTitle": "The All included plans"
     }
   },
   "install": {
     "title": "Your own computer? The app is free.",
-    "sub": "Your agents run at home, with Hermes Agent. You pick your AI model and only pay for it: nothing to Kerfy Studio.",
     "hermes": "Already running Hermes Agent? The same command plugs the app in, without touching your model or your agents.",
     "out1": "✓ Hermes Agent, the agents’ brain",
     "out2": "✓ The bridge and the Bips’ voices",
@@ -293,8 +321,6 @@
     "copied": "Copied ✓",
     "windows": "On Windows 11, in PowerShell run as administrator:",
     "guide": "The full guide",
-    "more": "Rather have us handle everything? With the subscription, there’s nothing to install.",
-    "moreCta": "See the plans →",
     "whatTitle": "What it means",
     "what1": "The app is free. You pay nothing to Kerfy Studio.",
     "what2": "Your agents, their memory and their files live on your computer, with Hermes Agent.",
@@ -359,6 +385,10 @@
       "q": "What about my own computer?",
       "a": "The app is free: one command installs it on your computer or server, and you only pay for the AI model you pick. The subscription spares you all that."
     },
+    "11": {
+      "q": "Which AI model, and is it any good?",
+      "a": "GLM-5.3 Flash by default. You can pick another one in the app, such as DeepSeek, with its price shown. For everyday tasks (email, calendar, searches, bookings), it comes very close to the top models. A more powerful model uses up your AI credit faster. Before your first message, the app names the router and the model’s maker. On your own computer, you bring the model of your choice."
+    },
     "all": "All questions →",
     "more": "Another question? Write to us:"
   },
@@ -378,7 +408,8 @@
     "fine": "© 2026 Kerfy Studio. Prices include VAT or GST, except in US and Canadian dollars: sales tax is added at checkout. The demo podcast: Built with Fish Audio. The Bips’ voices: Pocket TTS, by Kyutai. Demo map © OpenStreetMap. No cookies and no trackers on this site.",
     "demo": "The demo",
     "faq": "Questions",
-    "install": "Install at home"
+    "install": "Install at home",
+    "beta": "Beta terms"
   },
   "lines": {
     "hop": [
@@ -435,6 +466,95 @@
     "install": {
       "title": "Install at home — BipAgents",
       "description": "The BipAgents app is free on your own computer or server: one command installs Hermes Agent and the bridge, you only pay for your AI model."
+    },
+    "beta": {
+      "title": "The beta — BipAgents",
+      "description": "The BipAgents public beta: free, on iPhone and Android, limited places, no card needed. Your private space in Europe, with an AI credit."
+    }
+  },
+  "beta": {
+    "kicker": "Beta",
+    "title": "Try BipAgents before everyone else.",
+    "sub": "The public beta is free, on iPhone and Android. Places are limited, and no card is needed.",
+    "whatTitle": "What it is",
+    "what1": "Free for the whole beta",
+    "what2": "On iPhone and Android",
+    "what3": "Limited places",
+    "what4": "No card needed",
+    "getTitle": "What you get",
+    "get1": "Your private space, on a server in Europe",
+    "get2": "An AI credit for your agents",
+    "get3": "Your Bips, ready in a minute",
+    "askTitle": "What we ask",
+    "ask1": "Your feedback: what works, what’s missing, what gets in the way",
+    "ask2": "A little patience: it’s a beta, things may break",
+    "getIt": "Install the beta",
+    "soon": "Opening soon.",
+    "storeSoon": "Coming soon on",
+    "storeGet": "The beta on",
+    "cap": "Places: {cap}",
+    "terms": "Beta terms",
+    "after": "After the beta, the all-included offer becomes paid.",
+    "afterCta": "See the prices",
+    "sticky": "Free beta",
+    "stickySub": "limited places"
+  },
+  "notebook": {
+    "kicker": "Notebook",
+    "title": "Your life, in order.",
+    "sub": "Your agents keep what matters to you in one place you can read: the Notebook. They fill it from your email and your conversations.",
+    "a11y": "The app’s Notebook screen: today’s reminders, the next trip with its tickets and hotel, purchases and warranties, subscriptions, contracts and papers, bookings, and the archives.",
+    "i1": "<b>Reminders</b>: what you have to do, and when",
+    "i2": "<b>Your next trip</b>: tickets, places to stay, what to pack",
+    "i3": "<b>Purchases and warranties</b>, with the end of the warranty",
+    "i4": "<b>Subscriptions</b>: price, next renewal, how to cancel",
+    "i5": "<b>Contracts and papers</b>, with their deadlines",
+    "i6": "<b>Bookings</b>: dates, references, with whom",
+    "line1": "What’s past moves to the Archives: nothing is deleted.",
+    "line2": "You can search it and correct it, and it’s yours: take it with you whenever you like.",
+    "shot": {
+      "title": "Notebook",
+      "search": "Search",
+      "today": "Today",
+      "t1": "Renew the car insurance",
+      "t1s": "before 6 pm",
+      "t2": "Call the plumber",
+      "t3": "Return the library books",
+      "trip": "Lisbon · in 12 days",
+      "tripSub": "Tickets, hotel and what to pack",
+      "k1": "Purchases and warranties",
+      "k2": "Subscriptions",
+      "k3": "Contracts and papers",
+      "k4": "Bookings",
+      "archives": "Archives",
+      "archivesSub": "what’s past"
+    }
+  },
+  "family": {
+    "kicker": "Duo and Family",
+    "title": "In a family, your agents talk to each other.",
+    "sub": "Everyone keeps their own private space and agents. When what you tell your agent concerns someone in the family, it offers to pass it on to their agent: you read it, you choose who gets it, and nothing leaves until you tap “Send”.",
+    "s1t": "The school called",
+    "s1": "You tell your agent: it offers to let Sam know. You read it, you send it; Sam is told and Sam’s agent knows.",
+    "s2t": "The holidays",
+    "s2": "You booked 12 to 19 August: your agent offers to give the dates to the whole family, and every agent has them.",
+    "s3t": "Lunch",
+    "s3": "“I’m ordering lunch today”: your agent asks whether to tell the others. One “No thanks”, and it won’t bring it up again.",
+    "p1": "The words and the recipients can be changed before sending",
+    "p2": "Left unanswered, a proposal goes away after a day",
+    "p3": "Your own agents write to each other and pass files only where you allowed it: “Who can write to whom”",
+    "p4": "Family: up to 6 people, each with their own space, and a shared AI credit",
+    "cta": "See Duo and Family",
+    "a11y": "In the conversation, the Daily agent offers: let Sam know? The words “The school called: Léa has a fever, I’m picking her up”, Sam as the recipient, and the Send and No thanks buttons. At Sam’s, the notification arrives.",
+    "mock": {
+      "agent": "Daily",
+      "ask": "Let Sam know?",
+      "words": "The school called: Léa has a fever, I’m picking her up.",
+      "to": "To:",
+      "send": "Send",
+      "no": "No thanks",
+      "at": "At Sam’s",
+      "notif": "Camille: The school called: Léa has a fever, I’m picking her up."
     }
   }
 }

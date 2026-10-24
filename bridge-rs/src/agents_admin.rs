@@ -1252,19 +1252,7 @@ pub async fn write_settings(
         }
     }
     if let Some(soul) = &body.soul {
-        // The personality the person edited, with the language block it had (they never see it).
-        let (_, lang) = crate::souls::split_language(&read_soul(&config, agent)?);
-        let text = format!("{}\n", soul.trim());
-        let text = match lang.as_deref() {
-            Some(lang) if !lang.is_empty() => crate::souls::with_language(&text, Some(lang)),
-            _ => text,
-        };
-        let text = crate::souls::with_health(&text, crate::health::enabled(&config, &agent.name));
-        let text = crate::souls::with_notebook(&text, crate::notebook::enabled(&config, &agent.name));
-        let text = crate::souls::with_archives(&text, crate::archives::enabled(&config, &agent.name));
-        let line = crate::dates::agent_line(&config, &crate::dates::load(&config), &text);
-        let text = crate::dates::with_dates(&text, line.as_deref());
-        std::fs::write(profile_folder(&config, agent).join("SOUL.md"), text)?;
+        write_soul(&config, agent, soul)?;
     }
     if let Some(on) = body.health {
         set_health(&config, agent, on, run).await?;
@@ -1306,6 +1294,23 @@ pub async fn write_settings(
         }
     }
     Ok(())
+}
+
+/// The personality the person edited (or imported), with the language block it had (they never see it) and the
+/// rules of its switches (health, Carnet, archives).
+pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::Result<()> {
+    let (_, lang) = crate::souls::split_language(&read_soul(config, agent)?);
+    let text = format!("{}\n", soul.trim());
+    let text = match lang.as_deref() {
+        Some(lang) if !lang.is_empty() => crate::souls::with_language(&text, Some(lang)),
+        _ => text,
+    };
+    let text = crate::souls::with_health(&text, crate::health::enabled(config, &agent.name));
+    let text = crate::souls::with_notebook(&text, crate::notebook::enabled(config, &agent.name));
+    let text = crate::souls::with_archives(&text, crate::archives::enabled(config, &agent.name));
+    let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
+    let text = crate::dates::with_dates(&text, line.as_deref());
+    std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)
 }
 
 /// « Santé » on or off: the switch, the rule in its personality, and its tools' entry (the `health` tool listed or
@@ -1374,7 +1379,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
 // -- routes ---------------------------------------------------------------------------------------------------------
 
 /// One creation (or change) at a time: profile names, the config file.
-static LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
+pub(crate) static LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 /// A failure of Hermes (Python's `RuntimeError`, `asyncio.TimeoutError`) → `status` with `detail`; an `OSError`
 /// (which the Python does not catch) → 500.
