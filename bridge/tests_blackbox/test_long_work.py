@@ -1,12 +1,14 @@
 """Long work handed to background tasks (decided 2026-10-22): `start_task` within the direct budget (`[jobs]
 direct_budget_eur`, ≈ 0.20 € at the `[notebook]` prices), refused above it; `notebook_fill`; « Remplir mon Carnet »
 for every agent in turn (`/v1/notebook/fill`); and the bridge's safety net, which steers a long conversation run once
-to hand the rest over (`[jobs] handoff…`)."""
+to hand the rest over (`[jobs] handoff…`): never while a sub-agent works or the agent browses (2026-10-24), and a
+steered run that stops without handing over gets its task from the bridge (started, or proposed), said in the run."""
+import threading
 import time
 
 import pytest
 
-from bbkit.common import AUTH, sse
+from bbkit.common import AUTH, read_sse, sse
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 
@@ -184,3 +186,130 @@ def test_a_run_going_on_for_minutes_is_steered_too(bridges, fakes):
     time.sleep(2)
     assert fakes.hermes.steers == []
     assert wait_until(lambda: fakes.hermes.steers, timeout=15)
+
+
+# -- 2026-10-24: never during a sub-agent's work or browsing, and never ending silently ---------------------------------
+
+TOKEN = "f" * 64
+NOW = "2026-10-24T08:00:00.000Z"
+ASKED = "Cherche-moi une veste en laine bleue, taille M, moins de 150 €"
+
+
+def with_device(bridges, jobs_config):
+    bridge = bridges.new()
+    bridge.config["jobs"] = jobs_config
+    bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
+                     (TOKEN, "sandbox", "[]", NOW, NOW))])
+    return bridge.start()
+
+
+def follow(bridge, run_id, session="api_c"):
+    """The run as the app follows it (through the bridge), until it ends."""
+    with bridge.stream("GET", f"/v1/runs/{run_id}/events?agent=wellness&session_id={session}", headers=AUTH) as resp:
+        assert resp.status_code == 200
+        return read_sse(resp)
+
+
+@pytest.mark.slow
+def test_no_steer_while_a_sub_agent_works_for_the_run(bridges, fakes):
+    bridge = bridges.new()
+    bridge.config["jobs"] = {"handoff_tool_calls": 3, "handoff_seconds": 5}
+    bridge.start()
+    gate = threading.Event()
+    fakes.hermes.runs["run_d"] = (tools("run_d", 2) + tools("run_d", 1, "delegate_task")
+                                  + [sse("subagent.start", run_id="run_d", goal="Chercher des vestes")]
+                                  + tools("run_d", 3) + [gate, 6]
+                                  + [sse("subagent.complete", run_id="run_d", status="completed"),
+                                     sse("tool.completed", run_id="run_d", tool="delegate_task", error=False),
+                                     sse("message.delta", run_id="run_d", delta="Voilà trois vestes."),
+                                     sse("run.completed", run_id="run_d", output="Voilà trois vestes.")])
+    bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_d"})
+    time.sleep(1.0)
+    assert fakes.hermes.steers == []
+    gate.set()   # the sub-agent works on for 6 s (past handoff_seconds), then answers
+    time.sleep(7.5)
+    assert fakes.hermes.steers == []
+    assert jobs(bridge) == []
+
+
+def test_a_browsing_run_is_left_alone_unless_its_own_thresholds_say(bridges, fakes):
+    bridge = bridges.new()
+    bridge.config["jobs"] = {"handoff_tool_calls": 3}
+    bridge.start()
+    fakes.hermes.runs["run_b"] = (tools("run_b", 1) + tools("run_b", 10, "mcp_stealth_navigate")
+                                  + [sse("run.completed", run_id="run_b", output="ok")])
+    bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_b"})
+    time.sleep(1.5)
+    assert fakes.hermes.steers == []
+    other = bridges.new()
+    other.config["jobs"] = {"handoff_tool_calls": 3, "handoff_browser_tool_calls": 6}
+    other.start()
+    fakes.hermes.runs["run_b2"] = tools("run_b2", 10, "mcp_stealth_click_element")
+    other.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_b2"})
+    assert wait_until(lambda: fakes.hermes.steers)
+    time.sleep(0.5)
+    assert [s["run_id"] for s in fakes.hermes.steers] == ["run_b2"]
+    assert other.logged("long run: handing over to a background task (steer)")[0]["tool_calls"] == 6
+
+
+def test_a_steered_run_that_stops_without_handing_over_gets_its_task_started(bridges, fakes):
+    bridge = with_device(bridges, {"handoff_tool_calls": 3})
+    fakes.hermes.rounds = 1000
+    fakes.hermes.add_session("api_c", [{"role": "user", "content": ASKED}])
+    fakes.hermes.runs["run_r"] = (tools("run_r", 4)
+                                  + [sse("message.delta", run_id="run_r", delta="Je continue en arrière-plan."),
+                                     sse("run.completed", run_id="run_r", output="Je continue en arrière-plan.")])
+    events = follow(bridge, "run_r")
+    assert wait_until(lambda: len(fakes.hermes.steers) == 1)
+    assert [name for name, _ in events][-2:] == ["bridge.notice", "run.completed"]
+    notice = events[-2][1]
+    assert notice["code"] == "handoff_started"
+    assert notice["title"] == "Cherche-moi une veste en laine bleue, taille M, moins de 150…"
+    job = jobs(bridge)[0]
+    assert (job["id"], job["state"], job["proposed_by"], job["max_tokens"]) == (
+        notice["job_id"], "running", "asked", DEFAULT_TOKENS)
+    assert ASKED in job["prompt"] and "- web_search: x" in job["prompt"]
+    assert "Je continue en arrière-plan." in job["prompt"]
+    assert ASKED in fakes.hermes.started["r1"]["input"]
+    assert wait_until(lambda: fakes.apns.pushes())
+    payload = fakes.apns.payloads()[0]
+    assert payload["aps"]["alert"]["body"] == "Continue en tâche de fond" and payload["job_id"] == job["id"]
+    assert payload["session_id"] == "api_c"
+    assert bridge.logged("long run: the bridge started the background task")
+    # replayed to an app that comes back
+    assert [name for name, _ in follow(bridge, "run_r")][-2:] == ["bridge.notice", "run.completed"]
+    assert bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH).status_code == 200
+
+
+def test_a_refused_start_task_is_proposed_and_said(bridges, fakes):
+    bridge = with_device(bridges, {"handoff_tool_calls": 3})
+    fakes.hermes.rounds = 1000
+    fakes.hermes.add_session("api_c", [{"role": "user", "content": ASKED}])
+    busy = bridge.post("/v1/agents/wellness/jobs", headers=AUTH,
+                       json={"title": "Tri des mails", "prompt": "Trie.", "max_tokens": 1_000_000}).json()
+    refused = "Not started: this agent is already on a background task. Propose it with propose_task instead."
+    fakes.hermes.runs["run_f"] = (tools("run_f", 3)
+                                  + [sse("tool.started", run_id="run_f", tool="mcp_bipagents_start_task", preview="x"),
+                                     sse("tool.completed", run_id="run_f", tool="mcp_bipagents_start_task", error=True,
+                                         preview=refused),
+                                     sse("run.completed", run_id="run_f", output="")])
+    events = follow(bridge, "run_f")
+    notice = dict(events)["bridge.notice"]
+    assert notice["code"] == "handoff_proposed" and "already on a background task" in notice["reason"]
+    assert "Démarrer" in notice["text"]
+    proposed = [j for j in jobs(bridge) if j["state"] == "proposed"]
+    assert len(proposed) == 1 and proposed[0]["id"] == notice["job_id"] and ASKED in proposed[0]["prompt"]
+    assert bridge.logged("long run: hand-over refused")
+    assert bridge.delete(f"/v1/jobs/{busy['id']}", headers=AUTH).status_code == 200
+
+
+def test_a_steered_run_that_answered_after_all_is_not_rescued(bridges, fakes):
+    bridge = bridges.new()
+    bridge.config["jobs"] = {"handoff_tool_calls": 3}
+    bridge.start()
+    answer = "Voici trois vestes en laine bleue. " * 30
+    fakes.hermes.runs["run_a"] = tools("run_a", 4) + [sse("message.delta", run_id="run_a", delta=answer),
+                                                      sse("run.completed", run_id="run_a", output=answer)]
+    events = follow(bridge, "run_a")
+    assert wait_until(lambda: len(fakes.hermes.steers) == 1) and "bridge.notice" not in [n for n, _ in events]
+    assert jobs(bridge) == []

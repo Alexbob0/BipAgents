@@ -24,6 +24,12 @@ Keep that id and use it for every later call, in this task and the next ones; yo
 Do not close the browser between the steps of a task, or between two messages of the same conversation: each new
 start costs the person time.
 
+## 1b. Browse yourself, never through a sub-agent
+Do the browsing yourself, in this conversation, with these tools: the person watches it live. Never hand it to a
+sub-agent (`delegate_task`): its steps don't show in the conversation, it runs apart from your turn, and its result
+only comes back when the person writes again, so for them the work just stops. When the browsing is long (many sites,
+many pages), start a background task (`start_task`) that browses instead, and tell the person in one sentence.
+
 ## 2. Browse
 - After opening a page of a site that checks for robots, wait 5 to 10 seconds before reading it.
 - Read pages as text (`get_page_content`) rather than with screenshots when you can.

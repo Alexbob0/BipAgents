@@ -11,7 +11,11 @@
 //! « reply ready » alert that opens its conversation.
 //!
 //! Long-work safety net (2026-10-22, `[jobs] handoff`): a conversation's run that goes past ~15 tool calls or ~3
-//! minutes is steered once to hand the rest over to a background task (`handoff`).
+//! minutes is steered once to hand the rest over to a background task (`handoff`). Since 2026-10-24 (owner's report:
+//! a clothes search handed to a sub-agent stopped silently, twice): never while a sub-agent (`delegate_task`) works
+//! for the run, nor while the agent browses with its visible browser (the person watches it live; own thresholds,
+//! never by default), and the time spent in either does not count. A steered run that still ends without handing over
+//! has its task started by the bridge (`rescue`), the conversation told by a `bridge.notice` event before the end.
 //!
 //! Port of `bridge/bipbridge/runs.py` (owner group: push-runs).
 //!
@@ -56,6 +60,109 @@ pub const HANDOFF_TEXT: &str = "This is long: hand the rest over to a background
 default budget, or propose_task), tell your person in one sentence, and stop here.";
 /// Tools that hand work over already (the agent's MCP tools, maybe with Hermes' `mcp_<server>_` prefix).
 pub const HANDOFF_TOOLS: [&str; 3] = ["start_task", "propose_task", "notebook_fill"];
+/// Hermes' sub-agents: the tool, and the lifecycle events its children send on the parent's run.
+pub const DELEGATE_TOOL: &str = "delegate_task";
+pub const SUBAGENT_START: &str = "subagent.start";
+pub const SUBAGENT_DONE: &str = "subagent.complete";
+/// The bridge's own words in a run's stream (after the safety net's rescue): `{code, text, job_id?, title?}`; the
+/// apps show them as a notice. Codes: `handoff_started`, `handoff_proposed`, `handoff_failed`.
+pub const NOTICE: &str = "bridge.notice";
+
+fn handoff_tool(tool: &str) -> bool {
+    HANDOFF_TOOLS.iter().any(|t| tool == *t || tool.ends_with(&format!("_{t}")))
+}
+
+/// The agent's visible browser (skill visible-browser: the `stealth` MCP server's tools, `mcp_stealth_*`; the vault's
+/// `browser_vault_*` and `vault_*_login` on that same browser; Hermes' own `browser_*`).
+pub fn browser_tool(tool: &str) -> bool {
+    let tool = tool.to_ascii_lowercase();
+    tool.contains("stealth")
+        || tool.starts_with("browser_")
+        || tool.contains("vault_create_login")
+        || tool.contains("vault_confirm_login")
+}
+
+fn delegate_tool(tool: &str) -> bool {
+    tool == DELEGATE_TOOL || tool.ends_with(&format!("_{DELEGATE_TOOL}"))
+}
+
+/// A handing-over tool that answered it did not (start_task's « Not started: … », a refused budget, no jobs here).
+fn handoff_refused(event: &SSEEvent) -> bool {
+    let preview = event.data.get("preview").and_then(Value::as_str).unwrap_or("");
+    event.data.get("error").and_then(Value::as_bool).unwrap_or(false)
+        || preview.contains("Not started")
+        || preview.contains("aren't available here")
+        || preview.contains("may take without your person's go")
+        || preview.contains("enough of your proposals")
+}
+
+/// A steered run whose final words are at least this long answered after all: no rescue.
+pub const RESCUE_REPLY_CHARS: usize = 600;
+/// The push of a task the bridge started for a stopped run.
+pub const RESCUE_BODY: &str = "Continue en tâche de fond";
+
+/// The person's request in a conversation: its last message from them that is theirs (not the safety net's steer,
+/// another bridge marker or a sub-task's report).
+pub fn person_request(messages: &[Dict]) -> String {
+    for message in messages.iter().rev() {
+        let role = message.get("role").and_then(Value::as_str).unwrap_or("");
+        if role != "user" {
+            continue;
+        }
+        let text = crate::cronwatch::message_text(message);
+        if text.is_empty()
+            || text.contains("[bipagents:")
+            || crate::cronwatch::REPORT_PREFIXES.iter().any(|p| text.starts_with(p))
+        {
+            continue;
+        }
+        return text;
+    }
+    String::new()
+}
+
+/// The rescued task's title: the request's beginning (the person's words, so their language).
+pub fn rescue_title(request: &str) -> String {
+    let squeezed = crate::tools_knowledge::squeeze(request);
+    let head = crate::tools_knowledge::head(&squeezed, 60).trim().to_string();
+    if head.is_empty() {
+        "Suite de la conversation".into()
+    } else if head.chars().count() < squeezed.chars().count() {
+        format!("{head}…")
+    } else {
+        head
+    }
+}
+
+/// What the rescued task is told: the request, the steps already done in the conversation, the words said there.
+pub fn rescue_prompt(request: &str, steps: &[String], said: &str) -> String {
+    let mut out = String::from(
+        "Your person asked you this in a conversation, and the conversation stopped before the work was finished:\n",
+    );
+    out.push_str(&format!(
+        "« {} »\n",
+        if request.is_empty() { "(their last request in that conversation)" } else { request }
+    ));
+    if !steps.is_empty() {
+        let skip = steps.len().saturating_sub(30);
+        out.push_str("\nWhat you already did there (don't redo it unless you need to):\n");
+        if skip > 0 {
+            out.push_str(&format!("- … {skip} earlier steps\n"));
+        }
+        for step in &steps[skip..] {
+            out.push_str(step);
+            out.push('\n');
+        }
+    }
+    let said = said.trim();
+    if !said.is_empty() {
+        let chars: Vec<char> = said.chars().collect();
+        let tail: String = chars[chars.len().saturating_sub(1500)..].iter().collect();
+        out.push_str(&format!("\nWhat you had written there so far:\n{tail}\n"));
+    }
+    out.push_str("\nFinish the work here on your own, then end with your report.");
+    out
+}
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
@@ -173,6 +280,18 @@ pub struct SubscriptionState {
     pub tool_calls: u32,
     pub handed_off: bool,
     pub steered: bool,
+    /// The tool calls that count for the safety net (neither browsing nor during a sub-agent's work; from 0 again
+    /// after a sub-agent), and the run's last tool names (to tell a browsing run).
+    pub counted_calls: u32,
+    pub recent_tools: VecDeque<String>,
+    /// `delegate_task` calls not answered yet, sub-agents started and not done (no steer meanwhile).
+    pub delegating: u32,
+    pub subagents: u32,
+    /// The end of the last stretch that does not count (a sub-agent's work, browsing): the clock starts again there.
+    pub exempt_until: f64,
+    /// A handing-over tool answered it could not; the bridge's rescue was done (or tried).
+    pub handoff_failed: bool,
+    pub rescued: bool,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -194,6 +313,13 @@ impl Default for SubscriptionState {
             tool_calls: 0,
             handed_off: false,
             steered: false,
+            counted_calls: 0,
+            recent_tools: VecDeque::new(),
+            delegating: 0,
+            subagents: 0,
+            exempt_until: 0.0,
+            handoff_failed: false,
+            rescued: false,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -271,6 +397,8 @@ pub struct RunHub {
     pub retention_seconds: f64,
     /// For the files a reply hands the person (`MEDIA:` lines), kept when the run ends (sent_files.rs).
     pub config: Option<SharedConfig>,
+    /// The background tasks (jobs.rs), for the safety net's rescue: set by `jobs_of`.
+    pub jobs: std::sync::OnceLock<std::sync::Weak<crate::jobs::Jobs>>,
     inner: Mutex<HubInner>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
     next_id: AtomicU64,
@@ -297,6 +425,7 @@ impl RunHub {
             watch_max_seconds,
             retention_seconds: FINISHED_RETENTION_SECONDS,
             config: None,
+            jobs: std::sync::OnceLock::new(),
             inner: Mutex::new(HubInner::default()),
             tasks: Mutex::new(Vec::new()),
             next_id: AtomicU64::new(1),
@@ -660,6 +789,9 @@ impl RunHub {
                                 backoff = BACKOFF_START;
                                 failures = 0;
                                 let terminal = is_terminal(&event.r#type);
+                                if terminal {
+                                    self.rescue(sub, &event).await;
+                                }
                                 self.dispatch(sub, event);
                                 if terminal {
                                     return Ok(());
@@ -719,7 +851,7 @@ impl RunHub {
         append_to_backlog(&mut st.backlog, &event);
         st.send_all(Some(&event));
         let kind = event.r#type.as_str();
-        if kind == "tool.started" || kind == "tool.completed" {
+        if kind == "tool.started" || kind == "tool.completed" || kind == SUBAGENT_START || kind == SUBAGENT_DONE {
             self.handoff(sub, &mut st, &event);
         }
         if kind == "approval.request" {
@@ -781,34 +913,230 @@ impl RunHub {
     /// The long-work safety net (decided 2026-10-22, independent of the model): a run in a person's conversation (not a
     /// background task's own, whose watch has no end push) that passes `[jobs] handoff_tool_calls` tool calls or
     /// `handoff_seconds` is steered once, at a tool boundary, to hand the rest over to a background task. Not when the
-    /// agent already did (start_task, propose_task, notebook_fill). The apps hide the steered words (HANDOFF_MARK).
+    /// agent already did (start_task, propose_task, notebook_fill); never while a sub-agent works for the run (the
+    /// steer reached the agent with the sub-agent's result and stopped it there, 2026-10-24); a browsing run (a
+    /// browser tool among its last `handoff_browser_window` calls) by `handoff_browser_*` only (never by default), and
+    /// neither the calls nor the time spent browsing or delegating count for the others. The apps hide the steered
+    /// words (HANDOFF_MARK).
     fn handoff(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
         let tool = event.data.get("tool").or_else(|| event.data.get("name")).and_then(Value::as_str).unwrap_or("");
-        if event.r#type == "tool.started" {
-            st.tool_calls += 1;
-            if HANDOFF_TOOLS.iter().any(|t| tool == *t || tool.ends_with(&format!("_{t}"))) {
-                st.handed_off = true;
+        let now = crate::py::time_time();
+        match event.r#type.as_str() {
+            "tool.started" => {
+                st.tool_calls += 1;
+                if st.recent_tools.len() >= 100 {
+                    st.recent_tools.pop_front();
+                }
+                st.recent_tools.push_back(tool.to_string());
+                if handoff_tool(tool) {
+                    st.handed_off = true;
+                }
+                if delegate_tool(tool) {
+                    st.delegating += 1;
+                } else if !browser_tool(tool) && st.delegating == 0 && st.subagents == 0 {
+                    st.counted_calls += 1;
+                }
             }
+            "tool.completed" => {
+                if delegate_tool(tool) {
+                    st.delegating = st.delegating.saturating_sub(1);
+                    st.exempt_until = now;
+                    st.counted_calls = 0;
+                }
+                if browser_tool(tool) {
+                    st.exempt_until = now;
+                }
+                if handoff_tool(tool) && handoff_refused(event) {
+                    tracing::info!(agent = %sub.agent.name, run_id = %sub.run_id, tool = tool, "long run: hand-over refused");
+                    st.handed_off = false;
+                    st.handoff_failed = true;
+                }
+            }
+            SUBAGENT_START => st.subagents += 1,
+            SUBAGENT_DONE => {
+                st.subagents = st.subagents.saturating_sub(1);
+                st.exempt_until = now;
+                st.counted_calls = 0;
+            }
+            _ => {}
         }
-        if st.steered || st.handed_off || !st.end_push || st.finished {
+        if st.steered || st.handed_off || !st.end_push || st.finished || st.delegating > 0 || st.subagents > 0 {
+            return;
+        }
+        if !matches!(event.r#type.as_str(), "tool.started" | "tool.completed") {
             return;
         }
         let Some(shared) = self.config.as_ref() else { return };
         let jobs = shared.get().jobs.clone();
-        let seconds = crate::py::time_time() - st.followed_since;
-        if !jobs.handoff || (st.tool_calls < jobs.handoff_tool_calls && seconds < jobs.handoff_seconds) {
+        if !jobs.handoff {
+            return;
+        }
+        let window = jobs.handoff_browser_window.max(1) as usize;
+        let browsing = st.recent_tools.iter().rev().take(window).any(|t| browser_tool(t));
+        let over = if browsing {
+            let seconds = now - st.followed_since;
+            (jobs.handoff_browser_tool_calls > 0 && st.tool_calls >= jobs.handoff_browser_tool_calls)
+                || (jobs.handoff_browser_seconds > 0.0 && seconds >= jobs.handoff_browser_seconds)
+        } else {
+            let seconds = now - st.followed_since.max(st.exempt_until);
+            st.counted_calls >= jobs.handoff_tool_calls || seconds >= jobs.handoff_seconds
+        };
+        if !over {
             return;
         }
         st.steered = true;
+        let seconds = now - st.followed_since;
         let (hermes, agent, run_id, calls) =
             (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone(), st.tool_calls);
         tracing::info!(agent = %agent.name, run_id = %run_id, tool_calls = calls, seconds = seconds.round() as i64,
-            "long run: handing over to a background task (steer)");
+            browsing = browsing, "long run: handing over to a background task (steer)");
         self.spawn(async move {
             if let Err(err) = hermes.steer_run(&agent, &run_id, &format!("{HANDOFF_MARK} {HANDOFF_TEXT}")).await {
                 tracing::warn!(agent = %agent.name, run_id = %run_id, error = %err, "long run: steer refused");
             }
         });
+    }
+
+    /// The safety net's second half (2026-10-24: never end silently): a run it steered that ends (completed or failed)
+    /// without handing over (no start_task, propose_task or notebook_fill that worked) and without a real answer (its
+    /// final text shorter than `RESCUE_REPLY_CHARS`: « je continue en arrière-plan » said but not done, or nothing) has
+    /// its task started by the bridge: the person's request (the conversation's last message from them) and what the
+    /// run did so far (its tool steps, its words), within `[jobs] direct_budget_eur`. Refused (another task runs, too
+    /// many at once…): proposed instead, the card with « Démarrer » in the conversation; that refused too: said. The
+    /// conversation is told by a `bridge.notice` event (before the run's end, so a follower shows it), and a push.
+    async fn rescue(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: &SSEEvent) {
+        if !matches!(terminal.r#type.as_str(), "run.completed" | "run.failed") {
+            return;
+        }
+        let Some(shared) = self.config.clone() else { return };
+        let config = shared.get();
+        if !config.jobs.handoff || !config.jobs.handoff_rescue {
+            return;
+        }
+        let output = terminal.final_text();
+        let (session, steps, said) = {
+            let mut st = lock(&sub.state);
+            if !st.steered || st.handed_off || !st.end_push || st.rescued {
+                return;
+            }
+            let said: String = st.backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
+            // The words after its last tool step: its answer, if it finished after all.
+            let last_tool = st.backlog.iter().rposition(|e| e.r#type.starts_with("tool."));
+            let answer: String = st
+                .backlog
+                .iter()
+                .skip(last_tool.map(|i| i + 1).unwrap_or(0))
+                .filter(|e| is_delta(&e.r#type))
+                .map(|e| e.text())
+                .collect();
+            if output.trim().chars().count().max(answer.trim().chars().count()) >= RESCUE_REPLY_CHARS {
+                return;
+            }
+            st.rescued = true;
+            let steps: Vec<String> = st
+                .backlog
+                .iter()
+                .filter(|e| e.r#type == "tool.started")
+                .filter_map(|e| {
+                    let tool = as_str(e.data.get("tool")).unwrap_or_default();
+                    if tool.is_empty() {
+                        return None;
+                    }
+                    let preview = as_str(e.data.get("preview")).unwrap_or_default();
+                    let preview: String = preview.chars().take(160).collect();
+                    Some(if preview.is_empty() { format!("- {tool}") } else { format!("- {tool}: {preview}") })
+                })
+                .collect();
+            (st.session_id.clone(), steps, said)
+        };
+        let Some(jobs) = self.jobs.get().and_then(std::sync::Weak::upgrade) else {
+            tracing::warn!(agent = %sub.agent.name, run_id = %sub.run_id, "long run: no background tasks to hand over to");
+            return;
+        };
+        let agent = sub.agent.clone();
+        let session = match session.filter(|s| !s.is_empty()) {
+            Some(s) => Some(s),
+            None => self.hermes.run(&agent, &sub.run_id).await.ok().and_then(|r| as_str(r.get("session_id"))),
+        };
+        let request = match &session {
+            Some(sid) => {
+                self.hermes.session_messages(&agent, sid).await.map(|m| person_request(&m)).unwrap_or_default()
+            }
+            None => String::new(),
+        };
+        let title = rescue_title(&request);
+        let prompt = rescue_prompt(&request, &steps, &said);
+        let budget = crate::jobs::direct_budget(&config);
+        let started = tokio::time::timeout(
+            Duration::from_secs(45),
+            jobs.create_by(&agent, &title, &prompt, budget, None, "asked"),
+        )
+        .await
+        .unwrap_or_else(|_| Err(crate::jobs::JobError("the agent did not answer in time".into()).into()));
+        let mut notice = Map::new();
+        notice.insert("type".into(), json!(NOTICE));
+        notice.insert("title".into(), json!(title));
+        match started {
+            Ok(job) => {
+                let job_id = crate::tools_knowledge::str_or_empty(job.get("id"));
+                tracing::info!(agent = %agent.name, run_id = %sub.run_id, job = %job_id,
+                    "long run: the bridge started the background task");
+                notice.insert("code".into(), json!("handoff_started"));
+                notice.insert("job_id".into(), json!(job_id));
+                notice.insert(
+                    "text".into(),
+                    json!(format!(
+                        "La suite continue en tâche de fond : « {title} ». Je te préviens quand c'est fini."
+                    )),
+                );
+                if let Some(push) = self.push.clone() {
+                    let (name, session) = (agent.name.clone(), session.clone());
+                    let line = format!("{RESCUE_BODY} : {title}");
+                    self.spawn(async move {
+                        push.notify_job(&name, session.as_deref(), &line, &job_id, RESCUE_BODY).await;
+                    });
+                }
+            }
+            Err(err) => {
+                let reason = format!("{err:#}");
+                tracing::info!(agent = %agent.name, run_id = %sub.run_id, error = %reason,
+                    "long run: the background task could not start, proposed");
+                match jobs.propose(&agent, &title, &prompt, "small").await {
+                    Ok(job) => {
+                        notice.insert("code".into(), json!("handoff_proposed"));
+                        notice.insert("job_id".into(), json!(crate::tools_knowledge::str_or_empty(job.get("id"))));
+                        notice.insert("reason".into(), json!(reason));
+                        notice.insert(
+                            "text".into(),
+                            json!(format!(
+                                "Je n'ai pas pu continuer en tâche de fond ({reason}). La tâche « {title} » t'attend : \
+touche « Démarrer » pour reprendre."
+                            )),
+                        );
+                    }
+                    Err(again) => {
+                        let reason = format!("{again:#}");
+                        tracing::warn!(agent = %agent.name, run_id = %sub.run_id, error = %reason,
+                            "long run: the background task could not be proposed either");
+                        notice.insert("code".into(), json!("handoff_failed"));
+                        notice.insert("reason".into(), json!(reason));
+                        let text = format!(
+                            "Je me suis arrêté avant la fin et je n'ai pas pu continuer en tâche de fond ({reason}). \
+Écris « Reprends » pour que je continue."
+                        );
+                        notice.insert("text".into(), json!(text));
+                        if let Some(push) = self.push.clone() {
+                            let (name, run_id, session) = (agent.name.clone(), sub.run_id.clone(), session.clone());
+                            self.spawn(async move {
+                                push.notify_reply(&name, &run_id, &text, session.as_deref()).await;
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(notice.clone()));
+        self.dispatch(sub, SSEEvent::new(NOTICE, notice, raw));
     }
 
     /// A question (docs/hermes-clarify-api.md) nobody sees: push it once, like an approval.
@@ -961,6 +1289,48 @@ mod tests {
         assert!(hub.followed_recently("vie", "api_bot", Some("x"), 600.0));
         lock(&sub.state).finished_at = Some(crate::py::time_time() - 90.0);
         assert!(!hub.followed_recently("vie", "api_bot", Some("x"), 600.0));
+    }
+
+    #[test]
+    fn the_safety_nets_kinds_of_tools() {
+        for tool in
+            ["mcp_stealth_navigate", "stealth_spawn_browser", "mcp__stealth__click_element", "browser_vault_fill"]
+        {
+            assert!(browser_tool(tool), "{tool}");
+        }
+        assert!(browser_tool("mcp_bipagents_vault_create_login"));
+        assert!(!browser_tool("web_search") && !browser_tool("mcp_bipagents_create_page"));
+        assert!(delegate_tool("delegate_task") && !delegate_tool("delegate"));
+        assert!(handoff_tool("mcp_bipagents_start_task") && handoff_tool("propose_task"));
+        let refused =
+            |data: Value| handoff_refused(&SSEEvent::new("tool.completed", data.as_object().cloned().unwrap(), ""));
+        assert!(refused(json!({"tool": "start_task", "error": true})));
+        assert!(refused(
+            json!({"tool": "start_task", "preview": "Not started: this agent is already on a background task."})
+        ));
+        assert!(!refused(json!({"tool": "start_task", "error": false, "preview": "Started in the background"})));
+    }
+
+    #[test]
+    fn a_rescued_task_takes_the_persons_request() {
+        let messages: Vec<Dict> = serde_json::from_value(json!([
+            {"role": "user", "content": "Cherche-moi une veste en laine bleue, taille M, moins de 150 €"},
+            {"role": "assistant", "content": "Je regarde."},
+            {"role": "user", "content": "[bipagents:handoff] This is long: hand the rest over"},
+            {"role": "user", "content": "[ASYNC DELEGATION d1] done"},
+        ]))
+        .unwrap();
+        let request = person_request(&messages);
+        assert_eq!(request, "Cherche-moi une veste en laine bleue, taille M, moins de 150 €");
+        assert_eq!(rescue_title(&request), "Cherche-moi une veste en laine bleue, taille M, moins de 150…");
+        assert_eq!(rescue_title("Trie mes mails"), "Trie mes mails");
+        assert_eq!(rescue_title(""), "Suite de la conversation");
+        let prompt = rescue_prompt(&request, &["- mcp_stealth_navigate: zalando.fr".into()], "Je regarde.");
+        assert!(prompt.contains("« Cherche-moi une veste") && prompt.contains("- mcp_stealth_navigate: zalando.fr"));
+        assert!(prompt.contains("What you had written there so far:\nJe regarde.") && prompt.ends_with("your report."));
+        let many: Vec<String> = (0..40).map(|i| format!("- web_search: {i}")).collect();
+        let prompt = rescue_prompt("", &many, "");
+        assert!(prompt.contains("- … 10 earlier steps\n- web_search: 10\n") && prompt.contains("(their last request"));
     }
 
     #[test]

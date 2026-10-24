@@ -125,6 +125,8 @@ pub const FILES_RULE: &str = concat!(
 /// Long work goes to a background task, never inline (owner's decision 2026-10-22, after an agent filled the Carnet in
 /// the conversation for a long time: dozens of tool rows, the chat blocked, the end never shown). `start_task` within
 /// the small budget the bridge allows when the person asked; `propose_task` above it or for the agent's own ideas.
+/// Never browsing through `delegate_task` (owner's report 2026-10-24: a clothes search given to a sub-agent stopped
+/// without a word; Hermes runs a conversation's sub-agents detached and keeps their result for the next turn).
 /// Rust bridge only, like FAMILY_RULE (added to tests/golden/souls.json by hand).
 pub const LONG_WORK_RULE: &str = concat!(
     "Work that needs many steps or minutes (more than a few searches or tool calls) never happens here in the ",
@@ -134,7 +136,10 @@ pub const LONG_WORK_RULE: &str = concat!(
     "préviens quand c'est fini. » Examples: « remplis mon Carnet » (notebook_fill), « trie mes mails », « fais une ",
     "recherche approfondie sur les mutuelles », « compare 10 appartements ». When the work needs more than the default ",
     "budget, or the idea comes from you and not from your person, propose it with propose_task instead: they start it ",
-    "with one tap. Quick answers, one search or a short page stay here as usual."
+    "with one tap. Quick answers, one search or a short page stay here as usual. Never give browsing to a sub-agent ",
+    "(delegate_task): a sub-agent's steps don't show in this conversation, and its result only comes back when ",
+    "they write again, so the work seems to stop. Browse yourself with your visible browser while they watch, or start ",
+    "a background task that browses."
 );
 
 /// Answers shown, not only told (owner's request 2026-10-22: « des vrais mini web apps au milieu du texte »): a live

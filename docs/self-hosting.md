@@ -165,7 +165,14 @@ Long work goes to background tasks, never inline in a conversation. An agent sta
 asked for it, within `[jobs] direct_budget_eur` (€, default 0.20, counted at the `[notebook]` prices); above that it
 proposes the task and the person starts it with one tap. A conversation's run that goes past `handoff_tool_calls`
 (default 15) tool calls or `handoff_seconds` (default 180) is told once to hand the rest over (`handoff = false` turns
-this off); the bridge logs `long run: handing over to a background task (steer)`.
+this off); the bridge logs `long run: handing over to a background task (steer)`. Never while a sub-agent
+(`delegate_task`) works for that run, and the calls and time spent in one don't count. A run browsing with the agent's
+visible browser (a browser tool among its last `handoff_browser_window` calls, default 5) is watched live, so it is
+only told by its own thresholds, `handoff_browser_tool_calls` and `handoff_browser_seconds` (default 0: never). A run
+told to hand over that still ends without doing it (and without a real answer) gets its background task started by the
+bridge, with the person's request and the steps done so far, within `direct_budget_eur` (`handoff_rescue = false`
+turns this off); if the task cannot start, it is proposed (« Démarrer » in the conversation), and the conversation and
+a notification say so.
 
 The records (« Fiches »: purchases, subscriptions, contracts, papers, bookings) can be filled from an agent's archive:
 `bipagents archive extract <agent> --archive <id> --sample 50` reads 50 likely documents with the agent's model and
