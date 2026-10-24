@@ -137,9 +137,9 @@ section[id] { scroll-margin-top: 72px; }
 .hero {
   position: relative; display: grid; gap: 30px; padding: 40px 20px 80px; max-width: 1240px; margin: 0 auto; align-items: center;
 }
-@media (min-width: 1040px) { .hero { grid-template-columns: 1.05fr .95fr; padding: 64px 32px 72px; min-height: calc(100svh - 70px); } }
+@media (min-width: 1040px) { .hero { grid-template-columns: 1.05fr .95fr; padding: 16px 32px 56px; min-height: calc(100svh - 70px); align-items: start; } }
 /* The beta band: friendly, seen first, the whole band a link to the beta page. */
-.hero-band { position: relative; display: inline-flex; align-items: center; gap: 12px; max-width: 100%; margin-bottom: 22px;
+.hero-band { position: relative; display: inline-flex; align-items: center; gap: 12px; max-width: 100%; margin-bottom: 14px;
   padding: 8px 14px 8px 8px; border-radius: 22px; text-decoration: none; color: var(--ink); overflow: hidden;
   background: linear-gradient(100deg, var(--green-tint), var(--gold-tint) 55%, var(--coral-tint));
   box-shadow: 0 0 0 1px var(--line), var(--shadow); transition: transform .2s ease, box-shadow .2s ease; }
@@ -167,7 +167,7 @@ section[id] { scroll-margin-top: 72px; }
   background: var(--card); box-shadow: var(--shadow); font-size: 14px; font-weight: 900; color: var(--ink2);
 }
 .badge-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-tint); }
-h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em; margin: 0 0 24px; overflow-wrap: break-word; }
+h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em; margin: 0 0 18px; overflow-wrap: break-word; }
 .h-line { display: block; }
 .h-mark { position: relative; width: fit-content; z-index: 0; }
 .h-mark::after {
@@ -183,7 +183,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .in .h-hl { background-size: 100% .3em; }
 @media (prefers-reduced-motion: reduce) { .h-hl { transition: none; } }
 .lede { font-size: clamp(18px, 1.6vw, 21px); color: var(--ink2); max-width: 560px; line-height: 1.5; }
-.cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; align-items: center; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; align-items: center; }
 .cta-row.center { justify-content: center; }
 /* The hero's three buttons on one line on a computer: a little tighter than the other pills. */
 @media (min-width: 900px) {
@@ -191,11 +191,11 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   .hero .cta-row .pill { padding: 0 16px; font-size: 15px; gap: 7px; }
 }
 /* Three proof points, then the house words (Bips, Live, Carnet) explained once. */
-.proofs { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 10px; max-width: 560px; }
+.proofs { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; max-width: 560px; }
 .proofs li { display: flex; gap: 12px; align-items: center; font-weight: 700; color: var(--ink2); font-size: 16.5px; line-height: 1.4; }
 .proofs li > span { flex: none; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; background: var(--card); box-shadow: var(--shadow); }
 .proofs b { color: var(--ink); font-weight: 1000; }
-.words { margin-top: 16px; max-width: 560px; color: var(--muted); font-size: 14px; font-weight: 700; line-height: 1.5; }
+.words { margin-top: 12px; max-width: 560px; color: var(--muted); font-size: 14px; font-weight: 700; line-height: 1.5; }
 .words b { color: var(--ink2); font-weight: 900; }
 .pill-time { font-size: 12.5px; font-weight: 900; padding: 3px 8px; border-radius: 999px; background: var(--ground2); color: var(--ink2); }
 @media (max-width: 520px) {   /* the three buttons stack, full width, on a phone */
