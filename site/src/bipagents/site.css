@@ -162,6 +162,11 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .lede { font-size: clamp(18px, 1.6vw, 21px); color: var(--ink2); max-width: 560px; line-height: 1.5; }
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; align-items: center; }
 .cta-row.center { justify-content: center; }
+/* The hero's three buttons on one line on a computer: a little tighter than the other pills. */
+@media (min-width: 900px) {
+  .hero .cta-row { gap: 10px; flex-wrap: nowrap; }
+  .hero .cta-row .pill { padding: 0 16px; font-size: 15px; gap: 7px; }
+}
 /* Three proof points, then the house words (Bips, Live, Notebook) explained once. */
 .proofs { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 10px; max-width: 560px; }
 .proofs li { display: flex; gap: 12px; align-items: center; font-weight: 700; color: var(--ink2); font-size: 16.5px; line-height: 1.4; }
