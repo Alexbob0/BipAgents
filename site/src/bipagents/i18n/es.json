@@ -22,39 +22,75 @@
   },
   "hero": {
     "badge": "Construido sobre Hermes Agent",
-    "line1": "Tus agentes de IA.",
-    "line2": "Ellos actúan.",
-    "line3": "Tú decides.",
-    "lede": "Escríbeles, háblales o pasa a Live: tus Bips reservan, ordenan tu correo, llevan tu agenda y tu Cuaderno, y siempre te preguntan antes de actuar. Todo incluido, en tu propio espacio en Europa, que no leemos.",
+    "line1": "Tus agentes de IA hacen tus trámites",
+    "line2": "y te preguntan antes de actuar.",
+    "lede": "Correo ordenado, agenda al día, reservas hechas. Privado, en Europa: no leemos tus conversaciones.",
+    "proof1": "<b>Actúan por ti:</b> correo, agenda, reservas, un navegador de verdad",
+    "proof2": "<b>Primero, tu visto bueno:</b> te preguntan antes de enviar o pagar",
+    "proof3": "<b>Tu propio espacio</b>, privado, en Europa, sin anuncios",
+    "words": "<b>Bips</b>: tus asistentes de IA, uno por agente · <b>Live</b>: les hablas en voz alta · <b>Cuaderno</b>: lo que tus agentes guardan para ti",
     "cta": "Elegir mi plan",
     "watch": "Ver la demo",
-    "price": "Desde {{p.from}} al mes en la web · más barato que en las tiendas · sin permanencia",
-    "trust1": "Servidores en Europa",
-    "trust2": "Sin anuncios ni rastreo",
-    "trust3": "Código abierto",
-    "trust4": "Cancela cuando quieras"
+    "watchTime": "1 min",
+    "price": "Pronto en iPhone y Android · precios de lanzamiento desde {{p.from}} al mes"
   },
   "store": {
     "soon": "Muy pronto en",
     "get": "Descárgalo en"
   },
-  "toast": {
-    "now": "ahora",
-    "1": {
-      "from": "Día a día · IA",
-      "text": "Reservado ✅ Pasta Mia, viernes 20:30, para 2."
+  "ask": {
+    "a11y": "Un agente pregunta antes de reservar: «¿Reservo la mesa a tu nombre?». Tocas Una vez, y la mesa queda reservada.",
+    "agent": "Día a día",
+    "you": "Reserva una mesa el viernes por la noche",
+    "tool": "Pasta Mia · 20:30 · formulario rellenado",
+    "head": "Día a día te pregunta",
+    "q": "¿Reservo la mesa a tu nombre?",
+    "detail": "Pasta Mia · viernes 20:30 · 2 personas",
+    "done": "¡Reservado! ✅ <b>Pasta Mia</b>, viernes 20:30, para 2. Ya está en tu agenda."
+  },
+  "vs": {
+    "kicker": "Comparar",
+    "title": "¿Chatbot, agente que montas tú o BipAgents?",
+    "sub": "Por grandes categorías, a octubre de 2026: cada servicio tiene sus propios planes.",
+    "what": "Qué cambia",
+    "c1": "Chatbots de IA (ChatGPT, etc.)",
+    "c2": "Agentes que montas tú",
+    "c3": "BipAgents",
+    "r1": {
+      "label": "Actúa por ti",
+      "c1": "Sobre todo responden; algunos actúan en un navegador (el agente de ChatGPT, en planes de pago)",
+      "c2": "Sí, con las herramientas que conectes",
+      "c3": "Sí: correo, agenda, reservas, un navegador de verdad"
     },
-    "2": {
-      "from": "Presupuesto · IA",
-      "text": "Cargo inusual: 49,99 € «StreamMax». ¿Lo conoces?"
+    "r2": {
+      "label": "Pregunta antes de actuar",
+      "c1": "Algunos: el agente de ChatGPT pregunta antes de pasos importantes, como una compra",
+      "c2": "Depende de cómo lo configures",
+      "c3": "Sí, antes de enviar, reservar o pagar: una vez, para la sesión, o no"
     },
-    "3": {
-      "from": "Coach · IA",
-      "text": "4 de 4 entrenamientos esta semana 💪 ¡Sigue así!"
+    "r3": {
+      "label": "Puesta en marcha",
+      "c1": "Un minuto: creas una cuenta",
+      "c2": "Variable: lo instalas, lo conectas y lo proteges tú",
+      "c3": "Alrededor de un minuto, en la app"
     },
-    "4": {
-      "from": "Casa · IA",
-      "text": "La lavadora ha terminado. ¡No olvides tender la ropa!"
+    "r4": {
+      "label": "Dónde están tus datos",
+      "c1": "En los servidores de la empresa, a menudo en EE. UU.; almacenamiento en Europa sobre todo para empresas",
+      "c2": "Donde lo alojes",
+      "c3": "Tu propio espacio en un servidor en Europa, o tu ordenador"
+    },
+    "r5": {
+      "label": "En familia",
+      "c1": "En algunos planes (p. ej., Google AI Pro, con hasta 5 personas más)",
+      "c2": "Te toca organizarlo",
+      "c3": "Dúo y Familia: hasta 6 personas, cada una con su espacio"
+    },
+    "r6": {
+      "label": "Precio",
+      "c1": "Versión gratis; planes de pago de unos 20 $ o 23 € al mes",
+      "c2": "Software gratuito; pagas el servidor y el modelo de IA",
+      "c3": "Desde {{p.from}} al mes, crédito de IA incluido"
     }
   },
   "marquee": [
@@ -94,18 +130,7 @@
   "day": {
     "kicker": "Un día con tus Bips",
     "title": "Ellos se ocupan del resto.",
-    "sub": "Del café de la mañana a la cena: esto es lo que tus agentes hacen por ti, y lo que sigue en tus manos.",
-    "s1": {
-      "title": "Tu resumen de la mañana, en pódcast",
-      "text": "Citas, tiempo, paquetes: tu agente escribe el resumen de tu día y dos voces te lo leen con el café. Escucha el de la demo.",
-      "from": "Día a día",
-      "notif": "Tu pódcast de la mañana está listo ☕",
-      "card": "Tu resumen de la mañana",
-      "meta": "Martes · dos voces",
-      "listen": "Escuchar un fragmento",
-      "pause": "Pausa",
-      "credit": "Voces: Fish Audio Drama 3 · Built with Fish Audio"
-    },
+    "sub": "Tres momentos de un día: lo que tus agentes hacen por ti, y lo que sigue en tus manos.",
     "s2": {
       "title": "Correo ordenado, agenda al día",
       "text": "Lee tu bandeja, saca lo importante y apunta las citas. Prepara las respuestas: tú las lees antes de que salga nada.",
@@ -119,22 +144,6 @@
       "rest": "38 más: boletines y ofertas, archivados",
       "agenda": "Añadido a la agenda: excursión, jueves 8 h"
     },
-    "s3": {
-      "title2": "El Cuaderno: no olvida nada",
-      "text": "Personas, temas, tareas, viajes, compras y garantías: tus agentes mantienen tu Cuaderno al día, y lo lees como un cuaderno de verdad.",
-      "kind": "Cuaderno · Tema",
-      "title": "Viaje a Japón",
-      "statusT": "Cómo va: ",
-      "status": "vuelos reservados, hotel de Kioto por elegir",
-      "nextT": "Próximos pasos",
-      "next1": "Elegir el hotel de Kioto",
-      "next2": "Revisar la caducidad de los pasaportes",
-      "budgetT": "Cifras y presupuesto",
-      "budget": "3830 € de 4000 € · para dos",
-      "docsT": "Documentos",
-      "doc1": "Billetes de avión.pdf",
-      "doc2": "Seguro de viaje.pdf"
-    },
     "s4": {
       "title": "Él navega, tú mandas",
       "text": "Cada agente tiene su propio navegador: míralo rellenar un formulario en directo y toma el control cuando quieras. Antes de reservar, pagar o enviar, te pregunta: una vez, para la sesión o no, incluso desde la notificación.",
@@ -147,32 +156,13 @@
       "title": "¿Enviar la reserva en tu nombre?",
       "detail": "París → Lyon · sábado 9:04\n2 adultos · 58,00 €"
     },
-    "s6": {
-      "title2": "Tareas en segundo plano, con presupuesto",
-      "text": "¿Una búsqueda larga? La hace en segundo plano, sin pasarse del presupuesto que le das, y te avisa cuando está lista.",
-      "head": "Tarea en segundo plano · Presupuesto",
-      "title": "Comparar 5 seguros de hogar",
-      "progress": "3 de 5 sitios revisados",
-      "budget": "Presupuesto 0,20 € · usado 0,08 €",
-      "done": "Te aviso cuando esté listo"
-    },
-    "s7": {
-      "title": "En familia",
-      "text": "Con Familia, hasta seis personas tienen cada una sus agentes y su espacio. Y lo que compartís, como la lista de la compra, se llena entre todos.",
-      "head": "Lista de la compra · compartida",
-      "i1": "Leche",
-      "i2": "Albahaca",
-      "i3": "Parmesano",
-      "i4": "Velas de cumpleaños",
-      "chip": "Familia: hasta 6 personas"
-    },
     "call": {
       "title": "En el coche, una llamada Live con tu Bip",
       "text": "Con las manos al volante, pasa a Live y habla, sin más: sin botón que mantener, te responde en voz alta y lo interrumpes hablando. En español, inglés, francés y alemán.",
       "label": "Live · Día a día"
     },
-    "more": "¿Quieres verlo de verdad?",
-    "moreCta": "Ver la demo de la app →"
+    "more": "¿Quieres ver más?",
+    "moreCta": "Ver la demo completa →"
   },
   "liveDialog": [
     {
@@ -242,6 +232,7 @@
     "cta": "Suscribirme",
     "soon": "<b>La suscripción web llega muy pronto.</b> Mientras tanto, BipAgents llega a las tiendas, donde te suscribirás en la app:",
     "trial": "Una semana gratis para empezar, mientras queden este mes: te decimos antes de pagar si se aplica, y no se cobra nada si lo dejas antes de que acabe.",
+    "cancel": "Cancela cuando quieras: tu espacio se guarda 30 días para que te lleves todo (3 días tras una semana gratis que no continuaste).",
     "includedTitle": "Incluido para cada persona",
     "inc1": "Tus Bips, tus agentes de IA, listos en un minuto",
     "inc2": "Crédito de IA cada mes, lo que sobra pasa al siguiente",

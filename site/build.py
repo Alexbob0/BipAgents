@@ -134,13 +134,13 @@ html, body {{ margin: 0; width: 1200px; height: 630px; overflow: hidden; }}
 body {{ font-family: N, sans-serif; background: linear-gradient(135deg, #FFE8E0, #FFF3D1 45%, #E2F5EA); color: #16181D; position: relative; }}
 .copy {{ position: absolute; left: 72px; top: 70px; width: 640px; }}
 .brand {{ font-size: 34px; font-weight: 800; letter-spacing: -.02em; }} .brand b {{ font-weight: 1000; }}
-h1 {{ font-size: 76px; line-height: .98; letter-spacing: -.045em; font-weight: 1000; margin: 34px 0 0; }}
+h1 {{ font-size: 62px; line-height: 1.02; letter-spacing: -.045em; font-weight: 1000; margin: 34px 0 0; }}
 p {{ font-size: 26px; font-weight: 800; color: #4A5163; margin: 30px 0 0; }}
 .b {{ position: absolute; width: 230px; height: 230px; }} .b svg {{ width: 100%; height: 100%; overflow: visible; }}
 .b0 {{ left: 760px; top: 60px; }} .b1 {{ left: 940px; top: 150px; width: 200px; height: 200px; }} .b2 {{ left: 800px; top: 300px; }}
 .b3 {{ left: 990px; top: 380px; width: 180px; height: 180px; }} .b4 {{ left: 690px; top: 430px; width: 160px; height: 160px; }}
 </style><div class="copy"><div class="brand">Bip<b>Agents</b></div>
-<h1>{html.escape(t["hero"]["line1"])}<br>{html.escape(t["hero"]["line2"])}<br>{html.escape(t["hero"]["line3"])}</h1>
+<h1>{html.escape(t["hero"]["line1"])} {html.escape(t["hero"]["line2"])}</h1>
 <p>{html.escape(t["hero"]["badge"])}</p></div>{bips}""", encoding="utf-8")
     render_png(page, target, 1200, 630)
     page.unlink(missing_ok=True)
