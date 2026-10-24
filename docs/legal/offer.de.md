@@ -83,12 +83,14 @@ Für jede Person des Tarifs:
   dem ihre KI-Agenten laufen. Sie bauen auf Hermes Agent auf, freier Software von Nous Research
   (https://github.com/NousResearch/hermes-agent); BipAgents wird von Nous Research weder herausgegeben noch gebilligt
   noch gesponsert.
-- **Ihr KI-Guthaben**: 0,50 € Nutzung des KI-Modells pro Monat, in der App als geschätzte Zahl von Nachrichten
-  angezeigt (Abschnitt 6).
 - **Die Stimmen der Bips**, auf ihrem Telefon, wenn es das kann, sonst von ihrem Platz.
 - **Eine verschlüsselte Sicherung jede Stunde** (Abschnitt 9).
 - **Ein SSH-Zugang** zum Konto ihres Platzes, von einem Computer aus, dessen Schlüssel in der App hinzugefügt wurde
   (Einstellungen › Alles-inklusive-Angebot › SSH-Zugang), ohne Administratorrechte (root).
+
+**Das KI-Guthaben des Tarifs**: 0,50 € (Solo), 1,00 € (Duo) oder 3,00 € (Familie) Nutzung des KI-Modells pro Monat,
+geteilt von allen Personen des Tarifs, in der App als geschätzte Zahl von Nachrichten angezeigt: etwa 1.000, 2.000
+oder 6.000 Nachrichten pro Monat mit dem Standardmodell (Abschnitt 6).
 
 **Wo.** Die Server werden zuerst bei OVHcloud gemietet (Rechenzentren in der Europäischen Union), dann bei Hetzner
 (Deutschland oder Finnland), dann bei OVHcloud für kleinere Server, je nachdem, was verfügbar ist. Sie stehen alle in
@@ -110,8 +112,8 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   dein Store-Konto noch nie eine hatten. Sonst bietet dir die App denselben Tarif ohne kostenlose Woche an. Vor dem Kauf
   sagt dir die App, ob die kostenlose Woche gilt, wann sie endet und welcher Preis danach folgt.
 - Die kostenlose Woche gilt für Käufe in der App; auf der Website zeigt die Zahlungsseite, ob sie gilt.
-- Während der kostenlosen Woche funktioniert alles wie im Tarif; jede Person hat 0,50 € KI-Guthaben für die ganze
-  Woche.
+- Während der kostenlosen Woche funktioniert alles wie im Tarif; das KI-Guthaben des Tarifs (Abschnitt 6) gilt für die
+  ganze Woche.
 - **Am Ende der Woche beginnt das kostenpflichtige Abo von selbst**, außer du hast es vor dem Ende im Store gekündigt
   (im App Store mindestens 24 Stunden vor dem Ende, nach den Bedingungen von Apple). Nichts wird abgebucht, wenn du
   vorher aufhörst.
@@ -140,18 +142,25 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 
 ## 6. Das KI-Guthaben und das Modell
 
-- Jede Person des Tarifs hat **0,50 € KI-Guthaben pro Monat**: Nutzung des Modells, berechnet zu dem Preis, den der
-  Anbieter Kerfy Studio in Rechnung stellt. Die App zeigt es als **geschätzte Zahl von Nachrichten** mit dem gewählten
-  Modell. Es ist eine Schätzung: Was eine Nachricht kostet, hängt von ihrer Länge, den angehängten Dateien und dem
-  Modell ab.
+- Jeder Tarif hat ein **KI-Guthaben pro Monat: 0,50 € für Solo, 1,00 € für Duo, 3,00 € für Familie**: Nutzung des
+  Modells, berechnet zu dem Preis, den der Anbieter Kerfy Studio in Rechnung stellt. Bei Duo oder Familie **gehört
+  dieses Guthaben allen Personen des Tarifs**: Ihre Agenten nutzen es gemeinsam, ohne festen Anteil für jede Person.
+- **In Nachrichten**: Die App zeigt das Guthaben als **geschätzte Zahl von Nachrichten** mit dem gewählten Modell. Mit
+  dem Standardmodell runden die Seiten des Angebots ab: **etwa 1.000 Nachrichten pro Monat für Solo, 2.000 für Duo und
+  6.000 für die ganze Familie**. Es ist eine Schätzung, kein Versprechen: Was eine Nachricht kostet, hängt von ihrer
+  Länge, den angehängten Dateien und dem Modell ab.
 - **Übertrag**: Das Guthaben des Tarifs, das du nicht genutzt hast, geht in den nächsten Monat über, für höchstens
   einen Monat mehr.
 - **Zusätzliches Guthaben**: Du kannst in der App welches kaufen (Einstellungen › Alles-inklusive-Angebot ›
-  KI-Guthaben hinzufügen), 2,99 € inkl. MwSt. für 2 € Guthaben. Es wird dem Platz der Person gutgeschrieben, die den
-  Tarif abgeschlossen hat. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
+  KI-Guthaben hinzufügen), 2,99 € inkl. MwSt. für 2 € Guthaben. Es kommt zum Guthaben des Tarifs hinzu, für alle seine Personen. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
   und kommt mit deinem nächsten Abo zurück. Es geht nur verloren, wenn du dein Konto löschst.
-- **Guthaben aufgebraucht**: Deine Agenten rufen das KI-Modell nicht mehr auf, bis zum nächsten Monat oder bis du
-  Guthaben hinzufügst. Dein Platz, deine Dateien und deine Sicherungen laufen weiter; die App sagt es dir.
+- **Guthaben aufgebraucht**: Die Agenten aller Personen des Tarifs rufen das KI-Modell nicht mehr auf, bis zum
+  nächsten Monat oder bis die Person, die zahlt, Guthaben hinzufügt. Die Plätze, die Dateien und die Sicherungen
+  laufen weiter; die App sagt es jeder Person.
+- **Limit pro Person** (Duo und Familie): Die Person, die zahlt, kann jeder Person ein monatliches Limit geben
+  (Einstellungen › Alles-inklusive-Angebot). Ist ihr Limit erreicht, rufen die Agenten dieser Person das KI-Modell bis
+  zum nächsten Monat nicht mehr auf; der Rest des Guthabens bleibt den anderen. Die Person sieht ihr Limit in ihrer
+  App.
 - Das Guthaben ist kein Geld: Es dient nur der Nutzung des KI-Modells im Angebot, ist nicht übertragbar und wird nicht
   erstattet, vorbehaltlich der Rechte, die dir das Gesetz gibt (Abschnitte 12 und 13).
 - **Das Modell**: Du wählst es aus einer Liste (standardmäßig GLM-5.3 Flash, andere wie DeepSeek), mit seinem Preis pro
@@ -200,8 +209,13 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 ## 8. Duo und Familie: eingeladene Personen
 
 - Die Person, die abschließt, lädt die anderen per E-Mail ein, mit einem Link, der nur einmal funktioniert. Jede
-  eingeladene Person erstellt ihr eigenes Konto und hat **ihren eigenen Platz**, ihre Agenten und ihr KI-Guthaben.
-  **Weder die Person, die zahlt, noch Kerfy Studio können ihre Agenten oder ihre Unterhaltungen lesen.**
+  eingeladene Person erstellt ihr eigenes Konto und hat **ihren eigenen Platz** und ihre Agenten; das KI-Guthaben ist
+  das des Tarifs, geteilt (Abschnitt 6). **Weder die Person, die zahlt, noch Kerfy Studio können ihre Agenten oder
+  ihre Unterhaltungen lesen.**
+- **Was die Person, die zahlt, sieht**: wie viel vom KI-Guthaben jede Person im Monat verbraucht hat (ein Betrag in
+  Euro und seine Schätzung in Nachrichten), um das Guthaben der Familie zu verfolgen und Limits zu setzen. **Nie, was
+  jemand schreibt oder was seine Agenten tun.** Jede eingeladene Person sieht, was vom Guthaben für alle übrig ist,
+  was sie verbraucht hat und ihr Limit, falls es eines gibt, nie, was die anderen verbraucht haben.
 - Die Person, die abschließt, bleibt die einzige Kundin des Stores (oder von Kerfy Studio, auf der Website): Sie zahlt,
   wechselt den Tarif oder kündigt. Die Plätze der eingeladenen Personen hängen von ihrem Abo ab: Endet es, folgen sie
   denselben Regeln wie ihr eigener (Abschnitt 11), und die App informiert sie. Löscht die Person, die abschließt, ihr

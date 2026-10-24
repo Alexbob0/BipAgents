@@ -76,12 +76,14 @@ For each person in the plan:
 - **Their place**: their own Linux account on a server that Kerfy Studio rents from a hosting partner, where their AI
   agents run. The agents are built on Hermes Agent, open-source software by Nous Research
   (https://github.com/NousResearch/hermes-agent); BipAgents is not published, endorsed or sponsored by Nous Research.
-- **Their AI credit**: €0.50 of AI model use each month, shown in the app as an estimated number of messages
-  (section 6).
 - **The Bips' voices**, on their phone when it can, otherwise from their place.
 - **An encrypted backup every hour** (section 9).
 - **SSH access** to their place's account, from a computer whose key was added in the app (Settings › All-included plan
   › SSH access), without administrator (root) rights.
+
+**The plan's AI credit**: €0.50 (Solo), €1.00 (Duo) or €3.00 (Family) of AI model use each month, shared by everyone
+in the plan, shown in the app as an estimated number of messages: about 1,000, 2,000 or 6,000 messages a month with
+the default model (section 6).
 
 **Where.** The servers are rented from OVHcloud first (data centres in the European Union), then from Hetzner (Germany
 or Finland), then from OVHcloud for smaller servers, depending on what is available. They are all in the European
@@ -103,7 +105,7 @@ section 6); the services you connect to your agents and their own subscriptions.
   never had one. Otherwise, the app offers you the same plan without a free week. Before the purchase, the app tells
   you whether the free week applies, when it ends and the price that follows it.
 - The free week applies to purchases in the app; on the website, the payment page tells you whether it applies.
-- During the free week, everything works as in the plan; each person has €0.50 of AI credit for the whole week.
+- During the free week, everything works as in the plan; the plan's AI credit (section 6) is for the whole week.
 - **At the end of the week, the paid subscription starts on its own**, unless you cancelled it in the store before the
   end (on the App Store, at least 24 hours before the end, under Apple's terms). Nothing is charged if you stop before.
 - If you do not continue, your place is kept for 3 days, then erased with its backups.
@@ -130,16 +132,23 @@ section 6); the services you connect to your agents and their own subscriptions.
 
 ## 6. The AI credit and the model
 
-- Each person in the plan has **€0.50 of AI credit per month**: AI model use counted at the price the provider charges
-  Kerfy Studio. The app shows it as an **estimated number of messages** with the chosen model. It is an estimate: the
-  cost of a message depends on its length, on the attached files and on the model.
+- Each plan has an **AI credit per month: €0.50 for Solo, €1.00 for Duo, €3.00 for Family**: AI model use counted at
+  the price the provider charges Kerfy Studio. On a Duo or a Family plan, this credit **belongs to everyone in the
+  plan**: their agents use it together, with no fixed share for each person.
+- **As messages**: the app shows the credit as an **estimated number of messages** with the chosen model. With the
+  default model, the offer's pages round it down: **about 1,000 messages a month for Solo, 2,000 for Duo and 6,000 for
+  the whole family**. It is an estimate, not a promise: the cost of a message depends on its length, on the attached
+  files and on the model.
 - **Carry-over**: the plan's credit you did not use carries over to the next month, for one more month at most.
 - **Extra credit**: you can buy some in the app (Settings › All-included plan › Add AI credit), €2.99 VAT included for
-  €2 of credit. It is added to the place of the person who subscribed to the plan. **It never expires**: if some is
+  €2 of credit. It is added to the plan's credit, for everyone in it. **It never expires**: if some is
   left when the subscription ends, it is kept on your account and comes back with your next subscription. It is only
   lost if you delete your account.
-- **Credit used up**: your agents no longer call the AI model until the next month or until you add credit. Your
-  place, your files and your backups go on; the app tells you.
+- **Credit used up**: the agents of everyone in the plan no longer call the AI model until the next month or until the
+  person who pays adds credit. The places, the files and the backups go on; the app tells each person.
+- **Limit per person** (Duo and Family): the person who pays can give each person a monthly limit (Settings ›
+  All-included plan). Once their limit is reached, that person's agents no longer call the AI model until the next
+  month; the rest of the credit stays for the others. The person sees their limit in their app.
 - The credit is not money: it can only be used for AI model use within the offer, cannot be transferred and is not
   refunded, subject to the rights the law gives you (sections 12 and 13).
 - **The model**: you pick it from a list (GLM-5.3 Flash by default, others such as DeepSeek), with its price per
@@ -184,8 +193,12 @@ section 6); the services you connect to your agents and their own subscriptions.
 ## 8. Duo and Family: invited people
 
 - The person who subscribes invites the others by email, with a link that only works once. Each invited person creates
-  their own account and has **their own place**, their agents and their AI credit. **Neither the person who pays nor
-  Kerfy Studio can read their agents or their conversations.**
+  their own account and has **their own place** and their agents; the AI credit is the plan's, shared (section 6).
+  **Neither the person who pays nor Kerfy Studio can read their agents or their conversations.**
+- **What the person who pays sees**: how much of the AI credit each person used in the month (an amount in euros, and
+  its estimate in messages), to follow the family's credit and set limits. **Never what anyone writes or what their
+  agents do.** Each invited person sees what is left of the credit for everyone, what they used and their limit if
+  there is one, never what the others used.
 - The person who subscribes remains the only customer of the store (or of Kerfy Studio, on the website): they pay,
   change plan or cancel. The invited people's places depend on their subscription: if it ends, they follow the same
   rules as theirs (section 11), and the app tells them. If the person who subscribes deletes their account, the invited

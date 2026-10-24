@@ -22,6 +22,8 @@
   tu plaza (nunca su contenido) y tus copias de seguridad, cifradas con una clave que no tiene; aloja tu plaza sin
   acceder a ella (sección 5). Si das a un agente su propia dirección de correo, Kerfy Studio guarda además los correos
   de esa dirección en su servidor de correo (sección 5.8).
+- En un plan Duo o Familia, el crédito de IA es de toda la familia: **la persona que paga ve cuánto usa cada persona**
+  (un importe), **nunca lo que escribe** (sección 5.3).
 
 ## 1. Quién es responsable
 
@@ -350,6 +352,14 @@ tu desistimiento.
 
 **Crédito de IA usado.** El importe que la clave de IA de cada plaza ha gastado en el mes, consultado en el enrutador
 de IA una vez por minuto como máximo, y el crédito traspasado: un importe, nunca tus mensajes.
+
+**En un plan Duo o Familia**, el crédito de IA es compartido: la persona que paga ve en su app el importe que cada
+plaza ha usado en el mes (y su estimación en mensajes) y el límite mensual que le haya dado. Una persona invitada ve
+lo que queda para todos, lo que ha usado y su límite, nunca lo que han usado los demás. Estos importes no dicen nada
+del contenido: **nadie ve lo que escribe cada uno ni lo que hacen sus agentes**. Finalidad: permitir a la persona que
+paga seguir el crédito de la familia y fijar límites, y a cada persona saber lo que le queda; base jurídica: la
+ejecución del contrato (artículo 6.1.b del RGPD), ya que el crédito compartido forma parte del plan Duo o Familia. El
+límite fijado se conserva mientras dure la suscripción.
 
 **Solo una semana gratis por dispositivo.**
 

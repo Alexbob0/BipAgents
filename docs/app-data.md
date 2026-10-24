@@ -138,6 +138,7 @@ This is the all-included offer's service, with accounts and family links (`App/F
 | Purchase, restore, plan change | `POST /v1/activate` | iOS: the App Store's **signed transaction (JWS)** + a DeviceCheck token; Android: the Play **purchase token**; region, ticket |
 | AI credit bought | `POST /v1/subscription/credit` | the store proof, product id |
 | Following the subscription and the places | `GET /v1/subscription`, `/v1/places/mine`, `POST …/claimed`, `…/withdraw` | the subscription token or the place's claim token |
+| A Duo's or a family's shared AI credit: the buyer sets one person's monthly limit | `POST /v1/subscription/places/{number}/cap` | the subscription token, `cap_eur` (an amount, or null for none). `GET /v1/subscription` returns each place's AI use this month (`ai.people`: number, amount spent, limit) to the buyer only; `GET /v1/places/mine` returns an invited person only what is left for everyone and their own use and limit. Amounts in euros, never content |
 | Outage notices | `POST /v1/subscription/phone`, `/v1/places/phone` | the **relay token** (never the APNs or Firebase token) |
 | Account sign-in | `POST /v1/account/email`, `/v1/account/signin` | e-mail address (and the code received), or the **Apple or Google ID token**; device name (iOS: "iPhone"/"iPad"; Android: `Build.MODEL`, e.g. "Pixel 8"), platform, **this device's P-256 public key**, app language |
 | Account | `GET/PUT /v1/account*` | relay token, device name; approve or remove devices; delete or keep the account |
