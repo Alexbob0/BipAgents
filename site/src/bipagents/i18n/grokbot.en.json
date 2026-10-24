@@ -1,0 +1,29 @@
+{
+  "page": {
+    "grokbot": {
+      "title": "Coming from Grok Bot — BipAgents",
+      "description": "Bring your Bot to BipAgents: one message pasted into Grok Bot makes it write its memory, its rules, its routines and its skills into a zip that the app imports."
+    }
+  },
+  "foot": { "grokbot": "Coming from Grok Bot" },
+  "grokbot": {
+    "kicker": "Moving",
+    "title": "Coming from Grok Bot.",
+    "sub": "Grok Bot has no export button. So we ask your Bot to write everything out itself: its role, what it knows about you, the people, the tasks, its routines and its skills. Works with ChatGPT, Muse or another agent too.",
+    "step1Title": "Copy this message",
+    "step1": "One message, to paste as it is.",
+    "copy": "Copy the message",
+    "copied": "Copied ✓",
+    "step2Title": "Paste it into Grok Bot",
+    "step2": "In your Bot’s conversation (one Bot at a time). It writes its files, then gives you bipagents-export.zip: download it.",
+    "step3Title": "Open BipAgents",
+    "step3": "Add an agent › Coming from another assistant › Import the file, and pick the zip. You see everything that will be created before you confirm.",
+    "safeTitle": "What happens on arrival",
+    "safe1": "Nothing is saved before you have read it and ticked it.",
+    "safe2": "Its skills arrive switched off, its routines wait for your yes.",
+    "safe3": "Anything that looks like a password, a key or a card number is taken out.",
+    "safe4": "What your Bot writes is its own version of its memory: it may be incomplete.",
+    "cta": "Try the beta",
+    "messageLabel": "The message to copy"
+  }
+}
