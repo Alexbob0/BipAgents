@@ -469,7 +469,7 @@
     "ask1": "Your feedback: what works, what’s missing, what gets in the way",
     "ask2": "A little patience: it’s a beta, things may break",
     "getIt": "Install the beta",
-    "soon": "Opening in a few days.",
+    "soon": "Opening soon.",
     "storeSoon": "Coming soon on",
     "storeGet": "The beta on",
     "cap": "Places: {cap}",
@@ -534,7 +534,7 @@
       "send": "Send",
       "no": "No thanks",
       "at": "At Sam’s",
-      "notif": "Alex: The school called: Léa has a fever, I’m picking her up."
+      "notif": "Camille: The school called: Léa has a fever, I’m picking her up."
     }
   }
 }

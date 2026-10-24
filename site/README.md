@@ -38,7 +38,7 @@ One file, read by both sites:
   the app), `abuse`, `privacy`, `security` (all @bipagents.com; `security` goes into security.txt).
 - **`stores`** — App Store and Google Play links for BipAgents and for Tablée. Empty = « Coming soon to » badges.
 - **`beta`** — `testflight` (TestFlight public link) and `play` (Google Play testing link) for the `/beta/` page; both
-  empty = « Coming soon on » badges and « Opening in a few days ». `cap` = the places line (« Places: … »), one text
+  empty = « Coming soon on » badges and « Opening soon ». `cap` = the places line (« Places: … »), one text
   or one per language; empty = no line.
 - **`checkout.url`** — the web checkout, one template for every plan and period:
   `https://…/v1/web/checkout?plan={plan}&period={period}&lang={lang}` (the page adds `&currency=`) (`plan` = solo | duo | famille, `period` = month |

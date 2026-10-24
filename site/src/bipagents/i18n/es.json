@@ -469,8 +469,8 @@
     "ask1": "Tus comentarios: lo que funciona, lo que falta, lo que molesta",
     "ask2": "Un poco de paciencia: es una beta, algo puede fallar",
     "getIt": "Instalar la beta",
-    "soon": "Abre en unos días.",
-    "storeSoon": "Pronto en",
+    "soon": "Próxima apertura.",
+    "storeSoon": "Próximamente en",
     "storeGet": "La beta en",
     "cap": "Plazas: {cap}",
     "terms": "Condiciones de la beta",
@@ -534,7 +534,7 @@
       "send": "Enviar",
       "no": "No, gracias",
       "at": "En casa de Sam",
-      "notif": "Alex: Ha llamado el colegio: Léa tiene fiebre, voy a recogerla."
+      "notif": "Camille: Ha llamado el colegio: Léa tiene fiebre, voy a recogerla."
     }
   }
 }

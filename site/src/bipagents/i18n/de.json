@@ -469,8 +469,8 @@
     "ask1": "Deine Rückmeldungen: was klappt, was fehlt, was stört",
     "ask2": "Etwas Geduld: Es ist eine Beta, manches kann kaputtgehen",
     "getIt": "Die Beta installieren",
-    "soon": "Start in wenigen Tagen.",
-    "storeSoon": "Bald bei",
+    "soon": "Start demnächst.",
+    "storeSoon": "Demnächst bei",
     "storeGet": "Die Beta bei",
     "cap": "Plätze: {cap}",
     "terms": "Beta-Bedingungen",
@@ -534,7 +534,7 @@
       "send": "Senden",
       "no": "Nein danke",
       "at": "Bei Sam",
-      "notif": "Alex: Die Schule hat angerufen: Léa hat Fieber, ich hole sie ab."
+      "notif": "Camille: Die Schule hat angerufen: Léa hat Fieber, ich hole sie ab."
     }
   }
 }

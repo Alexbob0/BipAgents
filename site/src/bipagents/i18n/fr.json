@@ -469,7 +469,7 @@
     "ask1": "Tes retours : ce qui marche, ce qui manque, ce qui gêne",
     "ask2": "Un peu d’indulgence : c’est une bêta, des choses peuvent casser",
     "getIt": "Installer la bêta",
-    "soon": "Ouverture dans quelques jours.",
+    "soon": "Ouverture prochaine.",
     "storeSoon": "Bientôt sur",
     "storeGet": "La bêta sur",
     "cap": "Places : {cap}",
@@ -534,7 +534,7 @@
       "send": "Envoyer",
       "no": "Non merci",
       "at": "Chez Sam",
-      "notif": "Alex : L’école a appelé : Léa a de la fièvre, je vais la chercher."
+      "notif": "Camille : L’école a appelé : Léa a de la fièvre, je vais la chercher."
     }
   }
 }
