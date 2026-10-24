@@ -8,6 +8,7 @@ restarted.
 3. The settings a fresh install now makes (migrations.py).
 4. The machine's other installs (the family's), each in its own account, after one sudo password (offered, or
    --all). What no account here can do comes as commands: Hermes' own update, Pocket run from another account.
+   New Hermes fixes (hermes/patches/) are put on a Hermes that came with BipAgents (`hermes-update --fixes-only`).
 5. Once, the offer to do all this each night (a timer of this account, `--auto`: no questions).
 
 `--check` only says what is new.
@@ -310,8 +311,14 @@ def main(argv: List[str]) -> int:
     if not args.auto and platform.system() == "Linux" and (args.all or ask(
             "Update the other BipAgents installs of this machine too (your sudo password, asked once)?")):
         update_others(runner)
-    if touched("hermes/patches/"):
-        commands.append("bipagents hermes-update --fixes-only   # BipAgents' Hermes patches changed")
+    if touched("hermes/patches/") and config:
+        # New Hermes fixes: on a Hermes that came with BipAgents, put on now (Hermes itself isn't updated); on the
+        # person's own Hermes, theirs to choose.
+        if own_hermes() and Path(hermes.hermes_bin()).exists() and not runner.dry:
+            from . import update as hermes_update
+            hermes_update.main(["--fixes-only", "--yes", "--config", str(config)])
+        else:
+            commands.append("bipagents hermes-update --fixes-only   # BipAgents' Hermes patches changed")
     if touched("App/", "Packages/", "Widgets/", "NotificationService/"):
         say(ui.note("The app changed too: its new version comes through TestFlight or the App Store."))
     if commands:
