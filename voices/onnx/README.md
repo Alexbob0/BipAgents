@@ -22,7 +22,7 @@ voices/onnx/.venv/bin/python voices/onnx/build.py
 ```
 
 The packages are never at a public address. The apps get them from the App Store (upload the `.aar` files to App
-Store Connect with Transporter, then submit them with the build) and from Google Play (`scripts/play-upload.py` puts
+Store Connect with Transporter, then submit them with the build) and from Google Play (the publisher's upload script puts
 them in the bundle); the offer's servers get them from their guichet (copy `build/voices` to its `voices` folder).
 
 ```bash

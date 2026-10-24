@@ -1,6 +1,6 @@
 # A place's space encrypted at rest (level 1)
 
-Design note, 2026-10-22. Code: `bridge-rs/src/space.rs` (the bridge), `keys-rs/` (Kerfy's key service),
+Design note, 2026-10-22. Code: `bridge-rs/src/space.rs` (the bridge), Kerfy Studio's key service (private),
 `installer/bipinstall/space.py` (`bipagents encrypt`), `installer/cloud/space-hardening.sh`. Off by default in this
 first version; turned on per place. Résumé en français à la fin.
 
@@ -17,7 +17,7 @@ server's disk.
 ## The honest properties (the owner's choice: option A, unattended unlock with a split key)
 
 The folder's key is two random 32-byte shares put together (XOR): one kept on the server's disk, the other kept by
-Kerfy Studio's key service (`keys-rs/`), which must run at **another provider** than the places' servers. Each share
+Kerfy Studio's key service (private code), which must run at **another provider** than the places' servers. Each share
 alone says nothing about the key. After a reboot the place's bridge asks the key service for the other share, with the
 place's own token, opens the folder and starts the agents. **No phone, no person**: agents and routines keep working
 after any reboot.
@@ -34,7 +34,7 @@ The key service must be at another provider than the servers it serves; if both 
 hold both shares. Today's servers: Hetzner then OVHcloud (server-providers): the key service would go to a third one
 (e.g. Scaleway, or a small EU VPS elsewhere), with its own database backups at yet another place or encrypted.
 
-What the key service does, and only that (`keys-rs/src/lib.rs`):
+What the key service does, and only that:
 
 - `POST /v1/share` with the place's token (the guichet's place token, the one its backups already use). The first
   time, the request carries the guichet's **Ed25519-signed grant** for that token (the same key that signs the
@@ -99,7 +99,7 @@ Links replace whole folders only (a file link would be replaced by an atomic wri
    `locked.json`: the seat agent's heartbeat says `"locked": "key service unreachable"`. The guichet treats it as
    locked, not as an outage (no « down » alert, no move or restore, no update wave going back) and alerts Kerfy when
    it lasts `locked_alert_minutes` (60) while the key service answers, or that the key service doesn't answer
-   (guichet-rs `space_keys.rs`, built 2026-10-23).
+   (built 2026-10-23).
 3. Opened: the agents' services start (`systemctl --user start hermes-gateway…`); each of them, and the backup,
    browser refresh and update services, carries a drop-in `ConditionPathExists=…/open/.bipagents-space`, so at boot
    they were skipped, not failed. The timers keep running and their services run once the folder is open.
@@ -111,7 +111,7 @@ Planned nightly reboots are announced: as the server shuts down its seat agent t
 /v1/server/rebooting`), and the guichet sends the key service a signed `reboot` order for each of that server's
 encrypted places; the share is then released directly, once, within 30 minutes. Any other request (a crash, a reboot
 nobody announced, `bipagents encrypt`'s reopening, an unlock by hand… or a rescue boot) makes the key service ask the
-guichet, `POST /v1/keys/check` (Bearer the key service's own token, made by `bipguichet keys token`) `{place, address,
+guichet, `POST /v1/keys/check` (Bearer the key service's own token, issued by the guichet) `{place, address,
 nonce}`. The guichet allows only when the place is active, the request comes from its server's known address and the
 provider's API says the server runs its own disk:
 
@@ -129,7 +129,7 @@ The answer is signed with the guichet's key (`{"kind": "keys-check", "place", "n
 (`keys_checks`), every request by the key service (its log); a denial is alerted. **The guichet down**: an unannounced
 release is held (403 « held: the guichet can't confirm this server's boot »), never given by default; the bridge keeps
 asking every 5 minutes and opens when the guichet answers. Operator's path: check the server at its provider, then
-`bipkeys allow-once PLACE [MINUTES]` on the key service (one release without a check, logged).
+a one-time release on the key service (one release without a check, logged).
 
 Honest limits: an announced reboot is released without the provider check, so a provider that triggers a soft reboot
 into rescue mode (an ACPI shutdown lets the seat agent send its genuine notice) within the window would get the share
@@ -156,9 +156,9 @@ the unlock (not built). **Canonical Livepatch** (Ubuntu Pro) avoids most kernel 
   Making it the default is one setting at the guichet (put `keys` in every place's setup); the guichet must also
   issue the grant (`{"v": 1, "kind": "keys-grant", "place", "server", "token_sha256", "issued"}` signed as orders are)
   and send `forget`/`stop` orders (`{"kind": "keys-order", "action", "place", "reason", "expires", "order"}`) when a
-  place is deleted, moved or stopped — **built 2026-10-23** in guichet-rs (`space_keys.rs`): `[space_keys] url` and
-  `encrypt` (off by default), the place named `<server>:<number>:<8 hex of its token's hash>`, orders retried until
-  the key service says done, `bipguichet keys status|token|stop|resume|forget`. Run `space-hardening.sh` from
+  place is deleted, moved or stopped — **built 2026-10-23** in the guichet: a key service address and an
+  `encrypt` setting (off by default), the place named `<server>:<number>:<8 hex of its token's hash>`, orders retried until
+  the key service says done. Run `space-hardening.sh` from
   cloud-init then (not wired yet).
 - An existing space: `bipagents encrypt` (with the key service's address and the place's token). It explains, writes
   the drop-ins, stops the bridge and the agents' services, and the bridge does the rest: checks the free disk (the
@@ -192,13 +192,13 @@ Built: the bridge (locked door, unlock loop, enable with checks and rollback, lo
 the installer (`bipagents encrypt`, drop-ins, the offer's setup `keys`, the heartbeat's `locked`), the hardening
 script. Tests: bridge black-box with a fake backend and a scripted key service; key service black-box; installer.
 
-Built 2026-10-23: the guichet side (guichet-rs `space_keys.rs`: grants in new places' setups behind one setting, off;
+Built 2026-10-23: the guichet side (grants in new places' setups behind one setting, off;
 signed `stop`/`resume`/`forget`/`reboot` orders retried until acknowledged; `locked` in the heartbeat is no outage,
 alerted only when it lasts; `POST /v1/keys/check` with the OVHcloud and Hetzner rescue checks), and the key service's
-checks of unannounced releases (held when the guichet can't be asked; `bipkeys allow-once`).
+checks of unannounced releases (held when the guichet can't be asked; a logged one-time release by hand).
 
 Left: hosting the key service at a third provider (with TLS in front, its database backed up encrypted elsewhere),
-`bipguichet keys token` given to it, then the owner turning `[space_keys] encrypt` on; `space-hardening.sh` in the
+the guichet's token given to it, then the owner turning encryption on at the guichet; `space-hardening.sh` in the
 servers' first boot; the seat agent's `locked` published (the servers fetch seat-agent.py from the public
 repository); the reboot coordination; the catch-up of skipped timers; a real run with
 gocryptfs on Linux (not possible on the Mac where this was built); the apps (nothing needed: a locked place answers

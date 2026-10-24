@@ -4,12 +4,13 @@
 
 BipAgents needs **no GPU**: the Bips' voices run on CPU (Kyutai Pocket TTS). Any machine that already runs
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) is enough, whether it is a Mac mini, a VPS
-or a Linux server at home.
+or a Linux server at home. The installer does all of this in one command ([README](../README.md)); this guide is
+for doing it by hand, or understanding what it set up.
 
 ```
-iPhone (BipAgents) ──Tailscale──▶ your machine
+phone (BipAgents)  ──Tailscale──▶ your machine
                                    ├─ Hermes Agent, api_server   :8642 (one port per agent: 8644, …)
-                                   ├─ bridge (bridge/)           :8643  voice, files, push, Inbox
+                                   ├─ bridge (bridge-rs/)        :8643  voice, files, push, Inbox
                                    └─ Pocket TTS (pocket/)       :8098  Bips' voices (local, called by the bridge)
 ```
 
@@ -25,7 +26,7 @@ Nothing is exposed to the Internet: everything goes through your tailnet, over H
 
 ## 1. Tailscale
 
-Install Tailscale on the machine and on the iPhone, in the same tailnet. In the admin console:
+Install Tailscale on the machine and on your phone, in the same tailnet. In the admin console:
 *DNS* → enable **MagicDNS** and **HTTPS Certificates**. The machine then gets a name like `mamachine.tailnet.ts.net`.
 
 On a Mac, the `tailscale` command comes with the app (*Tailscale Settings* → install the command-line
@@ -78,7 +79,7 @@ startup (`--languages fr`). Details: [`pocket/README.md`](../pocket/README.md).
   `~/.cache/huggingface`, `HF_HOME` to put them elsewhere) and ≈ 1 GB for CPU PyTorch. Add some swap
   on a 4 GB VPS.
 - **Network**: keep Pocket on `127.0.0.1` (the default) and open nothing in the firewall: the bridge is on
-  the same machine, the iPhone goes through Tailscale. With `ufw`: `sudo ufw allow in on tailscale0`, nothing else.
+  the same machine, the phone goes through Tailscale. With `ufw`: `sudo ufw allow in on tailscale0`, nothing else.
 - **Measure** once installed: `python3 pocket/bench.py` (first audio and speed). Target: first audio under
   ≈ 300 ms, at least 1.5× real time. Otherwise: `--quantize` (x86), then dedicated vCPUs.
 
@@ -220,29 +221,18 @@ sudo tailscale serve --bg --https=8642 http://127.0.0.1:8642   # one per agent (
 sudo tailscale serve --bg --https=8643 http://127.0.0.1:8643   # the bridge
 ```
 
-From the iPhone or another device on the tailnet: `https://mamachine.tailnet.ts.net:8643/health`. Pocket (8098)
+From your phone or another device on the tailnet: `https://mamachine.tailnet.ts.net:8643/health`. Pocket (8098)
 stays local, only the bridge calls it.
 
 ## 7. The app
 
-- Build with Xcode onto an iPhone: `echo 'DEVELOPMENT_TEAM = <your Team ID>' > Config/Local.xcconfig`, then run
-  the BipAgents scheme.
-- Under your own Apple account, pick your app identifier (it must be unique at Apple) and add it to
-  `Config/Local.xcconfig`:
-
-  ```
-  DEVELOPMENT_TEAM = <your Team ID>
-  BIP_BUNDLE_ID = com.tonnom.bipagents
-  ```
-
-  The extension (`….NotificationService`), the App Group (`group.…`) and the keychain group (`….shared`) derive from it;
-  Xcode creates them on the first build (*Automatically manage signing*). Use the same identifier in the bridge's
-  `[apns] bundle_id`.
-- In the app: Settings › Add an agent → **Scan the QR code**. On the server, fill in `public_url` (the bridge's
-  and each agent's tailnet address) in `bridge.toml`, then show the code with `bipagents qr` (one per
-  agent, `--agent vie` for one only, `--png vie.png` to save it). It holds the agent's keys: show it only to your
-  own phone. Without it: address `https://mamachine.tailnet.ts.net:8642`, api_server key, bridge address
-  `https://mamachine.tailnet.ts.net:8643` and its key. Pick your language and your Bip.
+- The apps (iPhone, iPad, Android) come from the App Store and Google Play *(coming soon: they are in testing)*. Until
+  then, the web console opens your agents in a computer's browser: `~/.local/bin/bipbridge console --config
+  ~/.config/hermes-ios/bridge.toml` gives a one-time link (on the tailnet).
+- In the app: **＋ › Scan QR code**. On the server, fill in `public_url` (the bridge's and each agent's tailnet address)
+  in `bridge.toml`, then show the code with `~/.local/bin/bipbridge qr --config ~/.config/hermes-ios/bridge.toml` (one
+  per agent, `--agent <id>` for one only, `--png <file>` to save it). It holds the agent's keys: show it only to your
+  own phone. Pick your language and your Bip.
 
 **Without Tailscale (optional)**: with `[lan] enabled = true`, the bridge also opens an HTTPS door on your local
 network (port 8650, open it on the LAN only) and the QR code carries its address and certificate fingerprint. When
@@ -250,9 +240,10 @@ the tailnet does not answer, the app goes through that door, accepting only that
 local network ». It learns a new local address on its own while the tailnet works; if the address changed while the
 tailnet was down, it asks you to scan a new QR code. Notifications still need the Internet (Apple).
 
-**Notifications** (replies on the lock screen, approvals, Inbox): they go through Apple and require a paid
-Apple Developer account. Create an APNs key (.p8) and fill in `[apns]`, see [`bridge/README.md`](../bridge/README.md#apns).
-Without it, everything else works, just without notifications.
+**Notifications** (replies on the lock screen, approvals, Inbox): the publisher's app can only be reached through
+Apple's and Google's services with the publisher's keys, so your bridge sends them through Kerfy Studio's
+[push relay](../relay/README.md) (`[push] service_url`), which forwards no message text; the installer sets it once the
+relay is online. Without it, everything else works, just without notifications.
 
 ## Bonus: your own voice model (GPU)
 

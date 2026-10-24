@@ -50,7 +50,7 @@ a dead device).
 | `PORT` or `RELAY_LISTEN` | `8080` / `0.0.0.0:8080` |
 | `RELAY_PUSHES_PER_DEVICE_HOUR`, `RELAY_PUSHES_PER_IP_HOUR`, `RELAY_REGISTRATIONS_PER_IP_HOUR` | `300`, `20000`, `60` |
 | `RELAY_TRUST_FORWARDED_FOR` | `1` behind a proxy that sets `X-Forwarded-For` |
-| `RELAY_REPORT_URL`, `RELAY_REPORT_SECRET` or `RELAY_REPORT_SECRET_FILE`, `RELAY_REPORTS_PER_IP_HOUR` | where reports go (the guichet's `/v1/reports`), the secret it checks (its `secrets/relay-report.secret`), `20` |
+| `RELAY_REPORT_URL`, `RELAY_REPORT_SECRET` or `RELAY_REPORT_SECRET_FILE`, `RELAY_REPORTS_PER_IP_HOUR` | where reports go (the guichet's `/v1/reports`), the secret it checks, `20` |
 | `RELAY_BLOCKED` or `RELAY_BLOCKED_FILE` | devices refused for abuse (terms of use), by the 8-hex fingerprint the logs show; restart to apply |
 | `RUST_LOG` | `info` (JSON lines) |
 

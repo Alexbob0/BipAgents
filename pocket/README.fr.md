@@ -69,10 +69,9 @@ le temps réel).
   la génération s'arrête si le client coupe (interruption à la voix, réponse annulée)
 
 `voice` : `colibri` (français) ou `<code>/colibri` avec `en`, `es`, `de`. Voix inconnue → 404 ; le bridge répond alors
-une erreur et l'app lit le texte avec la voix de l'iPhone. Le texte arrive déjà préparé par le bridge (nombres en
+une erreur et l'app lit le texte avec la voix du téléphone. Le texte arrive déjà préparé par le bridge (nombres en
 lettres, symboles, abréviations).
 
-Tests (sans modèle ni téléchargement) : `python -m pytest pocket/tests` (avec `fastapi`, `httpx` et `pytest`, par
-exemple depuis le venv du bridge).
+Tests (sans modèle ni téléchargement) : `python -m pytest pocket/tests` (avec `fastapi`, `httpx` et `pytest`).
 
 Licences : code MIT ; poids Pocket TTS CC-BY-4.0 (Kyutai) ; voix des Bips : cf. `voices/`.

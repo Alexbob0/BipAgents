@@ -14,7 +14,9 @@ body:
     attributes:
       label: Where
       options:
-        - iPhone app
+        - iPhone or iPad app
+        - Android app
+        - The all-included offer
         - Installer / bipagents update
         - Bridge
         - Voices (Pocket or your own voice model)
@@ -27,8 +29,8 @@ body:
     id: setup
     attributes:
       label: Your setup
-      description: Server (Mac, Linux distribution, VPS), where the model runs, app version.
-      placeholder: Ubuntu 24.04 VPS (ARM), OpenRouter, app 1.0 (20261015.2143)
+      description: The offer, or your server (Mac, Linux distribution, VPS, Windows/WSL2); where the model runs; phone and app version.
+      placeholder: Ubuntu 24.04 VPS (ARM), OpenRouter, Android 16, app 1.0 (20261015.2143)
   - type: textarea
     id: logs
     attributes:

@@ -4,7 +4,8 @@
 
 Pas de machine allumée à la maison ? Un petit serveur loué fait l'affaire : tes agents tournent dans un datacenter,
 et l'app les joint par Tailscale, comme à la maison. Rien n'est ouvert sur Internet à part SSH, et même SSH peut se
-fermer une fois Tailscale en place.
+fermer une fois Tailscale en place. Tu préfères ne pas t'occuper d'un serveur du tout ? C'est l'offre tout compris de
+Kerfy Studio, bientôt sur [bipagents.com](https://bipagents.com/fr/).
 
 ## Ce qu'il faut savoir avant
 
@@ -14,8 +15,8 @@ fermer une fois Tailscale en place.
   sur **un PC de la maison** joint par Tailscale (l'installateur demande alors son adresse sur ton tailnet). Dans le
   cloud, chaque message part au fournisseur du modèle pour qu'il y réponde : avec OpenRouter, choisis dans ses réglages
   de confidentialité des fournisseurs qui ne gardent rien (zero data retention).
-- **Les notifications** passent par Apple avec une clé de développeur, ou par le relais d'une autre installation
-  BipAgents (celle d'un proche : `family add`).
+- **Les notifications** passent par le [relais de notifications](../relay/README.fr.md) de Kerfy Studio, qui ne
+  transmet aucun texte de message.
 - **Le coût** : le serveur, de ≈ 8 € par mois (2 vCPU, 4 Go) à ≈ 15 € (4 vCPU, 8 Go, avec les navigateurs visibles) ; le
   modèle, payé à l'usage chez OpenRouter.
   Les voix des Bips tournent sur le processeur du serveur, sans frais en plus.
@@ -78,5 +79,5 @@ QR code dans l'app.
   les agents suivent, mémoire et connexions comprises ([déménager](../installer/README.fr.md#déménager-sur-une-autre-machine)).
 - **Mises à jour** : le système se met à jour seul. Pour BipAgents : `bipagents update` dans le compte `bip` (il relance
   seulement ce qui a changé) ; à la première fois, il propose de le faire chaque nuit.
-- **Désinstaller** : `bash ~/BipAgents/install.sh uninstall` dans le compte `bip`, puis supprime le serveur chez
+- **Désinstaller** : `bipagents uninstall` dans le compte `bip`, puis supprime le serveur chez
   l'hébergeur.

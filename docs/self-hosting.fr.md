@@ -4,13 +4,14 @@
 
 BipAgents n'a besoin d'**aucun GPU** : les voix des Bips tournent sur CPU (Kyutai Pocket TTS). Une machine qui fait
 déjà tourner [Hermes Agent](https://github.com/NousResearch/hermes-agent) suffit, qu'il s'agisse d'un Mac mini, d'un VPS
-ou d'un serveur Linux à la maison.
+ou d'un serveur Linux à la maison. L'installateur fait tout cela en une commande ([README](../README.fr.md)) ; ce
+guide sert à le faire à la main, ou à comprendre ce qu'il a mis en place.
 
 ```
-iPhone (BipAgents) ──Tailscale──▶ ta machine
-                                   ├─ Hermes Agent, api_server   :8642 (un port par agent : 8644, …)
-                                   ├─ bridge (bridge/)           :8643  voix, fichiers, push, Boîte
-                                   └─ Pocket TTS (pocket/)       :8098  voix des Bips (local, appelé par le bridge)
+téléphone (BipAgents) ──Tailscale──▶ ta machine
+                                      ├─ Hermes Agent, api_server   :8642 (un port par agent : 8644, …)
+                                      ├─ bridge (bridge-rs/)        :8643  voix, fichiers, push, Boîte
+                                      └─ Pocket TTS (pocket/)       :8098  voix des Bips (local, appelé par le bridge)
 ```
 
 Rien n'est exposé sur Internet : tout passe par ton tailnet, en HTTPS avec un vrai certificat (`tailscale serve`).
@@ -25,7 +26,7 @@ Rien n'est exposé sur Internet : tout passe par ton tailnet, en HTTPS avec un v
 
 ## 1. Tailscale
 
-Installer Tailscale sur la machine et sur l'iPhone, dans le même tailnet. Dans la console d'administration :
+Installer Tailscale sur la machine et sur ton téléphone, dans le même tailnet. Dans la console d'administration :
 *DNS* → activer **MagicDNS** et **HTTPS Certificates**. La machine a alors un nom du type `mamachine.tailnet.ts.net`.
 
 Sur Mac, la commande `tailscale` est fournie par l'app (*Réglages de Tailscale* → installer l'interface en ligne de
@@ -78,7 +79,7 @@ démarrage (`--languages fr`). Détails : [`pocket/README.md`](../pocket/README.
   `~/.cache/huggingface`, `HF_HOME` pour les mettre ailleurs) et ≈ 1 Go pour PyTorch CPU. Ajouter un peu de swap
   sur un VPS de 4 Go.
 - **Réseau** : laisser Pocket sur `127.0.0.1` (option par défaut) et ne rien ouvrir au pare-feu : le bridge est sur
-  la même machine, l'iPhone passe par Tailscale. Avec `ufw` : `sudo ufw allow in on tailscale0`, rien d'autre.
+  la même machine, le téléphone passe par Tailscale. Avec `ufw` : `sudo ufw allow in on tailscale0`, rien d'autre.
 - **Mesurer** une fois installé : `python3 pocket/bench.py` (premier son et vitesse). Visé : premier son sous
   ≈ 300 ms, au moins 1,5× le temps réel. Sinon : `--quantize` (x86), puis des vCPU dédiés.
 
@@ -226,29 +227,18 @@ sudo tailscale serve --bg --https=8642 http://127.0.0.1:8642   # un par agent (8
 sudo tailscale serve --bg --https=8643 http://127.0.0.1:8643   # le bridge
 ```
 
-Depuis l'iPhone ou un autre appareil du tailnet : `https://mamachine.tailnet.ts.net:8643/health`. Pocket (8098)
+Depuis ton téléphone ou un autre appareil du tailnet : `https://mamachine.tailnet.ts.net:8643/health`. Pocket (8098)
 reste local, seul le bridge l'appelle.
 
 ## 7. L'app
 
-- Compiler avec Xcode sur un iPhone : `echo 'DEVELOPMENT_TEAM = <ton Team ID>' > Config/Local.xcconfig`, puis lancer
-  le schéma BipAgents.
-- Sous ton propre compte Apple, choisis ton identifiant d'app (il doit être unique chez Apple) et ajoute-le à
-  `Config/Local.xcconfig` :
-
-  ```
-  DEVELOPMENT_TEAM = <ton Team ID>
-  BIP_BUNDLE_ID = com.tonnom.bipagents
-  ```
-
-  L'extension (`….NotificationService`), l'App Group (`group.…`) et le groupe de trousseau (`….shared`) en découlent ;
-  Xcode les crée au premier build (*Automatically manage signing*). Reporter le même identifiant dans
-  `[apns] bundle_id` du bridge.
-- Dans l'app : Réglages › Ajouter un agent → **Scanner le QR code**. Sur le serveur, renseigner `public_url` (adresses
-  tailnet du bridge et de chaque agent) dans `bridge.toml`, puis afficher le code avec `bipagents qr` (un par
-  agent, `--agent vie` pour un seul, `--png vie.png` pour l'enregistrer). Il contient les clés de l'agent : ne le
-  montrer qu'à son propre téléphone. Sinon, à la main : adresse `https://mamachine.tailnet.ts.net:8642`, clé
-  api_server, adresse du bridge `https://mamachine.tailnet.ts.net:8643` et sa clé. Choisir sa langue et son Bip.
+- Les apps (iPhone, iPad, Android) viennent de l'App Store et de Google Play *(bientôt : elles sont en test)*. En
+  attendant, la console web ouvre tes agents dans le navigateur d'un ordinateur : `~/.local/bin/bipbridge console
+  --config ~/.config/hermes-ios/bridge.toml` donne un lien à usage unique (sur le tailnet).
+- Dans l'app : **＋ › Scanner le QR code**. Sur le serveur, renseigner `public_url` (adresses tailnet du bridge et de
+  chaque agent) dans `bridge.toml`, puis afficher le code avec `~/.local/bin/bipbridge qr --config
+  ~/.config/hermes-ios/bridge.toml` (un par agent, `--agent <id>` pour un seul, `--png <fichier>` pour l'enregistrer).
+  Il contient les clés de l'agent : ne le montrer qu'à son propre téléphone. Choisir sa langue et son Bip.
 
 **Sans Tailscale (optionnel)** : avec `[lan] enabled = true`, le bridge ouvre aussi une porte HTTPS sur le réseau local
 (port 8650, à n'ouvrir que sur le réseau local) et le QR code contient son adresse et l'empreinte de son certificat.
@@ -256,9 +246,11 @@ Quand le tailnet ne répond pas, l'app passe par cette porte, en n'acceptant que
 réseau local ». Elle apprend seule une nouvelle adresse locale tant que le tailnet marche ; si l'adresse a changé
 pendant une coupure, elle propose de scanner un nouveau QR code. Les notifications demandent toujours Internet (Apple).
 
-**Notifications** (réponses écran verrouillé, accords, Boîte) : elles passent par Apple et demandent un compte
-Apple Developer payant. Créer une clé APNs (.p8) et remplir `[apns]`, cf. [`bridge/README.md`](../bridge/README.fr.md#apns).
-Sans elle, tout le reste fonctionne, sans les notifications.
+**Notifications** (réponses écran verrouillé, accords, Boîte) : l'app de l'éditeur ne se joint par les services
+d'Apple et de Google qu'avec les clés de l'éditeur, donc ton bridge les envoie par le
+[relais de notifications](../relay/README.fr.md) de Kerfy Studio (`[push] service_url`), qui ne transmet aucun texte de
+message ; l'installateur le règle dès que le relais est en ligne. Sans lui, tout le reste fonctionne, sans les
+notifications.
 
 ## Bonus : ton propre modèle de voix (GPU)
 

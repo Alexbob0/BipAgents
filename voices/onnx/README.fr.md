@@ -22,7 +22,7 @@ voices/onnx/.venv/bin/python voices/onnx/build.py
 ```
 
 Les paquets ne sont jamais à une adresse publique. Les apps les reçoivent de l'App Store (envoyer les `.aar` sur App
-Store Connect avec Transporter, puis les soumettre avec la version) et de Google Play (`scripts/play-upload.py` les met
+Store Connect avec Transporter, puis les soumettre avec la version) et de Google Play (le script d'envoi de l'éditeur les met
 dans le bundle) ; les serveurs de l'offre les reçoivent de leur guichet (copier `build/voices` dans son dossier `voices`).
 
 ```bash

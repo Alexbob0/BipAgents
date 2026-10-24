@@ -6,21 +6,32 @@ Un seul programme, écrit en Rust (`bridge-rs/`), qui tourne sur le **serveur** 
 les apps BipAgents sur le tailnet (fichiers : `docs/file-uploads.md`). Il a remplacé le bridge Python
 (`bridge/bipbridge`) le 2026-10-21, avec les mêmes routes, fichiers et réglages ; celui-ci reste dans l'historique du
 dépôt. Ce dossier contient ce qui va avec : l'exemple de config (`bridge.example.toml`), les fichiers de service pour
-une installation à la main (`systemd/`, `launchd/`) et la suite boîte noire qui fixe son contrat HTTP
-(`tests_blackbox/`).
+une installation à la main (`systemd/`, `launchd/`), la suite boîte noire qui fixe son contrat HTTP
+(`tests_blackbox/`) et `tools/` (un script d'évaluation des longs travaux sur une vraie installation).
+
+Aujourd'hui le bridge fait tout ce dont les apps ont besoin au-delà de l'API d'Hermes : les voix des Bips et les appels
+Live, les fichiers, les notifications (directement ou par le [relais](../relay/README.fr.md)), les accords et les
+questions, la Boîte et les tâches planifiées, le Carnet (`src/notebook/`) avec ses fiches, voyages et archives, les
+connecteurs (mail, agenda et CalDAV, notes, rappels, contacts, santé, météo, cartes), le navigateur visible et le coffre
+de chaque agent (identifiants et cartes), les bacs à sable isolés des agents, les dossiers partagés et les sites
+autorisés, les tâches de fond, les pages et les podcasts, les liens familiaux entre installations, les groupes, la
+console web (`/console/`), la mise en place et les sauvegardes de l'offre, et le chiffrement de l'espace sur le disque.
+Chaque module de `bridge-rs/src/` commence par un commentaire sur ce qu'il fait et ses routes ; les sections ci-dessous
+documentent le cœur d'origine (voix, fichiers, push, accords), que les apps utilisent toujours tel quel.
 
 | Fonction | Route | Ce que fait le bridge |
 |---|---|---|
-| TTS par phrase | `POST /v1/tts/sentence` | normalise le texte (markdown, liens), appelle Kyutai `/v1/audio/speech`, renvoie du PCM int16 mono 24 kHz (ou Opus/WAV) ; file FIFO globale + cache LRU |
+| TTS par phrase | `POST /v1/tts/sentence` | normalise le texte (markdown, liens), appelle le moteur de voix (Pocket, ou ton propre modèle de voix), renvoie du PCM int16 mono 24 kHz (ou Opus/WAV) ; file FIFO globale + cache LRU |
 | Voix en flux | `WS /v1/voice` | suit un run Hermes (`GET /v1/runs/{id}/events`), découpe les deltas en phrases, synthétise dans l'ordre, envoie `sentence` (JSON) + audio (binaire) |
 | Fichiers | `POST /v1/files` | dépose PDF/Excel/texte… dans un dossier monté dans le conteneur Hermes et renvoie le chemin **vu par l'agent** |
 | Push | `POST/DELETE /v1/devices` | enregistre les device tokens APNs (SQLite), envoie les push via HTTP/2 + jeton JWT ES256 |
-| Messages proactifs | `GET /v1/outbox…` | s'abonne au topic ntfy de chaque agent, stocke les messages, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
+| Messages proactifs | `GET /v1/outbox…` | suit les tâches planifiées de chaque agent (et, en héritage, son topic ntfy), stocke les messages, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
 | Approbations | `POST /v1/watch`, `POST /v1/approve`, `GET /v1/approvals` | surveille un run en arrière-plan, pousse `APPROVAL` si personne ne le suit, relaie la réponse à Hermes |
-| Santé | `GET /health` | sans authentification : version + Kyutai/ntfy joignables |
+| Santé | `GET /health` | sans authentification : version + moteurs de voix/ntfy joignables |
 
 Le bridge écoute **uniquement sur `127.0.0.1:8643`** ; l'exposition HTTPS se fait par `tailscale serve`.
-Il ne contient aucun secret : tout est dans `~/.config/hermes-ios/` (mode 600).
+Il ne contient aucun secret : tout est dans son dossier de config (mode 600) : `~/.config/bipagents/` quand
+l'installateur l'a posé, `~/.config/hermes-ios/` par défaut à la main.
 
 ## 1. Installation sur le serveur (à la main ; l'installateur fait tout cela lui-même)
 
@@ -28,7 +39,7 @@ L'installateur (`install.sh`, `installer/bipinstall/rustbridge.py`) télécharge
 depuis la release GitHub `bridge-<clé>` (clé : les 12 premiers caractères du SHA-256 de
 `git rev-parse HEAD:bridge-rs`), les vérifie avec son `SHA256SUMS` et les lance en service ; `bipagents update` les
 tient à jour. Il existe des binaires pour Linux x86_64 et aarch64 (glibc ≥ 2.28 ; Windows via WSL2) et macOS
-(universel). À la main, prérequis : Pocket sur `:8098` (ou Kyutai sur `:8097`), api_server Hermes sur `:8642`
+(universel). À la main, prérequis : Pocket sur `:8098`, api_server Hermes sur `:8642`
 (wellness) et `:8644` (vie).
 
 ```bash
@@ -86,7 +97,9 @@ Si le conteneur ne peut pas lire : mettre `upload_file_mode = "644"` et `upload_
 (ou une ACL `setfacl` pour l'UID mappé). Les fichiers de plus de 30 jours sont purgés automatiquement
 (seulement ceux écrits par le bridge : `AAAA-MM/<12 hex>-<nom>`).
 
-### ntfy : jeton de lecture pour le bridge
+### ntfy : jeton de lecture pour le bridge (héritage, facultatif)
+
+Les tâches planifiées arrivent dans la Boîte sans ntfy (`[cron]`) ; ceci ne sert qu'aux installations qui livrent encore par lui.
 
 Le bridge **lit** les topics `hermes-wellness-out` / `hermes-vie-out` (où Hermes publie via `deliver: ntfy`) :
 
@@ -116,8 +129,8 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 |---|---|---|
 | `bridge_key` | — (obligatoire) | clé Bearer unique de l'app (≥ 32 car., `bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | écoute locale |
-| `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | TTS Kyutai 1.6B (GPU) ; `enabled = false` : Pocket seul |
-| `[pocket] url`, `default_voice` | absent (désactivé), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` sert quand Kyutai est désactivé |
+| `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | héritage : Kyutai 1.6B comme moteur à part. L'installateur écrit `enabled = false` (Pocket seul) ; un serveur Kyutai est désormais un `[voice_server]` comme un autre |
+| `[pocket] url`, `default_voice` | absent (désactivé), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` est la voix par défaut quand `[kyutai]` est coupé |
 | `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, aucun, `[]`, `true` ×3, `5` | le modèle de voix de la personne (OpenAI `/v1/audio/speech`), voir plus bas ; un ancien `[drama] url` en est un |
 | `[pronunciations.<langue>] <mot> = "<graphie>"` | aucun | les mots que les voix disent mal, réécrits (mots entiers, toute casse) |
 | `[ntfy] url` | `http://127.0.0.1:8645` | |
@@ -164,27 +177,28 @@ Corps : `{"text": "…", "voice"?: "5476", "format"?: "pcm16"|"opus"|"wav" (déf
   en-têtes `X-Sample-Rate: 24000`, `X-Channels: 1`, `X-Sample-Format: s16le`
 - `opus` : `audio/ogg` (Ogg Opus) ; `wav` : `audio/wav`
 - toujours `X-Cache: hit|miss`. Erreurs : 400 (texte vide après normalisation, format), 404 (agent), 413 (> 1000 car.),
-  502 (Kyutai injoignable / erreur).
+  502 (moteur de voix injoignable / erreur).
 
 ### `POST /v1/tts/stream`
-Même corps que `/v1/tts/sentence` (le format est toujours PCM16). Relaie Kyutai `POST /v1/audio/stream` :
+Même corps que `/v1/tts/sentence` (le format est toujours PCM16). Relaie le `POST /v1/audio/stream` du moteur (celui de Pocket) :
 réponse 200 en transfert *chunked*, PCM s16le mono 24 kHz envoyé à mesure qu'il est produit (premier son ≈ 0,75 s,
 quelle que soit la longueur du texte), en-têtes `X-Sample-Rate`, `X-Channels`, `X-Sample-Format: s16le`.
 Les erreurs survenues avant le premier octet audio sont des erreurs HTTP classiques (400, 404, 413 au-delà de
-8000 car., 502). Un Kyutai sans route de streaming (404) est remplacé par une synthèse en un bloc. Un flux complet
+8000 car., 502). Un moteur sans route de streaming (404) est remplacé par une synthèse en un bloc. Un flux complet
 est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si le bridge ne connaît pas la route.
 
 ### Voix et moteurs
-`voice` (corps des routes TTS, ou `voice` d'un agent dans la config) : une voix Kyutai (`5476`, `4193`, `5207`, chemin
-`cml-tts/fr/…`) passe par Kyutai 1.6B (GPU) ; une voix `pocket:<nom>` (`pocket:colibri`, `pocket:mousse`, `pocket:lumen`,
-`pocket:galet`, `pocket:ours`, cf. `voices/french/`) passe par Kyutai Pocket TTS (CPU, section `[pocket]`), avec sa
-propre file d'attente. Si Pocket n'est pas configuré, est injoignable ou échoue avant le premier son, la requête
-retombe sur la voix Kyutai par défaut (cet audio-là n'est pas mis en cache). `/health` indique `"pocket": true|false|null`.
+`voice` (corps des routes TTS, ou `voice` d'un agent dans la config) : une voix `pocket:<nom>` (`pocket:colibri`,
+`pocket:mousse`, `pocket:lumen`, `pocket:galet`, `pocket:ours`, cf. `voices/french/`) passe par Kyutai Pocket TTS (CPU,
+section `[pocket]`), avec sa propre file d'attente. Héritage : avec `[kyutai]` actif, une voix Kyutai (`5476`, `4193`,
+`5207`, chemin `cml-tts/fr/…`) passe par Kyutai 1.6B (GPU), et un échec de Pocket en français y retombe (cet audio-là
+n'est pas mis en cache). `/health` indique `"pocket": true|false|null`. Les apps peuvent aussi parler avec les voix des
+Bips sur le téléphone lui-même, sans le bridge (`voices/onnx/`).
 
 Modèle de voix personnel : `server:<langue>/<id>` (`server:fr/fr-mascotte-s17`, `server:en/af_bella`) va à
 `[voice_server]`, tout serveur doté du `POST /v1/audio/speech` d'OpenAI (Fish Audio Drama 3 sur audio.cpp, Kokoro,
 Kyutai…), rééchantillonné en 24 kHz. Un agent a son Bip (`voice`) et sa voix sur ce serveur (`server_voice`) ;
-`[voice_server] live`, `replies`, `reading` disent quels usages passent par le serveur (`voices.py` : `use` dans les
+`[voice_server] live`, `replies`, `reading` disent quels usages passent par le serveur (`voices.rs` : `use` dans les
 routes TTS, la WebSocket du Live, la lecture de la boîte). En panne, en échec avant le premier son, ou trop lent pour
 une phrase du Live ou une réponse vocale (aucun son `first_audio_seconds` après l'envoi, plus la durée du texte pour un
 fichier entier) : le Bip de l'agent parle, et continue pendant 30 s. `GET /v1/voices` liste ses voix (son `GET /v1/audio/voices`, le `/v1/voices` de Kyutai, sinon `voices`) et
@@ -194,8 +208,8 @@ ancienne app (`drama:<id>`) y vont aussi.
 Autres langues : `pocket:<langue>/<nom>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, cf.
 `voices/english|spanish|german/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =
 `en/colibri`. Le texte est préparé dans la langue de la voix (`bridge-rs/src/speech_intl.rs`, nombres via `num2words` :
-« $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Hors français, un échec de Pocket ne
-retombe pas sur Kyutai (voix française) : le bridge répond 502/503 et l'app lit le texte avec la voix de l'iPhone.
+« $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Quand Pocket échoue (et, en français, sans
+Kyutai hérité actif), le bridge répond 502/503 et l'app lit le texte avec la voix du téléphone.
 
 ### Tâches planifiées et fichiers des agents
 - Le bridge relit toutes les minutes les sessions `cron_…` de chaque agent et met la réponse finale de chaque
@@ -288,7 +302,7 @@ ntfy `session:<id>` s'il existe. Pour la pagination, repasser le `created_at` du
 
 ### `GET /v1/outbox/{id}/audio`
 200 `audio/mpeg` ; si la synthèse est encore en cours (attente ≤ 20 s) : 202 `{"status":"pending"}` + `Retry-After: 3` ;
-404 si pas d'audio (texte > `audio_max_chars`) ; 503 si Kyutai a échoué.
+404 si pas d'audio (texte > `audio_max_chars`) ; 503 si la synthèse a échoué.
 
 ### `POST /v1/watch`
 Corps : `{"agent":"wellness","run_id":"…"}` → `{"watching": true, "agent", "run_id", "followers": n, "finished": bool}`.
@@ -331,10 +345,10 @@ contient un extrait du texte (ou de la commande).
 
 ## 5. Fonctionnement interne
 
-- **Kyutai sérialisé** : une seule requête à la fois côté bridge aussi, servie par ordre d'arrivée ; priorité
+- **Synthèse sérialisée** : une seule requête par moteur à la fois côté bridge aussi, servie par ordre d'arrivée ; priorité
   « interactive » (voix, `/v1/tts/sentence`) devant « arrière-plan » (audio de l'outbox) — jamais d'interruption d'une
   synthèse déjà lancée. Une requête annulée (barge-in) quitte la file. Cache LRU (voix, format, texte normalisé).
-- **Prérequête** : chaque phrase est mise en file Kyutai dès qu'elle est complète, l'envoi au client reste dans l'ordre.
+- **Prérequête** : chaque phrase est mise en file de synthèse dès qu'elle est complète, l'envoi au client reste dans l'ordre.
 - **SSE tolérant** : type lu dans le JSON (`type` ou `event`) sinon la ligne `event:` ; `: keepalive` ignoré ;
   texte pris dans `delta` / `text` / `content`. Événements de texte : `message.delta`, `assistant.delta`.
 - **Journaux** : JSON sur stdout (journald), jamais de secret ni de texte de message ; tokens d'appareil tronqués ;

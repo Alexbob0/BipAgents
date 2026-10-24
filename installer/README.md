@@ -51,7 +51,8 @@ Add `--dry-run` to see every step and command without changing anything.
    `BIPAGENTS_BRIDGE_BUILD=<folder of bipbridge and bip-browser-mcp>` (`cargo build --release` in `bridge-rs/`).
    `bipagents bridge` says which version runs; `bipagents bridge rust` fetches it again and restarts it.
 7. **Gives each agent its visible browser** (Linux with podman, if you want it): a real Chrome on a desktop of its
-   own, which you watch live and take over from the app (Bureau, behind Face ID), and in which the vault fills
+   own, which you watch live in the conversation or the « Bureau » and take over from the app (behind Face ID or the
+   phone's lock), and in which the vault fills
    passwords without the agent seeing them. See [`browser/`](../browser/README.md).
 8. **Publishes the install on the tailnet** (`tailscale serve`, never on the Internet). Without the right to do it
    (another person's account on Linux), it prints the commands for the administrator.
@@ -123,7 +124,8 @@ see docs/self-hosting.md.
 
 `bipagents update` (or `curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --
 update`, the same as `bash ~/BipAgents/install.sh update`) brings this account's install up to date. `bipagents` alone
-lists its commands (update, voice, hermes-update, family add, export, resume, uninstall); the installer puts it in `~/.local/bin`. It shows what is new, restarts only
+lists its commands (update, qr, voice, console, hermes-update, bridge, family add, export, resume, send, backup,
+browser-refresh, encrypt, uninstall); the installer puts it in `~/.local/bin`. It shows what is new, restarts only
 what changed (the bridge, the Bips' voices when this account runs them, the agents' browsers when their image changed:
 rebuilt, their profiles kept), and applies the settings a fresh install now makes (`installer/bipinstall/migrations.py`:
 for instance risky commands always asking you). It then offers to update the machine's other installs
@@ -171,7 +173,7 @@ What may need you afterwards:
 
 ## Updating Hermes
 
-Whenever you want: `bash ~/BipAgents/install.sh hermes-update`. Before changing anything, it says which BipAgents
+Whenever you want: `bipagents hermes-update`. Before changing anything, it says which BipAgents
 patches still apply on the new version (checked on a copy). Then it takes our patches off, runs `hermes update`
 (its backup, its dependencies), puts back the patches that apply, restarts the agents (the hub and their spaces) and
 checks that each one answers. When an agent no longer answers, it offers to go back to the previous version.
@@ -179,7 +181,7 @@ checks that each one answers. When an agent no longer answers, it offers to go b
 
 ## Uninstall
 
-`python -m bipinstall uninstall` (from `~/BipAgents`, with `PYTHONPATH=installer`) removes the services, the tailnet
+`bipagents uninstall` removes the services, the tailnet
 publishing and the bridge's config, keeping the agents' data in `~/.hermes`. `--all` also removes Hermes and that data,
 after a confirmation. `--dry-run` shows what would be removed.
 
@@ -230,18 +232,18 @@ Run it **in the administrator's terminal**. It shows each step as `[n/5]`:
    there through `sudo`, its questions showing up **in your terminal** (the model, their first agents, the visible
    browser). They type nothing. It ends with their **QR code**. Answer `N` to get the command and run it later.
 4. **Publish their ports on the tailnet**: it offers to run the `sudo tailscale serve` commands (`y`), or prints them.
-5. **Their iPhone, on YOUR tailnet**: the one this server is in. A Tailscale account of their own makes a tailnet of
+5. **Their phone, on YOUR tailnet**: the one this server is in. A Tailscale account of their own makes a tailnet of
    its own, where the app can't reach the server. So:
    1. invite them in the [Tailscale console](https://login.tailscale.com/admin/users) › Invite users (their email);
-   2. on their iPhone, they accept the invite, then in the Tailscale app: profile icon › Add account › sign in with
+   2. on their phone, they accept the invite, then in the Tailscale app: profile icon › Add account › sign in with
       the invited email › pick your tailnet;
-   3. once the Tailscale app lists the server: the BipAgents app (TestFlight or App Store) › « + » › Scan QR code.
+   3. once the Tailscale app lists the server: the BipAgents app › « + » › Scan QR code.
 
-   Simpler, but their iPhone is then one of your devices: sign Tailscale in with your own account. The QR code again:
+   Simpler, but their phone is then one of your devices: sign Tailscale in with your own account. The QR code again:
    `bipagents qr lea`.
 
 The installer speaks English. Agents answer in the language they are written to; the one they write first in
-(routines, reports) is set per agent in the app, the iPhone's by default.
+(routines, reports) is set per agent in the app, the phone's by default.
 
 On macOS, create their account in System Settings; they paste the printed line in **their own** session. Services
 run while the account is logged in (automatic login on a Mac mini used as a server).

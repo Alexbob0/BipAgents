@@ -35,6 +35,7 @@ personne ne s'en sert.
 | --- | --- | --- |
 | `POST /v1/register` | `{"platform": "apns"\|"fcm", "token": "…", "environment": "sandbox"\|"production"}` | `{"relay_token": "r1.…"}` |
 | `POST /v1/relay/push` (ou `/v1/push`) | `{"token": "r1.…", "payload": {…}, "push_type": "alert"\|"background", "priority": 5\|10, "collapse_id": "…"}` | `{"status": 200, "reason": null, "apns_id": "…"}` |
+| `POST /v1/report` | `{"reason", "comment", "text", "category", "app", "model", "platform": "ios"\|"android", "lang"}` | `202 {"ok": true}` : « Signaler cette réponse » transmis à `RELAY_REPORT_URL` avec le secret, gardé nulle part ; 503 s'il n'est pas réglé, 502 s'il n'a pas pu partir (l'app propose alors un e-mail) |
 | `GET /health` | | `{"status": "ok", "apns": true, "fcm": true}` |
 
 Un jeton chiffré avec une autre clé, ou altéré, répond `{"status": 410, "reason": "BadRelayToken"}` (le bridge
@@ -51,6 +52,8 @@ pas un appareil disparu).
 | `PORT` ou `RELAY_LISTEN` | `8080` / `0.0.0.0:8080` |
 | `RELAY_PUSHES_PER_DEVICE_HOUR`, `RELAY_PUSHES_PER_IP_HOUR`, `RELAY_REGISTRATIONS_PER_IP_HOUR` | `300`, `20000`, `60` |
 | `RELAY_TRUST_FORWARDED_FOR` | `1` derrière un proxy qui pose `X-Forwarded-For` |
+| `RELAY_REPORT_URL`, `RELAY_REPORT_SECRET` ou `RELAY_REPORT_SECRET_FILE`, `RELAY_REPORTS_PER_IP_HOUR` | où vont les signalements (le `/v1/reports` du guichet), le secret qu'il vérifie, `20` |
+| `RELAY_BLOCKED` ou `RELAY_BLOCKED_FILE` | appareils refusés pour abus (conditions d'utilisation), par l'empreinte de 8 caractères hexadécimaux que montrent les journaux ; redémarrer pour appliquer |
 | `RUST_LOG` | `info` (lignes JSON) |
 
 ## Le lancer
