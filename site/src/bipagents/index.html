@@ -46,77 +46,55 @@
     <p class="priv-links"><a href="{{private.href}}">{{private.compare}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
   </div>
 
-  <!-- The moment that matters: an agent asks, you tap « Once », it's done (a loop; still for reduced motion). -->
-  <div class="hero-stage">
-    <figure class="ask" role="img" aria-label="{{ask.a11y}}" data-tilt>
-      <div class="ask-inner" aria-hidden="true">
-        <div class="chat-head">
-          <span class="chat-avatar" data-bip-static="daily"></span>
-          <span class="chat-title"><span><b>{{ask.agent}}</b> <span class="ai">{{ai}}</span></span><small>{{demo.chatSub}}</small></span>
+  <!-- What they do, at a glance: one result per kind of agent, like the phone's notifications (bridge-rs
+       agent_templates.yaml; the booking was approved first). They come in one after another, then stay still; a phone
+       shows the first four. -->
+  <div class="hero-stage" id="results">
+    <ul class="results" aria-label="{{results.a11y}}">
+      <li class="res" style="--i:0;--tint:var(--coral-tint)">
+        <div class="res-bip" data-bip="daily" data-interactive aria-hidden="true"></div>
+        <div class="res-txt">
+          <p class="res-head"><b>{{results.daily.agent}}</b><span class="ai">{{ai}}</span><time>{{results.daily.time}}</time></p>
+          <p class="res-line"><span class="res-ic" aria-hidden="true">🍝</span>{{results.daily.line}}</p>
         </div>
-        <div class="ask-body">
-          <div class="msg you" data-ask="1">{{ask.you}}</div>
-          <div class="tool done" data-ask="2"><span class="ic">🌐</span><span><b>{{ask.toolName}}</b><span>{{ask.tool}}</span></span><i class="st"></i></div>
-          <div class="card-a" data-ask="3">
-            <p class="ask-head">🔒 {{ask.head}}</p>
-            <p>{{ask.q}}</p>
-            <code>{{ask.detail}}</code>
-            <div class="btns"><span class="ask-once chosen">{{control.once}}</span><span>{{control.deny}}</span></div>
-          </div>
-          <div class="msg bot" data-ask="4"><span class="av" data-bip-static="daily"></span><span class="txt">{{ask.done}}</span></div>
+      </li>
+      <li class="res" style="--i:1;--tint:var(--green-tint)">
+        <div class="res-bip" data-bip="wellness" data-interactive aria-hidden="true"></div>
+        <div class="res-txt">
+          <p class="res-head"><b>{{results.wellness.agent}}</b><span class="ai">{{ai}}</span><time>{{results.wellness.time}}</time></p>
+          <p class="res-line"><span class="res-ic" aria-hidden="true">😴</span>{{results.wellness.line}}</p>
         </div>
-      </div>
-    </figure>
-    <div class="float-bip fb-1" data-bip="daily" data-interactive data-parallax="-0.08" aria-hidden="true"></div>
-    <div class="float-bip fb-2" data-bip="finance" data-interactive data-parallax="0.1" aria-hidden="true"></div>
-    <div class="float-bip fb-3" data-bip="home" data-interactive data-parallax="-0.06" aria-hidden="true"></div>
-  </div>
-</section>
-
-
-<!-- ============================================================ WHAT THEY DO: one card per kind of agent (bridge-rs
-     agent_templates.yaml; mail_scan, calendar, reminders, health, family_news, notebook records, the browser's approvals) -->
-<section class="section uses-section" id="uses">
-  <div class="section-head reveal">
-    <p class="kicker">{{uses.kicker}}</p>
-    <h2>{{uses.title}}</h2>
-    <p class="sub">{{uses.sub}}</p>
-  </div>
-  <div class="uses reveal" role="region" aria-label="{{uses.title}}" tabindex="0">
-    <ul class="uses-list">
-      <li class="use" style="--tint:var(--coral-tint);--main:var(--coral)">
-        <div class="use-bip" data-bip="daily" aria-hidden="true"></div>
-        <h3>{{uses.daily.title}}</h3>
-        <ul><li>{{uses.daily.b1}}</li><li>{{uses.daily.b2}}</li><li>{{uses.daily.b3}}</li><li>{{uses.daily.b4}}</li></ul>
       </li>
-      <li class="use" style="--tint:var(--green-tint);--main:var(--green)">
-        <div class="use-bip" data-bip="wellness" aria-hidden="true"></div>
-        <h3>{{uses.wellness.title}}</h3>
-        <ul><li>{{uses.wellness.b1}}</li><li>{{uses.wellness.b2}}</li><li>{{uses.wellness.b3}}</li><li>{{uses.wellness.b4}}</li></ul>
+      <li class="res" style="--i:2;--tint:var(--gold-tint)">
+        <div class="res-bip" data-bip="finance" data-interactive aria-hidden="true"></div>
+        <div class="res-txt">
+          <p class="res-head"><b>{{results.finance.agent}}</b><span class="ai">{{ai}}</span><time>{{results.finance.time}}</time></p>
+          <p class="res-line"><span class="res-ic" aria-hidden="true">💳</span>{{results.finance.line}}</p>
+        </div>
       </li>
-      <li class="use" style="--tint:var(--gold-tint);--main:var(--gold)">
-        <div class="use-bip" data-bip="finance" aria-hidden="true"></div>
-        <h3>{{uses.finance.title}}</h3>
-        <ul><li>{{uses.finance.b1}}</li><li>{{uses.finance.b2}}</li><li>{{uses.finance.b3}}</li><li>{{uses.finance.b4}}</li></ul>
+      <li class="res" style="--i:3;--tint:var(--teal-tint)">
+        <div class="res-bip" data-bip="home" data-interactive aria-hidden="true"></div>
+        <div class="res-txt">
+          <p class="res-head"><b>{{results.family.agent}}</b><span class="ai">{{ai}}</span><time>{{results.family.time}}</time></p>
+          <p class="res-line"><span class="res-ic" aria-hidden="true">🏫</span>{{results.family.line}}</p>
+        </div>
       </li>
-      <li class="use" style="--tint:var(--teal-tint);--main:var(--teal)">
-        <div class="use-bip" data-bip="home" aria-hidden="true"></div>
-        <h3>{{uses.family.title}}</h3>
-        <ul><li>{{uses.family.b1}}</li><li>{{uses.family.b2}}</li><li>{{uses.family.b3}}</li><li>{{uses.family.b4}}</li></ul>
+      <li class="res" style="--i:4;--tint:var(--blue-tint)">
+        <div class="res-bip" data-bip="work" data-interactive aria-hidden="true"></div>
+        <div class="res-txt">
+          <p class="res-head"><b>{{results.work.agent}}</b><span class="ai">{{ai}}</span><time>{{results.work.time}}</time></p>
+          <p class="res-line"><span class="res-ic" aria-hidden="true">✉️</span>{{results.work.line}}</p>
+        </div>
       </li>
-      <li class="use" style="--tint:var(--blue-tint);--main:var(--blue)">
-        <div class="use-bip" data-bip="work" aria-hidden="true"></div>
-        <h3>{{uses.work.title}}</h3>
-        <ul><li>{{uses.work.b1}}</li><li>{{uses.work.b2}}</li><li>{{uses.work.b3}}</li><li>{{uses.work.b4}}</li></ul>
-      </li>
-      <li class="use" style="--tint:var(--violet-tint);--main:var(--violet)">
-        <div class="use-bip" data-bip="learning" aria-hidden="true"></div>
-        <h3>{{uses.learning.title}}</h3>
-        <ul><li>{{uses.learning.b1}}</li><li>{{uses.learning.b2}}</li><li>{{uses.learning.b3}}</li><li>{{uses.learning.b4}}</li></ul>
+      <li class="res" style="--i:5;--tint:var(--violet-tint)">
+        <div class="res-bip" data-bip="learning" data-interactive aria-hidden="true"></div>
+        <div class="res-txt">
+          <p class="res-head"><b>{{results.learning.agent}}</b><span class="ai">{{ai}}</span><time>{{results.learning.time}}</time></p>
+          <p class="res-line"><span class="res-ic" aria-hidden="true">📚</span>{{results.learning.line}}</p>
+        </div>
       </li>
     </ul>
   </div>
-  <p class="uses-more reveal"><a class="pill pill-soft" href="{{demohref}}">{{uses.demo}} <span aria-hidden="true">→</span></a></p>
 </section>
 
 <!-- ============================================================ THE CARNET (what sets BipAgents apart: the app's Notebook) -->

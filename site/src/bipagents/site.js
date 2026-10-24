@@ -1,4 +1,4 @@
-// bipagents.com: the hero's approval card and its « See more » on privacy, the agents' cards, the comparison, the
+// bipagents.com: the hero's results and its « See more » on privacy, the agents' cards, the comparison, the
 // two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
 // install. One script for every page: each part runs where its elements are. No framework, no network but this site.
 import { Bip, CATEGORIES, REDUCED, staticBip } from "./bips.js";
@@ -37,42 +37,6 @@ const revealer = new IntersectionObserver(entries => {
   for (const entry of entries) if (entry.isIntersecting) { entry.target.classList.add("in"); revealer.unobserve(entry.target); }
 }, { threshold: 0.12 });
 $$(".reveal").forEach(el => revealer.observe(el));
-
-// The hero card leans toward the pointer.
-const tilt = $("[data-tilt]");
-if (tilt && !REDUCED && matchMedia("(hover: hover)").matches) {
-  addEventListener("pointermove", e => {
-    const x = e.clientX / innerWidth - 0.5, y = e.clientY / innerHeight - 0.5;
-    tilt.style.setProperty("--rx", `${(-y * 6).toFixed(2)}deg`);
-    tilt.style.setProperty("--ry", `${(x * 8).toFixed(2)}deg`);
-  }, { passive: true });
-}
-
-// -- Hero: the approval moment, in a loop — you ask, the agent fills the form, asks « Book it in your name? », a tap
-// on « Once », booked. With reduced motion (or no script) the whole exchange stays still, « Once » chosen.
-(async function ask() {
-  const card = $(".ask");
-  if (!card || REDUCED) return;
-  const step = n => $(`[data-ask="${n}"]`, card), tool = step(2), once = $(".ask-once", card);
-  const parts = $$("[data-ask]", card);
-  let seen = true;   // paused while off screen (and in a background tab)
-  new IntersectionObserver(([e]) => { seen = e.isIntersecting; }).observe(card);
-  const visible = async () => { while (!seen || document.hidden) await new Promise(r => setTimeout(r, 400)); };
-  card.classList.add("play");
-  for (;;) {
-    parts.forEach(p => p.classList.remove("on"));
-    tool.classList.remove("done"); once.classList.remove("chosen", "tap");
-    await wait(700); await visible();
-    step(1).classList.add("on"); await wait(1100);
-    tool.classList.add("on"); await wait(1500);
-    tool.classList.add("done"); await wait(500);
-    step(3).classList.add("on"); await wait(2200); await visible();
-    once.classList.add("tap"); await wait(180);
-    once.classList.add("chosen"); await wait(900);
-    step(4).classList.add("on"); await wait(4200);
-    parts.forEach(p => p.classList.remove("on")); await wait(600);
-  }
-})();
 
 // -- An agent at work: the app's demo scenarios, played in a chat --------------------------------------------------
 const chat = $(".chat"), body = $(".chat-body"), wrap = $(".chat-wrap");

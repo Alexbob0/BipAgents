@@ -40,16 +40,38 @@
     "soon": "Bientôt sur",
     "get": "Télécharger sur"
   },
-  "ask": {
-    "a11y": "Un agent demande avant de réserver : « Je réserve la table à ton nom ? » Tu touches Une fois, et la table est réservée.",
-    "agent": "Quotidien",
-    "you": "Réserve une table vendredi soir",
-    "toolName": "Navigateur",
-    "tool": "Pasta Mia · 20 h 30 · formulaire rempli",
-    "head": "Quotidien te demande",
-    "q": "Je réserve la table à ton nom ?",
-    "detail": "Pasta Mia · vendredi 20 h 30 · 2 personnes",
-    "done": "C’est réservé ✅ <b>Pasta Mia</b>, vendredi 20 h 30, pour 2. C’est dans ton agenda."
+  "results": {
+    "a11y": "Ce que tes agents ont fait pour toi, en exemples",
+    "daily": {
+      "agent": "Quotidien",
+      "time": "20:31",
+      "line": "Table réservée : Pasta Mia, vendredi 20 h 30, 2 pers."
+    },
+    "wellness": {
+      "agent": "Coach",
+      "time": "8:02",
+      "line": "Tu as dormi 7 h 12, 25 min de plus que la semaine dernière"
+    },
+    "finance": {
+      "agent": "Budget",
+      "time": "il y a 5 min",
+      "line": "Prélèvement inhabituel : 49,99 € StreamMax, je le signale ?"
+    },
+    "family": {
+      "agent": "Famille",
+      "time": "il y a 12 min",
+      "line": "Sam est prévenu : l’école a appelé"
+    },
+    "work": {
+      "agent": "Travail",
+      "time": "9:10",
+      "line": "3 mails pro résumés, une réponse prête à relire"
+    },
+    "learning": {
+      "agent": "Prof",
+      "time": "hier",
+      "line": "Quiz d’espagnol : 8/10, on révise les verbes demain ?"
+    }
   },
   "vs": {
     "kicker": "Comparer",
@@ -146,54 +168,6 @@
     "ctaTitle": "Tes Bips, pour de vrai."
   },
   "ai": "IA",
-  "uses": {
-    "kicker": "Ce qu’ils font",
-    "title": "Un agent pour chaque partie de ta vie.",
-    "sub": "Chaque Bip a son domaine. Voici comment ils t’aident, au quotidien.",
-    "demo": "Les voir à l’œuvre dans la démo",
-    "daily": {
-      "title": "Quotidien",
-      "b1": "Trie tes mails et te dit ce qui compte",
-      "b2": "Tient ton agenda et tes rappels",
-      "b3": "Réserve une table ou un train, avec ton accord",
-      "b4": "Range tes papiers et tes fichiers dans le Carnet"
-    },
-    "wellness": {
-      "title": "Bien-être",
-      "b1": "Suit ton sommeil et ton activité, depuis Santé ou Health Connect si tu le permets",
-      "b2": "Te propose des séances de sport à ton rythme",
-      "b3": "T’aide à mieux manger, avec des idées simples",
-      "b4": "Des conseils réalistes, sans jouer au médecin"
-    },
-    "finance": {
-      "title": "Finances",
-      "b1": "Repère dans tes mails les factures et les prélèvements à venir",
-      "b2": "Tient la liste de tes abonnements et de leurs renouvellements",
-      "b3": "Fait le point sur tes dépenses, chiffres et sources à l’appui",
-      "b4": "Ne fait jamais de virement ni d’achat"
-    },
-    "family": {
-      "title": "Famille",
-      "b1": "Propose de prévenir un proche quand ça le concerne",
-      "b2": "Rien ne part sans ton « Envoyer »",
-      "b3": "Donne les dates des vacances à toute la famille",
-      "b4": "Chacun garde son espace et ses agents"
-    },
-    "work": {
-      "title": "Travail",
-      "b1": "Résume tes mails pro et prépare les réponses",
-      "b2": "Tu relis avant tout envoi en ton nom",
-      "b3": "Prépare tes réunions et note la suite à donner",
-      "b4": "Lit et résume tes documents, PDF compris"
-    },
-    "learning": {
-      "title": "Apprendre",
-      "b1": "Explique simplement, à ton niveau",
-      "b2": "Te fait réviser avec des quiz",
-      "b3": "Révise avec toi à voix haute, en Live",
-      "b4": "Prépare une fiche ou un cours à partir de tes documents"
-    }
-  },
   "control": {
     "once": "Une fois",
     "session": "Cette session",
