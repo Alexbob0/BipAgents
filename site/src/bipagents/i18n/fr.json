@@ -23,9 +23,9 @@
   },
   "hero": {
     "badge": "Construit sur Hermes Agent",
-    "line1": "Tes agents IA font tes démarches.",
-    "line2": "Privés et sécurisés, en Europe ou chez toi.",
-    "lede": "Et ils te demandent avant d’agir. Mails triés, agenda tenu, réservations faites : nous ne lisons pas tes conversations.",
+    "line1": "Tes agents IA,",
+    "line2": "privés et sécurisés, en Europe ou chez toi.",
+    "lede": "Ils font tes démarches et te demandent avant d’agir. Mails triés, agenda tenu, réservations faites : nous ne lisons pas tes conversations.",
     "proof1": "<b>Ils agissent pour toi :</b> mails, agenda, réservations, un vrai navigateur",
     "proof2": "<b>Ton accord d’abord :</b> ils te demandent avant d’envoyer ou de payer",
     "proof3": "<b>Ton propre espace</b>, privé, en Europe ou sur ton ordinateur, sans pub",
