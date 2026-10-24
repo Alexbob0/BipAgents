@@ -315,6 +315,12 @@ def bipagents(version: str) -> Path:
     currencies = prices["currencies"]
     default_currency = next(code for code, c in currencies.items() if not c.get("countries"))
     base = currencies[default_currency]
+    # No price « in the app » while the app isn't in the stores: no reference price for something not on sale.
+    stores_live = any(cfg["stores"]["bipagents"].values())
+    if not stores_live:
+        currencies = {code: {**c, "store": None} for code, c in currencies.items()}
+        prices = {**prices, "currencies": currencies}
+        base = currencies[default_currency]
     regions = [{"id": rid, "lang": l, "country": country, "short": short,
                 "currency": next((code for code, c in currencies.items() if country and country in c.get("countries", [])),
                                  default_currency)}
@@ -328,7 +334,9 @@ def bipagents(version: str) -> Path:
         for where in ("web", "store"):
             for period in ("month", "year"):
                 for plan in prices["plans"]:
-                    values[f"p.{where}.{period}.{plan}"] = money(base[where][period][plan], lang)
+                    values[f"p.{where}.{period}.{plan}"] = money(base[where][period][plan], lang) if base.get(where) else ""
+        if not stores_live:
+            values["pricing.inApp"] = ""
         for plan in prices["plans"]:
             values[f"p.web.yearmonth.{plan}"] = money(round(base["web"]["year"][plan] / 12, 2), lang)
         # « from 6,49 € »: the lowest monthly price, which the script follows in the visitor's currency

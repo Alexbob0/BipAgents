@@ -32,7 +32,7 @@
     "cta": "Elegir mi plan",
     "watch": "Ver la demo",
     "watchTime": "1 min",
-    "price": "Pronto en iPhone y Android · precios de lanzamiento desde {{p.from}} al mes"
+    "price": "Pronto en iPhone y Android · desde {{p.from}} al mes"
   },
   "store": {
     "soon": "Muy pronto en",
@@ -51,15 +51,15 @@
   },
   "vs": {
     "kicker": "Comparar",
-    "title": "¿Chatbot, agente que montas tú o BipAgents?",
+    "title": "¿Asistente de IA, agente que montas tú o BipAgents?",
     "sub": "Por grandes categorías, a octubre de 2026: cada servicio tiene sus propios planes.",
     "what": "Qué cambia",
-    "c1": "Chatbots de IA (ChatGPT, etc.)",
+    "c1": "Asistentes de IA (ChatGPT, Grok…)",
     "c2": "Agentes que montas tú",
     "c3": "BipAgents",
     "r1": {
       "label": "Actúa por ti",
-      "c1": "Sobre todo responden; algunos actúan en un navegador (el agente de ChatGPT, en planes de pago)",
+      "c1": "Sobre todo responden; algunos actúan en un navegador, en planes de pago (el agente de ChatGPT, Grok Bot)",
       "c2": "Sí, con las herramientas que conectes",
       "c3": "Sí: correo, agenda, reservas, un navegador de verdad"
     },
@@ -89,9 +89,15 @@
     },
     "r6": {
       "label": "Precio",
-      "c1": "Versión gratis; planes de pago de unos 20 $ o 23 € al mes",
+      "c1": "Planes gratis o baratos; con un agente que actúa, de 23 € a más de 30 € al mes (ChatGPT Plus, SuperGrok)",
       "c2": "Software gratuito; pagas el servidor y el modelo de IA",
       "c3": "Desde {{p.from}} al mes, crédito de IA incluido"
+    },
+    "r7": {
+      "label": "Publicidad",
+      "c1": "En ChatGPT Free y Go en Europa, desde agosto de 2026",
+      "c2": "Ninguna",
+      "c3": "Ninguna"
     }
   },
   "marquee": [

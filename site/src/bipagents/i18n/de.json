@@ -32,7 +32,7 @@
     "cta": "Tarif wählen",
     "watch": "Demo ansehen",
     "watchTime": "1 Min.",
-    "price": "Bald für iPhone und Android · Einführungspreise ab {{p.from}} im Monat"
+    "price": "Bald für iPhone und Android · ab {{p.from}} im Monat"
   },
   "store": {
     "soon": "Bald im",
@@ -51,15 +51,15 @@
   },
   "vs": {
     "kicker": "Im Vergleich",
-    "title": "Chatbot, Agent zum Selbstbauen oder BipAgents?",
+    "title": "KI-Assistent, Agent zum Selbstbauen oder BipAgents?",
     "sub": "Nach großen Kategorien, Stand Oktober 2026: Jeder Dienst hat eigene Tarife.",
     "what": "Was sich ändert",
-    "c1": "KI-Chatbots (ChatGPT usw.)",
+    "c1": "KI-Assistenten (ChatGPT, Grok …)",
     "c2": "Agenten zum Selbstbauen",
     "c3": "BipAgents",
     "r1": {
       "label": "Handelt für dich",
-      "c1": "Meist Antworten; manche handeln in einem Browser (der Agent von ChatGPT, in Bezahltarifen)",
+      "c1": "Meist Antworten; manche handeln in einem Browser, in Bezahltarifen (der Agent von ChatGPT, Grok Bot)",
       "c2": "Ja, mit den Tools, die du anbindest",
       "c3": "Ja: Mails, Kalender, Reservierungen, ein echter Browser"
     },
@@ -89,9 +89,15 @@
     },
     "r6": {
       "label": "Preis",
-      "c1": "Gratisversion; Bezahltarife um 20 $ bzw. 23 € im Monat",
+      "c1": "Gratis- oder günstige Tarife; mit einem handelnden Agenten 23 € bis über 30 € im Monat (ChatGPT Plus, SuperGrok)",
       "c2": "Freie Software; du zahlst Server und KI-Modell",
       "c3": "Ab {{p.from}} im Monat, KI-Guthaben inklusive"
+    },
+    "r7": {
+      "label": "Werbung",
+      "c1": "Bei ChatGPT Free und Go in Europa, seit August 2026",
+      "c2": "Keine",
+      "c3": "Keine"
     }
   },
   "marquee": [

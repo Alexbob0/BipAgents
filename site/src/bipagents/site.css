@@ -642,6 +642,7 @@ a.store:hover { transform: translateY(-2px); }
 .plan-price small { font-size: 16px; font-weight: 900; color: var(--ink2); }
 .plan-equiv { font-weight: 900; color: var(--green-deep); font-size: 15px; min-height: 1.4em; }
 .plan-store { font-size: 13.5px; color: var(--muted); font-weight: 800; }
+.plan-store:empty { display: none; }
 .plan-blurb { margin-top: 10px; color: var(--ink2); font-size: 15px; font-weight: 700; }
 @media (prefers-color-scheme: dark) { .plan-equiv { color: var(--green); } }
 @media (max-width: 859px) {   /* on a phone: compact rows */

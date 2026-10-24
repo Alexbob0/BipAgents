@@ -32,7 +32,7 @@
     "cta": "Choose my plan",
     "watch": "See the demo",
     "watchTime": "1 min",
-    "price": "Coming soon to iPhone and Android · launch prices from {{p.from}} a month"
+    "price": "Coming soon to iPhone and Android · from {{p.from}} a month"
   },
   "store": {
     "soon": "Coming soon to",
@@ -51,15 +51,15 @@
   },
   "vs": {
     "kicker": "Compared",
-    "title": "Chatbot, do-it-yourself, or BipAgents?",
+    "title": "AI assistant, do-it-yourself, or BipAgents?",
     "sub": "Broad categories, as of October 2026: each service has its own plans.",
     "what": "What changes",
-    "c1": "AI chatbots (ChatGPT, etc.)",
+    "c1": "AI assistants (ChatGPT, Grok…)",
     "c2": "Do-it-yourself agents",
     "c3": "BipAgents",
     "r1": {
       "label": "Acts for you",
-      "c1": "Mostly answers; some act in a browser (ChatGPT’s agent, on paid plans)",
+      "c1": "Mostly answers; some act in a browser on paid plans (ChatGPT’s agent, Grok Bot)",
       "c2": "Yes, with the tools you connect",
       "c3": "Yes: email, calendar, bookings, a real browser"
     },
@@ -89,9 +89,15 @@
     },
     "r6": {
       "label": "Price",
-      "c1": "Free tier; paid plans around $20 or €23 a month",
+      "c1": "Free or low-cost plans; with an agent that acts, about $20–30 a month (ChatGPT Plus, SuperGrok)",
       "c2": "Free software; you pay for the server and the AI model",
       "c3": "From {{p.from}} a month, AI credit included"
+    },
+    "r7": {
+      "label": "Ads",
+      "c1": "On ChatGPT Free and Go in Europe, since August 2026",
+      "c2": "None",
+      "c3": "None"
     }
   },
   "marquee": [
