@@ -24,7 +24,7 @@
   "hero": {
     "badge": "Construit sur Hermes Agent",
     "line1": "Tes agents IA,",
-    "line2": "privés et sécurisés, en Europe ou chez toi.",
+    "line2": "privés et sécurisés.",
     "lede": "Ils font tes démarches et te demandent avant d’agir. Mails triés, agenda tenu, réservations faites : nous ne lisons pas tes conversations.",
     "proof1": "<b>Ils agissent pour toi :</b> mails, agenda, réservations, un vrai navigateur",
     "proof2": "<b>Ton accord d’abord :</b> ils te demandent avant d’envoyer ou de payer",
@@ -35,6 +35,7 @@
     "watchTime": "1 min",
     "price": "Bêta gratuite sur iPhone et Android · places limitées · sans carte bancaire",
     "beta": "Bêta gratuite",
+    "bandTag": "iPhone et Android · places limitées",
     "free": "Gratuit",
     "freeWhere": "sur ton ordinateur",
     "fromPre": "ou tout compris dès",

@@ -2,11 +2,16 @@
 <!-- ============================================================ HERO: why (private, in Europe) on the left, what it does on the right -->
 <section class="hero">
   <div class="hero-copy reveal">
-    <div class="hero-top">
-      <p class="chip-beta">{{hero.beta}}</p>
-      <!-- The two ways, at a glance: free on one's computer, or all included (the web price, the visitor's currency). -->
-      <p class="hero-from"><span><b>{{hero.free}}</b> {{hero.freeWhere}}</span><span class="dot" aria-hidden="true">·</span><span>{{hero.fromPre}} <b>{{p.from}}</b>{{hero.fromPost}}</span></p>
-    </div>
+    <!-- The beta, friendly and seen first: a band with a live Bip, then the two ways (free on one's computer, or all
+         included from the web price in the visitor's currency). The whole band leads to the beta page. -->
+    <a class="hero-band" href="{{betahref}}">
+      <span class="band-bip" data-bip="wellness" data-interactive aria-hidden="true"></span>
+      <span class="band-text">
+        <span class="band-top"><b>{{hero.beta}}</b><span class="band-tag">{{hero.bandTag}}</span></span>
+        <span class="band-sub"><span><b>{{hero.free}}</b> {{hero.freeWhere}}</span><span class="dot" aria-hidden="true">·</span><span>{{hero.fromPre}} <b>{{p.from}}</b>{{hero.fromPost}}</span></span>
+      </span>
+      <span class="band-go" aria-hidden="true">→</span>
+    </a>
     <h1>
       <span class="h-line">{{hero.line1}}</span>
       <span class="h-line"><span class="h-hl">{{hero.line2}}</span></span>

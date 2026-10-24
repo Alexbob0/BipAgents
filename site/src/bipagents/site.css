@@ -138,11 +138,27 @@ section[id] { scroll-margin-top: 72px; }
   position: relative; display: grid; gap: 30px; padding: 40px 20px 80px; max-width: 1240px; margin: 0 auto; align-items: center;
 }
 @media (min-width: 1040px) { .hero { grid-template-columns: 1.05fr .95fr; padding: 64px 32px 72px; min-height: calc(100svh - 70px); } }
-.hero-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 20px; }
-.hero-top .chip-beta { margin-bottom: 0; }
-.hero-from { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 15px; font-weight: 700; color: var(--ink2); }
-.hero-from b { color: var(--ink); font-weight: 900; }
-.hero-from .dot { color: var(--muted); }
+/* The beta band: friendly, seen first, the whole band a link to the beta page. */
+.hero-band { position: relative; display: inline-flex; align-items: center; gap: 12px; max-width: 100%; margin-bottom: 22px;
+  padding: 8px 14px 8px 8px; border-radius: 22px; text-decoration: none; color: var(--ink); overflow: hidden;
+  background: linear-gradient(100deg, var(--green-tint), var(--gold-tint) 55%, var(--coral-tint));
+  box-shadow: 0 0 0 1px var(--line), var(--shadow); transition: transform .2s ease, box-shadow .2s ease; }
+.hero-band:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px var(--green), var(--shadow); }
+.hero-band::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .55) 50%, transparent 70%);
+  transform: translateX(-120%); animation: band-shine 5s ease-in-out 1.2s infinite; }
+@keyframes band-shine { 0%, 70% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+.band-bip { flex: 0 0 46px; height: 46px; border-radius: 15px; background: var(--card); touch-action: auto; }
+.band-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.band-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 17px; }
+.band-top b { font-weight: 900; color: var(--green-deep); }
+.band-tag { font-size: 13.5px; font-weight: 800; color: var(--ink2); }
+.band-sub { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 7px; font-size: 14.5px; font-weight: 700; color: var(--ink2); }
+.band-sub b { color: var(--ink); font-weight: 900; }
+.band-sub .dot { color: var(--muted); }
+.band-go { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--ink); color: var(--card); font-weight: 900; }
+@media (prefers-reduced-motion: reduce) { .hero-band::after { animation: none; } .hero-band { transition: none; } }
 .chip-beta { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 16px; margin-bottom: 20px;
   background: var(--green-tint); color: var(--green-deep); font-size: 14px; font-weight: 900; }
 
@@ -792,6 +808,7 @@ html[data-region]:not([data-region="eu"]) [data-only="eu"] { display: none !impo
 
 /* On a phone, the two ways one under the other, without the middle dot. */
 @media (max-width: 520px) {
-  .hero-from { flex-direction: column; gap: 2px; }
-  .hero-from .dot { display: none; }
+  .band-sub { flex-direction: column; gap: 1px; }
+  .band-sub .dot { display: none; }
+  .band-go { display: none; }
 }

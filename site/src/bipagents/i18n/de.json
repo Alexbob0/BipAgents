@@ -24,7 +24,7 @@
   "hero": {
     "badge": "Gebaut auf Hermes Agent",
     "line1": "Deine KI-Agenten,",
-    "line2": "privat und sicher, in Europa oder bei dir zu Hause.",
+    "line2": "privat und sicher.",
     "lede": "Sie erledigen deinen Papierkram und fragen, bevor sie handeln. Mails sortiert, Kalender geführt, Reservierungen erledigt: Wir lesen deine Unterhaltungen nicht.",
     "proof1": "<b>Sie handeln für dich:</b> Mails, Kalender, Reservierungen, ein echter Browser",
     "proof2": "<b>Erst dein Okay:</b> Sie fragen, bevor sie etwas senden oder bezahlen",
@@ -35,6 +35,7 @@
     "watchTime": "1 Min.",
     "price": "Kostenlose Beta für iPhone und Android · begrenzte Plätze · ohne Kreditkarte",
     "beta": "Kostenlose Beta",
+    "bandTag": "iPhone und Android · begrenzte Plätze",
     "free": "Kostenlos",
     "freeWhere": "auf deinem Computer",
     "fromPre": "oder alles inklusive ab",

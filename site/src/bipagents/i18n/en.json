@@ -24,7 +24,7 @@
   "hero": {
     "badge": "Built on Hermes Agent",
     "line1": "Your AI agents,",
-    "line2": "private and secure, in Europe or at home.",
+    "line2": "private and secure.",
     "lede": "They do your admin and ask before they act. Email sorted, calendar kept, bookings made: we don’t read your conversations.",
     "proof1": "<b>They act for you:</b> email, calendar, bookings, a real browser",
     "proof2": "<b>Your OK first:</b> they ask before sending or paying",
@@ -35,6 +35,7 @@
     "watchTime": "1 min",
     "price": "Free beta on iPhone and Android · limited places · no card needed",
     "beta": "Free beta",
+    "bandTag": "iPhone and Android · limited places",
     "free": "Free",
     "freeWhere": "on your computer",
     "fromPre": "or all included from",
