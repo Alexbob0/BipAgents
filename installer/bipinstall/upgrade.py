@@ -311,7 +311,7 @@ def main(argv: List[str]) -> int:
             "Update the other BipAgents installs of this machine too (your sudo password, asked once)?")):
         update_others(runner)
     if touched("hermes/patches/"):
-        commands.append("bipagents hermes-update   # BipAgents' Hermes patches changed")
+        commands.append("bipagents hermes-update --fixes-only   # BipAgents' Hermes patches changed")
     if touched("App/", "Packages/", "Widgets/", "NotificationService/"):
         say(ui.note("The app changed too: its new version comes through TestFlight or the App Store."))
     if commands:

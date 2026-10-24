@@ -177,7 +177,8 @@ Whenever you want: `bipagents hermes-update`. Before changing anything, it says 
 patches still apply on the new version (checked on a copy). Then it takes our patches off, runs `hermes update`
 (its backup, its dependencies), puts back the patches that apply, restarts the agents (the hub and their spaces) and
 checks that each one answers. When an agent no longer answers, it offers to go back to the previous version.
-`--check` checks without changing anything.
+`--check` checks without changing anything. When a BipAgents update brings a new patch, `--fixes-only` puts it on
+the Hermes you have, without updating Hermes, then restarts and checks the agents.
 
 ## Uninstall
 

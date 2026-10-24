@@ -184,7 +184,9 @@ Quand tu veux : `bipagents hermes-update`. Avant de toucher à quoi que ce soit,
 correctifs BipAgents s'appliquent encore sur la nouvelle version (vérifié sur une copie). Puis il retire nos
 correctifs, lance `hermes update` (sa sauvegarde, ses dépendances), remet les correctifs qui s'appliquent,
 redémarre les agents (le hub et leurs espaces) et vérifie que chacun répond. Si un agent ne répond plus, il propose
-de revenir à la version précédente. `--check` vérifie sans rien changer.
+de revenir à la version précédente. `--check` vérifie sans rien changer. Quand une mise à jour de BipAgents
+apporte un nouveau correctif, `--fixes-only` le pose sur le Hermes que tu as, sans mettre Hermes à jour, puis
+redémarre et vérifie les agents.
 
 ## Désinstaller
 

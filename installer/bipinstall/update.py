@@ -8,7 +8,9 @@
 4. Checks: every agent of the bridge answers with its key, and has what the app relies on. When an agent no longer
    answers, going back to the previous version is offered.
 
-`--check` does 1 and 4 only, without changing anything.
+`--check` does 1 and 4 only, without changing anything. `--fixes-only` puts on the BipAgents patches the current Hermes
+doesn't have yet (a BipAgents update brought new ones), without updating Hermes, then does 3 and 4; the same is offered
+when Hermes is already up to date.
 """
 from __future__ import annotations
 
@@ -156,6 +158,58 @@ def report(agents: List[Dict[str, str]], problems: Dict[str, str]) -> bool:
     return not any(problems.values())
 
 
+def missing_fixes(wanted: List[Path], mine: List[Path]) -> List[Path]:
+    """The patches wanted that the Hermes code doesn't have yet."""
+    have = {p.name for p in mine}
+    return [p for p in wanted if p.name not in have]
+
+
+def put_on(runner: hermes.Runner, missing: List[Path]) -> Tuple[List[str], List[str]]:
+    """Each missing patch in the version that fits the current Hermes: (the files applied, the names that don't fit)."""
+    applied: List[str] = []
+    skipped: List[str] = []
+    for patch in missing:
+        fit = next((v for v in hermes.patch_variants(patch) if git("apply", "--check", str(v)).returncode == 0), None)
+        if fit is None:
+            skipped.append(patch.name)
+            continue
+        runner.run(["git", "-C", str(hermes.hermes_checkout()), "apply", str(fit)])
+        applied.append(str(fit))
+    return applied, skipped
+
+
+def fixes_only(args, agents: List[Dict[str, str]], mine: List[Path], missing: List[Path],
+               chosen: Optional[List[str]]) -> int:
+    """The missing fixes put on the current Hermes, the gateways restarted, the agents checked."""
+    say(ui.note(f"BipAgents fixes this Hermes doesn't have yet: {', '.join(p.name[:4] for p in missing)}."))
+    if not args.yes and not confirm("Put them on now, without updating Hermes? Your agents restart (1 to 2 minutes)."):
+        say("Nothing was changed.")
+        return 1
+    runner = hermes.Runner()
+    applied, skipped = put_on(runner, missing)
+    if chosen is not None and applied:
+        remember_patches(list(chosen) + applied)
+    if skipped:
+        say(ui.note(f"Fixes that don't fit this Hermes: {', '.join(skipped)}."))
+    if not applied:
+        return 1
+    say(ui.done(f"Fixes put on: {', '.join(Path(p).name[:4] for p in applied)}."))
+    restart(runner)
+    every = [str(p) for p in mine] + applied
+    if report(agents, check_agents(agents, expect_clarify=any(Path(p).name.startswith("0001") for p in every))):
+        say(ui.finale("Your agents have BipAgents' latest fixes."))
+        return 0
+    say(ui.sad("Something is wrong after the fixes."))
+    if args.yes or not confirm("Take them back off?"):
+        return 1
+    for patch in reversed(applied):
+        runner.run(["git", "-C", str(hermes.hermes_checkout()), "apply", "--reverse", patch], check=False)
+    if chosen is not None:
+        remember_patches(list(chosen))
+    restart(runner)
+    return 1
+
+
 def recorded_patches() -> Optional[List[str]]:
     """The patches the person chose on a Hermes they had before BipAgents (None: Hermes came with BipAgents)."""
     record = Path.home() / ".config" / "bipagents" / RECORD
@@ -182,6 +236,8 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--check", action="store_true", help="only check: what an update would keep, and the agents")
     parser.add_argument("--config", help="the bridge's config (default: found by itself)")
     parser.add_argument("--yes", action="store_true", help="no question (for a scheduled update)")
+    parser.add_argument("--fixes-only", action="store_true",
+                        help="only put on the BipAgents fixes the current Hermes doesn't have yet (no Hermes update)")
     args = parser.parse_args(argv)
     if not Path(hermes.hermes_bin()).exists():
         say(ui.sad("Hermes isn't installed in this account."))
@@ -196,11 +252,17 @@ def main(argv: List[str]) -> int:
     # A Hermes that came with BipAgents gets every patch; one the person had before, those they chose.
     chosen_names = {Path(c).name for c in chosen} if chosen is not None else set()
     wanted = [p for p in patches() if chosen is None or p.name in chosen_names or p.name in {m.name for m in mine}]
+    missing = missing_fixes(wanted, mine)
+    fixes = ", ".join(p.name[:4] for p in mine)
+    say(ui.note(f"Current version: {before}; fixes in place: {fixes or 'none'}."))
+    if args.fixes_only:
+        if not missing:
+            say(ui.done("Every BipAgents fix is already on this Hermes."))
+            return 0
+        return fixes_only(args, agents, mine, missing, chosen)
     out = subprocess.run([hermes.hermes_bin(), "update", "--check"], capture_output=True, text=True).stdout
     branch = channel(out)
     late = behind(out)
-    fixes = ", ".join(p.name[:4] for p in mine)
-    say(ui.note(f"Current version: {before}; fixes in place: {fixes or 'none'}."))
     if late == 0:
         say(ui.done("Hermes is already up to date."))
     elif late is not None:
@@ -209,7 +271,15 @@ def main(argv: List[str]) -> int:
         for name, ok in keeps.items():
             say(ui.done(f"{name} still applies.") if ok else
                 ui.fail(f"{name} no longer applies: its feature will be missing until a BipAgents update."))
+        if missing:
+            say(ui.note(f"New BipAgents fixes: {', '.join(p.name[:4] for p in missing)}. To put them on without "
+                        "updating Hermes: bipagents hermes-update --fixes-only"))
+    if late == 0 and missing and not args.check:
+        return fixes_only(args, agents, mine, missing, chosen)
     if args.check or not late:
+        if missing:
+            say(ui.note(f"BipAgents fixes not on this Hermes yet: {', '.join(p.name[:4] for p in missing)} "
+                        "(bipagents hermes-update --fixes-only)."))
         say("\nYour agents, now:")
         report(agents, check_agents(agents, expect_clarify=any(p.name.startswith("0001") for p in mine)))
         return 0
