@@ -97,7 +97,7 @@ oder 6.000 Nachrichten pro Monat mit dem Standardmodell (Abschnitt 6).
 der Europäischen Union, auch für Personen, die außerhalb der Union leben.
 
 **In welchen Ländern.** Das Angebot ist erhältlich, wenn dein Store-Konto in der Europäischen Union, in den USA, im
-Vereinigten Königreich, in Israel oder in Singapur ist. Anderswo bietet die App es nicht an; BipAgents bleibt mit deinem
+Vereinigten Königreich, in Israel, in Singapur oder in Kanada ist. Anderswo bietet die App es nicht an; BipAgents bleibt mit deinem
 eigenen Server nutzbar. Auf der Website wird ein Kauf aus einem Land, in dem das Angebot nicht verkauft wird, sofort
 storniert und erstattet. Die besonderen Regeln für Personen, die außerhalb der Union leben, stehen in Abschnitt 17.
 

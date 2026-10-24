@@ -95,7 +95,7 @@ o 6.000 mensajes al mes con el modelo por defecto (sección 6).
 la Unión Europea, también para las personas que viven fuera de la Unión.
 
 **En qué países.** La oferta se propone cuando tu cuenta de la tienda está en la Unión Europea, en Estados Unidos, en el
-Reino Unido, en Israel o en Singapur. En otros países, la app no la propone; BipAgents se sigue pudiendo usar con tu
+Reino Unido, en Israel, en Singapur o en Canadá. En otros países, la app no la propone; BipAgents se sigue pudiendo usar con tu
 propio servidor. En el sitio, una compra hecha desde un país donde la oferta no se vende se anula y se reembolsa
 enseguida. Las reglas propias de las personas que viven fuera de la Unión están en la sección 17.
 
