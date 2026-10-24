@@ -22,6 +22,8 @@
   Daten über deinen Platz (nie seinen Inhalt) und deine Sicherungen, verschlüsselt mit einem Schlüssel, den es nicht
   hat; es hostet deinen Platz, ohne darauf zuzugreifen (Abschnitt 5). Wenn du einem Agenten eine eigene E-Mail-Adresse
   gibst, bewahrt Kerfy Studio außerdem die E-Mails dieser Adresse auf seinem Mailserver auf (Abschnitt 5.8).
+- Bei einem Duo- oder Familien-Tarif gehört das KI-Guthaben der ganzen Familie: **Die Person, die zahlt, sieht, wie
+  viel jede Person davon verbraucht** (ein Betrag), **nie, was sie schreibt** (Abschnitt 5.3).
 
 ## 1. Wer verantwortlich ist
 
@@ -372,6 +374,15 @@ und Uhrzeit deines Widerrufs.
 
 **Genutztes KI-Guthaben.** Der Betrag, den der KI-Schlüssel jedes Platzes im Monat ausgegeben hat, höchstens einmal
 pro Minute beim KI-Router abgefragt, und das übertragene Guthaben: ein Betrag, nie deine Nachrichten.
+
+**Bei einem Duo- oder Familien-Tarif** ist das KI-Guthaben geteilt: Die Person, die zahlt, sieht in ihrer App den
+Betrag, den jeder Platz im Monat verbraucht hat (und seine Schätzung in Nachrichten), und das monatliche Limit, das
+sie ihm gegeben hat. Eine eingeladene Person sieht, was für alle übrig ist, was sie verbraucht hat und ihr Limit, nie,
+was die anderen verbraucht haben. Diese Beträge sagen nichts über den Inhalt: **Niemand sieht, was jemand schreibt
+oder was seine Agenten tun**. Zweck: der Person, die zahlt, ermöglichen, das Guthaben der Familie zu verfolgen und
+Limits zu setzen, und jeder Person, zu wissen, was ihr bleibt; Rechtsgrundlage: die Erfüllung des Vertrags (Art. 6
+Abs. 1 lit. b DSGVO), da das geteilte Guthaben Teil des Duo- oder Familien-Tarifs ist. Das gesetzte Limit wird
+aufbewahrt, solange das Abo läuft.
 
 **Nur eine kostenlose Woche pro Gerät.**
 

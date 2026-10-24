@@ -20,6 +20,8 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
   data about your place (never its content) and your backups, encrypted with a key it does not have; it hosts your
   place without accessing it (section 5). If you give an agent its own e-mail address, Kerfy Studio also keeps that
   address's mails on its mail server (section 5.8).
+- On a Duo or a Family plan, the AI credit belongs to the whole family: **the person who pays sees how much each
+  person uses** (an amount), **never what they write** (section 5.3).
 
 ## 1. Who is responsible
 
@@ -340,6 +342,14 @@ and time of your withdrawal.
 
 **AI credit used.** The amount each place's AI key spent in the month, read from the AI router once a minute at most,
 and the credit carried over: an amount, never your messages.
+
+**On a Duo or a Family plan**, the AI credit is shared: the person who pays sees in their app the amount each place
+used in the month (and its estimate in messages) and the monthly limit they may have given it. An invited person sees
+what is left for everyone, what they used and their limit, never what the others used. These amounts say nothing of
+the content: **nobody sees what anyone writes or what their agents do**. Purpose: letting the person who pays follow
+the family's credit and set limits, and letting each person know what they have left; legal basis: the performance of
+the contract (Article 6(1)(b) GDPR), sharing the credit being part of the Duo or Family plan. The limit set is kept as
+long as the subscription lasts.
 
 **Only one free week per device.**
 

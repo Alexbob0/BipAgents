@@ -22,6 +22,8 @@
   sur ta place (jamais son contenu) et tes sauvegardes, chiffrées avec une clé qu'il n'a pas ; il héberge ta place
   sans y accéder (section 5). Si tu donnes à un agent sa propre adresse e-mail, Kerfy Studio garde aussi les e-mails
   de cette adresse sur son serveur de messagerie (section 5.8).
+- Sur un forfait Duo ou Famille, le crédit d'IA est celui de toute la famille : **la personne qui paie voit combien
+  chaque personne en utilise** (un montant), **jamais ce qu'elle écrit** (section 5.3).
 
 ## 1. Qui est responsable
 
@@ -357,6 +359,14 @@ de ta rétractation.
 
 **Crédit d'IA utilisé.** Le montant que la clé d'IA de chaque place a dépensé dans le mois, lu chez le routeur d'IA
 une fois par minute au plus, et le crédit reporté : un montant, jamais tes messages.
+
+**Sur un forfait Duo ou Famille**, le crédit d'IA est partagé : la personne qui paie voit dans son app le montant que
+chaque place a utilisé dans le mois (et son estimation en messages) et la limite mensuelle qu'elle a pu lui donner.
+Une personne invitée voit ce qu'il reste pour tout le monde, ce qu'elle a utilisé et sa limite, jamais ce qu'ont
+utilisé les autres. Ces montants ne disent rien du contenu : **personne ne voit ce que chacun écrit ni ce que font ses
+agents**. Finalité : permettre à la personne qui paie de suivre le crédit de la famille et de fixer des limites, et à
+chacun de connaître ce qu'il lui reste ; base légale : l'exécution du contrat (article 6.1.b du RGPD), le partage du
+crédit faisant partie du forfait Duo ou Famille. La limite fixée est gardée tant que l'abonnement dure.
 
 **Une seule semaine gratuite par appareil.**
 

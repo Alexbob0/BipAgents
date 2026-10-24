@@ -81,12 +81,14 @@ Para cada persona del plan:
 - **Su plaza**: su propia cuenta Linux en un servidor que Kerfy Studio alquila a un proveedor de alojamiento socio, en
   la que funcionan sus agentes de IA. Están construidos sobre Hermes Agent, software libre de Nous Research
   (https://github.com/NousResearch/hermes-agent); BipAgents no está editada, aprobada ni patrocinada por Nous Research.
-- **Su crédito de IA**: 0,50 € de uso del modelo de IA cada mes, que la app muestra como un número estimado de mensajes
-  (sección 6).
 - **Las voces de los Bips**, en su teléfono cuando este lo permite; si no, desde su plaza.
 - **Una copia de seguridad cifrada cada hora** (sección 9).
 - **Un acceso SSH** a la cuenta de su plaza, desde un ordenador cuya clave se haya añadido en la app (Ajustes › Plan
   todo incluido › Acceso SSH), sin derechos de administrador (root).
+
+**El crédito de IA del plan**: 0,50 € (Solo), 1,00 € (Duo) o 3,00 € (Familia) de uso del modelo de IA cada mes,
+compartido por todas las personas del plan, que la app muestra como un número estimado de mensajes: unos 1.000, 2.000
+o 6.000 mensajes al mes con el modelo por defecto (sección 6).
 
 **Dónde.** Los servidores se alquilan primero a OVHcloud (centros de datos en la Unión Europea), después a Hetzner
 (Alemania o Finlandia) y después a OVHcloud para servidores más pequeños, según lo que esté disponible. Todos están en
@@ -108,7 +110,7 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   y tu cuenta de la tienda nunca han tenido una. Si no, la app te propone el mismo plan sin semana gratis. Antes de la
   compra, la app te dice si se aplica la semana gratis, cuándo termina y el precio que la sigue.
 - La semana gratis se aplica a las compras en la app; en el sitio, la página de pago indica si se aplica.
-- Durante la semana gratis, todo funciona como en el plan; cada persona tiene 0,50 € de crédito de IA para toda la
+- Durante la semana gratis, todo funciona como en el plan; el crédito de IA del plan (sección 6) sirve para toda la
   semana.
 - **Al final de la semana, la suscripción de pago empieza sola**, salvo que la hayas cancelado en la tienda antes del
   final (en el App Store, al menos 24 horas antes del final, según las condiciones de Apple). No se cobra nada si lo
@@ -137,16 +139,24 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 ## 6. El crédito de IA y el modelo
 
-- Cada persona del plan tiene **0,50 € de crédito de IA al mes**: uso del modelo contado al precio que el proveedor
-  factura a Kerfy Studio. La app lo muestra como un **número estimado de mensajes** con el modelo elegido. Es una
-  estimación: el coste de un mensaje depende de su longitud, de los archivos adjuntos y del modelo.
+- Cada plan tiene un **crédito de IA al mes: 0,50 € para Solo, 1,00 € para Duo, 3,00 € para Familia**: uso del modelo
+  contado al precio que el proveedor factura a Kerfy Studio. En un Duo o una Familia, este crédito **es de todas las
+  personas del plan**: sus agentes lo usan juntos, sin una parte fija para cada una.
+- **En mensajes**: la app muestra el crédito como un **número estimado de mensajes** con el modelo elegido. Con el
+  modelo por defecto, las páginas de la oferta lo redondean a la baja: **unos 1.000 mensajes al mes para Solo, 2.000
+  para Duo y 6.000 para toda la familia**. Es una estimación, no una promesa: el coste de un mensaje depende de su
+  longitud, de los archivos adjuntos y del modelo.
 - **Traspaso**: el crédito del plan que no has usado pasa al mes siguiente, por un mes más como máximo.
 - **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), 2,99 € IVA
-  incluido por 2 € de crédito. Se añade a la plaza de la persona que contrató el plan. **Nunca caduca**: si queda
+  incluido por 2 € de crédito. Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
   cuando la suscripción termina, se conserva en tu cuenta y vuelve con tu próxima suscripción. Solo se pierde si
   eliminas tu cuenta.
-- **Crédito agotado**: tus agentes dejan de llamar al modelo de IA hasta el mes siguiente o hasta que añadas crédito.
-  Tu plaza, tus archivos y tus copias de seguridad siguen; la app te avisa.
+- **Crédito agotado**: los agentes de todas las personas del plan dejan de llamar al modelo de IA hasta el mes
+  siguiente o hasta que la persona que paga añada crédito. Las plazas, los archivos y las copias de seguridad siguen;
+  la app avisa a cada persona.
+- **Límite por persona** (Duo y Familia): la persona que paga puede dar a cada persona un límite mensual (Ajustes ›
+  Plan todo incluido). Una vez alcanzado su límite, los agentes de esa persona dejan de llamar al modelo de IA hasta
+  el mes siguiente; el resto del crédito queda para los demás. La persona ve su límite en su app.
 - El crédito no es dinero: solo sirve para usar el modelo de IA dentro de la oferta, no se transfiere y no se
   reembolsa, sin perjuicio de los derechos que te da la ley (secciones 12 y 13).
 - **El modelo**: lo eliges de una lista (GLM-5.3 Flash por defecto, otros como DeepSeek), con su precio por millón de
@@ -194,8 +204,12 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 ## 8. Duo y Familia: las personas invitadas
 
 - La persona que contrata invita a las demás por correo, con un enlace que solo sirve una vez. Cada persona invitada
-  crea su propia cuenta y tiene **su propia plaza**, sus agentes y su crédito de IA. **Ni la persona que paga ni Kerfy
-  Studio pueden leer sus agentes ni sus conversaciones.**
+  crea su propia cuenta y tiene **su propia plaza** y sus agentes; el crédito de IA es el del plan, compartido
+  (sección 6). **Ni la persona que paga ni Kerfy Studio pueden leer sus agentes ni sus conversaciones.**
+- **Lo que ve la persona que paga**: cuánto del crédito de IA ha usado cada persona en el mes (un importe en euros, y
+  su estimación en mensajes), para seguir el crédito de la familia y fijar límites. **Nunca lo que escribe cada uno ni
+  lo que hacen sus agentes.** Cada persona invitada ve lo que queda del crédito para todos, lo que ha usado y su
+  límite si lo hay, nunca lo que han usado los demás.
 - La persona que contrata sigue siendo la única clienta de la tienda (o de Kerfy Studio, en el sitio): paga, cambia de
   plan o cancela. Las plazas de las personas invitadas dependen de su suscripción: si termina, siguen las mismas reglas
   que la suya (sección 11), y la app las avisa. Si elimina su cuenta, sus plazas se detienen 30 días después y reciben

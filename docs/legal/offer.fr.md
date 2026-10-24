@@ -81,12 +81,14 @@ Pour chaque personne du forfait :
   ses agents IA. Ils sont construits sur Hermes Agent, logiciel libre de Nous Research
   (https://github.com/NousResearch/hermes-agent) ; BipAgents n'est ni édité, ni approuvé, ni sponsorisé par Nous
   Research.
-- **Son crédit d'IA** : 0,50 € d'utilisation du modèle d'IA chaque mois, affiché dans l'app en nombre estimé de
-  messages (section 6).
 - **Les voix des Bips**, sur son téléphone quand il le permet, sinon par sa place.
 - **Une sauvegarde chiffrée toutes les heures** (section 9).
 - **Un accès SSH** au compte de sa place, depuis un ordinateur dont la clé a été ajoutée dans l'app (Réglages › Offre
   tout compris › Accès SSH), sans droits d'administrateur (root).
+
+**Le crédit d'IA du forfait** : 0,50 € (Solo), 1,00 € (Duo) ou 3,00 € (Famille) d'utilisation du modèle d'IA chaque
+mois, partagé par toutes les personnes du forfait, affiché dans l'app en nombre estimé de messages : environ 1 000,
+2 000 ou 6 000 messages par mois avec le modèle par défaut (section 6).
 
 **Où.** Les serveurs sont loués à OVHcloud d'abord (centres de données dans l'Union européenne), puis à Hetzner
 (Allemagne ou Finlande), puis à OVHcloud pour des serveurs plus petits, selon ce qui est disponible. Ils sont tous
@@ -108,7 +110,7 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   appareil et ton compte du store n'en ont jamais eu. Sinon, l'app te propose le même forfait sans semaine gratuite.
   Avant l'achat, l'app te dit si la semaine gratuite s'applique, quand elle finit et le prix qui suivra.
 - La semaine gratuite s'applique aux achats dans l'app ; sur le site, la page de paiement indique si elle s'applique.
-- Pendant la semaine gratuite, tout fonctionne comme dans le forfait ; chaque personne a 0,50 € de crédit d'IA pour
+- Pendant la semaine gratuite, tout fonctionne comme dans le forfait ; le crédit d'IA du forfait (section 6) sert pour
   toute la semaine.
 - **À la fin de la semaine, l'abonnement payant commence tout seul**, sauf si tu l'as résilié dans le store avant la
   fin (sur l'App Store, au moins 24 heures avant la fin, selon les conditions d'Apple). Rien n'est prélevé si tu
@@ -138,16 +140,25 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 
 ## 6. Le crédit d'IA et le modèle
 
-- Chaque personne du forfait a **0,50 € de crédit d'IA par mois** : de l'utilisation du modèle comptée au prix que le
-  fournisseur facture à Kerfy Studio. L'app l'affiche en **nombre estimé de messages** avec le modèle choisi. C'est une
-  estimation : le coût d'un message dépend de sa longueur, des fichiers joints et du modèle.
+- Chaque forfait a un **crédit d'IA par mois : 0,50 € pour Solo, 1,00 € pour Duo, 3,00 € pour Famille** : de
+  l'utilisation du modèle comptée au prix que le fournisseur facture à Kerfy Studio. Sur un Duo ou une Famille, ce
+  crédit est **celui de toutes les personnes du forfait** : leurs agents l'utilisent ensemble, sans part fixe pour
+  chacun.
+- **En messages** : l'app affiche le crédit en **nombre estimé de messages** avec le modèle choisi. Avec le modèle par
+  défaut, les pages de l'offre l'arrondissent vers le bas : **environ 1 000 messages par mois pour Solo, 2 000 pour
+  Duo et 6 000 pour toute la famille**. C'est une estimation, pas une promesse : le coût d'un message dépend de sa
+  longueur, des fichiers joints et du modèle.
 - **Report** : le crédit du forfait que tu n'as pas utilisé passe au mois suivant, pour un mois de plus au maximum.
 - **Crédit en plus** : tu peux en acheter dans l'app (Réglages › Offre tout compris › Ajouter du crédit d'IA), 2,99 €
-  TTC pour 2 € de crédit. Il s'ajoute à la place de la personne qui a souscrit le forfait. **Il ne périme jamais** :
+  TTC pour 2 € de crédit. Il s'ajoute au crédit du forfait, pour toutes ses personnes. **Il ne périme jamais** :
   s'il en reste quand l'abonnement prend fin, il est gardé sur ton compte et revient avec ton prochain abonnement. Il
   n'est perdu que si tu supprimes ton compte.
-- **Crédit épuisé** : tes agents n'appellent plus le modèle d'IA jusqu'au mois suivant ou jusqu'à ce que tu ajoutes du
-  crédit. Ta place, tes fichiers et tes sauvegardes continuent ; l'app te prévient.
+- **Crédit épuisé** : les agents de toutes les personnes du forfait n'appellent plus le modèle d'IA jusqu'au mois
+  suivant ou jusqu'à ce que la personne qui paie ajoute du crédit. Les places, les fichiers et les sauvegardes
+  continuent ; l'app prévient chacun.
+- **Limite par personne** (Duo et Famille) : la personne qui paie peut donner à chaque personne une limite mensuelle
+  (Réglages › Offre tout compris). Une fois sa limite atteinte, les agents de cette personne n'appellent plus le
+  modèle d'IA jusqu'au mois suivant ; le reste du crédit reste aux autres. La personne voit sa limite dans son app.
 - Le crédit n'est pas de l'argent : il ne sert qu'à utiliser le modèle d'IA dans l'offre, ne se transfère pas et ne se
   rembourse pas, sous réserve des droits que la loi te donne (sections 12 et 13).
 - **Le modèle** : tu le choisis dans une liste (GLM-5.3 Flash par défaut, d'autres comme DeepSeek), avec son prix par
@@ -195,8 +206,12 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 ## 8. Duo et Famille : les personnes invitées
 
 - La personne qui souscrit invite les autres par e-mail, avec un lien qui ne sert qu'une fois. Chaque personne invitée
-  crée son propre compte et a **sa propre place**, ses agents et son crédit d'IA. **Ni la personne qui paie ni Kerfy
-  Studio ne peuvent lire ses agents ou ses conversations.**
+  crée son propre compte et a **sa propre place** et ses agents ; le crédit d'IA est celui du forfait, partagé
+  (section 6). **Ni la personne qui paie ni Kerfy Studio ne peuvent lire ses agents ou ses conversations.**
+- **Ce que voit la personne qui paie** : combien du crédit d'IA chaque personne a utilisé dans le mois (un montant en
+  euros, et son estimation en messages), pour suivre le crédit de la famille et fixer des limites. **Jamais ce que
+  chacun écrit ni ce que font ses agents.** Chaque personne invitée voit ce qu'il reste du crédit pour tout le monde,
+  ce qu'elle a utilisé et sa limite s'il y en a une, jamais ce qu'ont utilisé les autres.
 - La personne qui souscrit reste la seule cliente du store (ou de Kerfy Studio, sur le site) : elle paie, change de
   forfait ou résilie. Les places des personnes invitées dépendent de son abonnement : s'il prend fin, elles suivent les
   mêmes règles que la sienne (section 11), et l'app les prévient. Si elle supprime son compte, leurs places s'arrêtent
