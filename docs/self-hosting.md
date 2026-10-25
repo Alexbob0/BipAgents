@@ -175,6 +175,13 @@ bridge, with the person's request and the steps done so far, within `direct_budg
 turns this off); if the task cannot start, it is proposed (« Démarrer » in the conversation), and the conversation and
 a notification say so.
 
+In a group discussion between the person's agents (« Discussion entre agents »), each agent answers in its own Hermes,
+in a hidden conversation for that discussion. Who answers: the agents named with `@`, else the ones whose role matches
+the message, else one call to a small model (`[rooms] router_model = false` turns it off; the `[notebook]` model,
+at most `router_daily_max` calls a day, default 300), else the agent that spoke last. An agent that addresses another
+with `@` gives it one more turn, up to `max_hops` (default 1, at most 2); a turn is stopped after `turn_seconds`
+(default 300) unless it waits for the person's approval.
+
 The records (« Fiches »: purchases, subscriptions, contracts, papers, bookings) can be filled from an agent's archive:
 `bipagents archive extract <agent> --archive <id> --sample 50` reads 50 likely documents with the agent's model and
 prints what it would record and the estimate for the whole archive, writing nothing; `--run --budget <€>` then fills

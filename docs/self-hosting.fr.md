@@ -180,6 +180,13 @@ voit sa tâche de fond lancée par le pont, avec la demande de la personne et ce
 `direct_budget_eur` (`handoff_rescue = false` le coupe) ; si elle ne peut pas démarrer, elle est proposée
 (« Démarrer » dans la conversation), et la conversation comme une notification le disent.
 
+Dans une discussion entre les agents de la personne (« Discussion entre agents »), chaque agent répond dans son propre
+Hermes, dans une conversation cachée propre à cette discussion. Qui répond : les agents nommés avec `@`, sinon ceux dont
+le rôle correspond au message, sinon un appel à un petit modèle (`[rooms] router_model = false` le coupe ; le modèle de
+`[notebook]`, au plus `router_daily_max` appels par jour, 300 par défaut), sinon l'agent qui a parlé en dernier. Un
+agent qui en interpelle un autre avec `@` lui donne un tour de plus, jusqu'à `max_hops` (1 par défaut, 2 au plus) ; un
+tour est arrêté après `turn_seconds` (300 par défaut), sauf s'il attend l'accord de la personne.
+
 Les fiches (achats, abonnements, contrats, papiers, réservations) peuvent être remplies depuis une archive d'un agent :
 `bipagents archive extract <agent> --archive <id> --sample 50` lit 50 documents probables avec le modèle de l'agent et
 affiche ce qu'il ajouterait et l'estimation pour toute l'archive, sans rien écrire ; `--run --budget <€>` les remplit

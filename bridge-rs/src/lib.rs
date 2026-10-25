@@ -105,6 +105,7 @@ pub mod notebook;
 pub mod notes_import;
 pub mod pages;
 pub mod reminders;
+pub mod rooms;
 pub mod routes;
 #[doc(hidden)]
 pub mod tools_knowledge; // the group's private helpers (pub for its golden tests)

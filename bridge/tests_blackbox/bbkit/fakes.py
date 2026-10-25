@@ -479,7 +479,8 @@ def facts_answer(body: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 class FakeModel(Fake):
-    """A model's API: `/v1/models` (for `[model] health_url`) and `/v1/chat/completions` (the mailbox scan)."""
+    """A model's API: `/v1/models` (for `[model] health_url`) and `/v1/chat/completions` (the mailbox scan, the
+    Carnet's pass, records from archives, a group discussion's router)."""
     name = "model"
 
     def reset(self) -> None:
@@ -492,6 +493,8 @@ class FakeModel(Fake):
         # prompt, the records of the first word of `records_by_word` found in it; a document with « BROKEN » spoils the
         # whole answer (no JSON)
         self.records_by_word: Dict[str, List[Dict[str, Any]]] = {}
+        # a group discussion's router (its instructions start « You route »): the ids it answers
+        self.route_answer = "coach"
 
     def records_answer(self, user: str) -> str:
         documents = []
@@ -509,6 +512,10 @@ class FakeModel(Fake):
             if body["messages"][0]["content"].startswith("You extract precise records"):
                 return JSONResponse({"choices": [{"message": {"content": self.records_answer(body["messages"][1]["content"])}}],
                                      "usage": {"prompt_tokens": 2000, "completion_tokens": 200}},
+                                    status_code=self.status)
+            if body["messages"][0]["content"].startswith("You route"):
+                return JSONResponse({"choices": [{"message": {"content": self.route_answer}}],
+                                     "usage": {"prompt_tokens": 120, "completion_tokens": 4}},
                                     status_code=self.status)
             if body["messages"][0]["content"].startswith("You tidy"):
                 content = "\n".join(json.dumps(line, ensure_ascii=False) for line in self.notebook_lines)
