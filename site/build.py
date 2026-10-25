@@ -408,7 +408,7 @@ def bipagents(version: str) -> Path:
         for scenario, agent in DEMO_TABS:
             s = localized(demo["scenarios"][scenario], lang)
             scenarios[scenario] = {"agent": localized(agents[agent]["name"], lang), "category": agents[agent]["category"],
-                                   "prompt": s["prompt"], "steps": s["steps"]}
+                                   "prompt": s["prompt"], "steps": s["steps"], "elapsed": s.get("elapsed", 0)}
         walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
         stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
                            demo["pages"]["walk"]["template"])

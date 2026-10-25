@@ -14,7 +14,8 @@
 //! agent talks in plain words, never about its container, tools or errors (2026-10-22: the people are not technical;
 //! by hand in the golden file too); and long work goes to a background task, never inline (2026-10-22,
 //! `LONG_WORK_RULE`, by hand in the golden file too); and answers with numbers, a plan or a comparison come with a
-//! live page placed in the reply (2026-10-22, `VISUAL_RULE`, by hand in the golden file too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
+//! live page placed in the reply (2026-10-22, `VISUAL_RULE`, by hand in the golden file too); and slow work starts with
+//! one short sentence saying what it understood and will do (2026-10-25, `ACK_RULE`, by hand in the golden too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
 //! health data has a second block (`with_health`): use it to help, never to diagnose.
 //!
 //! Port of `bridge/bipbridge/souls.py` (owner group: agents).
@@ -154,6 +155,15 @@ pub const VISUAL_RULE: &str = concat!(
     "map_image in the page. A quick answer, a single number or small talk stays plain text."
 );
 
+/// A quick word before slow work (owner's request 2026-10-25, like Grok's app: « Bonne idée, je lance une recherche… »
+/// then the answer later): the apps show that first text as a normal bubble above the working line. Rust bridge only,
+/// like FAMILY_RULE (added to tests/golden/souls.json by hand). Short: it is paid on every call.
+pub const ACK_RULE: &str = concat!(
+    "Before work that takes more than a few seconds (browsing, searches, several tools, a background task), first ",
+    "write one short sentence in your person's language saying what you understood and what you will do (a second ",
+    "may say you'll come back when done), then start. Don't repeat it at the end. Not for quick answers."
+);
+
 fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
@@ -162,7 +172,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{ACK_RULE}\n{BLOCK_END}"
     )
 }
 
@@ -347,7 +357,7 @@ pub fn language_block_compact(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{ACK_RULE}\n{BLOCK_END}"
     )
 }
 
