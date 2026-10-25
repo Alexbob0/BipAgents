@@ -9,6 +9,8 @@
 
 use std::sync::LazyLock;
 
+use crate::durations;
+use crate::pronounce;
 use crate::voice_speech::pyre::{Match, Regex, IGNORECASE};
 use crate::voice_speech::pystr;
 
@@ -121,7 +123,7 @@ pub fn spell_int(n: i64) -> String {
 }
 
 /// `_feminine`: "un" -> "une" at the end ("vingt et une heures").
-fn feminine(words: &str) -> String {
+pub(crate) fn feminine(words: &str) -> String {
     if words == "un" || words.ends_with(" un") || words.ends_with("-un") {
         format!("{}une", &words[..words.len() - 2])
     } else {
@@ -377,7 +379,8 @@ pub fn spell_numbers(text: &str) -> String {
     if !pystr::has_digit(text) {
         return text.to_string();
     }
-    let text = GROUPED.replace_with(text, |m| GROUP_SPACES.replace(&m.group(1), ""));
+    let text = durations::spell_durations(text, "fr"); // « 5:10 par km »: minutes, not hours
+    let text = GROUPED.replace_with(&text, |m| GROUP_SPACES.replace(&m.group(1), ""));
     let text = PER.replace_with(&text, per);
     let text = DATE_DASHED
         .replace_with(&text, |m| date(&m.group(1), &m.group(2), Some(&m.group(3))).unwrap_or_else(|| m.whole()));
@@ -400,22 +403,15 @@ pub fn spell_numbers(text: &str) -> String {
     INTEGER.replace_with(&text, |m| spell_digits(&m.group(1)))
 }
 
-pub static CAMEL: LazyLock<Regex> = LazyLock::new(|| re(r"\b[A-Z][a-z]+(?:[A-Z][a-z]+|[A-Z]{2,}\b)+\b"));
 pub static OPEN: LazyLock<Regex> = LazyLock::new(|| re(r"\s*[(\[]\s*"));
 pub static CLOSE: LazyLock<Regex> = LazyLock::new(|| re(r"\s*[)\]]\s*"));
-pub static DASH: LazyLock<Regex> = LazyLock::new(|| re(r"\s+[—–]\s+"));
+/// En and em dashes are pauses, spaced or not (Pocket v4, PR #387); a hyphen inside a word stays. One that opens a
+/// line (a dialogue, a bullet) is dropped.
+pub static DASH: LazyLock<Regex> = LazyLock::new(|| re(r"\s*[—–]\s*"));
+static DASH_LINE_START: LazyLock<Regex> = LazyLock::new(|| re(r"(?m)^[ \t]*[—–][ \t]*"));
 pub static COMMA_RUNS: LazyLock<Regex> = LazyLock::new(|| re(r"\s*,(?:\s*,)+\s*"));
 pub static COMMA_BEFORE_END: LazyLock<Regex> = LazyLock::new(|| re(r"\s*,\s*([.!?…:;])"));
-static CAMEL_JOIN: LazyLock<Regex> = LazyLock::new(|| re(r"(?<=[a-z])(?=[A-Z])"));
 pub static SPACE_RUNS: LazyLock<Regex> = LazyLock::new(|| re(r" {2,}"));
-
-/// "DuckDuckGo" -> "Duck Duck Go", "OpenAI" -> "Open AI" (each part is then read as a word); "WhatsApp" stays.
-pub fn split_camel(word: &str) -> String {
-    if KEEP_WHOLE.contains(&pystr::lower(word).as_str()) {
-        return word.to_string();
-    }
-    CAMEL_JOIN.replace(word, " ")
-}
 
 /// A pattern fragment (not compiled). « @ » outside an e-mail address (« RDV @ 14h », « prix@10 € »): a word of the
 /// language; before a name, a mention (« avec @Léa »): not read; an address stays as it is.
@@ -424,52 +420,6 @@ pub const MENTION_AT: &str = r"(?<![\w.+-])@(?=[^\W\d_])";
 pub const NOT_EMAIL_AT: &str = r"\s*(?:(?<![\w.+-])@|@(?![\w-]+(?:\.[\w-]+)+))\s*";
 /// Followed by a capitalized name.
 const CAP: &str = r"(?=[ -]?[A-ZÀ-Ý])";
-/// English words common in the agents' replies, respelled so a French voice says them right
-/// (singular, plural). Tuned by ear: adjust the spelling when one still sounds off.
-const ENGLISH: &[(&str, &str)] = &[
-    ("run", "reune"),
-    ("runs", "reunes"),
-    ("cron", "crone"),
-    ("crons", "crones"),
-    ("live", "laïve"),
-    ("lives", "laïves"),
-    ("push", "pouche"),
-    ("bug", "beug"),
-    ("bugs", "beugs"),
-    ("mail", "mèle"),
-    ("mails", "mèles"),
-    ("skill", "skile"),
-    ("skills", "skiles"),
-    ("prompt", "prompte"),
-    ("prompts", "promptes"),
-    ("token", "tokène"),
-    ("tokens", "tokènes"),
-    ("update", "eupdète"),
-    ("updates", "eupdètes"),
-    ("cloud", "claoude"),
-    ("bridge", "bridje"),
-    ("wellness", "ouèlnesse"),
-    ("trainline", "trène laïne"),
-    ("feedback", "fidbak"),
-    ("workflow", "weurkflo"),
-    ("workflows", "weurkflos"),
-    ("check", "tchèque"),
-    ("checks", "tchèques"),
-    // Brands, picked by ear on 2026-10-15 (voices/ab-test, Galet): the others sound right as they are written.
-    ("garmin", "Garmine"),
-    ("oura", "Oûra"),
-    ("spotify", "Spotifaï"),
-    ("github", "Guite-heub"),
-    ("tailscale", "Téil-skèil"),
-    ("bluetooth", "Blou-tousse"),
-    ("icloud", "Aïe-claoude"),
-    ("chatgpt", "Tchat G P T"),
-    ("uber", "Oubeur"),
-    ("netflix", "Net-flix"),
-];
-/// Brands said right as they are written, which the CamelCase split would cut (« Whats App »).
-const KEEP_WHOLE: [&str; 4] = ["whatsapp", "youtube", "airpods", "linkedin"];
-
 /// Symbols and abbreviations a TTS engine would read letter by letter or skip. Add entries here as they come up.
 static LEXICON: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     let source: Vec<(String, &str)> = vec![
@@ -510,12 +460,7 @@ static LEXICON: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
         (MENTION_AT.into(), ""),
         (NOT_EMAIL_AT.into(), " à "),
     ];
-    let mut rules: Vec<(Regex, &'static str)> = source.into_iter().map(|(p, w)| (re(&p), w)).collect();
-    for (word, spoken) in ENGLISH {
-        rules.push((Regex::with_flags(&format!(r"\b{word}\b"), IGNORECASE), *spoken));
-    }
-    rules.push((re(r"\bNotion\b"), "Nôcheune")); // the app; « une notion » stays French
-    rules
+    source.into_iter().map(|(p, w)| (re(&p), w)).collect()
 });
 
 static SLASH_WORDS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
@@ -528,14 +473,20 @@ static SLASH_WORDS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
 });
 static SLASH: LazyLock<Regex> = LazyLock::new(|| re(r"(?<=\w) ?/ ?(?=\w)"));
 
-/// Last touch before a TTS engine: symbols and abbreviations expanded, numbers in words, slashes read ("ou", "sur",
-/// dates), CamelCase names split, and parentheses or dashes read as pauses ("le train (TGV) part" -> "le train, TGV,
+/// Last touch before a TTS engine: symbols and abbreviations expanded, names, acronyms and English words respelled
+/// (`pronounce`), numbers in words, slashes read ("ou", "sur", dates), and parentheses or dashes read as pauses ("le train (TGV) part" -> "le train, TGV,
 /// part").
 pub fn prepare_for_synthesis(text: &str) -> String {
+    prepare_for_synthesis_with(text, pronounce::Spelling::Raw)
+}
+
+/// The same for a given engine: `Respelled` for Pocket 3.3.0 (« Spotifaï »), `Raw` for Pocket 4 and the others.
+pub fn prepare_for_synthesis_with(text: &str, spelling: pronounce::Spelling) -> String {
     let mut text = text.to_string();
     for (pattern, words) in LEXICON.iter() {
         text = pattern.replace(&text, words);
     }
+    text = pronounce::respell(&text, "fr", spelling); // names, acronyms and English words (« Spotifaï », « èsse ène cé èffe »)
     text = spell_numbers(&text);
     for (pattern, words) in SLASH_WORDS.iter() {
         text = pattern.replace(&text, words);
@@ -544,9 +495,10 @@ pub fn prepare_for_synthesis(text: &str) -> String {
     pauses(&text)
 }
 
-/// The end shared with speech_intl: CamelCase split, dashes and parentheses as pauses, commas tidied.
+/// The end shared with speech_intl: dashes and parentheses as pauses, commas tidied (CamelCase names are cut by
+/// `pronounce`, which knows the ones said whole).
 pub(crate) fn pauses(text: &str) -> String {
-    let text = CAMEL.replace_with(text, |m| split_camel(&m.whole()));
+    let text = DASH_LINE_START.replace(text, "");
     let text = DASH.replace(&text, ", ");
     let text = OPEN.replace(&text, ", ");
     let text = CLOSE.replace(&text, ", ");
@@ -635,12 +587,30 @@ mod tests {
         }
     }
 
+    /// Pocket ≥ 4 (the default): names as written; acronyms, glued digits, durations and dashes still rewritten.
+    #[test]
+    fn prepare_for_synthesis_raw() {
+        for (text, spoken) in [
+            ("Mets Spotify — puis Netflix, ta Garmin (TGV).", "Mets Spotify, puis Netflix, ta Garmine, té gé vé."),
+            (
+                "Un meeting à 10 h sur DuckDuckGo, ton iPhone 16.",
+                "Un meeting à dix heures sur DuckDuckGo, ton iPhone seize.",
+            ),
+            ("Allure 5:10 par km, le PDF.", "Allure cinq minutes dix par kilomètre, le pé dé èffe."),
+        ] {
+            assert_eq!(prepare_for_synthesis(text), spoken, "{text}");
+        }
+    }
+
     #[test]
     fn prepare_for_synthesis_cases() {
         for (text, spoken) in [
-            ("Cherche sur DuckDuckGo ou YouTube.", "Cherche sur Duck Duck Go ou YouTube."),
-            ("Selon OpenAI, iPhone et SNCF restent tels quels.", "Selon Open AI, iPhone et SNCF restent tels quels."),
-            ("Le train (TGV) part à 9h.", "Le train, TGV, part à neuf heures."),
+            ("Cherche sur DuckDuckGo ou YouTube.", "Cherche sur Deuk Deuk Go ou YouTube."),
+            (
+                "Selon OpenAI, iPhone et SNCF restent tels quels.",
+                "Selon Opène-aïe, Aïe-faune et èsse ène cé èffe restent tels quels.",
+            ),
+            ("Le train (TGV) part à 9h.", "Le train, té gé vé, part à neuf heures."),
             ("Deux options (la seconde est moins chère).", "Deux options, la seconde est moins chère."),
             ("Prends le bus — ou marche [si beau temps].", "Prends le bus, ou marche, si beau temps."),
             ("Sommeil noté 8/10, 3/4 du trajet, 1/2 litre.", "Sommeil noté huit sur dix, trois quarts du trajet, un demi litre."),
@@ -678,13 +648,13 @@ mod tests {
                 "Ligne n°4, Sainte-Anne & Ste Marie, ≈ 30 min, ≥ 5 km.",
                 "Ligne numéro quatre, Sainte-Anne et Sainte Marie, environ trente minutes, au moins cinq kilomètres.",
             ),
-            ("Wellness + Vie, 3 × 10 reps, PSG vs OM.", "ouèlnesse plus Vie, trois fois dix reps, PSG contre OM."),
+            ("Wellness + Vie, 3 × 10 reps, PSG vs OM.", "Ouèlnesse plus Vie, trois fois dix reps, pé èsse gé contre o ème."),
             (
                 "Ça prend ~15 min, soit ~ une heure en tout, ou 2~3 jours.",
                 "Ça prend environ quinze minutes, soit environ une heure en tout, ou deux à trois jours.",
             ),
             ("Les runs Hermes et le cron du matin.", "Les reunes Hermes et le crone du matin."),
-            ("Lance un Live avec Wellness, puis check tes emails.", "Lance un laïve avec ouèlnesse, puis tchèque tes emails."),
+            ("Lance un Live avec Wellness, puis check tes emails.", "Lance un Laïve avec Ouèlnesse, puis tchèque tes imèles."),
             ("Rien d'anglais dans « il court » ni « livret ».", "Rien d'anglais dans « il court » ni « livret »."),
             ("Entre 42-46% des cas.", "Entre quarante-deux à quarante-six pour cent des cas."),
             ("Entre 42–46 % des cas.", "Entre quarante-deux à quarante-six pour cent des cas."),
@@ -692,8 +662,16 @@ mod tests {
             ("le 12-10-2026", "le douze octobre deux mille vingt-six"),
             ("le 2026-10-12", "le douze octobre deux mille vingt-six"),
             ("Il fait -5 °C", "Il fait moins cinq degrés"),
+            ("Paris—Lyon – puis Nice, un aller-retour.\n— Oui.", "Paris, Lyon, puis Nice, un aller-retour.\nOui."),
+            ("Un meeting à 10 h sur Teams, puis mets Spotify.", "Un mitingue à dix heures sur Tîmze, puis mets Spotifaï."),
+            ("Ton iPhone 16 et ta PS5.", "Ton Aïe-faune seize et ta pé èsse cinq."),
+            (
+                "Allure 5:10 par km, 1:52/100 m, marathon en 3:25:12, rendez-vous à 5:10.",
+                "Allure cinq minutes dix par kilomètre, une minute cinquante-deux aux cent mètres, marathon en trois \
+                 heures vingt-cinq minutes douze, rendez-vous à cinq heures dix.",
+            ),
         ] {
-            assert_eq!(prepare_for_synthesis(text), spoken, "{text}");
+            assert_eq!(prepare_for_synthesis_with(text, pronounce::Spelling::Respelled), spoken, "{text}");
         }
     }
 }

@@ -1,6 +1,7 @@
 //! Port of tests/test_numbers_fr.py and tests/test_speech_intl.py: their parametrized cases, with the values the
 //! Python tests expect, taken from the test files by tests/golden/gen_speech_cases.py.
 
+use bipbridge::pronounce::Spelling::Respelled;
 use bipbridge::{numbers_fr, speech_intl, tts};
 use serde_json::Value;
 
@@ -42,7 +43,7 @@ fn numbers_fr_prepare_for_synthesis() {
         ["test_prepare_for_synthesis", "test_lexicon", "test_tilde_and_english_words", "test_ranges_and_dashed_dates"]
     {
         for c in cases("numbers_fr", test) {
-            assert_eq!(numbers_fr::prepare_for_synthesis(s(&c[0])), s(&c[1]), "{test}");
+            assert_eq!(numbers_fr::prepare_for_synthesis_with(s(&c[0]), Respelled), s(&c[1]), "{test}");
         }
     }
 }
@@ -57,6 +58,6 @@ fn speech_intl_voice_language() {
 #[test]
 fn speech_intl_prepare_for_synthesis() {
     for c in cases("speech_intl", "test_prepare_for_synthesis") {
-        assert_eq!(speech_intl::prepare_for_synthesis(s(&c[1]), s(&c[0])), s(&c[2]));
+        assert_eq!(speech_intl::prepare_for_synthesis_with(s(&c[1]), s(&c[0]), Respelled), s(&c[2]));
     }
 }

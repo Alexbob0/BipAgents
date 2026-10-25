@@ -30,6 +30,7 @@ timeout_seconds = 120
 [pocket]
 url = "http://127.0.0.1:8098"
 default_voice = "pocket:colibri"   # default voice when Kyutai is disabled
+# engine = "3.3.0"                 # the Pocket version (default "4"): below 4, brands and English words are respelled
 
 # Your own voice model (optional): any server with OpenAI's POST /v1/audio/speech (Fish Audio Drama 3 on audio.cpp,
 # Kokoro, Kyutai…). Its voices are "server:<lang>/<id>" (the app lists them from GET /v1/audio/voices, else `voices`);
