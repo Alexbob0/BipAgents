@@ -92,6 +92,8 @@ async fn world(bot: bool) -> World {
     let apns = FakeApns::start().await;
     let mut data = config_dict(dir.path(), &Urls { hermes: url, ..Urls::default() });
     data["apns"]["base_url"] = json!(apns.url);
+    // the push alone, as before the agent wrote its own message (handback.rs; the black-box suite covers that)
+    data["cron"]["subtask_handback"] = json!(false);
     let app = TestApp::new(parse_config(&data, None).unwrap());
     let s = app.app.state.clone();
     let (k, v) = auth();

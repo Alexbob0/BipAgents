@@ -313,3 +313,98 @@ def test_a_steered_run_that_answered_after_all_is_not_rescued(bridges, fakes):
     events = follow(bridge, "run_a")
     assert wait_until(lambda: len(fakes.hermes.steers) == 1) and "bridge.notice" not in [n for n, _ in events]
     assert jobs(bridge) == []
+
+
+# -- 2026-10-25: the task's result handed back to the conversation that asked ------------------------------------------
+
+REPORT = "J'ai comparé 12 vestes.\n\n- **Uniqlo** : 79 €, laine mérinos\n- Arket : 129 €\n- COS : 145 €"
+MESSAGE = "C'est fait ! Trois vestes retenues :\n- Uniqlo, 79 €\n- Arket, 129 €"
+
+
+@pytest.mark.slow
+def test_a_finished_task_is_handed_back_to_the_conversation_that_asked(bridges, fakes):
+    """start_task called from a conversation (the run the app follows there): when the task ends, the agent takes one
+    short turn in that conversation, fed with the report as a note the apps hide, and writes the message itself; the
+    full report is kept as one of its pages, linked; the message is in the Boîte, tagged with the conversation, and
+    pushed. No « Tâche de fond terminée » towards the task's own conversation."""
+    bridge = with_device(bridges, {})
+    give_token(bridge)
+    hermes = fakes.hermes
+    hermes.rounds = 1
+    hermes.add_session("api_c", [{"role": "user", "content": ASKED}], title="Veste")
+    gate = threading.Event()
+    hermes.runs["run_c"] = [sse("tool.started", run_id="run_c", tool="mcp_bipagents_start_task", preview="x"), gate,
+                            sse("run.completed", run_id="run_c", output="Je m'en occupe en arrière-plan.")]
+    watched = bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_c", "session_id": "api_c"})
+    assert watched.status_code == 200
+    assert wait_until(lambda: hermes.seen("/v1/runs/run_c/events"))
+    time.sleep(0.3)
+    result = call(bridge, "start_task", {"title": "Veste en laine", "instructions": ASKED})
+    assert not result["isError"], text_of(result)
+    gate.set()
+    job = jobs(bridge)[0]
+    assert job["from_session"] == "api_c" and job["session_id"] == "api_s1"
+    hermes.run_outputs = {"r1": REPORT, "r2": MESSAGE}
+    # the task (r1, its own conversation), then the agent's turn where the person asked (r2)
+    assert wait_until(lambda: "r2" in hermes.started, timeout=40)
+    turn = hermes.started["r2"]
+    page = f"/bipagents/pages/wellness/rapport-{job['id']}.html"
+    assert turn["session_id"] == "api_c" and turn["instructions"].startswith("Background work you started")
+    assert turn["input"].startswith("<!--bip:task\nYour background work « Veste en laine » is finished.")
+    assert "- Arket : 129 €" in turn["input"] and turn["input"].endswith(f"MEDIA:{page}\n-->")
+
+    def handed():
+        return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["session_id"] == "api_c"]
+
+    assert wait_until(handed, timeout=20)
+    item = handed()[0]
+    assert item["text"] == MESSAGE and item["title"] == "Veste en laine" and item["agent"] == "wellness"
+    # the full report, one of the agent's pages (served like any MEDIA file)
+    shown = bridge.get("/v1/media", headers=AUTH, params={"path": page})
+    assert shown.status_code == 200 and "<li><strong>Uniqlo</strong> : 79 €, laine mérinos</li>" in shown.text
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("outbox_id") == item["id"]])
+    told = [p for p in fakes.apns.payloads() if p.get("outbox_id") == item["id"]][0]
+    assert told["session_id"] == "api_c"
+    assert not [p for p in fakes.apns.payloads() if p.get("job_id") == job["id"]]
+    done = jobs(bridge)[0]
+    assert done["state"] == "done" and done["tokens"]["input"] == 100_000 + 105_000
+    assert bridge.logged("handback delivered")[0]["by_agent"] is True
+
+
+@pytest.mark.slow
+def test_a_task_whose_conversation_is_gone_is_told_by_the_template(bridges, fakes):
+    """The agent's turn refused (the conversation deleted meanwhile): the templated message goes to the Boîte, opening
+    the task's own conversation (where the full report is), with its key points."""
+    bridge = with_device(bridges, {})
+    give_token(bridge)
+    hermes = fakes.hermes
+    hermes.rounds = 1
+    hermes.run_outputs = {"r1": REPORT}
+    gate = threading.Event()
+    hermes.runs["run_g"] = [sse("tool.started", run_id="run_g", tool="mcp_bipagents_start_task", preview="x"), gate,
+                            sse("run.completed", run_id="run_g", output="ok")]
+    bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_g", "session_id": "api_gone"})
+    assert wait_until(lambda: hermes.seen("/v1/runs/run_g/events"))
+    time.sleep(0.3)
+    assert not call(bridge, "start_task", {"title": "Veste", "instructions": ASKED})["isError"]
+
+    def refuse(seen):
+        from starlette.responses import JSONResponse
+        body = seen.json() if seen.method == "POST" and seen.path == "/v1/runs" else None
+        if body and body.get("session_id") == "api_gone":
+            return JSONResponse({"error": "Session not found"}, status_code=404)
+        return None
+
+    hermes.override = refuse
+    gate.set()
+
+    def told():
+        return bridge.get("/v1/outbox", headers=AUTH).json()["items"]
+
+    assert wait_until(told, timeout=40)
+    item = told()[0]
+    assert item["session_id"] == "api_s1"
+    # its words in the agent's language (English here), its key points from the report
+    assert item["text"].startswith("Done: “Veste”.") or item["text"].startswith("C'est fait : « Veste ».")
+    assert "\n- Uniqlo : 79 €, laine mérinos\n- Arket : 129 €\n- COS : 145 €" in item["text"]
+    assert bridge.logged("handback delivered")[0]["by_agent"] is False
