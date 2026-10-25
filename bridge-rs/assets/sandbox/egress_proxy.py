@@ -7,7 +7,8 @@ decision is one line of its log (`podman logs bipagents-egress`).
 - **Who asks**: each isolated sandbox has its own proxy URL, `http://<agent>:<token>@…` (pip, npm, uv, curl, apt…
   send it as `Proxy-Authorization: Basic`). The bridge writes `BIP_POLICY` (read-only here): per agent, the SHA-256
   of its token and its allowed hosts (`data.gouv.fr`, or `*.example.org` for its subdomains), read again when it
-  changes. No credentials, or wrong ones: the registries only (a 407 asks a client that waits for it to send them).
+  changes; `"any": true` (« Tous les sites », its person's switch): any site's name on HTTPS (never an address, nor
+  a name of this machine's networks, nor one that resolves to a private address). No credentials, or wrong ones: the registries only (a 407 asks a client that waits for it to send them).
 - **A site refused** to an agent known by its credentials: one JSON line appended to `BIP_REPORTS` (the bridge reads
   and empties it, and asks the person), once an hour per agent and host at most.
 - **Never this machine nor its networks**: a name that resolves to a private, loopback, link-local, shared (Tailscale
@@ -98,8 +99,20 @@ def allowed(host, port, wanted, agent=None):
         return True
     if agent is None or wanted != 443:
         return False
-    hosts = (policy().get(agent) or {}).get("hosts") or []
+    entry = policy().get(agent) or {}
+    if entry.get("any") is True and not local_name(host):
+        return True
+    hosts = entry.get("hosts") or []
     return any(isinstance(p, str) and host_matches(host, p) for p in hosts)
+
+
+LOCAL_SUFFIXES = ("localhost", "local", "internal", "lan", "home", "arpa", "test", "invalid", "localdomain")
+
+
+def local_name(host):
+    """An address, or a name of this machine or its networks (never opened by « Tous les sites »)."""
+    last = host.rsplit(".", 1)[-1]
+    return literal(host) or "." not in host or last in LOCAL_SUFFIXES or not last.isalpha() and not last.startswith("xn--")
 
 
 def public(address):

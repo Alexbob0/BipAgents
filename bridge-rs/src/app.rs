@@ -1072,11 +1072,16 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
     let run_id = check_run_id(&body.run_id)?;
     // a card of the bridge's own (a site for the agent's programs, sandbox_sites.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::sandbox_sites::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
-        return match crate::sandbox_sites::answer(&state.config(), &agent.name, id, allow, "notification")
+        let decision = crate::sandbox_sites::decision_of_choice(&body.choice);
+        let choice = match decision {
+            crate::sandbox_sites::Decision::AllSites => "all_sites",
+            crate::sandbox_sites::Decision::DenyAll => "deny",
+            _ => "always",
+        };
+        return match crate::sandbox_sites::answer(&state.config(), &agent.name, id, decision, "notification")
             .map_err(anyhow::Error::from)?
         {
-            Some(_) => Ok(web::ok(json!({"ok": true, "choice": if allow { "always" } else { "deny" }}))),
+            Some(_) => Ok(web::ok(json!({"ok": true, "choice": choice}))),
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         };
     }

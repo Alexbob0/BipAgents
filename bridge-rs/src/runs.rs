@@ -887,6 +887,14 @@ impl RunHub {
         if kind == "tool.started" || kind == "tool.completed" || kind == SUBAGENT_START || kind == SUBAGENT_DONE {
             self.handoff(sub, &mut st, &event);
         }
+        if kind == "tool.started" {
+            // a site its browser or web tools open is open to its programs too (sandbox_sites.rs)
+            if let Some(shared) = self.config.as_ref() {
+                let text = |key: &str| event.data.get(key).and_then(Value::as_str).unwrap_or("");
+                let tool = if text("tool").is_empty() { text("name") } else { text("tool") };
+                crate::sandbox_sites::note_tool_call(&shared.get(), &sub.agent.name, tool, text("preview"));
+            }
+        }
         if kind == "approval.request" {
             self.on_approval(&mut inner, sub, &mut st, &event);
         } else if kind == "clarify.request" {

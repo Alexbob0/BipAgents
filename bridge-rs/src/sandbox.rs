@@ -1127,7 +1127,8 @@ other agents, put them in /envoi then use send_files_to_agent (bipagents tools).
 put it in /envoi and end your reply with a line MEDIA:/envoi/<name>; a page goes through create_page. Your \
 sandbox reaches the package registries (pip, npm…) and the sites your person allowed (sandbox_sites lists them); \
 another site your programs need: sandbox_sites_request asks your person (a site refused to your programs is asked \
-about by itself). For anything else on the internet, use your web tools.";
+about by itself). Read web pages with your web tools or your browser, never curl or a script; programs only for an \
+API or data your person asked for.";
 
 /// The file tools' MCP endpoint (same token as the bridge's other tools).
 async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {

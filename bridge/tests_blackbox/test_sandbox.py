@@ -119,7 +119,8 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert vie["docker_env"]["npm_config_https_proxy"] == proxy
     assert oct(os.stat(bridge.state_dir / "sandbox-sites.json").st_mode & 0o777) == "0o600"
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
-    assert policy["agents"]["vie"] == {"key": hashlib.sha256(token.encode()).hexdigest(), "hosts": []}
+    # « Tous les sites » on by default: vie holds nothing private (no vault item, mailbox, health data, money)
+    assert policy["agents"]["vie"] == {"key": hashlib.sha256(token.encode()).hexdigest(), "hosts": [], "any": True}
     assert token not in json.dumps(policy) and token not in bridge.log_tail(20000)
     assert vie["docker_env"]["NO_PROXY"] == "localhost,127.0.0.1"
     podman = bridge.commands.of("podman")
@@ -341,9 +342,15 @@ def site_cards(bridge, agent):
 
 def test_a_site_refused_to_an_agents_programs_asks_the_person(bridges, fakes):
     """The proxy refused data.gouv.fr to vie's programs (its report, as the proxy writes it): one card for the person,
-    « Autoriser toujours / Refuser », among the approvals; the agent can ask first; the app's list."""
+    « Autoriser ces sites / Tous les sites pour Vie / Refuser », among the approvals; the agent can ask first (on the
+    same card, a moment later); an older app's answer; the app's list."""
     bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness"))
     started(bridge, hub, ["vie", "wellness"])
+    # « Tous les sites » is on by default for an agent with nothing private: vie's person turns it off.
+    view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
+    assert (view["all_sites"], view["all_sites_default"], view["sensitive"]) == (True, True, None)
+    off = bridge.patch("/v1/agents/vie/sandbox/sites", json={"all_sites": False}, headers=AUTH)
+    assert off.status_code == 200 and off.json()["all_sites"] is False, off.text
     reports = bridge.state_dir / "sandbox-proxy" / "reports" / "blocked.jsonl"
     assert reports.parent.is_dir()
     lines = [{"agent": "vie", "host": "data.gouv.fr"}, {"agent": "vie", "host": "data.gouv.fr"},
@@ -352,7 +359,7 @@ def test_a_site_refused_to_an_agents_programs_asks_the_person(bridges, fakes):
     assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1, timeout=10)
     assert wait_until(lambda: not reports.exists(), timeout=5)
     card = site_cards(bridge, "vie")[0]
-    assert card["bip_site"] == "data.gouv.fr" and card["choices"] == ["always", "deny"]
+    assert card["bip_site"] == "data.gouv.fr" and card["choices"] == ["always", "all_sites", "deny"]
     assert card["description"] == "Vie veut joindre data.gouv.fr depuis ses programmes"
     assert card["bip_site_via"] == "proxy" and card["session_id"] is None
     # The agent asks first for another one, with its reason; and lists what it has.
@@ -361,23 +368,29 @@ def test_a_site_refused_to_an_agents_programs_asks_the_person(bridges, fakes):
     assert not error and "api.meteo.fr" in text
     assert call(bridge, "vie", "sandbox_sites_request", host="pypi.org")[0] == "Your programs can reach it already."
     assert call(bridge, "vie", "sandbox_sites_request", host="10.0.0.1")[1] is True
-    cards = {c["bip_site"]: c for c in site_cards(bridge, "vie")}
-    assert set(cards) == {"data.gouv.fr", "api.meteo.fr"} and cards["api.meteo.fr"]["bip_site_reason"] == "la pluie demain"
+    # one card, not two: the sites asked a moment apart gather
+    [card] = site_cards(bridge, "vie")
+    assert card["bip_sites"] == ["data.gouv.fr", "api.meteo.fr"] and card["bip_site"] == "data.gouv.fr"
+    assert card["description"] == "Vie veut joindre 2 sites depuis ses programmes : data.gouv.fr, api.meteo.fr"
+    assert card["bip_site_reason"] == "la pluie demain" and card["command"] == "data.gouv.fr, api.meteo.fr"
     assert site_cards(bridge, "wellness") == []
-    # « Autoriser toujours » in the app; « Refuser » from a notification.
-    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{cards['data.gouv.fr']['request_id']}",
-                           json={"allow": True}, headers=AUTH)
+    # An older app (« Autoriser toujours », the first site shown): that one; the other waits on a card of its own.
+    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}", json={"allow": True},
+                           headers=AUTH)
     assert answered.status_code == 200, answered.text
     assert [s["host"] for s in answered.json()["sites"]] == ["data.gouv.fr"]
     assert answered.json()["sites"][0]["by"] == "request"
-    denied = bridge.post("/v1/approve", json={"agent": "vie", "run_id": cards["api.meteo.fr"]["run_id"],
-                                              "choice": "deny"}, headers=AUTH)
+    [left] = site_cards(bridge, "vie")
+    assert left["bip_sites"] == ["api.meteo.fr"] and left["request_id"] != card["request_id"]
+    # « Refuser » from a notification
+    denied = bridge.post("/v1/approve", json={"agent": "vie", "run_id": left["run_id"], "choice": "deny"}, headers=AUTH)
     assert denied.status_code == 200, denied.text
     assert site_cards(bridge, "vie") == []
-    assert bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{cards['api.meteo.fr']['request_id']}",
+    assert bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{left['request_id']}",
                        json={"allow": True}, headers=AUTH).status_code == 404
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
-    assert policy["agents"]["vie"]["hosts"] == ["data.gouv.fr"] and policy["agents"]["wellness"]["hosts"] == []
+    assert policy["agents"]["vie"]["hosts"] == ["data.gouv.fr"] and "any" not in policy["agents"]["vie"]
+    assert policy["agents"]["wellness"]["hosts"] == [] and policy["agents"]["wellness"]["any"] is True
     kept = bridge.get("/v1/approvals/answered", params={"agent": "vie"}, headers=AUTH).json()["items"]
     assert [(k["command"], k["choice"], k["topic"]) for k in kept] == [
         ("data.gouv.fr", "always", "site"), ("api.meteo.fr", "deny", "site")]
@@ -400,6 +413,53 @@ def test_a_site_refused_to_an_agents_programs_asks_the_person(bridges, fakes):
     assert "*.ouraring.com" in listed and "data.gouv.fr" not in listed and "pypi.org" in listed
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
     assert policy["agents"]["vie"]["hosts"] == ["*.ouraring.com"]
+
+
+def test_sites_asked_together_one_card_three_choices_and_all_sites(bridges, fakes):
+    """Three sites refused together: one card; « Autoriser ces sites » allows the three; « Tous les sites pour Vie »
+    (from a notification) opens every public site with no card any more. An agent with private access (its health
+    switch) starts with « Tous les sites » off, and its programs ask."""
+    bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+    started(bridge, hub, ["vie", "wellness"])
+    assert bridge.patch("/v1/agents/vie/sandbox/sites", json={"all_sites": False}, headers=AUTH).status_code == 200
+    reports = bridge.state_dir / "sandbox-proxy" / "reports" / "blocked.jsonl"
+    reports.write_text("".join(json.dumps({"agent": "vie", "host": h}) + "\n" for h in ("a.fr", "b.fr", "c.fr")))
+    assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1 and len(site_cards(bridge, "vie")[0]["bip_sites"]) == 3,
+                      timeout=10), site_cards(bridge, "vie")
+    [card] = site_cards(bridge, "vie")
+    view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
+    assert [p["hosts"] for p in view["pending"]] == [["a.fr", "b.fr", "c.fr"]]
+    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}",
+                           json={"allow": True, "hosts": ["a.fr", "b.fr", "c.fr"]}, headers=AUTH)
+    assert answered.status_code == 200, answered.text
+    assert [s["host"] for s in answered.json()["sites"]] == ["a.fr", "b.fr", "c.fr"]
+    assert site_cards(bridge, "vie") == []
+    kept = bridge.get("/v1/approvals/answered", params={"agent": "vie"}, headers=AUTH).json()["items"]
+    assert [(k["command"], k["choice"]) for k in kept] == [("a.fr, b.fr, c.fr", "always")]
+    # « Tous les sites pour Vie »
+    reports.write_text(json.dumps({"agent": "vie", "host": "d.fr"}) + "\n")
+    assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1, timeout=10)
+    run_id = site_cards(bridge, "vie")[0]["run_id"]
+    opened = bridge.post("/v1/approve", json={"agent": "vie", "run_id": run_id, "choice": "all_sites"}, headers=AUTH)
+    assert opened.status_code == 200 and opened.json()["choice"] == "all_sites", opened.text
+    assert bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()["all_sites"] is True
+    policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
+    assert policy["agents"]["vie"]["any"] is True
+    reports.write_text(json.dumps({"agent": "vie", "host": "e.fr"}) + "\n")
+    assert wait_until(lambda: not reports.exists(), timeout=10)
+    assert site_cards(bridge, "vie") == []
+    give_tokens(bridge, ["vie", "wellness"])
+    assert call(bridge, "vie", "sandbox_sites_request", host="f.fr")[0] == "Your programs can reach it already."
+    assert "every public HTTPS site" in call(bridge, "vie", "sandbox_sites")[0]
+    # wellness reads health data: off by default, its programs ask
+    assert bridge.patch("/v1/agents/wellness/settings", json={"health": True}, headers=AUTH).status_code == 200
+    view = bridge.get("/v1/agents/wellness/sandbox/sites", headers=AUTH).json()
+    assert (view["all_sites"], view["all_sites_default"], view["sensitive"]) == (False, False, "health")
+    reports.write_text(json.dumps({"agent": "wellness", "host": "g.fr"}) + "\n")
+    assert wait_until(lambda: len(site_cards(bridge, "wellness")) == 1, timeout=10)
+    # its person may still turn it on
+    on = bridge.patch("/v1/agents/wellness/sandbox/sites", json={"all_sites": True}, headers=AUTH).json()
+    assert on["all_sites"] is True and on["pending"] == [] and site_cards(bridge, "wellness") == []
 
 
 def test_a_deleted_agent_loses_its_volumes(bridges, fakes):
