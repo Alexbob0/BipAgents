@@ -197,10 +197,17 @@ def pinned_pocket(repo: Path) -> Optional[str]:
 
 def installed_pocket(repo: Path) -> Optional[str]:
     """The pocket-tts version in pocket/.venv (Pocket's own models), None without it."""
+    return python_pocket(repo / "pocket" / ".venv" / "bin" / "python")
+
+
+def python_pocket(python: Path) -> Optional[str]:
+    """The pocket-tts version a Python environment has (a Pocket service's own, set up by hand or not)."""
     import subprocess
-    python = repo / "pocket" / ".venv" / "bin" / "python"
     if not python.exists():
         return None
-    out = subprocess.run([str(python), "-c", "from importlib.metadata import version; print(version('pocket-tts'))"],
-                         capture_output=True, text=True)
+    try:
+        out = subprocess.run([str(python), "-c", "from importlib.metadata import version; print(version('pocket-tts'))"],
+                             capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     return (out.stdout.strip() or None) if out.returncode == 0 else None
