@@ -1592,6 +1592,13 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         Some(Value::Object(map)) => map.clone(),
         _ => Dict::new(),
     };
+    if crate::agent_shares::relative_turn(&state.config(), &agent.name) {
+        // a relative talks to this agent: the person's own data stays closed (agent_shares.rs)
+        if let Some(closed) = crate::agent_shares::closed_tool(&name) {
+            tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
+            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+        }
+    }
     if crate::family_news::TOOL_NAMES.contains(&name.as_str()) {
         let result = crate::family_news::call_tool(&state.http, &state.config(), &agent, &name, &arguments).await?;
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
