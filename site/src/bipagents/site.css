@@ -411,6 +411,8 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .working { align-self: flex-start; display: flex; align-items: center; gap: 8px; max-width: 92%; font-size: 14px; font-weight: 700; color: var(--muted); animation: pop-in .3s both; }
 .working .av { flex: 0 0 24px; height: 24px; display: grid; place-items: center; }
 .working .av svg { width: 24px; height: 24px; overflow: visible; }
+.working .el { flex: none; font-size: 13px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.working .el:empty { display: none; }
 .working .ph { background: linear-gradient(100deg, var(--muted) 35%, var(--ink) 50%, var(--muted) 65%) 0 0 / 300% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent; animation: sweep 1.8s linear infinite; }
 @keyframes sweep { from { background-position: 100% 0; } to { background-position: 0 0; } }

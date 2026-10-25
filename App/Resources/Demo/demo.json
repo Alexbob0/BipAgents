@@ -195,6 +195,14 @@
           }
         },
         {
+          "say": {
+            "fr": "Bonne idée, je regarde ton agenda, tes mails et la météo pour te faire un point clair. Je reviens vers toi dès que j’ai fait le tour.",
+            "en": "Good idea, I’ll check your calendar, emails and the weather to give you a clear picture. I’ll be back as soon as I’ve gone through it all.",
+            "de": "Gute Idee, ich schaue mir Kalender, Mails und Wetter an und mache dir einen klaren Überblick. Ich melde mich, sobald ich alles durchgesehen habe.",
+            "es": "Buena idea, miro tu agenda, tus correos y el tiempo para darte una visión clara. Vuelvo contigo en cuanto lo haya revisado todo."
+          }
+        },
+        {
           "tool": "calendar",
           "seconds": 1.3,
           "preview": {
@@ -206,7 +214,7 @@
         },
         {
           "tool": "mail_search",
-          "seconds": 1.6,
+          "seconds": 3.5,
           "preview": {
             "fr": "Non lus · 14 mails",
             "en": "Unread · 14 emails",
@@ -238,7 +246,8 @@
         "en": "Your day: team sync at nine thirty, lunch with Sam at twelve thirty, and the dentist at five. Take an umbrella, rain is coming around a quarter to five. And two emails matter: the electricity bill, and the agency’s reply about the apartment.",
         "de": "Dein Tag: Team-Meeting um halb zehn, Mittagessen mit Sam um halb eins und um siebzehn Uhr der Zahnarzt. Nimm einen Schirm mit, gegen Viertel vor fünf regnet es. Und zwei Mails sind wichtig: die Stromrechnung und die Antwort der Agentur zur Wohnung.",
         "es": "Tu día: reunión de equipo a las nueve y media, comida con Sam a las doce y media y dentista a las cinco. Llévate paraguas, lloverá hacia las cinco menos cuarto. Y dos correos importan: la factura de la luz y la respuesta de la agencia sobre el piso."
-      }
+      },
+      "elapsed": 95
     },
     "book_table": {
       "prompt": {
@@ -417,7 +426,8 @@
         "en": "Pasta Mia has a table on Friday at eight thirty, the best rated nearby. Open the chat: I’ll book it as soon as you confirm.",
         "de": "Pasta Mia hat Freitag um halb neun einen Tisch frei, das bestbewertete in der Nähe. Öffne den Chat: Ich reserviere, sobald du bestätigst.",
         "es": "Pasta Mia tiene mesa el viernes a las ocho y media, el mejor valorado de la zona. Abre el chat: la reservo en cuanto confirmes."
-      }
+      },
+      "elapsed": 75
     },
     "podcast": {
       "prompt": {

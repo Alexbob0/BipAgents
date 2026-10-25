@@ -188,6 +188,9 @@ async function play(id) {
   const alive = () => mine === run;
   await wait(500); if (!alive()) return;
   add(esc(scenario.prompt), "msg you");
+  // The turn's start: past 20 s the working line ends with how long it has run (« · 45 s », « · 2 min »); a scenario
+  // can show its turn as running for a while already (demo.json's `elapsed`).
+  const started = Date.now() - (scenario.elapsed ?? 0) * 1000;
   let answer = "", madePage = null, site = null;
   const fill = s => s.replaceAll("{answer}", answer);
   workingLine = null;
@@ -209,12 +212,21 @@ async function play(id) {
     $(".av", workingLine).innerHTML = renderBip(c, { ...s, blush: 0, scale: { x: 1, y: 1 }, level: null }, t);
     bipFrame = requestAnimationFrame(bip);
   }
+  let clock = null;
+  function elapsed() {
+    const el = workingLine?.isConnected && $(".el", workingLine);
+    if (!alive() || !el) { clearInterval(clock); clock = null; return; }
+    const s = Math.floor((Date.now() - started) / 1000);
+    el.textContent = s < 20 ? "" : s < 60 ? `· ${s} s` : `· ${Math.floor(s / 60)} ${document.documentElement.lang.startsWith("de") ? "Min." : "min"}`;
+  }
   function working(label = null) {
     if (!alive()) return;
     if (!workingLine?.isConnected) {
-      workingLine = add(`<span class="av">${staticBip(category, "thinking")}</span><span class="ph"></span>`, "working");
+      workingLine = add(`<span class="av">${staticBip(category, "thinking")}</span><span class="ph"></span><span class="el"></span>`, "working");
       workingLine.setAttribute("role", "status");
     }
+    elapsed();
+    if (!clock) clock = setInterval(elapsed, 1000);
     busy = !!label;
     if (!REDUCED && bipFrame == null) bipFrame = requestAnimationFrame(bip);
     const ph = $(".ph", workingLine);
