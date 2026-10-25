@@ -1,6 +1,25 @@
 {
  "language": "german",
  "max_tokens": 50,
+ "text": {
+  "replace": {
+   "\"": "",
+   "“": "",
+   "”": "",
+   "„": "",
+   "«": "",
+   "»": "",
+   "’": "'",
+   "‘": "'",
+   "(": "",
+   ")": "",
+   "[": "",
+   "]": "",
+   "–": ",",
+   "—": ","
+  },
+  "semicolons": true
+ },
  "cases": [
   {
    "text": "Bonjour",
@@ -578,6 +597,86 @@
      ],
      "frames_after_eos": 3,
      "max_gen_len": 230
+    }
+   ]
+  },
+  {
+   "text": "De 9h – 10h, puis — enfin — la pause - courte.",
+   "chunks": [
+    {
+     "text": "De 9h , 10h, puis , enfin , la pause - courte.",
+     "ids": [
+      1598,
+      260,
+      61,
+      312,
+      260,
+      261,
+      260,
+      53,
+      52,
+      312,
+      261,
+      958,
+      1678,
+      265,
+      260,
+      261,
+      260,
+      262,
+      352,
+      366,
+      260,
+      261,
+      260,
+      565,
+      958,
+      704,
+      263,
+      260,
+      49,
+      260,
+      1944,
+      490,
+      287,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 167
+    }
+   ]
+  },
+  {
+   "text": "It’s Alex’s ‘thing’ – really.",
+   "chunks": [
+    {
+     "text": "It's Alex's 'thing' , really.",
+     "ids": [
+      964,
+      273,
+      386,
+      265,
+      1225,
+      263,
+      857,
+      386,
+      265,
+      260,
+      386,
+      273,
+      312,
+      1041,
+      386,
+      260,
+      261,
+      260,
+      510,
+      606,
+      444,
+      269
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 117
     }
    ]
   },
@@ -1340,6 +1439,90 @@
     743
    ],
    "decoded": "e-mail: alex@example.com, site https://example.com/a?b=c"
+  },
+  {
+   "text": "De 9h – 10h, puis — enfin — la pause - courte.",
+   "ids": [
+    1598,
+    260,
+    61,
+    312,
+    260,
+    230,
+    132,
+    151,
+    260,
+    53,
+    52,
+    312,
+    261,
+    958,
+    1678,
+    265,
+    260,
+    230,
+    132,
+    152,
+    260,
+    262,
+    352,
+    366,
+    260,
+    230,
+    132,
+    152,
+    260,
+    565,
+    958,
+    704,
+    263,
+    260,
+    49,
+    260,
+    1944,
+    490,
+    287,
+    269
+   ],
+   "decoded": "De 9h – 10h, puis — enfin — la pause - courte."
+  },
+  {
+   "text": "It’s Alex’s ‘thing’ – really.",
+   "ids": [
+    964,
+    273,
+    230,
+    132,
+    157,
+    265,
+    1225,
+    263,
+    857,
+    230,
+    132,
+    157,
+    265,
+    260,
+    230,
+    132,
+    156,
+    273,
+    312,
+    1041,
+    230,
+    132,
+    157,
+    260,
+    230,
+    132,
+    151,
+    260,
+    510,
+    606,
+    444,
+    269
+   ],
+   "decoded": "It’s Alex’s ‘thing’ – really."
   },
   {
    "text": "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag.",
