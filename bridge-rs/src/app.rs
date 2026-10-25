@@ -1206,7 +1206,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         // The space encrypted at rest (space.rs): « on » or « off » (a locked bridge answers « locked » itself).
         "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
-        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone"],
+        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search"],
     })))
 }
 
@@ -1400,6 +1400,7 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/console/pairings/{code}", "POST"),
     ("/v1/console/devices", "GET"),
     ("/v1/console/devices/{device}", "DELETE"),
+    ("/v1/search/messages", "GET"),
     ("/console", "GET"),
     ("/console/", "GET"),
     ("/console/api/login", "POST"),
@@ -1542,7 +1543,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())
         .merge(crate::favicons::router())
-        .merge(crate::map_tiles::router());
+        .merge(crate::map_tiles::router())
+        .merge(crate::message_search::router());
     if !config.cloud {
         authed = authed.merge(crate::console::console_admin_router());
     }
