@@ -156,12 +156,14 @@ pub const VISUAL_RULE: &str = concat!(
 );
 
 /// A quick word before slow work (owner's request 2026-10-25, like Grok's app: « Bonne idée, je lance une recherche… »
-/// then the answer later): the apps show that first text as a normal bubble above the working line. Rust bridge only,
+/// then the answer later), and a short line before each main step of long work (« deux, trois petites bulles » that make
+/// the wait shorter): the apps show these as bubbles above the working line, never read aloud. Rust bridge only,
 /// like FAMILY_RULE (added to tests/golden/souls.json by hand). Short: it is paid on every call.
 pub const ACK_RULE: &str = concat!(
     "Before work that takes more than a few seconds (browsing, searches, several tools, a background task), first ",
-    "write one short sentence in your person's language saying what you understood and what you will do (a second ",
-    "may say you'll come back when done), then start. Don't repeat it at the end. Not for quick answers."
+    "write one short sentence in your person's language saying what you understood and what you will do, then start. ",
+    "During long work, before each new main step, write one short line on what you do next (« Je compare les prix… »). ",
+    "Don't repeat these at the end. Not for quick answers."
 );
 
 fn language_name(code: &str) -> &'static str {
