@@ -277,6 +277,7 @@ class FakeHermes(Fake):
         self.started: Dict[str, Dict[str, Any]] = {}    # runs made by POST /v1/runs
         self.rounds, self.step = 3, 40_000
         self.run_output = "Rapport : trois écoles comparées, page « Écoles »."
+        self.run_outputs: Dict[str, str] = {}   # run id -> its own output (else run_output)
         self.run_usage = {"input_tokens": 100_000, "output_tokens": 5_000}
         self.forget_runs = False
         self.default_session = {"title": "Bot Chat", "message_count": 7}
@@ -371,7 +372,8 @@ class FakeHermes(Fake):
             run["polls"] += 1
             if run["status"] == "running" and run["polls"] >= self.rounds:
                 run["status"] = "completed"
-                return JSONResponse({"status": "completed", "output": self.run_output, "usage": self.run_usage})
+                output = self.run_outputs.get(run_id, self.run_output)
+                return JSONResponse({"status": "completed", "output": output, "usage": self.run_usage})
             return JSONResponse({"status": run["status"]})
         return JSONResponse({"error": "no route"}, status_code=404)
 

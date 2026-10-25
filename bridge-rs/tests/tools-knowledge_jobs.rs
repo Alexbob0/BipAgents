@@ -333,3 +333,84 @@ async fn the_routes_need_the_bridge_key_and_list_the_jobs() {
     let missing = app.request("POST", "/v1/jobs/t000000000000/pause", &[(k, &v)], None).await;
     assert_eq!((missing.status.as_u16(), missing.json()), (404, json!({"detail": "unknown job"})));
 }
+
+fn with_handback(config: &Config, told: &Told) -> Arc<Jobs> {
+    let board = board(config, Some(told));
+    let mut jobs = Arc::try_unwrap(board).ok().unwrap();
+    let mut handback =
+        bipbridge::handback::Handback::new(SharedConfig::new(config.clone()), HermesClient::new(reqwest::Client::new()));
+    handback.poll = 0.01;
+    jobs.handback = Some(Arc::new(handback));
+    Arc::new(jobs)
+}
+
+fn posted_runs(fake: &Fake) -> Vec<Value> {
+    fake.lock()
+        .unwrap()
+        .requests
+        .iter()
+        .filter(|(m, p, _)| m == "POST" && p == "/p/coach/v1/runs")
+        .map(|(_, _, b)| b.clone().unwrap_or(Value::Null))
+        .collect()
+}
+
+/// 2026-10-25: a task started from a conversation ends with the agent's own message there (fed with the report, the
+/// full report kept as a page and linked), not only a push towards the task's conversation.
+#[tokio::test]
+async fn a_finished_task_is_handed_back_to_the_conversation_it_came_from() {
+    let dir = tempfile::tempdir().unwrap();
+    let (fake, url) = gateway(3, 40_000).await;
+    fake.lock().unwrap().output = "J'ai comparé les écoles.\n\n- **Jules Ferry** : la plus proche\n- Pasteur : cantine bio\n\
+- Curie : classes de 22"
+        .into();
+    let (config, agent) = setup(dir.path(), &url);
+    let told: Told = Default::default();
+    let board = with_handback(&config, &told);
+    let job = board
+        .create_from(&agent, "Écoles", "Compare les écoles.", 1_000_000, None, "asked", Some("api_c"))
+        .await
+        .unwrap();
+    let id = id_of(&job);
+    assert_eq!(job["from_session"], "api_c");
+    board.wait(&id).await;
+    let runs = posted_runs(&fake);
+    assert_eq!(runs.len(), 2);
+    let turn = &runs[1];
+    assert_eq!(turn["session_id"], "api_c");
+    assert_eq!(turn["instructions"], bipbridge::handback::INSTRUCTIONS);
+    let note = turn["input"].as_str().unwrap();
+    let page = format!("/bipagents/pages/coach/rapport-{id}.html");
+    assert!(note.starts_with("<!--bip:task\nYour background work « Écoles » is finished."), "{note}");
+    assert!(note.contains("- Pasteur : cantine bio") && note.contains(&format!("MEDIA:{page}")) && note.ends_with("-->"));
+    // the report page, in the agent's pages
+    let kept = dir.path().join(format!("data/agent-pages/coach/rapport-{id}.html"));
+    let html = std::fs::read_to_string(kept).unwrap();
+    assert!(html.contains("<li><strong>Jules Ferry</strong> : la plus proche</li>"));
+    let done = jobs::load(&config, &id).unwrap();
+    assert_eq!(done["state"], "done");
+    assert_eq!(done["handed_back"]["by_agent"], true);
+    assert_eq!(done["handed_back"]["links"], json!([page]));
+    // the turn's tokens are the task's too (its usage: 105,000 more)
+    assert_eq!(done["tokens"]["input"], 205_000);
+    // no « Tâche de fond terminée » push towards the task's own conversation: the message is the news
+    assert!(told.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_spent_budget_hands_back_the_templated_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let (fake, url) = gateway(3, 40_000).await;
+    let (config, agent) = setup(dir.path(), &url);
+    let told: Told = Default::default();
+    let board = with_handback(&config, &told);
+    let job = board.create_from(&agent, "Écoles", "Compare.", 110_000, None, "asked", Some("api_c")).await.unwrap();
+    let id = id_of(&job);
+    board.wait(&id).await;
+    assert_eq!(posted_runs(&fake).len(), 1, "no turn left in the budget");
+    let done = jobs::load(&config, &id).unwrap();
+    assert_eq!((done["state"].as_str(), done["handed_back"]["by_agent"].as_bool()), (Some("done"), Some(false)));
+    // without a conversation to go back to: the push as before
+    let other = board.create(&agent, "Autre", "Encore.", 1_000_000, None).await.unwrap();
+    board.wait(&id_of(&other)).await;
+    assert_eq!(told.lock().unwrap().len(), 1);
+}

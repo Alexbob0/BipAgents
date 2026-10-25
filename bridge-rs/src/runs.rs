@@ -582,6 +582,39 @@ impl RunHub {
         false
     }
 
+    /// The conversation whose run is asking for something now (a tool call such as start_task, which carries no
+    /// session): the agent's runs going on in a person's conversation (not a background task's own), the one that
+    /// just called a handing-over tool first, else the one followed last. None when none is known.
+    pub fn asking_session(&self, agent: &str) -> Option<String> {
+        let inner = lock(&self.inner);
+        let mut best: Option<(bool, f64, String)> = None;
+        for sub in inner.subs.values() {
+            if sub.agent.name != agent {
+                continue;
+            }
+            let st = lock(&sub.state);
+            let Some(session) = st.session_id.clone().filter(|s| !s.is_empty()) else { continue };
+            if st.finished || !st.end_push {
+                continue;
+            }
+            let handing = st.recent_tools.back().is_some_and(|t| handoff_tool(t));
+            let key = (handing, st.followed_since);
+            if best.as_ref().is_none_or(|(h, f, _)| key.0 > *h || (key.0 == *h && key.1 > *f)) {
+                best = Some((key.0, key.1, session));
+            }
+        }
+        best.map(|(_, _, session)| session)
+    }
+
+    /// A run of the agent goes on in this conversation (the hub follows it).
+    pub fn session_busy(&self, agent: &str, session_id: &str) -> bool {
+        let inner = lock(&self.inner);
+        inner.subs.values().any(|sub| {
+            let st = lock(&sub.state);
+            sub.agent.name == agent && !st.finished && st.session_id.as_deref() == Some(session_id)
+        })
+    }
+
     pub fn subscription(&self, agent: &str, run_id: &str) -> Option<Arc<RunSubscription>> {
         lock(&self.inner).subs.get(&(agent.to_string(), run_id.to_string())).cloned()
     }
@@ -1069,7 +1102,7 @@ impl RunHub {
         let budget = crate::jobs::direct_budget(&config);
         let started = tokio::time::timeout(
             Duration::from_secs(45),
-            jobs.create_by(&agent, &title, &prompt, budget, None, "asked"),
+            jobs.create_from(&agent, &title, &prompt, budget, None, "asked", session.as_deref()),
         )
         .await
         .unwrap_or_else(|_| Err(crate::jobs::JobError("the agent did not answer in time".into()).into()));
@@ -1101,7 +1134,7 @@ impl RunHub {
                 let reason = format!("{err:#}");
                 tracing::info!(agent = %agent.name, run_id = %sub.run_id, error = %reason,
                     "long run: the background task could not start, proposed");
-                match jobs.propose(&agent, &title, &prompt, "small").await {
+                match jobs.propose_from(&agent, &title, &prompt, "small", session.as_deref()).await {
                     Ok(job) => {
                         notice.insert("code".into(), json!("handoff_proposed"));
                         notice.insert("job_id".into(), json!(crate::tools_knowledge::str_or_empty(job.get("id"))));

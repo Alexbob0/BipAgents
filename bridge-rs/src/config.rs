@@ -576,6 +576,8 @@ pub struct Config {
     pub cron_watch: bool,
     pub cron_interval_seconds: f64,
     pub cron_window_hours: f64,
+    /// A background sub-agent's report left without a reply: the agent writes the message itself (handback.rs).
+    pub cron_subtask_handback: bool,
     /// Files the agents point to with « MEDIA:<path> » lines: agent-side prefix -> host directory.
     pub media_roots: IndexMap<String, String>,
     pub ntfy_url: String,
@@ -663,6 +665,7 @@ impl Config {
             cron_watch: true,
             cron_interval_seconds: 30.0,
             cron_window_hours: 12.0,
+            cron_subtask_handback: true,
             media_roots: IndexMap::new(),
             ntfy_url: "http://127.0.0.1:8645".into(),
             push_previews: false,
@@ -1299,6 +1302,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         cron_watch: b(cron, "watch", true),
         cron_interval_seconds: f(cron, "interval_seconds", 30.0)?,
         cron_window_hours: f(cron, "window_hours", 12.0)?,
+        cron_subtask_handback: b(cron, "subtask_handback", true),
         media_roots,
         ntfy_url: py::rstrip_slash(&s(ntfy, "url", "http://127.0.0.1:8645")),
         push_previews: b(push, "previews", false),

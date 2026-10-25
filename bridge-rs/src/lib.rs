@@ -92,6 +92,7 @@ pub mod archives;
 pub mod assistant_import;
 pub mod favicons;
 pub mod guide;
+pub mod handback;
 pub mod health;
 pub mod jobs;
 pub mod mail_scan;

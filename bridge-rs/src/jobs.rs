@@ -220,7 +220,7 @@ pub fn scan_view(job: &Dict, running: bool) -> Dict {
 }
 
 pub fn task_view(job: &Dict) -> Dict {
-    const KEEP: [&str; 18] = [
+    const KEEP: [&str; 19] = [
         "id",
         "kind",
         "agent",
@@ -239,6 +239,7 @@ pub fn task_view(job: &Dict) -> Dict {
         "report",
         "proposed_by",
         "runs",
+        "from_session",
     ];
     // an extraction from an archive (archives/records_fill.rs): its euros, its cap, the documents read
     const EXTRACT: [&str; 6] = ["archive", "eur", "budget_eur", "progress", "model", "counts"];
@@ -285,6 +286,8 @@ pub struct Jobs {
     pub tell: Option<TellJob>,
     /// « Remplir mon Carnet » for every agent, one after another (notebook/fill.rs).
     pub filler: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// A finished task's result handed back to the conversation it came from (handback.rs); None: only the push.
+    pub handback: Option<Arc<crate::handback::Handback>>,
 }
 
 impl Jobs {
@@ -315,6 +318,7 @@ impl Jobs {
             followers: Default::default(),
             filler: Default::default(),
             tell,
+            handback: None,
         }
     }
 
@@ -431,6 +435,7 @@ impl Jobs {
         max_tokens: i64,
         template: Option<&str>,
         proposed_by: &str,
+        from_session: Option<&str>,
     ) -> anyhow::Result<Dict> {
         let title = tk::head(&tk::squeeze(title), 80).to_string();
         let prompt = tk::strip(prompt).to_string();
@@ -441,7 +446,8 @@ impl Jobs {
                          "prompt": prompt, "template": template, "state": "proposed", "reason": null, "error": null,
                          "created": py::time_time(), "started": null, "finished": null, "max_tokens": max_tokens,
                          "tokens": {"input": 0, "output": 0, "cached": 0}, "session_id": null, "run_id": null,
-                         "report": null, "proposed_by": proposed_by, "runs": 0});
+                         "report": null, "proposed_by": proposed_by, "runs": 0,
+                         "from_session": from_session.filter(|s| !s.is_empty())});
         let Value::Object(job) = job else { unreachable!() };
         save(&self.config.get(), &job)?;
         self.trim(&agent.name);
@@ -470,8 +476,23 @@ impl Jobs {
         template: Option<&str>,
         by: &str,
     ) -> anyhow::Result<Dict> {
+        self.create_from(agent, title, prompt, max_tokens, template, by, None).await
+    }
+
+    /// `create_by`, from a conversation (`from_session`): the task's result is handed back there when it ends.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_from(
+        self: &Arc<Self>,
+        agent: &AgentConfig,
+        title: &str,
+        prompt: &str,
+        max_tokens: i64,
+        template: Option<&str>,
+        by: &str,
+        from_session: Option<&str>,
+    ) -> anyhow::Result<Dict> {
         self.may_run(&agent.name)?;
-        let mut job = self.new_task(agent, title, prompt, max_tokens, template, by)?;
+        let mut job = self.new_task(agent, title, prompt, max_tokens, template, by, from_session)?;
         let text = format!("{}\n\n{}", tk::str_or_empty(job.get("title")), tk::str_or_empty(job.get("prompt")));
         if let Err(err) = self.launch(&mut job, &text).await {
             if err.downcast_ref::<JobError>().is_some() {
@@ -486,13 +507,25 @@ impl Jobs {
 
     /// An agent's proposal: kept until the person starts it (or forgets it) in the app.
     pub async fn propose(&self, agent: &AgentConfig, title: &str, prompt: &str, budget: &str) -> anyhow::Result<Dict> {
+        self.propose_from(agent, title, prompt, budget, None).await
+    }
+
+    /// `propose`, from a conversation (`from_session`): once started and done, its result goes back there.
+    pub async fn propose_from(
+        &self,
+        agent: &AgentConfig,
+        title: &str,
+        prompt: &str,
+        budget: &str,
+        from_session: Option<&str>,
+    ) -> anyhow::Result<Dict> {
         let waiting =
             tasks(&self.config.get()).iter().filter(|j| agent_of(j) == agent.name && state_of(j) == "proposed").count();
         if waiting >= PROPOSALS_MAX {
             return Err(job_error("enough of your proposals are waiting for the person already"));
         }
         let max_tokens = budget_of(budget).unwrap_or(1_000_000);
-        let job = self.new_task(agent, title, prompt, max_tokens, None, "agent")?;
+        let job = self.new_task(agent, title, prompt, max_tokens, None, "agent", from_session)?;
         if let Some(tell) = &self.tell {
             let line = format!("{PROPOSED_BODY} : {}", tk::str_or_empty(job.get("title")));
             tell(agent.name.clone(), None, line, tk::str_or_empty(job.get("id")), PROPOSED_BODY.into()).await;
@@ -760,12 +793,14 @@ impl Jobs {
             };
         }
         let now = py::time_time();
+        let mut full = String::new();
         let stopping = job.get("stopping").filter(|v| py::truthy(v)).cloned();
         if stopping.is_some() || ["cancelled", "canceled", "interrupted"].contains(&status.as_str()) {
             job.insert("state".into(), json!("paused"));
             job.insert("reason".into(), stopping.unwrap_or(json!("interrupted")));
         } else if status == "completed" {
-            let report = tk::head(tk::strip(output.as_deref().unwrap_or("")), REPORT_CHARS).to_string();
+            full = tk::strip(output.as_deref().unwrap_or("")).to_string();
+            let report = tk::head(&full, REPORT_CHARS).to_string();
             job.insert("state".into(), json!("done"));
             job.insert("report".into(), if report.is_empty() { Value::Null } else { json!(report) });
             job.insert("finished".into(), json!(now));
@@ -783,9 +818,69 @@ impl Jobs {
         let reason = job.get("reason").cloned().unwrap_or(Value::Null);
         tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), state = %state_of(job),
             reason = ?crate::logs::J(&reason), tokens = spent(job), "job ended");
-        if state_of(job) == "done" || reason == json!("budget") || reason == json!("time") {
+        let from = job.get("from_session").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
+        if let (true, Some(from), Some(handback)) = (state_of(job) == "done", from, self.handback.clone()) {
+            self.hand_back(&handback, agent, job, &from, &full).await;
+        } else if state_of(job) == "done" || reason == json!("budget") || reason == json!("time") {
             self.tell_end(agent, job).await;
         }
+    }
+
+    /// The task's result told in the conversation it came from: the agent's own message there (or the template), the
+    /// full report kept as one of its pages and linked, the turn's tokens counted in the task's.
+    async fn hand_back(
+        &self,
+        handback: &crate::handback::Handback,
+        agent: &AgentConfig,
+        job: &mut Dict,
+        from: &str,
+        report: &str,
+    ) {
+        use crate::handback as hb;
+        let config = self.config.get();
+        let id = tk::str_or_empty(job.get("id"));
+        let title = tk::str_or_empty(job.get("title"));
+        let lang = hb::language_of(&config, agent);
+        let (_, mut links) = crate::media::extract_media(report);
+        links.dedup();
+        links.truncate(hb::LINKS_MAX - 1);
+        if !tk::strip(report).is_empty() {
+            let page_title = hb::report_title(&lang, &title);
+            let html = hb::report_html(&page_title, report);
+            match crate::pages::save(&config, &agent.name, &html, &page_title, Some(&format!("rapport-{id}"))) {
+                Ok(page) => links.push(tk::str_or_empty(page.get("path"))),
+                Err(err) => tracing::warn!(agent = %agent.name, job = %id, error = %format!("{err:#}"),
+                    "handback: the report page could not be kept"),
+            }
+        }
+        let budget = int_of(job.get("max_tokens")) - spent(job);
+        let request = hb::Request {
+            agent: agent.clone(),
+            session: from.to_string(),
+            key: id.clone(),
+            title: title.clone(),
+            note: hb::note("task", &title, report, &links),
+            links: links.clone(),
+            budget: Some(budget),
+            fallback: hb::template(&lang, &title, &hb::key_points(report, hb::POINTS_MAX), &links),
+            recap: Some(hb::recap(&title, report)),
+            fallback_session: job.get("session_id").and_then(Value::as_str).map(str::to_string),
+        };
+        let outcome = handback.deliver(&request).await;
+        // the turn is part of the task's cost
+        let mut latest = load(&config, &id).unwrap_or_else(|| job.clone());
+        if outcome.tokens > 0 {
+            let mut tokens = latest.get("tokens").and_then(Value::as_object).cloned().unwrap_or_default();
+            let input = int_of(tokens.get("input")) + outcome.tokens;
+            tokens.insert("input".into(), json!(input));
+            latest.insert("tokens".into(), Value::Object(tokens));
+        }
+        latest.insert(
+            "handed_back".into(),
+            json!({"session": from, "by_agent": outcome.by_agent, "at": py::time_time(), "links": links}),
+        );
+        let _ = save(&config, &latest);
+        *job = latest;
     }
 
     async fn tell_end(&self, agent: &AgentConfig, job: &Dict) {
@@ -981,7 +1076,9 @@ pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &
         _ => "medium".into(),
     };
     let prompt = tk::str_or_empty(arguments.get("prompt"));
-    match jobs.propose(agent, &tk::str_or_empty(arguments.get("title")), tk::head(&prompt, 8000), &budget).await {
+    let from = jobs.hub.as_ref().and_then(|hub| hub.asking_session(&agent.name));
+    let title = tk::str_or_empty(arguments.get("title"));
+    match jobs.propose_from(agent, &title, tk::head(&prompt, 8000), &budget, from.as_deref()).await {
         Ok(job) => Ok(tool_text(
             &format!(
                 "Proposed (budget about {} tokens). It starts only when the person starts it in « Tâches de fond »: tell them so in your reply.",
@@ -1079,7 +1176,9 @@ instead (they start it with one tap) and tell them so in one plain sentence.",
     };
     let prompt = tk::str_or_empty(arguments.get("instructions"));
     let title = tk::str_or_empty(arguments.get("title"));
-    started(jobs.create_by(agent, &title, tk::head(&prompt, 8000), max_tokens, None, "asked").await, &config, agent)
+    let from = jobs.hub.as_ref().and_then(|hub| hub.asking_session(&agent.name));
+    let made = jobs.create_from(agent, &title, tk::head(&prompt, 8000), max_tokens, None, "asked", from.as_deref()).await;
+    started(made, &config, agent)
 }
 
 /// What the agent is told once its task started (or why it could not).
@@ -1119,13 +1218,15 @@ pub fn jobs_of(state: &AppState) -> Arc<Jobs> {
     state
         .jobs
         .get_or_init(|| {
-            let jobs = Arc::new(Jobs::new(
+            let mut board = Jobs::new(
                 state.config.clone(),
                 state.hermes.clone(),
                 Some(state.hub.clone()),
                 Some(state.push.clone()),
                 Some(crate::mail_scan::scans_of(state)),
-            ));
+            );
+            board.handback = Some(Arc::new(crate::handback::Handback::of(state)));
+            let jobs = Arc::new(board);
             // The safety net's rescue starts tasks for runs that stopped without handing over (runs.rs).
             let _ = state.hub.jobs.set(Arc::downgrade(&jobs));
             jobs

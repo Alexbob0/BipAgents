@@ -125,8 +125,10 @@ def test_session_state_route(bridges, fakes):
 @pytest.mark.slow
 def test_a_subtask_report_left_without_a_reply_is_pushed_once(bridges, fakes):
     """A background delegate_task's report, stored by Hermes as the conversation's last (user) turn without waking the
-    agent: pushed once it is still last a poll later, with the file it names as its line (`[push] previews`)."""
-    bridge = bridges.new(change=lambda c: c.update(cron={"watch": True, "interval_seconds": 0.3, "window_hours": 12},
+    agent: pushed once it is still last a poll later, with the file it names as its line (`[push] previews`), when the
+    agent does not write about it itself (`[cron] subtask_handback = false`)."""
+    bridge = bridges.new(change=lambda c: c.update(cron={"watch": True, "interval_seconds": 0.3, "window_hours": 12,
+                                                         "subtask_handback": False},
                                                    push={"previews": True}))
     bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
                      (TOKEN, "sandbox", '["wellness"]', NOW, NOW))])
@@ -147,3 +149,40 @@ def test_a_subtask_report_left_without_a_reply_is_pushed_once(bridges, fakes):
     assert payload["run_id"] == "session:api_7" and payload["session_id"] == "api_7" and payload["kind"] == "reply"
     assert fakes.apns.pushes()[0].header("apns-collapse-id") == "subtask:api_7"
     assert bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH).json()["text"] == "🎧 Podcast jeudi"
+
+
+@pytest.mark.slow
+def test_a_subtask_report_left_without_a_reply_is_told_by_the_agent(bridges, fakes):
+    """2026-10-25: the same report (still last a poll later, nobody woke the agent): the agent takes one short turn in
+    that conversation, the note hidden from the person, and writes the message itself (the file the sub-agent made
+    linked); it is in the Boîte, tagged with the conversation, and pushed once."""
+    bridge = bridges.new(change=lambda c: c.update(cron={"watch": True, "interval_seconds": 0.3, "window_hours": 12}))
+    bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
+                     (TOKEN, "sandbox", '["wellness"]', NOW, NOW))])
+    hermes = fakes.hermes
+    hermes.rounds = 1
+    hermes.run_output = "Ton podcast de jeudi est prêt :\n- 12 minutes\n- deux voix\nMEDIA:/home/hermes/.hermes/media/podcast_jeudi.mp3"
+    hermes.add_session("api_7", [{"role": "user", "content": "Fais le podcast"}, {"role": "assistant", "content": "Je lance."}],
+                       title="Podcast")
+    bridge.start()
+    assert wait_until(lambda: hermes.seen("/api/sessions", "GET"), timeout=20)
+    time.sleep(0.5)
+    hermes.messages[("", "api_7")].append({"role": "user", "content": "[ASYNC DELEGATION RESULT] Done: "
+                                           "/home/hermes/.hermes/media/podcast_jeudi.mp3 is ready."})
+    hermes.sessions[""]["api_7"]["message_count"] = 3
+    assert wait_until(lambda: "r1" in hermes.started, timeout=10)
+    turn = hermes.started["r1"]
+    assert turn["session_id"] == "api_7" and turn["input"].startswith("<!--bip:subtask\n")
+    assert turn["input"].endswith("MEDIA:/home/hermes/.hermes/media/podcast_jeudi.mp3\n-->")
+
+    def items():
+        return bridge.get("/v1/outbox", headers=AUTH).json()["items"]
+
+    assert wait_until(items, timeout=15)
+    item = items()[0]
+    assert item["session_id"] == "api_7" and item["text"] == "Ton podcast de jeudi est prêt :\n- 12 minutes\n- deux voix"
+    assert wait_until(lambda: fakes.apns.pushes())
+    time.sleep(1.5)
+    payloads = fakes.apns.payloads()
+    assert len(payloads) == 1 and payloads[0]["outbox_id"] == item["id"] and payloads[0]["session_id"] == "api_7"
+    assert len(hermes.started) == 1   # once
