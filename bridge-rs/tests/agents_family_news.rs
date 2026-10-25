@@ -196,6 +196,35 @@ async fn told_only_after_the_person_says_so() {
     assert_eq!(none.status, 401);
     assert_eq!(b.get("/v1/family/news", &h).await.json()["received"].as_array().unwrap().len(), 0);
 
+    // « Nouvelles passées »: what went, what was refused (Alex's side), what came in (Léa's), the newest first.
+    let past = a.get("/v1/family/history", &h).await.json();
+    assert_eq!(past["more"], false);
+    let items = past["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2, "{past}");
+    assert_eq!(items[0]["state"], "refused");
+    assert_eq!(items[0]["household_name"], "Léa");
+    assert_eq!(items[0]["other_agent"], "Budget");
+    assert_eq!(items[0]["text"], "Loyer payé");
+    assert_eq!(items[1]["state"], "sent");
+    assert_eq!(items[1]["direction"], "sent");
+    assert_eq!(items[1]["agent"], "vie");
+    assert_eq!(items[1]["agent_name"], "Vie");
+    assert_eq!(items[1]["household"], "lea");
+    assert_eq!(items[1]["other_agent"], Value::Null);
+    assert_eq!(items[1]["text"], "Je commande des pizzas ce midi !");
+    let page = a.get("/v1/family/history?limit=1", &h).await.json();
+    assert_eq!((page["items"].as_array().unwrap().len(), page["more"].clone()), (1, json!(true)));
+    let before = page["items"][0]["at"].as_f64().unwrap();
+    let next = a.get(&format!("/v1/family/history?limit=1&before={before}"), &h).await.json();
+    assert_eq!(next["items"][0]["state"], "sent");
+    let theirs = b.get("/v1/family/history?direction=received", &h).await.json();
+    assert_eq!(theirs["items"][0]["household_name"], "Alex");
+    assert_eq!(theirs["items"][0]["other_agent"], "Vie");
+    assert_eq!(theirs["items"][0]["agent"], "cuisine");
+    assert_eq!(theirs["items"][0]["state"], "received");
+    assert_eq!(b.get("/v1/family/history?direction=sent", &h).await.json()["items"], json!([]));
+    assert_eq!(b.get("/v1/family/history?direction=x", &h).await.status, 422);
+
     // Unlinked: the tools go.
     assert_eq!(b.request("DELETE", "/v1/family/alex", &h, None).await.status, 204);
     assert_eq!(a.request("DELETE", "/v1/family/lea", &h, None).await.status, 204);

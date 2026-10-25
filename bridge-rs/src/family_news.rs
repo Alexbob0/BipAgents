@@ -19,9 +19,23 @@
 //!     POST   /v1/family/proposals/{id}/send     {text?, to?}   sent (the words and recipients as the person left them)
 //!     DELETE /v1/family/proposals/{id}          « Non merci »
 //!     POST   /v1/family/received/{id}/seen      the line in the conversation closed
+//!     GET    /v1/family/history?limit=&before=&agent=&direction=   « Nouvelles passées » (below)
 //!     POST   /family/tell                       a linked household's bridge hands a message over (its key)
 //!
-//! `<data>/family-news.json` (0600) holds the proposals, the messages received, and the notes waiting for the agents.
+//! **« Nouvelles passées »** (Réglages › Famille, 2026-10-25): what this install's agents passed on to relatives and
+//! what they received, one line per recipient, the newest first:
+//!
+//!     GET /v1/family/history?limit=50&before=<at>&agent=<id>&direction=sent|received
+//!       → {items: [entry], more: bool}     (`before`: the `at` of the last line shown, for the next page)
+//!     entry  {id, at, direction: "sent"|"received", agent, agent_name, household, household_name,
+//!             other_agent: <their agent's name>|null, text, state: "sent"|"refused"|"failed"|"received"}
+//!
+//! `text` is the words as they left (the person's edit included) or as they arrived; « refused » is the person's
+//! « Non merci » (nothing left), « failed » their bridge could not be reached (the proposal stays for « Envoyer »
+//! again). The last `HISTORY_KEPT` lines are kept (as the approvals' log), on this install only, never sent anywhere.
+//!
+//! `<data>/family-news.json` (0600) holds the proposals, the messages received, the notes waiting for the agents and
+//! the history.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -56,6 +70,9 @@ pub const RECEIVED_KEPT: usize = 40;
 /// Notes waiting for an agent (the oldest go first).
 pub const NOTES_KEPT: usize = 20;
 pub const EVERYONE: &str = "everyone";
+/// « Nouvelles passées »: lines kept (the approvals' log keeps as many).
+pub const HISTORY_KEPT: usize = 1000;
+pub const HISTORY_PAGE_MAX: i64 = 200;
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -158,6 +175,77 @@ fn add_note(data: &mut Dict, agent: &str, line: String) {
         let extra = lines.len().saturating_sub(NOTES_KEPT);
         lines.drain(..extra);
     }
+}
+
+/// One line of « Nouvelles passées ».
+pub struct Line<'a> {
+    pub direction: &'a str,
+    pub agent: &'a str,
+    pub agent_name: &'a str,
+    pub household: &'a str,
+    pub household_name: &'a str,
+    pub other_agent: Option<&'a str>,
+    pub text: &'a str,
+    pub state: &'a str,
+}
+
+fn add_history(data: &mut Dict, line: Line<'_>, now: f64) {
+    let list = items_mut(data, "history");
+    list.push(json!({
+        "id": format!("h{}", py::token_hex(6)),
+        "at": now,
+        "direction": line.direction,
+        "agent": line.agent,
+        "agent_name": line.agent_name,
+        "household": line.household,
+        "household_name": line.household_name,
+        "other_agent": line.other_agent.filter(|a| !a.is_empty()),
+        "text": line.text,
+        "state": line.state,
+    }));
+    let extra = list.len().saturating_sub(HISTORY_KEPT);
+    list.drain(..extra);
+}
+
+/// A proposal's recipient as a history line's other end: (household, its name, their agent).
+fn recipient_end(linked: &Households, recipient: &Value) -> (String, String, Option<String>) {
+    let rid = str_of(recipient, "id");
+    let (household, agent) = match split(&rid) {
+        Some((agent, household)) => (household, Some(agent)),
+        None => (rid.clone(), None),
+    };
+    let name = linked
+        .get(&household)
+        .and_then(|h| h.get("name").map(py::py_str))
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| str_of(recipient, "name"));
+    // the shown name « Cuisine (Léa) » without its household
+    let agent = agent.map(|a| {
+        let shown = str_of(recipient, "name");
+        shown.split(" (").next().filter(|s| !s.is_empty()).map(str::to_string).unwrap_or(a)
+    });
+    (household, name, agent)
+}
+
+/// « Nouvelles passées »: the newest first, `limit` lines older than `before`; and whether there are more.
+pub fn history(
+    config: &Config,
+    agent: Option<&str>,
+    direction: Option<&str>,
+    before: Option<f64>,
+    limit: usize,
+    now: f64,
+) -> (Vec<Value>, bool) {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let data = load_at(config, now);
+    let mut found = items(&data, "history").iter().rev().filter(|h| {
+        agent.is_none_or(|a| str_of(h, "agent") == a)
+            && direction.is_none_or(|d| str_of(h, "direction") == d)
+            && before.is_none_or(|b| h.get("at").and_then(Value::as_f64).is_some_and(|at| at < b))
+    });
+    let page: Vec<Value> = found.by_ref().take(limit).cloned().collect();
+    let more = found.next().is_some();
+    (page, more)
 }
 
 fn clock(at: f64) -> String {
@@ -438,7 +526,26 @@ fn take_proposal(config: &Config, id: &str, now: f64) -> anyhow::Result<Value> {
 pub fn dismiss(config: &Config, id: &str, now: f64) -> anyhow::Result<()> {
     let proposal = take_proposal(config, id, now)?;
     let agent = str_of(&proposal, "agent");
+    let shown = config.agent(Some(&agent)).map(|a| a.display_name.clone()).unwrap_or_else(|| agent.clone());
+    let linked = households(config);
     update(config, now, |data| {
+        for r in items_of(&proposal, "to") {
+            let (household, household_name, other) = recipient_end(&linked, r);
+            add_history(
+                data,
+                Line {
+                    direction: "sent",
+                    agent: &agent,
+                    agent_name: &shown,
+                    household: &household,
+                    household_name: &household_name,
+                    other_agent: other.as_deref(),
+                    text: &str_of(&proposal, "text"),
+                    state: "refused",
+                },
+                now,
+            );
+        }
         add_note(
             data,
             &agent,
@@ -533,6 +640,24 @@ pub async fn send(
         }
     }
     update(config, now, |data| {
+        for r in &recipients {
+            let (household, household_name, other) = recipient_end(&linked, r);
+            let state = if failed_ids.contains(&str_of(r, "id")) { "failed" } else { "sent" };
+            add_history(
+                data,
+                Line {
+                    direction: "sent",
+                    agent: &agent_name,
+                    agent_name: &shown,
+                    household: &household,
+                    household_name: &household_name,
+                    other_agent: other.as_deref(),
+                    text: &text,
+                    state,
+                },
+                now,
+            );
+        }
         let list = items_mut(data, "proposals");
         if let Some(at) = list.iter().position(|p| str_of(p, "id") == id) {
             if failed_ids.is_empty() {
@@ -606,6 +731,20 @@ pub fn receive(
                 keep
             });
         }
+        add_history(
+            data,
+            Line {
+                direction: "received",
+                agent: &agent.name,
+                agent_name: &agent.display_name,
+                household,
+                household_name: from,
+                other_agent: Some(from_agent),
+                text,
+                state: "received",
+            },
+            now,
+        );
         let via = if from_agent.is_empty() { String::new() } else { format!(" (through their agent {from_agent})") };
         add_note(data, &agent.name, format!("- {} — {from}{via}: « {text} »", clock(now)));
     })?;
@@ -632,6 +771,28 @@ async fn news_route(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
     let mut out = news(&config, agent.as_deref(), py::time_time());
     out["linked"] = json!(has_family(&config));
     Ok(web::ok(out))
+}
+
+/// `GET /v1/family/history`: « Nouvelles passées ».
+async fn history_route(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let agent = match web::query_str(&q, "agent", false, Some(80))? {
+        Some(id) => {
+            Some(config.agent(Some(&id)).map(|a| a.name.clone()).ok_or_else(|| HttpError::new(404, "unknown agent"))?)
+        }
+        None => None,
+    };
+    let direction = web::query_str(&q, "direction", false, Some(10))?.filter(|d| !d.is_empty());
+    if direction.as_deref().is_some_and(|d| d != "sent" && d != "received") {
+        return Err(HttpError::new(422, "direction: sent or received"));
+    }
+    let before = match q.get("before").filter(|b| !b.is_empty()) {
+        Some(b) => Some(b.parse::<f64>().map_err(|_| HttpError::new(422, "before: a time (the `at` of a line)"))?),
+        None => None,
+    };
+    let limit = web::query_int(&q, "limit", Some(50), Some(1), Some(HISTORY_PAGE_MAX))?.unwrap_or(50) as usize;
+    let (items, more) = history(&config, agent.as_deref(), direction.as_deref(), before, limit, py::time_time());
+    Ok(web::ok(json!({"items": items, "more": more})))
 }
 
 #[derive(Debug, Deserialize)]
@@ -679,6 +840,7 @@ async fn seen_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>)
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/family/news", get(news_route))
+        .route("/family/history", get(history_route))
         .route("/family/proposals/{id}/send", post(send_route))
         .route("/family/proposals/{id}", delete(dismiss_route))
         .route("/family/received/{id}/seen", post(seen_route))
@@ -756,5 +918,28 @@ mod tests {
         let err = resolve(&family, &["marc".into()]).unwrap_err();
         assert!(err.0.contains("`lea`") && err.0.contains("cuisine__lea"));
         assert!(resolve(&family, &[]).is_err());
+    }
+
+    #[test]
+    fn history_is_newest_first_paged_and_capped() {
+        let mut data = Dict::new();
+        for n in 0..(HISTORY_KEPT + 5) {
+            let text = format!("m{n}");
+            let line = Line {
+                direction: if n % 2 == 0 { "sent" } else { "received" },
+                agent: "vie",
+                agent_name: "Vie",
+                household: "lea",
+                household_name: "Léa",
+                other_agent: None,
+                text: &text,
+                state: if n % 2 == 0 { "sent" } else { "received" },
+            };
+            add_history(&mut data, line, n as f64);
+        }
+        let kept = items(&data, "history");
+        assert_eq!(kept.len(), HISTORY_KEPT);
+        assert_eq!(kept[0]["text"], "m5");
+        assert_eq!(kept[0]["other_agent"], Value::Null);
     }
 }
