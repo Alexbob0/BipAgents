@@ -859,7 +859,17 @@
     "toolrow_now_browsing": "Je navigue sur {}…",
     "toolrow_now_reading": "Je lis {}…",
     "toolrow_now_writing_to": "J’écris à {}…"
-   }
+   },
+   "thinking": [
+    "Je réfléchis…",
+    "Je cogite…",
+    "Je rassemble mes idées…",
+    "Voyons voir…",
+    "Je mijote ça…",
+    "Hmm, une seconde…",
+    "Je fais le tour de la question…",
+    "Je pèse le pour et le contre…"
+   ]
   },
   "en": {
    "kinds": {
@@ -1128,7 +1138,17 @@
     "toolrow_now_browsing": "Browsing {}…",
     "toolrow_now_reading": "Reading {}…",
     "toolrow_now_writing_to": "Writing to {}…"
-   }
+   },
+   "thinking": [
+    "Thinking…",
+    "Mulling it over…",
+    "Gathering my thoughts…",
+    "Let me see…",
+    "Letting it simmer…",
+    "Hmm, one moment…",
+    "Looking at it from every side…",
+    "Weighing it up…"
+   ]
   },
   "de": {
    "kinds": {
@@ -1397,7 +1417,17 @@
     "toolrow_now_browsing": "Ich bin auf {}…",
     "toolrow_now_reading": "Ich lese {}…",
     "toolrow_now_writing_to": "Ich schreibe {}…"
-   }
+   },
+   "thinking": [
+    "Ich denke nach…",
+    "Ich überlege kurz…",
+    "Ich sortiere meine Gedanken…",
+    "Mal sehen…",
+    "Ich lasse es mir durch den Kopf gehen…",
+    "Hmm, einen Moment…",
+    "Ich schaue es mir von allen Seiten an…",
+    "Ich wäge ab…"
+   ]
   },
   "es": {
    "kinds": {
@@ -1666,7 +1696,17 @@
     "toolrow_now_browsing": "Navegando por {}…",
     "toolrow_now_reading": "Leyendo {}…",
     "toolrow_now_writing_to": "Escribiendo a {}…"
-   }
+   },
+   "thinking": [
+    "Pensando…",
+    "Dándole vueltas…",
+    "Ordenando mis ideas…",
+    "A ver, a ver…",
+    "Lo estoy madurando…",
+    "Mmm, un segundito…",
+    "Mirándolo por todos lados…",
+    "Sopesándolo…"
+   ]
   }
  }
 }
