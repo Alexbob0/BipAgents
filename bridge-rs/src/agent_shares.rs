@@ -1048,6 +1048,7 @@ async fn follow_from_here(state: AppState, id: String, cid: String, run_id: Stri
                     choices.as_deref(),
                     command.as_deref(),
                     Some(&cid),
+                    None,
                 )
                 .await;
         }
