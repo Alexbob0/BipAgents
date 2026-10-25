@@ -52,6 +52,8 @@ fn content_type_of(fmt: &str) -> &'static str {
 }
 
 pub const POCKET_PREFIX: &str = "pocket:";
+/// The Pocket packages a phone has when it doesn't say (`engine` in /v1/tts/prepare): 3.3.0 until the 4.x packages ship.
+const PHONE_POCKET_DEFAULT: &str = "3.3.0";
 pub const SERVER_PREFIX: &str = "server:";
 /// A voice server's voice, as an earlier app named the Drama 3 ones (`drama:fr-mascotte-s17`).
 pub const DRAMA_PREFIX: &str = "drama:";
@@ -596,7 +598,7 @@ impl Default for TtsOptions {
             max_chars: 1000,
             sentence_max_chars: 180,
             pocket_url: None,
-            pocket_engine: "4".into(),
+            pocket_engine: "3.3.0".into(),
             voice_server: None,
             words: IndexMap::new(),
         }
@@ -803,7 +805,8 @@ impl TtsService {
         };
         let language = voice_language(voice);
         let bip = rest.rsplit('/').next().unwrap_or(rest).to_string();
-        let spelling = Spelling::for_engine(engine); // the phone's own Pocket package
+        // The phone's own Pocket package: until the apps say which (`engine`), they have the 3.3.0 packages.
+        let spelling = Spelling::for_engine(Some(engine.unwrap_or(PHONE_POCKET_DEFAULT)));
         Ok(Some((self.prepare(text, false, max_chars, &language, true, spelling)?, language, bip)))
     }
 

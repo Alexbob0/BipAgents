@@ -564,7 +564,7 @@ pub struct Config {
     pub default_voice: String,
     /// Kyutai Pocket TTS (CPU) for the Bips' voices, used by voices named "pocket:<name>". None = off.
     pub pocket_url: Option<String>,
-    /// The version of the server's Pocket engine (`[pocket] engine`, default "4"): below 4 (3.3.0) the names and
+    /// The version of the server's Pocket engine (`[pocket] engine`, default "3.3.0" until the servers move to 4.x): below 4 (3.3.0) the names and
     /// English words are respelled for it (pronounce.rs); from 4 on, the model reads them from the raw text.
     pub pocket_engine: String,
     /// The person's own voice model (`[voice_server]`; an older `[drama] url` is one). None = the Bips only.
@@ -656,7 +656,7 @@ impl Config {
             kyutai_timeout: 120.0,
             default_voice: "5476".into(),
             pocket_url: None,
-            pocket_engine: "4".into(),
+            pocket_engine: "3.3.0".into(),
             voice_server: None,
             pronunciations: IndexMap::new(),
             cron_watch: true,
@@ -1292,7 +1292,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         kyutai_timeout: f(kyutai, "timeout_seconds", 120.0)?,
         default_voice,
         pocket_url,
-        pocket_engine: s(pocket, "engine", "4"),
+        pocket_engine: s(pocket, "engine", "3.3.0"),
         voice_server,
         pronunciations,
         cron_watch: b(cron, "watch", true),
