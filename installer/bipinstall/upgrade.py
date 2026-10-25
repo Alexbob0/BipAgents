@@ -90,6 +90,36 @@ def pocket_light() -> bool:
                for text in (p.read_text(errors="ignore") for p in places if p.is_file()))
 
 
+def pocket_step(runner: hermes.Runner, touched, venv) -> bool:
+    """The Bips' voices this account runs, brought up to date: whether Pocket must restart. Its engine and its voices
+    move together. Pocket's own models: the pocket-tts the repository pins (pocket/requirements.txt) put in its
+    environment when it changed or an earlier update didn't finish it, with the voice states of the same commit
+    (voices/). The light voices (--onnx: the phones' packages) keep their own requirements, PyTorch never comes back;
+    their packages (engine, model and Bips together) come again from the guichet when it has new ones. A failed
+    install leaves Pocket running as it was (its voices loaded) and is tried again at the next update."""
+    from . import voices
+    restart = touched("pocket/", "voices/")
+    light = pocket_light()
+    requirements = "requirements-onnx.txt" if light else "requirements.txt"
+    has_venv = (REPO / "pocket" / ".venv").exists()
+    outdated = (not light and has_venv and not runner.dry
+                and voices.installed_pocket(REPO) not in (None, voices.pinned_pocket(REPO)))
+    if has_venv and (touched(f"pocket/{requirements}") or outdated):
+        try:
+            venv(REPO / "pocket", runner, requirements)
+        except RuntimeError as exc:
+            say(ui.fail(f"The Bips' voices couldn't be updated ({str(exc)[-200:]}): they stay as they are, "
+                        "`bipagents update` tries again."))
+            return False
+        if not light:
+            say(ui.done(f"Pocket {voices.pinned_pocket(REPO)} installed for the Bips' voices."))
+        restart = True
+    if light and voices.refresh(Path.home(), runner, say):
+        say(ui.done("The Bips' new voices came from the guichet."))
+        restart = True
+    return restart
+
+
 def installed_accounts() -> List[str]:
     """The machine's other accounts with a BipAgents install (looked at with sudo: their homes are private)."""
     import pwd
@@ -276,14 +306,10 @@ def main(argv: List[str]) -> int:
     if touched("installer/requirements.txt") and (REPO / "installer" / ".venv").exists():
         venv(REPO / "installer", runner)   # what the timers and the bridge run the installer with
     pocket = pocket_restart()
-    if touched("pocket/", "voices/") and pocket:
-        # The light voices (--onnx: the phones' packages) keep their own requirements, PyTorch never comes back.
-        requirements = "requirements-onnx.txt" if pocket_light() else "requirements.txt"
-        if touched(f"pocket/{requirements}") and (REPO / "pocket" / ".venv").exists():
-            venv(REPO / "pocket", runner, requirements)
+    if pocket and pocket_step(runner, touched, venv):
         runner.run(pocket, check=False)
         say(ui.done("The Bips' voices restarted."))
-    elif touched("pocket/", "voices/"):
+    elif touched("pocket/", "voices/") and not pocket:
         owner = pocket_owner()
         if owner and owner != os.environ.get("USER"):
             commands.append(f"# The Bips' voices run from the account {owner}: there, `bipagents update` restarts them")

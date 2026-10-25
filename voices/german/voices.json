@@ -1,5 +1,6 @@
 {
- "engine": "pocket-tts 3.3.0",
+ "engine": "pocket-tts 4.0.1",
+ "states": "2026-10-25: each Bip's state recomputed for Pocket TTS 4.0.1 from its own <voice>_source.wav (this language's clip, never another's: a cross-language clone keeps an accent) with the cloning model kyutai/pocket-tts (CC-BY-4.0), german weights, get_state_for_audio_prompt(truncate=True) then export_model_state; checked by ear and with Whisper (the listening bench of 2026-10-25). The 3.3.0 states are in git history (before 2026-10-25).",
  "language": "german",
  "sample_rate": 24000,
  "design": {
@@ -7,14 +8,14 @@
   "text": "Guten Morgen! Hier ist dein Überblick für heute. Du hast drei Termine, der erste ist um halb zehn mit dem Team. Das Wetter: achtzehn Grad, am späten Nachmittag ein paar Schauer, denk also an den Regenschirm. Du hast heute Nacht sieben Stunden geschlafen, etwas besser als gestern. Soll ich dich eine Viertelstunde vor dem Meeting erinnern? Ich bin da, wenn du Fragen hast.",
   "note": "2026-10-15: one Qwen take per candidate written natively in the language (native-speaker accent), three seeds per Bip, picked by ear among 15; the Pocket reference is the take cut on a pause before 10 s (Pocket's german and spanish models cut the reading short with a ~23 s reference)"
  },
- "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395)",
+ "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395) — measured with pocket-tts 3.3.0's states (2026-10-15)",
  "voices": {
   "galet": {
    "design_instruct": "Stimme eines kleinen, gelassenen Maskottchens, mitteltief, klar und selbstsicher, gleichmäßiges Tempo, der Ton eines ruhigen Begleiters, der Dinge verständlich erklärt, leicht stilisierte Klangfarbe wie eine Zeichentrickfigur, niemals roboterhaft, saubere Studioaufnahme ohne Hall. Muttersprachler, akzentfreies Hochdeutsch.",
    "seed": 52003,
    "candidate": "galet_s52003",
    "source_s": 8.62,
-   "safetensors_bytes": 5359416,
+   "safetensors_bytes": 4966200,
    "first_sound_s": 0.062,
    "rtf": 8.69
   },
@@ -23,7 +24,7 @@
    "seed": 52102,
    "candidate": "lumen_s52102",
    "source_s": 8.46,
-   "safetensors_bytes": 5261112,
+   "safetensors_bytes": 5310264,
    "first_sound_s": 0.058,
    "rtf": 8.91
   },
@@ -41,7 +42,7 @@
    "seed": 52303,
    "candidate": "ours_s52303",
    "source_s": 8.7,
-   "safetensors_bytes": 5408568,
+   "safetensors_bytes": 4867888,
    "first_sound_s": 0.059,
    "rtf": 9.23
   },
@@ -50,7 +51,7 @@
    "seed": 52402,
    "candidate": "colibri_s52402",
    "source_s": 8.3,
-   "safetensors_bytes": 5162808,
+   "safetensors_bytes": 5015352,
    "first_sound_s": 0.061,
    "rtf": 9.47
   }

@@ -7,14 +7,28 @@ Voix de mascotte synthétiques pour les agents BipAgents, rangées par langue. C
 
 | Langue | Moteur | Voix |
 |---|---|---|
-| [`french/`](french/) | Kyutai Pocket TTS 3.3.0, modèle `french` | galet, lumen, mousse, ours, colibri |
-| [`english/`](english/), [`german/`](german/), [`spanish/`](spanish/) | Kyutai Pocket TTS 3.3.0, modèles `english`, `german`, `spanish` | les mêmes cinq Bips, conçus dans chaque langue (15/10/2026) |
+| [`french/`](french/) | Kyutai Pocket TTS 4.0.1, modèle `french` | galet, lumen, mousse, ours, colibri |
+| [`english/`](english/), [`german/`](german/), [`spanish/`](spanish/) | Kyutai Pocket TTS 4.0.1, modèles `english`, `german`, `spanish` | les mêmes cinq Bips, conçus dans chaque langue (15/10/2026) |
 
 Une nouvelle langue = un nouveau dossier (`english/`, `spanish/`…) avec la même structure : `<voix>.safetensors`
 (état Pocket TTS), `<voix>_source.wav` (extrait de clonage), `<voix>_sample.wav` (phrase de test), `voices.json`, `README.md`.
 
 Voix calculées avec Kyutai Pocket TTS (poids CC-BY-4.0, Kyutai) à partir d'extraits Qwen3-TTS VoiceDesign (Apache-2.0).
 Entièrement synthétiques : aucune personne réelle n'est imitée.
+
+## Pocket 4.0.1 (25/10/2026)
+
+Pocket 4.0.1 a réentraîné les modèles français, allemand et espagnol (et l'anglais) et prononce juste les marques et les
+mots anglais à partir du texte brut : les Bips y sont passés (test d'écoute du 25/10/2026). Un état de voix ne va qu'avec
+les poids qui l'ont calculé : chaque `<voix>.safetensors` a été recalculé à partir du `<voix>_source.wav` de sa propre
+langue (jamais l'extrait d'une autre langue : cela garde un accent) avec le modèle de clonage de Kyutai
+`kyutai/pocket-tts` (CC-BY-4.0, accès sur acceptation des conditions, connexion Hugging Face),
+`get_state_for_audio_prompt(..., truncate=True)` puis `export_model_state`, et `<voix>_sample.wav` refait avec 4.0.1.
+Les états 3.3.0 restent dans l'historique git.
+
+Le Pocket d'un serveur et ces états avancent ensemble : `bipagents update` (dans le compte qui fait tourner Pocket)
+installe le pocket-tts que fixe `pocket/requirements.txt` et le redémarre sur les voix du même commit ; le bridge cesse
+alors de réécrire les noms (`[pocket] engine = "4.0.1"`, installer/bipinstall/migrations.py, `pocket-engine`).
 
 ## Autres langues
 

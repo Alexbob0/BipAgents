@@ -106,3 +106,101 @@ def install(languages: List[str], home: Path, runner: hermes.Runner, say: Callab
     except (httpx.HTTPError, OSError, ValueError, KeyError) as exc:
         say(f"  the light voices can't be had ({type(exc).__name__}): Pocket's own models instead")
         return None
+
+
+# -- which Pocket speaks: the bridge prepares the text for it ([pocket] engine) ------------------------------------
+
+def _key(version: str) -> Tuple[int, ...]:
+    return tuple(int(part) if part.isdigit() else 0 for part in version.split("."))
+
+
+def major(version: Optional[str]) -> Optional[int]:
+    head = (version or "").split(".")[0]
+    return int(head) if head.isdigit() else None
+
+
+def engine_of(packages: Path) -> Optional[str]:
+    """The Pocket version of the packages in `packages` (« 4.0.1 »: their manifests' `engine`), the lowest when they
+    differ; None without any."""
+    try:
+        index = json.loads((packages / "index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    found = []
+    for entry in (index.get("languages") or {}).values():
+        try:
+            manifest = json.loads((packages / str(entry["folder"]) / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        version = str(manifest.get("engine", "")).split()[-1:]
+        if version and version[0][:1].isdigit():
+            found.append(version[0])
+    return min(found, key=_key) if found else None
+
+
+def languages_of(packages: Path) -> List[str]:
+    """The language codes whose package is in `packages` (fr, en…)."""
+    try:
+        names = (json.loads((packages / "index.json").read_text(encoding="utf-8")).get("languages") or {}).keys()
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [code for code, name in NAMES.items() if name in names]
+
+
+def refresh(home: Path, runner: hermes.Runner, say: Callable[[str], None],
+            transport: Optional[httpx.BaseTransport] = None) -> bool:
+    """The light voices brought to what the guichet now serves (new packages: a new Pocket, new Bips' voices), the
+    old ones removed once the new are here: whether anything changed (Pocket then restarts on them)."""
+    target = folder(home)
+    languages = languages_of(target)
+    base, token = source(home)
+    if not languages or base is None:
+        return False
+    if runner.dry:
+        say(f"  (dry run) would fetch the guichet's newer voices of {', '.join(languages)}, if any")
+        return False
+    before = (target / "index.json").read_text(encoding="utf-8")
+    if install(languages, home, runner, say, base=base, transport=transport, token=token) is None:
+        return False
+    return (target / "index.json").read_text(encoding="utf-8") != before
+
+
+def engine_at(url: str, wait: float = 0, transport: Optional[httpx.BaseTransport] = None) -> Optional[str]:
+    """The Pocket version a voices server at `url` says it speaks with (its /health `engine`); None when it doesn't
+    answer within `wait` seconds (it may be loading its model after a restart) or doesn't say (before 2026-10-25)."""
+    import time
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            with httpx.Client(timeout=5, transport=transport) as client:
+                response = client.get(url.rstrip("/") + "/health")
+            if response.status_code == 200:
+                engine = response.json().get("engine")
+                return engine if isinstance(engine, str) and engine[:1].isdigit() else None
+        except (httpx.HTTPError, ValueError, AttributeError):
+            pass
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(3)
+
+
+def pinned_pocket(repo: Path) -> Optional[str]:
+    """The pocket-tts version pocket/requirements.txt pins (« 4.0.1 »)."""
+    try:
+        for line in (repo / "pocket" / "requirements.txt").read_text(encoding="utf-8").splitlines():
+            if line.strip().lower().startswith("pocket-tts=="):
+                return line.split("==", 1)[1].strip()
+    except OSError:
+        pass
+    return None
+
+
+def installed_pocket(repo: Path) -> Optional[str]:
+    """The pocket-tts version in pocket/.venv (Pocket's own models), None without it."""
+    import subprocess
+    python = repo / "pocket" / ".venv" / "bin" / "python"
+    if not python.exists():
+        return None
+    out = subprocess.run([str(python), "-c", "from importlib.metadata import version; print(version('pocket-tts'))"],
+                         capture_output=True, text=True)
+    return (out.stdout.strip() or None) if out.returncode == 0 else None

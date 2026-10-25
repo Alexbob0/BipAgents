@@ -198,6 +198,58 @@ def browser_refresh(runner: hermes.Runner, home: Path) -> str:
     return "the agents' browser now gets Chrome's security fixes each night (bipagents-refresh-browser.timer)"
 
 
+POCKET_ENGINE = "2026-10-25-pocket-engine"
+# How long a Pocket that has just restarted (its model loading, the first time downloading Pocket 4's weights) is
+# waited for.
+POCKET_WAIT = 120.0
+
+
+def with_pocket_engine(text: str, engine: str) -> str:
+    """The bridge config with `engine = "<engine>"` in its [pocket] table (an earlier one replaced)."""
+    found = re.search(r"^\[pocket\]\n((?:(?!\[).*\n?)*)", text, re.M)
+    line = f'engine = "{engine}"\n'
+    if not found:
+        return text.rstrip("\n") + "\n\n[pocket]\n" + line
+    body = re.sub(r"^engine\s*=.*\n?", "", found.group(1), flags=re.M)
+    return text[:found.start(1)] + line + body + text[found.end(1):]
+
+
+def pocket_engine(runner: hermes.Runner, home: Path) -> str:
+    """The bridge prepares the Bips' text for the Pocket that speaks it (`[pocket] engine`, 2026-10-25): Pocket 4.0.1
+    says brands and English words right as written, the 3.3.0 voices needed them respelled. Once the Pocket at the
+    bridge's `[pocket] url` says it runs 4.x (its /health, after `bipagents update` moved it and its voices in the
+    account that runs it), its version goes in the config and the bridge restarts. Before that (Pocket run by another
+    account not updated yet, still loading): nothing changes, the next update looks again."""
+    from . import voices
+    config = _bridge_config(home)
+    if config is None:
+        return "no bridge config here"
+    text = config.read_text(encoding="utf-8")
+    table = re.search(r"^\[pocket\]\n((?:(?!\[).*\n?)*)", text, re.M)
+    body = table.group(1) if table else ""
+    written = re.search(r'^engine\s*=\s*"([^"]*)"', body, re.M)
+    if written and (voices.major(written.group(1)) or 0) >= 4:
+        return f"the bridge already prepares the Bips' text for Pocket {written.group(1)}"
+    url = re.search(r'^url\s*=\s*"([^"]*)"', body, re.M)
+    if not url:
+        return "no Pocket for this bridge"
+    engine = None if runner.dry else voices.engine_at(url.group(1), wait=POCKET_WAIT)
+    if engine is None or (voices.major(engine) or 0) < 4:
+        said = f"still Pocket {engine}" if engine else "no version from them yet"
+        raise NotYet(f"the Bips' voices ({url.group(1)}): {said}; the bridge keeps the respellings, "
+                     "`bipagents update` (in the account that runs them) moves them to Pocket 4")
+    runner.log.append(f"write {config}")
+    if not runner.dry:
+        config.write_text(with_pocket_engine(text, engine), encoding="utf-8")
+    from .family import bridge_restart
+    runner.run(bridge_restart(home), check=False)
+    return f"the Bips speak with Pocket {engine}: names and English words go as written (bridge restarted)"
+
+
+# What a fresh install sets only once the services it set up answer (finish() in __main__): left pending when it
+# couldn't, the first update does it.
+AFTER_INSTALL = {POCKET_ENGINE}
+
 # In order; an id never changes once released. rust-bridge comes first: the others run the bridge's command line.
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-21-rust-bridge", rust_bridge),
@@ -208,6 +260,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-22-browser-refresh", browser_refresh),
     ("2026-10-22-isolated-sandboxes", isolated_sandboxes),
     ("2026-10-23-share-volumes", share_volumes),
+    (POCKET_ENGINE, pocket_engine),
 ]
 
 

@@ -758,7 +758,7 @@ def test_an_update_isolates_the_agents_sandboxes_on_linux_with_podman(tmp_path, 
     assert ran[0][0].endswith("/bipbridge") and ran[0][1:] == ["sandbox", "--config", str(config)]
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("agents' sandboxes isolated") and "\n  vie: isolated" in said
-    assert migrations.MIGRATIONS[-2][0] == "2026-10-22-isolated-sandboxes"
+    assert migrations.MIGRATIONS[-3][0] == "2026-10-22-isolated-sandboxes"
 
 
 def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypatch):
@@ -786,7 +786,7 @@ def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypat
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("shared folders in podman volumes, gateways restarted")
     assert "\n  wellness's shared folder: 3 file(s) copied" in said
-    assert migrations.MIGRATIONS[-1][0] == "2026-10-23-share-volumes"
+    assert migrations.MIGRATIONS[-2][0] == "2026-10-23-share-volumes"
 
 
 def test_each_install_of_a_machine_hands_out_browser_ports_of_its_own():

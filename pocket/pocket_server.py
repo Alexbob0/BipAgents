@@ -2,7 +2,8 @@
 
 Speaks the Kyutai-style API the bridge uses (``bridge/bipbridge/tts.py``):
 
-- ``GET  /health``           -> ``{"status": "ok", "languages": [...], "voices": {...}}``
+- ``GET  /health``           -> ``{"status": "ok", "engine": "4.0.1", "languages": [...], "voices": {...}}`` (``engine``:
+  the Pocket version speaking, pocket-tts' own or the packages' lowest: the bridge's ``[pocket] engine`` follows it)
 - ``POST /v1/audio/speech``  ``{"input", "voice", "response_format": "wav"|"mp3"}`` -> the whole file
 - ``POST /v1/audio/stream``  ``{"input", "voice"}`` -> raw PCM16 mono 24 kHz, chunk by chunk (~80 ms each)
 
@@ -215,6 +216,8 @@ class Engine:
     last_used: Dict[str, float] = field(default_factory=dict)
     # The phones' voice packages (--onnx): voices are the packages' Bips, not voices_dir's .safetensors.
     onnx: Optional[Path] = None
+    # The Pocket version speaking (« 4.0.1 »): pocket-tts', or the packages' (their manifests' `engine`).
+    version: Optional[str] = None
 
     @classmethod
     def load(cls, voices_dir: Path, languages: list[str], quantize: bool = False, keep: Optional[set] = None,
@@ -225,7 +228,8 @@ class Engine:
             return TTSModel.load_model(language=LANGUAGE_DIRS[code], quantize=quantize)
 
         engine = cls(voices_dir, languages=languages, loader=loader, keep=keep if keep is not None else set(languages[:1]),
-                     idle=idle)
+                     idle=idle, version=pocket_version())
+        check_voices(voices_dir, languages, engine.version)
         with engine.lock:
             for code in engine.keep:
                 engine.model(code)
@@ -283,7 +287,8 @@ class Engine:
         """The phones' voice packages instead of Pocket's models: the languages are those whose package is there."""
         languages = sorted(onnx_voices(packages))
         engine = cls(packages, languages=languages, loader=lambda code: OnnxModel(packages, code, threads),
-                     keep=keep if keep is not None else set(languages[:1]), idle=idle, onnx=packages)
+                     keep=keep if keep is not None else set(languages[:1]), idle=idle, onnx=packages,
+                     version=onnx_version(packages))
         with engine.lock:
             for code in engine.keep & set(languages):
                 engine.model(code)
@@ -368,6 +373,52 @@ class OnnxModel:
             yield chunk
 
 
+def pocket_version() -> Optional[str]:
+    """The installed pocket-tts' version (« 4.0.1 »)."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("pocket-tts")
+    except PackageNotFoundError:
+        return None
+
+
+def _major(version: Optional[str]) -> Optional[int]:
+    match = re.match(r"(\d+)", version or "")
+    return int(match.group(1)) if match else None
+
+
+def check_voices(voices_dir: Path, languages: List[str], version: Optional[str]) -> None:
+    """A voice state only fits the weights it was computed with: says so when the voices' folder (its voices.json
+    `engine`) and the running Pocket differ (an update stopped half way: `bipagents update` again)."""
+    for code in languages:
+        try:
+            made = json.loads((voices_dir / LANGUAGE_DIRS[code] / "voices.json").read_text(encoding="utf-8")).get("engine")
+        except (OSError, ValueError):
+            continue
+        if _major(str(made).split()[-1] if made else None) != _major(version):
+            log.warning("%s voices were made with %s but pocket-tts %s runs: run `bipagents update`",
+                        LANGUAGE_DIRS[code], made, version)
+
+
+def onnx_version(packages: Path) -> Optional[str]:
+    """The packages' Pocket version, the lowest when they differ (« pocket-tts 4.0.1 » in each manifest)."""
+    try:
+        index = json.loads((packages / "index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    found = []
+    for entry in index.get("languages", {}).values():
+        try:
+            manifest = json.loads((packages / str(entry.get("folder", "")) / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, AttributeError):
+            continue
+        version = str(manifest.get("engine", "")).split()[-1:]
+        if version and version[0][:1].isdigit():
+            found.append(version[0])
+    return min(found, key=lambda v: tuple(int(p) if p.isdigit() else 0 for p in v.split("."))) if found else None
+
+
 def onnx_voices(packages: Path) -> Dict[str, list[str]]:
     """The Bips of each language whose package is there, by language code."""
     try:
@@ -441,8 +492,8 @@ def create_app(engine: Engine):
 
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok", "languages": list(engine.languages), "loaded": sorted(engine.models),
-                "voices": engine.available_voices()}
+        return {"status": "ok", "engine": engine.version, "languages": list(engine.languages),
+                "loaded": sorted(engine.models), "voices": engine.available_voices()}
 
     @app.post("/v1/audio/speech")
     async def speech(body: SpeechRequest) -> Response:

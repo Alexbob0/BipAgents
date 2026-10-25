@@ -45,8 +45,23 @@ def setup(tmp_path):
 
 def test_health_lists_languages_and_voices(setup):
     _, client = setup
-    assert client.get("/health").json() == {"status": "ok", "languages": ["fr", "en"], "loaded": ["en", "fr"],
-                                           "voices": {"fr": ["loutre", "ours"], "en": ["loutre"]}}
+    assert client.get("/health").json() == {"status": "ok", "engine": None, "languages": ["fr", "en"],
+                                           "loaded": ["en", "fr"], "voices": {"fr": ["loutre", "ours"], "en": ["loutre"]}}
+
+
+def test_health_says_the_pocket_version_of_the_packages(tmp_path):
+    # The phones' packages (--onnx): the lowest of their manifests' engines, which the bridge's [pocket] engine follows.
+    import json
+    index = {"languages": {"french": {"folder": "french-1"}, "english": {"folder": "english-2"}}, "mimi": {"folder": "m"}}
+    (tmp_path / "index.json").write_text(json.dumps(index))
+    for folder, engine in (("french-1", "pocket-tts 4.0.1"), ("english-2", "pocket-tts 3.3.0")):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "manifest.json").write_text(json.dumps({"engine": engine, "voices": {"galet": {}}}))
+    assert pocket_server.onnx_version(tmp_path) == "3.3.0"
+    (tmp_path / "english-2" / "manifest.json").write_text(json.dumps({"engine": "pocket-tts 4.0.1", "voices": {}}))
+    engine = Engine.load_onnx(tmp_path, keep=set())
+    assert engine.version == "4.0.1"
+    assert TestClient(create_app(engine)).get("/health").json()["engine"] == "4.0.1"
 
 
 def test_languages_load_when_spoken_and_unload_when_silent(tmp_path):

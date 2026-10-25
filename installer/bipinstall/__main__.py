@@ -385,7 +385,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     hub_key = hermes.setup_hub(runner, ports.hermes, model, sandbox=sandbox)
     from . import migrations
     from .upgrade import install_command
-    migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)   # a fresh install has them all already
+    migrations.mark([mid for mid, _ in migrations.MIGRATIONS if mid not in migrations.AFTER_INSTALL], runner)   # a fresh install has them all already
     install_command(runner)   # `bipagents update` later
     if plan.browser != "none" and not browser:   # the visible browser brings its own desktop
         if hermes.desktop_ready() or sandbox:
@@ -460,7 +460,7 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     hermes.install(runner, browser=browser)
     hermes.apply_patches(runner, REPO / "hermes" / "patches")
     hermes.setup_hub(runner, inst.ports.hermes, model, sandbox=sandbox)
-    migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)
+    migrations.mark([mid for mid, _ in migrations.MIGRATIONS if mid not in migrations.AFTER_INSTALL], runner)
     install_command(runner)
     gateway_service(inst, machine, runner)
     status = finish(inst, machine, runner, args, steps, total, sandbox)
@@ -644,6 +644,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
     step(next(steps), total, "The Bips' voices")
     if pocket_running():
         say("  already set up on this machine: I'll share it.")
+        inst.pocket_engine = voices.engine_at(inst.pocket_url)   # the bridge prepares the text for that Pocket
     else:
         languages = args.languages or bip_languages()
         # A place of the all-included offer (or --light-voices): the phones' 8-bit voices, loaded only while they
@@ -652,6 +653,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         if getattr(args, "cloud", None) or getattr(args, "light_voices", False):
             packages = voices.install(languages.split(","), inst.home, runner, say)
         venv(REPO / "pocket", runner, "requirements-onnx.txt" if packages else "requirements.txt")
+        inst.pocket_engine = voices.engine_of(packages) if packages else voices.pinned_pocket(REPO)
         label, path, content = pocket_service(inst, machine.system, languages, packages=packages)
         write(path, content, runner)
         start_service(machine.system, label, path, runner)
