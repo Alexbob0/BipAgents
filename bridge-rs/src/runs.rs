@@ -599,7 +599,7 @@ impl RunHub {
             }
             let handing = st.recent_tools.back().is_some_and(|t| handoff_tool(t));
             let key = (handing, st.followed_since);
-            if best.as_ref().is_none_or(|(h, f, _)| key.0 > *h || (key.0 == *h && key.1 > *f)) {
+            if best.as_ref().is_none_or(|(h, f, _)| (key.0 && !*h) || (key.0 == *h && key.1 > *f)) {
                 best = Some((key.0, key.1, session));
             }
         }

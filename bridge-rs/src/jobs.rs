@@ -427,6 +427,7 @@ impl Jobs {
 
     // -- a new task ----------------------------------------------------------------------------------------------------
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_task(
         &self,
         agent: &AgentConfig,
