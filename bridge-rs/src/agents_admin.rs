@@ -1751,7 +1751,9 @@ async fn tool_catalog() -> ApiResult<Response> {
             Value::Object(out)
         })
         .collect();
-    Ok(web::ok(json!({"services": services})))
+    // « Se connecter avec… » (connections.rs): signed in at the service, apart so older apps don't show a form for them
+    let connections: Vec<Value> = crate::connections::catalog().iter().map(|s| s.public()).collect();
+    Ok(web::ok(json!({"services": services, "connections": connections})))
 }
 
 fn managed_or_404(state: &AppState, agent_id: &str) -> ApiResult<AgentConfig> {
