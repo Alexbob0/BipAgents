@@ -322,6 +322,7 @@ impl AppState {
         self.spawn(purge_loop(self.clone()));
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
+        self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
         self.spawn(crate::archives::scheduler(self.config.clone()));
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
@@ -1565,7 +1566,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::live_brief::router())
         .merge(crate::favicons::router())
         .merge(crate::map_tiles::router())
-        .merge(crate::message_search::router());
+        .merge(crate::message_search::router())
+        .merge(crate::connections::router());
     if !config.cloud {
         authed = authed.merge(crate::console::console_admin_router());
     }
@@ -1595,6 +1597,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::card_pay::router()) // the agents' card payment tools, same tokens
         .merge(crate::vault_logins::router()) // the agents' vault tools (accounts with a vault password), same tokens
         .merge(crate::agent_tools::router()) // the agents' MCP tools (create_audio), each agent with its own token
+        .merge(crate::connections::callback_router()) // a service's sign-in coming back (its single-use state)
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key
         .nest("/desktop/static/novnc", crate::desktop::static_files())

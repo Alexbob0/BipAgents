@@ -633,6 +633,9 @@ pub struct Config {
     /// `[rooms]` (rooms.rs): not in the serialized form either.
     #[serde(skip)]
     pub rooms: RoomsConfig,
+    /// `[connections]` (connections.rs): not in the serialized form either.
+    #[serde(skip)]
+    pub connections: crate::connections::Settings,
     /// `[archive_records]` (archives/records_fill.rs): not in the serialized form either.
     #[serde(skip)]
     pub archive_records: ArchiveRecordsConfig,
@@ -709,6 +712,7 @@ impl Config {
             notebook: NotebookConfig::default(),
             jobs: JobsConfig::default(),
             rooms: RoomsConfig::default(),
+            connections: crate::connections::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
             archives: Vec::new(),
@@ -1356,6 +1360,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         notebook,
         jobs,
         rooms,
+        connections: crate::connections::Settings::from_table(table(data, "connections")),
         archive_records,
         cards,
         archives: match data.get("archives") {

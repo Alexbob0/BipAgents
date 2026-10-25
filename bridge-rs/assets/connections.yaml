@@ -1,0 +1,55 @@
+# Services the person connects with « Se connecter avec… » (connections.rs): their own sign-in page opens on the
+# phone, the person chooses what to allow, and the bridge keeps the keys. No key to paste.
+#
+# url:       the service's own remote MCP server (bridge.toml `[connections] urls` can point it elsewhere: tests)
+# issuer:    the sign-in server its metadata must name (a look-alike answer is refused)
+# scope:     what the bridge asks for ("" = the service's default)
+# read_only: the service itself can't change anything (Finary); otherwise each tool that writes asks the person first
+# texts:     what the app shows, per language (fr is the default)
+- id: notion
+  url: https://mcp.notion.com/mcp
+  issuer: https://mcp.notion.com
+  scope: ""
+  read_only: false
+  icon: doc.text
+  texts:
+    fr:
+      label: Notion
+      description: Tes pages et bases Notion. L'agent les cherche et les lit ; avant de créer ou de changer une page, il te demande.
+      privacy: Tes pages restent chez Notion (hébergé aux États-Unis par défaut). On ne fait que les relayer à l'agent que tu choisis.
+    en:
+      label: Notion
+      description: Your Notion pages and databases. The agent searches and reads them; it asks you before creating or changing a page.
+      privacy: Your pages stay with Notion (hosted in the United States by default). We only pass them to the agent you choose.
+    de:
+      label: Notion
+      description: Deine Notion-Seiten und -Datenbanken. Der Agent sucht und liest sie; bevor er eine Seite anlegt oder ändert, fragt er dich.
+      privacy: Deine Seiten bleiben bei Notion (standardmäßig in den USA gehostet). Wir geben sie nur an den Agenten weiter, den du wählst.
+    es:
+      label: Notion
+      description: Tus páginas y bases de Notion. El agente las busca y las lee; antes de crear o cambiar una página, te pregunta.
+      privacy: Tus páginas se quedan en Notion (alojado en Estados Unidos por defecto). Solo se las pasamos al agente que elijas.
+
+- id: finary
+  url: https://public-api.finary.com/mcp
+  issuer: https://clerk.finary.com
+  scope: openid profile email offline_access
+  read_only: true
+  icon: chart.pie
+  texts:
+    fr:
+      label: Finary
+      description: Ton patrimoine, tes comptes, tes dépenses et tes objectifs, en lecture seule. L'agent ne peut rien vendre, virer ni modifier.
+      privacy: Tes données restent chez Finary (entreprise française). L'agent les lit à ta demande et ne les partage qu'avec ton accord.
+    en:
+      label: Finary
+      description: Your net worth, accounts, spending and goals, read only. The agent can't sell, transfer or change anything.
+      privacy: Your data stays with Finary (a French company). The agent reads it when you ask and shares it only with your consent.
+    de:
+      label: Finary
+      description: Dein Vermögen, deine Konten, Ausgaben und Ziele, nur lesend. Der Agent kann nichts verkaufen, überweisen oder ändern.
+      privacy: Deine Daten bleiben bei Finary (ein französisches Unternehmen). Der Agent liest sie auf deine Bitte und teilt sie nur mit deiner Zustimmung.
+    es:
+      label: Finary
+      description: Tu patrimonio, tus cuentas, tus gastos y tus objetivos, solo lectura. El agente no puede vender, transferir ni cambiar nada.
+      privacy: Tus datos se quedan en Finary (una empresa francesa). El agente los lee cuando se lo pides y solo los comparte con tu permiso.

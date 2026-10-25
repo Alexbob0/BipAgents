@@ -115,6 +115,7 @@ pub mod weather;
 pub mod browser_mcp;
 pub mod browsers;
 pub mod caldav;
+pub mod connections;
 pub mod calendar;
 pub mod card_fill;
 pub mod card_pay;

@@ -162,7 +162,7 @@ pub fn plan(body: &Dict) -> Result<Dict, ServiceError> {
     Ok(out)
 }
 
-fn profile_home(config: &Config, agent: &AgentConfig) -> PathBuf {
+pub fn profile_home(config: &Config, agent: &AgentConfig) -> PathBuf {
     let home = agent
         .space
         .clone()
