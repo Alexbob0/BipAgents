@@ -64,6 +64,16 @@ def test_each_agent_its_own_sites_the_registries_for_all(tmp_path, monkeypatch):
     assert not proxy.allowed("data.gouv.fr", 443, 443, "vie")
 
 
+def test_all_sites_opens_any_name_never_this_machine(tmp_path, monkeypatch):
+    agents = {"vie": {"key": key("t-vie"), "hosts": [], "any": True}, "budget": {"key": key("t-b"), "hosts": []}}
+    proxy, _, _ = load(tmp_path, monkeypatch, agents)
+    assert proxy.allowed("www.lemonde.fr", 443, 443, "vie") and proxy.allowed("xn--bcher-kva.example", 443, 443, "vie")
+    assert not proxy.allowed("www.lemonde.fr", 443, 443, "budget") and not proxy.allowed("www.lemonde.fr", 443, 443)
+    assert not proxy.allowed("www.lemonde.fr", 80, 80, "vie")             # HTTPS only
+    for host in ("localhost", "nas.local", "host.containers.internal", "10.0.0.1", "[::1]", "router.home", "x"):
+        assert not proxy.allowed(host, 443, 443, "vie"), host
+
+
 def test_never_an_address_of_this_machine(tmp_path, monkeypatch):
     proxy, _, _ = load(tmp_path, monkeypatch)
     for address in ("127.0.0.1", "10.0.0.5", "192.168.1.2", "172.17.0.1", "100.101.102.103", "169.254.169.254",
