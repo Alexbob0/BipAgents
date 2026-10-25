@@ -428,6 +428,26 @@ impl PushService {
         self.fanout(agent, payload, "alert", 10, Some(run_id.to_string())).await
     }
 
+    /// An agent answered in a group discussion (rooms.rs) nobody looks at: « <agent> · <room> », its words when
+    /// previews are on; tapping opens the discussion (`room_id`). Collapsed per discussion.
+    pub async fn notify_room(&self, agent: &str, room_id: &str, room_title: &str, text: &str) -> usize {
+        let preview = if self.previews() { Some(preview(text, 160)) } else { None };
+        let reply_id = self.remember(text);
+        let title = if room_title.is_empty() {
+            self.title(agent)
+        } else {
+            format!("{} · {}", self.title(agent), room_title)
+        };
+        let run_id = format!("room:{room_id}");
+        let mut payload =
+            reply_payload(agent, &title, &run_id, None, preview.as_deref(), Some(&reply_id), REPLY_BODY);
+        payload.insert("room_id".into(), json!(room_id));
+        if let Some(Value::Object(aps)) = payload.get_mut("aps") {
+            aps.insert("thread-id".into(), json!(run_id));
+        }
+        self.fanout(agent, payload, "alert", 10, Some(run_id)).await
+    }
+
     /// A background sub-task finished and Hermes left its report in the conversation without waking the agent:
     /// « 🎧 Podcast jeudi » when it made a file, else « Sous-tâche terminée ». Tapping opens the conversation.
     pub async fn notify_subtask(&self, agent: &str, session_id: &str, line: Option<&str>) -> usize {

@@ -94,6 +94,8 @@ pub struct Services {
     /// Mail scans and background jobs, made at first use (mail_scan::scans_of, jobs::jobs_of).
     pub scans: OnceLock<Arc<Scans>>,
     pub jobs: OnceLock<Arc<Jobs>>,
+    /// Group discussions between the person's agents (rooms::rooms_of).
+    pub rooms: OnceLock<Arc<crate::rooms::Rooms>>,
     /// Wrong keys counted by address (guard.py): Python's `app.state.guard`.
     pub guard: Guard,
     /// The web consoles (console.py): Python's `app.state.console`.
@@ -230,6 +232,7 @@ impl Services {
             desktop_control: Mutex::new(HashMap::new()),
             scans: OnceLock::new(),
             jobs: OnceLock::new(),
+            rooms: OnceLock::new(),
             guard: Guard::default(),
             console: ConsoleStore::new(&py::join(&data_dir, "console.json")),
             tasks: Mutex::new(Vec::new()),
@@ -254,6 +257,9 @@ impl Services {
     pub async fn stop(&self) {
         if let Some(jobs) = self.jobs.get() {
             jobs.stop_followers();
+        }
+        if let Some(rooms) = self.rooms.get() {
+            rooms.stop_workers();
         }
         let tasks: Vec<JoinHandle<()>> = std::mem::take(&mut *self.tasks.lock().unwrap_or_else(|e| e.into_inner()));
         for task in &tasks {
@@ -327,6 +333,10 @@ impl AppState {
         let agents = config.agents.clone();
         self.spawn(async move {
             hub.resume(agents).await;
+        });
+        let rooms = crate::rooms::rooms_of(self);
+        self.spawn(async move {
+            rooms.resume();
         });
         let jobs = jobs_of(self);
         self.spawn(async move {
@@ -1543,6 +1553,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::notes_import::router())
         .merge(crate::assistant_import::router())
         .merge(crate::guide::router())
+        .merge(crate::rooms::router())
         .merge(crate::reminders::router())
         .merge(crate::notebook::api::router())
         .merge(crate::calendar::router())

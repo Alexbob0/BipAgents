@@ -516,6 +516,24 @@ impl Default for JobsConfig {
     }
 }
 
+/// `[rooms]`: group discussions between the person's agents (rooms.rs, 2026-10-25). The router asks a small model
+/// (`router_model`, the install's model as the Carnet finds it) only when the @names and the rule found nobody, at
+/// most `router_daily_max` times a day; an agent's @ in a reply gives another agent a turn, up to `max_hops` hops past
+/// the person's message (at most 2); a turn not done after `turn_seconds` is stopped (unless it waits for an approval).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RoomsConfig {
+    pub router_model: bool,
+    pub router_daily_max: u32,
+    pub max_hops: u32,
+    pub turn_seconds: f64,
+}
+
+impl Default for RoomsConfig {
+    fn default() -> Self {
+        RoomsConfig { router_model: true, router_daily_max: 300, max_hops: 1, turn_seconds: 300.0 }
+    }
+}
+
 /// `[archive_records]`: records filled from an agent's archives (archives/records_fill.rs): the models the person may
 /// pick for the one-time pass, the price counted for a model whose price is unknown, the caps of a sample and of the
 /// nightly pass on new documents.
@@ -612,6 +630,9 @@ pub struct Config {
     /// `[jobs]` (jobs.rs, runs.rs): not in the serialized form either.
     #[serde(skip)]
     pub jobs: JobsConfig,
+    /// `[rooms]` (rooms.rs): not in the serialized form either.
+    #[serde(skip)]
+    pub rooms: RoomsConfig,
     /// `[archive_records]` (archives/records_fill.rs): not in the serialized form either.
     #[serde(skip)]
     pub archive_records: ArchiveRecordsConfig,
@@ -687,6 +708,7 @@ impl Config {
             maps: MapsConfig::default(),
             notebook: NotebookConfig::default(),
             jobs: JobsConfig::default(),
+            rooms: RoomsConfig::default(),
             archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
             archives: Vec::new(),
@@ -1241,6 +1263,15 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         handoff_rescue: b(jobs_t, "handoff_rescue", jd.handoff_rescue),
     };
 
+    let rooms_t = table(data, "rooms");
+    let rmd = RoomsConfig::default();
+    let rooms = RoomsConfig {
+        router_model: b(rooms_t, "router_model", rmd.router_model),
+        router_daily_max: i(rooms_t, "router_daily_max", rmd.router_daily_max as i64)?.clamp(0, 100_000) as u32,
+        max_hops: i(rooms_t, "max_hops", rmd.max_hops as i64)?.clamp(0, 2) as u32,
+        turn_seconds: f(rooms_t, "turn_seconds", rmd.turn_seconds)?.clamp(10.0, 3600.0),
+    };
+
     let records_t = table(data, "archive_records");
     let rd = ArchiveRecordsConfig::default();
     let mut extract_models = Vec::new();
@@ -1324,6 +1355,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         maps,
         notebook,
         jobs,
+        rooms,
         archive_records,
         cards,
         archives: match data.get("archives") {
