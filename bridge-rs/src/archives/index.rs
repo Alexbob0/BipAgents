@@ -45,6 +45,48 @@ pub fn key_of(loc: &str) -> String {
     hex::encode(Sha256::digest(loc.as_bytes()))[..16].to_string()
 }
 
+/// The schema's version written in `meta`, None when there is no `meta` table yet.
+fn schema_of(conn: &Connection) -> rusqlite::Result<Option<String>> {
+    let has_meta: bool =
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta')", [], |r| {
+            r.get(0)
+        })?;
+    if !has_meta {
+        return Ok(None);
+    }
+    conn.query_row("SELECT value FROM meta WHERE key='schema'", [], |r| r.get(0)).optional()
+}
+
+/// The tables (dropped first) and the schema's version.
+fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS meta;
+         CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+         CREATE TABLE docs(id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, loc TEXT NOT NULL UNIQUE,
+             file TEXT NOT NULL, size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0,
+             kind TEXT NOT NULL, title TEXT NOT NULL, sender TEXT NOT NULL, date TEXT NOT NULL,
+             category TEXT NOT NULL, preview TEXT NOT NULL, seen INTEGER NOT NULL DEFAULT 0);
+         CREATE INDEX docs_file ON docs(file);
+         CREATE INDEX docs_date ON docs(date);
+         CREATE VIRTUAL TABLE fts USING fts5(title, sender, body, content='', contentless_delete=1,
+             tokenize='unicode61 remove_diacritics 2');",
+    )?;
+    conn.execute("INSERT INTO meta(key, value) VALUES('schema', ?1)", [SCHEMA])?;
+    Ok(())
+}
+
+/// `work` in one write transaction (BEGIN IMMEDIATE: another connection's waits, then sees all of it or none).
+fn in_write(conn: &Connection, work: impl FnOnce(&Connection) -> rusqlite::Result<()>) -> rusqlite::Result<()> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    match work(conn) {
+        Ok(()) => conn.execute_batch("COMMIT"),
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(err)
+        }
+    }
+}
+
 impl Index {
     pub fn open(path: &Path) -> anyhow::Result<Index> {
         if let Some(parent) = path.parent() {
@@ -53,25 +95,24 @@ impl Index {
         let conn = Connection::open(path)?;
         conn.busy_timeout(std::time::Duration::from_secs(30))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
-        let version: Option<String> =
-            conn.query_row("SELECT value FROM meta WHERE key='schema'", [], |r| r.get(0)).optional().unwrap_or(None);
-        if version.as_deref() != Some(SCHEMA) {
-            conn.execute_batch(
-                "DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS meta;
-                 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                 CREATE TABLE docs(id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, loc TEXT NOT NULL UNIQUE,
-                     file TEXT NOT NULL, size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0,
-                     kind TEXT NOT NULL, title TEXT NOT NULL, sender TEXT NOT NULL, date TEXT NOT NULL,
-                     category TEXT NOT NULL, preview TEXT NOT NULL, seen INTEGER NOT NULL DEFAULT 0);
-                 CREATE INDEX docs_file ON docs(file);
-                 CREATE INDEX docs_date ON docs(date);
-                 CREATE VIRTUAL TABLE fts USING fts5(title, sender, body, content='', contentless_delete=1,
-                     tokenize='unicode61 remove_diacritics 2');",
-            )?;
-            conn.execute("INSERT INTO meta(key, value) VALUES('schema', ?1)", [SCHEMA])?;
+        // The app's view opens the index while the update writes it: a failed read is an error, never a reason to
+        // start the tables again (that wiped a finished index), and the tables are made once, under the write lock.
+        if schema_of(&conn)?.as_deref() != Some(SCHEMA) {
+            in_write(&conn, |conn| {
+                if schema_of(conn)?.as_deref() != Some(SCHEMA) {
+                    create_tables(conn)?;
+                }
+                Ok(())
+            })?;
         }
         std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
         Ok(Index { conn, path: path.to_path_buf() })
+    }
+
+    /// Every document and meta value dropped (the archive's source changed), in place: the files stay, as other
+    /// connections (the app's view) may have them open.
+    pub fn reset(&self) -> rusqlite::Result<()> {
+        in_write(&self.conn, create_tables)
     }
 
     pub fn meta(&self, key: &str) -> Option<String> {

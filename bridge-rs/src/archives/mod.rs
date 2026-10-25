@@ -366,16 +366,12 @@ pub fn update(config: &Config, archive: &Archive, opener: &Connect) -> anyhow::R
     let _done = Done(key);
     let path = index_path(config, archive);
     let index = Index::open(&path)?;
-    // the source changed (another folder, another mailbox): started again
+    // the source changed (another folder, another mailbox): started again, in place (the app's view may have the
+    // file open: deleting it under that connection lost the new index)
     let source = format!("{}:{}:{}:{}", archive.kind, archive.source, archive.account, archive.years);
     if index.meta("source").as_deref() != Some(source.as_str()) {
-        drop(index);
-        for suffix in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
-        }
-        let fresh = Index::open(&path)?;
-        fresh.set_meta("source", &source)?;
-        return drop_and_update(config, archive, opener, fresh);
+        index.reset()?;
+        index.set_meta("source", &source)?;
     }
     drop_and_update(config, archive, opener, index)
 }

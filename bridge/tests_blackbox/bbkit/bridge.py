@@ -204,6 +204,10 @@ class Bridge:
 
     # -- life ----------------------------------------------------------------------------------------------------
     def start(self, wait: bool = True, write: bool = True) -> "Bridge":
+        if self.running:
+            # The process started first would be lost, never stopped: it would keep reading the shared fakes (Hermes'
+            # sessions, ntfy's lines) through the rest of the suite.
+            raise BridgeFailed(f"{self.name} is running already (the `bridge` fixture is started): stop it first")
         if write:
             self.write_config()
         log = open(self.log_path, "ab")

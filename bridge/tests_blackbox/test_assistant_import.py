@@ -35,7 +35,6 @@ def zipped(files):
 
 
 def test_the_message_to_paste_comes_in_the_apps_language(bridge):
-    bridge.start()
     french = bridge.get("/v1/assistant-import/prompt", params={"lang": "fr-FR"}, headers=AUTH).json()
     assert french["lang"] == "fr" and french["file"] == "bipagents-export.zip"
     assert french["text"].startswith("Je change d'assistant") and "skills/<nom>/SKILL.md" in french["text"]
@@ -45,7 +44,6 @@ def test_the_message_to_paste_comes_in_the_apps_language(bridge):
 
 
 def test_an_export_is_read_without_saving_anything(bridge):
-    bridge.start()
     plan = bridge.post("/v1/assistant-import/parse", headers=AUTH,
                        json={"files": [{"name": "bipagents-export.zip", "data": zipped(EXPORT)}]})
     assert plan.status_code == 200, plan.text
