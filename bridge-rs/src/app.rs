@@ -424,8 +424,9 @@ pub struct TtsRequest {
     /// What it is for (`live`, `replies`, `reading`): with no `voice`, the agent's voice for that use.
     #[serde(default, rename = "use")]
     pub use_: Option<String>,
-    /// /v1/tts/prepare: the version of the Pocket package the phone speaks with (« 3.3.0 », « 4.0.1 »). Below 4 the
-    /// text is respelled for the old voices; missing, the phone is taken to have the 4.x packages.
+    /// /v1/tts/prepare: the version of the Pocket package the phone speaks with (« 3.3.0 », « 4.0.1 », from its
+    /// manifest). Below 4 the text is respelled for the old voices; missing (an app from before 2026-10-25), the phone
+    /// is taken to have the 3.3.0 packages (`PHONE_POCKET_DEFAULT`).
     #[serde(default)]
     pub engine: Option<String>,
 }

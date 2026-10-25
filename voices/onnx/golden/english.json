@@ -1,6 +1,13 @@
 {
  "language": "english",
  "max_tokens": 50,
+ "text": {
+  "replace": {
+   "’": "'",
+   "‘": "'"
+  },
+  "semicolons": false
+ },
  "cases": [
   {
    "text": "Bonjour",
@@ -59,23 +66,20 @@
    "text": "Tab\tici et là",
    "chunks": [
     {
-     "text": "Tab\tici et là.",
+     "text": "Tab ici et là.",
      "ids": [
       602,
       1222,
-      13,
-      485,
-      405,
+      406,
+      852,
       260,
       597,
-      198,
-      164,
-      428,
+      1041,
       2112,
       263
      ],
      "frames_after_eos": 5,
-     "max_gen_len": 75
+     "max_gen_len": 63
     }
    ]
   },
@@ -236,14 +240,12 @@
    "text": "Literal <s> and </s> tokens",
    "chunks": [
     {
-     "text": "Literal  and  tokens.",
+     "text": "Literal and tokens.",
      "ids": [
       1175,
       641,
       326,
-      260,
       269,
-      260,
       266,
       536,
       306,
@@ -251,7 +253,7 @@
       263
      ],
      "frames_after_eos": 5,
-     "max_gen_len": 71
+     "max_gen_len": 63
     }
    ]
   },
@@ -532,6 +534,73 @@
      ],
      "frames_after_eos": 3,
      "max_gen_len": 163
+    }
+   ]
+  },
+  {
+   "text": "De 9h – 10h, puis — enfin — la pause - courte.",
+   "chunks": [
+    {
+     "text": "De 9h – 10h, puis — enfin — la pause - courte.",
+     "ids": [
+      687,
+      260,
+      501,
+      506,
+      260,
+      3977,
+      260,
+      341,
+      316,
+      506,
+      262,
+      260,
+      2305,
+      595,
+      260,
+      3133,
+      780,
+      601,
+      356,
+      260,
+      3133,
+      697,
+      3788,
+      260,
+      337,
+      2380,
+      336,
+      263
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 142
+    }
+   ]
+  },
+  {
+   "text": "It’s Alex’s ‘thing’ – really.",
+   "chunks": [
+    {
+     "text": "It's Alex's 'thing' – really.",
+     "ids": [
+      333,
+      264,
+      261,
+      3197,
+      264,
+      261,
+      260,
+      264,
+      344,
+      264,
+      260,
+      3977,
+      260,
+      342,
+      263
+     ],
+     "frames_after_eos": 3,
+     "max_gen_len": 88
     }
    ]
   },
@@ -1207,6 +1276,69 @@
     440
    ],
    "decoded": "e-mail: alex@example.com, site https://example.com/a?b=c"
+  },
+  {
+   "text": "De 9h – 10h, puis — enfin — la pause - courte.",
+   "ids": [
+    687,
+    260,
+    501,
+    506,
+    260,
+    3977,
+    260,
+    341,
+    316,
+    506,
+    262,
+    260,
+    2305,
+    595,
+    260,
+    3133,
+    780,
+    601,
+    356,
+    260,
+    3133,
+    697,
+    3788,
+    260,
+    337,
+    2380,
+    336,
+    263
+   ],
+   "decoded": "De 9h – 10h, puis — enfin — la pause - courte."
+  },
+  {
+   "text": "It’s Alex’s ‘thing’ – really.",
+   "ids": [
+    333,
+    230,
+    132,
+    157,
+    261,
+    3197,
+    230,
+    132,
+    157,
+    261,
+    260,
+    230,
+    132,
+    156,
+    344,
+    230,
+    132,
+    157,
+    260,
+    3977,
+    260,
+    342,
+    263
+   ],
+   "decoded": "It’s Alex’s ‘thing’ – really."
   },
   {
    "text": "Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon.",

@@ -1,5 +1,6 @@
 {
- "engine": "pocket-tts 3.3.0",
+ "engine": "pocket-tts 4.0.1",
+ "states": "2026-10-25: each Bip's state recomputed for Pocket TTS 4.0.1 from its own <voice>_source.wav (this language's clip, never another's: a cross-language clone keeps an accent) with the cloning model kyutai/pocket-tts (CC-BY-4.0), english weights, get_state_for_audio_prompt(truncate=True) then export_model_state; checked by ear and with Whisper (the listening bench of 2026-10-25). The 3.3.0 states are in git history (before 2026-10-25).",
  "language": "english",
  "sample_rate": 24000,
  "design": {
@@ -7,7 +8,7 @@
   "text": "Good morning! Here's your day at a glance. You have three meetings, and the first one is at nine thirty with the team. The forecast says sixty-four degrees, with a bit of rain late this afternoon, so grab an umbrella. You slept seven hours last night, a little better than yesterday. Want me to remind you fifteen minutes before the meeting? I'm right here if you need anything.",
   "note": "2026-10-15: one Qwen take per candidate written natively in the language (native-speaker accent), three seeds per Bip, picked by ear among 15"
  },
- "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395)",
+ "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395) — measured with pocket-tts 3.3.0's states (2026-10-15)",
  "voices": {
   "galet": {
    "design_instruct": "Voice of a small, composed mascot, medium-low pitch, clear and confident, steady pace, the tone of a calm guide who explains things clearly, slightly stylized timbre like an animated character, never robotic, clean studio recording with no echo. Native speaker, standard American English accent.",

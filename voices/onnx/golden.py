@@ -1,4 +1,4 @@
-"""The golden examples the ports of textprep.py are checked against, written by Pocket TTS itself (3.3.0): for each
+"""The golden examples the ports of textprep.py are checked against, written by Pocket TTS itself (4.0.1): for each
 language, texts as the agents write them (and the hard cases: decimals, quotes, long sentences, bytes outside the
 vocabulary, special tokens) with the chunks pocket makes of them, and a few encode/decode pairs. Run with the export's
 venv (requirements.txt):
@@ -26,6 +26,7 @@ SHARED = [
     "Fin sans point", "Fin avec virgule,", "Fin avec deux-points :", "Un tiret —", "« Guillemets » et \"doubles\"",
     "(parenthèses) et [crochets]", "Point-virgule; ici; là", "Question ? Réponse ! Suite...",
     "e-mail: alex@example.com, site https://example.com/a?b=c",
+    "De 9h – 10h, puis — enfin — la pause - courte.", "It’s Alex’s ‘thing’ – really.",
 ]
 LONG = {
     "french": "Demain matin, tu as trois rendez-vous : le premier à neuf heures et demie avec l'équipe produit, le "
@@ -98,7 +99,11 @@ def main() -> int:
         pairs = [{"text": t, "ids": tok.encode(t), "decoded": tok.decode(tok.encode(t))} for t in texts]
         pairs += [{"text": None, "ids": ids, "decoded": tok.decode(ids)}
                   for ids in ([1, 260, 260], [4, 260, 69], [0, 2, 3, 300], [234, 192], [234, 192, 166, 260])]
-        golden = {"language": language, "max_tokens": MAX_TOKEN_PER_CHUNK, "cases": cases, "tokens": pairs}
+        # The text rules as the package's manifest carries them (`text`): the ports' tests build theirs from here.
+        golden = {"language": language, "max_tokens": MAX_TOKEN_PER_CHUNK,
+                  "text": {"replace": textprep.LANGUAGES[language]["replace"],
+                           "semicolons": textprep.LANGUAGES[language]["semicolons"]},
+                  "cases": cases, "tokens": pairs}
         (HERE / "golden" / f"{language}.json").write_text(json.dumps(golden, ensure_ascii=False, indent=1) + "\n",
                                                            encoding="utf-8")
         failures += check(language)

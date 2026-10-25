@@ -1,5 +1,6 @@
 {
- "engine": "pocket-tts 3.3.0",
+ "engine": "pocket-tts 4.0.1",
+ "states": "2026-10-25: each Bip's state recomputed for Pocket TTS 4.0.1 from its own <voice>_source.wav (this language's clip, never another's: a cross-language clone keeps an accent) with the cloning model kyutai/pocket-tts (CC-BY-4.0), spanish weights, get_state_for_audio_prompt(truncate=True) then export_model_state; checked by ear and with Whisper (the listening bench of 2026-10-25). The 3.3.0 states are in git history (before 2026-10-25).",
  "language": "spanish",
  "sample_rate": 24000,
  "design": {
@@ -7,14 +8,14 @@
   "text": "¡Buenos días! Te cuento cómo viene el día. Tienes tres reuniones; la primera es a las nueve y media, con el equipo. Se esperan dieciocho grados y algo de lluvia a última hora de la tarde, así que no olvides el paraguas. Anoche dormiste siete horas, un poco mejor que ayer. ¿Quieres que te avise un cuarto de hora antes de la reunión? Aquí estoy si necesitas algo.",
   "note": "2026-10-15: one Qwen take per candidate written natively in the language (native-speaker accent), three seeds per Bip, picked by ear among 15; the Pocket reference is the take cut on a pause before 10 s (Pocket's german and spanish models cut the reading short with a ~23 s reference)"
  },
- "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395)",
+ "measurement_note": "first_sound_s and rtf of the test sentence through pocket/pocket_server.py (--quantize, 8 threads, Ryzen AI Max+ 395) — measured with pocket-tts 3.3.0's states (2026-10-15)",
  "voices": {
   "galet": {
    "design_instruct": "Voz de una pequeña mascota serena, tono medio-grave, clara y segura, ritmo regular, el tono de un guía tranquilo que explica las cosas con claridad, timbre ligeramente estilizado como un personaje de animación, nunca robótico, grabación de estudio limpia y sin eco. Hablante nativo, acento neutro.",
    "seed": 53003,
    "candidate": "galet_s53003",
    "source_s": 8.0,
-   "safetensors_bytes": 4966200,
+   "safetensors_bytes": 4671280,
    "first_sound_s": 0.131,
    "rtf": 8.51
   },
@@ -23,7 +24,7 @@
    "seed": 53103,
    "candidate": "lumen_s53103",
    "source_s": 8.04,
-   "safetensors_bytes": 5015352,
+   "safetensors_bytes": 5064504,
    "first_sound_s": 0.08,
    "rtf": 9.5
   },
@@ -32,7 +33,7 @@
    "seed": 53201,
    "candidate": "mousse_s53201",
    "source_s": 8.34,
-   "safetensors_bytes": 5211960,
+   "safetensors_bytes": 4917048,
    "first_sound_s": 0.138,
    "rtf": 8.14
   },
@@ -41,7 +42,7 @@
    "seed": 53301,
    "candidate": "ours_s53301",
    "source_s": 8.26,
-   "safetensors_bytes": 5162808,
+   "safetensors_bytes": 5015352,
    "first_sound_s": 0.134,
    "rtf": 8.69
   },
@@ -50,7 +51,7 @@
    "seed": 53402,
    "candidate": "colibri_s53402",
    "source_s": 9.1,
-   "safetensors_bytes": 5654328,
+   "safetensors_bytes": 5261112,
    "first_sound_s": 0.067,
    "rtf": 9.68
   }

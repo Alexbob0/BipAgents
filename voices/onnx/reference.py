@@ -7,7 +7,7 @@ For each chunk of the text (textprep.py): the voice's cache, one step of the lan
 `input_linear`, one model step (a new latent, the end-of-speech logit, the cache one longer, the frame for the
 decoder), the frame through the audio decoder (1920 samples at 24 kHz, 80 ms). The end: the logit above the
 threshold after the first frames, then `frames_after_eos` more. Each chunk starts again from the voice's cache and a
-fresh decoder."""
+fresh decoder, its first `fade_in_samples` samples (Pocket 4 packages: 120, 5 ms) faded in from 0 to 1."""
 from __future__ import annotations
 
 import json
@@ -65,6 +65,9 @@ class Package:
         scale = float(np.sqrt(gen["temperature"] if temperature is None else temperature))
         cache = self.voice(voice)
         names = [i.name for i in self.mimi_inputs]
+        # Pocket 4: each chunk's first 5 ms faded in (a fresh decoder clicks); 3.3.0 packages don't say, no fade.
+        fade = int(gen.get("fade_in_samples", 0))
+        ramp = np.linspace(0, 1, fade, dtype=np.float32) if fade else None
         for chunk in textprep.chunks(self.tokenizer, text, self.manifest["language"]):
             noise = lambda: (rng.standard_normal((1, 32)) * scale).astype(np.float32)  # noqa: E731
             x = self.table[np.asarray(chunk.ids)].astype(np.float32)[None]
@@ -84,7 +87,11 @@ class Package:
                 feeds.update(zip(names[2:], states))
                 out = self.mimi.run(None, feeds)
                 states = out[1:]
-                yield out[0].reshape(-1)
+                audio = out[0].reshape(-1)
+                if step == 0 and fade:
+                    audio = audio.copy()
+                    audio[:fade] *= ramp[:min(fade, len(audio))]
+                yield audio
                 previous = latent[0]
 
 

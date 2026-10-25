@@ -43,6 +43,9 @@ class Install:
     push_service_url: Optional[str] = None
     bridge_key: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     pocket_url: str = f"http://127.0.0.1:{POCKET_PORT}"
+    # The Pocket version speaking there (« 4.0.1 »): the bridge's `[pocket] engine` (below 4 it respells names for the
+    # old voices). None when unknown: the bridge's default, then the update's migration (pocket-engine).
+    pocket_engine: Optional[str] = None
     # The person's own voice model (voice_server.py): the bridge's `[voice_server]` lines, none for the Bips only.
     voice_server: List[str] = field(default_factory=list)
     # The agents' tools run in a sandbox: they cannot read the bridge's files, so it may keep credentials.
@@ -101,6 +104,8 @@ def bridge_toml(inst: Install) -> str:
     # Kyutai 1.6B is no engine of its own any more: a Kyutai server is the person's voice model, like any other.
     lines += ["", "[kyutai]", "enabled = false"]
     lines += ["", "[pocket]", f"url = {_q(inst.pocket_url)}", 'default_voice = "pocket:colibri"']
+    if inst.pocket_engine:
+        lines.append(f"engine = {_q(inst.pocket_engine)}")
     if inst.voice_server:
         lines += [""] + inst.voice_server
     lines += ["", "[cron]", "watch = true"]

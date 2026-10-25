@@ -1,4 +1,4 @@
-"""The Bips' text, prepared as Pocket TTS 3.3.0 prepares it, without pocket or the `tokenizers` library: the reference
+"""The Bips' text, prepared as Pocket TTS 4.0.1 prepares it, without pocket or the `tokenizers` library: the reference
 the apps' ports follow (Swift, Kotlin), checked against pocket itself (golden/<language>.json, test_textprep.py).
 
     chunks(text) -> [Chunk(text, ids, frames_after_eos, max_gen_len)]
@@ -39,11 +39,13 @@ CLOSERS = "\"'”’)]»"
 # What each language's model was trained without (pocket_tts/config/<language>.yaml), and its other options.
 QUOTES = {'"': '', '“': '', '”': '', '„': '', '«': '', '»': '', '’': "'", '‘': "'",
           '(': '', ')': '', '[': '', ']': ''}
+# Pocket 4 (PR #387) adds dashes as commas (fr, es: –; de: – and —) and English's typographic apostrophes; the
+# packages carry their own table (manifest `text`), so a phone's 3.3.0 package keeps the old one.
 LANGUAGES: Dict[str, Dict] = {
-    "french": {"replace": {**QUOTES, ":": ","}, "semicolons": True},
-    "english": {"replace": {}, "semicolons": False},
-    "german": {"replace": dict(QUOTES), "semicolons": True},
-    "spanish": {"replace": {**QUOTES, "¡": "", "¿": ""}, "semicolons": False},
+    "french": {"replace": {**QUOTES, ":": ",", "–": ","}, "semicolons": True},
+    "english": {"replace": {"’": "'", "‘": "'"}, "semicolons": False},
+    "german": {"replace": {**QUOTES, "–": ",", "—": ","}, "semicolons": True},
+    "spanish": {"replace": {**QUOTES, "¡": "", "¿": "", "–": ","}, "semicolons": False},
 }
 
 

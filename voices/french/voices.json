@@ -1,5 +1,6 @@
 {
- "engine": "pocket-tts 3.3.0",
+ "engine": "pocket-tts 4.0.1",
+ "states": "2026-10-25: each Bip's state recomputed for Pocket TTS 4.0.1 from its own <voice>_source.wav (this language's clip, never another's: a cross-language clone keeps an accent) with the cloning model kyutai/pocket-tts (CC-BY-4.0), french weights, get_state_for_audio_prompt(truncate=True) then export_model_state; checked by ear and with Whisper (the listening bench of 2026-10-25). The 3.3.0 states are in git history (before 2026-10-25).",
  "language": "french",
  "sample_rate": 24000,
  "design": {
@@ -7,7 +8,7 @@
   "text": "Bonjour ! Voici le point de la journée. Tu as trois rendez-vous : le premier à neuf heures trente, avec l'équipe. La météo annonce dix-huit degrés et un peu de pluie en fin d'après-midi, pense au parapluie. Côté sommeil, tu as dormi sept heures, c'est mieux qu'hier. Est-ce que tu veux que je te rappelle la réunion un quart d'heure avant ? Je reste disponible si tu as une question.",
   "note": "galet, lumen, mousse (07/10/2026) : un seul extrait Qwen de 22 à 27 s par voix, description « petite mascotte », choisi parmi 18 candidates ; ours et colibri (04/10/2026) : extrait court de 5 à 8 s"
  },
- "measurement_note": "first_sound_s = premier octet PCM de POST /v1/audio/stream du serveur pocket/pocket_server.py (--quantize, 8 fils, Ryzen AI Max+ 395), médiane de 3 essais ; rtf = vitesse par rapport au temps réel",
+ "measurement_note": "first_sound_s = premier octet PCM de POST /v1/audio/stream du serveur pocket/pocket_server.py (--quantize, 8 fils, Ryzen AI Max+ 395), médiane de 3 essais ; rtf = vitesse par rapport au temps réel — measured with pocket-tts 3.3.0's states (2026-10-15)",
  "voices": {
   "galet": {
    "description": "Petite mascotte posée, voix médium-grave, nette et assurée, débit régulier, ton de guide calme qui explique clairement.",
@@ -35,14 +36,14 @@
    "seed": 20502,
    "candidate": "mousse_c2",
    "source_s": 22.9,
-   "safetensors_bytes": 14108472,
+   "safetensors_bytes": 14157624,
    "first_sound_s": 0.096,
    "rtf": 8.13
   },
   "ours": {
    "description": "Grand ours en peluche calme, voix grave et douce, rassurante, débit lent.",
    "source_s": 6.5,
-   "safetensors_bytes": 4032304,
+   "safetensors_bytes": 3786544,
    "first_sound_s": 0.087,
    "rtf": 9.58
   },

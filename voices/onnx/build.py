@@ -1,4 +1,4 @@
-"""The Bips' voices for the phones, from Pocket TTS 3.3.0 (Kyutai, CC-BY-4.0: converted to ONNX, the language model to
+"""The Bips' voices for the phones, from Pocket TTS 4.0.1 (Kyutai, CC-BY-4.0: converted to ONNX, the language model to
 8 bits): one package per language and the audio decoder they share. Run with the export's venv (requirements.txt):
 
     voices/onnx/.venv/bin/python voices/onnx/build.py [--languages french,english] [--out build/voices]
@@ -17,7 +17,12 @@
 The model's graph takes x [1, T, 1024], past_kv [6, 2, 1, P, 16, 64] and noise [1, 32] (normal, sd √temperature) and
 gives latent [1, 32], eos_logit [1, 1], present_kv [6, 2, 1, P+T, 16, 64] and frame [1, 1, 32] (the latent
 denormalized, which the decoder takes: so the decoder is the same for every language). reference.py speaks with a
-package as the apps do; each build ends with a sample per language in out/samples/ to listen to."""
+package as the apps do; each build ends with a sample per language in out/samples/ to listen to.
+
+The manifest's `engine` (« pocket-tts 4.0.1 ») is what the apps send the bridge (`engine` in /v1/tts/prepare): below 4
+it respells brands and English words for the old voices, from 4 on the text goes as written. `package` counts the
+packages' versions (1, without the key: Pocket 3.3.0; 2: Pocket 4.0.1, with `fade_in_samples`: Pocket 4 fades each
+chunk's first 5 ms in, a fresh decoder's first samples click)."""
 from __future__ import annotations
 
 import argparse
@@ -37,16 +42,25 @@ sys.path.insert(0, str(HERE))
 import textprep  # noqa: E402
 
 LANGUAGES = ("french", "english", "german", "spanish")
+PACKAGE = 2           # 1: Pocket 3.3.0 (2026-10-20); 2: Pocket 4.0.1 (2026-10-25)
+THREADS = 2            # a busy Mac: torch and the checks on two threads
+FADE_IN_SAMPLES = 120  # pocket 4's linspace(0, 1, sample_rate // 200) on each chunk's first samples
 BIPS = ("colibri", "galet", "lumen", "mousse", "ours")
 CREDIT = ("Pocket TTS by Kyutai (https://github.com/kyutai-labs/pocket-tts), weights CC-BY-4.0 "
           "(https://creativecommons.org/licenses/by/4.0/): converted to ONNX, the language model quantized to 8 bits. "
-          "The Bips' voices: synthetic, made with Qwen3-TTS (Apache-2.0) then Pocket TTS.")
+          "The Bips' voices: synthetic, made with Qwen3-TTS (Apache-2.0), then cloned with Pocket TTS "
+          "(kyutai/pocket-tts, CC-BY-4.0).")
 SAMPLES = {
     "french": "Salut ! J'ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi.",
     "english": "Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon.",
     "german": "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang.",
     "spanish": "¡Holi! He mirado tu día: tres citas y un rato para caminar esta tarde.",
 }
+
+
+def engine() -> str:
+    from importlib.metadata import version
+    return f"pocket-tts {version('pocket-tts')}"
 
 
 def sha256(path: Path) -> str:
@@ -130,7 +144,9 @@ def check_flow(model, onnx_path: Path, tolerance: float) -> float:
     noise = torch.randn(1, 32) * 0.3 ** 0.5
     with torch.no_grad():
         expected = step(x, past, noise)[0].numpy()
-    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = THREADS
+    session = ort.InferenceSession(str(onnx_path), options, providers=["CPUExecutionProvider"])
     got = session.run(None, {"x": x.detach().numpy(), "past_kv": past.numpy(), "noise": noise.numpy()})[0]
     error = float(np.abs(got - expected).max() / (np.abs(expected).max() + 1e-9))
     if error > tolerance:
@@ -140,6 +156,20 @@ def check_flow(model, onnx_path: Path, tolerance: float) -> float:
 
 def model_language(model) -> str:
     return model._bipagents_language
+
+
+def kept_decoder(out: Path, weights: str):
+    """A decoder package already in `out` with these same weights (made by an earlier build): kept as it is, so the
+    phones and servers that have it don't fetch it again (Pocket 4.0.1's decoder is 3.3.0's)."""
+    for manifest in sorted(out.glob("mimi-*/manifest.json")):
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        files = data.get("files", {})
+        if data.get("weights_sha256") == weights and all((manifest.parent / f).is_file() for f in files):
+            return manifest.parent
+    return None
 
 
 def build_language(language: str, out: Path, scratch: Path, mimi: Dict) -> Dict:
@@ -159,7 +189,9 @@ def build_language(language: str, out: Path, scratch: Path, mimi: Dict) -> Dict:
     decoder = {k: v for k, v in model.mimi.state_dict().items()
                if k.startswith(("quantizer.output_proj", "upsample", "decoder_transformer", "decoder."))}
     weights = digest_of(decoder)
-    if not mimi:
+    if not mimi and kept_decoder(out, weights):
+        mimi.update({"weights": weights, "kept": kept_decoder(out, weights)})
+    elif not mimi:
         mimi_dir = scratch / "mimi"
         mimi_dir.mkdir()
         names = export_mimi(model, mimi_dir / "mimi.onnx")
@@ -195,8 +227,9 @@ def build_language(language: str, out: Path, scratch: Path, mimi: Dict) -> Dict:
         files[path.relative_to(folder).as_posix()] = {"bytes": path.stat().st_size, "sha256": sha256(path)}
     manifest = {
         "format": 1,
+        "package": PACKAGE,
         "language": language,
-        "engine": "pocket-tts 3.3.0",
+        "engine": engine(),
         "weights": config.weights_path_without_voice_cloning,
         "credit": CREDIT,
         "files": files,
@@ -210,7 +243,8 @@ def build_language(language: str, out: Path, scratch: Path, mimi: Dict) -> Dict:
                        "min_frames_before_eos": int(model._MIN_FRAMES_BEFORE_EOS),
                        "tokens_per_second": textprep.TOKENS_PER_SECOND, "padding_seconds": textprep.PADDING_SECONDS,
                        "frame_rate": float(config.mimi.frame_rate), "sample_rate": int(config.mimi.sample_rate),
-                       "samples_per_frame": 1920, "mimi_steps_per_frame": 16},
+                       "samples_per_frame": 1920, "mimi_steps_per_frame": 16,
+                       "fade_in_samples": FADE_IN_SAMPLES},
         "check": {"relative_error_f32": round(error_f32, 6), "relative_error_int8": round(error_int8, 4)},
     }
     (folder / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
@@ -227,10 +261,13 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--languages", default=",".join(LANGUAGES))
     parser.add_argument("--out", default=str(REPO / "build" / "voices"))
+    parser.add_argument("--threads", type=int, default=THREADS, help="CPU threads for PyTorch and the checks")
     args = parser.parse_args(argv)
+    import torch
+    torch.set_num_threads(args.threads)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    index: Dict = {"format": 1, "languages": {}}
+    index: Dict = {"format": 1, "package": PACKAGE, "engine": engine(), "languages": {}}
     mimi: Dict = {}
     with tempfile.TemporaryDirectory(dir=out) as tmp:
         scratch = Path(tmp)
@@ -243,21 +280,36 @@ def main(argv=None) -> int:
             shutil.move(str(scratch / language), target)
             index["languages"][language] = {"folder": target.name, "manifest_sha256": sha256(target / "manifest.json"),
                                             "bytes": sum(p.stat().st_size for p in target.rglob("*") if p.is_file())}
-        mimi_dir = mimi["dir"]
-        names = [state["name"] for state in mimi["states"]]
-        manifest = {"format": 1, "engine": "pocket-tts 3.3.0", "credit": CREDIT, "weights_sha256": mimi["weights"],
-                    "inputs": ["frame", "pos"] + names, "outputs": ["audio"] + [n + "_out" for n in names],
-                    "states": mimi["states"],   # each state's name and shape (float32 zeros at the start of a chunk)
-                    "files": {"mimi.onnx": {"bytes": (mimi_dir / "mimi.onnx").stat().st_size,
-                                            "sha256": sha256(mimi_dir / "mimi.onnx")}}}
-        (mimi_dir / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
-        target = out / f"mimi-{package_id(mimi_dir)}"
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.move(str(mimi_dir), target)
+        if mimi.get("kept"):
+            target = mimi["kept"]
+            print(f"decoder: {target.name} kept (the same weights)", flush=True)
+        else:
+            target = save_decoder(mimi, out)
         index["mimi"] = {"folder": target.name, "manifest_sha256": sha256(target / "manifest.json"),
                          "bytes": sum(p.stat().st_size for p in target.rglob("*") if p.is_file())}
     (out / "index.json").write_text(json.dumps(index, indent=1) + "\n", encoding="utf-8")
+    samples(out, index)
+    return 0
+
+
+def save_decoder(mimi: Dict, out: Path) -> Path:
+    """The decoder exported by this build, its manifest written, in `out`."""
+    mimi_dir = mimi["dir"]
+    names = [state["name"] for state in mimi["states"]]
+    manifest = {"format": 1, "engine": engine(), "credit": CREDIT, "weights_sha256": mimi["weights"],
+                "inputs": ["frame", "pos"] + names, "outputs": ["audio"] + [n + "_out" for n in names],
+                "states": mimi["states"],   # each state's name and shape (float32 zeros at the start of a chunk)
+                "files": {"mimi.onnx": {"bytes": (mimi_dir / "mimi.onnx").stat().st_size,
+                                        "sha256": sha256(mimi_dir / "mimi.onnx")}}}
+    (mimi_dir / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
+    target = out / f"mimi-{package_id(mimi_dir)}"
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.move(str(mimi_dir), target)
+    return target
+
+
+def samples(out: Path, index: Dict) -> None:
     # A sample per language with the first Bip, spoken as the apps will: to listen to before shipping.
     from reference import Package, save_wav
     import numpy as np
@@ -270,7 +322,6 @@ def main(argv=None) -> int:
         save_wav(out / "samples" / f"{language}-colibri.wav", audio)
         print(f"{language}: sample {len(audio) / 24000:.1f} s of audio in {spent:.1f} s "
               f"({len(audio) / 24000 / spent:.1f}x real time, one thread)", flush=True)
-    return 0
 
 
 if __name__ == "__main__":

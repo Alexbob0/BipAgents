@@ -52,7 +52,8 @@ fn content_type_of(fmt: &str) -> &'static str {
 }
 
 pub const POCKET_PREFIX: &str = "pocket:";
-/// The Pocket packages a phone has when it doesn't say (`engine` in /v1/tts/prepare): 3.3.0 until the 4.x packages ship.
+/// The Pocket packages a phone has when it doesn't say (`engine` in /v1/tts/prepare): the apps from before 2026-10-25
+/// don't, and they have the 3.3.0 packages.
 const PHONE_POCKET_DEFAULT: &str = "3.3.0";
 pub const SERVER_PREFIX: &str = "server:";
 /// A voice server's voice, as an earlier app named the Drama 3 ones (`drama:fr-mascotte-s17`).

@@ -15,7 +15,7 @@ character, never realistic nor robotic. Ours and Colibri date from October 4, 20
 | **ours** (bear) | big calm teddy bear, low and soft voice, reassuring, slow pace | `ours.*` |
 | **colibri** (hummingbird) | small lively, cheerful bird, clear and light voice, medium, singsong, fast and precise pace | `colibri.*` |
 
-- `<voice>.safetensors`: precomputed Pocket TTS voice state (`french` model, pocket-tts 3.3.0). This is the file to use.
+- `<voice>.safetensors`: precomputed Pocket TTS voice state (`french` model, pocket-tts 4.0.1: recomputed from `<voice>_source.wav` on 2026-10-25). This is the file to use.
   13 to 16 MB for galet, lumen and mousse (22–26 s clips), 3 to 4 MB for ours and colibri (5–7 s clips).
 - `<voice>_source.wav`: the clip used for cloning (Qwen3-TTS VoiceDesign output, mono 24 kHz, peak −1 dBFS). Lets you recompute the state if the Pocket TTS weights change.
 - `<voice>_sample.wav`: Pocket TTS rendering of the test sentence « Coucou ! J'ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi. » ("Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon.")
