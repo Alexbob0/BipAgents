@@ -1620,6 +1620,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key
         .merge(crate::agent_shares::household_router()) // the agents shared with them, the same key
+        .merge(crate::rooms_remote::household_router()) // their agents in this person's discussions, the same key
         .nest("/desktop/static/novnc", crate::desktop::static_files())
         .merge(crate::desktop::desktop_router()) // the page and its stream: a short-lived ticket from the route above
         .route("/v1/voice", get(crate::voice_ws::voice_endpoint));
