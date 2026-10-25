@@ -1069,8 +1069,19 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
 }
 
 async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>) -> ApiResult<Response> {
-    let agent = agent_or_404(&state.config(), Some(&body.agent))?;
+    let config = state.config();
+    if config.agent(Some(&body.agent)).is_none() && crate::agent_shares::is_shared_with_me(&config, &body.agent) {
+        // an agent a relative shares with this person: her answer goes to their bridge (agent_shares.rs)
+        let run_id = check_run_id(&body.run_id)?;
+        let choice = body.choice.trim().to_lowercase();
+        return crate::agent_shares::approve_mine(&state, &body.agent, &run_id, &choice, body.request_id.as_deref())
+            .await;
+    }
+    let agent = agent_or_404(&config, Some(&body.agent))?;
     let run_id = check_run_id(&body.run_id)?;
+    if crate::agent_shares::relative_run(&config, &run_id) {
+        return Err(HttpError::new(403, "a relative's turn: they answer its approvals"));
+    }
     // a card of the bridge's own (a site for the agent's programs, sandbox_sites.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::sandbox_sites::RUN_PREFIX) {
         let allow = body.choice.trim().to_lowercase() != "deny";
@@ -1148,14 +1159,24 @@ async fn record_approval(State(state): State<AppState>, body: axum::body::Bytes)
 
 async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
-    let name = match q.get("agent").filter(|a| !a.is_empty()) {
+    let shared = q.get("agent").filter(|a| crate::agent_shares::is_shared_with_me(&config, a)).map(str::to_string);
+    let name = match q.get("agent").filter(|a| !a.is_empty() && shared.is_none()) {
         Some(a) => Some(agent_or_404(&config, Some(a))?.name),
         None => None,
     };
-    let mut items = state.hub.pending_approvals(name.as_deref());
+    let mut items = if shared.is_some() { Vec::new() } else { state.hub.pending_approvals(name.as_deref()) };
+    // a relative's turn with one of this person's agents: theirs to answer, not in this Boîte (agent_shares.rs)
+    items
+        .retain(|i| !crate::agent_shares::relative_run(&config, i.get("run_id").and_then(Value::as_str).unwrap_or("")));
+    // the approvals of this person's own turns with agents relatives share with her
+    if name.is_none() {
+        items.extend(crate::agent_shares::pending_mine(shared.as_deref()));
+    }
     // the bridge's own cards too (a site for an agent's programs, sandbox_sites.rs)
-    items.extend(crate::sandbox_sites::pending_items(&config, name.as_deref()));
-    items.extend(crate::vault_logins::pending_items(&config, name.as_deref()));
+    if shared.is_none() {
+        items.extend(crate::sandbox_sites::pending_items(&config, name.as_deref()));
+        items.extend(crate::vault_logins::pending_items(&config, name.as_deref()));
+    }
     for item in items.iter_mut() {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
         let micros = (created * 1_000_000.0).round() as i64;
@@ -1574,6 +1595,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
     authed = authed
         .merge(crate::peers::household_admin_router())
         .merge(crate::family_news::router())
+        .merge(crate::agent_shares::router())
         .merge(crate::desktop::desktop_admin_router());
     // Under /v1 without the bridge key: a computer sending its agents (the app's one-time code instead), and a
     // server the app created until the app claims it (its own proofs).
@@ -1600,6 +1622,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::connections::callback_router()) // a service's sign-in coming back (its single-use state)
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key
+        .merge(crate::agent_shares::household_router()) // the agents shared with them, the same key
+        .merge(crate::rooms_remote::household_router()) // their agents in this person's discussions, the same key
         .nest("/desktop/static/novnc", crate::desktop::static_files())
         .merge(crate::desktop::desktop_router()) // the page and its stream: a short-lived ticket from the route above
         .route("/v1/voice", get(crate::voice_ws::voice_endpoint));

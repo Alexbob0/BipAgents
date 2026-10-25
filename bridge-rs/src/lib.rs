@@ -62,6 +62,7 @@ pub mod voices;
 
 // -- agents ----------------------------------------------------------------------------------------
 pub mod agent_groups;
+pub mod agent_shares;
 pub mod agents_admin;
 /// The person's time zone and standard dates (no Python counterpart).
 pub mod dates;
@@ -106,6 +107,7 @@ pub mod notes_import;
 pub mod pages;
 pub mod reminders;
 pub mod rooms;
+pub mod rooms_remote;
 pub mod routes;
 #[doc(hidden)]
 pub mod tools_knowledge; // the group's private helpers (pub for its golden tests)
