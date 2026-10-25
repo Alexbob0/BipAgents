@@ -6,6 +6,7 @@ we would change, the person decides.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
@@ -214,6 +215,22 @@ def with_pocket_engine(text: str, engine: str) -> str:
     return text[:found.start(1)] + line + body + text[found.end(1):]
 
 
+def pocket_not_yet(url: str, engine: Optional[str], pinned: str, owner: Optional[str] = None) -> str:
+    """What to do while the Pocket at `url` isn't on Pocket 4: the account that runs it and the command, named."""
+    import getpass
+    if owner is None:
+        from .upgrade import pocket_owner
+        owner = pocket_owner()
+    me = os.environ.get("USER") or getpass.getuser()
+    said = f"still Pocket {engine}" if engine else "no version from them yet"
+    where = (f"from the account « {owner} »" + (" (this one)" if owner == me else "")) if owner \
+        else "from the account that runs them"
+    return (f"the Bips' voices ({url}): {said}; the bridge keeps respelling names for them. `bipagents update` "
+            f"{where} moves them to Pocket {pinned}: PyTorch and Pocket {pinned} go in ~/BipAgents/pocket/.venv "
+            "(about 5 GB, several minutes), a Pocket service set up by hand becomes bipagents-pocket (the old one kept "
+            "as .disabled), then the next update here stops the respellings")
+
+
 def pocket_engine(runner: hermes.Runner, home: Path) -> str:
     """The bridge prepares the Bips' text for the Pocket that speaks it (`[pocket] engine`, 2026-10-25): Pocket 4.0.1
     says brands and English words right as written, the 3.3.0 voices needed them respelled. Once the Pocket at the
@@ -235,9 +252,7 @@ def pocket_engine(runner: hermes.Runner, home: Path) -> str:
         return "no Pocket for this bridge"
     engine = None if runner.dry else voices.engine_at(url.group(1), wait=POCKET_WAIT)
     if engine is None or (voices.major(engine) or 0) < 4:
-        said = f"still Pocket {engine}" if engine else "no version from them yet"
-        raise NotYet(f"the Bips' voices ({url.group(1)}): {said}; the bridge keeps the respellings, "
-                     "`bipagents update` (in the account that runs them) moves them to Pocket 4")
+        raise NotYet(pocket_not_yet(url.group(1), engine, voices.pinned_pocket(REPO) or "4"))
     runner.log.append(f"write {config}")
     if not runner.dry:
         config.write_text(with_pocket_engine(text, engine), encoding="utf-8")

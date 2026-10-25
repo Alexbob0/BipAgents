@@ -137,19 +137,23 @@ def test_the_light_voices_follow_the_guichets_new_packages(tmp_path, monkeypatch
     assert not voices.refresh(tmp_path, runner, said.append, transport=packages_server())   # nothing new
 
 
-def pocket_unit(tmp_path, light=False):
+def pocket_unit(tmp_path, light=False, repo=None):
     units = tmp_path / ".config/systemd/user"
     units.mkdir(parents=True, exist_ok=True)
     flags = "--onnx /x/voices" if light else "--voices /x/voices"
-    (units / "bipagents-pocket.service").write_text(f"ExecStart=/x/python /x/pocket/pocket_server.py {flags}\n")
+    base = repo or "/x"
+    python = f"{base}/pocket/.venv/bin/python" if repo else "/x/python"
+    (units / "bipagents-pocket.service").write_text(f"ExecStart={python} {base}/pocket/pocket_server.py {flags}\n")
 
 
 def test_an_update_moves_pockets_own_models_to_the_pinned_version(monkeypatch, tmp_path):
     from bipinstall import upgrade
+    from bipinstall import pocketunit
     monkeypatch.setenv("HOME", str(tmp_path))
-    pocket_unit(tmp_path)
     repo = tmp_path / "BipAgents"
+    pocket_unit(tmp_path, repo=repo)
     (repo / "pocket" / ".venv").mkdir(parents=True)
+    monkeypatch.setattr(pocketunit, "engine_of", lambda unit: None)
     monkeypatch.setattr(upgrade, "REPO", repo)
     monkeypatch.setattr(voices, "pinned_pocket", lambda repo: "4.0.1")
     installed = {"version": "3.3.0"}

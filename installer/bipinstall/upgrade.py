@@ -96,9 +96,19 @@ def pocket_step(runner: hermes.Runner, touched, venv) -> bool:
     environment when it changed or an earlier update didn't finish it, with the voice states of the same commit
     (voices/). The light voices (--onnx: the phones' packages) keep their own requirements, PyTorch never comes back;
     their packages (engine, model and Bips together) come again from the guichet when it has new ones. A failed
-    install leaves Pocket running as it was (its voices loaded) and is tried again at the next update."""
-    from . import voices
+    install leaves Pocket running as it was (its voices loaded) and is tried again at the next update.
+
+    A Pocket service set up by hand (its own pocket_server.py or Python) becomes the installer's bipagents-pocket
+    (pocketunit.adopt; it starts there, no restart after). Pocket never restarts on voice states made for another
+    Pocket: while its own can't move, it keeps its own version's states, taken from git (pocketunit.serve_matching)."""
+    from . import pocketunit, voices
     restart = touched("pocket/", "voices/")
+    unit = pocketunit.find(Path.home())
+    if unit is not None and not unit.light and not unit.standard(REPO) and not runner.dry:
+        if pocketunit.adopt(unit, REPO, Path.home(), runner, venv, say):
+            return False
+        unit = pocketunit.find(Path.home())   # the old one, put back
+        restart = True   # restarted on the states of its own Pocket below (or not at all)
     light = pocket_light()
     requirements = "requirements-onnx.txt" if light else "requirements.txt"
     has_venv = (REPO / "pocket" / ".venv").exists()
@@ -117,6 +127,11 @@ def pocket_step(runner: hermes.Runner, touched, venv) -> bool:
     if light and voices.refresh(Path.home(), runner, say):
         say(ui.done("The Bips' new voices came from the guichet."))
         restart = True
+    if unit is not None and not light and not runner.dry:
+        moved = pocketunit.serve_matching(unit, REPO, Path.home(), runner, say, pocketunit.engine_of(unit))
+        if moved is None:
+            return False
+        restart = restart or moved
     return restart
 
 
