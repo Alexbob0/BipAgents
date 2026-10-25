@@ -4,7 +4,7 @@
 //!     Garmin = "Garmine"
 //!     "Mme Dupuis" = "Madame Dupuis"
 //!
-//! Whole words or phrases, any case, applied before the bridge's own lexicon (numbers_fr._ENGLISH, speech_intl), so
+//! Whole words or phrases, any case, applied before the bridge's own lexicon (`pronounce`, assets/pronunciation/), so
 //! they win over it.
 //!
 //! Port of `bridge/bipbridge/pronunciations.py` (owner group: voice-speech).

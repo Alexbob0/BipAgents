@@ -146,6 +146,12 @@ def test_a_bip_s_text_is_prepared_for_the_phone_to_speak_it(bridge):
     assert "neuf" in data["text"] and "*" not in data["text"]
     assert data == {"local": True, "voice": "pocket:galet", "text": "Rendez-vous à neuf heures trente avec Garmine, le rendez-vous.",
                     "language": "fr", "bip": "galet"}
+    # Pocket 4 packages (no version sent): names as written; a phone with the old 3.3.0 packages gets them respelled
+    text = "Mets Spotify avec ta Garmin, le PDF, allure 5:10 par km."
+    new = bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": text, "voice": "pocket:galet"}).json()
+    assert new["text"] == "Mets Spotify avec ta Garmine, le pé dé èffe, allure cinq minutes dix par kilomètre."
+    old = bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": text, "voice": "pocket:galet", "engine": "3.3.0"}).json()
+    assert old["text"] == "Mets Spotifaï avec ta Garmine, le pé dé èffe, allure cinq minutes dix par kilomètre."
     english = bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": "See you at 5.", "voice": "pocket:en/lumen"})
     assert english.json()["language"] == "en" and english.json()["bip"] == "lumen"
     kyutai = bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": "Salut.", "agent": "wellness"})

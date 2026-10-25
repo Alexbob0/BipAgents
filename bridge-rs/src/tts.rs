@@ -23,7 +23,8 @@ use serde_json::{json, Value};
 
 use crate::config::VoiceServerConfig;
 use crate::hermes::httpx_error_name;
-use crate::numbers_fr::prepare_for_synthesis;
+use crate::numbers_fr::prepare_for_synthesis_with;
+use crate::pronounce::Spelling;
 use crate::pronunciations::Lexicon;
 use crate::speech_intl;
 use crate::textproc::{normalize_for_speech, strip_emoji};
@@ -581,6 +582,8 @@ pub struct TtsOptions {
     pub max_chars: usize,
     pub sentence_max_chars: usize,
     pub pocket_url: Option<String>,
+    /// The server's Pocket version (« 4 », « 3.3.0 »): see `Spelling::for_engine`.
+    pub pocket_engine: String,
     pub voice_server: Option<VoiceServerConfig>,
     pub words: IndexMap<String, IndexMap<String, String>>,
 }
@@ -593,6 +596,7 @@ impl Default for TtsOptions {
             max_chars: 1000,
             sentence_max_chars: 180,
             pocket_url: None,
+            pocket_engine: "4".into(),
             voice_server: None,
             words: IndexMap::new(),
         }
@@ -722,6 +726,16 @@ impl TtsService {
         voice.starts_with(POCKET_PREFIX) && self.pocket.is_some()
     }
 
+    /// Respelled names only for this server's Pocket when it is the old engine (< 4); every other engine reads the
+    /// raw text.
+    fn spelling(&self, voice: &str) -> Spelling {
+        if voice.starts_with(POCKET_PREFIX) && self.pocket.is_some() {
+            Spelling::for_engine(Some(&self.options.pocket_engine))
+        } else {
+            Spelling::Raw
+        }
+    }
+
     fn cache_get(&self, key: &CacheKey) -> Option<Audio> {
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let audio = cache.shift_remove(key)?;
@@ -748,6 +762,7 @@ impl TtsService {
         max_chars: Option<usize>,
         language: &str,
         paragraphs: bool,
+        spelling: Spelling,
     ) -> Result<String, TtsError> {
         let text = strip_emoji(text); // never read out, and Pocket stumbles on them
         let clean = if normalized {
@@ -756,11 +771,11 @@ impl TtsService {
             normalize_for_speech(&text, self.options.sentence_max_chars, paragraphs)
         };
         let clean = self.words.apply(&clean, language); // « Garmin » as it is said, before numbers and CamelCase
-                                                        // numbers in words, CamelCase split, parentheses as pauses
+                                                        // names respelled, numbers in words, parentheses as pauses
         let clean = if language == "fr" {
-            prepare_for_synthesis(&clean)
+            prepare_for_synthesis_with(&clean, spelling)
         } else {
-            speech_intl::prepare_for_synthesis(&clean, language)
+            speech_intl::prepare_for_synthesis_with(&clean, language, spelling)
         };
         if clean.is_empty() {
             return Err(TtsError::new("empty text after normalization", 400));
@@ -780,6 +795,7 @@ impl TtsService {
         text: &str,
         voice: Option<&str>,
         max_chars: Option<usize>,
+        engine: Option<&str>,
     ) -> Result<Option<(String, String, String)>, TtsError> {
         let voice = voice.filter(|v| !v.is_empty()).unwrap_or(&self.default_voice);
         let Some(rest) = voice.strip_prefix(POCKET_PREFIX) else {
@@ -787,7 +803,8 @@ impl TtsService {
         };
         let language = voice_language(voice);
         let bip = rest.rsplit('/').next().unwrap_or(rest).to_string();
-        Ok(Some((self.prepare(text, false, max_chars, &language, true)?, language, bip)))
+        let spelling = Spelling::for_engine(engine); // the phone's own Pocket package
+        Ok(Some((self.prepare(text, false, max_chars, &language, true, spelling)?, language, bip)))
     }
 
     /// Seconds an interactive request waits for the voice server's first sound once it is sent (not its turn in
@@ -834,7 +851,14 @@ impl TtsService {
         }
         let voice = voice.filter(|v| !v.is_empty()).unwrap_or(&self.default_voice).to_string();
         let language = voice_language(&voice);
-        let clean = self.prepare(text, options.normalized, options.max_chars, &language, self.paragraphs(&voice))?;
+        let clean = self.prepare(
+            text,
+            options.normalized,
+            options.max_chars,
+            &language,
+            self.paragraphs(&voice),
+            self.spelling(&voice),
+        )?;
         let key: CacheKey = (voice.clone(), fmt.to_string(), clean.clone());
         if let Some(hit) = self.cache_get(&key) {
             return Ok(Audio { cached: true, ..hit });
@@ -945,7 +969,7 @@ impl TtsService {
         let relay = relay.filter(|r| !r.is_empty()).map(str::to_string);
         async_stream::stream! {
             let language = voice_language(&voice);
-            let clean = match this.prepare(&text, false, max_chars, &language, this.paragraphs(&voice)) {
+            let clean = match this.prepare(&text, false, max_chars, &language, this.paragraphs(&voice), this.spelling(&voice)) {
                 Ok(clean) => clean,
                 Err(e) => { yield Err(e); return; }
             };

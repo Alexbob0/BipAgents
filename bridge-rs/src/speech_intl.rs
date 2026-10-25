@@ -498,7 +498,7 @@ pub fn spell_numbers(text: &str, lang: &str) -> String {
     if !LANGUAGES.contains(&lang) || !pystr::has_digit(text) {
         return text.to_string();
     }
-    let mut text = text.to_string();
+    let mut text = crate::durations::spell_durations(text, lang); // « 5:10 per mile »: minutes, not hours
     if lang == "de" {
         text = YEAR_DE.replace_with(&text, |m| spell_digits(&m.group(1), lang, "year"));
     }
@@ -556,12 +556,18 @@ pub fn spell_numbers(text: &str, lang: &str) -> String {
 
 /// Same last touch as the French one, in `lang` (`en`, `es` or `de`).
 pub fn prepare_for_synthesis(text: &str, lang: &str) -> String {
+    prepare_for_synthesis_with(text, lang, crate::pronounce::Spelling::Raw)
+}
+
+/// The same for a given engine (see `numbers_fr::prepare_for_synthesis_with`).
+pub fn prepare_for_synthesis_with(text: &str, lang: &str, spelling: crate::pronounce::Spelling) -> String {
     let mut text = text.to_string();
     if let Some(rules) = LEXICON.get(lang) {
         for (pattern, words) in rules {
             text = pattern.replace(&text, words);
         }
     }
+    text = crate::pronounce::respell(&text, lang, spelling); // names, acronyms and English words for this voice
     text = spell_numbers(&text, lang);
     if LANGUAGES.contains(&lang) {
         text = SLASH.replace(&text, &format!(" {} ", word(lang, "or")));
@@ -609,8 +615,21 @@ mod tests {
                 "1 Tag, 1 Woche, 1.250 Schritte, z. B. 1999",
                 "ein Tag, eine Woche, eintausendzweihundertfünfzig Schritte, zum Beispiel neunzehnhundertneunundneunzig",
             ),
+            ("es", "Pon Spotify en el iPhone 16 y mándalo por WhatsApp.", "Pon Espotifai en el Aifon dieciséis y mándalo por Guasap."),
+            ("de", "Schick es per WhatsApp, das Meeting ist um 10:30 – mit dem ADAC.", "Schick es per WhatsApp, das Mieting ist um zehn Uhr dreißig, mit dem Ah Deh Ah Zeh."),
         ] {
-            assert_eq!(prepare_for_synthesis(text, lang), spoken, "{lang}: {text}");
+            assert_eq!(prepare_for_synthesis_with(text, lang, crate::pronounce::Spelling::Respelled), spoken, "{lang}: {text}");
+        }
+        for (lang, text, spoken) in [
+            ("es", "Pon Spotify en el iPhone 16 y el PDF.", "Pon Spotify en el iPhone dieciséis y el pe de efe."),
+            (
+                "de",
+                "Das Meeting um 10:30 – Pace 5:10 pro km.",
+                "Das Meeting um zehn Uhr dreißig, Pace fünf Minuten zehn pro Kilometer.",
+            ),
+            ("en", "Search DuckDuckGo, the PDF.", "Search DuckDuckGo, the PDF."),
+        ] {
+            assert_eq!(prepare_for_synthesis(text, lang), spoken, "raw {lang}: {text}");
         }
     }
 }

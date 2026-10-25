@@ -117,6 +117,8 @@ cases["fr.spell_int"] = [[n, numbers_fr.spell_int(n)] for n in
 cases["fr.spell_ordinal"] = [[[n, f], numbers_fr.spell_ordinal(n, feminine=f)] for n in
                              sorted(set(range(1, 1101)) | {rng.randrange(1, 10 ** 9) for _ in range(300)}) for f in (False, True)]
 cases["fr.spell_numbers"] = [[t, numbers_fr.spell_numbers(t)] for t in texts]
+# fr/intl.prepare_for_synthesis: the Rust bridge left the Python on purpose on 2026-10-25 (pronounce.rs); these two
+# sections of speech.json.gz hold the Rust outputs since, and writing them from here would bring the old ones back.
 cases["fr.prepare_for_synthesis"] = [[t, numbers_fr.prepare_for_synthesis(t)] for t in texts]
 cases["intl.prepare_for_synthesis"] = []
 cases["intl.spell_numbers"] = []

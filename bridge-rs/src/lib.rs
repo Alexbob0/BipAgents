@@ -47,8 +47,10 @@ pub mod runs;
 pub mod sleep;
 
 // -- voice-speech ----------------------------------------------------------------------------------
+pub mod durations;
 pub mod live_brief;
 pub mod numbers_fr;
+pub mod pronounce;
 pub mod pronunciations;
 pub mod speech_intl;
 pub mod textproc;
