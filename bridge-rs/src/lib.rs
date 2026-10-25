@@ -97,6 +97,7 @@ pub mod mailbox;
 pub mod map_tiles;
 pub mod maps;
 pub mod memory_edit;
+pub mod message_search;
 pub mod notebook;
 pub mod notes_import;
 pub mod pages;
