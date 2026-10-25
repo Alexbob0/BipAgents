@@ -32,7 +32,7 @@
 //! and vault data in the room. An agent in its own space answers in its own Hermes, as always.
 //!
 //! **Approvals**: each run is watched by the run hub (runs.rs) like a background task's: an approval or a question
-//! nobody follows is pushed and listed in the Boîte as today. A turn waits for it up to `APPROVAL_WAIT` seconds, else
+//! nobody follows is pushed and listed in the Boîte as today, both carrying `room_id` (tapping opens the room). A turn waits for it up to `APPROVAL_WAIT` seconds, else
 //! `[rooms] turn_seconds`. **Credit**: the runs use each agent's own model and key, like any conversation, so their
 //! tokens count on the person's AI credit; each reply carries its `tokens`, the room their total. The router's model
 //! call goes through the same install key.
@@ -886,6 +886,7 @@ impl Rooms {
         if let Some(hub) = &self.hub {
             // approvals and questions nobody follows are pushed (the Boîte); the reply is told here, not by the hub
             hub.watch(&agent, &run_id, Some(&session), false);
+            hub.set_room(&agent.name, &run_id, id);
         }
         let started = turn.started.unwrap_or_else(now);
         let (status, output, usage) = loop {

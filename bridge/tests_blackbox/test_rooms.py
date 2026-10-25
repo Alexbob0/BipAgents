@@ -255,6 +255,29 @@ def test_an_action_waits_for_the_approval_in_the_boite(bridges, fakes):
     assert [m["kind"] for m in replies(bridge, room["id"])] == ["agent"]
 
 
+def test_an_approval_asked_in_a_room_opens_the_room(bridges, fakes):
+    """The push and the Boîte's entry carry `room_id` (tapping opens the room); answering it works as always."""
+    bridge = start(bridges, fakes)
+    assert bridge.post("/v1/devices", headers=AUTH, json={"token": TOKEN, "environment": "sandbox",
+                                                         "agent_ids": ["cuisine"]}).status_code == 200
+    fakes.hermes.rounds = 10_000
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("approval.request", run_id="r1", request_id="req_7", command="envoie la liste",
+                                   choices=["once", "deny"]), gate]
+    room = room_of(bridge, "coach", "cuisine")
+    bridge.post(f"/v1/rooms/{room['id']}/messages", headers=AUTH, json={"text": "@cuisine fais la liste"})
+    assert wait_until(lambda: fakes.apns.pushes(), timeout=20)
+    payload = fakes.apns.payloads()[0]
+    assert payload["aps"]["category"] == "APPROVAL" and payload["agent"] == "cuisine"
+    assert payload["room_id"] == room["id"] and payload["run_id"] == "r1" and payload["request_id"] == "req_7"
+    pending = bridge.get("/v1/approvals", headers=AUTH).json()["items"]
+    assert [(p["agent"], p["run_id"], p.get("room_id")) for p in pending] == [("cuisine", "r1", room["id"])]
+    fakes.hermes.rounds = 1   # approved, the run ends
+    gate.set()
+    assert wait_until(lambda: quiet(bridge, room["id"]), timeout=20)
+    assert [m["from"] for m in replies(bridge, room["id"])] == ["cuisine"]
+
+
 def test_stop_ends_the_turn_and_empties_the_queue(bridges, fakes):
     bridge = start(bridges, fakes)
     fakes.hermes.rounds = 10_000

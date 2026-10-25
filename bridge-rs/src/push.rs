@@ -381,10 +381,12 @@ impl PushService {
         session_id: Option<&str>,
     ) -> usize {
         let choices: Option<Vec<Value>> = choices.map(|c| c.iter().map(|s| json!(s)).collect());
-        self.notify_approval_values(agent, run_id, request_id, choices.as_deref(), command, session_id).await
+        self.notify_approval_values(agent, run_id, request_id, choices.as_deref(), command, session_id, None).await
     }
 
-    /// `notify_approval` with the choices as Hermes gave them (RunHub's pending approvals keep them as JSON).
+    /// `notify_approval` with the choices as Hermes gave them (RunHub's pending approvals keep them as JSON);
+    /// `room_id` when the run is a group discussion's turn (tapping opens the room).
+    #[allow(clippy::too_many_arguments)]
     pub async fn notify_approval_values(
         &self,
         agent: &str,
@@ -393,6 +395,7 @@ impl PushService {
         choices: Option<&[Value]>,
         command: Option<&str>,
         session_id: Option<&str>,
+        room_id: Option<&str>,
     ) -> usize {
         let mut preview_text = None;
         if self.previews() {
@@ -400,7 +403,7 @@ impl PushService {
                 preview_text = Some(format!("{APPROVAL_BODY} : {}", preview(command, 120)));
             }
         }
-        let payload = approval_payload(
+        let mut payload = approval_payload(
             agent,
             &self.title(agent),
             run_id,
@@ -409,6 +412,9 @@ impl PushService {
             preview_text.as_deref(),
             session_id,
         );
+        if let Some(room) = given(room_id) {
+            payload.insert("room_id".into(), json!(room)); // tapping opens the room, where its card is
+        }
         let collapse = given(request_id).unwrap_or(run_id).to_string();
         self.fanout(agent, payload, "alert", 10, Some(collapse)).await
     }

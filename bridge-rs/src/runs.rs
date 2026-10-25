@@ -292,6 +292,8 @@ pub struct SubscriptionState {
     /// A handing-over tool answered it could not; the bridge's rescue was done (or tried).
     pub handoff_failed: bool,
     pub rescued: bool,
+    /// The group discussion whose hidden conversation runs this (rooms.rs): its approvals open the room.
+    pub room_id: Option<String>,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -320,6 +322,7 @@ impl Default for SubscriptionState {
             exempt_until: 0.0,
             handoff_failed: false,
             rescued: false,
+            room_id: None,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -495,6 +498,20 @@ impl RunHub {
             });
         }
         sub
+    }
+
+    /// The run is a turn of a group discussion (rooms.rs): its approvals carry `room_id`, in the push and in
+    /// `/v1/approvals`, so tapping them opens the room. Also marks what it already waits for.
+    pub fn set_room(&self, agent: &str, run_id: &str, room_id: &str) {
+        let mut inner = lock(&self.inner);
+        if let Some(sub) = inner.subs.get(&(agent.to_string(), run_id.to_string())) {
+            lock(&sub.state).room_id = Some(room_id.to_string());
+        }
+        for ((a, r, _), item) in inner.pending.iter_mut() {
+            if a == agent && r == run_id {
+                item.insert("room_id".into(), json!(room_id));
+            }
+        }
     }
 
     /// After a restart: watch again the runs that were watched, and rebuild what Hermes still waits for (an
@@ -716,8 +733,8 @@ impl RunHub {
             if *agent == sub.agent.name && *run_id == sub.run_id && !st.pushed.contains(dedupe) {
                 st.pushed.insert(dedupe.clone());
                 tracing::info!(agent = %agent, run_id = %run_id, "approval push (left unanswered)");
-                let (push, agent, run_id, session) =
-                    (push.clone(), agent.clone(), run_id.clone(), st.session_id.clone());
+                let (push, agent, run_id, session, room) =
+                    (push.clone(), agent.clone(), run_id.clone(), st.session_id.clone(), st.room_id.clone());
                 let request_id = as_str(item.get("request_id"));
                 let command = as_str(item.get("command"));
                 let choices = match item.get("choices") {
@@ -732,6 +749,7 @@ impl RunHub {
                         choices.as_deref(),
                         command.as_deref(),
                         session.as_deref(),
+                        room.as_deref(),
                     )
                     .await;
                 });
@@ -1220,6 +1238,9 @@ touche « Démarrer » pour reprendre."
         item.insert("choices".into(), Value::Array(choices.clone()));
         item.insert("created_at".into(), json!(crate::py::time_time()));
         item.insert("session_id".into(), json!(st.session_id));
+        if let Some(room) = &st.room_id {
+            item.insert("room_id".into(), json!(room));
+        }
         inner.pending.insert((sub.agent.name.clone(), sub.run_id.clone(), dedupe.clone()), item);
         let followers = st.followers();
         let push = match self.push.clone() {
@@ -1231,7 +1252,8 @@ touche « Démarrer » pour reprendre."
         };
         st.pushed.insert(dedupe);
         tracing::info!(agent = %sub.agent.name, run_id = %sub.run_id, "approval push");
-        let (agent, run_id, session) = (sub.agent.name.clone(), sub.run_id.clone(), st.session_id.clone());
+        let (agent, run_id, session, room) =
+            (sub.agent.name.clone(), sub.run_id.clone(), st.session_id.clone(), st.room_id.clone());
         self.spawn(async move {
             push.notify_approval_values(
                 &agent,
@@ -1240,6 +1262,7 @@ touche « Démarrer » pour reprendre."
                 Some(&choices),
                 command.as_deref(),
                 session.as_deref(),
+                room.as_deref(),
             )
             .await;
         });
