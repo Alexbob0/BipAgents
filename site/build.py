@@ -421,10 +421,11 @@ def bipagents(version: str) -> Path:
                      "pricing": t["pricing"]["js"]},
             "demo": {**common, "scenarios": scenarios,
                      "labels": {"once": t["control"]["once"], "session": t["control"]["session"], "deny": t["control"]["deny"],
-                                "open": t["demo"]["open"], "work": t["demo"]["work"]},
+                                "open": t["demo"]["open"]},
                      # tool rows and the working line in plain words, as the apps word them (scripts/tool-labels.py)
                      "tools": {"list": tool_labels["kinds"], "words": tool_labels["text"][lang]["kinds"],
-                               "extra": tool_labels["text"][lang]["extra"]},
+                               "extra": tool_labels["text"][lang]["extra"],
+                               "thinking": tool_labels["text"][lang]["thinking"]},
                      "pages": {"runs": {"src": f"/assets/pages/runs-{lang}.html",
                                         "title": localized(demo["pages"]["runs"]["values"]["title"], lang)},
                                "walk": {"src": f"/assets/showcase/{map_file}", "title": walk["title"], "subtitle": walk["subtitle"],

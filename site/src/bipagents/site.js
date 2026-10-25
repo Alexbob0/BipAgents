@@ -1,7 +1,7 @@
 // bipagents.com: the hero's results and its « See more » on privacy, the agents' cards, the comparison, the
 // two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
 // install. One script for every page: each part runs where its elements are. No framework, no network but this site.
-import { Bip, CATEGORIES, REDUCED, staticBip } from "./bips.js";
+import { Bip, CATEGORIES, REDUCED, renderBip, staticBip } from "./bips.js";
 
 const data = JSON.parse(document.getElementById("site-data").textContent);
 const $ = (s, root = document) => root.querySelector(s);
@@ -44,11 +44,6 @@ let run = 0;
 // Tool rows in plain words, as the apps word them (ToolLabel.swift / ToolLabel.kt; the wording comes from
 // scripts/tool-labels.py): never a tool's own name. The working line under the thread says what the agent does now.
 const TOOLS = data.tools ?? { list: [], words: {}, extra: {} };
-const ICONS = { browser: "🌐", webSearch: "🔎", webRead: "📄", calendarRead: "📅", calendarChange: "📅", memory: "🧠",
-                weather: "⛅", health: "❤️", home: "🏠", todo: "✅", terminal: "⌨️", compute: "🧮", mailSearch: "✉️",
-                mailRead: "✉️", mailDraft: "✉️", readFile: "📄", prepareFile: "📝", messageAgent: "💬", schedule: "⏰",
-                createPage: "🧩", route: "🗺️", remindersAdd: "⏰", remindersRead: "⏰", notebookSearch: "📒",
-                notebookRead: "📒", notebookNote: "📒" };
 const ANY_KEYS = ["query", "words", "page", "title", "name", "subject", "path", "file", "url", "urls", "target", "agent",
                   "to", "text", "message", "prompt", "goal", "question", "command", "place", "destination"];
 
@@ -137,29 +132,6 @@ function toolLabel(rawTool, rawArgs) {
   return { kind, detail, title: words.one ?? TOOLS.words.tool?.one ?? "", site: siteIn(args) };
 }
 
-// The finished rows of a turn, as the app folds them (ToolLabel.folds): three calls or more of one kind in a row make
-// one row, « Utilise le navigateur (3 étapes) », counting the pages or files for the kinds that count them.
-function foldRows(labels) {
-  const rows = [];
-  for (let start = 0; start < labels.length;) {
-    let end = start + 1;
-    while (end < labels.length && labels[end].kind === labels[start].kind) end++;
-    const run = labels.slice(start, end);
-    if (run.length < 3) rows.push(...run);
-    else {
-      const first = run[0], words = TOOLS.words[first.kind] ?? {};
-      const details = [...new Set(run.map(l => l.detail).filter(Boolean))];
-      const counts = TOOLS.list.find(k => k.id === first.kind)?.counts && details.length > 1;
-      const n = counts ? details.length : run.length;
-      const title = words.many && (counts || !TOOLS.list.find(k => k.id === first.kind)?.counts)
-        ? words.many.replace("{n}", n) : TOOLS.extra.toolrow_times.replace("{}", first.title).replace("{n}", run.length);
-      rows.push({ kind: first.kind, title, detail: details.at(-1) ?? null });
-    }
-    start = end;
-  }
-  return rows;
-}
-
 // The working line's words for the call running now (null: the agent thinks).
 function workingPhrase(label, site) {
   const extra = TOOLS.extra;
@@ -216,24 +188,57 @@ async function play(id) {
   const alive = () => mine === run;
   await wait(500); if (!alive()) return;
   add(esc(scenario.prompt), "msg you");
-  let answer = "", madePage = null, work = null, site = null;
+  let answer = "", madePage = null, site = null;
   const fill = s => s.replaceAll("{answer}", answer);
   workingLine = null;
-  // « Je réfléchis… », « Je navigue sur pastamia.fr… »: one line, a light sweeping across it.
-  function working(phrase) {
+  // « Je réfléchis… », « Je navigue sur pastamia.fr… »: one line, a light sweeping across it, the Bip alive beside
+  // it (WorkingLine in the apps). No call running (`label` null): the thinking phrases rotate every 2.5 s, from a
+  // random one, never the same twice in a row. Nothing of the work stays under the reply.
+  const THINKING = TOOLS.thinking?.length ? TOOLS.thinking : [workingPhrase(null)];
+  let thinkingAt = Math.floor(Math.random() * THINKING.length), rotation = null, busy = false, bipFrame = null;
+  const nextThinking = () => {
+    const pick = Math.floor(Math.random() * (THINKING.length - 1));
+    thinkingAt = THINKING.length < 2 ? 0 : pick >= thinkingAt ? pick + 1 : pick;
+  };
+  function bip(now) {
+    if (!alive() || !workingLine?.isConnected) { bipFrame = null; return; }
+    const t = now / 1000, wave = period => Math.sin(t * 2 * Math.PI / period);
+    const s = busy
+      ? { mood: "happy", gaze: { x: Math.max(-1, Math.min(1, 1.4 * wave(1.6))), y: 0.3 }, offset: { x: 0, y: -8 * Math.abs(wave(1.1)) }, rotation: 4 * wave(0.8) }
+      : { mood: "thinking", gaze: { x: 0.8 * wave(6), y: -0.7 - 0.3 * wave(4.2) }, offset: { x: 0, y: 0 }, rotation: 5 * wave(5) };
+    $(".av", workingLine).innerHTML = renderBip(c, { ...s, blush: 0, scale: { x: 1, y: 1 }, level: null }, t);
+    bipFrame = requestAnimationFrame(bip);
+  }
+  function working(label = null) {
     if (!alive()) return;
     if (!workingLine?.isConnected) {
-      workingLine = add(`<span class="av">${staticBip(category)}</span><span class="ph"></span>`, "working");
+      workingLine = add(`<span class="av">${staticBip(category, "thinking")}</span><span class="ph"></span>`, "working");
       workingLine.setAttribute("role", "status");
     }
-    $(".ph", workingLine).textContent = phrase;
+    busy = !!label;
+    if (!REDUCED && bipFrame == null) bipFrame = requestAnimationFrame(bip);
+    const ph = $(".ph", workingLine);
+    if (label) {
+      clearInterval(rotation); rotation = null;
+      ph.textContent = workingPhrase(label, site);
+    } else {
+      ph.textContent = THINKING[thinkingAt];
+      if (!rotation) rotation = setInterval(() => {
+        if (!alive() || !workingLine?.isConnected) { clearInterval(rotation); rotation = null; return; }
+        nextThinking();
+        $(".ph", workingLine).textContent = THINKING[thinkingAt];
+      }, 2500);
+    }
   }
-  function rest() { if (alive()) { workingLine?.remove(); workingLine = null; } }
+  function rest() {
+    if (!alive()) return;
+    clearInterval(rotation); rotation = null;
+    workingLine?.remove(); workingLine = null;
+  }
 
   async function say(text) {
-    working(workingPhrase(null));
+    working();
     await wait(1000); rest();
-    work = null;   // the next steps fold under the next reply
     if (!alive()) return;
     add(`${avatar(category)}<span class="txt">${md(text)}</span>`, "msg bot");
     await wait(1100);
@@ -243,30 +248,20 @@ async function play(id) {
     for (const step of list) {
       if (!alive()) return false;
       if (step.think) {
-        working(workingPhrase(null));
-        await wait(1100);
-        add(esc(fill(step.think)), "think");
-        await wait(1300);
+        // Its reasoning stays its own: the thinking phrases while it thinks.
+        working();
+        await wait(2400);
       } else if (step.tool || step.page) {
-        // In plain words as the app shows it: what it does now on the working line, then a row folded under
-        // « Détail du travail ».
+        // In plain words as the app shows it: what it does now on the working line.
         const label = toolLabel(step.tool ?? "create_page", fill(step.arguments ?? step.preview ?? ""));
         if (label.kind === "browser" || label.kind === "webRead") site = label.site ?? (label.kind === "browser" ? site : null);
-        working(workingPhrase(label, site));
+        working(label);
         await wait(Math.max(700, (step.seconds ?? 1) * 1000));
         if (!alive()) return false;
-        if (!work?.isConnected) {
-          work = add(`<summary>${esc(data.labels.work)}</summary><div class="work-rows"></div>`, "work", "details");
-          work.labels = [];
-        }
-        work.labels.push(label);
-        $(".work-rows", work).innerHTML = foldRows(work.labels).map(row =>
-          `<div class="tool done"><span class="ic">${ICONS[row.kind] ?? "⚙️"}</span><span><b>${esc(row.title)}</b>`
-          + `${row.detail ? `<span>${esc(row.detail)}</span>` : ""}</span><i class="st"></i></div>`).join("");
         if (step.page) madePage = step.page;
         await wait(250);
       } else if (step.ask) {
-        rest(); work = null;   // the steps after a question fold under it
+        rest();
         const card = add(`<p>${esc(step.ask.question)}</p><div class="opts">${step.ask.choices.map(o => `<span class="opt">${esc(o)}</span>`).join("")}</div>`, "card-q");
         await wait(1700); if (!alive()) return false;
         const choice = $$(".opt", card)[Math.min(1, step.ask.choices.length - 1)];
@@ -275,7 +270,7 @@ async function play(id) {
         await wait(900);
         if (step.then && !(await steps(step.then))) return false;
       } else if (step.approve) {
-        rest(); work = null;   // the steps after a question fold under it
+        rest();
         const card = add(`<p>${esc(fill(step.approve.description))}</p><code>${esc(fill(step.approve.command))}</code>`
           + `<div class="btns"><span>${esc(data.labels.once)}</span><span>${esc(data.labels.session)}</span><span>${esc(data.labels.deny)}</span></div>`, "card-a");
         await wait(1900); if (!alive()) return false;
