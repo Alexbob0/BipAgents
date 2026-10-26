@@ -623,10 +623,11 @@ impl RunHub {
         best.map(|(_, _, session)| session)
     }
 
-    /// Runs the hub follows that haven't ended (a planned move waits for them: place_move.rs).
-    pub fn running(&self) -> usize {
+    /// Runs the hub follows that haven't ended, but those in `skip` (background tasks' runs, paused apart): the
+    /// person's turns a planned move waits for (place_move.rs).
+    pub fn running(&self, skip: &[String]) -> usize {
         let inner = lock(&self.inner);
-        inner.subs.values().filter(|sub| !lock(&sub.state).finished).count()
+        inner.subs.iter().filter(|(key, sub)| !skip.contains(&key.1) && !lock(&sub.state).finished).count()
     }
 
     /// A run of the agent goes on in this conversation (the hub follows it).

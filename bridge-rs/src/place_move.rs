@@ -199,7 +199,11 @@ async fn status_of(state: &AppState) -> Dict {
             found.push(json!({"agent": agent.name, "id": id, "name": name, "enabled": enabled, "next_run_at": next}));
         }
     }
-    let turns = state.hub.running();
+    let task_runs: Vec<String> = crate::jobs::tasks(&config)
+        .into_iter()
+        .filter_map(|j| j.get("run_id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    let turns = state.hub.running(&task_runs);
     let mut out = Dict::new();
     out.insert("state".into(), data.get("state").cloned().unwrap_or(json!("idle")));
     out.insert("since".into(), data.get("since").cloned().unwrap_or(Value::Null));
