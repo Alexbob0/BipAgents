@@ -1,0 +1,72 @@
+{
+ "engine": "pocket-tts 4.0.1",
+ "states": "2026-10-26: each Bip's state computed for Pocket TTS 4.0.1 from its own <voice>_source.wav (a Dutch clip, see source) with the cloning model kyutai/pocket-tts (CC-BY-4.0), dutch weights, get_state_for_audio_prompt(truncate=True) then export_model_state; <voice>_sample.wav spoken with it (torch seed 42); Whisper large-v3-turbo forced to Dutch hears every source clip and sample right (wer below).",
+ "language": "dutch",
+ "sample_rate": 24000,
+ "source": {
+  "model": "Chatterbox Multilingual (ResembleAI/chatterbox, MIT, https://github.com/resemble-ai/chatterbox), the chatterbox-tts package from PyPI",
+  "text": "Goedemorgen! Ik heb even naar je dag gekeken: drie afspraken, en vanmiddag nog wat tijd voor een wandeling. Zal ik je een kwartier van tevoren herinneren?",
+  "settings": {"language_id": "nl", "audio_prompt": "voices/english/<voice>_source.wav", "cfg_weight": 0.0, "exaggeration": 0.5, "device": "mps"},
+  "note": "2026-10-26: Qwen3-TTS has no Dutch: Chatterbox spoke the sentence in each Bip's English timbre with accent transfer off (cfg_weight 0), option (c) of the Dutch listening bench, chosen by ear. The take's silences trimmed (0.1 s kept) and, at 10 s or more, cut in its last pause before 10 s (Pocket's dutch model, like german and spanish, reads short with a long reference). The clips carry Resemble AI's imperceptible Perth watermark; the Bips' speech is Pocket's.",
+  "check": "Whisper mlx-community/whisper-large-v3-turbo, language nl, temperature 0: word error rate against the sentence (or, for a cut take, its spoken part), punctuation and case ignored; 5 % at most, else another seed"
+ },
+ "sample_text": "Hoi! Ik heb even naar je dag gekeken: drie afspraken, en vanmiddag nog wat tijd voor een wandeling.",
+ "measurement_note": "first_sound_s and rtf of the test sentence with pocket-tts 4.0.1 in PyTorch (4 threads, Mac M4, not quantized), 2026-10-26",
+ "voices": {
+  "galet": {
+   "seed": 1,
+   "candidate": "galet_s1",
+   "source_cut": true,
+   "source_s": 9.7,
+   "source_wer": 0.0,
+   "sample_wer": 0.0,
+   "safetensors_bytes": 5949240,
+   "first_sound_s": 0.044,
+   "rtf": 7.38
+  },
+  "lumen": {
+   "seed": 2,
+   "candidate": "lumen_s2",
+   "source_cut": false,
+   "source_s": 9.32,
+   "source_wer": 0.038,
+   "sample_wer": 0.0,
+   "safetensors_bytes": 5801784,
+   "first_sound_s": 0.04,
+   "rtf": 8.33
+  },
+  "mousse": {
+   "seed": 1,
+   "candidate": "mousse_s1",
+   "source_cut": false,
+   "source_s": 9.23,
+   "source_wer": 0.0,
+   "sample_wer": 0.0,
+   "safetensors_bytes": 5703480,
+   "first_sound_s": 0.046,
+   "rtf": 7.64
+  },
+  "ours": {
+   "seed": 2,
+   "candidate": "ours_s2",
+   "source_cut": true,
+   "source_s": 8.25,
+   "source_wer": 0.0,
+   "sample_wer": 0.0,
+   "safetensors_bytes": 5064504,
+   "first_sound_s": 0.043,
+   "rtf": 7.78
+  },
+  "colibri": {
+   "seed": 1,
+   "candidate": "colibri_s1",
+   "source_cut": false,
+   "source_s": 9.42,
+   "source_wer": 0.0,
+   "sample_wer": 0.0,
+   "safetensors_bytes": 5850936,
+   "first_sound_s": 0.043,
+   "rtf": 7.72
+  }
+ }
+}

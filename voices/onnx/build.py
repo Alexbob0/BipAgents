@@ -41,11 +41,9 @@ sys.path.insert(0, str(HERE))
 
 import textprep  # noqa: E402
 
-LANGUAGES = ("french", "english", "german", "spanish")
-# Dutch (WIP, 2026-10-26): its text rules, golden file and tokenizer are in; its package is built with
-# `--languages dutch` once voices/dutch/<bip>.safetensors exist (the source clips are Alex's choice on the Dutch
-# listening bench), then it joins LANGUAGES. Its credit line depends on that choice (CREDIT_DUTCH).
-EXTRA_LANGUAGES = ("dutch",)
+# Dutch since 2026-10-26: its Bips' source clips aren't Qwen3-TTS's (no Dutch there) but Chatterbox's (CREDIT_DUTCH).
+LANGUAGES = ("french", "english", "german", "spanish", "dutch")
+EXTRA_LANGUAGES: Tuple[str, ...] = ()
 PACKAGE = 2           # 1: Pocket 3.3.0 (2026-10-20); 2: Pocket 4.0.1 (2026-10-25)
 THREADS = 2            # a busy Mac: torch and the checks on two threads
 FADE_IN_SAMPLES = 120  # pocket 4's linspace(0, 1, sample_rate // 200) on each chunk's first samples
@@ -54,8 +52,15 @@ CREDIT = ("Pocket TTS by Kyutai (https://github.com/kyutai-labs/pocket-tts), wei
           "(https://creativecommons.org/licenses/by/4.0/): converted to ONNX, the language model quantized to 8 bits. "
           "The Bips' voices: synthetic, made with Qwen3-TTS (Apache-2.0), then cloned with Pocket TTS "
           "(kyutai/pocket-tts, CC-BY-4.0).")
-# Where the Dutch Bips' source clips come from (maybe not Qwen3-TTS, which has no Dutch): set when chosen.
-CREDIT_DUTCH = None
+# Where the Dutch Bips' source clips come from: Qwen3-TTS has no Dutch, so Chatterbox Multilingual spoke a Dutch
+# sentence in each Bip's English timbre without its accent (cfg_weight 0), chosen on the Dutch listening bench
+# (2026-10-26). Its clips carry Resemble AI's Perth watermark (imperceptible); Pocket's speech is made from the state.
+CREDIT_DUTCH = ("Pocket TTS by Kyutai (https://github.com/kyutai-labs/pocket-tts), weights CC-BY-4.0 "
+                "(https://creativecommons.org/licenses/by/4.0/): converted to ONNX, the language model quantized to 8 bits. "
+                "The Bips' Dutch voices: synthetic, their source clips spoken by Chatterbox Multilingual by Resemble AI "
+                "(https://github.com/resemble-ai/chatterbox, MIT; the clips carry its imperceptible Perth watermark) in "
+                "the timbre of the Bips' English voices (Qwen3-TTS, Apache-2.0), then cloned with Pocket TTS "
+                "(kyutai/pocket-tts, CC-BY-4.0).")
 SAMPLES = {
     "dutch": "Hoi! Ik heb even naar je dag gekeken: drie afspraken, en vanmiddag nog wat tijd voor een wandeling.",
     "french": "Salut ! J'ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi.",

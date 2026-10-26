@@ -9,6 +9,7 @@ Voix de mascotte synthétiques pour les agents BipAgents, rangées par langue. C
 |---|---|---|
 | [`french/`](french/) | Kyutai Pocket TTS 4.0.1, modèle `french` | galet, lumen, mousse, ours, colibri |
 | [`english/`](english/), [`german/`](german/), [`spanish/`](spanish/) | Kyutai Pocket TTS 4.0.1, modèles `english`, `german`, `spanish` | les mêmes cinq Bips, conçus dans chaque langue (15/10/2026) |
+| [`dutch/`](dutch/) | Kyutai Pocket TTS 4.0.1, modèle `dutch` | les mêmes cinq Bips, leur timbre anglais parlant néerlandais (26/10/2026, voir plus bas) |
 
 Une nouvelle langue = un nouveau dossier (`english/`, `spanish/`…) avec la même structure : `<voix>.safetensors`
 (état Pocket TTS), `<voix>_source.wav` (extrait de clonage), `<voix>_sample.wav` (phrase de test), `voices.json`, `README.md`.
@@ -44,3 +45,25 @@ lecture. Phrases de test :
 - de : « Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang heute Nachmittag. »
 
 Les aperçus des apps (`voice-<voix>-<code>.m4a`, dans le code des apps) sont convertis depuis `<voix>_sample.wav`.
+
+## Néerlandais (26/10/2026)
+
+Qwen3-TTS ne parle pas néerlandais : les extraits sources néerlandais des Bips viennent d'une autre voix synthétique,
+**Chatterbox Multilingual** de Resemble AI ([resemble-ai/chatterbox](https://github.com/resemble-ai/chatterbox), MIT),
+qui a dit une phrase néerlandaise (`language_id="nl"`) avec le timbre de l'extrait anglais de chaque Bip
+(`voices/english/<voix>_source.wav`), sans transfert d'accent (`cfg_weight=0`, `exaggeration=0.5`) : l'option (c)
+« Chatterbox ← anglais » du banc d'écoute néerlandais, choisie à l'oreille. Phrase : « Goedemorgen! Ik heb even naar je
+dag gekeken: drie afspraken, en vanmiddag nog wat tijd voor een wandeling. Zal ik je een kwartier van tevoren
+herinneren? ». Chaque prise a été débarrassée de ses silences et, à 10 s ou plus, coupée sur sa dernière pause avant
+10 s (le modèle néerlandais, comme l'allemand et l'espagnol, lit trop court avec une longue référence), puis vérifiée
+avec Whisper large-v3-turbo forcé en néerlandais (≤ 5 % de mots erronés ; graines dans `dutch/voices.json`). Le modèle
+`dutch` de Pocket 4.0.1 a ensuite cloné chaque extrait comme pour les autres langues (`kyutai/pocket-tts`,
+`truncate=True`, `export_model_state`). Phrase de test :
+
+- nl : « Hoi! Ik heb even naar je dag gekeken: drie afspraken, en vanmiddag nog wat tijd voor een wandeling. »
+
+Crédits : Chatterbox (MIT, Resemble AI) pour les extraits sources, Pocket TTS (CC-BY-4.0, Kyutai) pour les états,
+Qwen3-TTS (Apache-2.0) pour les timbres anglais. Chatterbox marque tout ce qu'il génère du filigrane **Perth** de
+Resemble AI (inaudible, pour reconnaître un audio fait par IA) : les fichiers `dutch/<voix>_source.wav` le portent ; la
+parole des Bips est générée par Pocket à partir des états, ce n'est pas une sortie de Chatterbox. Entièrement
+synthétiques : aucune personne réelle n'est imitée.

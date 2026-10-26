@@ -1,7 +1,7 @@
 """The packages of build/voices/ as the stores deliver them: never at a public address (decided 2026-10-20).
 
 - App Store: one Apple-hosted asset pack per language and one for the decoder they share (`voices-fr`, `voices-en`,
-  `voices-de`, `voices-es`, `voices-mimi`), downloaded on demand, their files under voices/<code>/ and voices/mimi/:
+  `voices-de`, `voices-es`, `voices-nl`, `voices-mimi`), downloaded on demand, their files under voices/<code>/ and voices/mimi/:
   build/voices-store/apple/<id>.aar, made by `xcrun ba-package`, uploaded to App Store Connect with Transporter.
 - Google Play: the same as on-demand asset packs of the App Bundle (`voices_fr`, …, `voices_mimi`): their files go to
   android/voicepacks/<pack>/src/main/assets/voices/<code>/ (gitignored, hard links), which `bundleRelease` packs.
