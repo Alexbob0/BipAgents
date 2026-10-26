@@ -1551,6 +1551,7 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     let state = AppState(Arc::new(services));
     let config = state.config();
     agents_admin::heal_thinking(&config);
+    agents_admin::heal_browser_proxy(&config);
     agents_admin::heal_souls(&config);
     crate::guide::refresh(&config); // the guide's list of agents and the setup blocks, as this bridge writes them
                                     // The skills about other agents as this bridge writes them (an update may have changed their words).

@@ -430,9 +430,13 @@ pub fn append_agent(config_path: &str, agent: &AgentConfig, kept: &[String]) -> 
     let mut written: std::collections::HashSet<String> = lines.iter().map(|l| line_key(l)).collect();
     written.extend(MANAGED_KEYS.iter().map(|k| k.to_string()));
     lines.extend(kept.iter().filter(|line| !written.contains(&line_key(line))).cloned());
-    use std::io::Write;
-    let mut fh = std::fs::OpenOptions::new().append(true).create(true).open(config_path)?;
-    fh.write_all((lines.join("\n") + "\n").as_bytes())
+    // the whole file written again (write_source), never appended in place: a reader never sees half a section
+    let before = match std::fs::read_to_string(config_path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
+    crate::config::write_source(config_path, &(before + &lines.join("\n") + "\n"))
 }
 
 /// What a new agent will be (nothing written yet): its profile id, the name the person gave, its personality and its
@@ -505,6 +509,7 @@ pub fn hub_agent(config: &Config, profile: &str, display_name: &str, key: &str) 
 /// An agent listed (in the bridge's config, so the app gets it) before its profile is made (`make_profile`).
 pub fn reserve_agent(shared: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<()> {
     if let Some(path) = shared.get().source_path.as_deref() {
+        let _writer = crate::config::source_lock();
         append_agent(path, agent, &[])?;
     }
     shared.put_agent(agent.clone());
@@ -766,6 +771,7 @@ pub async fn claim_profile(
     agent = with_browser(&config, agent, run).await;
     agent = mount_uploads(shared, &agent, run, false).await?;
     if let Some(path) = config.source_path.as_deref() {
+        let _writer = crate::config::source_lock();
         append_agent(path, &agent, &[])?;
     }
     shared.put_agent(agent.clone());
@@ -972,6 +978,7 @@ pub async fn mount_all_uploads(config: SharedConfig, run: Run) {
 /// configuration gets the agent too.
 pub fn save_agent(config: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<()> {
     if let Some(path) = config.get().source_path.as_deref() {
+        let _writer = crate::config::source_lock();
         let kept = agent_section_lines(path, &agent.name)?;
         remove_agent_section(path, &agent.name)?;
         append_agent(path, agent, &kept)?;
@@ -999,7 +1006,7 @@ pub fn remove_agent_section(config_path: &str, name: &str) -> std::io::Result<()
             kept.push_str(line);
         }
     }
-    std::fs::write(config_path, kept.trim_end_matches('\n').to_string() + "\n")
+    crate::config::write_source(config_path, &(kept.trim_end_matches('\n').to_string() + "\n"))
 }
 
 pub fn read_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<String> {
@@ -1167,6 +1174,32 @@ pub fn heal_souls(config: &Config) {
             if healed.is_ok() {
                 tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date");
             }
+        }
+    }
+}
+
+/// Profiles whose browser tools run a bridge program that's gone (an older version's folder, removed when old
+/// versions are cleaned): the one next to this bridge instead. Hermes starts the new command at its next connection
+/// (aibox 2026-10-26: Vie's and Kerfy Studio's spaces had lost their browser after an update).
+pub fn heal_browser_proxy(config: &Config) {
+    let current = crate::browsers::proxy_binary();
+    if !Path::new(&current).exists() {
+        return;
+    }
+    for agent in config.agents.values() {
+        let path = profile_config_path(config, agent);
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(mut data) = pyyaml::load(&text) else { continue };
+        let Some(server) = data.get_mut("mcp_servers").and_then(|m| m.get_mut("stealth")).filter(|s| s.is_map()) else {
+            continue;
+        };
+        let Some(command) = server.get("command").and_then(|c| c.as_str()).map(str::to_string) else { continue };
+        if !command.ends_with(crate::browsers::PROXY_BINARY) || command == current || Path::new(&command).exists() {
+            continue;
+        }
+        server.insert("command", Yaml::str(current.clone()));
+        if std::fs::write(&path, pyyaml::dump(&data)).is_ok() {
+            tracing::info!(target: "bipbridge::agents", agent = %agent.name, "browser tools' program brought to this bridge's");
         }
     }
 }
@@ -1424,6 +1457,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
         crate::browsers::remove(&config, &agent.name, run).await?;
     }
     if let Some(path) = config.source_path.as_deref() {
+        let _writer = crate::config::source_lock();
         remove_agent_section(path, &agent.name)?;
     }
     shared.remove_agent(&agent.name);

@@ -150,14 +150,14 @@ pub fn reopen(state: &AppState, name: &str) -> anyhow::Result<String> {
     let new = crate::py::token_urlsafe(32);
     if let Some(source) = config.source_path.as_deref().filter(|p| !p.is_empty()) {
         let line = format!("bridge_key = {}", crate::py::dumps(&json!(new)));
+        let _writer = crate::config::source_lock();
         let text = std::fs::read_to_string(source)?;
         let out = if BRIDGE_KEY_LINE.is_match(&text) {
             BRIDGE_KEY_LINE.replacen(&text, 1, regex::NoExpand(&line)).into_owned()
         } else {
             format!("{line}\n{text}")
         };
-        std::fs::write(source, out)?;
-        crate::py::chmod(source, 0o600)?;
+        crate::config::write_source(source, &out)?;
     }
     state.config.update(|c| c.bridge_key = new.clone());
     // the web consoles opened from the old devices too
@@ -458,6 +458,7 @@ pub fn write_model_health(config: &SharedConfig, base_url: &str, key: &str) -> a
         c.model_health_key = Some(key.to_string());
     });
     let Some(source) = config.get().source_path.clone().filter(|p| !p.is_empty()) else { return Ok(()) };
+    let _writer = crate::config::source_lock();
     let text = std::fs::read_to_string(&source)?;
     let mut inside = false;
     let mut kept: Vec<String> = Vec::new();
@@ -476,8 +477,7 @@ pub fn write_model_health(config: &SharedConfig, base_url: &str, key: &str) -> a
         crate::py::dumps(&json!(url)),
         crate::py::dumps(&json!(key))
     );
-    std::fs::write(&source, text)?;
-    crate::py::chmod(&source, 0o600)?;
+    crate::config::write_source(&source, &text)?;
     Ok(())
 }
 

@@ -42,6 +42,7 @@ pub fn relay_for(agent: Option<&AgentConfig>) -> Option<String> {
 /// `values` written in the `[header]` table of a TOML file (replaced where they are, else added at its end; the
 /// table is created when missing). None removes a key. Other lines stay as they are.
 pub fn set_section_keys(path: &str, header: &str, values: &[(String, Option<Value>)]) -> anyhow::Result<()> {
+    let _writer = crate::config::source_lock();
     // Python's read_text translates \r\n and \r (universal newlines) before splitlines
     let text = std::fs::read_to_string(path)?;
     let mut lines = pystr::splitlines(&text);
@@ -83,7 +84,7 @@ pub fn set_section_keys(path: &str, header: &str, values: &[(String, Option<Valu
     out.extend(kept);
     out.extend_from_slice(&lines[end..]);
     let joined = out.join("\n");
-    std::fs::write(path, format!("{}\n", joined.trim_end_matches('\n')))?;
+    crate::config::write_source(path, &format!("{}\n", joined.trim_end_matches('\n')))?;
     Ok(())
 }
 
@@ -314,6 +315,40 @@ mod tests {
         );
         set_section_keys(p, "voice_server", &[("live".into(), Some(json!(false)))]).unwrap();
         assert!(std::fs::read_to_string(&path).unwrap().ends_with("[z]\n\n[voice_server]\nlive = false\n"));
+    }
+
+    #[test]
+    fn many_agents_voices_written_at_once_keep_the_file_whole() {
+        // aibox 2026-10-26: the new app set every agent's voice at once and the bridge's config was cut in two
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bridge.toml");
+        let mut text = String::from("# keys inside: chmod 600.\nbridge_key = \"k\"\nport = 9210\n");
+        for i in 0..12 {
+            text.push_str(&format!("\n[agents.a{i}]\ndisplay_name = \"A{i}\"\nhermes_url = \"http://127.0.0.1:{}\"\n", 8600 + i));
+        }
+        std::fs::write(&path, text).unwrap();
+        let p = path.to_str().unwrap().to_string();
+        let threads: Vec<_> = (0..12)
+            .map(|i| {
+                let p = p.clone();
+                std::thread::spawn(move || {
+                    for round in 0..5 {
+                        let values = [("voice".to_string(), Some(json!(format!("pocket:v{i}-{round}"))))];
+                        set_section_keys(&p, &format!("agents.a{i}"), &values).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let written = std::fs::read_to_string(&path).unwrap();
+        let data: toml::Value = toml::from_str(&written).expect("still valid TOML");
+        assert_eq!(data["port"].as_integer(), Some(9210));
+        for i in 0..12 {
+            assert_eq!(data["agents"][format!("a{i}")]["voice"].as_str(), Some(format!("pocket:v{i}-4").as_str()));
+        }
+        assert!(written.starts_with("# keys inside: chmod 600."));
     }
 
     #[test]

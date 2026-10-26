@@ -802,6 +802,32 @@ impl SharedConfig {
     }
 }
 
+/// One writer at a time for the bridge's config file: two at once left it cut in two (aibox 2026-10-26: the app set
+/// every agent's voice at once; one rewrite read the file while another had just emptied it).
+pub fn source_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The config file written whole: a temporary file beside it (0600 from the start: it holds keys), renamed over it,
+/// so a reader never sees it half written.
+pub fn write_source(path: &str, contents: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let target = std::path::Path::new(path);
+    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("bridge.toml");
+    let temporary = target.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    {
+        let mut fh = options.open(&temporary)?;
+        fh.write_all(contents.as_bytes())?;
+        fh.sync_all()?;
+    }
+    std::fs::rename(&temporary, target)
+}
+
 // -- parsing ---------------------------------------------------------------------------------------
 
 fn expand(path: &str) -> String {
