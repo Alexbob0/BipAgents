@@ -86,27 +86,56 @@ def copy(source: Path, target: Path) -> None:
     shutil.copyfile(source, target)
 
 
-def node_bip(category: str, mood: str = "happy") -> str | None:
-    """A still Bip drawn by the site's own code (site/src/shared/bips.js), for the icon; None without Node."""
+PIXEL = REPO / "scripts" / "pixel" / "pixel.json"   # the Bips' one source (the apps' too: scripts/pixel/gen.py)
+
+
+def bips_engine(assets: Path) -> None:
+    """The Bips' engine for a site: site/src/shared/bips.js and, next to it, pixel-data.js (scripts/pixel/pixel.json as
+    a module), so the site draws the Bips from the same numbers as the apps."""
+    copy(SRC / "shared" / "bips.js", assets / "bips.js")
+    data = json.dumps(json.loads(PIXEL.read_text(encoding="utf-8")), ensure_ascii=False, separators=(",", ":"))
+    (assets / "pixel-data.js").write_text("// scripts/pixel/pixel.json (written by site/build.py)\nexport default "
+                                          + data + ";\n", encoding="utf-8")
+
+
+def node_draw(expression: str) -> str | None:
+    """SVG markup drawn by the site's own engine under Node (`m` is bips.js), for the icon and link previews; None
+    without Node."""
     node = shutil.which("node")
     if not node:
         return None
-    script = ("globalThis.matchMedia=()=>({matches:true});globalThis.addEventListener=()=>{};"
-              "globalThis.requestAnimationFrame=()=>{};globalThis.IntersectionObserver=class{observe(){}};"
-              f"const m=await import({json.dumps((SRC / 'shared' / 'bips.js').as_uri())});"
-              f"process.stdout.write(m.staticBip({json.dumps(category)},{json.dumps(mood)}));")
+    engine = DIST / ".engine"
+    if not (engine / "bips.js").exists() or (engine / "bips.js").read_bytes() != (SRC / "shared" / "bips.js").read_bytes():
+        bips_engine(engine)
+    script = (f"const m=await import({json.dumps((engine / 'bips.js').as_uri())});"
+              f"process.stdout.write({expression});")
     out = subprocess.run([node, "--input-type=module", "-e", script], capture_output=True, text=True, timeout=30)
     return out.stdout if out.returncode == 0 and out.stdout.startswith("<svg") else None
 
 
+def node_bip(category: str, mood: str = "idle", costume: str | None = None) -> str | None:
+    """A still Bip (the apps' pixel design) as SVG; None without Node."""
+    return node_draw(f"m.staticBip({json.dumps(category)},{json.dumps(mood)},{json.dumps(costume)},230)")
+
+
 def favicon(category: str = "daily") -> str:
-    drawn = node_bip(category) or ""
-    inner = re.sub(r"^<svg[^>]*>|</svg>$", "", drawn)
-    main = COLORS[category][0]
-    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">'
-            f'<rect width="120" height="120" rx="30" fill="#FBEFEA"/>'
-            f'<g transform="translate(6 2) scale(.9)">{inner}</g></svg>' if inner else
-            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" rx="30" fill="{main}"/></svg>')
+    """The app's icon « Lueur bleuet » (scripts/pixel/icon.py) as an SVG with rounded corners."""
+    drawn = node_draw("m.iconSVG(26)")
+    return drawn or ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">'
+                     '<rect width="120" height="120" rx="26" fill="#25272D"/></svg>')
+
+
+def app_icons(assets: Path) -> None:
+    """The app's icon as pictures, from the one scripts/pixel/icon.py writes for iOS: apple-touch-icon (180, opaque:
+    iOS rounds it), and 192/512 for browsers that want a PNG."""
+    big = REPO / "App" / "Assets.xcassets" / "AppIcon.appiconset" / "icon-1024.png"
+    if not big.exists():
+        return
+    for name, size in (("apple-touch-icon.png", 180), ("icon-192.png", 192), ("icon-512.png", 512)):
+        if shutil.which("sips"):
+            subprocess.run(["sips", "-Z", str(size), str(big), "--out", str(assets / name)], capture_output=True)
+        else:
+            copy(big, assets / name)
 
 
 def browser() -> str | None:
@@ -132,24 +161,29 @@ def render_png(page: Path, target: Path, width: int, height: int) -> bool:
 
 
 def og_image(t: Dict[str, Any], lang: str, target: Path) -> None:
-    """The link preview (1200×630): the headline and five Bips."""
+    """The link preview (1200×630): the app's icon and name, the headline, and a row of Bips in their colours."""
     font = (REPO / "android" / "app" / "src" / "main" / "res" / "font" / "nunito.ttf").as_uri()
-    bips = "".join(f'<div class="b b{i}">{node_bip(c) or ""}</div>' for i, c in enumerate(("daily", "wellness", "finance", "home", "learning")))
+    icon = node_draw("m.iconSVG(26)") or ""
+    row = (("daily", "idle"), ("wellness", "content"), ("work", "think"), ("home", "listen"), ("learning", "idle"))
+    bips = "".join(f'<div class="b b{i}">{node_bip(c, mood) or ""}</div>' for i, (c, mood) in enumerate(row))
     page = target.with_suffix(".html")
     page.write_text(f"""<!doctype html><meta charset="utf-8"><style>
 @font-face {{ font-family: N; src: url("{font}"); font-weight: 200 1000; }}
 html, body {{ margin: 0; width: 1200px; height: 630px; overflow: hidden; }}
 body {{ font-family: N, sans-serif; background: #F7F6F3; color: #1D1F24; position: relative; }}
-.copy {{ position: absolute; left: 72px; top: 70px; width: 640px; }}
-.brand {{ font-size: 34px; font-weight: 800; letter-spacing: -.02em; }} .brand b {{ font-weight: 1000; }}
-h1 {{ font-size: 62px; line-height: 1.02; letter-spacing: -.045em; font-weight: 1000; margin: 34px 0 0; }}
-p {{ font-size: 26px; font-weight: 800; color: #555B68; margin: 30px 0 0; }}
-.b {{ position: absolute; width: 230px; height: 230px; }} .b svg {{ width: 100%; height: 100%; overflow: visible; }}
-.b0 {{ left: 760px; top: 60px; }} .b1 {{ left: 940px; top: 150px; width: 200px; height: 200px; }} .b2 {{ left: 800px; top: 300px; }}
-.b3 {{ left: 990px; top: 380px; width: 180px; height: 180px; }} .b4 {{ left: 690px; top: 430px; width: 160px; height: 160px; }}
-</style><div class="copy"><div class="brand">Bip<b>Agents</b></div>
+.copy {{ position: absolute; left: 72px; top: 60px; width: 1060px; }}
+.brand {{ display: flex; align-items: center; gap: 18px; font-size: 40px; font-weight: 800; letter-spacing: -.02em; }}
+.brand b {{ font-weight: 1000; }}
+.icon {{ width: 84px; height: 84px; border-radius: 20px; box-shadow: 0 10px 24px rgba(20,22,28,.18); }}
+.icon svg {{ width: 100%; height: 100%; display: block; }}
+h1 {{ font-size: 62px; line-height: 1.04; letter-spacing: -.045em; font-weight: 1000; margin: 30px 0 0; max-width: 1000px; }}
+p {{ font-size: 26px; font-weight: 800; color: #555B68; margin: 20px 0 0; max-width: 620px; }}
+.row {{ position: absolute; right: 48px; bottom: 22px; display: flex; align-items: flex-end; gap: 14px; }}
+.b {{ width: 176px; height: 176px; }} .b svg {{ width: 100%; height: 100%; overflow: visible; display: block; }}
+.b1, .b3 {{ width: 150px; height: 150px; }}
+</style><div class="copy"><div class="brand"><span class="icon">{icon}</span><span>Bip<b>Agents</b></span></div>
 <h1>{html.escape(t["hero"]["line1"])} {html.escape(t["hero"]["line2"])}</h1>
-<p>{html.escape(t["hero"]["badge"])}</p></div>{bips}""", encoding="utf-8")
+<p>{html.escape(t["hero"]["badge"])}</p></div><div class="row">{bips}</div>""", encoding="utf-8")
     render_png(page, target, 1200, 630)
     page.unlink(missing_ok=True)
 
@@ -298,25 +332,19 @@ def bipagents(version: str) -> Path:
     assets.mkdir(parents=True)
     for name in ("site.css", "site.js"):
         copy(src / name, assets / name)
-    copy(SRC / "shared" / "bips.js", assets / "bips.js")
+    bips_engine(assets)
     copy(REPO / "android" / "app" / "src" / "main" / "res" / "font" / "nunito.ttf", assets / "nunito.ttf")
     (assets / "favicon.svg").write_text(favicon(), encoding="utf-8")
-    icon = REPO / "App" / "Assets.xcassets" / "AppIcon.appiconset"
-    big = max(icon.glob("*.png"), key=lambda p: p.stat().st_size, default=None)
-    if big and shutil.which("sips"):
-        subprocess.run(["sips", "-Z", "180", str(big), "--out", str(assets / "apple-touch-icon.png")], capture_output=True)
-    elif big:
-        copy(big, assets / "apple-touch-icon.png")
+    app_icons(assets)
     for shot in (src / "shots").glob("*"):
         copy(shot, assets / "shots" / shot.name)
     media = assets / "media"
     for lang in LANGS:
         copy(REPO / "App" / "Resources" / "Demo" / f"podcast-morning-{lang}.m4a", media / f"podcast-morning-{lang}.m4a")
-    play = (REPO / "docs" / "play" / "index.html").read_text(encoding="utf-8")
-    if 'rel="icon"' not in play:   # the playground, with the site's icon
-        play = play.replace("<head>", '<head>\n<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">', 1)
+    # /play/: the Bips to play with (src/bipagents/play.html, the same engine as every page).
     (out / "play").mkdir(parents=True, exist_ok=True)
-    (out / "play" / "index.html").write_text(play, encoding="utf-8")
+    (out / "play" / "index.html").write_text((src / "play.html").read_text(encoding="utf-8").replace("{{version}}", version),
+                                             encoding="utf-8")
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
     map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")

@@ -60,9 +60,8 @@ p { margin: 0; }
 :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 10px; }
 
 /* -- Bips ----------------------------------------------------------------------------------------------------- */
-.bip { position: relative; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
-.bip[role="button"] { cursor: grab; }
-.bip[role="button"]:active { cursor: grabbing; }
+.bip { position: relative; display: block; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.bip[role="button"] { cursor: pointer; }
 .bip-svg, .bip-svg svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .bip-bubble {
   position: absolute; left: 50%; top: -6px; transform: translate(-50%, -100%) scale(.6); opacity: 0; z-index: 3;
@@ -82,7 +81,10 @@ p { margin: 0; }
 }
 .top.scrolled { border-bottom-color: var(--line); }
 .brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-size: 21px; letter-spacing: -.02em; }
-.brand-bip { width: 34px; height: 34px; display: inline-block; }
+.brand-bip { width: 34px; height: 34px; display: inline-block; flex: none; }
+.brand-bip svg { width: 100%; height: 100%; display: block; }
+/* the app icon is dark: a hairline keeps its edge on the dark look */
+@media (prefers-color-scheme: dark) { .brand-bip, .vs-bip, .vs-bbip { border-radius: 23%; box-shadow: 0 0 0 1px rgba(255, 255, 255, .14); } }
 .brand-name { font-weight: 800; }
 .brand-name b { font-weight: 1000; }
 .top-links { display: none; gap: 26px; margin-left: 18px; }
@@ -289,6 +291,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .vs-bbip { background: none; box-shadow: none; }
 .vs-bbip svg { width: 100%; height: 100%; }
 .vs-bip { flex: none; display: inline-block; width: 34px; height: 34px; }
+.vs-bip svg { width: 100%; height: 100%; display: block; }
 
 /* the segmented control */
 .vs-pick { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; margin: 6px 0 18px; }

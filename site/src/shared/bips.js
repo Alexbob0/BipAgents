@@ -1,137 +1,350 @@
 // Not under the MIT license: the Bips' drawings and sounds are reserved (LICENSE-ASSETS).
-// The Bips for the websites: same geometry as App/Design/MascotView.swift (120×120 design space), same reactions as
-// InteractiveMascot.swift, same « Animalese » as BipBabble.swift (docs/play/index.html is the playground).
+// The Bips for the websites, drawn like the apps draw them (PixelEngine.swift / PixelEngine.kt, the design page
+// « Les Bips se déguisent »): every number comes from scripts/pixel/pixel.json, which the build writes next to this
+// file as pixel-data.js. Body cells of P, face pixels of U = P/3, the mouth in the eyes' colour, each open eye one
+// solid rounded square; states with key times (idle, think, talk, listen, work, happy, sleep, surprised, error), the
+// tap reactions, and the costumes with their seasons. Same « Animalese » as BipBabble.swift.
+import D from "./pixel-data.js";
 
-export const INK = "#16181D";
-// main, deep, tint: the apps' pale palette (the « sober » direction, 2026-10-24). deep is for drawing only: as text on
-// the site, use site.css's --<tone>-deep, which is dark enough to read.
+const { P, U, GAP, BOTTOM, CX, INK, LIGHT, COLORS, BODIES, EYE_STYLES, MOUTHS, GLYPHS, SPARK_FRAMES, STATES, REACTIONS,
+  REACTION_ORDER, MOUTH_MIN, MOUTH_MAX, COSTUMES, SEASONS } = D;
+export { INK, COSTUMES, SEASONS };
+
+const W = typeof window === "object" ? window : null;
+export const REDUCED = !!(W && W.matchMedia && W.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+// Each kind of agent's colour, as in the apps (AgentCategory.pixelColor); tint is the site's pale card ground.
+// main/deep come from pixel.json (deep is for drawing only: as text use site.css's --<tone>-deep).
 export const CATEGORIES = {
-  wellness: { main: "#A9D9B8", deep: "#5E9E73", tint: "#EEF6EA", body: "blob", acc: "sprout", pitch: 520, voice: "mousse" },
-  finance: { main: "#F2D48E", deep: "#B08A2E", tint: "#FAF3E3", body: "squircle", acc: "coin", pitch: 410, voice: "ours" },
-  daily: { main: "#F4B5A3", deep: "#C9775F", tint: "#FBEFEA", body: "egg", acc: "ears", pitch: 600, voice: "colibri" },
-  work: { main: "#B3C4F5", deep: "#6F86C9", tint: "#ECF0FD", body: "squircle", acc: "antenna", pitch: 450, voice: "galet" },
-  learning: { main: "#CABCF3", deep: "#8873C9", tint: "#F2EFFB", body: "cloud", acc: "tuft", pitch: 560, voice: "lumen" },
-  home: { main: "#9FD6DA", deep: "#4E9AA0", tint: "#E9F5F4", body: "egg", acc: "roof", pitch: 490, voice: "ours" },
-  creative: { main: "#F2B5CE", deep: "#C47396", tint: "#FBEDF2", body: "blob", acc: "star", pitch: 640, voice: "lumen" },
-  tech: { main: "#C3C8D3", deep: "#7F8696", tint: "#F1F2F5", body: "squircle", acc: "antenna", pitch: 470, voice: "galet" },
+  wellness: { color: "menthe", tint: "#EEF6EA", pitch: 520, voice: "mousse" },
+  finance: { color: "miel", tint: "#FAF3E3", pitch: 410, voice: "ours" },
+  daily: { color: "peche", tint: "#FBEFEA", pitch: 600, voice: "colibri" },
+  work: { color: "bleuet", tint: "#ECF0FD", pitch: 450, voice: "galet" },
+  learning: { color: "lavande", tint: "#F2EFFB", pitch: 560, voice: "lumen" },
+  home: { color: "lagon", tint: "#E9F5F4", pitch: 490, voice: "ours" },
+  creative: { color: "rose", tint: "#FBEDF2", pitch: 640, voice: "lumen" },
+  tech: { color: "perle", tint: "#F1F2F5", pitch: 470, voice: "galet" },
 };
-Object.entries(CATEGORIES).forEach(([id, c], i) => { c.id = id; c.index = i; });
+Object.entries(CATEGORIES).forEach(([id, c], i) => {
+  Object.assign(c, { id, index: i, main: COLORS[c.color].body, deep: COLORS[c.color].deep });
+});
 
-export const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+// The site's words for a Bip's mood → the apps' states.
+const MOODS = {
+  happy: "idle", idle: "idle", thinking: "think", think: "think", speaking: "talk", talk: "talk", listening: "listen",
+  listen: "listen", working: "work", work: "work", sleeping: "sleep", sleep: "sleep", content: "happy",
+  giggling: "happy", surprised: "surprised", error: "error",
+};
+const stateOf = mood => STATES[MOODS[mood] || mood] || STATES.idle;
 
-const ell = (cx, cy, rx, ry, a) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${Math.max(0, ry)}" ${a}/>`;
-const path = (d, a) => `<path d="${d}" ${a}/>`;
-const line = (w = 3) => `fill="none" stroke="${INK}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"`;
+// -- Engine (the page's evalState / drawPixel / viewBoxOf) ------------------------------------------------------------
 
-function body(c, fill) {
-  switch (c.body) {
-    case "blob": return path("M60 24c25 0 42 17 42 43 0 25-16 39-42 39S18 92 18 67c0-26 17-43 42-43z", `fill="${fill}"`);
-    case "squircle": return `<rect x="19" y="28" width="82" height="78" rx="32" fill="${fill}"/>`;
-    case "egg": return path("M60 20c21 0 38 28 38 52 0 21-16 34-38 34S22 93 22 72c0-24 17-52 38-52z", `fill="${fill}"`);
-    default: return path("M38 46c2-14 12-22 24-22 13 0 23 9 24 22 10 2 17 11 17 22 0 22-18 38-43 38S17 90 17 68c0-12 8-21 21-22z", `fill="${fill}"`);
+const FX = ["dots", "sound", "sparks", "scan", "heart", "z", "bang"];
+function stepAt(keys, t) { let v = keys[0][1]; for (const [k, val] of keys) { if (k <= t) v = val; else break; } return v; }
+function smoothAt(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [a, va] = keys[i], [b, vb] = keys[i + 1];
+    if (t < b) { let u = (t - a) / (b - a); u = u * u * (3 - 2 * u); return va + (vb - va) * u; }
   }
+  return keys[keys.length - 1][1];
+}
+function evalState(st, t) {
+  const tr = st.tracks, d = {}, m = { x: 0, y: 0, rot: 0, sx: 1, sy: 1 };
+  const eyes = tr.eyes ? stepAt(tr.eyes, t) : "open";
+  d.eyeL = tr.eyeL ? stepAt(tr.eyeL, t) : eyes; d.eyeR = tr.eyeR ? stepAt(tr.eyeR, t) : eyes;
+  d.gaze = tr.gaze ? stepAt(tr.gaze, t) : [0, 0];
+  const both = tr.brows ? stepAt(tr.brows, t) : [0, 0];
+  d.browL = tr.browL ? stepAt(tr.browL, t) : both; d.browR = tr.browR ? stepAt(tr.browR, t) : both;
+  d.mouth = tr.mouth ? stepAt(tr.mouth, t) : "smile";
+  d.glitch = tr.glitch ? stepAt(tr.glitch, t) : null;
+  d.fx = {};
+  for (const k of FX) if (tr[k] && tr[k].length) { const v = stepAt(tr[k], t); if (v !== null && v !== -1) d.fx[k] = v; }
+  for (const k of ["x", "y", "rot", "sx", "sy"]) if (tr[k]) m[k] = smoothAt(tr[k], t);
+  if (st.wave) for (const [k, [a, p]] of Object.entries(st.wave)) m[k] += a * Math.sin(2 * Math.PI * t / p);
+  return { d, m };
 }
 
-function accessory(c, front, t) {
-  const { main, deep } = c, gold = "#FFD84D";
-  const round = w => `fill="none" stroke="${deep}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"`;
-  if (!front) {
-    switch (c.acc) {
-      case "sprout":
-        return path("M60 27c0-7 1-13 3-17", round(4)) + path("M63 12c5-8 15-9 21-4-5 7-14 9-21 4z", `fill="${deep}"`)
-          + path("M61 15c-5-7-14-8-19-3 5 6 13 8 19 3z", `fill="${main}" stroke="${deep}" stroke-width="2"`);
-      case "coin": {
-        const p = Math.sin(t * 2 * Math.PI / 2.4);
-        return `<g transform="translate(60 ${12 - 1.5 - 1.5 * p}) rotate(${6 + 6 * p})">` + ell(0, 0, 9, 9, `fill="${gold}" stroke="${deep}" stroke-width="3"`)
-          + path("M0 -4.5v9", round(2.6)) + `</g>` + path("M42 10l-4-3M78 10l4-3", round(2.5));
+const fmt = n => Math.round(n * 100) / 100;
+const glyphCache = new Map();
+function glyph(rows) {
+  const key = rows.join("/");
+  if (glyphCache.has(key)) return glyphCache.get(key);
+  const h = rows.length, w = rows[0].length, pts = [];
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === "#") pts.push([x - (w - 1) / 2, y - (h - 1) / 2]); }));
+  const g = { pts, w, h };
+  glyphCache.set(key, g);
+  return g;
+}
+const EYE = EYE_STYLES.petit;
+function eyeGlyph(shape) {
+  const open = glyph(EYE.open), w = open.w;
+  switch (shape) {
+    case "wide": return { g: glyph(EYE.wide), hl: true, solid: true };
+    case "closed": return { g: glyph(["#".repeat(Math.max(w, 2))]), dy: (open.h - 1) / 2, flat: true };
+    case "dash": return { g: glyph(["#".repeat(Math.max(w, 3))]) };
+    case "happy": return { g: glyph(w >= 4 ? [".##.", "#..#"] : [".#.", "#.#"]), flat: true };
+    case "sleep": return { g: glyph(w >= 4 ? ["#..#", ".##."] : ["#.#", ".#."]), dy: 0.5, flat: true };
+    default: return { g: open, hl: true, solid: true };
+  }
+}
+function palette(key) {
+  const c = COLORS[key] || COLORS.peche;
+  if (key === "charbon") return { body: c.body, deep: "#555963", eye: LIGHT, brow: "#D9DCE3", mouth: LIGHT, hl: null, outline: "#3A3D45", scan: "#FFFFFF", scanA: 0.14, fx: "#8E94A1" };
+  if (key === "craie") return { body: "#FFFFFF", deep: c.deep, eye: INK, brow: INK, mouth: INK, hl: "#FFFFFF", outline: "#C9CDD5", scan: "#BFC3CC", scanA: 0.4, fx: "#8C929F" };
+  return { body: c.body, deep: c.deep, eye: INK, brow: INK, mouth: INK, hl: "#FFFFFF", outline: null, scan: "#FFFFFF", scanA: 0.55, fx: c.deep };
+}
+function sq(x, y, s, fill, extra, r = 0.3) {
+  return `<rect x="${fmt(x - s / 2)}" y="${fmt(y - s / 2)}" width="${fmt(s)}" height="${fmt(s)}" rx="${fmt(s * r)}" fill="${fill}"${extra || ""}/>`;
+}
+function drawGlyph(rows, x, y, pitch, fill, extra) {
+  return glyph(rows).pts.map(([gx, gy]) => sq(x + gx * pitch, y + gy * pitch, pitch * 0.9, fill, extra)).join("");
+}
+const costumeOf = look => (look.costume && COSTUMES[look.costume]) || null;
+function bodyOf(CO, bf) {
+  const ob = CO && CO.body;
+  let B = BODIES.standard;
+  if (ob && (ob.rows || ob.frames)) {
+    B = Object.assign({}, B, { rows: ob.frames ? ob.frames[bf || 0] : ob.rows });
+    for (const k of ["eyeRow", "eyeCols", "mouthRow"]) if (ob[k] !== undefined) B[k] = ob[k];
+  }
+  return B;
+}
+function paletteOf(look, CO) {
+  const ob = CO && CO.body;
+  const base = palette((ob && ob.color) || look.color);
+  return ob && ob.colors ? Object.assign({}, base, ob.colors) : base;
+}
+function geom(B) {
+  const cols = B.rows[0].length, rows = B.rows.length;
+  const left = CX - cols * P / 2, top = BOTTOM - rows * P, right = CX + cols * P / 2;
+  const cx = c => left + c * P + P / 2, cy = r => top + r * P + P / 2;
+  return { cols, rows, left, top, right, cx, cy, eyeY: cy(B.eyeRow), mouthY: cy(B.mouthRow) };
+}
+// The mouth never thinner than MOUTH_MIN screen px per face pixel when drawn small (as in the apps).
+const mouthScale = ppu => ppu ? Math.min(MOUTH_MAX, Math.max(1, MOUTH_MIN / (U * ppu))) : 1;
+function anchorPt(at, G, mouth, mk) {
+  switch (at) {
+    case "bottom": return [CX, BOTTOM];
+    case "eyes": return [CX, G.eyeY];
+    case "mouth": return [CX, G.mouthY];
+    case "mouthBottom": {
+      const M = MOUTHS[mouth] || MOUTHS.smile, mu = U * (mk || 1);
+      return [CX + (M.dx || 0) * mu, G.mouthY + (M.dy || 0) * mu + M.g.length * mu / 2];
+    }
+    default: return [CX, G.top];
+  }
+}
+function frameState(CO, clock) {
+  if (!CO) return null;
+  const f = i => Math.floor(clock / i.period) % i.frames.length;
+  return { b: CO.body && CO.body.frames ? f(CO.body) : 0, i: CO.items.map(it => it.frames ? f(it) : 0) };
+}
+function drawItem(it, idx, G, d, CO, fr, mk) {
+  let rows = it.frames ? it.frames[fr.i[idx]] : it.rows, rot = it.rot || 0, dx = it.dx, dy = it.dy;
+  const w = it.when && (it.when[d.eyeL] || it.when[d.eyeR]);
+  if (w) { rows = w.rows || rows; if (w.rot !== undefined) rot = w.rot; if (w.dx !== undefined) dx = w.dx; if (w.dy !== undefined) dy = w.dy; }
+  const pitch = U * (it.scale || 1), [ax, ay] = anchorPt(it.at, G, d.mouth, mk);
+  const ox = ax + dx * U, oy = ay + dy * U;
+  const pv = it.pivot || [rows[0].length / 2, rows.length];
+  const pvx = ox + pv[0] * pitch, pvy = oy + pv[1] * pitch;
+  let s = "";
+  rows.forEach((row, j) => [...row].forEach((ch, i) => {
+    if (ch === "." || ch === " ") return;
+    const p = CO.palette[ch];
+    if (!p) return;
+    const [fill, stroke] = Array.isArray(p) ? p : [p];
+    s += sq(ox + (i + 0.5) * pitch, oy + (j + 0.5) * pitch, pitch * 0.94, fill, stroke ? ` stroke="${stroke}" stroke-width="${fmt(pitch * 0.14)}"` : "");
+  }));
+  if (rot) s = `<g transform="rotate(${rot} ${fmt(pvx)} ${fmt(pvy)})">${s}</g>`;
+  return `<g data-it="${idx}" data-pv="${fmt(pvx)} ${fmt(pvy)}"${it.alpha ? ` opacity="${it.alpha}"` : ""}>${s}</g>`;
+}
+function itemDyn(it, clock, m) {
+  let x = 0, y = 0, rot = 0, op = 1;
+  if (it.wave) for (const [k, [a, p, ph]] of Object.entries(it.wave)) {
+    const v = a * Math.sin(2 * Math.PI * (clock / p + (ph || 0)));
+    if (k === "x") x += v; else if (k === "y") y += v; else rot += v;
+  }
+  if (it.lift) y += it.lift * m.y;
+  if (it.blink) { const [p, on, ph] = it.blink; op = ((clock / p + (ph || 0)) % 1) < on ? 1 : 0; }
+  return { x, y, rot, op };
+}
+
+/** The figure's squares for a look ({color, costume, noHL}) and a pose, as SVG markup (no <svg>). */
+function drawPixel(look, pose, fr, ppu) {
+  const CO = costumeOf(look), B = bodyOf(CO, fr ? fr.b : 0), C = paletteOf(look, CO), d = pose.d, fx = d.fx;
+  const G = geom(B), { left, top, right, cx, cy } = G;
+  const cs = P - GAP, face = U * 0.92, o = [], mk = mouthScale(ppu);
+  const stroke = C.outline ? ` stroke="${C.outline}" stroke-width="1.1"` : "";
+  const cell = (x, y, fill, extra) => `<rect x="${fmt(x - cs / 2)}" y="${fmt(y - cs / 2)}" width="${fmt(cs)}" height="${fmt(cs)}" rx="${fmt(cs * 0.28)}" fill="${fill}"${extra || ""}/>`;
+  const layer = name => { if (CO) CO.items.forEach((it, i) => { if ((it.layer || "top") === name) o.push(drawItem(it, i, G, d, CO, fr, mk)); }); };
+  const g = d.glitch;
+  layer("back");
+  const bodyCells = [];
+  B.rows.forEach((row, r) => [...row].forEach((ch, c) => {
+    if (ch === ".") return;
+    const p = ch === "#" ? C.body : (CO.palette[ch] || C.body), fill = Array.isArray(p) ? p[0] : p;
+    if (g && g.r === r && g.c === c) { bodyCells.push(cell(cx(c), cy(r), fill, ` fill-opacity="0.35"`)); return; }
+    bodyCells.push(cell(cx(c), cy(r), fill, stroke));
+    if (fx.scan === r) bodyCells.push(cell(cx(c), cy(r), C.scan, ` fill-opacity="${C.scanA}"`));
+  }));
+  const op = CO && CO.body && CO.body.opacity;
+  o.push(op ? `<g opacity="${op}">${bodyCells.join("")}</g>` : bodyCells.join(""));
+  if (g) o.push(cell(cx(g.c) + g.dx * U, cy(g.r) + g.dy * U, C.deep));
+  layer("body");
+  // Eyes: an open (or wide) eye is one solid rounded square; closed, happy, sleeping and busy eyes are pixel lines.
+  const eyeY = G.eyeY, openG = glyph(EYE.open);
+  [0, 1].forEach(side => {
+    const e = eyeGlyph(side ? d.eyeR : d.eyeL);
+    const ax = cx(B.eyeCols[side]) + d.gaze[0] * U, ay = eyeY + ((e.dy || 0) + (e.flat ? 0 : d.gaze[1])) * U;
+    if (e.solid) {
+      const side2 = e.g.w * U * 0.96;
+      o.push(sq(ax, ay, side2, C.eye, "", 0.22));
+      if (e.hl && C.hl && !look.noHL) {
+        const s = U * 0.44, inset = U * 0.18;
+        o.push(sq(ax + side2 / 2 - s / 2 - inset, ay - side2 / 2 + s / 2 + inset, s, C.hl));
       }
-      case "ears": return [35, 85].map(x => ell(x, 36, 12, 12, `fill="${main}"`) + ell(x, 36, 5.5, 5.5, `fill="#FFB3C1"`)).join("");
-      case "antenna": {
-        const glow = 0.775 + 0.225 * Math.cos(t * 2 * Math.PI / 1.6);
-        return path("M60 30V13", round(3.5)) + ell(60, 10, 6.5, 6.5, `fill="${main}" fill-opacity="${glow}" stroke="${deep}" stroke-width="3"`);
-      }
-      case "tuft": return path("M50 28c-2-8 2-14 8-17-1 6 2 9 4 12 1-6 5-10 11-11-3 5-3 10-2 16z", `fill="${deep}"`);
+    } else {
+      e.g.pts.forEach(([x, y]) => o.push(sq(ax + x * U, ay + y * U, face, C.eye)));
     }
-  } else {
-    if (c.acc === "star")
-      return path("M60 3l3.6 7.4 8.1 1.1-5.9 5.6 1.5 8-7.3-3.9-7.3 3.9 1.5-8-5.9-5.6 8.1-1.1z", `fill="${gold}" stroke="${deep}" stroke-width="2.2" stroke-linejoin="round"`);
-    if (c.acc === "roof") return path("M33 35L60 11l27 24", round(6));
+  });
+  layer("face");
+  // Brows show when they move.
+  const bl = d.browL, br = d.browR;
+  if (bl[0] || bl[1] || br[0] || br[1]) {
+    const base = -(openG.h - 1) / 2 - 2 + Math.min(0, d.gaze[1]);
+    [[0, bl], [1, br]].forEach(([side, [dy, tilt]]) => {
+      const ax = cx(B.eyeCols[side]);
+      [-1, 0, 1].forEach(i => {
+        const outer = side === 0 ? i === -1 : i === 1, inner = side === 0 ? i === 1 : i === -1;
+        const lift = tilt > 0 && outer ? tilt : tilt < 0 && inner ? -tilt : 0;
+        o.push(sq(ax + i * U, eyeY + (base + dy - lift) * U, face, C.brow));
+      });
+    });
   }
-  return "";
-}
-
-function blink(c, t) {
-  const phase = ((t + c.index * 1.37) % 4.6) / 4.6;
-  if (phase <= 0.93) return 1;
-  return Math.max(0.1, Math.abs(((phase - 0.93) / 0.07) * 2 - 1));
-}
-
-function eyes(c, t, gaze, rx, ry, y, xs, glint, blinks = true) {
-  const s = blinks ? blink(c, t) : 1;
-  const lx = 3 * Math.max(-1, Math.min(1, gaze.x)), ly = 2.5 * Math.max(-1, Math.min(1, gaze.y));
-  return xs.map(x0 => ell(x0 + lx, y + ly, rx, ry * s, `fill="${INK}"`)
-    + (s > 0.6 ? ell(x0 + lx + rx * 0.38, y + ly - ry * 0.4, glint, glint, `fill="#fff"`) : "")).join("");
-}
-
-function spiral(turns, radius) {
-  let d = "";
-  for (let i = 0; i <= 60; i++) {
-    const p = i / 60, a = p * turns * 2 * Math.PI, r = radius * p;
-    d += (i ? "L" : "M") + (r * Math.cos(a)).toFixed(2) + " " + (r * Math.sin(a)).toFixed(2);
+  const M = MOUTHS[d.mouth] || MOUTHS.smile;
+  o.push(drawGlyph(M.g, CX + (M.dx || 0) * U * mk, G.mouthY + (M.dy || 0) * U * mk, U * mk, C.mouth));
+  layer("top");
+  // Effects
+  if (fx.dots) { const spots = [[-0.5, -1.6, 0.85], [1.4, -3.6, 1.1], [3.7, -5.8, 1.4]]; for (let i = 0; i < fx.dots; i++) { const [x, y, s] = spots[i]; o.push(sq(right + x * U, top + y * U, s * U, C.fx)); } }
+  if (fx.sound) for (let j = 0; j < fx.sound; j++) { const n = 2 + j, x = left - (1.8 + 1.5 * j) * U; for (let k = 0; k < n; k++) o.push(sq(x, eyeY + (k - (n - 1) / 2) * U * 0.95, U * 0.8, C.fx)); }
+  if (fx.sparks !== undefined) for (const [x, y, big] of SPARK_FRAMES[fx.sparks % SPARK_FRAMES.length]) {
+    const px = CX + x * U, py = top + y * U, s = U * 0.8;
+    o.push(sq(px, py, s, "#E7B43C"));
+    if (big) for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) o.push(sq(px + ox * s, py + oy * s, s * 0.8, "#E7B43C", ` fill-opacity="0.75"`));
   }
-  return d;
+  if (fx.heart !== undefined && fx.heart >= 0) o.push(drawGlyph(GLYPHS.heart, right + 1.6 * U, top - (2 + fx.heart) * U, U * 0.62, "#EC6F8F", fx.heart >= 4 ? ` fill-opacity="0.5"` : ""));
+  if (fx.z !== undefined) for (let i = 0; i < 3; i++) { const k = (fx.z + i * 3) % 8; if (k >= 7) continue; o.push(drawGlyph(GLYPHS.z, right - 0.5 * U + k * 0.7 * U, top - (0.5 + k * 1.3) * U, U * (0.5 + k * 0.07), C.fx, k >= 5 ? ` fill-opacity="0.5"` : "")); }
+  if (fx.bang) o.push(drawGlyph(GLYPHS.bang, right + 1.4 * U, top - 2.6 * U, U * 0.95, C.fx));
+  return o.join("");
 }
 
-function face(c, mood, t, gaze, level) {
-  const L = line();
-  switch (mood) {
-    case "listening": return eyes(c, t, gaze, 7, 9, 63, [46, 74], 2.6) + ell(60, 81, 3.6, 4.2, `fill="${INK}"`);
-    case "thinking": {
-      const pulse = 0.25 + 0.2 * (1 + Math.sin(t * 2 * Math.PI / 1.4));
-      return eyes(c, t, gaze, 5, 6.5, 61, [49, 75], 1.8, false) + path("M54 80h12", L)
-        + [[93, 30, 3], [101, 21, 4.4], [110, 10, 6]].map(([x, y, r]) => ell(x, y, r, r, `fill="${c.deep}" fill-opacity="${pulse}"`)).join("");
-    }
-    case "speaking": {
-      const open = 0.3 + 0.7 * (level ?? (0.5 + 0.5 * Math.sin(t * 2 * Math.PI / 0.56)));
-      return eyes(c, t, gaze, 5.5, 7.5, 64, [47, 73], 2)
-        + `<g transform="translate(60 81) scale(1 ${open})">` + ell(0, -1, 8, 7, `fill="#2B1A1F"`) + ell(0, 3, 5, 2.6, `fill="#FF7A93"`) + `</g>`;
-    }
-    case "asking": return eyes(c, t, gaze, 5.5, 7.5, 64, [47, 73], 2) + path("M39 54l11-4M81 54l-11-4", L) + path("M53 81q3.5-3 7 0t7 0", L);
-    case "sleeping": return path("M41 65q6 5 12 0M67 65q6 5 12 0", L) + ell(60, 80, 3, 2.2, `fill="${INK}"`);
-    case "giggling": return path("M41 66q6-7 12 0M67 66q6-7 12 0", L) + path("M50 75q10 14 20 0z", `fill="#2B1A1F"`) + ell(60, 82, 4.5, 2.2, `fill="#FF7A93"`);
-    case "content": return path("M41 64q6 5 12 0M67 64q6 5 12 0", L) + path("M54 78q6 5 12 0", L);
-    case "surprised": return eyes(c, t, gaze, 7.5, 8.5, 62, [46, 74], 2.8, false) + path("M39 50l10-2M81 50l-10-2", L) + ell(60, 83, 4.5, 5.5, `fill="${INK}"`);
-    case "dizzy":
-      return [47, 73].map(x => `<g transform="translate(${x} 64) rotate(${(t * 6 * 180 / Math.PI) % 360})">` + path(spiral(2.2, 7), line(2)) + `</g>`).join("")
-        + path("M51 81q3-3 6 0t6 0t6 0", L);
-    case "grumpy": return eyes(c, t, gaze, 5.5, 4.5, 66, [47, 73], 1.5, false) + path("M40 55l12 5M80 55l-12 5", line(3.5)) + path("M53 83q7-6 14 0", L);
-    case "winking":
-      return path("M41 65q6-6 12 0", L) + ell(73, 64, 5.5, 7.5, `fill="${INK}"`) + ell(75, 61, 2, 2, `fill="#fff"`)
-        + path("M52 77q8 8 16 0", L) + ell(63, 82, 3, 2.4, `fill="#FF7A93"`);
-    default: return eyes(c, t, gaze, 5.5, 7.5, 64, [47, 73], 2) + path("M53 78q7 6 14 0", L);
+// The frame grows upward and sideways to hold a costume (at most 152), the ground stays at 120.
+const MAXBOX = 152, boxCache = new Map();
+function frameOf(costume) {
+  const CO = costume && COSTUMES[costume], k = costume || "";
+  if (boxCache.has(k)) return boxCache.get(k);
+  let size = 120;
+  if (CO) {
+    const G = geom(bodyOf(CO, 0));
+    let minX = G.left, maxX = G.right, minY = G.top;
+    CO.items.forEach(it => {
+      const rows = it.rows || it.frames[0], pitch = U * (it.scale || 1), [ax, ay] = anchorPt(it.at, G, "smile");
+      minX = Math.min(minX, ax + it.dx * U); maxX = Math.max(maxX, ax + it.dx * U + rows[0].length * pitch); minY = Math.min(minY, ay + it.dy * U);
+    });
+    const half = Math.max(60, 60 - minX + 3, maxX + 3 - 60);
+    size = Math.min(MAXBOX, Math.max(120, 120 - (minY - 4), 2 * half));
   }
+  boxCache.set(k, size);
+  return size;
+}
+const viewBox = size => `${fmt(60 - size / 2)} ${fmt(120 - size)} ${fmt(size)} ${fmt(size)}`;
+
+/** A pose: the state (or reaction) at its time, the costume's own motion, its frames. */
+function poseOf(st, t, costume, clock, still) {
+  const tt = still ? st.still : t;
+  const pose = evalState(st, tt);
+  const CO = costume && COSTUMES[costume];
+  if (CO && CO.wave) for (const [k, [a, p]] of Object.entries(CO.wave)) pose.m[k] += a * Math.sin(2 * Math.PI * clock / p);
+  return pose;
+}
+const figTransform = m => `translate(${fmt(m.x)} ${fmt(m.y)}) translate(60 ${BOTTOM}) rotate(${fmt(m.rot)}) scale(${fmt(m.sx)} ${fmt(m.sy)}) translate(-60 ${-BOTTOM})`;
+const SHADOW = `<ellipse cx="60" cy="${BOTTOM + 3}" rx="30" ry="4" fill="${INK}" fill-opacity="0.1"/>`;
+
+/** A whole Bip as SVG markup: { color | category, mood or state, t (seconds), costume, size (px, for the mouth) }. */
+export function pixelSVG({ category = "daily", color, mood = "idle", t = 0, costume = null, size = 48, still = REDUCED, shadow = true } = {}) {
+  const c = CATEGORIES[category] || CATEGORIES.daily, st = stateOf(mood);
+  const clock = still ? 0.6 : t, loop = ((t % st.dur) + st.dur) % st.dur;
+  const pose = poseOf(st, loop, costume, clock, still), CO = costume && COSTUMES[costume];
+  const box = frameOf(costume), look = { color: color || c.color, costume };
+  const fr = frameState(CO, clock);
+  let inner = drawPixel(look, pose, fr, size / box);
+  if (CO) inner = inner.replace(/<g data-it="(\d+)" data-pv="([\d.\- ]+)"/g, (all, i, pv) => {
+    const it = CO.items[+i];
+    if (!it.wave && !it.lift && !it.blink) return all;
+    const q = itemDyn(it, clock, pose.m);
+    return `${all} transform="translate(${fmt(q.x)} ${fmt(q.y)}) rotate(${fmt(q.rot)} ${pv})"${q.op ? "" : ` opacity="0"`}`;
+  });
+  return `<svg viewBox="${viewBox(box)}" aria-hidden="true" focusable="false">${shadow ? SHADOW : ""}`
+    + `<g transform="${figTransform(pose.m)}">${inner}</g></svg>`;
 }
 
+/** A still Bip (avatars, small marks): the state's still moment. */
+export function staticBip(category, mood = "happy", costume = null, size = 48) {
+  return pixelSVG({ category, mood, costume, size, still: true });
+}
+
+/** The old call (site.js' working line): a category's Bip in a mood at time t. */
 export function renderBip(c, s, t) {
-  const period = s.mood === "speaking" || s.mood === "listening" ? 0.9 : 3;
-  const bob = REDUCED ? 0 : -2 - 2 * Math.sin(t * 2 * Math.PI / period + c.index);
-  const cheek = 0.5 + 0.4 * Math.min(1, Math.max(0, s.blush));
-  return `<svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">`
-    + `<g transform="translate(${s.offset.x} ${s.offset.y}) translate(60 106) rotate(${s.rotation}) scale(${s.scale.x} ${s.scale.y}) translate(-60 -106)">`
-    + ell(60, 113, 32, 4.5, `fill="${INK}" fill-opacity="0.1"`)
-    + [45, 75].map(x => ell(x, 106, 10.5, 6.5, `fill="${c.deep}"`) + ell(x - 3, 104.5, 3.5, 1.8, `fill="#fff" fill-opacity="0.25"`)).join("")
-    + `<g transform="translate(0 ${bob})">`
-    + accessory(c, false, t) + body(c, c.main) + accessory(c, true, t)
-    + `<g transform="translate(43 44) rotate(-30)">` + ell(0, 0, 12, 7, `fill="#fff" fill-opacity="0.32"`) + `</g>`
-    + ell(37, 76, 6.5, 4, `fill="#FF6F91" fill-opacity="${cheek}"`) + ell(83, 76, 6.5, 4, `fill="#FF6F91" fill-opacity="${cheek}"`)
-    + face(c, s.mood, t, s.gaze, s.level)
-    + `</g></g></svg>`;
+  return pixelSVG({ category: c.id, mood: s.mood, t, still: REDUCED });
 }
 
-/** A still Bip, as SVG markup (avatars, favicons). */
-export function staticBip(category, mood = "happy") {
-  const c = CATEGORIES[category];
-  return renderBip(c, { mood, gaze: { x: 0, y: 0 }, blush: 0, offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 }, 0.5);
+// -- The app icon « Lueur bleuet, yeux pleins » (scripts/pixel/icon.py) -------------------------------------------------
+
+let iconId = 0;
+/** The app's icon as SVG: dark ground with a radial gradient, a soft glow, the « bleuet » Bip at rest with solid
+ *  eyes and no highlight. `round` = the corner radius in icon units (0: a full square, as the stores mask it). */
+export function iconSVG(round = 27) {
+  const id = "ic" + (iconId++);
+  const pose = evalState(STATES.idle, 0);
+  pose.d.eyeL = pose.d.eyeR = "open"; pose.d.gaze = [0, 0]; pose.d.mouth = "smile"; pose.d.fx = {};
+  const figure = drawPixel({ color: "bleuet", noHL: true }, pose, null, 0);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" aria-hidden="true" focusable="false">`
+    + `<defs><radialGradient id="${id}g" cx="60" cy="50.4" r="90" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34373F"/><stop offset="1" stop-color="#1B1C21"/></radialGradient>`
+    + `<radialGradient id="${id}l" cx="60" cy="62" r="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#B3C4F5" stop-opacity="0.16"/><stop offset="1" stop-color="#B3C4F5" stop-opacity="0"/></radialGradient>`
+    + `<clipPath id="${id}c"><rect width="120" height="120" rx="${round}"/></clipPath></defs>`
+    + `<g clip-path="url(#${id}c)"><rect width="120" height="120" fill="url(#${id}g)"/><circle cx="60" cy="62" r="46" fill="url(#${id}l)"/>`
+    + `<g transform="translate(60 62) scale(0.62) translate(-60 -67)">${figure}</g></g></svg>`;
+}
+
+// -- Seasons: the costume of the day (PixelCostumes.season in the apps) ------------------------------------------------
+
+function easter(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  return new Date(y, Math.floor((h + l - 7 * m + 114) / 31) - 1, (h + l - 7 * m + 114) % 31 + 1);
+}
+/** Today's event (Halloween, Christmas…), or null. `?costumes=<event id>` or `?costumes=none` overrides it. */
+export function seasonOn(date = new Date()) {
+  const forced = W && new URLSearchParams(W.location.search).get("costumes");
+  if (forced) return SEASONS.find(s => s.id === forced) || null;
+  const md = String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+  for (const s of SEASONS) {
+    if (s.birthday) continue;
+    if (s.easter) {
+      const e = easter(date.getFullYear()), day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const days = Math.round((day - e) / 86400000);
+      if (days >= s.easter[0] && days <= s.easter[1]) return s;
+    } else if (s.from <= s.to ? md >= s.from && md <= s.to : md >= s.from || md <= s.to) return s;
+  }
+  return null;
+}
+let dressed = 0;
+/** The next costume of today's event, so Bips side by side wear different ones; null outside events. */
+export function nextCostume() {
+  const s = seasonOn();
+  return s && s.costumes.length ? s.costumes[dressed++ % s.costumes.length] : null;
 }
 
 // -- Animalese ----------------------------------------------------------------------------------------------------
@@ -142,18 +355,16 @@ const VOWELS = { a: [800, 1250], e: [480, 1850], i: [300, 2300], o: [520, 900], 
 const PLOSIVES = new Set("bdgkpqt"), FRICATIVES = new Set("cfhjsvxz");
 
 export function audioContext() {
-  audio ??= new (window.AudioContext || window.webkitAudioContext)();
+  audio ??= new (W.AudioContext || W.webkitAudioContext)();
   if (audio.state === "suspended") audio.resume();
   return audio;
 }
 
 function voiceFor(c, mood) {
   const v = { base: c.pitch, syl: 0.055, spread: 2.5, drift: 0, bounce: 0, vol: 0.28 };
-  if (mood === "giggling") { v.base *= 1.25; v.syl = 0.045; v.bounce = 3; }
-  if (mood === "surprised") { v.base *= 1.15; v.drift = 5; }
-  if (mood === "content") { v.base *= 0.92; v.syl = 0.075; v.spread = 1.2; v.vol = 0.22; }
-  if (mood === "dizzy") { v.syl = 0.07; v.drift = -7; v.spread = 3.5; }
-  if (mood === "grumpy") { v.base *= 0.72; v.syl = 0.065; v.spread = 1; v.drift = -2; }
+  if (mood === "rire") { v.base *= 1.25; v.syl = 0.045; v.bounce = 3; }
+  if (mood === "surpris" || mood === "boing") { v.base *= 1.15; v.drift = 5; }
+  if (mood === "happy") { v.base *= 0.92; v.syl = 0.075; v.spread = 1.2; v.vol = 0.22; }
   return v;
 }
 
@@ -181,7 +392,7 @@ function syllable(f0, [f1, f2], dur, rate, onset, vol) {
 }
 
 export function babble(text, c, mood) {
-  if (!sound.on) return;
+  if (!sound.on || !W) return;
   const ctx = audioContext(), rate = ctx.sampleRate, v = voiceFor(c, mood);
   const letters = [...text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")];
   const sayable = letters.filter(ch => /\p{L}/u.test(ch));
@@ -212,46 +423,59 @@ export function babble(text, c, mood) {
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const living = new Set();
-let pointer = null;   // the page's pointer: every Bip looks at it
-
-addEventListener("pointermove", e => { pointer = { x: e.clientX, y: e.clientY }; }, { passive: true });
-addEventListener("pointerleave", () => { pointer = null; });
+let pointer = null, pointerAt = 0;   // the page's pointer: idle Bips glance at it
+if (W) {
+  W.addEventListener("pointermove", e => { pointer = { x: e.clientX, y: e.clientY }; pointerAt = performance.now(); }, { passive: true });
+  W.addEventListener("pointerleave", () => { pointer = null; });
+}
+// What a reaction says (the site's lines) and how it sounds.
+const SAYS = { boing: "boing", clin: "wink", rire: "giggle", regard: "hop", surpris: "surprised" };
 
 /**
- * `new Bip(element, "daily", { interactive, lines, mood })`: draws a Bip in `element` (any size: the SVG fills it),
- * looks at the pointer anywhere on the page, and, when interactive, reacts to taps, tickles and strokes as in the app.
- * `lines` gives what it says (`{ hop: [...], giggle: [...], ... }`); `bip.mood` and `bip.level` drive it from outside.
+ * `new Bip(element, "daily", { interactive, lines, mood, costume })`: draws a pixel Bip in `element` (any size: the
+ * SVG fills it), breathing and blinking in its state; when interactive, a tap plays one of the apps' reactions (three
+ * quick taps: a happy jump with a heart). `costume`: a costume id, or true for today's event (Halloween…).
+ * `bip.mood` changes its state from outside.
  */
 export class Bip {
   constructor(element, category, options = {}) {
-    this.c = CATEGORIES[category];
+    this.c = CATEGORIES[category] || CATEGORIES.daily;
     this.el = element;
     this.lines = options.lines ?? {};
-    this.base = options.mood ?? "happy";
-    this.s = { mood: this.base, gaze: { x: 0, y: 0 }, blush: 0, offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0, level: null };
+    this.base = options.mood ?? "idle";
+    this.costume = options.costume === true ? nextCostume() : (options.costume || null);
+    this.t = this.c.index * 1.37;
+    this.clock = this.t;
     this.reaction = null;
     this.visible = false;
+    this.key = "";
     this.el.classList.add("bip");
-    this.svg = document.createElement("div");
-    this.svg.className = "bip-svg";
-    this.el.append(this.svg);
+    this.box = document.createElement("div");
+    this.box.className = "bip-svg";
+    this.el.append(this.box);
+    const size = frameOf(this.costume);
+    this.box.innerHTML = `<svg viewBox="${viewBox(size)}" aria-hidden="true" focusable="false">${SHADOW}<g></g></svg>`;
+    this.fig = this.box.querySelector("g");
+    this.items = [];
     if (options.interactive) this.listen();
-    new IntersectionObserver(([entry]) => { this.visible = entry.isIntersecting; }, { rootMargin: "120px" }).observe(this.el);
+    if ("IntersectionObserver" in W) new IntersectionObserver(([entry]) => { this.visible = entry.isIntersecting; }, { rootMargin: "120px" }).observe(this.el);
+    else this.visible = true;
     living.add(this);
-    this.draw(0);
+    this.render();
   }
 
-  set mood(value) { this.base = value; }
+  set mood(value) { this.base = value; this.t = 0; }
+  /** Stops drawing it and empties its element. */
+  remove() { living.delete(this); this.el.innerHTML = ""; }
   get mood() { return this.base; }
-  set level(value) { this.s.level = value; }
 
-  show(mood, seconds) {
-    this.reaction = mood;
-    clearTimeout(this.moodTimer);
-    this.moodTimer = setTimeout(() => { if (!this.sulking) this.reaction = null; }, seconds * 1000);
+  react(name) {
+    this.reaction = REACTIONS[name] ? name : pick(REACTION_ORDER);
+    this.rt = 0;
+    if (REDUCED) { clearTimeout(this.still); this.still = setTimeout(() => { this.reaction = null; this.render(); }, 1400); this.render(); }
   }
 
-  say(text, mood) {
+  say(text) {
     if (!text) return;
     if (!this.bubble) {
       this.bubble = document.createElement("div");
@@ -262,140 +486,85 @@ export class Bip {
     this.bubble.classList.add("show");
     clearTimeout(this.bubbleTimer);
     this.bubbleTimer = setTimeout(() => this.bubble.classList.remove("show"), 1600);
-    babble(text, this.c, mood ?? this.reaction);
+    babble(text, this.c, this.reaction);
   }
-
-  animate(to, ms = 220) {
-    if (REDUCED) return;
-    this.anim = { from: structuredClone({ offset: this.s.offset, scale: this.s.scale, rotation: this.s.rotation }), to, start: performance.now(), ms };
-  }
-  rest(ms = 420) { this.animate({ offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 }, ms); }
-  jump(h = 26) { this.animate({ offset: { x: 0, y: -h }, scale: { x: 0.88, y: 1.14 }, rotation: 0 }, 200); setTimeout(() => this.rest(450), 210); }
-  pop(f = 1.1) { this.animate({ offset: this.s.offset, scale: { x: f, y: f }, rotation: 0 }, 180); setTimeout(() => this.rest(380), 190); }
-  spin() { this.animate({ offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 360 }, 700); setTimeout(() => { this.s.rotation = 0; }, 720); }
-  shake(times, angle) {
-    for (let i = 0; i < times; i++) setTimeout(() => this.animate({ offset: this.s.offset, scale: this.s.scale, rotation: i % 2 ? -angle : angle }, 70), i * 70);
-    setTimeout(() => this.rest(300), times * 70);
-  }
-  burst(kind, count) {
-    for (let i = 0; i < count; i++) {
-      const p = document.createElement("span");
-      p.className = "bip-particle";
-      p.textContent = kind === "heart" ? "♥" : "✦";
-      p.style.color = kind === "heart" ? "#FF5C8A" : this.c.deep;
-      p.style.left = `${50 + (Math.random() * 70 - 35)}%`;
-      p.style.animationDelay = `${Math.random() * 0.25}s`;
-      this.el.append(p);
-      setTimeout(() => p.remove(), 1900);
-    }
-  }
-  blushUp() { this.s.blush = 1; setTimeout(() => { this.s.blush = 0; }, 1600); }
   line(kind) { return pick(this.lines[kind] ?? [""]); }
 
   tapped() {
-    if (this.sulking) return;
-    pick([
-      () => { this.show("happy", 0.8); this.say(this.line("hop")); this.jump(); },
-      () => { this.show("winking", 1.1); this.say(this.line("wink")); this.pop(1.08); },
-      () => { this.show("giggling", 0.9); this.say(this.line("spin")); this.spin(); },
-      () => { this.show("surprised", 1.0); this.say(this.line("surprised")); this.pop(1.14); },
-      () => { this.show("content", 1.4); this.say(this.line("thanks")); this.burst("heart", 3); this.blushUp(); },
-    ])();
-  }
-  giggle() { this.show("giggling", 1.8); this.say(this.line("giggle")); this.burst("sparkle", 4); this.shake(8, 9); }
-  pet() { this.show("content", 2); this.say(this.line("pet")); this.burst("heart", 2); this.blushUp(); }
-  annoyed() {
-    this.sulking = true;
-    this.show("dizzy", 1.8); this.say(this.line("dizzy")); this.shake(5, 14);
-    setTimeout(() => { this.reaction = "grumpy"; this.say(this.line("grumpy")); }, 1800);
-    setTimeout(() => { this.sulking = false; this.reaction = null; }, 4200);
+    const now = performance.now();
+    this.taps = (this.taps || []).filter(t => now - t < 1200).concat(now);
+    if (this.taps.length >= 3) {
+      this.taps = [];
+      this.reaction = "happyJump"; this.rt = 0;
+      this.say(this.line("thanks"));
+      if (REDUCED) { clearTimeout(this.still); this.still = setTimeout(() => { this.reaction = null; this.render(); }, 1400); this.render(); }
+      return;
+    }
+    this.react();
+    this.say(this.line(SAYS[this.reaction]));
   }
 
   listen() {
-    let down = null, handled = false, squeezeTimer, squeezed = false, moved = 0, rub, taps = [], pokes = [];
-    const rubber = d => Math.sign(d) * Math.min(Math.abs(d), 40 * (1 - Math.exp(-Math.abs(d) / 40)));
     this.el.tabIndex = 0;
     this.el.setAttribute("role", "button");
-    this.el.addEventListener("pointerdown", e => {
-      this.el.setPointerCapture(e.pointerId);
-      audioContext();
-      const now = performance.now();
-      down = { x: e.clientX, y: e.clientY };
-      moved = 0; squeezed = false; handled = false;
-      rub = { last: null, dir: 0, reversals: [], travelled: 0, start: now };
-      taps = taps.filter(t => now - t < 1200).concat(now);
-      pokes = pokes.filter(t => now - t < 6000).concat(now);
-      if (this.sulking) handled = true;
-      else if (pokes.length >= 8) { pokes = []; taps = []; this.annoyed(); handled = true; }
-      else if (taps.length >= 3) { taps = []; this.giggle(); handled = true; }
-      squeezeTimer = setTimeout(() => {
-        if (moved < 15 && !this.sulking) { squeezed = true; this.animate({ offset: this.s.offset, scale: { x: 1.14, y: 0.82 }, rotation: 0 }, 250); }
-      }, 350);
-    });
-    this.el.addEventListener("pointermove", e => {
-      if (!down) return;
-      const dx = e.clientX - down.x, dy = e.clientY - down.y;
-      moved = Math.hypot(dx, dy);
-      if (moved > 15) {
-        clearTimeout(squeezeTimer);
-        if (squeezed) { squeezed = false; this.rest(300); }
-      }
-      this.anim = null;
-      this.s.offset = { x: rubber(dx) / 1.4, y: rubber(dy) / 1.4 };
-      const now = performance.now();
-      if (rub.last) {
-        const ddx = e.clientX - rub.last.x;
-        rub.travelled += Math.abs(ddx) + Math.abs(e.clientY - rub.last.y);
-        const dir = Math.sign(ddx);
-        if (dir && rub.dir && dir !== rub.dir && Math.abs(ddx) > 1) rub.reversals.push(now);
-        if (dir) rub.dir = dir;
-      }
-      rub.last = { x: e.clientX, y: e.clientY };
-      rub.reversals = rub.reversals.filter(t => now - t < 900);
-      if (!this.sulking && rub.reversals.length >= 4) { rub.reversals = []; this.giggle(); handled = true; }
-      else if (!this.sulking && !rub.petted && now - rub.start > 600 && rub.travelled > 45 && rub.reversals.length <= 1) { rub.petted = true; this.pet(); handled = true; }
-    });
-    const up = () => {
-      if (!down) return;
-      clearTimeout(squeezeTimer);
-      if (squeezed && !this.sulking) { this.show("surprised", 0.9); this.say(this.line("boing")); this.jump(40); handled = true; }
-      else if (moved > 6) { this.rest(450); handled = true; }
-      if (!handled) this.tapped();
-      down = null;
-    };
-    this.el.addEventListener("pointerup", up);
-    this.el.addEventListener("pointercancel", up);
+    this.el.addEventListener("pointerdown", () => { try { audioContext(); } catch { /* no sound */ } });
+    this.el.addEventListener("click", () => this.tapped());
     this.el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.tapped(); } });
   }
 
-  draw(t) {
-    const now = performance.now();
-    if (this.anim) {
-      const p = Math.min(1, (now - this.anim.start) / this.anim.ms), k = 1 - Math.pow(1 - p, 3) * (1 - 1.6 * p * (1 - p));
-      const lerp = (a, b) => a + (b - a) * k, { from, to } = this.anim;
-      this.s.offset = { x: lerp(from.offset.x, to.offset.x), y: lerp(from.offset.y, to.offset.y) };
-      this.s.scale = { x: lerp(from.scale.x, to.scale.x), y: lerp(from.scale.y, to.scale.y) };
-      this.s.rotation = lerp(from.rotation, to.rotation);
-      if (p >= 1) this.anim = null;
+  tick(dt) {
+    this.t += dt; this.clock += dt;
+    if (this.reaction) {
+      this.rt += dt;
+      const st = this.reaction === "happyJump" ? STATES.happy : REACTIONS[this.reaction];
+      if (this.rt >= st.dur) this.reaction = null;
     }
-    // Eyes on the pointer, wherever it is on the page.
-    if (pointer) {
+  }
+
+  render() {
+    const still = REDUCED;
+    let st, t;
+    if (this.reaction) { st = this.reaction === "happyJump" ? STATES.happy : REACTIONS[this.reaction]; t = still ? st.still : this.rt; }
+    else { st = stateOf(this.base); t = still ? st.still : ((this.t % st.dur) + st.dur) % st.dur; }
+    const clock = still ? 0.6 : this.clock;
+    const pose = poseOf(st, t, this.costume, clock, false);
+    // At rest, an eye on the pointer when it moves nearby (one face pixel at most, like the states' own glances).
+    if (!this.reaction && st === STATES.idle && pointer && performance.now() - pointerAt < 2500) {
       const r = this.el.getBoundingClientRect();
       const dx = pointer.x - (r.left + r.width / 2), dy = pointer.y - (r.top + r.height / 2);
-      const far = Math.max(1, Math.hypot(dx, dy));
-      const target = { x: dx / Math.max(far, 220), y: dy / Math.max(far, 220) };
-      this.s.gaze = { x: this.s.gaze.x + (target.x - this.s.gaze.x) * 0.2, y: this.s.gaze.y + (target.y - this.s.gaze.y) * 0.2 };
-    } else {
-      this.s.gaze = { x: this.s.gaze.x * 0.9, y: this.s.gaze.y * 0.9 };
+      if (Math.hypot(dx, dy) < 600) pose.d.gaze = [Math.abs(dx) > r.width * 0.6 ? Math.sign(dx) : 0, Math.abs(dy) > r.height * 0.6 ? Math.sign(dy) : 0];
     }
-    this.s.mood = this.reaction ?? this.base;
-    this.svg.innerHTML = renderBip(this.c, this.s, t);
+    const CO = this.costume && COSTUMES[this.costume], fr = frameState(CO, clock);
+    const size = this.el.clientWidth || 48, box = frameOf(this.costume);
+    const look = { color: this.c.color, costume: this.costume };
+    const key = JSON.stringify([pose.d, fr, Math.round(size)]);
+    if (key !== this.key) {
+      this.key = key;
+      this.fig.innerHTML = drawPixel(look, pose, fr, size / box);
+      this.items = [...this.fig.querySelectorAll("[data-it]")];
+    }
+    if (CO) for (const n of this.items) {
+      const it = CO.items[+n.dataset.it];
+      if (!it.wave && !it.lift && !it.blink) continue;
+      const q = itemDyn(it, clock, pose.m);
+      n.setAttribute("transform", `translate(${fmt(q.x)} ${fmt(q.y)}) rotate(${fmt(q.rot)} ${n.dataset.pv})`);
+      n.style.opacity = q.op ? "" : "0";
+    }
+    this.fig.setAttribute("transform", figTransform(pose.m));
   }
 }
 
-const t0 = performance.now();
-(function loop(now) {
-  const t = REDUCED ? 0 : (now - t0) / 1000;
-  for (const bip of living) if (bip.visible) bip.draw(t);
-  requestAnimationFrame(loop);
-})(t0);
+if (W) {
+  let last = 0;
+  const frame = now => {
+    const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
+    last = now;
+    for (const bip of living) {
+      if (!bip.visible) continue;
+      if (!REDUCED) bip.tick(dt); else if (bip.reaction) bip.tick(dt);
+      if (!REDUCED || bip.reaction || !bip.key) bip.render();
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
