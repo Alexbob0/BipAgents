@@ -42,6 +42,10 @@ sys.path.insert(0, str(HERE))
 import textprep  # noqa: E402
 
 LANGUAGES = ("french", "english", "german", "spanish")
+# Dutch (WIP, 2026-10-26): its text rules, golden file and tokenizer are in; its package is built with
+# `--languages dutch` once voices/dutch/<bip>.safetensors exist (the source clips are Alex's choice on the Dutch
+# listening bench), then it joins LANGUAGES. Its credit line depends on that choice (CREDIT_DUTCH).
+EXTRA_LANGUAGES = ("dutch",)
 PACKAGE = 2           # 1: Pocket 3.3.0 (2026-10-20); 2: Pocket 4.0.1 (2026-10-25)
 THREADS = 2            # a busy Mac: torch and the checks on two threads
 FADE_IN_SAMPLES = 120  # pocket 4's linspace(0, 1, sample_rate // 200) on each chunk's first samples
@@ -50,7 +54,10 @@ CREDIT = ("Pocket TTS by Kyutai (https://github.com/kyutai-labs/pocket-tts), wei
           "(https://creativecommons.org/licenses/by/4.0/): converted to ONNX, the language model quantized to 8 bits. "
           "The Bips' voices: synthetic, made with Qwen3-TTS (Apache-2.0), then cloned with Pocket TTS "
           "(kyutai/pocket-tts, CC-BY-4.0).")
+# Where the Dutch Bips' source clips come from (maybe not Qwen3-TTS, which has no Dutch): set when chosen.
+CREDIT_DUTCH = None
 SAMPLES = {
+    "dutch": "Hoi! Ik heb even naar je dag gekeken: drie afspraken, en vanmiddag nog wat tijd voor een wandeling.",
     "french": "Salut ! J'ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi.",
     "english": "Hi there! I looked at your day: three meetings, and a little time for a walk this afternoon.",
     "german": "Huhu! Ich habe mir deinen Tag angesehen: drei Termine und ein bisschen Zeit für einen Spaziergang.",
@@ -175,6 +182,13 @@ def kept_decoder(out: Path, weights: str):
 def build_language(language: str, out: Path, scratch: Path, mimi: Dict) -> Dict:
     import torch
     from pocket_tts import TTSModel
+    if language not in LANGUAGES + EXTRA_LANGUAGES:
+        raise SystemExit(f"{language}: not a language of the Bips")
+    missing = [bip for bip in BIPS if not (REPO / "voices" / language / f"{bip}.safetensors").is_file()]
+    if missing:
+        raise SystemExit(f"{language}: no voice state yet for {', '.join(missing)} (voices/{language}/)")
+    if language == "dutch" and not CREDIT_DUTCH:
+        raise SystemExit("dutch: set CREDIT_DUTCH (where the Bips' Dutch source clips come from) first")
     started = time.time()
     model = TTSModel.load_model(language=language)
     model._bipagents_language = language
@@ -231,7 +245,7 @@ def build_language(language: str, out: Path, scratch: Path, mimi: Dict) -> Dict:
         "language": language,
         "engine": engine(),
         "weights": config.weights_path_without_voice_cloning,
-        "credit": CREDIT,
+        "credit": CREDIT_DUTCH if language == "dutch" else CREDIT,
         "files": files,
         "tensors": tensors,
         "voices": voices,
@@ -268,6 +282,12 @@ def main(argv=None) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     index: Dict = {"format": 1, "package": PACKAGE, "engine": engine(), "languages": {}}
+    try:  # a build of some languages (« --languages dutch ») keeps the others of the same engine in the index
+        kept = json.loads((out / "index.json").read_text(encoding="utf-8"))
+        if kept.get("package") == PACKAGE and kept.get("engine") == index["engine"]:
+            index["languages"] = {k: v for k, v in kept.get("languages", {}).items() if (out / v["folder"]).is_dir()}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
     mimi: Dict = {}
     with tempfile.TemporaryDirectory(dir=out) as tmp:
         scratch = Path(tmp)

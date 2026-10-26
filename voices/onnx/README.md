@@ -45,6 +45,12 @@ samples right. Pocket 4.0.1 (2026-10-25): fr 120.6 MB, en 130.0, de 107.8, es 10
 within 3e-6 of pocket, 8 bits 3 to 9 % on one step; 5.5 to 7x real time on one thread; each Bip in each language
 against PyTorch 4.0.1: Whisper (medium) hears the same sample sentence from both. Still to measure on a real iPhone and a mid-range Android.
 
+Dutch (work in progress, 2026-10-26): Pocket 4.0.1 has a Dutch model (`dutch`, 6 layers, the same tokenizer revision
+as German and Spanish). Its text rules (`textprep.py`), golden file and tokenizer are in; `build.py --languages dutch`
+makes its package once `voices/dutch/<bip>.safetensors` exist and `CREDIT_DUTCH` says where their source clips come
+from (Qwen3-TTS has no Dutch: chosen on the Dutch listening bench), and the index keeps the other languages. The stores'
+packs (`voices-nl`, `voices_nl`) still need their app side.
+
 Credit, shipped in each package's manifest: Pocket TTS by Kyutai (https://github.com/kyutai-labs/pocket-tts), weights
 CC-BY-4.0, converted to ONNX and quantized to 8 bits. The Bips' voices are synthetic (Qwen3-TTS, Apache-2.0, then
 cloned with Pocket TTS, kyutai/pocket-tts, CC-BY-4.0). Kyutai's own voices under CC BY-NC are never shipped.

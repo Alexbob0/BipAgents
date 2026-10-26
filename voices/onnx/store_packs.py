@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "build" / "voices"
 APPLE = ROOT / "build" / "voices-store" / "apple"
 ANDROID = ROOT / "android" / "voicepacks"
-CODES = {"french": "fr", "english": "en", "german": "de", "spanish": "es"}
+CODES = {"french": "fr", "english": "en", "german": "de", "spanish": "es", "dutch": "nl"}
 
 
 def packages(source: Path = SOURCE) -> dict:

@@ -41,12 +41,19 @@ LONG = {
               "beim Zahnarzt und den dritten per Video um fünfzehn Uhr, dann sagt der Wetterbericht achtzehn Grad, "
               "etwas Regen am späten Nachmittag, leichten Westwind und Aufheiterungen am Abend voraus, also denk an "
               "den Schirm und lade dein Fahrrad, bevor du losfährst.",
+    "dutch": "Morgenochtend heb je drie afspraken: de eerste om half tien met het productteam, de tweede om elf uur "
+             "bij de tandarts en de derde via video om drie uur, daarna voorspelt het weerbericht achttien graden, wat "
+             "regen aan het eind van de middag, een zwakke westenwind en opklaringen in de avond, dus denk aan je "
+             "paraplu en laad je fiets op voordat je vertrekt.",
     "spanish": "Mañana por la mañana tienes tres citas: la primera a las nueve y media con el equipo de producto, la "
                "segunda a las once en el dentista y la tercera por vídeo a las tres, luego el pronóstico anuncia "
                "dieciocho grados, algo de lluvia a última hora de la tarde, un viento suave del oeste y claros por la "
                "noche, así que no olvides el paraguas y carga tu bici antes de salir.",
 }
 OWN = {
+    "dutch": ["Hoi! Ik heb even naar je dag gekeken: drie afspraken, en vanmiddag nog wat tijd voor een wandeling.",
+              "Vergeet niet: de dierenarts van Pixel is donderdag om 17 uur.", "Dat kost € 12,50; genoteerd.", "ja",
+              "Oké. Ik regel het. Tot straks! Tweeëntwintig cafeetjes, zo’n „mooi” idee."],
     "french": ["Salut ! J’ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet "
                "après-midi.", "Rappelle-toi : le vétérinaire de Pixel, c'est jeudi à 17 h.",
                "Ça coûte 12,50 € ; c’est noté.", "oui", "D'accord. Je m'en occupe. À tout à l'heure !"],
@@ -62,7 +69,11 @@ OWN = {
 }
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--languages", default=",".join(textprep.LANGUAGES), help="e.g. dutch (default: all)")
+    args = parser.parse_args(argv)
     from pocket_tts import TTSModel
     from pocket_tts.default_parameters import MAX_TOKEN_PER_CHUNK
     from pocket_tts.models.text_chunking import prepare_text_prompt, split_into_best_sentences
@@ -72,7 +83,7 @@ def main() -> int:
     (HERE / "golden").mkdir(exist_ok=True)
     (HERE / "tokenizers").mkdir(exist_ok=True)
     failures = 0
-    for language in textprep.LANGUAGES:
+    for language in args.languages.split(","):
         model = TTSModel.load_model(language=language)
         assert not model.pad_with_spaces_for_short_inputs and model.model_recommended_frames_after_eos is None
         assert (model.replace_characters or {}) == textprep.LANGUAGES[language]["replace"], language

@@ -5,7 +5,7 @@ Embedded in the bridge (`src/pronounce.rs`). `english.txt` and `common_*.txt` ar
 
 | File | Source | Licence |
 |---|---|---|
-| `fr.json`, `de.json`, `es.json`, `en.json` | written for BipAgents (the first French entries came from `numbers_fr`'s by-ear list) | MIT, as the bridge |
+| `fr.json`, `de.json`, `es.json`, `en.json`, `nl.json` | written for BipAgents (the first French entries came from `numbers_fr`'s by-ear list) | MIT, as the bridge |
 | `english.txt` | CMU Pronouncing Dictionary, <https://github.com/cmusphinx/cmudict> (`cmudict.dict`), words kept when among the 40 000 most frequent of FrequencyWords' English list | BSD-2-Clause style, (c) 1993-2015 Carnegie Mellon University; notice below |
 | `common_fr.txt`, `common_de.txt`, `common_es.txt` | FrequencyWords 2018 by Hermit Dave, <https://github.com/hermitdave/FrequencyWords> (`content/2018/<lang>/<lang>_50k.txt`, built from OpenSubtitles 2018), filtered | content CC BY-SA 4.0 (code MIT); these filtered lists are shared under CC BY-SA 4.0 too |
 
