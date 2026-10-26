@@ -45,7 +45,9 @@ the CUDA libraries (several GB). VPS tips: [`docs/self-hosting.md`](../docs/self
 
 **Without PyTorch** (`--onnx`): the phones' voice packages (8-bit, built by
 [`voices/onnx/build.py`](../voices/onnx/README.md): `index.json`, one folder per language, the shared decoder) behind
-the same API, with ONNX Runtime and numpy only (`requirements-onnx.txt`, no 5.5 GB PyTorch install):
+the same API, with ONNX Runtime and numpy only (`requirements-onnx.txt`, no 5.5 GB PyTorch install). The installer
+sets every install up this way since 2026-10-26 (the packages from the public repository's `voices-*` releases, or a
+place's guichet); `--pocket-models` keeps Pocket's own models, for voices of your own:
 
 ```bash
 .venv/bin/pip install -r requirements-onnx.txt

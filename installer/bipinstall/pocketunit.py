@@ -170,6 +170,31 @@ def find(home: Path) -> Optional[Unit]:
     return None
 
 
+LAUNCHD = "io.github.bipagents.pocket"
+
+
+def find_launchd(home: Path) -> Optional[Unit]:
+    """The Pocket service of a Mac install (the LaunchAgent stack.pocket_service writes), as a Unit (its `path` a
+    .plist), None without one."""
+    import plistlib
+    path = home / "Library" / "LaunchAgents" / f"{LAUNCHD}.plist"
+    try:
+        text = path.read_text(errors="ignore")
+        data = plistlib.loads(text.encode())
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return None
+    program = [str(arg) for arg in data.get("ProgramArguments") or []]
+    if not any(arg.endswith("pocket_server.py") for arg in program):
+        return None
+    workdir = data.get("WorkingDirectory")
+    return Unit(path=path, text=text, home=home, program=program, workdir=Path(workdir) if workdir else None)
+
+
+def find_any(home: Path) -> Optional[Unit]:
+    """This account's Pocket service, systemd's or a Mac's LaunchAgent."""
+    return find(home) or find_launchd(home)
+
+
 def engine_of(unit: Unit) -> Optional[str]:
     """The pocket-tts version the service's Python has (« 3.3.0 »), else the one its /health says."""
     return voices.python_pocket(unit.python) or voices.engine_at(unit.url)

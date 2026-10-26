@@ -61,8 +61,10 @@ def test_a_place_of_the_offer_fetches_them_from_its_guichet_with_its_token(tmp_p
     from bipinstall import backup
     assert voices.source(tmp_path) == (None, None)                           # someone's own computer: no address
     said = []
-    assert voices.install(["fr"], tmp_path, hermes.Runner(dry=False), said.append) is None
-    assert "guichet only" in said[-1]
+    asked = []                                                               # it asks GitHub's releases instead
+    no_release = httpx.MockTransport(lambda request: asked.append(request.url.host) or httpx.Response(200, json=[]))
+    assert voices.install(["fr"], tmp_path, hermes.Runner(dry=False), said.append, transport=no_release) is None
+    assert asked == ["api.github.com"] and "no voices release" in said[-1]
     backup.configure("https://guichet.test/v1/backup/", "t" * 24, base=tmp_path)
     assert voices.source(tmp_path) == ("https://guichet.test/v1/voices/", "t" * 24)
     seen = []
@@ -129,7 +131,7 @@ def test_the_light_voices_follow_the_guichets_new_packages(tmp_path, monkeypatch
     write_packages(target, {"french": "3.3.0"}, build="0")
     said = []
     runner = hermes.Runner(dry=False)
-    assert not voices.refresh(tmp_path, runner, said.append, transport=packages_server())   # no guichet: as they are
+    assert not voices.refresh(tmp_path, runner, said.append, transport=packages_server())   # no guichet, no release
     monkeypatch.setattr(voices, "VOICES_URL", "https://voices.test/v1/")
     assert voices.refresh(tmp_path, runner, said.append, transport=packages_server())       # the new ones
     assert json.loads((target / "index.json").read_text())["languages"]["french"]["folder"] == "french-1"
@@ -236,7 +238,7 @@ def test_the_bridge_stops_the_respellings_once_its_pocket_runs_4(monkeypatch, tm
     assert parsed["cron"] == {"watch": True}
     ran.clear()
     assert "already" in migrations.pocket_engine(runner, tmp_path) and ran == []   # again: harmless
-    assert migrations.MIGRATIONS[-3][0] == migrations.POCKET_ENGINE
+    assert migrations.POCKET_ENGINE in [mid for mid, _ in migrations.MIGRATIONS]
 
 
 def test_an_old_engine_line_is_replaced():

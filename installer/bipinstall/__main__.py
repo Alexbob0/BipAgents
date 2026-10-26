@@ -310,7 +310,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                              "first stays loaded, the others load when spoken and unload when silent)")
     parser.add_argument("--light-voices", action="store_true",
                         help="the Bips' voices as the phones have them (8-bit, no PyTorch), loaded only while they "
-                             "speak: for a small server (the default of --cloud)")
+                             "speak: the default since 2026-10-26, kept for older commands")
+    parser.add_argument("--pocket-models", action="store_true",
+                        help="the Bips' voices with Pocket's own models instead (PyTorch, about 5.5 GB): only to make "
+                             "or serve voices of your own")
     parser.add_argument("--voice-server", "--kyutai-url",
                         help="your own voice model: a TTS server with OpenAI's /v1/audio/speech, Kyutai's included "
                              "(default: look for one on this machine and the local network, then ask)")
@@ -658,10 +661,11 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         checkout.narrow(REPO, runner, voice_states=False)
     else:
         languages = args.languages or bip_languages()
-        # A place of the all-included offer (or --light-voices): the phones' 8-bit voices, loaded only while they
-        # speak, without PyTorch; Pocket's own models when they can't be had.
+        # The phones' 8-bit voices, loaded only while they speak, without PyTorch (a place's from its guichet, the
+        # others' from the public repository's latest voices release); Pocket's own models when they can't be had,
+        # or when asked (--pocket-models).
         packages = None
-        if getattr(args, "cloud", None) or getattr(args, "light_voices", False):
+        if not getattr(args, "pocket_models", False):
             packages = voices.install(languages.split(","), inst.home, runner, say)
         # Pocket's own models read the voice states of the checkout (a light clone leaves them out until then).
         checkout.narrow(REPO, runner, voice_states=packages is None)

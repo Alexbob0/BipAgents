@@ -95,8 +95,9 @@ def pocket_step(runner: hermes.Runner, touched, venv) -> bool:
     move together. Pocket's own models: the pocket-tts the repository pins (pocket/requirements.txt) put in its
     environment when it changed or an earlier update didn't finish it, with the voice states of the same commit
     (voices/). The light voices (--onnx: the phones' packages) keep their own requirements, PyTorch never comes back;
-    their packages (engine, model and Bips together) come again from the guichet when it has new ones. A failed
-    install leaves Pocket running as it was (its voices loaded) and is tried again at the next update.
+    their packages (engine, model and Bips together) come again from the guichet or the latest release when there are
+    new ones. A failed install leaves Pocket running as it was (its voices loaded) and is tried again at the next
+    update.
 
     A Pocket service set up by hand (its own pocket_server.py or Python) becomes the installer's bipagents-pocket
     (pocketunit.adopt; it starts there, no restart after). Pocket never restarts on voice states made for another
@@ -125,7 +126,7 @@ def pocket_step(runner: hermes.Runner, touched, venv) -> bool:
             say(ui.done(f"Pocket {voices.pinned_pocket(REPO)} installed for the Bips' voices."))
         restart = True
     if light and voices.refresh(Path.home(), runner, say):
-        say(ui.done("The Bips' new voices came from the guichet."))
+        say(ui.done("The Bips' new voices are here."))
         restart = True
     if unit is not None and not light and not runner.dry:
         engine = pocketunit.engine_of(unit)
