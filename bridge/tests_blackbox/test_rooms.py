@@ -266,6 +266,29 @@ def test_an_action_waits_for_the_approval_in_the_boite(bridges, fakes):
     assert [m["kind"] for m in replies(bridge, room["id"])] == ["agent"]
 
 
+def test_an_approval_says_in_plain_words_what_the_agent_wants(bridges, fakes):
+    """The bridge adds `bip_summary` (one sentence, with the agent's name) and `bip_detail` (the code) to what Hermes
+    asks, and keeps Hermes' `pattern_key`: in the room's view and in the Boîte alike (approval_text.rs)."""
+    bridge = start(bridges, fakes)
+    fakes.hermes.rounds = 10_000
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="execute_code", preview="import sqlite3"),
+                               sse("approval.request", run_id="r1", request_id="req_3", pattern_key="execute_code",
+                                   command="execute_code <<'PY'\nimport sqlite3\nprint(1)\nPY",
+                                   description="execute_code script execution.", choices=["once", "deny"]), gate]
+    room = room_of(bridge, "coach", "cuisine")
+    bridge.post(f"/v1/rooms/{room['id']}/messages", headers=AUTH, json={"text": "@coach ma journée de demain ?"})
+    assert wait_until(lambda: messages(bridge, room["id"])["answering"][0]["state"] == "approval", timeout=20)
+    approval = messages(bridge, room["id"])["answering"][0]["approval"]
+    assert approval["bip_summary"].startswith("Coach ") and approval["bip_detail"] == "import sqlite3\nprint(1)"
+    assert approval["pattern_key"] == "execute_code"
+    [pending] = bridge.get("/v1/approvals", headers=AUTH).json()["items"]
+    assert pending["bip_summary"] == approval["bip_summary"] and pending["pattern_key"] == "execute_code"
+    fakes.hermes.rounds = 1
+    gate.set()
+    assert wait_until(lambda: quiet(bridge, room["id"]), timeout=20)
+
+
 def test_an_approval_asked_in_a_room_opens_the_room(bridges, fakes):
     """The push and the Boîte's entry carry `room_id` (tapping opens the room); answering it works as always."""
     bridge = start(bridges, fakes)

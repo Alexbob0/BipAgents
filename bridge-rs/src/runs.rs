@@ -736,7 +736,7 @@ impl RunHub {
                 let (push, agent, run_id, session, room) =
                     (push.clone(), agent.clone(), run_id.clone(), st.session_id.clone(), st.room_id.clone());
                 let request_id = as_str(item.get("request_id"));
-                let command = as_str(item.get("command"));
+                let command = as_str(item.get("bip_summary")).or_else(|| as_str(item.get("command")));
                 let choices = match item.get("choices") {
                     Some(Value::Array(c)) => Some(c.clone()),
                     _ => None,
@@ -899,6 +899,7 @@ impl RunHub {
     fn dispatch(&self, sub: &Arc<RunSubscription>, event: SSEEvent) {
         let mut inner = lock(&self.inner);
         let mut st = lock(&sub.state);
+        let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
         append_to_backlog(&mut st.backlog, &event);
         st.send_all(Some(&event));
         let kind = event.r#type.as_str();
@@ -1225,10 +1226,43 @@ touche « Démarrer » pour reprendre."
         });
     }
 
+    /// An approval in plain words (approval_text.rs): `bip_summary` and `bip_detail` added to the event before anyone
+    /// sees it (the conversation's stream, the room, the Boîte, the push), in the agent's language, with its name and
+    /// the tool it started just before.
+    fn in_plain_words(&self, sub: &RunSubscription, st: &SubscriptionState, event: SSEEvent) -> SSEEvent {
+        if event.data.contains_key("bip_summary") {
+            return event;
+        }
+        let lang = match &self.config {
+            Some(shared) => {
+                let config = shared.get();
+                let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
+                crate::handback::language_of(&config, &agent)
+            }
+            None => "en".to_string(),
+        };
+        let last = st.backlog.iter().rev().find(|e| e.r#type == "tool.started").map(|e| {
+            let text = |key: &str| e.data.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+            let tool = text("tool");
+            crate::approval_text::LastTool { name: if tool.is_empty() { text("name") } else { tool }, preview: text("preview") }
+        });
+        let name = if sub.agent.display_name.trim().is_empty() { &sub.agent.name } else { &sub.agent.display_name };
+        let Some(described) = crate::approval_text::describe(name, &lang, &event.data, last.as_ref()) else { return event };
+        let mut data = event.data;
+        data.insert("bip_summary".into(), json!(described.summary));
+        if let Some(detail) = described.detail {
+            data.insert("bip_detail".into(), json!(detail));
+        }
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
     fn on_approval(&self, inner: &mut HubInner, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
         let data = &event.data;
         let request_id = as_str(data.get("request_id"));
         let command = as_str(data.get("command"));
+        // what the notification says: the plain sentence when there is one (previews on), else the command
+        let shown = as_str(data.get("bip_summary")).or_else(|| command.clone());
         let dedupe = match request_id.as_deref().filter(|r| !r.is_empty()) {
             Some(r) => r.to_string(),
             None => sha16(command.as_deref().filter(|c| !c.is_empty()).unwrap_or(&event.raw)),
@@ -1249,6 +1283,12 @@ touche « Démarrer » pour reprendre."
         if let Some(room) = &st.room_id {
             item.insert("room_id".into(), json!(room));
         }
+        // the apps' own reading needs Hermes' pattern key; the plain words (in_plain_words) go with it
+        for key in ["pattern_key", "bip_summary", "bip_detail"] {
+            if let Some(value) = data.get(key).filter(|v| v.is_string()) {
+                item.insert(key.into(), value.clone());
+            }
+        }
         inner.pending.insert((sub.agent.name.clone(), sub.run_id.clone(), dedupe.clone()), item);
         let followers = st.followers();
         let push = match self.push.clone() {
@@ -1268,7 +1308,7 @@ touche « Démarrer » pour reprendre."
                 &run_id,
                 request_id.as_deref(),
                 Some(&choices),
-                command.as_deref(),
+                shown.as_deref(),
                 session.as_deref(),
                 room.as_deref(),
             )

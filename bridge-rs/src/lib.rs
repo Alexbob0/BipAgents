@@ -36,6 +36,7 @@ pub mod store;
 
 // -- push-runs -------------------------------------------------------------------------------------
 pub mod apns;
+pub mod approval_text;
 pub mod approvals_log;
 pub mod cronwatch;
 pub mod fcm;

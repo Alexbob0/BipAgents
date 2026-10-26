@@ -174,8 +174,10 @@ def test_watch_pushes_approval_when_nobody_follows(bridge, fakes):
 
     pending = bridge.get("/v1/approvals", headers=AUTH).json()["items"]
     assert len(pending) == 1 and pending[0]["command"] == "rm -rf build/" and pending[0]["request_id"] == "req_1"
+    # and the bridge's plain words (approval_text.rs): « Wellness veut supprimer : rm -rf build/ »
     assert set(pending[0]) == {"agent", "run_id", "request_id", "command", "description", "choices", "created_at",
-                               "session_id"}
+                               "session_id", "bip_summary", "bip_detail"}
+    assert pending[0]["bip_summary"].startswith("Wellness ") and "rm -rf build/" in pending[0]["bip_summary"]
     assert pending[0]["created_at"].endswith("Z") and pending[0]["choices"] == ["once", "session", "deny"]
     assert bridge.get("/v1/approvals?agent=wellness", headers=AUTH).json()["items"] == pending
     assert bridge.get("/v1/approvals?agent=ghost", headers=AUTH).status_code == 404
