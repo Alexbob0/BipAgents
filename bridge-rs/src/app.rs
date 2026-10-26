@@ -1587,6 +1587,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::contacts::router())
         .merge(crate::archives::router())
         .merge(crate::archives::records_fill::router())
+        .merge(crate::whatsapp_import::router())
         .merge(crate::health::router())
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())

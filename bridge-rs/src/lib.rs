@@ -91,6 +91,7 @@ pub mod agent_email_smtp;
 pub mod agent_files;
 pub mod agent_tools;
 pub mod archives;
+pub mod whatsapp_import;
 pub mod assistant_import;
 pub mod favicons;
 pub mod guide;
