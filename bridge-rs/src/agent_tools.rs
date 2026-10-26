@@ -503,7 +503,12 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "tools in view not set");
         false
     });
-    Ok(changed || paying || accounts || diet)
+    // The providers EUrouter tries first (model_route.rs): at each start, the migration of existing agents too.
+    let routed = crate::model_route::apply(config, agent).unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "model provider routing not set");
+        false
+    });
+    Ok(changed || paying || accounts || diet || routed)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).

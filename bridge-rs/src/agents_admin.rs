@@ -1100,6 +1100,9 @@ pub fn set_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow
     let mut settings = data.get("agent").filter(|a| a.is_map()).cloned().unwrap_or_else(Yaml::map);
     settings.insert("reasoning_effort", Yaml::str(level));
     data.insert("agent", settings);
+    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order) {
+        data = routed; // the thinking entry is the one Hermes picks for the router's address: it carries the routing
+    }
     replace_yaml(&path, &data)?;
     Ok(level.to_string())
 }
@@ -1134,6 +1137,9 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
         if let Some(vision) = vision {
             model.insert("supports_vision", Yaml::Bool(vision));
         }
+    }
+    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order) {
+        data = routed;
     }
     replace_yaml(&path, &data)?;
     Ok(read_model(config, agent).unwrap_or_else(|| json!({})))

@@ -16,6 +16,8 @@ from typing import Dict, Iterable, List, Optional, Sequence
 
 import yaml  # PyYAML, installed with the installer
 
+from . import routing
+
 INSTALL_URL = "https://hermes-agent.nousresearch.com/install.sh"
 # The Hermes version BipAgents is tested with: its patches (hermes/patches/) apply cleanly there. Override with
 # BIPAGENTS_HERMES_COMMIT (empty = Hermes' own default, without guarantee for the patches).
@@ -165,6 +167,9 @@ def set_model(runner: Runner, profile: str, model: Model) -> None:
     _config(runner, profile, "model.supports_vision", "true" if model.vision else "false")
     if model.base_url and is_local(model.base_url):
         _config(runner, profile, "compression.threshold_tokens", str(LOCAL_COMPRESSION_TOKENS))
+    if not runner.dry and model.provider == "custom" and routing.pins(model.base_url or ""):
+        # the providers EUrouter tries first, so their prompt cache works (routing.py)
+        routing.write(profile_dir(profile) / "config.yaml", routing.DEFAULT_ORDER)
 
 
 # Hermes names its sandbox images without a registry. podman refuses a short name it would have to ask about (Fedora's

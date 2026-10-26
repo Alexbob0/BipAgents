@@ -87,6 +87,8 @@ pub mod spaces;
 pub mod ssh_keys;
 /// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
 pub mod tool_diet;
+/// The providers EUrouter tries first, for its prompt cache.
+pub mod model_route;
 
 // -- tools-knowledge -------------------------------------------------------------------------------
 pub mod agent_email;

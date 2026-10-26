@@ -477,6 +477,8 @@ def place_profile(folder: Path, hub: Dict[str, Any], hub_env: Dict[str, str]) ->
     extra = ((data.get("platforms") or {}).get("api_server") or {}).get("extra") if isinstance(data.get("platforms"), dict) else None
     if isinstance(extra, dict):
         extra.pop("model_routes", None)
+    from . import routing
+    routing.with_routing(data, routing.DEFAULT_ORDER)   # the providers EUrouter tries first (its cache)
     path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
     values: Dict[str, Optional[str]] = {key: hub_env[key] for key in MODEL_KEYS if hub_env.get(key)}
     if hub_env.get("HERMES_DOCKER_BINARY"):

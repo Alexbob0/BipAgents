@@ -664,6 +664,9 @@ pub struct Config {
     /// Optional check that the model answers (`GET <url>`, e.g. its /v1/models), for « model unreachable ».
     pub model_health_url: Option<String>,
     pub model_health_key: Option<String>,
+    /// `[model] provider_order`: the providers EUrouter tries first for every model call, so their prompt cache works
+    /// (model_route.rs; default entrim, melious; `[]`: EUrouter picks per call).
+    pub model_provider_order: Vec<String>,
     /// The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
     pub public_url: Option<String>,
     /// The bridge as the agents reach it, for messages between agents (peers.py). Default:
@@ -728,6 +731,7 @@ impl Config {
             push_service_url: None,
             model_health_url: None,
             model_health_key: None,
+            model_provider_order: crate::model_route::DEFAULT_ORDER.iter().map(|s| s.to_string()).collect(),
             public_url: None,
             peer_url: None,
             cloud: false,
@@ -1381,6 +1385,12 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         push_service_url,
         model_health_url: opt_s(model_t, "health_url"),
         model_health_key: secret(model_t, "health_key", "model", false)?,
+        model_provider_order: match get(model_t, "provider_order") {
+            Some(Value::Array(items)) => {
+                items.iter().map(|p| py::py_str(p).trim().to_lowercase()).filter(|p| !p.is_empty()).collect()
+            }
+            _ => crate::model_route::DEFAULT_ORDER.iter().map(|s| s.to_string()).collect(),
+        },
         public_url: opt_s(data, "public_url").map(|u| py::rstrip_slash(&u)),
         peer_url: opt_s(data, "peer_url").map(|u| py::rstrip_slash(&u)),
         cloud: b(data, "cloud", false),

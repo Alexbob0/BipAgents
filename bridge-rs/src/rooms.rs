@@ -692,9 +692,10 @@ impl Rooms {
             }
             calls.1 += 1;
         }
-        let body = json!({"model": model, "temperature": 0, "max_tokens": ROUTER_MAX_TOKENS,
-                          "messages": [{"role": "system", "content": ROUTER_INSTRUCTIONS},
-                                       {"role": "user", "content": router_prompt(text, candidates)}]});
+        let mut body = json!({"model": model, "temperature": 0, "max_tokens": ROUTER_MAX_TOKENS,
+                              "messages": [{"role": "system", "content": ROUTER_INSTRUCTIONS},
+                                           {"role": "user", "content": router_prompt(text, candidates)}]});
+        crate::model_route::add_to_body(&config.model_provider_order, &base, &mut body);
         let mut request = self.http.post(format!("{base}/chat/completions")).json(&body).timeout(Duration::from_secs(15));
         if !key.is_empty() {
             request = request.header("Authorization", format!("Bearer {key}"));

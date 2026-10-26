@@ -81,6 +81,12 @@ window_hours = 12        # on first start, only tasks from the last N hours are 
 # [maps]
 # google_key_file = "~/.config/bipagents/google-maps.key"   # mode 600 (or google_key = "…")
 
+# Model calls through EUrouter name the providers it tries first (others still answer when they are down), so the
+# provider's prompt cache works: about 5 times cheaper input. Written in each agent's Hermes config at start
+# (model_route.rs). [] lets EUrouter pick a provider per call.
+# [model]
+# provider_order = ["entrim", "melious"]
+
 [apns]
 # Leave team_id/key_id empty to disable push.
 team_id = ""                # Apple Developer Team ID (10 characters)
