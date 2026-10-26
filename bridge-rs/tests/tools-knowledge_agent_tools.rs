@@ -64,9 +64,13 @@ async fn each_agent_of_the_install_gets_the_tools_with_a_token_of_its_own() {
     std::fs::write(
         hub.join("profiles/vie/config.yaml"),
         format!(
-            "mcp_servers:\n  bipagents:\n    url: {}\n    headers:\n      Authorization: Bearer {token}\n    timeout: {}\n",
+            "mcp_servers:\n  bipagents:\n    url: {}\n    headers:\n      Authorization: Bearer {token}\n    timeout: {}\n\
+             \x20 bipagents_checkout:\n    url: {}\n    headers:\n      Authorization: Bearer {token}\n    timeout: {}\n",
             values["mcp_servers.bipagents.url"],
-            agent_tools::TOOL_TIMEOUT
+            agent_tools::TOOL_TIMEOUT,
+            // the checkout tool every agent gets (handover.rs), same token
+            bipbridge::handover::tools_url(&config),
+            bipbridge::handover::TOOL_TIMEOUT
         ),
     )
     .unwrap();

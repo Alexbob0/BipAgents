@@ -643,6 +643,9 @@ pub struct Config {
     /// `[connections]` (connections.rs): not in the serialized form either.
     #[serde(skip)]
     pub connections: crate::connections::Settings,
+    /// `[link]` (link_wallet.rs): Link Agent Wallet, off unless switched on and configured. Not serialized either.
+    #[serde(skip)]
+    pub link: crate::link_wallet::Settings,
     /// `[archive_records]` (archives/records_fill.rs): not in the serialized form either.
     #[serde(skip)]
     pub archive_records: ArchiveRecordsConfig,
@@ -720,6 +723,7 @@ impl Config {
             jobs: JobsConfig::default(),
             rooms: RoomsConfig::default(),
             connections: crate::connections::Settings::default(),
+            link: crate::link_wallet::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
             archives: Vec::new(),
@@ -1370,6 +1374,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         jobs,
         rooms,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
+        link: crate::link_wallet::Settings::from_table(table(data, "link")),
         archive_records,
         cards,
         archives: match data.get("archives") {

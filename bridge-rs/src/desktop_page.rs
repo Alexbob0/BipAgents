@@ -16,6 +16,10 @@
 //!   agent (`{"type": "follow", "on": true}`): where it acts comes as `{"type": "focus", …}` when it moves, read
 //!   without touching the page (desktop_read.rs, which also makes the « Lecture » view). A state « update »: the
 //!   person holds the browser and its relay, too old, lets the bridge through no more.
+//! - On the offer's places (handover.rs), while the person holds the browser: when the focused field is a card's
+//!   number, expiry or security code (assets/card_focus.js, a payment provider's frame included), the view gets
+//!   `{"type": "card_field", "on": true}` and shows « Ne tape pas ta carte ici : paie sur ton téléphone » instead of
+//!   the keyboard, and text typed there is dropped: no card number goes through Kerfy Studio's servers.
 //!
 //! Only for an agent's own browser container (browsers.rs): a desktop set up by hand, or Hermes' Bot Desktop, keeps
 //! the full desktop view (desktop.rs).
@@ -729,6 +733,10 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
         let mut world: Option<i64> = None;
         let mut changed = true; // frames came since the focus was last read
         let mut last_focus = Value::Null;
+        // The offer's places: a card field focused while the person holds the browser gets a warning instead of
+        // their typing (handover.rs: the person pays on their own phone, never in Kerfy's browser).
+        let guard = holding && crate::handover::on_offer();
+        let mut card_field = false;
         loop {
             tokio::select! {
                 message = cdp.receive() => {
@@ -777,6 +785,15 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                         if !holds(&state, &agent) {
                             continue;
                         }
+                        if guard && types_text(&value) && card_focused(&mut cdp).await {
+                            tracing::info!(agent = %agent, "page view: typing into a card field refused (offer)");
+                            card_field = true;
+                            if !send_json(&mut app_tx, json!({"type": "card_field", "on": true})).await {
+                                restore_or_close(cdp, mobile, port, &tab.id, token.as_deref()).await;
+                                break 'outer;
+                            }
+                            continue;
+                        }
                         if act(&mut cdp, &value, view).await.is_err() {
                             continue 'outer;
                         }
@@ -797,6 +814,16 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                     continue 'outer;
                 }
                 _ = tick.tick() => {
+                    if guard {
+                        let now = card_focused(&mut cdp).await;
+                        if now != card_field {
+                            card_field = now;
+                            if !send_json(&mut app_tx, json!({"type": "card_field", "on": now})).await {
+                                restore_or_close(cdp, mobile, port, &tab.id, token.as_deref()).await;
+                                break 'outer;
+                            }
+                        }
+                    }
                     if follow && !mobile && changed {
                         changed = false;
                         if let Ok(focus) = crate::desktop_read::focus(&mut cdp, &mut world).await {
@@ -863,6 +890,22 @@ async fn restore_or_close(cdp: Cdp, mobile: bool, port: u16, tab: &str, token: O
     } else {
         cdp.close().await;
     }
+}
+
+/// Whether the focused field of the tab is a payment card's (assets/card_focus.js: its kind, never its value).
+pub async fn card_focused(cdp: &mut Cdp) -> bool {
+    static SCRIPT: &str = include_str!("../assets/card_focus.js");
+    cdp.call("Runtime.evaluate", json!({"expression": SCRIPT, "returnByValue": true, "silent": true}))
+        .await
+        .ok()
+        .and_then(|r| r.pointer("/result/value").and_then(Value::as_bool))
+        .unwrap_or(false)
+}
+
+/// What the page view types that could be a card's numbers: text, typed or pasted (the key bar's keys, Enter, ⌫,
+/// arrows…, can't type digits).
+pub fn types_text(message: &Value) -> bool {
+    message.get("type").and_then(Value::as_str) == Some("text")
 }
 
 fn page_info(tab: &Tab) -> Value {

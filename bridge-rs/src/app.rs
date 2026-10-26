@@ -1576,6 +1576,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::vault::router())
         .merge(crate::card_pay::app_router())
         .merge(crate::vault_logins::app_router())
+        .merge(crate::handover::app_router())
+        .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())
         .merge(crate::place_move::router())
         .merge(import_admin)
@@ -1635,6 +1637,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::sandbox::router()) // the agents' file tools (shared folders), same tokens
         .merge(crate::card_pay::router()) // the agents' card payment tools, same tokens
         .merge(crate::vault_logins::router()) // the agents' vault tools (accounts with a vault password), same tokens
+        .merge(crate::handover::router()) // « l'agent prépare, tu paies »: the payment handed to the person
+        .merge(crate::link_wallet::router()) // Link Agent Wallet (US/CA), behind its flag
         .merge(crate::agent_tools::router()) // the agents' MCP tools (create_audio), each agent with its own token
         .merge(crate::connections::callback_router()) // a service's sign-in coming back (its single-use state)
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given

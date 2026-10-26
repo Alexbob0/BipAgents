@@ -319,6 +319,52 @@ pub fn with_archives(soul: &str, on: bool) -> String {
     format!("{}\n\n{ARCHIVES_START}\n{ARCHIVES_RULE}\n{ARCHIVES_END}\n", body.trim_end())
 }
 
+pub const PAYMENTS_START: &str = "<!-- bipagents:payments -->";
+pub const PAYMENTS_END: &str = "<!-- /bipagents:payments -->";
+
+/// Every agent (decided 2026-10-26, handover.rs): it prepares purchases, the person pays; no card number in chat.
+pub const PAYMENTS_RULE: &str = concat!(
+    "Shopping for your person: you prepare (search, compare, cart, delivery, address) up to the payment page, then ",
+    "hand the payment over with hand_over_payment; you never pay by yourself and never press the final pay button. ",
+    "Never ask for, accept or type card numbers, security codes or bank logins in chat; if they send one, tell them ",
+    "not to and don't use it."
+);
+
+/// The personality without the payments block (the person never sees it).
+pub fn split_payments(soul: &str) -> String {
+    let (Some(start), Some(end)) = (soul.find(PAYMENTS_START), soul.find(PAYMENTS_END)) else {
+        return soul.to_string();
+    };
+    if end < start {
+        return soul.to_string();
+    }
+    format!("{}{}", soul[..start].trim_end(), &soul[end + PAYMENTS_END.len()..])
+}
+
+/// The personality with the payments block (at its end when it had none or an older one).
+pub fn with_payments(soul: &str) -> String {
+    if soul.contains(&format!("{PAYMENTS_START}\n{PAYMENTS_RULE}\n{PAYMENTS_END}")) {
+        return soul.to_string(); // already there, wherever the other blocks put it
+    }
+    let body = split_payments(soul);
+    format!("{}\n\n{PAYMENTS_START}\n{PAYMENTS_RULE}\n{PAYMENTS_END}\n", body.trim_end())
+}
+
+/// The agent's SOUL.md gets the payments block (written only when it changes; agents set up by hand are left alone).
+pub fn sync_payments(config: &crate::config::Config, agent: &crate::config::AgentConfig) {
+    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+        return;
+    }
+    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
+    let Ok(soul) = std::fs::read_to_string(&path) else { return };
+    let changed = with_payments(&soul);
+    if changed != soul {
+        if let Err(err) = std::fs::write(&path, changed) {
+            tracing::warn!(agent = %agent.name, error = %err, "payments rule not written");
+        }
+    }
+}
+
 // --- token diet prototype (2026-10-24, not wired in) -------------------------------------------------------------
 //
 // The same commitments as the language block and the notebook rule, in about half the tokens (scripts/token-anatomy.py

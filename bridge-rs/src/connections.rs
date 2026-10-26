@@ -1013,7 +1013,9 @@ fn service_or_404(id: &str) -> ApiResult<&'static Service> {
 async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
     let stored = store_of(&config).read()?;
-    let items: Vec<Value> = catalog().iter().map(|svc| view(svc, stored.connections.get(&svc.id))).collect();
+    let mut items: Vec<Value> = catalog().iter().map(|svc| view(svc, stored.connections.get(&svc.id))).collect();
+    // Link Agent Wallet (link_wallet.rs), only where it is on; the apps show it in the United States and Canada.
+    items.extend(crate::link_wallet::listing_row(&config));
     Ok(web::ok(json!({"connections": items})))
 }
 
@@ -1023,6 +1025,9 @@ async fn start_route(
     headers: axum::http::HeaderMap,
     Json(body): Json<StartBody>,
 ) -> ApiResult<Response> {
+    if id == crate::link_wallet::SERVICE {
+        return Ok(web::ok(crate::link_wallet::start(&state.config(), &body.agents)?));
+    }
     let svc = service_or_404(&id)?;
     let host = headers.get(HOST).and_then(|h| h.to_str().ok()).map(str::to_string);
     let config = state.config();
@@ -1054,6 +1059,9 @@ async fn start_route(
 
 async fn callback_route(State(state): State<AppState>, Json(body): Json<CallbackBody>) -> ApiResult<Response> {
     let query = callback_query(&body.url);
+    if query.get("state").is_some_and(|s| crate::link_wallet::owns_state(s)) {
+        return Ok(web::ok(crate::link_wallet::finish(&state.config(), &query, &default_run()).await?));
+    }
     match finish(&state.config(), &query, &default_run()).await {
         Ok((connection, _)) => Ok(web::ok(connection)),
         Err((e, _)) => Err(e.into()),
@@ -1092,6 +1100,9 @@ async fn set_agents(
     UrlPath(id): UrlPath<String>,
     Json(body): Json<AgentsBody>,
 ) -> ApiResult<Response> {
+    if id == crate::link_wallet::SERVICE {
+        return Ok(web::ok(crate::link_wallet::set_agents(&state.config(), &body.agents, &default_run()).await?));
+    }
     let svc = service_or_404(&id)?;
     let config = state.config();
     let run = default_run();
@@ -1121,6 +1132,9 @@ async fn set_agents(
 }
 
 async fn disconnect(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
+    if id == crate::link_wallet::SERVICE {
+        return Ok(web::ok(crate::link_wallet::disconnect(&state.config(), &default_run()).await?));
+    }
     let svc = service_or_404(&id)?;
     let config = state.config();
     let run = default_run();
