@@ -114,6 +114,9 @@ def bridge_toml(inst: Install) -> str:
               f"home = {_q(str(inst.home / '.hermes'))}", f"hub_url = {_q(hub_local)}"]
     if hub_public:
         lines.append(f"public_hub_url = {_q(hub_public)}")
+    if (inst.home / ".hermes" / "shared").is_symlink():   # the server's shared Hermes (shared_hermes.py)
+        from .shared_hermes import bridge_lines
+        lines += bridge_lines(inst.home / ".hermes")
     if inst.isolated:
         lines.append("isolated = true")
     if inst.browser:

@@ -50,7 +50,10 @@ VOLUMES_STAGE = Path(".local") / "state" / "bipagents" / "volumes-import"
 # A HERMES_HOME (the hub's, each space's): Hermes' code and runtimes (installed again for the target's processor),
 # caches, logs and what a running gateway or sandbox leaves, at its root and in each profile.
 HERMES_SKIP_ROOT = {"hermes-agent", "tools", "models", "runtimes", "node", "cache", "logs", "checkpoints", "backups",
-                    "state-snapshots", "sandboxes", "bot-desktop"}
+                    "state-snapshots", "sandboxes", "bot-desktop",
+                    # Hermes' Python environments (its package manager makes them again) and the shared Hermes'
+                    # pointer (shared_hermes.py).
+                    "installs", "pm-runtime", "shared"}
 HERMES_SKIP_PROFILE = {"models", "runtimes", "node", "cache", "logs", "checkpoints", "sandboxes", "bot-desktop"}
 RUNTIME_FILES = {"gateway.pid", "gateway.lock", "gateway.sock", "gateway_state.json", hermes.UNFINISHED, "busy"}
 SIDECARS = ("-wal", "-shm", "-journal")

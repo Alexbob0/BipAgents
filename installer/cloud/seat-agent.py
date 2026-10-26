@@ -136,6 +136,54 @@ def reset(number, setup):
     subprocess.run(["bash", os.path.join(LIB, "add-seat.sh"), str(number), path])
 
 
+SHARED_SETTING = "/etc/bipagents/shared-hermes.json"
+SHARED_REPO = os.path.join(LIB, "repo")   # root's own BipAgents, never a place's (an agent could change those)
+PUBLIC_REPO = "https://github.com/Alexbob0/BipAgents.git"
+
+
+def shared_on():
+    """The server's places share one read-only Hermes (installer/bipinstall/shared_hermes.py): on unless root wrote
+    {"enabled": false} there; the first round writes the setting."""
+    try:
+        with open(SHARED_SETTING) as fh:
+            return json.load(fh).get("enabled") is not False
+    except OSError:
+        os.makedirs(os.path.dirname(SHARED_SETTING), exist_ok=True)
+        with open(SHARED_SETTING, "w") as fh:
+            json.dump({"enabled": True, "root": "/opt/bipagents/hermes"}, fh)
+        os.chmod(SHARED_SETTING, 0o644)
+        return True
+    except ValueError:
+        return False
+
+
+def prepare_shared(commit):
+    """The shared Hermes that BipAgents `commit` pins, built by root before a place moves to it (its own update
+    then points at it). Built from root's own checkout at that commit. A failure leaves the place on its current
+    Hermes: its update says the version isn't ready and it keeps the one it has."""
+    if not shared_on():
+        return
+    if not os.path.isdir(os.path.join(SHARED_REPO, ".git")):
+        subprocess.run(["git", "clone", "--quiet", PUBLIC_REPO, SHARED_REPO], check=True, timeout=600)
+    subprocess.run(["git", "-C", SHARED_REPO, "fetch", "--quiet", "origin"], check=True, timeout=600)
+    subprocess.run(["git", "-C", SHARED_REPO, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force",
+                    commit], check=True, timeout=120)
+    env = dict(os.environ, PYTHONPATH=os.path.join(SHARED_REPO, "installer"))
+    with open("/var/log/bipagents-shared-hermes.log", "a") as out:
+        done = subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "build"], env=env, stdout=out,
+                              stderr=out, timeout=3600, cwd=SHARED_REPO)
+    log("shared Hermes for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not built"))
+
+
+def shared_gc():
+    """The shared versions no place points at and no process runs any more, deleted."""
+    if not shared_on() or not os.path.isdir(os.path.join(SHARED_REPO, "installer")):
+        return
+    env = dict(os.environ, PYTHONPATH=os.path.join(SHARED_REPO, "installer"))
+    subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "gc"], env=env, capture_output=True,
+                   timeout=600, cwd=SHARED_REPO)
+
+
 def update(number, commit):
     """Place n brought to BipAgents `commit` by its own updater, as its account (what changed restarts)."""
     user = account(number)
@@ -143,11 +191,16 @@ def update(number, commit):
         uid = pwd.getpwnam(user).pw_uid
     except KeyError:
         return
+    try:
+        prepare_shared(commit)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log("shared Hermes for %s not built: %s" % (commit[:12], exc))
     log("place %d (%s): BipAgents %s" % (number, user, commit[:12]))
     with open("/var/log/bipagents-update%d.log" % number, "a") as out:
         subprocess.run(["sudo", "-iu", user, "env", "XDG_RUNTIME_DIR=/run/user/%d" % uid,
                         "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus" % uid, "BIPAGENTS_TO=" + commit,
                         "bash", "BipAgents/install.sh", "update", "--auto"], stdout=out, stderr=out, timeout=3600)
+    shared_gc()
 
 
 def reopen(number, pair, home=None):

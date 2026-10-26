@@ -357,7 +357,15 @@ def main(argv: List[str]) -> int:
     if not args.auto and platform.system() == "Linux" and (args.all or ask(
             "Update the other BipAgents installs of this machine too (your sudo password, asked once)?")):
         update_others(runner)
-    if touched("hermes/patches/") and config:
+    from . import shared_hermes
+    shared = config and own_hermes() and shared_hermes.root() is not None
+    if shared:
+        # One Hermes for the server's places (shared_hermes.py): this place moves to the version its BipAgents pins
+        # once root built it; its patches came with that build.
+        moved = shared_hermes.follow(runner)
+        if moved:
+            say(ui.done(moved))
+    elif touched("hermes/patches/") and config:
         # New Hermes fixes: on a Hermes that came with BipAgents, put on now (Hermes itself isn't updated); on the
         # person's own Hermes, theirs to choose.
         if own_hermes() and Path(hermes.hermes_bin()).exists() and not runner.dry:
