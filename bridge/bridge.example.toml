@@ -92,7 +92,7 @@ window_hours = 12        # on first start, only tasks from the last N hours are 
 team_id = ""                # Apple Developer Team ID (10 characters)
 key_id = ""                 # Key ID of the APNs .p8 key
 p8_path = "~/.config/hermes-ios/AuthKey_KEYID.p8"   # mode 600
-bundle_id = "io.github.bipagents"   # = the app's BIP_BUNDLE_ID (Config/Local.xcconfig) if you changed it
+bundle_id = "com.kerfystudio.bipagents"   # = the app's BIP_BUNDLE_ID (Config/Local.xcconfig) if you changed it
 environment = "sandbox"     # default for devices that don't specify one: sandbox (Xcode) | production (TestFlight/App Store)
 # base_url = ""             # tests only: another host instead of Apple's (both environments); sandbox_url: the sandbox's
 

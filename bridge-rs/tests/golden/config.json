@@ -27,7 +27,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -144,7 +144,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -263,7 +263,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -383,7 +383,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -522,7 +522,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -642,7 +642,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -780,7 +780,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -897,7 +897,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -1041,7 +1041,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -1167,7 +1167,7 @@
     "team_id": "T",
     "key_id": "K",
     "p8_path": "/keys/a.p8",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "sandbox",
     "base_url": "http://127.0.0.1:1",
     "sandbox_url": ""
@@ -1296,7 +1296,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -1420,7 +1420,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -1574,7 +1574,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -1850,7 +1850,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -1970,7 +1970,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -2106,7 +2106,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -2233,7 +2233,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -2367,7 +2367,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -2496,7 +2496,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""
@@ -2630,7 +2630,7 @@
     "team_id": "",
     "key_id": "",
     "p8_path": "",
-    "bundle_id": "io.github.bipagents",
+    "bundle_id": "com.kerfystudio.bipagents",
     "environment": "production",
     "base_url": "",
     "sandbox_url": ""

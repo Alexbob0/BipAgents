@@ -186,6 +186,27 @@ def provider_routing(runner: hermes.Runner, home: Path) -> str:
     return f"model calls through EUrouter go to {', '.join(order)} first, so their cache works ({count} config(s))"
 
 
+def app_identifier(runner: hermes.Runner, home: Path) -> str:
+    """The app's identifier became com.kerfystudio.bipagents (2026-10-26, Kerfy Studio publishes it): a bridge that
+    pushes to Apple itself (its [apns] section) now names that app, so the new app gets its notifications; the bridge
+    restarts. A config naming another app (an own build) stays as it is."""
+    config = _bridge_config(home)
+    if config is None:
+        return "no bridge config here: the app's identifier left as it is"
+    text = config.read_text(encoding="utf-8")
+    old = re.compile(r'^(bundle_id\s*=\s*)"io\.github\.bipagents"', re.M)
+    if not old.search(text):
+        return "the bridge's notifications already name the app"
+    runner.log.append(f"write {config}")
+    if not runner.dry:
+        config.write_text(old.sub(r'\1"com.kerfystudio.bipagents"', text), encoding="utf-8")
+    from .family import bridge_restart
+    restart = bridge_restart(home)
+    if restart:
+        runner.run(restart, check=False)
+    return "notifications now go to the app com.kerfystudio.bipagents (install it from TestFlight)"
+
+
 def rust_bridge(runner: hermes.Runner, home: Path) -> str:
     """The bridge in Rust only (2026-10-21): the Python bridge left the code with this update, so a service still
     running it is put on this version's binaries (rustbridge.py), restarted, and the agents' browser tools moved to
@@ -513,6 +534,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-26-light-disk", light_disk),
     ("2026-10-26-voices-everywhere", voices_everywhere),
     ("2026-10-26-provider-routing", provider_routing),
+    ("2026-10-26-app-identifier", app_identifier),
 ]
 
 

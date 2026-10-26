@@ -1078,3 +1078,22 @@ def test_the_cloud_file_is_checked(tmp_path):
     progress = cloud.Progress(tmp_path / "p.json")
     progress(2, 5, "Voices")
     assert json.loads((tmp_path / "p.json").read_text()) == {"step": 2, "total": 5, "label": "Voices", "done": False}
+
+
+def test_the_bridge_s_notifications_follow_the_new_app_identifier(tmp_path, monkeypatch):
+    """2026-10-26: the app became com.kerfystudio.bipagents; a bridge pushing to Apple itself names it from the
+    update on (and restarts); an own build's identifier stays."""
+    from bipinstall import family, migrations
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('[apns]\nteam_id = "T"\nbundle_id = "io.github.bipagents"\n')
+    monkeypatch.setattr(family, "bridge_restart", lambda home=None: ["systemctl", "--user", "restart", "bipagents-bridge"])
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append(list(args)) or ""
+    assert "com.kerfystudio.bipagents" in migrations.app_identifier(runner, tmp_path)
+    assert 'bundle_id = "com.kerfystudio.bipagents"' in config.read_text() and ran[-1][-1] == "bipagents-bridge"
+    assert "already" in migrations.app_identifier(runner, tmp_path)
+    config.write_text('[apns]\nbundle_id = "com.example.mine"\n')
+    assert "already" in migrations.app_identifier(runner, tmp_path) and "com.example.mine" in config.read_text()

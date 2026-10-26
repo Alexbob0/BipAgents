@@ -58,7 +58,7 @@ a dead device).
 
 ```bash
 cargo run --release -- keygen                      # a sealing key
-RELAY_SEAL_KEYS=… APNS_KEY_FILE=AuthKey.p8 APNS_KEY_ID=… APNS_TEAM_ID=… APNS_TOPIC=io.github.bipagents \
+RELAY_SEAL_KEYS=… APNS_KEY_FILE=AuthKey.p8 APNS_KEY_ID=… APNS_TEAM_ID=… APNS_TOPIC=com.kerfystudio.bipagents \
   cargo run --release
 ```
 
