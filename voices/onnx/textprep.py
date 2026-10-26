@@ -46,6 +46,7 @@ LANGUAGES: Dict[str, Dict] = {
     "english": {"replace": {"’": "'", "‘": "'"}, "semicolons": False},
     "german": {"replace": {**QUOTES, "–": ",", "—": ","}, "semicolons": True},
     "spanish": {"replace": {**QUOTES, "¡": "", "¿": "", "–": ","}, "semicolons": False},
+    "dutch": {"replace": {**QUOTES, "–": ","}, "semicolons": False},
 }
 
 
