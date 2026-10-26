@@ -100,11 +100,14 @@ impl Apns {
             .post(format!("{base}/3/device/{device}"))
             .header("authorization", format!("bearer {}", self.provider_token(renew)))
             // a Live Activity's updates go to the app's topic with Apple's suffix
-            .header("apns-topic", if push_type == "liveactivity" {
-                format!("{}.push-type.liveactivity", self.topic)
-            } else {
-                self.topic.clone()
-            })
+            .header(
+                "apns-topic",
+                if push_type == "liveactivity" {
+                    format!("{}.push-type.liveactivity", self.topic)
+                } else {
+                    self.topic.clone()
+                },
+            )
             .header("apns-push-type", push_type)
             .header("apns-priority", priority.to_string())
             .json(payload);
