@@ -758,7 +758,7 @@ def test_an_update_isolates_the_agents_sandboxes_on_linux_with_podman(tmp_path, 
     assert ran[0][0].endswith("/bipbridge") and ran[0][1:] == ["sandbox", "--config", str(config)]
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("agents' sandboxes isolated") and "\n  vie: isolated" in said
-    assert migrations.MIGRATIONS[-4][0] == "2026-10-22-isolated-sandboxes"
+    assert migrations.MIGRATIONS[-5][0] == "2026-10-22-isolated-sandboxes"
 
 
 def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypatch):
@@ -786,7 +786,7 @@ def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypat
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("shared folders in podman volumes, gateways restarted")
     assert "\n  wellness's shared folder: 3 file(s) copied" in said
-    assert migrations.MIGRATIONS[-3][0] == "2026-10-23-share-volumes"
+    assert migrations.MIGRATIONS[-4][0] == "2026-10-23-share-volumes"
 
 
 def test_an_update_lets_agents_run_their_code_in_their_isolated_sandbox(tmp_path, monkeypatch):
@@ -811,7 +811,7 @@ def test_an_update_lets_agents_run_their_code_in_their_isolated_sandbox(tmp_path
     assert ran[0][1:] == ["sandbox", "--config", str(config)]
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("agents run the code they write in their isolated sandbox without asking")
-    assert migrations.MIGRATIONS[-1][0] == "2026-10-26-code-without-asking"
+    assert migrations.MIGRATIONS[-2][0] == "2026-10-26-code-without-asking"
 
 
 def test_the_approvals_command_lists_what_the_agents_asked(tmp_path, monkeypatch):
@@ -998,7 +998,8 @@ def test_a_server_the_app_created_installs_without_a_question(monkeypatch, tmp_p
     assert "--onnx" in units[0][2] and "--keep none" in units[0][2]
     assert "[browser]\nenabled = true" in out and "Scan this code" not in out
     # Installed: the download caches and the images' leftover layers go.
-    assert "uv cache clean" in out and "npm cache clean --force" in out and "/usr/bin/podman image prune --force" in out
+    assert "uv cache clean" in out and ".npm/_cacache" in out and "/usr/bin/podman image prune --force" in out
+    assert ".hermes/cache/uv" in out
 
 
 def test_a_mini_server_has_no_browser_and_one_language(monkeypatch, tmp_path, capsys):

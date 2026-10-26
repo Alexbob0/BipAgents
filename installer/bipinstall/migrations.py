@@ -275,6 +275,156 @@ def pocket_engine(runner: hermes.Runner, home: Path) -> str:
     return f"the Bips speak with Pocket {engine}: names and English words go as written (bridge restarted)"
 
 
+LIGHT_WAIT = 120.0   # how long the light voices are given to answer after the switch
+
+
+def is_place(home: Path) -> bool:
+    """A place of the all-included offer (its account is the person's alone: its caches are ours to empty)."""
+    return (home / ".config" / "bipagents" / "setup.json").is_file()
+
+
+def _switch_pocket(runner: hermes.Runner, unit, requirements: str, extra: List[str], content: str, wait: float,
+                   failed: str) -> bool:
+    """Pocket's environment rebuilt beside the running one (pocket/.venv-new, with `requirements` and `extra` uv
+    options), then swapped in with the unit's new `content` and restarted; the old environment goes once the new
+    one answers, else it is put back and NotYet(failed) raised. False in a dry run."""
+    import shutil
+    from . import voices
+    pocket = REPO / "pocket"
+    new, old = pocket / ".venv-new", pocket / ".venv-old"
+    runner.log.append(f"remove {new}")
+    if not runner.dry:
+        shutil.rmtree(new, ignore_errors=True)
+    runner.run(["uv", "venv", "--no-cache", "--quiet", "--python", "3.12", str(new)])
+    runner.run(["uv", "pip", "install", "--no-cache", "--quiet", *extra, "--python", str(new / "bin" / "python"),
+                "-r", str(pocket / requirements)])
+    runner.log.append(f"move {pocket / '.venv'} to {old}, {new} to {pocket / '.venv'}; write {unit.path}")
+    if runner.dry:
+        return False
+    shutil.rmtree(old, ignore_errors=True)
+    (pocket / ".venv").rename(old)
+    new.rename(pocket / ".venv")
+    unit.path.write_text(content, encoding="utf-8")
+
+    def restart() -> None:
+        runner.run(["systemctl", "--user", "daemon-reload"], check=False)
+        runner.run(["systemctl", "--user", "restart", unit.name], check=False)
+
+    restart()
+    if voices.engine_at(unit.url, wait=wait) is None:
+        shutil.rmtree(new, ignore_errors=True)
+        (pocket / ".venv").rename(new)
+        old.rename(pocket / ".venv")
+        unit.path.write_text(unit.text, encoding="utf-8")
+        restart()
+        shutil.rmtree(new, ignore_errors=True)
+        raise NotYet(failed)
+    shutil.rmtree(old, ignore_errors=True)
+    return True
+
+
+def light_voices(runner: hermes.Runner, home: Path, wait: float = LIGHT_WAIT) -> str:
+    """The Bips' voices of a place moved from Pocket's own models (PyTorch, 5.5 GB) to the phones' packages (ONNX
+    Runtime, `--onnx`), as a fresh install of the offer sets them up: the packages from its guichet, a new environment
+    built next to the old one, the service switched and checked; only then PyTorch's environment and Pocket's
+    downloaded weights go. When the new voices don't answer, the old ones are put back (tried again next update).
+    Elsewhere (no guichet to fetch the packages from, a service set up by hand) nothing changes: cpu_torch."""
+    import shutil
+    from types import SimpleNamespace
+    from . import pocketunit, voices
+    from .stack import pocket_service
+    unit = pocketunit.find(home)
+    if unit is None:
+        return "no Bips' voices served from this account"
+    if unit.light:
+        return "the Bips' voices already run without PyTorch"
+    if voices.source(home)[0] is None:
+        return cpu_torch(runner, home, unit, wait)
+    if not unit.standard(REPO):
+        return "the Bips' voices, set up by hand, stay as they are"
+    said: List[str] = []
+    languages = voices.with_new_languages([code for code in unit.languages.split(",") if code])
+    packages = voices.install(languages, home, runner, said.append)
+    if packages is None:
+        raise NotYet("the light voices can't be had from the guichet yet: " + "; ".join(s.strip() for s in said))
+    _, _, content = pocket_service(SimpleNamespace(repo=REPO, home=home), "linux", unit.languages, packages=packages)
+    if not _switch_pocket(runner, unit, "requirements-onnx.txt", [], content, wait,
+                          "the light voices didn't answer: the Bips keep Pocket's own models for now"):
+        return "the Bips' voices would move to the light voices (without PyTorch)"
+    shutil.rmtree(home / ".cache" / "huggingface" / "hub" / "models--kyutai--pocket-tts-without-voice-cloning",
+                  ignore_errors=True)
+    return "the Bips' voices run without PyTorch (the phones' voices, about 5.5 GB less on disk)"
+
+
+def cpu_torch(runner: hermes.Runner, home: Path, unit, wait: float = LIGHT_WAIT) -> str:
+    """Pocket's own models where the light voices can't be had (an install of one's own: the packages come from the
+    offer's guichet only), on x86 Linux: PyTorch without CUDA (pip's default brought ~4 GB of NVIDIA libraries no
+    server uses), in a new environment switched the same way (put back if it doesn't answer)."""
+    import platform
+    import subprocess
+    if platform.system() != "Linux" or not unit.standard(REPO):
+        return "the Bips' voices keep Pocket's own models (the light voices come from the offer's guichet only)"
+    python = REPO / "pocket" / ".venv" / "bin" / "python"
+    listed = "" if runner.dry else subprocess.run(["uv", "pip", "list", "--python", str(python), "--format", "freeze"],
+                                                  capture_output=True, text=True).stdout
+    if not runner.dry and "nvidia-" not in listed:
+        return "the Bips' voices keep Pocket's own models, already without CUDA"
+    if not _switch_pocket(runner, unit, "requirements.txt", ["--torch-backend", "cpu"], unit.text, wait,
+                          "PyTorch without CUDA didn't answer: Pocket keeps its environment for now"):
+        return "Pocket's own models would get PyTorch without CUDA"
+    return "the Bips' voices keep Pocket's own models, now with PyTorch without CUDA (about 4 GB less)"
+
+
+def light_disk(runner: hermes.Runner, home: Path) -> str:
+    """Less disk for each install (2026-10-26): the Bips' voices of a place without PyTorch (light_voices), the
+    checkout made a light clone (checkout.py: the latest commit, without the apps, the site, the recordings, and the
+    voice states unless Pocket's own models run here), and the download caches emptied: all of them on a place (its
+    account is its own), elsewhere only the entries of the packages BipAgents installed (uv's cache may serve the
+    person's other projects)."""
+    from . import checkout, pocketunit
+    installed = own_packages(runner)   # before Pocket's environment changes (PyTorch's CUDA libraries go with it)
+    said = [light_voices(runner, home)]
+    unit = pocketunit.find(home)
+    lighter = checkout.lighten(REPO, runner, voice_states=unit is not None and not unit.light)
+    if lighter:
+        said.append(lighter)
+    if is_place(home):
+        from .__main__ import tidy
+        tidy(runner)
+        said.append("download caches emptied")
+    else:
+        said.append(clean_own_packages(runner, installed))
+    return "; ".join(said)
+
+
+def _uv() -> str:
+    import shutil
+    return shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+
+
+def own_packages(runner: hermes.Runner) -> List[str]:
+    """The packages in BipAgents' environments (Pocket's, the installer's), and those `uv run --with` used before."""
+    import subprocess
+    names = ["torch", "pocket-tts", "httpx", "pyyaml", "cryptography"]
+    for folder in (REPO / "pocket", REPO / "installer"):
+        python = folder / ".venv" / "bin" / "python"
+        if runner.dry or not python.exists() or not Path(_uv()).exists():
+            continue
+        out = subprocess.run([_uv(), "pip", "list", "--python", str(python), "--format", "freeze"],
+                             capture_output=True, text=True)
+        names += [line.split("==")[0].lower() for line in out.stdout.splitlines() if "==" in line]
+    return sorted(set(names))
+
+
+def clean_own_packages(runner: hermes.Runner, earlier: Optional[List[str]] = None) -> str:
+    """uv's cache entries of BipAgents' packages (now and `earlier`), the others kept."""
+    names = sorted(set(own_packages(runner)) | set(earlier or []))
+    if not runner.dry and not Path(_uv()).exists():
+        return "no uv cache to empty"
+    runner.run([_uv(), "cache", "clean", *names], check=False)
+    return f"uv's cache emptied of BipAgents' packages ({len(names)})"
+
+
 # What a fresh install sets only once the services it set up answer (finish() in __main__): left pending when it
 # couldn't, the first update does it.
 AFTER_INSTALL = {POCKET_ENGINE}
@@ -291,6 +441,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-23-share-volumes", share_volumes),
     (POCKET_ENGINE, pocket_engine),
     ("2026-10-26-code-without-asking", code_without_asking),
+    ("2026-10-26-light-disk", light_disk),
 ]
 
 
