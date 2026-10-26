@@ -365,6 +365,10 @@ def listen(order_path, root=MOVES, script=None, run=subprocess.run):
     port = int(move.get("port") or 2222)
     if not 1024 <= port <= 65535 or port in range(443, 443 + MAX_SEATS):
         raise MoveError("the move's port is not one this server may open")
+    for other in states(root):   # an older listener on the same port (a move that ended badly) gives way
+        if other.get("id") != move_id and read_json(os.path.join(root, other["id"], "state.json")).get("port") == port \
+                and other.get("role") == "in" and other.get("phase") not in ("closed",):
+            close(other["id"], root, run)
     host_private, _ = keypair(move["key"], "host")
     _, client_public = keypair(move["key"], "client")
     write_private(os.path.join(base, "host_key"), host_private)
@@ -489,10 +493,7 @@ def finish(move_id, entry, asked, root=MOVES):
                 "tasks_resumed": len(resumed.get("resumed_jobs", [])), "caught_up": len(resumed.get("caught_up", [])),
                 "owners_shifted": shifted_count, "volumes": len(out.get("volumes", []))}
     save(move_id, root, phase="done", verified=verified, result="moved")
-    # The listener goes a minute later (this very command runs inside it).
-    subprocess.run(["systemd-run", "--on-active=60", "--collect", "/usr/bin/python3",
-                    os.path.join(LIB, "place-move.py"), "close", move_id],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    later_close(move_id)
     return {"ok": True, "verified": verified}
 
 
@@ -503,7 +504,15 @@ def abort(move_id, entry, root=MOVES):
     except MoveError:
         pass
     save(move_id, root, phase="cancelled", result="aborted")
+    later_close(move_id)
     return {"ok": True}
+
+
+def later_close(move_id):
+    """The listener closed a minute later: this very command runs inside it."""
+    subprocess.run(["systemd-run", "--on-active=60", "--collect", "/usr/bin/python3",
+                    os.path.join(LIB, "place-move.py"), "close", move_id],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 # -- the source: the move itself ------------------------------------------------------------------------------------------
@@ -642,7 +651,9 @@ def move_out(order_path, root=MOVES):
         except (MoveError, subprocess.SubprocessError, ValueError) as exc:
             if time.time() > deadline:
                 raise MoveError("the target never answered: %s" % str(exc)[:200])
+            save(move_id, root, error="target not answering yet: %s" % str(exc)[:200])
             time.sleep(15)
+    save(move_id, root, error=None)
     plan = as_user(entry, ["move-out", "plan"], timeout=300)
     for path in plan["roots"].values():
         rehome(path, plan["home"], info["home"])   # all under the home, or stop now
