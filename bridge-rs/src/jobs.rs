@@ -863,7 +863,12 @@ impl Jobs {
             note: hb::note("task", &title, report, &links),
             links: links.clone(),
             budget: Some(budget),
-            fallback: hb::template(&lang, &title, &hb::key_points(report, hb::POINTS_MAX), &links),
+            fallback: hb::template(
+                &lang,
+                &title,
+                &hb::key_points(report, hb::POINTS_MAX, &lang, hb::today(&config)),
+                &links,
+            ),
             recap: Some(hb::recap(&title, report)),
             fallback_session: job.get("session_id").and_then(Value::as_str).map(str::to_string),
         };
@@ -878,7 +883,8 @@ impl Jobs {
         }
         latest.insert(
             "handed_back".into(),
-            json!({"session": from, "by_agent": outcome.by_agent, "at": py::time_time(), "links": links}),
+            json!({"session": from, "by_agent": outcome.by_agent, "why": outcome.why, "at": py::time_time(),
+                "links": links}),
         );
         let _ = save(&config, &latest);
         *job = latest;

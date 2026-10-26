@@ -945,7 +945,10 @@ async fn session_state(
         .or_else(|| session.get("last_active"))
         .cloned()
         .unwrap_or(Value::Null);
-    Ok(web::ok(json!({"session_id": session_id, "message_count": count, "updated_at": updated})))
+    // the agent's Boîte messages (a hand-back, a routine's report): they show in the conversation too (Bot Chat, all
+    // of them) without changing its message count; the app reloads when this changes
+    let outbox = state.store.outbox_marker(&agent_cfg.name).await.ok();
+    Ok(web::ok(json!({"session_id": session_id, "message_count": count, "updated_at": updated, "outbox": outbox})))
 }
 
 /// Is each agent's Hermes up, and does the model answer? Lets the app tell « server down » from « model
