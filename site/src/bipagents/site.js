@@ -1,7 +1,7 @@
 // bipagents.com: the hero's results and its « See more » on privacy, the agents' cards, the comparison, the
 // two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
 // install. One script for every page: each part runs where its elements are. No framework, no network but this site.
-import { Bip, CATEGORIES, REDUCED, renderBip, staticBip } from "./bips.js";
+import { Bip, CATEGORIES, REDUCED, iconSVG, pixelSVG, staticBip } from "./bips.js";
 
 const data = JSON.parse(document.getElementById("site-data").textContent);
 const $ = (s, root = document) => root.querySelector(s);
@@ -16,9 +16,12 @@ const once = (el, fn, threshold = 0.3) => new IntersectionObserver((entries, io)
 // -- Bips everywhere -----------------------------------------------------------------------------------------------
 const bips = new Map();
 for (const el of $$("[data-bip]")) {
-  bips.set(el, new Bip(el, el.dataset.bip, { interactive: el.hasAttribute("data-interactive"), lines: data.lines }));
+  // The Bips one can tap wear today's costume during an event (Halloween, Christmas…), as in the apps.
+  const live = el.hasAttribute("data-interactive");
+  bips.set(el, new Bip(el, el.dataset.bip, { interactive: live, lines: data.lines, costume: live || null }));
 }
 for (const el of $$("[data-bip-static]")) el.innerHTML = staticBip(el.dataset.bipStatic);
+for (const el of $$("[data-bip-icon]")) el.innerHTML = iconSVG();   // the app's icon (the brand)
 
 // -- Header, progress, reveals, parallax ---------------------------------------------------------------------------
 const top = $(".top"), bar = $(".progress i");
@@ -205,11 +208,8 @@ async function play(id) {
   };
   function bip(now) {
     if (!alive() || !workingLine?.isConnected) { bipFrame = null; return; }
-    const t = now / 1000, wave = period => Math.sin(t * 2 * Math.PI / period);
-    const s = busy
-      ? { mood: "happy", gaze: { x: Math.max(-1, Math.min(1, 1.4 * wave(1.6))), y: 0.3 }, offset: { x: 0, y: -8 * Math.abs(wave(1.1)) }, rotation: 4 * wave(0.8) }
-      : { mood: "thinking", gaze: { x: 0.8 * wave(6), y: -0.7 - 0.3 * wave(4.2) }, offset: { x: 0, y: 0 }, rotation: 5 * wave(5) };
-    $(".av", workingLine).innerHTML = renderBip(c, { ...s, blush: 0, scale: { x: 1, y: 1 }, level: null }, t);
+    // Busy with a tool: the apps' « work » state (eyes scanning, a light passing); else « think ».
+    $(".av", workingLine).innerHTML = pixelSVG({ category, mood: busy ? "work" : "think", t: now / 1000, size: 30 });
     bipFrame = requestAnimationFrame(bip);
   }
   let clock = null;

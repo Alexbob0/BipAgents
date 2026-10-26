@@ -1,0 +1,114 @@
+<!doctype html>
+<!-- Not under the MIT license: the Bips' drawings are reserved (LICENSE-ASSETS). The Bips to play with: the same
+     engine and the same numbers as the apps (assets/bips.js, scripts/pixel/pixel.json). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Bips · BipAgents</title>
+<meta name="description" content="Play with the Bips, the BipAgents helpers: tap them, see them think, talk, work, and dress up.">
+<meta name="theme-color" content="#F7F6F3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101217" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="canonical" href="https://bipagents.com/play/">
+<style>
+  @font-face { font-family: Nunito; src: url("/assets/nunito.ttf") format("truetype"); font-weight: 200 1000; font-display: swap; }
+  :root { --ink: #1D1F24; --ink2: #555B68; --ground: #F7F6F3; --card: #FFFFFF; --line: #E7E5E0; --chip: #EFEDE8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #F2F3F6; --ink2: #B4B9C5; --ground: #101217; --card: #1A1D24; --line: #2A2E38; --chip: #23262E; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: Nunito, ui-rounded, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 56px; }
+  .back { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 900; font-size: 18px; }
+  .back i { width: 34px; height: 34px; display: block; } .back svg { width: 100%; height: 100%; display: block; }
+  h1 { margin: 28px 0 6px; font-size: clamp(34px, 6vw, 52px); font-weight: 1000; letter-spacing: -0.03em; }
+  .lede { margin: 0; color: var(--ink2); font-size: 18px; font-weight: 700; max-width: 600px; line-height: 1.4; }
+  .moods { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 26px; }
+  .moods button { height: 42px; padding: 0 16px; border-radius: 999px; border: 0; background: var(--chip); color: var(--ink); font: inherit; font-weight: 800; font-size: 15px; cursor: pointer; }
+  .moods button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 26px; padding: 18px 18px 16px; display: flex; flex-direction: column; align-items: center; }
+  .stage { width: 160px; height: 160px; margin-top: 20px; }
+  .card p { margin: 10px 0 0; font-weight: 900; font-size: 17px; }
+  .bip { position: relative; display: block; user-select: none; -webkit-user-select: none; touch-action: manipulation; cursor: pointer; }
+  .bip-svg, .bip-svg svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .bip-bubble { position: absolute; left: 50%; top: -8px; transform: translate(-50%, -100%) scale(.6); opacity: 0; background: var(--chip); color: var(--ink);
+    font-weight: 900; font-size: 15px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; pointer-events: none; transition: transform .25s cubic-bezier(.3, 1.6, .5, 1), opacity .2s; }
+  .bip-bubble.show { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+  :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 12px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr 1fr; gap: 10px; } .stage { width: 112px; height: 112px; } .card { padding: 12px; border-radius: 20px; } }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/"><i data-bip-icon aria-hidden="true"></i><span>Bip<b>Agents</b></span></a>
+  <h1 data-t="title">The Bips</h1>
+  <p class="lede" data-t="lede">Tap a Bip to see it react. Pick what they are doing:</p>
+  <div class="moods" role="group" aria-label="What they are doing" id="moods"></div>
+  <div class="grid" id="grid"></div>
+</main>
+<script type="module">
+import { Bip, CATEGORIES, COSTUMES, iconSVG } from "/assets/bips.js?v={{version}}";
+const T = {
+  en: { title: "The Bips", lede: "Tap a Bip to see it react. Pick what they are doing:", idle: "Resting", think: "Thinking", talk: "Talking", listen: "Listening", work: "Working", happy: "Happy", sleep: "Asleep", error: "Oops", dress: "Dress up", plain: "No costume",
+        names: { daily: "Daily life", wellness: "Well-being", finance: "Money", home: "Home", work: "Work", learning: "Learning", creative: "Creative", tech: "Tech" },
+        lines: { hop: ["Bip!", "Hi there!"], wink: ["Hehe", "Psst!"], giggle: ["Hihihi!", "That tickles!"], surprised: ["Oh!", "Whoa!"], boing: ["Boing!"], thanks: ["Thank you!", "♡"] } },
+  fr: { title: "Les Bips", lede: "Touchez un Bip pour le voir réagir. Choisissez ce qu’ils font :", idle: "Au repos", think: "Réfléchit", talk: "Parle", listen: "Écoute", work: "Travaille", happy: "Content", sleep: "Dort", error: "Oups", dress: "Déguiser", plain: "Sans costume",
+        names: { daily: "Quotidien", wellness: "Bien-être", finance: "Argent", home: "Maison", work: "Travail", learning: "Apprendre", creative: "Création", tech: "Technique" },
+        lines: { hop: ["Bip !", "Coucou !"], wink: ["Hihi", "Psst !"], giggle: ["Hihihi !", "Ça chatouille !"], surprised: ["Oh !", "Ouah !"], boing: ["Boing !"], thanks: ["Merci !", "♡"] } },
+  de: { title: "Die Bips", lede: "Tippe einen Bip an und sieh, wie er reagiert. Wähle, was sie tun:", idle: "Ruhig", think: "Denkt nach", talk: "Spricht", listen: "Hört zu", work: "Arbeitet", happy: "Froh", sleep: "Schläft", error: "Hoppla", dress: "Verkleiden", plain: "Ohne Kostüm",
+        names: { daily: "Alltag", wellness: "Wohlbefinden", finance: "Geld", home: "Zuhause", work: "Arbeit", learning: "Lernen", creative: "Kreativ", tech: "Technik" },
+        lines: { hop: ["Bip!", "Hallo!"], wink: ["Hehe", "Psst!"], giggle: ["Hihihi!", "Das kitzelt!"], surprised: ["Oh!", "Huch!"], boing: ["Boing!"], thanks: ["Danke!", "♡"] } },
+  es: { title: "Los Bips", lede: "Toca un Bip para ver cómo reacciona. Elige qué hacen:", idle: "En reposo", think: "Piensa", talk: "Habla", listen: "Escucha", work: "Trabaja", happy: "Contento", sleep: "Duerme", error: "Uy", dress: "Disfrazar", plain: "Sin disfraz",
+        names: { daily: "Día a día", wellness: "Bienestar", finance: "Dinero", home: "Hogar", work: "Trabajo", learning: "Aprender", creative: "Creativo", tech: "Técnica" },
+        lines: { hop: ["¡Bip!", "¡Hola!"], wink: ["Jeje", "¡Psst!"], giggle: ["¡Jijiji!", "¡Cosquillas!"], surprised: ["¡Oh!", "¡Uy!"], boing: ["¡Boing!"], thanks: ["¡Gracias!", "♡"] } },
+};
+const pick = new URLSearchParams(location.search).get("lang") || (navigator.language || "en").slice(0, 2);
+const lang = T[pick] ? pick : "en", L = T[lang];
+document.documentElement.lang = lang;
+document.title = `${L.title} · BipAgents`;
+for (const el of document.querySelectorAll("[data-t]")) el.textContent = L[el.dataset.t];
+document.getElementById("moods").setAttribute("aria-label", L.lede.replace(/.*\. /, "").replace(/ ?:$/, ""));
+for (const el of document.querySelectorAll("[data-bip-icon]")) el.innerHTML = iconSVG();
+
+const grid = document.getElementById("grid"), bips = [];
+for (const id of Object.keys(CATEGORIES)) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<div class="stage" aria-label="${L.names[id]}"></div><p>${L.names[id]}</p>`;
+  grid.append(card);
+  bips.push({ id, stage: card.querySelector(".stage"), bip: null });
+}
+let mood = "idle", costumes = false;
+const all = Object.keys(COSTUMES);
+function draw() {
+  for (const b of bips) {
+    if (b.bip) b.bip.remove();
+    b.bip = new Bip(b.stage, b.id, { interactive: true, lines: L.lines, mood, costume: costumes ? all[Math.floor(Math.random() * all.length)] : (b.bip ? null : true) });
+  }
+}
+const moods = document.getElementById("moods");
+const buttons = ["idle", "think", "talk", "listen", "work", "happy", "sleep", "error"].map(m => {
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.textContent = L[m]; btn.setAttribute("aria-pressed", String(m === mood));
+  btn.addEventListener("click", () => {
+    mood = m;
+    buttons.forEach(x => x.setAttribute("aria-pressed", String(x === btn)));
+    for (const b of bips) b.bip.mood = m;
+  });
+  moods.append(btn);
+  return btn;
+});
+const dress = document.createElement("button");
+dress.type = "button"; dress.textContent = L.dress;
+dress.addEventListener("click", () => { costumes = true; plain.hidden = false; draw(); });
+const plain = document.createElement("button");
+plain.type = "button"; plain.textContent = L.plain; plain.hidden = true;
+plain.addEventListener("click", () => { costumes = false; plain.hidden = true; for (const b of bips) { b.bip.remove(); b.bip = new Bip(b.stage, b.id, { interactive: true, lines: L.lines, mood }); } });
+moods.append(dress, plain);
+draw();
+</script>
+</body>
+</html>

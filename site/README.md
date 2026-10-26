@@ -23,7 +23,7 @@ python3 site/build.py           # builds site/dist/bipagents.com and site/dist/k
 python3 site/build.py --serve   # and serves them: http://127.0.0.1:8770 (BipAgents), :8771 (Kerfy Studio)
 ```
 
-Python 3.9+, Node for the Bips' still drawings (icon, link previews), Chrome or Brave for the link previews
+Python 3.9+, Node for the Bips' still drawings (favicon, link previews), Chrome or Brave for the link previews
 (`og-<lang>.png`, 1200×630), `sips` (macOS) to make the demo map a small JPEG. Without them, the build still works.
 
 ## What the owner fills in: `site/config.json`
@@ -63,8 +63,15 @@ The pages are `src/bipagents/{index,demo,faq,beta}.html` (and `install.html`, th
 Nothing is copied twice: texts are in `src/<site>/i18n/*.json`, the demo's scenarios and pages from
 `App/Resources/Demo/demo.json` (the « Your runs » page is the page kit's real output, written to
 `assets/pages/runs-<lang>.html`; the walk's map is the OpenStreetMap drawing the demo embeds), the podcasts from the
-apps' own files, the legal texts from `docs/legal/`. The Bips are drawn by `src/shared/bips.js`, the same geometry as
-the apps (both sites use it). Tablée's colours are its « Table dressée » palette; its icon is redrawn in SVG.
+apps' own files, the legal texts from `docs/legal/`. The Bips are the apps' pixel Bips, drawn by `src/shared/bips.js`
+from `scripts/pixel/pixel.json` (the build writes it next to the engine as `assets/pixel-data.js`): the same squares,
+colours per kind of agent, states (rest with a blink, think, talk, work…), tap reactions and costumes as the apps. During
+an event (Halloween, Christmas, Easter…) the Bips one can tap wear its costumes; `?costumes=noel` (or `none`) previews
+another. `prefers-reduced-motion` shows each state's still moment. The brand mark, the favicon (`favicon.svg`,
+`icon-192.png`), the apple-touch-icon and the link previews use the app's icon « Lueur bleuet » (the SVG drawn by the
+same engine as `scripts/pixel/icon.py`, the PNGs from its iOS 1024). `/play/` (`src/bipagents/play.html`) lets one play
+with the eight Bips. Both sites use the engine. Tablée's colours are its « Table dressée » palette; its icon is redrawn
+in SVG.
 
 **Privacy**: no cookie, no tracker, no third-party request (the font, Nunito, is served from the site). So no consent
 banner is needed.

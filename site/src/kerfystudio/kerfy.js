@@ -1,7 +1,8 @@
-// kerfystudio.com: the Bips in BipAgents' showcase, the app tiles that lean toward the pointer, the reveals.
-import { Bip, REDUCED } from "./bips.js";
+// kerfystudio.com: the app icon and the Bips in BipAgents' showcase, the app tiles that lean toward the pointer, the reveals.
+import { Bip, REDUCED, iconSVG } from "./bips.js";
 
-for (const el of document.querySelectorAll("[data-bip]")) new Bip(el, el.dataset.bip, { interactive: el.hasAttribute("data-interactive") });
+for (const el of document.querySelectorAll("[data-bip]")) new Bip(el, el.dataset.bip, { interactive: el.hasAttribute("data-interactive"), costume: el.hasAttribute("data-interactive") || null });
+for (const el of document.querySelectorAll("[data-bip-icon]")) el.innerHTML = iconSVG(0);
 
 const io = new IntersectionObserver(entries => {
   for (const e of entries) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }

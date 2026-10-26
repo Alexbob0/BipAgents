@@ -287,7 +287,7 @@ def home_body(t: Dict, lang: str, cfg: Dict) -> str:
     <p class="lede">{esc(h['lede'])}</p>
   </div>
   <div class="hero-apps reveal" aria-hidden="true">
-    <span class="app-tile tile-bip" data-tilt><span class="tile-bip-in" data-bip="daily"></span></span>
+    <span class="app-tile tile-bip" data-tilt data-bip-icon></span>
     <span class="app-tile tile-tablee" data-tilt>{TABLEE_ICON}</span>
   </div>
 </section>
@@ -377,7 +377,7 @@ def support_body(t: Dict, lang: str, cfg: Dict) -> str:
 def build(root: Path, repo: Path, version: str) -> Path:
     import sys
     sys.path.insert(0, str(root))
-    from build import config, copy, favicon   # the shared helpers of site/build.py
+    from build import bips_engine, config, copy, favicon   # the shared helpers of site/build.py
     cfg = config()
 
     src, out = root / "src" / "kerfystudio", root / "dist" / "kerfystudio.com"
@@ -387,7 +387,7 @@ def build(root: Path, repo: Path, version: str) -> Path:
     assets.mkdir(parents=True)
     for name in ("kerfy.css", "kerfy.js"):
         copy(src / name, assets / name)
-    copy(root / "src" / "shared" / "bips.js", assets / "bips.js")
+    bips_engine(assets)
     copy(repo / "android" / "app" / "src" / "main" / "res" / "font" / "nunito.ttf", assets / "nunito.ttf")
     (assets / "favicon.svg").write_text(favicon("daily"), encoding="utf-8")
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
