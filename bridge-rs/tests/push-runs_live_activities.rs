@@ -215,14 +215,21 @@ async fn a_background_task_is_followed_through_its_run_and_dead_tokens_are_dropp
 
     c.post("/v1/watch", json!({"agent": "wellness", "run_id": "run_job"})).await;
     start.set();
-    let sent_to = |token: &str| c.apns.requests.lock().unwrap().iter().filter(|r| r.path.ends_with(token)).count();
-    assert!(wait_until(|| sent_to(ACTIVITY) >= 2, Duration::from_secs(5)).await);
-    let mine: Vec<Value> =
-        c.apns.requests.lock().unwrap().iter().filter(|r| r.path.ends_with(ACTIVITY)).map(|r| r.json()).collect();
-    assert_eq!(mine[0]["aps"]["content-state"]["subtasks"], 1);
-    assert_eq!(mine[0]["aps"]["content-state"]["tool"], "delegate_task");
-    assert_eq!(mine[1]["aps"]["event"], "end");
-    assert_eq!(mine[1]["aps"]["content-state"]["phase"], "failed");
+    // each push is delivered by its own task: the step and the end may reach APNs in either order
+    let mine = || -> Vec<Value> {
+        c.apns.requests.lock().unwrap().iter().filter(|r| r.path.ends_with(ACTIVITY)).map(|r| r.json()).collect()
+    };
+    let has_end = || mine().iter().any(|p| p["aps"]["event"] == "end");
+    let has_step = || mine().iter().any(|p| p["aps"]["event"] == "update");
+    assert!(wait_until(|| has_end() && has_step(), Duration::from_secs(5)).await, "{:?}", mine());
+    let pushes = mine();
+    let step = pushes.iter().find(|p| p["aps"]["event"] == "update").unwrap();
+    assert_eq!(step["aps"]["content-state"]["subtasks"], 1);
+    assert_eq!(step["aps"]["content-state"]["tool"], "delegate_task");
+    let ends: Vec<&Value> = pushes.iter().filter(|p| p["aps"]["event"] == "end").collect();
+    assert_eq!(ends.len(), 1, "{pushes:?}");
+    assert_eq!(ends[0]["aps"]["content-state"]["phase"], "failed");
+    assert!(ends[0]["aps"]["timestamp"].as_i64() > step["aps"]["timestamp"].as_i64());
     // the dead token is forgotten at its first refusal; the other ended
     assert!(
         wait_until(|| c.state().push.live.snapshot().iter().all(|e| e.token != OTHER), Duration::from_secs(5)).await

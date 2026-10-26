@@ -735,6 +735,11 @@ mod tests {
     fn the_state_follows_the_runs_events() {
         let mut s = LiveState::default();
         assert_eq!(s.apply("message.delta", &data(json!({"delta": "x"})), false), Change::None);
+        // the agent's first words (« Je regarde ça… », ACK_RULE) and its lines between tools are not the run's end
+        for kind in ["assistant.completed", "message.completed", "assistant.delta", "reasoning.available"] {
+            assert_eq!(s.apply(kind, &data(json!({"text": "Je regarde ça…"})), false), Change::None);
+        }
+        assert_eq!(s.phase, "working");
         assert_eq!(
             s.apply(
                 "tool.started",
