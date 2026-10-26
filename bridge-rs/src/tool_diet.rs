@@ -1,9 +1,9 @@
 //! Token diet, phase 2 (2026-10-26, « ranger, pas retirer »): what each agent's Hermes shows the model on every call,
 //! by kind of agent. Nothing is taken away: a tool the kind rarely needs goes behind Hermes' tool search
-//! (`tool_search` → `tool_describe` → `tool_call`) instead of costing its whole schema on each call, and the few
-//! bridge tools the kind uses all the time come out of it, so the agent stops spending a discovery round-trip (a full
-//! call each) before using them. Measured on 2026-10-24 (scripts/token-lab): ≈ 19.3k input tokens per call, 11.8k of
-//! them the schemas of 22 Hermes core tools, and 40 of 126 tool calls were discovery.
+//! (`tool_search` → `tool_describe` → `tool_call`) instead of costing its whole schema on each call, and the bridge
+//! tools the kind uses often come out of it, so the agent stops spending a discovery round-trip (a full call each)
+//! before using them. Measured on 2026-10-24 (scripts/token-lab): ≈ 19.3k input tokens per call, 11.8k of them the
+//! schemas of 22 Hermes core tools, and 40 of 126 tool calls were discovery.
 //!
 //! Written in each agent's profile (`config.yaml`):
 //! - `tools.tool_search.defer`: Hermes' own default list (an explicit list replaces it), the core tools the kind
@@ -70,7 +70,14 @@ pub const VAULT_TOOLS: [&str; 5] = [
 pub const SKILL_WRITING: &str = "skill_manage";
 
 /// At most this many bridge tools out of the search.
-pub const MAX_DIRECT: usize = 8;
+pub const MAX_DIRECT: usize = 12;
+
+/// The kind's frequent bridge tools in view. First measure (2026-10-26, eight cheap ones in view): the model (GLM-5.3
+/// Flash via EUrouter, tool names constrained to the request's) also called the deferred ones directly, each call
+/// landing on the in-view tool sharing the longest prefix with the other tool's arguments (`notebook_note` →
+/// `notebook_read`, `map_image` → `mail_search`): 14 misrouted calls in 22 tasks. Since then the frequent tools are all
+/// in view (fewer deferred ones to mistake) and the bridge runs the tool a call's arguments fit (`reroute`).
+pub const DIRECT_BRIDGE_TOOLS: bool = true;
 
 /// The bridge's tools as Hermes names them.
 pub const BRIDGE_PREFIX: &str = "mcp__bipagents__";
@@ -104,10 +111,14 @@ pub fn kind_diet(kind: &str) -> KindDiet {
                 "reminders_list",
                 "weather",
                 "reminders_add",
-                "mail_search",
-                "start_task",
                 "calendar_add",
-                "contacts_search",
+                "start_task",
+                "notebook_note",
+                "create_page",
+                "map_image",
+                "tell_family",
+                "propose_task",
+                "mail_search",
             ],
             compact_skills: &[
                 "autonomous-ai-agents",
@@ -120,7 +131,18 @@ pub fn kind_diet(kind: &str) -> KindDiet {
         },
         "wellness" => KindDiet {
             deferred: NO_FILE_WRITES,
-            direct: &["health", "notebook_search", "notebook_read", "reminders_add", "weather", "start_task"],
+            direct: &[
+                "health",
+                "notebook_search",
+                "notebook_note",
+                "notebook_read",
+                "reminders_add",
+                "weather",
+                "start_task",
+                "propose_task",
+                "create_page",
+                "tell_family",
+            ],
             compact_skills: &[
                 "autonomous-ai-agents",
                 "software-development",
@@ -135,18 +157,32 @@ pub fn kind_diet(kind: &str) -> KindDiet {
             deferred: &["patch", "search_files"],
             direct: &[
                 "notebook_search",
-                "archive_search",
                 "notebook_read",
+                "notebook_note",
+                "archive_search",
                 "create_page",
                 "start_task",
+                "propose_task",
                 "mail_search",
-                "mail_read",
+                "tell_family",
             ],
             compact_skills: &["autonomous-ai-agents", "software-development", "social-media", "creative", "media"],
         },
         "home" => KindDiet {
             deferred: NO_FILE_WRITES,
-            direct: &["notebook_search", "reminders_add", "reminders_list", "calendar_list", "weather", "start_task"],
+            direct: &[
+                "notebook_search",
+                "notebook_note",
+                "reminders_add",
+                "reminders_list",
+                "calendar_list",
+                "calendar_add",
+                "weather",
+                "start_task",
+                "propose_task",
+                "create_page",
+                "tell_family",
+            ],
             compact_skills: &[
                 "autonomous-ai-agents",
                 "software-development",
@@ -161,13 +197,16 @@ pub fn kind_diet(kind: &str) -> KindDiet {
             deferred: &[],
             direct: &[
                 "calendar_list",
+                "calendar_add",
                 "mail_search",
                 "mail_read",
                 "mail_draft",
                 "notebook_search",
-                "calendar_add",
+                "notebook_note",
                 "start_task",
-                "contacts_search",
+                "propose_task",
+                "create_page",
+                "reminders_add",
             ],
             compact_skills: &["autonomous-ai-agents", "social-media", "creative", "media"],
         },
@@ -175,22 +214,42 @@ pub fn kind_diet(kind: &str) -> KindDiet {
             deferred: CODE_AND_EDITS,
             direct: &[
                 "notebook_search",
+                "notebook_note",
                 "create_podcast",
                 "create_audio",
-                "knowledge_search",
                 "list_voices",
+                "knowledge_search",
+                "create_page",
                 "start_task",
+                "propose_task",
             ],
             compact_skills: &["autonomous-ai-agents", "software-development", "social-media", "email"],
         },
         "creative" => KindDiet {
             deferred: CODE_AND_EDITS,
-            direct: &["create_page", "create_audio", "create_podcast", "list_voices", "notebook_search", "start_task"],
+            direct: &[
+                "create_page",
+                "create_audio",
+                "create_podcast",
+                "list_voices",
+                "notebook_search",
+                "notebook_note",
+                "start_task",
+                "propose_task",
+            ],
             compact_skills: &["autonomous-ai-agents", "software-development", "social-media", "email"],
         },
         "tech" => KindDiet {
             deferred: &[],
-            direct: &["notebook_search", "start_task", "archive_search", "knowledge_search", "read_page"],
+            direct: &[
+                "notebook_search",
+                "notebook_note",
+                "start_task",
+                "propose_task",
+                "create_page",
+                "archive_search",
+                "knowledge_search",
+            ],
             compact_skills: &["social-media", "creative", "media"],
         },
         "guide" => KindDiet {
@@ -210,7 +269,16 @@ pub fn kind_diet(kind: &str) -> KindDiet {
         },
         _ => KindDiet {
             deferred: CODE_AND_EDITS,
-            direct: &["notebook_search", "start_task", "reminders_add", "calendar_list", "weather"],
+            direct: &[
+                "notebook_search",
+                "notebook_note",
+                "start_task",
+                "propose_task",
+                "reminders_add",
+                "calendar_list",
+                "weather",
+                "create_page",
+            ],
             compact_skills: NOT_CODING,
         },
     }
@@ -278,12 +346,51 @@ pub fn diet(kind: &str, bridge_tools: &[String], holds_vault_item: bool, writes_
     if !writes_skills {
         add(SKILL_WRITING);
     }
-    plan.direct
-        .iter()
-        .filter(|name| bridge_tools.iter().any(|t| t == *name))
-        .take(MAX_DIRECT)
-        .for_each(|name| add(&format!("!{BRIDGE_PREFIX}{name}")));
+    if DIRECT_BRIDGE_TOOLS {
+        plan.direct
+            .iter()
+            .filter(|name| bridge_tools.iter().any(|t| t == *name))
+            .take(MAX_DIRECT)
+            .for_each(|name| add(&format!("!{BRIDGE_PREFIX}{name}")));
+    }
     Diet { kind: kind.to_string(), defer, compact_skills: plan.compact_skills.iter().map(|c| c.to_string()).collect() }
+}
+
+/// Whether `arguments` fit `tool`'s schema: no argument it doesn't know, none of its required ones missing.
+pub fn fits(tool: &Value, arguments: &crate::Dict) -> bool {
+    let schema = tool.get("inputSchema");
+    let known = schema.and_then(|s| s.get("properties")).and_then(Value::as_object);
+    let required = schema.and_then(|s| s.get("required")).and_then(Value::as_array);
+    let all_known = arguments.keys().all(|k| known.is_some_and(|p| p.contains_key(k)));
+    let none_missing = required.is_none_or(|r| r.iter().filter_map(Value::as_str).all(|k| arguments.contains_key(k)));
+    all_known && none_missing
+}
+
+/// The tool a call was meant for, among `tools`: `name` when its arguments fit it (or fit nothing better), else the
+/// only other tool they fit. With some bridge tools in view and the others behind the search, a model whose tool names
+/// are constrained to the request's ends a deferred tool's name on the in-view one sharing its longest prefix
+/// (`notebook_note` → `notebook_read`), its arguments still the deferred tool's: measured on 2026-10-26.
+pub fn meant<'a>(tools: &'a [Value], name: &'a str, arguments: &crate::Dict) -> &'a str {
+    let called = tools.iter().find(|t| t.get("name").and_then(Value::as_str) == Some(name));
+    if arguments.is_empty() || called.is_none_or(|t| fits(t, arguments)) {
+        return name;
+    }
+    let mut others = tools.iter().filter(|t| t.get("name").and_then(Value::as_str) != Some(name) && fits(t, arguments));
+    match (others.next(), others.next()) {
+        (Some(only), None) => only.get("name").and_then(Value::as_str).unwrap_or(name),
+        _ => name,
+    }
+}
+
+/// `meant` for a call the bridge received from `agent`'s Hermes, logged when it changes the tool.
+pub fn reroute(config: &Config, agent: &AgentConfig, name: &str, arguments: &crate::Dict) -> String {
+    let tools = crate::agent_tools::tools_for(config, agent);
+    let found = meant(&tools, name, arguments).to_string();
+    if found != name {
+        tracing::info!(target: "bipbridge::agents", agent = %agent.name, called = %name, meant = %found,
+                       "a call's arguments were another tool's: that tool run");
+    }
+    found
 }
 
 /// Whether `agent` holds an item of the vault Hermes fills from (a card is paid through the bridge instead).
@@ -422,8 +529,8 @@ mod tests {
         assert!(d.defer.contains(&"execute_code".to_string()));
         assert!(!d.defer.contains(&"terminal".to_string()));
         assert!(!d.defer.contains(&"memory".to_string()));
-        assert!(d.defer.contains(&"!mcp__bipagents__notebook_search".to_string()));
-        assert!(d.defer.contains(&"!mcp__bipagents__weather".to_string()));
+        assert_eq!(d.defer.contains(&"!mcp__bipagents__notebook_search".to_string()), DIRECT_BRIDGE_TOOLS);
+        assert_eq!(d.defer.contains(&"!mcp__bipagents__weather".to_string()), DIRECT_BRIDGE_TOOLS);
         // a tool it doesn't have, or one its kind doesn't use much, stays behind the search
         assert!(!d.defer.iter().any(|n| n.ends_with("reminders_add") || n.ends_with("create_podcast")));
         // an agent holding a vault item, or writing skills, keeps those tools
@@ -432,10 +539,40 @@ mod tests {
     }
 
     #[test]
+    fn a_call_runs_the_tool_its_arguments_fit() {
+        let tool = |name: &str, props: &[&str], required: &[&str]| {
+            let properties: serde_json::Map<String, Value> =
+                props.iter().map(|p| (p.to_string(), serde_json::json!({"type": "string"}))).collect();
+            serde_json::json!({"name": name, "inputSchema": {"type": "object", "properties": properties, "required": required}})
+        };
+        let tools = vec![
+            tool("notebook_search", &["words", "kind"], &[]),
+            tool("notebook_read", &["page"], &["page"]),
+            tool("notebook_note", &["page", "facts", "section"], &["page", "facts"]),
+            tool("mail_search", &["words", "days"], &[]),
+            tool("map_image", &["markers", "title", "line", "color"], &["markers"]),
+        ];
+        let args =
+            |pairs: &[&str]| -> crate::Dict { pairs.iter().map(|k| (k.to_string(), Value::from("x"))).collect() };
+        // its own arguments: itself
+        assert_eq!(meant(&tools, "notebook_read", &args(&["page"])), "notebook_read");
+        // the 2026-10-26 lab's misroutes
+        assert_eq!(meant(&tools, "notebook_read", &args(&["page", "facts", "section"])), "notebook_note");
+        assert_eq!(meant(&tools, "mail_search", &args(&["markers", "line", "color"])), "map_image");
+        assert_eq!(meant(&tools, "notebook_search", &args(&["page"])), "notebook_read");
+        // nothing else fits, two others fit, no arguments, or an unknown tool: left as called
+        assert_eq!(meant(&tools, "mail_search", &args(&["zzz"])), "mail_search");
+        assert_eq!(meant(&tools, "map_image", &args(&["words"])), "map_image");
+        assert_eq!(meant(&tools, "start_task", &crate::Dict::new()), "start_task");
+        assert_eq!(meant(&tools, "other", &args(&["page"])), "other");
+    }
+
+    #[test]
     fn at_most_eight_bridge_tools_direct() {
         let all: Vec<String> = kind_diet("daily").direct.iter().map(|s| s.to_string()).collect();
         let d = diet("daily", &all, false, false);
-        assert_eq!(d.defer.iter().filter(|n| n.starts_with("!mcp__")).count(), MAX_DIRECT);
+        let expected = if DIRECT_BRIDGE_TOOLS { MAX_DIRECT } else { 0 };
+        assert_eq!(d.defer.iter().filter(|n| n.starts_with("!mcp__")).count(), expected);
     }
 
     #[test]
