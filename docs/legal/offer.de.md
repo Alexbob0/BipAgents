@@ -57,9 +57,9 @@ diese Bedingungen.
 
 | Tarif | Personen | Server | Preis in der App (App Store, Google Play), inkl. MwSt. | Preis auf der Website bipagents.com, in Euro, inkl. MwSt. |
 |---|---|---|---|---|
-| Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 6,99 € pro Monat oder 69,90 € pro Jahr | 6,49 € pro Monat oder 64,90 € pro Jahr |
-| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 11,99 € pro Monat oder 119,90 € pro Jahr | 10,99 € pro Monat oder 109,90 € pro Jahr |
-| Familie | bis zu 6 | ein Server nur für euch | 19,99 € pro Monat oder 199,90 € pro Jahr | 17,99 € pro Monat oder 179,90 € pro Jahr |
+| Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 7,99 € pro Monat oder 79,90 € pro Jahr | 7,49 € pro Monat oder 74,90 € pro Jahr |
+| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 12,99 € pro Monat oder 129,90 € pro Jahr | 11,99 € pro Monat oder 119,90 € pro Jahr |
+| Familie | bis zu 6 | ein Server nur für euch | 21,99 € pro Monat oder 219,90 € pro Jahr | 19,99 € pro Monat oder 199,90 € pro Jahr |
 
 Das Jahresabo kostet 10 Monate für 12 und wird auf einmal für die 12 Monate bezahlt. Die Preise auf der Website sind
 niedriger als in den Stores.
@@ -70,12 +70,12 @@ die Zahlungsseite von Stripe zeigt den Preis, die Währung und den Betrag, den d
 
 | Währung | Land | Solo, pro Monat / pro Jahr | Duo, pro Monat / pro Jahr | Familie, pro Monat / pro Jahr | Steuern |
 |---|---|---|---|---|---|
-| Euro (EUR) | Europäische Union | 6,49 € / 64,90 € | 10,99 € / 109,90 € | 17,99 € / 179,90 € | inkl. MwSt. |
-| US-Dollar (USD) | Vereinigte Staaten | 6,49 US$ / 64,90 US$ | 10,99 US$ / 109,90 US$ | 17,99 US$ / 179,90 US$ | ohne Steuern: Die Umsatzsteuer deines Bundesstaats kommt beim Bezahlen dazu |
-| Kanadischer Dollar (CAD) | Kanada | 8,99 CA$ / 89,90 CA$ | 14,99 CA$ / 149,90 CA$ | 24,99 CA$ / 249,90 CA$ | ohne Steuern: GST/HST und, je nach Provinz, PST oder QST kommen beim Bezahlen dazu |
-| Pfund Sterling (GBP) | Vereinigtes Königreich | 5,49 £ / 54,90 £ | 9,49 £ / 94,90 £ | 15,49 £ / 154,90 £ | inkl. MwSt. |
-| Singapur-Dollar (SGD) | Singapur | 8,99 S$ / 89,90 S$ | 14,99 S$ / 149,90 S$ | 24,99 S$ / 249,90 S$ | inkl. GST |
-| Schekel (ILS) | Israel | 24,90 ₪ / 249,00 ₪ | 42,90 ₪ / 429,00 ₪ | 69,90 ₪ / 699,00 ₪ | inkl. MwSt. |
+| Euro (EUR) | Europäische Union | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 19,99 € / 199,90 € | inkl. MwSt. |
+| US-Dollar (USD) | Vereinigte Staaten | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 19,99 US$ / 199,90 US$ | ohne Steuern: Die Umsatzsteuer deines Bundesstaats kommt beim Bezahlen dazu |
+| Kanadischer Dollar (CAD) | Kanada | 9,99 CA$ / 99,90 CA$ | 15,99 CA$ / 159,90 CA$ | 27,99 CA$ / 279,90 CA$ | ohne Steuern: GST/HST und, je nach Provinz, PST oder QST kommen beim Bezahlen dazu |
+| Pfund Sterling (GBP) | Vereinigtes Königreich | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 17,49 £ / 174,90 £ | inkl. MwSt. |
+| Singapur-Dollar (SGD) | Singapur | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 27,99 S$ / 279,90 S$ | inkl. GST |
+| Schekel (ILS) | Israel | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 77,90 ₪ / 779,00 ₪ | inkl. MwSt. |
 
 Für jede Person des Tarifs:
 
@@ -88,9 +88,9 @@ Für jede Person des Tarifs:
 - **Ein SSH-Zugang** zum Konto ihres Platzes, von einem Computer aus, dessen Schlüssel in der App hinzugefügt wurde
   (Einstellungen › Alles-inklusive-Angebot › SSH-Zugang), ohne Administratorrechte (root).
 
-**Das KI-Guthaben des Tarifs**: 0,50 € (Solo), 1,00 € (Duo) oder 3,00 € (Familie) Nutzung des KI-Modells pro Monat,
-geteilt von allen Personen des Tarifs, in der App als geschätzte Zahl von Nachrichten angezeigt: etwa 1.000, 2.000
-oder 6.000 Nachrichten pro Monat mit dem Standardmodell (Abschnitt 6).
+**Das KI-Guthaben des Tarifs**: 5,00 € (Solo), 9,00 € (Duo) oder 16,00 € (Familie) Nutzung des KI-Modells pro Monat,
+geteilt von allen Personen des Tarifs, in der App als geschätzte Zahl von Nachrichten angezeigt: etwa 7.000, 13.000
+oder 24.000 Nachrichten pro Monat mit dem Standardmodell (Abschnitt 6).
 
 **Wo.** Die Server werden zuerst bei OVHcloud gemietet (Rechenzentren in der Europäischen Union), dann bei Hetzner
 (Deutschland oder Finnland), dann bei OVHcloud für kleinere Server, je nachdem, was verfügbar ist. Sie stehen alle in
@@ -142,12 +142,12 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 
 ## 6. Das KI-Guthaben und das Modell
 
-- Jeder Tarif hat ein **KI-Guthaben pro Monat: 0,50 € für Solo, 1,00 € für Duo, 3,00 € für Familie**: Nutzung des
+- Jeder Tarif hat ein **KI-Guthaben pro Monat: 5,00 € für Solo, 9,00 € für Duo, 16,00 € für Familie**: Nutzung des
   Modells, berechnet zu dem Preis, den der Anbieter Kerfy Studio in Rechnung stellt. Bei Duo oder Familie **gehört
   dieses Guthaben allen Personen des Tarifs**: Ihre Agenten nutzen es gemeinsam, ohne festen Anteil für jede Person.
 - **In Nachrichten**: Die App zeigt das Guthaben als **geschätzte Zahl von Nachrichten** mit dem gewählten Modell. Als Anhaltspunkt,
-  mit dem Standardmodell und abgerundet: **etwa 1.000 Nachrichten pro Monat für Solo, 2.000 für Duo und
-  6.000 für die ganze Familie**. Es ist eine Schätzung, kein Versprechen: Was eine Nachricht kostet, hängt von ihrer
+  mit dem Standardmodell und abgerundet: **etwa 7.000 Nachrichten pro Monat für Solo, 13.000 für Duo und
+  24.000 für die ganze Familie**. Es ist eine Schätzung, kein Versprechen: Was eine Nachricht kostet, hängt von ihrer
   Länge, den angehängten Dateien und dem Modell ab. Eine Nachricht ist hier ein einfacher Austausch: Eine **Aufgabe im
   Browser** oder eine **Hintergrundaufgabe** reiht viele Aufrufe des Modells aneinander und zählt viel mehr, oft so
   viel wie mehrere Dutzend Nachrichten; die App zeigt laufend, was übrig ist.

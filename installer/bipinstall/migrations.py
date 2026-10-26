@@ -169,6 +169,23 @@ def code_without_asking(runner: hermes.Runner, home: Path) -> str:
                         "still ask), gateways restarted", 1)
 
 
+def provider_routing(runner: hermes.Runner, home: Path) -> str:
+    """Every model call through EUrouter names the providers it tries first (routing.py, 2026-10-26), so their
+    prompt cache works: the hub and every agent's Hermes config. The bridge writes it too at each start (its
+    `[model] provider_order`, read here as well); Hermes reads it from the next conversation."""
+    from . import routing
+    order = routing.order_from(_bridge_config(home))
+    count = 0
+    for root, profile in hermes_configs(home):
+        path = root / ("profiles/" + profile if profile else "") / "config.yaml"
+        runner.log.append(f"route {path}")
+        if not runner.dry and routing.write(path, order):
+            count += 1
+    if not count:
+        return "no agent on EUrouter here: model routing left as it is"
+    return f"model calls through EUrouter go to {', '.join(order)} first, so their cache works ({count} config(s))"
+
+
 def rust_bridge(runner: hermes.Runner, home: Path) -> str:
     """The bridge in Rust only (2026-10-21): the Python bridge left the code with this update, so a service still
     running it is put on this version's binaries (rustbridge.py), restarted, and the agents' browser tools moved to
@@ -495,6 +512,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-26-code-without-asking", code_without_asking),
     ("2026-10-26-light-disk", light_disk),
     ("2026-10-26-voices-everywhere", voices_everywhere),
+    ("2026-10-26-provider-routing", provider_routing),
 ]
 
 

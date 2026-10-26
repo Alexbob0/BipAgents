@@ -137,6 +137,10 @@ async def check(base_url: str, model: str, api_key: Optional[str] = None, *,
     image = {"model": model, "max_tokens": 8, "messages": [{"role": "user", "content": [
         {"type": "text", "text": "Quelle couleur ? Un mot."},
         {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_RED_SQUARE}"}}]}]}
+    from .routing import DEFAULT_ORDER, routing
+    route = routing(DEFAULT_ORDER, base_url)   # checked on the providers the agents will use
+    if route:
+        text["provider"] = image["provider"] = route
     async with httpx.AsyncClient(timeout=120, transport=transport) as client:
         start = time.monotonic()
         try:

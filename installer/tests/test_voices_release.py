@@ -295,7 +295,7 @@ def test_an_own_install_moves_off_pytorch_with_the_release(tmp_path, monkeypatch
     assert any(line.endswith("cache clean torch") for line in ran)
     assert "uv's cache emptied" in said
     assert "already" in migrations.voices_everywhere(runner, tmp_path)   # again: harmless
-    assert migrations.MIGRATIONS[-1][0] == "2026-10-26-voices-everywhere"
+    assert "2026-10-26-voices-everywhere" in [mid for mid, _ in migrations.MIGRATIONS]
 
 
 def test_without_a_release_yet_pytorch_stays_and_the_next_update_tries_again(tmp_path, monkeypatch):

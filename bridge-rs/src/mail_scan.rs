@@ -428,6 +428,7 @@ pub async fn extract(
     http: &reqwest::Client,
     model: &IndexMap<String, String>,
     mails: &[Dict],
+    order: &[String],
 ) -> anyhow::Result<(Vec<Dict>, [i64; 3])> {
     let s = |m: &Dict, k: &str| tk::str_or_empty(m.get(k));
     let text = mails
@@ -446,8 +447,9 @@ pub async fn extract(
         })
         .collect::<Vec<_>>()
         .join("\n\n");
-    let body = json!({"model": model["model"], "temperature": 0, "max_tokens": 120 * mails.len() + 200,
-                      "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": text}]});
+    let mut body = json!({"model": model["model"], "temperature": 0, "max_tokens": 120 * mails.len() + 200,
+                          "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": text}]});
+    crate::model_route::add_to_body(order, &model["base_url"], &mut body);
     let resp = http
         .post(format!("{}/chat/completions", model["base_url"]))
         .header("Authorization", format!("Bearer {}", model["key"]))
@@ -1126,7 +1128,7 @@ impl Scans {
                     tokio::task::spawn_blocking(move || bodies(&o, &a, &f, &b)).await??
                 };
                 let (facts, spent) =
-                    if mails.is_empty() { (Vec::new(), [0, 0, 0]) } else { extract(&http, &model, &mails).await? };
+                    if mails.is_empty() { (Vec::new(), [0, 0, 0]) } else { extract(&http, &model, &mails, &config.model_provider_order).await? };
                 if !facts.is_empty() {
                     std::fs::create_dir_all(folder.join("raw"))?;
                     let mut out = std::fs::OpenOptions::new()

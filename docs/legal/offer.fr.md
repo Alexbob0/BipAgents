@@ -55,9 +55,9 @@ conditions.
 
 | Forfait | Personnes | Serveur | Prix TTC dans l'app (App Store, Google Play) | Prix TTC sur le site bipagents.com, en euros |
 |---|---|---|---|---|
-| Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 6,99 € par mois ou 69,90 € par an | 6,49 € par mois ou 64,90 € par an |
-| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 11,99 € par mois ou 119,90 € par an | 10,99 € par mois ou 109,90 € par an |
-| Famille | jusqu'à 6 | un serveur rien qu'à vous | 19,99 € par mois ou 199,90 € par an | 17,99 € par mois ou 179,90 € par an |
+| Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 7,99 € par mois ou 79,90 € par an | 7,49 € par mois ou 74,90 € par an |
+| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 12,99 € par mois ou 129,90 € par an | 11,99 € par mois ou 119,90 € par an |
+| Famille | jusqu'à 6 | un serveur rien qu'à vous | 21,99 € par mois ou 219,90 € par an | 19,99 € par mois ou 199,90 € par an |
 
 L'abonnement annuel coûte 10 mois pour 12 et se paie en une fois pour les 12 mois. Les prix du site sont plus bas que
 ceux des stores.
@@ -68,12 +68,12 @@ de paiement de Stripe affiche le prix, la monnaie et le total que tu paies.
 
 | Monnaie | Pays | Solo, par mois / par an | Duo, par mois / par an | Famille, par mois / par an | Taxes |
 |---|---|---|---|---|---|
-| Euro (EUR) | Union européenne | 6,49 € / 64,90 € | 10,99 € / 109,90 € | 17,99 € / 179,90 € | TVA comprise |
-| Dollar américain (USD) | États-Unis | 6,49 US$ / 64,90 US$ | 10,99 US$ / 109,90 US$ | 17,99 US$ / 179,90 US$ | hors taxes : la taxe de vente de ton État s'ajoute au paiement |
-| Dollar canadien (CAD) | Canada | 8,99 CA$ / 89,90 CA$ | 14,99 CA$ / 149,90 CA$ | 24,99 CA$ / 249,90 CA$ | hors taxes : la TPS/TVH et, selon ta province, la TVP ou la TVQ s'ajoutent au paiement |
-| Livre sterling (GBP) | Royaume-Uni | 5,49 £ / 54,90 £ | 9,49 £ / 94,90 £ | 15,49 £ / 154,90 £ | TVA comprise |
-| Dollar de Singapour (SGD) | Singapour | 8,99 S$ / 89,90 S$ | 14,99 S$ / 149,90 S$ | 24,99 S$ / 249,90 S$ | GST comprise |
-| Shekel (ILS) | Israël | 24,90 ₪ / 249,00 ₪ | 42,90 ₪ / 429,00 ₪ | 69,90 ₪ / 699,00 ₪ | TVA comprise |
+| Euro (EUR) | Union européenne | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 19,99 € / 199,90 € | TVA comprise |
+| Dollar américain (USD) | États-Unis | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 19,99 US$ / 199,90 US$ | hors taxes : la taxe de vente de ton État s'ajoute au paiement |
+| Dollar canadien (CAD) | Canada | 9,99 CA$ / 99,90 CA$ | 15,99 CA$ / 159,90 CA$ | 27,99 CA$ / 279,90 CA$ | hors taxes : la TPS/TVH et, selon ta province, la TVP ou la TVQ s'ajoutent au paiement |
+| Livre sterling (GBP) | Royaume-Uni | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 17,49 £ / 174,90 £ | TVA comprise |
+| Dollar de Singapour (SGD) | Singapour | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 27,99 S$ / 279,90 S$ | GST comprise |
+| Shekel (ILS) | Israël | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 77,90 ₪ / 779,00 ₪ | TVA comprise |
 
 Pour chaque personne du forfait :
 
@@ -86,9 +86,9 @@ Pour chaque personne du forfait :
 - **Un accès SSH** au compte de sa place, depuis un ordinateur dont la clé a été ajoutée dans l'app (Réglages › Offre
   tout compris › Accès SSH), sans droits d'administrateur (root).
 
-**Le crédit d'IA du forfait** : 0,50 € (Solo), 1,00 € (Duo) ou 3,00 € (Famille) d'utilisation du modèle d'IA chaque
-mois, partagé par toutes les personnes du forfait, affiché dans l'app en nombre estimé de messages : environ 1 000,
-2 000 ou 6 000 messages par mois avec le modèle par défaut (section 6).
+**Le crédit d'IA du forfait** : 5,00 € (Solo), 9,00 € (Duo) ou 16,00 € (Famille) d'utilisation du modèle d'IA chaque
+mois, partagé par toutes les personnes du forfait, affiché dans l'app en nombre estimé de messages : environ 7 000,
+13 000 ou 24 000 messages par mois avec le modèle par défaut (section 6).
 
 **Où.** Les serveurs sont loués à OVHcloud d'abord (centres de données dans l'Union européenne), puis à Hetzner
 (Allemagne ou Finlande), puis à OVHcloud pour des serveurs plus petits, selon ce qui est disponible. Ils sont tous
@@ -140,13 +140,13 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 
 ## 6. Le crédit d'IA et le modèle
 
-- Chaque forfait a un **crédit d'IA par mois : 0,50 € pour Solo, 1,00 € pour Duo, 3,00 € pour Famille** : de
+- Chaque forfait a un **crédit d'IA par mois : 5,00 € pour Solo, 9,00 € pour Duo, 16,00 € pour Famille** : de
   l'utilisation du modèle comptée au prix que le fournisseur facture à Kerfy Studio. Sur un Duo ou une Famille, ce
   crédit est **celui de toutes les personnes du forfait** : leurs agents l'utilisent ensemble, sans part fixe pour
   chacun.
 - **En messages** : l'app affiche le crédit en **nombre estimé de messages** avec le modèle choisi. À titre indicatif, avec le
-  modèle par défaut et arrondi vers le bas : **environ 1 000 messages par mois pour Solo, 2 000 pour
-  Duo et 6 000 pour toute la famille**. C'est une estimation, pas une promesse : le coût d'un message dépend de sa
+  modèle par défaut et arrondi vers le bas : **environ 7 000 messages par mois pour Solo, 13 000 pour
+  Duo et 24 000 pour toute la famille**. C'est une estimation, pas une promesse : le coût d'un message dépend de sa
   longueur, des fichiers joints et du modèle. Un message, ici, c'est un échange simple : une **tâche dans le
   navigateur** ou une **tâche de fond** enchaîne de nombreux appels au modèle et compte pour bien plus, souvent
   l'équivalent de plusieurs dizaines de messages ; l'app montre ce qui reste au fur et à mesure.

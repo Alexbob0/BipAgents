@@ -168,6 +168,9 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
     let mut body = json!({"model": model.name, "temperature": 0, "max_tokens": MAX_OUTPUT_TOKENS,
                           "response_format": {"type": "json_object"},
                           "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": user}]});
+    if let (Some(route), Some(map)) = (&model.route, body.as_object_mut()) {
+        map.insert("provider".into(), route.clone());
+    }
     for attempt in 0..2 {
         let mut request = HTTP.post(format!("{}/chat/completions", model.base)).json(&body);
         if !model.key.is_empty() {

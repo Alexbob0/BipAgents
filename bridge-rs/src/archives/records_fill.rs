@@ -416,6 +416,8 @@ pub struct Model {
     pub local: bool,
     /// The agent's own model.
     pub own: bool,
+    /// The providers EUrouter tries first (model_route.rs), sent as the request's `provider`; None: not routed.
+    pub route: Option<Value>,
 }
 
 impl Model {
@@ -480,7 +482,8 @@ pub fn model_for(
         (None, None) if own => (config.notebook.price_in, config.notebook.price_out),
         (None, None) => (config.archive_records.unknown_price_in, config.archive_records.unknown_price_out),
     };
-    Ok(Model { base: base.trim_end_matches('/').to_string(), name, key, price_in, price_out, local, own })
+    let route = crate::model_route::routing(&config.model_provider_order, &base);
+    Ok(Model { base: base.trim_end_matches('/').to_string(), name, key, price_in, price_out, local, own, route })
 }
 
 /// About 3.5 characters a token.
@@ -497,6 +500,9 @@ async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String> {
     let mut body = json!({"model": model.name, "temperature": 0, "max_tokens": MAX_OUTPUT_TOKENS,
                           "response_format": {"type": "json_object"},
                           "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": user}]});
+    if let (Some(route), Some(map)) = (&model.route, body.as_object_mut()) {
+        map.insert("provider".into(), route.clone());
+    }
     for attempt in 0..2 {
         let mut request = HTTP.post(format!("{}/chat/completions", model.base)).json(&body);
         if !model.key.is_empty() {

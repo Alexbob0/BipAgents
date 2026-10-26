@@ -61,26 +61,26 @@
         "countries": [],
         "web": {
           "month": {
-            "solo": 6.49,
-            "duo": 10.99,
-            "famille": 17.99
-          },
-          "year": {
-            "solo": 64.9,
-            "duo": 109.9,
-            "famille": 179.9
-          }
-        },
-        "store": {
-          "month": {
-            "solo": 6.99,
+            "solo": 7.49,
             "duo": 11.99,
             "famille": 19.99
           },
           "year": {
-            "solo": 69.9,
+            "solo": 74.9,
             "duo": 119.9,
             "famille": 199.9
+          }
+        },
+        "store": {
+          "month": {
+            "solo": 7.99,
+            "duo": 12.99,
+            "famille": 21.99
+          },
+          "year": {
+            "solo": 79.9,
+            "duo": 129.9,
+            "famille": 219.9
           }
         }
       },
@@ -92,26 +92,26 @@
         ],
         "web": {
           "month": {
-            "solo": 6.49,
-            "duo": 10.99,
-            "famille": 17.99
-          },
-          "year": {
-            "solo": 64.9,
-            "duo": 109.9,
-            "famille": 179.9
-          }
-        },
-        "store": {
-          "month": {
-            "solo": 6.99,
+            "solo": 7.49,
             "duo": 11.99,
             "famille": 19.99
           },
           "year": {
-            "solo": 69.9,
+            "solo": 74.9,
             "duo": 119.9,
             "famille": 199.9
+          }
+        },
+        "store": {
+          "month": {
+            "solo": 7.99,
+            "duo": 12.99,
+            "famille": 21.99
+          },
+          "year": {
+            "solo": 79.9,
+            "duo": 129.9,
+            "famille": 219.9
           }
         }
       },
@@ -123,14 +123,14 @@
         ],
         "web": {
           "month": {
-            "solo": 8.99,
-            "duo": 14.99,
-            "famille": 24.99
+            "solo": 9.99,
+            "duo": 15.99,
+            "famille": 27.99
           },
           "year": {
-            "solo": 89.9,
-            "duo": 149.9,
-            "famille": 249.9
+            "solo": 99.9,
+            "duo": 159.9,
+            "famille": 279.9
           }
         },
         "store": null
@@ -143,14 +143,14 @@
         ],
         "web": {
           "month": {
-            "solo": 5.49,
-            "duo": 9.49,
-            "famille": 15.49
+            "solo": 6.49,
+            "duo": 10.49,
+            "famille": 17.49
           },
           "year": {
-            "solo": 54.9,
-            "duo": 94.9,
-            "famille": 154.9
+            "solo": 64.9,
+            "duo": 104.9,
+            "famille": 174.9
           }
         },
         "store": null
@@ -164,14 +164,14 @@
         "proposal": true,
         "web": {
           "month": {
-            "solo": 8.99,
-            "duo": 14.99,
-            "famille": 24.99
+            "solo": 9.99,
+            "duo": 15.99,
+            "famille": 27.99
           },
           "year": {
-            "solo": 89.9,
-            "duo": 149.9,
-            "famille": 249.9
+            "solo": 99.9,
+            "duo": 159.9,
+            "famille": 279.9
           }
         },
         "store": null
@@ -185,14 +185,14 @@
         "proposal": true,
         "web": {
           "month": {
-            "solo": 24.9,
-            "duo": 42.9,
-            "famille": 69.9
+            "solo": 28.9,
+            "duo": 46.9,
+            "famille": 77.9
           },
           "year": {
-            "solo": 249.0,
-            "duo": 429.0,
-            "famille": 699.0
+            "solo": 289.0,
+            "duo": 469.0,
+            "famille": 779.0
           }
         },
         "store": null

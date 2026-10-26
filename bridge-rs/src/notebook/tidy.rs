@@ -560,8 +560,9 @@ async fn run_inner(
         return Ok(());
     };
     record.insert("model".into(), json!(model));
-    let body = json!({"model": model, "temperature": 0, "max_tokens": MAX_OUTPUT_TOKENS,
-                      "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": user}]});
+    let mut body = json!({"model": model, "temperature": 0, "max_tokens": MAX_OUTPUT_TOKENS,
+                          "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": user}]});
+    crate::model_route::add_to_body(&config.model_provider_order, &base, &mut body);
     let resp = http
         .post(format!("{base}/chat/completions"))
         .header("Authorization", format!("Bearer {key}"))

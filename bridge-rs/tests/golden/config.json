@@ -100,6 +100,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -213,6 +217,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -328,6 +336,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -444,6 +456,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -579,6 +595,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -695,6 +715,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -829,6 +853,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -942,6 +970,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -1082,6 +1114,10 @@
    "push_service_url": "https://push.example",
    "model_health_url": "http://model/v1/models",
    "model_health_key": "mk",
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": "https://box.ts.net",
    "peer_url": "http://host.containers.internal:8643/peer",
    "cloud": true,
@@ -1204,6 +1240,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -1329,6 +1369,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -1449,6 +1493,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -1690,6 +1738,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -1871,6 +1923,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -1989,6 +2045,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -2125,6 +2185,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -2242,6 +2306,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -2372,6 +2440,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -2497,6 +2569,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,
@@ -2627,6 +2703,10 @@
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
+   "model_provider_order": [
+    "entrim",
+    "melious"
+   ],
    "public_url": null,
    "peer_url": null,
    "cloud": false,

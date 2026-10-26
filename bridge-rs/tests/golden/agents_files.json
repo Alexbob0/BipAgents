@@ -56,19 +56,19 @@
   "fn": "set_thinking",
   "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
   "arg": "none",
-  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: none\nproviders:\n  other:\n    api: http://x\n  bipagents-thinking:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\n"
+  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: none\nproviders:\n  other:\n    api: http://x\n  bipagents-thinking:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\n      provider:\n        order:\n        - entrim\n        - melious\n        allow_fallbacks: true\n"
  },
  {
   "fn": "set_thinking",
   "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
   "arg": "low",
-  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: low\nproviders:\n  other:\n    api: http://x\n"
+  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: low\nproviders:\n  other:\n    api: http://x\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - melious\n        allow_fallbacks: true\n"
  },
  {
   "fn": "set_thinking",
   "input": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n",
   "arg": "xhigh",
-  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: xhigh\nproviders:\n  other:\n    api: http://x\n"
+  "output": "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: xhigh\nproviders:\n  other:\n    api: http://x\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - melious\n        allow_fallbacks: true\n"
  },
  {
   "fn": "set_thinking",
@@ -122,7 +122,7 @@
    "deepseek-v4",
    false
   ],
-  "output": "model:\n  provider: custom\n  default: deepseek-v4\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: false\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n"
+  "output": "model:\n  provider: custom\n  default: deepseek-v4\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: false\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - melious\n        allow_fallbacks: true\n"
  },
  {
   "fn": "set_model",
@@ -131,7 +131,7 @@
    "z-ai/glm-5.3:free",
    null
   ],
-  "output": "model:\n  provider: custom\n  default: z-ai/glm-5.3:free\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n"
+  "output": "model:\n  provider: custom\n  default: z-ai/glm-5.3:free\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - melious\n        allow_fallbacks: true\n"
  },
  {
   "fn": "set_model",
@@ -140,7 +140,7 @@
    "é",
    true
   ],
-  "output": "model:\n  provider: custom\n  default: é\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n"
+  "output": "model:\n  provider: custom\n  default: é\n  base_url: https://api.eurouter.ai/api/v1\n  supports_vision: true\nagent:\n  max_turns: 60\n  reasoning_effort: 'off'\nproviders:\n  other:\n    api: http://x\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - melious\n        allow_fallbacks: true\n"
  },
  {
   "fn": "set_enabled",

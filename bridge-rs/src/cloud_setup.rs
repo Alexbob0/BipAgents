@@ -517,6 +517,9 @@ pub async fn claim_server(
         for command in model_commands(&snapshot, &request.model) {
             run(command, env.clone()).await?;
         }
+        // the providers EUrouter tries first (model_route.rs): in the hub's config, which every agent is cloned from
+        let hub_config = PathBuf::from(crate::agents_admin::install_home(&snapshot)).join("config.yaml");
+        crate::model_route::write(&hub_config, &snapshot.model_provider_order)?;
         run(vec![snapshot.hermes.bin.clone(), "gateway".into(), "restart".into()], env.clone()).await?;
         let base_url = request
             .model
@@ -759,8 +762,8 @@ pub async fn prepare_when_installed(config: SharedConfig, http: reqwest::Client)
 }
 
 /// The model in a Hermes home or profile folder, as `hermes config set` writes it: `model` in config.yaml, the key in
-/// `.env`.
-pub fn write_model_files(folder: &Path, model: &ModelChoice) -> anyhow::Result<()> {
+/// `.env`; with the providers EUrouter tries first (`order`, model_route.rs).
+pub fn write_model_files(folder: &Path, model: &ModelChoice, order: &[String]) -> anyhow::Result<()> {
     use crate::agents_admin::pyyaml::{self, Yaml};
     let path = folder.join("config.yaml");
     let mut data = if path.exists() { crate::agents_admin::load_or_empty(&path)? } else { Yaml::map() };
@@ -781,6 +784,9 @@ pub fn write_model_files(folder: &Path, model: &ModelChoice) -> anyhow::Result<(
     }
     section.insert("supports_vision", Yaml::Bool(model.vision));
     data.insert("model", section);
+    if let Some(routed) = crate::model_route::with_routing(&data, order) {
+        data = routed;
+    }
     if path.exists() {
         crate::agents_admin::replace_yaml(&path, &data)?;
     } else {
@@ -893,8 +899,9 @@ async fn claim_prepared(
     let lang = request.language.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| "fr".into());
     if !state.get("model_set").map(crate::py::truthy).unwrap_or(false) {
         let home = PathBuf::from(install_home(&snapshot));
-        write_model_files(&home, &request.model)?; // the hub: every agent made later is cloned from it
-        write_model_files(&home.join("profiles").join(prepared), &request.model)?; // cloned before
+        let order = &snapshot.model_provider_order;
+        write_model_files(&home, &request.model, order)?; // the hub: every agent made later is cloned from it
+        write_model_files(&home.join("profiles").join(prepared), &request.model, order)?; // cloned before
         let base_url = model_base_url(&request.model).unwrap_or_else(|| "https://openrouter.ai/api/v1".into());
         write_model_health(config, &base_url, &request.model.key)?;
         remember(&config.get(), &[("model_set", json!(true))])?;
