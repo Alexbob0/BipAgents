@@ -156,19 +156,15 @@ def finish(runner, base: Optional[Path] = None, repo: Optional[Path] = None, add
     for line in migrations.run(runner):
         runner.log.append(line)
     from .family import bridge_restart
-    services = [tuple(item) for item in fresh.get("services", [])]
-    for how, name in services:
-        if how == "systemd" and not name.startswith("bipagents-browser-") and "bridge" not in name:
-            runner.run(["systemctl", "--user", "enable", "--now", name], check=False)
-    for how, name in services:
-        if how == "systemd" and "bridge" in name:
-            runner.run(["systemctl", "--user", "enable", name], check=False)
+    # What `prepare` stopped starts again, the way `bipagents resume` does (gateways, then the bridge).
+    (config / moving.MOVED).write_text(json.dumps({"stopped": fresh.get("services", [])}), encoding="utf-8")
+    started = moving.resume(runner, base)
     runner.run(bridge_restart(base), check=False)
     if info.get("browsers"):
         from .rustbridge import cli
         runner.run(cli(base, repo) + ["browser", "add", "--all", "--config", str(config / "bridge.toml")],
                    cwd=repo / "bridge", check=False)
-    return {"finished": True, "volumes": filled}
+    return {"finished": True, "volumes": filled, "started": started}
 
 
 def main(argv: List[str]) -> int:
