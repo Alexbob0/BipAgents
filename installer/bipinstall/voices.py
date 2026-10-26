@@ -21,7 +21,18 @@ import httpx
 from . import hermes
 
 VOICES_URL = os.environ.get("BIPAGENTS_VOICES_URL", "")
-NAMES = {"fr": "french", "en": "english", "es": "spanish", "de": "german"}
+NAMES = {"fr": "french", "en": "english", "es": "spanish", "de": "german", "nl": "dutch"}
+# Languages that came after installs set up « all of them » (2026-10-26: Dutch): an update adds them to a Pocket that
+# serves every older one, never to one that chose fewer (the « mini » profile: the person's language only).
+NEW_LANGUAGES = ("nl",)
+
+
+def with_new_languages(codes: List[str]) -> List[str]:
+    """`codes` with the newer languages added when it has every older one."""
+    older = [code for code in NAMES if code not in NEW_LANGUAGES]
+    if not all(code in codes for code in older):
+        return list(codes)
+    return list(codes) + [code for code in NEW_LANGUAGES if code not in codes]
 
 
 def folder(home: Path) -> Path:
@@ -149,10 +160,13 @@ def languages_of(packages: Path) -> List[str]:
 
 def refresh(home: Path, runner: hermes.Runner, say: Callable[[str], None],
             transport: Optional[httpx.BaseTransport] = None) -> bool:
-    """The light voices brought to what the guichet now serves (new packages: a new Pocket, new Bips' voices), the
-    old ones removed once the new are here: whether anything changed (Pocket then restarts on them)."""
+    """The light voices brought to what the guichet now serves (new packages: a new Pocket, new Bips' voices, a new
+    language when this account has all the others), the old ones removed once the new are here: whether anything
+    changed (Pocket then restarts on them)."""
     target = folder(home)
     languages = languages_of(target)
+    if languages:
+        languages = with_new_languages(languages)
     base, token = source(home)
     if not languages or base is None:
         return False

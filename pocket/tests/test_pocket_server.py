@@ -97,6 +97,19 @@ def test_voice_names_pick_the_language(setup):
     assert engine.models["fr"].loaded == ["loutre.safetensors"]  # voice states are loaded once
 
 
+def test_dutch_voices_come_from_the_dutch_folder(tmp_path):
+    # « nl/galet » (2026-10-26): voices/dutch/galet.safetensors with Pocket's dutch model.
+    (tmp_path / "dutch").mkdir()
+    (tmp_path / "dutch" / "galet.safetensors").write_bytes(b"x")
+    built = []
+    engine = FakeEngine(tmp_path, languages=["fr", "nl"], loader=lambda code: built.append(code) or FakeModel(code))
+    client = TestClient(create_app(engine))
+    assert client.get("/health").json()["voices"] == {"fr": [], "nl": ["galet"]}
+    assert client.post("/v1/audio/stream", json={"input": "Hoi", "voice": "nl/galet"}).content == b"[nl:galet:Hoi]"
+    assert built == ["nl"] and pocket_server.LANGUAGE_DIRS["nl"] == "dutch"
+    assert client.post("/v1/audio/stream", json={"input": "Hoi", "voice": "nl/ours"}).status_code == 404
+
+
 @pytest.mark.parametrize("voice", ["en/ours", "es/loutre", "../secrets", "fr/LOUTRE", "pirate"])
 def test_unknown_voices_are_404(setup, voice):
     _, client = setup

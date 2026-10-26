@@ -3,7 +3,7 @@
 # Serveur Pocket TTS — les voix des Bips
 
 Petit serveur HTTP autour de [Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts) : 100 M de paramètres,
-**sur CPU, sans GPU**, en français, anglais, espagnol et allemand. Le bridge (`bridge/`) l'appelle pour toutes les
+**sur CPU, sans GPU**, en français, anglais, espagnol, allemand et néerlandais. Le bridge (`bridge/`) l'appelle pour toutes les
 voix `pocket:…` ; l'app ne lui parle jamais directement.
 
 | Machine | Premier son | Vitesse | Mémoire (4 langues) |
@@ -23,7 +23,7 @@ Python ≥ 3.10. Le dépôt cloné dans `~/BipAgents` (les voix sont dans `~/Bip
 cd ~/BipAgents/pocket
 python3 -m venv .venv            # ou : uv venv --python 3.12 .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python pocket_server.py --voices ../voices --languages fr,en,es,de
+.venv/bin/python pocket_server.py --voices ../voices --languages fr,en,es,de,nl
 # premier lancement : téléchargement des modèles depuis Hugging Face (≈ 440 Mo par langue, une fois)
 curl -s http://127.0.0.1:8098/health
 ```
@@ -33,7 +33,7 @@ cf. [`docs/self-hosting.md`](../docs/self-hosting.fr.md). Côté bridge : `[pock
 
 Mémoire : seule la première langue reste chargée (`--keep fr` pour choisir) ; les autres se chargent à leur première
 phrase (quelques secondes, une fois) et sont déchargées après 15 minutes sans parler (`--idle-unload 900`, `0` : jamais) :
-quatre langues coûtent à peu près une quand une seule est parlée.
+cinq langues coûtent à peu près une quand une seule est parlée.
 
 Options : `--languages fr,en` (les langues servies), `--port 8098`, `--host 127.0.0.1` (laisser en
 local : seul le bridge l'appelle), `--quantize` (poids int8 : moins de mémoire, ≈ 25 % plus rapide sur x86),

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 TEMPLATES_PATH = Path(__file__).resolve().parents[2] / "bridge-rs" / "assets" / "agent_templates.yaml"
-LANGUAGE_NAMES = {"en": "English", "fr": "French", "es": "Spanish", "de": "German"}
+LANGUAGE_NAMES = {"en": "English", "fr": "French", "es": "Spanish", "de": "German", "nl": "Dutch"}
 BLOCK_START, BLOCK_END = "<!-- bipagents:language -->", "<!-- /bipagents:language -->"
 
 # The same texts as souls.rs (and its golden tests): the bridge keeps the block up to date afterwards (heal_souls).
@@ -44,7 +44,7 @@ def language(code: Optional[str]) -> str:
 
 
 def agent_language(code: Optional[str]) -> str:
-    """An agent's language: « en », « fr », « es » or « de »; English otherwise."""
+    """An agent's language: « en », « fr », « es », « de » or « nl »; English otherwise."""
     code = (code or "").strip().lower()
     for key, name in LANGUAGE_NAMES.items():
         if code.startswith(key) or code == name.lower():

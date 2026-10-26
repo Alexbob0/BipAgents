@@ -1568,6 +1568,7 @@ mod tests {
             ("pocket:en/loutre", "en"),
             ("pocket:es/ours", "es"),
             ("pocket:de/lutin", "de"),
+            ("pocket:nl/galet", "nl"),
             ("pocket:xx/lutin", "fr"),
         ] {
             assert_eq!(voice_language(voice), language);

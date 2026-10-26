@@ -10,7 +10,7 @@
     <string>__HOME__/BipAgents/pocket/.venv/bin/python</string>
     <string>__HOME__/BipAgents/pocket/pocket_server.py</string>
     <string>--voices</string><string>__HOME__/BipAgents/voices</string>
-    <string>--languages</string><string>fr,en,es,de</string>
+    <string>--languages</string><string>fr,en,es,de,nl</string>
   </array>
   <key>WorkingDirectory</key><string>__HOME__/BipAgents/pocket</string>
   <key>EnvironmentVariables</key>

@@ -202,8 +202,8 @@ after it is sent, plus the text's length for whole files): the agent's Bip speak
 `GET /v1/audio/voices`, Kyutai's `/v1/voices`, else `voices`) and uses; `PUT /v1/voices/uses` and
 `PUT /v1/agents/{id}/voices` change them in the config file. The voices of an earlier app (`drama:<id>`) go there too.
 
-Other languages: `pocket:<language>/<name>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, see
-`voices/english|spanish|german/`) goes to the Pocket model for that language; the Pocket server receives `voice` =
+Other languages: `pocket:<language>/<name>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, `pocket:nl/lumen`, see
+`voices/english|spanish|german|dutch/`) goes to the Pocket model for that language; the Pocket server receives `voice` =
 `en/colibri`. The text is prepared in the voice's language (`bridge-rs/src/speech_intl.rs`, numbers via `num2words`:
 "$5" → "five dollars", "23:15 Uhr" → "dreiundzwanzig Uhr fünfzehn"). When Pocket fails (and, in French, no
 legacy Kyutai is on), the bridge returns 502/503 and the app reads the text with the phone's own voice.

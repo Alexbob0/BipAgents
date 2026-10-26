@@ -1,4 +1,4 @@
-"""Kyutai Pocket TTS server for BipAgents: the Bips' voices, on CPU, in French, English, Spanish and German.
+"""Kyutai Pocket TTS server for BipAgents: the Bips' voices, on CPU, in French, English, Spanish, German and Dutch.
 
 Speaks the Kyutai-style API the bridge uses (``bridge/bipbridge/tts.py``):
 
@@ -7,8 +7,8 @@ Speaks the Kyutai-style API the bridge uses (``bridge/bipbridge/tts.py``):
 - ``POST /v1/audio/speech``  ``{"input", "voice", "response_format": "wav"|"mp3"}`` -> the whole file
 - ``POST /v1/audio/stream``  ``{"input", "voice"}`` -> raw PCM16 mono 24 kHz, chunk by chunk (~80 ms each)
 
-``voice`` is ``colibri`` (French) or ``<code>/colibri`` (``en``, ``es``, ``de``): the voice state
-``<voices>/<french|english|spanish|german>/colibri.safetensors`` with that language's model. Unknown voice: 404.
+``voice`` is ``colibri`` (French) or ``<code>/colibri`` (``en``, ``es``, ``de``, ``nl``): the voice state
+``<voices>/<french|english|spanish|german|dutch>/colibri.safetensors`` with that language's model. Unknown voice: 404.
 
 Phrasing: the model is trained on single sentences and, left alone, packs several into one generation (rushed,
 with erratic pauses). Here each sentence is generated on its own (very short ones join their neighbour), the
@@ -23,7 +23,7 @@ and the shared decoder): the same Bips, 8-bit, ~250 MB a language while it speak
 (no PyTorch, 5.5 GB less on disk). With ``--keep none --idle-unload 120``, a server's podcasts and audio files load
 the model only while they are made.
 
-Run: ``python pocket_server.py --voices ../voices --languages fr,en,es,de`` (listens on 127.0.0.1:8098), or
+Run: ``python pocket_server.py --voices ../voices --languages fr,en,es,de,nl`` (listens on 127.0.0.1:8098), or
 ``python pocket_server.py --onnx ~/.local/share/bipagents/voices --keep none --idle-unload 120``.
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ from pydantic import BaseModel
 
 log = logging.getLogger("pocket_server")
 
-LANGUAGE_DIRS = {"fr": "french", "en": "english", "es": "spanish", "de": "german"}
+LANGUAGE_DIRS = {"fr": "french", "en": "english", "es": "spanish", "de": "german", "nl": "dutch"}
 VOICE_NAME = re.compile(r"^[a-z0-9_-]{1,40}$")
 
 
@@ -538,8 +538,8 @@ def create_app(engine: Engine):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--voices", type=Path, default=Path(__file__).resolve().parent.parent / "voices",
-                        help="folder holding french/, english/, spanish/, german/ (default: the repo's voices/)")
-    parser.add_argument("--languages", default="fr,en,es,de", help="comma-separated: fr, en, es, de")
+                        help="folder holding french/, english/, spanish/, german/, dutch/ (default: the repo's voices/)")
+    parser.add_argument("--languages", default="fr,en,es,de,nl", help="comma-separated: fr, en, es, de, nl")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8098)
     parser.add_argument("--quantize", action="store_true", help="int8 weights: less memory, faster on x86 CPUs")

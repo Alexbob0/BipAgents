@@ -137,6 +137,19 @@ def test_the_light_voices_follow_the_guichets_new_packages(tmp_path, monkeypatch
     assert not voices.refresh(tmp_path, runner, said.append, transport=packages_server())   # nothing new
 
 
+def test_light_voices_with_every_language_ask_for_dutch_too(tmp_path, monkeypatch):
+    # 2026-10-26: an account with the four older languages asks the guichet for nl as well (taken when it has it).
+    target = voices.folder(tmp_path)
+    monkeypatch.setattr(voices, "VOICES_URL", "https://voices.test/v1/")
+    asked = []
+    monkeypatch.setattr(voices, "install", lambda languages, *a, **k: asked.append(languages))
+    write_packages(target, {"french": "4.0.1", "english": "4.0.1", "spanish": "4.0.1", "german": "4.0.1"})
+    voices.refresh(tmp_path, hermes.Runner(dry=False), [].append)
+    write_packages(target, {"french": "4.0.1"}, build="2")
+    voices.refresh(tmp_path, hermes.Runner(dry=False), [].append)
+    assert asked == [["fr", "en", "es", "de", "nl"], ["fr"]]
+
+
 def pocket_unit(tmp_path, light=False, repo=None):
     units = tmp_path / ".config/systemd/user"
     units.mkdir(parents=True, exist_ok=True)

@@ -53,7 +53,7 @@ of Hermes that wires them into the api_server, see [`hermes-clarify-api.md`](her
 git clone https://github.com/Alexbob0/BipAgents ~/BipAgents
 cd ~/BipAgents/pocket
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt    # Python ≥ 3.10 (VPS: see below)
-.venv/bin/python pocket_server.py --voices ../voices --languages fr,en,es,de
+.venv/bin/python pocket_server.py --voices ../voices --languages fr,en,es,de,nl
 curl -s http://127.0.0.1:8098/health
 ```
 

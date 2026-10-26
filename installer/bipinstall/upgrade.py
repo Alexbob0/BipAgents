@@ -128,10 +128,15 @@ def pocket_step(runner: hermes.Runner, touched, venv) -> bool:
         say(ui.done("The Bips' new voices came from the guichet."))
         restart = True
     if unit is not None and not light and not runner.dry:
-        moved = pocketunit.serve_matching(unit, REPO, Path.home(), runner, say, pocketunit.engine_of(unit))
+        engine = pocketunit.engine_of(unit)
+        moved = pocketunit.serve_matching(unit, REPO, Path.home(), runner, say, engine)
         if moved is None:
             return False
         restart = restart or moved
+        if moved:
+            unit = pocketunit.find(Path.home()) or unit   # its unit as just written
+        # A language added since its unit was written (Dutch, 2026-10-26), when it serves all the others.
+        restart = pocketunit.serve_new_languages(unit, runner, say, engine) or restart
     return restart
 
 

@@ -168,6 +168,35 @@ def test_the_update_adopts_then_never_restarts_on_mismatched_states(tmp_path, mo
     assert upgrade.pocket_step(runner, touched, venv)
 
 
+def test_a_pocket_with_every_language_gets_dutch_once_its_states_are_there(tmp_path):
+    # 2026-10-26: units written with « --languages fr,en,es,de » get nl when voices/dutch/ fits their Pocket.
+    repo = tmp_path / "BipAgents"
+    units = tmp_path / ".config/systemd/user"
+    units.mkdir(parents=True)
+    unit_path = units / "bipagents-pocket.service"
+    python, script = repo / "pocket/.venv/bin/python", repo / "pocket/pocket_server.py"
+    unit_path.write_text(f"ExecStart={python} {script} --voices {repo}/voices --languages de,fr,en,es --port 8098\n")
+    write_voices(repo / "voices", "4.0.1")
+    runner, ran = recording_runner()
+    said = []
+    unit = pocketunit.find(tmp_path)
+    assert not pocketunit.serve_new_languages(unit, runner, said.append, "4.0.1")      # no Dutch states yet
+    (repo / "voices/dutch").mkdir()
+    (repo / "voices/dutch/voices.json").write_text(json.dumps({"engine": "pocket-tts 4.0.1"}))
+    assert not pocketunit.serve_new_languages(unit, runner, said.append, "3.3.0")      # made for another Pocket
+    assert not pocketunit.serve_new_languages(unit, runner, said.append, None)         # its Pocket unknown
+    assert pocketunit.serve_new_languages(unit, runner, said.append, "4.0.1")
+    unit = pocketunit.find(tmp_path)
+    assert unit.languages == "de,fr,en,es,nl" and unit.port == 8098 and unit.voices == repo / "voices"
+    assert ran == ["systemctl --user daemon-reload"] and "Dutch" in said[-1]
+    assert not pocketunit.serve_new_languages(unit, runner, said.append, "4.0.1")      # already so
+    # A Pocket that chose fewer languages (« mini »: the person's own) keeps its choice.
+    unit_path.write_text(f"ExecStart={python} {script} --voices {repo}/voices --languages fr --port 8098\n")
+    assert not pocketunit.serve_new_languages(pocketunit.find(tmp_path), runner, said.append, "4.0.1")
+    assert voices.with_new_languages(["fr", "en", "es", "de"]) == ["fr", "en", "es", "de", "nl"]
+    assert voices.with_new_languages(["fr"]) == ["fr"]
+
+
 def test_the_migration_names_the_account_and_the_command(monkeypatch):
     from bipinstall import migrations
     monkeypatch.setenv("USER", "aibox")

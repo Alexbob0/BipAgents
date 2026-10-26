@@ -935,10 +935,11 @@ def test_new_installs_send_through_the_publishers_relay_when_it_is_set(tmp_path)
 def test_bip_languages_put_this_machine_first():
     from bipinstall.stack import bip_languages
 
-    assert bip_languages("fr_FR.UTF-8") == "fr,en,es,de"
-    assert bip_languages("de_DE.UTF-8") == "de,fr,en,es"
-    assert bip_languages("ja_JP.UTF-8") == "fr,en,es,de"
-    assert bip_languages("") == "fr,en,es,de"
+    assert bip_languages("fr_FR.UTF-8") == "fr,en,es,de,nl"
+    assert bip_languages("de_DE.UTF-8") == "de,fr,en,es,nl"
+    assert bip_languages("nl_NL.UTF-8") == "nl,fr,en,es,de"
+    assert bip_languages("ja_JP.UTF-8") == "fr,en,es,de,nl"
+    assert bip_languages("") == "fr,en,es,de,nl"
 
 
 def test_zram_for_small_rented_servers(tmp_path):
@@ -992,7 +993,7 @@ def test_a_server_the_app_created_installs_without_a_question(monkeypatch, tmp_p
     assert "config set model.provider openrouter" in out and "OPENROUTER_API_KEY" not in out
     assert "profile create" not in out   # the agents come with the app's claim
     # The phones' 8-bit voices, without PyTorch, loaded only while they speak.
-    assert languages == [("de,fr,en,es", tmp_path / ".local/share/bipagents/voices")]
+    assert languages == [("de,fr,en,es,nl", tmp_path / ".local/share/bipagents/voices")]
     assert "would download the voices of de, fr, en, es" in out and "requirements-onnx.txt" in out
     assert "--onnx" in units[0][2] and "--keep none" in units[0][2]
     assert "[browser]\nenabled = true" in out and "Scan this code" not in out

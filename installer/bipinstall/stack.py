@@ -217,12 +217,12 @@ def zram_commands(package_manager: str) -> List[str]:
 
 
 def bip_languages(locale: Optional[str] = None) -> str:
-    """All four of Pocket's languages, this machine's first (the one Pocket keeps loaded): « fr,en,es,de »,
-    « en,fr,es,de »…"""
+    """All of Pocket's languages, this machine's first (the one Pocket keeps loaded): « fr,en,es,de,nl »,
+    « en,fr,es,de,nl »…"""
     import os
 
     first = (locale if locale is not None else os.environ.get("LC_ALL") or os.environ.get("LANG") or "")[:2].lower()
-    order = ["fr", "en", "es", "de"]
+    order = ["fr", "en", "es", "de", "nl"]
     return ",".join([first] + [code for code in order if code != first] if first in order else order)
 
 

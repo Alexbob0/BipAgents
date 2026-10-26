@@ -30,8 +30,8 @@ use crate::Dict;
 
 pub const CATEGORIES: [&str; 8] = ["daily", "wellness", "finance", "home", "work", "learning", "creative", "tech"];
 pub const LANGUAGES: [&str; 2] = ["fr", "en"];
-pub const LANGUAGE_NAMES: [(&str, &str); 4] =
-    [("en", "English"), ("fr", "French"), ("es", "Spanish"), ("de", "German")];
+pub const LANGUAGE_NAMES: [(&str, &str); 5] =
+    [("en", "English"), ("fr", "French"), ("es", "Spanish"), ("de", "German"), ("nl", "Dutch")];
 pub const BLOCK_START: &str = "<!-- bipagents:language -->";
 pub const BLOCK_END: &str = "<!-- /bipagents:language -->";
 /// Hermes refuses these.
@@ -48,7 +48,7 @@ pub fn language(code: Option<&str>) -> &'static str {
     }
 }
 
-/// An agent's language: « en », « fr », « es » or « de » (from « fr-FR », « Français »…); English otherwise.
+/// An agent's language: « en », « fr », « es », « de » or « nl » (from « fr-FR », « Français »…); English otherwise.
 pub fn agent_language(code: Option<&str>) -> String {
     let code = code.unwrap_or("").trim().to_lowercase();
     for (key, name) in LANGUAGE_NAMES {
@@ -534,6 +534,11 @@ mod tests {
         assert_eq!(split_language("plain"), ("plain".to_string(), None));
         assert_eq!(agent_language(Some("French")), "fr");
         assert_eq!(agent_language(Some("de-CH")), "de");
+        // Dutch (2026-10-26): an agent set to nl keeps it, its routines written in Dutch.
+        assert_eq!(agent_language(Some("nl-BE")), "nl");
+        let dutch = with_language("Je bent Vie.\n", Some("nl"));
+        assert!(dutch.contains("write in Dutch."));
+        assert_eq!(split_language(&dutch).1.as_deref(), Some("nl"));
     }
 
     #[test]

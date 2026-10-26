@@ -205,8 +205,8 @@ fichier entier) : le Bip de l'agent parle, et continue pendant 30 s. `GET /v1/vo
 ses usages ; `PUT /v1/voices/uses` et `PUT /v1/agents/{id}/voices` les changent dans le fichier de config. Les voix d'une
 ancienne app (`drama:<id>`) y vont aussi.
 
-Autres langues : `pocket:<langue>/<nom>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, cf.
-`voices/english|spanish|german/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =
+Autres langues : `pocket:<langue>/<nom>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, `pocket:nl/lumen`, cf.
+`voices/english|spanish|german|dutch/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =
 `en/colibri`. Le texte est préparé dans la langue de la voix (`bridge-rs/src/speech_intl.rs`, nombres via `num2words` :
 « $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Quand Pocket échoue (et, en français, sans
 Kyutai hérité actif), le bridge répond 502/503 et l'app lit le texte avec la voix du téléphone.

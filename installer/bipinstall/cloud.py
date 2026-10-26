@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 PROFILES = ("mini", "solo")
-LANGUAGES = ("fr", "en", "de", "es")
+LANGUAGES = ("fr", "en", "de", "es", "nl")
 DOOR_PORT = 443
 
 

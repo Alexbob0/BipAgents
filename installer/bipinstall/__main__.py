@@ -299,7 +299,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="the publisher's push relay (the app's notifications without an APNs key of your own)")
     parser.add_argument("--ports", type=int, help="the first port of this install's block (default: the first free one)")
     parser.add_argument("--languages", default=None,
-                        help="the Bips' languages: fr, en, es, de (default: all four, this machine's first; only the "
+                        help="the Bips' languages: fr, en, es, de, nl (default: all five, this machine's first; only the "
                              "first stays loaded, the others load when spoken and unload when silent)")
     parser.add_argument("--light-voices", action="store_true",
                         help="the Bips' voices as the phones have them (8-bit, no PyTorch), loaded only while they "

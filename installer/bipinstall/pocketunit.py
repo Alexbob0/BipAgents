@@ -25,7 +25,7 @@ from typing import Callable, List, Optional
 
 from . import hermes, voices
 
-LANGUAGE_DIRS = {"fr": "french", "en": "english", "es": "spanish", "de": "german"}
+LANGUAGE_DIRS = {"fr": "french", "en": "english", "es": "spanish", "de": "german", "nl": "dutch"}
 STANDARD = "bipagents-pocket"
 # The first start of a new Pocket downloads its weights: waited for longer than a restart.
 ADOPT_WAIT = 300.0
@@ -87,7 +87,7 @@ class Unit:
 
     @property
     def languages(self) -> str:
-        return self.flag("--languages") or "fr,en,es,de"
+        return self.flag("--languages") or ",".join(LANGUAGE_DIRS)   # pocket_server.py's default: all of them
 
     @property
     def voices(self) -> Optional[Path]:
@@ -119,16 +119,23 @@ class Unit:
 
     def with_voices(self, folder: Path) -> str:
         """The unit's text with `--voices <folder>` (added when it had none)."""
+        return self.with_flag("--voices", str(folder))
+
+    def with_languages(self, codes: str) -> str:
+        """The unit's text with `--languages <codes>` (added when it had none)."""
+        return self.with_flag("--languages", codes)
+
+    def with_flag(self, name: str, value: str) -> str:
         program = list(self.program)
         for index, arg in enumerate(program):
-            if arg == "--voices" and index + 1 < len(program):
-                program[index + 1] = str(folder)
+            if arg == name and index + 1 < len(program):
+                program[index + 1] = value
                 break
-            if arg.startswith("--voices="):
-                program[index] = f"--voices={folder}"
+            if arg.startswith(name + "="):
+                program[index] = f"{name}={value}"
                 break
         else:
-            program += ["--voices", str(folder)]
+            program += [name, value]
         lines = [f"ExecStart={shlex.join(program)}" if line.strip().startswith("ExecStart=") else line
                  for line in self.text.splitlines()]
         return "\n".join(lines) + "\n"
@@ -279,6 +286,29 @@ def serve_matching(unit: Unit, repo: Path, home: Path, runner: hermes.Runner, sa
     else:
         say(f"  ! The Bips' voices still run Pocket {engine}: they keep its own voice states ({target}), not the new "
             f"ones made for Pocket {made_for(repo / 'voices', languages[0])}.")
+    return True
+
+
+def serve_new_languages(unit: Unit, runner: hermes.Runner, say: Callable[[str], None], engine: Optional[str]) -> bool:
+    """A Pocket set up with every language of its time (`--languages fr,en,es,de` before Dutch, 2026-10-26) gets the
+    newer ones once its voices folder has their states made for its Pocket (`engine`): True when its unit changed
+    (Pocket must restart). One that chose fewer languages keeps its choice; without `--languages` it already serves
+    them all (pocket_server.py's default)."""
+    flag = unit.flag("--languages")
+    folder = unit.voices
+    if unit.light or flag is None or folder is None or not engine:
+        return False
+    codes = [code.strip() for code in flag.split(",") if code.strip()]
+    added = [code for code in voices.with_new_languages(codes)[len(codes):]
+             if code in LANGUAGE_DIRS and made_for(folder, code) and fits(folder, [code], engine, strict=True)]
+    if not added:
+        return False
+    runner.log.append(f"write {unit.path}")
+    if not runner.dry:
+        unit.path.write_text(unit.with_languages(",".join(codes + added)), encoding="utf-8")
+    _systemctl(runner, "daemon-reload")
+    names = ", ".join(LANGUAGE_DIRS[code].capitalize() for code in added)
+    say(f"  ✓ The Bips now speak {names} too (Pocket restarts with it).")
     return True
 
 
