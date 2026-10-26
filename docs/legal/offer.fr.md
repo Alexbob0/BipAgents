@@ -194,7 +194,7 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 - Tu es responsable de la sécurité de tes appareils, de ton compte Apple, Google ou e-mail, et de ton code de
   récupération.
 - **Supprimer ton compte** : dans l'app, Réglages › Compte › Supprimer mon compte, ou sur la page
-  https://guichet.kerfystudio.com/account/delete, avec un code envoyé à ton adresse e-mail. Ton compte est effacé
+  https://guichet.bipagents.com/account/delete, avec un code envoyé à ton adresse e-mail. Ton compte est effacé
   **30 jours** après ta demande. D'ici là, tes agents sont à l'arrêt, tu peux encore récupérer tes données et tu peux
   changer d'avis (Réglages › Compte › Garder mon compte). Au bout des 30 jours, ta place et ses sauvegardes sont
   effacées, puis ton compte (la [politique de confidentialité](privacy.fr.md) dit ce que la loi oblige à garder).

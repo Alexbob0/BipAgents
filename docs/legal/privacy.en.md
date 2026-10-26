@@ -317,7 +317,7 @@ authorities, your email address for 5 years and your Apple or Google identifier 
 contract (French law on confidence in the digital economy, article 6, II; decree no. 2021-1362, articles 2, 3 and 8).
 One-time codes: as long as they are valid. Invitation not accepted: 30 days.
 **Deleting your account.** In the app, Settings › Account › Delete my account, or, if you no longer have the app, on
-the page https://guichet.kerfystudio.com/account/delete with a code sent to your email address. The people you share
+the page https://guichet.bipagents.com/account/delete with a code sent to your email address. The people you share
 your plan with are told by email: their places stop on the day your account is erased.
 
 ### 5.3 Your subscription, your purchases and the free week

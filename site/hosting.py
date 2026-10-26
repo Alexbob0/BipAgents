@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, List
 
 # HSTS starts short (5 minutes) while the certificates settle; raise it to a year (31536000) once https has worked for
-# a few days on both domains, then think about includeSubDomains (the relay…; the guichet is guichet.kerfystudio.com).
+# a few days on both domains, then think about includeSubDomains (the relay…; the guichet is guichet.bipagents.com).
 HSTS_MAX_AGE = 300
 
 INLINE_SCRIPT = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.S | re.I)

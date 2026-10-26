@@ -326,7 +326,7 @@ responder a las autoridades judiciales, tu dirección de correo 5 años y tu ide
 después del fin del contrato (ley francesa para la confianza en la economía digital, artículo 6, II; decreto
 n.º 2021-1362, artículos 2, 3 y 8). Códigos de un solo uso: el tiempo de su validez. Invitación no aceptada: 30 días.
 **Eliminar tu cuenta.** En la app, Ajustes › Cuenta › Eliminar mi cuenta, o, si ya no tienes la app, en la página
-https://guichet.kerfystudio.com/account/delete con un código enviado a tu dirección de correo. Las personas con las que
+https://guichet.bipagents.com/account/delete con un código enviado a tu dirección de correo. Las personas con las que
 compartes tu plan reciben un aviso por correo: sus plazas se detienen el día en que se borra tu cuenta.
 
 ### 5.3 Tu suscripción, tus compras y la semana gratis

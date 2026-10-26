@@ -181,7 +181,7 @@ section 6); the services you connect to your agents and their own subscriptions.
 - You are responsible for the security of your devices, of your Apple, Google or email account, and of your recovery
   code.
 - **Deleting your account**: in the app, Settings › Account › Delete my account, or on the page
-  https://guichet.kerfystudio.com/account/delete, with a code sent to your email address. Your account is erased
+  https://guichet.bipagents.com/account/delete, with a code sent to your email address. Your account is erased
   **30 days** after your request. Until then, your agents are stopped, you can still get your data back and you can
   change your mind (Settings › Account › Keep my account). After the 30 days, your place and its backups are erased,
   then your account (the [privacy policy](privacy.en.md) says what the law requires us to keep).

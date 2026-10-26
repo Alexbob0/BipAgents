@@ -39,7 +39,7 @@
   "checkout": {
     "_readme": "url: one template for every plan and period, {plan} = solo|duo|famille, {period} = month|year, {lang} = en|fr|de|es; the page adds &currency=EUR|USD|… (the visitor's choice; or put {currency} in the template). links: optional per plan/period overrides, e.g. {\"duo\": {\"year\": \"https://…\"}}. Both empty = no web checkout yet. The guichet answers « bientôt sur le site » until its [web] enabled is on, and « complet » when the offer is full.",
     "url": "",
-    "_urlWhenLive": "https://guichet.kerfystudio.com/v1/web/checkout?plan={plan}&period={period}&lang={lang} (put it back in url once guichet.kerfystudio.com answers and its [web] is on)",
+    "_urlWhenLive": "https://guichet.bipagents.com/v1/web/checkout?plan={plan}&period={period}&lang={lang} (put it back in url once guichet.bipagents.com answers and its [web] is on)",
     "links": {}
   },
   "prices": {

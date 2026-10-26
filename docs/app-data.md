@@ -123,7 +123,7 @@ their place on the all-included offer. Everything personal goes here, with that 
 The widgets make no network calls. They read what the app has already saved in the shared App Group (iOS,
 `Widgets/BipWidgets.swift`) and open the app through a link (Android, `widget/AgentWidget.kt`).
 
-## 2. Kerfy Studio's guichet (`https://guichet.kerfystudio.com`)
+## 2. Kerfy Studio's guichet (`https://guichet.bipagents.com`)
 
 This is the all-included offer's service, with accounts and family links (`App/Features/Cloud/Guichet.swift`,
 `CloudOffer.swift`, `PlaceRescue.swift`, `App/Features/Account/BipAccount.swift`, `FamilyLinks.swift`;
@@ -244,7 +244,7 @@ The apps play no part in it.
   conversation, name, address or key (`Support.swift`, `ui/Support.kt`).
 - **Debug-only test addresses** (a local guichet, local voice packages): the overrides (`guichetURL` on iOS and
   Android, `voicePackagesURL` on Android) are read only in debug builds, so store builds always use
-  `guichet.kerfystudio.com`.
+  `guichet.bipagents.com`.
 
 ## 7. Kept on the phone only
 

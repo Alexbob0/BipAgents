@@ -133,7 +133,7 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
 Les widgets ne font aucun appel réseau. Ils lisent ce que l’app a déjà enregistré dans l’App Group partagé (iOS,
 `Widgets/BipWidgets.swift`) et ouvrent l’app par un lien (Android, `widget/AgentWidget.kt`).
 
-## 2. Le guichet de Kerfy Studio (`https://guichet.kerfystudio.com`)
+## 2. Le guichet de Kerfy Studio (`https://guichet.bipagents.com`)
 
 C’est le service de l’offre tout compris, avec les comptes et les liens familiaux (`App/Features/Cloud/Guichet.swift`,
 `CloudOffer.swift`, `PlaceRescue.swift`, `App/Features/Account/BipAccount.swift`, `FamilyLinks.swift` ;
@@ -264,7 +264,7 @@ fournisseur des agents (ou `[notebook] base_url`), sous un plafond mensuel. Jama
   chaque agent ; ni conversation, ni nom, ni adresse, ni clé (`Support.swift`, `ui/Support.kt`).
 - **Adresses de test réservées au débogage** (un guichet local, des paquets de voix locaux) : les réglages qui les
   définissent (`guichetURL` sur iOS et Android, `voicePackagesURL` sur Android) ne sont lus que dans les versions de
-  débogage ; les versions publiées utilisent toujours `guichet.kerfystudio.com`.
+  débogage ; les versions publiées utilisent toujours `guichet.bipagents.com`.
 
 ## 7. Ce qui reste sur le téléphone
 

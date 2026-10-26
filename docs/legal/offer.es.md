@@ -191,7 +191,7 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - Eres responsable de la seguridad de tus dispositivos, de tu cuenta de Apple, de Google o de correo, y de tu código
   de recuperación.
 - **Eliminar tu cuenta**: en la app, Ajustes › Cuenta › Eliminar mi cuenta, o en la página
-  https://guichet.kerfystudio.com/account/delete, con un código enviado a tu dirección de correo. Tu cuenta se borra
+  https://guichet.bipagents.com/account/delete, con un código enviado a tu dirección de correo. Tu cuenta se borra
   **30 días** después de tu solicitud. Hasta entonces, tus agentes están detenidos, todavía puedes recuperar tus datos
   y puedes cambiar de opinión (Ajustes › Cuenta › Mantener mi cuenta). Al cabo de los 30 días, se borran tu plaza y
   sus copias de seguridad, y después tu cuenta (la [política de privacidad](privacy.es.md) dice lo que la ley obliga a

@@ -346,7 +346,7 @@ Justizbehörden zu antworten, deine E-Mail-Adresse 5 Jahre und deine Apple- oder
 Vertrags auf (französisches Gesetz über das Vertrauen in die digitale Wirtschaft, Art. 6 II; Dekret Nr. 2021-1362,
 Art. 2, 3 und 8). Einmalcodes: solange sie gültig sind. Nicht angenommene Einladung: 30 Tage.
 **Dein Konto löschen.** In der App, Einstellungen › Konto › Mein Konto löschen, oder, wenn du die App nicht mehr hast,
-auf der Seite https://guichet.kerfystudio.com/account/delete mit einem Code, der an deine E-Mail-Adresse geschickt wird.
+auf der Seite https://guichet.bipagents.com/account/delete mit einem Code, der an deine E-Mail-Adresse geschickt wird.
 Die Personen, mit denen du deinen Tarif teilst, werden per E-Mail informiert: Ihre Plätze halten an dem Tag an, an dem
 dein Konto gelöscht wird.
 

@@ -196,7 +196,7 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - Du bist verantwortlich für die Sicherheit deiner Geräte, deines Apple-, Google- oder E-Mail-Kontos und deines
   Wiederherstellungscodes.
 - **Dein Konto löschen**: in der App, Einstellungen › Konto › Mein Konto löschen, oder auf der Seite
-  https://guichet.kerfystudio.com/account/delete, mit einem Code, der an deine E-Mail-Adresse geschickt wird. Dein Konto
+  https://guichet.bipagents.com/account/delete, mit einem Code, der an deine E-Mail-Adresse geschickt wird. Dein Konto
   wird **30 Tage** nach deinem Antrag gelöscht. Bis dahin sind deine Agenten angehalten, du kannst deine Daten noch
   herunterladen und es dir anders überlegen (Einstellungen › Konto › Konto behalten). Nach den 30 Tagen werden dein
   Platz und seine Sicherungen gelöscht, dann dein Konto (die [Datenschutzerklärung](privacy.de.md) sagt, was das Gesetz

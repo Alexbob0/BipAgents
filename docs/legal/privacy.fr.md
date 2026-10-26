@@ -334,7 +334,7 @@ ton adresse e-mail 5 ans et ton identifiant Apple ou Google 1 an après la fin d
 l'économie numérique, article 6, II ; décret n° 2021-1362, articles 2, 3 et 8). Codes à usage unique : le temps de leur
 validité. Invitation non acceptée : 30 jours.
 **Supprimer ton compte.** Dans l'app, Réglages › Compte › Supprimer mon compte, ou, si tu n'as plus l'app, sur la page
-https://guichet.kerfystudio.com/account/delete avec un code envoyé à ton adresse e-mail. Les personnes avec qui tu
+https://guichet.bipagents.com/account/delete avec un code envoyé à ton adresse e-mail. Les personnes avec qui tu
 partages ton forfait sont prévenues par e-mail : leurs places s'arrêtent le jour où ton compte est effacé.
 
 ### 5.3 Ton abonnement, tes achats et la semaine gratuite
