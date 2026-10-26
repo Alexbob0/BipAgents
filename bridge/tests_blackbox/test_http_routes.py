@@ -54,6 +54,7 @@ def test_agents_listing(bridge):
     resp = bridge.get("/v1/agents", headers=AUTH)
     listing = resp.json()
     assert all(a.pop("group", "") == "" for a in listing["agents"])   # agent groups: Rust only
+    assert all((a.pop("outfit", ""), a.pop("costumes", True)) == ("", True) for a in listing["agents"])   # costumes: Rust only
     assert listing == {"bridge": {"url": None, "lan": None},
                            "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "server_voice": None,
                                        "category": None, "color": None, "uploads": True,
