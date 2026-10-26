@@ -88,6 +88,10 @@ def accepted(order, server, done, now):
         elif body.get("action") == "reopen":
             pair = body["pair"]
             ok = ok and isinstance(pair, str) and 40 <= len(pair) <= 64 and all(c in PAIR_CHARS for c in pair)
+        elif body.get("action") in MOVE_ACTIONS:
+            ok = ok and move_valid(body)
+        elif body.get("action") == "remove":
+            ok = ok and remove_valid(body)
         else:
             ok = False
     except (KeyError, TypeError, ValueError):
@@ -632,6 +636,155 @@ def zram(swaps="/proc/swaps", tried=ZRAM_TRIED, conf="/etc/systemd/zram-generato
     return on
 
 
+# -- planned moves (place-move.py, 2026-10-26): kept apart from the rest -----------------------------------------------
+
+MOVE_ACTIONS = ("move_out", "move_in", "move_cancel")
+MOVES = "/var/lib/bipagents/moves"
+MOVE_ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-"
+
+
+def move_valid(body):
+    """A move order's own fields: its id, and for move_out / move_in the one-time key and the other server."""
+    move = body.get("move")
+    if not isinstance(move, dict):
+        return False
+    move_id = move.get("id")
+    if not (isinstance(move_id, str) and 6 <= len(move_id) <= 63 and all(c in MOVE_ID_CHARS for c in move_id)
+            and move_id[0] != "-"):
+        return False
+    if body["action"] == "move_cancel":
+        return True
+    key = move.get("key")
+    if not (isinstance(key, str) and 43 <= len(key) <= 88 and all(c in PAIR_CHARS for c in key.rstrip("="))):
+        return False
+    other = move.get("target") if body["action"] == "move_out" else move.get("source")
+    if not (isinstance(other, dict) and isinstance(other.get("address"), str) and _address(other["address"])):
+        return False
+    port = (other.get("port") if body["action"] == "move_out" else move.get("port")) or 2222
+    window = move.get("window")
+    return isinstance(port, int) and 1024 <= port <= 65535 and (window is None or (
+        isinstance(window, dict) and all(isinstance(window.get(k), (int, float)) for k in ("start", "end"))))
+
+
+def _address(text):
+    import ipaddress
+    try:
+        ipaddress.ip_address(text)
+        return True
+    except ValueError:
+        return False
+
+
+def _place_move():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("place_move", os.path.join(LIB, "place-move.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def move(body, moves=MOVES, lib=LIB, run=subprocess.run):
+    """The order to place-move.py: the target's listener at once, the source's move in a unit of its own (it lasts
+    from minutes to hours), a cancel either side."""
+    move_id = body["move"]["id"]
+    script = os.path.join(lib, "place-move.py")
+    if body["action"] == "move_cancel":
+        run(["/usr/bin/python3", script, "cancel", move_id])
+        return
+    folder = os.path.join(moves, move_id)
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    path = os.path.join(folder, "order.json")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump(body, fh)
+    log("place %s: %s %s" % (body["seat"], body["action"], move_id))
+    if body["action"] == "move_in":
+        run(["/usr/bin/python3", script, "in", path])
+    else:
+        run(["systemd-run", "--unit", "bipagents-move-%s" % move_id, "--collect", "--property=Nice=5",
+             "/usr/bin/python3", script, "out", path])
+
+
+def remove_valid(body):
+    """`remove`: the place left behind by a move, named by that move's id, or marked removed by the guichet."""
+    move = body.get("move")
+    if isinstance(move, dict):
+        return move_valid({"action": "move_cancel", "move": move})
+    return body.get("removed") is True
+
+
+def moved_out(number, move_id, moves=MOVES):
+    """This seat's move_out with that id completed here."""
+    try:
+        with open(os.path.join(moves, move_id, "state.json")) as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    return (state.get("role") == "out" and int(state.get("seat", 0)) == number
+            and state.get("phase") in ("done", "removed"))
+
+
+def remove(number, body, moves=MOVES, wipe_account=None, run=subprocess.run):
+    """The place a move left on this server goes (the guichet's pool::vacate): its services and account, its door's
+    firewall rule, its setup file. Only after its move_out completed here, and only while the account still holds
+    that move's mark (a seat installed again since is someone else's), or when the guichet marks it removed. Done
+    again, nothing more happens."""
+    user = account(number)
+    move = body.get("move")
+    if isinstance(move, dict):
+        move_id = move["id"]
+        if not moved_out(number, move_id, moves):
+            log("place %d: remove refused, its move %s did not complete here" % (number, move_id))
+            return False
+        try:
+            home = pwd.getpwnam(user).pw_dir
+            with open(os.path.join(home, ".config", "bipagents", "moved-away.json")) as fh:
+                mark = json.load(fh).get("move")
+        except KeyError:
+            mark = move_id   # the account is already gone
+        except (OSError, ValueError, AttributeError):
+            mark = None
+        if mark != move_id:
+            log("place %d: remove refused, the account is not the one moved by %s" % (number, move_id))
+            return False
+    elif body.get("removed") is not True:
+        return False
+    log("place %d (%s): removed" % (number, user))
+    (wipe_account or wipe)(user)
+    run(["ufw", "delete", "allow", "%d/tcp" % (442 + number)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        os.unlink("/etc/bipagents/cloud%d.json" % number)
+    except OSError:
+        pass
+    if isinstance(move, dict):
+        path = os.path.join(moves, move["id"], "state.json")
+        try:
+            with open(path) as fh:
+                state = json.load(fh)
+            state["phase"] = "removed"
+            with open(path, "w") as fh:
+                json.dump(state, fh)
+        except (OSError, ValueError):
+            pass
+    return True
+
+
+def add_moves(beat, lib=LIB):
+    """The moves' phases and numbers in the beat (`moves`), and the moves' leftovers cleared (listeners past their
+    time, source copies past their seven days)."""
+    if not os.path.exists(os.path.join(lib, "place-move.py")):
+        return
+    try:
+        module = _place_move()
+        module.cleanup(wipe=wipe)
+        found = module.states()
+    except Exception as exc:   # never the beat's loss
+        log("moves not read: %s" % exc)
+        return
+    if found:
+        beat["moves"] = found
+
+
 def read_done():
     try:
         with open(DONE) as fh:
@@ -684,8 +837,9 @@ def main(argv=()):
     server = vitals()
     memory_settled(server)
     try:
-        answer = call(conf, "POST", "/v1/server/beat", {"seats": health(), "server": server,
-                                                         "places": places_activity(places_memory())})
+        beat = {"seats": health(), "server": server, "places": places_activity(places_memory())}
+        add_moves(beat)
+        answer = call(conf, "POST", "/v1/server/beat", beat)
         orders = answer.get("orders") or []
     except (OSError, ValueError) as exc:
         log("guichet unreachable: %s" % exc)
@@ -712,6 +866,16 @@ def main(argv=()):
                     update(int(body["seat"]), body["commit"])
                 except (OSError, subprocess.SubprocessError) as exc:
                     log("update of place %s stopped: %s" % (body["seat"], exc))
+            elif body["action"] in MOVE_ACTIONS:
+                try:
+                    move(body)
+                except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                    log("move order %s stopped: %s" % (order.get("id"), exc))
+            elif body["action"] == "remove":
+                try:
+                    remove(int(body["seat"]), body)
+                except OSError as exc:
+                    log("removing place %s stopped: %s" % (body["seat"], exc))
             elif body["action"] == "reopen":
                 try:
                     reopen(int(body["seat"]), body["pair"])

@@ -1411,6 +1411,9 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/vault/{item_id}", "PATCH"),
     ("/v1/backup", "GET"),
     ("/v1/backup/now", "POST"),
+    ("/v1/place/move", "GET"),
+    ("/v1/place/move/drain", "POST"),
+    ("/v1/place/move/resume", "POST"),
     ("/v1/import", "POST"),
     ("/v1/import/hello", "GET"),
     ("/v1/import/archive", "PUT"),
@@ -1574,6 +1577,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::card_pay::app_router())
         .merge(crate::vault_logins::app_router())
         .merge(crate::place_backup::router())
+        .merge(crate::place_move::router())
         .merge(import_admin)
         .merge(crate::ssh_keys::router())
         .merge(crate::device_keys::router())
@@ -1650,6 +1654,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
     Router::new()
         .fallback_service(inner)
         .layer(middleware::from_fn(method_not_allowed_detail))
+        .layer(middleware::from_fn_with_state(state.clone(), crate::place_move::guard))
         .layer(middleware::from_fn_with_state(state.clone(), crate::files::upload_size_limit))
         .layer(axum::extract::DefaultBodyLimit::disable())
         .layer(tower_http::catch_panic::CatchPanicLayer::custom(internal_error))

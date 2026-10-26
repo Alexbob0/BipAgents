@@ -135,6 +135,7 @@ pub mod desktop_page;
 pub mod desktop_read;
 pub mod login_fill;
 pub mod place_backup;
+pub mod place_move;
 pub mod place_import;
 pub mod vault;
 pub mod vault_logins;
