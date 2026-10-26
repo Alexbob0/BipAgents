@@ -71,6 +71,12 @@ def rules(inv: moving.Inventory, root: Path) -> List[str]:
     at = prefix(inv.data_dir)
     if at is not None:
         found += [f"- {at}{name}" for name in sorted(moving.DATA_SKIP)]
+    # This server's own bridge binaries (rustbridge.py), in the data folder of a place of the offer: the target keeps
+    # its own (the first real move of 2026-10-26 replaced them with the source's, and the target's bridge didn't start).
+    from .rustbridge import BINARIES
+    at = prefix(inv.home / BINARIES)
+    if at is not None:
+        found.append(f"- {at.rstrip('/')}")
     at = prefix(inv.browsers_root)
     if at is not None:
         for name in sorted(moving.CHROME_SKIP):

@@ -330,6 +330,19 @@ def test_remove_clears_only_the_place_a_completed_move_left(tmp_path, monkeypatc
     assert not agent.remove(3, {"removed": "yes"}, str(moves), wiped.append, run)
 
 
+def test_each_server_keeps_its_own_bridge_binaries(tmp_path):
+    """A place of the offer keeps its data in ~/.local/share/bipagents, beside this server's bridge binaries."""
+    home = tmp_path / "bip"
+    (home / ".config" / "bipagents").mkdir(parents=True)
+    (home / ".local" / "share" / "bipagents" / "bridge" / "d07b754db429").mkdir(parents=True)
+    (home / ".config" / "bipagents" / "bridge.toml").write_text(
+        f'bridge_key = "k"\nport = 8643\ndata_dir = "{home}/.local/share/bipagents"\n'
+        f'[hermes]\nhome = "{home}/.hermes"\n')
+    inv = moving.read_inventory(home / ".config" / "bipagents" / "bridge.toml", home)
+    assert "- /bridge" in placemove.rules(inv, inv.data_dir)
+    assert "- /bridge" not in placemove.rules(inv, home / ".hermes")
+
+
 def test_the_switch_never_waits_systemd_s_90_seconds_for_a_hanging_service():
     class Fake:
         dry = False
