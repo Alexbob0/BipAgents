@@ -19,7 +19,7 @@ from typing import Callable, List, Optional
 import httpx
 import yaml
 
-from . import browser_refresh, hermes, models, rustbridge, souls, ui, voices
+from . import browser_refresh, checkout, hermes, models, rustbridge, souls, ui, voices
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
@@ -194,11 +194,12 @@ def start_service(system: str, label: str, path: Path, runner: hermes.Runner) ->
 
 def venv(folder: Path, runner: hermes.Runner, requirements: str = "requirements.txt") -> None:
     """The folder's Python environment, with its requirements as they are now (a new one after an update is
-    installed; nothing happens when they are all there)."""
+    installed; nothing happens when they are all there). Without uv's cache: the packages downloaded for it don't stay
+    on disk next to it (PyTorch's alone was 5.5 GB)."""
     if runner.dry or not (folder / ".venv" / "bin" / "python").exists():
-        runner.run(["uv", "venv", "--python", "3.12", str(folder / ".venv")])
-    runner.run(["uv", "pip", "install", "--quiet", "--python", str(folder / ".venv" / "bin" / "python"), "-r",
-                str(folder / requirements)])
+        runner.run(["uv", "venv", "--no-cache", "--python", "3.12", str(folder / ".venv")])
+    runner.run(["uv", "pip", "install", "--no-cache", "--quiet", "--python", str(folder / ".venv" / "bin" / "python"),
+                "-r", str(folder / requirements)])
 
 
 def wait_for(url: str, headers: Optional[dict] = None, seconds: int = 90) -> bool:
@@ -647,6 +648,7 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
     if pocket_running():
         say("  already set up on this machine: I'll share it.")
         inst.pocket_engine = voices.engine_at(inst.pocket_url)   # the bridge prepares the text for that Pocket
+        checkout.narrow(REPO, runner, voice_states=False)
     else:
         languages = args.languages or bip_languages()
         # A place of the all-included offer (or --light-voices): the phones' 8-bit voices, loaded only while they
@@ -654,6 +656,8 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         packages = None
         if getattr(args, "cloud", None) or getattr(args, "light_voices", False):
             packages = voices.install(languages.split(","), inst.home, runner, say)
+        # Pocket's own models read the voice states of the checkout (a light clone leaves them out until then).
+        checkout.narrow(REPO, runner, voice_states=packages is None)
         venv(REPO / "pocket", runner, "requirements-onnx.txt" if packages else "requirements.txt")
         inst.pocket_engine = voices.engine_of(packages) if packages else voices.pinned_pocket(REPO)
         label, path, content = pocket_service(inst, machine.system, languages, packages=packages)

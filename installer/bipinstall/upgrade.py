@@ -373,6 +373,9 @@ def main(argv: List[str]) -> int:
             say(f"  {line}")
 
     install_command(runner)
+    if migrations.is_place(Path.home()):
+        from .__main__ import tidy
+        tidy(runner)   # what this update downloaded doesn't stay (a place's account is its own)
 
     # 5. Each night.
     if not args.auto and not timer_installed() and ask("Update BipAgents by itself each night (at 4:30)?"):

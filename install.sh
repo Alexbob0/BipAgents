@@ -14,6 +14,10 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "BipAgents needs $1. $2" >&2;
 need git "macOS: xcode-select --install · Debian/Ubuntu: sudo apt install git · Fedora: sudo dnf install git"
 need curl ""
 
+# What only serves the install (downloaded packages) never stays on disk: uv and pip use a temporary cache and remove
+# it. An update downloads again what it needs.
+export UV_NO_CACHE=1 PIP_NO_CACHE_DIR=1
+
 if ! command -v uv >/dev/null 2>&1; then
   echo "Installing uv (Python manager, in ~/.local/bin)…"
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -47,14 +51,24 @@ if [ -d "$DIR/.git" ]; then
     export BIPAGENTS_PULL_FAILED=1
   fi
 else
+  # A light copy (installer/bipinstall/checkout.py): the latest commit, the contents of the files checked out only,
+  # without the apps' sources, the site, the voices' recordings and Pocket's voice states (the installer adds them
+  # when this account runs Pocket's own models).
   echo "Downloading BipAgents into $DIR…"
-  git clone --depth 1 --quiet "$REPO_URL" "$DIR"
+  git clone --depth 1 --filter=blob:none --no-checkout --quiet "$REPO_URL" "$DIR"
+  git -C "$DIR" sparse-checkout set --no-cone '/*' '!/App/' '!/android/' '!/site/' '!/voices/**/*.wav' \
+    '!/voices/**/*.safetensors'
+  git -C "$DIR" checkout --quiet main
   if [ -n "${BIPAGENTS_TO:-}" ]; then to_version; fi
 fi
 
 cd "$DIR"
+# The installer's own environment (installer/requirements.txt), the one its timers and the bridge run it with too.
+VENV="$DIR/installer/.venv"
+[ -x "$VENV/bin/python" ] || uv venv --quiet --python 3.12 "$VENV"
+uv pip install --quiet --python "$VENV/bin/python" -r "$DIR/installer/requirements.txt"
 # Questions are asked on the terminal even when this script comes through a pipe (curl … | bash).
-run() { env PYTHONPATH="$DIR/installer" uv run --quiet --python 3.12 --with httpx --with pyyaml --with cryptography python -m bipinstall "$@"; }
+run() { env PYTHONPATH="$DIR/installer" "$VENV/bin/python" -m bipinstall "$@"; }
 if [ ! -t 0 ] && (exec </dev/tty) 2>/dev/null; then
   run "$@" </dev/tty
 else
