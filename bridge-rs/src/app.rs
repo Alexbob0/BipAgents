@@ -328,6 +328,8 @@ impl AppState {
         self.spawn(self.briefs.clone().run());
         self.spawn(self.briefs.clone().sweep_forever());
         if self.sleep.enabled() {
+            // a server of the offer: the guichet's seat agent reads whether a run goes on (runs.rs BUSY_MARKER)
+            self.spawn(self.hub.clone().mark_busy_forever(self.sleep.home.clone(), 60.0));
             self.spawn(self.sleep.clone().run_forever());
         }
         let hub = self.hub.clone();

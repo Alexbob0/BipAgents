@@ -25,6 +25,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -67,6 +68,8 @@ pub const SUBAGENT_DONE: &str = "subagent.complete";
 /// The bridge's own words in a run's stream (after the safety net's rescue): `{code, text, job_id?, title?}`; the
 /// apps show them as a notice. Codes: `handoff_started`, `handoff_proposed`, `handoff_failed`.
 pub const NOTICE: &str = "bridge.notice";
+/// Present while a run goes on, rewritten every minute (`RunHub::mark_busy_forever`), for the seat agent's beat.
+pub const BUSY_MARKER: &str = ".local/state/bipagents/busy";
 
 fn handoff_tool(tool: &str) -> bool {
     HANDOFF_TOOLS.iter().any(|t| tool == *t || tool.ends_with(&format!("_{t}")))
@@ -988,6 +991,33 @@ impl RunHub {
         }
     }
 
+    /// A run goes on now (a conversation's turn, a background task's, a Live call's: every run the hub follows).
+    pub fn any_running(&self) -> bool {
+        let inner = lock(&self.inner);
+        inner.subs.values().any(|sub| {
+            let st = lock(&sub.state);
+            !st.finished && st.terminal.is_none()
+        })
+    }
+
+    /// `~/.local/state/bipagents/busy` (`BUSY_MARKER`) kept fresh, every `every` seconds, while a run goes on; gone when
+    /// none does. The guichet's seat agent (installer/cloud/seat-agent.py, root) reads it for the beat's `busy`: a
+    /// marker older than a few minutes is a bridge that stopped, not a busy place.
+    pub async fn mark_busy_forever(self: Arc<Self>, home: PathBuf, every: f64) {
+        let marker = home.join(BUSY_MARKER);
+        loop {
+            if self.any_running() {
+                if let Some(parent) = marker.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&marker, format!("{}", crate::py::time_time().trunc() as i64));
+            } else {
+                let _ = std::fs::remove_file(&marker);
+            }
+            tokio::time::sleep(Duration::from_secs_f64(every)).await;
+        }
+    }
+
     /// Another run of the agent that called its browser's tools still goes on (a background task's, another
     /// conversation's): its browser stays for it.
     fn browser_still_used(inner: &HubInner, sub: &Arc<RunSubscription>) -> bool {
@@ -1450,6 +1480,7 @@ mod tests {
         hub.dispatch(&chat, event("tool.started", json!({"tool": "mcp_stealth_navigate"})));
         hub.dispatch(&job, event("tool.started", json!({"tool": "mcp_stealth_click_element"})));
         hub.dispatch(&other, event("tool.started", json!({"tool": "web_search"})));
+        assert!(hub.any_running()); // the seat agent's `busy` (mark_busy_forever)
         // The conversation's run ends while a background task still uses the browser: it stays.
         hub.dispatch(&chat, event("run.completed", json!({"output": "Voilà."})));
         assert!(!ended.exists());
@@ -1459,6 +1490,7 @@ mod tests {
         // The task fails: the browser's work is over (bip-browser-mcp stops it 3 minutes later unless used again).
         hub.dispatch(&job, event("run.failed", json!({"error": "x"})));
         assert!(ended.exists());
+        assert!(!hub.any_running());
         // An agent without a browser set up gets no file.
         let lone = Arc::new(RunSubscription::new(AgentConfig { name: "lea".into(), ..Default::default() }, "r"));
         hub.dispatch(&lone, event("tool.started", json!({"tool": "browser_navigate"})));

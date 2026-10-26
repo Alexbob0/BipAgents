@@ -440,6 +440,79 @@ def places_memory(root=CGROUP_USERS, path=SAMPLES):
     return out
 
 
+BUSY = ".local/state/bipagents/busy"                 # a run goes on (bridge-rs/src/runs.rs, rewritten every minute)
+BUSY_FRESH = 180
+BRIDGE_DATA = ".local/share/hermes-bridge"           # its bridge's data_dir: time.json, sleep.json
+HERMES_HOME = ".hermes"
+
+
+def iso(seconds):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(seconds))
+
+
+def next_routine(home):
+    """The next run of the place's routines (Hermes' cron jobs of every agent), as Unix seconds, else None."""
+    import glob
+    from datetime import datetime, timezone
+    soonest = None
+    files = glob.glob(os.path.join(home, HERMES_HOME, "profiles", "*", "cron", "jobs.json"))
+    for path in files + [os.path.join(home, HERMES_HOME, "cron", "jobs.json")]:
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        jobs = data if isinstance(data, list) else data.get("jobs") if isinstance(data, dict) else None
+        for job in jobs if isinstance(jobs, list) else []:
+            if not isinstance(job, dict) or job.get("enabled") is False \
+                    or job.get("state") in ("paused", "completed", "deleted"):
+                continue
+            try:
+                at = datetime.fromisoformat(str(job.get("next_run_at")).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            seconds = (at if at.tzinfo else at.replace(tzinfo=timezone.utc)).timestamp()
+            soonest = seconds if soonest is None else min(soonest, seconds)
+    return soonest
+
+
+def activity(home, now=None):
+    """What the place's bridge says of it in its files (nothing asked of it): `busy` (a turn, a background task or a
+    Live call going on), `tz` (the person's zone the apps gave), `last_active_at` (its last request from an app, to ten
+    minutes), `next_routine_at` (its routines' next run). What is not known is left out."""
+    now = time.time() if now is None else now
+    out = {}
+    try:
+        out["busy"] = now - os.stat(os.path.join(home, BUSY)).st_mtime < BUSY_FRESH
+    except OSError:
+        out["busy"] = False
+    person = read_json(os.path.join(home, BRIDGE_DATA, "time.json"))
+    zone = person.get("time_zone") or person.get("device")
+    if isinstance(zone, str) and 0 < len(zone) <= 64 and all(c.isalnum() or c in "/_+-" for c in zone):
+        out["tz"] = zone
+    last = read_json(os.path.join(home, BRIDGE_DATA, "sleep.json")).get("last")
+    if isinstance(last, (int, float)) and not isinstance(last, bool) and last > 0:
+        out["last_active_at"] = iso(last)
+    soonest = next_routine(home)
+    if soonest is not None:
+        out["next_routine_at"] = iso(soonest)
+    return out
+
+
+def places_activity(memory):
+    """The beat's places: each one's memory and what its bridge's files say."""
+    for number, entry in memory.items():
+        try:
+            home = pwd.getpwnam(account(int(number))).pw_dir
+        except KeyError:
+            continue
+        try:
+            entry.update(activity(home))
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+    return memory
+
+
 def sampler(lib=LIB, units="/etc/systemd/system", runner=None):
     """bipagents-memory.timer, set up once (servers installed before 2026-10-26 included)."""
     wanted = {"bipagents-memory.service": SAMPLER_SERVICE % lib, "bipagents-memory.timer": SAMPLER_TIMER}
@@ -559,7 +632,7 @@ def main(argv=()):
     memory_settled(server)
     try:
         answer = call(conf, "POST", "/v1/server/beat", {"seats": health(), "server": server,
-                                                         "places": places_memory()})
+                                                         "places": places_activity(places_memory())})
         orders = answer.get("orders") or []
     except (OSError, ValueError) as exc:
         log("guichet unreachable: %s" % exc)

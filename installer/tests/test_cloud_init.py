@@ -375,6 +375,7 @@ def test_the_beat_s_body_and_its_order(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "health", lambda: {"1": {"up": True}})
     monkeypatch.setattr(agent, "vitals", lambda: {"memory_mb": 7812})
     monkeypatch.setattr(agent, "places_memory", lambda: {"1": {"mem_mb": 812, "mem_peak_mb": 1630}})
+    monkeypatch.setattr(agent, "places_activity", lambda memory: memory)
     monkeypatch.setattr(agent, "memory_settled", lambda server: steps.append(("settled", server["memory_mb"])))
     monkeypatch.setattr(agent, "zram", lambda: steps.append("zram"))
 
@@ -388,6 +389,42 @@ def test_the_beat_s_body_and_its_order(tmp_path, monkeypatch):
                                          "places": {"1": {"mem_mb": 812, "mem_peak_mb": 1630}}})]
     assert steps == [("settled", 7812), ("settled", 7812), "zram"]
     assert json.loads((tmp_path / "settings.json").read_text()) == {"memory_high_share": 0.3}
+
+
+def test_the_beat_says_what_each_place_s_bridge_files_say_of_it(tmp_path, monkeypatch):
+    """busy, tz, last_active_at, next_routine_at: read from the bridge's and Hermes' files, left out when unknown."""
+    import os
+    agent = _seat_agent()
+    home = tmp_path / "bip"
+    assert agent.activity(str(home), now=1793000000) == {"busy": False}
+    state = home / ".local" / "state" / "bipagents"
+    state.mkdir(parents=True)
+    (state / "busy").write_text("1793000000")
+    os.utime(state / "busy", (1792999950, 1792999950))
+    data = home / ".local" / "share" / "hermes-bridge"
+    data.mkdir(parents=True)
+    (data / "time.json").write_text('{"time_zone": "Europe/Paris", "device": "Asia/Tokyo"}')
+    (data / "sleep.json").write_text('{"last": 1792990000.5, "asleep": false}')
+    for agent_name, jobs in (("vie", [{"next_run_at": "2026-10-27T07:00:00+01:00", "enabled": True},
+                                      {"next_run_at": "2026-10-27T05:00:00+01:00", "state": "paused"}]),
+                             ("lea", {"jobs": [{"next_run_at": "2026-10-27T06:30:00+00:00"},
+                                               {"next_run_at": "nonsense"}]})):
+        folder = home / ".hermes" / "profiles" / agent_name / "cron"
+        folder.mkdir(parents=True)
+        (folder / "jobs.json").write_text(json.dumps(jobs))
+    assert agent.activity(str(home), now=1793000000) == {
+        "busy": True, "tz": "Europe/Paris", "last_active_at": "2026-10-26T04:46:40Z",
+        "next_routine_at": "2026-10-27T06:00:00Z"}
+    # a marker the bridge stopped refreshing (it stopped): not busy; a zone that is not one: left out
+    (data / "time.json").write_text('{"time_zone": "", "device": "$(reboot)"}')
+    assert agent.activity(str(home), now=1793000000 + 600) == {
+        "busy": False, "last_active_at": "2026-10-26T04:46:40Z", "next_routine_at": "2026-10-27T06:00:00Z"}
+    _places(agent, monkeypatch, {"bip": 1000})
+    monkeypatch.setattr(agent.pwd, "getpwnam", lambda name: type("P", (), {"pw_dir": str(home)})()
+                        if name == "bip" else (_ for _ in ()).throw(KeyError(name)))
+    places = agent.places_activity({"1": {"mem_mb": 800, "mem_peak_mb": 900}, "2": {"mem_mb": 0, "mem_peak_mb": 0}})
+    assert places["1"]["mem_mb"] == 800 and "next_routine_at" in places["1"]
+    assert places["2"] == {"mem_mb": 0, "mem_peak_mb": 0}
 
 
 def test_zram_is_set_up_on_a_server_without_it_with_user_data_s_own_settings(tmp_path):
