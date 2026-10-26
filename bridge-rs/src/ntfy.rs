@@ -22,7 +22,7 @@ use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::config::{AgentConfig, SharedConfig};
 use crate::hermes::HermesError;
-use crate::media::{extract_media, resolve};
+use crate::media::{extract_media, resolve, without_media_lines};
 use crate::push::pyx::{self, PyError};
 use crate::push::PushService;
 use crate::store::{iso, NewOutbox, Row, Store};
@@ -141,10 +141,14 @@ impl OutboxService {
     ) -> anyhow::Result<Option<Row>> {
         let raw = message.get("message").filter(|m| crate::py::truthy(m)).map(crate::py::py_str).unwrap_or_default();
         let (job_title, text) = unwrap_cron(&raw);
-        let (mut text, media_paths) = extract_media(&text);
-        if text.is_empty() && media_paths.is_empty() {
+        let (spoken, media_paths) = extract_media(&text);
+        if spoken.is_empty() && media_paths.is_empty() {
             return Ok(None);
         }
+        // The files the apps show stay in the text as its `MEDIA:` lines, in their places (a report's page, a
+        // picture, a document: 2026-10-26, a hand-back's « Le rapport complet : » had lost its page); an mp3 is the
+        // message's own audio instead (`attach_media_audio`).
+        let mut text = without_media_lines(&text, |path| path.to_lowercase().ends_with(".mp3"));
         if text.is_empty() {
             text = "🎧".into();
         }
@@ -239,10 +243,10 @@ impl OutboxService {
             return;
         }
         let id = crate::py::py_str(&item["id"]);
-        let text = item.get("text").and_then(Value::as_str).unwrap_or("");
+        let (text, _) = extract_media(item.get("text").and_then(Value::as_str).unwrap_or("")); // its words only
         let session_id = item.get("session_id").and_then(Value::as_str);
         let title = item.get("title").and_then(Value::as_str);
-        self.push.notify_message(&agent.name, &id, text, session_id, title).await;
+        self.push.notify_message(&agent.name, &id, &text, session_id, title).await;
     }
 
     pub async fn close(&self) {
@@ -271,8 +275,9 @@ impl OutboxService {
             }
         }
         let config = self.config.get();
-        let text = item.get("text").and_then(Value::as_str).unwrap_or("").to_string();
-        if pyx::len(&text) > config.outbox.audio_max_chars {
+        // its words read, not its files' lines
+        let (text, _) = extract_media(item.get("text").and_then(Value::as_str).unwrap_or(""));
+        if text.is_empty() || pyx::len(&text) > config.outbox.audio_max_chars {
             return None;
         }
         let id = crate::py::py_str(&item["id"]);

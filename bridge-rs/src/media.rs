@@ -80,6 +80,14 @@ pub fn extract_media(text: &str) -> (String, Vec<String>) {
     (crate::push::pyx::strip(&cleaned).to_string(), paths)
 }
 
+/// The text without the `MEDIA:` lines whose path `drop` picks (the others stay where they are).
+pub fn without_media_lines(text: &str, drop: impl Fn(&str) -> bool) -> String {
+    let without =
+        MEDIA_RE.replace_all(text, |c: &regex::Captures| if drop(&c[1]) { String::new() } else { c[0].to_string() });
+    let cleaned = BLANK_LINES.replace_all(&without, "\n\n");
+    crate::push::pyx::strip(&cleaned).to_string()
+}
+
 /// `os.path.splitext(path)[1].lower()`: the last component's extension (leading dots are not one).
 fn extension(path: &str) -> String {
     let name = path.rsplit('/').next().unwrap_or(path);

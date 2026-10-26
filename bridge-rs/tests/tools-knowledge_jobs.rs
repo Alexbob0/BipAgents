@@ -377,8 +377,10 @@ async fn a_finished_task_is_handed_back_to_the_conversation_it_came_from() {
     assert_eq!(runs.len(), 2);
     let turn = &runs[1];
     assert_eq!(turn["session_id"], "api_c");
-    assert_eq!(turn["instructions"], bipbridge::handback::INSTRUCTIONS);
+    // its rules in the note, the system prompt (and the conversation's prompt cache) untouched
+    assert!(turn.get("instructions").is_none(), "{turn}");
     let note = turn["input"].as_str().unwrap();
+    assert!(note.contains(bipbridge::handback::INSTRUCTIONS));
     let page = format!("/bipagents/pages/coach/rapport-{id}.html");
     assert!(note.starts_with("<!--bip:task\nYour background work « Écoles » is finished."), "{note}");
     assert!(note.contains("- Pasteur : cantine bio") && note.contains(&format!("MEDIA:{page}")) && note.ends_with("-->"));
@@ -396,8 +398,10 @@ async fn a_finished_task_is_handed_back_to_the_conversation_it_came_from() {
     assert!(told.lock().unwrap().is_empty());
 }
 
+/// 2026-10-26: a task that ended with its budget (nearly) spent still gets the agent's own message (it used to get the
+/// template, ids and all); only one far past it (`OVERRUN_MAX`) does not.
 #[tokio::test]
-async fn a_spent_budget_hands_back_the_templated_message() {
+async fn a_task_ending_at_its_budget_is_still_handed_back_by_the_agent() {
     let dir = tempfile::tempdir().unwrap();
     let (fake, url) = gateway(3, 40_000).await;
     let (config, agent) = setup(dir.path(), &url);
@@ -406,9 +410,10 @@ async fn a_spent_budget_hands_back_the_templated_message() {
     let job = board.create_from(&agent, "Écoles", "Compare.", 110_000, None, "asked", Some("api_c")).await.unwrap();
     let id = id_of(&job);
     board.wait(&id).await;
-    assert_eq!(posted_runs(&fake).len(), 1, "no turn left in the budget");
+    assert_eq!(posted_runs(&fake).len(), 2, "the agent's turn, past the budget");
     let done = jobs::load(&config, &id).unwrap();
-    assert_eq!((done["state"].as_str(), done["handed_back"]["by_agent"].as_bool()), (Some("done"), Some(false)));
+    assert_eq!((done["state"].as_str(), done["handed_back"]["by_agent"].as_bool()), (Some("done"), Some(true)));
+    assert_eq!(done["handed_back"]["why"], Value::Null);
     // without a conversation to go back to: the push as before
     let other = board.create(&agent, "Autre", "Encore.", 1_000_000, None).await.unwrap();
     board.wait(&id_of(&other)).await;

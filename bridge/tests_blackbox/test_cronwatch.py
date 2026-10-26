@@ -84,7 +84,7 @@ def test_a_bot_chat_turn_taken_alone_is_pushed_once_unless_on_screen(bridges, fa
     # The conversation open on the phone (it polls its state): the next turn is not pushed.
     state = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
     assert state.status_code == 200
-    assert state.json() == {"session_id": "api_bot", "message_count": 4, "updated_at": 0}   # Hermes' last_active
+    assert state.json() == {"session_id": "api_bot", "message_count": 4, "updated_at": 0, "outbox": "0@"}  # Hermes' last_active
     hermes.messages[("", "api_bot")] += [{"role": "user", "content": "Et demain ?"},
                                          {"role": "assistant", "content": "Grand soleil."}]
     hermes.sessions[""]["api_bot"]["message_count"] = 6
@@ -98,10 +98,11 @@ def test_session_state_route(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["agents"].update(Panne={"hermes_url": fakes.down.url, "hermes_key": "p" * 32}))
     bridge.start()
     resp = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert resp.status_code == 200 and resp.json() == {"session_id": "api_bot", "message_count": 7, "updated_at": None}
+    assert resp.status_code == 200 and resp.json() == {"session_id": "api_bot", "message_count": 7, "updated_at": None,
+                                                       "outbox": "0@"}  # the agent's Boîte: none yet
     fakes.hermes.add_session("api_9", [{"role": "user", "content": "x"}], updated_at="2026-10-21T07:00:00Z")
     assert bridge.get("/v1/sessions/api_9/state?agent=wellness", headers=AUTH).json() == {
-        "session_id": "api_9", "message_count": 1, "updated_at": "2026-10-21T07:00:00Z"}
+        "session_id": "api_9", "message_count": 1, "updated_at": "2026-10-21T07:00:00Z", "outbox": "0@"}
     bad = bridge.get("/v1/sessions/bad%20id/state?agent=wellness", headers=AUTH)
     assert bad.status_code == 400 and bad.json() == {"detail": "invalid session_id"}
     assert bridge.get("/v1/sessions/api_bot/state?agent=ghost", headers=AUTH).status_code == 404

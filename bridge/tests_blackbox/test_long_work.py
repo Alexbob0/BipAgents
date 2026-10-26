@@ -349,7 +349,8 @@ def test_a_finished_task_is_handed_back_to_the_conversation_that_asked(bridges, 
     assert wait_until(lambda: "r2" in hermes.started, timeout=40)
     turn = hermes.started["r2"]
     page = f"/bipagents/pages/wellness/rapport-{job['id']}.html"
-    assert turn["session_id"] == "api_c" and turn["instructions"].startswith("Background work you started")
+    # its rules in the note: the system prompt, and the conversation's prompt cache, untouched
+    assert turn["session_id"] == "api_c" and not turn.get("instructions") and "Write ONE short message" in turn["input"]
     assert turn["input"].startswith("<!--bip:task\nYour background work « Veste en laine » is finished.")
     assert "- Arket : 129 €" in turn["input"] and turn["input"].endswith(f"MEDIA:{page}\n-->")
 
@@ -358,7 +359,9 @@ def test_a_finished_task_is_handed_back_to_the_conversation_that_asked(bridges, 
 
     assert wait_until(handed, timeout=20)
     item = handed()[0]
-    assert item["text"] == MESSAGE and item["title"] == "Veste en laine" and item["agent"] == "wellness"
+    # the page's MEDIA line kept in the Boîte's text: the apps show the report as its page card
+    assert item["text"] == f"{MESSAGE}\n\nMEDIA:{page}"
+    assert item["title"] == "Veste en laine" and item["agent"] == "wellness"
     # the full report, one of the agent's pages (served like any MEDIA file)
     shown = bridge.get("/v1/media", headers=AUTH, params={"path": page})
     assert shown.status_code == 200 and "<li><strong>Uniqlo</strong> : 79 €, laine mérinos</li>" in shown.text
@@ -407,4 +410,43 @@ def test_a_task_whose_conversation_is_gone_is_told_by_the_template(bridges, fake
     # its words in the agent's language (English here), its key points from the report
     assert item["text"].startswith("Done: “Veste”.") or item["text"].startswith("C'est fait : « Veste ».")
     assert "\n- Uniqlo : 79 €, laine mérinos\n- Arket : 129 €\n- COS : 145 €" in item["text"]
+    # the full report's page stays in the Boîte's text (the apps show its card)
+    assert item["text"].endswith(f"\nMEDIA:/bipagents/pages/wellness/rapport-{jobs(bridge)[0]['id']}.html")
     assert bridge.logged("handback delivered")[0]["by_agent"] is False
+
+
+@pytest.mark.slow
+def test_a_hand_back_while_the_bot_chat_is_on_screen_is_not_pushed(bridges, fakes):
+    """2026-10-26: Alex had his Bot Chat open (it shows every Boîte message) when a task's result came: it was pushed,
+    and showed only once he tapped the notification. Now the open conversation's state changes (`outbox`), so the app
+    shows it, and no push comes for what is on screen."""
+    bridge = with_device(bridges, {})
+    give_token(bridge)
+    hermes = fakes.hermes
+    hermes.rounds = 1
+    hermes.add_session("api_c", [{"role": "user", "content": ASKED}], title="Veste")
+    hermes.add_session("api_bot", [], title="Bot Chat")
+    gate = threading.Event()
+    hermes.runs["run_c"] = [sse("tool.started", run_id="run_c", tool="mcp_bipagents_start_task", preview="x"), gate,
+                            sse("run.completed", run_id="run_c", output="Je m'en occupe en arrière-plan.")]
+    bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_c", "session_id": "api_c"})
+    assert wait_until(lambda: hermes.seen("/v1/runs/run_c/events"))
+    time.sleep(0.3)
+    assert not call(bridge, "start_task", {"title": "Veste en laine", "instructions": ASKED})["isError"]
+    hermes.run_outputs = {"r1": REPORT, "r2": MESSAGE}
+
+    def state():
+        return bridge.get("/v1/sessions/api_bot/state", headers=AUTH, params={"agent": "wellness"}).json()
+
+    before = state()["outbox"]
+    gate.set()
+
+    def handed():
+        state()   # the Bot Chat on screen, as the app polls it
+        return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["session_id"] == "api_c"]
+
+    assert wait_until(handed, timeout=40)
+    assert state()["outbox"] != before
+    item = handed()[0]
+    time.sleep(1.0)
+    assert not [p for p in fakes.apns.payloads() if p.get("outbox_id") == item["id"]]

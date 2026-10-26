@@ -293,8 +293,14 @@ async fn session_state_status_and_approvals_through_hermes() {
     let (k, v) = auth();
     let h = [(k, v.as_str())];
     let resp = app.get("/v1/sessions/s1/state?agent=wellness", &h).await;
-    assert_eq!(resp.json(), json!({"session_id": "s1", "message_count": 7, "updated_at": null}));
+    assert_eq!(resp.json(), json!({"session_id": "s1", "message_count": 7, "updated_at": null, "outbox": "0@"}));
     assert!(app.app.state.presence.viewing("wellness", "s1"));
+    assert_eq!(app.app.state.presence.viewed("wellness"), vec!["s1".to_string()]);
+    // a Boîte message (a hand-back's, a routine's) changes the conversation's state: the app shows it
+    let extra = bipbridge::store::NewOutbox { title: None, ntfy_id: None, sent_at: None, session_id: None };
+    app.app.state.store.add_outbox("wellness", "Fini.", extra).await.unwrap();
+    let after = app.get("/v1/sessions/s1/state?agent=wellness", &h).await.json();
+    assert!(after["outbox"].as_str().unwrap().starts_with("1@"), "{after}");
     assert_eq!(
         app.get("/v1/sessions/bad%20id/state?agent=wellness", &h).await.json(),
         json!({"detail": "invalid session_id"})

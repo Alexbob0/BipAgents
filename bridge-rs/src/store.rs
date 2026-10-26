@@ -456,6 +456,18 @@ impl Store {
         self.get_outbox(&id).await
     }
 
+    /// What changes when one of the agent's Boîte messages comes, is replaced or goes: « <count>@<last stamp> »
+    /// (an open conversation's state: the apps show the new message without being told by a push).
+    pub async fn outbox_marker(&self, agent: &str) -> anyhow::Result<String> {
+        let rows = self
+            .run("SELECT COUNT(*) AS n, MAX(created_at) AS last FROM outbox WHERE agent=?", vec![text(agent)])
+            .await?;
+        let row = rows.first();
+        let n = row.and_then(|r| r.get("n")).and_then(Value::as_i64).unwrap_or(0);
+        let last = row.and_then(|r| r.get("last")).and_then(Value::as_str).unwrap_or("");
+        Ok(format!("{n}@{last}"))
+    }
+
     pub async fn set_outbox_audio(&self, item_id: &str, path: &str) -> anyhow::Result<()> {
         self.run("UPDATE outbox SET audio_path=? WHERE id=?", vec![text(path), text(item_id)]).await?;
         Ok(())
