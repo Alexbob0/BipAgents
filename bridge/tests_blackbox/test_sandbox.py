@@ -69,6 +69,19 @@ def terminal(hub, name):
     raise AssertionError(f"{name}'s config.yaml never read whole")
 
 
+CODE_KEYS = ["execute_code", "script execution via -e/-c flag", "script execution via heredoc",
+             "shell command via -c/-lc flag"]
+
+
+def allowlist(hub, name):
+    """The profile's `command_allowlist` (Hermes' permanent approvals), or None while the file is being rewritten."""
+    try:
+        data = yaml.safe_load((hub / "profiles" / name / "config.yaml").read_text())
+    except (OSError, yaml.YAMLError):
+        return None
+    return data.get("command_allowlist", []) if isinstance(data, dict) else None
+
+
 def give_tokens(bridge, names):
     import hashlib
     path = bridge.state_dir / "agent-tools.json"
@@ -110,6 +123,8 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
                                                            "bipagents-envoi-wellness:/envoi"]
     assert vie["docker_extra_args"] == ["--network=bipagents-sandbox", "--dns=127.0.0.1"]
     assert vie.get("docker_network", True) is True     # Hermes' default: not written
+    # The code it writes runs without asking (Hermes' own permanent approvals), its risky commands still ask.
+    assert wait_until(lambda: allowlist(hub, "vie") == CODE_KEYS and allowlist(hub, "wellness") == CODE_KEYS, timeout=10)
     # Each sandbox its own credentials on the proxy (sandbox_sites.rs): the proxy knows which agent asks.
     sites = json.loads((bridge.state_dir / "sandbox-sites.json").read_text())["agents"]
     token = sites["vie"]["token"]
@@ -313,6 +328,8 @@ def test_turning_isolation_off_gives_the_sandboxes_their_folders_back(bridges, f
         assert settings.get("docker_extra_args", []) == []
         assert not any(k.lower().endswith("proxy") for k in settings.get("docker_env", {}))
         assert settings.get("docker_network", True) is True
+    # Its code asks again before it runs (the network is no longer the bridge's).
+    assert wait_until(lambda: allowlist(hub, "vie") == [] and allowlist(hub, "wellness") == [], timeout=10)
     # What the agent wrote while isolated is in the folder it now mounts; the proxy is stopped, the volumes kept.
     assert (root / "wellness" / "semaine.md").read_text() == "written while isolated"
     assert wait_until(lambda: ["rm", "-f", "--ignore", "bipagents-egress"] in bridge.commands.of("podman"), timeout=10)

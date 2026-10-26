@@ -153,6 +153,14 @@ sandboxes stay as they were (folders mounted, Hermes asks before risky commands)
 `[sandbox] isolate = "off"` and restart the bridge: each sandbox gets its folders mounted again (what the agents wrote
 in the volumes copied back first), and the network and proxy settings are taken out; the volumes stay.
 
+A sandbox that still mounts a folder of this machine you added by hand is not isolated for Hermes, which would ask
+before every script. Where the bridge isolates the network, it also puts Hermes' « code the agent wrote » approvals
+(`execute_code`, `python -c`, heredocs, `bash -c`) in the agent's `command_allowlist`: it reads and computes in its
+own space without asking, while risky commands (deleting, credential files, a download piped into a shell…), payments,
+deleting shared files, the write tools of services you added and new sites still ask (`approvals.mode` stays
+`manual`). `bipagents sandbox adopt <agent>` moves such hand-made folders into volumes. `bipagents approvals [agent]
+[--last N]` lists what the agents asked, with your answer (from the bridge's own logs, read only).
+
 ### The Carnet (the agents' notebook)
 
 The bridge keeps the person's Carnet under its data dir (`notebook/carnet/`, plain Markdown that opens in Obsidian;

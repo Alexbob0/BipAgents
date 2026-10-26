@@ -284,6 +284,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return sandbox_main(argv[1:])
     if argv and argv[0] == "archive":   # « archive add <agent> <folder> »: a folder searched on demand (the bridge)
         return archive_main(argv[1:])
+    if argv and argv[0] == "approvals":   # what the agents asked, and the answers (the bridge's logs, read only)
+        return approvals_main(argv[1:])
     parser =argparse.ArgumentParser(prog="bipinstall", description="Install BipAgents for this account "
                                      "(`bipinstall uninstall` removes it; `bipinstall family add <name>` prepares a "
                                      "family member's install on this server; `bipinstall update` brings it up to date; `bipinstall voice` connects your own voice "
@@ -803,6 +805,30 @@ def sandbox_main(argv: List[str]) -> int:
     for path in args.link:
         command += ["--link", path]
     command += ["--allow-sites"] * args.allow_sites
+    return subprocess.run(command, cwd=REPO / "bridge", check=False).returncode
+
+
+def approvals_main(argv: List[str]) -> int:
+    """`bipagents approvals [agent] [--last N]`: the approvals the agents asked, the newest last (time, agent, tool,
+    the answer, the command as Hermes showed it), from the bridge's own logs (bridge-rs/src/approvals_log.rs). Reads
+    only; no key, no vault, nothing of the agents' memories."""
+    parser = argparse.ArgumentParser(prog="bipagents approvals",
+                                     description="List the approvals your agents asked, and what you answered")
+    parser.add_argument("agent", nargs="?", help="one agent only (its id, e.g. wellness)")
+    parser.add_argument("--last", type=int, default=30, help="how many (default 30)")
+    args = parser.parse_args(argv)
+    config = Path.home() / ".config" / "bipagents" / "bridge.toml"
+    if not config.exists():
+        say(f"No BipAgents install in this account ({config} is missing): run this command in the account it was installed in.")
+        return 1
+    try:   # this checkout's bridge, fetched if an update ran before its release was out
+        rustbridge.ensure(Path.home())
+    except rustbridge.RustBridgeError as exc:
+        say(f"{exc}. Try `bipagents update` again in a few minutes.")
+        return 1
+    command = rustbridge.cli(Path.home()) + ["approvals", "--config", str(config)]
+    command += ["--agent", args.agent] if args.agent else []
+    command += ["--last", str(max(1, args.last))]
     return subprocess.run(command, cwd=REPO / "bridge", check=False).returncode
 
 

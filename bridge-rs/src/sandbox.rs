@@ -436,6 +436,71 @@ pub fn wanted_terminal(config: &Config, agent: &str, current: &Dict, net: Net, r
     out
 }
 
+/// Hermes' approval keys for « run code the agent wrote » (tools/approval.py, tools/approval_detection.py at the
+/// commit the installer pins): `execute_code`'s whole-script gate and the interpreter / shell flags (`python -c`, a
+/// heredoc, `bash -c`). An isolated sandbox lets them through (owner decision 2026-10-26): its agent reads and computes
+/// in its own space without asking. They go in the profile's `command_allowlist`, Hermes' own permanent approvals.
+///
+/// Why it stays safe, prompt injection being the threat:
+/// - these four gates are about the *form* of the code, not what it does: the same agent may already write a script
+///   with `write_file` and run it with `python3 script.py`, which no gate catches. They never were a wall against an
+///   agent steered by a page or an e-mail; they only made it ask before honest work (« ma journée de demain »);
+/// - Hermes checks its specific patterns first (`detect_dangerous_command`): a command that deletes recursively, drops
+///   a table, edits a credential file, pipes a download into a shell or uploads a secret with curl still asks, even
+///   inside `python -c "…"` or `bash -c "…"` (the patterns read the whole text); its hardline blocks and the person's
+///   `approvals.deny` rules are untouched, and `approvals.mode` stays « manual »;
+/// - only where the sandbox's network is the bridge's (`isolates`): no route out but the package registries and the
+///   sites the person allowed that agent (a new one is a card, sandbox_sites.rs), so what the code reads cannot be
+///   sent away; nothing of this machine is mounted but its own volumes (and folders the person mounted by hand, the
+///   agent's own working folders, which `sandbox adopt` moves into volumes), and its shared folder is read by the
+///   person's own agents;
+/// - what leaves its space still asks, through other gates: sending (mail drafts only, messages to other agents go
+///   through the bridge's links), payments (each one, with the card's code), deleting a shared file
+///   (`shared_files_delete`), the tools of services the person added (`trust: untrusted`), a new site.
+///
+/// On an install that doesn't isolate (macOS, docker, `isolate = "off"`), Hermes asks as before (`revert` takes them
+/// out).
+pub const CODE_KEYS: [&str; 4] =
+    ["execute_code", "script execution via -e/-c flag", "script execution via heredoc", "shell command via -c/-lc flag"];
+
+/// The profile's `command_allowlist` with `CODE_KEYS` added (`isolated`) or taken out, the person's own entries kept in
+/// their order. None: nothing to change.
+pub fn wanted_allowlist(current: &Value, isolated: bool) -> Option<Vec<String>> {
+    let items: Vec<String> = match current {
+        Value::Array(items) => items.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+        _ => Vec::new(),
+    };
+    let mut wanted: Vec<String> = items.iter().filter(|k| !CODE_KEYS.contains(&k.as_str())).cloned().collect();
+    if isolated {
+        wanted.extend(CODE_KEYS.iter().map(|k| k.to_string()));
+    }
+    let same = wanted.len() == items.len() && wanted.iter().all(|k| items.contains(k));
+    (!same).then_some(wanted)
+}
+
+/// `command_allowlist` set as `wanted_allowlist` says (Hermes reads it when the gateway starts: the update restarts
+/// it, migrations.py). Returns whether it changed.
+async fn set_allowlist(config: &Config, agent: &AgentConfig, folder: &Path, run: &Run, isolated: bool) -> anyhow::Result<bool> {
+    let current = shares::profile_config(folder).get("command_allowlist").cloned().unwrap_or(Value::Null);
+    let Some(wanted) = wanted_allowlist(&current, isolated) else { return Ok(false) };
+    let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let env = BTreeMap::from([("HERMES_HOME".to_string(), home)]);
+    let value = py::dumps(&json!(wanted));
+    run(args(&[&config.hermes.bin, "-p", &agent.name, "config", "set", "command_allowlist", &value]), env).await?;
+    tracing::info!(
+        target: "bipbridge::sandbox",
+        agent = %agent.name,
+        "{}",
+        if isolated {
+            "code the agent writes runs in its isolated sandbox without asking (execute_code, python -c, heredocs); \
+             risky commands still ask"
+        } else {
+            "code the agent writes asks again before it runs (sandbox not isolated)"
+        }
+    );
+    Ok(true)
+}
+
 /// Host paths still mounted in the sandbox (entries the person added by hand): Hermes keeps asking because of them.
 pub fn host_mounts(volumes: &[String]) -> Vec<String> {
     volumes
@@ -544,6 +609,8 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     if !kept.is_empty() {
         tracing::warn!(target: "bipbridge::sandbox", agent = %agent.name, mounts = %kept.join(" "), "the sandbox still mounts folders added by hand: Hermes keeps asking before risky commands");
     }
+    // its own code runs without asking: the network is the bridge's (CODE_KEYS says why it stays safe)
+    set_allowlist(&config, agent, &folder, run, true).await?;
     if added + removed > 0 {
         tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, added, removed, "received files copied into the sandbox");
     }
@@ -678,6 +745,9 @@ pub async fn revert(config: &Config, agent: &AgentConfig, folder: &Path, run: &R
         )
         .await?;
         changed.push(key.clone());
+    }
+    if set_allowlist(config, agent, folder, run, false).await? {
+        changed.push("command_allowlist".into());
     }
     tracing::info!(
         target: "bipbridge::sandbox",
@@ -1207,6 +1277,20 @@ pub fn tools_url(config: &Config) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn code_keys_join_and_leave_the_persons_own_approvals() {
+        let added = wanted_allowlist(&json!(["podman ps"]), true).unwrap();
+        assert_eq!(added[0], "podman ps");
+        assert!(CODE_KEYS.iter().all(|k| added.contains(&k.to_string())) && added.len() == 5);
+        assert_eq!(wanted_allowlist(&json!(added.clone()), true), None); // already there
+        assert_eq!(wanted_allowlist(&Value::Null, false), None);
+        assert_eq!(wanted_allowlist(&json!(added), false), Some(vec!["podman ps".to_string()]));
+        // a specific pattern the person allowed for good stays; only the four code keys move
+        let kept = wanted_allowlist(&json!(["recursive delete"]), true).unwrap();
+        assert_eq!(kept.iter().filter(|k| k.as_str() == "recursive delete").count(), 1);
+        assert!(!CODE_KEYS.contains(&"recursive delete"));
+    }
 
     #[test]
     fn the_proxy_takes_the_second_address() {

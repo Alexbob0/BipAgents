@@ -156,6 +156,15 @@ risquées). Pour revenir en arrière sous Linux, mets `[sandbox] isolate = "off"
 sable retrouve ses dossiers montés (ce que les agents ont écrit dans les volumes y est recopié d'abord), et les
 réglages de réseau et de proxy sont retirés ; les volumes restent.
 
+Un bac à sable qui monte encore un dossier de cette machine ajouté à la main n'est pas isolé pour Hermes, qui
+demanderait avant chaque script. Là où le bridge isole le réseau, il met aussi les accords de Hermes pour « le code que
+l'agent écrit » (`execute_code`, `python -c`, les heredocs, `bash -c`) dans la `command_allowlist` de l'agent : il lit
+et calcule dans son espace sans demander, tandis que les commandes risquées (supprimer, fichiers d'identifiants, un
+téléchargement envoyé dans un shell…), les paiements, la suppression de fichiers partagés, les outils d'écriture des
+services que tu as ajoutés et les nouveaux sites demandent toujours (`approvals.mode` reste `manual`).
+`bipagents sandbox adopt <agent>` déplace ces dossiers faits à la main dans des volumes. `bipagents approvals [agent]
+[--last N]` liste ce que les agents ont demandé, avec ta réponse (depuis les journaux du bridge, en lecture seule).
+
 ### Le Carnet (le carnet des agents)
 
 Le bridge garde le Carnet de la personne dans son dossier de données (`notebook/carnet/`, du Markdown simple qui

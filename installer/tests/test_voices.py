@@ -223,7 +223,7 @@ def test_the_bridge_stops_the_respellings_once_its_pocket_runs_4(monkeypatch, tm
     assert parsed["cron"] == {"watch": True}
     ran.clear()
     assert "already" in migrations.pocket_engine(runner, tmp_path) and ran == []   # again: harmless
-    assert migrations.MIGRATIONS[-1][0] == migrations.POCKET_ENGINE
+    assert migrations.MIGRATIONS[-2][0] == migrations.POCKET_ENGINE
 
 
 def test_an_old_engine_line_is_replaced():

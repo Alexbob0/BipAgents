@@ -284,6 +284,12 @@ def test_an_approval_says_in_plain_words_what_the_agent_wants(bridges, fakes):
     assert approval["pattern_key"] == "execute_code"
     [pending] = bridge.get("/v1/approvals", headers=AUTH).json()["items"]
     assert pending["bip_summary"] == approval["bip_summary"] and pending["pattern_key"] == "execute_code"
+    # `bipbridge approvals`: what the agents asked, from the bridge's own logs (answered or not)
+    out = bridge.cli("approvals", "--agent", "coach")
+    assert out.returncode == 0, out.stderr
+    [line] = out.stdout.strip().splitlines()
+    assert "  coach  execute_code  → (no answer kept)  [room]  execute_code <<'PY' import sqlite3 print(1) PY" in line
+    assert bridge.cli("approvals", "--agent", "ghost").returncode == 2
     fakes.hermes.rounds = 1
     gate.set()
     assert wait_until(lambda: quiet(bridge, room["id"]), timeout=20)

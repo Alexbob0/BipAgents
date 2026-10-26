@@ -230,6 +230,10 @@ pub fn main(argv: Vec<String>) -> i32 {
     if rest.first().map(String::as_str) == Some("archive") {
         return crate::archives::cli(&with_config(&rest[1..]));
     }
+    // `bipbridge approvals [--agent X] [--last N]`: what the agents asked, from the bridge's logs (approvals_log.rs).
+    if rest.first().map(String::as_str) == Some("approvals") {
+        return crate::approvals_log::cli(&with_config(&rest[1..]));
+    }
     if rest.first().map(String::as_str) == Some("sandbox") && rest.get(1).map(String::as_str) == Some("adopt") {
         return crate::sandbox_adopt::cli(&with_config(&rest[2..]));
     }

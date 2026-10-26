@@ -1289,6 +1289,12 @@ touche « Démarrer » pour reprendre."
                 item.insert(key.into(), value.clone());
             }
         }
+        // kept for `bipbridge approvals`: what the agents ask, answered or not (approvals_log.rs)
+        if let Some(shared) = &self.config {
+            if let Err(err) = crate::approvals_log::asked(&shared.get(), &sub.agent.name, &item) {
+                tracing::warn!(agent = %sub.agent.name, error = %err, "approval request not kept");
+            }
+        }
         inner.pending.insert((sub.agent.name.clone(), sub.run_id.clone(), dedupe.clone()), item);
         let followers = st.followers();
         let push = match self.push.clone() {

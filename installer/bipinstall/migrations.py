@@ -149,6 +149,20 @@ def share_volumes(runner: hermes.Runner, home: Path) -> str:
                         "shared folders in podman volumes, gateways restarted", 1)
 
 
+def code_without_asking(runner: hermes.Runner, home: Path) -> str:
+    """An agent reads and computes in its own isolated sandbox without asking (bridge-rs/src/sandbox.rs `CODE_KEYS`,
+    2026-10-26): `execute_code`, `python -c`, heredocs and `bash -c` go in each isolated agent's `command_allowlist`,
+    Hermes' own permanent approvals; risky commands (deleting, credentials, a download piped into a shell…), what
+    leaves its space and new sites still ask. The bridge does it at each start; Hermes reads it when its gateway
+    starts, so this restarts the gateways. Linux with podman only."""
+    said = isolated_sandboxes(runner, home)
+    if not said.startswith("agents' sandboxes isolated"):
+        return said.replace("agents' sandboxes left as they are", "agents keep asking before running their code")
+    return said.replace("agents' sandboxes isolated, gateways restarted",
+                        "agents run the code they write in their isolated sandbox without asking (risky commands "
+                        "still ask), gateways restarted", 1)
+
+
 def rust_bridge(runner: hermes.Runner, home: Path) -> str:
     """The bridge in Rust only (2026-10-21): the Python bridge left the code with this update, so a service still
     running it is put on this version's binaries (rustbridge.py), restarted, and the agents' browser tools moved to
@@ -276,6 +290,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-22-isolated-sandboxes", isolated_sandboxes),
     ("2026-10-23-share-volumes", share_volumes),
     (POCKET_ENGINE, pocket_engine),
+    ("2026-10-26-code-without-asking", code_without_asking),
 ]
 
 

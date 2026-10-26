@@ -758,7 +758,7 @@ def test_an_update_isolates_the_agents_sandboxes_on_linux_with_podman(tmp_path, 
     assert ran[0][0].endswith("/bipbridge") and ran[0][1:] == ["sandbox", "--config", str(config)]
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("agents' sandboxes isolated") and "\n  vie: isolated" in said
-    assert migrations.MIGRATIONS[-3][0] == "2026-10-22-isolated-sandboxes"
+    assert migrations.MIGRATIONS[-4][0] == "2026-10-22-isolated-sandboxes"
 
 
 def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypatch):
@@ -786,7 +786,53 @@ def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypat
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("shared folders in podman volumes, gateways restarted")
     assert "\n  wellness's shared folder: 3 file(s) copied" in said
-    assert migrations.MIGRATIONS[-2][0] == "2026-10-23-share-volumes"
+    assert migrations.MIGRATIONS[-3][0] == "2026-10-23-share-volumes"
+
+
+def test_an_update_lets_agents_run_their_code_in_their_isolated_sandbox(tmp_path, monkeypatch):
+    """2026-10-26: the bridge's `sandbox` command puts the code keys in each isolated agent's `command_allowlist`;
+    Hermes reads it when its gateway starts, so the gateways restart. Elsewhere nothing runs."""
+    import platform
+    import shutil
+    from bipinstall import migrations, update
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('bridge_key = "k"\n')
+    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append(list(args)) or ("vie: isolated\n" if "sandbox" in args else "")
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    assert migrations.code_without_asking(runner, tmp_path).startswith("agents keep asking") and ran == []
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/podman" if name == "podman" else None)
+    said = migrations.code_without_asking(runner, tmp_path)
+    assert ran[0][1:] == ["sandbox", "--config", str(config)]
+    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
+    assert said.startswith("agents run the code they write in their isolated sandbox without asking")
+    assert migrations.MIGRATIONS[-1][0] == "2026-10-26-code-without-asking"
+
+
+def test_the_approvals_command_lists_what_the_agents_asked(tmp_path, monkeypatch):
+    """`bipagents approvals [agent] [--last N]`: the bridge's `approvals` with this account's config (read only)."""
+    from bipinstall import __main__ as main, rustbridge
+    home = tmp_path / "home"
+    monkeypatch.setattr(main.Path, "home", staticmethod(lambda: home))
+    assert main.approvals_main(["wellness"]) == 1   # no install in this account
+    config = home / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('bridge_key = "k"\n')
+    monkeypatch.setattr(rustbridge, "ensure", lambda home: None)
+    monkeypatch.setattr(rustbridge, "cli", lambda home, repo=None: ["/r/bridge-rs/bin/bipbridge"])
+    seen = []
+
+    class Done:
+        returncode = 0
+
+    monkeypatch.setattr(main.subprocess, "run", lambda args, **kw: seen.append(list(args)) or Done())
+    assert main.approvals_main(["wellness", "--last", "5"]) == 0
+    assert seen[0][1:] == ["approvals", "--config", str(config), "--agent", "wellness", "--last", "5"]
 
 
 def test_each_install_of_a_machine_hands_out_browser_ports_of_its_own():
