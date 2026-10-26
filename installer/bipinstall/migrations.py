@@ -307,6 +307,10 @@ def _switch_pocket(runner: hermes.Runner, unit, requirements: str, extra: List[s
     unit.path.write_text(content, encoding="utf-8")
 
     def restart() -> None:
+        if unit.path.suffix == ".plist":   # a Mac: launchd reads the plist again only when loaded again
+            runner.run(["launchctl", "unload", str(unit.path)], check=False)
+            runner.run(["launchctl", "load", str(unit.path)], check=False)
+            return
         runner.run(["systemctl", "--user", "daemon-reload"], check=False)
         runner.run(["systemctl", "--user", "restart", unit.name], check=False)
 
@@ -323,31 +327,53 @@ def _switch_pocket(runner: hermes.Runner, unit, requirements: str, extra: List[s
     return True
 
 
-def light_voices(runner: hermes.Runner, home: Path, wait: float = LIGHT_WAIT) -> str:
-    """The Bips' voices of a place moved from Pocket's own models (PyTorch, 5.5 GB) to the phones' packages (ONNX
-    Runtime, `--onnx`), as a fresh install of the offer sets them up: the packages from its guichet, a new environment
-    built next to the old one, the service switched and checked; only then PyTorch's environment and Pocket's
+def own_voices(unit, home: Path) -> Optional[Path]:
+    """The folder of voices of one's own a Pocket on its own models serves: its `--voices` neither this checkout's
+    voices/ nor the states an update kept for an older Pocket (pocketunit.old_states). Only Pocket's own models
+    (PyTorch) speak those; the packages carry the Bips alone."""
+    from . import pocketunit
+    current = unit.voices
+    if current is None:
+        return None
+    resolved = current.resolve()
+    if resolved == (REPO / "voices").resolve() or pocketunit.old_voices_root(home).resolve() in resolved.parents:
+        return None
+    return current
+
+
+def light_voices(runner: hermes.Runner, home: Path, wait: float = LIGHT_WAIT, fallback: bool = True) -> str:
+    """The Bips' voices moved from Pocket's own models (PyTorch, 5.5 GB) to the phones' packages (ONNX Runtime,
+    `--onnx`), as a fresh install sets them up: the packages of its languages (a place's from its guichet, the others'
+    from the public repository's latest voices release, voices.py), a new environment built next to the old one, the
+    service switched and checked (systemd's, or a Mac's LaunchAgent); only then PyTorch's environment and Pocket's
     downloaded weights go. When the new voices don't answer, the old ones are put back (tried again next update).
-    Elsewhere (no guichet to fetch the packages from, a service set up by hand) nothing changes: cpu_torch."""
+    Left as they are: a service set up by hand, one speaking voices of the person's own (own_voices). When the
+    packages can't be had: a place tries again next update; elsewhere, with `fallback`, cpu_torch (the migration
+    voices-everywhere tries the packages again at each update)."""
     import shutil
     from types import SimpleNamespace
     from . import pocketunit, voices
     from .stack import pocket_service
-    unit = pocketunit.find(home)
+    unit = pocketunit.find_any(home)
     if unit is None:
         return "no Bips' voices served from this account"
     if unit.light:
         return "the Bips' voices already run without PyTorch"
-    if voices.source(home)[0] is None:
-        return cpu_torch(runner, home, unit, wait)
     if not unit.standard(REPO):
         return "the Bips' voices, set up by hand, stay as they are"
+    mine = own_voices(unit, home)
+    if mine is not None:
+        return f"the Bips' voices keep Pocket's own models: they speak voices of your own ({mine})"
     said: List[str] = []
     languages = voices.with_new_languages([code for code in unit.languages.split(",") if code])
     packages = voices.install(languages, home, runner, said.append)
     if packages is None:
-        raise NotYet("the light voices can't be had from the guichet yet: " + "; ".join(s.strip() for s in said))
-    _, _, content = pocket_service(SimpleNamespace(repo=REPO, home=home), "linux", unit.languages, packages=packages)
+        if fallback and voices.source(home)[0] is None:
+            return cpu_torch(runner, home, unit, wait)
+        raise NotYet("the light voices can't be had yet (Pocket's own models meanwhile): "
+                      + "; ".join(s.strip() for s in said))
+    system = "macos" if unit.path.suffix == ".plist" else "linux"
+    _, _, content = pocket_service(SimpleNamespace(repo=REPO, home=home), system, unit.languages, packages=packages)
     if not _switch_pocket(runner, unit, "requirements-onnx.txt", [], content, wait,
                           "the light voices didn't answer: the Bips keep Pocket's own models for now"):
         return "the Bips' voices would move to the light voices (without PyTorch)"
@@ -356,14 +382,34 @@ def light_voices(runner: hermes.Runner, home: Path, wait: float = LIGHT_WAIT) ->
     return "the Bips' voices run without PyTorch (the phones' voices, about 5.5 GB less on disk)"
 
 
+def voices_everywhere(runner: hermes.Runner, home: Path) -> str:
+    """Every install's Bips' voices without PyTorch (2026-10-26), not only the offer's places: the packages of the
+    languages it serves from the public repository's latest voices release (scripts/publish-voices.sh), switched and
+    checked like a place's (light_voices: put back when Pocket doesn't answer, the next update tries again, as it
+    does while no release is out or GitHub can't be reached). Then the checkout drops Pocket's voice states (a light
+    copy, or a full clone made one) and uv's cache BipAgents' packages (PyTorch's among them)."""
+    from . import checkout, pocketunit
+    installed = own_packages(runner)
+    said = [light_voices(runner, home, fallback=False)]
+    unit = pocketunit.find_any(home)
+    if runner.dry or (unit is not None and unit.light):
+        lighter = checkout.lighten(REPO, runner, voice_states=False)
+        if lighter:
+            said.append(lighter)
+        elif checkout.narrow(REPO, runner, voice_states=False):
+            said.append("the checkout without Pocket's voice states")
+        said.append(clean_own_packages(runner, installed))
+    return "; ".join(said)
+
+
 def cpu_torch(runner: hermes.Runner, home: Path, unit, wait: float = LIGHT_WAIT) -> str:
-    """Pocket's own models where the light voices can't be had (an install of one's own: the packages come from the
-    offer's guichet only), on x86 Linux: PyTorch without CUDA (pip's default brought ~4 GB of NVIDIA libraries no
+    """Pocket's own models while the light voices can't be had (an install of one's own before the voices release is
+    out, or GitHub unreachable), on x86 Linux: PyTorch without CUDA (pip's default brought ~4 GB of NVIDIA libraries no
     server uses), in a new environment switched the same way (put back if it doesn't answer)."""
     import platform
     import subprocess
     if platform.system() != "Linux" or not unit.standard(REPO):
-        return "the Bips' voices keep Pocket's own models (the light voices come from the offer's guichet only)"
+        return "the Bips' voices keep Pocket's own models for now (the light voices can't be had yet)"
     python = REPO / "pocket" / ".venv" / "bin" / "python"
     listed = "" if runner.dry else subprocess.run(["uv", "pip", "list", "--python", str(python), "--format", "freeze"],
                                                   capture_output=True, text=True).stdout
@@ -442,6 +488,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     (POCKET_ENGINE, pocket_engine),
     ("2026-10-26-code-without-asking", code_without_asking),
     ("2026-10-26-light-disk", light_disk),
+    ("2026-10-26-voices-everywhere", voices_everywhere),
 ]
 
 

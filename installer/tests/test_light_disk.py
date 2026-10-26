@@ -170,10 +170,13 @@ def test_light_voices_that_dont_answer_put_pytorchs_back(tmp_path, monkeypatch):
     assert weights.exists() and ran[-1] == "systemctl --user restart bipagents-pocket"
 
 
-def test_without_a_guichet_pockets_own_models_stay(tmp_path, monkeypatch):
+def test_without_a_guichet_or_a_release_pockets_own_models_stay(tmp_path, monkeypatch):
+    import platform
     repo, unit, _, runner, ran, _ = place(tmp_path, monkeypatch, [])
     monkeypatch.setattr(voices, "source", lambda home: (None, None))
-    assert "keep Pocket's own models" in migrations.light_voices(runner, tmp_path)
+    monkeypatch.setattr(voices, "install", lambda *a, **kw: None)          # no voices release out yet
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    assert "keep Pocket's own models for now" in migrations.light_voices(runner, tmp_path)
     assert ran == [] and (repo / "pocket" / ".venv" / "torch").exists()
 
 
@@ -192,6 +195,7 @@ def test_an_own_install_on_linux_drops_cuda_from_pockets_pytorch(tmp_path, monke
     import platform
     repo, unit, weights, runner, ran, _ = place(tmp_path, monkeypatch, ["4.0.1"])
     monkeypatch.setattr(voices, "source", lambda home: (None, None))
+    monkeypatch.setattr(voices, "install", lambda *a, **kw: None)          # no voices release out yet
     monkeypatch.setattr(platform, "system", lambda: "Linux")
     listing = subprocess.CompletedProcess([], 0, stdout="torch==2.9.0\nnvidia-cublas-cu12==12.8\n", stderr="")
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: listing)

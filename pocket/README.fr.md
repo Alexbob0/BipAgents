@@ -49,7 +49,9 @@ Hugging Face à demander) ne sert qu'à **fabriquer** de nouvelles voix, cf. [`v
 
 **Sans PyTorch** (`--onnx`) : les paquets de voix des téléphones (8 bits, faits par
 [`voices/onnx/build.py`](../voices/onnx/README.fr.md) : `index.json`, un dossier par langue, le décodeur commun)
-derrière la même API, avec ONNX Runtime et numpy seulement (`requirements-onnx.txt`, sans les 5,5 Go de PyTorch) :
+derrière la même API, avec ONNX Runtime et numpy seulement (`requirements-onnx.txt`, sans les 5,5 Go de PyTorch).
+L'installateur règle toutes les installations ainsi depuis le 2026-10-26 (les paquets des releases `voices-*` du dépôt
+public, ou du guichet pour une place) ; `--pocket-models` garde les modèles de Pocket, pour des voix à soi :
 
 ```bash
 .venv/bin/pip install -r requirements-onnx.txt
