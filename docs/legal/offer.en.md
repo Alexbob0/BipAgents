@@ -51,9 +51,9 @@ Using BipAgents with your own computer or your own server stays free and is not 
 
 | Plan | People | Server | Price in the app (App Store, Google Play), VAT included | Price on the bipagents.com website, in euros, VAT included |
 |---|---|---|---|---|
-| Solo | 1 | a place on a server shared with other subscribers | €6.99 per month or €69.90 per year | €6.49 per month or €64.90 per year |
-| Duo | 2 | two places on one server, shared with other subscribers | €11.99 per month or €119.90 per year | €10.99 per month or €109.90 per year |
-| Family | up to 6 | a server of your own | €19.99 per month or €199.90 per year | €17.99 per month or €179.90 per year |
+| Solo | 1 | a place on a server shared with other subscribers | €7.99 per month or €79.90 per year | €7.49 per month or €74.90 per year |
+| Duo | 2 | two places on one server, shared with other subscribers | €12.99 per month or €129.90 per year | €11.99 per month or €119.90 per year |
+| Family | up to 6 | a server of your own | €21.99 per month or €219.90 per year | €19.99 per month or €199.90 per year |
 
 The yearly subscription costs 10 months for 12 and is paid at once for the 12 months. The website's prices are lower
 than the stores'.
@@ -64,12 +64,12 @@ shows the price, the currency and the total you pay.
 
 | Currency | Country | Solo, per month / per year | Duo, per month / per year | Family, per month / per year | Taxes |
 |---|---|---|---|---|---|
-| Euro (EUR) | European Union | €6.49 / €64.90 | €10.99 / €109.90 | €17.99 / €179.90 | VAT included |
-| US dollar (USD) | United States | US$6.49 / US$64.90 | US$10.99 / US$109.90 | US$17.99 / US$179.90 | before tax: your state's sales tax is added at checkout |
-| Canadian dollar (CAD) | Canada | CA$8.99 / CA$89.90 | CA$14.99 / CA$149.90 | CA$24.99 / CA$249.90 | before tax: GST/HST and, depending on your province, PST or QST are added at checkout |
-| Pound sterling (GBP) | United Kingdom | £5.49 / £54.90 | £9.49 / £94.90 | £15.49 / £154.90 | VAT included |
-| Singapore dollar (SGD) | Singapore | S$8.99 / S$89.90 | S$14.99 / S$149.90 | S$24.99 / S$249.90 | GST included |
-| Shekel (ILS) | Israel | ₪24.90 / ₪249.00 | ₪42.90 / ₪429.00 | ₪69.90 / ₪699.00 | VAT included |
+| Euro (EUR) | European Union | €7.49 / €74.90 | €11.99 / €119.90 | €19.99 / €199.90 | VAT included |
+| US dollar (USD) | United States | US$7.49 / US$74.90 | US$11.99 / US$119.90 | US$19.99 / US$199.90 | before tax: your state's sales tax is added at checkout |
+| Canadian dollar (CAD) | Canada | CA$9.99 / CA$99.90 | CA$15.99 / CA$159.90 | CA$27.99 / CA$279.90 | before tax: GST/HST and, depending on your province, PST or QST are added at checkout |
+| Pound sterling (GBP) | United Kingdom | £6.49 / £64.90 | £10.49 / £104.90 | £17.49 / £174.90 | VAT included |
+| Singapore dollar (SGD) | Singapore | S$9.99 / S$99.90 | S$15.99 / S$159.90 | S$27.99 / S$279.90 | GST included |
+| Shekel (ILS) | Israel | ₪28.90 / ₪289.00 | ₪46.90 / ₪469.00 | ₪77.90 / ₪779.00 | VAT included |
 
 For each person in the plan:
 
@@ -81,8 +81,8 @@ For each person in the plan:
 - **SSH access** to their place's account, from a computer whose key was added in the app (Settings › All-included plan
   › SSH access), without administrator (root) rights.
 
-**The plan's AI credit**: €0.50 (Solo), €1.00 (Duo) or €3.00 (Family) of AI model use each month, shared by everyone
-in the plan, shown in the app as an estimated number of messages: about 1,000, 2,000 or 6,000 messages a month with
+**The plan's AI credit**: €5.00 (Solo), €9.00 (Duo) or €16.00 (Family) of AI model use each month, shared by everyone
+in the plan, shown in the app as an estimated number of messages: about 7,000, 13,000 or 24,000 messages a month with
 the default model (section 6).
 
 **Where.** The servers are rented from OVHcloud first (data centres in the European Union), then from Hetzner (Germany
@@ -132,18 +132,18 @@ section 6); the services you connect to your agents and their own subscriptions.
 
 ## 6. The AI credit and the model
 
-- Each plan has an **AI credit per month: €0.50 for Solo, €1.00 for Duo, €3.00 for Family**: AI model use counted at
+- Each plan has an **AI credit per month: €5.00 for Solo, €9.00 for Duo, €16.00 for Family**: AI model use counted at
   the price the provider charges Kerfy Studio. On a Duo or a Family plan, this credit **belongs to everyone in the
   plan**: their agents use it together, with no fixed share for each person.
 - **As messages**: the app shows the credit as an **estimated number of messages** with the chosen model. As a guide, with the
-  default model and rounded down: **about 1,000 messages a month for Solo, 2,000 for Duo and 6,000 for
+  default model and rounded down: **about 7,000 messages a month for Solo, 13,000 for Duo and 24,000 for
   the whole family**. It is an estimate, not a promise: the cost of a message depends on its length, on the attached
   files and on the model. A message, here, is a simple exchange: a **task in the browser** or a
   **background task** chains many calls to the model and counts for much more, often as much as several dozen
   messages; the app shows what is left as you go.
 - **Carry-over**: the plan's credit you did not use carries over to the next month, for one more month at most.
 - **Extra credit**: you can buy some in the app (Settings › All-included plan › Add AI credit), €2.99 VAT included for
-  €2 of credit, that is **about 4,000 messages** with the default model (the same estimate as above). It is added to the plan's credit, for everyone in it. **It never expires**: if some is
+  €2 of credit, that is **about 3,000 messages** with the default model (the same estimate as above). It is added to the plan's credit, for everyone in it. **It never expires**: if some is
   left when the subscription ends, it is kept on your account and comes back with your next subscription. It is only
   lost if you delete your account.
 - **Credit used up**: the agents of everyone in the plan no longer call the AI model until the next month or until the

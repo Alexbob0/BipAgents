@@ -335,7 +335,7 @@
     },
     "3": {
       "q": "¿Cuántos mensajes al mes?",
-      "a": "Cada plan tiene su crédito de IA del mes: 0,50 € para Solo, 1 € para Dúo, 3 € para Familia, común para todas sus personas. La app te lo muestra como número estimado de mensajes con tu modelo: un intercambio sencillo cuenta uno, una tarea en el navegador mucho más (a menudo varias decenas). En Dúo y Familia, la persona que paga ve cuánto usa cada persona, nunca lo que escribe, y puede poner un límite por persona. Lo que sobra pasa al mes siguiente. ¿Necesitas más? Crédito adicional en la app, que nunca caduca. Sin crédito: los agentes hacen una pausa hasta el mes siguiente, no se pierde nada."
+      "a": "Cada plan tiene su crédito de IA del mes: unos 7.000 mensajes para Solo, 13.000 para Dúo, 24.000 para Familia con el modelo por defecto, común para todas sus personas. La app te lo muestra como número estimado de mensajes con tu modelo: un intercambio sencillo cuenta uno, una tarea en el navegador mucho más (a menudo varias decenas). En Dúo y Familia, la persona que paga ve cuánto usa cada persona, nunca lo que escribe, y puede poner un límite por persona. Lo que sobra pasa al mes siguiente. ¿Necesitas más? Crédito adicional en la app, que nunca caduca. Sin crédito: los agentes hacen una pausa hasta el mes siguiente, no se pierde nada."
     },
     "4": {
       "q": "¿Quién puede leer mis conversaciones?",

@@ -335,7 +335,7 @@
     },
     "3": {
       "q": "Wie viele Nachrichten im Monat?",
-      "a": "Jeder Tarif hat sein KI-Guthaben für den Monat: 0,50 € für Solo, 1 € für Duo, 3 € für Familie, gemeinsam für alle seine Personen. Die App zeigt es als geschätzte Zahl von Nachrichten mit deinem Modell: Ein einfacher Austausch zählt als eine, eine Aufgabe im Browser viel mehr (oft mehrere Dutzend). Bei Duo und Familie sieht die zahlende Person, wie viel jede Person verbraucht, nie, was sie schreibt, und kann pro Person ein Limit setzen. Was übrig bleibt, geht in den nächsten Monat. Mehr gebraucht: zusätzliches Guthaben in der App, es verfällt nie. Guthaben aufgebraucht: Die Agenten pausieren bis zum nächsten Monat, nichts geht verloren."
+      "a": "Jeder Tarif hat sein KI-Guthaben für den Monat: etwa 7.000 Nachrichten für Solo, 13.000 für Duo, 24.000 für Familie mit dem Standardmodell, gemeinsam für alle seine Personen. Die App zeigt es als geschätzte Zahl von Nachrichten mit deinem Modell: Ein einfacher Austausch zählt als eine, eine Aufgabe im Browser viel mehr (oft mehrere Dutzend). Bei Duo und Familie sieht die zahlende Person, wie viel jede Person verbraucht, nie, was sie schreibt, und kann pro Person ein Limit setzen. Was übrig bleibt, geht in den nächsten Monat. Mehr gebraucht: zusätzliches Guthaben in der App, es verfällt nie. Guthaben aufgebraucht: Die Agenten pausieren bis zum nächsten Monat, nichts geht verloren."
     },
     "4": {
       "q": "Wer kann meine Unterhaltungen lesen?",

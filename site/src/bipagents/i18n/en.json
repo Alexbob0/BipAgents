@@ -335,7 +335,7 @@
     },
     "3": {
       "q": "How many messages a month?",
-      "a": "Each plan has its AI credit for the month: €0.50 for Solo, €1 for Duo, €3 for Family, shared by everyone in it. The app shows it as an estimated number of messages with your model: a simple exchange counts as one, a task in the browser for much more (often several dozen). In Duo and Family, the person who pays sees how much each person uses, never what they write, and can set a limit per person. What’s left carries over to the next month. Need more: extra credit in the app, and it never expires. Out of credit: the agents take a break until next month, nothing is lost."
+      "a": "Each plan has its AI credit for the month: about 7,000 messages for Solo, 13,000 for Duo, 24,000 for Family with the default model, shared by everyone in it. The app shows it as an estimated number of messages with your model: a simple exchange counts as one, a task in the browser for much more (often several dozen). In Duo and Family, the person who pays sees how much each person uses, never what they write, and can set a limit per person. What’s left carries over to the next month. Need more: extra credit in the app, and it never expires. Out of credit: the agents take a break until next month, nothing is lost."
     },
     "4": {
       "q": "Who can read my conversations?",

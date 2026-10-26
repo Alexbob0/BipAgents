@@ -56,9 +56,9 @@ condiciones.
 
 | Plan | Personas | Servidor | Precio en la app (App Store, Google Play), IVA incluido | Precio en el sitio bipagents.com, en euros, IVA incluido |
 |---|---|---|---|---|
-| Solo | 1 | una plaza en un servidor compartido con otros suscriptores | 6,99 € al mes o 69,90 € al año | 6,49 € al mes o 64,90 € al año |
-| Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 11,99 € al mes o 119,90 € al año | 10,99 € al mes o 109,90 € al año |
-| Familia | hasta 6 | un servidor solo para vosotros | 19,99 € al mes o 199,90 € al año | 17,99 € al mes o 179,90 € al año |
+| Solo | 1 | una plaza en un servidor compartido con otros suscriptores | 7,99 € al mes o 79,90 € al año | 7,49 € al mes o 74,90 € al año |
+| Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 12,99 € al mes o 129,90 € al año | 11,99 € al mes o 119,90 € al año |
+| Familia | hasta 6 | un servidor solo para vosotros | 21,99 € al mes o 219,90 € al año | 19,99 € al mes o 199,90 € al año |
 
 La suscripción anual cuesta 10 meses por 12 y se paga de una vez por los 12 meses. Los precios del sitio son más bajos
 que los de las tiendas.
@@ -69,12 +69,12 @@ Stripe muestra el precio, la moneda y el total que pagas.
 
 | Moneda | País | Solo, al mes / al año | Dúo, al mes / al año | Familia, al mes / al año | Impuestos |
 |---|---|---|---|---|---|
-| Euro (EUR) | Unión Europea | 6,49 € / 64,90 € | 10,99 € / 109,90 € | 17,99 € / 179,90 € | IVA incluido |
-| Dólar estadounidense (USD) | Estados Unidos | 6,49 US$ / 64,90 US$ | 10,99 US$ / 109,90 US$ | 17,99 US$ / 179,90 US$ | sin impuestos: el impuesto sobre las ventas de tu estado se añade al pagar |
-| Dólar canadiense (CAD) | Canadá | 8,99 CA$ / 89,90 CA$ | 14,99 CA$ / 149,90 CA$ | 24,99 CA$ / 249,90 CA$ | sin impuestos: el GST/HST y, según tu provincia, el PST o el QST se añaden al pagar |
-| Libra esterlina (GBP) | Reino Unido | 5,49 £ / 54,90 £ | 9,49 £ / 94,90 £ | 15,49 £ / 154,90 £ | IVA incluido |
-| Dólar de Singapur (SGD) | Singapur | 8,99 S$ / 89,90 S$ | 14,99 S$ / 149,90 S$ | 24,99 S$ / 249,90 S$ | GST incluido |
-| Séquel (ILS) | Israel | 24,90 ₪ / 249,00 ₪ | 42,90 ₪ / 429,00 ₪ | 69,90 ₪ / 699,00 ₪ | IVA incluido |
+| Euro (EUR) | Unión Europea | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 19,99 € / 199,90 € | IVA incluido |
+| Dólar estadounidense (USD) | Estados Unidos | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 19,99 US$ / 199,90 US$ | sin impuestos: el impuesto sobre las ventas de tu estado se añade al pagar |
+| Dólar canadiense (CAD) | Canadá | 9,99 CA$ / 99,90 CA$ | 15,99 CA$ / 159,90 CA$ | 27,99 CA$ / 279,90 CA$ | sin impuestos: el GST/HST y, según tu provincia, el PST o el QST se añaden al pagar |
+| Libra esterlina (GBP) | Reino Unido | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 17,49 £ / 174,90 £ | IVA incluido |
+| Dólar de Singapur (SGD) | Singapur | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 27,99 S$ / 279,90 S$ | GST incluido |
+| Séquel (ILS) | Israel | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 77,90 ₪ / 779,00 ₪ | IVA incluido |
 
 Para cada persona del plan:
 
@@ -86,9 +86,9 @@ Para cada persona del plan:
 - **Un acceso SSH** a la cuenta de su plaza, desde un ordenador cuya clave se haya añadido en la app (Ajustes › Plan
   todo incluido › Acceso SSH), sin derechos de administrador (root).
 
-**El crédito de IA del plan**: 0,50 € (Solo), 1,00 € (Duo) o 3,00 € (Familia) de uso del modelo de IA cada mes,
-compartido por todas las personas del plan, que la app muestra como un número estimado de mensajes: unos 1.000, 2.000
-o 6.000 mensajes al mes con el modelo por defecto (sección 6).
+**El crédito de IA del plan**: 5,00 € (Solo), 9,00 € (Duo) o 16,00 € (Familia) de uso del modelo de IA cada mes,
+compartido por todas las personas del plan, que la app muestra como un número estimado de mensajes: unos 7.000, 13.000
+o 24.000 mensajes al mes con el modelo por defecto (sección 6).
 
 **Dónde.** Los servidores se alquilan primero a OVHcloud (centros de datos en la Unión Europea), después a Hetzner
 (Alemania o Finlandia) y después a OVHcloud para servidores más pequeños, según lo que esté disponible. Todos están en
@@ -139,18 +139,18 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 ## 6. El crédito de IA y el modelo
 
-- Cada plan tiene un **crédito de IA al mes: 0,50 € para Solo, 1,00 € para Duo, 3,00 € para Familia**: uso del modelo
+- Cada plan tiene un **crédito de IA al mes: 5,00 € para Solo, 9,00 € para Duo, 16,00 € para Familia**: uso del modelo
   contado al precio que el proveedor factura a Kerfy Studio. En un Duo o una Familia, este crédito **es de todas las
   personas del plan**: sus agentes lo usan juntos, sin una parte fija para cada una.
 - **En mensajes**: la app muestra el crédito como un **número estimado de mensajes** con el modelo elegido. A título orientativo,
-  con el modelo por defecto y redondeado a la baja: **unos 1.000 mensajes al mes para Solo, 2.000
-  para Duo y 6.000 para toda la familia**. Es una estimación, no una promesa: el coste de un mensaje depende de su
+  con el modelo por defecto y redondeado a la baja: **unos 7.000 mensajes al mes para Solo, 13.000
+  para Duo y 24.000 para toda la familia**. Es una estimación, no una promesa: el coste de un mensaje depende de su
   longitud, de los archivos adjuntos y del modelo. Aquí, un mensaje es un intercambio sencillo: una **tarea en el
   navegador** o una **tarea en segundo plano** encadena muchas llamadas al modelo y cuenta mucho más, a menudo lo
   que varias decenas de mensajes; la app muestra lo que queda en todo momento.
 - **Traspaso**: el crédito del plan que no has usado pasa al mes siguiente, por un mes más como máximo.
 - **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), 2,99 € IVA
-  incluido por 2 € de crédito, es decir, **unos 4.000 mensajes** con el modelo por defecto (la misma estimación que arriba). Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
+  incluido por 2 € de crédito, es decir, **unos 3.000 mensajes** con el modelo por defecto (la misma estimación que arriba). Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
   cuando la suscripción termina, se conserva en tu cuenta y vuelve con tu próxima suscripción. Solo se pierde si
   eliminas tu cuenta.
 - **Crédito agotado**: los agentes de todas las personas del plan dejan de llamar al modelo de IA hasta el mes
