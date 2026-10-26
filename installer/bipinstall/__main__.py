@@ -195,11 +195,14 @@ def start_service(system: str, label: str, path: Path, runner: hermes.Runner) ->
 def venv(folder: Path, runner: hermes.Runner, requirements: str = "requirements.txt") -> None:
     """The folder's Python environment, with its requirements as they are now (a new one after an update is
     installed; nothing happens when they are all there). Without uv's cache: the packages downloaded for it don't stay
-    on disk next to it (PyTorch's alone was 5.5 GB)."""
+    on disk next to it (PyTorch's alone was 5.5 GB). Pocket's own models on Linux: PyTorch without CUDA (pip's
+    default build brings ~4 GB of NVIDIA libraries that no server uses)."""
     if runner.dry or not (folder / ".venv" / "bin" / "python").exists():
         runner.run(["uv", "venv", "--no-cache", "--python", "3.12", str(folder / ".venv")])
-    runner.run(["uv", "pip", "install", "--no-cache", "--quiet", "--python", str(folder / ".venv" / "bin" / "python"),
-                "-r", str(folder / requirements)])
+    cpu = ["--torch-backend", "cpu"] if folder.name == "pocket" and requirements == "requirements.txt" \
+        and sys.platform.startswith("linux") else []
+    runner.run(["uv", "pip", "install", "--no-cache", "--quiet", *cpu, "--python",
+                str(folder / ".venv" / "bin" / "python"), "-r", str(folder / requirements)])
 
 
 def wait_for(url: str, headers: Optional[dict] = None, seconds: int = 90) -> bool:

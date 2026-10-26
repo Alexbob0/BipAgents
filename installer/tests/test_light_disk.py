@@ -36,6 +36,18 @@ def test_environments_are_made_without_uvs_cache():
     runner = hermes.Runner(dry=True)
     venv(checkout.Path("/r/pocket"), runner, "requirements-onnx.txt")
     assert all("--no-cache" in line for line in runner.log) and len(runner.log) == 2
+    assert "--torch-backend" not in runner.log[1]
+
+
+def test_pockets_own_models_get_pytorch_without_cuda_on_linux(monkeypatch):
+    import bipinstall.__main__ as main
+    monkeypatch.setattr(main.sys, "platform", "linux")
+    runner = hermes.Runner(dry=True)
+    venv(checkout.Path("/r/pocket"), runner)
+    assert "--torch-backend cpu" in runner.log[1]
+    runner = hermes.Runner(dry=True)
+    venv(checkout.Path("/r/installer"), runner)
+    assert "--torch-backend" not in runner.log[1]
 
 
 def test_install_sh_clones_light_and_runs_the_installers_own_environment():
@@ -123,7 +135,7 @@ def place(tmp_path, monkeypatch, answers):
     def run(args, **kw):
         ran.append(" ".join(args))
         if args[:2] == ["uv", "venv"]:
-            (repo / "pocket" / ".venv-light" / "bin").mkdir(parents=True)
+            (repo / "pocket" / ".venv-new" / "bin").mkdir(parents=True)
         return ""
 
     runner, ran = hermes.Runner(dry=False), []
@@ -138,7 +150,7 @@ def test_a_places_voices_move_off_pytorch_then_its_environment_goes(tmp_path, mo
     text = unit.read_text()
     assert f"--onnx {tmp_path}/packages --keep none --idle-unload 120 --threads 2 --port 8098" in text
     assert not (repo / "pocket" / ".venv" / "torch").exists() and (repo / "pocket" / ".venv" / "bin").is_dir()
-    assert not (repo / "pocket" / ".venv-torch").exists() and not weights.exists()
+    assert not (repo / "pocket" / ".venv-old").exists() and not weights.exists()
     assert any("requirements-onnx.txt" in line and "--no-cache" in line for line in ran)
     assert ran[-1] == "systemctl --user restart bipagents-pocket"
 
@@ -148,7 +160,7 @@ def test_light_voices_that_dont_answer_put_pytorchs_back(tmp_path, monkeypatch):
     with pytest.raises(migrations.NotYet):
         migrations.light_voices(runner, tmp_path, wait=0)
     assert unit.read_text() == TORCH_UNIT.format(repo=repo)
-    assert (repo / "pocket" / ".venv" / "torch").exists() and not (repo / "pocket" / ".venv-light").exists()
+    assert (repo / "pocket" / ".venv" / "torch").exists() and not (repo / "pocket" / ".venv-new").exists()
     assert weights.exists() and ran[-1] == "systemctl --user restart bipagents-pocket"
 
 
@@ -168,3 +180,18 @@ def test_the_update_empties_a_places_caches(tmp_path, monkeypatch):
     said = migrations.light_disk(runner, tmp_path)
     assert "download caches emptied" in said
     assert any(line.endswith("cache clean") for line in ran)
+
+
+def test_an_own_install_on_linux_drops_cuda_from_pockets_pytorch(tmp_path, monkeypatch):
+    import platform
+    repo, unit, weights, runner, ran, _ = place(tmp_path, monkeypatch, ["4.0.1"])
+    monkeypatch.setattr(voices, "source", lambda home: (None, None))
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    listing = subprocess.CompletedProcess([], 0, stdout="torch==2.9.0\nnvidia-cublas-cu12==12.8\n", stderr="")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: listing)
+    said = migrations.light_voices(runner, tmp_path, wait=0)
+    assert "without CUDA" in said and unit.read_text() == TORCH_UNIT.format(repo=repo)   # same service
+    assert any("--torch-backend cpu" in line and "requirements.txt" in line for line in ran)
+    assert not (repo / "pocket" / ".venv" / "torch").exists() and weights.exists()      # its models stay
+    listing.stdout = "torch==2.9.0+cpu\n"
+    assert "already without CUDA" in migrations.light_voices(runner, tmp_path, wait=0)

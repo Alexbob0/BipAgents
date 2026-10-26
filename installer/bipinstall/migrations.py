@@ -283,43 +283,24 @@ def is_place(home: Path) -> bool:
     return (home / ".config" / "bipagents" / "setup.json").is_file()
 
 
-def light_voices(runner: hermes.Runner, home: Path, wait: float = LIGHT_WAIT) -> str:
-    """The Bips' voices of a place moved from Pocket's own models (PyTorch, 5.5 GB) to the phones' packages (ONNX
-    Runtime, `--onnx`), as a fresh install of the offer sets them up: the packages from its guichet, a new environment
-    built next to the old one, the service switched and checked; only then PyTorch's environment and Pocket's
-    downloaded weights go. When the new voices don't answer, the old ones are put back (tried again next update).
-    Elsewhere (no guichet to fetch the packages from, a service set up by hand) nothing changes."""
+def _switch_pocket(runner: hermes.Runner, unit, requirements: str, extra: List[str], content: str, wait: float,
+                   failed: str) -> bool:
+    """Pocket's environment rebuilt beside the running one (pocket/.venv-new, with `requirements` and `extra` uv
+    options), then swapped in with the unit's new `content` and restarted; the old environment goes once the new
+    one answers, else it is put back and NotYet(failed) raised. False in a dry run."""
     import shutil
-    from types import SimpleNamespace
-    from . import pocketunit, voices
-    from .__main__ import venv
-    from .stack import pocket_service
-    unit = pocketunit.find(home)
-    if unit is None:
-        return "no Bips' voices served from this account"
-    if unit.light:
-        return "the Bips' voices already run without PyTorch"
-    if voices.source(home)[0] is None:
-        return "the Bips' voices keep Pocket's own models (the light voices come from the offer's guichet only)"
-    if not unit.standard(REPO):
-        return "the Bips' voices, set up by hand, stay as they are"
-    said: List[str] = []
-    languages = voices.with_new_languages([code for code in unit.languages.split(",") if code])
-    packages = voices.install(languages, home, runner, said.append)
-    if packages is None:
-        raise NotYet("the light voices can't be had from the guichet yet: " + "; ".join(s.strip() for s in said))
+    from . import voices
     pocket = REPO / "pocket"
-    new, old = pocket / ".venv-light", pocket / ".venv-torch"
+    new, old = pocket / ".venv-new", pocket / ".venv-old"
     runner.log.append(f"remove {new}")
     if not runner.dry:
         shutil.rmtree(new, ignore_errors=True)
     runner.run(["uv", "venv", "--no-cache", "--quiet", "--python", "3.12", str(new)])
-    runner.run(["uv", "pip", "install", "--no-cache", "--quiet", "--python", str(new / "bin" / "python"), "-r",
-                str(pocket / "requirements-onnx.txt")])
-    _, path, content = pocket_service(SimpleNamespace(repo=REPO, home=home), "linux", unit.languages, packages=packages)
+    runner.run(["uv", "pip", "install", "--no-cache", "--quiet", *extra, "--python", str(new / "bin" / "python"),
+                "-r", str(pocket / requirements)])
     runner.log.append(f"move {pocket / '.venv'} to {old}, {new} to {pocket / '.venv'}; write {unit.path}")
     if runner.dry:
-        return "the Bips' voices would move to the light voices (without PyTorch)"
+        return False
     shutil.rmtree(old, ignore_errors=True)
     (pocket / ".venv").rename(old)
     new.rename(pocket / ".venv")
@@ -337,11 +318,61 @@ def light_voices(runner: hermes.Runner, home: Path, wait: float = LIGHT_WAIT) ->
         unit.path.write_text(unit.text, encoding="utf-8")
         restart()
         shutil.rmtree(new, ignore_errors=True)
-        raise NotYet("the light voices didn't answer: the Bips keep Pocket's own models for now")
+        raise NotYet(failed)
     shutil.rmtree(old, ignore_errors=True)
+    return True
+
+
+def light_voices(runner: hermes.Runner, home: Path, wait: float = LIGHT_WAIT) -> str:
+    """The Bips' voices of a place moved from Pocket's own models (PyTorch, 5.5 GB) to the phones' packages (ONNX
+    Runtime, `--onnx`), as a fresh install of the offer sets them up: the packages from its guichet, a new environment
+    built next to the old one, the service switched and checked; only then PyTorch's environment and Pocket's
+    downloaded weights go. When the new voices don't answer, the old ones are put back (tried again next update).
+    Elsewhere (no guichet to fetch the packages from, a service set up by hand) nothing changes: cpu_torch."""
+    import shutil
+    from types import SimpleNamespace
+    from . import pocketunit, voices
+    from .stack import pocket_service
+    unit = pocketunit.find(home)
+    if unit is None:
+        return "no Bips' voices served from this account"
+    if unit.light:
+        return "the Bips' voices already run without PyTorch"
+    if voices.source(home)[0] is None:
+        return cpu_torch(runner, home, unit, wait)
+    if not unit.standard(REPO):
+        return "the Bips' voices, set up by hand, stay as they are"
+    said: List[str] = []
+    languages = voices.with_new_languages([code for code in unit.languages.split(",") if code])
+    packages = voices.install(languages, home, runner, said.append)
+    if packages is None:
+        raise NotYet("the light voices can't be had from the guichet yet: " + "; ".join(s.strip() for s in said))
+    _, _, content = pocket_service(SimpleNamespace(repo=REPO, home=home), "linux", unit.languages, packages=packages)
+    if not _switch_pocket(runner, unit, "requirements-onnx.txt", [], content, wait,
+                          "the light voices didn't answer: the Bips keep Pocket's own models for now"):
+        return "the Bips' voices would move to the light voices (without PyTorch)"
     shutil.rmtree(home / ".cache" / "huggingface" / "hub" / "models--kyutai--pocket-tts-without-voice-cloning",
                   ignore_errors=True)
     return "the Bips' voices run without PyTorch (the phones' voices, about 5.5 GB less on disk)"
+
+
+def cpu_torch(runner: hermes.Runner, home: Path, unit, wait: float = LIGHT_WAIT) -> str:
+    """Pocket's own models where the light voices can't be had (an install of one's own: the packages come from the
+    offer's guichet only), on x86 Linux: PyTorch without CUDA (pip's default brought ~4 GB of NVIDIA libraries no
+    server uses), in a new environment switched the same way (put back if it doesn't answer)."""
+    import platform
+    import subprocess
+    if platform.system() != "Linux" or not unit.standard(REPO):
+        return "the Bips' voices keep Pocket's own models (the light voices come from the offer's guichet only)"
+    python = REPO / "pocket" / ".venv" / "bin" / "python"
+    listed = "" if runner.dry else subprocess.run(["uv", "pip", "list", "--python", str(python), "--format", "freeze"],
+                                                  capture_output=True, text=True).stdout
+    if not runner.dry and "nvidia-" not in listed:
+        return "the Bips' voices keep Pocket's own models, already without CUDA"
+    if not _switch_pocket(runner, unit, "requirements.txt", ["--torch-backend", "cpu"], unit.text, wait,
+                          "PyTorch without CUDA didn't answer: Pocket keeps its environment for now"):
+        return "Pocket's own models would get PyTorch without CUDA"
+    return "the Bips' voices keep Pocket's own models, now with PyTorch without CUDA (about 4 GB less)"
 
 
 def light_disk(runner: hermes.Runner, home: Path) -> str:
