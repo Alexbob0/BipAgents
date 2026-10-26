@@ -172,7 +172,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
                                                             "0005-vault-fill-reattach-supervisor.patch",
                                                             "0006-bot-mode-sync-peer-reply.patch",
                                                             "0007-browser-vault-only.patch",
-                                                            "0008-timezone-routines-wall-clock.patch"]
+                                                            "0008-timezone-routines-wall-clock.patch",
+                                                                "0009-tool-search-keep-direct-compact-skills.patch"]
 
 
 def test_bot_mode_marker(tmp_path):
