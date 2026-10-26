@@ -188,6 +188,8 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
         json!(["--user", "stop", "bipagents-browser-budget"]).as_array().unwrap()[..]
     );
     assert_eq!(proxy["idle"], 600);
+    assert_eq!(proxy["after_run"], 180);
+    assert_eq!(proxy["ended"], json!(place.join("ended").to_string_lossy()));
     assert_eq!(proxy["cdp_port"], 19602);
     assert_eq!(proxy["busy"], json!(place.join("busy").to_string_lossy()));
     assert_eq!(proxy["unit"]["path"], json!(unit_file.to_string_lossy()));

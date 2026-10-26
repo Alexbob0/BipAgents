@@ -43,6 +43,10 @@ ufw allow "$port/tcp" >/dev/null
 # Its services run when nobody is logged in.
 loginctl enable-linger "$user"
 systemctl start "user@$(id -u "$user").service"
+# Its soft memory ceiling (MemoryHigh on its slice, a share of the server's memory) before its install's heavy steps;
+# the seat agent keeps it set every two minutes after.
+here=$(dirname "$0")
+[ -f "$here/seat-agent.py" ] && python3 "$here/seat-agent.py" --ceiling >/dev/null 2>&1
 sudo -iu "$user" bash -c "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | ${pin}bash -s -- --cloud $setup" \
     > "/var/log/bipagents-install$n.log" 2>&1
 # The installer kept the secret for the bridge (deleted once the app has paired); this copy goes.

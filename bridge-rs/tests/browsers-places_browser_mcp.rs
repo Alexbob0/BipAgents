@@ -173,6 +173,56 @@ async fn stopped_once_nobody_uses_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn stopped_soon_after_the_run_that_used_it_ended_unless_used_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let config = config(tmp); // idle 600 s, `ended` beside `busy`, after_run 180 s by default
+    let proxy = Proxy::new(config.clone(), Box::new(Out::default()));
+    assert_eq!(proxy.after_run, browser_mcp::AFTER_RUN_SECONDS as f64);
+    assert_eq!(proxy.ended_path, tmp.join("ended"));
+    let (busy, ended) = (tmp.join("busy"), tmp.join("ended"));
+    // No run told its end: only the 600 s rule.
+    set_mtime(&busy, 400);
+    assert!(!proxy.done_with());
+    // The run ended 2 minutes ago, its last call before: not yet.
+    set_mtime(&ended, 120);
+    assert!(!proxy.done_with());
+    // 3 minutes: done with.
+    set_mtime(&ended, 181);
+    assert!(proxy.done_with());
+    // Used since the end (a new call, the person watching or driving its desktop): the 600 s rule again.
+    set_mtime(&busy, 100);
+    assert!(!proxy.done_with());
+    // `after_run` 0: never sooner.
+    let mut never = config.clone();
+    never.insert("after_run".into(), json!(0));
+    set_mtime(&busy, 400);
+    assert!(!Proxy::new(never, Box::new(Out::default())).done_with());
+
+    // The watcher stops it, its idle time far from over.
+    let mut quick = config.clone();
+    quick.insert("after_run".into(), json!(0.3));
+    let proxy = Proxy::new(quick, Box::new(Out::default()));
+    proxy.handle(init()).await; // started once to learn its tools (touches `busy`)
+    assert!(proxy.running());
+    let watcher = tokio::spawn(proxy.clone().watch_idle(0.05));
+    // a call under way keeps it on whatever the run's end says
+    proxy.calls.store(1, Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    set_mtime(&busy, 2);
+    set_mtime(&ended, 1);
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(proxy.running());
+    proxy.calls.store(0, Ordering::SeqCst);
+    set_mtime(&busy, 2);
+    set_mtime(&ended, 1);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(!proxy.running());
+    assert_eq!(ran(tmp), vec!["start", "stop"]);
+    watcher.abort();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_long_call_or_a_devtools_connection_keeps_it_on() {
     let dir = tempfile::tempdir().unwrap();
     let tmp = dir.path();
