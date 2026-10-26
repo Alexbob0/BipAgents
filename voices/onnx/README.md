@@ -21,9 +21,18 @@ uv venv --python 3.12 voices/onnx/.venv && uv pip install --python voices/onnx/.
 voices/onnx/.venv/bin/python voices/onnx/build.py
 ```
 
-The packages are never at a public address. The apps get them from the App Store (upload the `.aar` files to App
-Store Connect with Transporter, then submit them with the build) and from Google Play (the publisher's upload script puts
-them in the bundle); the offer's servers get them from their guichet (copy `build/voices` to its `voices` folder).
+The apps get the packages from the App Store (upload the `.aar` files to App Store Connect with Transporter, then
+submit them with the build) and from Google Play (the publisher's upload script puts them in the bundle); the offer's
+servers get them from their guichet (copy `build/voices` to its `voices` folder). Every other install (one's own
+server, a family's, a Mac) gets them from a GitHub release of the public repository, `voices-<engine>-<index hash>`
+(since 2026-10-26): `release.py` packs `build/voices` (one `<folder>.tar.gz` per package the index lists, `index.json`,
+`CREDITS.txt`, `LICENSE-ASSETS`, `SHA256SUMS`) and `scripts/publish-voices.sh` uploads it (`--dry-run` lists the
+assets; a release already out is skipped). The installer takes the newest one of the Pocket it pins, only the
+languages it serves, each file checked (installer/bipinstall/voices.py), and drops PyTorch once Pocket answers.
+
+```bash
+scripts/publish-voices.sh --dry-run        # then without --dry-run, after each new build/voices
+```
 
 ```bash
 voices/onnx/.venv/bin/python voices/onnx/store_packs.py          # both stores; --apple or --android for one
