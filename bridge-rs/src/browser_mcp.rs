@@ -6,6 +6,11 @@
 //! while they run, and stops both after `idle` seconds of nobody using that browser. A container stopped this way
 //! costs no memory; the next call starts it again (a few seconds) with the same profile, logins included.
 //!
+//! Sooner when the work that used it is over (2026-10-26, a server's memory shared by its places): the bridge touches
+//! the `ended` file when a run that called the browser's tools completes or fails and no other run of the agent that
+//! used it still goes on (runs.rs, a background task's included); nobody using it since (`busy` older than `ended`:
+//! no call, nobody watching or driving its desktop), it stops `after_run` seconds (180) after that end.
+//!
 //! « Using » is shared through the `busy` file, touched at each call (and every 30 s of a long one) by every copy of
 //! this server (the agent's gateway, a `hermes chat` beside it), every minute by the bridge while the person watches or
 //! drives that desktop, and here while something holds a connection to Chrome's DevTools (`cdp_port`: the vault,
@@ -45,6 +50,8 @@ pub const LINE_LIMIT: usize = 64 * 1024 * 1024;
 /// at once, memory in swap) takes far longer than the few seconds of an idle one.
 pub const READY_SECONDS: u64 = 90;
 pub const TCP_TABLES: [&str; 2] = ["/proc/net/tcp", "/proc/net/tcp6"];
+/// How long after the end of the work that used it the browser stops, unless used again (`after_run`).
+pub const AFTER_RUN_SECONDS: u64 = 180;
 
 /// What Hermes asks while connecting, answered without starting anything once the real server has said it (the
 /// others, never asked while it ran, as empty).
@@ -156,6 +163,9 @@ type Starting = Shared<BoxFuture<'static, Result<(), String>>>;
 pub struct Proxy {
     pub config: Dict,
     pub idle: f64,
+    /// Seconds after the end of the run that used it (the `ended` file, beside `busy` unless set); 0: never sooner.
+    pub after_run: f64,
+    pub ended_path: PathBuf,
     pub cache_path: PathBuf,
     pub cache: Mutex<Dict>,
     output: Mutex<Box<dyn Write + Send>>,
@@ -175,6 +185,13 @@ pub struct Proxy {
 impl Proxy {
     pub fn new(config: Dict, output: Box<dyn Write + Send>) -> Arc<Proxy> {
         let idle = config.get("idle").and_then(|v| crate::py::py_float(v).ok()).unwrap_or(600.0);
+        let after_run =
+            config.get("after_run").and_then(|v| crate::py::py_float(v).ok()).unwrap_or(AFTER_RUN_SECONDS as f64);
+        let busy = PathBuf::from(config.get("busy").map(crate::py::py_str).unwrap_or_default());
+        let ended_path = match config.get("ended").map(crate::py::py_str).filter(|p| !p.is_empty()) {
+            Some(path) => PathBuf::from(path),
+            None => busy.parent().map(|p| p.join("ended")).unwrap_or_else(|| PathBuf::from("ended")),
+        };
         let cache_path = PathBuf::from(config.get("cache").map(crate::py::py_str).unwrap_or_default());
         let mut cache = read_cache(&cache_path);
         if !cache.contains_key("initialize") {
@@ -186,6 +203,8 @@ impl Proxy {
         Arc::new(Proxy {
             config,
             idle,
+            after_run,
+            ended_path,
             cache_path,
             cache: Mutex::new(cache),
             output: Mutex::new(output),
@@ -504,6 +523,18 @@ their language: « I can't open web pages right now; I'll try again in a moment.
         }
     }
 
+    /// The work that used it ended `after_run` seconds ago or more, and nobody used it since.
+    pub fn done_with(&self) -> bool {
+        if self.after_run <= 0.0 {
+            return false;
+        }
+        let Ok(ended) = std::fs::metadata(&self.ended_path).and_then(|m| m.modified()) else { return false };
+        let ended = ended.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        let now = crate::py::time_time();
+        // `busy` touched after the end: used again (a call, the person watching or driving its desktop)
+        now - ended >= self.after_run && self.unused_for() >= now - ended
+    }
+
     pub async fn watch_idle(self: Arc<Self>, every: f64) {
         loop {
             tokio::time::sleep(Duration::from_secs_f64(every)).await;
@@ -512,11 +543,15 @@ their language: « I can't open web pages right now; I'll try again in a moment.
                 if self.unused_for() > 30.0 {
                     self.touch();
                 }
-            } else if self.unused_for() >= self.idle
+            } else if (self.unused_for() >= self.idle || self.done_with())
                 && (self.running() || run(&self.command("active"), false).await.map(|c| c == 0).unwrap_or(false))
             {
                 // Also when another started it (the desktop in the app, a `hermes chat` since closed).
-                log(&format!("unused for {:.0} s: stopped", self.idle));
+                if self.unused_for() >= self.idle {
+                    log(&format!("unused for {:.0} s: stopped", self.idle));
+                } else {
+                    log(&format!("its work over for {:.0} s: stopped", self.after_run));
+                }
                 self.stop().await;
             }
         }

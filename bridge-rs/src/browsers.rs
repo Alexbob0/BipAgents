@@ -156,6 +156,16 @@ pub fn busy(config: &Config, agent: &str) {
     let _ = touch(&folder(config, agent).join("busy"));
 }
 
+/// A run that used the agent's browser ended (completed or failed) and no other run of the agent still uses it: its
+/// browser stops `browser_mcp::AFTER_RUN_SECONDS` from now unless used again (bip-browser-mcp reads `ended`). Only
+/// for an agent whose browser starts on demand and was set up (its folder there).
+pub fn run_ended(config: &Config, agent: &str) {
+    let place = folder(config, agent);
+    if on_demand(config) && place.is_dir() {
+        let _ = touch(&place.join("ended"));
+    }
+}
+
 fn has_ports(config: &Config, agent: &str) -> bool {
     ports_of(config, agent).map(|p| !p.is_empty()).unwrap_or(false)
 }
@@ -560,6 +570,7 @@ pub fn proxy_config(config: &Config, agent: &str, engine: &str, ports: &IndexMap
         "cache": place.join("mcp-cache.json").to_string_lossy(), "busy": place.join("busy").to_string_lossy(),
         "cdp_port": ports.get("cdp").copied().unwrap_or(0),
         "idle": config.browser.idle_minutes as u64 * 60,
+        "ended": place.join("ended").to_string_lossy(), "after_run": crate::browser_mcp::AFTER_RUN_SECONDS,
         "shared_cache": PathBuf::from(&config.browser.root).join("mcp-cache.json").to_string_lossy(),
         "ready_seconds": crate::browser_mcp::READY_SECONDS,
     })

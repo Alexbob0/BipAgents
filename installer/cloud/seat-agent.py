@@ -5,7 +5,8 @@ Run as root every two minutes by bipagents-seats.timer, set up at first boot. It
 its first boot gave it, is the server's heartbeat (guichet/bipguichet/watch.py): it says, for each place, whether its
 bridge's door answers here, whether its Hermes runs (or sleeps), the BipAgents version it runs, when its last backup worked
 and whether its encrypted space waits for its key ("locked" and why),
-and for the server its memory, swap, disk and load -- yes or no, a version, a time and numbers, nothing of anyone. The
+and for the server its memory, swap, disk and load, and for each place the memory it holds now and its highest since the
+last beat ("places") -- yes or no, a version, a time and numbers, nothing of anyone. The
 guichet answers with its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
 openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. There are three orders:
 install place n again for its next person -- its account bip<n> (bip for place 1), everything in it and its
@@ -18,6 +19,10 @@ With --rebooting, run by bipagents-reboot-notice.service as the server shuts dow
 update, user-data.yaml), it only tells the guichet the server is rebooting when a reboot is under way: the guichet
 then waits a quarter of an hour before taking its silence, or its places not answering yet, for an outage. The beat
 says how long the server has been up for the same reason.
+
+It also keeps each place's memory soft-capped (MemoryHigh on its user slice, never a hard limit: below), samples
+each place's memory every 15 s between beats (--sample, bipagents-memory.timer, which it sets up), and sets up zram
+on a server that has none.
 
 ASCII only, like user-data.yaml and add-seat.sh (installer/tests/test_cloud_init.py checks it).
 """
@@ -290,6 +295,211 @@ def health():
     return seats
 
 
+# -- memory: each place's soft ceiling, compressed swap, and what each place holds ------------------------------------
+#
+# A place is one account; systemd keeps all its processes in user-<uid>.slice (its Hermes, its bridge, its rootless
+# podman containers, the agents' browsers among them). Its MemoryHigh (never MemoryMax: nothing is ever killed or
+# refused) is a share of the server's memory, 35 % unless the guichet sends another (`memory_high_share` in the beat's
+# answer): above it the kernel reclaims that place's own memory first (into zram) and slows its allocations, so a place
+# opening four or five browsers at once slows itself, not its neighbours. Set with systemctl set-property: a drop-in
+# in /etc/systemd/system.control that survives reboots.
+
+CGROUP_USERS = "/sys/fs/cgroup/user.slice"
+SETTINGS = "/var/lib/bipagents/settings.json"   # what the guichet's beat answer set (`settings`)
+SAMPLES = "/run/bipagents/memory.json"           # each place's highest memory since the last beat (--sample)
+ZRAM_TRIED = "/var/lib/bipagents/zram-tried"
+MEMORY_HIGH_SHARE = 0.35
+MB = 1024 * 1024
+# The same text as user-data.yaml's (installer/tests/test_cloud_init.py): half the memory, zstd, before the disk swap.
+ZRAM_CONF = "[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\nswap-priority = 100\n"
+SAMPLER_SERVICE = """[Unit]
+Description=BipAgents: each place's memory, sampled between the guichet's beats
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %s/seat-agent.py --sample
+"""
+SAMPLER_TIMER = """[Unit]
+Description=BipAgents: each place's memory every 15 s
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+"""
+
+
+def read_json(path):
+    try:
+        with open(path) as fh:
+            value = json.load(fh)
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_json(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as fh:
+        json.dump(value, fh)
+    os.replace(path + ".tmp", path)
+
+
+def good_share(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and 0.1 <= value <= 1.0
+
+
+def keep_settings(answer, path=None):
+    """The settings in the guichet's answer, kept when they are ones this agent knows and within reason."""
+    settings = answer.get("settings") if isinstance(answer, dict) else None
+    if not isinstance(settings, dict) or not good_share(settings.get("memory_high_share")):
+        return
+    path = path or SETTINGS
+    kept = read_json(path)
+    if kept.get("memory_high_share") != float(settings["memory_high_share"]):
+        kept["memory_high_share"] = float(settings["memory_high_share"])
+        write_json(path, kept)
+
+
+def places():
+    """Each place of this server: its number (as text) and its account's uid."""
+    found = {}
+    for number in range(1, MAX_SEATS + 1):
+        try:
+            found[str(number)] = pwd.getpwnam(account(number)).pw_uid
+        except KeyError:
+            continue
+    return found
+
+
+def slice_file(uid, name, root=CGROUP_USERS):
+    """A number of the place's slice (memory.current...), else None (its services not started, "max")."""
+    try:
+        with open(os.path.join(root, "user-%d.slice" % uid, name)) as fh:
+            value = fh.read().split()[0]
+        return None if value == "max" else int(value)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def ceiling_mb(memory_mb, settings):
+    share = settings.get("memory_high_share")
+    return int(memory_mb * (share if good_share(share) else MEMORY_HIGH_SHARE))
+
+
+def ceiling(memory_mb, settings, root=CGROUP_USERS, setter=None):
+    """Each running place's slice gets its MemoryHigh when it has another one (a place started, the share changed)."""
+    if not memory_mb:
+        return
+    high = ceiling_mb(memory_mb, settings)
+    for number, uid in places().items():
+        if not os.path.isdir(os.path.join(root, "user-%d.slice" % uid)):
+            continue
+        if slice_file(uid, "memory.high", root) == high * MB:
+            continue
+        log("place %s: memory ceiling %d MB" % (number, high))
+        (setter or run)("systemctl", "set-property", "user-%d.slice" % uid, "MemoryHigh=%dM" % high)
+
+
+def sample(root=CGROUP_USERS, path=SAMPLES):
+    """--sample (every 15 s, bipagents-memory.timer): each place's highest memory.current since the last beat."""
+    samples = read_json(path)
+    for number, uid in places().items():
+        current = slice_file(uid, "memory.current", root)
+        if current is None:
+            continue
+        entry = samples.get(number) if isinstance(samples.get(number), dict) else {}
+        entry["max"] = max(int(entry.get("max") or 0), current)
+        samples[number] = entry
+    write_json(path, samples)
+    return 0
+
+
+def places_memory(root=CGROUP_USERS, path=SAMPLES):
+    """For the beat: each place's memory now and its peak since the last beat, in MB. The peak is the highest of the
+    samples taken between beats, now, and the kernel's memory.peak when it rose since the last beat (it never goes
+    down: a new high since then is exact)."""
+    samples = read_json(path)
+    out, kept = {}, {}
+    for number, uid in places().items():
+        current = slice_file(uid, "memory.current", root) or 0
+        entry = samples.get(number) if isinstance(samples.get(number), dict) else {}
+        peak = max(current, int(entry.get("max") or 0))
+        lifetime, before = slice_file(uid, "memory.peak", root), entry.get("lifetime")
+        if lifetime is not None and isinstance(before, int) and lifetime > before:
+            peak = max(peak, lifetime)
+        out[number] = {"mem_mb": current // MB, "mem_peak_mb": peak // MB}
+        kept[number] = {"max": 0, "lifetime": lifetime}
+    try:
+        write_json(path, kept)
+    except OSError:
+        pass
+    return out
+
+
+def sampler(lib=LIB, units="/etc/systemd/system", runner=None):
+    """bipagents-memory.timer, set up once (servers installed before 2026-10-26 included)."""
+    wanted = {"bipagents-memory.service": SAMPLER_SERVICE % lib, "bipagents-memory.timer": SAMPLER_TIMER}
+    changed = False
+    for name, text in wanted.items():
+        path = os.path.join(units, name)
+        try:
+            with open(path) as fh:
+                if fh.read() == text:
+                    continue
+        except OSError:
+            pass
+        with open(path, "w") as fh:
+            fh.write(text)
+        changed = True
+    if changed:
+        (runner or run)("systemctl", "daemon-reload")
+        (runner or run)("systemctl", "enable", "--now", "bipagents-memory.timer")
+
+
+def zram_on(swaps="/proc/swaps"):
+    try:
+        with open(swaps) as fh:
+            return any(line.startswith("/dev/zram") for line in fh)
+    except OSError:
+        return False
+
+
+def quietly(*args):
+    try:
+        return subprocess.run(list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900,
+                              env=dict(os.environ, DEBIAN_FRONTEND="noninteractive")).returncode
+    except (OSError, subprocess.SubprocessError):
+        return 1
+
+
+def zram(swaps="/proc/swaps", tried=ZRAM_TRIED, conf="/etc/systemd/zram-generator.conf", runner=quietly):
+    """Compressed swap in memory (zram, half the memory, ahead of the disk swap) on a server that has none yet
+    (installed before 2026-10-26, or its first boot could not): as user-data.yaml does, tried again an hour later
+    when it did not work (apt busy...)."""
+    if zram_on(swaps):
+        return True
+    try:
+        if time.time() - os.stat(tried).st_mtime < 3600:
+            return False
+    except OSError:
+        pass
+    write_json(tried, {"at": int(time.time())})
+    if runner("modprobe", "zram") != 0 or runner("apt-get", "install", "-y", "systemd-zram-generator") != 0:
+        log("zram not set up yet (tried again in an hour)")
+        return False
+    with open(conf, "w") as fh:
+        fh.write(ZRAM_CONF)
+    runner("systemctl", "daemon-reload")
+    runner("systemctl", "restart", "systemd-zram-setup@zram0.service")
+    on = zram_on(swaps)
+    log("zram %s" % ("on" if on else "not on yet"))
+    return on
+
+
 def read_done():
     try:
         with open(DONE) as fh:
@@ -320,16 +530,40 @@ def rebooting(conf):
     return 0
 
 
+def memory_settled(server):
+    """Each place's memory ceiling and the sampler between beats, whatever the guichet answers."""
+    try:
+        ceiling(server.get("memory_mb"), read_json(SETTINGS))
+        sampler()
+    except OSError as exc:
+        log("memory settings not applied: %s" % exc)
+
+
 def main(argv=()):
+    if "--sample" in argv:
+        return sample()
+    if "--ceiling" in argv:   # add-seat.sh, as soon as a place's account starts
+        ceiling(vitals().get("memory_mb"), read_json(SETTINGS))
+        return 0
     with open(CONF) as fh:
         conf = json.load(fh)
     if "--rebooting" in argv:
         return rebooting(conf)
+    server = vitals()
+    memory_settled(server)
     try:
-        orders = call(conf, "POST", "/v1/server/beat", {"seats": health(), "server": vitals()}).get("orders") or []
+        answer = call(conf, "POST", "/v1/server/beat", {"seats": health(), "server": server,
+                                                         "places": places_memory()})
+        orders = answer.get("orders") or []
     except (OSError, ValueError) as exc:
         log("guichet unreachable: %s" % exc)
+        zram()
         return 0
+    try:
+        keep_settings(answer)
+    except OSError as exc:
+        log("settings not kept: %s" % exc)
+    memory_settled(server)
     done = read_done()
     for order in orders:
         if int(order.get("id", 0)) in done:
@@ -360,6 +594,7 @@ def main(argv=()):
             call(conf, "POST", "/v1/server/orders/%d/done" % int(order["id"]))
         except (OSError, ValueError) as exc:
             log("done not told yet (next round): %s" % exc)
+    zram()   # last: installing it may take a minute, once
     return 0
 
 

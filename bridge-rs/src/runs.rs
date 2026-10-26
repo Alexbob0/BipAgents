@@ -294,6 +294,9 @@ pub struct SubscriptionState {
     pub rescued: bool,
     /// The group discussion whose hidden conversation runs this (rooms.rs): its approvals open the room.
     pub room_id: Option<String>,
+    /// The run called the agent's browser tools: at its end, its browser stops soon unless used again
+    /// (browsers::run_ended).
+    pub used_browser: bool,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -323,6 +326,7 @@ impl Default for SubscriptionState {
             handoff_failed: false,
             rescued: false,
             room_id: None,
+            used_browser: false,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -918,6 +922,10 @@ impl RunHub {
                 let tool = if text("tool").is_empty() { text("name") } else { text("tool") };
                 crate::sandbox_sites::note_tool_call(&shared.get(), &sub.agent.name, tool, text("preview"));
             }
+            let tool = event.data.get("tool").or_else(|| event.data.get("name")).and_then(Value::as_str).unwrap_or("");
+            if browser_tool(tool) {
+                st.used_browser = true;
+            }
         }
         if kind == "approval.request" {
             self.on_approval(&mut inner, sub, &mut st, &event);
@@ -927,6 +935,11 @@ impl RunHub {
             Self::forget_pending(&mut inner, &sub.agent.name, &sub.run_id, event.data.get("request_id"));
         } else if is_terminal(kind) {
             st.terminal = Some(kind.to_string());
+            if st.used_browser && !Self::browser_still_used(&inner, sub) {
+                if let Some(shared) = self.config.as_ref() {
+                    crate::browsers::run_ended(&shared.get(), &sub.agent.name);
+                }
+            }
             let output = as_str(event.data.get("output"));
             if output.is_some() {
                 st.output = output.clone();
@@ -973,6 +986,17 @@ impl RunHub {
                 }
             }
         }
+    }
+
+    /// Another run of the agent that called its browser's tools still goes on (a background task's, another
+    /// conversation's): its browser stays for it.
+    fn browser_still_used(inner: &HubInner, sub: &Arc<RunSubscription>) -> bool {
+        inner.subs.values().any(|other| {
+            !Arc::ptr_eq(other, sub) && other.agent.name == sub.agent.name && {
+                let st = lock(&other.state);
+                st.used_browser && !st.finished && st.terminal.is_none()
+            }
+        })
     }
 
     /// The long-work safety net (decided 2026-10-22, independent of the model): a run in a person's conversation (not a
@@ -1404,6 +1428,42 @@ mod tests {
         assert!(hub.followed_recently("vie", "api_bot", Some("x"), 600.0));
         lock(&sub.state).finished_at = Some(crate::py::time_time() - 90.0);
         assert!(!hub.followed_recently("vie", "api_bot", Some("x"), 600.0));
+    }
+
+    #[tokio::test]
+    async fn the_end_of_the_last_run_that_used_the_browser_is_told_to_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("browsers");
+        std::fs::create_dir_all(root.join("vie")).unwrap();
+        let data = json!({"bridge_key": "k".repeat(40), "browser": {"root": root.to_string_lossy()}});
+        let config = SharedConfig::new(crate::config::parse_config(&data, None).unwrap());
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None).with_config(config);
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let run = |id: &str| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), id));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let event = |kind: &str, data: Value| SSEEvent::new(kind, data.as_object().cloned().unwrap(), "{}");
+        let ended = root.join("vie").join("ended");
+        let (chat, job, other) = (run("run_chat"), run("run_job"), run("run_other"));
+        hub.dispatch(&chat, event("tool.started", json!({"tool": "mcp_stealth_navigate"})));
+        hub.dispatch(&job, event("tool.started", json!({"tool": "mcp_stealth_click_element"})));
+        hub.dispatch(&other, event("tool.started", json!({"tool": "web_search"})));
+        // The conversation's run ends while a background task still uses the browser: it stays.
+        hub.dispatch(&chat, event("run.completed", json!({"output": "Voilà."})));
+        assert!(!ended.exists());
+        // A run that never used it ends: nothing said either.
+        hub.dispatch(&other, event("run.completed", json!({"output": "Ok."})));
+        assert!(!ended.exists());
+        // The task fails: the browser's work is over (bip-browser-mcp stops it 3 minutes later unless used again).
+        hub.dispatch(&job, event("run.failed", json!({"error": "x"})));
+        assert!(ended.exists());
+        // An agent without a browser set up gets no file.
+        let lone = Arc::new(RunSubscription::new(AgentConfig { name: "lea".into(), ..Default::default() }, "r"));
+        hub.dispatch(&lone, event("tool.started", json!({"tool": "browser_navigate"})));
+        hub.dispatch(&lone, event("run.completed", json!({})));
+        assert!(!root.join("lea").exists());
     }
 
     #[test]

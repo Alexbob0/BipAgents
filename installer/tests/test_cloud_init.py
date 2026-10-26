@@ -271,3 +271,146 @@ def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_number
                             "uptime"}
     assert numbers["uptime"] == 754 and agent.uptime(str(tmp_path / "missing")) is None
     assert numbers["memory_mb"] == 7812 and numbers["available_mb"] == 2929 and numbers["swap_used_mb"] == 1023
+
+
+def _places(agent, monkeypatch, uids):
+    import pwd
+
+    def getpwnam(name):
+        if name not in uids:
+            raise KeyError(name)
+        return pwd.struct_passwd((name, "x", uids[name], uids[name], "", "/home/" + name, "/bin/bash"))
+
+    monkeypatch.setattr(agent.pwd, "getpwnam", getpwnam)
+
+
+def test_each_place_gets_a_soft_memory_ceiling_from_the_server_s_memory(tmp_path, monkeypatch):
+    """MemoryHigh (never MemoryMax) on each running place's user slice: 35 % of the server's memory, or the share the
+    guichet sent; set again only when it differs."""
+    agent = _seat_agent()
+    _places(agent, monkeypatch, {"bip": 1000, "bip2": 1001, "bip3": 1002})
+    root = tmp_path / "user.slice"
+    (root / "user-1000.slice").mkdir(parents=True)
+    (root / "user-1000.slice" / "memory.high").write_text("max\n")
+    (root / "user-1001.slice").mkdir()
+    (root / "user-1001.slice" / "memory.high").write_text("%d\n" % (2800 * 1024 * 1024))
+    # bip3: no slice (its services not started): nothing set for it
+    calls = []
+    agent.ceiling(8000, {}, str(root), lambda *args: calls.append(args))
+    assert calls == [("systemctl", "set-property", "user-1000.slice", "MemoryHigh=2800M")]
+    calls.clear()
+    agent.ceiling(8000, {"memory_high_share": 0.5}, str(root), lambda *args: calls.append(args))
+    assert calls == [("systemctl", "set-property", "user-1000.slice", "MemoryHigh=4000M"),
+                     ("systemctl", "set-property", "user-1001.slice", "MemoryHigh=4000M")]
+    assert agent.ceiling_mb(8000, {"memory_high_share": 5}) == agent.ceiling_mb(8000, {"memory_high_share": True}) \
+        == 2800
+    text = (ROOT / "installer" / "cloud" / "seat-agent.py").read_text(encoding="utf-8")
+    assert "MemoryMax" not in text.replace("never MemoryMax", "")
+    # The guichet's answer: a known setting within reason is kept, anything else is not.
+    settings = tmp_path / "settings.json"
+    agent.keep_settings({"orders": []}, str(settings))
+    agent.keep_settings({"settings": {"memory_high_share": 0.02}}, str(settings))
+    agent.keep_settings({"settings": {"memory_max": 1}}, str(settings))
+    assert not settings.exists()
+    agent.keep_settings({"settings": {"memory_high_share": 0.4}}, str(settings))
+    assert json.loads(settings.read_text()) == {"memory_high_share": 0.4}
+
+
+def test_the_beat_says_each_place_s_memory_now_and_its_peak_since_the_last_beat(tmp_path, monkeypatch):
+    """The contract with the guichet: {"places": {"<seat>": {"mem_mb": n, "mem_peak_mb": n}}}, in MB."""
+    import shutil
+    agent = _seat_agent()
+    _places(agent, monkeypatch, {"bip": 1000, "bip2": 1001})
+    root = tmp_path / "user.slice"
+    samples = str(tmp_path / "run" / "memory.json")
+    mb = 1024 * 1024
+    for uid in (1000, 1001):
+        (root / ("user-%d.slice" % uid)).mkdir(parents=True)
+
+    def at(uid, current, peak=None):
+        (root / ("user-%d.slice" % uid) / "memory.current").write_text("%d\n" % (current * mb))
+        if peak is not None:
+            (root / ("user-%d.slice" % uid) / "memory.peak").write_text("%d\n" % (peak * mb))
+
+    at(1000, 900, 1200)
+    at(1001, 300)                 # a kernel without memory.peak: the samples only
+    agent.sample(str(root), samples)
+    at(1000, 2500, 2600)
+    at(1001, 700)
+    agent.sample(str(root), samples)
+    at(1000, 1100, 2600)
+    at(1001, 400)
+    # the first beat: the lifetime peak is not known to be recent, the samples are
+    assert agent.places_memory(str(root), samples) == {"1": {"mem_mb": 1100, "mem_peak_mb": 2500},
+                                                       "2": {"mem_mb": 400, "mem_peak_mb": 700}}
+    # the next: a high between two samples shows in memory.peak (risen since the last beat)
+    at(1000, 1000, 3100)
+    assert agent.places_memory(str(root), samples) == {"1": {"mem_mb": 1000, "mem_peak_mb": 3100},
+                                                       "2": {"mem_mb": 400, "mem_peak_mb": 400}}
+    # and then nothing higher: the peak is now
+    assert agent.places_memory(str(root), samples)["1"] == {"mem_mb": 1000, "mem_peak_mb": 1000}
+    # a place whose services do not run holds nothing
+    shutil.rmtree(root / "user-1001.slice")
+    assert agent.places_memory(str(root), samples)["2"] == {"mem_mb": 0, "mem_peak_mb": 0}
+    # the sampler's units, written once
+    units, ran = tmp_path / "units", []
+    units.mkdir()
+    agent.sampler("/usr/local/lib/bipagents", str(units), lambda *args: ran.append(args))
+    agent.sampler("/usr/local/lib/bipagents", str(units), lambda *args: ran.append(args))
+    assert ran == [("systemctl", "daemon-reload"), ("systemctl", "enable", "--now", "bipagents-memory.timer")]
+    assert "ExecStart=/usr/bin/python3 /usr/local/lib/bipagents/seat-agent.py --sample" in \
+        (units / "bipagents-memory.service").read_text()
+    assert "OnUnitActiveSec=15s" in (units / "bipagents-memory.timer").read_text()
+
+
+def test_the_beat_s_body_and_its_order(tmp_path, monkeypatch):
+    agent = _seat_agent()
+    conf = tmp_path / "guichet.json"
+    conf.write_text('{"url": "https://g", "token": "t", "server": "vps-1"}')
+    monkeypatch.setattr(agent, "CONF", str(conf))
+    monkeypatch.setattr(agent, "SETTINGS", str(tmp_path / "settings.json"))
+    steps, sent = [], []
+    monkeypatch.setattr(agent, "health", lambda: {"1": {"up": True}})
+    monkeypatch.setattr(agent, "vitals", lambda: {"memory_mb": 7812})
+    monkeypatch.setattr(agent, "places_memory", lambda: {"1": {"mem_mb": 812, "mem_peak_mb": 1630}})
+    monkeypatch.setattr(agent, "memory_settled", lambda server: steps.append(("settled", server["memory_mb"])))
+    monkeypatch.setattr(agent, "zram", lambda: steps.append("zram"))
+
+    def call(conf, method, path, body=None):
+        sent.append((path, body))
+        return {"orders": [], "settings": {"memory_high_share": 0.3}}
+
+    monkeypatch.setattr(agent, "call", call)
+    assert agent.main([]) == 0
+    assert sent == [("/v1/server/beat", {"seats": {"1": {"up": True}}, "server": {"memory_mb": 7812},
+                                         "places": {"1": {"mem_mb": 812, "mem_peak_mb": 1630}}})]
+    assert steps == [("settled", 7812), ("settled", 7812), "zram"]
+    assert json.loads((tmp_path / "settings.json").read_text()) == {"memory_high_share": 0.3}
+
+
+def test_zram_is_set_up_on_a_server_without_it_with_user_data_s_own_settings(tmp_path):
+    agent = _seat_agent()
+    data = yaml.safe_load(render("x" * 43))
+    line = next(c for c in data["runcmd"] if "zram-generator.conf" in c)
+    assert "printf '%s'" % agent.ZRAM_CONF.replace("\n", "\\n") in line
+    swaps = tmp_path / "swaps"
+    swaps.write_text("Filename\tType\tSize\tUsed\tPriority\n/swapfile file 2097148 0 -2\n")
+    tried, conf, ran = tmp_path / "lib" / "zram-tried", tmp_path / "zram-generator.conf", []
+
+    def runner(*args):
+        ran.append(args)
+        if args[0] == "systemctl" and args[1] == "restart":
+            swaps.write_text(swaps.read_text() + "/dev/zram0 partition 4000000 0 100\n")
+        return 0
+
+    assert agent.zram(str(swaps), str(tried), str(conf), runner) is True
+    assert conf.read_text() == agent.ZRAM_CONF
+    assert ran[:2] == [("modprobe", "zram"), ("apt-get", "install", "-y", "systemd-zram-generator")]
+    ran.clear()
+    assert agent.zram(str(swaps), str(tried), str(conf), runner) is True and ran == []   # on: nothing more
+    # not possible (apt busy): tried again an hour later, not every two minutes
+    swaps.write_text("Filename\tType\tSize\tUsed\tPriority\n")
+    tried.unlink()
+    assert agent.zram(str(swaps), str(tried), str(conf), lambda *a: ran.append(a) or 1) is False
+    assert agent.zram(str(swaps), str(tried), str(conf), lambda *a: ran.append(a) or 1) is False
+    assert ran == [("modprobe", "zram")]
