@@ -189,6 +189,34 @@ async fn finished_cron_reply_goes_to_the_outbox_once() {
 }
 
 #[tokio::test]
+async fn a_restart_corrects_a_routine_s_reply_without_pushing_it_again() {
+    // aibox 2026-10-26: after `bipagents update`, the morning podcast (stored that morning by the older bridge, its
+    // text written differently) was read again within the window, replaced, and pushed a second time.
+    let w = world(false).await;
+    let sid = "cron_fc344ed09026_20261005_075008";
+    w.hermes.with(|s| {
+        s.sessions = vec![json!({"id": sid, "title": "Podcast du matin"})];
+        s.messages.insert(sid.into(), vec![json!({"role": "assistant", "content": "Bonjour Alex !"})]);
+    });
+    assert_eq!(w.poll(now()).await, 0);
+    assert_eq!(w.poll(now()).await, 1);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let pushed = w.apns.payloads().len();
+    assert_eq!(pushed, 1);
+    let s = w.app.app.state.clone();
+    let id = format!("hermes-session:{sid}");
+    assert!(s.store.replace_outbox("wellness", &id, "ce que l'ancien bridge avait écrit", None).await.unwrap().is_some());
+    // the bridge restarts: a new watcher, nothing in memory
+    let again = CronWatcher::new(s.config.clone(), s.hermes.clone(), s.outbox.clone(), 60.0, 6.0, None, None, None, None);
+    assert_eq!(again.poll(&w.agent, Some(now())).await.unwrap(), 0);
+    assert_eq!(again.poll(&w.agent, Some(now())).await.unwrap(), 1); // corrected in the Boîte
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(w.outbox().await[0]["text"], "Bonjour Alex !");
+    assert_eq!(w.apns.payloads().len(), pushed); // and not pushed again
+    w.app.shutdown().await;
+}
+
+#[tokio::test]
 async fn silent_old_and_running_sessions_are_skipped() {
     let w = world(false).await;
     w.hermes.with(|s| {

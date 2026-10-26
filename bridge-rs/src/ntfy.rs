@@ -191,10 +191,15 @@ impl OutboxService {
         let extra = NewOutbox { title: title.clone(), ntfy_id: ntfy_id.clone(), sent_at, session_id };
         let mut item = self.store.add_outbox(&agent.name, &text, extra).await?;
         let chars = pyx::len(&text);
+        let mut notify = notify;
         if item.is_none() && replace && message.get("id").map(crate::py::truthy).unwrap_or(false) {
             let id = message.get("id").map(crate::py::py_str).unwrap_or_default();
             item = self.store.replace_outbox(&agent.name, &id, &text, title.as_deref()).await?;
             if let Some(row) = &item {
+                // a correction of a message already pushed (a reply stored too early, or one an older bridge wrote
+                // differently, read again after a restart): the Boîte shows the new text, no second push (aibox
+                // 2026-10-26: the morning routine's podcast pushed again after `bipagents update`)
+                notify = false;
                 tracing::info!(agent = %agent.name, id = %crate::py::py_str(&row["id"]), chars = chars, "outbox message replaced");
             }
         }
