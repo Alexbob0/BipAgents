@@ -86,8 +86,14 @@ def public_clone(tmp_path, monkeypatch):
 
 def test_a_full_clone_becomes_light_and_still_updates(public_clone):
     origin, clone = public_clone
+    (clone / "installer" / ".venv" / "bin").mkdir(parents=True)          # ignored: moved over
+    (clone / "installer" / ".venv" / "bin" / "python").write_text("py")
+    (clone / "mine.txt").write_text("the person's")                        # untracked: moved over
     said = checkout.lighten(clone, hermes.Runner(dry=False), voice_states=False)
-    assert said and "light copy" in said
+    assert said and "light copy" in said, said
+    assert (clone / "installer" / ".venv" / "bin" / "python").read_text() == "py"
+    assert (clone / "mine.txt").read_text() == "the person's" and not clone.with_name("BipAgents.full").exists()
+    assert checkout.lighten(clone, hermes.Runner(dry=False), voice_states=False) is None   # light already
     assert (clone / "installer" / "a.py").read_text() == "print(2)\n"
     assert not (clone / "App").exists() and not (clone / "voices/french/galet_sample.wav").exists()
     assert not (clone / "voices/french/galet.safetensors").exists() and (clone / "voices/french/voices.json").exists()

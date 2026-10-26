@@ -61,41 +61,51 @@ def narrow(repo: Path, runner: hermes.Runner, voice_states: bool) -> bool:
 
 
 def lighten(repo: Path, runner: hermes.Runner, voice_states: bool) -> Optional[str]:
-    """An install's full clone made light in place: a partial clone of main only, sparse, shallow at its commit, and
-    the objects it no longer needs dropped. None when it isn't an install's checkout (left as it is)."""
-    if not runner.dry and not is_install_clone(repo):
+    """An install's older clone made light: a light clone of the same commit made beside it, what git doesn't track
+    moved over (the environments, the person's own files), then the two folders swapped and the old one removed.
+    The paths stay the same, so the services find their environments where they were. Git can't drop the contents
+    of a clone's history in place (`repack --filter` keeps them in another pack), hence the new clone. None when it
+    isn't an install's checkout, is light already, or has files changed by hand (left as it is)."""
+    import shutil
+    if not runner.dry and (not is_install_clone(repo) or is_sparse(repo)):
         return None
-    before = 0 if runner.dry else size(repo / ".git")
+    if not runner.dry and git(repo, "status", "--porcelain", "--untracked-files=no").stdout.strip():
+        return f"{repo} kept as it is: files changed by hand"
+    url = git(repo, "remote", "get-url", "origin").stdout.strip()
     head = git(repo, "rev-parse", "HEAD").stdout.strip()
-    g = ["git", "-C", str(repo)]
-    runner.run(g + ["config", "remote.origin.promisor", "true"])
-    runner.run(g + ["config", "remote.origin.partialclonefilter", "blob:none"])
-    runner.run(g + ["config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main"])
-    runner.run(g + ["sparse-checkout", "set", "--no-cone", *patterns(voice_states)])
-    # Shallow at the commit checked out (the update has just brought it), other branches and tags forgotten.
-    runner.run(g + ["fetch", "--quiet", "--depth", "1", "--filter=blob:none", "origin", head or "main"], check=False)
-    for ref in ([] if runner.dry else git(repo, "for-each-ref", "--format=%(refname)", "refs/remotes", "refs/tags")
-                .stdout.split()):
-        if ref not in ("refs/remotes/origin/main", "refs/remotes/origin/HEAD"):
-            runner.run(g + ["update-ref", "-d", ref], check=False)
-    runner.run(g + ["reflog", "expire", "--expire=now", "--all"], check=False)
-    # Only the contents of the files checked out stay (the others come back from GitHub if ever asked for).
-    repacked = runner.run(g + ["repack", "-a", "-d", "-q", "--filter=blob:none"], check=False) if supports_filter(
-        runner) else None
-    if repacked is None:
-        runner.run(g + ["gc", "--quiet", "--prune=now"], check=False)
-    else:
-        runner.run(g + ["prune", "--expire=now"], check=False)
-    after = 0 if runner.dry else size(repo / ".git")
-    return f"{repo} is now a light copy ({before // 2**20} MB of history -> {after // 2**20} MB)"
-
-
-def supports_filter(runner: hermes.Runner) -> bool:
-    """`git repack --filter` (git 2.43, Ubuntu 24.04's)."""
+    before = 0 if runner.dry else size(repo)
+    new, old = repo.with_name(repo.name + ".light"), repo.with_name(repo.name + ".full")
+    g = ["git", "-C", str(new)]
+    runner.log.append(f"remove {new}")
+    if not runner.dry:
+        shutil.rmtree(new, ignore_errors=True)
+    try:
+        runner.run(["git", "clone", "--quiet", "--depth", "1", "--filter=blob:none", "--no-checkout", url, str(new)])
+        runner.run(g + ["sparse-checkout", "set", "--no-cone", *patterns(voice_states)])
+        runner.run(g + ["fetch", "--quiet", "--depth", "1", "origin", head or "main"])
+        runner.run(g + ["checkout", "--quiet", "-B", "main", "FETCH_HEAD"])
+        runner.run(g + ["branch", "--quiet", "--set-upstream-to", "origin/main", "main"], check=False)
+    except RuntimeError as exc:
+        if not runner.dry:
+            shutil.rmtree(new, ignore_errors=True)
+        return f"{repo} kept as it is for now ({str(exc)[-120:]})"
+    # What git doesn't track (pocket/.venv, installer/.venv, bridge-rs/target, the person's own files), moved over.
+    others = [] if runner.dry else [line[3:] for line in git(repo, "status", "--porcelain", "--ignored").stdout
+                                   .splitlines() if line[:2] in ("??", "!!")]
+    runner.log.append(f"move {len(others)} untracked item(s) of {repo} into {new}; swap the folders; remove {old}")
     if runner.dry:
-        return True
-    out = subprocess.run(["git", "repack", "-h"], capture_output=True, text=True)
-    return "--filter" in out.stdout + out.stderr
+        return f"{repo} would become a light copy"
+    for path in others:
+        source, target = repo / path.rstrip("/"), new / path.rstrip("/")
+        if target.exists() or not (source.exists() or source.is_symlink()):
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(target)
+    shutil.rmtree(old, ignore_errors=True)
+    repo.rename(old)
+    new.rename(repo)
+    shutil.rmtree(old, ignore_errors=True)
+    return f"{repo} is now a light copy ({before // 2**20} MB -> {size(repo) // 2**20} MB with its environments)"
 
 
 def size(path: Path) -> int:

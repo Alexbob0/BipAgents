@@ -382,6 +382,7 @@ def light_disk(runner: hermes.Runner, home: Path) -> str:
     account is its own), elsewhere only the entries of the packages BipAgents installed (uv's cache may serve the
     person's other projects)."""
     from . import checkout, pocketunit
+    installed = own_packages(runner)   # before Pocket's environment changes (PyTorch's CUDA libraries go with it)
     said = [light_voices(runner, home)]
     unit = pocketunit.find(home)
     lighter = checkout.lighten(REPO, runner, voice_states=unit is not None and not unit.light)
@@ -392,27 +393,35 @@ def light_disk(runner: hermes.Runner, home: Path) -> str:
         tidy(runner)
         said.append("download caches emptied")
     else:
-        said.append(clean_own_packages(runner))
+        said.append(clean_own_packages(runner, installed))
     return "; ".join(said)
 
 
-def clean_own_packages(runner: hermes.Runner) -> str:
-    """uv's cache entries of the packages in BipAgents' environments (Pocket's, the installer's), the others kept."""
+def _uv() -> str:
     import shutil
+    return shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+
+
+def own_packages(runner: hermes.Runner) -> List[str]:
+    """The packages in BipAgents' environments (Pocket's, the installer's), and those `uv run --with` used before."""
     import subprocess
-    uv = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
-    names = ["torch", "pocket-tts", "httpx", "pyyaml", "cryptography"]   # also those of `uv run --with` before
+    names = ["torch", "pocket-tts", "httpx", "pyyaml", "cryptography"]
     for folder in (REPO / "pocket", REPO / "installer"):
         python = folder / ".venv" / "bin" / "python"
-        if runner.dry or not python.exists() or not Path(uv).exists():
+        if runner.dry or not python.exists() or not Path(_uv()).exists():
             continue
-        out = subprocess.run([uv, "pip", "list", "--python", str(python), "--format", "freeze"],
+        out = subprocess.run([_uv(), "pip", "list", "--python", str(python), "--format", "freeze"],
                              capture_output=True, text=True)
         names += [line.split("==")[0].lower() for line in out.stdout.splitlines() if "==" in line]
-    names = sorted(set(names))
-    if not runner.dry and not Path(uv).exists():
+    return sorted(set(names))
+
+
+def clean_own_packages(runner: hermes.Runner, earlier: Optional[List[str]] = None) -> str:
+    """uv's cache entries of BipAgents' packages (now and `earlier`), the others kept."""
+    names = sorted(set(own_packages(runner)) | set(earlier or []))
+    if not runner.dry and not Path(_uv()).exists():
         return "no uv cache to empty"
-    runner.run([uv, "cache", "clean", *names], check=False)
+    runner.run([_uv(), "cache", "clean", *names], check=False)
     return f"uv's cache emptied of BipAgents' packages ({len(names)})"
 
 

@@ -998,7 +998,8 @@ def test_a_server_the_app_created_installs_without_a_question(monkeypatch, tmp_p
     assert "--onnx" in units[0][2] and "--keep none" in units[0][2]
     assert "[browser]\nenabled = true" in out and "Scan this code" not in out
     # Installed: the download caches and the images' leftover layers go.
-    assert "uv cache clean" in out and "npm cache clean --force" in out and "/usr/bin/podman image prune --force" in out
+    assert "uv cache clean" in out and ".npm/_cacache" in out and "/usr/bin/podman image prune --force" in out
+    assert ".hermes/cache/uv" in out
 
 
 def test_a_mini_server_has_no_browser_and_one_language(monkeypatch, tmp_path, capsys):

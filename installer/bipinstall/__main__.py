@@ -483,19 +483,20 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
 
 def tidy(runner: hermes.Runner) -> None:
     """A server's place, once installed: the download caches go (uv's, npm's, pip's) and the images' leftover layers
-    (podman keeps the images in use); an update fetches again what it needs. Never fails the install."""
+    (podman keeps the images in use); an update fetches again what it needs. Never fails the install. Hermes' own
+    installer keeps its uv cache in ~/.hermes/cache/uv and runs its own npm (~/.hermes/tools/node-*/): both caches
+    are folders removed as they are (measured 2026-10-26: 285 MB and 98 MB)."""
     home = Path.home()
     uv = shutil.which("uv") or str(home / ".local" / "bin" / "uv")
-    npm = shutil.which("npm") or str(hermes.hermes_home() / "node" / "bin" / "npm")
-    for command in ([uv, "cache", "clean"], [npm, "cache", "clean", "--force"]):
-        if runner.dry or Path(command[0]).exists():
-            runner.run(command, check=False)
+    if runner.dry or Path(uv).exists():
+        runner.run([uv, "cache", "clean"], check=False)
     engine = hermes.sandbox_runtime()
     if engine:
         runner.run([engine, "image", "prune", "--force"], check=False)
-    runner.log.append(f"remove {home / '.cache' / 'pip'}")
-    if not runner.dry:
-        shutil.rmtree(home / ".cache" / "pip", ignore_errors=True)
+    for folder in (home / ".cache" / "pip", home / ".npm" / "_cacache", hermes.hermes_home() / "cache" / "uv"):
+        runner.log.append(f"remove {folder}")
+        if not runner.dry:
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 def gateway_service(inst: Install, machine: Machine, runner: hermes.Runner) -> None:
