@@ -17,7 +17,7 @@ use crate::apns::Apns;
 use crate::config::Config;
 use crate::fcm::Fcm;
 use crate::limits::Quota;
-use crate::payload::scrub;
+use crate::payload::{scrub, scrub_live};
 use crate::seal::{Device, Platform, Sealer, PREFIX};
 
 pub struct Relay {
@@ -199,7 +199,10 @@ async fn push(
         // Sealed by a key no longer in use, or altered: the bridge forgets it and the app registers again.
         return Json(json!({"status": 410, "reason": "BadRelayToken", "apns_id": null})).into_response();
     };
-    if !matches!(body.push_type.as_str(), "alert" | "background")
+    // `liveactivity`: a Live Activity's update (an agent's long work on the iPhone's lock screen), Apple only
+    let live = body.push_type == "liveactivity";
+    if !matches!(body.push_type.as_str(), "alert" | "background" | "liveactivity")
+        || (live && !matches!(device.platform, Platform::Apns))
         || !matches!(body.priority, 5 | 10)
         || body.collapse_id.as_ref().is_some_and(|c| c.len() > 64)
     {
@@ -214,7 +217,7 @@ async fn push(
     {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "quota exceeded");
     }
-    let payload = match scrub(&body.payload) {
+    let payload = match if live { scrub_live(&body.payload) } else { scrub(&body.payload) } {
         Ok(payload) => payload,
         Err("payload too large") => return refuse(StatusCode::PAYLOAD_TOO_LARGE, "payload too large"),
         Err(reason) => return refuse(StatusCode::BAD_REQUEST, reason),

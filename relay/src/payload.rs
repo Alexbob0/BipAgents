@@ -111,6 +111,45 @@ pub fn scrub(payload: &Value) -> Result<Value, &'static str> {
     Ok(out)
 }
 
+/// The phases of an agent's work a Live Activity shows (the bridge's live_activities.rs).
+const LIVE_PHASES: &[&str] = &["working", "approval", "question", "done", "failed", "stopped"];
+
+/// A Live Activity's update (`push_type: liveactivity`): Apple's timing keys and a `content-state` of codes only — the
+/// phase, the running tool's name, a speaking agent's name, counts. The site a browser is on (`detail`, sent by a
+/// bridge with previews on) never passes, nor any alert: the title the person sees was set on the phone.
+pub fn scrub_live(payload: &Value) -> Result<Value, &'static str> {
+    let aps = payload.get("aps").and_then(Value::as_object).ok_or("aps must be an object")?;
+    let mut clean = Map::new();
+    for key in ["timestamp", "dismissal-date", "stale-date"] {
+        if let Some(n) = aps.get(key).and_then(Value::as_i64) {
+            clean.insert(key.into(), Value::from(n));
+        }
+    }
+    let event =
+        aps.get("event").and_then(Value::as_str).filter(|e| matches!(*e, "update" | "end")).ok_or("invalid event")?;
+    clean.insert("event".into(), Value::String(event.into()));
+    let state = aps.get("content-state").and_then(Value::as_object).ok_or("content-state must be an object")?;
+    let mut kept = Map::new();
+    let phase = state.get("phase").and_then(Value::as_str).filter(|p| LIVE_PHASES.contains(p)).unwrap_or("working");
+    kept.insert("phase".into(), Value::String(phase.into()));
+    if let Some(tool) = state.get("tool").and_then(Value::as_str).filter(|t| t.len() <= 64 && id_like_key(t)) {
+        kept.insert("tool".into(), Value::String(tool.into()));
+    }
+    if let Some(speaker) =
+        state.get("speaker").and_then(Value::as_str).filter(|s| s.chars().count() <= 40 && !s.contains('\n'))
+    {
+        kept.insert("speaker".into(), Value::String(speaker.into()));
+    }
+    for key in ["subtasks", "subtasksDone"] {
+        let n = state.get(key).and_then(Value::as_i64).unwrap_or(0).clamp(0, 999);
+        kept.insert(key.into(), Value::from(n));
+    }
+    clean.insert("content-state".into(), Value::Object(kept));
+    let mut out = Map::new();
+    out.insert("aps".into(), Value::Object(clean));
+    Ok(Value::Object(out))
+}
+
 /// An (already scrubbed) APNs payload as Firebase data: strings only, as the Android app reads it.
 pub fn fcm_data(payload: &Value) -> Map<String, Value> {
     let mut data = Map::new();
@@ -174,6 +213,28 @@ mod tests {
         let clean = scrub(&server).unwrap();
         assert_eq!(clean["aps"]["alert"]["body"], down);
         assert_eq!(clean["kind"], "server");
+    }
+
+    #[test]
+    fn a_live_activity_carries_codes_only() {
+        let update = json!({"aps": {"timestamp": 1000, "event": "update", "stale-date": 2800,
+            "alert": {"title": "Vie", "body": "secret"},
+            "content-state": {"phase": "working", "tool": "browser_navigate", "detail": "kiabi.fr", "speaker": "Coach",
+                              "subtasks": 3, "subtasksDone": 1, "note": "secret"}}, "agent": "vie"});
+        assert_eq!(
+            scrub_live(&update).unwrap(),
+            json!({"aps": {"timestamp": 1000, "event": "update", "stale-date": 2800,
+                "content-state": {"phase": "working", "tool": "browser_navigate", "speaker": "Coach",
+                                  "subtasks": 3, "subtasksDone": 1}}})
+        );
+        let end = json!({"aps": {"timestamp": 1001, "event": "end", "dismissal-date": 1240,
+            "content-state": {"phase": "later", "tool": "a tool with spaces"}}});
+        assert_eq!(
+            scrub_live(&end).unwrap()["aps"]["content-state"],
+            json!({"phase": "working", "subtasks": 0, "subtasksDone": 0})
+        );
+        assert!(scrub_live(&json!({"aps": {"event": "start", "content-state": {}}})).is_err());
+        assert!(scrub_live(&json!({"aps": {"event": "update"}})).is_err());
     }
 
     #[test]
