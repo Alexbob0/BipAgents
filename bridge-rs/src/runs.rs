@@ -903,6 +903,11 @@ impl RunHub {
         append_to_backlog(&mut st.backlog, &event);
         st.send_all(Some(&event));
         let kind = event.r#type.as_str();
+        if let Some(push) = &self.push {
+            // the Live Activities following this run (its own, its task's, its discussion's): live_activities.rs
+            let followed = st.followers() > 0;
+            push.live_event(&sub.agent.name, &sub.run_id, st.room_id.as_deref(), kind, &event.data, followed);
+        }
         if kind == "tool.started" || kind == "tool.completed" || kind == SUBAGENT_START || kind == SUBAGENT_DONE {
             self.handoff(sub, &mut st, &event);
         }

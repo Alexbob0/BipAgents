@@ -245,6 +245,8 @@ pub struct PushService {
     /// Texts of recent reply / question pushes, fetched by the Notification Service Extension over the
     /// tailnet (GET /v1/replies/{id}): the alert shows the message, which never goes through Apple.
     texts: Mutex<IndexMap<String, (f64, String)>>,
+    /// The Live Activities (and Android's progress notifications) following an agent's work (live_activities.rs).
+    pub live: crate::live_activities::Registry,
 }
 
 impl PushService {
@@ -258,7 +260,15 @@ impl PushService {
         if apns.is_none() {
             tracing::warn!("APNs not configured: iPhone push notifications disabled");
         }
-        PushService { config, store, apns, android, service, texts: Mutex::new(IndexMap::new()) }
+        PushService {
+            config,
+            store,
+            apns,
+            android,
+            service,
+            texts: Mutex::new(IndexMap::new()),
+            live: Default::default(),
+        }
     }
 
     /// Keeps a reply's text for the Notification Service Extension; returns its id.
@@ -296,7 +306,7 @@ impl PushService {
         self.config.get().push_previews
     }
 
-    fn sender(&self, device: &Row) -> Option<Sender> {
+    pub(crate) fn sender(&self, device: &Row) -> Option<Sender> {
         match device.get("environment").and_then(Value::as_str) {
             Some("relay") => self.service.clone().map(Sender::Relay),
             Some("fcm") => self.android.clone(),

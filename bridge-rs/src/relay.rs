@@ -210,7 +210,8 @@ async fn relay_push(
     let valid_token = if android { crate::fcm::FCM_TOKEN.is_match(&token) } else { DEVICE_TOKEN.is_match(&token) };
     if !valid_token
         || !["sandbox", "production", "fcm"].contains(&body.environment.as_str())
-        || !["alert", "background"].contains(&body.push_type.as_str())
+        || !["alert", "background", "liveactivity"].contains(&body.push_type.as_str())
+        || (android && body.push_type == "liveactivity")
         || ![5, 10].contains(&body.priority)
     {
         return Err(HttpError::new(400, "invalid push"));
