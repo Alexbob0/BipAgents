@@ -288,6 +288,9 @@ pub struct Jobs {
     pub filler: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// A finished task's result handed back to the conversation it came from (handback.rs); None: only the push.
     pub handback: Option<Arc<crate::handback::Handback>>,
+    /// The plan's AI credit as the guichet tells the place (credit.rs); None: the place's own file. Used up: no new
+    /// task, a running one stops after its current step.
+    pub credit_file: Option<PathBuf>,
 }
 
 impl Jobs {
@@ -319,6 +322,7 @@ impl Jobs {
             filler: Default::default(),
             tell,
             handback: None,
+            credit_file: None,
         }
     }
 
@@ -555,6 +559,9 @@ impl Jobs {
     }
 
     pub(crate) fn may_run(&self, agent: &str) -> Result<(), JobError> {
+        if self.credit_used() {
+            return Err(JobError(crate::credit::JOBS_REFUSED.into()));
+        }
         let running: Vec<Dict> = tasks(&self.config.get())
             .into_iter()
             .filter(|j| ["running", "stopping"].contains(&state_of(j).as_str()))
@@ -567,6 +574,35 @@ impl Jobs {
             return Err(JobError("enough background tasks are running here for now".into()));
         }
         Ok(())
+    }
+
+    /// The month's AI credit used (credit.rs): what runs by itself pauses.
+    pub fn credit_used(&self) -> bool {
+        crate::credit::now_at(self.credit_file.as_deref()).paused()
+    }
+
+    /// The credit back (a pack, the new month): the tasks and mail scans paused for it go on by themselves.
+    pub async fn resume_after_credit(self: &Arc<Self>, config: &crate::config::Config) {
+        for job in tasks(config) {
+            if state_of(&job) == "paused" && job.get("reason") == Some(&json!(crate::credit::REASON)) {
+                let id = tk::str_or_empty(job.get("id"));
+                if let Err(e) = self.resume(&id, None, None).await {
+                    tracing::warn!(job = %id, error = %format!("{e:#}"), "task not resumed after the credit");
+                }
+            }
+        }
+        if let Some(scans) = &self.scans {
+            for agent in config.agents.values() {
+                let paused = mail_scan::load(config, &agent.name).is_some_and(|j| {
+                    j.get("state") == Some(&json!("paused")) && j.get("error") == Some(&json!(crate::credit::REASON))
+                });
+                if paused {
+                    if let Err(e) = scans.resume(config, agent, None) {
+                        tracing::warn!(agent = %agent.name, error = %format!("{e:#}"), "mail scan not resumed");
+                    }
+                }
+            }
+        }
     }
 
     fn trim(&self, agent: &str) {
@@ -739,6 +775,9 @@ impl Jobs {
                     self.stop(&agent, &mut job, "budget").await;
                 } else if now - step_started >= self.max_seconds {
                     self.stop(&agent, &mut job, "time").await;
+                } else if self.credit_used() {
+                    // the month's credit used: the run stops after its current step, paused until the credit is back
+                    self.stop(&agent, &mut job, crate::credit::REASON).await;
                 }
             } else {
                 let asked = job.get("stop_asked").map(|v| py::py_float(v).unwrap_or(now)).unwrap_or(now);

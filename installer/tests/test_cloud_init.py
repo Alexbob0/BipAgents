@@ -470,3 +470,35 @@ def test_zram_is_set_up_on_a_server_without_it_with_user_data_s_own_settings(tmp
     assert agent.zram(str(swaps), str(tried), str(conf), lambda *a: ran.append(a) or 1) is False
     assert agent.zram(str(swaps), str(tried), str(conf), lambda *a: ran.append(a) or 1) is False
     assert ran == [("modprobe", "zram"), ("apt-get", "install", "-y", "linux-modules-extra-" + os.uname().release)]
+
+
+def test_each_place_s_ai_credit_state_is_written_where_its_bridge_reads_it(tmp_path):
+    """The beat's answer says each place's AI credit state (the guichet's credit_pool.rs); the place's bridge pauses its
+    routines, browser and background tasks while it is "full" or "stopped" (bridge-rs/src/credit.rs)."""
+    import os
+    agent = _seat_agent()
+    uid, gid = os.getuid(), os.getgid()
+    one, two, three = tmp_path / "bip", tmp_path / "bip2", tmp_path / "bip3"
+    for home in (one, two, three):
+        home.mkdir()
+    homes = {1: (str(one), uid, gid), 2: (str(two), uid, gid), 3: (str(three), uid, gid)}
+    agent.keep_credit({"orders": []}, homes)   # an older guichet: nothing written
+    assert not (one / agent.CREDIT).exists()
+    agent.keep_credit({"credit": {"1": {"state": "full", "resumes": 1793491200},
+                                  "2": {"state": "ok", "resumes": 1793491200},
+                                  "3": {"state": "$(reboot)"}}}, homes)
+    assert json.loads((one / agent.CREDIT).read_text()) == {"state": "full", "resumes": 1793491200.0}
+    assert json.loads((two / agent.CREDIT).read_text())["state"] == "ok"
+    assert not (three / agent.CREDIT).exists()
+    assert oct((one / agent.CREDIT).stat().st_mode & 0o777) == "0o644"
+    # a link the place put there is replaced, never followed
+    target = tmp_path / "elsewhere"
+    target.write_text("keep")
+    os.unlink(two / agent.CREDIT)
+    os.symlink(target, two / agent.CREDIT)
+    agent.keep_credit({"credit": {"2": {"state": "stopped"}}}, homes)
+    assert target.read_text() == "keep"
+    assert json.loads((two / agent.CREDIT).read_text()) == {"state": "stopped"}
+    # a place left out (its subscription over): its file removed, ok
+    assert not (one / agent.CREDIT).exists()
+    assert agent.CREDIT == ".local/state/bipagents/credit.json"

@@ -7,7 +7,8 @@ bridge's door answers here, whether its Hermes runs (or sleeps), the BipAgents v
 and whether its encrypted space waits for its key ("locked" and why),
 and for the server its memory, swap, disk and load, and for each place the memory it holds now and its highest since the
 last beat ("places") -- yes or no, a version, a time and numbers, nothing of anyone. The
-guichet answers with its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
+guichet answers with each place's AI credit state ("credit": ok, low, full, stopped; written where the place's bridge
+reads it, which pauses its routines, browser and background tasks while the month's credit is used) and its orders, and the agent does one only when the guichet's Ed25519 key signed it (checked with
 openssl against /etc/bipagents/guichet.pub), for this server, not expired, not done before. There are three orders:
 install place n again for its next person -- its account bip<n> (bip for place 1), everything in it and its
 services go, then installer/cloud/add-seat.sh sets it up again with the new pairing secret; bring place n to a
@@ -47,6 +48,8 @@ BACKUP_STATE = ".local/state/bipagents/backup.json"
 ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge-rs/src/sleep.rs)
 SETUP = ".config/bipagents/setup.json"     # its bridge's pairing secret while it waits for an app (cloud_setup.py)
 LOCKED = ".local/share/bipagents/space/locked.json"   # its encrypted space not open yet, and why (space.rs)
+CREDIT = ".local/state/bipagents/credit.json"   # its plan's AI credit as the guichet says it (bridge-rs/src/credit.rs)
+CREDIT_STATES = ("ok", "low", "full", "stopped")
 PAIR_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
 
@@ -417,6 +420,61 @@ def keep_settings(answer, path=None):
         write_json(path, kept)
 
 
+def write_credit(path, value, uid, gid, home):
+    """`value` written at `path` for the place's account: never through a link, never outside its home."""
+    folder = os.path.dirname(path)
+    if not os.path.isdir(folder):
+        os.makedirs(folder, mode=0o755)
+        os.chown(folder, uid, gid)
+    real_home = os.path.realpath(home)
+    if not os.path.realpath(folder).startswith(real_home + os.sep):
+        raise OSError("the credit's folder leads out of the place's home")
+    tmp = path + ".tmp"
+    try:
+        os.unlink(tmp)
+    except FileNotFoundError:
+        pass
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
+    with os.fdopen(fd, "w") as fh:
+        json.dump(value, fh)
+        os.fchown(fh.fileno(), uid, gid)
+    os.replace(tmp, path)
+
+
+def keep_credit(answer, homes=None):
+    """Each place's AI credit state in the guichet's answer, written where its bridge reads it (credit.rs); a place the
+    answer leaves out (no running subscription) has its file removed: ok. An older guichet's answer changes nothing.
+    `homes`: number -> (home, uid, gid), the places' accounts by default."""
+    credit = answer.get("credit") if isinstance(answer, dict) else None
+    if not isinstance(credit, dict):
+        return
+    if homes is None:
+        homes = {}
+        for number in range(1, MAX_SEATS + 1):
+            try:
+                entry = pwd.getpwnam(account(number))
+            except KeyError:
+                continue
+            homes[number] = (entry.pw_dir, entry.pw_uid, entry.pw_gid)
+    for number, (home, uid, gid) in sorted(homes.items()):
+        path = os.path.join(home, CREDIT)
+        given = credit.get(str(number))
+        try:
+            if not isinstance(given, dict) or given.get("state") not in CREDIT_STATES:
+                if os.path.lexists(path):
+                    os.unlink(path)
+                continue
+            value = {"state": given["state"]}
+            resumes = given.get("resumes")
+            if isinstance(resumes, (int, float)) and not isinstance(resumes, bool):
+                value["resumes"] = float(resumes)
+            if not os.path.islink(path) and read_json(path) == value:
+                continue
+            write_credit(path, value, uid, gid, home)
+        except OSError as exc:
+            log("place %d: credit state not written: %s" % (number, exc))
+
+
 def places():
     """Each place of this server: its number (as text) and its account's uid."""
     found = {}
@@ -695,6 +753,7 @@ def main(argv=()):
         keep_settings(answer)
     except OSError as exc:
         log("settings not kept: %s" % exc)
+    keep_credit(answer)
     memory_settled(server)
     done = read_done()
     for order in orders:

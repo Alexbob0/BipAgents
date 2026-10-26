@@ -308,6 +308,12 @@ impl Proxy {
             return;
         }
         let calling = method == "tools/call";
+        if calling && self.credit_used() {
+            // The month's AI credit used (credit.rs): the browser isn't started, the agent told plainly (chat goes on).
+            self.to_client(&json!({"jsonrpc": "2.0", "id": ident, "result": {
+                "content": [{"type": "text", "text": crate::credit::BROWSER_REFUSED}], "isError": true}}));
+            return;
+        }
         if calling {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.touch();
@@ -332,6 +338,12 @@ impl Proxy {
             self.calls.fetch_sub(1, Ordering::SeqCst);
             self.touch();
         }
+    }
+
+    /// The plan's AI credit used: the config's `credit` file (tests), else the place's own (credit.rs).
+    fn credit_used(&self) -> bool {
+        let file = self.config.get("credit").and_then(Value::as_str).filter(|p| !p.is_empty()).map(PathBuf::from);
+        crate::credit::now_at(file.as_deref()).paused()
     }
 
     fn cache_has(&self, key: &str) -> bool {

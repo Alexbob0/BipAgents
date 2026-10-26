@@ -377,3 +377,34 @@ fn hermes_runs_it_over_stdio() {
     assert_eq!(answers[1]["result"]["content"][0]["text"], "did take_screenshot");
     assert_eq!(ran(tmp), vec!["start"]); // Hermes gone: its server stops, the browser stays until unused
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn while_the_month_s_credit_is_used_its_tools_are_refused_without_starting_it() {
+    // credit.rs (Alex 2026-10-26): the browser pauses while the plan's AI credit is used; the agent is told plainly.
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let mut config = config(tmp);
+    let credit = tmp.join("credit.json");
+    config.insert("credit".into(), json!(credit.to_string_lossy()));
+    std::fs::write(&credit, json!({"state": "full", "resumes": 4.0e9}).to_string()).unwrap();
+    std::fs::write(tmp.join("cache.json"), json!({"initialize": {"serverInfo": {"name": "stealth"}}}).to_string())
+        .unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await;
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "navigate"}})).await;
+    let answer = out.messages().last().unwrap().clone();
+    assert_eq!((answer["id"].clone(), answer["result"]["isError"].clone()), (json!(1), json!(true)));
+    assert!(answer["result"]["content"][0]["text"].as_str().unwrap().contains("credit is used up"), "{answer}");
+    assert!(ran(tmp).is_empty() && !proxy.running());
+    // stopped (the grace used too): the same
+    std::fs::write(&credit, json!({"state": "stopped"}).to_string()).unwrap();
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate"}})).await;
+    assert_eq!(out.messages().last().unwrap()["result"]["isError"], json!(true));
+    // the credit back: the next call starts it as usual
+    std::fs::write(&credit, json!({"state": "ok"}).to_string()).unwrap();
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "navigate"}})).await;
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did navigate");
+    assert_eq!(ran(tmp), vec!["start"]);
+    proxy.stop_child().await;
+}

@@ -327,6 +327,8 @@ impl AppState {
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
         self.spawn(self.briefs.clone().sweep_forever());
+        // the plan's AI credit used (a server of the offer): routines, the browser and background tasks pause
+        self.spawn(crate::credit::run_forever(self.clone()));
         if self.sleep.enabled() {
             // a server of the offer: the guichet's seat agent reads whether a run goes on (runs.rs BUSY_MARKER)
             self.spawn(self.hub.clone().mark_busy_forever(self.sleep.home.clone(), 60.0));

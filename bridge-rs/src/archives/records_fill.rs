@@ -1537,7 +1537,8 @@ pub async fn work(config: Arc<Config>, job_id: String, tell: Tell) {
             json!({"input": before_in + t.tokens_in, "output": before_out + t.tokens_out, "cached": 0}),
         );
         job.insert("progress".into(), json!({"done": t.looked, "total": t.planned}));
-        let go_on = tk::str_or_empty(job.get("state")) == "running";
+        // the month's AI credit used (credit.rs): paused after this document, like the person's pause
+        let go_on = tk::str_or_empty(job.get("state")) == "running" && !crate::credit::now_at(None).paused();
         let _ = crate::jobs::save(&c, &job);
         go_on
     };
