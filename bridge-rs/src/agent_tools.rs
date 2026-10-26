@@ -480,6 +480,7 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
     crate::notebook::sync_soul(config, agent);
     crate::archives::sync_soul(config, agent);
+    crate::souls::sync_payments(config, agent);
     let tools = tools_for(config, agent);
     let url = if tools.as_slice() != install_tools(config) {
         url_with(config, &version_of(&tools))
@@ -497,13 +498,23 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "vault account tools not registered");
         false
     });
+    // « L'agent prépare, tu paies » (handover.rs) for every agent, and Link Agent Wallet (link_wallet.rs) for the
+    // agents the person chose, where it is on.
+    let handing = crate::handover::register(config, agent, run).await.unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "checkout tool not registered");
+        false
+    });
+    let link = crate::link_wallet::register(config, agent, run).await.unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "Link tools not registered");
+        false
+    });
     // What its kind keeps in view, the rest behind Hermes' tool search (tool_diet.rs): after the entries above, so
     // the bridge tools it keeps direct are the ones it has now.
     let diet = crate::tool_diet::apply(config, agent).unwrap_or_else(|exc| {
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "tools in view not set");
         false
     });
-    Ok(changed || paying || accounts || diet)
+    Ok(changed || paying || accounts || handing || link || diet)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).

@@ -740,6 +740,109 @@ async fn cancel(state: &AppState, agent: &AgentConfig) -> Dict {
     text("The payment is given up: the card was erased from the page and your browser is yours again.")
 }
 
+/// A one-time card from outside the vault (Link Agent Wallet, link_wallet.rs), already approved by the person: typed
+/// into the agent's page the same way, its browser held until `confirm_payment` / `cancel_payment`. `values` is wiped
+/// when typed. `url` and `port`: the page checked before asking (the same page, or nothing is typed).
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn pay_with_values(
+    state: &AppState,
+    agent: &AgentConfig,
+    values: CardValues,
+    label: &str,
+    last4: &str,
+    cents: i64,
+    currency: &str,
+    (url, port, host): (String, u16, String),
+) -> Dict {
+    let config = state.config();
+    let _one_at_a_time = lock_of(&agent.name).lock_owned().await;
+    if held().contains_key(&agent.name) {
+        return refusal("A payment is already in progress: confirm_payment or cancel_payment first.");
+    }
+    let mut entry = Held {
+        token: py::uuid4_hex(),
+        port,
+        url,
+        payment: format!("pay_{}", &py::uuid4_hex()[..12]),
+        card: label.to_string(),
+        last4: last4.to_string(),
+        site: host.clone(),
+        cents,
+        currency: currency.to_string(),
+        since: Instant::now(),
+        since_text: crate::vault::now(),
+        lease: None,
+    };
+    if let Some(folder) = crate::desktop::desktop_dir(&config, agent).filter(|f| f.is_dir()) {
+        if crate::desktop::app_holds(&folder) {
+            return refusal("The person has taken over your browser in the app: nothing was typed.");
+        }
+        if crate::desktop::set_lease(&folder, true, "card payment").is_ok() {
+            entry.lease = Some(folder);
+        }
+    }
+    if !crate::browsers::hold_for_payment(&config, &agent.name, Some(&entry.token)).await {
+        if let Some(folder) = &entry.lease {
+            let _ = crate::desktop::set_lease(folder, false, "");
+        }
+        return refusal(
+            "Your browser could not be paused for the payment (the person may hold it): nothing was typed.",
+        );
+    }
+    held().insert(agent.name.clone(), entry.clone());
+    journal(&config, &entry, &agent.name, "approved");
+    let filled = match type_values(values, &entry).await {
+        Ok(filled) => filled,
+        Err(say) => {
+            release(&config, &agent.name, "failed").await;
+            return refusal(&say);
+        }
+    };
+    journal(&config, &entry, &agent.name, "typed");
+    tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "one-time card typed");
+    watch(state.clone(), agent.name.clone());
+    text(&format!(
+        "The one-time card « {label} » is typed into the page ({}). Your browser is paused until the payment ends \
+         (nobody may read the card). If the total on the page is still {} {currency}, call confirm_payment with the \
+         pay button's text; otherwise call cancel_payment and tell the person.",
+        filled.join(", "),
+        cards::format_cents(cents)
+    ))
+}
+
+/// `values` typed into the held page (still the page approved), wiped when done.
+async fn type_values(values: CardValues, entry: &Held) -> Result<Vec<String>, String> {
+    let mut page = Page::open(entry.port, Some(&entry.token)).await.map_err(|e| unreachable_text(&e))?;
+    let now = page.url().await.map_err(|e| unreachable_text(&e))?;
+    if page_of(&now) != page_of(&entry.url) {
+        return Err(
+            "The page changed while the person was asked: nothing was typed. Ask again from the payment page.".into()
+        );
+    }
+    let fields = page.fields().await.map_err(|e| unreachable_text(&e))?;
+    let filled = page.fill(&fields, &values).await;
+    drop(values);
+    let filled = filled.map_err(|e| format!("The card could not be typed ({e}). Don't pay; tell the person."))?;
+    if !filled.iter().any(|k| k == "number") {
+        return Err("The card number could not be typed into the page. Don't pay; tell the person.".into());
+    }
+    Ok(filled)
+}
+
+/// `confirm_payment` and `cancel_payment` for a card typed by another entry (link_wallet.rs).
+pub(crate) async fn confirm_held(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyhow::Result<Dict> {
+    confirm(state, agent, arguments).await
+}
+
+pub(crate) async fn cancel_held(state: &AppState, agent: &AgentConfig) -> Dict {
+    cancel(state, agent).await
+}
+
+/// The agent's page checked for a payment: (page, port, url, host), or the refusal for the agent.
+pub(crate) async fn payment_page(config: &Config, agent: &AgentConfig) -> Result<(Page, u16, String, String), Dict> {
+    checkout_page(config, agent).await
+}
+
 pub async fn call(
     state: &AppState,
     agent: &AgentConfig,

@@ -126,6 +126,8 @@ pub mod connections;
 pub mod calendar;
 pub mod card_fill;
 pub mod card_pay;
+pub mod handover;
+pub mod link_wallet;
 pub mod cards;
 pub mod cloud_setup;
 pub mod console;

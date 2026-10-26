@@ -99,7 +99,8 @@ async fn the_phone_sends_its_days_only_once_an_agent_has_health_on() {
     let soul = std::fs::read_to_string(folder.join("SOUL.md")).unwrap();
     assert!(soul.contains(souls::HEALTH_RULE) && soul.contains("Tu es Coach."));
     assert!(soul.contains(souls::NOTEBOOK_RULE)); // the Carnet, on by default
-    let plain = souls::split_notebook(&souls::split_health(&soul).0).0;
+    assert!(soul.contains(souls::PAYMENTS_RULE)); // every agent's (handover.rs)
+    let plain = souls::split_notebook(&souls::split_health(&souls::split_payments(&soul)).0).0;
     assert_eq!(souls::split_language(&plain).0.trim(), "Tu es Coach.");
     let urls: Vec<String> = commands.lock().unwrap().iter().map(|a: &Vec<String>| a[6].clone()).collect();
     assert!(urls[0].ends_with(&format!(

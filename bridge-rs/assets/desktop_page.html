@@ -19,6 +19,9 @@ font-size:16px;font-weight:600;line-height:1.4}
 #hint{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);
 background:rgba(0,0,0,.6);color:#fff;font-size:13px;font-weight:600;padding:6px 12px;border-radius:14px;
 white-space:nowrap;transition:opacity .4s;opacity:0;pointer-events:none}
+#cardwarn{position:fixed;left:12px;right:12px;bottom:calc(64px + env(safe-area-inset-bottom));display:none;
+background:#fff4d6;color:#5a3a00;font-size:15px;font-weight:700;line-height:1.35;padding:12px 14px;border-radius:14px;
+box-shadow:0 4px 16px rgba(0,0,0,.35);text-align:center}
 #keys{position:fixed;left:0;right:0;bottom:0;display:none;gap:6px;overflow-x:auto;background:#1c1c1e;
 padding:8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
 scrollbar-width:none}#keys::-webkit-scrollbar{display:none}
@@ -45,7 +48,7 @@ font:17px/1.55 -apple-system,"Iowan Old Style",Georgia,serif;box-sizing:border-b
 stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span id="host"></span></div>
 <button id="zoomBtn" class="pill"></button><button id="mode" class="pill"></button>
 <input id="go" type="url" inputmode="url" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go"></div>
-<div id="stage"><img id="shot" alt=""></div><div id="reader" lang=""><article></article></div><div id="note"></div><div id="hint"></div>
+<div id="stage"><img id="shot" alt=""></div><div id="reader" lang=""><article></article></div><div id="note"></div><div id="hint"></div><div id="cardwarn" role="alert"></div>
 <div id="keys"><button id="kbd" class="main"></button><button id="paste"></button>
 <button data-key="Enter">⏎</button><button data-key="Backspace">⌫</button><button data-key="Tab">⇥</button>
 <button data-key="ArrowUp">↑</button><button data-key="ArrowDown">↓</button><button data-key="Escape" id="esc"></button></div>
@@ -60,19 +63,23 @@ const WORDS = {
   fr: {connecting: "Connexion…", idle: "Aucune page ouverte pour le moment.", stopped: "Le navigateur est éteint.",
        paused: "La page s’affichera dès qu’elle sera libre.", keyboard: "⌨︎ Clavier", paste: "Coller", esc: "Échap",
        pinch: "Pince pour zoomer", newTab: "Nouvel onglet", address: "Adresse ou recherche",
-       reader: "Lecture", page: "Page", follow: "Suivre", whole: "Vue entière", nothing: "Rien à lire sur cette page pour le moment.", image: "Image", update: "Mets à jour le navigateur de {name} : bipagents update"},
+       reader: "Lecture", page: "Page", follow: "Suivre", whole: "Vue entière", nothing: "Rien à lire sur cette page pour le moment.", image: "Image", update: "Mets à jour le navigateur de {name} : bipagents update",
+       card: "Ne tape pas ta carte ici : paie sur ton téléphone."},
   en: {connecting: "Connecting…", idle: "No page open right now.", stopped: "The browser is off.",
        paused: "The page will show as soon as it is free.", keyboard: "⌨︎ Keyboard", paste: "Paste", esc: "Esc",
        pinch: "Pinch to zoom", newTab: "New tab", address: "Address or search",
-       reader: "Reading", page: "Page", follow: "Follow", whole: "Whole page", nothing: "Nothing to read on this page yet.", image: "Image", update: "Update {name}’s browser: bipagents update"},
+       reader: "Reading", page: "Page", follow: "Follow", whole: "Whole page", nothing: "Nothing to read on this page yet.", image: "Image", update: "Update {name}’s browser: bipagents update",
+       card: "Don’t type your card here: pay on your phone."},
   de: {connecting: "Verbinden…", idle: "Gerade ist keine Seite geöffnet.", stopped: "Der Browser ist aus.",
        paused: "Die Seite erscheint, sobald sie frei ist.", keyboard: "⌨︎ Tastatur", paste: "Einfügen", esc: "Esc",
        pinch: "Zum Zoomen auseinanderziehen", newTab: "Neuer Tab", address: "Adresse oder Suche",
-       reader: "Lesen", page: "Seite", follow: "Folgen", whole: "Ganze Seite", nothing: "Auf dieser Seite gibt es noch nichts zu lesen.", image: "Bild", update: "Aktualisiere den Browser von {name}: bipagents update"},
+       reader: "Lesen", page: "Seite", follow: "Folgen", whole: "Ganze Seite", nothing: "Auf dieser Seite gibt es noch nichts zu lesen.", image: "Bild", update: "Aktualisiere den Browser von {name}: bipagents update",
+       card: "Gib deine Karte hier nicht ein: Bezahle auf deinem Handy."},
   es: {connecting: "Conectando…", idle: "No hay ninguna página abierta ahora.", stopped: "El navegador está apagado.",
        paused: "La página aparecerá en cuanto esté libre.", keyboard: "⌨︎ Teclado", paste: "Pegar", esc: "Esc",
        pinch: "Pellizca para ampliar", newTab: "Nueva pestaña", address: "Dirección o búsqueda",
-       reader: "Lectura", page: "Página", follow: "Seguir", whole: "Página entera", nothing: "Todavía no hay nada que leer en esta página.", image: "Imagen", update: "Actualiza el navegador de {name}: bipagents update"},
+       reader: "Lectura", page: "Página", follow: "Seguir", whole: "Página entera", nothing: "Todavía no hay nada que leer en esta página.", image: "Imagen", update: "Actualiza el navegador de {name}: bipagents update",
+       card: "No escribas tu tarjeta aquí: paga en tu teléfono."},
 };
 const params = new URLSearchParams(location.search);
 const lang = (params.get("lang") || navigator.language || "fr").slice(0, 2);
@@ -209,7 +216,7 @@ function show() {
   modeBtn.textContent = view === "reader" ? T.page : T.reader;
   zoomBtn.textContent = follow ? T.whole : T.follow;
   zoomBtn.classList.toggle("on", !follow);
-  if (!holding) { typing.blur(); go.blur(); editing(false); }
+  if (!holding) { typing.blur(); go.blur(); editing(false); onCard = false; $("cardwarn").style.display = "none"; }
   layout();
 }
 window.setViewOnly = on => { holding = !on; show(); };
@@ -253,6 +260,7 @@ function connect() {
       if (moved) loadReader(true);
     }
     else if (m.type === "focus") { target = m.target; aim(); }
+    else if (m.type === "card_field") cardField(!!m.on);
     else if (m.type === "state") {
       mobile = !!m.mobile;
       if (m.state !== "live") {
@@ -266,6 +274,17 @@ function connect() {
   socket.onclose = () => { post("disconnected"); setTimeout(connect, 1500); };
 }
 function send(m) { if (socket && socket.readyState === 1) socket.send(JSON.stringify(m)); }
+// On the offer's places, a card field focused in the page: a warning instead of the keyboard (the bridge refuses
+// the typing too). The person pays on their own phone.
+let onCard = false;
+function cardField(on) {
+  onCard = on;
+  const warn = $("cardwarn");
+  warn.textContent = T.card || WORDS.en.card;
+  warn.style.display = on && holding ? "block" : "none";
+  if (on) { typing.blur(); typing.value = ""; }
+  post("card-field:" + (on ? "on" : "off"));
+}
 function flash(text) { hint.textContent = text; hint.style.opacity = 1; setTimeout(() => { hint.style.opacity = 0; }, 2200); }
 
 // ---- The address: shown as its site; with the hand, tapping it types another one.
@@ -278,7 +297,8 @@ back.addEventListener("click", () => send({type: "back"}));
 // ---- Keys: iOS opens its keyboard only for a field the person taps; what is typed there goes to the page.
 const typeText = text => { if (text) send({type: "text", text}); };
 window.typeText = typeText;
-$("kbd").addEventListener("click", () => typing.focus());
+$("kbd").addEventListener("click", () => { if (onCard) { cardField(true); return; } typing.focus(); });
+$("paste").addEventListener("click", e => { if (onCard) { e.stopImmediatePropagation(); cardField(true); } }, true);
 $("paste").addEventListener("click", async () => {
   try { typeText(await navigator.clipboard.readText()); } catch (_) { post("paste-refused"); }
 });

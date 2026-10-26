@@ -1185,6 +1185,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
+    let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
     let soul = crate::guide::split_blocks(&soul);
     let guide = json!({"on": crate::guide::is_guide(config, &agent.name)});
@@ -1349,6 +1350,11 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
     let text = crate::dates::with_dates(&text, line.as_deref());
     let text = crate::guide::with_blocks(config, agent, &text);
+    let text = if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+        text
+    } else {
+        crate::souls::with_payments(&text)
+    };
     std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)
 }
 
@@ -1358,6 +1364,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
+    let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
     Ok(crate::guide::split_blocks(&soul))
 }
