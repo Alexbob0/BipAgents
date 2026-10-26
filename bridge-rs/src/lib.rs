@@ -42,6 +42,7 @@ pub mod cronwatch;
 pub mod fcm;
 pub mod media;
 pub mod ntfy;
+pub mod live_activities;
 pub mod push;
 pub mod relay;
 pub mod runs;

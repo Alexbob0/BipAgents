@@ -822,6 +822,9 @@ impl Rooms {
                     Ok(Some(Some(turn))) => turn,
                     Ok(_) => {
                         workers.remove(id);
+                        if let Some(push) = &self.push {
+                            push.live_room_idle(id); // nobody left to answer: its Live Activity ends
+                        }
                         return;
                     }
                     Err(err) => {

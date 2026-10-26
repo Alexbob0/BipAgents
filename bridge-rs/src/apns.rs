@@ -169,11 +169,17 @@ impl ApnsClient {
         options: &SendOptions,
         force_token: bool,
     ) -> anyhow::Result<ApnsResult> {
+        // a Live Activity's pushes go to the app's topic with Apple's suffix (live_activities.rs)
+        let topic = if options.push_type == "liveactivity" {
+            format!("{}.push-type.liveactivity", self.config.bundle_id)
+        } else {
+            self.config.bundle_id.clone()
+        };
         let mut request = self
             .client
             .post(format!("{host}/3/device/{device_token}"))
             .header("authorization", format!("bearer {}", self.provider_token(force_token)?))
-            .header("apns-topic", &self.config.bundle_id)
+            .header("apns-topic", topic)
             .header("apns-push-type", &options.push_type)
             .header("apns-priority", options.priority.to_string())
             .header("content-type", "application/json");
