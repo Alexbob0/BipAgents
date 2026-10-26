@@ -19,7 +19,8 @@ What is covered
   docs/tools/banner.mjs, site/src/shared/bips.js. The apps drew them until 2026-10-26 (and the Hermes style's pixel
   characters, App/Design/PixelMascot.swift and android/app/src/main/java/io/github/bipagents/ui/PixelMascot.kt);
   those files are gone from the apps, and their versions in this repository's history stay covered by this file.
-- The app's icon: App/Assets.xcassets/AppIcon.appiconset/, android/app/src/main/res/mipmap-*/.
+- The app's icon: App/Assets.xcassets/AppIcon.appiconset/, android/app/src/main/res/mipmap-*/,
+  android/app/src/main/res/values/ic_launcher_background.xml, and its generator scripts/pixel/icon.py.
 - The Bips' babble (its sound design): App/Design/BipBabble.swift,
   android/app/src/main/java/io/github/bipagents/ui/Babble.kt.
 - The Bips' voices and their samples: voices/, App/Resources/Voices/, android/app/src/main/res/raw/. They were made
