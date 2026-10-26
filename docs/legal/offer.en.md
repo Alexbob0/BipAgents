@@ -53,7 +53,7 @@ Using BipAgents with your own computer or your own server stays free and is not 
 |---|---|---|---|---|
 | Solo | 1 | a place on a server shared with other subscribers | €7.99 per month or €79.90 per year | €7.49 per month or €74.90 per year |
 | Duo | 2 | two places on one server, shared with other subscribers | €12.99 per month or €129.90 per year | €11.99 per month or €119.90 per year |
-| Family | up to 6 | a server of your own | €21.99 per month or €219.90 per year | €19.99 per month or €199.90 per year |
+| Family | up to 6 | a place for each person, on servers shared with other subscribers | €19.99 per month or €199.90 per year | €17.99 per month or €179.90 per year |
 
 The yearly subscription costs 10 months for 12 and is paid at once for the 12 months. The website's prices are lower
 than the stores'.
@@ -64,12 +64,12 @@ shows the price, the currency and the total you pay.
 
 | Currency | Country | Solo, per month / per year | Duo, per month / per year | Family, per month / per year | Taxes |
 |---|---|---|---|---|---|
-| Euro (EUR) | European Union | €7.49 / €74.90 | €11.99 / €119.90 | €19.99 / €199.90 | VAT included |
-| US dollar (USD) | United States | US$7.49 / US$74.90 | US$11.99 / US$119.90 | US$19.99 / US$199.90 | before tax: your state's sales tax is added at checkout |
-| Canadian dollar (CAD) | Canada | CA$9.99 / CA$99.90 | CA$15.99 / CA$159.90 | CA$27.99 / CA$279.90 | before tax: GST/HST and, depending on your province, PST or QST are added at checkout |
-| Pound sterling (GBP) | United Kingdom | £6.49 / £64.90 | £10.49 / £104.90 | £17.49 / £174.90 | VAT included |
-| Singapore dollar (SGD) | Singapore | S$9.99 / S$99.90 | S$15.99 / S$159.90 | S$27.99 / S$279.90 | GST included |
-| Shekel (ILS) | Israel | ₪28.90 / ₪289.00 | ₪46.90 / ₪469.00 | ₪77.90 / ₪779.00 | VAT included |
+| Euro (EUR) | European Union | €7.49 / €74.90 | €11.99 / €119.90 | €17.99 / €179.90 | VAT included |
+| US dollar (USD) | United States | US$7.49 / US$74.90 | US$11.99 / US$119.90 | US$17.99 / US$179.90 | before tax: your state's sales tax is added at checkout |
+| Canadian dollar (CAD) | Canada | CA$9.49 / CA$94.90 | CA$15.99 / CA$159.90 | CA$22.99 / CA$229.90 | before tax: GST/HST and, depending on your province, PST or QST are added at checkout |
+| Pound sterling (GBP) | United Kingdom | £6.49 / £64.90 | £10.49 / £104.90 | £15.49 / £154.90 | VAT included |
+| Singapore dollar (SGD) | Singapore | S$9.99 / S$99.90 | S$15.99 / S$159.90 | S$24.99 / S$249.90 | GST included |
+| Shekel (ILS) | Israel | ₪28.90 / ₪289.00 | ₪46.90 / ₪469.00 | ₪69.90 / ₪699.00 | VAT included |
 
 For each person in the plan:
 

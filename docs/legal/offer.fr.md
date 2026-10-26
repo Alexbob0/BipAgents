@@ -57,7 +57,7 @@ conditions.
 |---|---|---|---|---|
 | Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 7,99 € par mois ou 79,90 € par an | 7,49 € par mois ou 74,90 € par an |
 | Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 12,99 € par mois ou 129,90 € par an | 11,99 € par mois ou 119,90 € par an |
-| Famille | jusqu'à 6 | un serveur rien qu'à vous | 21,99 € par mois ou 219,90 € par an | 19,99 € par mois ou 199,90 € par an |
+| Famille | jusqu'à 6 | une place pour chaque personne, sur des serveurs partagés avec d'autres abonnés | 19,99 € par mois ou 199,90 € par an | 17,99 € par mois ou 179,90 € par an |
 
 L'abonnement annuel coûte 10 mois pour 12 et se paie en une fois pour les 12 mois. Les prix du site sont plus bas que
 ceux des stores.
@@ -68,12 +68,12 @@ de paiement de Stripe affiche le prix, la monnaie et le total que tu paies.
 
 | Monnaie | Pays | Solo, par mois / par an | Duo, par mois / par an | Famille, par mois / par an | Taxes |
 |---|---|---|---|---|---|
-| Euro (EUR) | Union européenne | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 19,99 € / 199,90 € | TVA comprise |
-| Dollar américain (USD) | États-Unis | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 19,99 US$ / 199,90 US$ | hors taxes : la taxe de vente de ton État s'ajoute au paiement |
-| Dollar canadien (CAD) | Canada | 9,99 CA$ / 99,90 CA$ | 15,99 CA$ / 159,90 CA$ | 27,99 CA$ / 279,90 CA$ | hors taxes : la TPS/TVH et, selon ta province, la TVP ou la TVQ s'ajoutent au paiement |
-| Livre sterling (GBP) | Royaume-Uni | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 17,49 £ / 174,90 £ | TVA comprise |
-| Dollar de Singapour (SGD) | Singapour | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 27,99 S$ / 279,90 S$ | GST comprise |
-| Shekel (ILS) | Israël | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 77,90 ₪ / 779,00 ₪ | TVA comprise |
+| Euro (EUR) | Union européenne | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 17,99 € / 179,90 € | TVA comprise |
+| Dollar américain (USD) | États-Unis | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 17,99 US$ / 179,90 US$ | hors taxes : la taxe de vente de ton État s'ajoute au paiement |
+| Dollar canadien (CAD) | Canada | 9,49 CA$ / 94,90 CA$ | 15,99 CA$ / 159,90 CA$ | 22,99 CA$ / 229,90 CA$ | hors taxes : la TPS/TVH et, selon ta province, la TVP ou la TVQ s'ajoutent au paiement |
+| Livre sterling (GBP) | Royaume-Uni | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 15,49 £ / 154,90 £ | TVA comprise |
+| Dollar de Singapour (SGD) | Singapour | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 24,99 S$ / 249,90 S$ | GST comprise |
+| Shekel (ILS) | Israël | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 69,90 ₪ / 699,00 ₪ | TVA comprise |
 
 Pour chaque personne du forfait :
 

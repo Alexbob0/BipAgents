@@ -59,7 +59,7 @@ diese Bedingungen.
 |---|---|---|---|---|
 | Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 7,99 € pro Monat oder 79,90 € pro Jahr | 7,49 € pro Monat oder 74,90 € pro Jahr |
 | Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 12,99 € pro Monat oder 129,90 € pro Jahr | 11,99 € pro Monat oder 119,90 € pro Jahr |
-| Familie | bis zu 6 | ein Server nur für euch | 21,99 € pro Monat oder 219,90 € pro Jahr | 19,99 € pro Monat oder 199,90 € pro Jahr |
+| Familie | bis zu 6 | ein Platz pro Person, auf Servern, die ihr mit anderen Abonnenten teilt | 19,99 € pro Monat oder 199,90 € pro Jahr | 17,99 € pro Monat oder 179,90 € pro Jahr |
 
 Das Jahresabo kostet 10 Monate für 12 und wird auf einmal für die 12 Monate bezahlt. Die Preise auf der Website sind
 niedriger als in den Stores.
@@ -70,12 +70,12 @@ die Zahlungsseite von Stripe zeigt den Preis, die Währung und den Betrag, den d
 
 | Währung | Land | Solo, pro Monat / pro Jahr | Duo, pro Monat / pro Jahr | Familie, pro Monat / pro Jahr | Steuern |
 |---|---|---|---|---|---|
-| Euro (EUR) | Europäische Union | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 19,99 € / 199,90 € | inkl. MwSt. |
-| US-Dollar (USD) | Vereinigte Staaten | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 19,99 US$ / 199,90 US$ | ohne Steuern: Die Umsatzsteuer deines Bundesstaats kommt beim Bezahlen dazu |
-| Kanadischer Dollar (CAD) | Kanada | 9,99 CA$ / 99,90 CA$ | 15,99 CA$ / 159,90 CA$ | 27,99 CA$ / 279,90 CA$ | ohne Steuern: GST/HST und, je nach Provinz, PST oder QST kommen beim Bezahlen dazu |
-| Pfund Sterling (GBP) | Vereinigtes Königreich | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 17,49 £ / 174,90 £ | inkl. MwSt. |
-| Singapur-Dollar (SGD) | Singapur | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 27,99 S$ / 279,90 S$ | inkl. GST |
-| Schekel (ILS) | Israel | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 77,90 ₪ / 779,00 ₪ | inkl. MwSt. |
+| Euro (EUR) | Europäische Union | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 17,99 € / 179,90 € | inkl. MwSt. |
+| US-Dollar (USD) | Vereinigte Staaten | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 17,99 US$ / 179,90 US$ | ohne Steuern: Die Umsatzsteuer deines Bundesstaats kommt beim Bezahlen dazu |
+| Kanadischer Dollar (CAD) | Kanada | 9,49 CA$ / 94,90 CA$ | 15,99 CA$ / 159,90 CA$ | 22,99 CA$ / 229,90 CA$ | ohne Steuern: GST/HST und, je nach Provinz, PST oder QST kommen beim Bezahlen dazu |
+| Pfund Sterling (GBP) | Vereinigtes Königreich | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 15,49 £ / 154,90 £ | inkl. MwSt. |
+| Singapur-Dollar (SGD) | Singapur | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 24,99 S$ / 249,90 S$ | inkl. GST |
+| Schekel (ILS) | Israel | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 69,90 ₪ / 699,00 ₪ | inkl. MwSt. |
 
 Für jede Person des Tarifs:
 

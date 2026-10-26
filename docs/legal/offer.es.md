@@ -58,7 +58,7 @@ condiciones.
 |---|---|---|---|---|
 | Solo | 1 | una plaza en un servidor compartido con otros suscriptores | 7,99 € al mes o 79,90 € al año | 7,49 € al mes o 74,90 € al año |
 | Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 12,99 € al mes o 129,90 € al año | 11,99 € al mes o 119,90 € al año |
-| Familia | hasta 6 | un servidor solo para vosotros | 21,99 € al mes o 219,90 € al año | 19,99 € al mes o 199,90 € al año |
+| Familia | hasta 6 | una plaza por persona, en servidores compartidos con otros abonados | 19,99 € al mes o 199,90 € al año | 17,99 € al mes o 179,90 € al año |
 
 La suscripción anual cuesta 10 meses por 12 y se paga de una vez por los 12 meses. Los precios del sitio son más bajos
 que los de las tiendas.
@@ -69,12 +69,12 @@ Stripe muestra el precio, la moneda y el total que pagas.
 
 | Moneda | País | Solo, al mes / al año | Dúo, al mes / al año | Familia, al mes / al año | Impuestos |
 |---|---|---|---|---|---|
-| Euro (EUR) | Unión Europea | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 19,99 € / 199,90 € | IVA incluido |
-| Dólar estadounidense (USD) | Estados Unidos | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 19,99 US$ / 199,90 US$ | sin impuestos: el impuesto sobre las ventas de tu estado se añade al pagar |
-| Dólar canadiense (CAD) | Canadá | 9,99 CA$ / 99,90 CA$ | 15,99 CA$ / 159,90 CA$ | 27,99 CA$ / 279,90 CA$ | sin impuestos: el GST/HST y, según tu provincia, el PST o el QST se añaden al pagar |
-| Libra esterlina (GBP) | Reino Unido | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 17,49 £ / 174,90 £ | IVA incluido |
-| Dólar de Singapur (SGD) | Singapur | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 27,99 S$ / 279,90 S$ | GST incluido |
-| Séquel (ILS) | Israel | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 77,90 ₪ / 779,00 ₪ | IVA incluido |
+| Euro (EUR) | Unión Europea | 7,49 € / 74,90 € | 11,99 € / 119,90 € | 17,99 € / 179,90 € | IVA incluido |
+| Dólar estadounidense (USD) | Estados Unidos | 7,49 US$ / 74,90 US$ | 11,99 US$ / 119,90 US$ | 17,99 US$ / 179,90 US$ | sin impuestos: el impuesto sobre las ventas de tu estado se añade al pagar |
+| Dólar canadiense (CAD) | Canadá | 9,49 CA$ / 94,90 CA$ | 15,99 CA$ / 159,90 CA$ | 22,99 CA$ / 229,90 CA$ | sin impuestos: el GST/HST y, según tu provincia, el PST o el QST se añaden al pagar |
+| Libra esterlina (GBP) | Reino Unido | 6,49 £ / 64,90 £ | 10,49 £ / 104,90 £ | 15,49 £ / 154,90 £ | IVA incluido |
+| Dólar de Singapur (SGD) | Singapur | 9,99 S$ / 99,90 S$ | 15,99 S$ / 159,90 S$ | 24,99 S$ / 249,90 S$ | GST incluido |
+| Séquel (ILS) | Israel | 28,90 ₪ / 289,00 ₪ | 46,90 ₪ / 469,00 ₪ | 69,90 ₪ / 699,00 ₪ | IVA incluido |
 
 Para cada persona del plan:
 

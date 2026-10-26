@@ -63,24 +63,24 @@
           "month": {
             "solo": 7.49,
             "duo": 11.99,
-            "famille": 19.99
+            "famille": 17.99
           },
           "year": {
             "solo": 74.9,
             "duo": 119.9,
-            "famille": 199.9
+            "famille": 179.9
           }
         },
         "store": {
           "month": {
             "solo": 7.99,
             "duo": 12.99,
-            "famille": 21.99
+            "famille": 19.99
           },
           "year": {
             "solo": 79.9,
             "duo": 129.9,
-            "famille": 219.9
+            "famille": 199.9
           }
         }
       },
@@ -94,24 +94,24 @@
           "month": {
             "solo": 7.49,
             "duo": 11.99,
-            "famille": 19.99
+            "famille": 17.99
           },
           "year": {
             "solo": 74.9,
             "duo": 119.9,
-            "famille": 199.9
+            "famille": 179.9
           }
         },
         "store": {
           "month": {
             "solo": 7.99,
             "duo": 12.99,
-            "famille": 21.99
+            "famille": 19.99
           },
           "year": {
             "solo": 79.9,
             "duo": 129.9,
-            "famille": 219.9
+            "famille": 199.9
           }
         }
       },
@@ -125,12 +125,12 @@
           "month": {
             "solo": 9.49,
             "duo": 15.99,
-            "famille": 27.99
+            "famille": 22.99
           },
           "year": {
             "solo": 94.9,
             "duo": 159.9,
-            "famille": 279.9
+            "famille": 229.9
           }
         },
         "store": null
@@ -145,12 +145,12 @@
           "month": {
             "solo": 6.49,
             "duo": 10.49,
-            "famille": 17.49
+            "famille": 15.49
           },
           "year": {
             "solo": 64.9,
             "duo": 104.9,
-            "famille": 174.9
+            "famille": 154.9
           }
         },
         "store": null
@@ -166,12 +166,12 @@
           "month": {
             "solo": 9.99,
             "duo": 15.99,
-            "famille": 27.99
+            "famille": 24.99
           },
           "year": {
             "solo": 99.9,
             "duo": 159.9,
-            "famille": 279.9
+            "famille": 249.9
           }
         },
         "store": null
@@ -187,12 +187,12 @@
           "month": {
             "solo": 28.9,
             "duo": 46.9,
-            "famille": 77.9
+            "famille": 69.9
           },
           "year": {
             "solo": 289.0,
             "duo": 469.0,
-            "famille": 779.0
+            "famille": 699.0
           }
         },
         "store": null
