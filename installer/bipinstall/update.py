@@ -239,6 +239,10 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--fixes-only", action="store_true",
                         help="only put on the BipAgents fixes the current Hermes doesn't have yet (no Hermes update)")
     args = parser.parse_args(argv)
+    if (hermes.hermes_home() / "shared").is_symlink():
+        say(ui.note("This Hermes is shared by the server's places and read-only: its administrator updates it "
+                    "(BipAgents' own update moves this place to each new version)."))
+        return 0
     if not Path(hermes.hermes_bin()).exists():
         say(ui.sad("Hermes isn't installed in this account."))
         return 1

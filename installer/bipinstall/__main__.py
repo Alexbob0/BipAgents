@@ -263,6 +263,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] in ("send", "import-place"):   # to_place.py: one's own Hermes into a place of the offer
         from . import to_place
         return {"send": to_place.send_main, "import-place": to_place.import_place_main}[argv[0]](argv[1:])
+    if argv and argv[0] == "shared-hermes":   # shared_hermes.py: one read-only Hermes for the server's places
+        from . import shared_hermes
+        return shared_hermes.main(argv[1:])
     if argv and argv[0] == "backup":   # backup.py: this place to the guichet, every hour
         from .backup import main as backup_main
         return backup_main(argv[1:])

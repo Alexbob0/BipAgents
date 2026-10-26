@@ -178,6 +178,24 @@ def files(inv, stage: Path, seen: Dict[str, List[int]]) -> Iterator[Path]:
                 yield path
 
 
+# What a person's agents install for themselves, never backed up (made again on first use) but counted in their 5 GB:
+# MCP servers' packages (npx, uvx), pip and npm installs into their own account.
+PERSONAL_RUNTIMES = (".npm", ".cache/uv", ".cache/pip", ".local/share/uv/tools", ".local/lib", ".local/share/pnpm")
+
+
+def personal_runtime_bytes(inv, base: Path) -> int:
+    """Those folders, and with the server's shared Hermes (shared_hermes.py) what Hermes added for this person's
+    agents in their HERMES_HOMEs (its writable store and Python environments: an extra, a plugin's packages). With
+    a Hermes of its own, those folders are that Hermes itself and don't count."""
+    from .shared_hermes import size
+    paths = [base / rel for rel in PERSONAL_RUNTIMES if (base / rel).is_dir()]
+    if (inv.hermes_home / "shared").is_symlink():
+        for hermes_home in inv.hermes_homes():
+            paths += [hermes_home / name for name in ("tools", "installs")
+                      if (hermes_home / name).is_dir() and not (hermes_home / name).is_symlink()]
+    return size(paths)
+
+
 def _walk(inv, root: Path) -> Iterator[Path]:
     for folder, dirs, names in os.walk(root, followlinks=False):
         here = Path(folder)
@@ -247,9 +265,14 @@ def run(base: Optional[Path] = None, config: Optional[Path] = None, now: Optiona
         if done.returncode not in (0, 3):   # 3: some files couldn't be read (written by a sandbox): the rest is kept
             raise BackupError("the backup failed: " + _short(done.stderr))
         summary = _summary(done.stdout)
+        runtimes = personal_runtime_bytes(inv, base)
+        backed = summary.get("total_bytes_processed")
+        # The place's used space (the bridge's /v1/backup used_bytes, against its 5 GB): what was backed up, and
+        # what its agents installed for themselves.
         state.update({"last_ok": now, "snapshot": summary.get("snapshot_id"),
-                      "files": summary.get("total_files_processed"), "bytes": summary.get("total_bytes_processed"),
-                      "added": summary.get("data_added")})
+                      "files": summary.get("total_files_processed"),
+                      "bytes": (backed + runtimes) if isinstance(backed, int) else backed,
+                      "backed_bytes": backed, "runtime_bytes": runtimes, "added": summary.get("data_added")})
         state.pop("last_error", None)
         if now - float(state.get("pruned") or 0) >= PRUNE_EVERY:
             thinned = restic(["forget", "--host", HOST, "--prune", *KEEP], env)

@@ -81,8 +81,14 @@ UNFINISHED = ".bipagents-unfinished"   # in HERMES_HOME while the installer sets
 
 
 def install(runner: Runner, *, browser: bool) -> None:
-    """The official installer, without questions; Hermes' own browser only when this machine can afford it."""
+    """The official installer, without questions; Hermes' own browser only when this machine can afford it. On a
+    server whose administrator shares one Hermes between its accounts (shared_hermes.py), that one instead."""
     if Path(hermes_bin()).exists():
+        return
+    from . import shared_hermes
+    base = shared_hermes.root()
+    if base is not None and shared_hermes.ready(base, shared_hermes.version_id()):
+        shared_hermes.point(runner, base, shared_hermes.version_id())
         return
     if not runner.dry:
         hermes_home().mkdir(parents=True, exist_ok=True)
@@ -110,6 +116,8 @@ def apply_patches(runner: Runner, patches: Path, applied: Optional[List[str]] = 
     not be applied (the app then works without those features)."""
     checkout = hermes_checkout()
     skipped: List[str] = []
+    if (hermes_home() / "shared").is_symlink():
+        return skipped   # a shared Hermes was built with them (shared_hermes.py)
     for patch in sorted(p for p in patches.glob("*.patch") if not p.name.startswith(".")):
         variants = patch_variants(patch)
         if not runner.dry and any(subprocess.run(["git", "-C", str(checkout), "apply", "--reverse", "--check", str(v)],
