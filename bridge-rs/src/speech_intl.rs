@@ -1,4 +1,4 @@
-//! English, Spanish and German text preparation for speech (the French one is `numbers_fr`).
+//! English, Spanish, German and Dutch text preparation for speech (the French one is `numbers_fr`).
 //!
 //! Pocket TTS reads digits one by one and skips most symbols, so numbers, money, times, units and common
 //! abbreviations are spelled out in the voice's language ("$5" -> "five dollars", "14:30" -> "vierzehn Uhr
@@ -16,7 +16,7 @@ use crate::voice_speech::num2words::num2words;
 use crate::voice_speech::pyre::{Match, Regex};
 use crate::voice_speech::pystr;
 
-pub const LANGUAGES: [&str; 3] = ["en", "es", "de"];
+pub const LANGUAGES: [&str; 4] = ["en", "es", "de", "nl"];
 
 /// `spell(int(digits), lang, to)`: num2words' words (commas removed); the digits themselves from 10**12 on.
 fn spell_digits(digits: &str, lang: &str, to: &str) -> String {
@@ -38,6 +38,7 @@ fn zero_word(lang: &str) -> &'static str {
     match lang {
         "en" => "zero",
         "es" => "cero",
+        "nl" => "nul",
         _ => "null",
     }
 }
@@ -147,6 +148,35 @@ fn units(lang: &str) -> Vec<Unit> {
             (format!("[lL]{alone}"), "Liter", "Liter"),
             (format!("m{alone}"), "Meter", "Meter"),
         ],
+        // Dutch keeps most units singular after a number (« vijf kilometer », « twee liter », « drie uur »)
+        "nl" => vec![
+            (r"%".into(), "procent", "procent"),
+            (r"€|EUR\b|euro'?s?\b".into(), "euro", "euro"),
+            (r"\$|USD\b|dollars?\b".into(), "dollar", "dollar"),
+            (r"£|GBP\b".into(), "pond", "pond"),
+            (r"°C\b|° ?C\b|°".into(), "graden", "graad"),
+            (r"km/h\b|km/u\b".into(), "kilometer per uur", "kilometer per uur"),
+            (r"km²".into(), "vierkante kilometer", "vierkante kilometer"),
+            (r"km\b".into(), "kilometer", "kilometer"),
+            (r"kg\b".into(), "kilo", "kilo"),
+            (r"kWh\b".into(), "kilowattuur", "kilowattuur"),
+            (r"cm\b".into(), "centimeter", "centimeter"),
+            (r"mm\b".into(), "millimeter", "millimeter"),
+            (r"m²".into(), "vierkante meter", "vierkante meter"),
+            (r"mg\b".into(), "milligram", "milligram"),
+            (r"m[lL]\b".into(), "milliliter", "milliliter"),
+            (r"TB\b".into(), "terabyte", "terabyte"),
+            (r"GB\b".into(), "gigabyte", "gigabyte"),
+            (r"MB\b".into(), "megabyte", "megabyte"),
+            (r"ms\b".into(), "milliseconden", "milliseconde"),
+            (r"min\b|minuten\b|minuut\b".into(), "minuten", "minuut"),
+            (r"sec\b|seconden?\b".into(), "seconden", "seconde"),
+            (r"h\b|uur\b".into(), "uur", "uur"), // not « u »: also « you » (« bel ik u »)
+            (r"bpm\b".into(), "slagen per minuut", "slag per minuut"),
+            (format!("g{alone}"), "gram", "gram"),
+            (format!("[lL]{alone}"), "liter", "liter"),
+            (format!("m{alone}"), "meter", "meter"),
+        ],
         _ => Vec::new(),
     };
     list
@@ -175,6 +205,7 @@ static UNITS: LazyLock<HashMap<&'static str, Units>> = LazyLock::new(|| {
 fn one(lang: &str, word: &str) -> &'static str {
     match lang {
         "en" => "one",
+        "nl" => "één", // stressed, so it is not heard as the article « een »
         "es" => {
             if word == "hora" || word == "pulsación por minuto" {
                 "una"
@@ -192,7 +223,7 @@ fn one(lang: &str, word: &str) -> &'static str {
     }
 }
 
-const CURRENCIES: [&str; 6] = ["euros", "dollars", "pounds", "dólares", "Euro", "Dollar"];
+const CURRENCIES: [&str; 9] = ["euros", "dollars", "pounds", "dólares", "Euro", "Dollar", "euro", "dollar", "pond"];
 
 /// Per language: decimal word, minus, "or", "to".
 fn word(lang: &str, key: &str) -> &'static str {
@@ -209,6 +240,10 @@ fn word(lang: &str, key: &str) -> &'static str {
         ("de", "minus") => "minus",
         ("de", "or") => "oder",
         ("de", "to") => "bis",
+        ("nl", "point") => "komma",
+        ("nl", "minus") => "min",
+        ("nl", "or") => "of",
+        ("nl", "to") => "tot",
         _ => "",
     }
 }
@@ -240,6 +275,7 @@ fn lexicon_source(lang: &str) -> Vec<(String, &'static str)> {
         "en" => common(" and ", " plus ", " to ", " about ", "at least ", "at most ", " times ", " at "),
         "es" => common(" y ", " más ", " a ", " unos ", "al menos ", "como mucho ", " por ", " a "),
         "de" => common(" und ", " plus ", " bis ", " etwa ", "mindestens ", "höchstens ", " mal ", " at "),
+        "nl" => common(" en ", " plus ", " tot ", " ongeveer ", "minstens ", "hoogstens ", " keer ", " bij "),
         _ => return Vec::new(),
     };
     let own: &[(&str, &'static str)] = match lang {
@@ -270,6 +306,30 @@ fn lexicon_source(lang: &str) -> Vec<(String, &'static str)> {
             (r"\bUds\.", "ustedes"),
             (r"\bpág\.", "página"),
             (r"\bn\.?º\s?", "número "),
+        ],
+        "nl" => &[
+            (r"\bbijv\.", "bijvoorbeeld"),
+            (r"\bbv\.", "bijvoorbeeld"),
+            (r"\bd\.w\.z\.", "dat wil zeggen"),
+            (r"\bo\.a\.", "onder andere"),
+            (r"\bi\.p\.v\.", "in plaats van"),
+            (r"\bm\.b\.t\.", "met betrekking tot"),
+            (r"\bz\.s\.m\.", "zo snel mogelijk"),
+            (r"\bt/m\b", "tot en met"),
+            (r"\bp\.p\.", "per persoon"),
+            (r"\benz\.(?=\s*\S)", "enzovoort,"),
+            (r"\benz\.", "enzovoort."),
+            (r"\bca\.", "circa"),
+            (r"\bong\.", "ongeveer"),
+            (r"\bevt\.", "eventueel"),
+            (r"\bincl\.", "inclusief"),
+            (r"\bexcl\.", "exclusief"),
+            (r"\bblz\.", "bladzijde"),
+            (r"\bvs\.?(?= )", "tegen"),
+            (r"\bdhr\.", "de heer"),
+            (r"\bmevr\.", "mevrouw"),
+            (r"\b[Dd]r\.(?= [A-Z])", "dokter"),
+            (r"\b[Nn]r\.(?= ?\d)", "nummer"),
         ],
         _ => &[
             (r"\bz\. ?B\.", "zum Beispiel"),
@@ -312,6 +372,20 @@ const MONTHS_DE: [&str; 12] = [
     "November",
     "Dezember",
 ];
+const MONTHS_NL: [&str; 12] = [
+    "januari",
+    "februari",
+    "maart",
+    "april",
+    "mei",
+    "juni",
+    "juli",
+    "augustus",
+    "september",
+    "oktober",
+    "november",
+    "december",
+];
 const MONTHS_EN: [&str; 12] = [
     "January",
     "February",
@@ -345,6 +419,7 @@ fn months(lang: &str) -> &'static [&'static str; 12] {
     match lang {
         "en" => &MONTHS_EN,
         "es" => &MONTHS_ES,
+        "nl" => &MONTHS_NL,
         _ => &MONTHS_DE,
     }
 }
@@ -362,6 +437,14 @@ static NUMBER: LazyLock<Regex> = LazyLock::new(|| re(r"(-?)(\d+)(?:[,.](\d+))?")
 static ISO_DATE: LazyLock<Regex> = LazyLock::new(|| re(r"\b(\d{4})-(\d{2})-(\d{2})\b"));
 static TIME_COLON: LazyLock<Regex> = LazyLock::new(|| re(r"\b([01]?\d|2[0-3]):([0-5]\d)\b"));
 static TIME_COLON_DE: LazyLock<Regex> = LazyLock::new(|| re(r"\b([01]?\d|2[0-3])[:.]([0-5]\d)(?: ?Uhr\b)?"));
+// Dutch writes « 14.30 uur » as well as « 14:30 »: the dot only with « uur » after it (« 1.50 » may be money)
+static TIME_COLON_NL: LazyLock<Regex> = LazyLock::new(|| re(r"\b([01]?\d|2[0-3]):([0-5]\d)(?: ?uur\b)?"));
+static TIME_DOT_NL: LazyLock<Regex> = LazyLock::new(|| re(r"\b([01]?\d|2[0-3])\.([0-5]\d) ?uur\b"));
+// « 14-11-2026 », « 14/11/2026 »: the Dutch way to write a date (day first)
+static DMY_DATE_NL: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?<![\w./-])([1-9]|[12]\d|3[01])[-/](0?[1-9]|1[0-2])[-/](\d{4})(?![\w/-])"));
+// « 1e », « 2de », « 3e », « 21ste »
+static ORDINAL_NL: LazyLock<Regex> = LazyLock::new(|| re(r"\b(\d+)(?:e|de|ste)\b"));
 // Python's class holds three plain spaces here (numbers_fr's holds the no-break ones too): kept as it is.
 static GROUPED_SPACE: LazyLock<Regex> = LazyLock::new(|| re(r"(?<![\d,.])(\d{1,3}(?:[   ]\d{3})+)(?![\d]|[,.]\d)"));
 static GROUP_SPACES: LazyLock<Regex> = LazyLock::new(|| re(r"[   ]"));
@@ -447,7 +530,11 @@ fn with_unit(lang: &str, value: &str, symbol: &str) -> String {
 fn time(lang: &str, m: &Match) -> String {
     let h = pystr::int_value(&m.group(1)).unwrap_or(0);
     let minutes = pystr::int_value(&m.group(2)).unwrap_or(0);
-    let hours = if lang == "de" && h == 1 { "ein".to_string() } else { spell(h, lang, "cardinal") };
+    let hours = match (lang, h) {
+        ("de", 1) => "ein".to_string(),
+        ("nl", 1) => "één".to_string(),
+        _ => spell(h, lang, "cardinal"),
+    };
     match lang {
         "en" => {
             if minutes == 0 {
@@ -465,6 +552,14 @@ fn time(lang: &str, m: &Match) -> String {
                 format!("{hours} en punto")
             } else {
                 format!("{hours} y {}", spell(minutes, lang, "cardinal"))
+            }
+        }
+        // « negen uur dertig », as a station clock (« half tien » would need the next hour)
+        "nl" => {
+            if minutes == 0 {
+                format!("{hours} uur")
+            } else {
+                format!("{hours} uur {}", spell(minutes, lang, "cardinal"))
             }
         }
         _ => {
@@ -490,6 +585,7 @@ fn iso_date(m: &Match, lang: &str) -> String {
     match lang {
         "en" => format!("{name} {}, {}", spell(day, lang, "ordinal"), spell(year, lang, "year")),
         "es" => format!("{day} de {name} de {year}"),
+        "nl" => format!("{} {name} {}", spell(day, lang, "cardinal"), spell(year, lang, "year")),
         _ => format!("{day}. {name} {}", spell(year, lang, "year")),
     }
 }
@@ -499,7 +595,7 @@ pub fn spell_numbers(text: &str, lang: &str) -> String {
         return text.to_string();
     }
     let mut text = crate::durations::spell_durations(text, lang); // « 5:10 per mile »: minutes, not hours
-    if lang == "de" {
+    if lang == "de" || lang == "nl" {
         text = YEAR_DE.replace_with(&text, |m| spell_digits(&m.group(1), lang, "year"));
     }
     text = GROUPED_SPACE.replace_with(&text, |m| GROUP_SPACES.replace(&m.group(1), ""));
@@ -507,6 +603,14 @@ pub fn spell_numbers(text: &str, lang: &str) -> String {
     text = grouped.replace_with(&text, |m| GROUP_MARKS.replace(&m.group(1), ""));
     text = CURRENCY_FIRST.replace_with(&text, |m| format!("{} {}", m.group(2), m.group(1))); // "$5" -> "5 $" -> "five dollars"
     text = ISO_DATE.replace_with(&text, |m| iso_date(m, lang)); // "2026-10-12": a date, not a range
+    if lang == "nl" {
+        // "14-11-2026" -> "veertien november tweeduizend zesentwintig"
+        text = DMY_DATE_NL.replace_with(&text, |m| {
+            let month = pystr::int_value(&m.group(2)).unwrap_or(0);
+            let day = spell_digits(&m.group(1), lang, "cardinal");
+            format!("{day} {} {}", MONTHS_NL[month as usize - 1], spell_digits(&m.group(3), lang, "year"))
+        });
+    }
     text = fr::RANGE.replace(&text, &format!(" {} ", word(lang, "to"))); // "42-46 %" -> "42 to 46 %", not one hyphenated word
     if lang == "en" {
         text = ORDINAL_EN.replace_with(&text, |m| spell_digits(&m.group(1), lang, "ordinal"));
@@ -522,14 +626,26 @@ pub fn spell_numbers(text: &str, lang: &str) -> String {
             }
         });
         text = FIRST_THIRD_ES.replace(&text, r"\1er "); // "tercer día"
+    } else if lang == "nl" {
+        text = ORDINAL_NL.replace_with(&text, |m| spell_digits(&m.group(1), lang, "ordinal"));
     } else {
         text = ORDINAL_DE_DATE.replace_with(&text, |m| spell_digits(&m.group(1), lang, "ordinal") + "n ");
     }
-    let times = if lang == "de" { &*TIME_COLON_DE } else { &*TIME_COLON };
+    if lang == "nl" {
+        text = TIME_DOT_NL.replace_with(&text, |m| time(lang, m));
+    }
+    let times = match lang {
+        "de" => &*TIME_COLON_DE,
+        "nl" => &*TIME_COLON_NL,
+        _ => &*TIME_COLON,
+    };
     text = times.replace_with(&text, |m| time(lang, m));
     text = UNITS[lang].with_number.replace_with(&text, |m| with_unit(lang, &m.group(1), &m.group(2)));
     text = DECIMAL.replace_with(&text, |m| number(&m.group(1), lang));
     text = NEGATIVE.replace(&text, &format!("{} ", word(lang, "minus")));
+    if lang == "nl" {
+        text = ONE_BEFORE_NOUN.replace(&text, "één "); // "1 dag" -> "één dag"
+    }
     if lang == "es" || lang == "de" {
         // "1 día" -> "un día", "1 Woche" -> "eine Woche" (gender guessed from the ending)
         text = ONE_BEFORE_NOUN.replace_with(&text, |m| {
@@ -554,7 +670,7 @@ pub fn spell_numbers(text: &str, lang: &str) -> String {
     })
 }
 
-/// Same last touch as the French one, in `lang` (`en`, `es` or `de`).
+/// Same last touch as the French one, in `lang` (`en`, `es`, `de` or `nl`).
 pub fn prepare_for_synthesis(text: &str, lang: &str) -> String {
     prepare_for_synthesis_with(text, lang, crate::pronounce::Spelling::Raw)
 }
@@ -628,6 +744,42 @@ mod tests {
                 "Das Meeting um zehn Uhr dreißig, Pace fünf Minuten zehn pro Kilometer.",
             ),
             ("en", "Search DuckDuckGo, the PDF.", "Search DuckDuckGo, the PDF."),
+            // Dutch: the listening bench's sentences (2026-10-26), then the other rules
+            (
+                "nl",
+                "Je afspraak bij de tandarts is verplaatst naar dinsdag 14 november om 9:30 uur, en de rekening van € 24,95 is betaald.",
+                "Je afspraak bij de tandarts is verplaatst naar dinsdag veertien november om negen uur dertig, en de rekening van vierentwintig euro vijfennegentig is betaald.",
+            ),
+            (
+                "nl",
+                "Je hebt vanochtend 8,5 km gelopen in 44 minuten, met een tempo van 5:10 per km.",
+                "Je hebt vanochtend acht komma vijf kilometer gelopen in vierenveertig minuten, met een tempo van vijf minuten tien per kilometer.",
+            ),
+            (
+                "nl",
+                "Ik heb je rondje van je Garmin naar Strava gestuurd, en je playlist staat klaar op Spotify.",
+                "Ik heb je rondje van je Garmin naar Strava gestuurd, en je playlist staat klaar op Spotify.",
+            ),
+            (
+                "nl",
+                "Op 2026-10-12 om 14.30 uur, de 1e keer, 3 kg, 18 °C en -2 °C.",
+                "Op twaalf oktober tweeduizend zesentwintig om veertien uur dertig, de eerste keer, drie kilo, achttien graden en min twee graden.",
+            ),
+            (
+                "nl",
+                "1 dag, 1 uur, 2 uur, 1.250 stappen, t/m vrijdag, bijv. 1999 en 14-11-2026.",
+                "één dag, één uur, twee uur, duizend tweehonderdvijftig stappen, tot en met vrijdag, bijvoorbeeld negentienhonderdnegenennegentig en veertien november tweeduizend zesentwintig.",
+            ),
+            (
+                "nl",
+                "Om 1:00 en 23:05, de 21ste, 1,50 € en 5 % korting, 2 GB / 500 MB.",
+                "Om één uur en drieëntwintig uur vijf, de eenentwintigste, één euro vijftig en vijf procent korting, twee gigabyte of vijfhonderd megabyte.",
+            ),
+            (
+                "nl",
+                "Het PDF-bestand, de GPS en 0042.",
+                "Het pee dee ef-bestand, de gee pee es en nul nul tweeënveertig.",
+            ),
         ] {
             assert_eq!(prepare_for_synthesis(text, lang), spoken, "raw {lang}: {text}");
         }

@@ -1,4 +1,4 @@
-//! Names, acronyms and English words written the way a French, German or Spanish voice can read them.
+//! Names, acronyms and English words written the way a French, German, Spanish or Dutch voice can read them.
 //!
 //! Pocket TTS has one grapheme model per language and no phonemes. Its 3.3.0 voices read « Spotify » with French
 //! spelling rules; the 4.x ones (retrained fr/de/es weights) say brands and anglicisms right from the raw text, and
@@ -30,15 +30,17 @@
 //!    sentence's language is never touched.
 //!
 //! Units after a number (« 2 GB », « 5 km »), e-mail addresses, links and @handles are left to the rules after this
-//! one. English (`en`) only gets the lexicon and the CamelCase cut: its voice reads English.
+//! one. English (`en`) only gets the lexicon and the CamelCase cut: its voice reads English. Dutch (`nl`) only ever
+//! had Pocket 4 voices: always `Raw` (its lexicon holds letter names, acronyms said as words and exceptions).
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-const SOURCES: [(&str, &str); 4] = [
+const SOURCES: [(&str, &str); 5] = [
     ("fr", include_str!("../assets/pronunciation/fr.json")),
+    ("nl", include_str!("../assets/pronunciation/nl.json")),
     ("de", include_str!("../assets/pronunciation/de.json")),
     ("es", include_str!("../assets/pronunciation/es.json")),
     ("en", include_str!("../assets/pronunciation/en.json")),
@@ -629,6 +631,8 @@ pub fn respell(text: &str, lang: &str, spelling: Spelling) -> String {
     let Some(lexicon) = LEXICONS.get(lang) else {
         return text.to_string();
     };
+    // no Pocket 3.3.0 voice speaks Dutch: nothing to respell for it
+    let spelling = if lang == "nl" { Spelling::Raw } else { spelling };
     let toks = tokens(text);
     let mut out = String::with_capacity(text.len() + 16);
     let mut copied = 0;
@@ -691,7 +695,9 @@ mod tests {
     fn lexicons_load_and_keys_are_lower_case() {
         for (lang, _) in SOURCES {
             let lexicon = &LEXICONS[lang];
-            assert!(lexicon.words.len() >= 20, "{lang}");
+            // Dutch has no 3.3.0 voice, so no respellings (`words`)
+            assert!(lang == "nl" || lexicon.words.len() >= 20, "{lang}");
+            assert!(lang == "en" || !lexicon.letters.is_empty(), "{lang}");
             let file: serde_json::Value = serde_json::from_str(lexicon_json(lang).unwrap()).unwrap();
             for key in file["words"].as_object().unwrap().keys() {
                 assert_eq!(key, &key.to_lowercase(), "{lang}: {key}");
@@ -775,9 +781,22 @@ mod tests {
                 "Das Peh Deh Ef in der iCloud, die Deadline am Weekend.",
             ),
             ("es", "El PDF en iCloud y el GPS.", "El pe de efe en iCloud y el ge pe ese."),
+            (
+                "nl",
+                "De PDF staat in je iCloud, zet de GPS aan, de NS en de ANWB.",
+                "De pee dee ef staat in je iCloud, zet de gee pee es aan, de en es en de aa en wee bee.",
+            ),
+            (
+                "nl",
+                "Je Garmin, Spotify en WhatsApp, je PIN bij de NAVO, OK en Louis XIV.",
+                "Je Garmin, Spotify en WhatsApp, je PIN bij de NAVO, OK en Louis XIV.",
+            ),
+            ("nl", "Mijn iPhone 16 en de PS5, 2 GB.", "Mijn iPhone 16 en de pee es 5, 2 GB."),
         ] {
             assert_eq!(respell(text, lang, Spelling::Raw), spoken, "{lang}: {text}");
         }
+        // Dutch stays raw even for an old engine
+        assert_eq!(respell("Zet Spotify aan.", "nl", Spelling::Respelled), "Zet Spotify aan.");
         assert_eq!(Spelling::for_engine(None), Spelling::Raw);
         assert_eq!(Spelling::for_engine(Some("4.0.1")), Spelling::Raw);
         assert_eq!(Spelling::for_engine(Some("4")), Spelling::Raw);

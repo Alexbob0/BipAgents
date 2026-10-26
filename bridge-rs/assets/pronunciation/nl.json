@@ -1,0 +1,30 @@
+{
+  "language": "nl",
+  "version": 1,
+  "about": "How a Dutch voice reads acronyms (same format as fr.json). Dutch only has Pocket 4 voices, which say brands and English words from the raw text, so there are no respellings here: only the Dutch letter names for acronyms, the acronyms said as a word (left as written), and « always » for words the voice still says wrong (filled from listening tests only).",
+  "letters": {
+    "a": "aa", "b": "bee", "c": "cee", "d": "dee", "e": "ee", "f": "ef", "g": "gee", "h": "haa", "i": "ie", "j": "jee",
+    "k": "kaa", "l": "el", "m": "em", "n": "en", "o": "oo", "p": "pee", "q": "kuu", "r": "er", "s": "es", "t": "tee",
+    "u": "uu", "v": "vee", "w": "wee", "x": "iks", "y": "ij", "z": "zet"
+  },
+  "exact": {
+    "PIN": "pin",
+    "NASA": "nasa",
+    "NAVO": "navo",
+    "HAVO": "havo",
+    "MAVO": "mavo",
+    "ROC": "rok",
+    "IBAN": "iban",
+    "LED": "led",
+    "RAM": "ram",
+    "SIM": "sim",
+    "FIFA": "fifa",
+    "UEFA": "uefa",
+    "UNESCO": "unesco",
+    "UNICEF": "unicef",
+    "OK": "oké",
+    "ASAP": "asap"
+  },
+  "words": {},
+  "always": {}
+}

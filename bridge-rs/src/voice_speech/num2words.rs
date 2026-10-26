@@ -1,7 +1,7 @@
 //! The parts of num2words 0.5.14 (LGPL) that speech_intl uses: cardinals, ordinals and years in English, Spanish and
 //! German, for 0 <= n < 10**12. A port of its algorithm (`splitnum` / `clean` / each language's `merge`), so the
 //! words come out as Python's: checked against golden fixtures over wide ranges and random samples
-//! (tests/golden/gen_num2words.py).
+//! (tests/golden/gen_num2words.py). Dutch is written by hand at the end (Taalunie spacing, not num2words').
 
 use super::pyre::Regex;
 use std::sync::LazyLock;
@@ -485,8 +485,121 @@ fn year(lang: Lang, value: u64) -> String {
     }
 }
 
-/// `num2words(n, lang=lang, to=to)` for `to` in cardinal, ordinal, year; None for another language or kind.
+const NL_UNITS: [&str; 20] = [
+    "nul",
+    "een",
+    "twee",
+    "drie",
+    "vier",
+    "vijf",
+    "zes",
+    "zeven",
+    "acht",
+    "negen",
+    "tien",
+    "elf",
+    "twaalf",
+    "dertien",
+    "veertien",
+    "vijftien",
+    "zestien",
+    "zeventien",
+    "achttien",
+    "negentien",
+];
+const NL_TENS: [&str; 10] =
+    ["", "", "twintig", "dertig", "veertig", "vijftig", "zestig", "zeventig", "tachtig", "negentig"];
+
+/// 1..=999 in one word: « vierentwintig », « tweeëntwintig », « honderdeen », « driehonderdvijftig ».
+fn nl_below_thousand(n: u64) -> String {
+    let (hundreds, rest) = (n / 100, n % 100);
+    let mut out = match hundreds {
+        0 => String::new(),
+        1 => "honderd".to_string(),
+        h => format!("{}honderd", NL_UNITS[h as usize]),
+    };
+    if rest == 0 {
+        return out;
+    }
+    if rest < 20 {
+        out += NL_UNITS[rest as usize];
+    } else {
+        let (tens, unit) = (rest / 10, rest % 10);
+        if unit != 0 {
+            let u = NL_UNITS[unit as usize];
+            // « twee » + « en » -> « tweeën » (the diaeresis keeps the vowels apart)
+            out += u;
+            out += if u.ends_with('e') { "ën" } else { "en" };
+        }
+        out += NL_TENS[tens as usize];
+    }
+    out
+}
+
+/// Dutch cardinals the way the Taalunie writes them: one word up to « duizend », a space after « duizend » and
+/// around « miljoen »/« miljard » (« tweeduizend zesentwintig », « drie miljoen vijfhonderdduizend »). Not
+/// num2words' Dutch (which glues everything): shorter words are easier for the voice.
+fn nl_cardinal(n: u64) -> String {
+    if n == 0 {
+        return NL_UNITS[0].to_string();
+    }
+    let mut parts: Vec<String> = Vec::new();
+    let (milliards, rest) = (n / P9, n % P9);
+    let (millions, rest) = (rest / P6, rest % P6);
+    let (thousands, rest) = (rest / 1000, rest % 1000);
+    if milliards > 0 {
+        parts.push(format!("{} miljard", nl_cardinal(milliards)));
+    }
+    if millions > 0 {
+        parts.push(format!("{} miljoen", nl_cardinal(millions)));
+    }
+    if thousands > 0 {
+        parts.push(if thousands == 1 {
+            "duizend".to_string()
+        } else {
+            format!("{}duizend", nl_below_thousand(thousands))
+        });
+    }
+    if rest > 0 {
+        parts.push(nl_below_thousand(rest));
+    }
+    parts.join(" ")
+}
+
+/// « eerste », « tweede », « derde », « achtste », « twintigste », « honderdste », « eenentwintigste ».
+fn nl_ordinal(n: u64) -> String {
+    let card = nl_cardinal(n);
+    if n % 100 == 1 && card.ends_with("een") {
+        return chars_drop_last(&card, 3) + "eerste";
+    }
+    if n % 100 == 3 && card.ends_with("drie") {
+        return chars_drop_last(&card, 4) + "derde";
+    }
+    let ste = ["acht", "tig", "honderd", "duizend", "miljoen", "miljard"].iter().any(|end| card.ends_with(end));
+    card + if ste { "ste" } else { "de" }
+}
+
+/// A year: « negentienhonderdnegenennegentig », « tweeduizend zesentwintig », « elfhonderd ».
+fn nl_year(n: u64) -> String {
+    if (1100..2000).contains(&n) {
+        let (high, low) = (n / 100, n % 100);
+        let low = if low == 0 { String::new() } else { nl_below_thousand(low) };
+        return format!("{}honderd{low}", NL_UNITS[high as usize]);
+    }
+    nl_cardinal(n)
+}
+
+/// `num2words(n, lang=lang, to=to)` for `to` in cardinal, ordinal, year; None for another language or kind. Dutch
+/// (`nl`) is written here, not ported (see `nl_cardinal`).
 pub fn num2words(n: u64, lang: &str, to: &str) -> Option<String> {
+    if lang == "nl" {
+        return match to {
+            "cardinal" => Some(nl_cardinal(n)),
+            "ordinal" => Some(nl_ordinal(n)),
+            "year" => Some(nl_year(n)),
+            _ => None,
+        };
+    }
     let lang = lang_of(lang)?;
     match to {
         "cardinal" => Some(cardinal(lang, n)),
@@ -510,5 +623,57 @@ mod tests {
         assert_eq!(num2words(1250, "de", "cardinal").unwrap(), "eintausendzweihundertfünfzig");
         assert_eq!(num2words(1999, "de", "year").unwrap(), "neunzehnhundertneunundneunzig");
         assert_eq!(num2words(3, "de", "ordinal").unwrap(), "dritte");
+    }
+
+    #[test]
+    fn dutch() {
+        for (n, words) in [
+            (0, "nul"),
+            (1, "een"),
+            (13, "dertien"),
+            (21, "eenentwintig"),
+            (22, "tweeëntwintig"),
+            (23, "drieëntwintig"),
+            (24, "vierentwintig"),
+            (95, "vijfennegentig"),
+            (100, "honderd"),
+            (101, "honderdeen"),
+            (250, "tweehonderdvijftig"),
+            (1000, "duizend"),
+            (1250, "duizend tweehonderdvijftig"),
+            (2026, "tweeduizend zesentwintig"),
+            (8000, "achtduizend"),
+            (21_000, "eenentwintigduizend"),
+            (3_500_000, "drie miljoen vijfhonderdduizend"),
+            (2_000_000_001, "twee miljard een"),
+        ] {
+            assert_eq!(num2words(n, "nl", "cardinal").unwrap(), words, "{n}");
+        }
+        for (n, words) in [
+            (1, "eerste"),
+            (2, "tweede"),
+            (3, "derde"),
+            (4, "vierde"),
+            (8, "achtste"),
+            (11, "elfde"),
+            (14, "veertiende"),
+            (18, "achttiende"),
+            (20, "twintigste"),
+            (21, "eenentwintigste"),
+            (23, "drieëntwintigste"),
+            (100, "honderdste"),
+            (101, "honderdeerste"),
+            (1000, "duizendste"),
+        ] {
+            assert_eq!(num2words(n, "nl", "ordinal").unwrap(), words, "{n}");
+        }
+        for (n, words) in [
+            (1999, "negentienhonderdnegenennegentig"),
+            (1900, "negentienhonderd"),
+            (2026, "tweeduizend zesentwintig"),
+            (2000, "tweeduizend"),
+        ] {
+            assert_eq!(num2words(n, "nl", "year").unwrap(), words, "{n}");
+        }
     }
 }

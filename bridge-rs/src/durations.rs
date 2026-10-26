@@ -31,7 +31,7 @@ static TIME: LazyLock<Regex> =
 /// What may follow: a pace unit (« par km », « /100 m », « min/km »), `min` alone, or nothing of the sort.
 static PACE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)^\s?(?:min(?:utes?|uten?|utos?)?\.?\s?)?(?:/\s?|(?:par|au|du|per|pro|por|el|a|al|je)\s+(?:cada\s+)?)(100\s?m|500\s?m|km|kilom[eèé]t(?:er|re|ro)s?|kilometers?|mi|miles?|meilen?|milla)\b",
+        r"(?i)^\s?(?:min(?:utes?|uten?|utos?)?\.?\s?)?(?:/\s?|(?:par|au|du|per|pro|por|el|a|al|je)\s+(?:cada\s+)?)(100\s?m|500\s?m|km|kilom[eèé]t(?:er|re|ro)s?|kilometers?|mi|miles?|meilen?|milla|mijl(?:en)?)\b",
     )
     .unwrap()
 });
@@ -126,6 +126,27 @@ fn cues(lang: &str) -> (&'static [&'static str], &'static [&'static str]) {
             ],
             &["a las", "a la", "las", "la", "desde las", "hasta las", "sobre las", "hacia las", "de", "y", "entre"],
         ),
+        "nl" => (
+            &[
+                "in",
+                "tijd",
+                "tijd van",
+                "tempo",
+                "tempo van",
+                "pace",
+                "record",
+                "beste tijd",
+                "gemiddeld",
+                "gemiddelde",
+                "gemiddelde van",
+                "duur",
+                "ronde in",
+                "split",
+                "gelopen in",
+                "klaar in",
+            ],
+            &["om", "vanaf", "tot", "rond", "tegen", "voor", "na", "sinds", "van", "tussen", "en"],
+        ),
         _ => (
             &[
                 "in",
@@ -196,6 +217,10 @@ fn pace_words(lang: &str, unit: &str) -> String {
         ("es", "mi") => "por milla",
         ("es", "100") => "por cada 100 metros",
         ("es", "500") => "por cada 500 metros",
+        ("nl", "km") => "per kilometer",
+        ("nl", "mi") => "per mijl",
+        ("nl", "100") => "per 100 meter",
+        ("nl", "500") => "per 500 meter",
         (_, "km") => "per kilometer",
         (_, "mi") => "per mile",
         (_, "100") => "per 100 meters",
@@ -210,6 +235,7 @@ fn say(lang: &str, h: Option<u32>, m: u32, s: u32) -> String {
         "fr" => (("heure", "heures"), ("minute", "minutes"), ("seconde", "secondes")),
         "de" => (("Stunde", "Stunden"), ("Minute", "Minuten"), ("Sekunde", "Sekunden")),
         "es" => (("hora", "horas"), ("minuto", "minutos"), ("segundo", "segundos")),
+        "nl" => (("uur", "uur"), ("minuut", "minuten"), ("seconde", "seconden")),
         _ => (("hour", "hours"), ("minute", "minutes"), ("second", "seconds")),
     };
     let number = |n: u32| {
@@ -364,6 +390,16 @@ mod tests {
                 "Ritmo de 5 minutos 10 por kilómetro y a las 9:15 el desayuno.",
             ),
             ("es", "Tiempo de 1:05:00 en la media.", "Tiempo de 1 hora 5 minutos en la media."),
+            (
+                "nl",
+                "Een tempo van 5:10 per km, beste tijd 47:12, om 17:30 uur.",
+                "Een tempo van 5 minuten 10 per kilometer, beste tijd 47 minuten 12, om 17:30 uur.",
+            ),
+            (
+                "nl",
+                "Zwemmen in 1:52/100 m, marathon in 3:25:12.",
+                "Zwemmen in 1 minuut 52 per 100 meter, marathon in 3 uur 25 minuten 12.",
+            ),
         ] {
             assert_eq!(spell_durations(text, lang), spoken, "{lang}: {text}");
         }
