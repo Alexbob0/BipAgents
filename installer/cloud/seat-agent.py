@@ -85,6 +85,8 @@ def accepted(order, server, done, now):
             ok = ok and isinstance(pair, str) and 40 <= len(pair) <= 64 and all(c in PAIR_CHARS for c in pair)
         elif body.get("action") in MOVE_ACTIONS:
             ok = ok and move_valid(body)
+        elif body.get("action") == "remove":
+            ok = ok and remove_valid(body)
         else:
             ok = False
     except (KeyError, TypeError, ValueError):
@@ -361,6 +363,70 @@ def move(body, moves=MOVES, lib=LIB, run=subprocess.run):
              "/usr/bin/python3", script, "out", path])
 
 
+def remove_valid(body):
+    """`remove`: the place left behind by a move, named by that move's id, or marked removed by the guichet."""
+    move = body.get("move")
+    if isinstance(move, dict):
+        return move_valid({"action": "move_cancel", "move": move})
+    return body.get("removed") is True
+
+
+def moved_out(number, move_id, moves=MOVES):
+    """This seat's move_out with that id completed here."""
+    try:
+        with open(os.path.join(moves, move_id, "state.json")) as fh:
+            state = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    return (state.get("role") == "out" and int(state.get("seat", 0)) == number
+            and state.get("phase") in ("done", "removed"))
+
+
+def remove(number, body, moves=MOVES, wipe_account=None, run=subprocess.run):
+    """The place a move left on this server goes (the guichet's pool::vacate): its services and account, its door's
+    firewall rule, its setup file. Only after its move_out completed here, and only while the account still holds
+    that move's mark (a seat installed again since is someone else's), or when the guichet marks it removed. Done
+    again, nothing more happens."""
+    user = account(number)
+    move = body.get("move")
+    if isinstance(move, dict):
+        move_id = move["id"]
+        if not moved_out(number, move_id, moves):
+            log("place %d: remove refused, its move %s did not complete here" % (number, move_id))
+            return False
+        try:
+            home = pwd.getpwnam(user).pw_dir
+            with open(os.path.join(home, ".config", "bipagents", "moved-away.json")) as fh:
+                mark = json.load(fh).get("move")
+        except KeyError:
+            mark = move_id   # the account is already gone
+        except (OSError, ValueError, AttributeError):
+            mark = None
+        if mark != move_id:
+            log("place %d: remove refused, the account is not the one moved by %s" % (number, move_id))
+            return False
+    elif body.get("removed") is not True:
+        return False
+    log("place %d (%s): removed" % (number, user))
+    (wipe_account or wipe)(user)
+    run(["ufw", "delete", "allow", "%d/tcp" % (442 + number)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        os.unlink("/etc/bipagents/cloud%d.json" % number)
+    except OSError:
+        pass
+    if isinstance(move, dict):
+        path = os.path.join(moves, move["id"], "state.json")
+        try:
+            with open(path) as fh:
+                state = json.load(fh)
+            state["phase"] = "removed"
+            with open(path, "w") as fh:
+                json.dump(state, fh)
+        except (OSError, ValueError):
+            pass
+    return True
+
+
 def add_moves(beat, lib=LIB):
     """The moves' phases and numbers in the beat (`moves`), and the moves' leftovers cleared (listeners past their
     time, source copies past their seven days)."""
@@ -440,6 +506,11 @@ def main(argv=()):
                     move(body)
                 except (OSError, ValueError, subprocess.SubprocessError) as exc:
                     log("move order %s stopped: %s" % (order.get("id"), exc))
+            elif body["action"] == "remove":
+                try:
+                    remove(int(body["seat"]), body)
+                except OSError as exc:
+                    log("removing place %s stopped: %s" % (body["seat"], exc))
             elif body["action"] == "reopen":
                 try:
                     reopen(int(body["seat"]), body["pair"])

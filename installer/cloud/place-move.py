@@ -310,18 +310,49 @@ def rehome(path, source_home, target_home):
 
 # -- the target: its listener and the commands it accepts ---------------------------------------------------------------
 
-def sshd_config(base, port):
+USER = "bipmove"                  # the account the source logs in as (root's password may be expired: no root login)
+KEYS = "/etc/bipagents/move-keys"   # its authorized keys, one file per move (sshd reads them as that account)
+SUDOERS = "/etc/sudoers.d/bipagents-move"
+
+
+def sshd_config(base, port, keys=KEYS, move_id="x"):
     return "\n".join([
         "Port %d" % port, "ListenAddress 0.0.0.0", "HostKey %s/host_key" % base, "PidFile %s/sshd.pid" % base,
-        "AuthorizedKeysFile %s/authorized_keys" % base, "PermitRootLogin forced-commands-only",
-        "AllowUsers root", "PasswordAuthentication no", "KbdInteractiveAuthentication no", "PubkeyAuthentication yes",
+        "AuthorizedKeysFile %s/%s" % (keys, move_id), "PermitRootLogin no",
+        "AllowUsers %s" % USER, "PasswordAuthentication no", "KbdInteractiveAuthentication no", "PubkeyAuthentication yes",
         "UsePAM yes", "AllowTcpForwarding no", "AllowAgentForwarding no", "X11Forwarding no", "PermitTTY no",
         "PermitUserEnvironment no", "MaxAuthTries 2", "LoginGraceTime 30", "ClientAliveInterval 30", "LogLevel INFO",
         ""])
 
 
 def authorized_line(public, source, move_id, script):
-    return 'restrict,from="%s",command="/usr/bin/python3 %s serve %s" %s\n' % (source, script, move_id, public)
+    return 'restrict,from="%s",command="/usr/bin/sudo -n /usr/bin/python3 %s serve %s" %s\n' % (
+        source, script, move_id, public)
+
+
+def sudoers(script):
+    """`bipmove` may run this script's `serve` as root, nothing else; SSH_ORIGINAL_COMMAND goes through."""
+    return ('Defaults:%s env_keep += "SSH_ORIGINAL_COMMAND"\nDefaults:%s !requiretty\n'
+            "%s ALL=(root) NOPASSWD: /usr/bin/python3 %s serve *\n" % (USER, USER, USER, script))
+
+
+def account_for_moves(script, run=subprocess.run):
+    """The `bipmove` system account (no password, no home of its own) and its one sudo rule."""
+    try:
+        pwd.getpwnam(USER)
+    except KeyError:
+        run(["useradd", "--system", "--shell", "/bin/sh", "--home-dir", "/nonexistent", "--no-create-home", USER],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    text = sudoers(script)
+    tmp = SUDOERS + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o440)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)
+    if run(["visudo", "-cf", tmp], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        os.replace(tmp, SUDOERS)
+    else:
+        os.unlink(tmp)
+        raise MoveError("the move's sudo rule was refused")
 
 
 def listen(order_path, root=MOVES, script=None, run=subprocess.run):
@@ -337,9 +368,15 @@ def listen(order_path, root=MOVES, script=None, run=subprocess.run):
     host_private, _ = keypair(move["key"], "host")
     _, client_public = keypair(move["key"], "client")
     write_private(os.path.join(base, "host_key"), host_private)
-    write_private(os.path.join(base, "authorized_keys"),
-                  authorized_line(client_public, source, move_id, script or os.path.join(LIB, "place-move.py")))
-    write_private(os.path.join(base, "sshd_config"), sshd_config(base, port))
+    script = script or os.path.join(LIB, "place-move.py")
+    account_for_moves(script, run)
+    os.makedirs(KEYS, mode=0o755, exist_ok=True)
+    keys = os.path.join(KEYS, move_id)
+    with open(keys + ".tmp", "w") as fh:
+        fh.write(authorized_line(client_public, source, move_id, script))
+    os.chmod(keys + ".tmp", 0o644)
+    os.replace(keys + ".tmp", keys)
+    write_private(os.path.join(base, "sshd_config"), sshd_config(base, port, KEYS, move_id))
     os.makedirs("/run/sshd", mode=0o755, exist_ok=True)
     save(move_id, root, role="in", seat=seat, phase="listening", started=int(time.time()), source=source, port=port,
          expires=int(move.get("expires") or time.time() + 6 * 3600))
@@ -358,9 +395,9 @@ def close(move_id, root=MOVES, run=subprocess.run):
     if state.get("source") and state.get("port"):
         run(["ufw", "delete", "allow", "from", str(state["source"]), "to", "any", "port", str(state["port"]), "proto",
              "tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for name in ("host_key", "authorized_keys", "order.json"):
+    for path in (os.path.join(base, "host_key"), os.path.join(base, "order.json"), os.path.join(KEYS, move_id)):
         try:
-            os.unlink(os.path.join(base, name))
+            os.unlink(path)
         except OSError:
             pass
     if state.get("phase") not in ("done", "failed", "cancelled"):
@@ -490,7 +527,7 @@ class Channel:
                 "-o", "LogLevel=ERROR"]
 
     def ask(self, *words, timeout=900):
-        done = subprocess.run(self.ssh_args() + ["root@" + self.address, " ".join(words)], capture_output=True,
+        done = subprocess.run(self.ssh_args() + ["%s@%s" % (USER, self.address), " ".join(words)], capture_output=True,
                               text=True, timeout=timeout)
         for line in reversed(done.stdout.strip().splitlines()):
             if line.startswith("{"):
@@ -514,7 +551,7 @@ class Channel:
                 fh.write("\n".join(rules) + "\n")
             args.append("--filter=merge " + rules_file)
         is_dir = os.path.isdir(source) and not os.path.islink(source)
-        args += [source.rstrip("/") + ("/" if is_dir else ""), "root@%s:%s" % (self.address,
+        args += [source.rstrip("/") + ("/" if is_dir else ""), "%s@%s:%s" % (USER, self.address,
                                                                             dest.rstrip("/") + ("/" if is_dir else ""))]
         try:
             done = subprocess.run(args, capture_output=True, text=True, timeout=timeout)

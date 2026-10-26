@@ -53,11 +53,14 @@ def test_both_servers_derive_the_same_keys_from_the_move_s_key(tmp_path):
 
 def test_the_target_lets_in_the_move_s_key_from_the_source_only(tmp_path):
     line = pm.authorized_line("ssh-ed25519 AAAA", "198.51.100.4", "m-0123456", "/usr/local/lib/bipagents/place-move.py")
-    assert line.startswith('restrict,from="198.51.100.4",command="/usr/bin/python3 /usr/local/lib/bipagents/'
-                           'place-move.py serve m-0123456" ssh-ed25519 AAAA')
-    config = pm.sshd_config("/var/lib/bipagents/moves/m-0123456", 2222)
-    for needed in ("Port 2222", "PermitRootLogin forced-commands-only", "PasswordAuthentication no", "PermitTTY no",
-                   "AllowTcpForwarding no"):
+    assert line.startswith('restrict,from="198.51.100.4",command="/usr/bin/sudo -n /usr/bin/python3 /usr/local/lib/'
+                           'bipagents/place-move.py serve m-0123456" ssh-ed25519 AAAA')
+    rule = pm.sudoers("/usr/local/lib/bipagents/place-move.py")
+    assert "bipmove ALL=(root) NOPASSWD: /usr/bin/python3 /usr/local/lib/bipagents/place-move.py serve *" in rule
+    assert 'env_keep += "SSH_ORIGINAL_COMMAND"' in rule
+    config = pm.sshd_config("/var/lib/bipagents/moves/m-0123456", 2222, "/etc/bipagents/move-keys", "m-0123456")
+    for needed in ("Port 2222", "PermitRootLogin no", "AllowUsers bipmove", "PasswordAuthentication no",
+                   "PermitTTY no", "AllowTcpForwarding no", "AuthorizedKeysFile /etc/bipagents/move-keys/m-0123456"):
         assert needed in config.splitlines()
     order = tmp_path / "order.json"
     order.write_text(json.dumps({"seat": 2, "action": "move_in", "move": {
@@ -288,3 +291,60 @@ def test_rsync_with_the_rules_copies_what_a_backup_takes_plus_the_sidecars(tmp_p
                  ".hermes/state.db-shm", ".hermes/gateway.pid", "data/archive-index/i",
                  "data/browsers/vie/profile/Default/Cache/c"):
         assert str(home / left) not in copied, left
+
+
+def test_remove_clears_only_the_place_a_completed_move_left(tmp_path, monkeypatch):
+    agent = _load("seat_agent_remove", "seat-agent.py")
+    body = {"order": 5, "server": "vps-1", "seat": 2, "action": "remove", "expires": 9_999_999_999,
+            "move": {"id": "m-0123456"}}
+    assert agent.accepted({"id": 5, "body": json.dumps(body)}, "vps-1", set(), 1000) == body
+    assert agent.remove_valid({"removed": True}) and not agent.remove_valid({})
+    assert not agent.remove_valid({"move": {"id": "../x"}})
+    moves = tmp_path / "moves"
+    home = tmp_path / "bip2"
+    (home / ".config" / "bipagents").mkdir(parents=True)
+    monkeypatch.setattr(agent.pwd, "getpwnam", lambda user: type("E", (), {"pw_dir": str(home)}))
+    wiped, calls = [], []
+
+    def run(args, **kw):
+        calls.append(args)
+    # No completed move here: refused.
+    assert not agent.remove(2, body, str(moves), wiped.append, run) and wiped == []
+    pm.save("m-0123456", str(moves), role="out", seat=2, phase="copying")
+    assert not agent.remove(2, body, str(moves), wiped.append, run)
+    pm.save("m-0123456", str(moves), phase="done")
+    # Completed, but the account is someone else's now (no mark of this move).
+    assert not agent.remove(2, body, str(moves), wiped.append, run) and wiped == []
+    (home / ".config" / "bipagents" / "moved-away.json").write_text(json.dumps({"move": "m-0123456"}))
+    assert agent.remove(2, body, str(moves), wiped.append, run)
+    assert wiped == ["bip2"] and ["ufw", "delete", "allow", "444/tcp"] in calls
+    assert pm.states(str(moves))[0]["phase"] == "removed"
+
+    def gone(user):
+        raise KeyError(user)
+    # Again (the account gone): done, nothing broken.
+    monkeypatch.setattr(agent.pwd, "getpwnam", gone)
+    assert agent.remove(2, body, str(moves), wiped.append, run)
+    # Marked removed by the guichet without a move.
+    assert agent.remove(3, {"removed": True}, str(moves), wiped.append, run) and wiped[-1] == "bip3"
+    assert not agent.remove(3, {"removed": "yes"}, str(moves), wiped.append, run)
+
+
+def test_the_switch_never_waits_systemd_s_90_seconds_for_a_hanging_service():
+    class Fake:
+        dry = False
+
+        def __init__(self, hanging):
+            self.hanging, self.log = hanging, []
+
+        def run(self, args, check=True):
+            self.log.append(args)
+            if args[2] == "is-active":
+                return "deactivating\n" if args[3] in self.hanging else "inactive\n"
+            return ""
+    runner = Fake({"bipagents-bridge"})
+    killed = placemove.quick_stop(runner, ["hermes-gateway", "bipagents-bridge"], grace=2, sleep=lambda s: None)
+    assert killed == ["bipagents-bridge"]
+    assert ["systemctl", "--user", "kill", "--signal=SIGKILL", "bipagents-bridge"] in runner.log
+    assert ["systemctl", "--user", "stop", "--no-block", "hermes-gateway"] in runner.log
+    assert placemove.quick_stop(Fake(set()), ["hermes-gateway"], sleep=lambda s: None) == []

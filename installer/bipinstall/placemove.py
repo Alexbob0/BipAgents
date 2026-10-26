@@ -101,11 +101,38 @@ def plan(base: Optional[Path] = None) -> Dict:
                                                    "host": inv.toml.get("host", "127.0.0.1")}}
 
 
+GRACE = 8   # seconds a service gets to stop during the switch (the bridge's own shutdown was seen hanging 90 s)
+
+
+def quick_stop(runner, units: List[str], grace: float = GRACE, sleep=None) -> List[str]:
+    """The services stopped without waiting systemd's 90 s for one that hangs on its way out: asked to stop, then
+    killed after `grace` seconds (their state is already written: the bridge drained, the gateways idle). Returns the
+    units killed."""
+    import time
+    sleep = sleep or time.sleep
+    if not units or runner.dry:
+        return []
+    for unit in units:
+        runner.run(["systemctl", "--user", "stop", "--no-block", unit], check=False)
+    waited = 0.0
+    while waited < grace:
+        active = [u for u in units if runner.run(["systemctl", "--user", "is-active", u], check=False).strip()
+                  in ("active", "deactivating", "activating")]
+        if not active:
+            return []
+        sleep(0.5)
+        waited += 0.5
+    for unit in active:
+        runner.run(["systemctl", "--user", "kill", "--signal=SIGKILL", unit], check=False)
+    return active
+
+
 def stop(runner, base: Optional[Path] = None) -> Dict:
     """The source stopped for the last copy: its services (noted for `bipagents resume`), its sandboxes, then the
     agents' own volumes exported into the stage."""
     base = base or home()
     found = moving.services(base, "linux" if os.uname().sysname == "Linux" else "macos")
+    quick_stop(runner, [name for how, name in found if how == "systemd"])
     moving.stop(runner, found, base)
     from . import volumes
     tool = volumes.podman()
