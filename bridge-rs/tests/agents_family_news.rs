@@ -239,7 +239,7 @@ async fn a_proposal_waits_a_day_and_an_unreachable_family_keeps_it() {
     // A household whose bridge does not answer.
     let households = bipbridge::households::Households::new(&bipbridge::households::path_for(&config));
     households.set_name("Alex").unwrap();
-    households.joined("Léa", "http://127.0.0.1:9", &"o".repeat(40), &"i".repeat(40)).unwrap();
+    households.joined("Léa", "http://127.0.0.1:9", &"o".repeat(40), &"i".repeat(40), None).unwrap();
     let family = [family_news::Member { id: "lea".into(), name: "Léa".into(), agents: vec![] }];
     let agent = config.agent(Some("vie")).unwrap().clone();
     let now = bipbridge::py::time_time();

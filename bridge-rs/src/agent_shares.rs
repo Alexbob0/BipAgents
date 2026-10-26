@@ -829,8 +829,7 @@ async fn tell_relative(state: &AppState, household: &str, agent: &AgentConfig, s
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
     let body = json!({"agent": agent.name, "name": agent.display_name, "category": agent.category,
                       "color": agent.color, "shared": shared});
-    match state
-        .http
+    match crate::door_tls::household_client(&state.http, &entry)
         .post(format!("{url}/family/shared"))
         .timeout(Duration::from_secs(10))
         .header("Authorization", format!("Bearer {key}"))
@@ -970,7 +969,8 @@ async fn to_owner(
         str_of(&shared, "agent")
     );
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
-    let mut request = state.http.request(method, url).timeout(Duration::from_secs(20)).bearer_auth(key);
+    let http = crate::door_tls::household_client(&state.http, &entry);
+    let mut request = http.request(method, url).timeout(Duration::from_secs(20)).bearer_auth(key);
     if let Some(body) = body {
         request = request.json(&body);
     }

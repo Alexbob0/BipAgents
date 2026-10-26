@@ -1647,8 +1647,7 @@ async fn agent_links(State(state): State<AppState>) -> ApiResult<Response> {
         let entry = state.households.get(&id).unwrap_or_default();
         let url = entry.get("url").map(crate::py::py_str).unwrap_or_default();
         let key_out = entry.get("key_out").map(crate::py::py_str).unwrap_or_default();
-        let listed: Vec<Value> = match state
-            .http
+        let listed: Vec<Value> = match crate::door_tls::household_client(&state.http, &entry)
             .get(format!("{url}/family/agents"))
             .timeout(Duration::from_secs(4))
             .header("Authorization", format!("Bearer {key_out}"))

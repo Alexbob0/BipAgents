@@ -734,11 +734,11 @@ fn invitations_are_one_time_and_expire() {
     households.set_name("Alex").unwrap();
     let code = households.invite().unwrap();
     let key = "k".repeat(40);
-    let answer = households.accept(&code, "Léa", "https://b.ts.net", &key).unwrap();
+    let answer = households.accept(&code, "Léa", "https://b.ts.net", &key, None).unwrap();
     assert_eq!(households.caller(&key).as_deref(), Some("lea"));
     assert!(answer["key"].as_str().unwrap().len() >= 32 && answer["name"] == "Alex");
     assert!(!std::fs::read_to_string(&path).unwrap().contains(&key)); // only a digest of their key
-    assert!(households.accept(&code, "Léa", "https://b.ts.net", &key).is_err()); // used once
+    assert!(households.accept(&code, "Léa", "https://b.ts.net", &key, None).is_err()); // used once
     let late = households.invite().unwrap();
     let mut data = households.load();
     let past = bipbridge::py::time_time() - 1.0;
@@ -746,7 +746,7 @@ fn invitations_are_one_time_and_expire() {
         data["invites"].as_object().unwrap().keys().map(|k| (k.clone(), json!(past))).collect();
     data.insert("invites".into(), Value::Object(invites));
     households.save(&data).unwrap();
-    assert!(households.accept(&late, "Paul", "https://c.ts.net", &"p".repeat(40)).is_err());
+    assert!(households.accept(&late, "Paul", "https://c.ts.net", &"p".repeat(40), None).is_err());
 }
 
 type Received = Arc<Mutex<Vec<(String, Option<String>, Value)>>>;
@@ -816,7 +816,7 @@ async fn two_households_write_to_each_other_only_where_both_allowed() {
         .await;
     assert_eq!(joined.status, 200);
     assert_eq!(joined.json(), json!({"id": "alex", "name": "Alex"}));
-    assert_eq!(a.get("/v1/family", &h).await.json()["households"], json!([{"id": "lea", "name": "Léa", "url": b_url}]));
+    assert_eq!(a.get("/v1/family", &h).await.json()["households"], json!([{"id": "lea", "name": "Léa", "url": b_url, "relink": false}]));
     // Each side lists the other's agents among its own.
     let names: BTreeMap<String, String> = a.get("/v1/agent-links", &h).await.json()["agents"]
         .as_array()

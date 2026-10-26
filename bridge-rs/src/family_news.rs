@@ -298,6 +298,7 @@ pub async fn members(http: &reqwest::Client, config: &Config) -> Vec<Member> {
         let entry = linked.get(&id).unwrap_or_default();
         let url = entry.get("url").map(py::py_str).unwrap_or_default();
         let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
+        let http = crate::door_tls::household_client(http, &entry);
         async move {
             let answer = http
                 .get(format!("{url}/family/agents"))
@@ -615,7 +616,7 @@ pub async fn send(
             let Some(entry) = entry else { return false };
             let url = entry.get("url").map(py::py_str).unwrap_or_default();
             let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
-            match http
+            match crate::door_tls::household_client(http, &entry)
                 .post(format!("{url}/family/tell"))
                 .timeout(Duration::from_secs(10))
                 .header("Authorization", format!("Bearer {key}"))

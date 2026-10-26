@@ -69,6 +69,7 @@ pub mod agents_admin;
 /// The person's time zone and standard dates (no Python counterpart).
 pub mod dates;
 pub mod device_keys;
+pub mod door_tls;
 pub mod family_news;
 pub mod files;
 pub mod files_kept;
