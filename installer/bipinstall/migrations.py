@@ -65,8 +65,7 @@ def browsers_on_demand(runner: hermes.Runner, home: Path) -> str:
     config = next((path for path in configs if path.is_file()), None)
     if config is None:
         return "agents' browsers left as they are (no bridge config found)"
-    from .rustbridge import cli
-    runner.run(cli(home, REPO) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
+    runner.run(_bridge_cli(home) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
     from . import update
     update.restart(runner)
     return (f"the agents' browsers ({len(units)}) start when used and stop after 10 minutes unused; gateways "
@@ -106,11 +105,19 @@ def browser_ports(runner: hermes.Runner, home: Path) -> str:
     runner.log.append(f"write {config}")
     if not runner.dry:
         config.write_text(with_browser_range(text, first, count), encoding="utf-8")
-    from .rustbridge import cli
-    runner.run(cli(home, REPO) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
+    runner.run(_bridge_cli(home) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
     from . import update
     update.restart(runner)
     return f"the agents' browsers ({len(units)}) use ports {first} to {first + count - 1}, of this install only"
+
+
+def _bridge_cli(home: Path) -> List[str]:
+    """The bridge's command line of this checkout's release. While the update couldn't fetch it (its release still
+    building on GitHub), NotYet: the migration runs at the next `bipagents update`, the previous bridge meanwhile."""
+    from .rustbridge import cli, missed
+    if missed(home, REPO):
+        raise NotYet("the bridge of this version isn't out yet: `bipagents update` applies this in a few minutes")
+    return cli(home, REPO)
 
 
 def isolated_sandboxes(runner: hermes.Runner, home: Path) -> str:
@@ -126,8 +133,7 @@ def isolated_sandboxes(runner: hermes.Runner, home: Path) -> str:
     config = _bridge_config(home)
     if config is None:
         return "agents' sandboxes left as they are (no bridge config found)"
-    from .rustbridge import cli
-    out = runner.run(cli(home, REPO) + ["sandbox", "--config", str(config)], cwd=REPO / "bridge")
+    out = runner.run(_bridge_cli(home) + ["sandbox", "--config", str(config)], cwd=REPO / "bridge")
     from . import update
     update.restart(runner)
     lines = [line.strip() for line in out.splitlines() if line.strip()]

@@ -336,7 +336,9 @@ def main(argv: List[str]) -> int:
             commands.append(f"# The Bips' voices run from the account {owner}: there, `bipagents update` restarts them")
     browsers = sorted((Path.home() / ".config" / "systemd" / "user").glob("bipagents-browser-*.service"))
     image_changed = any(path.startswith("browser/") and not path.endswith(".md") for path in changed)
-    if config and image_changed and browsers:
+    if config and image_changed and browsers and rustbridge.missed(Path.home(), REPO):
+        commands.append("bipagents update   # in a few minutes, once this version's bridge is out: rebuilds the browsers")
+    elif config and image_changed and browsers:
         if args.auto or ask("The agents' browser changed: rebuild it and restart the browsers now (a few minutes; "
                             "their profiles stay)?"):
             engine = hermes.sandbox_runtime() or "podman"

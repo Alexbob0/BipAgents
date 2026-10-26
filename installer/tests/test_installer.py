@@ -36,6 +36,13 @@ def no_sandbox_unless_a_test_says_so(monkeypatch):
     monkeypatch.setattr(hermes_module, "sandbox_runtime", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def this_version_s_bridge_is_here(monkeypatch):
+    """The updates' migrations find this checkout's bridge binary fetched (a test says otherwise when it means to)."""
+    from bipinstall import rustbridge
+    monkeypatch.setattr(rustbridge, "missed", lambda home, repo=None: False)
+
+
 def mac(memory, gpu="apple"):
     return Machine(system="macos", arch="arm64", memory_gib=memory, cores=10, cpu="Apple M4", gpu=gpu,
                    tailnet_name="mini.tail0000.ts.net", lan_addresses=["192.168.1.20"])
@@ -760,6 +767,27 @@ def test_an_update_isolates_the_agents_sandboxes_on_linux_with_podman(tmp_path, 
     assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
     assert said.startswith("agents' sandboxes isolated") and "\n  vie: isolated" in said
     assert "2026-10-22-isolated-sandboxes" in [mid for mid, _ in migrations.MIGRATIONS]
+
+
+def test_a_migration_needing_the_bridge_waits_for_its_release(tmp_path, monkeypatch):
+    """2026-10-26 on aibox: the update ran before this version's bridge was out, and the migration ran a binary that
+    wasn't there. It now waits (NotYet): the next `bipagents update` applies it, the previous bridge meanwhile."""
+    import platform
+    import shutil
+    from bipinstall import migrations, rustbridge
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('bridge_key = "k"\n')
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append(list(args)) or ""
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/podman" if name == "podman" else None)
+    monkeypatch.setattr(rustbridge, "missed", lambda home, repo=None: True)
+    with pytest.raises(migrations.NotYet, match="isn't out yet"):
+        migrations.code_without_asking(runner, tmp_path)
+    assert ran == []
 
 
 def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypatch):
