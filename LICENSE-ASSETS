@@ -10,8 +10,9 @@ What is covered
 
 - « Pixel », the agents' mascot, wherever it is drawn, code included: App/Design/PixelMascotView.swift,
   App/Design/MascotView.swift, App/Design/InteractiveMascot.swift, App/Design/AgentAvatars.swift,
-  Packages/HermesKit/Sources/HermesKit/Pixel/, android/app/src/main/java/io/github/bipagents/ui/PixelMascotView.kt,
-  android/app/src/main/java/io/github/bipagents/ui/Mascot.kt,
+  App/Design/BipCostumes.swift, Packages/HermesKit/Sources/HermesKit/Pixel/ (its costumes included),
+  android/app/src/main/java/io/github/bipagents/ui/PixelMascotView.kt,
+  android/app/src/main/java/io/github/bipagents/ui/Mascot.kt, android/app/src/main/java/io/github/bipagents/ui/BipCostumes.kt,
   android/app/src/main/java/io/github/bipagents/ui/InteractiveMascot.kt,
   android/app/src/main/java/io/github/bipagents/ui/pixel/, scripts/pixel/.
 - The Bips' drawings (the earlier mascot) where they are still drawn: docs/bips.svg, docs/play/,
