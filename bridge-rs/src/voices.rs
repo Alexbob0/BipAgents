@@ -249,7 +249,11 @@ async fn set_agent_appearance(
     let mut changed = agent;
     changed.category = Some(category.clone());
     changed.color = color.clone();
-    state.config.put_agent(changed);
+    state.config.put_agent(changed.clone());
+    // an agent of no kind of ours (« Autre ») keeps in view what its category's agents do (tool_diet.rs)
+    if let Err(exc) = crate::tool_diet::apply(&state.config(), &changed) {
+        tracing::warn!(agent = %changed.name, error = %exc, "tools in view not set");
+    }
     Ok(web::ok(json!({"category": category, "color": opt_json(&color)})))
 }
 
