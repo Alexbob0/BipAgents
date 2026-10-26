@@ -181,8 +181,15 @@ def program(home: Path, repo: Path = REPO) -> List[str]:
 
 
 def cli(home: Path, repo: Path = REPO) -> List[str]:
-    """The bridge's own command line (`browser add --all`, `qr`, `spaces start`…)."""
-    return program(home, repo)[:-1]
+    """The bridge's own command line (`browser add --all`, `qr`, `spaces start`…): this checkout's release, or while
+    it isn't fetched yet (an update ran before the release was out), the newest one here (Chi's `bipagents qr`,
+    2026-10-26)."""
+    wanted = program(home, repo)[:-1]
+    if Path(wanted[0]).exists():
+        return wanted
+    folder = home / BINARIES
+    found = sorted((p for p in folder.glob("*/bipbridge") if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [str(found[0])] if found else wanted
 
 
 def python_service(home: Path) -> bool:

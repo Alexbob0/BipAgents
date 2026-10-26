@@ -158,3 +158,21 @@ def test_an_update_moves_a_python_bridge_to_rust_once_its_binaries_are_out(tmp_p
     assert "installer/.venv/bin/python -m bipinstall backup" in (units / "bipagents-backup.service").read_text()
     assert not old.exists() and not (tmp_path / rustbridge.ENGINE).exists()
     assert "already ran in Rust" in migrations.rust_bridge(runner, tmp_path)   # again: harmless
+
+
+def test_the_command_line_uses_the_newest_bridge_here_until_this_version_s_is_fetched(tmp_path, monkeypatch):
+    """2026-10-26, Chi: `bipagents qr` after an update that ran before the release was out found no binary."""
+    import os
+    import time
+    monkeypatch.setattr(rustbridge, "key", lambda repo: "new000000000")
+    assert rustbridge.cli(tmp_path)[0].endswith("new000000000/bipbridge")      # nothing here at all: as before
+    for name, age in (("old111111111", 200), ("mid222222222", 100)):
+        exe = tmp_path / rustbridge.BINARIES / name / "bipbridge"
+        exe.parent.mkdir(parents=True)
+        exe.write_text("")
+        os.utime(exe, (time.time() - age, time.time() - age))
+    assert rustbridge.cli(tmp_path) == [str(tmp_path / rustbridge.BINARIES / "mid222222222" / "bipbridge")]
+    fresh = tmp_path / rustbridge.BINARIES / "new000000000" / "bipbridge"
+    fresh.parent.mkdir(parents=True)
+    fresh.write_text("")
+    assert rustbridge.cli(tmp_path) == [str(fresh)]
