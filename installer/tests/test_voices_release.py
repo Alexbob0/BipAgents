@@ -268,6 +268,10 @@ def own_install(tmp_path, monkeypatch, answers, voices_dir=None, mac=False):
     monkeypatch.setattr(checkout, "lighten", lambda repo, runner, voice_states: None)
     monkeypatch.setattr(checkout, "narrow", lambda repo, runner, voice_states: trimmed.append(voice_states) or True)
     monkeypatch.setattr(migrations, "own_packages", lambda runner: ["torch"])
+    uv = tmp_path / "bin" / "uv"                                      # the runner's machine may have no uv
+    uv.parent.mkdir()
+    uv.write_text("")
+    monkeypatch.setattr(migrations, "_uv", lambda: str(uv))
 
     def run(args, **kw):
         ran.append(" ".join(args))
