@@ -249,6 +249,17 @@ def test_an_action_waits_for_the_approval_in_the_boite(bridges, fakes):
     pending = bridge.get("/v1/approvals", headers=AUTH).json()["items"]
     assert len(pending) == 1 and pending[0]["agent"] == "coach" and pending[0]["run_id"] == "r1"
     assert wait_until(lambda: messages(bridge, room["id"])["answering"][0]["state"] == "approval", timeout=10)
+    # the room carries the approval itself: its card is shown and answered right there
+    [waiting] = messages(bridge, room["id"])["answering"]
+    approval = waiting["approval"]
+    assert (approval["run_id"], approval["request_id"], approval["command"]) == ("r1", "req_1", "rm notes.txt")
+    assert approval["choices"] == ["once", "deny"] and approval["room_id"] == room["id"]
+    answered = bridge.post("/v1/approve", headers=AUTH, json={"agent": "coach", "run_id": approval["run_id"],
+                                                             "request_id": approval["request_id"], "choice": "once"})
+    assert answered.status_code == 200, answered.text
+    assert fakes.hermes.approvals[-1]["run_id"] == "r1" and fakes.hermes.approvals[-1]["body"]["choice"] == "once"
+    assert bridge.get("/v1/approvals", headers=AUTH).json()["items"] == []
+    assert messages(bridge, room["id"])["answering"][0]["state"] == "writing"
     fakes.hermes.rounds = 1   # approved, the run ends
     gate.set()
     assert wait_until(lambda: quiet(bridge, room["id"]), timeout=20)

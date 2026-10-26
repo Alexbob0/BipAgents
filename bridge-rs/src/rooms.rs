@@ -56,7 +56,9 @@
 //!                 updated, last: message|null, answering, tokens: {input, output}}
 //!     message    {id, at, from: "person"|<agent id>, kind: "person"|"agent"|"notice", text, files, reply_to, hop,
 //!                 tokens: {input, output}|null, route: {by, agents}|null, error}
-//!     answering  [{agent, state: "writing"|"approval"|"queued", since, hop}]
+//!     answering  [{agent, state: "writing"|"approval"|"queued", since, hop, approval?}]   `approval` (state
+//!                « approval »): {run_id, request_id, command, description, choices, created_at…},
+//!                answered with `POST /v1/approve` like the Boîte's
 //!
 //! A reply nobody looks at (no `GET …/messages` for 45 s) is pushed like a conversation's reply (`room_id`, collapsed
 //! per room). Messages kept: the last `MESSAGES_KEPT`. After a restart, the turn going on is followed again and the
@@ -1183,19 +1185,25 @@ impl Rooms {
     }
 }
 
-/// Who answers now: the turn going on (writing, or waiting for an approval), then the queue.
+/// Who answers now: the turn going on (writing, or waiting for an approval), then the queue. A turn waiting for the
+/// person carries the approval itself (`approval`: run_id, request_id, command, description, choices…, as
+/// `/v1/approvals` lists it), so the room shows the card right there and answers it with `POST /v1/approve`.
 pub fn answering(room: &Room, hub: Option<&RunHub>) -> Value {
     let mut out = Vec::new();
     if let Some(turn) = &room.current {
-        let waiting = turn.run_id.as_deref().is_some_and(|run_id| {
-            hub.is_some_and(|hub| {
+        let waiting = turn.run_id.as_deref().and_then(|run_id| {
+            hub.and_then(|hub| {
                 hub.pending_approvals(Some(&turn.agent))
-                    .iter()
-                    .any(|a| a.get("run_id").and_then(Value::as_str) == Some(run_id))
+                    .into_iter()
+                    .find(|a| a.get("run_id").and_then(Value::as_str) == Some(run_id))
             })
         });
-        out.push(json!({"agent": turn.agent, "state": if waiting { "approval" } else { "writing" },
-                        "since": turn.started.unwrap_or(turn.queued), "hop": turn.hop}));
+        let mut entry = json!({"agent": turn.agent, "state": if waiting.is_some() { "approval" } else { "writing" },
+                               "since": turn.started.unwrap_or(turn.queued), "hop": turn.hop});
+        if let Some(approval) = waiting {
+            entry["approval"] = Value::Object(approval);
+        }
+        out.push(entry);
     }
     for turn in &room.queue {
         out.push(json!({"agent": turn.agent, "state": "queued", "since": turn.queued, "hop": turn.hop}));
