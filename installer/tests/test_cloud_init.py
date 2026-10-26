@@ -42,9 +42,11 @@ def test_the_user_data_the_apps_send_sets_up_the_server_and_runs_the_cloud_insta
     assert install.startswith("sudo -iu bip ") and "--cloud /etc/bipagents/cloud.json" in install
     assert commands.index(install) < next(i for i, c in enumerate(commands) if c.startswith("shred"))
     assert commands.index("loginctl enable-linger bip") < commands.index(install)
-    # Compressed memory ahead of the swap file when the kernel has it (never failing the boot); logs kept small.
+    # Compressed memory ahead of the swap file, its module installed when the kernel keeps it apart (never failing
+    # the boot); logs kept small.
     zram = next(c for c in commands if "zram" in c)
-    assert zram.startswith("modprobe zram && ") and zram.endswith("|| true")
+    assert zram.startswith('modprobe zram || apt-get install -y "linux-modules-extra-$(uname -r)"; modprobe zram && ')
+    assert zram.endswith("|| true")
     assert commands.index(zram) < next(i for i, c in enumerate(commands) if "/swapfile" in c) < commands.index(install)
     assert "SystemMaxUse=200M" in files["/etc/systemd/journald.conf.d/60-bipagents.conf"]["content"]
 
@@ -389,6 +391,7 @@ def test_the_beat_s_body_and_its_order(tmp_path, monkeypatch):
 
 
 def test_zram_is_set_up_on_a_server_without_it_with_user_data_s_own_settings(tmp_path):
+    import os
     agent = _seat_agent()
     data = yaml.safe_load(render("x" * 43))
     line = next(c for c in data["runcmd"] if "zram-generator.conf" in c)
@@ -399,13 +402,29 @@ def test_zram_is_set_up_on_a_server_without_it_with_user_data_s_own_settings(tmp
 
     def runner(*args):
         ran.append(args)
-        if args[0] == "systemctl" and args[1] == "restart":
+        if args[0] == "systemctl" and args[-1] == "dev-zram0.swap":
             swaps.write_text(swaps.read_text() + "/dev/zram0 partition 4000000 0 100\n")
         return 0
 
     assert agent.zram(str(swaps), str(tried), str(conf), runner) is True
     assert conf.read_text() == agent.ZRAM_CONF
     assert ran[:2] == [("modprobe", "zram"), ("apt-get", "install", "-y", "systemd-zram-generator")]
+    # the module kept apart (Ubuntu's cloud kernels): linux-modules-extra for the kernel running, then loaded
+    swaps.write_text("Filename\tType\tSize\tUsed\tPriority\n")
+    tried.unlink()
+    ran.clear()
+    loads = []
+
+    def without_module(*args):
+        ran.append(args)
+        if args[0] == "modprobe":
+            loads.append(1)
+            return 1 if len(loads) == 1 else 0
+        return runner(*args) if args[-1] == "dev-zram0.swap" else 0
+
+    assert agent.zram(str(swaps), str(tried), str(conf), without_module) is True
+    assert ran[:4] == [("modprobe", "zram"), ("apt-get", "install", "-y", "linux-modules-extra-" + os.uname().release),
+                       ("modprobe", "zram"), ("apt-get", "install", "-y", "systemd-zram-generator")]
     ran.clear()
     assert agent.zram(str(swaps), str(tried), str(conf), runner) is True and ran == []   # on: nothing more
     # not possible (apt busy): tried again an hour later, not every two minutes
@@ -413,4 +432,4 @@ def test_zram_is_set_up_on_a_server_without_it_with_user_data_s_own_settings(tmp
     tried.unlink()
     assert agent.zram(str(swaps), str(tried), str(conf), lambda *a: ran.append(a) or 1) is False
     assert agent.zram(str(swaps), str(tried), str(conf), lambda *a: ran.append(a) or 1) is False
-    assert ran == [("modprobe", "zram")]
+    assert ran == [("modprobe", "zram"), ("apt-get", "install", "-y", "linux-modules-extra-" + os.uname().release)]

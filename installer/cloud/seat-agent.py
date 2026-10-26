@@ -488,13 +488,19 @@ def zram(swaps="/proc/swaps", tried=ZRAM_TRIED, conf="/etc/systemd/zram-generato
     except OSError:
         pass
     write_json(tried, {"at": int(time.time())})
-    if runner("modprobe", "zram") != 0 or runner("apt-get", "install", "-y", "systemd-zram-generator") != 0:
+    # Ubuntu's cloud kernels keep zram in linux-modules-extra (DigitalOcean, 2026-10-26), for the kernel running now:
+    # after a kernel update and the night's reboot it is set up again here.
+    extra = "linux-modules-extra-" + os.uname().release
+    loaded = runner("modprobe", "zram") == 0 or (runner("apt-get", "install", "-y", extra) == 0
+                                                  and runner("modprobe", "zram") == 0)
+    if not loaded or runner("apt-get", "install", "-y", "systemd-zram-generator") != 0:
         log("zram not set up yet (tried again in an hour)")
         return False
     with open(conf, "w") as fh:
         fh.write(ZRAM_CONF)
     runner("systemctl", "daemon-reload")
-    runner("systemctl", "restart", "systemd-zram-setup@zram0.service")
+    runner("systemctl", "restart", "systemd-zram-setup@zram0.service")   # the device, with these settings
+    runner("systemctl", "start", "dev-zram0.swap")                         # in use as swap (waited for)
     on = zram_on(swaps)
     log("zram %s" % ("on" if on else "not on yet"))
     return on
