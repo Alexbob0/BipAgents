@@ -14,6 +14,9 @@ What is covered
   android/app/src/main/java/io/github/bipagents/ui/PixelMascot.kt,
   android/app/src/main/java/io/github/bipagents/ui/InteractiveMascot.kt, docs/bips.svg, docs/play/,
   docs/tools/banner.mjs, site/src/shared/bips.js.
+- « Pixel », the third style's mascot: App/Design/PixelMascotView.swift, Packages/HermesKit/Sources/HermesKit/Pixel/,
+  android/app/src/main/java/io/github/bipagents/ui/PixelMascotView.kt,
+  android/app/src/main/java/io/github/bipagents/ui/pixel/, scripts/pixel/.
 - The app's icon: App/Assets.xcassets/AppIcon.appiconset/, android/app/src/main/res/mipmap-*/.
 - The Bips' babble (its sound design): App/Design/BipBabble.swift,
   android/app/src/main/java/io/github/bipagents/ui/Babble.kt.
