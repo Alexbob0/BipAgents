@@ -560,6 +560,7 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
                 "id": a.name, "name": a.display_name,
                 "voice": a.voice.clone().filter(|v| !v.is_empty()).unwrap_or_else(|| config.default_voice.clone()),
                 "server_voice": a.server_voice, "category": a.category, "color": a.color,
+                "outfit": a.outfit.clone().unwrap_or_default(), "costumes": a.costumes.unwrap_or(true),
                 "uploads": a.upload_dir_host.as_deref().map(|u| !u.is_empty()).unwrap_or(false),
                 "inbox": a.ntfy_topic.as_deref().map(|t| !t.is_empty()).unwrap_or(false),
                 "url": a.public_url,

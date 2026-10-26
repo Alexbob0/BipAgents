@@ -144,7 +144,7 @@ async fn the_app_keeps_an_agents_look_for_the_other_apps() {
         )
         .await;
     assert_eq!(resp.status, 200);
-    assert_eq!(resp.json(), json!({"category": "creative", "color": "#F2649E"}));
+    assert_eq!(resp.json(), json!({"category": "creative", "color": "#F2649E", "outfit": "", "costumes": true}));
     let listed = app.get("/v1/agents", &[(k, &v)]).await.json();
     let wellness: &Value = listed["agents"].as_array().unwrap().iter().find(|a| a["id"] == "wellness").unwrap();
     assert_eq!(wellness["category"], "creative");
@@ -155,6 +155,21 @@ async fn the_app_keeps_an_agents_look_for_the_other_apps() {
         let v = v.clone();
         async move { app.send_json("PUT", "/v1/agents/wellness/appearance", &[(k, &v)], &body).await }
     };
+    // The Bip's costume: kept when an app leaves it out, cleared with "", events off kept as `costumes = false`
+    let resp = put(json!({"category": "creative", "outfit": "chef", "costumes": false})).await;
+    assert_eq!(resp.json(), json!({"category": "creative", "color": null, "outfit": "chef", "costumes": false}));
+    let text = std::fs::read_to_string(&source).unwrap();
+    assert!(text.contains("outfit = \"chef\"") && text.contains("costumes = false"));
+    let resp = put(json!({"category": "home"})).await;
+    assert_eq!(resp.json(), json!({"category": "home", "color": null, "outfit": "chef", "costumes": false}));
+    let listed = app.get("/v1/agents", &[(k, &v)]).await.json();
+    let wellness: &Value = listed["agents"].as_array().unwrap().iter().find(|a| a["id"] == "wellness").unwrap();
+    assert_eq!((wellness["outfit"].clone(), wellness["costumes"].clone()), (json!("chef"), json!(false)));
+    let resp = put(json!({"category": "home", "outfit": "", "costumes": true})).await;
+    assert_eq!(resp.json(), json!({"category": "home", "color": null, "outfit": "", "costumes": true}));
+    let text = std::fs::read_to_string(&source).unwrap();
+    assert!(!text.contains("outfit =") && !text.contains("costumes ="));
+    assert_eq!(put(json!({"category": "home", "outfit": "x".repeat(31)})).await.status, 422);
     assert_eq!(put(json!({"category": "dragon"})).await.status, 400);
     let resp = put(json!({"category": "tech", "color": "red"})).await;
     assert_eq!(resp.status, 422);

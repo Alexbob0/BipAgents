@@ -62,6 +62,13 @@ pub struct AgentConfig {
     /// an optional custom colour (`#RRGGBB`).
     pub category: Option<String>,
     pub color: Option<String>,
+    /// Its Bip's costume chosen in an app (« Tenue », a costume id of the apps' pixel.json), and whether it dresses up
+    /// for the events (Halloween, Noël…): None or true, yes. Left out of the serialized config when unset (the
+    /// Python bridge's golden files have no such keys).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outfit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub costumes: Option<bool>,
     /// The agent's Hermes address as the app reaches it on the tailnet (`tailscale serve`), for the pairing QR code.
     pub public_url: Option<String>,
     /// The agent has its own space (container, sandbox): it may hold credentials from the vault. Agents of the
@@ -1076,6 +1083,8 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
                 server_voice: opt_s(t, "server_voice"),
                 category: opt_s(t, "category"),
                 color: opt_s(t, "color"),
+                outfit: opt_s(t, "outfit"),
+                costumes: get(t, "costumes").map(py::truthy),
                 public_url: opt_s(t, "public_url").map(|p| py::rstrip_slash(&p)),
                 isolated: b(t, "isolated", false),
                 python: command(get(t, "python")),

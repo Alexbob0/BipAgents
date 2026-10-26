@@ -84,7 +84,7 @@ def test_without_a_voice_server(bridge):
 def test_the_app_keeps_an_agents_look_for_the_other_apps(bridges, fakes):
     bridge = server_bridge(bridges, fakes)
     resp = bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "creative", "color": "#f2649e"})
-    assert resp.status_code == 200 and resp.json() == {"category": "creative", "color": "#F2649E"}
+    assert resp.status_code == 200 and resp.json() == {"category": "creative", "color": "#F2649E", "outfit": "", "costumes": True}
     listed = {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
     assert listed["wellness"]["category"] == "creative" and listed["wellness"]["color"] == "#F2649E"
     assert 'category = "creative"' in bridge.toml_text() and 'color = "#F2649E"' in bridge.toml_text()
@@ -93,8 +93,20 @@ def test_the_app_keeps_an_agents_look_for_the_other_apps(bridges, fakes):
     assert bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "tech", "color": "red"}).status_code == 422
     assert bridge.put("/v1/agents/nobody/appearance", headers=AUTH, json={"category": "tech"}).status_code == 404
     no_color = bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "tech"})
-    assert no_color.json() == {"category": "tech", "color": None}
+    assert no_color.json() == {"category": "tech", "color": None, "outfit": "", "costumes": True}
     assert "color" not in tomllib.loads(bridge.toml_text())["agents"]["wellness"]
+    # The Bip's costume (« Tenue ») and its event costumes: kept when an older app leaves them out
+    dressed = bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "tech", "outfit": "beret", "costumes": False})
+    assert dressed.json() == {"category": "tech", "color": None, "outfit": "beret", "costumes": False}
+    kept = bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "home"})
+    assert kept.json() == {"category": "home", "color": None, "outfit": "beret", "costumes": False}
+    table = tomllib.loads(bridge.toml_text())["agents"]["wellness"]
+    assert table["outfit"] == "beret" and table["costumes"] is False
+    listed = {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
+    assert listed["wellness"]["outfit"] == "beret" and listed["wellness"]["costumes"] is False
+    cleared = bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "home", "outfit": "", "costumes": True})
+    assert cleared.json() == {"category": "home", "color": None, "outfit": "", "costumes": True}
+    assert "outfit" not in tomllib.loads(bridge.toml_text())["agents"]["wellness"]
 
 
 def test_section_keys_are_replaced_added_or_removed_and_the_rest_stays(bridges, fakes):

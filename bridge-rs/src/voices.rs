@@ -111,6 +111,12 @@ pub struct AgentAppearance {
     pub category: String,
     #[serde(default)]
     pub color: Option<String>,
+    /// The costume chosen for its Bip (« Tenue »): "" clears it; left out (an older app), it stays.
+    #[serde(default)]
+    pub outfit: Option<String>,
+    /// Event costumes (Halloween, Noël…) on or off for it; left out, it stays.
+    #[serde(default, deserialize_with = "web::lax::opt_bool")]
+    pub costumes: Option<bool>,
 }
 
 pub const COLOR_PATTERN: &str = "^#[0-9A-Fa-f]{6}$";
@@ -124,6 +130,7 @@ fn is_color(value: &str) -> bool {
 impl Validate for AgentAppearance {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         web::check_max_len(errors, "category", Some(&self.category), 20);
+        web::check_max_len(errors, "outfit", self.outfit.as_deref(), 30);
         if let Some(color) = &self.color {
             if !is_color(color) {
                 errors.push(
@@ -238,10 +245,18 @@ async fn set_agent_appearance(
     }
     let category = body.category.clone();
     let color = body.color.as_deref().filter(|c| !c.is_empty()).map(|c| c.to_uppercase());
+    // Costumes: what the app sent, else what was kept (an app from before the costumes sends neither).
+    let outfit = match &body.outfit {
+        Some(o) => Some(o.trim().to_string()).filter(|o| !o.is_empty()),
+        None => agent.outfit.clone(),
+    };
+    let costumes = body.costumes.or(agent.costumes).filter(|on| !on);
     if let Some(source) = &config.source_path {
         let values = vec![
             ("category".to_string(), Some(json!(category))),
             ("color".to_string(), color.clone().map(Value::String)),
+            ("outfit".to_string(), outfit.clone().map(Value::String)),
+            ("costumes".to_string(), costumes.map(Value::Bool)),
         ];
         let (source, header) = (source.clone(), format!("agents.{}", agent.name));
         blocking(move || set_section_keys(&source, &header, &values)).await?;
@@ -249,8 +264,11 @@ async fn set_agent_appearance(
     let mut changed = agent;
     changed.category = Some(category.clone());
     changed.color = color.clone();
+    changed.outfit = outfit.clone();
+    changed.costumes = costumes;
     state.config.put_agent(changed);
-    Ok(web::ok(json!({"category": category, "color": opt_json(&color)})))
+    Ok(web::ok(json!({"category": category, "color": opt_json(&color), "outfit": outfit.unwrap_or_default(),
+                      "costumes": costumes.unwrap_or(true)})))
 }
 
 async fn blocking(work: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> ApiResult<()> {
