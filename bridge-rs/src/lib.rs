@@ -83,6 +83,8 @@ pub mod souls;
 pub mod space;
 pub mod spaces;
 pub mod ssh_keys;
+/// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
+pub mod tool_diet;
 
 // -- tools-knowledge -------------------------------------------------------------------------------
 pub mod agent_email;

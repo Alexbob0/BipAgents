@@ -30,6 +30,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0006 synchronous peer reply | applies | applies (`f86276d2eb`, 2026-10-13) |
 | 0007 browser vault only | applies | applies (`97a9ae8ee`, checked 2026-10-22) |
 | 0008 time zone, routines, wall clock | applies | applies (`97a9ae8ee`, checked 2026-10-24) |
+| 0009 tool search: tools kept direct, skills by name | applies | `tool_search.py` applies; `prompt_builder.py` does not on `97a9ae8ee` (the skills index moved): redo at the next update |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -176,3 +177,25 @@ passed, 55 skipped (Python 3.14). Applies with `patch --dry-run` on `517b5e10f` 
 **Bridge side.** The bridge writes `timezone` (the phone's zone, at once) and `cron.timezone` (the routines' zone, which
 changes only when the person answers the travel question) in each agent's profile; without this patch it restarts the
 agent's gateway instead so `timezone` is read again, and `cron.timezone` is ignored (routines follow `timezone`).
+
+## 0009 — tool search: some MCP tools kept direct, rarely needed skill categories by name only
+
+**Problem.** Measured on 2026-10-24 (scripts/token-lab): each model call carried ≈ 19.3k input tokens, 11.8k of them the
+schemas of the Hermes core tools, and 40 of 126 tool calls were `tool_search`/`tool_describe` round-trips (a full call
+each) before the agent could use one of the bridge's own tools. `tools.tool_search.defer` (517b5e10f) can put a core
+tool behind the search, but every MCP tool always goes there: an agent can't keep the 5–8 bridge tools it uses all the
+time in view. And the skills index lists the description of every bundled skill (≈ 1.5k tokens), coding agents' and
+music generation's included, with no setting to shorten it short of disabling skills (which `skill_view` then refuses).
+
+**What the patch does.**
+- `tools.tool_search.defer` accepts `!<name>`: that tool stays direct even if it is an MCP or plugin tool. A list
+  without such entries behaves as before.
+- `skills.compact_categories` (a list of top-level categories): those categories are listed by name only in the
+  system prompt, as the coding posture already does for its own; their skills still load with `skill_view`.
+
+**Files.** `tools/tool_search.py`, `agent/prompt_builder.py`.
+
+**Bridge side** (bridge-rs/src/tool_diet.rs). Per kind of agent, the bridge writes the defer list (Hermes' defaults, the
+core tools the kind rarely needs, `!mcp__bipagents__<tool>` for its most used cheap tools) and the compact categories.
+Without the patch the `!` entries match nothing and the skills index stays whole: the core tools are still deferred,
+the bridge tools stay behind the search, as before.

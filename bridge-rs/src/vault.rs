@@ -873,6 +873,7 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     }
     let body = as_dict(body)?;
     let item = state.vault.create(&config, &body).await.map_err(answer)?;
+    crate::tool_diet::apply_all(&config); // its vault tools in view for the agents that now hold an item
     Ok(web::json_response(201, &item.public()))
 }
 
@@ -884,12 +885,14 @@ async fn update(State(state): State<AppState>, Path(item_id): Path<String>, body
     }
     let body = as_dict(body)?;
     let item = state.vault.update(&config, &item_id, &body).await.map_err(answer)?;
+    crate::tool_diet::apply_all(&config);
     Ok(web::ok(item.public()))
 }
 
 async fn delete(State(state): State<AppState>, Path(item_id): Path<String>) -> ApiResult<Response> {
     let config = state.config();
     state.vault.delete(&config, &item_id).await.map_err(answer)?;
+    crate::tool_diet::apply_all(&config);
     Ok(web::no_content())
 }
 
