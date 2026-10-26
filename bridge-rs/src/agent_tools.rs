@@ -497,7 +497,13 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "vault account tools not registered");
         false
     });
-    Ok(changed || paying || accounts)
+    // What its kind keeps in view, the rest behind Hermes' tool search (tool_diet.rs): after the entries above, so
+    // the bridge tools it keeps direct are the ones it has now.
+    let diet = crate::tool_diet::apply(config, agent).unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "tools in view not set");
+        false
+    });
+    Ok(changed || paying || accounts || diet)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).
@@ -1592,6 +1598,8 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         Some(Value::Object(map)) => map.clone(),
         _ => Dict::new(),
     };
+    // a deferred tool's call that the model's constrained names ended on an in-view tool (tool_diet.rs)
+    let name = crate::tool_diet::reroute(&state.config(), &agent, &name, &arguments);
     if crate::agent_shares::relative_turn(&state.config(), &agent.name) {
         // a relative talks to this agent: the person's own data stays closed (agent_shares.rs)
         if let Some(closed) = crate::agent_shares::closed_tool(&name) {

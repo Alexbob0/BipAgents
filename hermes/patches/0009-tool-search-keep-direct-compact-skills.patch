@@ -1,0 +1,45 @@
+--- a/tools/tool_search.py
++++ b/tools/tool_search.py
+@@ -149,9 +149,12 @@
+ def is_deferrable_tool_name(name: str, defer_tools: Optional[frozenset] = None) -> bool:
+     """True if a tool is *eligible* for deferral: named in ``defer_tools`` (curated set or
+     user override), OR an MCP tool, OR neither core nor a session-gated GUI surface (i.e. a
+-    plugin tool). Bridge names never defer."""
++    plugin tool). Bridge names never defer, nor a tool named ``!<name>`` in ``defer_tools``
++    (an MCP tool the agent uses all the time, kept direct to save a discovery round-trip)."""
+     if name in BRIDGE_TOOL_NAMES:
+         return False
++    if defer_tools is not None and "!" + name in defer_tools:
++        return False   # « !<name> » keeps a tool direct, an MCP or plugin tool included (BipAgents)
+     if defer_tools is not None and name in defer_tools:
+         return True
+     if name in _core_tool_names():
+--- a/agent/prompt_builder.py
++++ b/agent/prompt_builder.py
+@@ -1499,12 +1499,26 @@
+ def _oneshot_prompt_variant() -> bool:
+     from agent.oneshot_footprint import is_single_query_session
+     return is_single_query_session()
++
++
++def _configured_compact_categories() -> frozenset:
++    """``skills.compact_categories`` of this profile's config (a list of top-level category names)."""
++    skills_cfg = _config_readonly("skills.compact_categories").get("skills")
++    raw = skills_cfg.get("compact_categories") if isinstance(skills_cfg, dict) else None
++    if not isinstance(raw, (list, tuple, set)):
++        return frozenset()
++    return frozenset(str(c).strip() for c in raw if str(c).strip())
+ 
+ 
+ def _build_skills_system_prompt_inner(
+     skills_dir: "Path", extra_roots: "list[tuple[int, Path]]", available_tools: "set[str] | None",
+     available_toolsets: "set[str] | None", compact_categories: "frozenset[str] | None",
+ ) -> str:
++    # ``skills.compact_categories`` (BipAgents): categories this profile rarely needs, listed by name only
++    # like the coding posture's — their skills still load with skill_view.
++    configured = _configured_compact_categories()
++    if configured:
++        compact_categories = frozenset(compact_categories or ()) | configured
+     # The resolved platform is part of the key: per-platform disabled-skill lists need distinct cache entries.
+     _platform_hint = _current_session_platform_hint()
+     disabled = get_disabled_skill_names(_platform_hint or None)
