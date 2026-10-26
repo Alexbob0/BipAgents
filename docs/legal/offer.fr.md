@@ -151,13 +151,20 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   navigateur** ou une **tâche de fond** enchaîne de nombreux appels au modèle et compte pour bien plus, souvent
   l'équivalent de plusieurs dizaines de messages ; l'app montre ce qui reste au fur et à mesure.
 - **Report** : le crédit du forfait que tu n'as pas utilisé passe au mois suivant, pour un mois de plus au maximum.
-- **Crédit en plus** : tu peux en acheter dans l'app (Réglages › Offre tout compris › Ajouter du crédit d'IA), 2,99 €
-  TTC pour 2 € de crédit, soit **environ 4 000 messages** avec le modèle par défaut (même estimation que plus haut). Il s'ajoute au crédit du forfait, pour toutes ses personnes. **Il ne périme jamais** :
+- **Crédit en plus** : tu peux en acheter dans l'app (Réglages › Offre tout compris › Ajouter du crédit d'IA), en
+  deux recharges : **2 € TTC pour 1,40 € de crédit** et **5 € TTC pour 3,50 € de crédit** (la TVA et la commission du
+  magasin d'applications prennent environ 30 %) ; l'app indique pour chacune le nombre estimé de messages avec ton
+  modèle (même estimation que plus haut), et le magasin son prix. Il s'ajoute au crédit du forfait, pour toutes ses personnes. **Il ne périme jamais** :
   s'il en reste quand l'abonnement prend fin, il est gardé sur ton compte et revient avec ton prochain abonnement. Il
   n'est perdu que si tu supprimes ton compte.
-- **Crédit épuisé** : les agents de toutes les personnes du forfait n'appellent plus le modèle d'IA jusqu'au mois
-  suivant ou jusqu'à ce que la personne qui paie ajoute du crédit. Les places, les fichiers et les sauvegardes
-  continuent ; l'app prévient chacun.
+- **Crédit du mois utilisé** : les discussions continuent, sur une marge de 20 % du crédit mensuel du forfait,
+  partagée comme le crédit ; les routines, le navigateur des agents et les tâches de fond se mettent en pause. Ils
+  reprennent d'eux-mêmes le 1er du mois suivant ou dès que la personne qui paie ajoute du crédit. Ce qui est utilisé
+  sur la marge compte comme le reste du crédit (il est pris sur le crédit ajouté) ; il n'est pas reporté sur le mois
+  suivant.
+- **Marge utilisée aussi** : les agents de toutes les personnes du forfait n'appellent plus le modèle d'IA jusqu'au
+  mois suivant ou jusqu'à ce que la personne qui paie ajoute du crédit. Les places, les fichiers et les sauvegardes
+  continuent ; l'app prévient chacun et propose les recharges.
 - **Limite par personne** (Duo et Famille) : la personne qui paie peut donner à chaque personne une limite mensuelle
   (Réglages › Offre tout compris). Une fois sa limite atteinte, les agents de cette personne n'appellent plus le
   modèle d'IA jusqu'au mois suivant ; le reste du crédit reste aux autres. La personne voit sa limite dans son app.

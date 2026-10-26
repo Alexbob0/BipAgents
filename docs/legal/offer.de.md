@@ -154,11 +154,18 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - **Übertrag**: Das Guthaben des Tarifs, das du nicht genutzt hast, geht in den nächsten Monat über, für höchstens
   einen Monat mehr.
 - **Zusätzliches Guthaben**: Du kannst in der App welches kaufen (Einstellungen › Alles-inklusive-Angebot ›
-  KI-Guthaben hinzufügen), 2,99 € inkl. MwSt. für 2 € Guthaben, also **etwa 4.000 Nachrichten** mit dem Standardmodell (dieselbe Schätzung wie oben). Es kommt zum Guthaben des Tarifs hinzu, für alle seine Personen. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
+  KI-Guthaben hinzufügen), in zwei Paketen: **2 € inkl. MwSt. für 1,40 € Guthaben** und **5 € inkl. MwSt. für
+  3,50 € Guthaben** (MwSt. und die Provision des App-Stores machen etwa 30 % aus); die App zeigt für jedes die
+  geschätzte Zahl der Nachrichten mit deinem Modell (dieselbe Schätzung wie oben), der Store seinen Preis. Es kommt zum Guthaben des Tarifs hinzu, für alle seine Personen. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
   und kommt mit deinem nächsten Abo zurück. Es geht nur verloren, wenn du dein Konto löschst.
-- **Guthaben aufgebraucht**: Die Agenten aller Personen des Tarifs rufen das KI-Modell nicht mehr auf, bis zum
+- **Guthaben des Monats verbraucht**: Die Gespräche gehen weiter, auf einem Spielraum von 20 % des monatlichen
+  Guthabens des Tarifs, geteilt wie das Guthaben; Routinen, der Browser der Agenten und Hintergrundaufgaben pausieren.
+  Sie laufen von selbst wieder am 1. des nächsten Monats oder sobald die Person, die zahlt, Guthaben hinzufügt. Was
+  auf dem Spielraum verbraucht wird, zählt wie das übrige Guthaben (es wird vom hinzugefügten Guthaben genommen); es
+  wird nicht in den nächsten Monat übertragen.
+- **Spielraum auch verbraucht**: Die Agenten aller Personen des Tarifs rufen das KI-Modell nicht mehr auf, bis zum
   nächsten Monat oder bis die Person, die zahlt, Guthaben hinzufügt. Die Plätze, die Dateien und die Sicherungen
-  laufen weiter; die App sagt es jeder Person.
+  laufen weiter; die App sagt es jeder Person und bietet die Pakete an.
 - **Limit pro Person** (Duo und Familie): Die Person, die zahlt, kann jeder Person ein monatliches Limit geben
   (Einstellungen › Alles-inklusive-Angebot). Ist ihr Limit erreicht, rufen die Agenten dieser Person das KI-Modell bis
   zum nächsten Monat nicht mehr auf; der Rest des Guthabens bleibt den anderen. Die Person sieht ihr Limit in ihrer

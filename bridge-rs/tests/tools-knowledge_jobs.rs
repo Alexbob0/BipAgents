@@ -419,3 +419,36 @@ async fn a_task_ending_at_its_budget_is_still_handed_back_by_the_agent() {
     board.wait(&id_of(&other)).await;
     assert_eq!(told.lock().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn the_month_s_credit_used_stops_a_task_after_its_step_refuses_new_ones_and_resumes_it_when_back() {
+    // credit.rs (Alex 2026-10-26): no wall for conversations, but background tasks pause while the credit is used.
+    let dir = tempfile::tempdir().unwrap();
+    let (fake, url) = gateway(1000, 10).await;
+    let (config, agent) = setup(dir.path(), &url);
+    let credit = dir.path().join("credit.json");
+    let mut jobs =
+        Jobs::new(SharedConfig::new(config.clone()), HermesClient::new(reqwest::Client::new()), None, None, None);
+    jobs.poll = 0.01;
+    jobs.credit_file = Some(credit.clone());
+    let board = Arc::new(jobs);
+    let job = board.create(&agent, "Long", "Fais-le.", 1_000_000, None).await.unwrap();
+    let id = id_of(&job);
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    std::fs::write(&credit, json!({"state": "full", "resumes": 4.0e9}).to_string()).unwrap();
+    board.wait(&id).await;
+    let view = board.view(&id).unwrap();
+    assert_eq!((view["state"].as_str(), view["reason"].as_str()), (Some("paused"), Some("credit")));
+    assert_eq!(fake.lock().unwrap().runs["r1"]["status"], "cancelled");
+    // no new task meanwhile, said plainly
+    let refused = board.create(&agent, "Autre", "Encore.", 1_000_000, None).await.unwrap_err();
+    assert!(refused.to_string().contains("credit is used up"), "{refused}");
+    // a stale file (its new month come) pauses nothing; the credit back: the task goes on by itself
+    std::fs::write(&credit, json!({"state": "full", "resumes": 1.0}).to_string()).unwrap();
+    assert!(!board.credit_used());
+    std::fs::write(&credit, json!({"state": "ok"}).to_string()).unwrap();
+    board.resume_after_credit(&config).await;
+    assert_eq!(fake.lock().unwrap().runs["r2"]["input"], jobs::CONTINUE);
+    assert_eq!(board.view(&id).unwrap()["state"], "running");
+    board.forget(&id).await.unwrap();
+}

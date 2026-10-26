@@ -335,7 +335,7 @@
     },
     "3": {
       "q": "Combien de messages par mois ?",
-      "a": "Chaque formule a son crédit d’IA du mois : 0,50 € pour Solo, 1 € pour Duo, 3 € pour Famille, commun à toutes ses personnes. L’app te l’affiche en nombre estimé de messages avec ton modèle : un échange simple en compte un, une tâche dans le navigateur bien plus (souvent plusieurs dizaines). En Duo et Famille, la personne qui paie voit combien chacun en utilise, jamais ce qu’il écrit, et peut mettre une limite par personne. Ce qui reste passe au mois suivant. Besoin de plus : du crédit en plus dans l’app, qui ne périme jamais. Crédit épuisé : les agents font une pause jusqu’au mois suivant, rien n’est perdu."
+      "a": "Chaque formule a son crédit d’IA du mois : 0,50 € pour Solo, 1 € pour Duo, 3 € pour Famille, commun à toutes ses personnes. L’app te l’affiche en nombre estimé de messages avec ton modèle : un échange simple en compte un, une tâche dans le navigateur bien plus (souvent plusieurs dizaines). En Duo et Famille, la personne qui paie voit combien chacun en utilise, jamais ce qu’il écrit, et peut mettre une limite par personne. Ce qui reste passe au mois suivant. Besoin de plus : du crédit en plus dans l’app, qui ne périme jamais. Crédit du mois utilisé : tes discussions continuent, les routines et le navigateur reprennent le mois suivant ou dès que tu ajoutes du crédit."
     },
     "4": {
       "q": "Qui peut lire mes conversations ?",

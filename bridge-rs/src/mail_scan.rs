@@ -828,6 +828,9 @@ pub struct Scans {
     /// Mails per model call (BATCH; tests make it smaller).
     pub batch: usize,
     tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
+    /// The plan's AI credit as the guichet tells the place (credit.rs); None: the place's own file. Used up: no new
+    /// step, a running one pauses after its current batch.
+    pub credit_file: Option<std::path::PathBuf>,
 }
 
 fn tokens_zero() -> Value {
@@ -861,7 +864,7 @@ fn failure_of(err: &anyhow::Error) -> Option<(String, String)> {
 
 impl Scans {
     pub fn new(opener: Option<Connect>, http: Option<reqwest::Client>, notify: Option<Notify>) -> Self {
-        Scans { opener, http, notify, batch: BATCH, tasks: Mutex::new(HashMap::new()) }
+        Scans { opener, http, notify, batch: BATCH, tasks: Mutex::new(HashMap::new()), credit_file: None }
     }
 
     fn opener(&self) -> Connect {
@@ -978,6 +981,9 @@ impl Scans {
         if self.running(&agent.name) {
             return Err(scan_error("a step is already under way"));
         }
+        if crate::credit::now_at(self.credit_file.as_deref()).paused() {
+            return Err(scan_error(crate::credit::JOBS_REFUSED));
+        }
         let cost = estimate(&job, since, until);
         job.insert("state".into(), json!("running"));
         job.insert("error".into(), Value::Null);
@@ -1007,6 +1013,9 @@ impl Scans {
         let Some(mut job) = job.filter(|j| j.get("step").is_some_and(py::truthy) && !self.running(&agent.name)) else {
             return Err(scan_error("nothing to resume"));
         };
+        if crate::credit::now_at(self.credit_file.as_deref()).paused() {
+            return Err(scan_error(crate::credit::JOBS_REFUSED));
+        }
         if let Some(max) = max_tokens.filter(|m| *m != 0) {
             if let Some(Value::Object(step)) = job.get_mut("step") {
                 step.insert("max_tokens".into(), json!(max));
@@ -1096,6 +1105,13 @@ impl Scans {
             };
             let todo: Vec<String> = uids.into_iter().filter(|u| !done.contains(u)).collect();
             for batch in todo.chunks(self.batch.max(1)) {
+                if crate::credit::now_at(self.credit_file.as_deref()).paused() {
+                    // the month's AI credit used: paused after the batch done, resumed when the credit is back
+                    job.insert("state".into(), json!("paused"));
+                    job.insert("error".into(), json!(crate::credit::REASON));
+                    save(config, job)?;
+                    return Ok(());
+                }
                 let step_tokens = step_of(job, "tokens");
                 let used = get_i64(step_tokens.get("input")) + get_i64(step_tokens.get("output"));
                 if used >= get_i64(Some(&step_of(job, "max_tokens"))) {

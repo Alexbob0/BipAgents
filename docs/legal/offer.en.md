@@ -142,12 +142,19 @@ section 6); the services you connect to your agents and their own subscriptions.
   **background task** chains many calls to the model and counts for much more, often as much as several dozen
   messages; the app shows what is left as you go.
 - **Carry-over**: the plan's credit you did not use carries over to the next month, for one more month at most.
-- **Extra credit**: you can buy some in the app (Settings › All-included plan › Add AI credit), €2.99 VAT included for
-  €2 of credit, that is **about 4,000 messages** with the default model (the same estimate as above). It is added to the plan's credit, for everyone in it. **It never expires**: if some is
+- **Extra credit**: you can buy some in the app (Settings › All-included plan › Add AI credit), in two packs:
+  **€2 VAT included for €1.40 of credit** and **€5 VAT included for €3.50 of credit** (VAT and the app store's
+  commission take about 30 %); the app shows for each the estimated number of messages with your model (the same
+  estimate as above), and the store its price. It is added to the plan's credit, for everyone in it. **It never expires**: if some is
   left when the subscription ends, it is kept on your account and comes back with your next subscription. It is only
   lost if you delete your account.
-- **Credit used up**: the agents of everyone in the plan no longer call the AI model until the next month or until the
-  person who pays adds credit. The places, the files and the backups go on; the app tells each person.
+- **Month's credit used**: conversations go on, on a margin of 20 % of the plan's monthly credit, shared like the
+  credit; routines, the agents' browser and background tasks pause. They resume by themselves on the 1st of the next
+  month or as soon as the person who pays adds credit. What is used on the margin counts like the rest of the credit
+  (it is taken from credit added); it is not carried over to the next month.
+- **Margin used too**: the agents of everyone in the plan no longer call the AI model until the next month or until
+  the person who pays adds credit. The places, the files and the backups go on; the app tells each person and offers
+  the packs.
 - **Limit per person** (Duo and Family): the person who pays can give each person a monthly limit (Settings ›
   All-included plan). Once their limit is reached, that person's agents no longer call the AI model until the next
   month; the rest of the credit stays for the others. The person sees their limit in their app.

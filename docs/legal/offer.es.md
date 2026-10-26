@@ -149,13 +149,19 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   navegador** o una **tarea en segundo plano** encadena muchas llamadas al modelo y cuenta mucho más, a menudo lo
   que varias decenas de mensajes; la app muestra lo que queda en todo momento.
 - **Traspaso**: el crédito del plan que no has usado pasa al mes siguiente, por un mes más como máximo.
-- **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), 2,99 € IVA
-  incluido por 2 € de crédito, es decir, **unos 4.000 mensajes** con el modelo por defecto (la misma estimación que arriba). Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
+- **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), en dos
+  recargas: **2 € IVA incluido por 1,40 € de crédito** y **5 € IVA incluido por 3,50 € de crédito** (el IVA y la
+  comisión de la tienda de aplicaciones se llevan alrededor del 30 %); la app indica para cada una el número estimado
+  de mensajes con tu modelo (la misma estimación que arriba), y la tienda su precio. Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
   cuando la suscripción termina, se conserva en tu cuenta y vuelve con tu próxima suscripción. Solo se pierde si
   eliminas tu cuenta.
-- **Crédito agotado**: los agentes de todas las personas del plan dejan de llamar al modelo de IA hasta el mes
+- **Crédito del mes usado**: las conversaciones siguen, con un margen del 20 % del crédito mensual del plan,
+  compartido como el crédito; las rutinas, el navegador de los agentes y las tareas en segundo plano se pausan.
+  Vuelven solas el día 1 del mes siguiente o en cuanto la persona que paga añada crédito. Lo usado en el margen
+  cuenta como el resto del crédito (se toma del crédito añadido); no se traslada al mes siguiente.
+- **Margen usado también**: los agentes de todas las personas del plan dejan de llamar al modelo de IA hasta el mes
   siguiente o hasta que la persona que paga añada crédito. Las plazas, los archivos y las copias de seguridad siguen;
-  la app avisa a cada persona.
+  la app avisa a cada persona y propone las recargas.
 - **Límite por persona** (Duo y Familia): la persona que paga puede dar a cada persona un límite mensual (Ajustes ›
   Plan todo incluido). Una vez alcanzado su límite, los agentes de esa persona dejan de llamar al modelo de IA hasta
   el mes siguiente; el resto del crédito queda para los demás. La persona ve su límite en su app.
