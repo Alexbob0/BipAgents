@@ -623,6 +623,12 @@ impl RunHub {
         best.map(|(_, _, session)| session)
     }
 
+    /// Runs the hub follows that haven't ended (a planned move waits for them: place_move.rs).
+    pub fn running(&self) -> usize {
+        let inner = lock(&self.inner);
+        inner.subs.values().filter(|sub| !lock(&sub.state).finished).count()
+    }
+
     /// A run of the agent goes on in this conversation (the hub follows it).
     pub fn session_busy(&self, agent: &str, session_id: &str) -> bool {
         let inner = lock(&self.inner);

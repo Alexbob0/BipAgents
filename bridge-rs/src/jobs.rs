@@ -593,6 +593,15 @@ impl Jobs {
     /// A run in the task's conversation (made the first time), followed until it ends.
     async fn launch(self: &Arc<Self>, job: &mut Dict, text: &str) -> anyhow::Result<()> {
         let agent = self.agent(&agent_of(job))?;
+        if crate::place_move::moving(&self.config.get()) {
+            // The place is moving (place_move.rs): queued, started on the new server with these words.
+            job.insert("state".into(), json!("paused"));
+            job.insert("reason".into(), json!("moving"));
+            job.insert("queued_text".into(), json!(text));
+            save(&self.config.get(), job)?;
+            tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), "job queued: place moving");
+            return Ok(());
+        }
         let refused = |err: HermesError| -> anyhow::Error {
             match &err {
                 HermesError::Http { status, .. } => JobError(format!("the agent refused the task ({status})")).into(),
@@ -906,6 +915,33 @@ impl Jobs {
             let agent = self.agent(&agent_of(&job))?;
             self.stop(&agent, &mut job, "stopped").await;
         }
+        Ok(task_view(&job))
+    }
+
+    /// A planned move (place_move.rs): a running task stopped at its next step (Hermes interrupts between tool calls),
+    /// then paused with the reason « moving ». False when it wasn't running.
+    pub async fn pause_for_move(&self, job_id: &str) -> anyhow::Result<bool> {
+        let Some(mut job) = load(&self.config.get(), job_id) else { return Ok(false) };
+        if state_of(&job) != "running" || crate::archives::records_fill::is_extract(&job) {
+            return Ok(false);
+        }
+        let agent = self.agent(&agent_of(&job))?;
+        self.stop(&agent, &mut job, "moving").await;
+        Ok(true)
+    }
+
+    /// After the move: a task paused or queued for it goes on (its first words if it never started).
+    pub async fn resume_after_move(self: &Arc<Self>, job_id: &str) -> anyhow::Result<Dict> {
+        let Some(mut job) = load(&self.config.get(), job_id) else { return Err(job_error("unknown job")) };
+        if state_of(&job) != "paused" || job.get("reason") != Some(&json!("moving")) {
+            return Err(job_error("nothing to resume"));
+        }
+        let text = match job.remove("queued_text") {
+            Some(Value::String(text)) if !text.is_empty() => text,
+            _ => CONTINUE.to_string(),
+        };
+        self.may_run(&agent_of(&job))?;
+        self.launch(&mut job, &text).await?;
         Ok(task_view(&job))
     }
 

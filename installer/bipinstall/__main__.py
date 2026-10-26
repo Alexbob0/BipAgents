@@ -266,6 +266,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "backup":   # backup.py: this place to the guichet, every hour
         from .backup import main as backup_main
         return backup_main(argv[1:])
+    if argv and argv[0] in ("move-out", "move-in"):   # placemove.py: a planned move, run by the seat agents
+        from .placemove import main as move_main
+        return move_main(argv)
     if argv and argv[0] == "restore":   # backup.py: a place moved after an outage, from its last backup
         from .backup import restore_main
         return restore_main(argv[1:])

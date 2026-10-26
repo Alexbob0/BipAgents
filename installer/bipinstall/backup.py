@@ -400,20 +400,24 @@ def _set_toml(text: str, section: str, key: str, value: Optional[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def fresh_state(base: Path) -> Dict:
+    """What this place keeps of its own fresh install when another place's files come over it: its door, address,
+    browser ports and setup files (FRESH_WINS, as written), its local ports and its backup settings (this seat's
+    token). JSON-ready: a planned move (placemove.py) keeps it in a file while the files come."""
+    from . import moving
+    config = base / ".config" / "bipagents" / "bridge.toml"
+    text = config.read_text(encoding="utf-8")
+    return {"own": [[section, key, _toml_value(text, section, key)] for section, key in FRESH_WINS],
+            "ports": moving.read_inventory(config, base).ports(), "backup": settings(base)}
+
+
 def put_back(fetched: Path, base: Path, repo: Path, address: Optional[str]) -> Dict:
     """The backup's files in this account, over the fresh install, then its settings moved to this place: home and
     local ports (each port once: two blocks may overlap); this place's own door, address, browser ports, setup files
     and backup token stay as the fresh install made them. Returns the backup's manifest."""
     from . import moving
-    import re
-    import tomllib
     info, stage = _manifest(fetched)
-    config = base / ".config" / "bipagents" / "bridge.toml"
-    fresh_text = config.read_text(encoding="utf-8")
-    fresh = moving.read_inventory(config, base)
-    new_ports = fresh.ports()
-    own = {(section, key): _toml_value(fresh_text, section, key) for section, key in FRESH_WINS}
-    own_backup = settings(base)
+    fresh = fresh_state(base)
     target = moving.Target(home=base, repo=repo, tailnet_name=None, lan_address=address)
     for old in info["roots"].values():
         source = _inside(fetched, old)
@@ -437,6 +441,21 @@ def put_back(fetched: Path, base: Path, repo: Path, address: Optional[str]) -> D
         for tar in exported.glob(f"*{volumes.SUFFIX}"):
             _copy(tar, staged / tar.name)
         info["volumes_restored"] = moving.import_volumes(base)
+    settle(info, base, repo, address, fresh)
+    return info
+
+
+def settle(info: Dict, base: Path, repo: Path, address: Optional[str], fresh: Dict) -> None:
+    """Once another place's files are here (a restore, a planned move): its settings moved to this place (home,
+    local ports: first to marks, then to this place's, each port once), this place's own values (`fresh_state`) put
+    back, the person's backup key kept with this seat's token."""
+    from . import moving
+    import re
+    import tomllib
+    config = base / ".config" / "bipagents" / "bridge.toml"
+    new_ports = fresh["ports"]
+    own_backup = fresh.get("backup") or {}
+    target = moving.Target(home=base, repo=repo, tailnet_name=None, lan_address=address)
     old_toml = tomllib.loads(config.read_text(encoding="utf-8"))
     mapping = {int(info["ports"][k]): int(new_ports[k]) for k in ("hub", "bridge", "desk")
                if k in info["ports"] and int(info["ports"][k]) != int(new_ports[k])}
@@ -448,14 +467,13 @@ def put_back(fetched: Path, base: Path, repo: Path, address: Optional[str]) -> D
                                                   for old, mark in marks.items()])
     moving.adjust_bridge(config, info, target, old_toml)
     text = config.read_text(encoding="utf-8")
-    for (section, key), value in own.items():
+    for section, key, value in fresh["own"]:
         text = _set_toml(text, section, key, value)
     config.write_text(text, encoding="utf-8")
     os.chmod(config, 0o600)
     if own_backup.get("url"):   # this seat's token, the person's key
         write_private(base / SETTINGS, {**own_backup, "password": settings(base).get("password")
                                         or own_backup.get("password")})
-    return info
 
 
 def restore(key: str, runner, base: Optional[Path] = None, repo: Optional[Path] = None,
