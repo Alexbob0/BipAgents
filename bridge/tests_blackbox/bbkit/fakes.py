@@ -495,6 +495,8 @@ class FakeModel(Fake):
         self.records_by_word: Dict[str, List[Dict[str, Any]]] = {}
         # a group discussion's router (its instructions start « You route »): the ids it answers
         self.route_answer = "coach"
+        # a WhatsApp chat read for the Carnet (its instructions start « You read a WhatsApp chat »): its answer
+        self.whatsapp_answer: Dict[str, Any] = {"people": [], "subjects": [], "dates": [], "tasks": []}
 
     def records_answer(self, user: str) -> str:
         documents = []
@@ -512,6 +514,11 @@ class FakeModel(Fake):
             if body["messages"][0]["content"].startswith("You extract precise records"):
                 return JSONResponse({"choices": [{"message": {"content": self.records_answer(body["messages"][1]["content"])}}],
                                      "usage": {"prompt_tokens": 2000, "completion_tokens": 200}},
+                                    status_code=self.status)
+            if body["messages"][0]["content"].startswith("You read a WhatsApp chat"):
+                content = json.dumps(self.whatsapp_answer, ensure_ascii=False)
+                return JSONResponse({"choices": [{"message": {"content": content}}],
+                                     "usage": {"prompt_tokens": 3000, "completion_tokens": 300}},
                                     status_code=self.status)
             if body["messages"][0]["content"].startswith("You route"):
                 return JSONResponse({"choices": [{"message": {"content": self.route_answer}}],
