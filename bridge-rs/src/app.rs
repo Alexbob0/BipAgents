@@ -320,6 +320,7 @@ impl AppState {
             self.spawn(watcher.run());
         }
         self.spawn(purge_loop(self.clone()));
+        self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
