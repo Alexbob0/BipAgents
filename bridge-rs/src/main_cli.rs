@@ -648,7 +648,16 @@ fn qr(config: &Config, args: &Args) -> i32 {
         }
     };
     println!("\n{label} — contains keys: show it only to your own phone.\n");
-    print!("{}", terminal_compact(&code, 4));
+    // dark modules are the terminal's background: on a light theme the code came out inverted and phones didn't read
+    // it (Alex, 2026-10-26, over SSH from macOS Terminal); in a terminal, its own black and white are set line by line
+    let drawn = terminal_compact(&code, 4);
+    if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+        for line in drawn.lines() {
+            println!("\x1b[40;97m{line}\x1b[0m");
+        }
+    } else {
+        print!("{drawn}");
+    }
     if let Some(png) = args.png.as_deref() {
         if let Err(e) = save_png(&code, png, 8, 2) {
             eprintln!("{e}");
