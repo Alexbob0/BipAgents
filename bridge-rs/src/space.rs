@@ -847,9 +847,16 @@ pub struct Tally {
     pub bytes: u64,
 }
 
-/// Files and bytes under `path` (links not followed: a link counts as a file).
+/// Files and bytes under `path` (links not followed: a link counts as a file). The config's lock and last good copy
+/// aren't counted: rewriting the config (the switch) makes them.
 pub fn tally(path: &Path) -> Tally {
     let mut t = Tally::default();
+    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+    if name.ends_with(&format!(".toml{}", crate::config::LOCK_SUFFIX))
+        || name.ends_with(&format!(".toml{}", crate::config::LAST_GOOD_SUFFIX))
+    {
+        return t;
+    }
     let Ok(meta) = std::fs::symlink_metadata(path) else { return t };
     if meta.is_dir() {
         if let Ok(entries) = std::fs::read_dir(path) {
@@ -1256,10 +1263,12 @@ pub async fn enable(
                 }
             }
             let config_file = Path::new(&py::expand(&opts.config_path)).to_path_buf();
-            let text = std::fs::read_to_string(&config_file)?;
+            std::fs::metadata(&config_file)?;
             let cert_dir = config.lan.cert_dir.clone();
-            let new_text = rewrite_config(&text, &space.mount().join("data").to_string_lossy(), Some(&cert_dir));
-            write_private(&config_file, new_text.as_bytes())?;
+            let data_dir = space.mount().join("data").to_string_lossy().into_owned();
+            crate::config::update_source(&config_file.to_string_lossy(), |text| {
+                Ok(rewrite_config(text, &data_dir, Some(&cert_dir)))
+            })?;
         }
         let new_config = crate::config::load_config(Some(&opts.config_path)).map_err(|e| anyhow!("{e}"))?;
         let outside = outside_paths(&new_config, &space.mount());

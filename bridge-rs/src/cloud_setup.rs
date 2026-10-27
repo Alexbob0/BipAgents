@@ -150,14 +150,14 @@ pub fn reopen(state: &AppState, name: &str) -> anyhow::Result<String> {
     let new = crate::py::token_urlsafe(32);
     if let Some(source) = config.source_path.as_deref().filter(|p| !p.is_empty()) {
         let line = format!("bridge_key = {}", crate::py::dumps(&json!(new)));
-        let _writer = crate::config::source_lock();
-        let text = std::fs::read_to_string(source)?;
-        let out = if BRIDGE_KEY_LINE.is_match(&text) {
-            BRIDGE_KEY_LINE.replacen(&text, 1, regex::NoExpand(&line)).into_owned()
-        } else {
-            format!("{line}\n{text}")
-        };
-        crate::config::write_source(source, &out)?;
+        std::fs::metadata(source)?;
+        crate::config::update_source(source, |text| {
+            Ok(if BRIDGE_KEY_LINE.is_match(text) {
+                BRIDGE_KEY_LINE.replacen(text, 1, regex::NoExpand(&line)).into_owned()
+            } else {
+                format!("{line}\n{text}")
+            })
+        })?;
     }
     state.config.update(|c| c.bridge_key = new.clone());
     // the web consoles opened from the old devices too
@@ -458,26 +458,26 @@ pub fn write_model_health(config: &SharedConfig, base_url: &str, key: &str) -> a
         c.model_health_key = Some(key.to_string());
     });
     let Some(source) = config.get().source_path.clone().filter(|p| !p.is_empty()) else { return Ok(()) };
-    let _writer = crate::config::source_lock();
-    let text = std::fs::read_to_string(&source)?;
-    let mut inside = false;
-    let mut kept: Vec<String> = Vec::new();
-    for line in crate::hermes::splitlines(&text) {
-        let stripped = pyx::strip(&line);
-        if stripped.starts_with('[') && stripped.ends_with(']') {
-            inside = stripped == "[model]";
+    std::fs::metadata(&source)?;
+    crate::config::update_source(&source, |text| {
+        let mut inside = false;
+        let mut kept: Vec<String> = Vec::new();
+        for line in crate::hermes::splitlines(text) {
+            let stripped = pyx::strip(&line);
+            if stripped.starts_with('[') && stripped.ends_with(']') {
+                inside = stripped == "[model]";
+            }
+            if !inside {
+                kept.push(line.clone());
+            }
         }
-        if !inside {
-            kept.push(line.clone());
-        }
-    }
-    let text = format!(
-        "{}\n\n[model]\nhealth_url = {}\nhealth_key = {}\n",
-        kept.join("\n").trim_end_matches('\n'),
-        crate::py::dumps(&json!(url)),
-        crate::py::dumps(&json!(key))
-    );
-    crate::config::write_source(&source, &text)?;
+        Ok(format!(
+            "{}\n\n[model]\nhealth_url = {}\nhealth_key = {}\n",
+            kept.join("\n").trim_end_matches('\n'),
+            crate::py::dumps(&json!(url)),
+            crate::py::dumps(&json!(key))
+        ))
+    })?;
     Ok(())
 }
 

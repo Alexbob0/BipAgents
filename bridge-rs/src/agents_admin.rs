@@ -389,6 +389,12 @@ fn q(value: &str) -> String {
 /// The new agent in the bridge's config file, so it is still there after a restart. `kept`: other lines of its
 /// section to keep (what the bridge does not set itself: its voice, ntfy, shares…).
 pub fn append_agent(config_path: &str, agent: &AgentConfig, kept: &[String]) -> std::io::Result<()> {
+    crate::config::update_source(config_path, |text| Ok(with_agent(text, agent, kept)))
+}
+
+/// The config's text with the agent's section added at its end (the whole file written again by the caller, never
+/// appended in place: a reader never sees half a section).
+fn with_agent(before: &str, agent: &AgentConfig, kept: &[String]) -> String {
     let mut lines = vec![
         String::new(),
         format!("[agents.{}]", agent.name),
@@ -430,13 +436,7 @@ pub fn append_agent(config_path: &str, agent: &AgentConfig, kept: &[String]) -> 
     let mut written: std::collections::HashSet<String> = lines.iter().map(|l| line_key(l)).collect();
     written.extend(MANAGED_KEYS.iter().map(|k| k.to_string()));
     lines.extend(kept.iter().filter(|line| !written.contains(&line_key(line))).cloned());
-    // the whole file written again (write_source), never appended in place: a reader never sees half a section
-    let before = match std::fs::read_to_string(config_path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(e),
-    };
-    crate::config::write_source(config_path, &(before + &lines.join("\n") + "\n"))
+    before.to_string() + &lines.join("\n") + "\n"
 }
 
 /// What a new agent will be (nothing written yet): its profile id, the name the person gave, its personality and its
@@ -509,7 +509,6 @@ pub fn hub_agent(config: &Config, profile: &str, display_name: &str, key: &str) 
 /// An agent listed (in the bridge's config, so the app gets it) before its profile is made (`make_profile`).
 pub fn reserve_agent(shared: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<()> {
     if let Some(path) = shared.get().source_path.as_deref() {
-        let _writer = crate::config::source_lock();
         append_agent(path, agent, &[])?;
     }
     shared.put_agent(agent.clone());
@@ -771,7 +770,6 @@ pub async fn claim_profile(
     agent = with_browser(&config, agent, run).await;
     agent = mount_uploads(shared, &agent, run, false).await?;
     if let Some(path) = config.source_path.as_deref() {
-        let _writer = crate::config::source_lock();
         append_agent(path, &agent, &[])?;
     }
     shared.put_agent(agent.clone());
@@ -849,10 +847,14 @@ pub const MANAGED_KEYS: [&str; 15] = [
 
 /// The lines of `[agents.<name>]` in the bridge's config file, its header and blank lines left out.
 pub fn agent_section_lines(config_path: &str, name: &str) -> std::io::Result<Vec<String>> {
+    Ok(section_lines(&std::fs::read_to_string(config_path)?, name))
+}
+
+fn section_lines(text: &str, name: &str) -> Vec<String> {
     let mut lines = Vec::new();
     let mut inside = false;
     let wanted = format!("[agents.{name}]");
-    for line in std::fs::read_to_string(config_path)?.lines() {
+    for line in text.lines() {
         let header = line.trim();
         if header.starts_with('[') && header.ends_with(']') {
             inside = header == wanted;
@@ -862,7 +864,7 @@ pub fn agent_section_lines(config_path: &str, name: &str) -> std::io::Result<Vec
             lines.push(line.to_string());
         }
     }
-    Ok(lines)
+    lines
 }
 
 /// The files an agent is sent, where its tools can open them: a sandbox sees nothing of this machine but what its
@@ -978,10 +980,14 @@ pub async fn mount_all_uploads(config: SharedConfig, run: Run) {
 /// configuration gets the agent too.
 pub fn save_agent(config: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<()> {
     if let Some(path) = config.get().source_path.as_deref() {
-        let _writer = crate::config::source_lock();
-        let kept = agent_section_lines(path, &agent.name)?;
-        remove_agent_section(path, &agent.name)?;
-        append_agent(path, agent, &kept)?;
+        if !std::path::Path::new(path).exists() {
+            return Err(std::io::Error::from(std::io::ErrorKind::NotFound).into());
+        }
+        // one rewrite under the config's locks: the section is never missing from the file, even for an instant
+        crate::config::update_source(path, |text| {
+            let kept = section_lines(text, &agent.name);
+            Ok(with_agent(&without_agent(text, &agent.name), agent, &kept))
+        })?;
     }
     let renamed = config.get().agents.get(&agent.name).is_some_and(|a| a.display_name != agent.display_name);
     config.put_agent(agent.clone());
@@ -993,7 +999,13 @@ pub fn save_agent(config: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<
 
 /// Drops `[agents.<name>]` from the bridge's config file (its lines, up to the next table).
 pub fn remove_agent_section(config_path: &str, name: &str) -> std::io::Result<()> {
-    let text = std::fs::read_to_string(config_path)?;
+    if !std::path::Path::new(config_path).exists() {
+        return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+    }
+    crate::config::update_source_removing(config_path, &[name], |text| Ok(without_agent(text, name)))
+}
+
+fn without_agent(text: &str, name: &str) -> String {
     let wanted = format!("[agents.{name}]");
     let mut kept = String::new();
     let mut skipping = false;
@@ -1006,7 +1018,7 @@ pub fn remove_agent_section(config_path: &str, name: &str) -> std::io::Result<()
             kept.push_str(line);
         }
     }
-    crate::config::write_source(config_path, &(kept.trim_end_matches('\n').to_string() + "\n"))
+    kept.trim_end_matches('\n').to_string() + "\n"
 }
 
 pub fn read_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<String> {
@@ -1463,7 +1475,6 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
         crate::browsers::remove(&config, &agent.name, run).await?;
     }
     if let Some(path) = config.source_path.as_deref() {
-        let _writer = crate::config::source_lock();
         remove_agent_section(path, &agent.name)?;
     }
     shared.remove_agent(&agent.name);

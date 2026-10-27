@@ -20,6 +20,7 @@ __pycache__/
 # Secrets never belong here
 *.p8
 bridge.toml
+bridge.toml.*
 .env
 
 # Machine-specific context (private infrastructure details)
