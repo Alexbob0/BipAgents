@@ -323,6 +323,7 @@ impl AppState {
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
+        self.spawn(crate::read_shares::run_forever(self.clone())); // shared conversations' encrypted copies
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
         self.spawn(crate::archives::scheduler(self.config.clone()));
         crate::agent_email::start(self);
@@ -1626,6 +1627,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::peers::household_admin_router())
         .merge(crate::family_news::router())
         .merge(crate::agent_shares::router())
+        .merge(crate::read_shares::router())
         .merge(crate::desktop::desktop_admin_router());
     // Under /v1 without the bridge key: a computer sending its agents (the app's one-time code instead), and a
     // server the app created until the app claims it (its own proofs).

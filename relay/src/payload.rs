@@ -25,6 +25,8 @@ const GENERIC_BODIES: &[&str] = &[
     "Ton compte est en cours de récupération sur un autre appareil : si ce n’est pas toi, arrête-la dans l’app.",
     "Message de ta famille",
     "Quelqu’un de ta famille veut relier ses agents aux tiens : accepte ou refuse dans l’app.",
+    // a conversation someone shows this person read-only (the guichet's read_shares.rs); the app names it itself
+    "Nouveau message dans une conversation partagée",
 ];
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 const TITLE_MAX: usize = 80;
@@ -214,6 +216,14 @@ mod tests {
         let clean = scrub(&server).unwrap();
         assert_eq!(clean["aps"]["alert"]["body"], down);
         assert_eq!(clean["kind"], "server");
+        // A conversation shown read-only (the guichet's read_shares.rs): the share's id only, the app names it.
+        let shared = "Nouveau message dans une conversation partagée";
+        let push = json!({"aps": {"alert": {"title": "BipAgents", "body": shared, "loc-key": shared},
+                                  "thread-id": "Q2xxZm9vYmFyYmF6cXV4", "mutable-content": 1},
+                          "kind": "rshare", "rshare": "Q2xxZm9vYmFyYmF6cXV4"});
+        let clean = scrub(&push).unwrap();
+        assert_eq!(clean["aps"]["alert"]["body"], shared);
+        assert_eq!((clean["kind"].clone(), clean["rshare"].clone()), (json!("rshare"), json!("Q2xxZm9vYmFyYmF6cXV4")));
     }
 
     #[test]
