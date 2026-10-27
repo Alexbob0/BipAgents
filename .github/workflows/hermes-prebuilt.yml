@@ -1,0 +1,111 @@
+# The shared Hermes of the offer's servers (installer/bipinstall/shared_hermes.py), built once here instead of on each
+# new server, and published as the release `hermes-<version>`. The version is the one `shared-hermes version` prints:
+# Hermes' pinned commit and a hash of BipAgents' patches (hermes/patches/), so a server finds the release of its own
+# checkout without asking anyone.
+#   hermes-<version>-linux-x86_64.tar.zst    the sealed tree of /opt/bipagents/hermes/<version>, as root builds it
+#   hermes-<version>-linux-aarch64.tar.zst   the same on ARM (Hetzner CAX, Netcup ARM...)
+#   SHA256SUMS                               checked by the server before it unpacks anything
+# The tree is built by the very code a server runs (`shared-hermes enable --no-prebuilt`, as root, Hermes' installer run
+# by its own unprivileged account), at the same path, since its Python environment holds absolute paths. Ubuntu 22.04:
+# what it builds also runs on newer systems (glibc).
+name: Shared Hermes (ready-made)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hermes/patches/**"
+      - "installer/bipinstall/hermes.py"
+      - "installer/bipinstall/shared_hermes.py"
+      - ".github/workflows/hermes-prebuilt.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hermes-prebuilt-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Version
+    if: github.repository == 'Alexbob0/BipAgents'   # servers download from the public repository
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      exists: ${{ steps.exists.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet PyYAML==6.0.3
+      - id: version
+        run: echo "version=$(PYTHONPATH=installer python -m bipinstall.shared_hermes version)" >> "$GITHUB_OUTPUT"
+      - id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "hermes-${{ steps.version.outputs.version }}" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet PyYAML==6.0.3
+      # What user-data.yaml installs on a server and Hermes' installer can't (no sudo for its account).
+      - run: sudo apt-get update -q && sudo apt-get install -y -q zstd libatomic1 git curl
+      - name: Build it as a server does
+        run: sudo env PYTHONPATH=installer "$(command -v python)" -m bipinstall.shared_hermes enable --no-prebuilt
+      - name: Check that it runs
+        run: |
+          version="${{ needs.version.outputs.version }}"
+          test -f "/opt/bipagents/hermes/$version/.complete"
+          HERMES_HOME="$(mktemp -d)" "/opt/bipagents/hermes/$version/hermes-agent/.hermes/bin/hermes" --version
+      - name: Pack
+        run: |
+          sudo env PYTHONPATH=installer "$(command -v python)" -m bipinstall.shared_hermes pack out
+          sudo chown -R "$(id -u):$(id -g)" out
+          ls -l out
+          du -sh "/opt/bipagents/hermes/${{ needs.version.outputs.version }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hermes-${{ matrix.arch }}
+          path: out/*.tar.zst
+          compression-level: 0   # already zstd
+
+  release:
+    name: Release hermes-${{ needs.version.outputs.version }}
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum hermes-*.tar.zst > SHA256SUMS
+          gh release create "hermes-${{ needs.version.outputs.version }}" hermes-*.tar.zst SHA256SUMS \
+            -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Hermes ${{ needs.version.outputs.version }} (shared, ready-made)" \
+            --notes "Hermes at its pinned commit with BipAgents' patches, built from ${GITHUB_SHA::12} for the offer's servers (/opt/bipagents/hermes). \`bipagents shared-hermes build\` fetches it by itself."
