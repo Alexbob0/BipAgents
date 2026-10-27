@@ -14,11 +14,22 @@ start, which the registries' proxy runs too). Since 2026-10-27:
   each night after the workflow's build, and when the seat agent prepares a BipAgents version), under the names the
   places use (localhost/bipagents-browser:latest, docker.io/nousresearch/hermes-sandbox:desktop). The image before is
   kept as :previous (a running browser may still be on it), the one before that removed.
-- each account reads that store as an additional image store (~/.config/containers/storage.conf,
-  additionalimagestores): it pulls and builds nothing. Before it relies on it, the installer runs both images once as
-  the account (`check`): a rootless account sees a store root filled with ids of its own, and the browser's user
-  must still own its home and write there. A failed check takes the setting back; the account then gets its own
-  copy of the browser from GHCR (`podman pull`, a minute), else builds it as before.
+- the store itself stays root's (0700): a place's rootless podman could not use its layers as they are, since files
+  owned by the real root are « nobody » in the place's user namespace and its containers could write nothing over them
+  (« creating /etc/mtab symlink: permission denied », load test of 2026-10-27). So root gives each account a view of
+  it (`views`, and at every boot before the places start, bipagents-image-views.service): the store bind-mounted
+  read-only at /var/lib/bipagents/views/<account> as an idmapped mount, the store's root shown as the account itself
+  and the store's ids 1… as the account's own subordinate ids, i.e. exactly what its podman's user namespace maps.
+  One copy on disk (and in the page cache) for all the places; each place's view is read-only (the mount, locked in
+  its namespaces) and its containers write only in its own storage, as before. When a view isn't mounted, an empty
+  store's skeleton under it keeps the account's podman working with its own images.
+- each account reads its view as an additional image store (~/.config/containers/storage.conf,
+  additionalimagestores) through fuse-overlayfs: the browser runs with --userns=keep-id, a mapping of its own, which
+  fuse-overlayfs shifts as it reads, where the kernel's overlay would copy and chown the whole image (2 GB) at each
+  start of the browser. Before it relies on it, the installer runs both images once as the account (`check`), the
+  browser with keep-id as the bridge runs it, its user owning its home and writing there. A failed check takes the
+  setting back; the account then gets its own copy of the browser from GHCR (`podman pull`, a minute), else builds it
+  as before.
 
 Self-hosted and family installs (no /etc/bipagents/shared-images.json) also pull the browser from GHCR rather than
 build it, when the registry has this checkout's key; else they build it as before. Where this account's browser came
@@ -31,6 +42,8 @@ import datetime
 import hashlib
 import json
 import os
+import pwd
+import re
 import subprocess
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -40,6 +53,9 @@ from . import browser_refresh
 REPO = Path(__file__).resolve().parents[2]
 SETTING = Path(os.environ.get("BIPAGENTS_SHARED_IMAGES_SETTING", "/etc/bipagents/shared-images.json"))
 STORE = Path("/var/lib/bipagents/images")
+VIEWS = Path("/var/lib/bipagents/views")           # one idmapped read-only view of STORE per account (`views`)
+SUBIDS = (Path("/etc/subuid"), Path("/etc/subgid"))
+FUSE_OVERLAYFS = "/usr/bin/fuse-overlayfs"
 RUNROOT = Path("/run/bipagents-images")
 REGISTRY = "ghcr.io/alexbob0"
 BROWSER = "localhost/bipagents-browser:latest"     # what `bipagents-browser` means to podman (browser_refresh.IMAGE)
@@ -50,14 +66,16 @@ STORAGE_CONF = Path(".config") / "containers" / "storage.conf"
 MARK = "# BipAgents: the server's shared images"
 SOURCE = Path(".config") / "bipagents" / "browser-image.json"
 UNIT = "bipagents-images"
+VIEWS_UNIT = "bipagents-image-views"
 
 Run = Callable[[Sequence[str], int], Tuple[int, str]]
 
 # Run as the account in each image: the ids it sees are its own (a store root filled with other ids would show them
-# as « nobody »), and it can write where the image's user writes.
+# as « nobody »), and it can write where the image's user writes. The browser as the bridge runs it (browsers.rs).
 BROWSER_CHECK = ('test "$(stat -c %u /home/bip)" = "$(id -u)" && touch /home/bip/.bipagents-check && '
                  + browser_refresh.SMOKE)
 SANDBOX_CHECK = 'test "$(stat -c %u /)" = 0 && touch /tmp/.bipagents-check'
+BROWSER_USERNS = "--userns=keep-id:uid=1000,gid=1000"
 
 
 def say(text: str = "") -> None:
@@ -119,25 +137,105 @@ def pull_one(podman: List[str], sources: Sequence[str], name: str, run: Run) -> 
     return "", said
 
 
-def open_store(store: Path, run: Run) -> None:
-    """The store readable by every account (podman makes some of its folders root's only); the layers' own files keep
-    the modes their image gave them."""
-    folders = [store] + [store / name for name in ("overlay", "overlay-images", "overlay-layers", "overlay/l")]
-    run(["chmod", "0755", *[str(f) for f in folders if f.is_dir()]], 60)
-    for meta in ("overlay-images", "overlay-layers"):
-        if (store / meta).is_dir():
-            run(["chmod", "-R", "a+rX", str(store / meta)], 120)
-    if (store / "overlay").is_dir():
-        layers = [str(p) for p in (store / "overlay").iterdir() if p.is_dir() and p.name != "l"]
-        if layers:
-            run(["chmod", "a+rx", *layers], 120)
-            run(["chmod", "-f", "a+r", *[f"{layer}/link" for layer in layers], *[f"{layer}/lower" for layer in layers]],
-                120)
+def subids(files: Sequence[Path] = SUBIDS) -> Dict[str, Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]]:
+    """Each account's subordinate id ranges, in the file's order (podman maps them one after the other): name ->
+    (uid ranges, gid ranges), each range (start, count)."""
+    found: Dict[str, Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]] = {}
+    for index, path in enumerate(files):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.strip().split(":")
+            if len(parts) != 3 or not parts[1].isdigit() or not parts[2].isdigit() or int(parts[2]) < 1:
+                continue
+            found.setdefault(parts[0], ([], []))[index].append((int(parts[1]), int(parts[2])))
+    return found
 
 
-def pull(repo: Path = REPO, store: Path = STORE, run: Run = browser_refresh.run) -> int:
-    """(root) The browser of this checkout's key and Hermes' sandbox into the server's store, the setting written for
-    the accounts. 0 when both are there (new or kept), 1 when one is missing."""
+def idmap(uid: int, gid: int, uids: Sequence[Tuple[int, int]], gids: Sequence[Tuple[int, int]]) -> str:
+    """The view's mapping (mount's X-mount.idmap, util-linux 2.39): the store's id 0 is the account, its ids 1, 2…
+    the account's subordinate ids in order: what the account's rootless podman maps its containers' ids to. Each
+    entry is « type:id in the store:id shown:count » (checked on Ubuntu 24.04, 2026-10-27)."""
+    entries = []
+    for kind, own, ranges in (("u", uid, uids), ("g", gid, gids)):
+        entries.append(f"{kind}:0:{own}:1")
+        inside = 1
+        for start, count in ranges:
+            entries.append(f"{kind}:{inside}:{start}:{count}")
+            inside += count
+    return " ".join(entries)
+
+
+def is_mounted(path: Path, mountinfo: Path = Path("/proc/self/mountinfo")) -> bool:
+    """Something is mounted right there (os.path.ismount can't tell a bind mount of the same disk)."""
+    try:
+        lines = mountinfo.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    wanted = os.path.normpath(str(path))
+    for line in lines:
+        fields = line.split(" ")
+        if len(fields) > 4:
+            point = re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), fields[4])
+            if point == wanted:
+                return True
+    return False
+
+
+SKELETON = ("overlay-images/images.lock", "overlay-layers/layers.lock", "overlay/.lock")
+
+
+def skeleton(view: Path) -> None:
+    """Under a view's mount point, an empty store: when the view isn't mounted (an older kernel, a failed boot unit),
+    the account's podman sees an image store with nothing in it instead of failing at every command."""
+    for name in ("", "overlay", "overlay/l", "overlay-images", "overlay-layers"):
+        (view / name).mkdir(mode=0o755, parents=True, exist_ok=True)
+    for name in SKELETON:
+        lock = view / name
+        if not lock.exists():
+            lock.touch(mode=0o644)
+
+
+def views(store: Path = STORE, folder: Path = VIEWS, run: Run = browser_refresh.run,
+          files: Sequence[Path] = SUBIDS, account: Callable[[str], "pwd.struct_passwd"] = pwd.getpwnam,
+          mounted_at: Optional[Callable[[Path], bool]] = None) -> List[str]:
+    """(root) Each account that has subordinate ids (a place, or anyone set up for rootless podman) gets its
+    read-only idmapped view of the store, once (a mounted view is left as it is: running containers read it).
+    Returns the accounts whose view is mounted."""
+    if not (store / "overlay-images").is_dir():
+        return []
+    store.chmod(0o700)                    # root's own: the places go through their views
+    store.parent.chmod(0o711)             # /var/lib/bipagents: only crossed, never listed
+    folder.mkdir(mode=0o711, parents=True, exist_ok=True)
+    folder.chmod(0o711)
+    mounted_at = mounted_at or is_mounted
+    mounted = []
+    for name, (uids, gids) in sorted(subids(files).items()):
+        try:
+            found = account(name)
+        except KeyError:
+            continue
+        if found.pw_uid < 1000 or not uids or not gids:
+            continue
+        view = folder / name
+        if mounted_at(view):
+            mounted.append(name)
+            continue
+        skeleton(view)
+        code, out = run(["mount", "--bind", "-o", "ro,X-mount.idmap=" + idmap(found.pw_uid, found.pw_gid, uids, gids),
+                          str(store), str(view)], 60)
+        if code == 0:
+            mounted.append(name)
+        else:
+            say(f"no view of the shared images for {name}: {out.strip()[-200:]}")
+    return mounted
+
+
+def pull(repo: Path = REPO, store: Path = STORE, run: Run = browser_refresh.run, folder: Path = VIEWS) -> int:
+    """(root) The browser of this checkout's key and Hermes' sandbox into the server's store, each account's view of it
+    mounted, the setting written for the accounts. 0 when both are there (new or kept), 1 when one is missing."""
     podman = store_podman(store)
     found: Dict[str, dict] = {}
     key = browser_key(repo)
@@ -151,15 +249,16 @@ def pull(repo: Path = REPO, store: Path = STORE, run: Run = browser_refresh.run)
     if sandbox:
         found["sandbox"] = {"id": sandbox}
     run(podman + ["image", "prune", "--force"], 600)   # the untagged ones (two nights old)
-    open_store(store, run)
+    views(store, folder, run)
     before = setting() or {}
     for name in ("browser", "sandbox"):   # a failed pull keeps what the store has
         if name not in found and name in before:
             found[name] = before[name]
     if found:
         SETTING.parent.mkdir(parents=True, exist_ok=True)
-        SETTING.write_text(json.dumps({"store": str(store), **found, "pulled": datetime.datetime.now(
-            datetime.timezone.utc).isoformat(timespec="seconds")}) + "\n", encoding="utf-8")
+        pulled = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        SETTING.write_text(json.dumps({"store": str(store), "views": str(folder), **found, "pulled": pulled}) + "\n",
+                           encoding="utf-8")
         SETTING.chmod(0o644)
     return 0 if {"browser", "sandbox"} <= set(found) or (not key and "sandbox" in found) else 1
 
@@ -175,14 +274,22 @@ def units(repo: Path) -> List[Tuple[str, str]]:
     timer = ("[Unit]\nDescription=BipAgents: pull the server's shared images each night\n\n[Timer]\n"
              "OnCalendar=*-*-* 00:50:00\nRandomizedDelaySec=10min\nPersistent=true\n\n"
              "[Install]\nWantedBy=timers.target\n")
-    return [(f"{UNIT}.service", service), (f"{UNIT}.timer", timer)]
+    # Mounts don't outlive a reboot: the views again before the places' own services (user@.service comes after
+    # systemd-user-sessions.service).
+    mounts = ("[Unit]\nDescription=BipAgents: each place's read-only view of the server's shared images\n"
+              "After=local-fs.target\nBefore=systemd-user-sessions.service\n\n"
+              "[Service]\nType=oneshot\nRemainAfterExit=yes\n"
+              f"Environment=PYTHONPATH={repo / 'installer'}\nWorkingDirectory={repo}\n"
+              "ExecStart=/usr/bin/python3 -m bipinstall.shared_images views\n\n"
+              "[Install]\nWantedBy=multi-user.target\n")
+    return [(f"{UNIT}.service", service), (f"{UNIT}.timer", timer), (f"{VIEWS_UNIT}.service", mounts)]
 
 
 def install_timer(repo: Path = REPO, folder: Path = Path("/etc/systemd/system"), run: Run = browser_refresh.run) -> None:
     for name, text in units(repo):
         (folder / name).write_text(text, encoding="utf-8")
     run(["systemctl", "daemon-reload"], 60)
-    run(["systemctl", "enable", f"{UNIT}.timer"], 60)
+    run(["systemctl", "enable", f"{UNIT}.timer", f"{VIEWS_UNIT}.service"], 60)
 
 
 # -- an account reading it ---------------------------------------------------------------------------------------------
@@ -190,7 +297,17 @@ def install_timer(repo: Path = REPO, folder: Path = Path("/etc/systemd/system"),
 def storage_conf(store: Path) -> str:
     return (f"{MARK} (installer/bipinstall/shared_images.py), read-only for this account.\n"
             "[storage]\ndriver = \"overlay\"\n\n[storage.options]\n"
-            f"additionalimagestores = [\"{store}\"]\n")
+            f"additionalimagestores = [\"{store}\"]\n\n"
+            "# The browser's keep-id mapping shifted as it is read, not the whole image copied at each start.\n"
+            f"[storage.options.overlay]\nmount_program = \"{FUSE_OVERLAYFS}\"\n")
+
+
+def view_of(data: dict, user: str) -> Optional[Path]:
+    """This account's view of the server's store, when root mounted one for it."""
+    if not data.get("views"):
+        return None             # a store pulled by an older BipAgents: no views, not usable rootless
+    view = Path(data["views"]) / user
+    return view if is_mounted(view) else None
 
 
 def wire(home: Path, store: Path) -> bool:
@@ -212,12 +329,11 @@ def unwire(home: Path) -> None:
 
 def check(engine: str, data: dict, run: Run) -> Tuple[bool, str]:
     """Both images run as this account from the server's store, with the right owners."""
-    tests = [(label, image, script) for label, image, script in (("sandbox", SANDBOX, SANDBOX_CHECK),
-                                                                  ("browser", BROWSER, BROWSER_CHECK))
-             if data.get(label)]
-    for label, image, script in tests:
-        code, out = run([engine, "run", "--rm", "--pull=never", "--network=none", "--entrypoint", "/bin/sh", image, "-c",
-                         script], 300)
+    images = (("sandbox", SANDBOX, SANDBOX_CHECK, []), ("browser", BROWSER, BROWSER_CHECK, [BROWSER_USERNS]))
+    tests = [test for test in images if data.get(test[0])]
+    for label, image, script, userns in tests:
+        code, out = run([engine, "run", "--rm", "--pull=never", "--network=none", *userns, "--entrypoint", "/bin/sh",
+                         image, "-c", script], 300)
         if code != 0:
             return False, f"the {label} image doesn't run right from the server's store ({out.strip()[-200:]})"
     return True, ""
@@ -238,17 +354,26 @@ def source_of(home: Path) -> dict:
 
 
 def use_shared(runner, engine: Optional[str], home: Optional[Path] = None, run: Run = browser_refresh.run,
-               say: Callable[[str], None] = say) -> bool:
-    """At an install: this account reads the server's images when root pulled them and they run right here. Never
-    fails the install: without them, the account has its own as before."""
+               say: Callable[[str], None] = say, user: Optional[str] = None) -> bool:
+    """At an install: this account reads the server's images, through the view root mounted for it, when they run
+    right here. Never fails the install: without them, the account has its own as before."""
     home = home or Path.home()
     data = setting()
     if not data or not engine or not browser_refresh.is_podman(engine):
         return False
-    store = Path(data["store"])
-    runner.log.append(f"write {home / STORAGE_CONF} (additionalimagestores = {store})")
+    user = user or pwd.getpwuid(os.getuid()).pw_name
     if runner.dry:
+        view = Path(data.get("views") or "?") / user
+        runner.log.append(f"write {home / STORAGE_CONF} (additionalimagestores = {view})")
         return True
+    store = view_of(data, user)
+    if store is None:
+        say("  The server's shared images have no view for this account (an older kernel or BipAgents?): its own.")
+        return False
+    if not os.path.exists(FUSE_OVERLAYFS):
+        say("  fuse-overlayfs isn't installed: this account gets its own images.")
+        return False
+    runner.log.append(f"write {home / STORAGE_CONF} (additionalimagestores = {store})")
     if not wire(home, store):
         say(f"  This account has a podman storage setting of its own ({home / STORAGE_CONF}): its own images.")
         return False
@@ -301,7 +426,9 @@ def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(prog="bipinstall shared-images", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
     pulled = sub.add_parser("pull", help="(root) the browser and the sandbox into the server's store")
-    pulled.add_argument("--timer", action="store_true", help="and pull them again each night")
+    pulled.add_argument("--timer", action="store_true",
+                        help="and pull them again each night, the accounts' views mounted again at each boot")
+    sub.add_parser("views", help="(root) each account's read-only view of the server's store, mounted")
     sub.add_parser("key", help="the browser image's key for this checkout")
     sub.add_parser("status", help="what the server's store has")
     args = parser.parse_args(argv)
@@ -314,6 +441,10 @@ def main(argv: List[str]) -> int:
     if os.geteuid() != 0:
         say("Run it as root (sudo): the server's store belongs to root, read-only for the places.")
         return 1
+    if args.command == "views":
+        mounted = views()
+        say("views: " + (", ".join(mounted) or "none"))
+        return 0
     if args.timer:
         install_timer()
     return pull()

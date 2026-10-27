@@ -276,8 +276,12 @@ Ce qui est identique sur chaque serveur est construit une fois par GitHub Action
 | Le bridge | « Bridge binaries (Rust) » | release `bridge-<clé>` | — |
 
 Au premier démarrage, root récupère Hermes et tire les deux images en même temps (`user-data.yaml`) ; chaque place
-pointe ensuite vers Hermes et lit les images via son `~/.config/containers/storage.conf` (`additionalimagestores`),
-après avoir vérifié qu'elles tournent bien sous ce compte. Une nouvelle place sur le même serveur ne télécharge rien
+pointe ensuite vers Hermes et lit les images via son `~/.config/containers/storage.conf` (`additionalimagestores`,
+avec fuse-overlayfs), après avoir vérifié qu'elles tournent bien sous ce compte. Le magasin reste à root : chaque compte
+le lit par sa propre vue, `/var/lib/bipagents/views/<compte>`, un montage lié en lecture seule et « idmappé » qui montre
+les identifiants du magasin tels que le podman sans root de ce compte les voit (monté par `shared-images pull`/`views`,
+puis à chaque démarrage par `bipagents-image-views.service`). Une seule copie sur le disque pour toutes les places.
+Une nouvelle place sur le même serveur ne télécharge rien
 (`add-seat.sh` → `seat-agent.py --prepare`). Les voix étaient déjà partagées (un seul Pocket par serveur).
 
 ### Mesurer une installation (serveur jetable)
