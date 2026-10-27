@@ -198,7 +198,8 @@ def prepare_shared(commit):
             done = subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "build"], env=env, stdout=out,
                                   stderr=out, timeout=3600, cwd=SHARED_REPO)
         log("shared Hermes for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not built"))
-    timer = [] if os.path.exists("/etc/systemd/system/bipagents-images.timer") else ["--timer"]
+    # --timer the first time: the nightly pull, and the places' views of the store mounted again at each boot.
+    timer = [] if os.path.exists("/etc/systemd/system/bipagents-image-views.service") else ["--timer"]
     with open("/var/log/bipagents-images.log", "a") as out:
         done = subprocess.run(["python3", "-m", "bipinstall.shared_images", "pull"] + timer, env=env, stdout=out,
                               stderr=out, timeout=3600, cwd=SHARED_REPO)

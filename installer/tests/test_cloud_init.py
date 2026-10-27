@@ -529,7 +529,7 @@ def test_a_new_place_gets_the_shared_hermes_and_images_of_its_version_first(tmp_
     monkeypatch.setattr(agent, "SHARED_REPO", str(tmp_path / "repo"))
     monkeypatch.setattr(agent, "log", lambda text: None)
     monkeypatch.setattr(agent, "open", lambda *a, **k: io.StringIO(), raising=False)   # its logs in /var/log
-    monkeypatch.setattr(agent.os.path, "exists", lambda p: False if str(p).endswith("images.timer") else exists(p))
+    monkeypatch.setattr(agent.os.path, "exists", lambda p: False if str(p).endswith("image-views.service") else exists(p))
     assert agent.main(["--prepare", "main"]) == 0
     assert ran[0][:4] == ["git", "clone", "--quiet", "--filter=blob:none"]
     assert ran[2][-1] == "origin/main"

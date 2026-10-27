@@ -262,8 +262,11 @@ What is the same on every server is built once by GitHub Actions, not on each se
 
 At first boot root fetches Hermes and pulls both images at once (`user-data.yaml`), into `/opt/bipagents/hermes` and
 `/var/lib/bipagents/images`; each place then points at Hermes and reads the images through its
-`~/.config/containers/storage.conf` (`additionalimagestores`), after checking they run right as that account. A new
-place on the same server fetches nothing (`add-seat.sh` → `seat-agent.py --prepare`). The voices were already shared
+`~/.config/containers/storage.conf` (`additionalimagestores`, with fuse-overlayfs), after checking they run right as
+that account. The store stays root's: each account reads it through its own view, `/var/lib/bipagents/views/<account>`,
+a read-only idmapped bind mount that shows the store's ids as that account's rootless podman maps them (mounted by
+`shared-images pull`/`views`, again at each boot by `bipagents-image-views.service`). One copy on disk for all the
+places. A new place on the same server fetches nothing (`add-seat.sh` → `seat-agent.py --prepare`). The voices were already shared
 (the server's one Pocket). root pulls the images again each night at 00:50 (`bipagents-images.timer`).
 
 ### Measuring an install (a throwaway server)
