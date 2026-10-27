@@ -210,4 +210,34 @@ def test_a_share_needs_an_https_guichet_and_a_known_agent(bridge):
     assert bridge.post("/v1/read-shares", headers=AUTH, json=body).status_code == 422
     assert bridge.post("/v1/read-shares", headers=AUTH, json=dict(body, agent="ghost")).status_code == 404
     assert bridge.post("/v1/read-shares", headers=AUTH, json=dict(body, ends=1)).status_code == 422
-    _ = threading
+
+
+def test_the_agent_s_private_tools_close_while_it_answers_in_a_shared_conversation(bridge, fakes):
+    from bbkit.common import sse
+    from bbkit.mcp import call, give_token, text_of
+    from bbkit.servers import wait_until
+
+    guichet = FakeGuichet().start()
+    try:
+        fakes.hermes.add_session("sess-fete", [{"id": 1, "role": "user", "content": "La fête de samedi"}], title="Fête")
+        made = bridge.post("/v1/read-shares", headers=AUTH, json={
+            "agent": "wellness", "session": "sess-fete", "title": "Fête", "from": "Alex",
+            "share": "share0123456789abcdef", "writer": "writer-token-0123456789", "guichet": guichet.url,
+            "ends": time.time() + 30 * 86400})
+        assert made.status_code == 200, made.text
+        give_token(bridge)
+        assert "shown to people" not in json.dumps(call(bridge, "mail_search", {"query": "x"}))
+        gate = threading.Event()
+        fakes.hermes.runs["run_s"] = [sse("tool.started", run_id="run_s", tool="mail_search"), gate,
+                                      sse("run.completed", run_id="run_s", output="Samedi !")]
+        watched = bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_s",
+                                                               "session_id": "sess-fete"})
+        assert watched.status_code == 200, watched.text
+        closed = call(bridge, "mail_search", {"query": "banque"})
+        assert closed["isError"] is True and "shown to people your person invited" in text_of(closed)
+        assert "shown to people" not in json.dumps(call(bridge, "weather", {"place": "Lisbonne"}))
+        gate.set()
+        assert wait_until(lambda: "shown to people" not in json.dumps(call(bridge, "mail_search", {"query": "x"})),
+                          timeout=15)
+    finally:
+        guichet.stop()
