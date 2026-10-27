@@ -542,6 +542,18 @@ impl HermesClient {
         Ok(Self::items(data, ["messages", "data", "items"]))
     }
 
+    /// The same with the photos inline (`data:` URIs: megabytes), for the few times they are needed (read_shares.rs).
+    pub async fn session_messages_with_images(
+        &self,
+        agent: &AgentConfig,
+        session_id: &str,
+    ) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let data = self
+            .get_json(agent, &format!("/api/sessions/{session_id}/messages"), &[("inline_images", "true".into())])
+            .await?;
+        Ok(Self::items(data, ["messages", "data", "items"]))
+    }
+
     async fn send(
         &self,
         agent: &AgentConfig,

@@ -171,10 +171,21 @@ def test_a_conversation_is_kept_sealed_for_the_invited_phone_only(bridge, fakes)
         assert open_item(key, guichet.items["m-5"]["data"])["text"] == "Et un musée ?"
         assert guichet.notified[-1] is True
 
+        # a photo the person sent in it: sealed too, named by its message
+        photo = b"\x89PNG\r\n\x1a\n" + b"vue" * 100
+        fakes.hermes.messages[("", "sess-lisbonne")].append({"id": 6, "role": "user", "content": [
+            {"type": "text", "text": "La vue de l'hôtel"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(photo).decode()}}]})
+        assert bridge.post("/v1/read-shares/share0123456789abcdef/sync", headers=AUTH).status_code == 200
+        said = open_item(key, guichet.items["m-6"]["data"])
+        assert said["text"] == "La vue de l'hôtel" and len(said["media"]) == 1
+        shown = open_item(key, guichet.items[said["media"][0]]["data"])
+        assert shown["kind"] == "photo" and shown["mime"] == "image/png" and base64.b64decode(shown["data"]) == photo
+
         # Léa removed: a new key, everything sent again; her old key opens nothing new
         removed = bridge.delete("/v1/read-shares/share0123456789abcdef/viewers/1", headers=AUTH)
         assert removed.status_code == 200, removed.text
-        assert guichet.epoch == 2 and set(guichet.items) == {"meta", "m-1", "m-4", "m-5"}
+        assert guichet.epoch == 2 and set(guichet.items) == {"meta", "m-1", "m-4", "m-5", "m-6", said["media"][0]}
         try:
             open_item(key, guichet.items["m-5"]["data"])
             raise AssertionError("the old key opened a new item")

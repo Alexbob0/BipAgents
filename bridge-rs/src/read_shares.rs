@@ -43,6 +43,8 @@ use crate::{py, Dict};
 pub const SYNC_SECONDS: u64 = 20;
 /// A map picture or a page bigger than this stays out (the guichet takes 4.2 MB of base64 per item).
 pub const ITEM_MAX: usize = 3_000_000;
+/// A photo the person sent, at most (bigger ones stay out: the apps send theirs smaller).
+pub const PHOTO_MAX: usize = 1_500_000;
 /// Items sent to the guichet in one request, by size.
 const BATCH_BYTES: usize = 8_000_000;
 const STD: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
@@ -313,7 +315,64 @@ fn media_item(config: &Config, agent: &str, path: &str) -> Option<(String, Value
     None
 }
 
-/// The conversation's items: its meta, then the person's messages and the agent's final replies with their media.
+/// A message's key as Hermes gives it (its id), else its place in the conversation.
+fn message_key(message: &Dict, n: usize) -> String {
+    match message.get("id") {
+        Some(Value::Number(id)) => id.to_string(),
+        Some(Value::String(t)) if !t.is_empty() && t.len() <= 60 => {
+            t.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect()
+        }
+        _ => n.to_string(),
+    }
+}
+
+fn image_part(part: &Value) -> bool {
+    matches!(part.get("type").and_then(Value::as_str), Some("image_url" | "input_image" | "image"))
+}
+
+/// Whether a message carries pictures (the person's photos): image parts in its content.
+pub fn has_images(message: &Dict) -> bool {
+    message.get("content").and_then(Value::as_array).is_some_and(|parts| parts.iter().any(image_part))
+}
+
+/// The pictures of a message read with `inline_images=true`: (mime, bytes) of each `data:` image.
+pub fn images_of(message: &Dict) -> Vec<(String, Vec<u8>)> {
+    let Some(parts) = message.get("content").and_then(Value::as_array) else { return Vec::new() };
+    parts
+        .iter()
+        .filter(|p| image_part(p))
+        .filter_map(|p| {
+            let url = p.get("image_url")?;
+            let url = url.as_str().or_else(|| url.get("url").and_then(Value::as_str))?;
+            let (head, data) = url.strip_prefix("data:")?.split_once(',')?;
+            let mime = head.strip_suffix(";base64")?;
+            if !mime.starts_with("image/") {
+                return None;
+            }
+            STD.decode(data.trim()).ok().map(|bytes| (mime.to_string(), bytes))
+        })
+        .collect()
+}
+
+/// The person's own words in a user row, or None for rows the person didn't type (a sub-task's report, the bridge's
+/// nudges). Words added while the agent answered are unwrapped from Hermes' markers.
+pub fn typed_words(text: &str) -> Option<String> {
+    const OPEN: &str = "[OUT-OF-BAND USER MESSAGE";
+    const CLOSE: &str = "[/OUT-OF-BAND USER MESSAGE]";
+    let text = text.trim();
+    let text = match text.strip_prefix(OPEN).and_then(|rest| rest.strip_suffix(CLOSE)) {
+        Some(inner) => inner.split_once(']').map(|(_, words)| words.trim()).unwrap_or(""),
+        None => text,
+    };
+    if text.starts_with("[bipagents:") || crate::cronwatch::REPORT_PREFIXES.iter().any(|p| text.starts_with(p)) {
+        return None;
+    }
+    Some(text.to_string())
+}
+
+/// The conversation's items: its meta, then the person's messages (with the photos already sealed for them:
+/// `photos` in the share, message key -> photo item ids) and the agent's final replies with their pages and map
+/// pictures.
 pub fn items_of(config: &Config, share: &Value, messages: &[Dict]) -> Vec<(String, Value)> {
     let agent = s(share, "agent");
     let found = config.agent(Some(&agent));
@@ -325,6 +384,7 @@ pub fn items_of(config: &Config, share: &Value, messages: &[Dict]) -> Vec<(Strin
         json!({"id": "meta", "kind": "meta", "title": s(share, "title"), "agent": shown, "from": s(share, "from"),
                "ends": share["ends"], "category": category, "color": color}),
     )];
+    let photos = share.get("photos").and_then(Value::as_object);
     let mut media_seen = HashSet::new();
     for (n, message) in messages.iter().enumerate() {
         let role = s(&Value::Object(message.clone()), "role").to_lowercase();
@@ -334,7 +394,16 @@ pub fn items_of(config: &Config, share: &Value, messages: &[Dict]) -> Vec<(Strin
         if role == "assistant" && message.get("tool_calls").map(py::truthy).unwrap_or(false) {
             continue; // a step of the agent's work, not its reply
         }
-        let (text, paths) = split_media(&crate::cronwatch::message_text(message));
+        let key = message_key(message, n);
+        let raw = crate::cronwatch::message_text(message);
+        let (text, paths) = if role == "user" {
+            match typed_words(&raw) {
+                Some(words) => (words, Vec::new()),
+                None => continue,
+            }
+        } else {
+            split_media(&raw)
+        };
         let mut media = Vec::new();
         if role == "assistant" {
             for p in paths {
@@ -345,22 +414,57 @@ pub fn items_of(config: &Config, share: &Value, messages: &[Dict]) -> Vec<(Strin
                     }
                 }
             }
+        } else if let Some(ids) = photos.and_then(|all| all.get(&key)).and_then(Value::as_array) {
+            media.extend(ids.iter().cloned());
         }
         if text.is_empty() && media.is_empty() {
             continue;
         }
-        let key = match message.get("id") {
-            Some(Value::Number(n)) => n.to_string(),
-            Some(Value::String(t)) if !t.is_empty() && t.len() <= 60 => {
-                t.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect()
-            }
-            _ => n.to_string(),
-        };
         let id = format!("m-{key}");
         let at = message.get("timestamp").and_then(Value::as_f64).or_else(|| message.get("created_at").and_then(Value::as_f64));
         items.push((id.clone(), json!({"id": id, "kind": "msg", "role": role, "text": text, "at": at, "media": media})));
     }
     items
+}
+
+/// Which of the person's messages carry photos not sealed yet (by key).
+pub fn photos_wanted(messages: &[Dict], done: &Map<String, Value>) -> HashSet<String> {
+    messages
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| s(&Value::Object((*m).clone()), "role").eq_ignore_ascii_case("user") && has_images(m))
+        .map(|(n, m)| message_key(m, n))
+        .filter(|key| !done.contains_key(key))
+        .collect()
+}
+
+/// The photos of those messages, from the conversation read with its images: (photo items, message key -> ids). A
+/// photo bigger than `PHOTO_MAX` stays out.
+pub fn new_photos(inline: &[Dict], wanted: &HashSet<String>) -> (Vec<(String, Value)>, Map<String, Value>) {
+    let mut items = Vec::new();
+    let mut found = Map::new();
+    for (n, message) in inline.iter().enumerate() {
+        let key = message_key(message, n);
+        if !wanted.contains(&key) {
+            continue;
+        }
+        let mut ids = Vec::new();
+        for (k, (mime, bytes)) in images_of(message).into_iter().enumerate() {
+            if bytes.len() > PHOTO_MAX {
+                continue;
+            }
+            let id = format!("f-{}", &hex::encode(Sha256::digest(&bytes))[..16]);
+            let ext = mime.trim_start_matches("image/").replace("jpeg", "jpg");
+            items.push((
+                id.clone(),
+                json!({"id": id, "kind": "photo", "name": format!("photo-{key}-{k}.{ext}"), "mime": mime,
+                       "data": STD.encode(&bytes)}),
+            ));
+            ids.push(json!(id));
+        }
+        found.insert(key, json!(ids));
+    }
+    (items, found)
 }
 
 fn digest(item: &Value) -> String {
@@ -429,6 +533,7 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         share["epoch"] = json!(epoch);
         share["key"] = json!(STD.encode(random_bytes::<32>()));
         share["sent"] = json!({});
+        share["photos"] = json!({}); // read again: sealed under the new key
         first = true;
     }
     let key = content_key(&share).expect("just made");
@@ -507,13 +612,30 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         None => None,
     };
     if let Some(messages) = messages {
+        // the person's photos in this conversation: read with their bytes once, sealed like the rest
+        let done = share.get("photos").and_then(Value::as_object).cloned().unwrap_or_default();
+        let wanted = photos_wanted(&messages, &done);
+        let mut photo_items = Vec::new();
+        if !wanted.is_empty() {
+            if let Some(agent) = config.agent(Some(&s(&share, "agent"))) {
+                if let Ok(inline) = state.hermes.session_messages_with_images(agent, &s(&share, "session")).await {
+                    let (items, found) = new_photos(&inline, &wanted);
+                    photo_items = items;
+                    let mut all = done.clone();
+                    all.extend(found);
+                    share["photos"] = Value::Object(all);
+                }
+            }
+        }
         let sent = share.get("sent").and_then(Value::as_object).cloned().unwrap_or_default();
         let mut now_sent = sent.clone();
         let mut batch: Vec<Value> = Vec::new();
         let mut size = 0;
         let mut new_message = false;
         let mut batches = Vec::new();
-        for (item_id, mut item) in items_of(&config, &share, &messages) {
+        let mut all_items = photo_items;
+        all_items.extend(items_of(&config, &share, &messages));
+        for (item_id, mut item) in all_items {
             let mark = digest(&item);
             if sent.get(&item_id).and_then(Value::as_str) == Some(mark.as_str()) {
                 continue;
@@ -840,6 +962,41 @@ mod tests {
         let mut data = sealed[12..].to_vec();
         let plain = opening.open_in_place(Nonce::try_assume_unique_for_key(&sealed[..12]).unwrap(), Aad::empty(), &mut data).unwrap();
         assert_eq!(serde_json::from_slice::<Value>(plain).unwrap()["text"], "Salut");
+    }
+
+    #[test]
+    fn the_person_s_words_and_photos_are_found_and_nothing_they_didn_t_type() {
+        assert_eq!(typed_words("  Salut  ").as_deref(), Some("Salut"));
+        assert_eq!(
+            typed_words("[OUT-OF-BAND USER MESSAGE — sent while you worked]\nEt le musée ?\n[/OUT-OF-BAND USER MESSAGE]").as_deref(),
+            Some("Et le musée ?")
+        );
+        assert_eq!(typed_words("[bipagents:handoff] hand it over"), None);
+        assert_eq!(typed_words("[SUBAGENT report] done"), None);
+        let jpeg = vec![0xffu8, 0xd8, 0xff, 1, 2, 3];
+        let message: Dict = json!({"id": 7, "role": "user", "content": [
+            {"type": "text", "text": "Regarde"},
+            {"type": "image_url", "image_url": {"url": format!("data:image/jpeg;base64,{}", STD.encode(&jpeg))}},
+            {"type": "image_url", "image_url": {"url": "https://example.com/x.png"}}]})
+        .as_object()
+        .unwrap()
+        .clone();
+        assert_eq!(images_of(&message), vec![("image/jpeg".to_string(), jpeg.clone())]);
+        let wanted = photos_wanted(std::slice::from_ref(&message), &Map::new());
+        assert_eq!(wanted, HashSet::from(["7".to_string()]));
+        let (items, found) = new_photos(std::slice::from_ref(&message), &wanted);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].1["mime"], "image/jpeg");
+        assert_eq!(STD.decode(items[0].1["data"].as_str().unwrap()).unwrap(), jpeg);
+        assert_eq!(found["7"], json!([items[0].0]));
+        assert!(photos_wanted(std::slice::from_ref(&message), &found).is_empty());
+        // the message then names its photo
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = std::env::temp_dir().join("rshare-photos.db").to_string_lossy().into_owned();
+        let share = json!({"agent": "bip", "title": "T", "from": "Alex", "ends": 2.0e9, "photos": found});
+        let listed = items_of(&config, &share, std::slice::from_ref(&message));
+        assert_eq!(listed[1].1["media"], json!([items[0].0]));
+        assert_eq!(listed[1].1["text"], "Regarde");
     }
 
     #[test]
