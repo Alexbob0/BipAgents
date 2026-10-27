@@ -249,6 +249,43 @@ The installer speaks English. Agents answer in the language they are written to;
 On macOS, create their account in System Settings; they paste the printed line in **their own** session. Services
 run while the account is logged in (automatic login on a Mac mini used as a server).
 
+## Servers of the offer: what comes ready-made
+
+What is the same on every server is built once by GitHub Actions, not on each server:
+
+| What | Built by | Where a server gets it | If it can't |
+|---|---|---|---|
+| Hermes, shared by the server's places (`shared_hermes.py`) | « Shared Hermes (ready-made) » | release `hermes-<version>` (`shared-hermes version`), unpacked into `/opt/bipagents/hermes/<version>` | built on the server, as before |
+| The agents' browser (`browser/`) | « Server images », again each night when Chrome or Fedora have news | `ghcr.io/alexbob0/bipagents-browser:<key>` (`shared-images key`) | pulled by the account, else built by it |
+| Hermes' sandbox | « Server images » (a mirror) | `ghcr.io/alexbob0/hermes-sandbox:desktop` | Docker Hub |
+| The bridge | « Bridge binaries (Rust) » | release `bridge-<key>` | — |
+
+At first boot root fetches Hermes and pulls both images at once (`user-data.yaml`), into `/opt/bipagents/hermes` and
+`/var/lib/bipagents/images`; each place then points at Hermes and reads the images through its
+`~/.config/containers/storage.conf` (`additionalimagestores`), after checking they run right as that account. A new
+place on the same server fetches nothing (`add-seat.sh` → `seat-agent.py --prepare`). The voices were already shared
+(the server's one Pocket). root pulls the images again each night at 00:50 (`bipagents-images.timer`).
+
+### Measuring an install (a throwaway server)
+
+Before and after, on the same provider and size, a fresh server each time:
+
+1. Note when the order is placed and when the server answers SSH (the provider's delivery time, apart).
+2. `cloud-init analyze show` (or the provider's post-install log): packages and upgrade, then `runcmd`.
+3. `/var/log/bipagents-timeline.log`: `runcmd start`, `shared start` → `shared done` (Hermes + images, together),
+   `install start` → `install done`; for each extra place, `place <n> shared start` → `place <n> install done`.
+4. `/var/log/bipagents-install.log` (and `-install<n>.log`): each step `[n/total]` says its time and the time since
+   the start; the last line says « installed in … ».
+5. `/var/log/bipagents-shared-hermes.log` (« ready-made, downloaded in … s, unpacked in … s », or « built here in …
+   min ») and `/var/log/bipagents-images.log` (« … (new) »).
+6. From the app: the time from paying to « ready » on the phone, and from pairing to the first answer.
+7. Disk: `du -sh /opt/bipagents/hermes /var/lib/bipagents/images /home/*/.local/share/containers`: the accounts'
+   own image storage should stay small (no browser or sandbox image in it: `sudo -iu bip2 podman images` lists them
+   as read-only, `R/O`).
+
+The « before » numbers: 18 min for a full install (DigitalOcean, 2026-10-19); 13.5 min for a first place and 10.5 min
+for a second one (2-seat test).
+
 ## Files
 
 - `install.sh` (repository root): fetches the repository and Python (uv), then runs the installer. The installer's
