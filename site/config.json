@@ -23,7 +23,9 @@
   "stores": {
     "bipagents": {
       "appStore": "",
-      "googlePlay": ""
+      "googlePlay": "",
+      "appleTeamId": "9FA6JLUQ9G",
+      "playSigningSha256": "C4:56:6D:6D:6F:26:88:69:3D:18:6F:97:EF:50:11:34:16:52:C4:A5:5C:AD:49:9B:AD:B2:34:48:E7:2B:DD:30"
     },
     "tablee": {
       "appStore": "https://apps.apple.com/app/id6762468127",

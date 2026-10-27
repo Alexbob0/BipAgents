@@ -494,9 +494,11 @@ def bipagents(version: str) -> Path:
 def links(src: Path, out: Path) -> None:
     """The links that open the app: https://bipagents.com/p#… (a shared place), with the files that let iOS and Android
     open them in the app (universal links, App Links), and the page shown where it isn't installed. BIP_TEAM_ID (the
-    Apple team) and BIP_PLAY_SHA256 (Google Play's app signing certificate) come from the environment."""
-    team = os.environ.get("BIP_TEAM_ID", "TEAMID")
-    play = os.environ.get("BIP_PLAY_SHA256", "PLAY:APP:SIGNING:SHA256")
+    Apple team) and BIP_PLAY_SHA256 (Google Play's app signing certificate) come from the environment, else from
+    site/config.json (stores.bipagents: appleTeamId, playSigningSha256 — neither is secret)."""
+    stores = config()["stores"]["bipagents"]
+    team = os.environ.get("BIP_TEAM_ID") or stores.get("appleTeamId") or "TEAMID"
+    play = os.environ.get("BIP_PLAY_SHA256") or stores.get("playSigningSha256") or "PLAY:APP:SIGNING:SHA256"
     if team == "TEAMID" or play.startswith("PLAY:"):
         print("links: BIP_TEAM_ID / BIP_PLAY_SHA256 not set, placeholders written (set them before publishing)")
     known = out / ".well-known"
@@ -511,7 +513,6 @@ def links(src: Path, out: Path) -> None:
                    "sha256_cert_fingerprints": [play]}}], indent=2) + "\n", encoding="utf-8")
     # The page shown where the app isn't installed: the store links from site/config.json once the owner has them.
     page = (src / "links" / "p.html").read_text(encoding="utf-8")
-    stores = config()["stores"]["bipagents"]
     if stores.get("appStore"):
         page = page.replace("https://apps.apple.com/app/bipagents/idAPPSTOREID", stores["appStore"])
     if stores.get("googlePlay"):
