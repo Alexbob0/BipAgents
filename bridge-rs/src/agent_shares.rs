@@ -61,8 +61,8 @@
 //! - Her words reach the agent framed as a relative's message (« Marie, a relative of your person, writes… »), never as
 //!   the owner's instructions, with run instructions saying so (souls.rs `CONTENT_RULE`).
 //! - The owner's private data stays closed: while a relative's turn goes on, the bridge's MCP tools answer only
-//!   `RELATIVE_TOOLS` (memory pages, dates, weather, routes, maps); mail, calendar, contacts, health, notebook,
-//!   archives, files, pages, audio, tasks are refused (agent_tools.rs). The instructions say the same for Hermes' own
+//!   `RELATIVE_TOOLS` (memory pages, weather, routes, maps); mail, calendar, contacts, health, notebook, dates (the
+//!   owner's Carnet's birthdays), archives, files, pages, audio, tasks are refused (agent_tools.rs). The instructions say the same for Hermes' own
 //!   tools (terminal, files, browser and its vault fill), which the bridge cannot close per turn: an agent with those
 //!   on and private files in its sandbox is what `confirm` is for.
 //! - Approvals belong to the person talking: the relative's are left out of the owner's Boîte and `/v1/approve`
@@ -106,10 +106,10 @@ pub const TURN_MAX_SECONDS: f64 = 3600.0;
 pub const CONVERSATIONS_MAX: usize = 50;
 /// The bridge's MCP tools a relative's turn may use: the agent's own memory pages (common, decision 3A) and tools
 /// reading nothing of the owner's.
-pub const RELATIVE_TOOLS: [&str; 6] = [
+/// Not `dates`: it reads the birthdays of the owner's Carnet (2026-10-27).
+pub const RELATIVE_TOOLS: [&str; 5] = [
     crate::agent_tools::KNOWLEDGE_READ,
     crate::agent_tools::KNOWLEDGE_SEARCH,
-    crate::dates::TOOL_NAME,
     crate::weather::TOOL_NAME,
     crate::routes::TOOL_NAME,
     crate::maps::TOOL_NAME,

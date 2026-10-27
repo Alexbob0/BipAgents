@@ -433,7 +433,7 @@ def bipagents(version: str) -> Path:
     default_currency = next(code for code, c in currencies.items() if not c.get("countries"))
     base = currencies[default_currency]
     # No price « in the app » while the app isn't in the stores: no reference price for something not on sale.
-    stores_live = any(cfg["stores"]["bipagents"].values())
+    stores_live = any(cfg["stores"]["bipagents"].get(k) for k in ("appStore", "googlePlay"))
     if not stores_live:
         currencies = {code: {**c, "store": None} for code, c in currencies.items()}
         prices = {**prices, "currencies": currencies}
@@ -575,20 +575,23 @@ def links(src: Path, out: Path) -> None:
     known.mkdir(parents=True, exist_ok=True)
     (known / "apple-app-site-association").write_text(json.dumps({"applinks": {"details": [{
         "appIDs": [f"{team}.com.kerfystudio.bipagents"],
-        "components": [{"/": "/p", "#": "*", "comment": "a place of a Duo or a family, shared with this person"}]}]}},
+        "components": [{"/": "/p", "#": "*", "comment": "a place of a Duo or a family, shared with this person"},
+                       {"/": "/v", "#": "*", "comment": "a conversation shown to this person read-only"}]}]}},
         indent=2) + "\n", encoding="utf-8")
     (known / "assetlinks.json").write_text(json.dumps([{
         "relation": ["delegate_permission/common.handle_all_urls"],
         "target": {"namespace": "android_app", "package_name": "com.kerfystudio.bipagents",
                    "sha256_cert_fingerprints": [play]}}], indent=2) + "\n", encoding="utf-8")
     # The page shown where the app isn't installed: the store links from site/config.json once the owner has them.
-    page = (src / "links" / "p.html").read_text(encoding="utf-8")
-    if stores.get("appStore"):
-        page = page.replace("https://apps.apple.com/app/bipagents/idAPPSTOREID", stores["appStore"])
-    if stores.get("googlePlay"):
-        page = page.replace("https://play.google.com/store/apps/details?id=com.kerfystudio.bipagents", stores["googlePlay"])
-    (out / "p").mkdir(parents=True, exist_ok=True)
-    (out / "p" / "index.html").write_text(page, encoding="utf-8")
+    # /p: a place shared with this person; /v: a conversation shown to them read-only (« Partager en lecture »).
+    for name in ("p", "v"):
+        page = (src / "links" / f"{name}.html").read_text(encoding="utf-8")
+        if stores.get("appStore"):
+            page = page.replace("https://apps.apple.com/app/bipagents/idAPPSTOREID", stores["appStore"])
+        if stores.get("googlePlay"):
+            page = page.replace("https://play.google.com/store/apps/details?id=com.kerfystudio.bipagents", stores["googlePlay"])
+        (out / name).mkdir(parents=True, exist_ok=True)
+        (out / name / "index.html").write_text(page, encoding="utf-8")
 
 
 def main(argv: List[str]) -> int:

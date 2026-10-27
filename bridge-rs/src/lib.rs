@@ -68,6 +68,7 @@ pub mod voices;
 // -- agents ----------------------------------------------------------------------------------------
 pub mod agent_groups;
 pub mod agent_shares;
+pub mod read_shares;
 pub mod agents_admin;
 /// The person's time zone and standard dates (no Python counterpart).
 pub mod dates;
