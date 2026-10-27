@@ -20,6 +20,7 @@ const GENERIC_BODIES: &[&str] = &[
     "Tes agents ont une nouvelle place : ouvre l’app pour les y remettre.",
     "Ton serveur répond de nouveau.",
     "Ton abonnement ne sera pas renouvelé : pense à utiliser ton crédit d’IA.",
+    "Ton abonnement annuel se renouvelle bientôt : la date, le prix et comment l’arrêter sont dans tes e-mails.",
     "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.",
     "Ton compte est en cours de récupération sur un autre appareil : si ce n’est pas toi, arrête-la dans l’app.",
     "Message de ta famille",
