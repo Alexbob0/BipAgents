@@ -212,7 +212,9 @@ def unwire(home: Path) -> None:
 
 def check(engine: str, data: dict, run: Run) -> Tuple[bool, str]:
     """Both images run as this account from the server's store, with the right owners."""
-    tests = [("sandbox", SANDBOX, SANDBOX_CHECK)] + ([("browser", BROWSER, BROWSER_CHECK)] if data.get("browser") else [])
+    tests = [(label, image, script) for label, image, script in (("sandbox", SANDBOX, SANDBOX_CHECK),
+                                                                  ("browser", BROWSER, BROWSER_CHECK))
+             if data.get(label)]
     for label, image, script in tests:
         code, out = run([engine, "run", "--rm", "--pull=never", "--network=none", "--entrypoint", "/bin/sh", image, "-c",
                          script], 300)
