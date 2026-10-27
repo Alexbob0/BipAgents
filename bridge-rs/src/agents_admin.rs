@@ -1610,7 +1610,10 @@ async fn put_language(
     let config = state.config();
     let agent = editable(&config, &agent_id).map_err(|_| not_managed())?;
     let _guard = LOCK.lock().await;
+    let previous = read_soul(&config, &agent).ok().and_then(|soul| crate::souls::split_language(&soul).1);
     let code = set_language(&config, &agent, &body.lang).map_err(anyhow::Error::from)?;
+    // its memory may still be in the old language and pull its replies back to it: translated once when it clearly is
+    crate::memory_language::after_change(config.clone(), state.http.clone(), agent.clone(), previous, code.clone());
     Ok(web::ok(json!({"id": agent.name, "language": code})))
 }
 

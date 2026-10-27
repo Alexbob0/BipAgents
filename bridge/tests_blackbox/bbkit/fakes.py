@@ -480,7 +480,7 @@ def facts_answer(body: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 class FakeModel(Fake):
     """A model's API: `/v1/models` (for `[model] health_url`) and `/v1/chat/completions` (the mailbox scan, the
-    Carnet's pass, records from archives, a group discussion's router)."""
+    Carnet's pass, records from archives, a group discussion's router, a memory's translation)."""
     name = "model"
 
     def reset(self) -> None:
@@ -497,6 +497,8 @@ class FakeModel(Fake):
         self.route_answer = "coach"
         # a WhatsApp chat read for the Carnet (its instructions start « You read a WhatsApp chat »): its answer
         self.whatsapp_answer: Dict[str, Any] = {"people": [], "subjects": [], "dates": [], "tasks": []}
+        # an agent's memory translated after its language changed (its instructions start « You translate »)
+        self.translation_answer: Dict[str, Any] = {"notes": [], "user": []}
 
     def records_answer(self, user: str) -> str:
         documents = []
@@ -519,6 +521,11 @@ class FakeModel(Fake):
                 content = json.dumps(self.whatsapp_answer, ensure_ascii=False)
                 return JSONResponse({"choices": [{"message": {"content": content}}],
                                      "usage": {"prompt_tokens": 3000, "completion_tokens": 300}},
+                                    status_code=self.status)
+            if body["messages"][0]["content"].startswith("You translate"):
+                content = json.dumps(self.translation_answer, ensure_ascii=False)
+                return JSONResponse({"choices": [{"message": {"content": content}}],
+                                     "usage": {"prompt_tokens": 400, "completion_tokens": 380}},
                                     status_code=self.status)
             if body["messages"][0]["content"].startswith("You route"):
                 return JSONResponse({"choices": [{"message": {"content": self.route_answer}}],

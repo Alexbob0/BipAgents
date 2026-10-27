@@ -5,6 +5,7 @@ import base64
 import io
 import json
 import os
+import time
 import zipfile
 
 from bbkit.common import AUTH
@@ -45,6 +46,42 @@ def test_the_person_reads_and_edits_what_the_agent_remembers(bridges, fakes):
     assert nobody.status_code == 404 and nobody.json() == {"detail": "not an agent this install manages"}
     assert bridge.get("/v1/agents/wellness/memory", headers=AUTH).status_code == 404   # set up by hand
     assert bridge.get("/v1/agents/coach/memory").status_code == 401
+
+
+NOTES_FR = ["Elle préfère les rappels le matin, avant 8h30, et jamais le dimanche.",
+            "Le loyer de 1 240 € est payé le 5 de chaque mois pour l'appartement de la rue des Lilas."]
+NOTES_EN = ["She prefers reminders in the morning, before 8:30, and never on Sundays.",
+            "The rent of €1,240 is paid on the 5th of each month for the flat on rue des Lilas."]
+
+
+def test_a_memory_in_the_old_language_is_translated_once_and_can_be_put_back(bridges, fakes):
+    bridge, folder = coach(bridges, fakes)
+    (folder / "memories").mkdir(parents=True)
+    (folder / "memories" / "MEMORY.md").write_text("\n§\n".join(NOTES_FR))
+    (folder / "config.yaml").write_text(f"model:\n  provider: custom\n  default: small\n  base_url: {fakes.model.url}/v1\n"
+                                        "  key_env: CUSTOM_MODEL_API_KEY\n")
+    (folder / ".env").write_text("CUSTOM_MODEL_API_KEY=sk-test-key\n")
+    fakes.model.translation_answer = {"notes": NOTES_EN, "user": []}
+    bridge.start()
+    wait_registered(bridge, ["coach"])
+    assert bridge.put("/v1/agents/coach/language", headers=AUTH, json={"lang": "fr"}).status_code == 200
+    time.sleep(0.5)
+    assert fakes.model.chats == []                                            # its first language: nothing to do
+    assert bridge.put("/v1/agents/coach/language", headers=AUTH, json={"lang": "en"}).status_code == 200
+    for _ in range(50):
+        if (folder / "memories" / "MEMORY.md.before-translation").exists():
+            break
+        time.sleep(0.1)
+    assert bridge.get("/v1/agents/coach/memory", headers=AUTH).json()["notes"]["entries"] == NOTES_EN
+    assert (folder / "memories" / "MEMORY.md.before-translation").read_text() == "\n§\n".join(NOTES_FR)
+    [chat] = fakes.model.chats
+    assert chat["authorization"] == "Bearer sk-test-key" and "into English" in chat["body"]["messages"][0]["content"]
+    assert "memory translated" in bridge.log_path.read_text()
+    undone = bridge.post("/v1/agents/coach/memory/translation/undo", headers=AUTH)
+    assert undone.json() == {"restored": ["MEMORY.md"]}
+    assert bridge.get("/v1/agents/coach/memory", headers=AUTH).json()["notes"]["entries"] == NOTES_FR
+    assert bridge.post("/v1/agents/nobody/memory/translation/undo", headers=AUTH).status_code == 404
+    assert bridge.post("/v1/agents/coach/memory/translation/undo").status_code == 401
 
 
 def test_knowledge_pages_are_listed_read_edited_and_removed_inside_their_folder(bridges, fakes):

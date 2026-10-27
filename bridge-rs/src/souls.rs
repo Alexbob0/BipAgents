@@ -166,7 +166,7 @@ pub const ACK_RULE: &str = concat!(
     "Don't repeat these at the end. Not for quick answers."
 );
 
-fn language_name(code: &str) -> &'static str {
+pub fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
 

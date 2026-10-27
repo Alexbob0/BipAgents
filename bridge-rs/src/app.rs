@@ -1588,6 +1588,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::ssh_keys::router())
         .merge(crate::device_keys::router())
         .merge(crate::memory_edit::router())
+        .merge(crate::memory_language::router())
         .merge(crate::mailbox::router())
         .merge(crate::agent_email::router())
         .merge(crate::sandbox_sites::router())

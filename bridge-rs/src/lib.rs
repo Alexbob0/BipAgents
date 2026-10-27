@@ -110,6 +110,7 @@ pub mod mailbox;
 pub mod map_tiles;
 pub mod maps;
 pub mod memory_edit;
+pub mod memory_language;
 pub mod message_search;
 pub mod notebook;
 pub mod notes_import;
