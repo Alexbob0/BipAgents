@@ -1,4 +1,4 @@
-//! The place's space encrypted at rest (« level 1 », docs/space-encryption.md): everything personal of this account
+//! The place's space encrypted at rest (« level 1 », internal/space-encryption.md, private): everything personal of this account
 //! (Hermes' home, the bridge's config and data, the backup key, the browsers' profiles…) lives in one gocryptfs
 //! folder. Its key is never on this server's disk: it is two shares put together (XOR), one kept here (useless alone),
 //! the other kept by Kerfy's key service at another provider (keys-rs/), which hands it to this place only, with the

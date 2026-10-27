@@ -1,4 +1,4 @@
-"""`bipagents encrypt`: this account's space encrypted at rest (docs/space-encryption.md, bridge-rs/src/space.rs).
+"""`bipagents encrypt`: this account's space encrypted at rest (internal/space-encryption.md, private, bridge-rs/src/space.rs).
 
 Everything personal (Hermes' home, the bridge's config and data, the backup key, the browsers' profiles) moves into
 one gocryptfs folder whose key is two shares: one on this server, the other at Kerfy's key service (keys-rs/, at

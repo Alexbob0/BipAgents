@@ -192,7 +192,7 @@ est proposé en amont ([`hermes/patches/`](hermes/patches/README.md)).
   recette pour faire tourner ton propre modèle de voix.
 - [`site/`](site/README.md) — bipagents.com et kerfystudio.com ; [`docs/`](docs/) — guides et notes
   ([auto-hébergement](docs/self-hosting.fr.md), [serveur loué](docs/vps.fr.md),
-  [ce que les apps envoient](docs/app-data.fr.md), [chiffrement de l'espace](docs/space-encryption.md), les
+  [ce que les apps envoient](docs/app-data.fr.md), les
   [textes légaux](docs/legal/)).
 - Les apps (iPhone, iPad, Android, natives en SwiftUI et Kotlin/Compose) appartiennent à Kerfy Studio et leur code est
   privé. Publiés ici pour que chacun puisse vérifier leurs promesses : le chiffrement de bout en bout du compte,

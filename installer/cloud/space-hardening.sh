@@ -1,6 +1,6 @@
 #!/bin/bash
 # BipAgents: what a server must also do for its places' encrypted spaces (installer/bipinstall/space.py,
-# docs/space-encryption.md) to mean something: the open spaces' data passes through memory, and memory reaches the
+# internal/space-encryption.md, private) to mean something: the open spaces' data passes through memory, and memory reaches the
 # disk through the swap file, crash dumps and logs. Run once as root (cloud-init will, once encryption is on by
 # default on the offer); running it again changes nothing:
 #     space-hardening.sh

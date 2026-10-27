@@ -48,5 +48,6 @@ A problem in Hermes Agent itself goes to [its own security policy](https://githu
 - An agent with a terminal, in the same account as others, can read their secrets: agents that hold secrets get a
   sandbox (podman) or an account of their own.
 - On a rented server, the provider can read the disk, the vault's key included, unless the space is encrypted at rest
-  ([space encryption](docs/space-encryption.md), and its honest limits).
+  (off by default for now: its key is split in two, half of it kept by Kerfy Studio's key service at another provider,
+  so a copy of the disk doesn't open elsewhere; Kerfy Studio, which keeps that half, could technically access it).
 - The model you choose receives every message it answers.

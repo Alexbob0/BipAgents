@@ -179,7 +179,7 @@ A few changes BipAgents needs aren't in Hermes yet: the installer applies them, 
   for running your own voice model.
 - [`site/`](site/README.md) — bipagents.com and kerfystudio.com; [`docs/`](docs/) — guides and notes
   ([self-hosting](docs/self-hosting.md), [rented server](docs/vps.md), [what the apps send](docs/app-data.md),
-  [space encryption](docs/space-encryption.md), the [legal texts](docs/legal/)).
+  the [legal texts](docs/legal/)).
 - The apps (iPhone, iPad, Android, native SwiftUI and Kotlin/Compose) are Kerfy Studio's and their source is private.
   Published here so anyone can check their promises: the account's end-to-end encryption, the same in both apps
   (`App/Features/Account/AccountCrypto.swift`, `android/…/account/AccountCrypto.kt`, with its test vectors), and the
