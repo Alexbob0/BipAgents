@@ -324,6 +324,16 @@ tabs.forEach((tab, i) => {
     next.focus(); next.click();
   });
 });
+// /demo/#walk opens on that scenario (the home's first-screen cards link here): chosen before it first plays.
+const tabFor = h => tabs.find(t => "#" + t.dataset.scenario === h);
+const fromAddress = tabFor(location.hash);
+if (fromAddress) {
+  tabs.forEach(t => { t.classList.toggle("active", t === fromAddress); t.setAttribute("aria-selected", String(t === fromAddress)); t.tabIndex = t === fromAddress ? 0 : -1; });
+  current = fromAddress.dataset.scenario;
+  // on a phone the chat is under the tabs: brought into view so it plays at once
+  if (chat) addEventListener("load", () => chat.scrollIntoView({ block: "nearest", behavior: "instant" }), { once: true });
+}
+addEventListener("hashchange", () => tabFor(location.hash)?.click());
 $(".replay")?.addEventListener("click", () => play(current));
 if (chat) once(chat, () => play(current), 0.35);   // the demo has its own page (/demo/)
 

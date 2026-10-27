@@ -24,13 +24,11 @@
     </ul>
     <p class="priv-ask"><span id="priv-q">{{private.ask}}</span>
       <button type="button" class="priv-more" aria-expanded="false" aria-controls="private" aria-describedby="priv-q" data-more="{{private.more}}" data-less="{{private.less}}"><span class="priv-label">{{private.more}}</span><i aria-hidden="true"></i></button></p>
-    <p class="words">{{hero.words}}</p>
     <div class="cta-row">
       <a class="pill pill-buy" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
       <a class="pill pill-soft" href="{{demohref}}">{{hero.watch}} <small class="pill-time">{{hero.watchTime}}</small></a>
-      <a class="pill pill-soft" href="#install"><span aria-hidden="true">💻</span>{{pricing.mode.self}}</a>
     </div>
-    <p class="hero-price">{{hero.price}}</p>
+    <p class="hero-alt"><a href="#install"><span aria-hidden="true">💻</span> {{hero.self}}</a></p>
   </div>
 
   <!-- « See more »: where your data is, who can access it (docs/legal/offer.en.md §9, privacy.en.md §5.4,
@@ -72,8 +70,9 @@
       <h2>{{notebook.title}}</h2>
       <p class="sub">{{notebook.sub}}</p>
       <ul class="nb-list">
-        <li>{{notebook.i1}}</li><li>{{notebook.i2}}</li><li>{{notebook.i3}}</li>
-        <li>{{notebook.i4}}</li><li>{{notebook.i5}}</li><li>{{notebook.i6}}</li>
+        <li><span aria-hidden="true">🔔</span>{{notebook.i1}}</li><li><span aria-hidden="true">✈️</span>{{notebook.i2}}</li>
+        <li><span aria-hidden="true">🧾</span>{{notebook.i3}}</li><li><span aria-hidden="true">🔁</span>{{notebook.i4}}</li>
+        <li><span aria-hidden="true">📄</span>{{notebook.i5}}</li><li><span aria-hidden="true">📅</span>{{notebook.i6}}</li>
       </ul>
       <p class="nb-line"><span aria-hidden="true">🗂️</span>{{notebook.line1}}</p>
       <p class="nb-line"><span aria-hidden="true">🔎</span>{{notebook.line2}}</p>
@@ -101,7 +100,7 @@
   </div>
 </section>
 
-<!-- ============================================================ FAMILY: agents that pass news on, after you approve
+<!-- ============================================================ TOGETHER: Duo/Famille and friends, one story
      (bridge-rs family_news.rs, peers.rs, shares.rs; no group chats yet) -->
 <section class="section fam-section" id="family">
   <div class="section-head reveal">
@@ -126,23 +125,15 @@
       </figure>
     </div>
     <div class="fam-copy">
-      <ol class="fam-steps reveal">
-        <li style="--tint:var(--coral-tint)"><h3>{{family.s1t}}</h3><p>{{family.s1}}</p></li>
-        <li style="--tint:var(--teal-tint)"><h3>{{family.s2t}}</h3><p>{{family.s2}}</p></li>
-        <li style="--tint:var(--gold-tint)"><h3>{{family.s3t}}</h3><p>{{family.s3}}</p></li>
-      </ol>
-      <ul class="fam-points reveal">
-        <li>{{family.p1}}</li><li>{{family.p2}}</li><li>{{family.p3}}</li><li>{{family.p4}}</li>
+      <!-- One story, from home to friends: places + shared credit (Duo/Famille), agents passing news on after you
+           approve, the family's shared agent and Carnet, one conversation shared read-only with friends (shares.rs). -->
+      <ul class="fam-tiles reveal">
+        <li style="--tint:var(--coral-tint)"><span class="fam-ic" aria-hidden="true">🏠</span><h3>{{family.s1t}}</h3><p>{{family.s1}}</p></li>
+        <li style="--tint:var(--teal-tint)"><span class="fam-ic" aria-hidden="true">💬</span><h3>{{family.s2t}}</h3><p>{{family.s2}}</p></li>
+        <li style="--tint:var(--gold-tint)"><span class="fam-ic" aria-hidden="true">🛒</span><h3>{{family.s3t}}</h3><p>{{family.s3}}</p></li>
+        <li style="--tint:var(--violet-tint)"><span class="fam-ic" aria-hidden="true">🧳</span><h3>{{family.s4t}}</h3><p>{{family.s4}}</p></li>
       </ul>
-      <!-- Friends: one conversation shared read-only (being built 2026-10-27; « Soon » until it ships). -->
-      <div class="fam-share reveal">
-        <p class="fam-share-tag">{{family.share.tag}}</p>
-        <h3><span aria-hidden="true">🧳</span>{{family.share.title}}</h3>
-        <p class="fam-share-text">{{family.share.text}}</p>
-        <ul class="fam-points">
-          <li>{{family.share.p1}}</li><li>{{family.share.p2}}</li><li>{{family.share.p3}}</li>
-        </ul>
-      </div>
+      <p class="fam-lock reveal"><span aria-hidden="true">🔒</span>{{family.lock}}</p>
       <p class="fam-cta reveal"><a class="pill pill-soft" href="#pricing">{{family.cta}}</a></p>
     </div>
   </div>
