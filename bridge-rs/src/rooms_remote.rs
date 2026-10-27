@@ -85,6 +85,9 @@ pub fn allowed_here(config: &Config, id: &str) -> bool {
     if households(config).get(&household).is_none() {
         return false;
     }
+    if crate::family_agent::is_family_of_household(config, id) {
+        return true; // the family's agent: in every member's discussions, no link needed
+    }
     let links = links_of(&crate::peers::Links::new(&py::join(&config.data_dir(), "peers.json")).load());
     links.iter().any(|(s, t)| s == id || t == id)
 }
@@ -256,7 +259,8 @@ fn guest_agent(state: &AppState, headers: &HeaderMap, agent: &str) -> ApiResult<
     let agent = config.agent(Some(agent)).cloned().ok_or_else(|| HttpError::new(404, "not found"))?;
     let suffix = format!("{SEPARATOR}{household}");
     let links = links_of(&state.links.load());
-    if !links.iter().any(|(s, t)| s.ends_with(&suffix) && *t == agent.name) {
+    let family = crate::family_agent::is_family(&config, &agent.name);
+    if !family && !links.iter().any(|(s, t)| s.ends_with(&suffix) && *t == agent.name) {
         tracing::info!(household = %household, agent = %agent.name, "rooms: a relative's discussion refused");
         return Err(HttpError::new(
             403,

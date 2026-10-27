@@ -210,6 +210,10 @@ fn household_name(linked: &Households, household: &str) -> String {
 /// The linked households `agent` is shared with (unlinked ones left out).
 pub fn shared_with(config: &Config, agent: &str) -> Vec<String> {
     let linked = households(config);
+    if crate::family_agent::is_family(config, agent) {
+        // the family's agent: every linked household, new ones included (family_agent.rs)
+        return linked.public().iter().map(|h| h.get("id").map(py::py_str).unwrap_or_default()).collect();
+    }
     let data = read(&owner_path(config));
     object(&data, "shared")
         .and_then(|s| s.get(agent))
@@ -666,11 +670,16 @@ async fn served_post(
         .chars()
         .take(40)
         .collect();
+    let rules = if crate::family_agent::is_family(&config, &agent.name) {
+        crate::family_agent::member_instructions(&person)
+    } else {
+        relative_instructions(&person, &shown)
+    };
     let session = str_of(&c, "session");
     let base = state.hermes.session(&agent, &session).await.map(|s| counters_of(&s)).unwrap_or((0, 0));
     let run_id = state
         .hermes
-        .start_run(&agent, &framed(&person, &shown, &text), &session, Some(&relative_instructions(&person, &shown)))
+        .start_run(&agent, &framed(&person, &shown, &text), &session, Some(&rules))
         .await
         .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
     update(&owner_path(&config), |data| {
@@ -759,6 +768,13 @@ async fn served_approval(
 async fn offered(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
     let household = household_of(&state, &headers)?;
     let body = body_json(&body)?;
+    receive_offer(&state.config(), &household, &body)?;
+    Ok(web::ok(json!({"ok": true})))
+}
+
+/// An offer from a linked household kept (or taken back): `{agent, name, category, color, shared, family?}`. The
+/// family's agent (family_agent.rs) is « added » at once, and `new` until the person opened it.
+pub fn receive_offer(config: &Config, household: &str, body: &Dict) -> ApiResult<()> {
     let agent: String = tk::str_or_empty(body.get("agent")).chars().take(64).collect();
     if agent.is_empty()
         || agent.contains(SEPARATOR)
@@ -768,8 +784,8 @@ async fn offered(State(state): State<AppState>, headers: HeaderMap, body: Bytes)
     }
     let id = format!("{agent}{SEPARATOR}{household}");
     let shared = body.get("shared").map(py::truthy).unwrap_or(true);
-    let config = state.config();
-    let owner = household_name(&households(&config), &household);
+    let family = body.get("family").is_some_and(py::truthy);
+    let owner = household_name(&households(config), household);
     let cut = |key: &str, max: usize| -> Value {
         let text: String = tk::str_or_empty(body.get(key)).chars().take(max).collect();
         if text.is_empty() {
@@ -780,23 +796,53 @@ async fn offered(State(state): State<AppState>, headers: HeaderMap, body: Bytes)
     };
     let entry_name = cut("name", 60);
     let (category, color) = (cut("category", 30), cut("color", 30));
-    update(&mine_path(&config), |data| {
+    update(&mine_path(config), |data| {
         let agents = object_mut(data, "agents");
         if !shared {
             agents.shift_remove(&id);
             return;
         }
-        let state_word =
-            agents.get(&id).map(|a| str_of(a, "state")).filter(|s| s == "added").unwrap_or("offered".into());
-        let since = agents.get(&id).and_then(|a| a.get("since").cloned()).unwrap_or(json!(now()));
-        agents.insert(
-            id.clone(),
-            json!({"agent": agent, "household": household, "owner": owner, "name": entry_name, "category": category,
-                   "color": color, "state": state_word, "since": since}),
-        );
+        if family {
+            // one family agent per household: an older one goes
+            agents.retain(|k, a| {
+                *k == id || !(str_of(a, "household") == household && a.get("family").is_some_and(py::truthy))
+            });
+        }
+        let before = agents.get(&id).cloned();
+        let state_word = if family {
+            "added".to_string()
+        } else {
+            before.as_ref().map(|a| str_of(a, "state")).filter(|s| s == "added").unwrap_or("offered".into())
+        };
+        let since = before.as_ref().and_then(|a| a.get("since").cloned()).unwrap_or(json!(now()));
+        let mut entry = json!({"agent": agent, "household": household, "owner": owner, "name": entry_name,
+                               "category": category, "color": color, "state": state_word, "since": since});
+        if family {
+            entry["family"] = json!(true);
+            entry["new"] =
+                before.as_ref().map(|a| a.get("new").cloned().unwrap_or(json!(false))).unwrap_or(json!(true));
+        }
+        agents.insert(id.clone(), entry);
     })?;
-    tracing::info!(household = %household, agent = %agent, shared = shared, "shared agent: offer received");
-    Ok(web::ok(json!({"ok": true})))
+    tracing::info!(household = %household, agent = %agent, shared = shared, family = family, "shared agent: offer received");
+    Ok(())
+}
+
+/// The family's agent of `household` is gone (it answered it has none, or handed it over).
+pub fn drop_family_offers(config: &Config, household: &str) {
+    let _ = update(&mine_path(config), |data| {
+        object_mut(data, "agents")
+            .retain(|_, a| !(str_of(a, "household") == household && a.get("family").is_some_and(py::truthy)));
+    });
+}
+
+/// The person opened the family's agent: no « Nouveau » card any more.
+pub fn family_seen(config: &Config, id: &str) -> anyhow::Result<()> {
+    update(&mine_path(config), |data| {
+        if let Some(Value::Object(a)) = object_mut(data, "agents").get_mut(id) {
+            a.insert("new".into(), json!(false));
+        }
+    })
 }
 
 /// What a linked household's bridge may call (its key). Mounted at the root.

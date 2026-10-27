@@ -1039,9 +1039,12 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
 }
 
 async fn unlink(state: &AppState, household: &str) -> ApiResult<Response> {
+    let entry = state.households.get(household);
     if state.households.remove(household).is_err() {
         return Err(HttpError::new(404, "no such household"));
     }
+    // the family's agent held here: that member gets what is the family's (family_agent.rs)
+    crate::family_agent::after_unlink(state, household, entry);
     let mut data = state.links.load();
     let suffix = format!("{SEPARATOR}{household}");
     let kept: Vec<(String, String)> =

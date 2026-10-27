@@ -584,7 +584,10 @@ pub async fn make_profile(
         .await?;
     }
     run(strings(&[&hermes, "-p", &profile, "config", "set", "API_SERVER_KEY", &agent.hermes_key]), env.clone()).await?;
-    if !install.isolated {
+    // The family's agent (family_agent.rs): never anything that reads the place's disk or drives a browser with
+    // someone's logins, sandboxed or not.
+    let family = crate::family_agent::is_family(&config, &profile);
+    if !install.isolated || family {
         // Same account as this bridge and no sandbox: nothing that reads the disk until the person turns it on.
         let mut args = strings(&[&hermes, "-p", &profile, "tools", "disable"]);
         args.extend(strings(&DISK_TOOLS));
@@ -596,7 +599,7 @@ pub async fn make_profile(
     mark_as_bot(&folder)?;
     // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
     wait_served(http, &agent, true).await?;
-    let mut agent = with_browser(&config, agent, run).await;
+    let mut agent = if family { agent } else { with_browser(&config, agent, run).await };
     agent = mount_uploads(shared, &agent, run, false).await?;
     if shared.get().agents.contains_key(&profile) {
         save_agent(shared, &agent)?;
@@ -1325,6 +1328,15 @@ pub async fn write_settings(
     {
         return Err(AgentError("the tools of an agent set up by hand are changed on its server".into()).into());
     }
+    if crate::family_agent::is_family(&config, &agent.name)
+        && crate::family_agent::refused_setting(
+            &toolsets,
+            body.browser,
+            body.health == Some(true) || body.notebook == Some(true),
+        )
+    {
+        return Err(AgentError("the family's agent keeps nobody's private data: these tools stay off".into()).into());
+    }
     if !skills.is_empty() {
         if let Err(exc) = crate::own_skills::set_enabled(&profile_folder(&config, agent), &skills) {
             return Err(match exc.downcast_ref::<LookupError>() {
@@ -1401,13 +1413,16 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
         Some(lang) if !lang.is_empty() => crate::souls::with_language(&text, Some(lang)),
         _ => text,
     };
-    let text = crate::souls::with_health(&text, crate::health::enabled(config, &agent.name));
-    let text = crate::souls::with_notebook(&text, crate::notebook::enabled(config, &agent.name));
-    let text = crate::souls::with_archives(&text, crate::archives::enabled(config, &agent.name));
+    // the family's agent: none of its creator's private tools, its own block instead (family_agent.rs)
+    let family = crate::family_agent::is_family(config, &agent.name);
+    let text = crate::souls::with_health(&text, !family && crate::health::enabled(config, &agent.name));
+    let text = crate::souls::with_notebook(&text, !family && crate::notebook::enabled(config, &agent.name));
+    let text = crate::souls::with_archives(&text, !family && crate::archives::enabled(config, &agent.name));
     let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
     let text = crate::dates::with_dates(&text, line.as_deref());
     let text = crate::guide::with_blocks(config, agent, &text);
-    let text = if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+    let text = crate::family_agent::with_family(&text, family);
+    let text = if family || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         text
     } else {
         crate::souls::with_payments(&text)
@@ -1423,6 +1438,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
+    let (soul, _) = crate::family_agent::split_family(&soul);
     Ok(crate::guide::split_blocks(&soul))
 }
 
@@ -1486,6 +1502,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     crate::health::forget(&config, &agent.name);
     crate::weather::forget(&config, &agent.name);
     crate::guide::forget(&config, &agent.name);
+    crate::family_agent::forget(&config, &agent.name);
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, "agent deleted");
     Ok(())
 }
@@ -1914,8 +1931,12 @@ async fn remove_claim(State(state): State<AppState>) -> ApiResult<Response> {
 async fn remove_agent(state: AppState, agent_id: String) -> ApiResult<Response> {
     let agent = managed_or_404(&state, &agent_id)?;
     let _guard = LOCK.lock().await;
+    let family = crate::family_agent::is_family(&state.config(), &agent.name);
     let result = async {
         delete_agent(&state.config, &agent, &default_run()).await?;
+        if family {
+            crate::family_agent::deleted(&state, &agent); // the members' apps drop it at once
+        }
         crate::agent_groups::set_group(&state.config(), &agent.name, "")?;
         state.vault.forget_agent(&state.config(), &agent.name).await
     }
