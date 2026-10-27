@@ -1,0 +1,117 @@
+# The agents' container images for the offer's servers (installer/bipinstall/shared_images.py), built here instead
+# of in each account of each server, and pushed to GHCR:
+#   ghcr.io/alexbob0/bipagents-browser:<key>        browser/Containerfile, x86_64 and ARM (one manifest list); <key>
+#                                                   is computed like the installer's: sha256 of the tree id of
+#                                                   browser/, 12 characters. Also :<key>-<yyyymmdd> (a way back).
+#   ghcr.io/alexbob0/hermes-sandbox:desktop         Hermes' sandbox (docker.io/nousresearch/hermes-sandbox:desktop),
+#                                                   mirrored: the servers don't depend on Docker Hub's limits.
+# Each night it asks dnf, in the current image, whether Chrome (Chromium on ARM) or Fedora have something new (the same
+# check as installer/bipinstall/browser_refresh.py) and builds it again under the same key when they do; servers
+# pull it at 00:50 (root's bipagents-images.timer), the places restart their idle browsers on it from 01:00.
+# The packages are private when first pushed: make both public once (GitHub > Packages > Package settings).
+name: Server images
+
+on:
+  push:
+    branches: [main]
+    paths: ["browser/**", ".github/workflows/server-images.yml"]
+  schedule:
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build the browser again even when nothing is new"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: server-images
+  cancel-in-progress: false
+
+env:
+  BROWSER: ghcr.io/alexbob0/bipagents-browser
+
+jobs:
+  key:
+    name: Key, and whether to build
+    if: github.repository == 'Alexbob0/BipAgents'
+    runs-on: ubuntu-latest
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: key
+        run: echo "key=$(printf '%s' "$(git rev-parse HEAD:browser)" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+      - run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - id: decide
+        env:
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          image="$BROWSER:${{ steps.key.outputs.key }}"
+          if [ "$FORCE" = "true" ] || ! docker manifest inspect "$image" >/dev/null 2>&1; then
+            echo "build=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # The image of this key exists: built again only when dnf has something new in it.
+          check=$(PYTHONPATH=installer python3 -c 'from bipinstall.browser_refresh import CHECK; print(CHECK)')
+          out=$(docker run --rm --pull=always --user 0 --entrypoint /bin/sh "$image" -c "$check" || true)
+          printf '%s\n' "$out"
+          printf '%s' "$out" | PYTHONPATH=installer python3 -c '
+          import sys
+          from bipinstall.browser_refresh import decide, parse_check
+          rebuild, why = decide(parse_check(sys.stdin.read()))
+          print(why, file=sys.stderr)
+          print("build=" + ("true" if rebuild else "false"))' >> "$GITHUB_OUTPUT"
+
+  browser:
+    name: Browser ${{ matrix.arch }}
+    needs: key
+    if: needs.key.outputs.build == 'true'
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build (today's Chrome and packages, never a cached layer)
+        run: |
+          docker build --pull --build-arg "BROWSER_REFRESH=$(date -u +%Y%m%d%H%M)" \
+            -t "$BROWSER:${{ needs.key.outputs.key }}-${{ matrix.arch }}" -f browser/Containerfile browser
+      - name: Check that Chrome starts
+        run: |
+          smoke=$(PYTHONPATH=installer python3 -c 'from bipinstall.browser_refresh import SMOKE; print(SMOKE)')
+          docker run --rm --entrypoint /bin/sh "$BROWSER:${{ needs.key.outputs.key }}-${{ matrix.arch }}" -c "$smoke"
+      - run: docker push "$BROWSER:${{ needs.key.outputs.key }}-${{ matrix.arch }}"
+
+  browser-manifest:
+    name: Browser ${{ needs.key.outputs.key }}
+    needs: [key, browser]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: One name for both processors
+        run: |
+          key="${{ needs.key.outputs.key }}"
+          docker buildx imagetools create -t "$BROWSER:$key" -t "$BROWSER:$key-$(date -u +%Y%m%d)" \
+            "$BROWSER:$key-amd64" "$BROWSER:$key-arm64"
+
+  sandbox:
+    name: Sandbox mirror
+    if: github.repository == 'Alexbob0/BipAgents'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Copy Hermes' sandbox (every processor it has)
+        run: |
+          skopeo copy --all --retry-times 3 \
+            --dest-creds "${{ github.actor }}:${{ github.token }}" \
+            docker://docker.io/nousresearch/hermes-sandbox:desktop \
+            docker://ghcr.io/alexbob0/hermes-sandbox:desktop

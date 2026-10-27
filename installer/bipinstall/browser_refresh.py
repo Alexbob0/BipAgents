@@ -18,6 +18,10 @@ of each install that has browsers (a self-hosted one, each place of the offer), 
 5. images no longer used are removed, so the disk does not grow.
 
 What it did goes to the journal (`journalctl --user -u bipagents-refresh-browser`).
+
+Since 2026-10-27 the image usually isn't built here (shared_images.py): on a server of the offer it is the server's,
+pulled by root each night (this job only restarts the idle browsers on it); elsewhere it comes from GHCR, built each
+night by GitHub Actions when there is something new, and this job pulls it again. Steps 2-3 are for an image built here.
 """
 from __future__ import annotations
 
@@ -249,13 +253,53 @@ def server_lock(path: Path = LOCK, wait: float = LOCK_WAIT, sleep: Callable[[flo
 
 # -- The whole refresh ------------------------------------------------------------------------------------------------
 
+def from_registry(engine: str, repo: Path, home: Path, run: Run = run) -> int:
+    """An image pulled from GHCR (shared_images.py): the workflow builds it again each night when there is something
+    new, under the same key; this pulls it, checks that it starts and only then names it IMAGE."""
+    from .shared_images import browser_key, browser_ref
+    key = browser_key(repo)
+    if not key:
+        say("current image kept: this checkout's browser key is unknown")
+        return 1
+    ref = browser_ref(key)
+    before = image_id(engine, IMAGE, run)
+    code, out = run([engine, "pull", "--quiet", ref], 3600)
+    if code != 0:
+        say(f"current image kept: {ref} could not be pulled ({out[-200:]})")
+        return 1
+    if image_id(engine, ref, run) != before:
+        code, version = run(smoke_command(engine, ref), 300)
+        found = VERSION.search(version)
+        if code != 0 or not found:
+            say(f"current image kept: the new one does not start ({version[-300:]})")
+            run([engine, "rmi", ref], 120)
+            return 1
+        run([engine, "tag", ref, IMAGE], 120)
+        say(f"browser refreshed from {ref}: {found.group(1)}")
+    else:
+        say(f"browser up to date ({ref})")
+    run([engine, "rmi", ref], 120)   # only the name: the image is IMAGE
+    restart_old(engine, home, run)
+    prune(engine, run)
+    return 0
+
+
 def refresh(engine: str, repo: Path, home: Path, run: Run = run, force: bool = False,
             stamp: Optional[str] = None) -> int:
-    """0: up to date or refreshed; 1: the image stays as it was (said why); the next night tries again."""
+    """0: up to date or refreshed; 1: the image stays as it was (said why); the next night tries again. An image
+    from the server's shared store is root's to refresh; one pulled from GHCR is pulled again (shared_images.py)."""
     before = image_id(engine, IMAGE, run)
     if not before:
         say("no agent browser image here: nothing to refresh")
         return 0
+    from .shared_images import source_of
+    origin = source_of(home).get("source")
+    if origin == "shared":
+        say("the server keeps this browser up to date (its shared images, pulled each night)")
+        restart_old(engine, home, run)
+        return 0
+    if origin == "registry" and not force:
+        return from_registry(engine, repo, home, run)
     code, out = run(check_command(engine), 900)
     check = parse_check(out)
     rebuild, why = decide(check, force)

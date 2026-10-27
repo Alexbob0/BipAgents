@@ -266,6 +266,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "shared-hermes":   # shared_hermes.py: one read-only Hermes for the server's places
         from . import shared_hermes
         return shared_hermes.main(argv[1:])
+    if argv and argv[0] == "shared-images":   # shared_images.py: the agents' images once for the server's places
+        from . import shared_images
+        return shared_images.main(argv[1:])
     if argv and argv[0] == "backup":   # backup.py: this place to the guichet, every hour
         from .backup import main as backup_main
         return backup_main(argv[1:])
@@ -366,6 +369,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     for line in plan.notes:
         say(ui.note(line))
     sandbox = hermes.sandbox_runtime()
+    from . import shared_images
+    if shared_images.use_shared(runner, sandbox, say=say):   # a machine whose administrator pulled them once
+        say(ui.note("The agents' browser and sandbox: this machine's shared images."))
     if sandbox:
         say(ui.note(f"Sandbox: the agents' tools run in a container ({Path(sandbox).name})."))
     elif machine.system == "linux":
@@ -449,6 +455,10 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     config_dir = Path.home() / ".config" / "bipagents"
     PROGRESS = cloud.Progress(config_dir / "setup-progress.json", dry=runner.dry)
     sandbox = hermes.sandbox_runtime()
+    # The server's images (browser, sandbox), pulled once by root: nothing to pull or build in this account.
+    from . import shared_images
+    if shared_images.use_shared(runner, sandbox, say=say):
+        say(ui.note("The agents' browser and sandbox: the server's shared images."))
     # « Solo » (4 GB): one visible browser at a time, started when an agent browses and stopped when idle.
     browser = bool(sandbox) and setup.profile != "mini" and machine.memory_gib >= 3.5
     if not args.languages:   # the Bips in the person's language first; the others load only when spoken
@@ -523,8 +533,13 @@ def gateway_service(inst: Install, machine: Machine, runner: hermes.Runner) -> N
 PROGRESS: Optional[Callable[..., None]] = None
 
 
+STARTED = time.monotonic()   # each step says when it starts: the install log is then the install's timeline
+
+
 def step(number: int, total: int, label: str) -> None:
     say(ui.step(number, total, label))
+    elapsed = int(time.monotonic() - STARTED)
+    say(f"  ({time.strftime('%H:%M:%S')}, {elapsed // 60} min {elapsed % 60:02d} s since the start)")
     if PROGRESS is not None:
         PROGRESS(number, total, label)
 
@@ -764,6 +779,8 @@ def checks_and_end(inst: Install, runner: hermes.Runner, args, steps, total: int
     if inst.cloud:
         if PROGRESS is not None:
             PROGRESS(total, total, "Ready", done=True)
+        elapsed = int(time.monotonic() - STARTED)
+        say(f"  ({time.strftime('%H:%M:%S')}, installed in {elapsed // 60} min {elapsed % 60:02d} s)")
         say(ui.finale("It's ready: the app pairs itself with this server."))
         return 0
     if args.no_tailscale:
