@@ -41,12 +41,14 @@ use crate::{py, Dict};
 
 /// Each live share is brought up to date this often (new viewers keyed, new messages sent).
 pub const SYNC_SECONDS: u64 = 20;
-/// A map picture or a page bigger than this stays out (the guichet takes 4.2 MB of base64 per item).
-pub const ITEM_MAX: usize = 3_000_000;
+/// A map picture or a page bigger than this stays out: sealed, its base64 in JSON in base64 again stays under the
+/// 4.2 MB the guichet takes per item.
+pub const ITEM_MAX: usize = 1_500_000;
 /// A photo the person sent, at most (bigger ones stay out: the apps send theirs smaller).
 pub const PHOTO_MAX: usize = 1_500_000;
-/// Items sent to the guichet in one request, by size.
+/// Items sent to the guichet in one request, by size and by number (it takes 300 at once).
 const BATCH_BYTES: usize = 8_000_000;
+const BATCH_ITEMS: usize = 250;
 const STD: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 const URL: base64::engine::GeneralPurpose = base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
@@ -240,7 +242,9 @@ pages or maps made in this conversation. Weather, routes, maps and the web are f
 pub fn shared_turn(state: &AppState, agent: &str) -> bool {
     let at = now();
     shares_of(&state.config()).values().any(|v| {
-        s(v, "agent") == agent && v["ends"].as_f64().unwrap_or(0.0) > at && state.hub.session_busy(agent, &s(v, "session"))
+        s(v, "agent") == agent
+            && v["ends"].as_f64().unwrap_or(0.0) > at
+            && state.hub.session_busy(agent, &s(v, "session"))
     })
 }
 
@@ -421,8 +425,12 @@ pub fn items_of(config: &Config, share: &Value, messages: &[Dict]) -> Vec<(Strin
             continue;
         }
         let id = format!("m-{key}");
-        let at = message.get("timestamp").and_then(Value::as_f64).or_else(|| message.get("created_at").and_then(Value::as_f64));
-        items.push((id.clone(), json!({"id": id, "kind": "msg", "role": role, "text": text, "at": at, "media": media})));
+        let at = message
+            .get("timestamp")
+            .and_then(Value::as_f64)
+            .or_else(|| message.get("created_at").and_then(Value::as_f64));
+        items
+            .push((id.clone(), json!({"id": id, "kind": "msg", "role": role, "text": text, "at": at, "media": media})));
     }
     items
 }
@@ -512,13 +520,15 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
     let Some(mut share) = share_of(&config, id) else { return Ok(None) };
     if config.agent(Some(&s(&share, "agent"))).is_none() {
         // its agent deleted: the share stops (deleted at the guichet, so in the viewers' apps)
-        let (status, _) = guichet(state, &share, reqwest::Method::DELETE, "", None).await.map_err(|e| HttpError::new(502, e))?;
+        let (status, _) =
+            guichet(state, &share, reqwest::Method::DELETE, "", None).await.map_err(|e| HttpError::new(502, e))?;
         if status == 200 || status == 404 || status == 410 {
             put_share(&config, id, None).map_err(|e| HttpError::new(500, e.to_string()))?;
         }
         return Ok(None);
     }
-    let (status, remote) = guichet(state, &share, reqwest::Method::GET, "", None).await.map_err(|e| HttpError::new(502, e))?;
+    let (status, remote) =
+        guichet(state, &share, reqwest::Method::GET, "", None).await.map_err(|e| HttpError::new(502, e))?;
     if status == 404 || status == 410 {
         put_share(&config, id, None).map_err(|e| HttpError::new(500, e.to_string()))?;
         return Ok(None);
@@ -555,7 +565,8 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         }
         let viewer = v["viewer"].clone();
         let raw = STD.decode(s(v, "public_key")).unwrap_or_default();
-        let checked = secrets.get(&s(v, "invite")).filter(|(invite, secret)| proof_ok(secret, invite, &raw, &s(v, "proof")));
+        let checked =
+            secrets.get(&s(v, "invite")).filter(|(invite, secret)| proof_ok(secret, invite, &raw, &s(v, "proof")));
         match checked {
             Some((_, secret)) => match wrap_key(id, epoch, &key, secret, &raw) {
                 Ok(wrapped) => wraps.push(json!({"viewer": viewer, "wrapped": wrapped})),
@@ -572,9 +583,10 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
     }
     share["refused"] = json!(refused_ones);
     if !wraps.is_empty() {
-        let (status, body) = guichet(state, &share, reqwest::Method::PUT, "/keys", Some(json!({"epoch": epoch, "keys": wraps})))
-            .await
-            .map_err(|e| HttpError::new(502, e))?;
+        let (status, body) =
+            guichet(state, &share, reqwest::Method::PUT, "/keys", Some(json!({"epoch": epoch, "keys": wraps})))
+                .await
+                .map_err(|e| HttpError::new(502, e))?;
         if status != 200 {
             return Err(refused(status, &body));
         }
@@ -646,7 +658,7 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
             let kind = s(&item, "kind");
             item["s"] = json!(id);
             let data = seal_item(&key, &item).map_err(|e| HttpError::new(500, e.to_string()))?;
-            if !batch.is_empty() && size + data.len() > BATCH_BYTES {
+            if !batch.is_empty() && (size + data.len() > BATCH_BYTES || batch.len() >= BATCH_ITEMS) {
                 batches.push(std::mem::take(&mut batch));
                 size = 0;
             }
@@ -766,7 +778,8 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     let id = text_field(&body, "share", 64)?;
     let writer = text_field(&body, "writer", 100)?;
     let guichet_url = text_field(&body, "guichet", 300)?;
-    let ends = body["ends"].as_f64().filter(|e| *e > now()).ok_or_else(|| HttpError::new(422, "ends: in the future"))?;
+    let ends =
+        body["ends"].as_f64().filter(|e| *e > now()).ok_or_else(|| HttpError::new(422, "ends: in the future"))?;
     if !id_ok(&id) {
         return Err(HttpError::new(422, "share: an id from the guichet"));
     }
@@ -826,8 +839,9 @@ async fn cancel_invite(
     if !(hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit())) {
         return Err(HttpError::new(422, "an invitation"));
     }
-    let (status, body) =
-        guichet(&state, &share, reqwest::Method::DELETE, &format!("/invites/{hash}"), None).await.map_err(|e| HttpError::new(502, e))?;
+    let (status, body) = guichet(&state, &share, reqwest::Method::DELETE, &format!("/invites/{hash}"), None)
+        .await
+        .map_err(|e| HttpError::new(502, e))?;
     if status != 200 {
         return Err(refused(status, &body));
     }
@@ -848,8 +862,9 @@ async fn remove_viewer(
     }
     let config = state.config();
     let share = known(&config, &id)?;
-    let (status, body) =
-        guichet(&state, &share, reqwest::Method::DELETE, &format!("/viewers/{viewer}"), None).await.map_err(|e| HttpError::new(502, e))?;
+    let (status, body) = guichet(&state, &share, reqwest::Method::DELETE, &format!("/viewers/{viewer}"), None)
+        .await
+        .map_err(|e| HttpError::new(502, e))?;
     if status != 200 {
         return Err(refused(status, &body));
     }
@@ -874,7 +889,8 @@ async fn set_ends(State(state): State<AppState>, UrlPath(id): UrlPath<String>, b
 async fn stop(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
     let config = state.config();
     let share = known(&config, &id)?;
-    let (status, body) = guichet(&state, &share, reqwest::Method::DELETE, "", None).await.map_err(|e| HttpError::new(502, e))?;
+    let (status, body) =
+        guichet(&state, &share, reqwest::Method::DELETE, "", None).await.map_err(|e| HttpError::new(502, e))?;
     if status != 200 && status != 404 {
         return Err(refused(status, &body));
     }
@@ -919,9 +935,8 @@ mod tests {
         let (nonce, data) = rest.split_at(12);
         let opening = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &key).unwrap());
         let mut data = data.to_vec();
-        let plain = opening
-            .open_in_place(Nonce::try_assume_unique_for_key(nonce).unwrap(), Aad::empty(), &mut data)
-            .unwrap();
+        let plain =
+            opening.open_in_place(Nonce::try_assume_unique_for_key(nonce).unwrap(), Aad::empty(), &mut data).unwrap();
         plain.to_vec()
     }
 
@@ -960,7 +975,9 @@ mod tests {
         use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
         let opening = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &key).unwrap());
         let mut data = sealed[12..].to_vec();
-        let plain = opening.open_in_place(Nonce::try_assume_unique_for_key(&sealed[..12]).unwrap(), Aad::empty(), &mut data).unwrap();
+        let plain = opening
+            .open_in_place(Nonce::try_assume_unique_for_key(&sealed[..12]).unwrap(), Aad::empty(), &mut data)
+            .unwrap();
         assert_eq!(serde_json::from_slice::<Value>(plain).unwrap()["text"], "Salut");
     }
 
@@ -968,7 +985,10 @@ mod tests {
     fn the_person_s_words_and_photos_are_found_and_nothing_they_didn_t_type() {
         assert_eq!(typed_words("  Salut  ").as_deref(), Some("Salut"));
         assert_eq!(
-            typed_words("[OUT-OF-BAND USER MESSAGE — sent while you worked]\nEt le musée ?\n[/OUT-OF-BAND USER MESSAGE]").as_deref(),
+            typed_words(
+                "[OUT-OF-BAND USER MESSAGE — sent while you worked]\nEt le musée ?\n[/OUT-OF-BAND USER MESSAGE]"
+            )
+            .as_deref(),
             Some("Et le musée ?")
         );
         assert_eq!(typed_words("[bipagents:handoff] hand it over"), None);
@@ -1021,7 +1041,11 @@ mod tests {
         assert_eq!(items[0].1["title"], "Voyage à Lisbonne");
         assert!(!items.iter().any(|(_, v)| v.to_string().contains("secret mail")));
         assert_eq!(split_media("a\nMEDIA: /x.png\nb"), ("a\nb".to_string(), vec!["/x.png".to_string()]));
-        assert!(guichet_ok("https://guichet.bipagents.com") && !guichet_ok("http://evil.test") && guichet_ok("http://127.0.0.1:9"));
+        assert!(
+            guichet_ok("https://guichet.bipagents.com")
+                && !guichet_ok("http://evil.test")
+                && guichet_ok("http://127.0.0.1:9")
+        );
         assert!(instructions(4).contains("4 people") && closed_tool("mail_search").is_some());
         assert!(closed_tool(crate::weather::TOOL_NAME).is_none());
     }
