@@ -1166,11 +1166,17 @@ pub fn heal_souls(config: &Config) {
             None if soul.trim().is_empty() => continue,
             None => place_language.get_or_insert_with(|| crate::notebook::language(config)).clone(),
         };
-        if !soul.contains(&crate::souls::language_block(Some(&lang))) {
-            let healed = std::fs::write(
-                profile_folder(config, &agent).join("SOUL.md"),
-                crate::souls::with_language(&soul, Some(&lang)),
-            );
+        let mut text = if soul.contains(&crate::souls::language_block(Some(&lang))) {
+            soul.clone()
+        } else {
+            crate::souls::with_language(&soul, Some(&lang))
+        };
+        // The payments rule at start too (registration adds it later, after the first turns could be answered).
+        if !agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+            text = crate::souls::with_payments(&text);
+        }
+        if text != soul {
+            let healed = std::fs::write(profile_folder(config, &agent).join("SOUL.md"), text);
             if healed.is_ok() {
                 tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date");
             }

@@ -233,18 +233,22 @@ def test_profiles_created_on_the_server_can_be_claimed(bridges, fakes):
     bridge.commands.clear()
     jardin = bridge.post("/v1/agents/claim", headers=AUTH, json={"id": "jardin", "name": "Mon jardin"})
     assert jardin.status_code == 201, jardin.text
-    # Its key kept; the only thing written is the bridge's tools (create_audio) in its profile.
+    # Its key kept; the only things written are the bridge's tools (create_audio) in its profile, and on the Rust
+    # bridge the checkout hand-over's (« l'agent prépare, tu paies », every agent, 2026-10-26).
     claimed = jardin.json()
     assert claimed.pop("group", "") == ""   # agent groups: Rust only
     assert claimed == {"id": "jardin", "name": "Mon jardin", "url": "https://mini.ts.net:8642/p/jardin", "key": "own-key"}
-    assert {args[4] for args in hermes_args(bridge)} == {"mcp_servers.bipagents.url",
-                                                         "mcp_servers.bipagents.headers.Authorization",
-                                                         "mcp_servers.bipagents.timeout"}
+    keys = {args[4] for args in hermes_args(bridge)} - {"mcp_servers.bipagents_checkout.url",
+                                                        "mcp_servers.bipagents_checkout.headers.Authorization",
+                                                        "mcp_servers.bipagents_checkout.timeout"}
+    assert keys == {"mcp_servers.bipagents.url", "mcp_servers.bipagents.headers.Authorization",
+                    "mcp_servers.bipagents.timeout"}
     bridge.commands.clear()
     cuisine = bridge.post("/v1/agents/claim", headers=AUTH, json={"id": "cuisine"}).json()
     assert cuisine["name"] == "Cuisine"
     assert hermes_args(bridge)[0] == ["-p", "cuisine", "config", "set", "API_SERVER_KEY", cuisine["key"]]
-    assert all(args[4].startswith("mcp_servers.bipagents.") for args in hermes_args(bridge)[1:])
+    assert all(args[4].startswith(("mcp_servers.bipagents.", "mcp_servers.bipagents_checkout."))
+               for args in hermes_args(bridge)[1:])
     assert [agent for agent, _ in fakes.hermes.created] == ["jardin", "cuisine"]   # their « Discussion »
     assert "hermes-bots" in (profiles / "cuisine" / "profile.yaml").read_text()          # Bot Mode
     assert yaml.safe_load((profiles / "cuisine" / "profile.yaml").read_text())["description"] == "Recettes et menus"
