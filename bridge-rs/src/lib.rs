@@ -72,6 +72,7 @@ pub mod agents_admin;
 pub mod dates;
 pub mod device_keys;
 pub mod door_tls;
+pub mod family_agent;
 pub mod family_news;
 pub mod files;
 pub mod files_kept;

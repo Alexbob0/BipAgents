@@ -384,6 +384,9 @@ pub fn version_of(tools: &[Value]) -> String {
 /// The tools of `agent`: the install's, the Carnet's (on by default), `health` when the person gave it their health data, the calendar's when they
 /// shared their calendar with it, the address book's when they shared that, `weather` when its « Météo » is on.
 pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
+    if crate::family_agent::is_family(config, &agent.name) {
+        return crate::family_agent::tools(config); // nobody's private data (family_agent.rs)
+    }
     let mut tools = install_tools(config).to_vec();
     if crate::notebook::enabled(config, &agent.name) {
         tools.extend(crate::notebook::tools::tools(crate::notebook::health_agent(config, &agent.name)));
@@ -1616,6 +1619,17 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
     };
     // a deferred tool's call that the model's constrained names ended on an in-view tool (tool_diet.rs)
     let name = crate::tool_diet::reroute(&state.config(), &agent, &name, &arguments);
+    if crate::family_agent::is_family(&state.config(), &agent.name) {
+        // the family's agent: only the family's tools, in every turn, its creator's too (family_agent.rs)
+        if let Some(closed) = crate::family_agent::closed_tool(&name) {
+            tracing::info!(agent = %agent.name, tool = %name, "tool closed for the family's agent");
+            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+        }
+        if crate::family_agent::TOOL_NAMES.contains(&name.as_str()) {
+            let result = crate::family_agent::call_tool(&state.config(), &agent, &name, &arguments)?;
+            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+        }
+    }
     if crate::agent_shares::relative_turn(&state.config(), &agent.name) {
         // a relative talks to this agent: the person's own data stays closed (agent_shares.rs)
         if let Some(closed) = crate::agent_shares::closed_tool(&name) {

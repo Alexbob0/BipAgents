@@ -78,7 +78,7 @@ async fn agents_listing() {
         resp.json(),
         json!({"bridge": {"url": null, "lan": null},
                "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "server_voice": null, "category": null,
-                           "color": null, "outfit": "", "costumes": true, "uploads": true, "inbox": true, "url": null, "key": null,
+                           "color": null, "outfit": "", "costumes": true, "uploads": true, "inbox": true, "url": null, "family": false, "key": null,
                            "group": ""}],
                "unclaimed": []})
     );
