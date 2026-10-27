@@ -1438,8 +1438,12 @@ the BipAgents app.",
         let result =
             blocking(move || crate::calendar::call(&config, &agent_c.name, &name_c, &arguments_c, None, &remote))
                 .await?;
-        let asked = result.get("content").and_then(|c| c.get(0)).and_then(|c| c.get("text")).and_then(Value::as_str)
-            == Some(crate::calendar::ASKED);
+        let asked = result
+            .get("content")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("text"))
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.starts_with(crate::calendar::ASKED));
         if let Some(push) = push {
             if asked {
                 // The person's phone woken to do it now (a silent push; else when the app opens).
@@ -1623,14 +1627,33 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
             return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
         }
     }
+    // The brake (loop_brake.rs): the same write twice in a turn, or too many writes, refused in plain words.
+    let runs = state.hub.live_runs(&agent.name);
+    if let Some(refused) =
+        crate::loop_brake::WRITES.check(&state.config().brake, &agent.name, &runs, &name, &arguments, py::time_time())
+    {
+        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(refused))));
+    }
+    let wrote = |agent: &str, name: &str, arguments: &Dict, result: &Dict| {
+        if !result.get("isError").map(py::truthy).unwrap_or(false) {
+            crate::loop_brake::WRITES.record(agent, name, arguments);
+        }
+    };
     if crate::family_news::TOOL_NAMES.contains(&name.as_str()) {
         let result = crate::family_news::call_tool(&state.http, &state.config(), &agent, &name, &arguments).await?;
+        wrote(&agent.name, &name, &arguments, &result);
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
     }
     let jobs = crate::jobs::jobs_of(&state);
     let push = state.push.clone();
     let maker = state.audio_maker.clone();
-    let work = tokio::spawn(async move { call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await });
+    let work = tokio::spawn(async move {
+        let result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
+        if let Ok(done) = &result {
+            wrote(&agent.name, &name, &arguments, done);
+        }
+        result
+    });
     let accept = headers.get("accept").and_then(|v| v.to_str().ok()).unwrap_or("");
     if !accept.contains("text/event-stream") {
         let result = work.await.map_err(anyhow::Error::from)??;

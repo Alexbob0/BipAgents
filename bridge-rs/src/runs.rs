@@ -300,6 +300,11 @@ pub struct SubscriptionState {
     /// The run called the agent's browser tools: at its end, its browser stops soon unless used again
     /// (browsers::run_ended).
     pub used_browser: bool,
+    /// A background task's run (jobs.rs): the brake's higher limits (loop_brake.rs).
+    pub background: bool,
+    /// The brake's count of the run's tool calls, and whether it stopped the run.
+    pub turn: crate::loop_brake::TurnCount,
+    pub braked: bool,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -330,6 +335,9 @@ impl Default for SubscriptionState {
             rescued: false,
             room_id: None,
             used_browser: false,
+            background: false,
+            turn: crate::loop_brake::TurnCount::default(),
+            braked: false,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -927,6 +935,9 @@ impl RunHub {
             self.handoff(sub, &mut st, &event);
         }
         if kind == "tool.started" {
+            self.brake(sub, &mut st, &event);
+        }
+        if kind == "tool.started" {
             // a site its browser or web tools open is open to its programs too (sandbox_sites.rs)
             if let Some(shared) = self.config.as_ref() {
                 let text = |key: &str| event.data.get(key).and_then(Value::as_str).unwrap_or("");
@@ -1037,6 +1048,86 @@ impl RunHub {
         })
     }
 
+    /// The brake (loop_brake.rs, 2026-10-27): a run calling one tool again and again, the same call again, or far too
+    /// many tools is stopped, and the conversation told in plain words (a `bridge.notice` with code `loop_stopped`, in
+    /// the stream before the run's end; a push when nobody follows it). Not while a sub-agent works for the run (its
+    /// calls are its own); a background task's run (`mark_background`) and a browsing one get the higher limits.
+    fn brake(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
+        if st.braked || st.finished || st.delegating > 0 || st.subagents > 0 {
+            return;
+        }
+        let config = self.config.as_ref().map(|shared| shared.get());
+        let settings = config.as_ref().map(|c| c.brake.clone()).unwrap_or_default();
+        if !settings.enabled {
+            return;
+        }
+        let tool = crate::loop_brake::event_tool(&event.data);
+        if tool.is_empty() {
+            return;
+        }
+        let browser = browser_tool(&tool);
+        let mut limits = settings.limits(st.background);
+        if browser || st.used_browser {
+            limits.tool_calls = limits.tool_calls.max(settings.task.tool_calls);
+        }
+        let signature = crate::loop_brake::event_signature(&event.data);
+        let Some(over) = st.turn.note(&tool, signature.as_deref(), browser, &limits) else { return };
+        st.braked = true;
+        // The safety net's rescue would start the same work again in a background task.
+        st.rescued = true;
+        let lang = config
+            .as_ref()
+            .map(|c| {
+                let agent = c.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
+                crate::handback::language_of(c, &agent)
+            })
+            .unwrap_or_else(|| "en".to_string());
+        let data = crate::loop_brake::notice(&over, &lang);
+        let text = data.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+        tracing::warn!(agent = %sub.agent.name, run_id = %sub.run_id, tool_calls = st.turn.total,
+            background = st.background, reason = %crate::loop_brake::reason(&over), "going round in circles: run stopped");
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        let notice = SSEEvent::new(NOTICE, data, raw);
+        append_to_backlog(&mut st.backlog, &notice);
+        st.send_all(Some(&notice));
+        if let (true, Some(push)) = (st.watched && st.end_push && st.followers() == 0, self.push.clone()) {
+            // its own push instead of the run's end one (whose text would be the loop's last words)
+            st.end_push = false;
+            let (agent, run_id, session) = (sub.agent.name.clone(), sub.run_id.clone(), st.session_id.clone());
+            self.spawn(async move {
+                push.notify_reply(&agent, &run_id, &text, session.as_deref()).await;
+            });
+        }
+        let (hermes, agent, run_id) = (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone());
+        self.spawn(async move {
+            if let Err(err) = hermes.stop_run(&agent, &run_id).await {
+                tracing::warn!(agent = %agent.name, run_id = %run_id, error = %err, "going round in circles: stop refused");
+            }
+        });
+    }
+
+    /// A background task's run (jobs.rs): the brake's higher limits.
+    pub fn mark_background(&self, agent: &str, run_id: &str) {
+        let inner = lock(&self.inner);
+        if let Some(sub) = inner.subs.get(&(agent.to_string(), run_id.to_string())) {
+            lock(&sub.state).background = true;
+        }
+    }
+
+    /// The agent's runs going on that the hub follows: `(run id, background task's)`.
+    pub fn live_runs(&self, agent: &str) -> Vec<(String, bool)> {
+        let inner = lock(&self.inner);
+        inner
+            .subs
+            .values()
+            .filter(|sub| sub.agent.name == agent)
+            .filter_map(|sub| {
+                let st = lock(&sub.state);
+                (!st.finished && st.terminal.is_none()).then(|| (sub.run_id.clone(), st.background))
+            })
+            .collect()
+    }
+
     /// The long-work safety net (decided 2026-10-22, independent of the model): a run in a person's conversation (not a
     /// background task's own, whose watch has no end push) that passes `[jobs] handoff_tool_calls` tool calls or
     /// `handoff_seconds` is steered once, at a tool boundary, to hand the rest over to a background task. Not when the
@@ -1087,7 +1178,8 @@ impl RunHub {
             }
             _ => {}
         }
-        if st.steered || st.handed_off || !st.end_push || st.finished || st.delegating > 0 || st.subagents > 0 {
+        let held = st.delegating > 0 || st.subagents > 0;
+        if st.steered || st.braked || st.handed_off || !st.end_push || st.finished || held {
             return;
         }
         if !matches!(event.r#type.as_str(), "tool.started" | "tool.completed") {
@@ -1527,6 +1619,40 @@ mod tests {
         hub.dispatch(&lone, event("tool.started", json!({"tool": "browser_navigate"})));
         hub.dispatch(&lone, event("run.completed", json!({})));
         assert!(!root.join("lea").exists());
+    }
+
+    #[tokio::test]
+    async fn a_turn_going_round_in_circles_is_stopped_and_said() {
+        // 2026-10-27, token lab: calendar_add and calendar_list in turns, 262 times in one turn
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "daily".into(), ..Default::default() };
+        let run = |id: &str| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), id));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let started = |tool: &str| SSEEvent::new("tool.started", json!({"tool": tool}).as_object().cloned().unwrap(), "{}");
+        let notices = |sub: &RunSubscription| {
+            lock(&sub.state).backlog.iter().filter(|e| e.r#type == NOTICE).map(|e| e.data.clone()).collect::<Vec<_>>()
+        };
+        let (chat, task) = (run("run_chat"), run("run_task"));
+        hub.mark_background("daily", "run_task");
+        assert_eq!(hub.live_runs("daily").len(), 2);
+        assert!(hub.live_runs("daily").contains(&("run_task".to_string(), true)));
+        for i in 0..30 {
+            let tool = if i % 2 == 0 { "mcp__bipagents__calendar_add" } else { "mcp__bipagents__calendar_list" };
+            hub.dispatch(&chat, started(tool));
+            hub.dispatch(&task, started(tool));
+        }
+        let said = notices(&chat);
+        assert_eq!(said.len(), 1, "told once");
+        assert_eq!(said[0]["code"], json!("loop_stopped"));
+        assert_eq!(said[0]["text"], json!("I stopped: I was going round in circles with the calendar. Tell me if you want me to try again."));
+        let st = lock(&chat.state);
+        assert!(st.braked && st.rescued && st.turn.total == 21);
+        drop(st);
+        // the background task's run goes further (40 of one tool)
+        assert!(notices(&task).is_empty() && !lock(&task.state).braked);
     }
 
     #[tokio::test]
