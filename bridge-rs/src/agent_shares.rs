@@ -819,7 +819,8 @@ pub fn receive_offer(config: &Config, household: &str, body: &Dict) -> ApiResult
                                "category": category, "color": color, "state": state_word, "since": since});
         if family {
             entry["family"] = json!(true);
-            entry["new"] = before.as_ref().map(|a| a.get("new").cloned().unwrap_or(json!(false))).unwrap_or(json!(true));
+            entry["new"] =
+                before.as_ref().map(|a| a.get("new").cloned().unwrap_or(json!(false))).unwrap_or(json!(true));
         }
         agents.insert(id.clone(), entry);
     })?;

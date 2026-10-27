@@ -478,7 +478,8 @@ pub fn as_text(view: &Value) -> String {
         }
         for item in items {
             let tick = if item.get("done").is_some_and(py::truthy) { "x" } else { " " };
-            let due = Some(str_of(&item, "due")).filter(|d| !d.is_empty()).map(|d| format!(" 📅 {d}")).unwrap_or_default();
+            let due =
+                Some(str_of(&item, "due")).filter(|d| !d.is_empty()).map(|d| format!(" 📅 {d}")).unwrap_or_default();
             out.push(format!(
                 "- [{tick}] {}{due} (id {}, by {})",
                 str_of(&item, "text"),
@@ -488,7 +489,12 @@ pub fn as_text(view: &Value) -> String {
         }
     }
     for page in view["pages"].as_array().into_iter().flatten() {
-        out.push(format!("## Page « {} » (page id {})\n{}", str_of(page, "title"), str_of(page, "id"), str_of(page, "text")));
+        out.push(format!(
+            "## Page « {} » (page id {})\n{}",
+            str_of(page, "title"),
+            str_of(page, "id"),
+            str_of(page, "text")
+        ));
     }
     if out.is_empty() {
         "The family Carnet is empty.".into()
@@ -647,9 +653,13 @@ fn body_json(bytes: &[u8]) -> ApiResult<Dict> {
 
 fn role(lang: &str) -> &'static str {
     match lang.get(..2).unwrap_or("fr") {
-        "fr" => "l'agent de toute la famille : les courses, les tâches partagées, les dates de la famille, les \
-                 sorties, les repas, l'organisation de la maison",
-        _ => "the whole family's agent: shopping, shared tasks, the family's dates, outings, meals, organising the home",
+        "fr" => {
+            "l'agent de toute la famille : les courses, les tâches partagées, les dates de la famille, les \
+                 sorties, les repas, l'organisation de la maison"
+        }
+        _ => {
+            "the whole family's agent: shopping, shared tasks, the family's dates, outings, meals, organising the home"
+        }
     }
 }
 
@@ -724,13 +734,9 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     };
     let planned = crate::agents_admin::plan_agent(&config, &request).map_err(|e| HttpError::new(400, e.to_string()))?;
     mark(&config, &planned.profile, &lang)?;
-    let made = crate::agents_admin::create_agent(
-        &state.config,
-        &request,
-        &state.http,
-        &crate::agents_admin::default_run(),
-    )
-    .await;
+    let made =
+        crate::agents_admin::create_agent(&state.config, &request, &state.http, &crate::agents_admin::default_run())
+            .await;
     let agent = match made {
         Ok(agent) if agent.name == planned.profile => agent,
         Ok(agent) => {
@@ -745,7 +751,14 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
         }
     };
     let config = state.config();
-    let by = { let n = state.households.name(); if n.is_empty() { name.clone() } else { n } };
+    let by = {
+        let n = state.households.name();
+        if n.is_empty() {
+            name.clone()
+        } else {
+            n
+        }
+    };
     // its personality with its block (and the handed-over one when it is taken over)
     let soul = match (&handover, take_over) {
         (Some(h), true) if !tk::str_or_empty(h.get("soul")).trim().is_empty() => tk::str_or_empty(h.get("soul")),
@@ -841,10 +854,8 @@ async fn usage_of(state: &AppState, agent: &AgentConfig) -> Value {
     let shares = crate::agent_shares::share_view(&config, agent);
     let mut members = Vec::new();
     let sessions = state.hermes.list_sessions(agent, 200).await.unwrap_or_default();
-    let mine: Vec<&Dict> = sessions
-        .iter()
-        .filter(|s| !tk::str_or_empty(s.get("title")).starts_with("BipAgents · "))
-        .collect();
+    let mine: Vec<&Dict> =
+        sessions.iter().filter(|s| !tk::str_or_empty(s.get("title")).starts_with("BipAgents · ")).collect();
     let (mut input, mut output) = (0i64, 0i64);
     for s in &mine {
         let c = crate::jobs::counters(s);
@@ -1008,20 +1019,33 @@ mod tests {
         let list = str_of(&data["lists"][0], "id");
         assert_eq!(data["lists"][0]["kind"], "list");
         apply(&mut data, &body(json!({"op": "item_add", "list": list, "text": "Lait"})), "Léa", 2.0).unwrap();
-        apply(&mut data, &body(json!({"op": "item_add", "list": list, "text": "Pain", "due": "2026-11-02"})), "Léa", 2.0)
-            .unwrap();
+        apply(
+            &mut data,
+            &body(json!({"op": "item_add", "list": list, "text": "Pain", "due": "2026-11-02"})),
+            "Léa",
+            2.0,
+        )
+        .unwrap();
         let item = str_of(&data["lists"][0]["items"][0], "id");
-        apply(&mut data, &body(json!({"op": "item_save", "list": list, "id": item, "done": true})), "Alex", 3.0).unwrap();
+        apply(&mut data, &body(json!({"op": "item_save", "list": list, "id": item, "done": true})), "Alex", 3.0)
+            .unwrap();
         assert_eq!(data["lists"][0]["items"][0]["done"], true);
         assert_eq!(data["lists"][0]["items"][1]["due"], "2026-11-02");
         apply(&mut data, &body(json!({"op": "clear_done", "list": list})), "Alex", 4.0).unwrap();
         assert_eq!(data["lists"][0]["items"].as_array().unwrap().len(), 1);
-        assert!(apply(&mut data, &body(json!({"op": "item_add", "list": list, "text": "x", "due": "demain"})), "A", 5.0)
-            .is_err());
+        assert!(apply(
+            &mut data,
+            &body(json!({"op": "item_add", "list": list, "text": "x", "due": "demain"})),
+            "A",
+            5.0
+        )
+        .is_err());
         assert!(apply(&mut data, &body(json!({"op": "list_save", "title": "X", "kind": "health"})), "A", 5.0).is_err());
-        apply(&mut data, &body(json!({"op": "page_save", "title": "Vacances", "text": "Bretagne"})), "Alex", 6.0).unwrap();
+        apply(&mut data, &body(json!({"op": "page_save", "title": "Vacances", "text": "Bretagne"})), "Alex", 6.0)
+            .unwrap();
         let page = str_of(&data["pages"][0], "id");
-        apply(&mut data, &body(json!({"op": "page_save", "id": page, "text": "Bretagne, juillet"})), "Léa", 7.0).unwrap();
+        apply(&mut data, &body(json!({"op": "page_save", "id": page, "text": "Bretagne, juillet"})), "Léa", 7.0)
+            .unwrap();
         assert_eq!(data["pages"][0]["title"], "Vacances");
         assert_eq!(data["pages"][0]["by"], "Léa");
         let text = as_text(&view_of(&data));
@@ -1035,9 +1059,18 @@ mod tests {
         for open in ["weather", "family_notebook_read", "family_notebook_write", "knowledge_read"] {
             assert!(closed_tool(open).is_none(), "{open}");
         }
-        for name in ["mail_search", "health_data", "calendar_events", "contacts_search", "notebook_read",
-                     "create_page", "propose_task", "tell_family", "archives_search", "upcoming_dates"]
-        {
+        for name in [
+            "mail_search",
+            "health_data",
+            "calendar_events",
+            "contacts_search",
+            "notebook_read",
+            "create_page",
+            "propose_task",
+            "tell_family",
+            "archives_search",
+            "upcoming_dates",
+        ] {
             assert_eq!(closed_tool(name).unwrap()["isError"], true, "{name}");
         }
         let mut toolsets = indexmap::IndexMap::new();
