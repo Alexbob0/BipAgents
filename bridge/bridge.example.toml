@@ -194,6 +194,14 @@ port = 8650
 # task_writes = 40
 # idle_seconds = 600          # with no run followed (a routine), the agent's calls are one turn until quiet this long
 
+# Card payments by the agents on a place of the all-included offer (cards.rs, « expérimental » during the beta). The
+# card's number and expiry stay on the phone that added it; the app sends them with each payment the person approves,
+# held in memory for that one fill. Off by default: Kerfy Studio turns it on for its places (then restarts the
+# bridge), and off again for everyone the same way. Self-hosted installs use `[vault] cards` instead.
+# [payments]
+# offer_cards = false
+# offer_cap_max_eur = 150     # the highest cap a person may set on such a card (1 to 1000)
+
 [agents.wellness]
 display_name = "Wellness"
 hermes_url = "http://127.0.0.1:8642"

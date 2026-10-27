@@ -542,6 +542,30 @@ gesetzlichen Pflichten als eigenständiger Verantwortlicher (Abschnitt 5.3). App
 (Play Integrity, Google Play) sind ebenfalls beteiligt, wie in Abschnitt 5.3 beschrieben; „Mit Apple anmelden“ und die
 Anmeldung mit Google liegen in ihrer eigenen Verantwortung.
 
+### 5.10 Zahlungen durch deine Agenten (experimentell, während der Beta)
+
+Standardmäßig bezahlen deine Agenten nichts: Sie bereiten einen Warenkorb vor und du bezahlst selbst („Warenkorb
+bereit“). Wenn Kerfy Studio die Funktion während der Beta geöffnet hat und **du sie einschaltest**, kann ein Agent einen
+kleinen Einkauf mit einer Karte bezahlen, die du ihm anvertraust, auf den Websites, die du erlaubst:
+
+- Nummer, Ablaufdatum, Name des Karteninhabers und Postleitzahl der Karte bleiben **auf dem Telefon, auf dem du sie
+  hinzugefügt hast**, in seinem geschützten Speicher (iOS-Schlüsselbund, Android Keystore), hinter Face ID, deinem
+  Fingerabdruck oder deinem Code. Dein Platz speichert nur den Namen, den du der Karte gegeben hast, ihr Netzwerk, die
+  letzten 4 Ziffern, das von dir gesetzte Limit, die erlaubten Websites und Agenten und die damit getätigten Zahlungen
+  (Betrag, Website, Agent, Datum).
+- **Bei jeder Zahlung, die du in der App bestätigst**, sendet dein Telefon diese Daten und den gerade eingegebenen
+  Sicherheitscode über die verschlüsselte Verbindung der App an deinen Platz. Die Software deines Platzes hält sie im
+  Arbeitsspeicher, bis das Zahlungsformular im Browser des Agenten ausgefüllt ist, und löscht sie dann. Sie werden nie
+  auf die Festplatte, in Protokolle oder Sicherungen geschrieben, und der Agent (das KI-Modell) sieht sie nicht.
+- Das Zahlungsprotokoll (ohne Kartennummer) wird 3 Jahre auf deinem Platz aufbewahrt.
+- Zweck: den Einkauf ausführen, den du verlangt und bestätigt hast (Vertragserfüllung, Art. 6 Abs. 1 lit. b DSGVO).
+  Du kannst jederzeit alles aussetzen und die Karte in der App löschen (sie wird dann vom Telefon und von deinem Platz
+  gelöscht).
+
+Dies ist eine experimentelle Funktion: Manche Banken sehen es als Fahrlässigkeit an, Kartendaten einem Dienst
+anzuvertrauen, und können im Streitfall eine Erstattung verweigern. Deshalb verlangt die App eine virtuelle Karte mit
+Limit, nie deine Hauptkarte.
+
 ## 6. Was Kerfy Studio nicht tut
 
 - Keine Werbung, kein Statistik-Tool, kein Tracking über Apps oder Websites hinweg. Kein Konto, außer für das

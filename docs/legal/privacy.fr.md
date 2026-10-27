@@ -527,6 +527,28 @@ indépendant pour ses propres obligations légales (section 5.3). Apple (DeviceC
 Integrity, Google Play) interviennent aussi, comme dit à la section 5.3 ; « Se connecter avec Apple » et la connexion
 avec Google relèvent de leur propre responsabilité.
 
+### 5.10 Les paiements par tes agents (expérimental, pendant la bêta)
+
+Par défaut, tes agents ne paient rien : ils préparent un panier et tu paies toi-même (« Panier prêt »). Si Kerfy Studio
+a ouvert la fonction pendant la bêta et que **tu l'actives**, un agent peut payer un petit achat avec une carte que tu
+lui confies, sur les sites que tu autorises :
+
+- Le numéro, la date d'expiration, le nom du titulaire et le code postal de la carte restent **sur le téléphone où tu
+  l'as ajoutée**, dans son stockage protégé (Trousseau d'iOS, Keystore d'Android), derrière Face ID, ton empreinte ou
+  ton code. Ta place ne garde que le nom que tu as donné à la carte, son réseau, ses 4 derniers chiffres, le plafond
+  que tu as fixé, les sites et les agents autorisés, et les paiements faits avec (montant, site, agent, date).
+- **À chaque paiement que tu valides** dans l'app, ton téléphone envoie ces données et le code de sécurité de la carte
+  que tu viens de taper à ta place, par la connexion chiffrée de l'app. Le logiciel de ta place les garde en mémoire
+  le temps de remplir le formulaire de paiement dans le navigateur de l'agent, puis les efface. Elles ne sont jamais
+  écrites sur le disque, ni dans les journaux, ni dans les sauvegardes, et l'agent (le modèle d'IA) ne les voit pas.
+- Le journal des paiements (sans aucun numéro de carte) est gardé 3 ans sur ta place.
+- Finalité : faire l'achat que tu as demandé et validé (exécution du contrat, article 6.1.b du RGPD). Tu peux tout
+  suspendre à tout moment, et supprimer la carte dans l'app (elle est alors effacée du téléphone et de ta place).
+
+C'est une fonction expérimentale : certaines banques considèrent que confier les données de sa carte à un service est
+une négligence et peuvent refuser un remboursement en cas de litige. C'est pourquoi l'app demande une carte virtuelle
+avec un plafond, jamais ta carte principale.
+
 ## 6. Ce que Kerfy Studio ne fait pas
 
 - Pas de publicité, pas d'outil de statistiques, pas de pistage entre apps ou sites. Pas de compte, sauf pour l'offre

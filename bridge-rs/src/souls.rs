@@ -325,7 +325,8 @@ pub const PAYMENTS_END: &str = "<!-- /bipagents:payments -->";
 /// Every agent (decided 2026-10-26, handover.rs): it prepares purchases, the person pays; no card number in chat.
 pub const PAYMENTS_RULE: &str = concat!(
     "Shopping for your person: you prepare (search, compare, cart, delivery, address) up to the payment page, then ",
-    "hand the payment over with hand_over_payment; you never pay by yourself and never press the final pay button. ",
+    "hand the payment over with hand_over_payment; you never pay by yourself and never press the final pay button ",
+    "(only when the person gave you a card for it, pay_with_card asks them, then BipAgents types it for you). ",
     "Never ask for, accept or type card numbers, security codes or bank logins in chat; if they send one, tell them ",
     "not to and don't use it."
 );
