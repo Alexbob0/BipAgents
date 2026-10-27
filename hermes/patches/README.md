@@ -31,6 +31,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0007 browser vault only | applies | applies (`97a9ae8ee`, checked 2026-10-22) |
 | 0008 time zone, routines, wall clock | applies | applies (`97a9ae8ee`, checked 2026-10-24) |
 | 0009 tool search: tools kept direct, skills by name | applies | `tool_search.py` applies; `prompt_builder.py` does not on `97a9ae8ee` (the skills index moved): redo at the next update |
+| 0010 empty replies: changed retries, tool calls written as text | applies | applies (`97a9ae8ee`, `patch --dry-run`, checked 2026-10-27) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -199,3 +200,50 @@ music generation's included, with no setting to shorten it short of disabling sk
 core tools the kind rarely needs, `!mcp__bipagents__<tool>` for its most used cheap tools) and the compact categories.
 Without the patch the `!` entries match nothing and the skills index stays whole: the core tools are still deferred,
 the bridge tools stay behind the search, as before.
+
+## 0010 — empty replies: tool calls written as text become calls, retries that change the request
+
+**Problem.** Measured on 2026-10-27 with DeepSeek-V4.1-Flash on the person's own OpenAI-compatible server (Wellness on
+aibox, then reproduced with real Hermes against the same server): an agent whose history holds many direct calls to a
+tool that the token diet (0009 + the bridge) has since put behind `tool_search` keeps calling it directly, in its native
+markup (DeepSeek DSML: `<｜DSML｜ invoke name="mcp__bipagents__health_summary">…`). The server only turns calls to the
+request's tools into `tool_calls`: the markup comes back as plain `content` (streamed with thinking on, or not streamed)
+or is swallowed (streamed without thinking: `"\n\n"`, 51 completion tokens). Hermes saw an empty answer and its ladder
+resent the same request (nudge, prefills, three empty retries); the server is deterministic, so each came back the same
+and the person got « ⚠️ No reply: dgx-spark didn't produce a reply this time, even after retries… /model ». With thinking
+on, the same ladder also resends a request whose thinking already ate the turn (a prefill ending on an assistant row
+comes back reasoning-only).
+
+**What the patch does.**
+- A reply without `tool_calls` whose text holds a tool call in a known native format (DeepSeek DSML, DeepSeek V3
+  `<｜tool▁call▁begin｜>…`, Hermes/Qwen `<tool_call>{…}</tool_call>`) for a tool the session has becomes a real call:
+  direct when the tool is in the request, else through `tool_call` (same scope check, approvals and hooks as any deferred
+  call); a call to a tool the session does not have only loses its markup (`agent/leaked_tool_calls.py`).
+- A streamed empty reply whose tokens never arrived (completion tokens > 0, no content, reasoning or tool call) is asked
+  again once without streaming, so the server's held-back text reaches the parser.
+- Every recovery call (post-tool nudge, thinking prefill, empty retry) goes out with thinking off: Hermes' one-shot
+  reasoning-off override (`reasoning_effort: none` / `reasoning: {enabled: false}`), and for a custom server on a local
+  address (or one already sent template kwargs) `chat_template_kwargs: {enable_thinking: false, thinking: false}`.
+- The empty retries never resend the same request: the first ends with « answer now in plain text, or call a listed tool
+  (others: tool_search, then tool_call) », the second (the last) asks for plain text and goes without tools; then no
+  more (the deterministic-empty guard no longer cuts them short, a reduced cost budget makes the one retry the last).
+- Logs, never content: the empty reply's shape (message and stream-delta field names with sizes, content vs visible
+  length, the tag names in it, tokens, finish reason, stream, thinking, last roles, last tool names) and « Tokens
+  generated but not surfaced »; « Tool call written as text turned into N real call(s) »; « Answered without thinking
+  after an empty or thinking-only response ».
+
+**Files.** `agent/leaked_tool_calls.py` (new), `agent/turn_response_intake.py`, `agent/turn_empty_response.py`,
+`agent/turn_api_request.py`, `agent/turn_api_call.py`, `agent/chat_completion_helpers.py` (stream delta fields),
+`agent/turn_final_response.py`, `agent/turn_context.py`; new `tests/agent/test_empty_response_answers_without_thinking.py`
+(15 tests); `tests/agent/test_run_agent.py`: three empty-retry tests now expect 1 call + 2 changed retries.
+
+**Tests.** The new file, `tests/agent/test_run_agent.py` and the empty-response, prefill, guard and fallback suites: 350
+passed (Python 3.14). The whole `tests/agent/` has the same failures with and without the patch (environment: no
+Anthropic SDK, provider snapshots). End to end with real Hermes against DeepSeek on the person's server
+(a conversation with four direct calls to a health tool, then the tool deferred and the session's frozen tool list
+cleared): before, 6 turns out of 6 failed (4 « No reply », 2 with the raw DSML markup as the answer); after, 6 out of 6
+answered with the tool's data, through `tool_call`.
+
+**Bridge side.** The bridge keeps direct every tool an agent has been calling (tool_diet.rs), so the trigger should not
+come back; this patch is the net under it.
+

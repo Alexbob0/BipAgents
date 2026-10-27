@@ -1,0 +1,834 @@
+diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
+index b0ce7b6e20..5f0cf4c631 100644
+--- a/agent/chat_completion_helpers.py
++++ b/agent/chat_completion_helpers.py
+@@ -1306,6 +1306,20 @@ def interruptible_api_call(agent, api_kwargs: dict):
+     return _NonStreamRequest(agent, api_kwargs).run()
+ 
+ 
++def _note_delta_fields(fields: dict, delta) -> None:
++    """Add a stream delta's non-empty fields (pydantic's and unknown ``model_extra`` ones) to
++    ``fields`` as name → total length. Diagnostics only: never raises."""
++    try:
++        values = dict(getattr(delta, "__dict__", {}) or {})
++        values.update(getattr(delta, "model_extra", None) or {})
++        for key, value in values.items():
++            if value is None or value == "" or value == [] or str(key).startswith("_"):
++                continue
++            fields[key] = fields.get(key, 0) + (len(value) if isinstance(value, (str, list, tuple, dict)) else 1)
++    except Exception:
++        pass
++
++
+ def _consume_ephemeral_reasoning_off(agent) -> bool:
+     """Consume the one-shot "answer without thinking" continuation flag.
+ 
+@@ -3111,6 +3125,10 @@ class _StreamingCall(StreamingWaitMonitor):
+         # field is persisted either way and need not mirror the details.
+         detail_watch = RunawayStreamWatch()
+         runaway = None
++        # Every delta field this stream carried, with its total length (never its text): an
++        # empty answer's log tells a field the parser did not map from a model that said nothing.
++        delta_fields: dict[str, int] = {}
++        self.agent._last_stream_delta_fields = delta_fields
+ 
+         def _open_stream(next_api_kwargs: dict[str, Any]):
+             timeout = _httpx.Timeout(connect=conn_cap, read=read_timeout, write=base_timeout, pool=conn_cap)
+@@ -3166,6 +3184,7 @@ class _StreamingCall(StreamingWaitMonitor):
+ 
+             choice = chunk.choices[0]
+             delta = choice.delta
++            _note_delta_fields(delta_fields, delta)
+             # Read finish_reason/usage BEFORE any content-shape `continue`: the SSE-echo
+             # guard can swallow a merged finish chunk (vLLM standalone ':' tokens).
+             finish_reason = _normalize_finish_reason(getattr(choice, "finish_reason", None)) or finish_reason
+diff --git a/agent/leaked_tool_calls.py b/agent/leaked_tool_calls.py
+new file mode 100644
+index 0000000000..5d7ef94a26
+--- /dev/null
++++ b/agent/leaked_tool_calls.py
+@@ -0,0 +1,156 @@
++"""Tool calls a model wrote as text in its native format, turned back into real calls.
++
++An OpenAI-compatible server (vLLM, SGLang…) turns a model's native tool-call markup into
++``tool_calls`` only for the tools of the request. DeepSeek V4 on such a server, with a
++long history of direct calls to a tool that is now deferred behind ``tool_search``, keeps
++calling it directly: the markup comes back as ``content`` (non-streaming, or streaming
++with thinking on) or is swallowed (streaming without thinking: only "\\n\\n" arrives).
++Hermes then saw an empty answer and resent the same request — a deterministic server
++returns the same markup every time — until the turn ended "(empty)".
++
++Here a call in a known format whose tool exists in the session (in the request, or
++deferred and reachable through ``tool_call``) becomes a real call, through the same
++dispatch, approvals and hooks as any other; its markup leaves the visible text. A call to
++a tool the session does not have only leaves the text: the empty-response ladder then
++asks for the answer again, naming ``tool_search``/``tool_call``.
++
++Formats: DeepSeek DSML (``<｜DSML｜invoke name=…>`` with ``<｜DSML｜parameter …>``),
++DeepSeek V3.x (``<｜tool▁call▁begin｜>name<｜tool▁sep｜>{json}<｜tool▁call▁end｜>``) and
++the Hermes/Qwen ``<tool_call>{"name": …, "arguments": …}</tool_call>`` block.
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import re
++import uuid
++from typing import Any, Optional
++
++logger = logging.getLogger("agent.conversation_loop")
++
++_BAR = r"[｜|]"
++_DSML = rf"{_BAR}\s*DSML\s*{_BAR}\s*"
++_DSML_INVOKE = re.compile(
++    rf"<\s*{_DSML}invoke\s+name\s*=\s*\"([^\"]+)\"\s*>(.*?)<\s*/\s*{_DSML}invoke\s*>", re.DOTALL)
++_DSML_PARAM = re.compile(
++    rf"<\s*{_DSML}parameter\s+name\s*=\s*\"([^\"]+)\"(?:\s+string\s*=\s*\"(true|false)\")?\s*>(.*?)"
++    rf"<\s*/\s*{_DSML}parameter\s*>", re.DOTALL)
++_DSML_WRAPPER = re.compile(rf"<\s*/?\s*{_DSML}(?:function_)?calls\s*>")
++_V3_CALL = re.compile(
++    r"<｜tool▁call▁begin｜>(?:function<｜tool▁sep｜>)?([\w.:\-]+)\s*(?:<｜tool▁sep｜>)?\s*(.*?)<｜tool▁call▁end｜>",
++    re.DOTALL)
++_V3_WRAPPER = re.compile(r"<｜tool▁calls▁(?:begin|end)｜>")
++_XML_TOOL_CALL = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
++_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
++
++
++def _json_args(text: str) -> Optional[dict]:
++    try:
++        value = json.loads(_FENCE.sub("", (text or "").strip()) or "{}")
++    except (TypeError, ValueError):
++        return None
++    return value if isinstance(value, dict) else None
++
++
++def parse_leaked_calls(content: str) -> tuple[list[tuple[str, dict]], str]:
++    """``([(name, arguments)…], content without the call markup)``; ``([], content)`` when
++    there is none."""
++    if not content or not any(marker in content for marker in ("DSML", "tool▁call", "<tool_call>")):
++        return [], content
++    calls: list[tuple[str, dict]] = []
++    for name, body in _DSML_INVOKE.findall(content):
++        args: dict[str, Any] = {}
++        for key, is_string, value in _DSML_PARAM.findall(body):
++            if is_string == "false":
++                try:
++                    args[key] = json.loads(value)
++                    continue
++                except ValueError:
++                    pass
++            args[key] = value
++        calls.append((name.strip(), args))
++    for name, body in _V3_CALL.findall(content):
++        args = _json_args(body)
++        if args is not None:
++            calls.append((name.strip(), args))
++    for body in _XML_TOOL_CALL.findall(content):
++        block = _json_args(body)
++        if block and isinstance(block.get("name"), str):
++            args = block.get("arguments")
++            if isinstance(args, str):
++                args = _json_args(args)
++            calls.append((block["name"].strip(), args if isinstance(args, dict) else {}))
++    if not calls:
++        return [], content
++    rest = content
++    for pattern in (_DSML_INVOKE, _DSML_WRAPPER, _V3_CALL, _V3_WRAPPER, _XML_TOOL_CALL):
++        rest = pattern.sub("", rest)
++    return calls, rest.strip()
++
++
++def _resolve(name: str, direct: set, deferred: frozenset) -> tuple[Optional[str], bool]:
++    """``(tool name, deferred?)`` for a leaked name, also when the model dropped an MCP
++    server prefix (one unambiguous ``…__name`` match)."""
++    for pool, is_deferred in ((direct, False), (deferred, True)):
++        if name in pool:
++            return name, is_deferred
++    for pool, is_deferred in ((direct, False), (deferred, True)):
++        matches = [n for n in pool if n.endswith("__" + name)]
++        if len(matches) == 1:
++            return matches[0], is_deferred
++    return None, False
++
++
++def recover_leaked_tool_calls(agent: Any, assistant_message: Any) -> bool:
++    """Turn the leaked calls of a reply without ``tool_calls`` into real ones. Returns True
++    when the reply now carries tool calls; its content keeps only the text around them.
++    A reply whose calls name no tool of the session keeps the text around them only."""
++    if getattr(assistant_message, "tool_calls", None):
++        return False
++    content = getattr(assistant_message, "content", None)
++    if not isinstance(content, str):
++        return False
++    calls, rest = parse_leaked_calls(content)
++    if not calls:
++        return False
++    from agent.transports.types import ToolCall
++
++    direct = set(getattr(agent, "valid_tool_names", None) or ())
++    deferred: frozenset = frozenset()
++    if "tool_call" in direct:
++        try:
++            from agent.tool_executor import _tool_search_scoped_names
++            deferred = _tool_search_scoped_names(agent)
++        except Exception:
++            deferred = frozenset()
++    real: list = []
++    unknown: list[str] = []
++    for name, args in calls:
++        tool, is_deferred = _resolve(name, direct, deferred)
++        if tool is None:
++            unknown.append(name)
++            continue
++        if is_deferred:
++            name_sent, arguments = "tool_call", {"calls": [{"name": tool, "arguments": args}]}
++        else:
++            name_sent, arguments = tool, args
++        real.append(ToolCall(id=f"call_{uuid.uuid4().hex[:24]}", name=name_sent,
++                             arguments=json.dumps(arguments, ensure_ascii=False)))
++    assistant_message.content = rest or None
++    if unknown:
++        logger.warning(
++            "Tool call written as text for %d tool(s) this session does not have; markup removed "
++            "(model=%s provider=%s)", len(unknown), agent.model, agent.provider,
++        )
++    if not real:
++        return False
++    assistant_message.tool_calls = real
++    assistant_message.finish_reason = "tool_calls"
++    logger.warning(
++        "Tool call written as text turned into %d real call(s): %s (model=%s provider=%s)",
++        len(real), ", ".join(c.name if c.name != "tool_call" else "tool_call→" + json.loads(c.arguments)["calls"][0]["name"]
++                             for c in real),
++        agent.model, agent.provider,
++    )
++    return True
+diff --git a/agent/turn_api_call.py b/agent/turn_api_call.py
+index ef08530846..7a9cb7489f 100644
+--- a/agent/turn_api_call.py
++++ b/agent/turn_api_call.py
+@@ -50,6 +50,11 @@ def _should_stream(agent: Any) -> bool:
+     tests (SimpleNamespace, not stream iterators)."""
+     if getattr(agent, "_disable_streaming", False):
+         return False
++    if getattr(agent, "_ephemeral_no_stream", False):
++        # One call without streaming (empty-response ladder): a server that swallows a tool
++        # call it could not parse while streaming returns it as text otherwise.
++        agent._ephemeral_no_stream = False
++        return False
+     _base = str(agent.base_url or "").lower()
+     from hermes_cli.runtime_provider_backends import _is_external_process_provider
+ 
+diff --git a/agent/turn_api_request.py b/agent/turn_api_request.py
+index 1be4db0a62..475a3ae886 100644
+--- a/agent/turn_api_request.py
++++ b/agent/turn_api_request.py
+@@ -40,6 +40,46 @@ def _set_extra_header(api_kwargs: Any, key: str, value: str) -> None:
+     api_kwargs["extra_headers"] = _xh
+ 
+ 
++def _template_thinking_off(agent: Any, api_kwargs: Any) -> None:
++    """A one-shot "answer without thinking" call to a custom OpenAI-compatible server: also turn
++    the chat template's thinking off. vLLM / SGLang serve Qwen and DeepSeek templates that read
++    ``chat_template_kwargs`` (``enable_thinking`` / ``thinking``) and may ignore a top-level
++    ``reasoning_effort: none``. Only on a local server (or one already sent template kwargs):
++    a hosted endpoint can reject the unknown field. Ollama has its own ``think`` flag."""
++    if agent.provider != "custom" or agent.api_mode != "chat_completions":
++        return
++    extra_body = dict(api_kwargs.get("extra_body") or {})
++    template = extra_body.get("chat_template_kwargs")
++    try:
++        from agent.model_metadata import is_local_endpoint
++        local = is_local_endpoint(agent.base_url or "")
++    except Exception:
++        local = False
++    if "think" in extra_body or not (local or isinstance(template, dict)):
++        return
++    extra_body["chat_template_kwargs"] = {
++        **(template if isinstance(template, dict) else {}), "enable_thinking": False, "thinking": False,
++    }
++    api_kwargs["extra_body"] = extra_body
++
++
++def apply_one_shot_changes(agent: Any, api_kwargs: Any, thinking_off_once: bool) -> None:
++    """The empty-response ladder's one-shot changes to this request: thinking off (the
++    reasoning config was overridden while building; the chat template follows) and, on its
++    last try, no tools so the model answers in plain text."""
++    _wire = getattr(agent, "_wire_reasoning_config", None)
++    if (
++        thinking_off_once and not getattr(agent, "_ephemeral_reasoning_off", False)
++        and isinstance(_wire, dict) and (_wire.get("enabled") is False or _wire.get("effort") == "none")
++    ):
++        _template_thinking_off(agent, api_kwargs)
++    if getattr(agent, "_ephemeral_tools_off", False):
++        agent._ephemeral_tools_off = False
++        if agent.api_mode == "chat_completions":
++            for key in ("tools", "tool_choice", "parallel_tool_calls"):
++                api_kwargs.pop(key, None)
++
++
+ def _fire_pre_api_request_hook(
+     agent: Any, api_kwargs: Any, api_messages: Any, _llm_middleware_trace: Any, *, messages: Any,
+     original_user_message: Any, approx_tokens: Any, total_chars: Any, retry_count: Any,
+@@ -118,10 +158,13 @@ def build_api_request(
+     # A model that rejected image content gets text only; history keeps the images.
+     strip_images_for_rejecting_model(agent, api_messages)
+     observe_request_tools(agent, tools_for_api)
++    _thinking_off_once = bool(getattr(agent, "_ephemeral_reasoning_off", False))
++    agent._last_stream_delta_fields = None   # set again by a streamed attempt (empty-reply diagnostics)
+     if tools_for_api == agent.tools:
+         api_kwargs = agent._build_api_kwargs(api_messages)
+     else:
+         api_kwargs = agent._build_api_kwargs(api_messages, tools_for_api=tools_for_api)
++    apply_one_shot_changes(agent, api_kwargs, _thinking_off_once)
+     # Messages were scrubbed above; this walk covers the rest of the payload (tool descriptions,
+     # extra_body, kwargs strings) — see sanitize_outbound_kwargs for the #50959 rationale.
+     sanitize_outbound_kwargs(agent, api_kwargs)
+diff --git a/agent/turn_context.py b/agent/turn_context.py
+index 70237c3132..47a6870c21 100644
+--- a/agent/turn_context.py
++++ b/agent/turn_context.py
+@@ -598,7 +598,8 @@ _PER_TURN_RESET_STATE: tuple[tuple[str, Any], ...] = (
+     # Consecutive Codex reasoning-only (no answer, no tool call) responses, kept apart from
+     # the aggregate incomplete count so a visible partial resets it (#67321).
+     ("_codex_reasoning_only_streak", 0),
+-    ("_thinking_prefill_retries", 0), ("_post_tool_empty_retried", False),
++    ("_thinking_prefill_retries", 0), ("_post_tool_empty_retried", False), ("_thinking_off_recovery", False),
++    ("_ephemeral_tools_off", False), ("_ephemeral_no_stream", False),
+     ("_last_content_with_tools", None), ("_last_content_tools_all_housekeeping", False),
+     ("_reused_response_text", None),
+     ("_mute_post_response", False), ("_unicode_sanitization_passes", 0),
+diff --git a/agent/turn_empty_response.py b/agent/turn_empty_response.py
+index 7a76d297cc..b6c28ac716 100644
+--- a/agent/turn_empty_response.py
++++ b/agent/turn_empty_response.py
+@@ -43,13 +43,143 @@ class EmptyResponseVerdict:
+     api_call_count: int
+ 
+ 
++def _next_call_without_thinking(agent: Any, step: str) -> None:
++    """The next recovery call goes out with thinking off (one shot, as the thinking-only
++    truncation does). Resending the same request makes a model that spent its whole turn
++    thinking do it again: every retry ends the same way and the turn returns ``(empty)``."""
++    agent._ephemeral_reasoning_off = True
++    agent._thinking_off_recovery = True
++    logger.warning(
++        "Empty or thinking-only response — %s without thinking (model=%s provider=%s)",
++        step, agent.model, agent.provider,
++    )
++
++
++_ANSWER_NOW = (
++    "Answer the person now in plain text, or call one of the tools listed in this request "
++    "(a tool that is not listed: find it with tool_search, run it with tool_call)."
++)
++_ANSWER_NOW_NO_TOOLS = "Answer the person now, in plain text, with what you already have."
++
++
++def _change_the_request(agent: Any, messages: list, *, without_tools: bool) -> None:
++    """An empty retry never resends the request that came back empty: a deterministic
++    server (or a model whose output the server could not parse into content or tool calls)
++    returns the same thing to the token. Drop the trailing recovery rows (a thinking prefill
++    leaves the request ending on an assistant row), ask for the answer in plain text and,
++    on the last try, send it without tools."""
++    while messages and isinstance(messages[-1], dict) and (
++        messages[-1].get("_thinking_prefill") or messages[-1].get("_empty_recovery_synthetic")
++    ):
++        messages.pop()
++    last_role = messages[-1].get("role") if messages and isinstance(messages[-1], dict) else None
++    if last_role == "tool":
++        # tool → assistant → user keeps the sequence valid (APIs reject tool → user).
++        append_message(messages, {"role": "assistant", "content": "(empty)", "_empty_recovery_synthetic": True})
++        last_role = "assistant"
++    if last_role == "assistant":
++        append_message(messages, {
++            "role": "user", "content": _ANSWER_NOW_NO_TOOLS if without_tools else _ANSWER_NOW,
++            "_empty_recovery_synthetic": True,
++        })
++    agent._session_messages = messages
++    agent._ephemeral_tools_off = without_tools
++
++
++def _markup_names(text: str) -> list:
++    """The tag names in a text (``<function_calls>``, ``<invoke``…), never what they hold."""
++    return sorted(set(re.findall(r"</?([A-Za-z_｜][\w:.|｜-]{0,40})", text or "")))[:8]
++
++
++def _sizes(obj: Any) -> dict:
++    """Every field of a response message (or stream delta) with the length of its value."""
++    fields = {}
++    if isinstance(obj, dict):
++        items = obj.items()
++    else:
++        raw = dict(getattr(obj, "__dict__", {}) or {})
++        raw.update(getattr(obj, "model_extra", None) or {})
++        items = raw.items()
++    for key, value in items:
++        if str(key).startswith("_") or value is None:
++            continue
++        fields[str(key)] = len(value) if isinstance(value, (str, list, tuple, dict)) else 1
++    return fields
++
++
++def log_empty_response_shape(agent: Any, response: Any, finish_reason: str, messages: list) -> None:
++    """What came back empty and what was asked — names and sizes, never content — so the
++    next occurrence tells which shape triggers it (a tool call the server could not parse,
++    markup the visible-text filter removed, a request ending on a recovery row…)."""
++    try:
++        roles = []
++        for m in messages[-6:]:
++            if not isinstance(m, dict):
++                continue
++            role = str(m.get("role"))
++            if m.get("tool_calls"):
++                role += "+tools"
++            if m.get("_thinking_prefill") or m.get("_empty_recovery_synthetic"):
++                role += "(recovery)"
++            roles.append(role)
++        last_tools = next(
++            ([((c.get("function") or {}).get("name") or "?") for c in m["tool_calls"] if isinstance(c, dict)]
++             for m in reversed(messages) if isinstance(m, dict) and m.get("role") == "assistant" and m.get("tool_calls")),
++            [],
++        )
++        choices = getattr(response, "choices", None) or []
++        message = getattr(choices[0], "message", None) if choices else None
++        content = getattr(message, "content", None)
++        content = content if isinstance(content, str) else ""
++        visible = agent._strip_think_blocks(content).strip() if content else ""
++        usage = getattr(response, "usage", None)
++        completion = getattr(usage, "completion_tokens", None)
++        details = getattr(usage, "completion_tokens_details", None)
++        wire = getattr(agent, "_wire_reasoning_config", None)
++        stream_fields = getattr(agent, "_last_stream_delta_fields", None)
++        logger.warning(
++            "Empty response shape: message_fields=%s stream_delta_fields=%s content_chars=%d visible_chars=%d "
++            "content_markup=%s prompt_tokens=%s completion_tokens=%s reasoning_tokens=%s finish_reason=%s "
++            "stream=%s thinking=%s messages=%d last_roles=%s last_tool_calls=%s tools_offered=%d "
++            "empty_retries=%d prefills=%d (model=%s provider=%s)",
++            _sizes(message) if message is not None else None,
++            dict(stream_fields) if isinstance(stream_fields, dict) else None,
++            len(content), len(visible), _markup_names(content),
++            getattr(usage, "prompt_tokens", None), completion, getattr(details, "reasoning_tokens", None),
++            finish_reason, not getattr(agent, "_disable_streaming", False),
++            ((wire.get("effort") if wire.get("enabled") is not False else "none") if isinstance(wire, dict) else "default"),
++            len(messages), roles, last_tools[:5], len(getattr(agent, "tools", None) or []),
++            getattr(agent, "_empty_content_retries", 0), getattr(agent, "_thinking_prefill_retries", 0),
++            agent.model, agent.provider,
++        )
++        reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None)
++        if isinstance(completion, int) and completion > 0 and not visible and not reasoning \
++                and not getattr(message, "tool_calls", None):
++            if isinstance(stream_fields, dict):
++                # Streamed: the next call goes without streaming, so text the server held back
++                # (a tool call it could not parse) arrives and can be read.
++                agent._ephemeral_no_stream = True
++            logger.warning(
++                "Tokens generated but not surfaced: %d completion tokens, no visible content, reasoning or tool "
++                "call (content_chars=%d, markup=%s) (model=%s provider=%s)",
++                completion, len(content), _markup_names(content), agent.model, agent.provider,
++            )
++    except Exception:
++        logger.debug("Empty response shape could not be logged", exc_info=True)
++
++
++# Each empty retry changes the request (see _change_the_request): with a hint, then without tools.
++_CHANGED_RETRIES = 2
++
++
+ def _retry_empty(
+     agent: Any, response: Any, finish_reason: str, empty_candidate: bool, *, messages: Any,
+     conversation_history: Any, api_call_count: int, observed_generation: bool = False,
+ ) -> tuple:
+-    """Budgeted empty-response retry. Each empty attempt re-bills the full input, so the
+-    signature is recorded and deterministic empties stop burning paid retries (fails
+-    open: missing usage or any output keeps the budget). Returns
++    """Empty-response retry. Each empty attempt re-bills the full input, so the signature is
++    recorded (cost-aware budget). A retry never resends the same request: the first goes
++    without thinking with an "answer now" hint, the last also without tools (a reduced
++    budget makes the one retry the last). Returns
+     ``(action_or_None, interrupt_result, deterministic_empty)``."""
+     from agent.retry_utils import jittered_backoff
+ 
+@@ -57,12 +187,12 @@ def _retry_empty(
+         _empty_guard.record_empty_attempt(
+             agent, finish_reason=finish_reason, response=response, observed_generation=observed_generation,
+         )
+-    budget = (
++    budget = min(_CHANGED_RETRIES, (
+         _empty_guard.empty_retry_budget(agent, response)
+         if empty_candidate else _empty_guard.DEFAULT_EMPTY_RETRY_BUDGET
+-    )
++    ))
+     deterministic = empty_candidate and _empty_guard.deterministic_empty(agent)
+-    if not (empty_candidate and agent._empty_content_retries < budget and not deterministic):
++    if not (empty_candidate and isinstance(messages, list) and agent._empty_content_retries < budget):
+         return None, None, deterministic
+     agent._empty_content_retries += 1
+     n = agent._empty_content_retries
+@@ -73,7 +203,7 @@ def _retry_empty(
+     )
+     _budget_note = (
+         " — high-cost request, reduced retry budget"
+-        if budget < _empty_guard.DEFAULT_EMPTY_RETRY_BUDGET else ""
++        if budget < _CHANGED_RETRIES else ""
+     )
+     agent._buffer_diagnostic_status(
+         f"⚠️ Empty response from model — retrying ({n}/{budget}) in {wait_time:.0f}s{_budget_note}"
+@@ -91,6 +221,9 @@ def _retry_empty(
+     )
+     if _interrupted is not None:
+         return "return", _interrupted, deterministic
++    without_tools = n >= budget
++    _next_call_without_thinking(agent, f"retry {n}/{budget}" + (", without tools," if without_tools else ""))
++    _change_the_request(agent, messages, without_tools=without_tools)
+     return "continue", None, deterministic
+ 
+ 
+@@ -195,6 +328,8 @@ def recover_empty_response(
+         agent._reused_response_text = final_response
+         return _verdict("break")
+ 
++    log_empty_response_shape(agent, response, finish_reason, messages)
++
+     # Post-tool-call empty (no prior content, or only mid-task narration): nudge once.
+     _prior_was_tool = any(m.get("role") == "tool" for m in messages[-5:])
+     # Ollama puts <think> in content, not reasoning_content, so _has_structured misses
+@@ -219,6 +354,7 @@ def recover_empty_response(
+         append_message(messages, {
+             "role": "user", "content": _EMPTY_TOOL_RESPONSE_NUDGE, "_empty_recovery_synthetic": True
+         })
++        _next_call_without_thinking(agent, "nudge after tool calls")
+         return _verdict("continue")
+ 
+     # Thinking-only prefill: append the reasoning as-is and continue so the model sees
+@@ -242,6 +378,7 @@ def recover_empty_response(
+         interim_msg["_thinking_prefill"] = True
+         append_message(messages, interim_msg)
+         agent._session_messages = messages
++        _next_call_without_thinking(agent, f"prefill {agent._thinking_prefill_retries}/2")
+         return _verdict("continue")
+ 
+     # Empty-response retries: truly empty replies AND reasoning-only replies after
+diff --git a/agent/turn_final_response.py b/agent/turn_final_response.py
+index 8b0c9b1493..29eb3ff842 100644
+--- a/agent/turn_final_response.py
++++ b/agent/turn_final_response.py
+@@ -149,6 +149,15 @@ def finish_text_response(
+ 
+     agent._empty_content_retries = 0
+     agent._thinking_prefill_retries = 0
++    _wire = getattr(agent, "_wire_reasoning_config", None)
++    if getattr(agent, "_thinking_off_recovery", False) and isinstance(_wire, dict) and (
++        _wire.get("enabled") is False or _wire.get("effort") == "none"
++    ):
++        agent._thinking_off_recovery = False
++        logger.warning(
++            "Answered without thinking after an empty or thinking-only response (model=%s provider=%s)",
++            agent.model, agent.provider,
++        )
+     # Surface the one-shot fallback switch notice before dropping the retry buffer so a
+     # provider/model switch stays visible on success.
+     agent._emit_pending_fallback_notice()
+diff --git a/agent/turn_response_intake.py b/agent/turn_response_intake.py
+index 7523a885c1..7564c5d976 100644
+--- a/agent/turn_response_intake.py
++++ b/agent/turn_response_intake.py
+@@ -135,6 +135,11 @@ def normalize_model_response(
+ 
+     if assistant_message.content is not None and not isinstance(assistant_message.content, str):
+         assistant_message.content = _coerce_content_text(assistant_message.content)
++    # A tool call the model wrote as text (its native markup, for a tool the server did not
++    # see in the request): a real call when the session has that tool.
++    from agent.leaked_tool_calls import recover_leaked_tool_calls
++    if recover_leaked_tool_calls(agent, assistant_message):
++        finish_reason = assistant_message.finish_reason
+ 
+     # Agent-as-provider projection: splice the provider-agent's own tool work in as
+     # call/result rows before this turn's assistant message; no-op for ordinary providers.
+diff --git a/tests/agent/test_empty_response_answers_without_thinking.py b/tests/agent/test_empty_response_answers_without_thinking.py
+new file mode 100644
+index 0000000000..c63659447c
+--- /dev/null
++++ b/tests/agent/test_empty_response_answers_without_thinking.py
+@@ -0,0 +1,226 @@
++"""An empty or thinking-only response is retried WITHOUT thinking, and never identically;
++a tool call the model wrote as text becomes a real call.
++
++DeepSeek-V4.1-Flash on a local OpenAI-compatible server (deterministic: the same request
++returns the same output to the token), with a history of direct calls to a tool now
++deferred behind tool_search, wrote that call in its native DSML markup. The server only
++parses calls to the request's tools: the markup came back as content (or, streamed without
++thinking, was swallowed: "\\n\\n" and 51 completion tokens). Hermes saw an empty answer,
++resent the same request six times and the turn returned "(empty)".
++"""
++import json
++import logging
++from types import SimpleNamespace
++from unittest.mock import MagicMock, patch
++
++from agent import turn_empty_response as ter
++from agent.turn_api_request import _template_thinking_off, apply_one_shot_changes
++
++
++def _agent():
++    a = MagicMock()
++    a._current_streamed_assistant_text = ""
++    a._has_content_after_think_block.return_value = False
++    a._strip_think_blocks.side_effect = lambda t: t or ""
++    a._last_content_with_tools = None
++    a._last_content_tools_all_housekeeping = False
++    a._post_tool_empty_retried = False
++    a._thinking_prefill_retries = 0
++    a._empty_content_retries = 0
++    a._ephemeral_reasoning_off = False
++    a._thinking_off_recovery = False
++    a._fallback_chain = []
++    return a
++
++
++def _recover(agent, messages, reasoning=None):
++    msg = SimpleNamespace(reasoning=reasoning, reasoning_content=reasoning, reasoning_details=None, tool_calls=None)
++    return ter.recover_empty_response(
++        agent, msg, None, "stop", final_response="", messages=messages, api_messages=[],
++        conversation_history=[], active_system_prompt="sys", api_call_count=3,
++        turn_exit_reason=None, preflight_compression_blocked=False,
++    )
++
++
++def test_nudge_after_tool_calls_goes_without_thinking():
++    agent = _agent()
++    messages = [{"role": "user", "content": "météo ?"}, {"role": "tool", "content": "{}"}]
++    v = _recover(agent, messages)
++    assert v.action == "continue" and agent._post_tool_empty_retried is True
++    assert agent._ephemeral_reasoning_off is True and agent._thinking_off_recovery is True
++
++
++def test_thinking_only_prefill_goes_without_thinking():
++    agent = _agent()
++    v = _recover(agent, [{"role": "user", "content": "hi"}], reasoning="Let me think… " * 50)
++    assert v.action == "continue" and agent._thinking_prefill_retries == 1
++    assert agent._ephemeral_reasoning_off is True
++
++
++def _retry(agent, messages, budget=3, deterministic=True):
++    with patch.object(ter._empty_guard, "record_empty_attempt"), \
++            patch.object(ter._empty_guard, "empty_retry_budget", return_value=budget), \
++            patch.object(ter._empty_guard, "deterministic_empty", return_value=deterministic), \
++            patch.object(ter, "interruptible_backoff_sleep", return_value=None), \
++            patch("agent.retry_utils.jittered_backoff", return_value=0.0):
++        return ter._retry_empty(agent, None, "stop", True, messages=messages, conversation_history=[],
++                                api_call_count=3)
++
++
++def test_empty_retries_change_the_request_then_stop():
++    """Same empty twice (deterministic) still gets the two changed tries, then no more."""
++    agent = _agent()
++    messages = [{"role": "user", "content": "météo ?"},
++                {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "weather"}}]},
++                {"role": "tool", "content": "{}"}]
++    assert _retry(agent, messages)[0] == "continue"
++    assert agent._ephemeral_reasoning_off is True and agent._ephemeral_tools_off is False
++    assert [m["role"] for m in messages[-2:]] == ["assistant", "user"]
++    assert messages[-1]["content"] == ter._ANSWER_NOW and len(messages) == 5
++
++    agent._ephemeral_reasoning_off = False
++    assert _retry(agent, messages)[0] == "continue"
++    assert agent._ephemeral_reasoning_off is True and agent._ephemeral_tools_off is True
++    assert messages[-1]["content"] == ter._ANSWER_NOW_NO_TOOLS and len(messages) == 5   # replaced, not stacked
++
++    assert _retry(agent, messages)[0] is None   # no identical third try
++    assert agent._empty_content_retries == 2
++
++
++def test_reduced_budget_makes_the_one_retry_the_last():
++    agent = _agent()
++    messages = [{"role": "user", "content": "hi"}]
++    assert _retry(agent, messages, budget=1)[0] == "continue"
++    assert agent._ephemeral_tools_off is True and messages == [{"role": "user", "content": "hi"}]   # no user→user
++
++
++def test_prefill_row_is_dropped_before_the_retry():
++    agent = _agent()
++    messages = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "", "_thinking_prefill": True}]
++    _retry(agent, messages)
++    assert messages == [{"role": "user", "content": "hi"}]
++
++
++def test_last_try_request_has_no_tools():
++    agent = SimpleNamespace(provider="custom", api_mode="chat_completions", base_url="https://api.eurouter.ai/v1",
++                            _ephemeral_tools_off=True, _wire_reasoning_config=None)
++    kwargs = {"tools": [{}], "tool_choice": "auto", "parallel_tool_calls": True, "messages": []}
++    apply_one_shot_changes(agent, kwargs, False)
++    assert kwargs == {"messages": []} and agent._ephemeral_tools_off is False
++
++
++def test_empty_shape_is_logged_without_content(caplog):
++    agent = _agent()
++    agent._strip_think_blocks.side_effect = lambda t: ""   # the markup filter removed everything
++    secret = "<function_calls><invoke name=\"notebook_read\">Camille</invoke></function_calls>"
++    message = SimpleNamespace(role="assistant", content=secret, tool_calls=None, reasoning_content=None)
++    response = SimpleNamespace(choices=[SimpleNamespace(message=message)],
++                               usage=SimpleNamespace(prompt_tokens=90000, completion_tokens=559))
++    agent._last_stream_delta_fields = {"role": 9, "content": len(secret)}
++    with caplog.at_level(logging.WARNING, logger="agent.conversation_loop"):
++        ter.log_empty_response_shape(agent, response, "stop", [{"role": "user", "content": "Camille ?"}])
++    text = caplog.text
++    assert "completion_tokens=559" in text and "Tokens generated but not surfaced" in text
++    assert "function_calls" in text and "invoke" in text and "'content': " in text
++    assert "Camille" not in text and "notebook_read" not in text
++
++
++def test_partial_stream_recovery_keeps_thinking():
++    agent = _agent()
++    agent._current_streamed_assistant_text = "Bonjour"
++    agent._has_content_after_think_block.return_value = True
++    v = _recover(agent, [{"role": "user", "content": "hi"}])
++    assert v.action == "break" and agent._ephemeral_reasoning_off is False
++
++
++def _custom(base_url, provider="custom"):
++    return SimpleNamespace(provider=provider, api_mode="chat_completions", base_url=base_url)
++
++
++def test_local_custom_server_gets_template_thinking_off():
++    kwargs = {"reasoning_effort": "none", "extra_body": {"top_k": 20}}
++    _template_thinking_off(_custom("http://192.168.1.123:8888/v1"), kwargs)
++    assert kwargs["extra_body"] == {"top_k": 20, "chat_template_kwargs": {"enable_thinking": False, "thinking": False}}
++
++
++def test_template_kwargs_already_sent_are_overridden_not_dropped():
++    kwargs = {"extra_body": {"chat_template_kwargs": {"enable_thinking": True, "custom": 1}}}
++    _template_thinking_off(_custom("https://llm.example.org/v1"), kwargs)
++    assert kwargs["extra_body"]["chat_template_kwargs"] == {"enable_thinking": False, "thinking": False, "custom": 1}
++
++
++def test_hosted_and_other_providers_are_left_alone():
++    for agent in (_custom("https://api.eurouter.ai/api/v1"), _custom("http://127.0.0.1:11434/v1", provider="openrouter")):
++        kwargs = {"reasoning_effort": "none"}
++        _template_thinking_off(agent, kwargs)
++        assert kwargs == {"reasoning_effort": "none"}
++    kwargs = {"extra_body": {"think": False}}   # Ollama: its own flag
++    _template_thinking_off(_custom("http://localhost:11434/v1"), kwargs)
++    assert kwargs == {"extra_body": {"think": False}}
++
++
++# -- tool calls written as text ------------------------------------------------------------
++
++_DSML = ("\n\n<｜DSML｜ calls>\n<｜DSML｜ invoke name=\"mcp__bipagents__health_summary\">\n"
++         "<｜DSML｜ parameter name=\"day\" string=\"true\">2026-10-26</｜DSML｜ parameter>\n"
++         "<｜DSML｜ parameter name=\"days\" string=\"false\">3</｜DSML｜ parameter>\n"
++         "</｜DSML｜ invoke>\n</｜DSML｜ calls>")
++
++
++def _leaky_agent():
++    return SimpleNamespace(valid_tool_names={"tool_search", "tool_call", "mcp__bipagents__weather"},
++                           model="dgx-spark", provider="custom")
++
++
++def _reply(content):
++    return SimpleNamespace(content=content, tool_calls=None, finish_reason="stop")
++
++
++def test_dsml_call_to_a_deferred_tool_goes_through_tool_call():
++    """What DeepSeek V4 wrote for a tool its history called directly, once deferred."""
++    from agent.leaked_tool_calls import recover_leaked_tool_calls
++    reply = _reply("Je regarde." + _DSML)
++    with patch("agent.tool_executor._tool_search_scoped_names",
++               return_value=frozenset({"mcp__bipagents__health_summary"})):
++        assert recover_leaked_tool_calls(_leaky_agent(), reply) is True
++    (call,) = reply.tool_calls
++    assert call.function.name == "tool_call" and call.id
++    assert json.loads(call.function.arguments) == {
++        "calls": [{"name": "mcp__bipagents__health_summary", "arguments": {"day": "2026-10-26", "days": 3}}]}
++    assert reply.content == "Je regarde." and reply.finish_reason == "tool_calls"
++
++
++def test_other_native_formats_and_a_dropped_server_prefix_call_the_direct_tool():
++    from agent.leaked_tool_calls import recover_leaked_tool_calls
++    for text in ('<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>weather<｜tool▁sep｜>{"city": "Lyon"}'
++                 '<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
++                 '<tool_call>{"name": "weather", "arguments": {"city": "Lyon"}}</tool_call>'):
++        reply = _reply(text)
++        with patch("agent.tool_executor._tool_search_scoped_names", return_value=frozenset()):
++            assert recover_leaked_tool_calls(_leaky_agent(), reply) is True
++        assert reply.tool_calls[0].function.name == "mcp__bipagents__weather"
++        assert json.loads(reply.tool_calls[0].function.arguments) == {"city": "Lyon"}
++        assert reply.content is None
++
++
++def test_unknown_tool_only_loses_its_markup_and_plain_text_is_untouched():
++    from agent.leaked_tool_calls import recover_leaked_tool_calls
++    reply = _reply(_DSML)
++    with patch("agent.tool_executor._tool_search_scoped_names", return_value=frozenset()):
++        assert recover_leaked_tool_calls(_leaky_agent(), reply) is False
++    assert reply.content is None and reply.tool_calls is None   # → the empty-response ladder
++    reply = _reply("Bonjour <tool_call> n'est pas un appel.")
++    assert recover_leaked_tool_calls(_leaky_agent(), reply) is False
++    assert reply.content == "Bonjour <tool_call> n'est pas un appel."
++
++
++def test_streamed_reply_whose_tokens_never_arrived_is_asked_again_without_streaming():
++    agent = _agent()
++    agent._strip_think_blocks.side_effect = lambda t: (t or "").strip()
++    agent._ephemeral_no_stream = False
++    agent._last_stream_delta_fields = {"role": 9, "content": 2}
++    message = SimpleNamespace(role="assistant", content="\n\n", tool_calls=None, reasoning_content=None)
++    response = SimpleNamespace(choices=[SimpleNamespace(message=message)],
++                               usage=SimpleNamespace(prompt_tokens=7517, completion_tokens=51))
++    ter.log_empty_response_shape(agent, response, "stop", [{"role": "user", "content": "nuit ?"}])
++    assert agent._ephemeral_no_stream is True
+diff --git a/tests/agent/test_run_agent.py b/tests/agent/test_run_agent.py
+index 104fdb89c4..ad28842f27 100644
+--- a/tests/agent/test_run_agent.py
++++ b/tests/agent/test_run_agent.py
+@@ -3491,7 +3491,8 @@ class TestRunConversation:
+         assert result["api_calls"] == 1
+ 
+     def test_truly_empty_response_stops_after_repeated_empty(self, agent):
+-        """Repeated empty responses stop after one retry and return an explanation."""
++        """Repeated empty responses stop after the two changed retries (a hint, then no
++        tools; never the same request again) and return an explanation."""
+         self._setup_agent(agent)
+         agent.base_url = "http://127.0.0.1:1234/v1"
+         empty_resp = _mock_response(content=None, finish_reason="stop")
+@@ -3511,8 +3512,8 @@ class TestRunConversation:
+         assert result["failure_reason"] == "empty_response"
+         # #34452: explanation replaces the bare "(empty)" sentinel.
+         assert result["final_response"] != "(empty)"
+-        assert agent.session_api_calls == 2
+-        assert result["api_calls"] == 2  # 1 original + 1 retry
++        assert agent.session_api_calls == 3
++        assert result["api_calls"] == 3  # 1 original + 2 changed retries
+ 
+     def test_deterministic_empty_stops_retries_early(self, agent):
+         """NS-503: consecutive zero-output-token empties with identical
+@@ -3542,14 +3543,14 @@ class TestRunConversation:
+         assert result["failed"] is False and result["completed"] is True
+         assert result["failure_reason"] == "empty_response"
+         assert result["final_response"] != "(empty)"
+-        # 1 original + 1 retry: the second identical zero-output empty
+-        # proves determinism, remaining retries are skipped.
+-        assert result["api_calls"] == 2
++        # 1 original + 2 changed retries: an identical resend would come back the same
++        # (deterministic), but each retry changes the request; nothing identical follows.
++        assert result["api_calls"] == 3
+ 
+     def test_guard_disabled_via_config_restores_legacy_retries(self, agent):
+         """NS-503: agent.empty_response_guard.enabled: false in config.yaml
+-        (resolved to _empty_guard_enabled at init) restores the legacy
+-        fixed 3-retry behaviour even for deterministic empties."""
++        (resolved to _empty_guard_enabled at init) keeps the full retry budget,
++        which the changed retries cap at two (BipAgents patch 0010)."""
+         self._setup_agent(agent)
+         agent.base_url = "http://127.0.0.1:1234/v1"
+         agent._empty_guard_enabled = False  # as set by agent_init from config
+@@ -3572,7 +3573,7 @@ class TestRunConversation:
+         # the transcript keeps the text) and only gains the descriptor code for Desktop/TUI.
+         assert result["failed"] is False and result["completed"] is True
+         assert result["failure_reason"] == "empty_response"
+-        assert result["api_calls"] == 4  # legacy: 1 original + 3 retries
++        assert result["api_calls"] == 3  # 1 original + 2 changed retries
+ 
+ 
+     def test_truly_empty_response_succeeds_on_nudge(self, agent):
