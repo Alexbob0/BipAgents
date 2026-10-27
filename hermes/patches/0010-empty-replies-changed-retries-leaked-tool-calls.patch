@@ -44,7 +44,7 @@ index b0ce7b6e20..5f0cf4c631 100644
              finish_reason = _normalize_finish_reason(getattr(choice, "finish_reason", None)) or finish_reason
 diff --git a/agent/leaked_tool_calls.py b/agent/leaked_tool_calls.py
 new file mode 100644
-index 0000000000..5d7ef94a26
+index 0000000000..7aa43e0c8a
 --- /dev/null
 +++ b/agent/leaked_tool_calls.py
 @@ -0,0 +1,156 @@
@@ -61,8 +61,8 @@ index 0000000000..5d7ef94a26
 +Here a call in a known format whose tool exists in the session (in the request, or
 +deferred and reachable through ``tool_call``) becomes a real call, through the same
 +dispatch, approvals and hooks as any other; its markup leaves the visible text. A call to
-+a tool the session does not have only leaves the text: the empty-response ladder then
-+asks for the answer again, naming ``tool_search``/``tool_call``.
++a tool the session does not have becomes a call of that name too: Hermes' unknown-tool
++path answers it with the tools there are, and the model corrects itself.
 +
 +Formats: DeepSeek DSML (``<｜DSML｜invoke name=…>`` with ``<｜DSML｜parameter …>``),
 +DeepSeek V3.x (``<｜tool▁call▁begin｜>name<｜tool▁sep｜>{json}<｜tool▁call▁end｜>``) and
@@ -155,7 +155,9 @@ index 0000000000..5d7ef94a26
 +def recover_leaked_tool_calls(agent: Any, assistant_message: Any) -> bool:
 +    """Turn the leaked calls of a reply without ``tool_calls`` into real ones. Returns True
 +    when the reply now carries tool calls; its content keeps only the text around them.
-+    A reply whose calls name no tool of the session keeps the text around them only."""
++    A call to a tool the session does not have keeps its name: Hermes' unknown-tool path
++    answers it with the tools there are (the model corrects itself, three strikes at most).
++    Dropping it instead left an empty reply the model wrote again, without tools too."""
 +    if getattr(assistant_message, "tool_calls", None):
 +        return False
 +    content = getattr(assistant_message, "content", None)
@@ -180,8 +182,8 @@ index 0000000000..5d7ef94a26
 +        tool, is_deferred = _resolve(name, direct, deferred)
 +        if tool is None:
 +            unknown.append(name)
-+            continue
-+        if is_deferred:
++            name_sent, arguments = name, args
++        elif is_deferred:
 +            name_sent, arguments = "tool_call", {"calls": [{"name": tool, "arguments": args}]}
 +        else:
 +            name_sent, arguments = tool, args
@@ -190,11 +192,9 @@ index 0000000000..5d7ef94a26
 +    assistant_message.content = rest or None
 +    if unknown:
 +        logger.warning(
-+            "Tool call written as text for %d tool(s) this session does not have; markup removed "
-+            "(model=%s provider=%s)", len(unknown), agent.model, agent.provider,
++            "Tool call written as text for %d tool(s) this session does not have: the model is told which "
++            "tools there are (model=%s provider=%s)", len(unknown), agent.model, agent.provider,
 +        )
-+    if not real:
-+        return False
 +    assistant_message.tool_calls = real
 +    assistant_message.finish_reason = "tool_calls"
 +    logger.warning(
@@ -300,10 +300,10 @@ index 70237c3132..47a6870c21 100644
      ("_reused_response_text", None),
      ("_mute_post_response", False), ("_unicode_sanitization_passes", 0),
 diff --git a/agent/turn_empty_response.py b/agent/turn_empty_response.py
-index 7a76d297cc..b6c28ac716 100644
+index 7a76d297cc..40eedece78 100644
 --- a/agent/turn_empty_response.py
 +++ b/agent/turn_empty_response.py
-@@ -43,13 +43,143 @@ class EmptyResponseVerdict:
+@@ -43,13 +43,144 @@ class EmptyResponseVerdict:
      api_call_count: int
  
  
@@ -337,8 +337,9 @@ index 7a76d297cc..b6c28ac716 100644
 +    ):
 +        messages.pop()
 +    last_role = messages[-1].get("role") if messages and isinstance(messages[-1], dict) else None
-+    if last_role == "tool":
-+        # tool → assistant → user keeps the sequence valid (APIs reject tool → user).
++    if last_role in ("tool", "user"):
++        # tool/user → assistant → user keeps the sequence valid (APIs reject tool → user and user → user);
++        # after the person's own message too, or the retry would be the request that came back empty.
 +        append_message(messages, {"role": "assistant", "content": "(empty)", "_empty_recovery_synthetic": True})
 +        last_role = "assistant"
 +    if last_role == "assistant":
@@ -450,7 +451,7 @@ index 7a76d297cc..b6c28ac716 100644
      ``(action_or_None, interrupt_result, deterministic_empty)``."""
      from agent.retry_utils import jittered_backoff
  
-@@ -57,12 +187,12 @@ def _retry_empty(
+@@ -57,12 +188,12 @@ def _retry_empty(
          _empty_guard.record_empty_attempt(
              agent, finish_reason=finish_reason, response=response, observed_generation=observed_generation,
          )
@@ -466,7 +467,7 @@ index 7a76d297cc..b6c28ac716 100644
          return None, None, deterministic
      agent._empty_content_retries += 1
      n = agent._empty_content_retries
-@@ -73,7 +203,7 @@ def _retry_empty(
+@@ -73,7 +204,7 @@ def _retry_empty(
      )
      _budget_note = (
          " — high-cost request, reduced retry budget"
@@ -475,7 +476,7 @@ index 7a76d297cc..b6c28ac716 100644
      )
      agent._buffer_diagnostic_status(
          f"⚠️ Empty response from model — retrying ({n}/{budget}) in {wait_time:.0f}s{_budget_note}"
-@@ -91,6 +221,9 @@ def _retry_empty(
+@@ -91,6 +222,9 @@ def _retry_empty(
      )
      if _interrupted is not None:
          return "return", _interrupted, deterministic
@@ -485,7 +486,7 @@ index 7a76d297cc..b6c28ac716 100644
      return "continue", None, deterministic
  
  
-@@ -195,6 +328,8 @@ def recover_empty_response(
+@@ -195,6 +329,8 @@ def recover_empty_response(
          agent._reused_response_text = final_response
          return _verdict("break")
  
@@ -494,7 +495,7 @@ index 7a76d297cc..b6c28ac716 100644
      # Post-tool-call empty (no prior content, or only mid-task narration): nudge once.
      _prior_was_tool = any(m.get("role") == "tool" for m in messages[-5:])
      # Ollama puts <think> in content, not reasoning_content, so _has_structured misses
-@@ -219,6 +354,7 @@ def recover_empty_response(
+@@ -219,6 +355,7 @@ def recover_empty_response(
          append_message(messages, {
              "role": "user", "content": _EMPTY_TOOL_RESPONSE_NUDGE, "_empty_recovery_synthetic": True
          })
@@ -502,7 +503,7 @@ index 7a76d297cc..b6c28ac716 100644
          return _verdict("continue")
  
      # Thinking-only prefill: append the reasoning as-is and continue so the model sees
-@@ -242,6 +378,7 @@ def recover_empty_response(
+@@ -242,6 +379,7 @@ def recover_empty_response(
          interim_msg["_thinking_prefill"] = True
          append_message(messages, interim_msg)
          agent._session_messages = messages
@@ -548,10 +549,10 @@ index 7523a885c1..7564c5d976 100644
      # call/result rows before this turn's assistant message; no-op for ordinary providers.
 diff --git a/tests/agent/test_empty_response_answers_without_thinking.py b/tests/agent/test_empty_response_answers_without_thinking.py
 new file mode 100644
-index 0000000000..c63659447c
+index 0000000000..8ead1789f6
 --- /dev/null
 +++ b/tests/agent/test_empty_response_answers_without_thinking.py
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,232 @@
 +"""An empty or thinking-only response is retried WITHOUT thinking, and never identically;
 +a tool call the model wrote as text becomes a real call.
 +
@@ -645,14 +646,18 @@ index 0000000000..c63659447c
 +    agent = _agent()
 +    messages = [{"role": "user", "content": "hi"}]
 +    assert _retry(agent, messages, budget=1)[0] == "continue"
-+    assert agent._ephemeral_tools_off is True and messages == [{"role": "user", "content": "hi"}]   # no user→user
++    assert agent._ephemeral_tools_off is True
++    # after the person's own message too: user → assistant → user, never user → user nor the same request
++    assert [m["role"] for m in messages] == ["user", "assistant", "user"]
++    assert messages[-1]["content"] == ter._ANSWER_NOW_NO_TOOLS
 +
 +
 +def test_prefill_row_is_dropped_before_the_retry():
 +    agent = _agent()
 +    messages = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "", "_thinking_prefill": True}]
 +    _retry(agent, messages)
-+    assert messages == [{"role": "user", "content": "hi"}]
++    assert [m["role"] for m in messages] == ["user", "assistant", "user"]
++    assert not any(m.get("_thinking_prefill") for m in messages)
 +
 +
 +def test_last_try_request_has_no_tools():
@@ -757,12 +762,14 @@ index 0000000000..c63659447c
 +        assert reply.content is None
 +
 +
-+def test_unknown_tool_only_loses_its_markup_and_plain_text_is_untouched():
++def test_a_tool_the_session_lacks_is_called_by_its_name_and_plain_text_is_untouched():
++    """Hermes' unknown-tool path then tells the model which tools there are (measured: dropping the
++    markup instead left an empty reply the model wrote again, without tools too)."""
 +    from agent.leaked_tool_calls import recover_leaked_tool_calls
 +    reply = _reply(_DSML)
 +    with patch("agent.tool_executor._tool_search_scoped_names", return_value=frozenset()):
-+        assert recover_leaked_tool_calls(_leaky_agent(), reply) is False
-+    assert reply.content is None and reply.tool_calls is None   # → the empty-response ladder
++        assert recover_leaked_tool_calls(_leaky_agent(), reply) is True
++    assert reply.content is None and reply.tool_calls[0].function.name == "mcp__bipagents__health_summary"
 +    reply = _reply("Bonjour <tool_call> n'est pas un appel.")
 +    assert recover_leaked_tool_calls(_leaky_agent(), reply) is False
 +    assert reply.content == "Bonjour <tool_call> n'est pas un appel."
