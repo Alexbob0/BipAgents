@@ -216,31 +216,59 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   background: #000; border-radius: 20px; z-index: 2; }
 .phone-screen { border-radius: 46px; overflow: hidden; background: var(--ground); }
 .phone-screen img { width: 100%; height: auto; }
-/* The hero: what the agents did, one result per kind of agent, like the phone's notifications. They come in one
-   after another on load (~120 ms apart), then stay still; with reduced motion they are simply there. A phone shows
-   the first four. */
-.results { list-style: none; margin: 0; padding: 0; width: min(440px, 100%); display: grid; gap: 12px; position: relative; z-index: 2; }
-.res { display: flex; align-items: center; gap: 14px; padding: 12px 16px 12px 12px; border-radius: 24px;
-  background: var(--card); box-shadow: var(--shadow-big); animation: res-in .5s cubic-bezier(.2, .8, .3, 1) both;
-  animation-delay: calc(var(--i, 0) * 120ms + 150ms); }
-.res:nth-child(even) { margin-left: 22px; margin-right: -22px; }
-.res-bip { flex: 0 0 52px; height: 52px; border-radius: 16px; background: var(--tint, var(--ground2)); touch-action: auto; }
-.res-txt { min-width: 0; flex: 1; }
-.res-head { display: flex; align-items: center; gap: 6px; font-size: 13.5px; line-height: 1.3; color: var(--ink2); }
-.res-head b { font-weight: 1000; color: var(--ink); }
-.res-head .ai { background: var(--tint, var(--ground2)); color: var(--ink2); }
-.res-head time { margin-left: auto; padding-left: 8px; color: var(--muted); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
-.res-line { margin-top: 3px; font-size: 15px; font-weight: 800; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; }
-.res-ic { margin-right: 6px; }
-@keyframes res-in { from { opacity: 0; transform: translateY(12px) scale(.98); } }
-@media (max-width: 520px) {
-  .res:nth-child(n+5) { display: none; }
-  .res:nth-child(even) { margin-left: 0; margin-right: 0; }
-  .res { padding: 11px 14px 11px 10px; gap: 12px; }
-  .res-bip { flex-basis: 46px; height: 46px; }
-  .res-line { font-size: 14.5px; }
+/* The hero, on the right: one asks, the agent answers with something useful — the cards of the app's own demo (the
+   booking's approval, the walk's map, the « Your runs » page, a reminder). Two staggered columns on a computer, one on
+   a phone; each exchange comes in once (the question, then the card), one after another; with reduced motion they
+   are simply there. */
+.show { position: relative; z-index: 2; width: min(580px, 100%); display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.ex-col { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.ex-col + .ex-col { margin-top: 34px; }
+.ex { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ex-ask { align-self: flex-end; max-width: 92%; background: var(--ink); color: var(--ground); padding: 8px 13px; border-radius: 18px 18px 5px 18px;
+  font-size: 13.5px; font-weight: 800; line-height: 1.35;
+  animation: pop-in .45s cubic-bezier(.25, 1.3, .4, 1) both; animation-delay: calc(var(--i, 0) * 520ms + 150ms); }
+.ex-card { background: var(--card); border-radius: 20px; padding: 11px 12px 12px; box-shadow: var(--shadow-big); display: grid; gap: 8px; min-width: 0;
+  animation: pop-in .5s cubic-bezier(.2, .8, .3, 1) both; animation-delay: calc(var(--i, 0) * 520ms + 420ms); }
+.ex-from { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2); }
+.ex-from b { font-weight: 1000; color: var(--ink); }
+.ex-from .ai { background: var(--tint, var(--ground2)); color: var(--ink2); }
+.ex-av { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--tint, var(--ground2)); display: grid; place-items: center; }
+.ex-av svg { width: 22px; height: 22px; }
+.ex-say { font-size: 14px; font-weight: 900; line-height: 1.35; }
+.ex-card code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font: 800 12.5px/1.45 var(--font);
+  background: var(--ground2); padding: 8px 10px; border-radius: 10px; color: var(--ink2); }
+.ex-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+.ex-btns span { flex: 1 1 auto; text-align: center; padding: 7px 8px; border-radius: 999px; font-weight: 900; font-size: 12px; background: var(--ground2); white-space: nowrap; }
+.ex-btns .on { background: var(--ink); color: var(--ground); }
+.ex-title { font-weight: 1000; font-size: 14.5px; line-height: 1.3; }
+.ex-sub { margin-top: -6px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.ex-map { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 3 / 2; background: var(--ground2); }
+.ex-map img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ex-map i { position: absolute; translate: -50% -50%; width: 18px; height: 18px; border-radius: 50%; background: var(--c); color: #fff;
+  box-shadow: 0 0 0 2px #fff; font: normal 1000 10.5px/18px var(--font); text-align: center; }
+.ex-frame { position: relative; height: 150px; overflow: hidden; border-radius: 12px; background: var(--ground2); }
+.ex-frame iframe { position: absolute; left: 0; top: 0; width: 200%; height: 200%; border: 0; transform: scale(.5); transform-origin: 0 0; pointer-events: none; background: transparent; }
+.ex-open { font-size: 12.5px; font-weight: 900; color: var(--green-deep); text-decoration: none; }
+.ex-open:hover { text-decoration: underline; }
+.ex-rem { display: flex; align-items: center; gap: 10px; }
+.ex-rem-ic { flex: none; width: 38px; height: 38px; border-radius: 12px; background: var(--tint, var(--ground2)); display: grid; place-items: center; font-size: 19px; }
+.ex-rem > span:last-child { display: grid; line-height: 1.3; min-width: 0; }
+.ex-rem small { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.ex-rem b { font-size: 15px; font-weight: 1000; }
+.ex-rem span span { font-size: 13px; font-weight: 800; color: var(--ink2); }
+.show-more { position: relative; z-index: 2; margin-top: 18px; text-align: center; font-weight: 900; font-size: 14.5px; }
+.show-more a { color: var(--ink); }
+@media (max-width: 640px) {   /* a phone: one column, in the order they come in */
+  .show { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+  .ex-col { display: contents; }
+  .ex-col + .ex-col { margin-top: 0; }
+  .ex { order: var(--i, 0); }
+  .ex-card { padding: 12px 13px 13px; }
+  .ex-say { font-size: 14.5px; }
+  .ex-btns span { font-size: 13px; padding: 8px 10px; }
+  .ex-frame { height: 180px; }
 }
-@media (prefers-reduced-motion: reduce) { .res { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ex-ask, .ex-card { animation: none; } }
 
 /* -- Compared: Muse, dots, Grok Bot, BipAgents. A face-off (one product against BipAgents) picked in a segmented
    control, or the whole table; without the script, the whole table. Marks (check, cross, half, dash) always sit next
@@ -752,14 +780,24 @@ a.store:hover { transform: translateY(-2px); }
 .fam-points li { position: relative; padding-left: 24px; font-weight: 800; color: var(--ink2); font-size: 15px; line-height: 1.45; }
 .fam-points li::before { content: "✓"; position: absolute; left: 0; color: var(--green-deep); font-weight: 1000; }
 .fam-cta { margin-top: 20px; }
+/* Friends: one conversation shared read-only, a card under the family's points. */
+.fam-share { margin-top: 22px; border-radius: 24px; padding: 18px 20px 20px; background: var(--card); box-shadow: var(--shadow); }
+.fam-share-tag { display: inline-block; margin-bottom: 8px; padding: 3px 10px; border-radius: 999px; background: var(--violet-tint); color: var(--violet-deep);
+  font-size: 12px; font-weight: 1000; letter-spacing: .06em; text-transform: uppercase; }
+.fam-share h3 { display: flex; align-items: center; gap: 8px; font-size: 19px; line-height: 1.25; }
+.fam-share-text { margin-top: 6px; color: var(--ink2); font-weight: 700; font-size: 15.5px; line-height: 1.45; }
+.fam-share .fam-points { margin-top: 12px; }
 
-/* -- Hero: « See more » on privacy — where your data is, who can read it. The answers open under the first screen,
-   across both columns (the button sits with the privacy proof, on the left). ------------------------------------------ */
+/* -- Hero: « See more » on privacy — where your data is, who can read it. The answers open in place, right under the
+   button, in the left column: privacy comes first on the page as in the header (« Private », then « What they do »,
+   the right column), on a computer as on a phone. ------------------------------------------------------------------ */
 @media (min-width: 1040px) {
   .hero-copy { grid-column: 1; grid-row: 1; }
-  .hero-stage { grid-column: 2; grid-row: 1; }
-  .priv { grid-column: 1 / -1; grid-row: 2; }
+  .hero-stage { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+  .priv { grid-column: 1; grid-row: 2; }
 }
+/* while one reads the privacy answers, the agents' cards stay in view beside them */
+@media (min-width: 1040px) and (min-height: 760px) { .hero-stage { position: sticky; top: 80px; } }
 .priv-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; max-width: 560px; font-weight: 900; font-size: 16px; }
 .priv-more, .way-open { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font: inherit; }
 .priv-more { height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--ink); color: var(--ground); font-weight: 900; font-size: 15px; }
@@ -767,7 +805,7 @@ a.store:hover { transform: translateY(-2px); }
 .priv-more[aria-expanded="true"] i, .way-open[aria-expanded="true"] i { transform: translateY(2px) rotate(-135deg); }
 .priv { display: grid; gap: 14px; scroll-margin-top: 100px; animation: pop-in .45s cubic-bezier(.2, .8, .3, 1) both; }
 .priv[hidden], .self-panel[hidden] { display: none; }
-@media (min-width: 760px) { .priv { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 760px) and (max-width: 1039px) { .priv { grid-template-columns: 1fr 1fr; } }
 .priv-card { border-radius: 26px; padding: 22px 22px 24px; background: var(--card); box-shadow: var(--shadow); }
 .priv-where { background: var(--green-tint); box-shadow: none; }
 .priv-card h2 { display: flex; align-items: center; gap: 10px; font-size: 21px; line-height: 1.2; letter-spacing: -.01em; }

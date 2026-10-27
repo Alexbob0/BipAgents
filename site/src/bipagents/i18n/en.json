@@ -45,38 +45,10 @@
     "soon": "Coming soon to",
     "get": "Download on"
   },
-  "results": {
-    "a11y": "What your agents did for you, as examples",
-    "daily": {
-      "agent": "Daily",
-      "time": "8:31 pm",
-      "line": "Table booked: Pasta Mia, Friday 8:30 pm, for 2"
-    },
-    "wellness": {
-      "agent": "Coach",
-      "time": "8:02 am",
-      "line": "You slept 7 h 12 min, 25 min more than last week"
-    },
-    "finance": {
-      "agent": "Budget",
-      "time": "5 min ago",
-      "line": "Unusual charge: €49.99 from StreamMax. Want me to flag it?"
-    },
-    "family": {
-      "agent": "Family",
-      "time": "12 min ago",
-      "line": "Sam knows: the school called"
-    },
-    "work": {
-      "agent": "Work",
-      "time": "9:10 am",
-      "line": "3 work emails summed up, one reply ready for you to check"
-    },
-    "learning": {
-      "agent": "Tutor",
-      "time": "Yesterday",
-      "line": "Spanish quiz: 8/10. Go over the verbs tomorrow?"
-    }
+  "show": {
+    "a11y": "Examples: you ask, your agent answers with a useful card",
+    "more": "See the full demo",
+    "reminder": "Reminder"
   },
   "vs": {
     "kicker": "Compared",
@@ -511,7 +483,7 @@
     }
   },
   "family": {
-    "kicker": "Duo and Family",
+    "kicker": "Duo, Family and friends",
     "title": "In a family, your agents talk to each other.",
     "sub": "Everyone keeps their own private space and agents. When what you tell your agent concerns someone in the family, it offers to pass it on to their agent: you read it, you choose who gets it, and nothing leaves until you tap “Send”.",
     "s1t": "The school called",
@@ -524,6 +496,14 @@
     "p2": "Left unanswered, a proposal goes away after a day",
     "p3": "Your own agents write to each other and pass files only where you allowed it: “Who can write to whom”",
     "p4": "Family: up to 6 people, each with their own space, and a shared AI credit",
+    "share": {
+      "tag": "Soon",
+      "title": "Share a conversation with your friends",
+      "text": "A trip, a party to plan: share one of your agent’s conversations with your friends. They follow its replies and pages live, without writing to your agent.",
+      "p1": "Up to 20 friends: they install the app, no subscription needed",
+      "p2": "End-to-end encrypted: even we can’t read it",
+      "p3": "Sharing ends on the date you choose, or whenever you want"
+    },
     "cta": "See Duo and Family",
     "a11y": "In the conversation, the Daily agent offers: let Sam know? The words “The school called: Léa has a fever, I’m picking her up”, Sam as the recipient, and the Send and No thanks buttons. At Sam’s, the notification arrives.",
     "mock": {

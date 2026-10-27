@@ -310,6 +310,74 @@ def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
     return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), page["template"])
 
 
+def small_map(source: Path) -> str:
+    """A smaller copy of the walk's map for the home's first screen (≈ 440 px wide), when sips is there; else the map
+    itself. Returns the file's name."""
+    target = source.with_name("walk-map-small.jpg")
+    if source.exists() and shutil.which("sips"):
+        done = subprocess.run(["sips", "-Z", "440", "-s", "format", "jpeg", "-s", "formatOptions", "62", str(source),
+                               "--out", str(target)], capture_output=True)
+        if done.returncode == 0 and target.exists():
+            return target.name
+    return source.name
+
+
+def hero_show(demo: Dict[str, Any], t: Dict[str, Any], lang: str, map_file: str) -> str:
+    """The home's first screen, on the right: what one asks and what the agent answers with, taken from the app's own
+    demo (demo.json): the booking's approval, the walk's map, the « Your runs » page, a reminder. Two columns on a
+    computer, one on a phone; each exchange appears once, one after another (none with reduced motion)."""
+    tidy = french_spaces if lang == "fr" else (lambda s: s)
+    e = lambda s: html.escape(tidy(s), quote=False)
+    agents = {a["id"]: a for a in demo["agents"]}
+    scen = {k: localized(v, lang) for k, v in demo["scenarios"].items()}
+
+    def head(agent: str) -> str:
+        a = agents[agent]
+        return (f'<p class="ex-from"><span class="ex-av" data-bip-static="{a["category"]}"></span>'
+                f'<b>{e(localized(a["name"], lang))}</b><span class="ai">{e(t["ai"])}</span></p>')
+
+    def one(i: int, agent: str, tone: str, ask: str, card: str, kind: str) -> str:
+        return (f'<li class="ex ex--{kind}" style="--i:{i};--tint:var(--{tone}-tint)">'
+                f'<p class="ex-ask">{e(ask)}</p><div class="ex-card">{head(agent)}{card}</div></li>')
+
+    # The booking: the agent asks before sending (the second restaurant chosen, as in the demo's own run).
+    book = scen["book_table"]
+    asked = next(s for s in book["steps"] if "ask" in s)
+    answer = asked["ask"]["choices"][1]
+    approve = next(s for s in asked["then"] if "approve" in s)["approve"]
+    fill_in = lambda s: s.replace("{answer}", answer)
+    c = t["control"]
+    approval = (f'<p class="ex-say">{e(fill_in(approve["description"]))}</p>'
+                f'<code>{e(fill_in(approve["command"]))}</code>'
+                f'<p class="ex-btns" aria-hidden="true"><span class="on">{e(c["once"])}</span><span>{e(c["session"])}</span>'
+                f'<span>{e(c["deny"])}</span></p>')
+    # The walk: the map with its numbered stops.
+    walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
+    stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
+                       demo["pages"]["walk"]["template"])
+    pins = "".join(f'<i style="left:{x}%;top:{y}%;--c:{col}">{n}</i>' for n, (x, y, col, _) in enumerate(stops, 1))
+    names = " · ".join(e(walk[k]) for *_, k in stops)
+    walk_card = (f'<p class="ex-title">🌳 {e(walk["title"])}</p><p class="ex-sub">{e(walk["subtitle"])}</p>'
+                 f'<div class="ex-map"><img src="/assets/showcase/{map_file}" alt="{e(walk["alt"])} · {names}" '
+                 f'width="440" height="293" decoding="async">{pins}</div>')
+    # The runs: the page kit's real page, small, opened full size by its link.
+    runs_title = localized(demo["pages"]["runs"]["values"]["title"], lang)
+    runs_card = (f'<div class="ex-frame" aria-hidden="true"><iframe src="/assets/pages/runs-{lang}.html" tabindex="-1" '
+                 f'title="{e(runs_title)}" loading="lazy" scrolling="no"></iframe></div>'
+                 f'<a class="ex-open" href="/assets/pages/runs-{lang}.html" target="_blank" rel="noopener">'
+                 f'📄 {e(runs_title)} · {e(t["demo"]["open"])} ↗</a>')
+    # The reminder: « Every Monday · 7 pm · Bins » → the what, then the when.
+    preview = next(s for s in scen["bins"]["steps"] if s.get("tool") == "cronjob")["preview"]
+    *when, what = preview.split(" · ")
+    reminder = (f'<p class="ex-rem"><span class="ex-rem-ic" aria-hidden="true">🔔</span><span><small>{e(t["show"]["reminder"])}</small>'
+                f'<b>{e(what)}</b><span>{e(" · ".join(when))}</span></span></p>')
+    left = (one(0, "daily", "coral", book["prompt"], approval, "approve")
+            + one(3, "home", "teal", scen["bins"]["prompt"], reminder, "remind"))
+    right = (one(1, "daily", "coral", scen["walk"]["prompt"], walk_card, "map")
+             + one(2, "coach", "green", scen["runs_weeks"]["prompt"], runs_card, "page"))
+    return f'<ul class="ex-col">{left}</ul><ul class="ex-col">{right}</ul>'
+
+
 # -- bipagents.com ---------------------------------------------------------------------------------------------------
 
 DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"))
@@ -348,6 +416,7 @@ def bipagents(version: str) -> Path:
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
     map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")
+    map_small = small_map(assets / "showcase" / map_file) if map_file else ""
     agents = {a["id"]: a for a in demo["agents"]}
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / "partials").glob("*.html")}
     templates = {name: re.sub(r"\{\{>(\w+)\}\}", lambda m: partials[m.group(1)], (src / file).read_text(encoding="utf-8"))
@@ -394,6 +463,7 @@ def bipagents(version: str) -> Path:
         values["currencyoptions"] = "".join(
             f'<option value="{code}"{" selected" if code == default_currency else ""}>{html.escape(c["symbol"])} {code}</option>'
             for code, c in currencies.items())
+        values["heroshow"] = hero_show(demo, t, lang, map_small)
         default_url = checkout_url(cfg, "famille", "year", lang)
         badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
         # The public beta (site/config.json « beta »): TestFlight and Google Play's testing links once they are set.

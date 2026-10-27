@@ -2,9 +2,11 @@
 
 - **bipagents.com** sells the all-included offer, honestly. The home is short (reworked 2026-10-24 after a user
   review): the hero — on the left why, private and in Europe, with a « See more » that opens in place where your data
-  is and who can read it (`#private` opens it); on the right the approval card, in a loop —, « What they do » (six
-  cards, one per kind of agent, each with its live Bip and four lines: a grid on a computer, a row to swipe on a phone),
-  the Carnet, the family, the comparison (`#compared`), the prices as two ways side by side — « All included » (the
+  is and who can read it (`#private` opens it, right under its button, so privacy comes first on the page as in the
+  header); on the right « What they do » (`#results`): four things one asks and the card the agent answers with,
+  taken from the app's demo by `hero_show()` in build.py (the booking's approval, the walk's map, the « Your runs »
+  page, a reminder), appearing once one after another —, the Carnet, the family (with, in a card, sharing one
+  conversation with friends), the comparison (`#compared`), the prices as two ways side by side — « All included » (the
   plans: monthly/yearly, Solo/Duo/Famille, web price against the stores' price, computed live) and « On your
   computer », free, whose install (what it means, what it needs, three steps with the command to copy, Windows, what
   one then does oneself) opens in place (`#install` opens it) —, six questions that settle a purchase, the footer

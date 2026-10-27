@@ -45,38 +45,10 @@
     "soon": "Muy pronto en",
     "get": "Descárgalo en"
   },
-  "results": {
-    "a11y": "Lo que tus agentes han hecho por ti, en ejemplos",
-    "daily": {
-      "agent": "Día a día",
-      "time": "20:31",
-      "line": "Mesa reservada: Pasta Mia, viernes 20:30, 2 pers."
-    },
-    "wellness": {
-      "agent": "Coach",
-      "time": "8:02",
-      "line": "Has dormido 7 h 12 min, 25 min más que la semana pasada"
-    },
-    "finance": {
-      "agent": "Presupuesto",
-      "time": "hace 5 min",
-      "line": "Cargo inusual: 49,99 € de StreamMax. ¿Lo marco?"
-    },
-    "family": {
-      "agent": "Familia",
-      "time": "hace 12 min",
-      "line": "Sam ya lo sabe: ha llamado el colegio"
-    },
-    "work": {
-      "agent": "Trabajo",
-      "time": "9:10",
-      "line": "3 correos del trabajo resumidos, una respuesta lista para revisar"
-    },
-    "learning": {
-      "agent": "Profe",
-      "time": "ayer",
-      "line": "Quiz de inglés: 8/10. ¿Repasamos los verbos mañana?"
-    }
+  "show": {
+    "a11y": "Ejemplos: tú pides, tu agente responde con una tarjeta útil",
+    "more": "Ver la demo completa",
+    "reminder": "Recordatorio"
   },
   "vs": {
     "kicker": "Comparar",
@@ -511,7 +483,7 @@
     }
   },
   "family": {
-    "kicker": "Dúo y Familia",
+    "kicker": "Dúo, Familia y amigos",
     "title": "En familia, vuestros agentes hablan entre sí.",
     "sub": "Cada uno conserva su espacio privado y sus agentes. Cuando lo que le dices a tu agente afecta a alguien de la familia, te propone pasárselo a su agente: lo lees, eliges a quién, y nada sale sin tu «Enviar».",
     "s1t": "Ha llamado el colegio",
@@ -524,6 +496,14 @@
     "p2": "Sin respuesta, una propuesta desaparece al cabo de un día",
     "p3": "Tus propios agentes se escriben y se pasan archivos solo donde tú lo has permitido: «Quién puede escribir a quién»",
     "p4": "Familia: hasta 6 personas, cada una con su espacio, y un crédito de IA común",
+    "share": {
+      "tag": "Pronto",
+      "title": "Comparte una conversación con tus amigos",
+      "text": "Un viaje, una fiesta que organizar: comparte una conversación de tu agente con tus amigos. Siguen en directo sus respuestas y sus páginas, sin escribir a tu agente.",
+      "p1": "Hasta 20 amigos: instalan la app, sin suscripción",
+      "p2": "Cifrado de extremo a extremo: ni nosotros podemos leerlo",
+      "p3": "El uso compartido termina en la fecha que elijas, o cuando quieras"
+    },
     "cta": "Ver Dúo y Familia",
     "a11y": "En la conversación, el agente Día a día propone: ¿avisar a Sam? El texto «Ha llamado el colegio: Léa tiene fiebre, voy a recogerla», Sam como destinatario y los botones Enviar y No, gracias. En casa de Sam llega la notificación.",
     "mock": {
