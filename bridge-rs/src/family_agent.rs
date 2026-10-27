@@ -663,6 +663,13 @@ fn role(lang: &str) -> &'static str {
     }
 }
 
+/// The family's agent deleted by its creator: the members' bridges are told (their apps drop it at once; else their
+/// next `refresh` finds it gone).
+pub fn deleted(state: &AppState, agent: &AgentConfig) {
+    let (state_c, agent) = (state.clone(), agent.clone());
+    state.spawn(async move { tell_all(&state_c, &agent, false).await });
+}
+
 /// Tells the linked households the family's agent is there (their apps show it at once).
 async fn tell_all(state: &AppState, agent: &AgentConfig, shared: bool) {
     let config = state.config();
