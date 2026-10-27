@@ -220,7 +220,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 /* The hero, on the right: one asks, the agent answers with something useful — three cards of the app's own demo (the
    walk's map, big, on the left; the booking's approval and a reminder on the right). One column on a phone; each
    exchange fades in once, quickly, one after another; with reduced motion they are simply there. */
-.show { position: relative; z-index: 2; width: min(600px, 100%); display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; align-items: start; }
+.show { position: relative; z-index: 2; width: min(680px, 100%); display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: center; }
 .ex-col { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
 .ex { display: flex; flex-direction: column; gap: 6px; min-width: 0; animation: pop-in .4s ease-out both; animation-delay: calc(var(--i, 0) * 200ms + 100ms); }
 .ex-ask { align-self: flex-end; max-width: 92%; background: var(--ink); color: var(--ground); padding: 8px 13px; border-radius: 18px 18px 5px 18px;
@@ -270,6 +270,22 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   .ex-btns span { font-size: 13px; padding: 8px 10px; }
 }
 @media (prefers-reduced-motion: reduce) { .ex { animation: none; } }
+/* On a computer, the three cards as a loose stack (Alex's pick « Pile », 2026-10-27), slightly turned: the map big
+   behind, the approval in front, the reminder small on top; the one under the pointer straightens and comes to the front. */
+@media (min-width: 1040px) {
+  .show { display: block; position: relative; width: min(540px, 100%); height: 520px; margin-inline: auto; }
+  .show .ex-col { display: contents; }
+  .show .ex { position: absolute; transition: rotate .25s ease, translate .25s ease; }
+  .show .ex--map { left: 0; top: 0; width: 72%; rotate: -3deg; z-index: 1; }
+  .show .ex--approve { right: 0; top: 30%; width: 50%; rotate: 2.5deg; z-index: 2; }
+  .show .ex--remind { left: 8%; bottom: 0; width: 46%; rotate: -1.5deg; z-index: 3; }
+  .show .ex .ex-card { box-shadow: 0 0 0 1px var(--line), 0 18px 40px -18px rgba(29, 31, 36, .28); }
+}
+@media (min-width: 1040px) and (hover: hover) {
+  .show .ex:hover { rotate: 0deg; translate: 0 -4px; z-index: 4; }
+  .show .ex:hover .ex-card { translate: none; }
+}
+@media (min-width: 1040px) and (prefers-reduced-motion: reduce) { .show .ex { transition: none; } }
 
 /* -- Compared: Muse, dots, Grok Bot, BipAgents. A face-off (one product against BipAgents) picked in a segmented
    control, or the whole table; without the script, the whole table. Marks (check, cross, half, dash) always sit next
@@ -786,7 +802,7 @@ a.store:hover { transform: translateY(-2px); }
    the right column), on a computer as on a phone. ------------------------------------------------------------------ */
 @media (min-width: 1040px) {
   .hero-copy { grid-column: 1; grid-row: 1; }
-  .hero-stage { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+  .hero-stage { grid-column: 2; grid-row: 1 / span 2; align-self: center; height: auto; }
   .priv { grid-column: 1; grid-row: 2; }
 }
 /* while one reads the privacy answers, the agents' cards stay in view beside them */
