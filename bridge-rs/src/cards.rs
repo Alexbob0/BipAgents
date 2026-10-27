@@ -12,9 +12,17 @@
 //! label and the last 4 digits.
 //!
 //! Off by default everywhere: the person turns « Paiements par tes agents » on in the app (after a warning), and
-//! « Suspendre tous les paiements » turns it off at once. An install can forbid it (`[vault] cards = "off"`), and it
-//! is never offered on a place of the all-included offer for now. A card is only ever used by the agents of this
-//! install (its own configuration's agents), never across a household.
+//! « Suspendre tous les paiements » turns it off at once. An install can forbid it (`[vault] cards = "off"`). A card is
+//! only ever used by the agents of this install (its own configuration's agents), never across a household.
+//!
+//! On a place of the all-included offer (decided 2026-10-27, « expérimental » during the beta), only when Kerfy Studio
+//! switched it on there (`[payments] offer_cards`, off by default), and with the numbers on the phone: the card's
+//! number, expiry, cardholder name and postcode stay on the device that added it (iOS Keychain / Android Keystore,
+//! behind Face ID or the phone's lock). The bridge keeps a record without them (`on_phone`): label, brand, last 4
+//! digits, a cap in euros the person must set (`[payments] offer_cap_max_eur` at most), allowed sites, agents, spent,
+//! single-use state, and which device holds it. At each payment the person approves, that device sends them with the
+//! security code (card_pay.rs `approve`), held in memory for that one fill and wiped when it ends. The person also
+//! ticks that it is a virtual card with a cap, not their main card: the bank's cap is the real limit, ours a second.
 
 use indexmap::IndexMap;
 use serde_json::{json, Value};
@@ -30,14 +38,36 @@ pub const PAYMENTS_KEPT: usize = 50;
 /// The largest amount an agent may ask for at once (the card's own limit, set at the bank, is the real one).
 pub const MAX_AMOUNT_CENTS: i64 = 10_000_000;
 
-/// Whether this install may offer card payments at all: not when `[vault] cards = "off"`, and never (for now) on a
-/// place of the all-included offer (its guichet token, `place_backup::SETTINGS`) or a « no computer » server of it
-/// (`cloud`).
+/// Whether this install may offer card payments at all: not when `[vault] cards = "off"`, nor on a « no computer »
+/// server (`cloud`); on a place of the all-included offer (its guichet token, `place_backup::SETTINGS`) only when
+/// Kerfy Studio switched it on (`[payments] offer_cards`), with the numbers on the phone (`phone_rules`).
 pub fn allowed(config: &Config) -> bool {
-    config.hermes.isolated
-        && config.cards != "off"
-        && !config.cloud
-        && crate::agent_email::place_token(&crate::place_backup::home()).is_none()
+    allowed_on(config, on_offer())
+}
+
+/// `allowed`, with whether this is a place of the offer given.
+pub fn allowed_on(config: &Config, offer: bool) -> bool {
+    config.hermes.isolated && config.cards != "off" && !config.cloud && (!offer || config.payments.offer_cards)
+}
+
+/// A place of the all-included offer (Kerfy Studio's servers).
+pub fn on_offer() -> bool {
+    crate::handover::on_offer()
+}
+
+/// How cards are kept on a place of the offer: numbers on the phone, a cap required (in cents, at most).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PhoneRules {
+    pub cap_max_cents: i64,
+}
+
+/// The offer's rules when this is one of its places; None on a self-hosted install (numbers in the bridge's vault).
+pub fn phone_rules(config: &Config) -> Option<PhoneRules> {
+    phone_rules_on(config, on_offer())
+}
+
+pub fn phone_rules_on(config: &Config, offer: bool) -> Option<PhoneRules> {
+    offer.then(|| PhoneRules { cap_max_cents: config.payments.offer_cap_max_eur.clamp(1, 1000) * 100 })
 }
 
 /// The person's switch, « Paiements par tes agents » (off until they turn it on, after the warning in the app).
@@ -304,6 +334,103 @@ pub fn parse(body: &Dict, record: &mut Dict, secret: &mut Dict) -> Result<(), Va
         }
         secret.insert("postal_code".into(), json!(postal));
     }
+    finish(body, record, meta, None)
+}
+
+/// The fields any card may hold on the phone or in the bridge's vault: never these on a place of the offer.
+const PHONE_SECRETS: [&str; 13] = [
+    "number",
+    "card_number",
+    "expiry",
+    "exp_month",
+    "exp_year",
+    "name",
+    "cardholder_name",
+    "postal_code",
+    "billing_postal_code",
+    "csc",
+    "cvc",
+    "cvv",
+    "secret",
+];
+
+/// A card on a place of the offer (`rules`): what the app sent, WITHOUT number or expiry (they stay on the phone
+/// that added it). On creation: the device that holds it, the last 4 digits, the brand, a cap in euros and the
+/// person's word that it is a virtual card with a cap. `secret` is emptied: nothing of the card's is kept here.
+pub fn parse_phone(body: &Dict, record: &mut Dict, secret: &mut Dict, rules: PhoneRules) -> Result<(), VaultError> {
+    if PHONE_SECRETS.iter().any(|k| body.get(*k).is_some_and(|v| !v.is_null())) {
+        return Err(invalid("on this server, the card's number stays on your phone: it is never sent to be kept"));
+    }
+    secret.clear();
+    let mut meta: Dict = match record.get("card") {
+        Some(Value::Object(map)) => map.clone(),
+        _ => Dict::new(),
+    };
+    let creating = meta.get("device_id").is_none();
+    if let Some(device) = text_of(body, &["device_id"]) {
+        let device = pyx::strip(&device).to_string();
+        if !(8..=64).contains(&device.len())
+            || !device.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(invalid("device is not valid"));
+        }
+        meta.insert("device_id".into(), json!(device));
+        meta.insert("missing".into(), json!(false));
+    } else if creating {
+        return Err(invalid("the phone that keeps the card is required"));
+    }
+    if let Some(name) = text_of(body, &["device_name"]) {
+        meta.insert("device_name".into(), json!(quoted(&name, 60)));
+    }
+    meta.entry("device_name").or_insert(json!(""));
+    if let Some(last4) = text_of(body, &["last4"]) {
+        let last4 = pyx::strip(&last4).to_string();
+        if last4.len() != 4 || !last4.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(invalid("last4 must be the card's last 4 digits"));
+        }
+        if meta.get("last4").and_then(Value::as_str) != Some(last4.as_str()) {
+            meta.insert("used".into(), json!(false)); // new numbers (a single-use card regenerated): usable again
+        }
+        meta.insert("last4".into(), json!(last4));
+    } else if creating {
+        return Err(invalid("last4 must be the card's last 4 digits"));
+    }
+    if body.get("renewed").is_some_and(crate::py::truthy) {
+        meta.insert("used".into(), json!(false));
+    }
+    if let Some(b) = text_of(body, &["brand"]) {
+        let b = pyx::strip(&b).to_lowercase();
+        let known = ["visa", "mastercard", "amex", "discover", "jcb", "diners", "unionpay", "maestro"];
+        meta.insert("brand".into(), json!(if known.contains(&b.as_str()) { b.as_str() } else { "card" }));
+    }
+    meta.entry("brand").or_insert(json!("card"));
+    if let Some(v) = body.get("missing").filter(|v| !v.is_null()) {
+        meta.insert("missing".into(), json!(crate::py::truthy(v)));
+    }
+    if creating && !body.get("virtual_card").is_some_and(crate::py::truthy) {
+        return Err(invalid("confirm that this is a virtual card with a cap, not your main card"));
+    }
+    meta.insert("on_phone".into(), json!(true));
+    meta.shift_remove("exp_month");
+    meta.shift_remove("exp_year");
+    finish(body, record, meta, Some(rules))
+}
+
+/// What both kinds of cards share: single use, sites, the cap (required on a place of the offer, `rules`), the
+/// defaults; and the record's other fields.
+fn finish(body: &Dict, record: &mut Dict, mut meta: Dict, rules: Option<PhoneRules>) -> Result<(), VaultError> {
+    if let Some(v) = body.get("cap_eur").filter(|v| !v.is_null()) {
+        let max = rules.map(|r| r.cap_max_cents).unwrap_or(MAX_AMOUNT_CENTS);
+        let wrong = || invalid(&format!("the cap must be between 1 and {} euros", max / 100));
+        let cents = amount_cents(v).map_err(|_| wrong())?;
+        if !(100..=max).contains(&cents) {
+            return Err(wrong());
+        }
+        meta.insert("cap_cents".into(), json!(cents));
+    }
+    if rules.is_some() && !meta.contains_key("cap_cents") {
+        return Err(invalid("a cap in euros is required"));
+    }
     if let Some(v) = body.get("single_use").filter(|v| !v.is_null()) {
         meta.insert("single_use".into(), json!(crate::py::truthy(v)));
     }
@@ -342,12 +469,89 @@ pub fn public(meta: &Value) -> Value {
         Some(Value::Array(items)) => items.iter().rev().take(20).cloned().collect(),
         _ => Vec::new(),
     };
-    json!({"last4": get("last4"), "brand": get("brand"), "exp_month": get("exp_month"), "exp_year": get("exp_year"),
+    let mut out = json!({"last4": get("last4"), "brand": get("brand"), "exp_month": get("exp_month"),
+           "exp_year": get("exp_year"),
            "single_use": meta.get("single_use").and_then(Value::as_bool).unwrap_or(false),
            "used": meta.get("used").and_then(Value::as_bool).unwrap_or(false),
            "sites": meta.get("sites").cloned().unwrap_or(json!([])),
            "spent": meta.get("spent").cloned().unwrap_or(json!({})),
-           "payments": payments})
+           "payments": payments});
+    if let Value::Object(map) = &mut out {
+        if meta.get("cap_cents").is_some() {
+            map.insert("cap_cents".into(), get("cap_cents"));
+        }
+        if is_on_phone(meta) {
+            map.insert("on_phone".into(), json!(true));
+            map.insert("device_id".into(), get("device_id"));
+            map.insert("device_name".into(), get("device_name"));
+            map.insert("missing".into(), json!(meta.get("missing").and_then(Value::as_bool).unwrap_or(false)));
+        }
+    }
+    out
+}
+
+/// A card whose numbers stay on a phone (a place of the offer).
+pub fn is_on_phone(meta: &Value) -> bool {
+    meta.get("on_phone").and_then(Value::as_bool) == Some(true)
+}
+
+/// Why a payment of `cents` in `currency` goes over the card's cap (spent so far included), in plain words for the
+/// agent; None when the card has no cap or the payment fits.
+pub fn over_cap(meta: &Value, label: &str, cents: i64, currency: &str) -> Option<String> {
+    let cap = meta.get("cap_cents").and_then(Value::as_i64)?;
+    if currency != "EUR" {
+        return Some(format!(
+            "The card « {label} » has a cap in euros: it only pays in EUR. Don't pay; hand the payment over to the \
+             person with hand_over_payment."
+        ));
+    }
+    let spent = meta.get("spent").and_then(|s| s.get("EUR")).and_then(Value::as_i64).unwrap_or(0);
+    (spent.saturating_add(cents) > cap).then(|| {
+        format!(
+            "The card « {label} » has a cap of {} EUR and {} EUR were already paid with it: {} EUR is over it. Don't \
+             pay; tell the person (they can raise the cap in the app, up to what their bank allows) or hand the \
+             payment over with hand_over_payment.",
+            format_cents(cap),
+            format_cents(spent),
+            format_cents(cents)
+        )
+    })
+}
+
+/// The card's numbers the phone sent with an approval (a card kept on the phone): checked against the card (the
+/// device that holds it, its last 4 digits), with the security code typed in the approval. Err: (status, what the
+/// app reads). Nothing of `body` is logged.
+pub fn phone_values(body: &Value, meta: &Value, code: &str) -> Result<crate::card_fill::CardValues, (u16, Value)> {
+    let text = |k: &str| body.get(k).filter(|v| !v.is_null()).map(crate::py::py_str);
+    let bad = |what: &str| (400, json!(what));
+    let device = text("device_id").unwrap_or_default();
+    if meta.get("device_id").and_then(Value::as_str) != Some(device.as_str()) || device.is_empty() {
+        return Err((
+            409,
+            json!({"code": "card_on_other_device",
+                   "device_name": meta.get("device_name").cloned().unwrap_or(Value::Null)}),
+        ));
+    }
+    let raw = zeroize::Zeroizing::new(text("number").unwrap_or_default());
+    let mut number = zeroize::Zeroizing::new(digits(&raw).unwrap_or_default());
+    if number.is_empty() {
+        return Err(bad("the card's number is sent with the approval, from the phone that keeps it"));
+    }
+    if !luhn(&number) || meta.get("last4").and_then(Value::as_str) != number.get(number.len().saturating_sub(4)..) {
+        return Err(bad("this is not this card's number"));
+    }
+    let (month, year) = (text("exp_month").unwrap_or_default(), text("exp_year").unwrap_or_default());
+    let (exp_month, exp_year) = expiry(&month, &year, this_month()).map_err(|e| bad(&e.to_string()))?;
+    let name = text("name").map(|n| pyx::strip(&n).to_string()).unwrap_or_default();
+    let postal_code = text("postal_code").map(|p| pyx::strip(&p).to_string()).unwrap_or_default();
+    if name.chars().count() > 100 || name.chars().any(char::is_control) {
+        return Err(bad("cardholder name is not valid"));
+    }
+    if postal_code.chars().count() > 20 || postal_code.chars().any(char::is_control) {
+        return Err(bad("postcode is not valid"));
+    }
+    let number = std::mem::take(&mut *number);
+    Ok(crate::card_fill::CardValues { number, exp_month, exp_year, csc: code.to_string(), name, postal_code })
 }
 
 /// An amount as an agent read it (« 12,50 », « 12.5 », 12.5): in cents. Err in plain words for the agent.
@@ -542,6 +746,118 @@ mod tests {
             parse_one(json!({"number": "4242424242424242", "expiry": "12/30", "sites": ["ftp://x"]})).as_deref(),
             Some("site must be a web address")
         );
+    }
+
+    fn isolated() -> Config {
+        let mut config = Config::with_key("k".repeat(32));
+        config.hermes.isolated = true;
+        config
+    }
+
+    #[test]
+    fn the_offer_s_places_only_when_kerfy_switched_it_on() {
+        let mut config = isolated();
+        assert!(allowed_on(&config, false)); // self-hosted: as before
+        assert!(!allowed_on(&config, true)); // the offer: off by default
+        assert_eq!(phone_rules_on(&config, false), None);
+        config.payments.offer_cards = true;
+        assert!(allowed_on(&config, true));
+        assert_eq!(phone_rules_on(&config, true), Some(PhoneRules { cap_max_cents: 15_000 }));
+        config.cards = "off".into();
+        assert!(!allowed_on(&config, true) && !allowed_on(&config, false));
+    }
+
+    const RULES: PhoneRules = PhoneRules { cap_max_cents: 15_000 };
+
+    fn phone_body() -> Value {
+        json!({"kind": "card", "label": "Petits achats", "last4": "4242", "brand": "visa",
+               "device_id": "phone-a-0123456789", "device_name": "iPhone d'Alex", "cap_eur": "50",
+               "virtual_card": true, "sites": ["shop.example"]})
+    }
+
+    fn parse_phone_one(body: Value) -> Result<(Dict, Dict), String> {
+        let (mut record, mut secret) = (Dict::new(), Dict::new());
+        parse_phone(body.as_object().unwrap(), &mut record, &mut secret, RULES).map_err(|e| e.to_string())?;
+        Ok((record, secret))
+    }
+
+    #[test]
+    fn on_the_offer_no_number_is_kept() {
+        let (record, secret) = parse_phone_one(phone_body()).unwrap();
+        assert!(secret.is_empty());
+        let card = public(&record["card"]);
+        assert_eq!(card["on_phone"], true);
+        assert_eq!(card["device_id"], "phone-a-0123456789");
+        assert_eq!((card["last4"].clone(), card["cap_cents"].clone()), (json!("4242"), json!(5000)));
+        assert_eq!((card["exp_month"].clone(), card["exp_year"].clone()), (Value::Null, Value::Null));
+        for field in ["number", "expiry", "exp_month", "name", "postal_code", "csc"] {
+            let mut body = phone_body();
+            body[field] = json!(if field == "number" { "4242424242424242" } else { "12" });
+            assert!(parse_phone_one(body).unwrap_err().contains("stays on your phone"), "{field}");
+        }
+        // An update without numbers keeps the record as it is, with the phone it is on.
+        let (mut record, mut secret) = parse_phone_one(phone_body()).unwrap();
+        parse_phone(json!({"cap_eur": 80}).as_object().unwrap(), &mut record, &mut secret, RULES).unwrap();
+        assert_eq!(record["card"]["cap_cents"], 8000);
+        assert_eq!(record["card"]["device_id"], "phone-a-0123456789");
+        parse_phone(json!({"missing": true}).as_object().unwrap(), &mut record, &mut secret, RULES).unwrap();
+        assert_eq!(public(&record["card"])["missing"], true);
+    }
+
+    #[test]
+    fn on_the_offer_a_capped_virtual_card_is_required() {
+        let without = |key: &str| {
+            let mut body = phone_body();
+            body.as_object_mut().unwrap().remove(key);
+            parse_phone_one(body).unwrap_err()
+        };
+        assert_eq!(without("cap_eur"), "a cap in euros is required");
+        assert!(without("virtual_card").starts_with("confirm that this is a virtual card"));
+        assert_eq!(without("device_id"), "the phone that keeps the card is required");
+        assert_eq!(without("last4"), "last4 must be the card's last 4 digits");
+        let mut over = phone_body();
+        over["cap_eur"] = json!(151);
+        assert_eq!(parse_phone_one(over).unwrap_err(), "the cap must be between 1 and 150 euros");
+        let mut not_ticked = phone_body();
+        not_ticked["virtual_card"] = json!(false);
+        assert!(parse_phone_one(not_ticked).is_err());
+    }
+
+    #[test]
+    fn the_cap_counts_what_was_already_paid() {
+        let mut meta = json!({"cap_cents": 5000, "spent": {"EUR": 4000}});
+        assert_eq!(over_cap(&meta, "Petits achats", 1000, "EUR"), None);
+        let over = over_cap(&meta, "Petits achats", 1001, "EUR").unwrap();
+        assert!(over.contains("cap of 50.00 EUR") && over.contains("40.00 EUR were already paid"), "{over}");
+        assert!(over_cap(&meta, "Petits achats", 100, "USD").unwrap().contains("only pays in EUR"));
+        meta.as_object_mut().unwrap().remove("cap_cents");
+        assert_eq!(over_cap(&meta, "x", 9_999_999, "USD"), None); // no cap (self-hosted): as before
+    }
+
+    #[test]
+    fn the_phone_s_numbers_must_be_this_card_s() {
+        let meta = json!({"on_phone": true, "device_id": "phone-a-0123456789", "device_name": "iPhone d'Alex",
+                          "last4": "4242"});
+        let sent = json!({"device_id": "phone-a-0123456789", "number": "4242 4242 4242 4242", "exp_month": 12,
+                          "exp_year": 30, "name": "Alex Martin"});
+        let values = phone_values(&sent, &meta, "737").ok().unwrap();
+        assert_eq!(
+            (values.number.as_str(), values.exp_year, values.name.as_str()),
+            ("4242424242424242", 2030, "Alex Martin")
+        );
+        let mut other = sent.clone();
+        other["device_id"] = json!("phone-b-0123456789");
+        let (status, detail) = phone_values(&other, &meta, "737").err().unwrap();
+        assert_eq!(
+            (status, detail["code"].clone(), detail["device_name"].clone()),
+            (409, json!("card_on_other_device"), json!("iPhone d'Alex"))
+        );
+        let mut wrong = sent.clone();
+        wrong["number"] = json!("4000056655665556");
+        assert_eq!(phone_values(&wrong, &meta, "737").err().unwrap().0, 400);
+        let mut expired = sent.clone();
+        expired["exp_year"] = json!(2020);
+        assert_eq!(phone_values(&expired, &meta, "737").err().unwrap().0, 400);
     }
 
     #[test]

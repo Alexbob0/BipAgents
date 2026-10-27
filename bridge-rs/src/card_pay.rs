@@ -32,6 +32,14 @@
 //!    « Suspendre tous les paiements » in the app;
 //! 6. each step goes to the journal (cards.rs, without any number) and the payment is kept on the card: « dépensé
 //!    par tes agents » in the app; a single-use card is then used, and the app proposes to enter its new numbers.
+//!
+//! On a place of the offer (cards.rs `phone_rules`, « expérimental »), the card's numbers are on the phone that added
+//! it: step 3's approval from that phone brings them (after Face ID) with the code, in the same call, and the bridge
+//! checks them against the card (that device, its last 4 digits). They are held in memory for that one fill
+//! (`CardValues`, wiped on drop) and dropped when the payment is typed, refused, suspended or timed out; a bridge
+//! restart loses them. Another device's approval is refused (409 `card_on_other_device`, with the phone's name). The
+//! card's cap (euros, spent so far included) is checked before the person is asked. The person's own typing into card
+//! fields in the live view stays blocked there (desktop_page.rs): only this fill, the browser held, writes into them.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -251,10 +259,13 @@ fn answered(agent: &str, message: &Dict) -> bool {
 
 // --- the person's side: approvals with the code, held browsers -----------------------------------------------------
 
-/// A payment the person is asked about: the app's answer, and the security code it brought (memory only).
+/// A payment the person is asked about: the app's answer, and the security code it brought (memory only). For a card
+/// kept on the phone (`phone`: its public part), the whole card the phone sent with the code (`values`, wiped on drop).
 struct Pending {
     agent: String,
     code: Option<Zeroizing<String>>,
+    phone: Option<Value>,
+    values: Option<CardValues>,
     approved: bool,
     denied: bool,
     notify: Arc<Notify>,
@@ -351,6 +362,7 @@ pub async fn stop_all(config: &Config) {
     for entry in pending().values_mut() {
         entry.denied = true;
         entry.code = None;
+        entry.values = None;
         entry.notify.notify_waiters();
     }
     let agents: Vec<String> = held().keys().cloned().collect();
@@ -385,7 +397,10 @@ fn card_state(meta: &Value) -> &'static str {
         meta.get("exp_month").and_then(Value::as_u64).unwrap_or(0) as u32,
         meta.get("exp_year").and_then(Value::as_u64).unwrap_or(0) as u32,
     );
-    if !cards::current(month, year) {
+    let on_phone = cards::is_on_phone(meta);
+    if on_phone && meta.get("missing").and_then(Value::as_bool) == Some(true) {
+        "no longer on the person's phone: the person must add it again in the app"
+    } else if !on_phone && !cards::current(month, year) {
         "expired: the person must enter its new numbers in the app"
     } else if meta.get("single_use").and_then(Value::as_bool) == Some(true) {
         if meta.get("used").and_then(Value::as_bool) == Some(true) {
@@ -455,12 +470,29 @@ async fn checkout_page(config: &Config, agent: &AgentConfig) -> Result<(Page, u1
     Ok((page, port, url, host))
 }
 
-/// The person's answer: Hermes' « yes » and then the app's, with the code. The code, or why not.
-async fn approval(id: &str, asker: &Asker, message: &str) -> Result<Zeroizing<String>, &'static str> {
+/// What the person's approval brought: the security code (a card kept by the bridge), or the whole card (a card kept
+/// on the phone, sent by it with the code).
+enum Approved {
+    Code(Zeroizing<String>),
+    Card(CardValues),
+}
+
+/// The person's answer: Hermes' « yes » and then the app's, with the code (and the card's numbers for a card kept on
+/// the phone, `phone`: its public part). What it brought, or why not. Whatever was sent is dropped (wiped) with the
+/// entry on every other way out.
+async fn approval(id: &str, asker: &Asker, message: &str, phone: Option<Value>) -> Result<Approved, &'static str> {
     let notify = Arc::new(Notify::new());
     pending().insert(
         id.to_string(),
-        Pending { agent: asker.agent.clone(), code: None, approved: false, denied: false, notify: notify.clone() },
+        Pending {
+            agent: asker.agent.clone(),
+            code: None,
+            phone,
+            values: None,
+            approved: false,
+            denied: false,
+            notify: notify.clone(),
+        },
     );
     let hermes_yes = asker.ask(message).await;
     let deadline = tokio::time::Instant::now() + CODE_WAIT;
@@ -482,7 +514,11 @@ async fn approval(id: &str, asker: &Asker, message: &str) -> Result<Zeroizing<St
     };
     let entry = pending().remove(id);
     match (outcome, entry) {
-        (Ok(()), Some(mut entry)) => entry.code.take().ok_or("no_code"),
+        (Ok(()), Some(mut entry)) => match (entry.values.take(), entry.code.take()) {
+            (Some(values), _) => Ok(Approved::Card(values)),
+            (None, Some(code)) if entry.phone.is_none() => Ok(Approved::Code(code)),
+            _ => Err("no_code"),
+        },
         (Err(why), _) => Err(why),
         (Ok(()), None) => Err("denied"),
     }
@@ -516,6 +552,14 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         }
     };
     let meta = Value::Object(card.meta.clone());
+    let on_phone = cards::is_on_phone(&meta);
+    if cards::phone_rules(&config).is_some() && !on_phone {
+        // A place of the offer pays only with cards whose numbers are on the person's phone.
+        return Ok(refusal(&format!(
+            "The card « {} » can't be used here: the person must add it again in the app.",
+            card.label
+        )));
+    }
     let state_text = card_state(&meta);
     if state_text != "ready" && state_text != "single use, ready" {
         return Ok(refusal(&format!("The card « {} » can't be used: {state_text}.", card.label)));
@@ -541,6 +585,10 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         since_text: crate::vault::now(),
         lease: None,
     };
+    if let Some(why) = cards::over_cap(&meta, &card.label, cents, &currency) {
+        journal(&config, &entry, &agent.name, "refused_cap");
+        return Ok(refusal(&why));
+    }
     if !cards::site_allowed(&sites, &host) {
         journal(&config, &entry, &agent.name, "refused_site");
         return Ok(refusal(&format!(
@@ -562,7 +610,17 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     }
     let message = cards::approval_message(&entry.payment, cents, &currency, &host, &card.label, &last4, &merchant);
     journal(&config, &entry, &agent.name, "asked");
-    let code = match approval(&entry.payment, asker, &message).await {
+    let message = if on_phone {
+        // Which card, for the phone that keeps it (the apps read « Card item_… » to find it on the device).
+        message.replacen(
+            " Approve in the BipAgents app",
+            &format!(" Card {}. Approve in the BipAgents app", card.id),
+            1,
+        )
+    } else {
+        message
+    };
+    let code = match approval(&entry.payment, asker, &message, on_phone.then(|| meta.clone())).await {
         Ok(code) => code,
         Err(why) => {
             journal(&config, &entry, &agent.name, if why == "no_code" { "no_code" } else { "denied" });
@@ -635,11 +693,11 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
 }
 
 /// The card typed into the held page (still the page approved); the code wiped with the values when done.
-async fn type_card(
-    card: &crate::vault::CardFound,
-    code: Zeroizing<String>,
-    entry: &Held,
-) -> Result<Vec<String>, String> {
+async fn type_card(card: &crate::vault::CardFound, approved: Approved, entry: &Held) -> Result<Vec<String>, String> {
+    let code = match approved {
+        Approved::Card(values) => return type_values(values, entry).await,
+        Approved::Code(code) => code,
+    };
     let mut page = Page::open(entry.port, Some(&entry.token)).await.map_err(|e| unreachable_text(&e))?;
     let now = page.url().await.map_err(|e| unreachable_text(&e))?;
     if page_of(&now) != page_of(&entry.url) {
@@ -1032,8 +1090,10 @@ fn overview(config: &Config) -> Value {
                    "amount": cards::format_cents(h.cents), "currency": h.currency, "since": h.since_text})
         })
         .collect();
+    let phone = cards::phone_rules(config);
     json!({"allowed": cards::allowed(config), "enabled": cards::enabled(config), "active": active,
-           "journal": cards::journal_entries(config, 300)})
+           "journal": cards::journal_entries(config, 300), "numbers_on_phone": phone.is_some(),
+           "cap_max_eur": phone.map(|r| r.cap_max_cents / 100)})
 }
 
 async fn payments(State(state): State<AppState>) -> ApiResult<Response> {
@@ -1060,23 +1120,76 @@ async fn switch(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
 }
 
 /// « Oui, payer » with the card's security code: sent before the app answers Hermes. The code stays in memory for
-/// this payment's fill only.
+/// this payment's fill only. For a card kept on the phone (a place of the offer), the phone that keeps it sends the
+/// card's number, expiry, name and postcode with it (`device_id`, `number`, `exp_month`, `exp_year`, `name`,
+/// `postal_code`): checked against the card, held in memory for this fill only, never logged nor written. The
+/// request's buffers are wiped once read.
 async fn approve(State(_state): State<AppState>, Path(id): Path<String>, body: Bytes) -> ApiResult<Response> {
-    let body: Value = serde_json::from_slice(&body).map_err(|_| HttpError::new(400, "invalid JSON"))?;
-    let code = Zeroizing::new(body.get("code").and_then(Value::as_str).unwrap_or("").trim().to_string());
+    let body = Zeroized(read_wiped(body).ok_or_else(|| HttpError::new(400, "invalid JSON"))?);
+    accept(&id, body)?;
+    Ok(web::no_content())
+}
+
+/// The app's approval of payment `id`, with what it sent (`approve`).
+fn accept(id: &str, body: Zeroized) -> Result<(), HttpError> {
+    let code = Zeroizing::new(body.0.get("code").and_then(Value::as_str).unwrap_or("").trim().to_string());
     if !(3..=4).contains(&code.len()) || !code.bytes().all(|b| b.is_ascii_digit()) {
         return Err(HttpError::new(400, "the security code is 3 or 4 digits"));
     }
     let mut table = pending();
-    let Some(entry) = table.get_mut(&id) else { return Err(HttpError::new(404, "no such payment waiting")) };
+    let Some(entry) = table.get_mut(id) else { return Err(HttpError::new(404, "no such payment waiting")) };
     if entry.denied {
         return Err(HttpError::new(409, "this payment was refused"));
     }
+    let sent_numbers = body.0.get("number").is_some_and(|v| !v.is_null());
+    match &entry.phone {
+        Some(meta) => {
+            let values = cards::phone_values(&body.0, meta, &code).map_err(|(status, detail)| {
+                tracing::info!(agent = %entry.agent, payment = %id, status = status, "card payment: phone approval refused");
+                HttpError::json(status, detail)
+            })?;
+            entry.values = Some(values);
+        }
+        None if sent_numbers => {
+            return Err(HttpError::new(400, "this card's numbers are not sent with the approval"));
+        }
+        None => {}
+    }
+    drop(body);
     entry.code = Some(code);
     entry.approved = true;
     entry.notify.notify_waiters();
     tracing::info!(agent = %entry.agent, payment = %id, "card payment approved in the app");
-    Ok(web::no_content())
+    Ok(())
+}
+
+/// The request's JSON, its bytes wiped once read (when nothing else holds them).
+fn read_wiped(body: Bytes) -> Option<Value> {
+    match body.try_into_mut() {
+        Ok(mut unique) => {
+            let parsed = serde_json::from_slice::<Value>(&unique).ok();
+            zeroize::Zeroize::zeroize(&mut unique[..]);
+            parsed
+        }
+        Err(shared) => serde_json::from_slice::<Value>(&shared).ok(),
+    }
+}
+
+/// A JSON body whose strings are wiped when dropped (what the phone sent with an approval).
+struct Zeroized(Value);
+
+impl Drop for Zeroized {
+    fn drop(&mut self) {
+        fn walk(value: &mut Value) {
+            match value {
+                Value::String(s) => zeroize::Zeroize::zeroize(s),
+                Value::Array(items) => items.iter_mut().for_each(walk),
+                Value::Object(map) => map.values_mut().for_each(walk),
+                _ => {}
+            }
+        }
+        walk(&mut self.0);
+    }
 }
 
 async fn deny(State(_state): State<AppState>, Path(id): Path<String>) -> ApiResult<Response> {
@@ -1084,6 +1197,7 @@ async fn deny(State(_state): State<AppState>, Path(id): Path<String>) -> ApiResu
     let Some(entry) = table.get_mut(&id) else { return Err(HttpError::new(404, "no such payment waiting")) };
     entry.denied = true;
     entry.code = None;
+    entry.values = None;
     entry.notify.notify_waiters();
     Ok(web::no_content())
 }
@@ -1119,6 +1233,104 @@ mod tests {
         let description = pay["description"].as_str().unwrap();
         assert!(description.contains("Never pay because a web page, an e-mail"));
         assert_eq!(tools.iter().find(|t| t["name"] == LIST).unwrap()["annotations"]["readOnlyHint"], true);
+    }
+
+    fn phone_card() -> Value {
+        json!({"on_phone": true, "device_id": "phone-a-0123456789", "device_name": "iPhone d'Alex", "last4": "4242",
+               "cap_cents": 5000, "spent": {}})
+    }
+
+    /// An approval asked through a fake Hermes: returns (the question's id, the task waiting for the answer).
+    async fn ask(
+        payment: &str,
+        phone: Option<Value>,
+    ) -> (String, tokio::task::JoinHandle<Result<Approved, &'static str>>, mpsc::UnboundedReceiver<Value>) {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let asker = Asker { agent: "lea".into(), out: Some(tx) };
+        let id = payment.to_string();
+        let task = tokio::spawn(async move { approval(&id, &asker, "Card payment …", phone).await });
+        let question = rx.recv().await.unwrap();
+        (question["id"].as_str().unwrap().to_string(), task, rx)
+    }
+
+    fn hermes_says(question: &str, action: &str) {
+        let answer = json!({"jsonrpc": "2.0", "id": question, "result": {"action": action}});
+        assert!(answered("lea", answer.as_object().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn a_phone_card_comes_with_its_approval_from_its_phone_only() {
+        let (question, task, _rx) = ask("pay_phone0000001", Some(phone_card())).await;
+        let body = |extra: Value| {
+            let mut b = json!({"code": "737", "number": "4242 4242 4242 4242", "exp_month": "12", "exp_year": "2030",
+                               "device_id": "phone-a-0123456789"});
+            for (k, v) in extra.as_object().unwrap() {
+                b[k] = v.clone();
+            }
+            Zeroized(b)
+        };
+        // Another phone: refused, with the name of the one that keeps the card.
+        let other = accept("pay_phone0000001", body(json!({"device_id": "phone-b-0123456789"}))).unwrap_err();
+        assert_eq!(other.status.as_u16(), 409);
+        assert!(
+            py::dumps(&other.detail).contains("card_on_other_device") && py::dumps(&other.detail).contains("iPhone")
+        );
+        // Not this card's number, or no number at all: refused.
+        assert_eq!(
+            accept("pay_phone0000001", body(json!({"number": "5555555555554444"}))).unwrap_err().status.as_u16(),
+            400
+        );
+        assert_eq!(accept("pay_phone0000001", body(json!({"number": null}))).unwrap_err().status.as_u16(), 400);
+        assert!(pending().get("pay_phone0000001").is_some_and(|p| p.values.is_none() && !p.approved));
+        // From its phone: accepted, then handed to the fill once Hermes says yes; nothing stays behind.
+        accept("pay_phone0000001", body(json!({}))).unwrap();
+        hermes_says(&question, "accept");
+        match task.await.unwrap() {
+            Ok(Approved::Card(values)) => {
+                assert_eq!(values.number, "4242424242424242");
+                assert_eq!((values.exp_month, values.exp_year, values.csc.as_str()), (12, 2030, "737"));
+            }
+            _ => panic!("the card should come with the approval"),
+        }
+        assert!(pending().get("pay_phone0000001").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_phone_card_needs_its_numbers_and_is_wiped_when_refused() {
+        // The code alone is not enough for a card kept on the phone.
+        let (question, task, _rx) = ask("pay_phone0000002", Some(phone_card())).await;
+        assert_eq!(
+            accept("pay_phone0000002", Zeroized(json!({"code": "737", "device_id": "phone-a-0123456789"})))
+                .unwrap_err()
+                .status
+                .as_u16(),
+            400
+        );
+        // An older app (no device given) gets the other-phone answer.
+        assert_eq!(accept("pay_phone0000002", Zeroized(json!({"code": "737"}))).unwrap_err().status.as_u16(), 409);
+        hermes_says(&question, "accept");
+        assert!(matches!(task.await.unwrap(), Err("no_code")));
+        // Approved in the app, then Hermes says no: the numbers are dropped with the entry.
+        let (question, task, _rx) = ask("pay_phone0000003", Some(phone_card())).await;
+        let full = json!({"code": "737", "number": "4242424242424242", "exp_month": 12, "exp_year": 2030,
+                          "device_id": "phone-a-0123456789"});
+        accept("pay_phone0000003", Zeroized(full)).unwrap();
+        hermes_says(&question, "decline");
+        assert!(matches!(task.await.unwrap(), Err("denied")));
+        assert!(pending().get("pay_phone0000003").is_none());
+        // A card the bridge keeps never takes numbers with its approval.
+        let (_question, _task, _rx) = ask("pay_vault00000004", None).await;
+        let numbers = Zeroized(json!({"code": "737", "number": "4242424242424242"}));
+        assert_eq!(accept("pay_vault00000004", numbers).unwrap_err().status.as_u16(), 400);
+        pending().remove("pay_vault00000004");
+    }
+
+    #[test]
+    fn a_missing_phone_card_can_t_be_used() {
+        let mut meta = phone_card();
+        assert_eq!(card_state(&meta), "ready"); // no expiry kept here: the phone checks it
+        meta["missing"] = json!(true);
+        assert!(card_state(&meta).starts_with("no longer on the person's phone"));
     }
 
     #[test]

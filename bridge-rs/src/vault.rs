@@ -358,6 +358,15 @@ impl Vault {
     /// A full record (metadata + secret) from the app's fields; `existing` for an update (fields left out
     /// are kept, the secret included).
     pub fn parse(body: &Dict, existing: Option<&Dict>) -> Result<Dict, VaultError> {
+        Self::parse_with(body, existing, None)
+    }
+
+    /// `parse`, with a place of the offer's rules for cards (`phone`: their numbers stay on the phone).
+    pub fn parse_with(
+        body: &Dict,
+        existing: Option<&Dict>,
+        phone: Option<crate::cards::PhoneRules>,
+    ) -> Result<Dict, VaultError> {
         let mut record = existing.cloned().unwrap_or_default();
         let kind = body
             .get("kind")
@@ -425,7 +434,10 @@ impl Vault {
             let has_otp = secret.get("otp_secret").map(crate::py::truthy).unwrap_or(false);
             record.insert("has_otp".into(), json!(has_otp));
         } else if kind == crate::cards::KIND {
-            crate::cards::parse(body, &mut record, &mut secret)?;
+            match phone {
+                Some(rules) => crate::cards::parse_phone(body, &mut record, &mut secret, rules)?,
+                None => crate::cards::parse(body, &mut record, &mut secret)?,
+            }
         } else {
             let allowed = if kind == "payment" { PAYMENT_FIELDS } else { ADDRESS_FIELDS };
             for name in allowed {
@@ -536,7 +548,7 @@ impl Vault {
         if !config.hermes.isolated {
             return Err(VaultError::Unprotected.into());
         }
-        let mut record = Self::parse(body, None)?;
+        let mut record = Self::parse_with(body, None, crate::cards::phone_rules(config))?;
         Self::cards_allowed(config, &record, true)?;
         let wanted = match body.get("agents").filter(|v| crate::py::truthy(v)) {
             Some(v) => strs_of(v)?,
@@ -569,7 +581,7 @@ impl Vault {
             return Err(NoSuchItem(item_id.to_string()).into());
         };
         let before = records[index].clone();
-        let mut record = Self::parse(body, Some(&before))?;
+        let mut record = Self::parse_with(body, Some(&before), crate::cards::phone_rules(config))?;
         Self::cards_allowed(config, &record, false)?;
         let before_agents = match before.get("agents") {
             Some(Value::Object(map)) => map.clone(),
@@ -861,8 +873,14 @@ async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
             json!({"id": a.name, "name": a.display_name, "can_hold": why.is_none(), "why": why})
         })
         .collect();
-    Ok(web::ok(json!({"protected": config.hermes.isolated, "items": items, "agents": agents,
-                      "cards": crate::cards::enabled(&config), "cards_allowed": crate::cards::allowed(&config)})))
+    let mut out = json!({"protected": config.hermes.isolated, "items": items, "agents": agents,
+                         "cards": crate::cards::enabled(&config), "cards_allowed": crate::cards::allowed(&config)});
+    if let (Some(rules), Value::Object(map)) = (crate::cards::phone_rules(&config), &mut out) {
+        // A place of the offer: cards' numbers stay on the phone, a cap is required (cards.rs).
+        map.insert("cards_on_phone".into(), json!(true));
+        map.insert("card_cap_max_eur".into(), json!(rules.cap_max_cents / 100));
+    }
+    Ok(web::ok(out))
 }
 
 async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Response> {

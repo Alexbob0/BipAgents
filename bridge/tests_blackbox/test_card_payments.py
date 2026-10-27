@@ -158,8 +158,12 @@ class FakeChrome:
         self.loop.call_soon_threadsafe(lambda: self.done.done() or self.done.set_result(None))
 
 
-def pay_bridge(bridges, fakes, chrome=None, change=None):
-    bridge = bridges.new()
+def pay_bridge(bridges, fakes, chrome=None, change=None, place=None):
+    bridge = bridges.new(place or "bridge")
+    if place:   # a place of the all-included offer: its guichet token
+        settings = bridge.home / ".config" / "bipagents" / "backup.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps({"url": "https://guichet.test/v1/backup", "token": "t1"}))
     bridge.config["agents"]["Vie"] = {"hermes_url": fakes.down.url, "hermes_key": "k" * 32, "isolated": True,
                                       "python": f"{bridge.fakebin}/podman exec -i hermes-vie python",
                                       "hermes_home": "/home/hermes/.hermes"}
@@ -370,5 +374,100 @@ def test_suspending_gives_the_browser_back_with_the_card_erased(bridges, fakes):
         assert chrome.values[("F-psp", 0)] == "" and chrome.values[("F-psp", 2)] == ""
         assert bridge.commands.of("podman")[-1][-1].endswith("rm -f /tmp/bipagents-hold; exit 0")
         assert "No payment is waiting" in tool(bridge, "confirm_payment", {"button": "Payer"})["content"][0]["text"]
+    finally:
+        chrome.stop()
+
+
+PHONE_A, PHONE_B = "phone-a-0123456789", "phone-b-0123456789"
+PHONE_CARD = {"kind": "card", "label": "Petits achats", "last4": "4242", "brand": "visa", "device_id": PHONE_A,
+              "device_name": "iPhone d'Alex", "cap_eur": 20, "virtual_card": True, "sites": ["shop.example"],
+              "agents": ["vie"]}
+FROM_PHONE_A = {"code": CODE, "device_id": PHONE_A, "number": "4242 4242 4242 4242", "exp_month": 12, "exp_year": 2030,
+                "name": "Alex Martin"}
+
+
+def pay_from_phone(bridge, arguments, approvals):
+    """pay_with_card on a place of the offer: each body of `approvals` sent as the app's approval (its status kept),
+    then Hermes says yes. Returns (result, the question's message, the approvals' statuses and answers)."""
+    body = {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "pay_with_card", "arguments": arguments}}
+    headers = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json, text/event-stream"}
+    asked, answers = None, []
+    with httpx.Client(timeout=90) as client, client.stream("POST", bridge.url + PAY, json=body, headers=headers) as resp:
+        for line in resp.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            message = json.loads(line[6:])
+            if message.get("method") == "elicitation/create":
+                asked = message["params"]["message"]
+                payment = re.search(r"Card payment (pay_[0-9a-f]{12}):", asked).group(1)
+                for approval in approvals:
+                    sent = bridge.post(f"/v1/vault/payments/{payment}/approve", headers=AUTH, json=approval)
+                    answers.append((sent.status_code, sent.text))
+                answer = {"jsonrpc": "2.0", "id": message["id"], "result": {"action": "accept", "content": {}}}
+                assert client.post(bridge.url + PAY, json=answer, headers=headers).status_code == 202
+            elif message.get("id") == 7:
+                return message["result"], asked, answers
+    raise AssertionError("no result")
+
+
+def vault_records(bridge):
+    folder = bridge.state_dir / "vault"
+    key = (folder / "vault.key").read_bytes().strip()
+    return json.loads(Fernet(key).decrypt((folder / "vault.json.enc").read_bytes()))
+
+
+def test_on_a_place_of_the_offer_only_when_switched_on_and_the_number_stays_on_the_phone(bridges, fakes):
+    off = pay_bridge(bridges, fakes, place="place-off")
+    assert off.get("/v1/vault", headers=AUTH).json()["cards_allowed"] is False
+    assert off.post("/v1/vault/payments", headers=AUTH, json={"enabled": True}).status_code == 409
+    off.stop()
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome, place="place",
+                            change=lambda c: c.update({"payments": {"offer_cards": True}}))
+        listing = bridge.get("/v1/vault", headers=AUTH).json()
+        assert listing["cards_allowed"] is True and listing["cards_on_phone"] is True
+        assert listing["card_cap_max_eur"] == 150
+        overview = turn_on(bridge)
+        assert overview["numbers_on_phone"] is True and overview["cap_max_eur"] == 150
+        # Never a number to keep here, and a capped virtual card only.
+        with_number = bridge.post("/v1/vault", headers=AUTH, json={**PHONE_CARD, "number": NUMBER, "expiry": "12/30"})
+        assert with_number.status_code == 400 and "stays on your phone" in with_number.json()["detail"]
+        no_cap = bridge.post("/v1/vault", headers=AUTH, json={k: v for k, v in PHONE_CARD.items() if k != "cap_eur"})
+        assert no_cap.status_code == 400 and no_cap.json() == {"detail": "a cap in euros is required"}
+        assert bridge.post("/v1/vault", headers=AUTH, json={**PHONE_CARD, "cap_eur": 500}).status_code == 400
+        assert bridge.post("/v1/vault", headers=AUTH, json={**PHONE_CARD, "virtual_card": False}).status_code == 400
+        made = bridge.post("/v1/vault", headers=AUTH, json=PHONE_CARD)
+        assert made.status_code == 201, made.text
+        card = made.json()["card"]
+        assert card["on_phone"] is True and card["device_id"] == PHONE_A and card["cap_cents"] == 2000
+        assert card["exp_month"] is None and card["last4"] == "4242"
+        assert vault_records(bridge)[0]["secret"] == {}
+        # Approved from another phone: refused with the name of the one that keeps the card, nothing typed.
+        refused, asked, answers = pay_from_phone(bridge, ARGS, [{**FROM_PHONE_A, "device_id": PHONE_B}])
+        assert f"Card {made.json()['id']}." in asked
+        assert answers[0][0] == 409 and json.loads(answers[0][1]) == {
+            "detail": {"code": "card_on_other_device", "device_name": "iPhone d'Alex"}}
+        assert refused["isError"] is True and chrome.typed == []
+        # From its phone, with its numbers: typed once, then gone.
+        result, _, answers = pay_from_phone(bridge, ARGS, [FROM_PHONE_A])
+        assert answers == [(204, "")] and result["isError"] is False, result
+        assert ("F-psp", "number", NUMBER) in chrome.typed and ("F-psp", "exp", "12/30") in chrome.typed
+        assert tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})["isError"] is False
+        assert bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]["spent"] == {"EUR": 1250}
+        # The cap (20 €, 12.50 already paid): refused before asking.
+        chrome.url = "https://shop.example/checkout"
+        over = tool(bridge, "pay_with_card", ARGS)
+        assert over["isError"] is True and "cap of 20.00 EUR" in over["content"][0]["text"]
+        journal = bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]
+        assert journal[0]["outcome"] == "refused_cap"
+        records = vault_records(bridge)
+        assert records[0]["secret"] == {}
+        for where in (json.dumps(journal), bridge.log_path.read_text(), json.dumps(records)):
+            assert NUMBER not in where and "4242 4242" not in where
+        # The phone found its card gone: flagged, and no agent pays with it.
+        gone = bridge.patch(f"/v1/vault/{made.json()['id']}", headers=AUTH, json={"missing": True})
+        assert gone.status_code == 200 and gone.json()["card"]["missing"] is True
+        assert "no longer on the person's phone" in tool(bridge, "list_cards")["content"][0]["text"]
     finally:
         chrome.stop()
