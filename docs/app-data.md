@@ -210,6 +210,11 @@ Used only when the build sets a relay host (`BIPPushRelayHost` / `push.relayHost
   (`SpeechRecognizer.createSpeechRecognizer`, usually Google's, which may work online) (`voice/OnlineDictation.kt`,
   `voice/Recorder.kt`, `voice/Live.kt`). The answer is kept; the « Dictée en ligne (Apple) » / « (Google) » setting,
   off by default, changes it. This covers voice notes, quick voice notes and Live calls.
+- **Dictation vocabulary:** the recogniser also gets, as hints, the names of the person's agents, of their connected
+  apps and of the people in their Carnet (at most 100, cached on the phone), plus a fixed list of common English words
+  and brands (`DictationVocabulary`, `DictationWords`; Android `voice/DictationVocabulary.kt`). They go only where the
+  voice already goes: nowhere with on-device recognition, with the voice to Apple or Google with online dictation.
+  The accurate dictation (Parakeet) takes no hints; the phone puts the person's names right in its text afterwards.
 - **Android ML Kit document scanner** (Play services): the scan is done on the phone, and the PDF is attached like any
   file. Google says ML Kit may send usage and diagnostic data. The app does not change this.
 - Apple's and Google's own crash and usage reports (shared with developers if the person allowed it in the system
