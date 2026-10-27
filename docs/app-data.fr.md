@@ -226,6 +226,12 @@ Il n’est utilisé que si la version de l’app définit un hôte de relais (`B
   (`voice/OnlineDictation.kt`, `voice/Recorder.kt`, `voice/Live.kt`). La réponse est gardée ; le réglage « Dictée en
   ligne (Apple) » / « (Google) », désactivé par défaut, permet de la changer. Cela vaut pour les notes vocales, les
   notes vocales rapides et les appels Live.
+- **Vocabulaire de la dictée :** le reconnaisseur reçoit aussi, comme indices, les noms des agents de la personne, de
+  ses applis connectées et des personnes de son Carnet (100 au plus, gardés sur le téléphone), plus une liste fixe de
+  mots anglais courants et de marques (`DictationVocabulary`, `DictationWords` ; Android `voice/DictationVocabulary.kt`).
+  Ils ne vont que là où va déjà la voix : nulle part avec la reconnaissance sur le téléphone, avec la voix chez Apple ou
+  Google avec la dictée en ligne. La dictée précise (Parakeet) ne prend pas d’indices : le téléphone remet ensuite les
+  noms de la personne dans son texte.
 - **Scanner de documents ML Kit sur Android** (services Play) : la numérisation se fait sur le téléphone, et le PDF est
   joint comme n’importe quel fichier. Selon Google, ML Kit peut envoyer des données d’usage et de diagnostic. L’app ne
   modifie pas ce comportement.
