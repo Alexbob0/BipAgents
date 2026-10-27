@@ -157,6 +157,9 @@ C’est le service de l’offre tout compris, avec les comptes et les liens fami
 | Invitation à une place partagée (Duo, Famille) | `POST /v1/account/invitations` | le numéro de la place, l’e-mail de la personne invitée, le prénom de celle qui invite (`who`), la langue de l’app. Rien sur la place elle-même : l’e-mail du guichet dit seulement d’ouvrir l’app et de se connecter avec cette adresse |
 | Invitations reçues (compte connecté et approuvé) | `GET /v1/account/invitations/received` | le jeton du compte. La réponse contient les places offertes à cette adresse et encore prêtes à être appairées, avec ce qu’il faut pour l’appairage (adresse, port, empreinte du certificat, secret d’appairage, clé d’IA créée par le guichet, jeton de la place), en HTTPS. Une fois la place appairée, `POST /v1/account/places` avec ce jeton la rattache au compte |
 | Liens familiaux | `POST /v1/account/family/devices` (corps `{email, siblings}`), `POST /v1/account/family/invitations` | l’e-mail de l’autre personne (dans le corps de la requête, pas dans l’URL), le nom du foyer (`from`), un **paquet scellé** par appareil de cette personne |
+| « Partager en lecture » : la personne commence à partager une conversation | `POST /v1/rshares` | le jeton du compte, la date de fin. La réponse : l’identifiant du partage et un jeton que l’app confie au bridge de la personne, qui fait le reste (ci-dessous) |
+| « Partager en lecture » : quelqu’un ouvre son invitation | `POST /v1/rshares/look`, `/v1/rshares/redeem` | le jeton du compte, l’identifiant de l’invitation, une **clé publique P-256 faite pour ce partage** et une **preuve** (un HMAC de cette clé avec le secret placé après « # » dans le lien, qui lui n’est jamais envoyé) |
+| « Partager en lecture » : la lecture | `GET /v1/rshares/shared`, `/v1/rshares/{id}/items`, `POST …/mute`, `DELETE …/me` | le jeton du compte ; les réponses sont du **texte chiffré** et la clé du contenu **scellée pour cet appareil**, ouverts sur le téléphone seulement |
 
 **Ce qui est chiffré de bout en bout (code public) :** `AccountCrypto`. Un paquet est scellé sur un
 appareil pour la clé P-256 d’un autre : clé ECDH éphémère, HKDF-SHA256 (info `bipagents-box-v1`), puis AES-256-GCM.
@@ -166,6 +169,18 @@ place, et la clé du séquestre) ainsi que les invitations familiales. Le **séq
 place) est scellé en AES-256-GCM avec une clé dérivée du code de récupération de 24 caractères (HKDF, 120 bits). Le
 guichet ne garde qu’une autre valeur dérivée du code.
 
+**Une conversation montrée en lecture (« Partager en lecture » ; code public : `ReadShare.swift`, `ReadShareCrypto.kt`,
+`bridge-rs/src/read_shares.rs`).** Le bridge de la personne chiffre la conversation partagée (ses messages, les
+réponses de l’agent, ses pages et images de cartes de cette conversation ; jamais le détail des outils, les
+approbations, les autres conversations ni le Carnet) en AES-256-GCM avec une clé tirée au hasard qui ne quitte jamais
+le bridge, et envoie ce texte chiffré au guichet. Chaque téléphone invité fait une clé P-256 pour ce partage ; le bridge
+lui scelle la clé du contenu (le paquet ci-dessus) seulement après avoir vérifié la preuve faite avec le secret du
+lien : le guichet ne peut ni lire la conversation ni se donner une clé. Ce que le guichet voit : le compte de la
+personne, les prénoms qu’elle a tapés pour ses invités et le prénom qui leur est montré, qui a rejoint et quand, des
+tailles et des heures, la date de fin. Tout est supprimé à la date de fin, quand la personne arrête le partage, ou
+quand son compte est effacé. Une capture d’écran sur le téléphone d’un invité ne peut pas être empêchée, et l’écran de
+partage le dit.
+
 **Code de comparaison d’un nouvel appareil** (`AccountCrypto.deviceCode`) : l’appareil en attente affiche un code de
 12 chiffres tiré de sa propre clé publique ; l’appareil qui l’approuve affiche le code de la clé que le guichet lui a
 donnée, dans l’alerte et à côté d’« Approuver », et demande de n’approuver que si les deux sont identiques. Le code est
@@ -174,7 +189,8 @@ haché 10 000 fois en tout ; les 8 premiers octets, modulo 10¹², donnent les 1
 P-256 valable n’a ni code ni bouton « Approuver ». Un vecteur de référence est vérifié dans les deux apps
 (`AccountCryptoTest.kt`, et une assertion des versions de débogage dans `AccountCrypto.swift`).
 
-**Jamais envoyé au guichet** (aucun appel de ce type n’existe dans le code) : conversations, fichiers, mémoire, données
+**Jamais envoyé au guichet** (aucun appel de ce type n’existe dans le code) : conversations (sauf, chiffrée, celle que
+la personne partage en lecture, ci-dessus), fichiers, mémoire, données
 de santé, rappels, contacts, clés de bridge en clair, le code de récupération lui-même. Les boîtes e-mail des agents
 sont demandées par le bridge de la place, pas par les apps (§1).
 

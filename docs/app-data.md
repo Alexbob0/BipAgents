@@ -147,6 +147,9 @@ This is the all-included offer's service, with accounts and family links (`App/F
 | Inviting someone to a shared place (Duo, Famille) | `POST /v1/account/invitations` | the place's number, the invitee's e-mail, the inviter's first name (`who`), the app language. Nothing about the place itself: the guichet's e-mail only says to open the app and sign in with that address |
 | Invitations received (signed-in, approved account) | `GET /v1/account/invitations/received` | the account token. The answer holds the places offered to this address and still ready to pair, with what pairing needs (address, port, certificate fingerprint, pairing secret, the AI key the guichet issued, claim token), over HTTPS. Once paired, `POST /v1/account/places` with the claim binds the place to the account |
 | Family links | `POST /v1/account/family/devices` (body `{email, siblings}`), `POST /v1/account/family/invitations` | the other person's e-mail (in the request body, not in the URL), the household name (`from`), one **sealed box** per device of theirs |
+| « Partager en lecture »: the owner starts sharing one conversation | `POST /v1/rshares` | the account token, the end date. The answer is the share's id and a token the app hands to the person's own bridge, which does the rest (below) |
+| « Partager en lecture »: a person opens an invitation | `POST /v1/rshares/look`, `/v1/rshares/redeem` | the account token, the invitation's id, a **P-256 public key made for this share** and a **proof** (an HMAC of that key with the secret after « # » in the link, which itself is never sent) |
+| « Partager en lecture »: reading | `GET /v1/rshares/shared`, `/v1/rshares/{id}/items`, `POST …/mute`, `DELETE …/me` | the account token; the answers are **ciphertext** and the content key **sealed for this device**, opened on the phone only |
 
 **What is encrypted end to end (public code):** `AccountCrypto`. A box is sealed on one device for
 another device's P-256 key: an ephemeral ECDH key, HKDF-SHA256 (info `bipagents-box-v1`), then AES-256-GCM. Only the
@@ -155,6 +158,17 @@ fingerprint, the new device's bridge key, backup key, claim token, and the escro
 **escrow** (each place's backup key) is sealed with AES-256-GCM under a key derived from the 24-character recovery
 code (HKDF, 120 bits). The guichet keeps only another value derived from the code.
 
+**A conversation shown read-only (« Partager en lecture »; public code: `ReadShare.swift`, `ReadShareCrypto.kt`,
+`bridge-rs/src/read_shares.rs`).** The
+person's own bridge seals the shared conversation (the person's messages, the agent's replies, its pages and map
+pictures from that conversation; never tool details, approvals, other conversations or the Carnet) with AES-256-GCM
+under a random key that never leaves the bridge, and sends that ciphertext to the guichet. Each invited phone makes a
+P-256 key for that share; the bridge seals the content key for it (the box above) only after checking the proof made
+with the link's secret, so the guichet cannot read the conversation nor give itself a key. What the guichet does see:
+the owner's account, the names the owner typed for the people invited and the first name shown to them, who joined
+and when, sizes and times, the end date. Everything is deleted at the end date, when the owner stops sharing, or when
+the owner's account is erased. A screenshot on a viewer's phone can't be prevented, and the share screen says so.
+
 **Comparison code for a new device** (`AccountCrypto.deviceCode`): the waiting device shows a 12-digit code from its own
 public key; the device that approves it shows the code of the key the guichet handed it, in the alert and next to
 « Approuver », and asks the person to approve only if both match. The code is SHA-256 over `"bipagents-device-code-v1"`
@@ -162,7 +176,8 @@ public key; the device that approves it shows the code of the key the guichet ha
 10¹², give the 12 digits. A key that is not a valid P-256 key gets no code and no « Approuver ». A reference vector is
 checked in both apps (`AccountCryptoTest.kt`, and a debug-build assertion in `AccountCrypto.swift`).
 
-**Never sent to the guichet** (no such call exists in the code): conversations, files, memory, health data, reminders,
+**Never sent to the guichet** (no such call exists in the code): conversations (except, encrypted, one the person
+shares read-only, above), files, memory, health data, reminders,
 contacts,
 bridge keys in clear, the recovery code itself. The agents' mailboxes are asked for by the place's bridge, not by the
 apps (§1).
