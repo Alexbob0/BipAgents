@@ -48,7 +48,9 @@
   "show": {
     "a11y": "Beispiele: Du fragst, dein Agent antwortet mit einer nützlichen Karte",
     "more": "Die ganze Demo ansehen",
-    "reminder": "Erinnerung",
+    "saved": "≈ {amount} im Monat gespart",
+    "cancelBoth": "Beide kündigen",
+    "choose": "Auswählen",
     "go": "In der Demo ansehen"
   },
   "vs": {
@@ -136,6 +138,7 @@
     "tab3": "Meine Läufe",
     "tab4": "Es ist kalt",
     "tab5": "Eine Erinnerung",
+    "tab6": "Meine Abos",
     "point1": "Jeder Schritt sichtbar",
     "point2": "Karten und Mini-Apps direkt in der Antwort",
     "point3": "Dein Okay, bevor er bucht, zahlt oder sendet",
