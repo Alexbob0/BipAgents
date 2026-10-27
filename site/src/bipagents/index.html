@@ -55,54 +55,12 @@
     <p class="priv-links"><a href="{{private.href}}">{{private.compare}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
   </div>
 
-  <!-- What they do, at a glance: one result per kind of agent, like the phone's notifications (bridge-rs
-       agent_templates.yaml; the booking was approved first). They come in one after another, then stay still; a phone
-       shows the first four. -->
+  <!-- What they do: one asks, the agent answers with something useful — the cards of the app's own demo (demo.json,
+       built by site/build.py hero_show): the booking's approval, the walk's map, the « Your runs » page, a reminder.
+       Each exchange appears once, one after another, then stays still. -->
   <div class="hero-stage" id="results">
-    <ul class="results" aria-label="{{results.a11y}}">
-      <li class="res" style="--i:0;--tint:var(--coral-tint)">
-        <div class="res-bip" data-bip="daily" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.daily.agent}}</b><span class="ai">{{ai}}</span><time>{{results.daily.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">🍝</span>{{results.daily.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:1;--tint:var(--green-tint)">
-        <div class="res-bip" data-bip="wellness" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.wellness.agent}}</b><span class="ai">{{ai}}</span><time>{{results.wellness.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">😴</span>{{results.wellness.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:2;--tint:var(--gold-tint)">
-        <div class="res-bip" data-bip="finance" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.finance.agent}}</b><span class="ai">{{ai}}</span><time>{{results.finance.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">💳</span>{{results.finance.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:3;--tint:var(--teal-tint)">
-        <div class="res-bip" data-bip="home" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.family.agent}}</b><span class="ai">{{ai}}</span><time>{{results.family.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">🏫</span>{{results.family.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:4;--tint:var(--blue-tint)">
-        <div class="res-bip" data-bip="work" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.work.agent}}</b><span class="ai">{{ai}}</span><time>{{results.work.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">✉️</span>{{results.work.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:5;--tint:var(--violet-tint)">
-        <div class="res-bip" data-bip="learning" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.learning.agent}}</b><span class="ai">{{ai}}</span><time>{{results.learning.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">📚</span>{{results.learning.line}}</p>
-        </div>
-      </li>
-    </ul>
+    <div class="show" role="group" aria-label="{{show.a11y}}">{{heroshow}}</div>
+    <p class="show-more"><a href="{{demohref}}">{{show.more}} <span aria-hidden="true">→</span></a></p>
   </div>
 </section>
 
@@ -176,6 +134,15 @@
       <ul class="fam-points reveal">
         <li>{{family.p1}}</li><li>{{family.p2}}</li><li>{{family.p3}}</li><li>{{family.p4}}</li>
       </ul>
+      <!-- Friends: one conversation shared read-only (being built 2026-10-27; « Soon » until it ships). -->
+      <div class="fam-share reveal">
+        <p class="fam-share-tag">{{family.share.tag}}</p>
+        <h3><span aria-hidden="true">🧳</span>{{family.share.title}}</h3>
+        <p class="fam-share-text">{{family.share.text}}</p>
+        <ul class="fam-points">
+          <li>{{family.share.p1}}</li><li>{{family.share.p2}}</li><li>{{family.share.p3}}</li>
+        </ul>
+      </div>
       <p class="fam-cta reveal"><a class="pill pill-soft" href="#pricing">{{family.cta}}</a></p>
     </div>
   </div>
