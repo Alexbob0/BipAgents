@@ -1,8 +1,9 @@
 //! `python -m bipbridge [serve|check|genkey|qr|peer-token|browser]` → `bipbridge <the same>`.
 //!
 //! Port of `bridge/bipbridge/__main__.py` (core group): the same commands, options, messages and exit codes; `serve`
-//! runs the main listener (and the LAN door over HTTPS when it is on) until SIGTERM / Ctrl-C, then stops within
-//! five seconds (uvicorn's `timeout_graceful_shutdown=5`).
+//! runs the main listener (and the LAN door over HTTPS when it is on) until SIGTERM / Ctrl-C, then stops: event
+//! streams closed at once, requests under way given `STOP_DRAIN`, the services `STOP_SERVICES`, and the process gone
+//! after `STOP_HARD` whatever still runs.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -288,7 +289,13 @@ pub fn main(argv: Vec<String>) -> i32 {
         "adopt" => runtime.block_on(adopt(config)),
         "sandbox" => runtime.block_on(sandbox(config)),
         "console" => console(&config),
-        _ => runtime.block_on(serve(config)),
+        _ => {
+            let code = runtime.block_on(serve(config));
+            // Dropping the runtime would wait for every blocking call still under way (a podman command, a file
+            // copy…), however long: the process ends now, they with it.
+            runtime.shutdown_timeout(Duration::from_millis(200));
+            code
+        }
     }
 }
 
@@ -748,6 +755,47 @@ async fn server_header(mut response: axum::response::Response) -> axum::response
     response
 }
 
+/// How long requests under way get to finish once the bridge is asked to stop (SIGTERM from systemd or launchd, or
+/// Ctrl-C). The streams the apps keep open (a run's events…) are closed at once: they would hold the stop forever.
+pub const STOP_DRAIN: Duration = Duration::from_millis(2500);
+/// Then the services' own stop (background tasks, the run hub, the outbox, the database) at most this long.
+pub const STOP_SERVICES: Duration = Duration::from_secs(1);
+/// Whatever still holds the process this long after the signal (a blocking call, a task that never yields), the
+/// process exits anyway: an update or a move never waits systemd's 90 s for the bridge (seen 2026-10-26).
+pub const STOP_HARD: Duration = Duration::from_secs(5);
+
+/// A response that streams events (`text/event-stream`) ends when the bridge stops: its client sees the stream end
+/// (and comes back to the restarted bridge) instead of holding the graceful shutdown until its timeout.
+fn ending_at_stop(stop: CancellationToken, response: axum::response::Response) -> axum::response::Response {
+    use futures::StreamExt;
+    let streams = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("text/event-stream"));
+    if !streams {
+        return response;
+    }
+    let (parts, body) = response.into_parts();
+    let body = axum::body::Body::from_stream(body.into_data_stream().take_until(stop.cancelled_owned()));
+    axum::response::Response::from_parts(parts, body)
+}
+
+/// The last resort once the bridge is asked to stop: after `after`, the process exits whatever still runs (a second
+/// SIGTERM / Ctrl-C exits at once). A plain thread: it fires even when the runtime's only thread is held.
+fn exit_after(after: Duration) {
+    let _ = std::thread::Builder::new().name("stop-deadline".into()).spawn(move || {
+        std::thread::sleep(after);
+        tracing::error!(target: UVICORN, seconds = after.as_secs_f64(), "Stop took too long: exiting now");
+        std::process::exit(0);
+    });
+    tokio::spawn(async {
+        shutdown_signal().await;
+        tracing::warn!(target: UVICORN, "Asked to stop again: exiting now");
+        std::process::exit(0);
+    });
+}
+
 /// `serve`: the usual listener (127.0.0.1, published by `tailscale serve`) plus, when `[lan]` is on, the LAN door
 /// over HTTPS: one process and one set of services; the door starts once the main server runs, and stops with it.
 /// uvicorn's own log lines, with their `color_message`, as the Python bridge writes them.
@@ -776,7 +824,12 @@ pub async fn serve(config: Config) -> i32 {
         }
     };
     tracing::info!(target: UVICORN, "Application startup complete.");
-    let router = app.router.clone().layer(axum::middleware::map_response(server_header));
+    let stop = CancellationToken::new();
+    let streams_stop = stop.clone();
+    let router =
+        app.router.clone().layer(axum::middleware::map_response(server_header)).layer(axum::middleware::map_response(
+            move |r| std::future::ready(ending_at_stop(streams_stop.clone(), r)),
+        ));
     let listener = match tokio::net::TcpListener::bind((host.as_str(), port)).await {
         Ok(l) => l,
         Err(e) => {
@@ -794,7 +847,6 @@ pub async fn serve(config: Config) -> i32 {
         color_message = "Uvicorn running on \u{1b}[1m%s://%s:%d\u{1b}[0m (Press CTRL+C to quit)",
         "Uvicorn running on http://{host}:{port} (Press CTRL+C to quit)"
     );
-    let stop = CancellationToken::new();
     let service = router.clone().into_make_service_with_connect_info::<SocketAddr>();
     let main_stop = stop.clone();
     let mut main_task = tokio::spawn(async move {
@@ -815,17 +867,23 @@ pub async fn serve(config: Config) -> i32 {
         _ = &mut main_task => true,
     };
     tracing::info!(target: UVICORN, "Shutting down");
+    if !ended_alone {
+        exit_after(STOP_HARD);
+    }
     stop.cancel();
-    if !ended_alone && tokio::time::timeout(Duration::from_secs(5), &mut main_task).await.is_err() {
+    let drained = tokio::time::Instant::now() + STOP_DRAIN;
+    if !ended_alone && tokio::time::timeout_at(drained, &mut main_task).await.is_err() {
         tracing::error!(target: UVICORN, "Cancel 1 running task(s), timeout graceful shutdown exceeded");
         main_task.abort();
     }
     if let Some(door) = door {
-        let _ = tokio::time::timeout(Duration::from_secs(5), door).await;
+        let _ = tokio::time::timeout_at(drained, door).await;
         tracing::info!(target: UVICORN, color_message = "Finished server process [\u{1b}[36m%d\u{1b}[0m]", "Finished server process [{pid}]");
     }
     tracing::info!(target: UVICORN, "Waiting for application shutdown.");
-    app.shutdown().await;
+    if tokio::time::timeout(STOP_SERVICES, app.shutdown()).await.is_err() {
+        tracing::warn!(target: UVICORN, "Application shutdown timed out: leaving what still runs");
+    }
     tracing::info!(target: UVICORN, "Application shutdown complete.");
     tracing::info!(target: UVICORN, color_message = "Finished server process [\u{1b}[36m%d\u{1b}[0m]", "Finished server process [{pid}]");
     0
