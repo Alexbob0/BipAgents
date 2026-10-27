@@ -2,7 +2,7 @@
 
 # Allgemeine Verkaufsbedingungen des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: 24. Oktober 2026.
+> Zuletzt aktualisiert: 27. Oktober 2026.
 
 ## 1. Gegenstand
 
@@ -21,17 +21,21 @@ das Datum des Beginns, das Ende der kostenlosen Woche, falls es eine gibt, die L
 kündigst, das Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular (Art. L221-13 des
 französischen Verbrauchergesetzbuchs). Diese Bedingungen bleiben unter Einstellungen › Über abrufbar.
 
-**Auf der Website bipagents.com** zeigt dir die Zahlungsseite von Stripe den Tarif, seinen Preis in der gewählten
-Währung, seine Steuern (enthalten oder, in den USA und Kanada, hinzugerechnet) und den zu zahlenden Betrag sowie
-seinen Verlängerungszeitraum. Du kreuzt an, dass du diese Bedingungen akzeptierst (mit ihrem Link), und sie sagt dir:
-„Dein Dienst beginnt sofort, auf deinen Wunsch. Du kannst den Vertrag 14 Tage lang widerrufen und bekommst alles
-erstattet.“ Nach der Zahlung erhältst du die Bestätigung des Vertrags an die E-Mail-Adresse, die du bei der Zahlung
-angegeben hast: den Tarif, seinen Preis, das Datum des Beginns, die Links zu diesen Bedingungen, wie du die App
-bekommst und dich darin mit derselben Adresse anmeldest, einen Link, um dein Abo zu verwalten oder zu kündigen, das
-Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular. Das Abo kommt zu deinem
-BipAgents-Konto, wenn du dich in der App mit dieser Adresse anmeldest (der Code, den du per E-Mail erhältst, beweist,
-dass sie dir gehört). Hat dieses Konto schon ein Abo, wird das zweite nicht damit verbunden, und Kerfy Studio meldet
-sich bei dir, um eines davon zu erstatten.
+**Auf der Website bipagents.com** zeigt dir vor der Zahlung die Bestellseite von BipAgents den Tarif und was er umfasst,
+seinen Preis in der gewählten Währung und seine Steuern (enthalten oder, in den USA und Kanada, hinzugerechnet), die
+kostenlose Woche, falls es eine gibt, und den Preis danach, die automatische Verlängerung, wie du kündigst, die 14 Tage
+für den Widerruf sowie Links zu diesen Bedingungen und zur Datenschutzerklärung. **Du bestellst mit der Schaltfläche
+„Zahlungspflichtig bestellen“** (§ 312j Abs. 3 BGB; Art. L221-14 des französischen Verbrauchergesetzbuchs). Die
+Zahlungsseite von Stripe nimmt danach dein Zahlungsmittel auf und zeigt den zu zahlenden Betrag; dort kreuzt du an, dass
+du diese Bedingungen akzeptierst (mit ihrem Link), und sie sagt dir: „Dein Dienst beginnt sofort, auf deinen Wunsch. Du
+kannst den Vertrag 14 Tage lang widerrufen und bekommst alles erstattet.“ Verlässt du die Zahlung, wird nichts abgebucht
+und kein Abo abgeschlossen. Nach der Zahlung erhältst du die Bestätigung des Vertrags an die E-Mail-Adresse, die du bei
+der Zahlung angegeben hast: den Tarif, seinen Preis, das Datum des Beginns, die Links zu diesen Bedingungen, wie du die
+App bekommst und dich darin mit derselben Adresse anmeldest, einen Link, um dein Abo zu verwalten oder zu kündigen, das
+Datum, bis zu dem du den Vertrag widerrufen kannst, und das Widerrufsformular. Das Abo kommt zu deinem BipAgents-Konto,
+wenn du dich in der App mit dieser Adresse anmeldest (der Code, den du per E-Mail erhältst, beweist, dass sie dir
+gehört). Hat dieses Konto schon ein Abo, wird das zweite nicht damit verbunden, und Kerfy Studio meldet sich bei dir, um
+eines davon zu erstatten.
 
 BipAgents mit deinem eigenen Computer oder deinem eigenen Server zu nutzen, bleibt kostenlos und fällt nicht unter
 diese Bedingungen.
@@ -61,8 +65,10 @@ diese Bedingungen.
 | Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 12,99 € pro Monat oder 129,90 € pro Jahr | 11,99 € pro Monat oder 119,90 € pro Jahr |
 | Familie | bis zu 6 | ein Platz pro Person, auf Servern, die ihr mit anderen Abonnenten teilt | 19,99 € pro Monat oder 199,90 € pro Jahr | 17,99 € pro Monat oder 179,90 € pro Jahr |
 
-Das Jahresabo kostet 10 Monate für 12 und wird auf einmal für die 12 Monate bezahlt. Die Preise auf der Website sind
-niedriger als in den Stores.
+**Das Jahresabo** kostet 10 Monate für 12 und wird auf einmal, im Voraus, für die 12 Monate bezahlt. Es verlängert sich
+jedes Jahr zum selben Preis, außer bei einer vorher angekündigten Preisänderung (Abschnitt 5), bis du es kündigst; vor
+jeder Verlängerung eines Jahresabos von der Website erinnert dich Kerfy Studio daran (Abschnitt 5). Sein KI-Guthaben
+gibt es Monat für Monat, wie beim Monatsabo (Abschnitt 6). Die Preise auf der Website sind niedriger als in den Stores.
 
 **Die Preise der Website in jeder Währung.** Auf der Website hat jede Währung ihre eigenen Preise, von Kerfy Studio
 festgelegt (keine Umrechnungen): Die Preisseite schlägt dir die deines Landes vor, du kannst eine andere wählen, und
@@ -111,12 +117,15 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - Ein Tarif kann mit **einer kostenlosen Woche** beginnen, wenn das Testbudget des Monats es erlaubt und dein Gerät und
   dein Store-Konto noch nie eine hatten. Sonst bietet dir die App denselben Tarif ohne kostenlose Woche an. Vor dem Kauf
   sagt dir die App, ob die kostenlose Woche gilt, wann sie endet und welcher Preis danach folgt.
-- Die kostenlose Woche gilt für Käufe in der App; auf der Website zeigt die Zahlungsseite, ob sie gilt.
+- Die kostenlose Woche gilt auch **auf der Website**, mit denselben Regeln (das Testbudget des Monats): Die Bestellseite
+  zeigt dir, ob sie gilt, wann sie endet und welcher Preis danach folgt. Deine Karte wird bei der Zahlung abgefragt,
+  aber vor dem Ende der Woche wird nichts abgebucht; die Bestätigungs-E-Mail nennt dir ihr Enddatum und diesen Preis
+  noch einmal.
 - Während der kostenlosen Woche funktioniert alles wie im Tarif; das KI-Guthaben des Tarifs (Abschnitt 6) gilt für die
   ganze Woche.
-- **Am Ende der Woche beginnt das kostenpflichtige Abo von selbst**, außer du hast es vor dem Ende im Store gekündigt
-  (im App Store mindestens 24 Stunden vor dem Ende, nach den Bedingungen von Apple). Nichts wird abgebucht, wenn du
-  vorher aufhörst.
+- **Am Ende der Woche beginnt das kostenpflichtige Abo von selbst**, außer du hast es vor dem Ende gekündigt: im Store
+  (im App Store mindestens 24 Stunden vor dem Ende, nach den Bedingungen von Apple) oder, auf der Website, auf der
+  Kundenseite von Stripe (Abschnitt 11). Nichts wird abgebucht, wenn du vorher aufhörst.
 - Wenn du nicht weitermachst, wird dein Platz 3 Tage aufbewahrt und dann mit seinen Sicherungen gelöscht.
 - Damit es nur eine kostenlose Woche pro Gerät gibt, nutzt die App auf dem iPhone DeviceCheck von Apple und auf
   Android einen Fingerabdruck des Geräts ([Datenschutzerklärung](privacy.de.md), Abschnitt 5.3).
@@ -132,13 +141,21 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - Das Abo ist **monatlich oder jährlich und ohne Mindestlaufzeit**: Es verlängert sich von selbst jeden Monat oder jedes
   Jahr, bis du es kündigst. Der Store bucht zu Beginn jedes Abozeitraums ab (Apple kann das bis zu 24 Stunden vorher
   tun); auf der Website belastet Stripe deine Karte zu Beginn jedes Zeitraums.
+- **Erinnerung vor der jährlichen Verlängerung**: Bei einem Jahresabo von der Website schreibt dir Kerfy Studio etwa 65
+  Tage und dann 35 Tage vor jeder Verlängerung, per E-Mail und mit einer Mitteilung der App: das Datum, den Preis, wie
+  du kündigst und bis wann. Bei einem Abo aus der App schickt der Store seine eigenen Erinnerungen, nach seinen Regeln.
 - **Tarif wechseln** (Einstellungen › Alles-inklusive-Angebot › Angebot ändern): zu einem größeren Tarif sofort, und der
   Store berücksichtigt, was von deinem Monat übrig ist; zu einem kleineren Tarif bei deiner Verlängerung (die
   überzähligen Plätze: Abschnitt 8). Bei einem Abo von der Website wechselst du den Tarif auf der Kundenseite von Stripe
   (Abschnitt 11).
-- **Preisänderung**: Ein neuer Preis gilt nie für einen schon bezahlten Monat. Der Store informiert dich mindestens
-  30 Tage vorher und fragt nach seinen Regeln nach deiner Zustimmung; wenn du ihn nicht akzeptierst, kannst du vor
-  seinem Inkrafttreten kostenlos kündigen (Art. R212-4 des französischen Verbrauchergesetzbuchs).
+- **Preisänderung**: Ein neuer Preis gilt nie für einen schon bezahlten Zeitraum. In der App informiert dich der Store
+  mindestens 30 Tage vorher und fragt nach seinen Regeln nach deiner Zustimmung. Auf der Website ändert Kerfy Studio
+  seine Preise nur aus einem triftigen Grund (Kosten der KI-Modelle oder der Server, Steuern); es informiert dich per
+  E-Mail und in der App mindestens 30 Tage vor der Verlängerung, ab der der neue Preis gelten würde, und noch einmal 7
+  bis 30 Tage vorher; eine Senkung gilt von selbst. Akzeptierst du eine Erhöhung nicht, kannst du vor ihrem
+  Inkrafttreten kostenlos kündigen (Art. R212-4 des französischen Verbrauchergesetzbuchs); wo das Gesetz deine
+  ausdrückliche Zustimmung verlangt, gilt die Erhöhung nur, wenn du sie annimmst, sonst endet dein Abo mit dem bezahlten
+  Zeitraum.
 
 ## 6. Das KI-Guthaben und das Modell
 
@@ -153,6 +170,8 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   viel wie mehrere Dutzend Nachrichten; die App zeigt laufend, was übrig ist.
 - **Übertrag**: Das Guthaben des Tarifs, das du nicht genutzt hast, geht in den nächsten Monat über, für höchstens
   einen Monat mehr.
+- **Jahresabo**: Sein KI-Guthaben ist das des Monatsabos und wird jeden Monat gegeben (nicht die 12 Monate auf einmal),
+  mit demselben Übertrag.
 - **Zusätzliches Guthaben**: Du kannst in der App welches kaufen (Einstellungen › Alles-inklusive-Angebot ›
   KI-Guthaben hinzufügen), in zwei Paketen: **2 € inkl. MwSt. für 1,40 € Guthaben** und **5 € inkl. MwSt. für
   3,50 € Guthaben** (MwSt. und die Provision des App-Stores machen etwa 30 % aus); die App zeigt für jedes die
@@ -282,12 +301,22 @@ Studio den KI-Schlüssel eines Platzes abschalten und ihn sofort sperren, zu den
 - **Kündigen**: jederzeit, kostenlos, in den Abo-Einstellungen des Stores: auf dem iPhone Einstellungen › dein Name ›
   Abonnements; auf Android Play Store › Profilbild › Zahlungen und Abos › Abos. Die App führt dich auch direkt dorthin:
   Einstellungen › Alles-inklusive-Angebot › Mein Abo kündigen. Die Kündigung wirkt zum Ende des schon bezahlten
-  Monats: Bis dahin behältst du alles. Der Store bestätigt dir die Kündigung und ihr Datum (Art. L215-1-1 des
-  französischen Verbrauchergesetzbuchs).
+  Zeitraums (des Monats oder, beim Jahresabo, des Jahres): Bis dahin behältst du alles. Der Store bestätigt dir die
+  Kündigung und ihr Datum (Art. L215-1-1 des französischen Verbrauchergesetzbuchs).
 - **Ein Abo von der Website kündigen**: jederzeit, kostenlos, auf der Kundenseite von Stripe, über den Link in der
   Bestätigungs-E-Mail oder über „Mein Abo verwalten“ auf bipagents.com, das dir per E-Mail einen Link schickt, der
   24 Stunden gilt. Der Tarif läuft bis zum Ende des schon bezahlten Zeitraums weiter. Auf dieser Seite kannst du auch
   den Tarif oder die Karte wechseln und deine Rechnungen finden.
+- **Jahresabo und Erstattung**: Kündigst du ein Jahresabo nach den 14 Tagen für den Widerruf (Abschnitt 12), läuft es
+  bis zum Ende des bezahlten Jahres, und die restlichen Monate werden nicht erstattet, außer wenn das Gesetz es
+  vorsieht. **In Deutschland** kannst du es nach dem ersten Jahr jederzeit mit einer Frist von höchstens einem Monat
+  kündigen, und die darüber hinaus bezahlten Monate werden dir erstattet (§ 309 Nr. 9 BGB). **In Québec** kannst du es
+  jederzeit kündigen, auch im ersten Jahr, und der bezahlte, nicht genutzte Teil wird dir erstattet, ohne die
+  Entschädigung, die das Gesetz erlauben würde (Loi sur la protection du consommateur, Art. 214.1 ff.). **In
+  Frankreich** kannst du, wenn Kerfy Studio dir die Erinnerung vor der Verlängerung nicht geschickt hat (Abschnitt 5),
+  ab der Verlängerung jederzeit kündigen, und was du für den Zeitraum nach der Kündigung bezahlt hast, wird dir
+  innerhalb von 30 Tagen erstattet (Art. L215-1 des französischen Verbrauchergesetzbuchs). Für diese Erstattungen
+  schreib an support@bipagents.com.
 - **Wenn das Abo endet** (gekündigt oder nicht verlängert): Dein Platz wird **30 Tage lang gesperrt**. Deine Agenten
   rufen das KI-Modell nicht mehr auf, nichts wird gelöscht, du kannst deine Unterhaltungen noch öffnen und deine
   Dateien herunterladen, und du kannst zurückkommen, indem du wieder ein Abo abschließt. Nach 30 Tagen werden dein
@@ -304,9 +333,10 @@ Studio den KI-Schlüssel eines Platzes abschalten und ihn sofort sperren, zu den
   sie vorsieht (schnelle Sperre, Begründung, Widerspruch). Kerfy Studio beendet dein Abo nur, nachdem es dich
   aufgefordert hat, den Verstoß abzustellen, außer in dringenden Fällen oder bei einem schweren Verstoß (Art. 1224 bis
   1226 des französischen Zivilgesetzbuchs).
-- **Ende des Angebots**: Stellt Kerfy Studio das Alles-inklusive-Angebot ein, wirst du mindestens 30 Tage vorher in
-  der App informiert; das Abo wird nicht mehr verlängert, du behältst deinen Platz bis zum Ende des bezahlten Monats
-  und kannst seinen Inhalt per SSH herunterladen.
+- **Ende des Angebots**: Stellt Kerfy Studio das Alles-inklusive-Angebot ein, wirst du mindestens 30 Tage vorher in der
+  App informiert; das Abo wird nicht mehr verlängert, du behältst deinen Platz bis zum Ende des bezahlten Monats und
+  kannst seinen Inhalt per SSH herunterladen; bei einem Jahresabo werden dir die bezahlten, nicht genutzten Monate
+  erstattet.
 
 ## 12. Widerrufsrecht
 
@@ -317,7 +347,8 @@ einziges Widerrufsrecht gibt (Gerichtshof der Europäischen Union, 5. Oktober 20
 
 **Dein Dienst beginnt sofort, auf deinen Wunsch**, und du behältst dein Recht, den Vertrag zu widerrufen. **Widerrufst
 du, wird dir alles erstattet**, auch nach dem Ende der kostenlosen Woche: Kerfy Studio verlangt nichts für den schon
-erbrachten Dienst. Zusätzlich gekauftes KI-Guthaben wird nach den Regeln des Stores erstattet.
+erbrachten Dienst. Das gilt auch für das Jahresabo: Das bezahlte Jahr wird dir voll erstattet. Zusätzlich gekauftes
+KI-Guthaben wird nach den Regeln des Stores erstattet.
 
 **Wie.** In der App: Einstellungen › Alles-inklusive-Angebot › **Vertrag hier widerrufen**, während der 14 Tage
 (Art. L221-21 und D221-5 des französischen Verbrauchergesetzbuchs). Du erhältst sofort eine Eingangsbestätigung per
@@ -409,6 +440,10 @@ Stripe (Abschnitte 2 und 11).
   bis du es im Store oder in der App kündigst (Abschnitt 11). Diese Bedingungen, der Preis und wie du kündigst, werden
   dir vor dem Kauf genannt und per E-Mail bestätigt (Abschnitt 1). Du kannst den Vertrag widerrufen, wie in
   Abschnitt 12 beschrieben.
+- **Erinnerungen und Preisänderungen (Kalifornien und überall in den USA)**: Bei einem Jahresabo von der Website
+  bekommst du 15 bis 45 Tage vor jeder Verlängerung eine Erinnerung (etwa 35 Tage vorher), mit dem Preis, dem Datum und
+  wie du online kündigst; eine Preisänderung wird dir 7 bis 30 Tage vor ihrem Inkrafttreten ein zweites Mal angekündigt
+  (Abschnitt 5; California Business and Professions Code, §§ 17600 ff.).
 - **Alter**: Keine Person unter 13 Jahren darf einen Platz nutzen (Abschnitt 7).
 - **Individuelles Schiedsverfahren**: Jeder Streit zwischen dir und Kerfy Studio im Zusammenhang mit dem Angebot wird
   durch ein **individuelles und endgültiges Schiedsverfahren** beigelegt, durchgeführt von [zu ergänzen: Schiedsstelle
@@ -435,8 +470,14 @@ Stripe (Abschnitte 2 und 11).
 **Israel**
 
 - Du kannst jederzeit kündigen (Abschnitt 11); die monatliche oder jährliche Verlängerung, ihr Preis und wie du
-  kündigst, werden dir vor dem Kauf genannt und per E-Mail bestätigt. Das israelische Verbraucherschutzgesetz gilt,
+  kündigst, werden dir vor dem Kauf genannt und per E-Mail bestätigt. Wenn du es bei der Kündigung verlangst, endet dein
+  Abo innerhalb von 3 Werktagen, und was du für die restliche Zeit bezahlt hast, wird dir erstattet
+  (Verbraucherschutzgesetz, § 13D): Schreib an support@bipagents.com. Das israelische Verbraucherschutzgesetz gilt,
   soweit es zwingend ist.
+- **Jahresabo**: Es wird nicht ohne deine ausdrückliche Zustimmung verlängert (§ 13A). 60 bis 30 Tage vor dem Ende des
+  Jahres schreibt dir Kerfy Studio und schaltet die Verlängerung aus; um weiterzumachen, schaltest du sie auf der
+  Kundenseite von Stripe wieder ein („Verlängern“), sonst endet es mit dem bezahlten Jahr. Bei einem Jahresabo aus der
+  App wendet der Store seine eigenen Regeln an.
 
 **Singapur**
 

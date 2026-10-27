@@ -2,7 +2,7 @@
 
 # Condiciones generales de venta de la oferta todo incluido
 
-> Última actualización: 24 de octubre de 2026.
+> Última actualización: 27 de octubre de 2026.
 
 ## 1. Objeto
 
@@ -21,16 +21,20 @@ de la semana gratis si la hay, los enlaces a estas condiciones, cómo cancelar, 
 contrato y el formulario de desistimiento (artículo L221-13 del Código de Consumo francés). Estas condiciones siguen
 disponibles en Ajustes › Acerca de.
 
-**En el sitio bipagents.com**, la página de pago de Stripe te muestra el plan, su precio en la moneda elegida, sus
-impuestos (incluidos o, en Estados Unidos y Canadá, añadidos) y el total que pagas, y su periodo de renovación. Marcas
-la aceptación de estas condiciones (con su enlace) y te indica: «Tu servicio empieza enseguida, a petición tuya.
-Puedes desistir del contrato durante 14 días y se te reembolsa todo.» Después del pago, recibes la confirmación del
-contrato en la dirección de correo que diste al pagar: el plan, su precio, la fecha de inicio, los enlaces a estas
-condiciones, cómo conseguir la app e iniciar sesión en ella con esa misma dirección, un enlace para gestionar o
-cancelar tu suscripción, la fecha límite para desistir del contrato y el formulario de desistimiento. La suscripción
-pasa a tu cuenta de BipAgents cuando inicias sesión en la app con esa dirección (el código que recibes por correo
-demuestra que es tuya). Si esa cuenta ya tiene una suscripción, la segunda no se vincula a ella y Kerfy Studio se pone
-en contacto contigo para reembolsar una de las dos.
+**En el sitio bipagents.com**, antes de pagar, la página de pedido de BipAgents te muestra el plan y lo que incluye, su
+precio en la moneda elegida y sus impuestos (incluidos o, en Estados Unidos y Canadá, añadidos), la semana gratis si la
+hay y el precio que la sigue, la renovación automática, cómo cancelar, el plazo de 14 días para desistir del contrato y
+enlaces a estas condiciones y a la política de privacidad. **Haces el pedido con el botón «Pedido con obligación de
+pago»** (artículo L221-14 del Código de Consumo francés; artículo 98.2 del texto refundido de la Ley General para la
+Defensa de los Consumidores y Usuarios). La página de pago de Stripe toma después tu medio de pago y muestra el total;
+allí marcas la aceptación de estas condiciones (con su enlace) y te indica: «Tu servicio empieza enseguida, a petición
+tuya. Puedes desistir del contrato durante 14 días y se te reembolsa todo.» Si sales del pago, no se cobra nada y no se
+contrata ninguna suscripción. Después del pago, recibes la confirmación del contrato en la dirección de correo que diste
+al pagar: el plan, su precio, la fecha de inicio, los enlaces a estas condiciones, cómo conseguir la app e iniciar
+sesión en ella con esa misma dirección, un enlace para gestionar o cancelar tu suscripción, la fecha límite para
+desistir del contrato y el formulario de desistimiento. La suscripción pasa a tu cuenta de BipAgents cuando inicias
+sesión en la app con esa dirección (el código que recibes por correo demuestra que es tuya). Si esa cuenta ya tiene una
+suscripción, la segunda no se vincula a ella y Kerfy Studio se pone en contacto contigo para reembolsar una de las dos.
 
 Usar BipAgents con tu propio ordenador o tu propio servidor sigue siendo gratis y no está cubierto por estas
 condiciones.
@@ -60,8 +64,11 @@ condiciones.
 | Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 12,99 € al mes o 129,90 € al año | 11,99 € al mes o 119,90 € al año |
 | Familia | hasta 6 | una plaza por persona, en servidores compartidos con otros abonados | 19,99 € al mes o 199,90 € al año | 17,99 € al mes o 179,90 € al año |
 
-La suscripción anual cuesta 10 meses por 12 y se paga de una vez por los 12 meses. Los precios del sitio son más bajos
-que los de las tiendas.
+**La suscripción anual** cuesta 10 meses por 12 y se paga de una vez, por adelantado, por los 12 meses. Se renueva cada
+año al mismo precio, salvo un cambio de precio anunciado con antelación (sección 5), hasta que la canceles; antes de
+cada renovación de una suscripción anual contratada en el sitio, Kerfy Studio te la recuerda (sección 5). Su crédito de
+IA se da mes a mes, como en la suscripción mensual (sección 6). Los precios del sitio son más bajos que los de las
+tiendas.
 
 **Los precios del sitio en cada moneda.** En el sitio, cada moneda tiene sus propios precios, fijados por Kerfy Studio
 (no son conversiones): la página de precios te propone la de tu país, puedes elegir otra, y la página de pago de
@@ -109,12 +116,14 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - Un plan puede empezar con **una semana gratis**, cuando el presupuesto de pruebas del mes lo permite y tu dispositivo
   y tu cuenta de la tienda nunca han tenido una. Si no, la app te propone el mismo plan sin semana gratis. Antes de la
   compra, la app te dice si se aplica la semana gratis, cuándo termina y el precio que la sigue.
-- La semana gratis se aplica a las compras en la app; en el sitio, la página de pago indica si se aplica.
+- La semana gratis se aplica también **en el sitio**, con las mismas reglas (el presupuesto de pruebas del mes): la
+  página de pedido te dice si se aplica, cuándo termina y el precio que la sigue. Tu tarjeta se pide al pagar, pero no
+  se cobra nada antes del final de la semana; el correo de confirmación te recuerda su fecha de fin y ese precio.
 - Durante la semana gratis, todo funciona como en el plan; el crédito de IA del plan (sección 6) sirve para toda la
   semana.
-- **Al final de la semana, la suscripción de pago empieza sola**, salvo que la hayas cancelado en la tienda antes del
-  final (en el App Store, al menos 24 horas antes del final, según las condiciones de Apple). No se cobra nada si lo
-  dejas antes.
+- **Al final de la semana, la suscripción de pago empieza sola**, salvo que la hayas cancelado antes del final: en la
+  tienda (en el App Store, al menos 24 horas antes del final, según las condiciones de Apple) o, en el sitio, en la
+  página de cliente de Stripe (sección 11). No se cobra nada si lo dejas antes.
 - Si no continúas, tu plaza se conserva 3 días y después se borra con sus copias de seguridad.
 - Para que solo haya una semana gratis por dispositivo, la app usa DeviceCheck de Apple en iPhone y una huella del
   dispositivo en Android ([política de privacidad](privacy.es.md), sección 5.3).
@@ -130,12 +139,20 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - La suscripción es **mensual o anual, sin permanencia**: se renueva sola cada mes o cada año hasta que la canceles. La
   tienda cobra al principio de cada periodo de suscripción (Apple puede hacerlo hasta 24 horas antes); en el sitio,
   Stripe cobra tu tarjeta al principio de cada periodo.
+- **Recordatorio antes de la renovación anual**: para una suscripción anual contratada en el sitio, Kerfy Studio te
+  escribe unos 65 días y luego 35 días antes de cada renovación, por correo y con una notificación de la app: la fecha,
+  el precio, cómo cancelar y hasta cuándo. Para una suscripción contratada en la app, la tienda envía sus propios
+  recordatorios, según sus reglas.
 - **Cambiar de plan** (Ajustes › Plan todo incluido › Cambiar de plan): a un plan más grande, enseguida, y la tienda
   tiene en cuenta lo que queda de tu mes; a un plan más pequeño, en tu renovación (las plazas de más: sección 8). Para
   una suscripción contratada en el sitio, cambias de plan en la página de cliente de Stripe (sección 11).
-- **Cambio de precio**: un nuevo precio nunca se aplica a un mes ya pagado. La tienda te avisa al menos 30 días antes
-  y, según sus reglas, te pide tu acuerdo; si no lo aceptas, puedes cancelar sin coste antes de que se aplique
-  (artículo R212-4 del Código de Consumo francés).
+- **Cambio de precio**: un nuevo precio nunca se aplica a un periodo ya pagado. En la app, la tienda te avisa al menos
+  30 días antes y, según sus reglas, te pide tu acuerdo. En el sitio, Kerfy Studio solo cambia sus precios por un motivo
+  válido (coste de los modelos de IA o de los servidores, impuestos); te avisa por correo y en la app al menos 30 días
+  antes de la renovación en la que se aplicaría el nuevo precio, y de nuevo entre 7 y 30 días antes; una bajada se
+  aplica sola. Si no aceptas una subida, puedes cancelar sin coste antes de que se aplique (artículo R212-4 del Código
+  de Consumo francés); donde la ley exige tu consentimiento expreso, la subida solo se aplica si la aceptas y, si no, tu
+  suscripción termina al final del periodo pagado.
 
 ## 6. El crédito de IA y el modelo
 
@@ -149,6 +166,8 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   navegador** o una **tarea en segundo plano** encadena muchas llamadas al modelo y cuenta mucho más, a menudo lo
   que varias decenas de mensajes; la app muestra lo que queda en todo momento.
 - **Traspaso**: el crédito del plan que no has usado pasa al mes siguiente, por un mes más como máximo.
+- **Suscripción anual**: su crédito de IA es el de la suscripción mensual, dado cada mes (no los 12 meses de golpe), con
+  el mismo traspaso.
 - **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), en dos
   recargas: **2 € IVA incluido por 1,40 € de crédito** y **5 € IVA incluido por 3,50 € de crédito** (el IVA y la
   comisión de la tienda de aplicaciones se llevan alrededor del 30 %); la app indica para cada una el número estimado
@@ -270,13 +289,22 @@ política.
 
 - **Cancelar**: en cualquier momento, sin coste, en los ajustes de suscripción de la tienda: en iPhone, Ajustes › tu
   nombre › Suscripciones; en Android, Play Store › foto de perfil › Pagos y suscripciones › Suscripciones. La app
-  también te lleva directamente: Ajustes › Plan todo incluido › Cancelar mi suscripción. La cancelación surte efecto
-  al final del mes ya pagado: lo conservas todo hasta entonces. La tienda te confirma la cancelación y su fecha
-  (artículo L215-1-1 del Código de Consumo francés).
+  también te lleva directamente: Ajustes › Plan todo incluido › Cancelar mi suscripción. La cancelación surte efecto al
+  final del periodo ya pagado (el mes o, en la suscripción anual, el año): lo conservas todo hasta entonces. La tienda
+  te confirma la cancelación y su fecha (artículo L215-1-1 del Código de Consumo francés).
 - **Cancelar una suscripción contratada en el sitio**: en cualquier momento, sin coste, en la página de cliente de
   Stripe, con el enlace del correo de confirmación o con «Gestionar mi suscripción» en bipagents.com, que te envía por
   correo un enlace válido 24 horas. El plan continúa hasta el final del periodo ya pagado. En esa página también puedes
   cambiar de plan o de tarjeta y encontrar tus facturas.
+- **Suscripción anual y reembolso**: si cancelas una suscripción anual después de los 14 días para desistir del contrato
+  (sección 12), sigue hasta el final del año pagado y los meses restantes no se reembolsan, salvo cuando la ley lo
+  prevé. **En Alemania**, después del primer año, puedes cancelarla en cualquier momento con un preaviso de un mes como
+  máximo, y se te reembolsan los meses pagados de más (§ 309 n.º 9 del Código Civil alemán). **En Quebec**, puedes
+  cancelarla en cualquier momento, incluso durante el primer año, y se te reembolsa la parte pagada y no usada, sin la
+  indemnización que la ley permitiría (Ley de protección del consumidor, artículos 214.1 y siguientes). **En Francia**,
+  si Kerfy Studio no te envió el recordatorio antes de la renovación (sección 5), puedes cancelar en cualquier momento a
+  partir de la renovación, y lo que pagaste por el periodo posterior a la cancelación se te reembolsa en 30 días
+  (artículo L215-1 del Código de Consumo francés). Para estos reembolsos, escribe a support@bipagents.com.
 - **Cuando la suscripción termina** (cancelada o no renovada): tu plaza queda **suspendida durante 30 días**. Tus
   agentes dejan de llamar al modelo de IA, no se borra nada, todavía puedes abrir tus conversaciones y recuperar tus
   archivos, y puedes volver contratando de nuevo una suscripción. Al cabo de 30 días, se borran tu plaza y sus copias de
@@ -293,9 +321,9 @@ política.
   prevé (suspensión rápida, motivos, impugnación). Kerfy Studio solo pone fin a tu suscripción después de haberte
   requerido que cese el incumplimiento, salvo urgencia o incumplimiento grave (artículos 1224 a 1226 del Código Civil
   francés).
-- **Fin de la oferta**: si Kerfy Studio deja de ofrecer la oferta todo incluido, se te informa en la app al menos
-  30 días antes; la suscripción deja de renovarse, conservas tu plaza hasta el final del mes pagado y puedes recuperar
-  su contenido por SSH.
+- **Fin de la oferta**: si Kerfy Studio deja de ofrecer la oferta todo incluido, se te informa en la app al menos 30
+  días antes; la suscripción deja de renovarse, conservas tu plaza hasta el final del mes pagado y puedes recuperar su
+  contenido por SSH; en una suscripción anual, se te reembolsan los meses pagados y no usados.
 
 ## 12. Derecho de desistimiento
 
@@ -306,7 +334,8 @@ desistimiento para la suscripción (Tribunal de Justicia de la Unión Europea, 5
 
 **Tu servicio empieza enseguida, a petición tuya**, y conservas tu derecho a desistir del contrato. **Si desistes, se te
 reembolsa todo**, incluso después del final de la semana gratis: Kerfy Studio no te pide nada por el servicio ya
-prestado. El crédito de IA adicional se reembolsa según las reglas de la tienda.
+prestado. Lo mismo vale para la suscripción anual: se te reembolsa el año pagado por completo. El crédito de IA
+adicional se reembolsa según las reglas de la tienda.
 
 **Cómo.** En la app: Ajustes › Plan todo incluido › **Desistir del contrato aquí**, durante los 14 días (artículos
 L221-21 y D221-5 del Código de Consumo francés). Recibes enseguida un acuse de recibo por correo, con la fecha y la
@@ -393,6 +422,10 @@ los impuestos de tu país, calculados por Stripe Tax, y cancelas en la página d
   hasta que la canceles en la tienda o en la app (sección 11). Estas condiciones, el precio y cómo cancelar se te dan
   antes de la compra y se te confirman por correo (sección 1). Puedes desistir del contrato como se indica en la
   sección 12.
+- **Recordatorios y cambios de precio (California y en todo Estados Unidos)**: para una suscripción anual contratada en
+  el sitio, recibes un recordatorio entre 15 y 45 días antes de cada renovación (unos 35 días antes), con el precio, la
+  fecha y cómo cancelar en línea; un cambio de precio se te anuncia una segunda vez entre 7 y 30 días antes de aplicarse
+  (sección 5; Business and Professions Code de California, artículos 17600 y siguientes).
 - **Edad**: ninguna persona menor de 13 años puede usar una plaza (sección 7).
 - **Arbitraje individual**: todo litigio entre tú y Kerfy Studio relacionado con la oferta se resuelve mediante un
   **arbitraje individual y definitivo**, administrado por [por completar: organismo de arbitraje y sus reglas para los
@@ -419,8 +452,13 @@ los impuestos de tu país, calculados por Stripe Tax, y cancelas en la página d
 **Israel**
 
 - Puedes cancelar en cualquier momento (sección 11); la renovación mensual o anual, su precio y cómo cancelar se te
-  indican antes de la compra y se te confirman por correo. La ley israelí de protección del consumidor se aplica en lo
-  que impone.
+  indican antes de la compra y se te confirman por correo. Si lo pides al cancelar, tu suscripción termina en 3 días
+  hábiles y se te reembolsa lo que pagaste por el resto (Ley de protección del consumidor, artículo 13D): escribe a
+  support@bipagents.com. La ley israelí de protección del consumidor se aplica en lo que impone.
+- **Suscripción anual**: no se prorroga sin tu consentimiento expreso (artículo 13A). Entre 60 y 30 días antes del final
+  del año, Kerfy Studio te escribe y desactiva su renovación; para seguir, la vuelves a activar en la página de cliente
+  de Stripe («Renovar»); si no, termina al final del año pagado. Para una suscripción anual contratada en la app, la
+  tienda aplica sus propias reglas.
 
 **Singapur**
 
