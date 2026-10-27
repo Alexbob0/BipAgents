@@ -515,6 +515,28 @@ independiente para sus propias obligaciones legales (sección 5.3). Apple (Devic
 Integrity, Google Play) también intervienen, como dice la sección 5.3; «Iniciar sesión con Apple» y el inicio de sesión
 con Google son de su propia responsabilidad.
 
+### 5.10 Los pagos de tus agentes (experimental, durante la beta)
+
+Por defecto tus agentes no pagan nada: preparan una cesta y pagas tú («Cesta lista»). Si Kerfy Studio ha abierto la
+función durante la beta y **tú la activas**, un agente puede pagar una pequeña compra con una tarjeta que le confíes,
+en los sitios que permitas:
+
+- El número, la fecha de caducidad, el nombre del titular y el código postal de la tarjeta se quedan **en el teléfono
+  donde la añadiste**, en su almacenamiento protegido (Llavero de iOS, Keystore de Android), tras Face ID, tu huella o
+  tu código. Tu plaza solo guarda el nombre que le diste a la tarjeta, su red, sus 4 últimos dígitos, el límite que
+  fijaste, los sitios y agentes permitidos y los pagos hechos con ella (importe, sitio, agente, fecha).
+- **En cada pago que apruebas** en la app, tu teléfono envía estos datos y el código de seguridad que acabas de
+  escribir a tu plaza, por la conexión cifrada de la app. El software de tu plaza los guarda en memoria el tiempo de
+  rellenar el formulario de pago en el navegador del agente y luego los borra. Nunca se escriben en el disco, en los
+  registros ni en las copias de seguridad, y el agente (el modelo de IA) no los ve.
+- El registro de pagos (sin ningún número de tarjeta) se guarda 3 años en tu plaza.
+- Finalidad: hacer la compra que pediste y aprobaste (ejecución del contrato, artículo 6.1.b del RGPD). Puedes
+  suspenderlo todo en cualquier momento y borrar la tarjeta en la app (se borra entonces del teléfono y de tu plaza).
+
+Es una función experimental: algunos bancos consideran que confiar los datos de la tarjeta a un servicio es una
+negligencia y pueden negarse a reembolsar en caso de disputa. Por eso la app pide una tarjeta virtual con límite,
+nunca tu tarjeta principal.
+
 ## 6. Lo que Kerfy Studio no hace
 
 - Sin publicidad, sin herramienta de estadísticas, sin rastreo entre apps o sitios. Sin cuenta, salvo para la oferta

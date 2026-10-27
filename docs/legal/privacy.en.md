@@ -503,6 +503,27 @@ controller for its own legal obligations (section 5.3). Apple (DeviceCheck, App 
 Google Play) are also involved, as section 5.3 says; "Sign in with Apple" and signing in with Google fall under their
 own responsibility.
 
+### 5.10 Payments by your agents (experimental, during the beta)
+
+By default your agents pay for nothing: they prepare a cart and you pay yourself ("Cart ready"). If Kerfy Studio has
+opened the feature during the beta and **you turn it on**, an agent can pay for a small purchase with a card you give
+it, on the sites you allow:
+
+- The card's number, expiry date, cardholder name and postcode stay **on the phone where you added it**, in its
+  protected storage (iOS Keychain, Android Keystore), behind Face ID, your fingerprint or your passcode. Your place
+  keeps only the name you gave the card, its network, its last 4 digits, the cap you set, the sites and agents
+  allowed, and the payments made with it (amount, site, agent, date).
+- **For each payment you approve** in the app, your phone sends this data and the security code you just typed to
+  your place, over the app's encrypted connection. Your place's software keeps them in memory just long enough to fill
+  in the payment form in the agent's browser, then erases them. They are never written to disk, logs or backups, and
+  the agent (the AI model) never sees them.
+- The payment log (without any card number) is kept for 3 years on your place.
+- Purpose: making the purchase you asked for and approved (performance of the contract, GDPR Article 6(1)(b)). You can
+  suspend everything at any time, and delete the card in the app (it is then erased from the phone and your place).
+
+This is an experimental feature: some banks consider that giving your card details to a service is negligence and may
+refuse a refund in a dispute. That is why the app asks for a virtual card with a cap, never your main card.
+
 ## 6. What Kerfy Studio does not do
 
 - No ads, no analytics tool, no tracking across apps or websites. No account, except for the all-included offer.
