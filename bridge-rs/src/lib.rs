@@ -31,6 +31,7 @@ pub mod guard;
 pub mod hermes;
 pub mod lan;
 pub mod logs;
+pub mod loop_brake;
 pub mod main_cli;
 pub mod store;
 
@@ -116,6 +117,7 @@ pub mod message_search;
 pub mod notebook;
 pub mod notes_import;
 pub mod pages;
+pub mod phone_asks;
 pub mod reminders;
 pub mod rooms;
 pub mod rooms_remote;

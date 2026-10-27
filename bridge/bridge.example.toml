@@ -177,6 +177,23 @@ port = 8650
 # cli = "link-cli"                                            # npm @stripe/link-cli
 # test = false                                                # Link's test mode: test cards, nothing charged
 
+# The brake on a turn going round in circles (loop_brake.rs): a conversation's turn calling one tool more than
+# same_tool times, more than tool_calls tools in all, or the same call same_call times is stopped, and the person told
+# in plain words; the agents' write tools (calendar, reminders, contacts, Carnet, drafts, pages, audio) refuse the same
+# write twice in a turn and more than `writes`. Background tasks: the task_* limits. Work tools (terminal, code, files,
+# web search, the browser) count for the total only.
+# [brake]
+# enabled = true
+# same_tool = 10
+# tool_calls = 60
+# same_call = 3
+# writes = 10
+# task_same_tool = 40
+# task_tool_calls = 150
+# task_same_call = 5
+# task_writes = 40
+# idle_seconds = 600          # with no run followed (a routine), the agent's calls are one turn until quiet this long
+
 [agents.wellness]
 display_name = "Wellness"
 hermes_url = "http://127.0.0.1:8642"

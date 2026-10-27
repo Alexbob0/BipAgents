@@ -638,6 +638,9 @@ pub struct Config {
     /// `[jobs]` (jobs.rs, runs.rs): not in the serialized form either.
     #[serde(skip)]
     pub jobs: JobsConfig,
+    /// `[brake]` (loop_brake.rs): a turn going round in circles stopped. Not in the serialized form either.
+    #[serde(skip)]
+    pub brake: crate::loop_brake::Settings,
     /// `[rooms]` (rooms.rs): not in the serialized form either.
     #[serde(skip)]
     pub rooms: RoomsConfig,
@@ -725,6 +728,7 @@ impl Config {
             maps: MapsConfig::default(),
             notebook: NotebookConfig::default(),
             jobs: JobsConfig::default(),
+            brake: crate::loop_brake::Settings::default(),
             rooms: RoomsConfig::default(),
             connections: crate::connections::Settings::default(),
             link: crate::link_wallet::Settings::default(),
@@ -1681,6 +1685,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         maps,
         notebook,
         jobs,
+        brake: crate::loop_brake::Settings::from_table(table(data, "brake")),
         rooms,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
         link: crate::link_wallet::Settings::from_table(table(data, "link")),

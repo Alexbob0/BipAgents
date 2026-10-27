@@ -3,6 +3,7 @@ direct_budget_eur`, ≈ 0.20 € at the `[notebook]` prices), refused above it; 
 for every agent in turn (`/v1/notebook/fill`); and the bridge's safety net, which steers a long conversation run once
 to hand the rest over (`[jobs] handoff…`): never while a sub-agent works or the agent browses (2026-10-24), and a
 steered run that stops without handing over gets its task from the bridge (started, or proposed), said in the run."""
+import itertools
 import threading
 import time
 
@@ -119,8 +120,12 @@ def test_fill_my_carnet_stops(bridges, fakes):
         bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH)
 
 
+PREVIEWS = itertools.count()
+
+
 def tools(run_id, count, tool="web_search"):
-    return [sse("tool.started", run_id=run_id, tool=tool, preview="x") for _ in range(count)]
+    # previews all different: the same call three times is a loop the brake stops (test_loop_brake.py)
+    return [sse("tool.started", run_id=run_id, tool=tool, preview=f"x {next(PREVIEWS)}") for _ in range(count)]
 
 
 def test_a_long_conversation_run_is_steered_once_to_hand_over(bridges, fakes):

@@ -164,6 +164,34 @@ pub fn call(
                 })
                 .collect();
             let at = data.get("at").cloned().unwrap_or(Value::Null);
+            // What this agent asked to add and the copy doesn't show yet (phone_asks.rs): listed, marked.
+            let queue = list_of(&data, "queue");
+            let asked: Vec<String> = crate::phone_asks::unseen_adds(&queue, agent, at.as_f64())
+                .into_iter()
+                .filter_map(|op| {
+                    let args = field(op, "args")?;
+                    let text = |k: &str| field(args, k).map(py::py_str).unwrap_or_default();
+                    let list = text("list");
+                    if !wanted.is_empty() && list.to_lowercase() != wanted {
+                        return None;
+                    }
+                    let list = if list.is_empty() { "default list".to_string() } else { list };
+                    let mut line = format!("- id {} · {list} · {}", field(op, "id").map(py::py_str)?, text("title"));
+                    if !text("due").is_empty() {
+                        line += &format!(" · due {}", text("due"));
+                    }
+                    line += if crate::phone_asks::waiting(op) {
+                        " · asked by you, not on the iPhone yet (added at its next sync)"
+                    } else {
+                        " · added by the iPhone just now (not in this copy yet)"
+                    };
+                    Some(line)
+                })
+                .collect();
+            if rows.is_empty() && !asked.is_empty() {
+                return Ok(tool_text(&format!("Not in the iPhone's copy yet:\n{}", asked.join("\n")), false));
+            }
+            let asked = if asked.is_empty() { String::new() } else { format!("\n{}", asked.join("\n")) };
             if rows.is_empty() {
                 let since = if py::truthy(&at) {
                     format!(" (as of {} ago)", age(now - py::py_float(&at).unwrap_or(now)))
@@ -193,7 +221,7 @@ pub fn call(
                 .collect();
             let shared = if py::truthy(&at) { py::py_float(&at).unwrap_or(now) } else { now };
             return Ok(tool_text(
-                &format!("As the iPhone shared them {} ago:\n{}", age(now - shared), lines.join("\n")),
+                &format!("As the iPhone shared them {} ago:\n{}{asked}", age(now - shared), lines.join("\n")),
                 false,
             ));
         }
@@ -213,6 +241,30 @@ pub fn call(
                 }
                 Ok(_) => {}
                 Err(why) => return Ok(tool_text(why, true)),
+            }
+            // The same reminder (its title and date) open in the copy, or asked a moment ago: not asked again.
+            let text = |v: &Value, k: &str| field(v, k).map(py::py_str).unwrap_or_default();
+            let same = |v: &Value| {
+                crate::phone_asks::folded(&text(v, "title")) == crate::phone_asks::folded(&title)
+                    && text(v, "due").trim() == text(&args, "due").trim()
+            };
+            if let Some(open) = items.iter().find(|i| same(i) && !field(i, "completed").map(py::truthy).unwrap_or(false)) {
+                return Ok(tool_text(
+                    &format!("Already in the reminders: id {} · {}. Not added again.", text(open, "id"), text(open, "title")),
+                    false,
+                ));
+            }
+            let queue = list_of(&data, "queue");
+            if let Some(twin) = crate::phone_asks::twin(&queue, agent, now, same) {
+                return Ok(tool_text(
+                    &format!(
+                        "Already asked: id {} · {} ({}). Not added again: nothing more to do for this reminder.",
+                        text(twin, "id"),
+                        title,
+                        if crate::phone_asks::waiting(twin) { "the iPhone adds it at its next sync" } else { "the iPhone added it a moment ago" }
+                    ),
+                    false,
+                ));
             }
             json!({"id": py::token_hex(6), "op": "add", "agent": agent, "created": now, "state": "pending", "args": args})
         } else if name == "reminders_complete" {

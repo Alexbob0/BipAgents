@@ -684,6 +684,7 @@ impl Jobs {
         save(&self.config.get(), job)?;
         if let Some(hub) = &self.hub {
             hub.watch(&agent, &run_id, Some(&session_id), false); // approvals and questions still pushed
+            hub.mark_background(&agent.name, &run_id); // the brake's higher limits (loop_brake.rs)
         }
         let id = tk::str_or_empty(job.get("id"));
         self.follow(&id);
@@ -714,6 +715,7 @@ impl Jobs {
                 if !run_id.is_empty() {
                     let session = job.get("session_id").filter(|v| !v.is_null()).map(py::py_str);
                     hub.watch(agent, &run_id, session.as_deref(), false);
+                    hub.mark_background(&agent.name, &run_id);
                 }
             }
             self.follow(&tk::str_or_empty(job.get("id")));

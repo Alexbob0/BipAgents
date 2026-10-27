@@ -349,25 +349,61 @@ BipAgents app.",
         }
     };
     let events = if phone { list_of(&data, "events") } else { Vec::new() };
+    let queue = list_of(&data, "queue");
+    let at = data.get("at").and_then(Value::as_f64);
     let arg = |k: &str| tk::strip(&tk::str_or_empty(arguments.get(k))).to_string();
+    // A request's calendar is a name (or none: the phone's default one), an event's an id.
+    let label = |e: &Value| -> String {
+        if e.get("asked").is_none() {
+            return shown(&text(e, "calendar"));
+        }
+        match text(e, "calendar") {
+            c if c.is_empty() => "default calendar (phone)".to_string(),
+            c => format!("{c} (phone)"),
+        }
+    };
     if name == "calendar_list" {
         let (from, to) = match range(arguments, Some(now)) {
             Ok(range) => range,
             Err(why) => return Ok(tool_text(&why, true)),
         };
         let wanted = arg("calendar").to_lowercase();
+        // What this agent asked the phone to add and the copy doesn't show yet (phone_asks.rs): listed, marked.
+        let asked: Vec<Value> = if phone {
+            crate::phone_asks::unseen_adds(&queue, agent, at)
+                .into_iter()
+                .map(|op| {
+                    let mut e = op.get("args").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
+                    e["id"] = json!(text(op, "id"));
+                    e["asked"] = json!(if crate::phone_asks::waiting(op) { "waiting" } else { "done" });
+                    e
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        // The changes asked on listed events, not done yet.
+        let changing = |id: &str| -> Option<&'static str> {
+            queue.iter().rev().filter(|op| crate::phone_asks::waiting(op)).find_map(|op| {
+                let target = op.get("args").map(|a| text(a, "id")).unwrap_or_default();
+                match text(op, "op").as_str() {
+                    "delete" if target == id => Some("deletion asked, not done yet"),
+                    "update" if target == id => Some("change asked, not done yet"),
+                    _ => None,
+                }
+            })
+        };
         let mut rows: Vec<&Value> = events
             .iter()
             .chain(remote.events.iter())
+            .chain(asked.iter())
             .filter(|e| {
                 let Some(start) = day_of(&text(e, "start")) else { return false };
                 let end = day_of(&text(e, "end")).unwrap_or(start).max(start);
                 let calendar = text(e, "calendar");
-                start <= to
-                    && end >= from
-                    && (wanted.is_empty()
-                        || title_of(&calendar).0.to_lowercase() == wanted
-                        || shown(&calendar).to_lowercase() == wanted)
+                let named =
+                    if e.get("asked").is_some() { calendar.to_lowercase() } else { title_of(&calendar).0.to_lowercase() };
+                start <= to && end >= from && (wanted.is_empty() || named == wanted || label(e).to_lowercase() == wanted)
             })
             .collect();
         rows.sort_by_key(|e| Moment::parse(&text(e, "start")).map(Moment::wall));
@@ -402,18 +438,21 @@ BipAgents app.",
             .iter()
             .take(MAX_LISTED)
             .map(|e| {
-                let mut line = format!(
-                    "- id {} · {} · {} · {}",
-                    text(e, "id"),
-                    shown(&text(e, "calendar")),
-                    when(e),
-                    text(e, "title")
-                );
+                let mut line = format!("- id {} · {} · {} · {}", text(e, "id"), label(e), when(e), text(e, "title"));
                 if !text(e, "location").is_empty() {
                     line += &format!(" · at {}", text(e, "location"));
                 }
                 if e.get("recurring").map(py::truthy).unwrap_or(false) {
                     line += " · repeats";
+                }
+                match text(e, "asked").as_str() {
+                    "waiting" => line += " · asked by you, not on the phone yet (added at the phone's next sync)",
+                    "done" => line += " · added by the phone just now (not in this copy yet)",
+                    _ => {
+                        if let Some(change) = changing(&text(e, "id")) {
+                            line += &format!(" · {change}");
+                        }
+                    }
                 }
                 if !text(e, "notes").is_empty() {
                     line += &format!("\n  {}", tk::head(&text(e, "notes"), 200));
@@ -440,11 +479,24 @@ BipAgents app.",
     let known = |id: &str| events.iter().find(|e| text(e, "id") == id);
     let op = match name {
         "calendar_add" => match new_event(arguments) {
-            Ok(event) => event,
+            Ok(event) => {
+                if let Some(said) = already_there(&events, &queue, agent, &event, now) {
+                    return Ok(tool_text(&said, false));
+                }
+                event
+            }
             Err(why) => return Ok(tool_text(&why, true)),
         },
         "calendar_update" | "calendar_delete" => {
             let id = arg("id");
+            if known(&id).is_none() {
+                if let Some((said, changed)) = change_asked(&mut data, agent, name, &id, arguments) {
+                    if changed {
+                        write(config, &data)?;
+                    }
+                    return Ok(said);
+                }
+            }
             let Some(event) = known(&id) else {
                 return Ok(tool_text("unknown event id (see calendar_list)", true));
             };
@@ -495,17 +547,98 @@ BipAgents app.",
         _ => return Ok(tool_text(&format!("unknown tool: {name}"), true)),
     };
     let kind = name.trim_start_matches("calendar_");
-    let mut queue = list_of(&data, "queue");
-    queue.push(json!({"id": py::token_hex(6), "op": kind, "agent": agent, "created": now, "state": "pending",
-                      "args": op}));
+    let mut queue = queue;
+    let id = py::token_hex(6);
+    queue.push(json!({"id": id, "op": kind, "agent": agent, "created": now, "state": "pending", "args": op}));
     data.insert("queue".into(), Value::Array(queue));
     write(config, &data)?;
+    if kind == "add" {
+        return Ok(tool_text(&format!("{ASKED} Until then calendar_list shows it as asked, with the id {id}."), false));
+    }
     Ok(tool_text(ASKED, false))
 }
 
-/// What a request queued for the phone answers (the phone is woken when it starts so).
+/// What a request queued for the phone answers, at its start (the phone is woken when it starts so).
 pub const ASKED: &str =
     "Asked: the person's phone does it at its next sync (usually within minutes, or when the app opens).";
+
+/// An event the same as `event` (its title and start) already in the phone's copy, or asked by `agent` a moment ago
+/// (phone_asks.rs): what to answer instead of asking again.
+fn already_there(events: &[Value], queue: &[Value], agent: &str, event: &Value, now: f64) -> Option<String> {
+    let title = crate::phone_asks::folded(&text(event, "title"));
+    let start = Moment::parse(&text(event, "start")).map(Moment::wall);
+    let same = |e: &Value| {
+        crate::phone_asks::folded(&text(e, "title")) == title && Moment::parse(&text(e, "start")).map(Moment::wall) == start
+    };
+    if let Some(found) = events.iter().find(|e| same(e)) {
+        return Some(format!(
+            "Already in the calendar: id {} · {} · {}. Not added again.",
+            text(found, "id"),
+            when(found),
+            text(found, "title")
+        ));
+    }
+    let op = crate::phone_asks::twin(queue, agent, now, same)?;
+    let args = op.get("args").cloned().unwrap_or(Value::Null);
+    let state = if crate::phone_asks::waiting(op) {
+        "the phone adds it at its next sync"
+    } else {
+        "the phone added it a moment ago"
+    };
+    Some(format!(
+        "Already asked: id {} · {} · {} ({state}). Not added again: nothing more to do for this event.",
+        text(op, "id"),
+        when(&args),
+        text(&args, "title")
+    ))
+}
+
+/// `calendar_update` / `calendar_delete` of an event `agent` asked to add and the phone's copy doesn't show yet (its
+/// request's id, as calendar_list gives it): still waiting, the request is changed or cancelled (true: `data` changed);
+/// done already, the agent waits for the next copy. None: no such request (the id is unknown).
+fn change_asked(data: &mut Dict, agent: &str, name: &str, id: &str, arguments: &Dict) -> Option<(Dict, bool)> {
+    let mut queue = list_of(data, "queue");
+    let op = queue.iter_mut().find(|op| text(op, "id") == id && text(op, "op") == "add" && text(op, "agent") == agent)?;
+    if !crate::phone_asks::waiting(op) {
+        let said = if text(op, "state") == "done" {
+            "The phone has just added this event: it gets its own id when the phone next shares the calendar (see \
+calendar_list later), and can be changed or deleted then."
+        } else {
+            "This request was cancelled or failed: there is no such event."
+        };
+        return Some((tool_text(said, true), false));
+    }
+    let said = if name == "calendar_delete" {
+        op["state"] = json!("cancelled");
+        op["finished"] = json!(py::time_time());
+        "Cancelled: the phone won't add it."
+    } else {
+        let mut merged: Dict = op.get("args").and_then(Value::as_object).cloned().unwrap_or_default();
+        for key in ["title", "start", "end", "location", "notes"] {
+            if let Some(value) = arguments.get(key) {
+                merged.insert(key.into(), value.clone());
+            }
+        }
+        if arguments.contains_key("start") && !arguments.contains_key("end") {
+            // the same length as asked
+            if let (Some(s), Some(e), Some(new)) = (
+                Moment::parse(&text(&op["args"], "start")),
+                Moment::parse(&text(&op["args"], "end")),
+                Moment::parse(&tk::str_or_empty(arguments.get("start"))),
+            ) {
+                merged.insert("end".into(), json!(new.plus((e.wall() - s.wall()).num_minutes()).write()));
+            }
+        }
+        let event = match new_event(&merged) {
+            Ok(event) => event,
+            Err(why) => return Some((tool_text(&why, true), false)),
+        };
+        op["args"] = event;
+        "Changed: the phone adds it so at its next sync."
+    };
+    data.insert("queue".into(), Value::Array(queue));
+    Some((tool_text(said, false), true))
+}
 
 // -- the app's routes --------------------------------------------------------------------------------------------------
 
