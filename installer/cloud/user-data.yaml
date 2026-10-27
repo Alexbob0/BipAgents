@@ -37,6 +37,9 @@ packages:
   # space-hardening.sh as root: swap encrypted, no core dumps, logs in memory).
   - gocryptfs
   - fuse3
+  # The server's ready-made Hermes comes packed with zstd; root's BipAgents reads its settings with PyYAML.
+  - zstd
+  - python3-yaml
 
 write_files:
   - path: /etc/bipagents/cloud.json
@@ -85,6 +88,8 @@ write_files:
       $nrconf{restart} = 'a';
 
 runcmd:
+  # Packages are in by now (cloud-init analyze show: each module's time, from the boot on).
+  - echo "$(date -u +%FT%TZ) runcmd start (boot $(cut -d' ' -f1 /proc/uptime) s ago)" >> /var/log/bipagents-timeline.log
   - sysctl --system
   # The night's reboot minute, 00:00 to 00:44, from the machine id (the same each time it is worked out).
   - m=$(( 0x$(cut -c1-4 /etc/machine-id) % 45 )) && printf 'Unattended-Upgrade::Automatic-Reboot-Time "00:%02d";\n' "$m" > /etc/apt/apt.conf.d/53bipagents-reboot-time
@@ -109,6 +114,15 @@ runcmd:
   # BipAgents' services run when nobody is logged in.
   - loginctl enable-linger bip
   - systemctl start "user@$(id -u bip).service"
+  # Hermes and the agents' images once for the whole server, ready-made (installer/bipinstall/shared_hermes.py and
+  # shared_images.py), both at once, by root's own BipAgents (the one the seat agent uses too): the places then point
+  # at them instead of installing their own. A failure only costs time: the place installs its own, as before.
+  # Each phase's time goes to /var/log/bipagents-timeline.log (installer/README.md, measuring an install).
+  - echo "$(date -u +%FT%TZ) shared start" >> /var/log/bipagents-timeline.log
+  - test -d /usr/local/lib/bipagents/repo/.git || git clone --quiet --filter=blob:none https://github.com/Alexbob0/BipAgents.git /usr/local/lib/bipagents/repo
+  - cd /usr/local/lib/bipagents/repo && { PYTHONPATH=installer python3 -m bipinstall.shared_hermes enable > /var/log/bipagents-shared-hermes.log 2>&1 & PYTHONPATH=installer python3 -m bipinstall.shared_images pull --timer > /var/log/bipagents-images.log 2>&1 & wait; }; cd /
+  - echo "$(date -u +%FT%TZ) shared done, install start" >> /var/log/bipagents-timeline.log
   - sudo -iu bip bash -c 'curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s -- --cloud /etc/bipagents/cloud.json' > /var/log/bipagents-install.log 2>&1
+  - echo "$(date -u +%FT%TZ) install done" >> /var/log/bipagents-timeline.log
   # The installer kept the secret for the bridge (deleted once the app has paired); this copy goes.
   - shred -u /etc/bipagents/cloud.json || rm -f /etc/bipagents/cloud.json

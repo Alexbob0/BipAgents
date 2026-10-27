@@ -172,19 +172,27 @@ def shared_on():
 def prepare_shared(commit):
     """The shared Hermes that BipAgents `commit` pins, built by root before a place moves to it (its own update
     then points at it). Built from root's own checkout at that commit. A failure leaves the place on its current
-    Hermes: its update says the version isn't ready and it keeps the one it has."""
-    if not shared_on():
-        return
+    Hermes: its update says the version isn't ready and it keeps the one it has. Usually fetched ready-made (its
+    release), not built. The agents' images of that version are pulled into the server's store too
+    (installer/bipinstall/shared_images.py), with root's nightly pull set up the first time. `commit` "main": the
+    latest (a place installed without a pinned version, add-seat.sh)."""
     if not os.path.isdir(os.path.join(SHARED_REPO, ".git")):
-        subprocess.run(["git", "clone", "--quiet", PUBLIC_REPO, SHARED_REPO], check=True, timeout=600)
+        subprocess.run(["git", "clone", "--quiet", "--filter=blob:none", PUBLIC_REPO, SHARED_REPO], check=True,
+                       timeout=600)
     subprocess.run(["git", "-C", SHARED_REPO, "fetch", "--quiet", "origin"], check=True, timeout=600)
     subprocess.run(["git", "-C", SHARED_REPO, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force",
-                    commit], check=True, timeout=120)
+                    "origin/main" if commit == "main" else commit], check=True, timeout=120)
     env = dict(os.environ, PYTHONPATH=os.path.join(SHARED_REPO, "installer"))
-    with open("/var/log/bipagents-shared-hermes.log", "a") as out:
-        done = subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "build"], env=env, stdout=out,
+    if shared_on():
+        with open("/var/log/bipagents-shared-hermes.log", "a") as out:
+            done = subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "build"], env=env, stdout=out,
+                                  stderr=out, timeout=3600, cwd=SHARED_REPO)
+        log("shared Hermes for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not built"))
+    timer = [] if os.path.exists("/etc/systemd/system/bipagents-images.timer") else ["--timer"]
+    with open("/var/log/bipagents-images.log", "a") as out:
+        done = subprocess.run(["python3", "-m", "bipinstall.shared_images", "pull"] + timer, env=env, stdout=out,
                               stderr=out, timeout=3600, cwd=SHARED_REPO)
-    log("shared Hermes for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not built"))
+    log("shared images for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not all pulled"))
 
 
 def shared_gc():
@@ -887,6 +895,14 @@ def main(argv=()):
         return sample()
     if "--ceiling" in argv:   # add-seat.sh, as soon as a place's account starts
         ceiling(vitals().get("memory_mb"), read_json(SETTINGS))
+        return 0
+    if "--prepare" in argv:   # add-seat.sh, before a place's install: Hermes and the images of its version, shared
+        at = list(argv).index("--prepare")
+        commit = argv[at + 1] if len(argv) > at + 1 else "main"
+        try:
+            prepare_shared(commit)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log("shared Hermes and images for %s not ready: %s" % (commit[:12], exc))
         return 0
     with open(CONF) as fh:
         conf = json.load(fh)

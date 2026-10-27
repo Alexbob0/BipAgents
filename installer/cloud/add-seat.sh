@@ -47,7 +47,14 @@ systemctl start "user@$(id -u "$user").service"
 # the seat agent keeps it set every two minutes after.
 here=$(dirname "$0")
 [ -f "$here/seat-agent.py" ] && python3 "$here/seat-agent.py" --ceiling >/dev/null 2>&1
+# Hermes and the agents' images of the version it installs, ready-made and shared by the server's places (usually
+# there already: nothing to fetch). Its install then points at them instead of fetching its own. Each phase's time
+# goes to /var/log/bipagents-timeline.log.
+echo "$(date -u +%FT%TZ) place $n shared start" >> /var/log/bipagents-timeline.log
+[ -f "$here/seat-agent.py" ] && python3 "$here/seat-agent.py" --prepare "${version:-main}" >/dev/null 2>&1
+echo "$(date -u +%FT%TZ) place $n install start" >> /var/log/bipagents-timeline.log
 sudo -iu "$user" bash -c "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | ${pin}bash -s -- --cloud $setup" \
     > "/var/log/bipagents-install$n.log" 2>&1
+echo "$(date -u +%FT%TZ) place $n install done" >> /var/log/bipagents-timeline.log
 # The installer kept the secret for the bridge (deleted once the app has paired); this copy goes.
 shred -u "$setup" 2>/dev/null || rm -f "$setup"

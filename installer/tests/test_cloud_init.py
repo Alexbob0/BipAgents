@@ -38,8 +38,15 @@ def test_the_user_data_the_apps_send_sets_up_the_server_and_runs_the_cloud_insta
     # Nothing in but SSH (by key) and the bridge's door; the install as `bip`, then the secret's copy removed.
     assert commands.index("ufw default deny incoming") < commands.index("ufw --force enable")
     assert "ufw allow 443/tcp" in commands and not any("ufw allow 80" in c for c in commands)
-    install = next(c for c in commands if "install.sh" in c)
+    install = next(c for c in commands if "/install.sh |" in c)
     assert install.startswith("sudo -iu bip ") and "--cloud /etc/bipagents/cloud.json" in install
+    # Hermes and the agents' images first, ready-made, once for the server (root's own BipAgents), both at once.
+    shared = next(c for c in commands if "bipinstall.shared_hermes enable" in c)
+    assert "bipinstall.shared_images pull --timer" in shared and shared.count(" & ") == 2 and "wait;" in shared
+    clone = next(c for c in commands if "git clone" in c)
+    assert "/usr/local/lib/bipagents/repo" in clone   # where the seat agent keeps root's checkout (SHARED_REPO)
+    assert commands.index(clone) < commands.index(shared) < commands.index(install)
+    assert {"zstd", "python3-yaml"} <= set(data["packages"])
     assert commands.index(install) < next(i for i, c in enumerate(commands) if c.startswith("shred"))
     assert commands.index("loginctl enable-linger bip") < commands.index(install)
     # Compressed memory ahead of the swap file, its module installed when the kernel keeps it apart (never failing
@@ -502,3 +509,35 @@ def test_each_place_s_ai_credit_state_is_written_where_its_bridge_reads_it(tmp_p
     # a place left out (its subscription over): its file removed, ok
     assert not (one / agent.CREDIT).exists()
     assert agent.CREDIT == ".local/state/bipagents/credit.json"
+
+
+def test_a_new_place_gets_the_shared_hermes_and_images_of_its_version_first(tmp_path, monkeypatch):
+    """add-seat.sh runs `seat-agent.py --prepare <version>` before a place's install: root's checkout at that version
+    (main when none is pinned), its ready-made Hermes, its images pulled into the server's store (the nightly pull
+    set up once), so the place's install points at them instead of fetching its own."""
+    import io
+    import os
+    agent = _seat_agent()
+    ran = []
+
+    class Done:
+        returncode = 0
+
+    exists = os.path.exists
+    monkeypatch.setattr(agent.subprocess, "run", lambda args, **kw: ran.append(list(args)) or Done())
+    monkeypatch.setattr(agent, "shared_on", lambda: True)
+    monkeypatch.setattr(agent, "SHARED_REPO", str(tmp_path / "repo"))
+    monkeypatch.setattr(agent, "log", lambda text: None)
+    monkeypatch.setattr(agent, "open", lambda *a, **k: io.StringIO(), raising=False)   # its logs in /var/log
+    monkeypatch.setattr(agent.os.path, "exists", lambda p: False if str(p).endswith("images.timer") else exists(p))
+    assert agent.main(["--prepare", "main"]) == 0
+    assert ran[0][:4] == ["git", "clone", "--quiet", "--filter=blob:none"]
+    assert ran[2][-1] == "origin/main"
+    assert ran[3] == ["python3", "-m", "bipinstall.shared_hermes", "build"]
+    assert ran[4] == ["python3", "-m", "bipinstall.shared_images", "pull", "--timer"]
+    ran.clear()
+    agent.prepare_shared("a" * 40)
+    assert ran[2][-1] == "a" * 40
+    text = (ROOT / "installer" / "cloud" / "add-seat.sh").read_text(encoding="utf-8")
+    prepare = text.index('seat-agent.py" --prepare "${version:-main}"')
+    assert text.index("--ceiling") < prepare < text.index("install.sh |")
