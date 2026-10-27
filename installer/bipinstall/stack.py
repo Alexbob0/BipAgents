@@ -218,6 +218,19 @@ def bridge_service(inst: Install, system: str) -> tuple[str, Path, str]:
             "io.github.bipagents.bridge", program, inst.repo / "bridge", env, inst.home / "Library" / "Logs" / "bipagents-bridge.log",
             stop_seconds=BRIDGE_STOP_SECONDS)
     path = inst.home / ".config" / "systemd" / "user" / "bipagents-bridge.service"
+    # TODO(security audit 2026-10-27, H1 defense in depth): ProtectHome=read-only + ReadWritePaths= is NOT set, on
+    # purpose. In a user unit (`systemctl --user`) systemd implies PrivateUsers=yes for every mount-namespace option
+    # (ProtectHome, ReadWritePaths, ProtectSystem…): the bridge would run in a user namespace mapping only this account
+    # and root, where the rootless podman it starts (sandboxes, browsers, the egress proxy) can no longer map its
+    # subordinate ids (newuidmap fails), and the encrypted space it mounts (space.rs) would only exist in its own mount
+    # namespace. What it writes, for the day this moves to a system unit or a dedicated helper: its data dir
+    # (`[outbox] db_path`'s folder, ~/.local/share/hermes-bridge), its config dir (bridge.toml, its lock and last-good
+    # copy, ~/.config/hermes-ios), ~/.config/bipagents and ~/.local/state/bipagents (backups, credit, import, sleep),
+    # the Hermes home (~/.hermes: profiles, config.yaml/.env through `hermes config set`, skills, crons), podman's
+    # storage and settings (~/.local/share/containers, ~/.config/containers, $XDG_RUNTIME_DIR), the spaces root
+    # (~/.local/share/bipagents/space), ~/.ssh/authorized_keys (ssh_keys.rs), ~/.config/systemd/user (units of the
+    # browsers and of `place import`/restores run from this checkout) and this checkout itself. The share and volume
+    # file work is done through folder descriptors instead (bridge-rs/src/beneath.rs).
     return "bipagents-bridge", path, systemd_unit("BipAgents bridge", program, inst.repo / "bridge", env,
                                                   stop_seconds=BRIDGE_STOP_SECONDS)
 
