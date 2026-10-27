@@ -15,6 +15,12 @@
 //! - the visible browser's MCP server without its resource and prompt helpers (4 entries of the search's catalog the
 //!   agents never use).
 //!
+//! - every tool the agent's model called directly in its conversations of the last `CALLED_DAYS` days stays direct
+//!   (a bridge or other MCP tool gets its `!` entry, a core tool leaves the list), whatever its kind's plan says. A
+//!   model imitates its history: DeepSeek-V4 on the person's own server (Wellness, 2026-10-27), with many direct calls
+//!   to a tool the diet had since deferred, kept calling it directly in its native markup; the server parses calls to
+//!   the request's tools only, so the call came back as text (or nothing) and the turn ended empty.
+//!
 //! The kind: the guide, else the kind whose starting personality the agent's SOUL.md still has, else the category of
 //! its Bip in the apps, else « custom ». Applied whenever the bridge gives an agent its tools (`agent_tools::register`:
 //! at start for every agent — the migration of existing ones — and when a tool is shared or turned on), and when the
@@ -84,6 +90,12 @@ pub const BRIDGE_PREFIX: &str = "mcp__bipagents__";
 
 /// The visible browser's MCP entry (browsers.rs).
 pub const BROWSER_SERVER: &str = "stealth";
+
+/// How far back the tools an agent's model called directly stay in view.
+pub const CALLED_DAYS: f64 = 30.0;
+
+/// Hermes' tool search tools: calls through them are not direct calls of a deferred tool.
+const SEARCH_TOOLS: [&str; 3] = ["tool_search", "tool_describe", "tool_call"];
 
 /// What a kind of agent keeps in view.
 #[derive(Debug, Clone, PartialEq)]
@@ -328,8 +340,9 @@ pub struct Diet {
     pub compact_skills: Vec<String>,
 }
 
-/// The diet of an agent of `kind` that has `bridge_tools`, holds a vault item or not, has written skills or not.
-pub fn diet(kind: &str, bridge_tools: &[String], holds_vault_item: bool, writes_skills: bool) -> Diet {
+/// The diet of an agent of `kind` that has `bridge_tools`, holds a vault item or not, has written skills or not, and
+/// whose model `called` these tools directly lately (Hermes' names: `mcp__bipagents__health`, `execute_code`…).
+pub fn diet(kind: &str, bridge_tools: &[String], holds_vault_item: bool, writes_skills: bool, called: &[String]) -> Diet {
     let plan = kind_diet(kind);
     let mut defer: Vec<String> = vec![MARK.to_string()];
     let mut add = |name: &str| {
@@ -352,6 +365,18 @@ pub fn diet(kind: &str, bridge_tools: &[String], holds_vault_item: bool, writes_
             .filter(|name| bridge_tools.iter().any(|t| t == *name))
             .take(MAX_DIRECT)
             .for_each(|name| add(&format!("!{BRIDGE_PREFIX}{name}")));
+    }
+    // What the model has been calling directly stays direct (module doc), beyond MAX_DIRECT too.
+    for name in called.iter().filter(|n| !n.is_empty() && !SEARCH_TOOLS.contains(&n.as_str())) {
+        if name.starts_with("mcp__") {
+            let gone = name.strip_prefix(BRIDGE_PREFIX).is_some_and(|tool| !bridge_tools.iter().any(|t| t == tool));
+            let entry = format!("!{name}");
+            if !gone && !defer.contains(&entry) {
+                defer.push(entry);
+            }
+        } else {
+            defer.retain(|d| d != name);
+        }
     }
     Diet { kind: kind.to_string(), defer, compact_skills: plan.compact_skills.iter().map(|c| c.to_string()).collect() }
 }
@@ -393,6 +418,40 @@ pub fn reroute(config: &Config, agent: &AgentConfig, name: &str, arguments: &cra
     found
 }
 
+/// The tools the model called directly (not through Hermes' `tool_call`) in the conversations of `state_db` (a
+/// profile's Hermes sessions) since `since` (Unix time), most called first. Empty when the store can't be read.
+pub fn called_directly(state_db: &Path, since: f64) -> Vec<String> {
+    if !state_db.is_file() {
+        return Vec::new();
+    }
+    let read = || -> rusqlite::Result<Vec<String>> {
+        let conn = rusqlite::Connection::open_with_flags(
+            state_db,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(std::time::Duration::from_millis(300))?;
+        let mut stmt = conn.prepare(
+            "SELECT tool_calls FROM messages WHERE role = 'assistant' AND tool_calls IS NOT NULL AND timestamp >= ?1 \
+             ORDER BY id DESC LIMIT 5000",
+        )?;
+        let rows = stmt.query_map([since], |row| row.get::<_, String>(0))?;
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for raw in rows.flatten() {
+            let Ok(Value::Array(calls)) = serde_json::from_str::<Value>(&raw) else { continue };
+            for call in calls {
+                let Some(name) = call.pointer("/function/name").and_then(Value::as_str) else { continue };
+                match counts.iter_mut().find(|(n, _)| n == name) {
+                    Some((_, count)) => *count += 1,
+                    None => counts.push((name.to_string(), 1)),
+                }
+            }
+        }
+        counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        Ok(counts.into_iter().map(|(name, _)| name).collect())
+    };
+    read().unwrap_or_default()
+}
+
 /// Whether `agent` holds an item of the vault Hermes fills from (a card is paid through the bridge instead).
 pub fn holds_vault_item(config: &Config, agent: &AgentConfig) -> bool {
     let vault = crate::vault::Vault::new(&crate::py::join(&config.data_dir(), "vault"));
@@ -413,7 +472,8 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
         .filter_map(|t| t.get("name").and_then(Value::as_str).map(str::to_string))
         .collect();
     let writes_skills = !crate::own_skills::listing(&folder).is_empty();
-    Some(diet(&kind, &tools, holds_vault_item(config, agent), writes_skills))
+    let called = called_directly(&folder.join("state.db"), crate::py::time_time() - CALLED_DAYS * 86_400.0);
+    Some(diet(&kind, &tools, holds_vault_item(config, agent), writes_skills, &called))
 }
 
 /// `parent[key]`, made a dict when missing or not one.
@@ -520,7 +580,7 @@ mod tests {
     #[test]
     fn deferred_not_removed_and_bridge_tools_out_of_the_search() {
         let tools = names(&["notebook_search", "calendar_list", "create_podcast", "weather"]);
-        let d = diet("daily", &tools, false, false);
+        let d = diet("daily", &tools, false, false, &[]);
         assert_eq!(d.defer[0], MARK);
         for name in HERMES_DEFAULT_DEFERRED.iter().chain(ALWAYS_DEFERRED.iter()).chain(VAULT_TOOLS.iter()) {
             assert!(d.defer.contains(&name.to_string()), "{name}");
@@ -534,8 +594,53 @@ mod tests {
         // a tool it doesn't have, or one its kind doesn't use much, stays behind the search
         assert!(!d.defer.iter().any(|n| n.ends_with("reminders_add") || n.ends_with("create_podcast")));
         // an agent holding a vault item, or writing skills, keeps those tools
-        let d = diet("daily", &tools, true, true);
+        let d = diet("daily", &tools, true, true, &[]);
         assert!(!d.defer.iter().any(|n| n.starts_with("browser_vault") || n == "skill_manage"));
+    }
+
+    #[test]
+    fn tools_the_model_has_been_calling_stay_direct() {
+        // Wellness, 2026-10-27: its history called a tool directly that its kind's plan leaves behind the search.
+        let tools = names(&["health", "notebook_read", "mail_search"]);
+        let called = names(&[
+            "mcp__bipagents__notebook_read",
+            "mcp__bipagents__gone_tool",
+            "mcp__stealth__navigate",
+            "execute_code",
+            "tool_call",
+        ]);
+        let d = diet("wellness", &tools, false, false, &called);
+        assert!(d.defer.contains(&"!mcp__bipagents__notebook_read".to_string()));
+        assert!(d.defer.contains(&"!mcp__stealth__navigate".to_string()));
+        assert!(!d.defer.contains(&"execute_code".to_string()), "a core tool it calls is not deferred");
+        assert!(!d.defer.iter().any(|n| n.contains("gone_tool") || n == "!tool_call"));
+        assert!(d.defer.contains(&"!mcp__bipagents__health".to_string()));
+        assert!(!d.defer.iter().any(|n| n.ends_with("mail_search")), "not called, not in the plan: searched");
+    }
+
+    #[test]
+    fn called_directly_reads_the_profiles_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, \
+             tool_calls TEXT, timestamp REAL);",
+        )
+        .unwrap();
+        let call = |name: &str| format!(r#"[{{"id":"c","type":"function","function":{{"name":"{name}","arguments":"{{}}"}}}}]"#);
+        for (name, ts) in [("mcp__bipagents__health", 100.0), ("mcp__bipagents__health", 101.0), ("weather", 102.0), ("old", 1.0)] {
+            conn.execute(
+                "INSERT INTO messages (session_id, role, tool_calls, timestamp) VALUES ('s', 'assistant', ?1, ?2)",
+                rusqlite::params![call(name), ts],
+            )
+            .unwrap();
+        }
+        conn.execute("INSERT INTO messages (session_id, role, tool_calls, timestamp) VALUES ('s', 'assistant', 'oops', 103)", [])
+            .unwrap();
+        drop(conn);
+        assert_eq!(called_directly(&path, 50.0), names(&["mcp__bipagents__health", "weather"]));
+        assert!(called_directly(&dir.path().join("none.db"), 0.0).is_empty());
     }
 
     #[test]
@@ -570,14 +675,14 @@ mod tests {
     #[test]
     fn at_most_eight_bridge_tools_direct() {
         let all: Vec<String> = kind_diet("daily").direct.iter().map(|s| s.to_string()).collect();
-        let d = diet("daily", &all, false, false);
+        let d = diet("daily", &all, false, false, &[]);
         let expected = if DIRECT_BRIDGE_TOOLS { MAX_DIRECT } else { 0 };
         assert_eq!(d.defer.iter().filter(|n| n.starts_with("!mcp__")).count(), expected);
     }
 
     #[test]
     fn written_once_and_a_persons_own_list_kept() {
-        let d = diet("wellness", &names(&["health"]), false, false);
+        let d = diet("wellness", &names(&["health"]), false, false, &[]);
         let data = pyyaml::load("model:\n  default: x\nmcp_servers:\n  stealth:\n    url: http://a\n").unwrap();
         let changed = with_diet(&data, &d).expect("changed");
         assert_eq!(

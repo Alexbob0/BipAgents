@@ -40,6 +40,7 @@ pub mod approval_text;
 pub mod approvals_log;
 pub mod credit;
 pub mod cronwatch;
+pub mod no_reply;
 pub mod fcm;
 pub mod media;
 pub mod ntfy;

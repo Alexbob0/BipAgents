@@ -914,6 +914,7 @@ impl RunHub {
         let mut inner = lock(&self.inner);
         let mut st = lock(&sub.state);
         let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
+        let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
         append_to_backlog(&mut st.backlog, &event);
         st.send_all(Some(&event));
         let kind = event.r#type.as_str();
@@ -1323,6 +1324,29 @@ touche « Démarrer » pour reprendre."
         SSEEvent::new(event.r#type, data, raw)
     }
 
+    /// A run that ended on Hermes' own « ⚠️ No reply: … /model » explanation ends on our plain line instead
+    /// (no_reply.rs), marked `bip_no_reply` for the apps.
+    fn no_reply_in_plain_words(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+        if !as_str(event.data.get("output")).is_some_and(|o| crate::no_reply::is_hermes_no_reply(&o)) {
+            return event;
+        }
+        let lang = match &self.config {
+            Some(shared) => {
+                let config = shared.get();
+                let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
+                crate::handback::language_of(&config, &agent)
+            }
+            None => "en".to_string(),
+        };
+        let name = if sub.agent.display_name.trim().is_empty() { &sub.agent.name } else { &sub.agent.display_name };
+        tracing::warn!(agent = %sub.agent.name, run_id = %sub.run_id, "turn ended without an answer: plain line shown");
+        let mut data = event.data;
+        data.insert("output".into(), json!(crate::no_reply::plain(name, &lang)));
+        data.insert("bip_no_reply".into(), json!(true));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
     fn on_approval(&self, inner: &mut HubInner, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
         let data = &event.data;
         let request_id = as_str(data.get("request_id"));
@@ -1503,6 +1527,30 @@ mod tests {
         hub.dispatch(&lone, event("tool.started", json!({"tool": "browser_navigate"})));
         hub.dispatch(&lone, event("run.completed", json!({})));
         assert!(!root.join("lea").exists());
+    }
+
+    #[tokio::test]
+    async fn a_turn_without_an_answer_ends_on_a_plain_line() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "wellness".into(), display_name: "Wellness".into(), ..Default::default() };
+        let sub = Arc::new(RunSubscription::new(agent, "run_1"));
+        lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+        let event = |data: Value| SSEEvent::new("run.completed", data.as_object().cloned().unwrap(), "{}");
+        hub.dispatch(
+            &sub,
+            event(json!({"output": "⚠️ No reply: dgx-spark didn't produce a reply this time, even after retries. \
+                                    Send `continue` to try again, or switch models with /model."})),
+        );
+        let ended = lock(&sub.state).backlog.back().cloned().unwrap();
+        assert_eq!(ended.data["output"], json!("Wellness couldn't answer this time. Try again, or write “continue”."));
+        assert_eq!(ended.data["bip_no_reply"], json!(true));
+        assert!(!ended.raw.contains("/model"));
+        // a real answer is left alone
+        let sub = Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_2"));
+        hub.dispatch(&sub, event(json!({"output": "⚠️ Il va pleuvoir."})));
+        let ended = lock(&sub.state).backlog.back().cloned().unwrap();
+        assert_eq!(ended.data["output"], json!("⚠️ Il va pleuvoir."));
+        assert!(!ended.data.contains_key("bip_no_reply"));
     }
 
     #[test]
