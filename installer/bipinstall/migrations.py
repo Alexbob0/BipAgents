@@ -207,6 +207,55 @@ def app_identifier(runner: hermes.Runner, home: Path) -> str:
     return "notifications now go to the app com.kerfystudio.bipagents (install it from TestFlight)"
 
 
+def bridge_stop_timeout(runner: hermes.Runner, home: Path) -> str:
+    """The bridge's service stops within 15 s (2026-10-27): systemd waited 90 s for a bridge that hung on its way out,
+    at every update and move. The bridge now exits within about 5 s itself; its unit (or plist) gets the short stop
+    timeout a fresh install writes (stack.BRIDGE_STOP_SECONDS) as the backstop. systemd reads it again now; launchd at
+    the bridge's next load (its own default is already 20 s)."""
+    import sys
+    from .stack import BRIDGE_STOP_SECONDS
+    if sys.platform == "darwin":
+        plists = [p for p in sorted((home / "Library" / "LaunchAgents").glob("*.plist"))
+                  if "bipbridge" in p.read_text(errors="ignore")]
+        if not plists:
+            return "no bridge service here: its stop timeout left as it is"
+        plist = plists[0]
+        text = plist.read_text(errors="ignore")
+        if "<key>ExitTimeOut</key>" in text:
+            return "the bridge's service already has its stop timeout"
+        line = f"\n  <key>ExitTimeOut</key><integer>{BRIDGE_STOP_SECONDS}</integer>"
+        changed = text
+        for after in (r"<key>ThrottleInterval</key>\s*<integer>\d+</integer>", r"<key>KeepAlive</key>\s*<\w+/>"):
+            changed = re.sub(f"({after})", lambda m: m.group(1) + line, text, count=1)
+            if changed != text:
+                break
+        if changed == text:
+            return "the bridge's plist has a layout of its own: its stop timeout left as it is"
+        runner.log.append(f"write {plist}")
+        if not runner.dry:
+            plist.write_text(changed)
+        return f"the bridge's service stops within {BRIDGE_STOP_SECONDS} s (from its next start)"
+    units = [u for u in sorted((home / ".config" / "systemd" / "user").glob("*.service"))
+             if re.search(r"^ExecStart=.*bipbridge", u.read_text(errors="ignore"), flags=re.M)]
+    if not units:
+        return "no bridge service here: its stop timeout left as it is"
+    unit = units[0]
+    text = unit.read_text(errors="ignore")
+    if re.search(r"^TimeoutStopSec=", text, flags=re.M):
+        return "the bridge's service already has its stop timeout"
+    changed = re.sub(r"^(\[Service\]\n)", rf"\g<1>TimeoutStopSec={BRIDGE_STOP_SECONDS}\n", text, count=1, flags=re.M)
+    if changed == text:
+        return "the bridge's unit has no [Service] section: its stop timeout left as it is"
+    runner.log.append(f"write {unit}")
+    if not runner.dry:
+        unit.write_text(changed)
+    if not os.environ.get("XDG_RUNTIME_DIR"):   # from `sudo -u`: the account's own systemd is still reachable
+        from .account import session_env
+        os.environ.update(session_env(os.getuid()))
+    runner.run(["systemctl", "--user", "daemon-reload"], check=False)
+    return f"the bridge's service stops within {BRIDGE_STOP_SECONDS} s (systemd waited up to 90 s)"
+
+
 def rust_bridge(runner: hermes.Runner, home: Path) -> str:
     """The bridge in Rust only (2026-10-21): the Python bridge left the code with this update, so a service still
     running it is put on this version's binaries (rustbridge.py), restarted, and the agents' browser tools moved to
@@ -535,6 +584,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-26-voices-everywhere", voices_everywhere),
     ("2026-10-26-provider-routing", provider_routing),
     ("2026-10-26-app-identifier", app_identifier),
+    ("2026-10-27-bridge-stop-timeout", bridge_stop_timeout),
 ]
 
 

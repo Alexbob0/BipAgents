@@ -154,9 +154,17 @@ def bridge_toml(inst: Install) -> str:
     return "\n".join(lines) + "\n"
 
 
-def launchd_plist(label: str, program: List[str], workdir: Path, env: Dict[str, str], log: Path) -> str:
+# Seconds the bridge gets to stop before systemd / launchd kill it (systemd waits 90 s by default). The bridge itself
+# exits within about 5 s of SIGTERM (bridge-rs main_cli.rs STOP_HARD): this is only the backstop, so an update or a
+# move never leaves the person's app without its server for a minute and a half (seen 2026-10-26).
+BRIDGE_STOP_SECONDS = 15
+
+
+def launchd_plist(label: str, program: List[str], workdir: Path, env: Dict[str, str], log: Path,
+                  stop_seconds: Optional[int] = None) -> str:
     args = "".join(f"<string>{escape(a)}</string>" for a in program)
     envs = "".join(f"<key>{escape(k)}</key><string>{escape(v)}</string>" for k, v in env.items())
+    exit_timeout = f"\n  <key>ExitTimeOut</key><integer>{stop_seconds}</integer>" if stop_seconds else ""
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -167,7 +175,7 @@ def launchd_plist(label: str, program: List[str], workdir: Path, env: Dict[str, 
   <key>EnvironmentVariables</key><dict>{envs}</dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ThrottleInterval</key><integer>10</integer>{exit_timeout}
   <key>StandardOutPath</key><string>{escape(str(log))}</string>
   <key>StandardErrorPath</key><string>{escape(str(log))}</string>
 </dict>
@@ -175,8 +183,10 @@ def launchd_plist(label: str, program: List[str], workdir: Path, env: Dict[str, 
 """
 
 
-def systemd_unit(description: str, program: List[str], workdir: Path, env: Dict[str, str]) -> str:
+def systemd_unit(description: str, program: List[str], workdir: Path, env: Dict[str, str],
+                 stop_seconds: Optional[int] = None) -> str:
     environment = "".join(f"Environment={k}={v}\n" for k, v in env.items())
+    stop = f"TimeoutStopSec={stop_seconds}\n" if stop_seconds else ""
     return f"""[Unit]
 Description={description}
 After=network-online.target
@@ -188,7 +198,7 @@ WorkingDirectory={workdir}
 {environment}ExecStart={" ".join(program)}
 Restart=on-failure
 RestartSec=5
-UMask=0027
+{stop}UMask=0027
 NoNewPrivileges=true
 
 [Install]
@@ -205,9 +215,11 @@ def bridge_service(inst: Install, system: str) -> tuple[str, Path, str]:
     if system == "macos":
         path = inst.home / "Library" / "LaunchAgents" / "io.github.bipagents.bridge.plist"
         return "io.github.bipagents.bridge", path, launchd_plist(
-            "io.github.bipagents.bridge", program, inst.repo / "bridge", env, inst.home / "Library" / "Logs" / "bipagents-bridge.log")
+            "io.github.bipagents.bridge", program, inst.repo / "bridge", env, inst.home / "Library" / "Logs" / "bipagents-bridge.log",
+            stop_seconds=BRIDGE_STOP_SECONDS)
     path = inst.home / ".config" / "systemd" / "user" / "bipagents-bridge.service"
-    return "bipagents-bridge", path, systemd_unit("BipAgents bridge", program, inst.repo / "bridge", env)
+    return "bipagents-bridge", path, systemd_unit("BipAgents bridge", program, inst.repo / "bridge", env,
+                                                  stop_seconds=BRIDGE_STOP_SECONDS)
 
 
 def zram_commands(package_manager: str) -> List[str]:

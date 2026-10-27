@@ -1080,6 +1080,46 @@ def test_the_cloud_file_is_checked(tmp_path):
     assert json.loads((tmp_path / "p.json").read_text()) == {"step": 2, "total": 5, "label": "Voices", "done": False}
 
 
+def test_the_bridge_s_service_stops_within_15_seconds(tmp_path, monkeypatch):
+    """2026-10-27: systemd waited its 90 s for a bridge hanging on its way out (every update, every move): a fresh
+    install's unit and plist say 15 s, and an update adds it to the units installed before (once)."""
+    import sys
+    from bipinstall import migrations, stack
+    assert "2026-10-27-bridge-stop-timeout" == migrations.MIGRATIONS[-1][0]
+    inst = Install(repo=tmp_path, home=tmp_path, ports=Ports(8640), tailnet_name=None, lan_address=None)
+    _, _, unit = stack.bridge_service(inst, "linux")
+    assert "\nTimeoutStopSec=15\n" in unit
+    _, _, plist = stack.bridge_service(inst, "macos")
+    assert "<key>ExitTimeOut</key><integer>15</integer>" in plist
+    assert "TimeoutStopSec" not in stack.systemd_unit("x", ["/bin/x"], tmp_path, {})   # the other services as before
+    # an install from before: its unit gets the line, systemd reads it again
+    folder = tmp_path / ".config" / "systemd" / "user"
+    folder.mkdir(parents=True)
+    old = unit.replace("TimeoutStopSec=15\n", "")
+    (folder / "bipagents-bridge.service").write_text(old)
+    (folder / "bipagents-pocket.service").write_text(stack.systemd_unit("p", ["/bin/pocket"], tmp_path, {}))
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append(list(args)) or ""
+    assert "15 s" in migrations.bridge_stop_timeout(runner, tmp_path)
+    text = (folder / "bipagents-bridge.service").read_text()
+    assert text.count("TimeoutStopSec=15") == 1 and text.index("[Service]") < text.index("TimeoutStopSec")
+    assert "TimeoutStopSec" not in (folder / "bipagents-pocket.service").read_text()
+    assert ran == [["systemctl", "--user", "daemon-reload"]]
+    assert "already" in migrations.bridge_stop_timeout(runner, tmp_path)
+    # launchd: the plist gets ExitTimeOut
+    monkeypatch.setattr(sys, "platform", "darwin")
+    agents = tmp_path / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    (agents / "io.github.bipagents.bridge.plist").write_text(plist.replace("\n  <key>ExitTimeOut</key><integer>15</integer>", ""))
+    assert "15 s" in migrations.bridge_stop_timeout(runner, tmp_path)
+    assert (agents / "io.github.bipagents.bridge.plist").read_text() == plist
+    assert "already" in migrations.bridge_stop_timeout(runner, tmp_path)
+
+
 def test_the_bridge_s_notifications_follow_the_new_app_identifier(tmp_path, monkeypatch):
     """2026-10-26: the app became com.kerfystudio.bipagents; a bridge pushing to Apple itself names it from the
     update on (and restarts); an own build's identifier stays."""
