@@ -16,6 +16,14 @@ given BipAgents version (the guichet's update waves, or their way back), which i
 pair again with a new secret (its person recovered their account without any of their devices). The other places
 are not touched, and nothing is ever read or sent back: only "done".
 
+With --bootstrap, run once by the server's first-boot script (the guichet's guichet-rs/src/bootstrap.rs), before any
+place is installed: the script, which the provider keeps and serves to anyone on the server through its metadata
+service, holds no secret, only a one-time token. With it root fetches from the guichet, over HTTPS and from this
+server's own address, each place's setup (its pairing secret, its backups' token, its key service grant) and the seat
+agent's own token; the guichet then forgets the one-time token (pool.rs: bootstrap). The setups go to
+/etc/bipagents/cloud.json (place 1) and cloud<n>.json (root's, 0600), which add-seat.sh and the installer read then
+shred. A place installed again later gets its setup in a signed order (above), never through the first-boot script.
+
 With --rebooting, run by bipagents-reboot-notice.service as the server shuts down (the night's reboot after a kernel
 update, user-data.yaml), it only tells the guichet the server is rebooting when a reboot is under way: the guichet
 then waits a quarter of an hour before taking its silence, or its places not answering yet, for an outage. The beat
@@ -28,6 +36,7 @@ on a server that has none.
 ASCII only, like user-data.yaml and add-seat.sh (installer/tests/test_cloud_init.py checks it).
 """
 import base64
+import contextlib
 import json
 import os
 import pwd
@@ -37,6 +46,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 CONF = "/etc/bipagents/guichet.json"
@@ -239,6 +249,107 @@ def reopen(number, pair, home=None):
         json.dump({"pair": pair, "reopen": True}, fh)
     os.chown(path + ".tmp", entry.pw_uid, entry.pw_gid)
     os.replace(path + ".tmp", path)
+
+
+@contextlib.contextmanager
+def ipv4_only():
+    """Calls made in IPv4 inside it: the guichet accepts the one-time token only from the server's own IPv4 address
+    (the one its provider gave it), and a server with IPv6 would otherwise call from that."""
+    real = socket.getaddrinfo
+
+    def only_v4(host, port, family=0, type=0, proto=0, flags=0):
+        return real(host, port, socket.AF_INET, type, proto, flags)
+    socket.getaddrinfo = only_v4
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = real
+
+
+def setup_path(number, folder="/etc/bipagents"):
+    """Where a place's setup waits for its install: place 1's for user-data.yaml's own install, the others' for
+    add-seat.sh."""
+    return os.path.join(folder, "cloud.json" if number == 1 else "cloud%d.json" % number)
+
+
+def good_setup(number, setup):
+    """A place's setup as the guichet gives it: a pairing secret and the door of its number."""
+    if not isinstance(setup, dict) or setup.get("v") != 1:
+        return False
+    pair = setup.get("pair")
+    if not (isinstance(pair, str) and 40 <= len(pair) <= 64 and all(c in PAIR_CHARS for c in pair)):
+        return False
+    try:
+        return int(setup.get("port") or 443) == 442 + number
+    except (TypeError, ValueError):
+        return False
+
+
+def write_private(path, value):
+    """`value` as JSON at `path`, root's only (0600), replaced in one step."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump(value, fh)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def bootstrap(conf_path=CONF, folder="/etc/bipagents", tries=20, wait=15, caller=None):
+    """--bootstrap: the one-time token of the first-boot script exchanged at the guichet for each place's setup and the
+    seat agent's own token (see above). 0 when done (or done before), 1 when the guichet refused or never answered
+    (the script stops there; the guichet installs the server again once its install time is over)."""
+    with open(conf_path) as fh:
+        conf = json.load(fh)
+    once = conf.get("bootstrap")
+    if not once:
+        return 0 if conf.get("token") else 1
+    caller = caller or call
+    answer = None
+    for attempt in range(tries):
+        try:
+            with ipv4_only():
+                answer = caller(dict(conf, token=once), "POST", "/v1/server/bootstrap")
+            break
+        except urllib.error.HTTPError as exc:
+            # 401 too: the guichet may not have recorded this install yet (its round still going), so asked again;
+            # a token used before, too late or not from this server stays refused all along.
+            log("bootstrap: the guichet answered %d, again in %d s" % (exc.code, wait))
+        except (OSError, ValueError) as exc:
+            log("bootstrap: guichet unreachable (%s), again in %d s" % (exc, wait))
+        if attempt + 1 < tries:
+            time.sleep(wait)
+    if not isinstance(answer, dict):
+        return 1
+    token, seats = answer.get("token"), answer.get("seats")
+    try:
+        numbers = sorted(int(n) for n in seats) if isinstance(seats, dict) else []
+    except (TypeError, ValueError):
+        numbers = []
+    if answer.get("server") != conf.get("server") or not isinstance(token, str) or len(token) < 32 or not numbers \
+            or numbers != list(range(1, len(numbers) + 1)) or len(numbers) > MAX_SEATS \
+            or not all(good_setup(n, seats[str(n)]) for n in numbers):
+        log("bootstrap: the guichet's answer is not this server's places")
+        return 1
+    for number in numbers:
+        write_private(setup_path(number, folder), seats[str(number)])
+    write_private(conf_path, {"url": conf["url"], "token": token, "server": conf["server"]})
+    log("bootstrap: %d places' setups and the seat agent's token fetched" % len(numbers))
+    return 0
+
+
+METADATA_BLOCK = "/etc/bipagents/metadata-block.nft"
+
+
+def metadata_block(rules=METADATA_BLOCK, runner=None):
+    """The metadata service for root only (user-data.yaml: bipagents-metadata-block.service), loaded again when its
+    table went (a flushed ruleset)."""
+    if not os.path.exists(rules):
+        return
+    runner = runner or quietly
+    if runner("nft", "list", "table", "inet", "bipagents_metadata") != 0:
+        log("metadata block %s" % ("loaded again" if runner("nft", "-f", rules) == 0 else "not loaded"))
 
 
 def call(conf, method, path, body=None):
@@ -904,10 +1015,16 @@ def main(argv=()):
         except (OSError, subprocess.SubprocessError) as exc:
             log("shared Hermes and images for %s not ready: %s" % (commit[:12], exc))
         return 0
+    if "--bootstrap" in argv:   # the first-boot script, before any place is installed
+        return bootstrap()
     with open(CONF) as fh:
         conf = json.load(fh)
+    if not conf.get("token"):   # its first boot never got as far as its own token: nothing to tell the guichet
+        log("no token for the guichet yet (first boot not finished)")
+        return 0
     if "--rebooting" in argv:
         return rebooting(conf)
+    metadata_block()
     server = vitals()
     memory_settled(server)
     try:

@@ -541,3 +541,104 @@ def test_a_new_place_gets_the_shared_hermes_and_images_of_its_version_first(tmp_
     text = (ROOT / "installer" / "cloud" / "add-seat.sh").read_text(encoding="utf-8")
     prepare = text.index('seat-agent.py" --prepare "${version:-main}"')
     assert text.index("--ceiling") < prepare < text.index("install.sh |")
+
+
+def test_only_root_may_ask_the_provider_s_metadata_service():
+    """The metadata service serves the first-boot script to anyone on the server for its whole life: the places'
+    accounts (uid 1000 and up), their containers (rootless: sent as their uid) and root's containers (forwarded) are
+    refused, from the first boot on, before any place runs anything; root keeps it (cloud-init, the provider's agents)."""
+    text = TEMPLATE.read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    assert "nftables" in data["packages"]
+    files = {f["path"]: f["content"] for f in data["write_files"]}
+    rules = files["/etc/bipagents/metadata-block.nft"]
+    assert rules.startswith("table inet bipagents_metadata\ndelete table inet bipagents_metadata\n")   # reloadable
+    assert "meta skuid >= 1000 ip daddr 169.254.0.0/16 reject" in rules
+    assert "meta skuid >= 1000 ip6 daddr { fd00:ec2::254, fe80::a9fe:a9fe } reject" in rules
+    assert "hook forward" in rules and "ip daddr 169.254.0.0/16 drop" in rules
+    assert "flush ruleset" not in rules   # ufw's own tables stay
+    unit = files["/etc/systemd/system/bipagents-metadata-block.service"]
+    assert "ExecStart=/usr/sbin/nft -f /etc/bipagents/metadata-block.nft" in unit
+    assert "Before=network-pre.target" in unit and "WantedBy=sysinit.target" in unit
+    commands = data["runcmd"]
+    block = commands.index("systemctl enable --now bipagents-metadata-block.service")
+    assert commands.index("systemctl daemon-reload") < block
+    assert block < commands.index("loginctl enable-linger bip")
+    assert block < next(i for i, c in enumerate(commands) if "/install.sh |" in c)
+
+
+def test_the_first_boot_fetches_the_places_setups_once_with_a_one_time_token(tmp_path):
+    """seat-agent.py --bootstrap: the script's one-time token, in IPv4 (the guichet checks the server's address), for
+    each place's setup (root's, 0600) and the seat agent's own token, which replaces the one-time one."""
+    import os
+    import socket
+    import urllib.error
+    agent = _seat_agent()
+    conf = tmp_path / "guichet.json"
+    conf.write_text(json.dumps({"url": "https://g.test", "server": "vps-1", "bootstrap": "once" * 11}))
+    pair = lambda c: c * 43
+    answer = {"server": "vps-1", "token": "t" * 43, "seats": {
+        "1": {"v": 1, "pair": pair("a"), "language": "fr", "profile": "solo",
+              "backup": {"url": "https://g.test/v1/backup/", "token": "b" * 43}},
+        "2": {"v": 1, "pair": pair("c"), "language": "fr", "profile": "solo", "port": 444}}}
+    calls = []
+    real = socket.getaddrinfo
+
+    def caller(c, method, path, body=None):
+        calls.append((c["token"], method, path, socket.getaddrinfo is not real))
+        return answer
+    assert agent.bootstrap(str(conf), str(tmp_path), caller=caller) == 0
+    assert calls == [("once" * 11, "POST", "/v1/server/bootstrap", True)] and socket.getaddrinfo is real
+    first, second = tmp_path / "cloud.json", tmp_path / "cloud2.json"
+    assert json.loads(first.read_text()) == answer["seats"]["1"] and json.loads(second.read_text())["port"] == 444
+    assert all(os.stat(p).st_mode & 0o777 == 0o600 for p in (first, second, conf))
+    assert json.loads(conf.read_text()) == {"url": "https://g.test", "token": "t" * 43, "server": "vps-1"}
+    # Done before: nothing asked again.
+    assert agent.bootstrap(str(conf), str(tmp_path), caller=caller) == 0 and len(calls) == 1
+    # Refused (used before, too late, another address, or not recorded yet): asked again, then given up, nothing
+    # written.
+    folder = tmp_path / "refused"
+    conf.write_text(json.dumps({"url": "https://g.test", "server": "vps-1", "bootstrap": "x" * 43}))
+
+    def refusing(*a, **k):
+        calls.append("refused")
+        raise urllib.error.HTTPError("https://g.test/v1/server/bootstrap", 401, "unknown server", {}, None)
+    assert agent.bootstrap(str(conf), str(folder), tries=3, wait=0, caller=refusing) == 1
+    assert calls.count("refused") == 3 and not folder.exists() and "bootstrap" in json.loads(conf.read_text())
+    # Unreachable: tried again, then given up.
+    tries = []
+
+    def down(*a, **k):
+        tries.append(1)
+        raise OSError("no route")
+    assert agent.bootstrap(str(conf), str(folder), tries=3, wait=0, caller=down) == 1 and len(tries) == 3
+    # An answer that isn't this server's places: nothing written.
+    for wrong in ({"server": "vps-2"}, {"token": "short"}, {"seats": {}}, {"seats": {"2": answer["seats"]["2"]}},
+                  {"seats": {"1": dict(answer["seats"]["1"], port=444)}},
+                  {"seats": {"1": dict(answer["seats"]["1"], pair="a/b" * 15)}},
+                  {"seats": {"1": answer["seats"]["1"], "2": dict(answer["seats"]["2"], port=445)}}):
+        assert agent.bootstrap(str(conf), str(folder), caller=lambda *a, **k: dict(answer, **wrong)) == 1
+        assert not folder.exists()
+
+
+def test_the_seat_agent_waits_for_its_token_and_keeps_the_metadata_block(tmp_path, monkeypatch):
+    agent = _seat_agent()
+    conf = tmp_path / "guichet.json"
+    conf.write_text(json.dumps({"url": "https://g.test", "server": "vps-1", "bootstrap": "o" * 43}))
+    monkeypatch.setattr(agent, "CONF", str(conf))
+    monkeypatch.setattr(agent, "call", lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
+    assert agent.main([]) == 0   # first boot not finished: no beat with the one-time token
+    rules = tmp_path / "block.nft"
+    ran = []
+
+    def runner(*args):
+        ran.append(args)
+        return 1 if args[:2] == ("nft", "list") else 0
+    agent.metadata_block(str(rules), runner)
+    assert ran == []   # a server installed before it: nothing to load
+    rules.write_text("table inet bipagents_metadata\n")
+    agent.metadata_block(str(rules), runner)
+    assert ran == [("nft", "list", "table", "inet", "bipagents_metadata"), ("nft", "-f", str(rules))]
+    ran.clear()
+    agent.metadata_block(str(rules), lambda *args: ran.append(args) or 0)
+    assert ran == [("nft", "list", "table", "inet", "bipagents_metadata")]   # there: left as it is
