@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from . import hermes, ui, volumes
+from . import bridgeconf, hermes, ui, volumes
 from .sealed import SealedError, SealedReader, SealedWriter, new_passphrase
 
 REPO = Path(__file__).resolve().parents[2]
@@ -131,6 +131,9 @@ class Inventory:
         name = path.name
         if name in RUNTIME_FILES or name.endswith(".sock") or name.endswith(SIDECARS):
             return True
+        if name.startswith("bridge.toml."):
+            return True   # its lock, its last good copy and broken ones (bridgeconf): this machine's, not the place's
+
         for home in self.hermes_homes():
             parts = _relative(path, home)
             if parts is None:
@@ -531,22 +534,32 @@ def settings_files(roots: List[Path]) -> Iterator[Path]:
                         continue
 
 
-def rewrite(paths: Iterator[Path], found: List[Tuple[re.Pattern, str]]) -> int:
+def rewrite(paths: Iterator[Path], *passes: List[Tuple[re.Pattern, str]]) -> int:
+    """Each file with every pass's replacements (one after the other: ports first to marks, then to the new ones),
+    written once."""
     changed = 0
     for path in paths:
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        new = text
-        for pattern, value in found:
-            new = pattern.sub(value, new)
+        if path.name == "bridge.toml":   # read again and written under the bridge's lock, checked (bridgeconf)
+            changed += bridgeconf.update(path, lambda now: _substituted(now, passes))
+            continue
+        new = _substituted(text, passes)
         if new != text:
             mode = path.stat().st_mode & 0o777
             path.write_text(new, encoding="utf-8")
             os.chmod(path, mode)
             changed += 1
     return changed
+
+
+def _substituted(text: str, passes) -> str:
+    for found in passes:
+        for pattern, value in found:
+            text = pattern.sub(value, text)
+    return text
 
 
 def set_in_section(text: str, section: str, key: str, value: Optional[str]) -> str:
@@ -571,7 +584,10 @@ def set_in_section(text: str, section: str, key: str, value: Optional[str]) -> s
 
 def adjust_bridge(config: Path, info: Dict[str, Any], target: Target, old_toml: Dict[str, Any]) -> None:
     """What the text rewrite cannot know: this machine's local network, old file paths still in conversations."""
-    text = config.read_text(encoding="utf-8")
+    bridgeconf.update(config, lambda text: _adjusted(text, info, target, old_toml))
+
+
+def _adjusted(text: str, info: Dict[str, Any], target: Target, old_toml: Dict[str, Any]) -> str:
     if target.lan_address:
         text = set_in_section(text, "lan", "address", json.dumps(target.lan_address))
     else:   # a rented server: no door on its network (it would be on the Internet)
@@ -586,8 +602,7 @@ def adjust_bridge(config: Path, info: Dict[str, Any], target: Target, old_toml: 
                               f"{json.dumps(new_value)}", text, count=1)
     if info.get("isolated") and not target.sandbox:
         text = re.sub(r"(?m)^(\s*(?:isolated|sandboxed)\s*=\s*)true\s*$", r"\g<1>false", text)
-    config.write_text(text, encoding="utf-8")
-    os.chmod(config, 0o600)
+    return text
 
 
 def set_env(path: Path, key: str, value: str) -> None:

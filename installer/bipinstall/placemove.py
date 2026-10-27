@@ -53,6 +53,7 @@ def rules(inv: moving.Inventory, root: Path) -> List[str]:
     """rsync filter rules for one root, the same choices as `Inventory.skipped` (backups, exports) but for the
     SQLite sidecars: `-wal` and `-journal` go (the last copy is made with the place stopped), `-shm` doesn't."""
     found = [f"- {name}" for name in sorted(moving.RUNTIME_FILES)] + ["- *.sock", "- *-shm"]
+    found.append("- bridge.toml.*")   # the config's lock and copies (bridgeconf): each server keeps its own
     if not KEEP_SIDECARS:
         found += ["- *-wal", "- *-journal"]
 

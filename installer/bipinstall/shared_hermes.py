@@ -55,7 +55,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional
 
-from . import hermes
+from . import bridgeconf, hermes
 
 REPO = Path(__file__).resolve().parents[2]
 PATCHES = REPO / "hermes" / "patches"
@@ -370,23 +370,25 @@ def bridge_lines(hermes_home: Path) -> List[str]:
 
 def bridge_config(config: Path, hermes_home: Path) -> bool:
     """Those lines put in an existing bridge.toml's [hermes] table (once). Returns whether it changed."""
-    text = config.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    try:
-        start = lines.index("[hermes]")
-    except ValueError:
-        return False
-    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("[")), len(lines))
-    table = lines[start + 1:end]
-    kept = [line for line in table if line.split("=")[0].strip() not in ("python", "root")]
-    while kept and not kept[-1].strip():   # the blank line before the next table comes back below
-        kept.pop()
-    new = kept + bridge_lines(hermes_home) + ([""] if end < len(lines) else [])
-    if new == table:
-        return False
-    out = lines[:start + 1] + new + lines[end:]
-    config.write_text("\n".join(out) + "\n", encoding="utf-8")
-    return True
+    if not config.is_file():
+        raise FileNotFoundError(config)
+
+    def with_lines(text: str) -> str:
+        lines = text.splitlines()
+        try:
+            start = lines.index("[hermes]")
+        except ValueError:
+            return text
+        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("[")), len(lines))
+        table = lines[start + 1:end]
+        kept = [line for line in table if line.split("=")[0].strip() not in ("python", "root")]
+        while kept and not kept[-1].strip():   # the blank line before the next table comes back below
+            kept.pop()
+        new = kept + bridge_lines(hermes_home) + ([""] if end < len(lines) else [])
+        if new == table:
+            return text
+        return "\n".join(lines[:start + 1] + new + lines[end:]) + "\n"
+    return bridgeconf.update(config, with_lines)
 
 
 def own_copies(home: Path, hermes_home: Path, spaces: Iterable[Path] = ()) -> List[Path]:

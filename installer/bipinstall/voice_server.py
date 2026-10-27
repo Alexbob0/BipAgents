@@ -14,7 +14,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
 import httpx
 
-from . import hermes, models, ui
+from . import bridgeconf, hermes, models, ui
 
 # Where voice servers usually listen: audio.cpp (as BipAgents ran Drama 3), Kokoro-FastAPI, Kyutai's server.
 VOICE_PORTS = {8099: "audio.cpp", 8880: "Kokoro", 8097: "Kyutai"}
@@ -123,17 +123,19 @@ def connect(config_path: Path, lines: Sequence[str], runner: hermes.Runner) -> b
     earlier installer's `[drama]`)."""
     if not config_path.exists():
         return False
-    kept, skipping = [], False
-    for line in config_path.read_text(encoding="utf-8").splitlines():
-        header = line.strip()
-        if header.startswith("[") and header.endswith("]"):
-            skipping = header in ("[voice_server]", "[drama]")
-        if not skipping:
-            kept.append(line)
-    text = "\n".join(kept).rstrip("\n") + "\n\n" + "\n".join(lines) + "\n"
+
+    def with_server(text: str) -> str:
+        kept, skipping = [], False
+        for line in text.splitlines():
+            header = line.strip()
+            if header.startswith("[") and header.endswith("]"):
+                skipping = header in ("[voice_server]", "[drama]")
+            if not skipping:
+                kept.append(line)
+        return "\n".join(kept).rstrip("\n") + "\n\n" + "\n".join(lines) + "\n"
     runner.log.append(f"write [voice_server] in {config_path}")
     if not runner.dry:
-        config_path.write_text(text, encoding="utf-8")
+        bridgeconf.update(config_path, with_server)
     return True
 
 

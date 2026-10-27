@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from . import hermes, moving, ui
+from . import bridgeconf, hermes, moving, ui
 from .existing import profile_label, read_env, read_yaml
 from .sealed import SealedError
 
@@ -544,9 +544,8 @@ def bring_in(archive: Path, passphrase: str, runner: hermes.Runner, base: Option
         marks = {old: f"BIPAGENTSPORT{i}X" for i, old in enumerate(mapping)}
         roots = [scratch / name for name in info["roots"]]
         moving.rewrite(moving.settings_files(roots), moving.replacements(info, moving.Target(
-            home=base, repo=repo, tailnet_name=None, lan_address=None, ports=marks)))
-        moving.rewrite(moving.settings_files(roots), [(re.compile(re.escape(mark)), str(mapping[old]))
-                                                      for old, mark in marks.items()])
+            home=base, repo=repo, tailnet_name=None, lan_address=None, ports=marks)),
+            [(re.compile(re.escape(mark)), str(mapping[old])) for old, mark in marks.items()])
 
         # The place's agents out of the way; the export's in.
         aside.take(profiles)
@@ -583,10 +582,11 @@ def bring_in(archive: Path, passphrase: str, runner: hermes.Runner, base: Option
                 place_profile(folder, hub_yaml, hub_env)
             browser_ports = place.browsers_root / folder.name / "ports.json"
             browser_ports.unlink(missing_ok=True)   # picked again from the place's own ports
-        text = merged_config(place_text, scratch_config_text(scratch), keep, main, root, hub_local,
-                             (profiles / root / "uploads") if root else None, media)
-        config.write_text(text, encoding="utf-8")
-        os.chmod(config, 0o600)
+        imported_text = scratch_config_text(scratch)
+        # the export's agents in place of the place's (any may go), under the bridge's lock (bridgeconf)
+        bridgeconf.update(config, lambda now: merged_config(now, imported_text, keep, main, root, hub_local,
+                                                            (profiles / root / "uploads") if root else None, media),
+                          removing=bridgeconf.ANY)
 
         progress(base, 4)
         from . import migrations
@@ -602,9 +602,7 @@ def bring_in(archive: Path, passphrase: str, runner: hermes.Runner, base: Option
             runner.run(bridge + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge", check=False)
     except BaseException:
         aside.put_back()
-        if config.read_text(encoding="utf-8") != place_text:
-            config.write_text(place_text, encoding="utf-8")
-            os.chmod(config, 0o600)
+        bridgeconf.write(config, place_text, removing=bridgeconf.ANY)
         for how, name in gateway_units():
             if how == "systemd":
                 runner.run(["systemctl", "--user", "start", name], check=False)
