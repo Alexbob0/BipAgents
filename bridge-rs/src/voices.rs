@@ -42,10 +42,17 @@ pub fn relay_for(agent: Option<&AgentConfig>) -> Option<String> {
 /// `values` written in the `[header]` table of a TOML file (replaced where they are, else added at its end; the
 /// table is created when missing). None removes a key. Other lines stay as they are.
 pub fn set_section_keys(path: &str, header: &str, values: &[(String, Option<Value>)]) -> anyhow::Result<()> {
-    let _writer = crate::config::source_lock();
+    if !std::path::Path::new(path).exists() {
+        return Err(std::io::Error::from(std::io::ErrorKind::NotFound).into());
+    }
+    // read and written under the config's locks (config::update_source): never two rewrites at once
+    crate::config::update_source(path, |text| Ok(with_section_keys(text, header, values)))?;
+    Ok(())
+}
+
+fn with_section_keys(text: &str, header: &str, values: &[(String, Option<Value>)]) -> String {
     // Python's read_text translates \r\n and \r (universal newlines) before splitlines
-    let text = std::fs::read_to_string(path)?;
-    let mut lines = pystr::splitlines(&text);
+    let mut lines = pystr::splitlines(text);
     let title = format!("[{header}]");
     let start = match lines.iter().position(|line| pystr::strip(line) == title) {
         Some(i) => i,
@@ -84,8 +91,7 @@ pub fn set_section_keys(path: &str, header: &str, values: &[(String, Option<Valu
     out.extend(kept);
     out.extend_from_slice(&lines[end..]);
     let joined = out.join("\n");
-    crate::config::write_source(path, &format!("{}\n", joined.trim_end_matches('\n')))?;
-    Ok(())
+    format!("{}\n", joined.trim_end_matches('\n'))
 }
 
 fn toml_value(value: &Value) -> String {

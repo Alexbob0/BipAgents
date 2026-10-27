@@ -1252,7 +1252,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
     // « voice_server »: the person's own voice model (null: none; false: set up, down for now). « drama »: the same
     // for the apps that offered Drama 3's voices by name, only when that server is Drama 3.
     let drama = config.voice_server.as_ref().map(|v| v.model.starts_with("drama")).unwrap_or(false);
-    Ok(web::ok(json!({
+    let mut body = json!({
         "ok": true, "version": VERSION, "kyutai": kyutai_ok, "pocket": pocket_ok,
         "voice_server": server_ok, "drama": if drama { json!(server_ok) } else { Value::Null }, "ntfy": ntfy_ok,
         "apns": state.apns.is_some(), "push": state.push_mode,
@@ -1263,7 +1263,13 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
         "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search"],
-    })))
+    });
+    // The config was broken at start and its last good copy put back (config.rs): {at, broken}, for the app and the
+    // seat agent to tell.
+    if let Some(restored) = crate::config::restored() {
+        body["config_restored"] = restored;
+    }
+    Ok(web::ok(body))
 }
 
 /// A request that only asks whether a route matches its path (see `redirect_slashes`): answered before any handler.

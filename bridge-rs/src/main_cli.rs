@@ -261,10 +261,21 @@ pub fn main(argv: Vec<String>) -> i32 {
         }
     }
     setup_logging("info");
-    let config = match load_config(args.config.as_deref()) {
+    // Serving, a config that doesn't load is replaced by its last good copy (config::load_config_at_start).
+    let loaded = if args.command == "serve" {
+        crate::config::load_config_at_start(args.config.as_deref())
+    } else {
+        load_config(args.config.as_deref())
+    };
+    let config = match loaded {
         Ok(c) => c,
         Err(exc) => {
             eprintln!("config error: {exc}");
+            let path = args.config.as_deref().map(py::expand).unwrap_or_else(config_path);
+            let copies = crate::config::kept_copies(std::path::Path::new(&path));
+            if args.command != "serve" && !copies.is_empty() {
+                eprintln!("copies kept beside it: {} (`bipbridge serve` puts the last good one back)", copies.join(", "));
+            }
             return 2;
         }
     };

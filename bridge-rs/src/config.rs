@@ -10,6 +10,7 @@
 //! the running bridge holds it in a [`SharedConfig`].
 
 use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
@@ -802,30 +803,308 @@ impl SharedConfig {
     }
 }
 
-/// One writer at a time for the bridge's config file: two at once left it cut in two (aibox 2026-10-26: the app set
-/// every agent's voice at once; one rewrite read the file while another had just emptied it).
+// -- the config file on disk ----------------------------------------------------------------------
+//
+// Several programs change bridge.toml: this bridge (an agent made, moved, renamed or deleted, a voice picked…), its
+// command line (`browser add`, `adopt`, `space enable`) and the installer (migrations, family, moves, restores:
+// installer/bipinstall/bridgeconf.py). On 2026-10-26 (aibox) rewrites running at once broke it twice, the second
+// time leaving nothing but four agents' voices. Every writer now goes the same way ([`update_source`]):
+// - `flock` on `bridge.toml.lock` beside it, held from the read to the rename (other processes), [`source_lock`] in
+//   this one;
+// - the new text checked ([`refused_change`]): it parses, keeps the bridge's key and every agent's address (but the
+//   agent being removed), else nothing is written;
+// - written to a temporary file in the same folder, synced, renamed over it (0600);
+// - `bridge.toml.last-good` kept: what this bridge last loaded or wrote, put back at start when the file doesn't load
+//   ([`load_config_at_start`]).
+
+/// The lock file other processes take too (installer/bipinstall/bridgeconf.py uses the same name).
+pub const LOCK_SUFFIX: &str = ".lock";
+/// The copy the bridge last loaded or wrote.
+pub const LAST_GOOD_SUFFIX: &str = ".last-good";
+/// How long a writer waits for another's lock before giving up (a write takes milliseconds).
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// One writer at a time in this process (the file lock orders the processes): two at once left it cut in two (aibox
+/// 2026-10-26: the app set every agent's voice at once; one rewrite read the file while another had just emptied it).
 pub fn source_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// The config file written whole: a temporary file beside it (0600 from the start: it holds keys), renamed over it,
-/// so a reader never sees it half written.
-pub fn write_source(path: &str, contents: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    let target = std::path::Path::new(path);
-    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("bridge.toml");
-    let temporary = target.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+/// `<file><suffix>` beside it (`bridge.toml.lock`, `bridge.toml.last-good`).
+pub fn beside(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
+/// The config file's lock for other processes, held until the returned file is closed.
+fn lock_source(path: &Path) -> std::io::Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
+    options.read(true).write(true).create(true);
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    {
-        let mut fh = options.open(&temporary)?;
-        fh.write_all(contents.as_bytes())?;
-        fh.sync_all()?;
+    let fh = options.open(beside(path, LOCK_SUFFIX))?;
+    same_owner(&fh, path)?;
+    let deadline = std::time::Instant::now() + LOCK_WAIT;
+    loop {
+        match fh.try_lock() {
+            Ok(()) => return Ok(fh),
+            Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("{}: another program kept it locked", path.display()),
+                ));
+            }
+            Err(std::fs::TryLockError::Error(e)) => return Err(e),
+        }
     }
-    std::fs::rename(&temporary, target)
+}
+
+/// A file root makes (an administrator's command) goes to the config's owner: the bridge runs as that account.
+fn same_owner(file: &std::fs::File, like: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    if unsafe { libc::geteuid() } != 0 {
+        return Ok(());
+    }
+    let folder = like.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let reference = std::fs::metadata(like).or_else(|_| std::fs::metadata(folder))?;
+    std::os::unix::fs::fchown(file, Some(reference.uid()), Some(reference.gid()))
+}
+
+/// `text` as the whole file: a temporary file beside it (0600 from the start: it holds keys), synced, renamed over
+/// it, so a reader never sees it half written.
+fn write_file(target: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("bridge.toml");
+    let n = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temporary = target.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()));
+    let written = (|| {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut fh = options.open(&temporary)?;
+        fh.write_all(text.as_bytes())?;
+        fh.sync_all()?;
+        same_owner(&fh, target)?;
+        std::fs::rename(&temporary, target)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written?;
+    if let Some(folder) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::File::open(folder).and_then(|d| d.sync_all()); // the rename itself on disk
+    }
+    Ok(())
+}
+
+/// The bridge's config file changed by `change` (given its text, read under the lock; "" when there is none): the
+/// new text checked, then written whole. No agent may go: see [`update_source_removing`].
+pub fn update_source(path: &str, change: impl FnOnce(&str) -> std::io::Result<String>) -> std::io::Result<()> {
+    update_source_removing(path, &[], change)
+}
+
+/// [`update_source`] where the agents named in `removing` may go (an agent deleted, its section rewritten).
+pub fn update_source_removing(
+    path: &str,
+    removing: &[&str],
+    change: impl FnOnce(&str) -> std::io::Result<String>,
+) -> std::io::Result<()> {
+    let target = Path::new(path);
+    let _inside = source_lock();
+    let _outside = lock_source(target)?;
+    let old = match std::fs::read_to_string(target) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
+    let new = change(&old)?;
+    if new == old {
+        return Ok(());
+    }
+    if let Some(why) = refused_change(&old, &new, removing) {
+        tracing::error!(target: "bipbridge::config", file = %path, reason = %why, "config change refused: the file stays as it was");
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{path}: change refused, {why}")));
+    }
+    write_file(target, &new)?;
+    if loads(&new, path).is_ok() {
+        keep_last_good(target, &new);
+    }
+    Ok(())
+}
+
+/// Why `new` mustn't replace `old` as the bridge's config, None when it may: it must parse, keep the bridge's key
+/// (`bridge_key` or `bridge_key_file`) and every agent's `hermes_url` (but the agents in `removing`), and load in the
+/// bridge when `old` did. Over a file that doesn't parse, only a file that loads is written.
+pub fn refused_change(old: &str, new: &str, removing: &[&str]) -> Option<String> {
+    let new_doc: toml::Table = match new.parse() {
+        Ok(doc) => doc,
+        Err(e) => return Some(format!("the new text isn't valid TOML ({})", e.message().trim())),
+    };
+    if old.trim().is_empty() {
+        return None;
+    }
+    let Ok(old_doc) = old.parse::<toml::Table>() else {
+        return match loads(new, "bridge.toml") {
+            Ok(_) => None,
+            Err(e) => Some(format!("the file doesn't parse and the new text wouldn't load either ({e})")),
+        };
+    };
+    let has_key = |doc: &toml::Table| {
+        ["bridge_key", "bridge_key_file"].iter().any(|k| doc.get(*k).is_some_and(|v| v.as_str() != Some("")))
+    };
+    if has_key(&old_doc) && !has_key(&new_doc) {
+        return Some("it would lose bridge_key".into());
+    }
+    let agents = |doc: &toml::Table| -> IndexMap<String, bool> {
+        match doc.get("agents") {
+            Some(toml::Value::Table(t)) => t
+                .iter()
+                .map(|(name, v)| {
+                    let url = v.get("hermes_url").and_then(|u| u.as_str()).is_some_and(|u| !u.trim().is_empty());
+                    (name.trim().to_lowercase(), url)
+                })
+                .collect(),
+            _ => IndexMap::new(),
+        }
+    };
+    let (before, after) = (agents(&old_doc), agents(&new_doc));
+    let going: Vec<String> = removing.iter().map(|n| n.trim().to_lowercase()).collect();
+    for (name, had_url) in &before {
+        if *had_url && !going.contains(name) && !after.get(name).copied().unwrap_or(false) {
+            return Some(format!("it would lose agent {name} (or its hermes_url)"));
+        }
+    }
+    if loads(old, "bridge.toml").is_ok() {
+        if let Err(e) = loads(new, "bridge.toml") {
+            return Some(format!("the bridge couldn't load it ({e})"));
+        }
+    }
+    None
+}
+
+/// `text` loaded as the bridge would (TOML, then [`parse_config`]).
+fn loads(text: &str, path: &str) -> Result<Config> {
+    let doc: toml::Table =
+        text.parse().map_err(|e: toml::de::Error| ConfigError(format!("invalid TOML in {path}: {}", e.message())))?;
+    parse_config(&toml_to_json(toml::Value::Table(doc)), Some(path))
+}
+
+/// `bridge.toml.last-good` set to `text` (a file that loads: never a broken one).
+fn keep_last_good(target: &Path, text: &str) {
+    let good = beside(target, LAST_GOOD_SUFFIX);
+    if std::fs::read_to_string(&good).is_ok_and(|kept| kept == text) {
+        return;
+    }
+    if let Err(e) = write_file(&good, text) {
+        tracing::warn!(target: "bipbridge::config", file = %good.display(), error = %e, "last good copy of the config not kept");
+    }
+}
+
+/// Set when this bridge put its config's last good copy back at start (/health's `config_restored`).
+static RESTORED: Mutex<Option<Value>> = Mutex::new(None);
+
+/// `{"at", "broken"}` when the config was restored at start: when, and the name the broken file was kept under.
+pub fn restored() -> Option<Value> {
+    RESTORED.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// The config of a bridge that starts serving: loaded as [`load_config`] does, and kept as `bridge.toml.last-good`.
+/// A file that doesn't load (cut, emptied, debris in it, gone), or that lost every agent the last good copy had, is
+/// set aside as `bridge.toml.broken-<time>` and the last good copy put back, said loudly in the log and in /health.
+/// With no last good copy, the error is today's; with one that doesn't load either, the error names the copies.
+pub fn load_config_at_start(path: Option<&str>) -> Result<Config> {
+    let path = match path {
+        Some(p) => expand(p),
+        None => config_path(),
+    };
+    let target = PathBuf::from(&path);
+    let good = beside(&target, LAST_GOOD_SUFFIX);
+    let (problem, first_error) = match read_config(&path) {
+        Ok((text, config)) => match agents_gone(&config, &good) {
+            None => {
+                keep_last_good(&target, &text);
+                return Ok(config);
+            }
+            Some(why) => (why, Ok(config)),
+        },
+        Err(e) => (e.0.clone(), Err(e)),
+    };
+    if !good.exists() {
+        return first_error;
+    }
+    let good_path = good.to_string_lossy().into_owned();
+    let backup = match read_config(&good_path) {
+        Ok((text, _)) => text,
+        Err(e) => {
+            return Err(ConfigError(format!(
+                "{problem}; its last good copy can't be used either ({e}). Copies kept beside it: {}",
+                kept_copies(&target).join(", ")
+            )));
+        }
+    };
+    let broken = beside(&target, &format!(".broken-{}", chrono::Local::now().format("%Y%m%d-%H%M%S")));
+    let put_back = (|| {
+        let _inside = source_lock();
+        let _outside = lock_source(&target)?;
+        let moved = target.exists();
+        if moved {
+            std::fs::rename(&target, &broken)?;
+        }
+        write_file(&target, &backup)?;
+        Ok::<bool, std::io::Error>(moved)
+    })();
+    let moved = match put_back {
+        Ok(moved) => moved,
+        Err(e) => return Err(ConfigError(format!("{problem}; its last good copy {good_path} couldn't be put back: {e}"))),
+    };
+    let kept_as = if moved { broken.display().to_string() } else { "-".into() };
+    tracing::error!(
+        target: "bipbridge::config",
+        file = %path,
+        problem = %problem,
+        kept_as = %kept_as,
+        "CONFIG RESTORED: the bridge's config was broken, its last good copy is back"
+    );
+    let broken_name = broken.file_name().map(|n| Value::String(n.to_string_lossy().into_owned()));
+    *RESTORED.lock().unwrap_or_else(|e| e.into_inner()) = Some(serde_json::json!({
+        "at": crate::py::time_time(),
+        "broken": if moved { broken_name.unwrap_or(Value::Null) } else { Value::Null },
+    }));
+    read_config(&path).map(|(_, c)| c)
+}
+
+/// Why a config that loads is no good all the same: it has no agent any more while its last good copy had some.
+fn agents_gone(config: &Config, good: &Path) -> Option<String> {
+    if !config.agents.is_empty() {
+        return None;
+    }
+    let kept: toml::Table = std::fs::read_to_string(good).ok()?.parse().ok()?;
+    let count = kept.get("agents").and_then(|a| a.as_table()).map(|a| a.len()).unwrap_or(0);
+    (count > 0).then(|| format!("it has no agent any more (its last good copy has {count})"))
+}
+
+/// The copies of the config kept beside it (its last good one, broken ones set aside), as paths.
+pub fn kept_copies(target: &Path) -> Vec<String> {
+    let Some(name) = target.file_name().map(|n| n.to_string_lossy().into_owned()) else { return Vec::new() };
+    let folder = target.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let (good, broken) = (format!("{name}{LAST_GOOD_SUFFIX}"), format!("{name}.broken-"));
+    let mut found: Vec<String> = std::fs::read_dir(folder)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| *n == good || n.starts_with(&broken))
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort();
+    found.iter().map(|n| folder.join(n).to_string_lossy().into_owned()).collect()
 }
 
 // -- parsing ---------------------------------------------------------------------------------------
@@ -1472,6 +1751,12 @@ pub fn load_config(path: Option<&str>) -> Result<Config> {
         Some(p) => expand(p),
         None => config_path(),
     };
+    read_config(&path).map(|(_, config)| config)
+}
+
+/// The config file's text and what it gives.
+fn read_config(path: &str) -> Result<(String, Config)> {
+    let path = path.to_string();
     let text = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -1483,7 +1768,8 @@ pub fn load_config(path: Option<&str>) -> Result<Config> {
     let doc: toml::Table =
         text.parse().map_err(|e: toml::de::Error| ConfigError(format!("invalid TOML in {path}: {}", e.message())))?;
     check_permissions(&path);
-    parse_config(&toml_to_json(toml::Value::Table(doc)), Some(&path))
+    let config = parse_config(&toml_to_json(toml::Value::Table(doc)), Some(&path))?;
+    Ok((text, config))
 }
 
 #[cfg(test)]

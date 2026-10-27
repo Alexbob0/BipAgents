@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-from . import account, ui
+from . import account, bridgeconf, ui
 from .ports import FIRST_BLOCK, Ports, candidate_bases, port_free
 
 INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --"
@@ -63,11 +63,14 @@ def ensure_clients_file(config_path: Path, text: str) -> Path:
         return Path(found.group(1)).expanduser()
     path = config_path.parent / "relay-clients"
     line = f'clients_file = "{path}"'
-    if re.search(r"^\[relay\]\s*$", text, re.M):
-        text = re.sub(r"^\[relay\]\s*$", f"[relay]\n{line}", text, count=1, flags=re.M)
-    else:
-        text = text.rstrip("\n") + f"\n\n# Other installs on this server send their notifications through this bridge.\n[relay]\n{line}\n"
-    config_path.write_text(text, encoding="utf-8")
+
+    def with_relay(text: str) -> str:
+        if re.search(r'^\s*clients_file\s*=', text, re.M):
+            return text
+        if re.search(r"^\[relay\]\s*$", text, re.M):
+            return re.sub(r"^\[relay\]\s*$", f"[relay]\n{line}", text, count=1, flags=re.M)
+        return text.rstrip("\n") + f"\n\n# Other installs on this server send their notifications through this bridge.\n[relay]\n{line}\n"
+    bridgeconf.update(config_path, with_relay)
     return path
 
 

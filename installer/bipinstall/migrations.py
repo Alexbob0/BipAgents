@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from . import hermes
+from . import bridgeconf, hermes
 
 STATE = Path.home() / ".local" / "share" / "bipagents" / "migrations.json"
 REPO = Path(__file__).resolve().parents[2]
@@ -104,7 +104,7 @@ def browser_ports(runner: hermes.Runner, home: Path) -> str:
     first, count = range_of(int(port.group(1)) - 3)
     runner.log.append(f"write {config}")
     if not runner.dry:
-        config.write_text(with_browser_range(text, first, count), encoding="utf-8")
+        bridgeconf.update(config, lambda now: with_browser_range(now, first, count))
     runner.run(_bridge_cli(home) + ["browser", "add", "--all", "--config", str(config)], cwd=REPO / "bridge")
     from . import update
     update.restart(runner)
@@ -199,7 +199,7 @@ def app_identifier(runner: hermes.Runner, home: Path) -> str:
         return "the bridge's notifications already name the app"
     runner.log.append(f"write {config}")
     if not runner.dry:
-        config.write_text(old.sub(r'\1"com.kerfystudio.bipagents"', text), encoding="utf-8")
+        bridgeconf.update(config, lambda now: old.sub(r'\1"com.kerfystudio.bipagents"', now))
     from .family import bridge_restart
     restart = bridge_restart(home)
     if restart:
@@ -362,7 +362,7 @@ def pocket_engine(runner: hermes.Runner, home: Path) -> str:
         raise NotYet(pocket_not_yet(url.group(1), engine, voices.pinned_pocket(REPO) or "4"))
     runner.log.append(f"write {config}")
     if not runner.dry:
-        config.write_text(with_pocket_engine(text, engine), encoding="utf-8")
+        bridgeconf.update(config, lambda now: with_pocket_engine(now, engine))
     from .family import bridge_restart
     runner.run(bridge_restart(home), check=False)
     return f"the Bips speak with Pocket {engine}: names and English words go as written (bridge restarted)"

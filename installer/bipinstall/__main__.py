@@ -19,7 +19,7 @@ from typing import Callable, List, Optional
 import httpx
 import yaml
 
-from . import browser_refresh, checkout, hermes, models, rustbridge, souls, ui, voices
+from . import bridgeconf, browser_refresh, checkout, hermes, models, rustbridge, souls, ui, voices
 from .detect import Machine, detect
 from .plan import make_plan
 from .ports import pick_block
@@ -705,7 +705,9 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         say(ui.note("Your agents are set up; run this installer again to finish."))
         return 1
     venv(REPO / "installer", runner)   # what the bridge runs the installer with (`place import`, restores)
-    write(inst.bridge_config, bridge_toml(inst), runner, mode=0o600)
+    runner.log.append(f"write {inst.bridge_config}")
+    if not runner.dry:   # under the bridge's lock, written whole and checked (bridgeconf)
+        bridgeconf.write(inst.bridge_config, bridge_toml(inst), removing=bridgeconf.ANY)
     label, path, content = bridge_service(inst, machine.system)
     write(path, content, runner)
     start_service(machine.system, label, path, runner)

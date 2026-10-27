@@ -472,7 +472,7 @@ def settle(info: Dict, base: Path, repo: Path, address: Optional[str], fresh: Di
     """Once another place's files are here (a restore, a planned move): its settings moved to this place (home,
     local ports: first to marks, then to this place's, each port once), this place's own values (`fresh_state`) put
     back, the person's backup key kept with this seat's token."""
-    from . import moving
+    from . import bridgeconf, moving
     import re
     import tomllib
     config = base / ".config" / "bipagents" / "bridge.toml"
@@ -485,15 +485,15 @@ def settle(info: Dict, base: Path, repo: Path, address: Optional[str], fresh: Di
     roots = [moving.rehome(path, info, target) for path in info["roots"].values()]
     marks = {old: f"BIPAGENTSPORT{i}X" for i, old in enumerate(mapping)}   # first to marks, then to the new ports
     moving.rewrite(moving.settings_files(roots), moving.replacements(info, moving.Target(
-        home=base, repo=repo, tailnet_name=None, lan_address=address, ports=marks)))
-    moving.rewrite(moving.settings_files(roots), [(re.compile(re.escape(mark)), str(mapping[old]))
-                                                  for old, mark in marks.items()])
+        home=base, repo=repo, tailnet_name=None, lan_address=address, ports=marks)),
+        [(re.compile(re.escape(mark)), str(mapping[old])) for old, mark in marks.items()])
     moving.adjust_bridge(config, info, target, old_toml)
-    text = config.read_text(encoding="utf-8")
-    for section, key, value in fresh["own"]:
-        text = _set_toml(text, section, key, value)
-    config.write_text(text, encoding="utf-8")
-    os.chmod(config, 0o600)
+
+    def own_values(text: str) -> str:
+        for section, key, value in fresh["own"]:
+            text = _set_toml(text, section, key, value)
+        return text
+    bridgeconf.update(config, own_values)
     if own_backup.get("url"):   # this seat's token, the person's key
         write_private(base / SETTINGS, {**own_backup, "password": settings(base).get("password")
                                         or own_backup.get("password")})
