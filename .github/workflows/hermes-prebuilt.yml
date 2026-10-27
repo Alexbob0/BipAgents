@@ -73,7 +73,15 @@ jobs:
       - run: pip install --quiet PyYAML==6.0.3
       # What user-data.yaml installs on a server and Hermes' installer can't (no sudo for its account).
       - run: sudo apt-get update -q && sudo apt-get install -y -q zstd libatomic1 git curl
+      # Where a server keeps root's BipAgents (user-data.yaml), readable by Hermes' own account: the runner's home isn't
+      # (« can't open patch …: Permission denied », 2026-10-27).
+      - name: Place the repository as a server does
+        run: |
+          sudo mkdir -p /usr/local/lib/bipagents
+          sudo cp -a "$GITHUB_WORKSPACE" /usr/local/lib/bipagents/repo
+          sudo chmod -R a+rX /usr/local/lib/bipagents/repo
       - name: Build it as a server does
+        working-directory: /usr/local/lib/bipagents/repo
         run: sudo env PYTHONPATH=installer "$(command -v python)" -m bipinstall.shared_hermes enable --no-prebuilt
       - name: Check that it runs
         run: |
