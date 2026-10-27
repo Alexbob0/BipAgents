@@ -96,3 +96,30 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
     kept = json.loads((b.state_dir / "family-agent.json").read_text())["handover"]
     assert [i["text"] for i in kept["notebook"]["lists"][0]["items"]] == ["Lait", "Pain"]
     assert "Famille" in kept["soul"] or kept["soul"] == ""
+
+
+def test_creating_the_familys_agent(bridges, fakes):
+    """Made from the app on an install that manages its Hermes, isolated or not: its disk and browser tools off from
+    the start, its personality with the family's block, the Carnet's three lists; one per family; deleted, it can be
+    made again."""
+    from test_agents_admin import hermes_args, managed
+
+    bridge, home = managed(bridges, fakes, isolated=True)
+    assert bridge.get("/v1/family-agent", headers=AUTH).json() == {"agent": None, "can_create": True, "handover": None}
+    made = bridge.post("/v1/family-agent", headers=AUTH, json={"name": "Famille", "lang": "fr"})
+    assert made.status_code == 201, made.text
+    assert made.json()["id"] == "famille" and made.json()["mine"] is True
+    assert ["-p", "famille", "tools", "disable", "terminal", "file", "code_execution", "browser", "--platform",
+            "api_server"] in hermes_args(bridge)
+    soul = (home / "profiles" / "famille" / "SOUL.md").read_text()
+    assert "<!-- bipagents:family-agent -->" in soul and "not even those of the member who created you" in soul
+    assert "bipagents:notebook" not in soul and "bipagents:payments" not in soul
+    lists = bridge.get("/v1/family-agent/notebook", headers=AUTH).json()["lists"]
+    assert [(x["title"], x["kind"]) for x in lists] == [("Courses", "list"), ("Tâches", "tasks"), ("Dates", "dates")]
+    again = bridge.post("/v1/family-agent", headers=AUTH, json={"name": "Maison"})
+    assert again.status_code == 409
+    refused = bridge.patch("/v1/agents/famille/settings", headers=AUTH, json={"toolsets": {"terminal": True}})
+    assert refused.status_code == 400 and "private" in refused.json()["detail"]
+    assert bridge.patch("/v1/agents/famille/settings", headers=AUTH, json={"health": True}).status_code == 400
+    assert bridge.delete("/v1/agents/famille", headers=AUTH).status_code in (200, 204)
+    assert bridge.get("/v1/family-agent", headers=AUTH).json()["can_create"] is True
