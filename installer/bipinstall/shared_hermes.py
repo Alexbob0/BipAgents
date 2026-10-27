@@ -30,6 +30,14 @@ is deleted (`shared-hermes gc`).
 
 Off unless root turned it on (/etc/bipagents/shared-hermes.json, written by `shared-hermes enable`): a self-hosted
 install keeps its own Hermes; a family machine can turn it on too (several accounts on one machine).
+
+Ready-made versions (since 2026-10-27): building one takes minutes on each new server (Hermes' installer, its Python,
+Node, Chromium, its environment), the same work every time. GitHub Actions does it once
+(.github/workflows/hermes-prebuilt.yml, the same `build` in /opt/bipagents/hermes) and publishes the tree, packed with
+zstd, as the release `hermes-<version>` (`hermes-<version>-linux-<x86_64|aarch64>.tar.zst` and SHA256SUMS). `build`
+fetches it first: checked against SHA256SUMS, unpacked beside its place, moved in, given to root, `.complete` last. No
+release for this version or this processor, a checksum that differs, no zstd, another folder than /opt/bipagents/hermes
+(the tree holds its own absolute paths): it is built here as before.
 """
 from __future__ import annotations
 
@@ -39,9 +47,13 @@ import hashlib
 import json
 import os
 import shutil
+import platform
 import subprocess
+import tempfile
+import time
+import urllib.request
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 from . import hermes
 
@@ -58,6 +70,12 @@ LAUNCHERS = ("hermes", "hermes-acp")
 OWN_COPY = ("hermes-agent", "tools", "installs", "cache/uv")
 OWN_CACHES = (".npm/_cacache",)
 PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+SLUG = "Alexbob0/BipAgents"
+RELEASES = f"https://github.com/{SLUG}/releases/download"
+SUMS = "SHA256SUMS"
+ZSTD_LEVEL = "-15"   # the pack: several times smaller than the tree, unpacked in seconds whatever the level
+
+Fetch = Callable[[str, Path], None]   # (url, file): the file written, or an exception
 
 
 def say(text: str = "") -> None:
@@ -95,15 +113,128 @@ def pointed(hermes_home: Path) -> Optional[str]:
     return Path(os.readlink(link)).name if link.is_symlink() else None
 
 
+# -- a ready-made version (GitHub Actions' release) ----------------------------------------------------------------
+
+def arch(machine: Optional[str] = None) -> Optional[str]:
+    machine = (machine or platform.machine()).lower()
+    return {"x86_64": "x86_64", "amd64": "x86_64", "aarch64": "aarch64", "arm64": "aarch64"}.get(machine)
+
+
+def asset(version: str, machine: Optional[str] = None) -> Optional[str]:
+    """The release's archive for this processor (None: none is built for it)."""
+    found = arch(machine)
+    return f"hermes-{version}-linux-{found}.tar.zst" if found else None
+
+
+def release_url(version: str) -> str:
+    return f"{RELEASES}/hermes-{version}"
+
+
+def _download(url: str, path: Path) -> None:
+    """`url` into `path`, a block at a time (the archive is hundreds of MB); GitHub answers with a redirect."""
+    with urllib.request.urlopen(url, timeout=60) as resp, open(path, "wb") as out:
+        shutil.copyfileobj(resp, out, 1 << 20)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def prebuilt(runner: hermes.Runner, base: Path, version: str, *, fetch: Fetch = _download,
+             machine: Optional[str] = None) -> bool:
+    """The version from its release instead of a build: True once it is in place (sealed by the workflow, given to
+    root here, `.complete` last); False, and why said, when it is to be built here instead. Never raises."""
+    name = asset(version, machine)
+    if name is None:
+        say(f"No ready-made Hermes for this processor ({platform.machine()}): building it here.")
+        return False
+    if base != DEFAULT_ROOT:
+        say(f"Ready-made Hermes are made for {DEFAULT_ROOT} (their paths are inside them), not {base}: building it here.")
+        return False
+    if not runner.dry and not shutil.which("zstd"):
+        say("No zstd on this server to unpack a ready-made Hermes (apt install zstd): building it here.")
+        return False
+    url = f"{release_url(version)}/{name}"
+    target = base / version
+    runner.log.append(f"fetch {url} (checked against its {SUMS}) and unpack it into {target}")
+    if runner.dry:
+        return True
+    started = time.monotonic()
+    fetched = started
+    work: Optional[Path] = None
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+        work = Path(tempfile.mkdtemp(prefix=f".{version}-", dir=base))   # the same disk: the tree moves in at once
+        fetch(f"{release_url(version)}/{SUMS}", work / SUMS)
+        sums = {line.split()[-1].lstrip("*"): line.split()[0].lower()
+                for line in (work / SUMS).read_text(encoding="utf-8").splitlines() if len(line.split()) == 2}
+        if name not in sums:
+            raise ValueError(f"{name} is not in the release's {SUMS}")
+        archive = work / name
+        fetch(url, archive)
+        fetched = time.monotonic()
+        if _sha256(archive) != sums[name]:
+            raise ValueError(f"{name} doesn't match the release's {SUMS}")
+        unpacked = work / "tree"
+        unpacked.mkdir()
+        # GNU tar refuses names with « .. » and strips a leading « / »; the files become root's, not the workflow's.
+        done = subprocess.run(["tar", "--use-compress-program=zstd -d", "-xf", str(archive), "-C", str(unpacked),
+                               "--no-same-owner"], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise ValueError(f"unpacking {name}: {(done.stderr or done.stdout).strip()[-300:]}")
+        archive.unlink()
+        inside = sorted(p.name for p in unpacked.iterdir())
+        if inside != [version] or not (unpacked / version / "manifest.json").is_file():
+            raise ValueError(f"{name} holds {inside[:3]}, not the sealed tree of {version}")
+        runner.run(["rm", "-rf", str(target)])   # an unfinished build or download starts over
+        os.replace(unpacked / version, target)
+        runner.run(["chown", "-R", "root:root", str(target)])
+        runner.run(["chmod", "-R", "a+rX,go-w", str(target)])
+        (target / COMPLETE).write_text(json.dumps({
+            "version": version, "hermes_commit": hermes.HERMES_COMMIT, "browser": True, "source": url,
+            "fetched": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}) + "\n")
+        (target / COMPLETE).chmod(0o644)
+    except Exception as exc:   # noqa: BLE001 - 404 before the workflow published it, no network, a full disk...
+        say(f"Ready-made Hermes {version} not used ({type(exc).__name__}: {str(exc)[:200]}): building it here.")
+        return False
+    finally:
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
+    end = time.monotonic()
+    say(f"Hermes {version}: ready-made, downloaded in {fetched - started:.0f} s, unpacked in {end - fetched:.0f} s.")
+    return True
+
+
+def pack(base: Path, version: str, out: Path, machine: Optional[str] = None) -> Path:
+    """(The release workflow) a built version as its release archive: the tree as it is, without `.complete` (a
+    server writes its own once the tree is in place)."""
+    name = asset(version, machine)
+    if name is None or not ready(base, version):
+        raise RuntimeError(f"no built Hermes {version} in {base} for this processor")
+    out.mkdir(parents=True, exist_ok=True)
+    archive = out / name
+    subprocess.run(["tar", "-C", str(base), f"--exclude={version}/{COMPLETE}",
+                    f"--use-compress-program=zstd {ZSTD_LEVEL} -T0", "-cf", str(archive), version], check=True)
+    return archive
+
+
 # -- building a version (as root) ---------------------------------------------------------------------------------
 
 def build(runner: hermes.Runner, base: Path, version: str, *, browser: bool = True, patches: Path = PATCHES,
-          commit: str = hermes.HERMES_COMMIT) -> Path:
+          commit: str = hermes.HERMES_COMMIT, ready_made: bool = False, fetch: Fetch = _download) -> Path:
     """The version made once for this server: Hermes' official installer run by an account of its own (not root)
-    into its folder, BipAgents' patches put on, then sealed and handed to root, read-only for everyone else."""
+    into its folder, BipAgents' patches put on, then sealed and handed to root, read-only for everyone else. With
+    `ready_made`, its release is tried first (the workflow builds it with Hermes' browser, at the pinned commit)."""
     target = base / version
     if ready(base, version):
         return target
+    if ready_made and browser and commit == hermes.HERMES_COMMIT and prebuilt(runner, base, version, fetch=fetch):
+        return target
+    started = time.monotonic()
     home = target / ".build-home"
     as_builder = ["sudo", "-u", BUILD_USER, "env", "-i", f"HOME={home}", f"HERMES_HOME={target}", f"PATH={PATH}",
                   f"USER={BUILD_USER}", "LANG=C.UTF-8", "TERM=dumb"]
@@ -142,6 +273,7 @@ def build(runner: hermes.Runner, base: Path, version: str, *, browser: bool = Tr
             "patches": sorted(p.name for p in patches.glob("*.patch") if not p.name.startswith(".")),
             "built": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}) + "\n")
         (target / COMPLETE).chmod(0o644)
+        say(f"Hermes {version}: built here in {(time.monotonic() - started) / 60:.1f} min.")
     return target
 
 
@@ -419,15 +551,23 @@ def main(argv: List[str]) -> int:
     on.add_argument("--no-browser", action="store_true", help="without Hermes' own Chromium")
     made = sub.add_parser("build", help="(root) build the version this BipAgents pins, if missing")
     made.add_argument("--no-browser", action="store_true")
+    packed = sub.add_parser("pack", help="(the release workflow) the built version as its release archive")
+    packed.add_argument("out", type=Path)
+    packed.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     sub.add_parser("gc", help="(root) delete the versions nothing uses")
     sub.add_parser("status", help="the versions, the places on each")
     sub.add_parser("version", help="the version this BipAgents pins")
     sub.add_parser("follow", help="(as a place) move to the version this BipAgents pins, when it is built")
     for p in (on, made):
         p.add_argument("--dry-run", action="store_true")
+        p.add_argument("--no-prebuilt", action="store_true",
+                       help="build it here even when its release has it (the release workflow itself)")
     args = parser.parse_args(argv)
     if args.command == "version":
         say(version_id())
+        return 0
+    if args.command == "pack":
+        say(str(pack(args.root, version_id(), args.out)))
         return 0
     if args.command == "follow":
         said = follow(hermes.Runner())
@@ -458,7 +598,7 @@ def main(argv: List[str]) -> int:
     if base is None:
         say(f"Not turned on here ({SETTING}): `bipinstall shared-hermes enable` first.")
         return 1
-    target = build(runner, base, version_id(), browser=not args.no_browser)
+    target = build(runner, base, version_id(), browser=not args.no_browser, ready_made=not args.no_prebuilt)
     if runner.dry:
         for line in runner.log:
             say(f"  $ {line}")

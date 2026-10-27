@@ -1,6 +1,10 @@
+import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
+
+import pytest
 from types import SimpleNamespace
 
 from bipinstall import backup, hermes, shared_hermes
@@ -185,3 +189,110 @@ def test_what_agents_install_for_themselves_counts_in_the_5_gb(tmp_path):
     assert backup.personal_runtime_bytes(inv, home) == 1500   # its own Hermes: ~/.hermes/tools is that Hermes
     (hermes_home / "shared").symlink_to(tmp_path / "opt" / "v1")
     assert backup.personal_runtime_bytes(inv, home) == 1700
+
+
+# -- ready-made versions (the release workflow's) ------------------------------------------------------------------
+
+class OnlyRemoves(hermes.Runner):
+    """A real run that leaves ownership be (the tests aren't root): it removes, the rest is only noted."""
+
+    def run(self, args, **kwargs):
+        self.log.append(" ".join(args) if not isinstance(args, str) else args)
+        if not isinstance(args, str) and args[0] == "rm":
+            shutil.rmtree(args[-1], ignore_errors=True)
+        return ""
+
+
+def released(tmp_path, version="v1"):
+    """A sealed tree packed the way the workflow packs it, and a fetch that serves it and its SHA256SUMS."""
+    built = tmp_path / "ci"
+    (built / version / "hermes-agent").mkdir(parents=True)
+    (built / version / "hermes-agent" / "run.py").write_text("print(1)\n")
+    (built / version / "manifest.json").write_text("{}\n")
+    (built / version / shared_hermes.COMPLETE).write_text("{}\n")
+    archive = shared_hermes.pack(built, version, tmp_path / "release", machine="x86_64")
+    (tmp_path / "release" / "SHA256SUMS").write_text(
+        f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
+    asked = []
+
+    def fetch(url, path):
+        asked.append(url)
+        source = tmp_path / "release" / url.rsplit("/", 1)[1]
+        if not source.exists():
+            raise OSError("HTTP Error 404: Not Found")
+        shutil.copyfile(source, path)
+    return archive, fetch, asked
+
+
+needs_zstd = pytest.mark.skipif(not shutil.which("zstd"), reason="zstd packs and unpacks the release archive")
+
+
+def test_the_release_archive_is_named_after_the_version_and_the_processor():
+    assert shared_hermes.asset("517b5e10f-abc", "x86_64") == "hermes-517b5e10f-abc-linux-x86_64.tar.zst"
+    assert shared_hermes.asset("v", "arm64") == shared_hermes.asset("v", "aarch64") == "hermes-v-linux-aarch64.tar.zst"
+    assert shared_hermes.asset("v", "riscv64") is None
+    assert shared_hermes.release_url("v") == "https://github.com/Alexbob0/BipAgents/releases/download/hermes-v"
+
+
+@needs_zstd
+def test_a_ready_made_version_is_fetched_checked_and_unpacked_instead_of_built(tmp_path, monkeypatch):
+    archive, fetch, asked = released(tmp_path)
+    base = tmp_path / "opt"
+    monkeypatch.setattr(shared_hermes, "DEFAULT_ROOT", base)
+    monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "x86_64")
+    runner = OnlyRemoves()
+    target = shared_hermes.build(runner, base, "v1", ready_made=True, fetch=fetch)
+    assert target == base / "v1" and shared_hermes.ready(base, "v1")
+    assert (target / "hermes-agent" / "run.py").read_text() == "print(1)\n"
+    assert json.loads((target / shared_hermes.COMPLETE).read_text())["source"].endswith(archive.name)
+    assert asked[0].endswith("/hermes-v1/SHA256SUMS") and asked[1].endswith(f"/hermes-v1/{archive.name}")
+    assert not any("install.sh" in line for line in runner.log)   # nothing built
+    assert f"chown -R root:root {target}" in runner.log
+    assert [p.name for p in base.iterdir()] == ["v1"]   # the download and its unpacking gone
+
+
+@needs_zstd
+def test_a_ready_made_version_that_does_not_match_its_sums_is_not_used(tmp_path, monkeypatch):
+    archive, fetch, _ = released(tmp_path)
+    (tmp_path / "release" / "SHA256SUMS").write_text(f"{'0' * 64}  {archive.name}\n")
+    base = tmp_path / "opt"
+    monkeypatch.setattr(shared_hermes, "DEFAULT_ROOT", base)
+    monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "x86_64")
+    said = []
+    monkeypatch.setattr(shared_hermes, "say", said.append)
+    assert not shared_hermes.prebuilt(OnlyRemoves(), base, "v1", fetch=fetch)
+    assert "doesn't match" in said[-1] and "building it here" in said[-1]
+    assert list(base.iterdir()) == []
+
+
+def test_no_release_yet_or_another_folder_means_a_build_here(tmp_path, monkeypatch):
+    base = tmp_path / "opt"
+    monkeypatch.setattr(shared_hermes, "DEFAULT_ROOT", base)
+    monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(shared_hermes.shutil, "which", lambda name: "/usr/bin/" + name)
+    said = []
+    monkeypatch.setattr(shared_hermes, "say", said.append)
+
+    def missing(url, path):
+        raise OSError("HTTP Error 404: Not Found")
+    assert not shared_hermes.prebuilt(OnlyRemoves(), base, "v1", fetch=missing)
+    assert "404" in said[-1] and not shared_hermes.ready(base, "v1")
+    asked = []
+    assert not shared_hermes.prebuilt(OnlyRemoves(), tmp_path / "elsewhere", "v1", fetch=lambda u, p: asked.append(u))
+    assert asked == [] and "paths are inside them" in said[-1]
+    monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "riscv64")
+    assert not shared_hermes.prebuilt(OnlyRemoves(), base, "v1", fetch=lambda u, p: asked.append(u))
+    assert asked == []
+
+
+def test_a_dry_run_says_it_would_fetch_the_ready_made_version(tmp_path, monkeypatch):
+    base = tmp_path / "opt"
+    monkeypatch.setattr(shared_hermes, "DEFAULT_ROOT", base)
+    monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "aarch64")
+    runner = hermes.Runner(dry=True)
+    shared_hermes.build(runner, base, "v1", ready_made=True)
+    assert runner.log == [f"fetch {shared_hermes.release_url('v1')}/hermes-v1-linux-aarch64.tar.zst (checked against "
+                          f"its SHA256SUMS) and unpack it into {base / 'v1'}"]
+    runner = hermes.Runner(dry=True)
+    shared_hermes.build(runner, base, "v1", ready_made=True, browser=False)   # the release has Hermes' browser
+    assert any("install.sh" in line for line in runner.log)
