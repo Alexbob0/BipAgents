@@ -164,29 +164,11 @@ fn locate(config: &Config, agent: &AgentConfig, raw: &str) -> Result<(PathBuf, P
     Ok((folder, relative))
 }
 
-/// `root/relative` opened one name at a time, none of them a link (`openat` with O_NOFOLLOW): a folder or file the
-/// agent swaps for a link meanwhile fails here instead of leading to this machine's files. A regular file only.
+/// `root/relative` opened one name at a time, none of them a link (beneath.rs: `openat2(RESOLVE_BENEATH |
+/// RESOLVE_NO_SYMLINKS)` on Linux, else `openat` with O_NOFOLLOW): a folder or file the agent swaps for a link
+/// meanwhile fails here instead of leading to this machine's files. A regular file only.
 pub fn open_beneath(root: &Path, relative: &Path) -> std::io::Result<std::fs::File> {
-    use std::os::fd::{AsRawFd, FromRawFd};
-    use std::os::unix::ffi::OsStrExt;
-    let parts: Vec<_> = relative.components().map(|c| c.as_os_str().to_os_string()).collect();
-    let mut current = std::fs::File::open(root)?;
-    for (i, part) in parts.iter().enumerate() {
-        let name = std::ffi::CString::new(part.as_bytes()).map_err(std::io::Error::other)?;
-        let kind = if i + 1 == parts.len() { libc::O_NONBLOCK } else { libc::O_DIRECTORY };
-        let flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | kind;
-        // SAFETY: a valid directory descriptor and a NUL-terminated name; the new descriptor is owned right after.
-        let fd = unsafe { libc::openat(current.as_raw_fd(), name.as_ptr(), flags) };
-        if fd < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        // SAFETY: `fd` was just opened and nothing else owns it.
-        current = unsafe { std::fs::File::from_raw_fd(fd) };
-    }
-    if parts.is_empty() || !current.metadata()?.is_file() {
-        return Err(std::io::Error::other("not a regular file"));
-    }
-    Ok(current)
+    crate::beneath::open_file(root, relative)
 }
 
 /// The name the recipient sees: a stored upload's `<id12>-` left out.

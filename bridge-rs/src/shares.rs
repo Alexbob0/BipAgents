@@ -33,7 +33,7 @@
 //! Port of `bridge/bipbridge/shares.py` (owner group: agents).
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -43,6 +43,7 @@ use serde_json::{json, Value};
 
 use crate::agents_admin::pyyaml;
 use crate::agents_admin::Run;
+use crate::beneath;
 use crate::config::{AgentConfig, Config, SharedConfig};
 use crate::Dict;
 
@@ -683,30 +684,26 @@ fn temporary(name: &std::ffi::OsStr) -> bool {
 static MIRRORING: Mutex<()> = Mutex::new(());
 
 /// `dst` made the same as `src` (`sync_tree`); when this account may not change some of it (files a sandbox's user
-/// made), the same done as the sandboxes' « root » (`podman unshare`).
+/// made), the same done as the sandboxes' « root » (`podman unshare`, by this binary: beneath.rs `as_root`).
 pub fn mirror(src: &Path, dst: &Path, podman: Option<&str>) -> std::io::Result<(usize, usize)> {
     let _held = MIRRORING.lock().unwrap_or_else(|e| e.into_inner());
     match (sync_tree(src, dst), podman) {
         (Err(exc), Some(podman)) if exc.kind() == std::io::ErrorKind::PermissionDenied => {
             tracing::debug!(target: "bipbridge::sandbox", from = %src.display(), to = %dst.display(), "shared folder copied as the sandboxes' root (files of a sandbox's user)");
-            replace_as_root(podman, src, dst)?;
-            Ok((0, 0))
+            mirror_as_root(podman, src, dst)
         }
         (other, _) => other,
     }
 }
 
-fn replace_as_root(podman: &str, src: &Path, dst: &Path) -> std::io::Result<()> {
-    let script = "set -e; mkdir -p \"$2\"; find \"$2\" -mindepth 1 -maxdepth 1 -exec rm -rf {} +; \
-                  if [ -d \"$1\" ]; then cp -RP \"$1\"/. \"$2\"/; fi; chmod -R a+rwX \"$2\"";
-    let out = std::process::Command::new(podman)
-        .args(["unshare", "sh", "-c", script, "sh"])
-        .arg(src)
-        .arg(dst)
-        .stdin(std::process::Stdio::null())
-        .output()?;
+/// `sync_tree` run as the sandboxes' « root »: the same walk through folder descriptors, never a shell on paths (a
+/// `cp -R`/`chmod -R` there would follow a folder the sandbox swaps for a link meanwhile).
+fn mirror_as_root(podman: &str, src: &Path, dst: &Path) -> std::io::Result<(usize, usize)> {
+    let out = beneath::as_root(podman, &[OsStr::new("mirror"), src.as_os_str(), dst.as_os_str()])?;
     if out.status.success() {
-        return Ok(());
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut counts = text.split_whitespace().map(|n| n.parse::<usize>().unwrap_or(0));
+        return Ok((counts.next().unwrap_or(0), counts.next().unwrap_or(0)));
     }
     let error = String::from_utf8_lossy(&out.stderr);
     Err(std::io::Error::other(crate::agents_admin::tail(error.trim(), 200)))
@@ -715,99 +712,101 @@ fn replace_as_root(podman: &str, src: &Path, dst: &Path) -> std::io::Result<()> 
 /// `dst` made the same as `src` (a missing `src` is an empty one): its folders and regular files copied where their
 /// size or time differ, what is not in `src` removed; links, pipes and devices never copied. Folders open to all
 /// (DIR_MODE), files readable and writable by all (FILE_MODE): see DIR_MODE. Returns (copied, removed).
+///
+/// Either side may be a volume a sandbox writes in (the source's /partage): both are walked through folder
+/// descriptors (beneath.rs), one name at a time, never through a link, the copies written under a temporary name and
+/// renamed in their folder's descriptor (security audit 2026-10-27, H1). A name the sandbox swaps or removes meanwhile
+/// is skipped.
 pub fn sync_tree(src: &Path, dst: &Path) -> std::io::Result<(usize, usize)> {
-    std::fs::create_dir_all(dst)?;
-    open_dir(dst)?;
+    let to = beneath::Dir::open_or_make(dst)?;
+    open_dir(&to);
+    let from = match beneath::Dir::open(src) {
+        Ok(from) => Some(from),
+        Err(exc) if exc.kind() == std::io::ErrorKind::NotFound => None,
+        Err(exc) => return Err(exc),
+    };
     let mut counts = (0, 0);
-    sync_dir(src, dst, &mut counts, 0)?;
+    sync_dir(from.as_ref(), &to, &mut counts, 0)?;
     Ok(counts)
 }
 
-/// A folder open to all, when this account owns it (one a sandbox's user made stays as it is: writing in it then
+/// A folder open to all (one this account may not change, a sandbox's user's, stays as it is: writing in it then
 /// fails, and `mirror` does it as the sandboxes' « root »).
-fn open_dir(path: &Path) -> std::io::Result<()> {
-    let meta = std::fs::metadata(path)?;
-    if meta.permissions().mode() & 0o7777 != DIR_MODE {
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(DIR_MODE));
+fn open_dir(dir: &beneath::Dir) {
+    if dir.stat_self().is_ok_and(|st| st.mode != DIR_MODE) {
+        let _ = dir.chmod(DIR_MODE);
     }
-    Ok(())
 }
 
-fn sync_dir(src: &Path, dst: &Path, counts: &mut (usize, usize), depth: usize) -> std::io::Result<()> {
+/// A name swapped for a link, or gone, since its folder was read: None (skipped); any other error stays.
+fn unless_swapped<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(exc) if exc.kind() == std::io::ErrorKind::NotFound || beneath::refused(&exc) => Ok(None),
+        Err(exc) => Err(exc),
+    }
+}
+
+fn sync_dir(
+    src: Option<&beneath::Dir>,
+    dst: &beneath::Dir,
+    counts: &mut (usize, usize),
+    depth: usize,
+) -> std::io::Result<()> {
+    use beneath::Kind;
     let mut kept: HashSet<OsString> = HashSet::new();
-    if depth <= 32 {
-        let entries = match std::fs::read_dir(src) {
-            Ok(entries) => entries.flatten().collect::<Vec<_>>(),
-            Err(exc) if exc.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-            Err(exc) => return Err(exc),
-        };
-        for entry in entries {
-            let name = entry.file_name();
+    if let Some(src) = src.filter(|_| depth <= 32) {
+        for (name, meta) in src.entries()? {
             if temporary(&name) {
                 continue;
             }
-            let (from, to) = (src.join(&name), dst.join(&name));
-            let Ok(meta) = from.symlink_metadata() else { continue };
-            let there = to.symlink_metadata().ok();
-            if meta.is_dir() {
-                if there.as_ref().is_some_and(|t| !t.is_dir()) {
-                    std::fs::remove_file(&to)?;
-                }
-                if !to.is_dir() {
-                    std::fs::create_dir(&to)?;
-                }
-                open_dir(&to)?;
-                sync_dir(&from, &to, counts, depth + 1)?;
-            } else if meta.is_file() {
-                let same = there
-                    .as_ref()
-                    .is_some_and(|t| t.is_file() && t.len() == meta.len() && t.modified().ok() == meta.modified().ok());
-                if !same {
-                    if there.as_ref().is_some_and(|t| t.is_dir()) {
-                        std::fs::remove_dir_all(&to)?;
+            let there = dst.stat(&name).ok();
+            match meta.kind {
+                Kind::Dir => {
+                    let Some(from) = unless_swapped(src.sub_one(&name))? else { continue };
+                    if there.is_some_and(|t| t.kind != Kind::Dir) {
+                        dst.remove(&name)?;
                     }
-                    copy_file(&from, &to, &meta)?;
-                    counts.0 += 1;
+                    let to = match dst.sub_one(&name) {
+                        Err(exc) if exc.kind() == std::io::ErrorKind::NotFound => {
+                            dst.mkdir(&name, DIR_MODE)?;
+                            dst.sub_one(&name)?
+                        }
+                        other => other?,
+                    };
+                    open_dir(&to);
+                    sync_dir(Some(&from), &to, counts, depth + 1)?;
                 }
-            } else {
-                continue;
+                Kind::File => {
+                    let same = there.is_some_and(|t| {
+                        t.kind == Kind::File
+                            && t.size == meta.size
+                            && (t.mtime, t.mtime_nsec) == (meta.mtime, meta.mtime_nsec)
+                    });
+                    if !same {
+                        let Some(mut input) = unless_swapped(src.open_file(Path::new(&name)))? else { continue };
+                        if there.is_some_and(|t| t.kind == Kind::Dir) {
+                            dst.remove(&name)?;
+                        }
+                        dst.write_file(&name, FILE_MODE, Some(meta.modified()), |out| {
+                            std::io::copy(&mut input, out).map(|_| ())
+                        })?;
+                        counts.0 += 1;
+                    }
+                }
+                _ => continue,
             }
             kept.insert(name);
         }
     }
-    for entry in std::fs::read_dir(dst)?.flatten() {
-        let name = entry.file_name();
+    for name in dst.entries()?.into_keys() {
         if kept.contains(&name) || temporary(&name) {
             continue;
         }
-        let path = entry.path();
-        let gone = match path.symlink_metadata() {
-            Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&path),
-            _ => std::fs::remove_file(&path),
-        };
-        gone?;
+        dst.remove(&name)?;
         counts.1 += 1;
     }
     Ok(())
-}
-
-fn copy_file(from: &Path, to: &Path, meta: &std::fs::Metadata) -> std::io::Result<()> {
-    let tmp = to.with_file_name(format!(".bip-sync-{}.part", to.file_name().unwrap_or_default().to_string_lossy()));
-    let result = (|| {
-        let mut input = crate::sandbox::open_plain(from)?;
-        let mut out = std::fs::File::create(&tmp)?;
-        std::io::copy(&mut input, &mut out)?;
-        out.set_permissions(std::fs::Permissions::from_mode(FILE_MODE))?;
-        if let Ok(time) = meta.modified() {
-            out.set_modified(time)?;
-        }
-        drop(out);
-        std::fs::rename(&tmp, to)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
 }
 
 /// The modes a file the tools write in a shared folder gets (see DIR_MODE).
@@ -846,6 +845,62 @@ mod tests {
         // A missing source is an empty one.
         assert_eq!(sync_tree(&dir.path().join("none"), &dst).unwrap(), (0, 2));
         assert!(is_empty(&dst));
+    }
+
+    /// The volume (the sandbox writes in it) mirrored while a thread swaps one of its folders for a link to « home »
+    /// and back, in one step each, and with a link planted where the copy goes: nothing of home is copied into the
+    /// folder kept in step, nothing written, chmodded or removed in home (security audit 2026-10-27, H1).
+    #[test]
+    fn a_mirror_never_follows_a_swapped_folder() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let (volume, host, home) = (dir.path().join("volume"), dir.path().join("host"), dir.path().join("home"));
+        std::fs::create_dir_all(volume.join("d")).unwrap();
+        std::fs::write(volume.join("d/notes.md"), "share").unwrap();
+        std::fs::create_dir_all(home.join("keep")).unwrap();
+        std::fs::write(home.join("notes.md"), "home secret").unwrap();
+        std::fs::set_permissions(home.join("notes.md"), std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::os::unix::fs::symlink(&home, volume.join("d.link")).unwrap();
+        let untouched = |home: &Path| {
+            let mut names: Vec<_> = std::fs::read_dir(home).unwrap().flatten().map(|e| e.file_name()).collect();
+            names.sort();
+            assert_eq!(names, [OsString::from("keep"), "notes.md".into()]);
+            assert_eq!(std::fs::read_to_string(home.join("notes.md")).unwrap(), "home secret");
+            assert_eq!((mode(home), mode(&home.join("notes.md")), mode(&home.join("keep"))), (0o700, 0o600, 0o755));
+        };
+        std::fs::set_permissions(home.join("keep"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let swapper = {
+            let (volume, stop) = (volume.clone(), stop.clone());
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    beneath::exchange(&volume.join("d"), &volume.join("d.link")).unwrap();
+                    std::thread::yield_now();
+                    beneath::exchange(&volume.join("d"), &volume.join("d.link")).unwrap();
+                }
+            })
+        };
+        let mut copied = 0;
+        for _ in 0..400 {
+            let _ = std::fs::remove_dir_all(&host);
+            if sync_tree(&volume, &host).is_ok() && host.join("d/notes.md").exists() {
+                copied += 1;
+                assert_eq!(std::fs::read_to_string(host.join("d/notes.md")).unwrap(), "share");
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        swapper.join().unwrap();
+        assert!(copied > 0, "the mirror never got through");
+        untouched(&home);
+        // a link planted in the folder kept in step (where the copy is written)
+        std::fs::remove_dir_all(&host).unwrap();
+        std::fs::create_dir_all(&host).unwrap();
+        std::os::unix::fs::symlink(&home, host.join("d")).unwrap();
+        std::fs::remove_file(volume.join("d.link")).unwrap();
+        sync_tree(&volume, &host).unwrap();
+        assert!(host.join("d").symlink_metadata().unwrap().is_dir(), "the link replaced by a folder");
+        untouched(&home);
     }
 
     #[test]

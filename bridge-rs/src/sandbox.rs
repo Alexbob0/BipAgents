@@ -23,7 +23,9 @@
 //!   marked read-only): `shared_files_list`, `shared_files_get` (copies a file into `/fichiers/partages/<agent>/…`),
 //!   `shared_files_write` (from `/envoi`, a second named volume it writes in, or a short text; into its own shared
 //!   folder only, which it writes directly anyway: marked read-only, so never asked), `shared_files_delete` (asked).
-//!   The links' permissions are checked at each call.
+//!   The links' permissions are checked at each call. Every file of these folders is reached through folder
+//!   descriptors, one name at a time and never through a link (beneath.rs; security audit 2026-10-27, H1): the
+//!   sandbox writes in them and can swap a folder for a link at any moment.
 //! - **the network**: the sandbox joins `bipagents-sandbox`, a podman network without a route out (`--internal`), with
 //!   no DNS server. Its only way out is a small proxy (`bipagents-egress`, `assets/sandbox/egress_proxy.py`, in the
 //!   sandbox image), on that network and the ordinary one, which lets through the registries of `[sandbox]
@@ -68,7 +70,7 @@ use crate::app::AppState;
 use crate::config::{AgentConfig, Config, SharedConfig};
 use crate::tools_knowledge::tool_text;
 use crate::web::ApiResult;
-use crate::{py, shares, Dict};
+use crate::{beneath, py, shares, Dict};
 
 /// The registries a sandbox reaches by default: Python, JavaScript, Rust, Go packages, Debian's. Only hosts that serve
 /// packages: PyPI takes uploads on upload.pypi.org and crates.io's API publishes, so neither is listed, and RubyGems
@@ -787,6 +789,9 @@ pub fn open_plain(path: &Path) -> std::io::Result<std::fs::File> {
     Ok(file)
 }
 
+/// By path: only for the uploads (the bridge's own folder) copied into the files volume, which the sandbox mounts
+/// read-only (/fichiers), so neither side can hold a link the sandbox made. Folders a sandbox writes in go through
+/// beneath.rs.
 fn copy_file(source: &Path, target: &Path) -> std::io::Result<()> {
     let tmp = target.with_file_name(format!(
         ".{}.part",
@@ -964,19 +969,10 @@ pub fn plain_relative(path: &str) -> Option<PathBuf> {
     (!out.as_os_str().is_empty() && out.components().count() <= 16).then_some(out)
 }
 
-/// `root/relative`, when no part of it on the way is a symbolic link (a link made in the sandbox would otherwise
-/// lead the bridge to this machine's files).
-pub fn inside(root: &Path, relative: &Path) -> Option<PathBuf> {
-    let mut path = root.to_path_buf();
-    for part in relative.components() {
-        path.push(part);
-        match path.symlink_metadata() {
-            Ok(meta) if meta.file_type().is_symlink() => return None,
-            Ok(_) => {}
-            Err(_) => {} // not there yet (a file to write): the rest can't be a link either
-        }
-    }
-    Some(path)
+/// A plain relative path's folder and last name (`plain_relative` gives one).
+fn split_last(relative: &Path) -> (PathBuf, std::ffi::OsString) {
+    let folder = relative.parent().map(Path::to_path_buf).unwrap_or_default();
+    (folder, relative.file_name().map(|n| n.to_os_string()).unwrap_or_default())
 }
 
 fn human(size: u64) -> String {
@@ -987,20 +983,22 @@ fn human(size: u64) -> String {
     }
 }
 
+/// The files of a shared folder, read through folder descriptors (a folder swapped for a link meanwhile is not
+/// listed: never this machine's files' names).
 fn listing(root: &Path) -> Vec<String> {
     let mut lines = Vec::new();
+    let Ok(top) = beneath::Dir::open(root) else { return lines };
     let mut stack = vec![PathBuf::new()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(root.join(&dir)) else { continue };
-        let mut entries: Vec<_> = entries.flatten().collect();
-        entries.sort_by_key(|e| e.file_name());
-        for entry in entries {
-            let relative = dir.join(entry.file_name());
-            let Ok(meta) = entry.path().symlink_metadata() else { continue };
-            if meta.is_dir() {
-                stack.push(relative);
-            } else if meta.is_file() {
-                lines.push(format!("- {} ({})", relative.to_string_lossy(), human(meta.len())));
+        let Ok(entries) = top.sub(&dir).and_then(|d| d.entries()) else { continue };
+        for (name, stat) in entries {
+            let relative = dir.join(&name);
+            match stat.kind {
+                beneath::Kind::Dir if relative.components().count() < beneath::MAX_DEPTH => stack.push(relative),
+                beneath::Kind::File => {
+                    lines.push(format!("- {} ({})", relative.to_string_lossy(), human(stat.size)));
+                }
+                _ => {}
             }
             if lines.len() >= MAX_LISTED {
                 lines.push("- … (more)".into());
@@ -1056,23 +1054,19 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             let Some(relative) = plain_relative(&text("path")) else {
                 return error("give the file's path, as shared_files_list shows it");
             };
-            let Some(file) = inside(&shares::share_dir(config, &source), &relative) else {
-                return error("no such file");
-            };
-            if !file.symlink_metadata().map(|m| m.is_file()).unwrap_or(false) {
+            // Opened through the folder's descriptor, one name at a time, never through a link: what is read is in
+            // the shared folder, whatever the sandbox swaps meanwhile.
+            let Ok(mut input) = beneath::open_file(&shares::share_dir(config, &source), &relative) else {
                 return error("no such file (give a file, as shared_files_list shows it)");
-            }
+            };
             let Some((files, _)) = volumes_of(config, &agent.name) else {
                 return error("your sandbox isn't ready for files yet; try again in a moment");
             };
-            let copies = files.join(COPIES).join(&source);
-            let Some(target) = inside(&copies, &relative) else { return error("no such file") };
             let done = (|| -> std::io::Result<()> {
-                make_dir(&files.join(COPIES))?;
-                if let Some(parent) = target.parent() {
-                    make_dir(parent)?;
-                }
-                copy_file(&file, &target)
+                let (folder, name) = split_last(&relative);
+                let into = beneath::Dir::open(&files)?
+                    .make_dirs(&Path::new(COPIES).join(&source).join(folder), Some(SANDBOX_DIR_MODE))?;
+                into.write_file(&name, SANDBOX_FILE_MODE, None, |out| std::io::copy(&mut input, out).map(|_| ()))
             })();
             match done {
                 Ok(()) => tool_text(
@@ -1089,16 +1083,19 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             let Some(relative) = plain_relative(&text("path")) else {
                 return error("give a path in your shared folder");
             };
-            let own = shares::share_dir(config, &agent.name);
-            let Some(target) = inside(&own, &relative) else { return error("not a path in your shared folder") };
+            let own = match beneath::Dir::open_or_make(&shares::share_dir(config, &agent.name)) {
+                Ok(own) => own,
+                Err(exc) => return error(&format!("your shared folder can't be opened ({exc})")),
+            };
             if name == DELETE {
-                let meta = match target.symlink_metadata() {
-                    Ok(meta) => meta,
-                    Err(_) => return error("no such file in your shared folder"),
-                };
-                let gone = if meta.is_dir() { std::fs::remove_dir_all(&target) } else { std::fs::remove_file(&target) };
+                // In its folder's descriptor (`unlinkat`), a folder emptied the same way: never through a link.
+                let gone = own.parent_of(&relative).and_then(|(parent, name)| parent.remove(&name));
                 return match gone {
-                    Ok(()) => {
+                    Err(exc) if exc.kind() == std::io::ErrorKind::NotFound => {
+                        error("no such file in your shared folder")
+                    }
+                    Err(exc) if beneath::refused(&exc) => error("not a path in your shared folder"),
+                    Ok(_) => {
                         shares::mirror_one(config, &agent.name);
                         tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, path = %relative.to_string_lossy(), "shared file deleted");
                         tool_text(&format!("Deleted from your shared folder: {}", relative.to_string_lossy()), false)
@@ -1116,16 +1113,16 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                 };
                 // Right in /envoi, no folder on the way: nothing the sandbox could swap for a link meanwhile.
                 let name = plain_relative(rest).filter(|r| r.components().count() == 1);
-                let Some(source) = name.and_then(|r| inside(&outbox, &r)) else {
+                let Some(source) = name else {
                     return error(&format!("put the file right in {OUTBOX} (no folder), then give {OUTBOX}/<name>"));
                 };
                 let limit = config.limits.upload_max_bytes;
-                let input = match open_plain(&source) {
+                let input = match beneath::open_file(&outbox, &source) {
                     Ok(file) if file.metadata().map(|m| m.len() <= limit).unwrap_or(false) => file,
                     Ok(_) => return error("this file is too large to share"),
                     Err(_) => return error(&format!("no such file in {OUTBOX}")),
                 };
-                write_into(&own, &target, |out| {
+                write_into(&own, &relative, |out| {
                     use std::io::Read;
                     let copied = std::io::copy(&mut input.take(limit + 1), out)?;
                     if copied > limit {
@@ -1137,7 +1134,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                 if content.len() > MAX_CONTENT {
                     return error(&format!("too long: put it in a file under {OUTBOX} and give `from`"));
                 }
-                write_into(&own, &target, |out| out.write_all(content.as_bytes()))
+                write_into(&own, &relative, |out| out.write_all(content.as_bytes()))
             } else {
                 return error(&format!("give `from` (a file under {OUTBOX}) or `content`"));
             };
@@ -1155,38 +1152,18 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
 }
 
 /// A file written into the agent's shared folder, open to the sandboxes' users like the rest of it (its agent may
-/// change it from /partage).
+/// change it from /partage). Every step in a folder's descriptor (beneath.rs): the folders on the way made with
+/// `mkdirat` and opened without following a link, their mode set with `fchmod` (a folder its agent made is its
+/// agent's: left as it is), the file written under a fresh temporary name (`O_CREAT|O_EXCL|O_NOFOLLOW`) then renamed
+/// in that same folder.
 fn write_into(
-    own: &Path,
-    target: &Path,
+    own: &beneath::Dir,
+    relative: &Path,
     fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
     let (dir_mode, file_mode) = shares::open_modes();
-    std::fs::create_dir_all(own)?;
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
-        let mut dir = parent;
-        while dir != own && dir.starts_with(own) {
-            // a folder its agent made is its agent's: left as it is
-            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(dir_mode));
-            let Some(up) = dir.parent() else { break };
-            dir = up;
-        }
-    }
-    if target.symlink_metadata().map(|m| m.is_dir()).unwrap_or(false) {
-        return Err(std::io::Error::other("a folder has this name"));
-    }
-    let tmp = target.with_file_name(format!(".bip-{}.part", py::token_urlsafe(6)));
-    let result = (|| {
-        let mut out = std::fs::File::create(&tmp)?;
-        fill(&mut out)?;
-        out.set_permissions(std::fs::Permissions::from_mode(file_mode))?;
-        std::fs::rename(&tmp, target)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    let (folder, name) = split_last(relative);
+    own.make_dirs(&folder, Some(dir_mode))?.write_file(&name, file_mode, None, fill)
 }
 
 const INSTRUCTIONS: &str = "BipAgents files: the files your person sends you are in /fichiers (read-only). Shared \
@@ -1310,16 +1287,173 @@ mod tests {
         assert_eq!(plain_relative("/"), None);
     }
 
-    #[test]
-    fn a_link_never_leads_out() {
+    /// An agent whose shared folder is `<data>/shares/vie`, its files volume and outbox in the temporary folder, and
+    /// « home »: what the person's account holds outside (a secret, closed folder).
+    fn tools_setup() -> (tempfile::TempDir, Config, AgentConfig, PathBuf, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("envoi");
-        std::fs::create_dir_all(root.join("sub")).unwrap();
-        std::os::unix::fs::symlink("/etc", root.join("etc")).unwrap();
-        std::os::unix::fs::symlink("/etc/hosts", root.join("sub/hosts")).unwrap();
-        assert!(inside(&root, Path::new("etc/hosts")).is_none());
-        assert!(inside(&root, Path::new("sub/hosts")).is_none());
-        assert_eq!(inside(&root, Path::new("sub/new.txt")), Some(root.join("sub/new.txt")));
+        let mut config = Config::with_key("k".repeat(32));
+        config.outbox.db_path = dir.path().join("data/bridge.db").to_string_lossy().into_owned();
+        config.sandbox.isolate = "off".into();
+        let agent = AgentConfig { name: "vie".into(), shares: "external".into(), ..AgentConfig::default() };
+        config.agents.insert(agent.name.clone(), agent.clone());
+        let (files, outbox) = (dir.path().join("files"), dir.path().join("envoi"));
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::create_dir_all(&outbox).unwrap();
+        save_state(&config, |state| {
+            state.insert(
+                "agents".into(),
+                json!({"vie": {"files": files.to_string_lossy(), "outbox": outbox.to_string_lossy()}}),
+            );
+        })
+        .unwrap();
+        let share = shares::share_dir(&config, "vie");
+        std::fs::create_dir_all(&share).unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        std::fs::write(home.join("secret.txt"), "home secret").unwrap();
+        std::fs::set_permissions(home.join("secret.txt"), std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
+        (dir, config, agent, share, home)
+    }
+
+    fn tool(config: &Config, agent: &AgentConfig, name: &str, arguments: Value) -> (bool, String) {
+        let Value::Object(arguments) = arguments else { panic!() };
+        let out = call(config, agent, name, &arguments);
+        let text = out["content"][0]["text"].as_str().unwrap_or_default().to_string();
+        (out.get("isError").and_then(Value::as_bool).unwrap_or(false), text)
+    }
+
+    /// Home as it was: the same names, the secret unchanged, the modes untouched.
+    fn home_untouched(home: &Path) {
+        let mut names: Vec<_> = std::fs::read_dir(home).unwrap().flatten().map(|e| e.file_name()).collect();
+        names.sort();
+        assert_eq!(names, [std::ffi::OsString::from(".config"), "secret.txt".into()], "something written in home");
+        assert!(std::fs::read_dir(home.join(".config")).unwrap().next().is_none(), "something written in .config");
+        assert_eq!(std::fs::read_to_string(home.join("secret.txt")).unwrap(), "home secret");
+        let mode = |p: &Path| std::fs::symlink_metadata(p).unwrap().permissions().mode() & 0o7777;
+        assert_eq!((mode(home), mode(&home.join("secret.txt"))), (0o700, 0o600), "home's modes changed");
+    }
+
+    /// No copy the agent can read holds home's secret.
+    fn nothing_leaked(files: &Path) {
+        let mut stack = vec![files.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let meta = entry.path().symlink_metadata().unwrap();
+                if meta.is_dir() {
+                    stack.push(entry.path());
+                } else if meta.is_file() {
+                    let text = std::fs::read_to_string(entry.path()).unwrap_or_default();
+                    assert!(!text.contains("home secret"), "{} holds home's secret", entry.path().display());
+                }
+            }
+        }
+    }
+
+    /// A link the sandbox planted at each place a tool goes through: refused, nothing outside the shared folder read,
+    /// written, made, chmodded or removed (security audit 2026-10-27, H1).
+    #[test]
+    fn the_share_tools_never_go_through_a_planted_link() {
+        let (dir, config, agent, share, home) = tools_setup();
+        let (files, outbox) = (dir.path().join("files"), dir.path().join("envoi"));
+        // what works: a file written, listed, fetched, deleted
+        let (failed, said) = tool(&config, &agent, WRITE, json!({"path": "a/b/c.txt", "content": "ok"}));
+        assert!(!failed, "{said}");
+        assert_eq!(std::fs::read_to_string(share.join("a/b/c.txt")).unwrap(), "ok");
+        let mode = |p: &Path| std::fs::symlink_metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!((mode(&share.join("a/b")), mode(&share.join("a/b/c.txt"))), (0o777, 0o666));
+        assert!(tool(&config, &agent, LIST, json!({})).1.contains("- a/b/c.txt (2 B)"));
+        let (failed, said) = tool(&config, &agent, GET, json!({"path": "a/b/c.txt"}));
+        assert!(!failed, "{said}");
+        assert_eq!(std::fs::read_to_string(files.join("partages/vie/a/b/c.txt")).unwrap(), "ok");
+        std::fs::write(outbox.join("graphe.png"), "PNG").unwrap();
+        let (failed, said) = tool(&config, &agent, WRITE, json!({"path": "g.png", "from": "/envoi/graphe.png"}));
+        assert!(!failed, "{said}");
+        assert_eq!(std::fs::read_to_string(share.join("g.png")).unwrap(), "PNG");
+        assert!(!tool(&config, &agent, DELETE, json!({"path": "a"})).0);
+        assert!(!share.join("a").exists());
+
+        // a folder of the shared folder is a link to home
+        std::os::unix::fs::symlink(&home, share.join("d")).unwrap();
+        assert!(tool(&config, &agent, GET, json!({"path": "d/secret.txt"})).0);
+        assert!(tool(&config, &agent, WRITE, json!({"path": "d/x.txt", "content": "x"})).0);
+        assert!(tool(&config, &agent, WRITE, json!({"path": "d/.config/systemd/user/x.service", "content": "x"})).0);
+        assert!(tool(&config, &agent, WRITE, json!({"path": "d/x.txt", "from": "/envoi/graphe.png"})).0);
+        assert!(tool(&config, &agent, DELETE, json!({"path": "d/secret.txt"})).0);
+        assert!(!tool(&config, &agent, LIST, json!({})).1.contains("secret"));
+        home_untouched(&home);
+        // removing the link removes the link
+        assert!(!tool(&config, &agent, DELETE, json!({"path": "d"})).0);
+        assert!(share.join("d").symlink_metadata().is_err());
+        home_untouched(&home);
+
+        // the file itself is a link to home's secret
+        std::os::unix::fs::symlink(home.join("secret.txt"), share.join("s.txt")).unwrap();
+        assert!(tool(&config, &agent, GET, json!({"path": "s.txt"})).0);
+        // written: the link replaced by the file, never written through
+        assert!(!tool(&config, &agent, WRITE, json!({"path": "s.txt", "content": "new"})).0);
+        assert_eq!(std::fs::read_to_string(share.join("s.txt")).unwrap(), "new");
+        home_untouched(&home);
+
+        // its outbox's file is a link to home's secret
+        std::os::unix::fs::symlink(home.join("secret.txt"), outbox.join("s.txt")).unwrap();
+        assert!(tool(&config, &agent, WRITE, json!({"path": "t.txt", "from": "/envoi/s.txt"})).0);
+
+        // where GET copies to (its files volume) holds a link to home
+        std::fs::write(share.join("ok.txt"), "ok").unwrap();
+        std::fs::remove_dir_all(files.join("partages")).unwrap();
+        std::os::unix::fs::symlink(&home, files.join("partages")).unwrap();
+        assert!(tool(&config, &agent, GET, json!({"path": "ok.txt"})).0);
+        std::fs::remove_file(files.join("partages")).unwrap();
+        std::fs::create_dir_all(files.join("partages")).unwrap();
+        std::os::unix::fs::symlink(&home, files.join("partages/vie")).unwrap();
+        assert!(tool(&config, &agent, GET, json!({"path": "ok.txt"})).0);
+        home_untouched(&home);
+        nothing_leaked(&files);
+    }
+
+    /// The race itself: a thread swaps a folder of the shared folder for a link to home and back, in one step each
+    /// (`renameat2(RENAME_EXCHANGE)` / `renamex_np(RENAME_SWAP)`), as fast as it can, while the agent's tools read,
+    /// write and delete through it again and again. Some calls get through (the folder was there), none reaches
+    /// home.
+    #[test]
+    fn the_share_tools_win_the_race_against_a_swapped_folder() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (dir, config, agent, share, home) = tools_setup();
+        let files = dir.path().join("files");
+        std::fs::create_dir_all(share.join("d")).unwrap();
+        std::fs::write(share.join("d/secret.txt"), "share").unwrap();
+        std::os::unix::fs::symlink(&home, share.join("d.link")).unwrap();
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let swapper = {
+            let (share, stop) = (share.clone(), stop.clone());
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    beneath::exchange(&share.join("d"), &share.join("d.link")).unwrap();
+                    std::thread::yield_now();
+                    beneath::exchange(&share.join("d"), &share.join("d.link")).unwrap();
+                }
+            })
+        };
+        let (mut got, mut wrote) = (0, 0);
+        for i in 0..1500 {
+            if !tool(&config, &agent, GET, json!({"path": "d/secret.txt"})).0 {
+                got += 1;
+            }
+            let path = format!("d/w{}.txt", i % 2);
+            if !tool(&config, &agent, WRITE, json!({"path": path, "content": "from the agent"})).0 {
+                wrote += 1;
+            }
+            let _ = tool(&config, &agent, WRITE, json!({"path": "d/.config/x.txt", "content": "x"}));
+            let _ = tool(&config, &agent, DELETE, json!({"path": path}));
+            let _ = tool(&config, &agent, DELETE, json!({"path": "d/secret.txt/.."}));
+        }
+        stop.store(true, Ordering::Relaxed);
+        swapper.join().unwrap();
+        assert!(got > 0 && wrote > 0, "the tools never got through: {got} {wrote}");
+        home_untouched(&home);
+        nothing_leaked(&files);
+        assert_eq!(std::fs::read_to_string(files.join("partages/vie/d/secret.txt")).unwrap(), "share");
     }
 
     #[test]

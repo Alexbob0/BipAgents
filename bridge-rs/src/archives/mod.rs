@@ -296,17 +296,20 @@ pub fn locate(config: &Config, agent: &AgentConfig, source: &str) -> Result<(Pat
         if !crate::sent_files::own_volume(config, agent, volume) {
             return Err(format!("only the agent's own volumes (bipagents-{}-…) can be archives", agent.name));
         }
+        // its mountpoint (the volume's own folder, which no sandbox can swap): its real path, which the walks pin
         let folder = crate::sent_files::volume_mountpoint(volume).ok_or("no such podman volume")?;
-        return Ok((folder, crate::browsers::pyx::which("podman")));
+        return Ok((canonical(&folder), crate::browsers::pyx::which("podman")));
     }
     let expanded = py::expanduser(source);
     if !expanded.starts_with('/') {
         return Err("give the folder's full path (/home/…, or /workspace/… as the agent sees it)".into());
     }
-    // as the agent sees it first (/workspace/…, a folder mounted in its sandbox), then this machine's
+    // As the agent sees it first (/workspace/…, a folder mounted in its sandbox: its real path, checked to stay in
+    // that place), then this machine's. Resolved once: the path checked is the path returned, and the walks open it
+    // only when it still leads there (beneath.rs `open_exact`), so a folder swapped for a link meanwhile is refused.
     let host = match crate::sent_files::sandbox_folder(config, agent, &expanded) {
         Some(found) => found,
-        None => PathBuf::from(&expanded),
+        None => canonical(Path::new(&expanded)),
     };
     if let Some(why) = refused_folder(config, agent, &host) {
         return Err(why);
@@ -317,7 +320,7 @@ pub fn locate(config: &Config, agent: &AgentConfig, source: &str) -> Result<(Pat
              mounts it"
         ));
     }
-    Ok((canonical(&host), None))
+    Ok((host, None))
 }
 
 /// Where an archive's files are now.
@@ -669,13 +672,13 @@ pub(crate) fn texts(
             continue;
         }
         let text = match (offset, extract::format_of(&file)) {
-            (Some(offset), _) => crate::agent_files::open_beneath(&root, &relative)
+            (Some(offset), _) => crate::beneath::open_file_exact(&root, &relative)
                 .ok()
                 .and_then(|f| extract::mbox_message_at(f, offset).ok().flatten())
                 .map(|raw| extract::mail(&raw).text),
-            (None, Some(extract::Format::Pdf)) => crate::agent_files::open_beneath(&root, &relative)
+            (None, Some(extract::Format::Pdf)) => crate::beneath::open_file_exact(&root, &relative)
                 .ok()
-                .and_then(|_| if unshare.is_none() { extract::pdf_text(&root.join(&relative)) } else { None }),
+                .and_then(|file| if unshare.is_none() { extract::pdf_text(file) } else { None }),
             (None, Some(format)) => {
                 sync::read_file(&root, &relative, extract::MAX_FILE, unshare.as_deref()).ok().map(|bytes| {
                     let text = extract::decode(&bytes);

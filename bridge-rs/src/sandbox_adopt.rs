@@ -46,12 +46,12 @@
 //! of it is printed or logged.
 
 use std::collections::BTreeMap;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
 use crate::agents_admin::{default_run, Run};
+use crate::beneath::{self, Kind};
 use crate::config::{AgentConfig, Config};
 use crate::{py, sandbox, shares, Dict};
 
@@ -105,24 +105,26 @@ pub struct Tally {
     pub skipped: usize,
 }
 
+/// What a folder holds, read through folder descriptors (beneath.rs): a folder the sandbox swaps for a link meanwhile
+/// is never walked into.
 fn walk(root: &Path) -> std::io::Result<BTreeMap<PathBuf, Entry>> {
+    let top = beneath::Dir::open(root)?;
     let mut out = BTreeMap::new();
     let mut stack = vec![PathBuf::new()];
     while let Some(relative) = stack.pop() {
-        for entry in std::fs::read_dir(root.join(&relative))? {
-            let entry = entry?;
-            let path = relative.join(entry.file_name());
-            let meta = entry.path().symlink_metadata()?;
-            let kind = meta.file_type();
-            let found = if kind.is_symlink() {
-                Entry::Link(std::fs::read_link(entry.path())?)
-            } else if kind.is_dir() {
-                stack.push(path.clone());
-                Entry::Dir(meta.mode() & 0o7777)
-            } else if kind.is_file() {
-                Entry::File { size: meta.len(), mode: meta.mode() & 0o7777, mtime: meta.mtime() }
-            } else {
-                Entry::Other
+        let dir = top.sub(&relative)?;
+        for (name, stat) in dir.entries()? {
+            let path = relative.join(&name);
+            let found = match stat.kind {
+                Kind::Link => Entry::Link(dir.read_link(&name)?),
+                Kind::Dir => {
+                    if path.components().count() < beneath::MAX_DEPTH {
+                        stack.push(path.clone());
+                    }
+                    Entry::Dir(stat.mode)
+                }
+                Kind::File => Entry::File { size: stat.size, mode: stat.mode, mtime: stat.mtime },
+                Kind::Other => Entry::Other,
             };
             out.insert(path, found);
         }
@@ -150,99 +152,77 @@ pub fn tally(root: &Path) -> std::io::Result<Tally> {
     walk(root).map(|e| tally_of(&e))
 }
 
-fn copy_one(source: &Path, target: &Path, mode: u32, mtime: i64) -> std::io::Result<()> {
-    let tmp = target.with_file_name(format!(
-        ".{}.bip-part",
-        target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
-    ));
-    let result = (|| {
-        let mut input = sandbox::open_plain(source)?;
-        let mut out = std::fs::File::create(&tmp)?;
-        std::io::copy(&mut input, &mut out)?;
-        out.set_permissions(std::fs::Permissions::from_mode(mode))?;
-        let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs(mtime.max(0) as u64);
-        out.set_modified(when)?;
-        std::fs::rename(&tmp, target)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
-}
-
-fn remove_any(path: &Path) -> std::io::Result<()> {
-    match path.symlink_metadata() {
-        Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(path),
-        Ok(_) => std::fs::remove_file(path),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
-    }
-}
-
 /// `target` made to hold what `source` holds (files with their modes and times, links as links, never pipes or
 /// devices); `exact`: what `source` doesn't hold any more removed. Returns the entries written or removed.
+///
+/// Either side may be a volume a sandbox writes in: both walked through folder descriptors, every name made, written,
+/// chmodded or removed in its folder's descriptor, never through a link (beneath.rs; security audit 2026-10-27).
 pub fn mirror(source: &Path, target: &Path, exact: bool) -> std::io::Result<usize> {
-    let wanted = walk(source)?;
-    std::fs::create_dir_all(target)?;
-    let present = walk(target)?;
+    let from = beneath::Dir::open(source)?;
+    let to = beneath::Dir::open_or_make(target)?;
+    mirror_dir(&from, &to, exact, 0)
+}
+
+fn mirror_dir(from: &beneath::Dir, to: &beneath::Dir, exact: bool, depth: usize) -> std::io::Result<usize> {
+    if depth > beneath::MAX_DEPTH {
+        return Err(std::io::Error::other("folders nested too deep"));
+    }
+    let (wanted, present) = (from.entries()?, to.entries()?);
     let mut changed = 0;
-    for (relative, entry) in &wanted {
-        let path = target.join(relative);
-        let now = present.get(relative);
-        match entry {
-            Entry::Dir(_) => {
-                if !matches!(now, Some(Entry::Dir(_))) {
+    let mut modes = Vec::new();
+    for (name, stat) in &wanted {
+        let now = present.get(name);
+        match stat.kind {
+            Kind::Dir => {
+                if now.map(|n| n.kind) != Some(Kind::Dir) {
                     if now.is_some() {
-                        remove_any(&path)?;
+                        to.remove(name)?;
                     }
-                    std::fs::create_dir(&path)?;
-                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+                    to.mkdir(name, 0o755)?;
                     changed += 1;
                 }
+                changed += mirror_dir(&from.sub_one(name)?, &to.sub_one(name)?, exact, depth + 1)?;
+                modes.push((name, stat.mode));
             }
-            Entry::File { size, mode, mtime } => {
-                if let Some(Entry::File { size: s, mtime: m, mode: md }) = now {
-                    if s == size && m == mtime {
-                        if md != mode {
-                            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(*mode))?;
+            Kind::File => {
+                if let Some(now) = now.filter(|n| n.kind == Kind::File) {
+                    if now.size == stat.size && now.mtime == stat.mtime {
+                        if now.mode != stat.mode {
+                            to.chmod_at(name, stat.mode)?;
                         }
                         continue;
                     }
                 }
-                if matches!(now, Some(Entry::Dir(_)) | Some(Entry::Link(_)) | Some(Entry::Other)) {
-                    remove_any(&path)?;
+                if now.is_some_and(|n| n.kind != Kind::File) {
+                    to.remove(name)?;
                 }
-                copy_one(&source.join(relative), &path, *mode, *mtime)?;
+                let mut input = from.open_file(Path::new(name))?;
+                let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs(stat.mtime.max(0) as u64);
+                to.write_file(name, stat.mode, Some(when), |out| std::io::copy(&mut input, out).map(|_| ()))?;
                 changed += 1;
             }
-            Entry::Link(to) => {
-                if now == Some(entry) {
+            Kind::Link => {
+                let link = from.read_link(name)?;
+                if now.is_some_and(|n| n.kind == Kind::Link) && to.read_link(name).ok().as_ref() == Some(&link) {
                     continue;
                 }
                 if now.is_some() {
-                    remove_any(&path)?;
+                    to.remove(name)?;
                 }
-                std::os::unix::fs::symlink(to, &path)?;
+                to.symlink(&link, name)?;
                 changed += 1;
             }
-            Entry::Other => {}
+            Kind::Other => {}
         }
     }
     if exact {
-        // children before their folder (reverse order), each gone once
-        for relative in present.keys().rev() {
-            let path = target.join(relative);
-            if !wanted.contains_key(relative) && path.symlink_metadata().is_ok() {
-                remove_any(&path)?;
-                changed += 1;
-            }
+        for name in present.keys().filter(|n| !wanted.contains_key(*n)) {
+            changed += to.remove(name)?;
         }
     }
     // the folders' own modes last (a read-only folder copied into would refuse the files)
-    for (relative, entry) in wanted.iter().rev() {
-        if let Entry::Dir(mode) = entry {
-            std::fs::set_permissions(target.join(relative), std::fs::Permissions::from_mode(*mode | 0o700))?;
-        }
+    for (name, mode) in modes {
+        to.chmod_at(name, mode | 0o700)?;
     }
     Ok(changed)
 }
@@ -435,7 +415,7 @@ fn naming_found(roots: &[(PathBuf, String)], needles: &[String]) -> Vec<(String,
                 continue;
             }
             searched += 1;
-            let Ok(mut file) = sandbox::open_plain(&path) else { continue };
+            let Ok(mut file) = beneath::open_file(root, &relative) else { continue };
             let mut bytes = Vec::new();
             if std::io::Read::read_to_end(&mut file, &mut bytes).is_err() || bytes.iter().take(8192).any(|b| *b == 0) {
                 continue;
@@ -1146,44 +1126,63 @@ fn leads_inside(root: &Path, link: &Path, to: &Path) -> bool {
 /// A linked volume kept open to the sandbox's user and this account (folders 0777, files 0666, executables 0777, for
 /// what this account owns), and without a link leading out of it (programs of this machine write through it).
 pub fn open_modes(root: &Path) -> Tended {
+    // SAFETY: getuid never fails.
+    open_modes_as(root, Some(unsafe { libc::getuid() }))
+}
+
+/// `open_modes`; `owner`: only what that user owns is changed (None: everything, as the sandboxes' « root », from
+/// `bipbridge fs-as-root open-modes`). Walked through folder descriptors and each mode set on a descriptor of its
+/// own, never through a link: the sandbox may swap any folder of the volume for a link meanwhile (security audit
+/// 2026-10-27). A link leading out is removed in its folder's descriptor (`unlinkat`: the link itself, in the volume).
+pub fn open_modes_as(root: &Path, owner: Option<u32>) -> Tended {
     let mut tended = Tended::default();
-    let uid = unsafe { libc::getuid() };
-    let Ok(entries) = walk(root) else { return tended };
-    for (relative, entry) in &entries {
-        let path = root.join(relative);
-        match entry {
-            Entry::Link(to) => {
-                if !leads_inside(root, &path, to) && std::fs::remove_file(&path).is_ok() {
-                    tracing::warn!(target: "bipbridge::sandbox", link = %path.display(), "a link leading out of a linked volume removed");
-                    tended.removed_links += 1;
-                }
-            }
-            Entry::Dir(mode) | Entry::File { mode, .. } => {
-                let Ok(meta) = path.symlink_metadata() else { continue };
-                let wanted = match entry {
-                    Entry::Dir(_) => LINK_DIR_MODE,
-                    _ if mode & 0o111 != 0 => LINK_DIR_MODE,
-                    _ => LINK_FILE_MODE,
-                };
-                if meta.uid() != uid {
-                    if mode & 0o006 != wanted & 0o006 {
-                        tended.closed += 1;
+    let Ok(top) = beneath::Dir::open(root) else { return tended };
+    let mut stack = vec![PathBuf::new()];
+    while let Some(relative) = stack.pop() {
+        let Ok(dir) = top.sub(&relative) else { continue };
+        let Ok(entries) = dir.entries() else { continue };
+        for (name, stat) in entries {
+            let path = relative.join(&name);
+            match stat.kind {
+                Kind::Link => {
+                    let Ok(to) = dir.read_link(&name) else { continue };
+                    if !leads_inside(root, &root.join(&path), &to) && dir.unlink(&name).is_ok() {
+                        tracing::warn!(target: "bipbridge::sandbox", link = %root.join(&path).display(), "a link leading out of a linked volume removed");
+                        tended.removed_links += 1;
                     }
-                    continue;
                 }
-                if mode & 0o777 != wanted
-                    && std::fs::set_permissions(&path, std::fs::Permissions::from_mode(wanted)).is_ok()
-                {
-                    tended.opened += 1;
+                Kind::Dir | Kind::File => {
+                    let wanted = match stat.kind {
+                        Kind::Dir => LINK_DIR_MODE,
+                        _ if stat.mode & 0o111 != 0 => LINK_DIR_MODE,
+                        _ => LINK_FILE_MODE,
+                    };
+                    if owner.is_some_and(|uid| stat.uid != uid) {
+                        if stat.mode & 0o006 != wanted & 0o006 {
+                            tended.closed += 1;
+                        }
+                    } else if stat.mode & 0o777 != wanted && dir.chmod_at(&name, wanted).is_ok() {
+                        tended.opened += 1;
+                    }
+                    if stat.kind == Kind::Dir && path.components().count() < beneath::MAX_DEPTH {
+                        stack.push(path);
+                    }
                 }
+                Kind::Other => {}
             }
-            Entry::Other => {}
         }
     }
-    if root.symlink_metadata().is_ok_and(|m| m.uid() == uid) {
-        let _ = std::fs::set_permissions(root, std::fs::Permissions::from_mode(LINK_DIR_MODE));
+    if top.stat_self().is_ok_and(|st| !owner.is_some_and(|uid| st.uid != uid)) {
+        let _ = top.chmod(LINK_DIR_MODE);
     }
     tended
+}
+
+/// What a sandbox's user made in a linked volume, opened as the sandboxes' « root » (`podman unshare`, by this
+/// binary: `open_modes_as`, never a `chmod -R` that a folder swapped for a link would lead out). Whether it worked.
+fn open_modes_as_root(podman: &str, volume: &Path) -> bool {
+    beneath::as_root(podman, &[std::ffi::OsStr::new("open-modes"), volume.as_os_str()])
+        .is_ok_and(|out| out.status.success())
 }
 
 /// Every adopted agent's linked volumes kept open and without a link leading out (every few minutes, sandbox_sites.rs
@@ -1203,12 +1202,7 @@ pub fn tend_links(config: &Config) {
             let tended = open_modes(&mountpoint);
             if tended.closed > 0 {
                 if let Some(podman) = sandbox::engine(config) {
-                    let done = std::process::Command::new(podman)
-                        .args(["unshare", "chmod", "-R", "a+rwX"])
-                        .arg(&mountpoint)
-                        .stdin(std::process::Stdio::null())
-                        .output();
-                    if !done.is_ok_and(|o| o.status.success()) {
+                    if !open_modes_as_root(&podman, &mountpoint) {
                         tracing::warn!(target: "bipbridge::sandbox", agent, volume = %mountpoint.display(), "files of the sandbox's user in a linked volume could not be opened to this machine's programs");
                     }
                 }
@@ -1235,11 +1229,7 @@ pub fn unlink_folder(config: &Config, host: &Path, volume: &Path, backup: &Path)
     let copied = match mirror(volume, backup, true) {
         Err(exc) if exc.kind() == std::io::ErrorKind::PermissionDenied => {
             if let Some(podman) = sandbox::engine(config) {
-                let _ = std::process::Command::new(podman)
-                    .args(["unshare", "chmod", "-R", "a+rwX"])
-                    .arg(volume)
-                    .stdin(std::process::Stdio::null())
-                    .output();
+                open_modes_as_root(&podman, volume);
             }
             mirror(volume, backup, true)
         }
@@ -1250,12 +1240,19 @@ pub fn unlink_folder(config: &Config, host: &Path, volume: &Path, backup: &Path)
         anyhow::bail!("the volume's content not copied back into {} ({exc}): the link stays", backup.display());
     }
     // the volume's open modes taken back (others never write in a folder of this machine)
+    // SAFETY: getuid never fails.
     let uid = unsafe { libc::getuid() };
-    for (relative, entry) in walk(backup).unwrap_or_default() {
-        if let Entry::Dir(mode) | Entry::File { mode, .. } = entry {
-            let path = backup.join(relative);
-            if path.symlink_metadata().is_ok_and(|m| m.uid() == uid) && mode & 0o022 != 0 {
-                let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode & !0o022));
+    if let Ok(top) = beneath::Dir::open(backup) {
+        for (relative, entry) in walk(backup).unwrap_or_default() {
+            if let Entry::Dir(mode) | Entry::File { mode, .. } = entry {
+                if mode & 0o022 == 0 {
+                    continue;
+                }
+                if let Ok((dir, name)) = top.parent_of(&relative) {
+                    if dir.stat(&name).is_ok_and(|st| st.uid == uid) {
+                        let _ = dir.chmod_at(&name, mode & !0o022);
+                    }
+                }
             }
         }
     }
@@ -1459,6 +1456,7 @@ pub fn cli(argv: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
     #[test]
     fn names_of_credentials() {
