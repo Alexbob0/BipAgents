@@ -187,36 +187,134 @@ pub fn should_leave_hub(config: &Config, agent: &AgentConfig) -> bool {
         && crate::vault::others_facing(config, &agent.name)
 }
 
+/// What one try at moving an agent out of the hub did.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Leave {
+    /// Moved, or nothing to do any more (gone, already in its own space, nobody else talks to it now…).
+    Done,
+    /// Busy (a turn, a Live call, a background task, a scan, a watcher, a routine): later.
+    Busy,
+    /// The move failed (logged): later.
+    Failed,
+}
+
+/// One try: the agent leaves the hub now if it should and does nothing (agent_restart.rs `activity`).
+async fn leave_hub_once(state: &AppState, name: &str) -> Leave {
+    let config = state.config();
+    let Some(agent) = config.agent(Some(name)).cloned() else { return Leave::Done };
+    if !should_leave_hub(&config, &agent) {
+        return Leave::Done;
+    }
+    if state.hub.agent_runs_at(name, &agent.hermes_url) > 0 {
+        return Leave::Busy;
+    }
+    if let Some(why) = crate::agent_restart::activity(state, &config, &agent, crate::py::time_time()).await.busy() {
+        tracing::debug!(target: "bipbridge::own_space", agent = %name, why, "busy: moves out of the shared hub later");
+        return Leave::Busy;
+    }
+    let lock = lock_of(name);
+    let _one_at_a_time = lock.lock_owned().await;
+    let config = state.config();
+    let Some(agent) = config.agent(Some(name)).cloned() else { return Leave::Done };
+    if !should_leave_hub(&config, &agent) {
+        return Leave::Done;
+    }
+    if state.hub.agent_runs_at(name, &agent.hermes_url) > 0 {
+        return Leave::Busy;
+    }
+    tracing::info!(target: "bipbridge::own_space", agent = %name, "other people talk to it: moving out of the shared hub");
+    let outcome = match crate::agents_admin::move_into_space(state, &agent, false).await {
+        Ok(_) => {
+            tracing::info!(target: "bipbridge::own_space", agent = %name, "in its own space: the hub is the person's alone");
+            Leave::Done
+        }
+        Err(exc) => {
+            tracing::warn!(target: "bipbridge::own_space", agent = %name, error = ?exc, "move out of the shared hub failed: it stays there for now, the hub's agents move at their first secret");
+            Leave::Failed
+        }
+    };
+    state.vault.warn_hub_holders(&state.config());
+    outcome
+}
+
 async fn apart(state: AppState, name: String) {
     tokio::time::sleep(APART_SETTLE).await;
     let started = Instant::now();
     loop {
-        let config = state.config();
-        let Some(agent) = config.agent(Some(&name)).cloned() else { return };
-        if !should_leave_hub(&config, &agent) {
-            return;
-        }
-        if state.hub.agent_runs_at(&name, &agent.hermes_url) == 0 {
-            let lock = lock_of(&name);
-            let _one_at_a_time = lock.lock_owned().await;
-            let config = state.config();
-            let Some(agent) = config.agent(Some(&name)).cloned() else { return };
-            if !should_leave_hub(&config, &agent) {
+        match leave_hub_once(&state, &name).await {
+            Leave::Done | Leave::Failed => return,
+            Leave::Busy if started.elapsed() > APART_WAIT => {
+                tracing::warn!(target: "bipbridge::own_space", agent = %name, "still busy: stays in the shared hub for now");
                 return;
             }
-            tracing::info!(target: "bipbridge::own_space", agent = %name, "other people talk to it: moving out of the shared hub");
-            match crate::agents_admin::move_into_space(&state, &agent, false).await {
-                Ok(_) => tracing::info!(target: "bipbridge::own_space", agent = %name, "in its own space: the hub is the person's alone"),
-                Err(exc) => tracing::warn!(target: "bipbridge::own_space", agent = %name, error = ?exc, "move out of the shared hub failed: it stays there, the hub's agents move at their first secret"),
+            Leave::Busy => tokio::time::sleep(Duration::from_secs(5)).await,
+        }
+    }
+}
+
+/// Between two rounds of the start's tidy while an agent is busy.
+const TIDY_BUSY_AGAIN: Duration = Duration::from_secs(30);
+/// After a failed move, the start's tidy tries that agent again so much later.
+const TIDY_FAILED_AGAIN: Duration = Duration::from_secs(15 * 60);
+
+/// The agents of a protected install's shared hub that other people talk to and should leave it (`should_leave_hub`),
+/// in name order.
+pub fn to_tidy(config: &Config) -> Vec<String> {
+    if !config.hermes.isolated {
+        return Vec::new();
+    }
+    let facing = crate::vault::others_facing_agents(config);
+    let mut names: Vec<String> = config
+        .agents
+        .values()
+        .filter(|a| facing.contains(&a.name) && should_leave_hub(config, a))
+        .map(|a| a.name.clone())
+        .collect();
+    names.sort();
+    names
+}
+
+/// At start (app.rs, so at each update): the agents other people talk to that still live in the shared hub of a
+/// protected install — made before they were moved out when made or shared (`apart_when_idle`) — leave it once,
+/// by themselves, one at a time, each once it does nothing; a busy one is looked at again a bit later, a failed move
+/// is logged and tried again later. Done when the hub hosts none: the person's agents then keep their credentials
+/// right there (vault.rs `holds_in_hub`). Never an unprotected install, never an agent already in its own space.
+pub async fn tidy_at_start(state: AppState) {
+    if to_tidy(&state.config()).is_empty() {
+        return;
+    }
+    tokio::time::sleep(Duration::from_secs_f64(state.config().spaces.tidy_after)).await;
+    let mut failed: HashMap<String, Instant> = HashMap::new();
+    loop {
+        let names = to_tidy(&state.config());
+        if names.is_empty() {
+            tracing::info!(target: "bipbridge::own_space", "the shared hub hosts no agent other people talk to");
+            return;
+        }
+        let mut busy = false;
+        for name in &names {
+            if failed.get(name).is_some_and(|at| at.elapsed() < TIDY_FAILED_AGAIN) {
+                continue;
             }
-            state.vault.warn_hub_holders(&state.config());
-            return;
+            match leave_hub_once(&state, name).await {
+                Leave::Done => {
+                    failed.remove(name);
+                }
+                Leave::Busy => busy = true,
+                Leave::Failed => {
+                    tracing::warn!(target: "bipbridge::own_space", agent = %name, "tried again in 15 minutes");
+                    failed.insert(name.clone(), Instant::now());
+                }
+            }
         }
-        if started.elapsed() > APART_WAIT {
-            tracing::warn!(target: "bipbridge::own_space", agent = %name, "still busy: stays in the shared hub for now");
-            return;
-        }
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        let next = if busy {
+            TIDY_BUSY_AGAIN
+        } else if failed.is_empty() {
+            Duration::from_secs(1) // all moved: the next round says so
+        } else {
+            failed.values().map(|at| TIDY_FAILED_AGAIN.saturating_sub(at.elapsed())).min().unwrap_or(TIDY_BUSY_AGAIN)
+        };
+        tokio::time::sleep(next.max(Duration::from_secs(1))).await;
     }
 }
 

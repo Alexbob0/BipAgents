@@ -1255,6 +1255,11 @@ mod tests {
             assert!(!may(&config, "fete") && !may(&config, "coach"), "{which}");
             assert_eq!(holder(&config, &config.agents["coach"]).as_deref(), Some("needs_own_space"), "{which}");
             assert_eq!(holder(&config, &config.agents["fete"]).as_deref(), Some("needs_own_space"), "{which}");
+            // the start's tidy moves it out (own_space.rs), never on an unprotected install
+            assert_eq!(crate::own_space::to_tidy(&config), vec!["fete".to_string()], "{which}");
+            let mut open = config.clone();
+            open.hermes.isolated = false;
+            assert!(crate::own_space::to_tidy(&open).is_empty(), "{which}");
             // once the others-facing agent lives in its own space, the hub is private again
             let mut moved = config.clone();
             let fete = moved.agents.get_mut("fete").unwrap();
@@ -1262,6 +1267,7 @@ mod tests {
             fete.space = Some("/srv/spaces/fete".into());
             fete.hermes_url = "http://127.0.0.1:8700".into();
             assert!(may(&moved, "coach"), "{which}");
+            assert!(crate::own_space::to_tidy(&moved).is_empty(), "{which}");
         }
         // a link between two of the person's own agents changes nothing
         let dir = tempfile::tempdir().unwrap();

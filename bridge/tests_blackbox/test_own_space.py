@@ -23,7 +23,8 @@ ASK = {"name": "garmin", "site": "connect.garmin.example", "kind": "password",
        "identifier_label": "E-mail de ton compte Garmin", "reason": "Pour tes séances"}
 
 
-def hub_place(bridges, fakes, agents=("coach",), start=None, protected=True, project=None, hub_python=None):
+def hub_place(bridges, fakes, agents=("coach",), start=None, protected=True, project=None, hub_python=None,
+              tidy_after=None):
     bridge = bridges.new()
     bridge.config["sandbox"] = {"isolate": "on"}   # its tools in a container (the default on Linux)
     agents = tuple(agents) + ((project,) if project else ())
@@ -43,6 +44,8 @@ def hub_place(bridges, fakes, agents=("coach",), start=None, protected=True, pro
         (folder / "memories" / "MEMORY.md").write_text("Alex court le dimanche.")
     bridge.config["spaces"] = {"root": str(bridge.root / "spaces"), "first_port": free_port(),
                                "start": start or f"{bridge.fakebin}/fake-gateway {{home}}"}
+    if tidy_after is not None:
+        bridge.config["spaces"]["tidy_after"] = tidy_after
     return bridge, hub
 
 
@@ -243,3 +246,44 @@ def test_a_new_project_agent_leaves_the_hub_so_it_stays_private(bridges, fakes):
                                   for e in bridge.commands.entries("hermes")), timeout=20)
     vault = {a["id"]: a.get("why") for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
     assert vault["coach"] is None
+
+
+@pytest.mark.slow
+def test_an_others_facing_agent_left_in_the_hub_moves_out_at_start(bridges, fakes):
+    """An install updated with a project agent still in its hub: at start, the project agent moves into its own space
+    by itself once idle; the hub is then the person's alone, and their agent keeps a secret right there."""
+    bridge, hub = hub_place(bridges, fakes, agents=("coach",), project="fete", hub_python=hub_podman, tidy_after=1)
+    bridge.commands.rule("podman", ["exec", "-i", "hermes-hub"], stdout=json.dumps({"id": "vault_1"}) + "\n")
+    bridge.start()
+    wait_registered(bridge, ["coach", "fete"])
+    use_token_of(hub)
+
+    def moved():
+        section = tomllib.loads(bridge.toml_text())["agents"].get("fete", {})
+        return section.get("isolated") is True and section.get("space") == str(bridge.root / "spaces" / "fete")
+    assert wait_until(moved, timeout=120), bridge.log_tail(4000)
+    assert (bridge.root / "spaces" / "fete" / "profiles" / "fete" / "SOUL.md").read_text().startswith("Tu es Fete.")
+    vault = {a["id"]: a.get("why") for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
+    assert vault["coach"] is None
+    # the person's own agent keeps its secret in the hub: the card at once, nothing moves
+    with ThreadPoolExecutor(1) as pool:
+        call = pool.submit(tool, bridge, "ask_secret", ASK)
+        assert wait_until(lambda: secret_cards(bridge), timeout=20), bridge.log_tail(4000)
+        card = secret_cards(bridge)[0]
+        sent = bridge.post(f"/v1/vault/secrets/requests/{card['request_id']}", headers=AUTH,
+                           json={"allow": True, "value": "Fake-Pa55word", "identifier": "alex@example.org"})
+        assert sent.status_code == 200, sent.text
+        result = call.result(timeout=60)
+    assert not result["isError"] and "Saved as « garmin »" in text(result), text(result)
+    assert not (bridge.root / "spaces" / "coach").exists() and (hub / "profiles" / "coach").is_dir()
+    assert not tomllib.loads(bridge.toml_text())["agents"]["coach"].get("isolated")
+
+
+def test_an_unprotected_install_is_never_tidied(bridges, fakes):
+    bridge, hub = hub_place(bridges, fakes, agents=("coach",), project="fete", protected=False, tidy_after=0)
+    bridge.start()
+    wait_registered(bridge, ["coach", "fete"])
+    time.sleep(3)
+    assert not (bridge.root / "spaces" / "fete").exists()
+    assert not tomllib.loads(bridge.toml_text())["agents"]["fete"].get("isolated")
+
