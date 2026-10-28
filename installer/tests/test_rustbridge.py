@@ -176,3 +176,87 @@ def test_the_command_line_uses_the_newest_bridge_here_until_this_version_s_is_fe
     fresh.parent.mkdir(parents=True)
     fresh.write_text("")
     assert rustbridge.cli(tmp_path) == [str(fresh)]
+
+
+def history(tmp_path):
+    """A checkout of three versions: v1 and v2 change bridge-rs/, v3 only the docs (same bridge as v2)."""
+    repo = tmp_path / "BipAgents"
+    (repo / "bridge-rs").mkdir(parents=True)
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True, text=True).stdout
+    git("init", "-q", "-b", "main")
+    commits = []
+    for n, (path, text) in enumerate([("bridge-rs/main.rs", "v1"), ("bridge-rs/main.rs", "v2"), ("README.md", "v3")]):
+        (repo / path).write_text(text)
+        git("add", ".")
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", f"v{n + 1}")
+        commits.append(git("rev-parse", "HEAD").strip())
+    return repo, commits, git
+
+
+def test_a_new_install_takes_the_newest_version_whose_bridge_is_out(tmp_path, monkeypatch):
+    """Real-day bench 2026-10-28: the public main's bridge release had failed in CI and every new install of the offer
+    stopped at step 3/5 (« the bridge of this version isn't out yet »)."""
+    from bipinstall import checkout
+    repo, (v1, v2, v3), git = history(tmp_path)
+    keys = {c: rustbridge.key_at(repo, c) for c in (v1, v2, v3)}
+    assert keys[v2] == keys[v3] != keys[v1]
+    out = {keys[v1]}
+    asked = []
+
+    def opener(url):
+        asked.append(url)
+        if not any(f"bridge-{k}/SHA256SUMS" in url for k in out):
+            raise OSError("404")
+        return b""
+
+    # the newest whose bridge is out; a bridge shared by two commits is asked about once
+    assert rustbridge.newest_released(repo, opener) == v1
+    assert len(asked) == 2
+    out.add(keys[v2])
+    assert rustbridge.newest_released(repo, opener) == v3
+    # before the install: moved back only when HEAD's bridge isn't out, and only an install's clean checkout
+    monkeypatch.delenv(rustbridge.BUILD, raising=False)
+    monkeypatch.setattr(rustbridge, "asset", lambda: "bipbridge-linux-x86_64.tar.gz")
+    monkeypatch.setattr(checkout, "is_install_clone", lambda repo: True)
+    assert rustbridge.pick_released(repo, opener) == "" and git("rev-parse", "HEAD").strip() == v3
+    out.discard(keys[v2])
+    (repo / "README.md").write_text("changed by hand")
+    assert rustbridge.pick_released(repo, opener) == "" and git("rev-parse", "HEAD").strip() == v3
+    git("checkout", "--", "README.md")
+    said = rustbridge.pick_released(repo, opener)
+    assert git("rev-parse", "HEAD").strip() == v1 and git("rev-parse", "--abbrev-ref", "HEAD").strip() == "main"
+    assert "installing the one before" in said and keys[v1] in said
+    # none out: nothing changes, the install goes on and says why if it stops
+    git("checkout", "-q", "-B", "main", v3)
+    out.clear()
+    assert "isn't out yet" in rustbridge.pick_released(repo, opener) and git("rev-parse", "HEAD").strip() == v3
+    # a machine with its own build, or none of ours: never moved
+    monkeypatch.setenv(rustbridge.BUILD, "/somewhere")
+    assert rustbridge.pick_released(repo, opener) == ""
+
+
+def test_an_update_keeps_the_current_bridge_or_waits_for_the_new_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(rustbridge, "key", lambda repo=None: "new000000000")
+    monkeypatch.setattr(rustbridge, "python_service", lambda home: False)
+    rewritten = []
+    monkeypatch.setattr(rustbridge, "rewrite_service", lambda home, run: rewritten.append(run))
+    attempts = []
+
+    def not_out(home, repo=None, runner=None):
+        attempts.append(1)
+        raise rustbridge.RustBridgeError("the bridge of this version isn't out yet (HTTPError); try again later")
+    monkeypatch.setattr(rustbridge, "ensure", not_out)
+    said = rustbridge.keep_in_step(tmp_path, tmp_path)
+    assert "the previous bridge keeps running" in said and not rewritten and len(attempts) == 1
+    # unattended: waited for, then put in place
+    slept = []
+
+    def out_at_third(home, repo=None, runner=None):
+        attempts.append(1)
+        if len(attempts) < 4:
+            raise rustbridge.RustBridgeError("the bridge of this version isn't out yet (HTTPError)")
+        return rustbridge.binary(home, "new000000000")
+    monkeypatch.setattr(rustbridge, "ensure", out_at_third)
+    said = rustbridge.keep_in_step(tmp_path, tmp_path, wait=300, sleep=slept.append)
+    assert said == "Bridge new000000000 in place." and slept == [30, 30]
+    assert rewritten == [[str(rustbridge.binary(tmp_path, "new000000000")), "serve"]]

@@ -317,7 +317,9 @@ def main(argv: List[str]) -> int:
     if bridge and rustbridge.python_service(Path.home()):
         pass   # the Python bridge left the code: the migration rust-bridge (step 3) moves its service to Rust
     elif bridge:
-        rust = rustbridge.keep_in_step(Path.home()) if not runner.dry else None   # its binaries for this version
+        # its binaries for this version; unattended (the nightly timer, the guichet's waves), a release still being
+        # built is waited for a few minutes; else, or past that, the current bridge keeps running
+        rust = rustbridge.keep_in_step(Path.home(), wait=300 if args.auto else 0) if not runner.dry else None
         if rust:
             say(ui.note(rust))
             rustbridge.restart(Path.home())   # the service may name new binaries: read again, then restarted
