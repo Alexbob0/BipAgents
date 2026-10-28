@@ -38,6 +38,7 @@ pub const SITE_BODY: &str = "Veut envoyer des données à un site : ton accord e
 pub const LOGIN_BODY: &str = "Veut créer un compte sur un site : ton accord est demandé";
 /// A secret or a connector to approve (secrets.rs, connectors.rs), when previews are off.
 pub const CARD_BODY: &str = "Un connecteur attend ton accord";
+pub const MEET_BODY: &str = "Une date à trouver ensemble";
 
 /// Python's truthiness of an optional str (`if x:`).
 fn given(value: Option<&str>) -> Option<&str> {
@@ -300,7 +301,8 @@ impl PushService {
         let config = self.config.get();
         match config.agent(Some(agent)) {
             Some(cfg) => cfg.display_name.clone(),
-            None => agent.to_string(),
+            // an agent a relative shares with this person: « Cuisine (Alex) », not its id (agent_shares.rs)
+            None => crate::agent_shares::shown_name(&config, agent).unwrap_or_else(|| agent.to_string()),
         }
     }
 
@@ -583,6 +585,15 @@ impl PushService {
         let mut payload = reply_payload(agent, &self.title(agent), "session:vault", None, preview, None, CARD_BODY);
         payload.insert(key.into(), json!(id));
         self.fanout(agent, payload, "alert", 10, Some(format!("{key}:{id}"))).await
+    }
+
+    /// A date to find with a relative's household (meet.rs): « Léa propose une date : Dîner » when previews are on;
+    /// tapping opens the app's Boîte, where the card is (`meet`: the request's id).
+    pub async fn notify_meet(&self, agent: &str, line: &str, id: &str) -> usize {
+        let preview = if self.previews() { Some(line) } else { None };
+        let mut payload = reply_payload(agent, &self.title(agent), "session:meet", None, preview, None, MEET_BODY);
+        payload.insert("meet".into(), json!(id));
+        self.fanout(agent, payload, "alert", 10, Some(format!("meet:{id}"))).await
     }
 
     /// `notify_silent(agent, reason, **extra)`.

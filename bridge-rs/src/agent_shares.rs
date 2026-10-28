@@ -968,6 +968,17 @@ fn mine(config: &Config, id: &str, added: bool) -> ApiResult<Value> {
     }
 }
 
+/// « Cuisine (Alex) »: how this person's notifications name an agent a relative shares with her.
+pub fn shown_name(config: &Config, id: &str) -> Option<String> {
+    let found = shared_with_me(config).into_iter().find(|a| str_of(a, "id") == id)?;
+    let (name, owner) = (str_of(&found, "name"), str_of(&found, "owner"));
+    match (name.is_empty(), owner.is_empty()) {
+        (true, _) => None,
+        (false, true) => Some(name),
+        (false, false) => Some(format!("{name} ({owner})")),
+    }
+}
+
 /// Whether `id` is an agent a relative shares with this person (and she added it).
 pub fn is_shared_with_me(config: &Config, id: &str) -> bool {
     split(id).is_some() && mine(config, id, true).is_ok()
