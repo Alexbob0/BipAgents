@@ -415,6 +415,8 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     }
     // the guide's (propose_agent, suggest_switch), or propose_profile while it has no role or a generic name
     tools.extend(crate::guide::tools(config, agent));
+    // the guide's search of ready-made models (templates.rs)
+    tools.extend(crate::templates::tools(config, agent));
     tools
 }
 
@@ -1350,6 +1352,9 @@ pub async fn call_tool(
     }
     if name == crate::maps::TOOL_NAME {
         return Ok(crate::maps::call(&config, &agent.name, arguments).await);
+    }
+    if name == crate::templates::FIND_TOOL {
+        return Ok(crate::templates::find_call(&config, agent, arguments).await);
     }
     if crate::guide::TOOL_NAMES.contains(&name) {
         let (config, agent, name, arguments) = (config.clone(), agent.clone(), name.to_string(), arguments.clone());
