@@ -60,6 +60,13 @@ pub struct Settings {
     /// At most one soon restart (unhealthy, requested) per agent this often.
     pub gap_minutes: u32,
     pub tick_seconds: f64,
+    /// Its Hermes pinged this often; its size measured this often.
+    pub ping_seconds: f64,
+    pub measure_seconds: f64,
+    /// The per-agent jitter of the night's hour stays below this many minutes (0: none).
+    pub jitter_minutes: u32,
+    /// Busy: tried again after this many seconds (a soon reason: a fifth of it).
+    pub retry_seconds: f64,
 }
 
 impl Default for Settings {
@@ -76,6 +83,10 @@ impl Default for Settings {
             unhealthy_pings: 3,
             gap_minutes: 60,
             tick_seconds: 60.0,
+            ping_seconds: 300.0,
+            measure_seconds: 600.0,
+            jitter_minutes: 20,
+            retry_seconds: 600.0,
         }
     }
 }
@@ -105,6 +116,10 @@ impl Settings {
             unhealthy_pings: f("unhealthy_pings", d.unhealthy_pings as f64, 1.0, 100.0) as u32,
             gap_minutes: f("gap_minutes", d.gap_minutes as f64, 0.0, 10_080.0) as u32,
             tick_seconds: f("tick_seconds", d.tick_seconds, 0.2, 3600.0),
+            ping_seconds: f("ping_seconds", d.ping_seconds, 0.2, 86_400.0),
+            measure_seconds: f("measure_seconds", d.measure_seconds, 0.2, 86_400.0),
+            jitter_minutes: f("jitter_minutes", d.jitter_minutes as f64, 0.0, 59.0) as u32,
+            retry_seconds: f("retry_seconds", d.retry_seconds, 0.2, 86_400.0),
         }
     }
 }
@@ -185,13 +200,16 @@ pub fn quiet_hour(hours: &[u32], start: u32, end: u32) -> u32 {
         .unwrap_or(4)
 }
 
-/// A few minutes per agent (0..20), the same every night: a shared server doesn't restart everyone at once.
-pub fn jitter_minutes(agent: &str) -> u32 {
+/// A few minutes per agent (0..`max`), the same every night: a shared server doesn't restart everyone at once.
+pub fn jitter_minutes(agent: &str, max: u32) -> u32 {
+    if max == 0 {
+        return 0;
+    }
     let mut hash: u32 = 2_166_136_261;
     for byte in agent.bytes() {
         hash = (hash ^ byte as u32).wrapping_mul(16_777_619);
     }
-    hash % 20
+    hash % max
 }
 
 /// The night's slot of a memory restart: from the quiet hour (plus the jitter) until the window's end.
@@ -316,6 +334,9 @@ fn record(config: &Config, agents: &[String], reason: &str, at: f64) {
     }
 }
 
+/// The gateway's size taken this long after it started (or after the bridge first saw it running).
+pub const BASELINE_SECONDS: f64 = 600.0;
+
 // --- the loop ----------------------------------------------------------------------------------------------------------
 
 /// What the loop remembers between ticks, per gateway (agents sharing it).
@@ -393,14 +414,18 @@ async fn measure(config: &Config, agents: &[AgentConfig], group: &mut Group, now
             Some((s, seen, size)) if s == stamp => (s, seen, size),
             _ => (stamp, now, None),
         };
-        let size = start.2.or_else(|| (now - start.1 >= 600.0).then_some(mb));
+        let size = start.2.or_else(|| (now - start.1 >= BASELINE_SECONDS).then_some(mb));
         group.sizes.hermes = Some(mb);
         group.sizes.hermes_start = size;
         group.start = Some((start.0, start.1, size));
     }
     if config.browser.enabled {
         for agent in agents {
-            if let Some((mb, _)) = unit_memory(&crate::browsers::container(&agent.name)).await {
+            let unit = crate::browsers::container(&agent.name);
+            if !units_dir().join(format!("{unit}.service")).exists() {
+                continue;
+            }
+            if let Some((mb, _)) = unit_memory(&unit).await {
                 group.sizes.chrome = Some(group.sizes.chrome.unwrap_or(0.0).max(mb));
             }
         }
@@ -490,14 +515,15 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
     let minute = local.hour() * 60 + local.minute();
     let kept = records(config);
     for (key, agents) in groups(config) {
-        let group = memory.entry(key.clone()).or_default();
+        // first ping and measure one period after the bridge starts (a starting Hermes is not unhealthy)
+        let group = memory.entry(key.clone()).or_insert_with(|| Group { last_ping: now, last_measure: now, ..Group::default() });
         let names: Vec<String> = agents.iter().map(|a| a.name.clone()).collect();
-        if now - group.last_ping >= 300.0 {
+        if now - group.last_ping >= s.ping_seconds {
             group.last_ping = now;
             let ping = tokio::time::timeout(Duration::from_secs(10), state.hermes.capabilities(&agents[0])).await;
             group.failures = if matches!(ping, Ok(Ok(_))) { 0 } else { group.failures + 1 };
         }
-        if now - group.last_measure >= 600.0 {
+        if now - group.last_measure >= s.measure_seconds {
             group.last_measure = now;
             measure(config, &agents, group, now).await;
         }
@@ -510,7 +536,7 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
                 h
             }
         };
-        let night = in_night_slot(minute, hour, jitter_minutes(&agents[0].name), s.window_end);
+        let night = in_night_slot(minute, hour, jitter_minutes(&agents[0].name, s.jitter_minutes), s.window_end);
         let since_last = names
             .iter()
             .filter_map(|n| kept.get(n).and_then(|r| r["at"].as_f64()))
@@ -531,7 +557,7 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
             }
         }
         if let Some((agent, what)) = busy {
-            group.next_try = now + if why.soon() { 120.0 } else { 600.0 };
+            group.next_try = now + if why.soon() { s.retry_seconds / 5.0 } else { s.retry_seconds };
             tracing::info!(target: "bipbridge::restart", agent = %agent, reason = %why.text(), busy = what, "restart waits");
             continue;
         }
@@ -546,7 +572,7 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
                 *group = Group { last_ping: now, last_measure: now, quiet: group.quiet, ..Group::default() };
             }
             Err(exc) => {
-                group.next_try = now + 600.0;
+                group.next_try = now + s.retry_seconds;
                 tracing::warn!(target: "bipbridge::restart", agents = %names.join(","), reason = %text,
                     error = %crate::agents_admin::tail(&format!("{exc:#}"), 300), "agent not restarted");
             }
@@ -575,10 +601,11 @@ mod tests {
 
     #[test]
     fn the_jitter_is_small_and_stable() {
-        assert_eq!(jitter_minutes("chi"), jitter_minutes("chi"));
-        assert!(jitter_minutes("chi") < 20 && jitter_minutes("alex") < 20);
+        assert_eq!(jitter_minutes("chi", 20), jitter_minutes("chi", 20));
+        assert!(jitter_minutes("chi", 20) < 20 && jitter_minutes("alex", 20) < 20);
+        assert_eq!(jitter_minutes("chi", 0), 0);
         let spread: std::collections::BTreeSet<u32> =
-            ["a", "b", "c", "d", "e", "f", "g"].iter().map(|n| jitter_minutes(n)).collect();
+            ["a", "b", "c", "d", "e", "f", "g"].iter().map(|n| jitter_minutes(n, 20)).collect();
         assert!(spread.len() > 1);
     }
 

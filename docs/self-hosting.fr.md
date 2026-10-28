@@ -196,6 +196,15 @@ le rôle correspond au message, sinon un appel à un petit modèle (`[rooms] rou
 agent qui en interpelle un autre avec `@` lui donne un tour de plus, jusqu'à `max_hops` (1 par défaut, 2 au plus) ; un
 tour est arrêté après `turn_seconds` (300 par défaut), sauf s'il attend l'accord de la personne.
 
+Le pont ne redémarre le Hermes d'un agent (et son navigateur) que s'il y a une raison, et seulement quand l'agent ne
+fait rien (aucun tour, appel Live, tâche de fond, lecture de boîte mail, vérification de veilleur, ni routine prévue
+dans les `routine_margin_minutes`, 30 par défaut) : il n'a pas répondu `unhealthy_pings` fois de suite (3 par défaut,
+une toutes les 5 minutes), un autre composant l'a demandé, ou, à l'heure la plus calme de la nuit pour cet agent (entre
+`window_start` 1 h et `window_end` 6 h, ou `hour`), son Hermes prend plus de `hermes_mb` (900) Mo ou `hermes_growth`
+(2,5) fois sa taille après le démarrage, ou son navigateur plus de `chrome_mb` (1536) Mo. Au plus une fois par heure,
+une fois par nuit pour la mémoire. `[agent_restart] enabled = false` le coupe ; il est coupé d'office sur un Hermes que
+vous aviez avant BipAgents. Le dernier redémarrage et sa raison sont dans `GET /v1/status` (`last_restart`).
+
 Les fiches (achats, abonnements, contrats, papiers, réservations) peuvent être remplies depuis une archive d'un agent :
 `bipagents archive extract <agent> --archive <id> --sample 50` lit 50 documents probables avec le modèle de l'agent et
 affiche ce qu'il ajouterait et l'estimation pour toute l'archive, sans rien écrire ; `--run --budget <€>` les remplit

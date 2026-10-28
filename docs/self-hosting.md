@@ -190,6 +190,15 @@ at most `router_daily_max` calls a day, default 300), else the agent that spoke 
 with `@` gives it one more turn, up to `max_hops` (default 1, at most 2); a turn is stopped after `turn_seconds`
 (default 300) unless it waits for the person's approval.
 
+The bridge restarts an agent's Hermes (and its browser) only when there is a reason, and only while the agent does
+nothing (no turn, Live call, background task, mail scan, watcher check, or routine due within
+`routine_margin_minutes`, default 30): its pings failed `unhealthy_pings` times in a row (default 3, one every 5
+minutes), other code asked for it, or, at the agent's quietest night hour (between `window_start` 1 and `window_end` 6,
+or `hour`), its gateway takes more than `hermes_mb` (900) or `hermes_growth` (2.5) times its size after start, or its
+browser more than `chrome_mb` (1536). At most once an hour, once a night for memory. `[agent_restart] enabled = false`
+turns it off; it is off by itself on a Hermes you had before BipAgents. The last restart and its reason show in
+`GET /v1/status` (`last_restart`).
+
 The records (« Fiches »: purchases, subscriptions, contracts, papers, bookings) can be filled from an agent's archive:
 `bipagents archive extract <agent> --archive <id> --sample 50` reads 50 likely documents with the agent's model and
 prints what it would record and the estimate for the whole archive, writing nothing; `--run --budget <€>` then fills
