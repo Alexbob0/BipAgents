@@ -287,3 +287,33 @@ def test_an_unprotected_install_is_never_tidied(bridges, fakes):
     assert not (bridge.root / "spaces" / "fete").exists()
     assert not tomllib.loads(bridge.toml_text())["agents"]["fete"].get("isolated")
 
+
+def test_an_agent_shared_with_a_relative_gets_a_secret_only_once_confirmed(bridges, fakes):
+    """An agent other people talk to (here shared with Léa's household) may keep a secret in its own space, but only
+    once the person confirmed it: the card says who else talks to it, and the bridge refuses an answer without
+    `confirmed_others` (an app from before the confirmation) with a plain refusal."""
+    bridge, hub = hub_place(bridges, fakes, agents=("coach",))
+    bridge.state_dir.mkdir(parents=True, exist_ok=True)
+    (bridge.state_dir / "households.json").write_text(json.dumps({"households": {"lea": {"name": "Léa"}}}))
+    (bridge.state_dir / "agent-shares.json").write_text(json.dumps({"shared": {"coach": ["lea"]}}))
+    bridge.start()
+    wait_registered(bridge, ["coach"])
+    use_token_of(hub)
+    with ThreadPoolExecutor(1) as pool:
+        call = pool.submit(tool, bridge, "ask_secret", ASK)
+        assert wait_until(lambda: secret_cards(bridge), timeout=60), bridge.log_tail(4000)
+        assert tomllib.loads(bridge.toml_text())["agents"]["coach"]["isolated"] is True   # in its own space
+        card = secret_cards(bridge)[0]
+        assert card["bip_secret_others"] is True and card["bip_secret_others_names"] == ["Léa"]
+        answer = {"allow": True, "value": "Fake-Pa55word", "identifier": "alex@example.org"}
+        old_app = bridge.post(f"/v1/vault/secrets/requests/{card['request_id']}", headers=AUTH, json=answer)
+        assert old_app.status_code == 409, old_app.text
+        assert old_app.json()["detail"]["code"] == "confirm_others"
+        assert "Mets à jour l’app" in old_app.json()["detail"]["message"]
+        assert "Fake-Pa55word" not in old_app.text
+        assert secret_cards(bridge), "the card still waits"
+        sent = bridge.post(f"/v1/vault/secrets/requests/{card['request_id']}", headers=AUTH,
+                           json={**answer, "confirmed_others": True})
+        assert sent.status_code == 200, sent.text
+        result = call.result(timeout=60)
+    assert not result["isError"] and "Saved as « garmin »" in text(result), text(result)

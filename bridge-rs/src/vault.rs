@@ -222,6 +222,44 @@ pub fn others_facing(config: &Config, agent: &str) -> bool {
     others_facing_agents(config).contains(&agent.trim().to_lowercase())
 }
 
+/// Who else talks to `agent`, by name, for the confirmation before it gets a credential (secrets.rs): the linked
+/// households of the family's agent, the relatives it is shared with, the households whose agents are linked with it.
+/// Empty when none is known by name (the apps then say « d'autres personnes »). Project guests have no names here: a
+/// project agent never gets credentials.
+pub fn others_names(config: &Config, agent: &str) -> Vec<String> {
+    let agent = agent.trim().to_lowercase();
+    let linked = crate::households::Households::new(&crate::households::path_for(config));
+    let mut households: Vec<String> = crate::agent_shares::shared_with(config, &agent);
+    let links = crate::peers::links_of(&crate::peers::Links::new(&crate::py::join(&config.data_dir(), "peers.json")).load());
+    for (source, target) in &links {
+        let other = if target.to_lowercase() == agent {
+            source
+        } else if source.to_lowercase() == agent {
+            target
+        } else {
+            continue;
+        };
+        if config.agent(Some(other)).is_none() {
+            if let Some((_, household)) = crate::households::split(other) {
+                households.push(household);
+            }
+        }
+    }
+    let mut names: Vec<String> = Vec::new();
+    for household in households {
+        let name = linked
+            .get(&household)
+            .and_then(|h| h.get("name").map(crate::py::py_str))
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_default();
+        if !name.is_empty() && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// Whether `agent`, of the shared hub, holds credentials right there, with no move (Alex, 2026-10-28: a person's own
 /// agents are no longer separated from each other): the install protects the vault, the hub's Python can write its
 /// items, the agent's tools run in a sandbox of their own (sandbox.rs: connectors need one, the move gives it one),
@@ -1274,6 +1312,23 @@ mod tests {
         let config = place(dir.path(), &["coach", "cuisine"]);
         std::fs::write(dir.path().join("peers.json"), r#"{"links": [["coach", "cuisine"]]}"#).unwrap();
         assert!(may(&config, "coach") && !others_facing(&config, "cuisine"));
+    }
+
+    #[test]
+    fn who_else_talks_to_an_agent_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = place(dir.path(), &["coach", "cuisine", "notes"]);
+        let data = std::path::PathBuf::from(config.data_dir());
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("households.json"),
+                       r#"{"households": {"lea": {"name": "Léa"}, "marc": {"name": "Marc"}, "anon": {}}}"#).unwrap();
+        std::fs::write(data.join("agent-shares.json"), r#"{"shared": {"coach": ["lea", "gone"]}}"#).unwrap();
+        std::fs::write(data.join("peers.json"),
+                       r#"{"links": [["cuisine__marc", "cuisine"], ["cuisine", "x__anon"], ["coach", "notes"]]}"#).unwrap();
+        assert!(others_facing(&config, "coach") && others_facing(&config, "cuisine"));
+        assert_eq!(others_names(&config, "coach"), vec!["Léa".to_string()]);
+        assert_eq!(others_names(&config, "Cuisine"), vec!["Marc".to_string()]); // a household with no name: left out
+        assert!(others_names(&config, "notes").is_empty() && !others_facing(&config, "notes"));
     }
 
     #[test]
