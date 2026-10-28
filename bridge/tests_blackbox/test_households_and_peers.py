@@ -123,7 +123,7 @@ def test_invitations_are_one_time_and_expire(bridges, fakes):
     answer = a.post("/family/accept", json={"code": code, "name": "Léa", "url": "https://b.ts.net", "key": key})
     assert answer.status_code == 200 and answer.json()["name"] == "Alex" and len(answer.json()["key"]) >= 32
     assert key not in (a.state_dir / "households.json").read_text()        # only a digest of their key
-    used = a.post("/family/accept", json={"code": code, "name": "Léa", "url": "https://b.ts.net", "key": key})
+    used = a.post("/family/accept", json={"code": code, "name": "Paul", "url": "https://c.ts.net", "key": key})
     assert used.status_code == 403 and used.json() == {"detail": "this invitation is unknown or expired"}
     agents = a.get("/family/agents", headers={"Authorization": f"Bearer {key}"}).json()
     assert agents == {"name": "Alex", "agents": [{"id": "vie", "name": "Vie"}]}
@@ -139,6 +139,49 @@ def test_invitations_are_one_time_and_expire(bridges, fakes):
     assert refused.status_code == 409 and refused.json() == {"detail": "this bridge has no address on the tailnet (public_url)"}
     cannot = no_url.post("/v1/family/join", headers=AUTH, json={"url": a.url, "code": "x"})
     assert cannot.status_code == 409
+
+
+def test_a_new_link_cannot_take_a_linked_households_name(bridges, fakes):
+    """Audit 2026-10-27 #9: a second household introducing itself under a linked household's name is refused (409),
+    the first link stays as it was and the invitation is still good; the same household, with its current key, may
+    link again."""
+    a = household(bridges, fakes, "alex", ["vie"])
+    a.put("/v1/family/name", headers=AUTH, json={"name": "Alex"})
+    key = "k" * 40
+    code = a.post("/v1/family/invite", headers=AUTH).json()["code"]
+    assert a.post("/family/accept", json={"code": code, "name": "Léa", "url": "https://b.ts.net",
+                                          "key": key}).status_code == 200
+    before = json.loads((a.state_dir / "households.json").read_text())["households"]
+    code = a.post("/v1/family/invite", headers=AUTH).json()["code"]
+    intruder = {"code": code, "name": "LÉA", "url": "https://evil.ts.net", "key": "e" * 40}
+    taken = a.post("/family/accept", json=intruder)
+    assert taken.status_code == 409
+    wrong_key = a.post("/family/accept", json=intruder, headers={"Authorization": "Bearer " + "x" * 40})
+    assert wrong_key.status_code == 409
+    assert json.loads((a.state_dir / "households.json").read_text())["households"] == before
+    assert a.get("/family/agents", headers={"Authorization": f"Bearer {key}"}).status_code == 200
+    assert a.get("/family/agents", headers={"Authorization": "Bearer " + "e" * 40}).status_code == 401
+    # Léa's bridge, with the key it calls us with today, links again (same code: the refusals did not use it)
+    again = a.post("/family/accept", headers={"Authorization": f"Bearer {key}"},
+                   json={"code": code, "name": "Léa", "url": "https://b2.ts.net", "key": "n" * 40})
+    assert again.status_code == 200
+    assert a.get("/family/agents", headers={"Authorization": "Bearer " + "n" * 40}).status_code == 200
+    assert a.get("/family/agents", headers={"Authorization": f"Bearer {key}"}).status_code == 401
+    assert [h["url"] for h in a.get("/v1/family", headers=AUTH).json()["households"]] == ["https://b2.ts.net"]
+
+
+def test_two_linked_households_can_link_again(bridges, fakes):
+    """Scanning a new invitation of a household already linked (e.g. a link to be redone) still works on both sides."""
+    a = household(bridges, fakes, "alex", ["vie"])
+    b = household(bridges, fakes, "lea", ["cuisine"])
+    a.put("/v1/family/name", headers=AUTH, json={"name": "Alex"})
+    b.put("/v1/family/name", headers=AUTH, json={"name": "Léa"})
+    for _ in range(2):
+        invitation = a.post("/v1/family/invite", headers=AUTH).json()
+        joined = b.post("/v1/family/join", headers=AUTH, json={"url": invitation["url"], "code": invitation["code"]})
+        assert joined.status_code == 200 and joined.json() == {"id": "alex", "name": "Alex"}
+    key = json.loads((b.state_dir / "households.json").read_text())["households"]["alex"]["key_out"]
+    assert a.get("/family/agents", headers={"Authorization": f"Bearer {key}"}).status_code == 200
 
 
 def test_the_bridge_refuses_what_the_person_did_not_allow(bridge, fakes):
