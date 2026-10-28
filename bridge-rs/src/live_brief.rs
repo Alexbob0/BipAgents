@@ -816,12 +816,27 @@ impl Validate for CallRecap {
 pub struct RecapTaken {
     pub agent: String,
     pub session: String,
+    /// The person's message (feature_tips.rs: matched by simple rules in memory, never kept). Optional (older apps).
+    #[serde(default)]
+    pub text: Option<String>,
+    /// Its attachments' kinds: voice, image, pdf, file, audio.
+    #[serde(default)]
+    pub kinds: Option<Vec<String>>,
 }
 
 impl Validate for RecapTaken {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         web::check_max_len(errors, "agent", Some(&self.agent), 200);
         web::check_max_len(errors, "session", Some(&self.session), 300);
+        web::check_max_len(errors, "text", self.text.as_deref(), 100_000);
+        if self.kinds.as_ref().is_some_and(|k| k.len() > 20 || k.iter().any(|x| x.len() > 20)) {
+            errors.push(FieldError::new(
+                "too_long",
+                vec![json!("body"), json!("kinds")],
+                "At most 20 short kinds",
+                json!(null),
+            ));
+        }
     }
 }
 
@@ -863,7 +878,12 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> std::io::Result<T> +
 async fn live_call(State(state): State<AppState>, Json(body): Json<CallEnded>) -> ApiResult<Response> {
     let agent = setup(&state, &body.agent)?;
     let briefs = state.briefs.clone();
-    blocking(move || briefs.note_call(&agent.name, &body.session, &body.live_session)).await?;
+    let config = state.config();
+    blocking(move || {
+        let _ = crate::feature_tips::used(&config, "live", crate::py::time_time()); // a Live call (feature_tips.rs)
+        briefs.note_call(&agent.name, &body.session, &body.live_session)
+    })
+    .await?;
     Ok(web::ok(json!({"ok": true})))
 }
 
@@ -878,6 +898,11 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
     let agent = setup(&state, &body.agent)?;
     let briefs = state.briefs.clone();
     let config = state.config();
+    // a feature to discover, at a good moment (feature_tips.rs): the message's signals, the agent busy or not
+    let moment = crate::feature_tips::Moment {
+        busy: crate::feature_tips::busy(&state, &agent.name, &body.session),
+        guide: crate::feature_tips::guide_of(&config),
+    };
     let recap = blocking(move || {
         // The family news waiting for the agent (family_news.rs) joins the same message, the same way.
         let parts: Vec<String> =
@@ -885,6 +910,15 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
                 briefs.take_recap(&agent.name, &body.session),
                 crate::family_news::take_notes(&config, &agent.name),
                 crate::storage_watch::take_note(&config, &agent.name), // the place's space (storage_watch.rs)
+                crate::feature_tips::on_message(
+                    &config,
+                    &agent.name,
+                    &body.session,
+                    body.text.as_deref().unwrap_or(""),
+                    body.kinds.as_deref().unwrap_or(&[]),
+                    &moment,
+                    crate::py::time_time(),
+                ),
             ]
                 .into_iter()
                 .flatten()

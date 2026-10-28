@@ -664,6 +664,13 @@ async fn tts_prepare(State(state): State<AppState>, Json(body): Json<TtsRequest>
 async fn tts_message(State(state): State<AppState>, Json(body): Json<TtsRequest>) -> ApiResult<Response> {
     let config = state.config();
     let agent = body_agent(&config, body.agent.as_deref())?;
+    if agent.is_some() {
+        // a reply read aloud: a use of the voice (feature_tips.rs)
+        let c = config.clone();
+        tokio::task::spawn_blocking(move || {
+            let _ = crate::feature_tips::used(&c, "voice", py::time_time());
+        });
+    }
     let fmt = if body.format != "pcm16" { body.format.clone() } else { "mp3".to_string() }; // default to a compressed file here
     if !["mp3", "opus", "wav"].contains(&fmt.as_str()) {
         return Err(HttpError::new(400, "format must be mp3, opus or wav"));
@@ -1149,6 +1156,10 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             allow,
         );
     }
+    // a tip card (a feature to discover, feature_tips.rs), answered here
+    if let Some(id) = run_id.strip_prefix(crate::feature_tips::RUN_PREFIX) {
+        return crate::feature_tips::approve(&state, &agent.name, id, &body.choice).await;
+    }
     // a space card (what to keep when the place fills up, storage_watch.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::storage_watch::RUN_PREFIX) {
         return crate::storage_watch::approve(&state, &agent, id, &body.choice).await;
@@ -1231,6 +1242,7 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
         items.extend(crate::secrets::pending_items(&config, name.as_deref()));
         items.extend(crate::connectors::pending_items(&state, &config, name.as_deref()));
         items.extend(crate::storage_watch::pending_items(&config, name.as_deref()));
+        items.extend(crate::feature_tips::pending_items(&config, name.as_deref()));
     }
     for item in items.iter_mut() {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
@@ -1624,6 +1636,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::agent_groups::router())
         .merge(crate::files_kept::router())
         .merge(crate::storage_watch::router())
+        .merge(crate::feature_tips::router())
         .merge(crate::dates::router())
         .merge(crate::vault::router())
         .merge(crate::card_pay::app_router())
