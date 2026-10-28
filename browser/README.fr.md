@@ -95,6 +95,8 @@ au commit testé avec BipAgents (`a7b9eea`, fixé dans le `Containerfile`), et a
 - Avec ses outils de page (`execute_script`), un agent peut lire ce qu'une page affiche, y compris un champ rempli
   par le coffre. Le coffre garde les mots de passe hors de la conversation et de la mémoire de l'agent, mais un agent
   qui veut un mot de passe peut regarder le champ. Ne donne un identifiant qu'aux agents à qui tu le confierais.
-- Le port DevTools n'a pas de mot de passe : sur une machine partagée par plusieurs comptes, les programmes d'un autre
-  compte pourraient s'y connecter sur 127.0.0.1 et piloter ce navigateur. Sur un serveur familial, ces comptes sont
-  ceux de la famille.
+- Le port DevTools demande un secret propre au navigateur (`cdp.token` à côté de `vnc.pass`, monté en lecture seule
+  dans le conteneur ; le pont le montre en en-tête `X-Bip-Cdp`, l'adresse `browser.cdp_url` de Hermes le porte en
+  `/t/<secret>/`) et refuse toute requête portant un `Origin` (celle d'une page web) : ni un autre compte d'une
+  machine partagée, ni une page ouverte dans le navigateur ne peuvent le piloter. Le port VNC a son propre mot de passe
+  (`vnc.pass`). Les deux fichiers ne sont lisibles que par le compte (0600).

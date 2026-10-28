@@ -99,5 +99,7 @@ and keys. A flag older than 15 minutes (the app closed without handing it back) 
 - With its page tools (`execute_script`), an agent can read what a page shows, a field the vault filled included.
   The vault keeps passwords out of the agent's conversation and memory, but an agent that wants a password can look
   at the field. Give vault items only to agents you trust with them.
-- The DevTools port has no password: on a machine shared by several accounts, another account's programs could
-  connect to it on 127.0.0.1 and drive that browser. On a family server, those accounts are the family's.
+- The DevTools port asks for a secret of its own (`cdp.token` next to `vnc.pass`, mounted read-only in the container;
+  the bridge shows it as `X-Bip-Cdp`, Hermes' `browser.cdp_url` as `/t/<secret>/`), and refuses any request carrying
+  an `Origin` (a web page's): another account of a shared machine, or a page in the browser, can't drive it. The VNC
+  port has its own password (`vnc.pass`). Both files are the account's alone (0600).

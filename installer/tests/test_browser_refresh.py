@@ -1,4 +1,5 @@
 """The agents' browser kept up to date each night (bipinstall/browser_refresh.py)."""
+import json
 import os
 import time
 from pathlib import Path
@@ -125,6 +126,85 @@ def test_browsers_on_the_old_image_restart_only_when_unused(tmp_path):
     assert refresh.restart_old(ENGINE, tmp_path, engine, now=now) == ["vie"]
     assert [a for a in engine.ran if a[0] == "systemctl"] == [["systemctl", "--user", "restart",
                                                                "bipagents-browser-vie.service"]]
+
+
+class RelayEngine(Engine):
+    """The current image's relay asks for the browser's secret (label bipagents.relay)."""
+
+    def __init__(self, *args, relay="3", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.relay = relay
+
+    def __call__(self, args, timeout=600):
+        if args[1:3] == ["image", "inspect"] and "Labels" in args[4]:
+            self.ran.append(list(args))
+            return 0, self.relay
+        return super().__call__(args, timeout)
+
+
+def test_browsers_set_up_before_the_secret_get_theirs_before_any_restart(tmp_path):
+    units = tmp_path / ".config" / "systemd" / "user"
+    units.mkdir(parents=True)
+    root = tmp_path / ".local" / "share" / "hermes-bridge" / "browsers"
+    hub = tmp_path / ".hermes" / "profiles"
+    start = "ExecStart=/usr/bin/podman run --rm --name bipagents-browser-{a} -v {p}/vnc.pass:/run/bipagents/vnc.pass:ro,Z " \
+            "-p 127.0.0.1:{c}:9223 -p 127.0.0.1:{v}:5900 bipagents-browser\n"
+    for port, agent in enumerate(("vie", "lea", "max", "new"), start=19600):
+        place = root / agent
+        place.mkdir(parents=True)
+        (place / "ports.json").write_text(json.dumps({"cdp": port * 2 - 19600, "vnc": port * 2 - 19599}))
+        (place / "busy").touch()
+        text = "[Service]\n" + start.format(a=agent, p=place, c=port * 2 - 19600, v=port * 2 - 19599)
+        if agent != "new":   # « new »: set up, never used (its unit in mcp.json only)
+            (units / f"bipagents-browser-{agent}.service").write_text(text)
+        (place / "mcp.json").write_text(json.dumps({"unit": {"path": "x", "text": text}}))
+        (hub / agent).mkdir(parents=True)
+        (hub / agent / "config.yaml").write_text(f"browser:\n  cdp_url: http://127.0.0.1:{port * 2 - 19600}\n"
+                                                 "  vault_only: true\n")
+    now = time.time()
+    os.utime(root / "vie" / "busy", (now - 3600, now - 3600))
+    engine = RelayEngine(NEW_CHROME, ids=("new", "new"))
+    engine.running = {"bipagents-browser-vie": "old", "bipagents-browser-lea": "old",   # lea: in use, on the old relay
+                      "bipagents-browser-max": "new"}
+    assert refresh.restart_old(ENGINE, tmp_path, engine, now=now) == ["vie"]
+    systemctl = [a for a in engine.ran if a[0] == "systemctl"]
+    assert systemctl == [["systemctl", "--user", "daemon-reload"],
+                         ["systemctl", "--user", "restart", "bipagents-browser-vie.service"]]   # secured first
+    for agent in ("vie", "max", "new"):
+        place = root / agent
+        secret = (place / "cdp.token").read_text().strip()
+        assert len(secret) == 64 and (place / "cdp.token").stat().st_mode & 0o777 == 0o600
+        mount = f"-v {place}/cdp.token:/run/bipagents/cdp.token:ro,Z -p 127.0.0.1:"
+        assert mount in json.loads((place / "mcp.json").read_text())["unit"]["text"]
+        if agent != "new":
+            assert mount in (units / f"bipagents-browser-{agent}.service").read_text()
+        port = json.loads((place / "ports.json").read_text())["cdp"]
+        assert (hub / agent / "config.yaml").read_text() == \
+            f"browser:\n  cdp_url: http://127.0.0.1:{port}/t/{secret}\n  vault_only: true\n"
+    # lea's running relay knows no secret: left as it was until a later night
+    assert not (root / "lea" / "cdp.token").exists()
+    assert "cdp.token" not in (units / "bipagents-browser-lea.service").read_text()
+    assert "/t/" not in (hub / "lea" / "config.yaml").read_text()
+    # done once: a second night changes nothing more, the secret kept
+    before = (root / "vie" / "cdp.token").read_text()
+    engine.ran.clear()
+    engine.running = {}
+    refresh.restart_old(ENGINE, tmp_path, engine, now=now)
+    assert (root / "vie" / "cdp.token").read_text() == before
+    assert (units / "bipagents-browser-vie.service").read_text().count("/run/bipagents/cdp.token") == 1
+    assert ["systemctl", "--user", "daemon-reload"] in [a for a in engine.ran if a[0] == "systemctl"]   # lea's now
+
+
+def test_an_image_whose_relay_asks_no_secret_changes_nothing(tmp_path):
+    units = tmp_path / ".config" / "systemd" / "user"
+    units.mkdir(parents=True)
+    place = tmp_path / ".local" / "share" / "hermes-bridge" / "browsers" / "vie"
+    place.mkdir(parents=True)
+    (place / "ports.json").write_text('{"cdp": 19600, "vnc": 19601}')
+    (units / "bipagents-browser-vie.service").write_text("ExecStart=podman run -p 127.0.0.1:19600:9223 x\n")
+    engine = RelayEngine(UP_TO_DATE, ids=("new", "new"), relay="")
+    refresh.restart_old(ENGINE, tmp_path, engine)
+    assert not (place / "cdp.token").exists() and "cdp.token" not in (units / "bipagents-browser-vie.service").read_text()
 
 
 def test_the_browser_folder_follows_the_bridge_config(tmp_path):

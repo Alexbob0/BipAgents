@@ -8,8 +8,8 @@
 //!   container. Started when the agent (or the person, in « Bureau ») uses it, stopped after `idle_minutes` unused
 //!   (browser_mcp.py): a machine with several agents only holds the browsers in use; `idle_minutes = 0` keeps it running;
 //! - two ports on 127.0.0.1, never published: Chrome's DevTools (Hermes' `browser.cdp_url`, so the vault fills in this
-//!   browser) and the screen's VNC server, with a password of its own, which the bridge logs in to and relays to the app
-//!   (« Bureau », behind Face ID; see desktop.py);
+//!   browser), behind a secret of its own (`CDP_SECRET`), and the screen's VNC server, with a password of its own, which
+//!   the bridge logs in to and relays to the app (« Bureau », behind Face ID; see desktop.py);
 //! - in the agent's Hermes profile, the `stealth` MCP server (`podman exec -i <container> /opt/stealth/mcp.sh`: the
 //!   server runs in the container, next to Chrome; behind browser_mcp.py, which starts it when used) and the skill that
 //!   tells the agent how to use it.
@@ -311,15 +311,69 @@ pub async fn hold_for_payment(config: &Config, agent: &str, token: Option<&str>)
     code == 0
 }
 
-/// Its DevTools and VNC ports (`{"cdp": …, "vnc": …}`), when it has a browser.
+/// Its DevTools and VNC ports (`{"cdp": …, "vnc": …}`), when it has a browser. Its DevTools secret, if any, is then
+/// known by its port (`devtools_secret`): every caller finds the port here.
 pub fn ports_of(config: &Config, agent: &str) -> Option<IndexMap<String, u16>> {
-    let text = std::fs::read_to_string(folder(config, agent).join("ports.json")).ok()?;
-    match serde_json::from_str::<Value>(&text).ok()? {
-        Value::Object(map) => {
-            map.into_iter().map(|(k, v)| v.as_u64().and_then(|p| u16::try_from(p).ok()).map(|p| (k, p))).collect()
-        }
-        _ => None,
+    let place = folder(config, agent);
+    let text = std::fs::read_to_string(place.join("ports.json")).ok()?;
+    let ports: IndexMap<String, u16> = match serde_json::from_str::<Value>(&text).ok()? {
+        Value::Object(map) => map
+            .into_iter()
+            .map(|(k, v)| v.as_u64().and_then(|p| u16::try_from(p).ok()).map(|p| (k, p)))
+            .collect::<Option<_>>()?,
+        _ => return None,
+    };
+    if let Some(&cdp) = ports.get("cdp") {
+        let mut known = SECRETS.lock().unwrap_or_else(|e| e.into_inner());
+        match read_secret(&place.join(CDP_SECRET)) {
+            Some(secret) => known.insert(cdp, secret),
+            None => known.remove(&cdp),
+        };
     }
+    Some(ports)
+}
+
+/// The browser's DevTools secret (security audit 2026-10-27, 11 and 21): `<browser root>/<agent>/cdp.token`, the
+/// bridge's alone (0600), mounted read-only in its container, where the relay (browser/devtools_relay.py) lets nothing
+/// through without it: not another account of a shared server reaching 127.0.0.1:<port>, not a page in the browser.
+/// The bridge shows it as a header (`CDP_HEADER`), Hermes as the start of its `browser.cdp_url`'s path (`cdp_url`).
+pub const CDP_SECRET: &str = "cdp.token";
+pub const CDP_SECRET_MOUNT: &str = "/run/bipagents/cdp.token";
+pub const CDP_HEADER: &str = "x-bip-cdp";
+
+static SECRETS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<u16, String>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn read_secret(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let secret = text.trim();
+    (secret.len() >= 16 && secret.bytes().all(|b| b.is_ascii_alphanumeric())).then(|| secret.to_string())
+}
+
+/// The secret of the browser whose DevTools are on 127.0.0.1:`port` (its folder's, as `ports_of` last read it).
+pub fn devtools_secret(port: u16) -> Option<String> {
+    SECRETS.lock().unwrap_or_else(|e| e.into_inner()).get(&port).cloned()
+}
+
+/// The agent's browser's secret, made now when it has none (kept as it is otherwise: a running container has it).
+pub fn ensure_cdp_secret(place: &Path) -> std::io::Result<String> {
+    let path = place.join(CDP_SECRET);
+    let secret = match read_secret(&path) {
+        Some(secret) => secret,
+        None => {
+            let secret = crate::py::token_hex(32);
+            crate::py::write_with_mode(&path.to_string_lossy(), format!("{secret}\n").as_bytes(), 0o600)?;
+            secret
+        }
+    };
+    crate::py::chmod(&path.to_string_lossy(), 0o600)?;
+    Ok(secret)
+}
+
+/// Hermes' `browser.cdp_url`: its relay, the secret in front of the path (Hermes takes a URL, no header); the relay
+/// takes it off and puts it back in the WebSocket address its /json/version names.
+pub fn cdp_url(port: u16, secret: &str) -> String {
+    format!("http://127.0.0.1:{port}/t/{secret}")
 }
 
 /// Nothing listens on 127.0.0.1:<port>.
@@ -468,6 +522,8 @@ pub fn run_args(
         format!("{}:/home/bip/profile:Z", place.join("profile").to_string_lossy()),
         "-v".into(),
         format!("{}:/run/bipagents/vnc.pass:ro,Z", place.join("vnc.pass").to_string_lossy()),
+        "-v".into(),
+        format!("{}:{CDP_SECRET_MOUNT}:ro,Z", place.join(CDP_SECRET).to_string_lossy()),
         "-p".into(),
         format!("127.0.0.1:{}:9223", port("cdp")),
         "-p".into(),
@@ -642,6 +698,7 @@ pub async fn setup_with(
         std::fs::write(&password, format!("{}\n", vnc_password()))?;
     }
     crate::py::chmod(&password.to_string_lossy(), 0o600)?;
+    let secret = ensure_cdp_secret(&place)?;
     let ports_value = Value::Object(ports.iter().map(|(k, v)| (k.clone(), json!(v))).collect());
     std::fs::write(place.join("ports.json"), format!("{}\n", crate::py::dumps(&ports_value)))?;
 
@@ -697,7 +754,7 @@ pub async fn setup_with(
     let cdp = ports.get("cdp").copied().unwrap_or(0);
     let vnc = ports.get("vnc").copied().unwrap_or(0);
     run(
-        args(&[hermes, "-p", name, "config", "set", "browser.cdp_url", &format!("http://127.0.0.1:{cdp}")]),
+        args(&[hermes, "-p", name, "config", "set", "browser.cdp_url", &cdp_url(cdp, &secret)]),
         env.clone(),
     )
     .await?;

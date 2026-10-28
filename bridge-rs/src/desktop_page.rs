@@ -114,6 +114,9 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
 /// person's hold, which the container's relay lets through.
 pub async fn tabs(port: u16, token: Option<&str>) -> Result<Vec<Tab>, String> {
     let mut request = HTTP.get(format!("http://127.0.0.1:{port}/json/list"));
+    if let Some(secret) = crate::browsers::devtools_secret(port) {
+        request = request.header(crate::browsers::CDP_HEADER, secret);
+    }
     if let Some(token) = token {
         request = request.header("X-Bip-Hold", token);
     }
@@ -282,6 +285,9 @@ impl Cdp {
             format!("ws://127.0.0.1:{port}/devtools/page/{tab}").into_client_request().map_err(|e| e.to_string())?;
         if let Some(token) = token.and_then(|t| HeaderValue::from_str(t).ok()) {
             request.headers_mut().insert("x-bip-hold", token);
+        }
+        if let Some(secret) = crate::browsers::devtools_secret(port).and_then(|s| HeaderValue::from_str(&s).ok()) {
+            request.headers_mut().insert(crate::browsers::CDP_HEADER, secret);
         }
         let mut config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
         config.max_message_size = Some(64 << 20);

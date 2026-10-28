@@ -32,15 +32,16 @@ if ! pgrep -u "$(id -u)" -f -- "--user-data-dir=$profile" >/dev/null 2>&1; then
 fi
 
 if [ $# -eq 0 ]; then
-    # nodriver's defaults (what spawn_browser launches with), then the container's flags (STEALTH_BROWSER_ARGS,
-    # « ; »-separated), its profile and its port.
+    # nodriver's defaults (what spawn_browser launches with) but --remote-allow-origins=* (Chrome then refuses a
+    # DevTools WebSocket from a web page: those carry an Origin; nodriver's and the relay's carry none), then the
+    # container's flags (STEALTH_BROWSER_ARGS, « ; »-separated), its profile and its port.
     set -f
     old_ifs=$IFS
     IFS=';'
     set -- ${STEALTH_BROWSER_ARGS:-}
     IFS=$old_ifs
     set +f
-    set -- "--remote-allow-origins=*" --no-first-run --no-service-autorun --no-default-browser-check \
+    set -- --no-first-run --no-service-autorun --no-default-browser-check \
         --homepage=about:blank --no-pings --password-store=basic --disable-infobars --disable-breakpad \
         --disable-dev-shm-usage --disable-session-crashed-bubble --disable-search-engine-choice-screen \
         --disable-features=IsolateOrigins,site-per-process "$@" --no-sandbox \

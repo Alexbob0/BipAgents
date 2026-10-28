@@ -106,6 +106,7 @@ async fn an_install_hands_out_only_its_own_range_and_moves_a_browser_from_outsid
     assert_eq!(read_json(&place.join("ports.json")), json!({"cdp": 19600, "vnc": 19601}));
     assert_eq!(agent.desktop_vnc.as_deref(), Some("tcp://127.0.0.1:19601"));
     assert_eq!(std::fs::read_to_string(place.join("profile").join("Cookies")).unwrap(), "kept");
+    let secret = std::fs::read_to_string(place.join("cdp.token")).unwrap().trim().to_string();
     assert!(s.ran().contains(&v(&[
         "/opt/hermes",
         "-p",
@@ -113,7 +114,7 @@ async fn an_install_hands_out_only_its_own_range_and_moves_a_browser_from_outsid
         "config",
         "set",
         "browser.cdp_url",
-        "http://127.0.0.1:19600"
+        &format!("http://127.0.0.1:19600/t/{secret}")
     ])));
     std::fs::create_dir_all(s.tmp.join("browsers").join("other")).unwrap();
     std::fs::write(
@@ -156,6 +157,13 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     assert!(!ran
         .iter()
         .any(|c| c[..3] == v(&["systemctl", "--user", "enable"])[..] || c.contains(&"start".to_string())));
+    // Its DevTools behind a secret of its own (security audit 2026-10-27, 11 and 21): the bridge's alone, mounted
+    // read-only in the container, in Hermes' URL, shown by the bridge's own connections.
+    let secret_file = place.join("cdp.token");
+    let secret = std::fs::read_to_string(&secret_file).unwrap().trim().to_string();
+    assert!(secret.len() == 64 && secret.bytes().all(|b| b.is_ascii_hexdigit()));
+    assert_eq!(std::fs::metadata(&secret_file).unwrap().permissions().mode() & 0o777, 0o600);
+    assert!(start.contains(&format!("-v {}:/run/bipagents/cdp.token:ro,Z", secret_file.display())));
     assert!(ran.contains(&v(&[
         "/opt/hermes",
         "-p",
@@ -163,8 +171,10 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
         "config",
         "set",
         "browser.cdp_url",
-        "http://127.0.0.1:19602"
+        &format!("http://127.0.0.1:19602/t/{secret}")
     ])));
+    assert_eq!(browsers::ports_of(&s.config, "budget").unwrap()["cdp"], 19602);
+    assert_eq!(browsers::devtools_secret(19602).as_deref(), Some(&*secret));
     let mcp = ran.iter().find(|c| c.len() > 6 && c[4..6] == v(&["set", "mcp_servers.stealth"])[..]).unwrap();
     let mcp: Value = serde_json::from_str(&mcp[6]).unwrap();
     assert_eq!(
@@ -214,6 +224,8 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     s.clear();
     s.setup_budget(&s.host).await;
     assert_eq!(read_json(&place.join("ports.json")), ports);
+    // its secret kept (a running container has it mounted)
+    assert_eq!(std::fs::read_to_string(&secret_file).unwrap().trim(), secret);
     assert!(s.ran().contains(&v(&["systemctl", "--user", "disable", "bipagents-browser-budget"])));
     assert!(!s.ran().contains(&v(&["systemctl", "--user", "restart", "bipagents-browser-budget"])));
     // A unit written by an earlier bridge (a 1600×900 window): rewritten, and its container restarted with these flags.
@@ -428,4 +440,42 @@ async fn no_browser_to_give_without_the_installers_image() {
     let err = browsers::switch_with(&s.host, &s.config, &agent, true, &s.run, &s.home()).await.unwrap_err();
     assert!(err.downcast_ref::<BrowserError>().is_some());
     assert!(s.ran().is_empty());
+}
+
+/// The bridge's own DevTools requests show the browser's secret (`X-Bip-Cdp`); its relay lets nothing through
+/// without it (browser/devtools_relay.py; security audit 2026-10-27, 11 and 21).
+#[tokio::test]
+async fn the_bridges_devtools_requests_show_the_browsers_secret() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let s = setup();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let place = s.tmp.join("browsers").join("budget");
+    std::fs::create_dir_all(&place).unwrap();
+    std::fs::write(place.join("ports.json"), json!({"cdp": port, "vnc": port + 1}).to_string()).unwrap();
+    let secret = browsers::ensure_cdp_secret(&place).unwrap();
+    assert_eq!(browsers::ensure_cdp_secret(&place).unwrap(), secret); // made once
+    assert_eq!(browsers::cdp_url(port, &secret), format!("http://127.0.0.1:{port}/t/{secret}"));
+    assert_eq!(browsers::ports_of(&s.config, "budget").unwrap()["cdp"], port);
+    let heard = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut head = Vec::new();
+        let mut buf = [0u8; 4096];
+        while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+            let n = socket.read(&mut buf).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            head.extend_from_slice(&buf[..n]);
+        }
+        let answer = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n[]";
+        socket.write_all(answer).await.unwrap();
+        String::from_utf8_lossy(&head).to_lowercase()
+    });
+    assert!(bipbridge::desktop_page::tabs(port, None).await.unwrap().is_empty());
+    assert!(heard.await.unwrap().contains(&format!("x-bip-cdp: {secret}")));
+    // a browser without one (set up before it): nothing to show, as before
+    std::fs::remove_file(place.join("cdp.token")).unwrap();
+    browsers::ports_of(&s.config, "budget").unwrap();
+    assert_eq!(browsers::devtools_secret(port), None);
 }

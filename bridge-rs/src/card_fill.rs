@@ -120,7 +120,11 @@ impl Cdp {
         use tokio_tungstenite::tungstenite::client::IntoClientRequest;
         let http =
             reqwest::Client::builder().timeout(Duration::from_secs(5)).build().map_err(|e| protocol(e.to_string()))?;
+        let secret = crate::browsers::devtools_secret(port);
         let mut asking = http.get(format!("http://127.0.0.1:{port}/json/version"));
+        if let Some(secret) = &secret {
+            asking = asking.header(crate::browsers::CDP_HEADER, secret);
+        }
         if let Some(token) = hold {
             asking = asking.header(HOLD_HEADER, token);
         }
@@ -139,6 +143,10 @@ impl Cdp {
         if let Some(token) = hold {
             let value = token.parse().map_err(|_| protocol("bad hold token"))?;
             request.headers_mut().insert(HOLD_HEADER, value);
+        }
+        if let Some(secret) = secret {
+            let value = secret.parse().map_err(|_| protocol("bad DevTools secret"))?;
+            request.headers_mut().insert(crate::browsers::CDP_HEADER, value);
         }
         let connecting = tokio_tungstenite::connect_async(request);
         let (ws, _) = tokio::time::timeout(CALL_TIMEOUT, connecting)
