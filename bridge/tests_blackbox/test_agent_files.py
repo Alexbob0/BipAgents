@@ -45,6 +45,8 @@ def stored(folder):
 
 def test_isolated_agents_give_files_along_the_links_the_person_allowed(bridges, fakes):
     bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness", "budget"))
+    # each case of send_files_to_agent below, with no run going on: a routine past 10 calls of one tool for the brake
+    bridge.config["brake"] = {"enabled": False}
     started(bridge, hub, ["vie", "wellness", "budget"])
     give_tokens(bridge, ["vie", "wellness", "budget"])
     vie, wellness, budget = (TOKENS[n] for n in ("vie", "wellness", "budget"))

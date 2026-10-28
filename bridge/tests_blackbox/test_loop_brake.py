@@ -102,7 +102,8 @@ def follow_relay(bridge, run_id):
 
 
 def bench_turn(run_id, tools):
-    return ([sse("tool.started", run_id=run_id, tool=tool, preview="{}") for tool in tools]
+    # each call's preview its own (the bench's events kept none): the limits on one tool, not « the same call »
+    return ([sse("tool.started", run_id=run_id, tool=tool, preview=f"step {i}") for i, tool in enumerate(tools)]
             + [sse("run.completed", run_id=run_id, output="")])
 
 

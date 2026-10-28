@@ -70,6 +70,10 @@ pub fn config_dict(dir: &Path, urls: &Urls) -> Value {
         "limits": {"upload_max_mb": 1, "purge_interval_hours": 1000},
         // Never isolated by default: `auto` would isolate the sandboxes on Linux with podman (CI); sandbox tests say on.
         "sandbox": {"isolate": "off"},
+        // The brake's counts are the process's (loop_brake.rs `TURNS`), shared by a file's tests running at once: a
+        // test's many tool calls with no run followed would read as a routine going round in circles. Its own tests:
+        // loop_brake.rs, runs.rs and the black-box suite (test_loop_brake.py).
+        "brake": {"enabled": false},
         "agents": {
             "Wellness": {
                 "display_name": "Wellness", "hermes_url": urls.hermes, "hermes_key": HERMES_KEY,
