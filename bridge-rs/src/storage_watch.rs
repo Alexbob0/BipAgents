@@ -23,6 +23,8 @@
 //!   are paused (`podman pause`), its bridge tools answer « ton espace est plein », the person gets the card; resumed
 //!   (`podman unpause`) once back under. Each pause and resume is logged.
 //!
+//! The routes (bridge key):
+//!
 //!     GET   /v1/storage            {used, allowance, percent, measured_at, by_agent, other, kept_rules, rule_kinds,
 //!                                   files_kept_days, paused}
 //!     POST  /v1/storage/measure    the same, measured now (and the thresholds checked)
@@ -1302,9 +1304,7 @@ mod tests {
         let mut config = Config::with_key("k");
         config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
         for name in ["vie", "max"] {
-            let mut agent = AgentConfig::default();
-            agent.name = name.into();
-            agent.display_name = name.to_uppercase();
+            let agent = AgentConfig { name: name.into(), display_name: name.to_uppercase(), ..AgentConfig::default() };
             config.agents.insert(name.into(), agent);
         }
         (dir, config)
