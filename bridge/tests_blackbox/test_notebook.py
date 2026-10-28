@@ -472,7 +472,9 @@ def test_the_agents_web_pages_live_in_the_carnet(bridge):
     assert [d["page"] for d in view["documents"]] == ["budget-du-voyage"]
     # An update keeps the link; the Carnet page deleted leaves the web page in Documents, unlinked.
     call(bridge, "create_page", {"html": "<p>v2</p>", "title": "Budget du voyage", "page": "budget-du-voyage"})
-    assert bridge.get("/v1/pages", params={"agent": "wellness"}, headers=AUTH).json()["pages"][0]["notebook"]["part"] == "main"
+    pages = bridge.get("/v1/pages", params={"agent": "wellness"}, headers=AUTH).json()["pages"]
+    # by name: both pages may carry the same second, and a tie keeps the folder's order (not the same on Linux)
+    assert next(p for p in pages if p["page"] == "budget-du-voyage")["notebook"]["part"] == "main"
     bridge.delete("/v1/notebook/page", params={"path": "Sujets/Voyage Japon.md"}, headers=AUTH)
     docs = bridge.get("/v1/notebook/documents", headers=AUTH).json()["documents"]
     assert next(d for d in docs if d["page"] == "budget-du-voyage")["linked"] is None

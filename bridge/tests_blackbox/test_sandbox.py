@@ -62,7 +62,7 @@ def linked(bridge):
 def terminal(hub, name):
     """The profile's terminal settings, read whole: the fake `hermes` rewrites the file in place, and the bridge's
     other start-up work (its tools, its soul) may be writing it at that moment."""
-    for _ in range(100):
+    for _ in range(400):    # 20 s: a loaded CI runner starts the bridge slower than a laptop
         data = yaml.safe_load((hub / "profiles" / name / "config.yaml").read_text())
         if isinstance(data, dict) and "mcp_servers" in data:
             return data.get("terminal", {})
