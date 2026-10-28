@@ -507,9 +507,18 @@ pub async fn run_forever(state: AppState) {
     }
 }
 
+/// An agent whose tools changed and whose Hermes hasn't listed them again by then (it ignores `tools/list_changed`:
+/// an older Hermes) is restarted once idle (agent_tools.rs `stale_agents`).
+pub const STALE_TOOLS_SECONDS: f64 = 120.0;
+
 async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Group>) {
     let s = &config.agent_restart;
     let now = py::time_time();
+    for (agent, since) in crate::agent_tools::stale_agents(config) {
+        if now - since >= STALE_TOOLS_SECONDS && requested(&agent).is_none() {
+            request_restart(&agent, "tools");
+        }
+    }
     let zone = crate::dates::load(config).zone();
     let local = zone.from_utc_datetime(&chrono::Utc::now().naive_utc());
     let minute = local.hour() * 60 + local.minute();
