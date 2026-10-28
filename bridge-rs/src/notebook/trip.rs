@@ -23,6 +23,10 @@ use crate::tools_knowledge as tk;
 
 /// A trip is shown in the Carnet's home from this many days before it starts until it ends.
 pub const HOME_DAYS: i64 = 30;
+/// A trip's dates are those of its main cluster: the bookings within this many days of each other.
+pub const CLUSTER_DAYS: i64 = 45;
+/// A « trip » whose dates span more than this is no journey (a list of trips): no countdown, not in the home.
+pub const PLAIN_SPAN: i64 = 90;
 
 static BOX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[([ xX])\]\s*").expect("valid regex"));
 
@@ -126,13 +130,66 @@ fn has_any(folded: &str, words: &[&str]) -> bool {
     words.iter().any(|w| spaced.contains(&format!(" {w} ")))
 }
 
+/// The words of a page that gathers trips rather than being one (« Voyages », « Mes voyages », « Trips », « Reisen »…).
+const COLLECTION: &[&str] = &[
+    "voyage",
+    "voyages",
+    "vacances",
+    "sejour",
+    "sejours",
+    "deplacement",
+    "deplacements",
+    "escapades",
+    "trip",
+    "trips",
+    "travel",
+    "travels",
+    "travelling",
+    "traveling",
+    "journeys",
+    "holiday",
+    "holidays",
+    "vacation",
+    "vacations",
+    "reise",
+    "reisen",
+    "urlaub",
+    "urlaube",
+    "ferien",
+    "viaje",
+    "viajes",
+    "vacaciones",
+    "escapadas",
+    "billets",
+    "reservations",
+    "bookings",
+    "tickets",
+    "buchungen",
+    "reservas",
+];
+const FILLERS: &[&str] = &[
+    "mes", "nos", "les", "tous", "toutes", "mon", "ma", "notre", "et", "de", "des", "du", "my", "our", "the", "all",
+    "and", "of", "meine", "unsere", "die", "alle", "und", "mis", "nuestros", "nuestras", "los", "las", "todos", "y",
+];
+
+/// Whether a page's name is a collection of trips, not one journey: only words like « Voyages » (a year or « mes »
+/// around them), no place.
+pub fn is_collection(title: &str) -> bool {
+    let folded = fold(title);
+    let words: Vec<&str> = folded
+        .split(' ')
+        .filter(|w| !w.is_empty() && !FILLERS.contains(w) && !w.chars().all(|c| c.is_ascii_digit()))
+        .collect();
+    !words.is_empty() && words.iter().all(|w| COLLECTION.contains(w))
+}
+
 /// Whether a subject is clearly a trip by its words (no model): a date, and a trip word with a booking, a flight or a
 /// place to stay — or both a way of getting there and a place to stay.
 pub fn looks_like_trip(page: &Page) -> bool {
     let text = format!("{}\n{}\n{}", page.title, page.aliases().join("\n"), page.body);
     let folded = fold(&text);
     let dated = page.body.lines().any(|l| super::date_in(l).is_some());
-    if !dated {
+    if !dated || is_collection(&page.title) {
         return false;
     }
     let trip = has_any(&folded, TRIP_WORDS);
@@ -208,7 +265,7 @@ pub fn detect(config: &Config) -> anyhow::Result<usize> {
 /// lock. Ok(false): no such subject.
 pub fn convert_locked(config: &Config, query: &str, who: &Who) -> anyhow::Result<bool> {
     let Some(found) = super::find(config, &[Part::Main], query) else { return Ok(false) };
-    if found.page.kind() != "subject" {
+    if found.page.kind() != "subject" || is_collection(&found.page.title) {
         return Ok(false);
     }
     let lang = super::language(config);
@@ -329,30 +386,121 @@ fn section_facts_any(page: &Page, id: &str) -> Vec<super::Fact> {
         .collect()
 }
 
-/// The trip's first and last days: its frontmatter's `start` and `end`, else the dates its « Dates » holds (« du 12
-/// au 19 novembre » too), else those of its itinerary and bookings.
+/// What makes a dated line count for a trip's dates: its bookings (flights, trains, stays, rentals) most, a refund or
+/// an invoice months later not at all.
+const BOOKING_WORDS: &[&str] = &[
+    "vol",
+    "vols",
+    "avion",
+    "flight",
+    "flights",
+    "flug",
+    "vuelo",
+    "train",
+    "tgv",
+    "zug",
+    "tren",
+    "ferry",
+    "bus",
+    "hotel",
+    "airbnb",
+    "gite",
+    "camping",
+    "hostel",
+    "location",
+    "rental",
+    "mietwagen",
+    "alquiler",
+    "voiture",
+    "car",
+    "depart",
+    "arrivee",
+    "departure",
+    "arrival",
+    "abflug",
+    "salida",
+    "embarquement",
+    "boarding",
+    "check in",
+];
+const AFTER_WORDS: &[&str] = &[
+    "rembourse",
+    "remboursement",
+    "remboursee",
+    "refund",
+    "refunded",
+    "facture",
+    "invoice",
+    "avoir",
+    "erstattung",
+    "rechnung",
+    "reembolso",
+    "factura",
+    "recu",
+    "receipt",
+    "quittung",
+];
+
+fn weight(text: &str, explicit: bool) -> u32 {
+    let folded = fold(text);
+    if has_any(&folded, AFTER_WORDS) {
+        0
+    } else if explicit || has_any(&folded, BOOKING_WORDS) {
+        3
+    } else {
+        1
+    }
+}
+
+/// The main cluster of dated lines: the densest window of `CLUSTER_DAYS` days, its bookings weighing most (the
+/// latest window on a tie); its first and last days.
+pub fn cluster(found: &[(NaiveDate, u32)]) -> Option<(NaiveDate, NaiveDate)> {
+    let mut dates: Vec<(NaiveDate, u32)> = found.iter().filter(|(_, w)| *w > 0).copied().collect();
+    if dates.is_empty() {
+        dates = found.to_vec();
+    }
+    dates.sort();
+    let mut best: Option<(u32, usize, usize)> = None;
+    for i in 0..dates.len() {
+        let limit = dates[i].0 + chrono::Duration::days(CLUSTER_DAYS);
+        let mut j = i;
+        let mut total = 0;
+        while j < dates.len() && dates[j].0 <= limit {
+            total += dates[j].1.max(1);
+            j += 1;
+        }
+        if best.is_none_or(|(b, _, _)| total >= b) {
+            best = Some((total, i, j - 1));
+        }
+    }
+    best.map(|(_, i, j)| (dates[i].0, dates[j].0))
+}
+
+/// The trip's first and last days: its frontmatter's `start` and `end`, else the main cluster (`cluster`) of the
+/// dates its « Dates » holds (« du 12 au 19 novembre » too), else of those of its itinerary and bookings.
 pub fn dates_of(page: &Page) -> (Option<NaiveDate>, Option<NaiveDate>) {
     let today = chrono::Local::now().date_naive();
     let (mut start, mut end) = (front_date(page, "start"), front_date(page, "end"));
     if start.is_some() && end.is_some() {
         return (start, end);
     }
-    let mut found: Vec<NaiveDate> = Vec::new();
+    let mut found: Vec<(NaiveDate, u32)> = Vec::new();
     for ids in [&["dates"][..], &["itinerary", "transport", "lodging"][..]] {
         for id in ids {
             for fact in section_facts_any(page, id) {
+                let w = weight(&fact.text, *id == "dates");
                 let folded = tk::ascii_fold(&fact.text.to_lowercase());
                 if let Some(c) = RANGE.captures(&folded) {
                     let year = c.get(4).map(|y| y.as_str().to_string()).unwrap_or_default();
                     for day in [&c[1], &c[2]] {
                         if let Some(d) = date_of(&format!("{day} {} {year}", &c[3]), today) {
-                            found.push(d);
+                            found.push((d, w));
                         }
                     }
                     continue;
                 }
                 if let Some(d) = date_of(&fact.text, today) {
-                    found.push(d);
+                    found.push((d, w));
                 }
             }
         }
@@ -360,9 +508,23 @@ pub fn dates_of(page: &Page) -> (Option<NaiveDate>, Option<NaiveDate>) {
             break;
         }
     }
-    start = start.or_else(|| found.iter().min().copied());
-    end = end.or_else(|| found.iter().max().copied()).or(start);
+    // a known start or end: the cluster around it
+    if let Some(known) = start.or(end) {
+        found.retain(|(d, _)| (*d - known).num_days().abs() <= CLUSTER_DAYS);
+    }
+    let main = cluster(&found);
+    start = start.or(main.map(|m| m.0));
+    end = end.or(main.map(|m| m.1)).or(start);
     (start, end)
+}
+
+/// The dates shown for a trip: none when they span more than `PLAIN_SPAN` days (no countdown, no « under way », not
+/// in the home: a plain list).
+pub fn shown_dates(page: &Page) -> (Option<NaiveDate>, Option<NaiveDate>) {
+    match dates_of(page) {
+        (Some(s), Some(e)) if (e - s).num_days() > PLAIN_SPAN => (None, None),
+        dates => dates,
+    }
 }
 
 /// What a booking line holds: its date, time, flight or train number and booking reference.
@@ -396,8 +558,9 @@ fn place_name(text: &str) -> String {
 /// booking records that name it), the packing list, its places and the agents' page with a map linked to it.
 pub fn view(config: &Config, part: Part, path: &str, page: &Page) -> Value {
     let lang = super::language(config);
-    let (start, end) = dates_of(page);
-    let around = start.unwrap_or_else(|| chrono::Local::now().date_naive());
+    let (start, end) = shown_dates(page);
+    let today = chrono::Local::now().date_naive();
+    let around = start.unwrap_or(today);
     let length = match (start, end) {
         (Some(s), Some(e)) if e >= s => Some((e - s).num_days() + 1),
         _ => None,
@@ -462,8 +625,17 @@ pub fn view(config: &Config, part: Part, path: &str, page: &Page) -> Value {
         b["kind"] = json!("booking");
         b["text"] = json!(text);
         b["record"] = json!(tk::str_or_empty(record.get("id")));
-        b["source"] = record.get("source").cloned().unwrap_or(Value::Null);
+        // an archived mail is opened by the apps (« Voir le mail »), never shown as its raw id
+        let source = tk::str_or_empty(record.get("source"));
+        let reference = super::records::source_ref(&source);
+        b["source"] = if reference.is_some() || source.starts_with("archive:") { Value::Null } else { json!(source) };
+        b["source_ref"] = json!(reference);
         bookings.push(b);
+    }
+    // a booking already past: nothing to remind
+    for b in bookings.iter_mut() {
+        let date = NaiveDate::parse_from_str(&tk::str_or_empty(b.get("date")), "%Y-%m-%d").ok();
+        b["past"] = json!(date.is_some_and(|d| d < today));
     }
     bookings.sort_by_key(|b| {
         (tk::str_or_empty(b.get("date")).is_empty(), tk::str_or_empty(b.get("date")), tk::str_or_empty(b.get("time")))
@@ -521,7 +693,7 @@ pub fn upcoming(config: &Config, today: NaiveDate) -> Vec<Value> {
         if page.kind() != "trip" {
             continue;
         }
-        let (Some(start), end) = dates_of(&page) else { continue };
+        let (Some(start), end) = shown_dates(&page) else { continue };
         let end = end.unwrap_or(start);
         let until = (start - today).num_days();
         if until > HOME_DAYS || end < today {
@@ -637,5 +809,55 @@ mod tests {
         let (s, e) = dates_of(&page);
         assert_eq!(s, NaiveDate::from_ymd_opt(2026, 11, 12));
         assert_eq!(e, NaiveDate::from_ymd_opt(2026, 11, 19));
+    }
+
+    #[test]
+    fn a_list_of_trips_is_not_a_trip() {
+        for title in ["Voyages", "Mes voyages", "Trips", "Reisen", "Viajes", "Voyages 2022", "My travels", "Vacances"] {
+            assert!(is_collection(title), "{title}");
+        }
+        for title in ["Voyage au Japon", "Amsterdam, déc. 2021", "Lisbonne", "Trip to Rome", "Reise nach Wien"] {
+            assert!(!is_collection(title), "{title}");
+        }
+        // the screenshot's page: all the travel items filed in « Voyages »
+        let text = "---\ntype: trip\n---\n# Voyages\n\n## Transports\n- Remboursement Air France le 31/12/2021\n\
+- Parking aéroport le 22/07/2022\n- Location voiture le 01/10/2022\n- Vol Paris → Lisbonne le 20/12/2026\n";
+        let page = Page::parse(text, "x");
+        assert_eq!(page.kind(), "subject", "read as a subject: a list, no countdown");
+        let mut subject = page.clone();
+        subject.front.insert("type".into(), json!("subject"));
+        assert!(!looks_like_trip(&subject), "never made a trip at night");
+    }
+
+    #[test]
+    fn a_trip_s_dates_are_its_main_cluster() {
+        let text = "---\ntype: trip\n---\n# Amsterdam\n\n## Transports\n\
+- Vol AF1240 Paris → Amsterdam le 18/12/2021 à 07:15\n- Vol retour le 22/12/2021\n\
+- Remboursement Air France le 15/03/2022 : 120 €\n- Facture parking le 01/04/2022\n\n\
+## Hébergements\n- Hôtel Pulitzer le 18/12/2021, 4 nuits\n";
+        let page = Page::parse(text, "x");
+        assert_eq!(page.kind(), "trip");
+        let (s, e) = dates_of(&page);
+        assert_eq!(s, NaiveDate::from_ymd_opt(2021, 12, 18));
+        assert_eq!(e, NaiveDate::from_ymd_opt(2021, 12, 22));
+        // the bookings weigh more than lone notes: two parkings in the summer don't win over the flights
+        let day = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
+        let found = [
+            (day(2022, 7, 22), 1),
+            (day(2022, 7, 25), 1),
+            (day(2022, 10, 1), 3),
+            (day(2022, 10, 8), 3),
+            (day(2023, 1, 5), 0),
+        ];
+        assert_eq!(cluster(&found), Some((day(2022, 10, 1), day(2022, 10, 8))));
+    }
+
+    #[test]
+    fn a_trip_spanning_years_has_no_countdown() {
+        let text =
+            "---\ntype: trip\nstart: 2021-12-31\nend: 2026-12-20\n---\n# Europe\n\n## Notes\n- Vol le 12/05/2024\n";
+        let page = Page::parse(text, "x");
+        assert_eq!(dates_of(&page).0, NaiveDate::from_ymd_opt(2021, 12, 31));
+        assert_eq!(shown_dates(&page), (None, None));
     }
 }

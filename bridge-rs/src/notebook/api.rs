@@ -175,7 +175,7 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
             if p.kind() != "trip" {
                 return (0, 0);
             }
-            let (start, end) = super::trip::dates_of(p);
+            let (start, end) = super::trip::shown_dates(p);
             let past = w.archived(path) || end.is_some_and(|e| e < today);
             match (past, start) {
                 (false, Some(s)) => (1, (s - today).num_days()),
@@ -211,7 +211,7 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
                     .map(|(_, facts)| facts.len())
                     .sum::<usize>());
                 if p.kind() == "trip" {
-                    let (start, end) = super::trip::dates_of(p);
+                    let (start, end) = super::trip::shown_dates(p);
                     view["start"] = json!(start.map(|d| d.format("%Y-%m-%d").to_string()));
                     view["end"] = json!(end.map(|d| d.format("%Y-%m-%d").to_string()));
                     view["destination"] = p.front.get("destination").cloned().unwrap_or(Value::Null);

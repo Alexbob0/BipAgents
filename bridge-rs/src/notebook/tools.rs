@@ -57,7 +57,7 @@ pub fn tools(health: bool) -> Vec<Value> {
             "description": "File durable facts in the Carnet: about your person themself (kind self: their « Toi » page; who \
         they are, family, work, likes and habits, goals, how their agents should behave with them), a person (birthday, \
         family, preferences, what was agreed, recent exchanges), a subject or project (decisions, status, next steps, people involved) or an area of life (home, \
-        money, work, family…) or a trip (kind trip: a journey with dates, bookings, a destination; give start and end; a \
+        money, work, family…) or a trip (kind trip: one page per journey, named by place and month « Amsterdam, déc. 2021 », never « Voyages »; give start and end; a \
         subject that turns out to be a trip becomes one when you file it with kind trip, its content kept). The page is found \
         by its name, a nickname or the contact's id, and made if it doesn't exist. \
         Facts already there are not repeated. Every page has the same fixed sections for its kind: give the section \
