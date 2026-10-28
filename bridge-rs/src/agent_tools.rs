@@ -1664,22 +1664,26 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
     ) {
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(refused))));
     }
-    let wrote = move |agent: &str, name: &str, arguments: &Dict, result: &Dict| {
+    let wrote = move |agent: &str, name: &str, arguments: &Dict, result: &mut Dict| {
         if !result.get("isError").map(py::truthy).unwrap_or(false) {
             crate::loop_brake::TURNS.record(agent, turn.as_ref(), name, arguments);
         }
+        // a routine's limits getting close: told with this call's result
+        if let Some(note) = crate::loop_brake::TURNS.take_note(agent, turn.as_ref()) {
+            crate::loop_brake::add_note(result, &note);
+        }
     };
     if crate::family_news::TOOL_NAMES.contains(&name.as_str()) {
-        let result = crate::family_news::call_tool(&state.http, &state.config(), &agent, &name, &arguments).await?;
-        wrote(&agent.name, &name, &arguments, &result);
+        let mut result = crate::family_news::call_tool(&state.http, &state.config(), &agent, &name, &arguments).await?;
+        wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
     }
     let jobs = crate::jobs::jobs_of(&state);
     let push = state.push.clone();
     let maker = state.audio_maker.clone();
     let work = tokio::spawn(async move {
-        let result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
-        if let Ok(done) = &result {
+        let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
+        if let Ok(done) = &mut result {
             wrote(&agent.name, &name, &arguments, done);
             if crate::made_files::makes_files(&name) {
                 crate::made_files::MADE.note_result(&agent.name, done, turn_run.as_deref(), py::time_time());

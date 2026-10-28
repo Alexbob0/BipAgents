@@ -42,7 +42,7 @@
 //!     browser_calls = 40      page_reads = 15
 //!     task_same_tool = 40     task_tool_calls = 120  task_same_call = 5   task_same_lookup = 8 task_writes = 40
 //!     task_browser_calls = 80 task_page_reads = 30
-//!     routine_tool_calls = 30 idle_seconds = 120
+//!     routine_tool_calls = 40 idle_seconds = 120
 //!     rescue = true           rescue_tool_calls = 5  rescue_seconds = 180
 //!
 //! Read-only lookups (2026-10-28, Alex's home server: Vie diagnosing a nightly job was stopped after 5 calls, 3 of
@@ -132,7 +132,7 @@ impl Default for Settings {
                 browser_calls: 80,
                 page_reads: 30,
             },
-            routine_tool_calls: 30,
+            routine_tool_calls: 40,
             idle_seconds: 120.0,
             warn: true,
             rescue: true,
@@ -753,6 +753,29 @@ struct BridgeTurn {
     calls: u32,
     per_tool: HashMap<String, u32>,
     last: f64,
+    /// A routine's limit getting close: the note added to the call's result (`take_note`), once per limit.
+    note: Option<String>,
+    warned: HashSet<String>,
+}
+
+/// `note` added to a tool's result (its first text, else a text of its own).
+pub fn add_note(result: &mut Dict, note: &str) {
+    if let Some(Value::Array(content)) = result.get_mut("content") {
+        if let Some(Value::String(text)) = content.first_mut().and_then(|c| c.get_mut("text")) {
+            text.push_str("\n\n");
+            text.push_str(note);
+            return;
+        }
+        content.push(json!({"type": "text", "text": note}));
+    }
+}
+
+/// Reading one given item (a mail, its attachment, a Carnet or app page): a routine reading 14 different mails is
+/// working, not looping (2026-10-28, the replay's `mail_scan_busy_night`), so its limit on one tool counts the same
+/// item read again, not reads of different items.
+pub fn item_read(tool: &str) -> bool {
+    let name = bare(tool);
+    !write_tool(name) && (name.ends_with("_read") || name == "mail_attachment" || name == "read_page")
 }
 
 /// Each turn's calls of the bridge's tools: by `agent` + run id, or `agent` alone for the turn no run carries.
@@ -809,9 +832,27 @@ turn. Answer the person now with what you already have."
         if turn.is_none() {
             // a routine: Hermes can't stop it, so its calls of the bridge's tools are held here
             entry.calls += 1;
-            let same = entry.per_tool.entry(bare(tool).to_string()).or_insert(0);
+            let key = if item_read(tool) { signature_of(tool, arguments) } else { bare(tool).to_string() };
+            let same = entry.per_tool.entry(key).or_insert(0);
             *same += 1;
             let (same, calls) = (*same, entry.calls);
+            // getting close (about two thirds): told in the call's result, once per limit (a routine can't be steered)
+            let close = if same == soft_limit(limits.same_tool) {
+                Some((format!("tool:{}", bare(tool)), format!("you have called {} {same} times", bare(tool))))
+            } else if calls == soft_limit(settings.routine_tool_calls) {
+                Some(("total".to_string(), format!("you have made {calls} calls")))
+            } else {
+                None
+            };
+            if let (Some((key, what)), true) = (close, settings.warn) {
+                if entry.warned.insert(key) {
+                    tracing::info!(agent = %agent, tool = %tool, calls = calls, same = same,
+                        "brake_warned: a routine told it is going round in circles");
+                    entry.note = Some(format!(
+                        "{WARN_MARK} Note from the bridge: {what} in this turn, close to the limit. Change approach, or finish with what you have."
+                    ));
+                }
+            }
             if same > limits.same_tool || calls > settings.routine_tool_calls {
                 tracing::info!(agent = %agent, tool = %tool, calls = calls, same = same,
                     "going round in circles in a turn no run carries: tool refused");
@@ -854,6 +895,12 @@ here: tell the person what you did and ask them before doing more.",
             ));
         }
         None
+    }
+
+    /// The note a routine's call gets with its result (its limits getting close), once.
+    pub fn take_note(&self, agent: &str, turn: Option<&Turn>) -> Option<String> {
+        let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
+        turns.get_mut(&turn_key(agent, turn)).and_then(|t| t.note.take())
     }
 
     /// A write tool's call that `check` let through went well: counted in its turn (a refused or failed one is not:
@@ -1205,14 +1252,14 @@ autre lien."
         assert!(r["content"][0]["text"].as_str().unwrap().contains("answer the person with what you have"));
         // and a routine's calls of many tools: at routine_tool_calls
         let mut at = None;
-        for i in 0..40 {
+        for i in 0..50 {
             let tool = format!("mcp__bipagents__tool_{}", i % 8);
             if call("coach", None, &tool, &Dict::new(), 5000.0 + i as f64).is_some() {
                 at = Some(i);
                 break;
             }
         }
-        assert_eq!(at, Some(30));
+        assert_eq!(at, Some(40));
     }
 
     #[test]
@@ -1393,6 +1440,58 @@ exactly the same session_search call 3 times in this turn; at 5 the turn is stop
     }
 
     const NIGHT_Q: &str = "scan-emails-fond-nuit";
+
+    #[test]
+    fn a_routine_reading_many_mails_goes_on_and_is_told_when_close() {
+        // the replay's mail_scan_busy_night: 3 searches, 14 different mails read, 2 notes, in a routine
+        let turns = Turns::default();
+        let settings = Settings::default();
+        let mut refused = Vec::new();
+        let mut notes = Vec::new();
+        let mut call = |tool: &str, a: Dict, i: usize| {
+            match turns.check(&settings, "vie", None, tool, &a, i as f64) {
+                Some(r) => refused.push((i, r)),
+                None => turns.record("vie", None, tool, &a),
+            }
+            notes.extend(turns.take_note("vie", None).map(|n| (i, n)));
+        };
+        let mut i = 0;
+        for q in ["facture", "banque", "école"] {
+            call("mcp_bipagents_mail_search", args(&[("query", q)]), i);
+            i += 1;
+        }
+        for m in 0..14 {
+            call("mcp_bipagents_mail_read", args(&[("id", &format!("m{m}"))]), i);
+            i += 1;
+        }
+        call("mcp_bipagents_mail_attachment", args(&[("id", "m3"), ("n", "1")]), i);
+        i += 1;
+        for n in 0..2 {
+            call("mcp_bipagents_notebook_note", args(&[("text", &format!("n{n}"))]), i);
+            i += 1;
+        }
+        assert!(refused.is_empty(), "{refused:?}");
+        assert!(notes.is_empty(), "20 calls: under the total's two thirds (27 of 40): {notes:?}");
+        // the same mail read again and again: told at the 7th, refused at the 11th
+        let turns = Turns::default();
+        let mut told = None;
+        let refused_at = (0..20).find(|i| {
+            let a = args(&[("id", "m1")]);
+            let r = turns.check(&settings, "lea", None, "mcp_bipagents_mail_read", &a, 100.0 + *i as f64);
+            if let Some(note) = turns.take_note("lea", None) {
+                told.get_or_insert((*i, note));
+            }
+            r.is_some()
+        });
+        assert_eq!(refused_at, Some(10));
+        let (at, note) = told.unwrap();
+        assert_eq!(at, 6);
+        assert!(note.starts_with("[bipagents:brake] Note from the bridge: you have called mail_read 7 times"));
+        let mut result = crate::tools_knowledge::tool_text("Mail 1", false);
+        add_note(&mut result, &note);
+        assert!(result["content"][0]["text"].as_str().unwrap().starts_with("Mail 1\n\n[bipagents:brake]"));
+        assert!(item_read("mcp_bipagents_mail_read") && item_read("mail_attachment") && !item_read("notebook_search"));
+    }
 
     #[test]
     fn the_new_settings_from_the_config() {

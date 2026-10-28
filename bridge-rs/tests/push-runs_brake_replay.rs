@@ -14,8 +14,10 @@
 //! - `real_traces_report`: the files Alex brings back from aibox, dropped in tests/fixtures/brake-traces-real/
 //!   (git-ignored) or a folder named by `BRAKE_TRACES`; a report, no assertion (they carry no labels):
 //!
-//!     cargo test -p bipbridge --test push-runs_brake_replay -- --nocapture --test-threads=1
-//!     BRAKE_TRACES=/some/folder cargo test -p bipbridge --test push-runs_brake_replay real_traces -- --nocapture
+//! ```text
+//! cargo test -p bipbridge --test push-runs_brake_replay -- --nocapture --test-threads=1
+//! BRAKE_TRACES=/some/folder cargo test -p bipbridge --test push-runs_brake_replay real_traces -- --nocapture
+//! ```
 //!
 //! Only `adapter` below touches the brake's API: point it at the new one when it changes.
 
@@ -119,7 +121,8 @@ mod adapter {
             let base = self.settings.limits(background);
             let mut count = TurnCount::default();
             let mut used_browser = false;
-            let run = (!routine).then(|| Turn { run_id: format!("{}@{}", trace.session, trace.start), background });
+            let run = (!routine)
+                .then(|| Turn { run_id: format!("{}@{}", trace.session, trace.start), background, banned: None });
             for (index, call) in trace.calls.iter().enumerate() {
                 if !routine {
                     let browser = bipbridge::runs::browser_tool(&call.tool);
@@ -129,7 +132,17 @@ mod adapter {
                         limits.tool_calls += limits.browser_calls;
                     }
                     let signature = (call.args != NO_ARGS).then_some(call.args.as_str());
-                    if let Some(over) = count.note(&call.tool, signature, browser, &limits) {
+                    let over = count.note(&call.tool, signature, browser, &limits);
+                    // the soft warning (a steer to the agent, runs.rs `brake`): told, not cut
+                    if let (Some(warning), true) = (count.take_warning(), self.settings.warn && over.is_none()) {
+                        out.push(Decision {
+                            index,
+                            tool: call.tool.clone(),
+                            action: Action::Warn,
+                            reason: format!("soft warning: {}", warning.reason()),
+                        });
+                    }
+                    if let Some(over) = over {
                         out.push(Decision {
                             index,
                             tool: call.tool.clone(),
@@ -138,6 +151,8 @@ mod adapter {
                         });
                         break;
                     }
+                    // its answer (`tool.completed`): an error makes the identical call right after a retry
+                    count.completed(&call.tool, call.error);
                 }
                 if !bridge_tool(&call.tool) {
                     continue;
@@ -148,6 +163,15 @@ mod adapter {
                     None => {
                         if !call.error {
                             self.turns.record(&trace.agent, run.as_ref(), &call.tool, &args);
+                        }
+                        // a routine's soft warning, added to the call's result
+                        if let Some(note) = self.turns.take_note(&trace.agent, run.as_ref()) {
+                            out.push(Decision {
+                                index,
+                                tool: call.tool.clone(),
+                                action: Action::Warn,
+                                reason: format!("soft warning: {}", note.chars().take(90).collect::<String>()),
+                            });
                         }
                     }
                     Some(answer) => {
@@ -261,7 +285,7 @@ fn sample() -> Vec<Trace> {
 
 /// Normal turns the brake of main still cuts (2026-10-28): the cases the gentler brake must let through. When the
 /// new brake merges, empty this list: the test then holds every normal turn to « never cut ».
-const KNOWN_FALSE_CUTS: [&str; 2] = ["history_diagnostic_same_search", "mail_scan_busy_night"];
+const KNOWN_FALSE_CUTS: [&str; 0] = [];
 
 #[test]
 fn sample_traces_normal_days_go_on_and_loops_are_cut() {
@@ -291,7 +315,11 @@ fn sample_traces_normal_days_go_on_and_loops_are_cut() {
 fn sample_loops_are_cut_early() {
     // a loop is cut long before Hermes' own cap of 150 calls, and the reasons are the ones expected
     let results = replay(&sample());
-    let by_name = |name: &str| results.iter().find(|(t, _)| t.name.as_deref() == Some(name)).unwrap();
+    // the decisions that cut (the soft warnings before them left out)
+    let by_name = |name: &str| {
+        let (trace, decisions) = results.iter().find(|(t, _)| t.name.as_deref() == Some(name)).unwrap();
+        (trace, decisions.iter().filter(|d| d.cuts()).cloned().collect::<Vec<_>>())
+    };
     for (trace, decisions) in results.iter().filter(|(t, _)| t.expect.as_deref() == Some("loop")) {
         let first = decisions.iter().find(|d| d.cuts()).unwrap();
         assert!(first.index < 70, "{}: cut at {}", label(trace), first.index);

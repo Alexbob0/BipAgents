@@ -5,7 +5,7 @@ write twice in a turn, and too many writes. `[brake]` in bridge.toml."""
 import threading
 
 from bbkit.common import AUTH, HERMES_KEY, read_sse, sse
-from bbkit.mcp import call, give_token, text_of
+from bbkit.mcp import call, give_token, media_of, text_of
 from bbkit.servers import wait_until
 
 
@@ -30,9 +30,13 @@ def test_a_turn_going_round_in_circles_is_stopped_and_said(bridges, fakes):
     notice = events[11][1]
     assert notice["code"] == "loop_stopped" and notice["reason"] == "same tool too many times (calendar_add)"
     assert "agenda" in notice["text"] or "calendar" in notice["text"]
-    assert names.count("bridge.notice") == 1
+    assert [d.get("code") for n, d in events if n == "bridge.notice"].count("loop_stopped") == 1
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/run_loop/stop", "POST"))
-    assert not fakes.hermes.steers, "stopped, not steered as long work"
+    assert not [s for s in fakes.hermes.steers if "[bipagents:handoff]" in s["body"]["input"]], "not as long work"
+    # told once before the stop (a steer: the 7th of 10 calls of one tool)
+    warned = [s for s in fakes.hermes.steers if s["body"]["input"].startswith("[bipagents:brake]")]
+    assert len(warned) == 1 and "calendar_add 7 times" in warned[0]["body"]["input"], warned
+    assert bridge.logged("brake_warned: the agent told it is going round in circles")
     assert bridge.logged("going round in circles: run stopped")
     # replayed to an app that comes back
     assert "bridge.notice" in [name for name, _ in follow(bridge, "run_loop")]
@@ -46,7 +50,7 @@ def test_the_same_call_three_times_and_the_limits_in_the_config(bridges, fakes):
     fakes.hermes.runs["run_same"] = (
         [sse("tool.started", run_id="run_same", tool="memory", preview="add: le code du portail") for _ in range(3)]
         + [sse("run.completed", run_id="run_same", output="ok")])
-    notices = [data for name, data in follow(bridge, "run_same") if name == "bridge.notice"]
+    notices = [data for name, data in follow(bridge, "run_same") if name == "bridge.notice" and data.get("code") == "loop_stopped"]
     assert [n["reason"] for n in notices] == ["same call repeated (memory)"]
     # 20 different calendar calls: under the configured 50
     fakes.hermes.runs["run_ok"] = looping("run_ok", 20)
@@ -119,13 +123,14 @@ def test_the_benchs_birthday_loop_started_through_the_door_is_stopped(bridges, f
     assert run_id == "r1"
     for events in (follow(bridge, run_id), follow_relay(bridge, run_id)):   # the app's way, the lab's way
         names = [name for name, _ in events]
-        assert names.count("bridge.notice") == 1
+        assert [d.get("code") for n, d in events if n == "bridge.notice"].count("loop_stopped") == 1
         at = names.index("bridge.notice")
         assert [data.get("tool") for name, data in events[:at]].count(note) == 11, "right after the 11th note"
         notice = events[at][1]
         assert notice["code"] == "loop_stopped" and notice["reason"] == "same tool too many times (notebook_note)"
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
-    assert len(fakes.hermes.event_requests) == 1, "one Hermes subscription for the hub, the app and the lab"
+    turn = [s for s in fakes.hermes.event_requests if s.path == "/v1/runs/r1/events"]
+    assert len(turn) == 1, "one Hermes subscription for the hub, the app and the lab (the rescue turn's apart)"
 
 
 def test_the_benchs_draft_loop_followed_only_through_the_relay_is_stopped(bridges, fakes):
@@ -135,7 +140,7 @@ def test_the_benchs_draft_loop_followed_only_through_the_relay_is_stopped(bridge
     fakes.hermes.runs["r1"] = bench_turn("r1", ["mcp__bipagents__calendar_list", search, search, "tool_describe"]
                                          + [search] * 23)
     events = follow_relay(bridge, start(bridge))
-    notices = [data for name, data in events if name == "bridge.notice"]
+    notices = [data for name, data in events if name == "bridge.notice" and data.get("code") == "loop_stopped"]
     assert [n["reason"] for n in notices] == ["same tool too many times (notebook_search)"]
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
 
@@ -300,3 +305,77 @@ def test_a_turn_nobody_follows_gets_no_rescue_turn(bridges, fakes):
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
     assert wait_until(lambda: bridge.logged("going round in circles: run stopped"))
     assert list(fakes.hermes.started) == ["r1"], "no rescue turn started"
+
+
+def test_the_agent_is_told_before_the_stop_and_a_turn_that_changes_approach_goes_on(bridges, fakes):
+    # the same search 3 times (stopped at 5): a steer tells the agent, which then tries other ways and answers
+    bridge = bridges.new()
+    bridge.config["jobs"] = {"handoff": False}   # no long-work steer here
+    bridge.start()
+    script = [sse("tool.started", run_id="run_vie", tool=SEARCH, preview=NIGHT) for _ in range(3)]
+    script += [sse("tool.started", run_id="run_vie", tool=t, preview=f"piste {i}")
+               for i, t in enumerate(["read_file", "search_files", "web_search", SEARCH, "terminal"] * 3)]
+    script += [sse("run.completed", run_id="run_vie", output="Le job échoue : le mot de passe IMAP a changé.")]
+    fakes.hermes.runs["run_vie"] = script
+    events = follow(bridge, "run_vie")
+    assert notices(events) == [], "never stopped"
+    assert events[-1][1]["output"].startswith("Le job échoue")
+    assert not fakes.hermes.seen("/v1/runs/run_vie/stop", "POST")
+    assert wait_until(lambda: fakes.hermes.steers)
+    warned = [s for s in fakes.hermes.steers if s["run_id"] == "run_vie"]
+    assert len(warned) == 1
+    text = warned[0]["body"]["input"]
+    assert text.startswith("[bipagents:brake] ") and "same session_search call 3 times" in text and "at 5" in text
+    assert bridge.logged("brake_warned: the agent told it is going round in circles")
+
+
+# -- 2026-10-28, aibox: a routine made today's podcast and its reply carried yesterday's path, written from memory.
+# The bridge hands over the files it made in a turn whatever the model wrote (bridge-rs/src/made_files.rs).
+
+def test_the_audio_made_in_a_turn_is_handed_over_by_its_reply(bridges, fakes):
+    bridge = bridges.new().start()
+    give_token(bridge)
+    gate = threading.Event()
+    stale = "/bipagents/audio/wellness/20261027-095308-podcast-du-mardi.m4a"
+    reply = f"🎙️ Ton podcast du jour est prêt.\nMEDIA:{stale}"
+    fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="mcp_bipagents_create_audio", preview="{}"),
+                               gate, sse("message.delta", run_id="r1", delta=reply),
+                               sse("run.completed", run_id="r1", output=reply)]
+    start(bridge)
+    assert wait_until(lambda: fakes.hermes.event_requests)
+    made = call(bridge, "create_audio", {"text": "Bonjour, voici le podcast du jour.", "title": "Podcast du jour"})
+    assert not made["isError"], text_of(made)
+    path = media_of(made)
+    assert text_of(made).startswith(f"MEDIA:{path}\n"), "the MEDIA line first"
+    gate.set()
+    events = follow_relay(bridge, "r1")
+    end = events[-1][1]
+    assert events[-1][0] == "run.completed"
+    # the stale line replaced by today's file, in the end's output and on the screen (a last delta)
+    assert end["output"] == f"🎙️ Ton podcast du jour est prêt.\nMEDIA:{path}" and end["bip_media_fixed"] is True
+    said = "".join(d.get("delta", "") for n, d in events if n == "message.delta")
+    assert said.endswith(f"\n\nMEDIA:{path}")
+    assert bridge.logged("files made in the turn: their MEDIA lines handed over")
+
+
+def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):
+    bridge = bridges.new().start()
+    give_token(bridge)
+    gate, said = threading.Event(), {}
+    fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="mcp_bipagents_create_audio", preview="{}"), gate]
+    start(bridge)
+    assert wait_until(lambda: fakes.hermes.event_requests)
+    path = media_of(call(bridge, "create_audio", {"text": "Bonjour.", "title": "Bonjour"}))
+    said["reply"] = f"Voilà.\nMEDIA:{path}"
+    fakes.hermes.runs["r1"] += [sse("message.delta", run_id="r1", delta=said["reply"]),
+                                sse("run.completed", run_id="r1", output=said["reply"])]
+    gate.set()
+    events = follow_relay(bridge, "r1")
+    assert events[-1][1]["output"] == said["reply"] and "bip_media_fixed" not in events[-1][1]
+    # and a turn that made nothing: an older audio the person asked for again stays
+    old = "/bipagents/audio/wellness/20261020-080000-ancien.m4a"
+    fakes.hermes.runs["r2"] = [sse("message.delta", run_id="r2", delta=f"Le revoici.\nMEDIA:{old}"),
+                               sse("run.completed", run_id="r2", output=f"Le revoici.\nMEDIA:{old}")]
+    assert start(bridge) == "r2"
+    events = follow_relay(bridge, "r2")
+    assert events[-1][1]["output"] == f"Le revoici.\nMEDIA:{old}" and "bip_media_fixed" not in events[-1][1]

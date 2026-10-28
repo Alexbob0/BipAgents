@@ -158,7 +158,7 @@ def test_a_podcast_gives_each_host_a_voice_of_their_own(bridge, fakes):
     result = call(bridge, "create_podcast", {"title": "Le point", "turns": turns})
     assert result["isError"] is False
     text = result["content"][0]["text"]
-    assert "Voices:\n- Max: 4193\n- Léa: pocket:colibri\n" in text and "-le-point.m4a" in text
+    assert text.endswith("Voices:\n- Max: 4193\n- Léa: pocket:colibri") and "-le-point.m4a" in text
     # The first host with the agent's voice, the other with another one; turns read in order.
     assert [body["voice"] for body in fakes.kyutai.inputs] == ["4193", "4193"]
     assert [body["voice"] for body in fakes.pocket.inputs] == ["colibri"]
