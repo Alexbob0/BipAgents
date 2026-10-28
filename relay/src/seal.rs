@@ -8,6 +8,10 @@
 //! with it (`aud`: a bridge, or the guichet, which proves itself with its key). An ended token, or one of the first
 //! format (`r1.`, no end), reads as a dead device: the sender forgets it and the app registers again (it takes a
 //! new token every 30 days on its own). An id can be refused for good (`RELAY_BLOCKED`).
+//!
+//! Transition: until `RELAY_R1_UNTIL` (2026-12-15 by default) the first format is still taken and still sealed for
+//! the apps that ask without an audience (released before 2026-10-28), so older apps, bridges and relays keep
+//! working together; each use is logged and `/health` warns. After that date, as above.
 
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine as _;
@@ -20,6 +24,8 @@ pub const PREFIX: &str = "r2.";
 /// The first format (no end, no audience): refused, the app registers again.
 pub const RETIRED_PREFIX: &str = "r1.";
 const AAD: &[u8] = b"bipagents-relay-token-v2";
+/// The first format's: still opened until the transition's end (`RELAY_R1_UNTIL`).
+const RETIRED_AAD: &[u8] = b"bipagents-relay-token-v1";
 const NONCE_LEN: usize = 24;
 /// How long a relay token lasts; the apps take a new one after 30 days.
 pub const LIFETIME_SECS: u64 = 90 * 24 * 3600;
@@ -123,15 +129,41 @@ impl Sealer {
 
     pub fn seal_claims(&self, claims: &Claims) -> String {
         let plain = serde_json::to_vec(claims).expect("claims serialize");
+        format!("{PREFIX}{}", self.sealed(&plain, AAD))
+    }
+
+    /// A token of the first format (`r1.`: the device only, no end, no audience), as the apps and bridges released
+    /// before 2026-10-28 take them. Sealed only during the transition (`RELAY_R1_UNTIL`), for an app that does not
+    /// say who the token is for (an older app), or as the fallback for a bridge that takes nothing else.
+    pub fn seal_retired(&self, device: &Device) -> String {
+        let plain = serde_json::to_vec(device).expect("a device serializes");
+        format!("{RETIRED_PREFIX}{}", self.sealed(&plain, RETIRED_AAD))
+    }
+
+    /// The device inside a token of the first format, if one of these keys sealed it. Whether it is still taken (the
+    /// transition) is the caller's choice: `open` always reads it as retired.
+    pub fn open_retired(&self, token: &str) -> Option<Device> {
+        let raw = URL_SAFE_NO_PAD.decode(token.strip_prefix(RETIRED_PREFIX)?).ok()?;
+        if raw.len() <= NONCE_LEN {
+            return None;
+        }
+        let (nonce, sealed) = raw.split_at(NONCE_LEN);
+        self.keys.iter().find_map(|key| {
+            let plain = key.decrypt(XNonce::from_slice(nonce), Payload { msg: sealed, aad: RETIRED_AAD }).ok()?;
+            serde_json::from_slice(&plain).ok()
+        })
+    }
+
+    fn sealed(&self, plain: &[u8], aad: &[u8]) -> String {
         let mut nonce = [0u8; NONCE_LEN];
         rand::rngs::OsRng.fill_bytes(&mut nonce);
         let sealed = self.keys[0]
-            .encrypt(XNonce::from_slice(&nonce), Payload { msg: &plain, aad: AAD })
+            .encrypt(XNonce::from_slice(&nonce), Payload { msg: plain, aad })
             .expect("encryption with a valid key does not fail");
         let mut out = Vec::with_capacity(NONCE_LEN + sealed.len());
         out.extend_from_slice(&nonce);
         out.extend_from_slice(&sealed);
-        format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(out))
+        URL_SAFE_NO_PAD.encode(out)
     }
 
     /// What a relay token holds, if one of these keys sealed it and it has not ended at `now`.
@@ -197,6 +229,20 @@ mod tests {
         assert_eq!(sealer.open(&token, NOW + LIFETIME_SECS - 1).unwrap().aud, Audience::Guichet);
         assert_eq!(sealer.open(&token, NOW + LIFETIME_SECS), Err(Closed::Expired));
         assert_eq!(sealer.open(&format!("r1.{}", "A".repeat(80)), NOW), Err(Closed::Retired));
+    }
+
+    #[test]
+    fn a_first_format_token_opens_only_through_its_own_door() {
+        let sealer = Sealer::new(&[[7u8; 32]]).unwrap();
+        let old = sealer.seal_retired(&device());
+        assert!(old.starts_with(RETIRED_PREFIX) && !old.contains(&"ab".repeat(32)));
+        assert_eq!(sealer.open_retired(&old), Some(device()));
+        assert_eq!(sealer.open(&old, NOW), Err(Closed::Retired), "open never takes it");
+        assert_eq!(Sealer::new(&[[8u8; 32]]).unwrap().open_retired(&old), None);
+        // the two formats can't be passed off as each other
+        let new = sealer.seal(&device(), Audience::Bridge, NOW);
+        assert_eq!(sealer.open_retired(&new.replacen(PREFIX, RETIRED_PREFIX, 1)), None);
+        assert_eq!(sealer.open(&old.replacen(RETIRED_PREFIX, PREFIX, 1), NOW), Err(Closed::Invalid));
     }
 
     #[test]

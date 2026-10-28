@@ -44,6 +44,13 @@ forgets it, the app registers again); a raw device token is refused with HTTP 40
 delivery, not a dead device). A `guichet` token sent without the guichet's key is refused with HTTP 401: a copy of
 the guichet's tokens is useless alone.
 
+**Transition (until `RELAY_R1_UNTIL`, 2026-12-15 by default).** Apps, bridges and the guichet released before
+2026-10-28 only know the first format, so until that day: `r1.` tokens still work (any sender, as before); an app
+that registers without `audience` (an older one) gets an `r1.` token; a `bridge` registration also returns
+`legacy_token` (`r1.`), which a newer app gives a bridge that refuses `r2.`; a `guichet` token sent with no
+`Authorization` at all passes (an older guichet). Each such use is logged (`warn`), and `/health` adds `r1_until`,
+`r1_used`, `guichet_without_key` and a `warning`. After that day, everything above applies.
+
 What passes in `aps`: no `alert.title` (the apps name the agent from their own list); the guichet's texts (servers,
 account, family, shared conversations) only on a `guichet` token; `category` `MESSAGE`/`APPROVAL`, `sound`
 `default`, `interruption-level` `active`/`passive`, nothing else.
@@ -61,6 +68,7 @@ account, family, shared conversations) only on a `guichet` token; `category` `ME
 | `RELAY_REPORT_URL`, `RELAY_REPORT_SECRET` or `RELAY_REPORT_SECRET_FILE`, `RELAY_REPORTS_PER_IP_HOUR` | where reports go (the guichet's `/v1/reports`), the secret it checks, `20` |
 | `RELAY_BLOCKED` or `RELAY_BLOCKED_FILE` | devices refused for abuse (terms of use), by the 8-hex fingerprint the logs show, or one relay token that leaked, by its 16-hex id (`token` in the logs); restart to apply |
 | `RELAY_GUICHET_KEY` or `RELAY_GUICHET_KEY_FILE` | the key the guichet sends its pushes with (comma-separated to change it: old and new both pass); without it, `guichet` tokens are refused |
+| `RELAY_R1_UNTIL` | `2026-12-15` (UTC midnight): the end of the transition from `r1.` tokens (see above); `0` ends it now |
 | `RUST_LOG` | `info` (JSON lines) |
 
 ## Run it

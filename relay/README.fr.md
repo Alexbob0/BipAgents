@@ -46,6 +46,14 @@ l'oublie, l'app se réinscrit) ; un jeton d'appareil brut est refusé en HTTP 40
 pas un appareil disparu). Un jeton `guichet` envoyé sans la clé du guichet est refusé en HTTP 401 : une copie des
 jetons du guichet ne sert à rien seule.
 
+**Transition (jusqu'à `RELAY_R1_UNTIL`, le 2026-12-15 par défaut).** Les apps, bridges et le guichet sortis avant le
+2026-10-28 ne connaissent que le premier format ; jusqu'à cette date : les jetons `r1.` marchent encore (tout
+expéditeur, comme avant) ; une app qui s'inscrit sans `audience` (une ancienne) reçoit un jeton `r1.` ; une
+inscription `bridge` renvoie aussi `legacy_token` (`r1.`), qu'une app récente donne à un bridge qui refuse `r2.` ; un
+jeton `guichet` envoyé sans aucun `Authorization` passe (un ancien guichet). Chaque cas est journalisé (`warn`) et
+`/health` ajoute `r1_until`, `r1_used`, `guichet_without_key` et un `warning`. Après cette date, tout ce qui précède
+s'applique. `RELAY_R1_UNTIL=0` y met fin tout de suite.
+
 Ce qui passe dans `aps` : jamais `alert.title` (les apps nomment l'agent d'après leur propre liste) ; les textes du
 guichet (serveurs, compte, famille, conversations partagées) seulement sur un jeton `guichet` ; `category`
 `MESSAGE`/`APPROVAL`, `sound` `default`, `interruption-level` `active`/`passive`, rien d'autre.
