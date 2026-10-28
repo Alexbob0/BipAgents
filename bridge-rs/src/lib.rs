@@ -172,6 +172,8 @@ pub mod vault_logins;
 pub mod connectors;
 pub mod connectors_run;
 pub mod watchers;
+/// An agent's Hermes restarted when there is a reason (memory, unhealthy, requested), only when idle (2026-10-28).
+pub mod agent_restart;
 /// « Ce que tes agents font tout seuls »: routines, tasks, scans and scheduled connectors in one list (2026-10-28).
 pub mod autonomous;
 pub mod secrets;

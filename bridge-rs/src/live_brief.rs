@@ -887,6 +887,7 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> std::io::Result<T> +
 
 async fn live_call(State(state): State<AppState>, Json(body): Json<CallEnded>) -> ApiResult<Response> {
     let agent = setup(&state, &body.agent)?;
+    crate::agent_restart::note_live(&agent.name); // not restarted for a while (agent_restart.rs)
     let briefs = state.briefs.clone();
     let config = state.config();
     blocking(move || {
