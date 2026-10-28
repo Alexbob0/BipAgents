@@ -671,6 +671,23 @@ async fn run(state: &AppState, agent: &AgentConfig, id: &str, tool: &str, argume
     }
 }
 
+/// A watcher's check (watchers.rs): its program run once with no arguments, the same way as a call (pinned files,
+/// its secrets, its sites, blanked). Its standard output; Err when it couldn't run or failed. Its last run is kept by
+/// watchers.rs, not here (a check every 15 minutes rewrites no connector store).
+pub async fn watch_run(state: &AppState, agent: &AgentConfig, id: &str) -> Result<String, RunError> {
+    let result = run(state, agent, id, "run", Dict::new()).await?;
+    let text = result
+        .get("content")
+        .and_then(Value::as_array)
+        .map(|c| c.iter().filter_map(|i| i.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n"))
+        .unwrap_or_default();
+    if result.get("isError").and_then(Value::as_bool).unwrap_or(false) {
+        let last = text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it stopped with an error");
+        return Err(RunError::Failed(crate::browsers::pyx::head(last.trim(), 200).to_string()));
+    }
+    Ok(text)
+}
+
 /// The connector's command, split as a shell would (no shell runs it).
 pub fn entry_argv(conn: &Connector) -> Result<Vec<String>, String> {
     let argv = shlex::split(&conn.entry).filter(|a| !a.is_empty()).ok_or("entry: a command like « python3 server.py »")?;

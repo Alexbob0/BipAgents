@@ -666,6 +666,9 @@ pub struct Config {
     /// `[connections]` (connections.rs): not in the serialized form either.
     #[serde(skip)]
     pub connections: crate::connections::Settings,
+    /// `[watchers]` (watchers.rs): not in the serialized form either.
+    #[serde(skip)]
+    pub watchers: crate::watchers::Settings,
     /// `[link]` (link_wallet.rs): Link Agent Wallet, off unless switched on and configured. Not serialized either.
     #[serde(skip)]
     pub link: crate::link_wallet::Settings,
@@ -771,6 +774,7 @@ impl Config {
             brake: crate::loop_brake::Settings::default(),
             rooms: RoomsConfig::default(),
             connections: crate::connections::Settings::default(),
+            watchers: crate::watchers::Settings::default(),
             link: crate::link_wallet::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
@@ -1756,6 +1760,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         brake: crate::loop_brake::Settings::from_table(table(data, "brake")),
         rooms,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
+        watchers: crate::watchers::Settings::from_table(table(data, "watchers")),
         link: crate::link_wallet::Settings::from_table(table(data, "link")),
         archive_records,
         cards,

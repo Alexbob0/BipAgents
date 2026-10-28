@@ -538,7 +538,7 @@ impl Handback {
     }
 
     /// Err: why not, and the tokens taken anyway.
-    async fn agent_turn(&self, request: &Request) -> Result<(String, i64), (String, i64)> {
+    pub async fn agent_turn(&self, request: &Request) -> Result<(String, i64), (String, i64)> {
         if request.budget.is_some_and(|b| b < -OVERRUN_MAX) {
             return Err(("budget spent".into(), 0));
         }
@@ -649,7 +649,7 @@ impl Handback {
 
     /// The person sees the message already: its conversation is on screen, or the agent's Bot Chat is (it shows
     /// every Boîte message of the agent's). No push then: the open view shows it by itself.
-    async fn on_screen(&self, agent: &AgentConfig, session: &str) -> bool {
+    pub async fn on_screen(&self, agent: &AgentConfig, session: &str) -> bool {
         let Some(presence) = &self.presence else { return false };
         if presence.viewing(&agent.name, session) {
             return true;

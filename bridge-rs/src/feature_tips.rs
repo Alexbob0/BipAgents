@@ -81,7 +81,7 @@ pub struct Feature {
 }
 
 /// In the calendar's order of « the next one not seen ».
-pub const FEATURES: [Feature; 12] = [
+pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "voice",
         title: "Les réponses à voix haute",
@@ -202,6 +202,17 @@ pub const FEATURES: [Feature; 12] = [
         costume: "chantier",
         lasting: false,
     },
+    // watchers (watchers.rs, 2026-10-28): « préviens-moi quand… »
+    Feature {
+        id: "watchers",
+        title: "Les veilleurs",
+        line: "Je surveille un site pour toi et je te préviens dès que ça change : un créneau, un prix, un colis.",
+        hint: "a watcher: you check a site for them on your own (a slot, a price, a parcel, a grade) and tell them only when it changes, without a routine",
+        example: "Si tu veux, je peux surveiller ça pour toi et te prévenir dès que ça bouge.",
+        open: None,
+        costume: "chantier",
+        lasting: true,
+    },
 ];
 
 pub const COSTUMES: [&str; 5] = ["chef", "musique", "apprendre", "chantier", "beret"];
@@ -277,6 +288,11 @@ static CARNET: LazyLock<Regex> = LazyLock::new(|| {
         r"(retiens (que|bien)|souviens[- ]toi|n'oublie pas que|note (que|bien)|remember (that|this)|keep in mind|merk dir|vergiss nicht|recuerda que|no olvides que)",
     )
 });
+static WATCH: LazyLock<Regex> = LazyLock::new(|| {
+    rx(
+        r"(préviens[- ]moi (quand|dès que|si)|previens[- ]moi (quand|dès que|des que|si)|alerte[- ]moi|dis[- ]moi (quand|dès que|des que)|surveille[- ]moi|let me know (when|if)|notify me (when|if)|tell me when|alert me|sag mir bescheid|benachrichtige mich|avísame|avisame|dime cuando)",
+    )
+});
 static JOBS: LazyLock<Regex> = LazyLock::new(|| {
     rx(
         r"\b(compare[rz]?|comparatif|fais (une|des) recherches?|cherche[- ]moi|trouve[- ]moi les meilleur|research|look into|vergleiche|recherchiere|compara|investiga)\b",
@@ -316,6 +332,9 @@ fn signals(text: &str, kinds: &[String], hour: u32) -> Vec<(&'static str, Option
     }
     if JOBS.is_match(text) {
         out.push(("jobs", None));
+    }
+    if WATCH.is_match(text) {
+        out.push(("watchers", None));
     }
     if hour < 11 && MORNING.is_match(text) {
         out.push(("morning_brief", None));
@@ -1278,6 +1297,16 @@ mod tests {
         // the next day the PDF's moment comes
         let note = say(&config, "vie", "salut", &[], at(1, 10)).unwrap();
         assert!(note.contains("Archives"), "{note}");
+    }
+
+    #[test]
+    fn tell_me_when_hints_at_a_watcher() {
+        let ids = |t: &str| signals(t, &[], 12).into_iter().map(|(id, _)| id).collect::<Vec<_>>();
+        assert!(ids("Préviens-moi quand un créneau se libère chez le dentiste").contains(&"watchers"));
+        assert!(ids("let me know when the price drops").contains(&"watchers"));
+        assert!(ids("avísame cuando llegue el paquete").contains(&"watchers"));
+        assert!(!ids("quel temps fait-il ?").contains(&"watchers"));
+        assert_eq!(feature("watchers").map(|f| f.lasting), Some(true));
     }
 
     #[test]
