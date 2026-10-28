@@ -1006,7 +1006,9 @@ def rebooting(conf):
     if not reboot_queued():
         return 0
     try:
-        call(conf, "POST", "/v1/server/rebooting")
+        # over IPv4: the guichet accepts the announcement only from the server's own address (audit #16)
+        with ipv4_only():
+            call(conf, "POST", "/v1/server/rebooting")
         log("the guichet knows this server is rebooting")
     except (OSError, ValueError) as exc:
         log("the guichet was not told of the reboot: %s" % exc)
