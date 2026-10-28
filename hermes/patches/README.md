@@ -33,6 +33,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0009 tool search: tools kept direct, skills by name | applies | `tool_search.py` applies; `prompt_builder.py` does not on `97a9ae8ee` (the skills index moved): redo at the next update |
 | 0010 empty replies: changed retries, tool calls written as text | applies | applies (`97a9ae8ee`, `patch --dry-run`, checked 2026-10-27) |
 | 0011 titles with GLM: thinking floored to low | applies | applies (`97a9ae8ee`, checked 2026-10-28) |
+| 0012 Bot Chat: one `message_agent` | applies (after 0006) | not checked yet |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -286,4 +287,25 @@ level) is never changed. Hermes-side because the bridge doesn't make titles (it 
 failed with and without the patch (`test_marker_prefix_matches_gateway_constant`, Python 3.12 typing in the test
 environment). `git apply --check` passes on `517b5e10f` (no other patch touches these files) and on `97a9ae8ee`.
 Not yet run end to end against EUrouter.
+
+## 0012 — the Bot Chat shows one `message_agent`
+
+**Problem.** Since 2026-10-28 the bridge offers its own `message_agent` (`mcp__bipagents__message_agent`,
+bridge-rs/src/agent_messages.rs) to an agent linked to another one, kept direct by the token diet, because Hermes'
+built-in reaches only the agent's « Bot Chat ». In that Bot Chat the model then saw both. The bridge can't hide its
+tool there: Hermes lists an MCP server's tools once per connection, with nothing about the session.
+
+**What the patch does.** Where the built-in is injected (`ensure_message_agent_tool`, once per turn, and
+`_reinject_authorized_dynamic_tools` on an MCP rebuild), any MCP tool named `mcp__<server>__message_agent` leaves the
+tool list and `valid_tool_names`: one way to write to an agent in the Bot Chat (the built-in, with the peer routes),
+the bridge's everywhere else. Deterministic for the session, so the prompt cache holds. A tool behind the tool search
+is not touched (the diet keeps this one direct).
+
+**Files.** `tools/bot_mode_dm.py`, `tools/mcp_tool_agent.py`; new `tests/tools/test_bot_mode_dm_one_message_agent.py`
+(4 tests). Applies after 0006 (same file).
+
+**Tests.** The new file, `tests/tools/test_bot_mode_dm.py`, `test_bot_mode_dm_sync_peer.py`, `test_bot_relay.py`,
+`test_refresh_agent_mcp_tools.py`, `test_bot_mode_probe.py`, `test_bot_mode_dm_entry.py`: 167 passed, 3 skipped
+(Python 3.12). The series 0001…0012 applies in order on `517b5e10f`. The bridge's side is unchanged (its black-box
+`test_agent_messages.py` still covers the tool's name and its direct entry).
 
