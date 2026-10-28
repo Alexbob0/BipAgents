@@ -209,3 +209,94 @@ def test_a_routine_going_round_in_circles_is_told_to_stop(bridges, fakes):
     results = [call(bridge, "list_pages", {}) for _ in range(12)]
     assert not any(r["isError"] for r in results[:10])
     assert results[10]["isError"] and "answer the person with what you have" in text_of(results[10])
+
+
+# -- 2026-10-28 09:24, Alex's home server: Vie diagnosing a failing nightly job was stopped after 5 calls, 3 of them the
+# same session_search, and the iPhone showed Hermes' English « This turn did not complete… » instead of the brake's
+# line. Now: lookups take 5 identical calls, and a stopped conversation turn is followed by one short rescue turn
+# whose reply comes in the same stream, under the brake's short line.
+
+SEARCH = "session_search"
+NIGHT = "scan-emails-fond-nuit"
+
+
+def diagnosis(run_id, searches):
+    return ([sse("message.delta", run_id=run_id, delta=f"Je cherche « {NIGHT} » dans nos anciennes discussions…")]
+            + [sse("tool.started", run_id=run_id, tool=SEARCH, preview=NIGHT) for _ in range(searches)]
+            + [sse("run.cancelled", run_id=run_id)])
+
+
+def notices(events):
+    return [data for name, data in events if name == "bridge.notice"]
+
+
+def test_the_mornings_diagnosis_is_not_stopped_any_more(bridges, fakes):
+    bridge = bridges.new().start()
+    tools = [(SEARCH, NIGHT), ("skill_view", "cronjob"), (SEARCH, NIGHT), ("read_file", "jobs.json"), (SEARCH, NIGHT)]
+    fakes.hermes.runs["run_vie"] = ([sse("tool.started", run_id="run_vie", tool=t, preview=p) for t, p in tools]
+                                    + [sse("run.completed", run_id="run_vie", output="Le job échoue sur IMAP.")])
+    events = follow(bridge, "run_vie")
+    assert notices(events) == []
+    assert not fakes.hermes.seen("/v1/runs/run_vie/stop", "POST")
+
+
+def test_a_stopped_turn_ends_on_the_agents_own_reply_after_the_brakes_line(bridges, fakes):
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = diagnosis("run_vie", 5)
+    # the rescue turn the bridge starts (the fake's first POST /v1/runs)
+    reply = ("Je voulais retrouver pourquoi le job de nuit échoue. J'ai trouvé trois sessions sans erreur claire. "
+             "Veux-tu que je regarde les journaux du serveur, ou que je relance le job maintenant ?")
+    fakes.hermes.runs["r1"] = [sse("message.delta", run_id="r1", delta=reply),
+                               sse("run.completed", run_id="r1", output=reply)]
+    events = follow(bridge, "run_vie")
+    said = notices(events)
+    assert [n["code"] for n in said] == ["loop_stopped", "loop_rescue_started"]
+    stopped = said[0]
+    assert stopped["reason"] == "same call repeated (session_search)" and stopped["rescue"] is True
+    assert stopped["text"] in ("Je me suis arrêté : je relançais la même recherche dans nos anciennes discussions.",
+                               "I stopped: I kept repeating the same search in our past conversations.")
+    assert SEARCH not in stopped["text"], "never a tool's name"
+    assert said[1]["run_id"] == "r1"
+    names = [name for name, _ in events]
+    # the stream ends on the rescue turn's reply, not on the stopped run's cancellation
+    assert names[-1] == "run.completed" and events[-1][1]["output"] == reply
+    assert "run.cancelled" not in names
+    assert any(name == "message.delta" and data.get("delta") == reply for name, data in events)
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/run_vie/stop", "POST"))
+    # one rescue turn, in the same conversation, its instruction out of the person's sight
+    assert list(fakes.hermes.started) == ["r1"]
+    rescue = fakes.hermes.started["r1"]
+    assert rescue["session_id"] == "api_c"
+    assert rescue["input"].startswith("[bipagents:loop_rescue] ")
+    assert "Don't call session_search again in this turn." in rescue["input"]
+    assert bridge.logged("going round in circles: the rescue turn answered")
+    # an app coming back replays the same
+    again = follow(bridge, "run_vie")
+    assert [n["code"] for n in notices(again)] == ["loop_stopped", "loop_rescue_started"]
+    assert again[-1][0] == "run.completed"
+
+
+def test_a_rescue_turn_that_loops_is_not_rescued_again(bridges, fakes):
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = diagnosis("run_vie", 5)
+    # the rescue turn calls the stopped tool again: stopped at its second call, and no second rescue
+    fakes.hermes.runs["r1"] = ([sse("tool.started", run_id="r1", tool=SEARCH, preview=f"{NIGHT} {i}") for i in range(4)]
+                               + [sse("run.cancelled", run_id="r1")])
+    events = follow(bridge, "run_vie")
+    said = notices(events)
+    assert [n["code"] for n in said] == ["loop_stopped", "loop_rescue_started", "loop_rescue_failed"]
+    assert said[2]["text"] in ("Dis-moi si tu veux que je réessaie autrement.", "Tell me if you want me to try another way.")
+    assert events[-1][0] == "run.cancelled" and events[-1][1]["run_id"] == "run_vie"
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
+    assert list(fakes.hermes.started) == ["r1"], "never a rescue of the rescue"
+    assert bridge.logged("going round in circles: the rescue turn did not answer")
+
+
+def test_a_turn_nobody_follows_gets_no_rescue_turn(bridges, fakes):
+    # a run nobody follows (a peer's message, the lab's runs polled): stopped as before, no rescue turn
+    bridge = bridges.new().start()
+    fakes.hermes.runs["r1"] = diagnosis("r1", 5)
+    start(bridge)
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
+    assert wait_until(lambda: bridge.logged("going round in circles: run stopped"))
+    assert list(fakes.hermes.started) == ["r1"], "no rescue turn started"

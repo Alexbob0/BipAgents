@@ -1282,9 +1282,9 @@ inline, or do without, and update the page.",
     }
     Ok(tool_text(
         &format!(
-            "Page {}: id {id}, version {version}.{warning}{linked}\nTo show it to the person, put this line alone on its own \
-line in your reply, where the page belongs in your text (the app shows it there, live): keep a sentence or two before \
-it and the rest after.\nMEDIA:{path}",
+            "MEDIA:{path}\nPage {}: id {id}, version {version}.{warning}{linked}\nTo show it to the person, put the MEDIA \
+line above alone on its own line in your reply, exactly as it is, where the page belongs in your text (the app shows it \
+there, live): keep a sentence or two before it and the rest after.",
             if version > 1 { "updated" } else { "ready" }
         ),
         false,
@@ -1524,11 +1524,13 @@ the BipAgents app.",
     };
     let seconds = made.get("seconds").and_then(Value::as_f64).unwrap_or(0.0);
     let voices = if cast.is_empty() { String::new() } else { format!("\nVoices:{cast}") };
+    // the MEDIA line first: a shortened view of the result (a history search's) still has it (2026-10-28)
     Ok(tool_text(
         &format!(
-            "Audio ready ({}).{voices}\nTo give it to the person, put this line alone at the end of your reply:\nMEDIA:{}",
+            "MEDIA:{}\nAudio ready ({}): to give it to the person, put the MEDIA line above alone at the end of your \
+reply, exactly as it is (a new file each time: never one from an earlier turn).{voices}",
+            py::py_str(made.get("path").unwrap_or(&Value::Null)),
             duration(seconds),
-            py::py_str(made.get("path").unwrap_or(&Value::Null))
         ),
         false,
     ))
@@ -1650,6 +1652,8 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
     // The brake (loop_brake.rs), per turn (the run the hub follows, else the routine's): the same write twice, too many
     // writes, or a routine going round in circles, refused in plain words.
     let turn = state.hub.turn_of(&agent.name, &name);
+    // the files made in this turn (audio, pages, maps), for the reply that ends it (made_files.rs)
+    let turn_run = turn.as_ref().map(|t| t.run_id.clone());
     if let Some(refused) = crate::loop_brake::TURNS.check(
         &state.config().brake,
         &agent.name,
@@ -1677,6 +1681,9 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         let result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
         if let Ok(done) = &result {
             wrote(&agent.name, &name, &arguments, done);
+            if crate::made_files::makes_files(&name) {
+                crate::made_files::MADE.note_result(&agent.name, done, turn_run.as_deref(), py::time_time());
+            }
         }
         result
     });

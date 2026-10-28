@@ -73,14 +73,14 @@ async fn a_map_is_drawn_from_osm_tiles_kept_on_disk_and_put_inline_in_a_page() {
     let result = maps::call(&config, "wellness", arguments.as_object().unwrap()).await;
     let said = text(&result);
     assert_eq!(result["isError"], json!(false), "{said}");
-    let id = said.split_whitespace().nth(2).unwrap().trim_end_matches(|c: char| !c.is_ascii_alphanumeric()).to_string();
+    let id = said.split("Map ready: ").nth(1).unwrap().split_whitespace().next().unwrap().to_string();
     assert!(id.starts_with("m-"), "{said}");
     assert!(
         said.contains(&format!("<img src=\"map:{id}\""))
             && said.contains(">Départ</li>")
             && said.contains(">Tour Eiffel</li>")
     );
-    assert!(said.ends_with(&format!("MEDIA:/bipagents/maps/wellness/{id}.png")));
+    assert!(said.starts_with(&format!("MEDIA:/bipagents/maps/wellness/{id}.png\n")), "the MEDIA line first");
     // one picture of the asked size, the tiles it needed fetched once, with the application's name
     let file = maps::file(&config, "wellness", &id).unwrap();
     let decoder = png::Decoder::new(std::io::Cursor::new(std::fs::read(&file).unwrap()));

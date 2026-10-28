@@ -70,7 +70,9 @@ pub const DELEGATE_TOOL: &str = "delegate_task";
 pub const SUBAGENT_START: &str = "subagent.start";
 pub const SUBAGENT_DONE: &str = "subagent.complete";
 /// The bridge's own words in a run's stream (after the safety net's rescue): `{code, text, job_id?, title?}`; the
-/// apps show them as a notice. Codes: `handoff_started`, `handoff_proposed`, `handoff_failed`.
+/// apps show them as a notice. Codes: `handoff_started`, `handoff_proposed`, `handoff_failed`; the brake's
+/// (loop_brake.rs) `loop_stopped` (`rescue: true` when a rescue turn follows), `loop_rescue_started` (`run_id`: the
+/// rescue turn's, whose events follow in this same stream; nothing shown) and `loop_rescue_failed`.
 pub const NOTICE: &str = "bridge.notice";
 /// Present while a run goes on, rewritten every minute (`RunHub::mark_busy_forever`), for the seat agent's beat.
 pub const BUSY_MARKER: &str = ".local/state/bipagents/busy";
@@ -339,6 +341,11 @@ pub struct SubscriptionState {
     /// The brake's count of the run's tool calls, and whether it stopped the run.
     pub turn: crate::loop_brake::TurnCount,
     pub braked: bool,
+    /// The brake stopped this conversation turn and a rescue turn is to follow at its end (`loop_rescue`): why, and
+    /// the agent's language.
+    pub loop_rescue: Option<(crate::loop_brake::Over, String)>,
+    /// This run is the rescue turn of that run (its limits: `rescue_limits`; never rescued itself).
+    pub rescue_of: Option<String>,
     /// Followed for the brake whoever looks (`keep`: a run started or followed through the door's Hermes relay, a
     /// peer's message): kept alive like a watched run, without its pushes.
     pub kept: bool,
@@ -381,6 +388,8 @@ impl Default for SubscriptionState {
             background: false,
             turn: crate::loop_brake::TurnCount::default(),
             braked: false,
+            loop_rescue: None,
+            rescue_of: None,
             kept: false,
             ever_followed: false,
             last_tool: String::new(),
@@ -932,9 +941,15 @@ impl RunHub {
                                 backoff = BACKOFF_START;
                                 failures = 0;
                                 let terminal = is_terminal(&event.r#type);
-                                if terminal {
+                                let event = if terminal {
                                     self.rescue(sub, &event).await;
-                                }
+                                    // a turn the brake stopped: its rescue turn's end instead (loop_rescue)
+                                    let event = self.loop_rescue(sub, event).await;
+                                    // the audio made in the turn handed over whatever the model wrote
+                                    self.hand_over_files(sub, event)
+                                } else {
+                                    event
+                                };
                                 self.dispatch(sub, event);
                                 if terminal {
                                     return Ok(());
@@ -1009,6 +1024,10 @@ impl RunHub {
             st.last_tool = crate::loop_brake::bare(&tool).to_string();
             st.last_tool_at = crate::py::time_time();
             self.brake(sub, &mut st, &event);
+        } else if kind == "tool.completed" {
+            // a call that failed: the identical call right after is a retry, not « the same call again »
+            let tool = crate::loop_brake::event_tool(&event.data);
+            st.turn.completed(&tool, crate::loop_brake::completed_with_error(&event.data));
         }
         if kind == "tool.started" {
             // a site its browser or web tools open is open to its programs too (sandbox_sites.rs)
@@ -1139,14 +1158,29 @@ impl RunHub {
             return;
         }
         let browser = browser_tool(&tool);
-        let mut limits = settings.limits(st.background);
-        if (browser || st.used_browser) && !st.background {
+        let rescuing = st.rescue_of.is_some();
+        let mut limits = if rescuing { settings.rescue_limits() } else { settings.limits(st.background) };
+        if (browser || st.used_browser) && !st.background && !rescuing {
             // a browsing turn: the browser's own calls on top (its own limits, browser_calls and page_reads, well
             // under Hermes' cap of 150, so a page it can't read ends on the plain line, not a silent failure)
             limits.tool_calls += limits.browser_calls;
         }
         let signature = crate::loop_brake::event_signature(&event.data);
-        let Some(over) = st.turn.note(&tool, signature.as_deref(), browser, &limits) else { return };
+        let noted = st.turn.note(&tool, signature.as_deref(), browser, &limits);
+        // a limit getting close (about two thirds): the agent is told once, in a steer (after its current tool calls,
+        // whichever tools they are: Hermes' own as the bridge's), before any stop. Not in a rescue turn (tight).
+        if let (Some(warning), true) = (st.turn.take_warning(), settings.warn && !rescuing && noted.is_none()) {
+            tracing::info!(agent = %sub.agent.name, run_id = %sub.run_id, tool_calls = st.turn.total,
+                reason = %warning.reason(), "brake_warned: the agent told it is going round in circles");
+            let (hermes, agent, run_id, text) =
+                (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone(), warning.text());
+            self.spawn(async move {
+                if let Err(err) = hermes.steer_run(&agent, &run_id, &text).await {
+                    tracing::info!(agent = %agent.name, run_id = %run_id, error = %err, "brake_warned: steer refused");
+                }
+            });
+        }
+        let Some(over) = noted else { return };
         st.braked = true;
         // The safety net's rescue would start the same work again in a background task.
         st.rescued = true;
@@ -1157,16 +1191,29 @@ impl RunHub {
                 crate::handback::language_of(c, &agent)
             })
             .unwrap_or_else(|| "en".to_string());
-        let data = crate::loop_brake::notice(&over, &lang);
+        // A person's conversation turn (not a background task's, a routine's, a group discussion's, a peer's message,
+        // nor a rescue turn itself): one short turn follows at its end to say what happened (`loop_rescue`).
+        let rescue = settings.rescue
+            && !st.background
+            && !rescuing
+            && st.end_push
+            && st.room_id.is_none()
+            && (st.watched || st.ever_followed);
+        let data = crate::loop_brake::notice(&over, &lang, rescue);
         let text = data.get("text").and_then(Value::as_str).unwrap_or("").to_string();
         tracing::warn!(agent = %sub.agent.name, run_id = %sub.run_id, tool_calls = st.turn.total,
-            background = st.background, reason = %crate::loop_brake::reason(&over), "going round in circles: run stopped");
+            background = st.background, rescue = rescue, rescue_turn = rescuing,
+            reason = %crate::loop_brake::reason(&over), "going round in circles: run stopped");
         let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
         let notice = SSEEvent::new(NOTICE, data, raw);
         append_to_backlog(&mut st.backlog, &notice);
         st.send_all(Some(&notice));
+        if rescue {
+            // the rescue turn's reply is the run's end (and its push when nobody looks)
+            st.loop_rescue = Some((over, lang));
+        }
         let unseen = st.followers() == 0 && ((st.watched && st.end_push) || (st.kept && !st.background));
-        if let (true, Some(push)) = (unseen, self.push.clone()) {
+        if let (true, false, false, Some(push)) = (unseen, rescue, rescuing, self.push.clone()) {
             // its own push instead of the run's end one (whose text would be the loop's last words)
             st.end_push = false;
             let (agent, run_id, session) = (sub.agent.name.clone(), sub.run_id.clone(), st.session_id.clone());
@@ -1180,6 +1227,192 @@ impl RunHub {
                 tracing::warn!(agent = %agent.name, run_id = %run_id, error = %err, "going round in circles: stop refused");
             }
         });
+    }
+
+    /// The brake's rescue turn (2026-10-28, loop_brake.rs; Alex: a bare « I stopped » helps nobody): a person's
+    /// conversation turn the brake stopped is followed, at its end, by ONE short turn of the same agent in the same
+    /// conversation, told out of sight why it was stopped and to answer with what it has (`rescue_input`). Its events
+    /// go on in this run's stream, after a `loop_rescue_started` notice that carries its run id (the app following
+    /// this run sees the agent's reply come under the brake's short line), and its end is this run's end (the
+    /// « reply ready » push, when nobody looks, is its reply). It has tight limits (`rescue_limits`), the stopped
+    /// tool refused, and is never rescued itself. When it can't start, is stopped too, fails, runs past
+    /// `rescue_seconds` or says nothing: a `loop_rescue_failed` notice with what the person can do, and this run's
+    /// own end.
+    async fn loop_rescue(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: SSEEvent) -> SSEEvent {
+        let (plan, session) = {
+            let mut st = lock(&sub.state);
+            (st.loop_rescue.take(), st.session_id.clone())
+        };
+        let Some((over, lang)) = plan else { return terminal };
+        let settings = self.config.as_ref().map(|c| c.get().brake.clone()).unwrap_or_default();
+        let agent = sub.agent.clone();
+        let session = match session.filter(|s| !s.is_empty()) {
+            Some(s) => Some(s),
+            None => self.hermes.run(&agent, &sub.run_id).await.ok().and_then(|r| as_str(r.get("session_id"))),
+        };
+        let mut started = None;
+        if let Some(session) = &session {
+            let input = crate::loop_brake::rescue_input(&over, &lang);
+            // Hermes may still be closing the stopped turn (the conversation busy for a moment)
+            for attempt in 0..4u64 {
+                match self.hermes.start_run(&agent, &input, session, None).await {
+                    Ok(id) if crate::app::RUN_ID.is_match(&id) => {
+                        started = Some(id);
+                        break;
+                    }
+                    Ok(_) => break,
+                    Err(err) => {
+                        tracing::info!(agent = %agent.name, run_id = %sub.run_id, error = %err, attempt = attempt,
+                            "going round in circles: rescue turn not started yet");
+                        if attempt < 3 {
+                            tokio::time::sleep(Duration::from_millis(500 * (attempt + 1))).await;
+                        }
+                    }
+                }
+            }
+        }
+        let Some(rescue_id) = started else {
+            tracing::warn!(agent = %agent.name, run_id = %sub.run_id, "going round in circles: no rescue turn");
+            self.loop_rescue_failed(sub, &over, &lang);
+            return terminal;
+        };
+        tracing::info!(agent = %agent.name, run_id = %sub.run_id, rescue = %rescue_id,
+            "going round in circles: rescue turn started");
+        {
+            let mut inner = lock(&self.inner);
+            let rescue = self.get_or_start(&mut inner, &agent, &rescue_id);
+            let mut st = lock(&rescue.state);
+            st.kept = true;
+            st.end_push = false; // this run's end tells it
+            st.session_id = session.clone();
+            st.rescue_of = Some(sub.run_id.clone());
+            st.turn.banned = crate::loop_brake::stopped_tool(&over);
+        }
+        let mut listener = self.subscribe(&agent, &rescue_id, "forward", false);
+        let mut data = Map::new();
+        data.insert("type".into(), json!(NOTICE));
+        data.insert("code".into(), json!("loop_rescue_started"));
+        data.insert("run_id".into(), json!(rescue_id));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        self.forward(sub, &SSEEvent::new(NOTICE, data, raw));
+        let deadline = tokio::time::Instant::now() + Duration::from_secs_f64(settings.rescue_seconds);
+        let (mut end, mut said) = (None, String::new());
+        loop {
+            match tokio::time::timeout_at(deadline, listener.next()).await {
+                Ok(Some(event)) if is_terminal(&event.r#type) => {
+                    end = Some(event);
+                    break;
+                }
+                // its own brake's line, the stream's hiccups: what the person reads is decided below
+                Ok(Some(event)) if event.r#type == NOTICE || event.r#type == "bridge.error" => {}
+                Ok(Some(event)) => {
+                    if is_delta(&event.r#type) {
+                        said.push_str(&event.text());
+                    }
+                    self.forward(sub, &event);
+                }
+                Ok(None) => break,
+                Err(_) => {
+                    tracing::warn!(agent = %agent.name, run_id = %rescue_id, "rescue turn too long: stopped");
+                    if let Err(err) = self.hermes.stop_run(&agent, &rescue_id).await {
+                        tracing::warn!(agent = %agent.name, run_id = %rescue_id, error = %err, "rescue turn: stop refused");
+                    }
+                    break;
+                }
+            }
+        }
+        let braked = lock(&listener.sub.state).braked;
+        listener.close();
+        match end {
+            Some(end)
+                if end.r#type == "run.completed"
+                    && !braked
+                    && !(said.trim().is_empty() && end.final_text().trim().is_empty()) =>
+            {
+                tracing::info!(agent = %agent.name, run_id = %sub.run_id, rescue = %rescue_id,
+                    "going round in circles: the rescue turn answered");
+                end
+            }
+            _ => {
+                tracing::warn!(agent = %agent.name, run_id = %sub.run_id, rescue = %rescue_id, braked = braked,
+                    "going round in circles: the rescue turn did not answer");
+                self.loop_rescue_failed(sub, &over, &lang);
+                terminal
+            }
+        }
+    }
+
+    /// The rescue turn couldn't help: the person reads what they can do (`loop_rescue_failed`, under the brake's short
+    /// line), and gets it pushed when nobody looks.
+    fn loop_rescue_failed(&self, sub: &RunSubscription, over: &crate::loop_brake::Over, lang: &str) {
+        let mut data = Map::new();
+        data.insert("type".into(), json!(NOTICE));
+        data.insert("code".into(), json!("loop_rescue_failed"));
+        data.insert("reason".into(), json!(crate::loop_brake::reason(over)));
+        data.insert("text".into(), json!(crate::loop_brake::notice_tail(over, lang)));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        self.forward(sub, &SSEEvent::new(NOTICE, data, raw));
+        let mut st = lock(&sub.state);
+        let unseen = st.followers() == 0 && st.watched && st.end_push;
+        if let (true, Some(push)) = (unseen, self.push.clone()) {
+            st.end_push = false;
+            let text = crate::loop_brake::notice_text(over, lang);
+            let (agent, run_id, session) = (sub.agent.name.clone(), sub.run_id.clone(), st.session_id.clone());
+            self.spawn(async move {
+                push.notify_reply(&agent, &run_id, &text, session.as_deref()).await;
+            });
+        }
+    }
+
+    /// The files the bridge made in this turn (made_files.rs: audio, pages, maps; its rescue turn's too) handed over by
+    /// its reply (2026-10-28, aibox: a podcast made, yesterday's path in the reply): the end's `output` gets the
+    /// `MEDIA:` line it lacks, or the new file instead of a stale one of its kind (`bip_media_fixed`), and the streamed
+    /// text, which the apps show live, a last delta with the line of each such file it doesn't carry.
+    fn hand_over_files(&self, sub: &Arc<RunSubscription>, event: SSEEvent) -> SSEEvent {
+        if event.r#type != "run.completed" {
+            return event;
+        }
+        let agent = sub.agent.name.as_str();
+        let mut made = crate::made_files::MADE.in_run(agent, &sub.run_id);
+        if let Some(other) = as_str(event.data.get("run_id")).filter(|r| *r != sub.run_id) {
+            made.extend(crate::made_files::MADE.in_run(agent, &other));
+        }
+        if made.is_empty() {
+            return event;
+        }
+        let said: String =
+            lock(&sub.state).backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
+        let output = as_str(event.data.get("output")).filter(|o| !o.trim().is_empty());
+        let Some(fixed) = crate::made_files::fix_reply(output.as_deref().unwrap_or(&said), agent, &made) else {
+            return event;
+        };
+        tracing::info!(agent = %agent, run_id = %sub.run_id, files = made.len(),
+            "files made in the turn: their MEDIA lines handed over");
+        let unseen: Vec<&String> =
+            made.iter().filter(|path| fixed.contains(path.as_str()) && !said.contains(path.as_str())).collect();
+        if !said.trim().is_empty() && !unseen.is_empty() {
+            let lines: String = unseen.iter().map(|path| format!("\n\nMEDIA:{path}")).collect();
+            let mut delta = Map::new();
+            delta.insert("event".into(), json!("message.delta"));
+            delta.insert("run_id".into(), event.data.get("run_id").cloned().unwrap_or_else(|| json!(sub.run_id)));
+            delta.insert("delta".into(), json!(lines));
+            delta.insert("bip_media_fixed".into(), json!(true));
+            let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(delta.clone()));
+            self.forward(sub, &SSEEvent::new("message.delta", delta, raw));
+        }
+        let mut data = event.data;
+        data.insert("output".into(), json!(fixed));
+        data.insert("bip_media_fixed".into(), json!(true));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
+    /// An event shown in this run's stream as it is (the rescue turn's, the bridge's word), without this run's own
+    /// handling of it (brake, approvals, end).
+    fn forward(&self, sub: &RunSubscription, event: &SSEEvent) {
+        let mut st = lock(&sub.state);
+        append_to_backlog(&mut st.backlog, event);
+        st.send_all(Some(event));
     }
 
     /// A background task's run (jobs.rs): the brake's higher limits.
@@ -1199,12 +1432,16 @@ impl RunHub {
         let mut best: Option<((bool, f64), crate::loop_brake::Turn)> = None;
         for sub in inner.subs.values().filter(|sub| sub.agent.name == agent) {
             let st = lock(&sub.state);
-            if st.finished || st.terminal.is_some() {
+            if st.finished || st.terminal.is_some() || st.braked {
                 continue;
             }
             let key = (st.last_tool == tool, st.last_tool_at.max(st.followed_since));
             if best.as_ref().is_none_or(|(k, _)| key > *k) {
-                let turn = crate::loop_brake::Turn { run_id: sub.run_id.clone(), background: st.background };
+                let turn = crate::loop_brake::Turn {
+                    run_id: sub.run_id.clone(),
+                    background: st.background,
+                    banned: st.turn.banned.clone(),
+                };
                 best = Some((key, turn));
             }
         }
@@ -1803,6 +2040,51 @@ mod tests {
         let ended = lock(&sub.state).backlog.back().cloned().unwrap();
         assert_eq!(ended.data["output"], json!("⚠️ Il va pleuvoir."));
         assert!(!ended.data.contains_key("bip_no_reply"));
+    }
+
+    #[tokio::test]
+    async fn the_audio_made_in_a_turn_is_handed_over_by_its_reply() {
+        // 2026-10-28, aibox: a podcast made, the reply carried the day before's path from memory
+        let hub = Arc::new(RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None));
+        let today = "/bipagents/audio/podcaster/20261028-075253-podcast.m4a";
+        let yesterday = "/bipagents/audio/podcaster/20261027-095308-podcast.m4a";
+        let ended = |output: &str| {
+            SSEEvent::new("run.completed", json!({"output": output}).as_object().cloned().unwrap(), "{}")
+        };
+        let turn = |id: &str, said: &str| {
+            let sub = Arc::new(RunSubscription::new(AgentConfig { name: "podcaster".into(), ..Default::default() }, id));
+            hub.dispatch(&sub, delta("message.delta", said));
+            sub
+        };
+        let deltas = |sub: &RunSubscription| {
+            lock(&sub.state).backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect::<String>()
+        };
+        crate::made_files::MADE.note("podcaster", today, Some("run_missing"), 1.0);
+        crate::made_files::MADE.note("podcaster", today, Some("run_stale"), 1.0);
+        crate::made_files::MADE.note("podcaster", today, Some("run_right"), 1.0);
+        // missing: added to the end's output, and a last delta for the screen
+        let sub = turn("run_missing", "Ton podcast est prêt.");
+        let end = hub.hand_over_files(&sub, ended("Ton podcast est prêt."));
+        assert_eq!(end.data["output"], json!(format!("Ton podcast est prêt.\nMEDIA:{today}")));
+        assert_eq!(deltas(&sub), format!("Ton podcast est prêt.\n\nMEDIA:{today}"), "the screen gets the line too");
+        // stale: replaced by today's
+        let stale = format!("Podcast du jour.\nMEDIA:{yesterday}");
+        let sub = turn("run_stale", &stale);
+        let end = hub.hand_over_files(&sub, ended(&stale));
+        assert_eq!(end.data["output"], json!(format!("Podcast du jour.\nMEDIA:{today}")));
+        assert_eq!(end.data["bip_media_fixed"], json!(true));
+        // right: untouched
+        let right = format!("Podcast du jour.\nMEDIA:{today}");
+        let sub = turn("run_right", &right);
+        let end = hub.hand_over_files(&sub, ended(&right));
+        assert_eq!(end.data["output"], json!(right));
+        assert!(!end.data.contains_key("bip_media_fixed") && deltas(&sub) == right);
+        // nothing made in the turn (yesterday's asked again): untouched
+        let again = format!("Le voici.\nMEDIA:{yesterday}");
+        let sub = turn("run_nothing", &again);
+        let end = hub.hand_over_files(&sub, ended(&again));
+        assert_eq!(end.data["output"], json!(again));
+        assert!(!end.data.contains_key("bip_media_fixed"));
     }
 
     #[test]
