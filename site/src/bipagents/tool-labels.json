@@ -557,6 +557,32 @@
    "counts": false
   },
   {
+   "id": "askSecret",
+   "names": [
+    "ask_secret"
+   ],
+   "prefixes": [],
+   "keys": [
+    "name",
+    "site"
+   ],
+   "counts": false
+  },
+  {
+   "id": "connector",
+   "names": [
+    "connector_register",
+    "connector_update",
+    "connector_remove",
+    "connector_list"
+   ],
+   "prefixes": [],
+   "keys": [
+    "name"
+   ],
+   "counts": false
+  },
+  {
    "id": "sendMessage",
    "names": [
     "send_message"
@@ -839,6 +865,16 @@
      "one": "Maison connectée",
      "many": null,
      "now": "Je pilote la maison connectée…"
+    },
+    "askSecret": {
+     "one": "Te demande un accès",
+     "many": null,
+     "now": "Je te demande un accès…"
+    },
+    "connector": {
+     "one": "Prépare un connecteur",
+     "many": "Prépare {n} connecteurs",
+     "now": "Je prépare un connecteur…"
     },
     "sendMessage": {
      "one": "Envoie un message",
@@ -1124,6 +1160,16 @@
      "many": null,
      "now": "Controlling the smart home…"
     },
+    "askSecret": {
+     "one": "Asks you for an access",
+     "many": null,
+     "now": "Asking you for an access…"
+    },
+    "connector": {
+     "one": "Prepares a connector",
+     "many": "Prepares {n} connectors",
+     "now": "Preparing a connector…"
+    },
     "sendMessage": {
      "one": "Sends a message",
      "many": null,
@@ -1408,6 +1454,16 @@
      "many": null,
      "now": "Ich steuere das Smart Home…"
     },
+    "askSecret": {
+     "one": "Bittet dich um einen Zugang",
+     "many": null,
+     "now": "Ich bitte dich um einen Zugang…"
+    },
+    "connector": {
+     "one": "Bereitet einen Connector vor",
+     "many": "Bereitet {n} Connectoren vor",
+     "now": "Ich bereite einen Connector vor…"
+    },
     "sendMessage": {
      "one": "Sendet eine Nachricht",
      "many": null,
@@ -1691,6 +1747,16 @@
      "one": "Casa conectada",
      "many": null,
      "now": "Controlando la casa conectada…"
+    },
+    "askSecret": {
+     "one": "Te pide un acceso",
+     "many": null,
+     "now": "Pidiéndote un acceso…"
+    },
+    "connector": {
+     "one": "Prepara un conector",
+     "many": "Prepara {n} conectores",
+     "now": "Preparando un conector…"
     },
     "sendMessage": {
      "one": "Envía un mensaje",
