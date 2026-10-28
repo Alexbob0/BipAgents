@@ -156,9 +156,10 @@ runcmd:
   # Compressed memory (zram: half the memory, zstd) ahead of the swap file: the server holds about 1.5x more before
   # slowing down (the places' installs then leave it as it is). Ubuntu's cloud kernels keep the module in
   # linux-modules-extra (DigitalOcean, 2026-10-26); Debian's kernels have the module (cloud and arm64), so that
-  # install never runs there. The guichet's seat agent sets it up on servers installed before,
-  # and again after a kernel update (installer/cloud/seat-agent.py, the same text).
-  - modprobe zram || apt-get install -y "linux-modules-extra-$(uname -r)"; modprobe zram && apt-get install -y systemd-zram-generator && printf '[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\nswap-priority = 100\n' > /etc/systemd/zram-generator.conf && systemctl daemon-reload && systemctl start dev-zram0.swap || true
+  # install never runs there, and its zram-generator starts the device at once with its own defaults (lz4), hence the
+  # restart once the settings are written. The guichet's seat agent sets it up on servers installed before,
+  # and again after a kernel update (installer/cloud/seat-agent.py, the same text and the same restart).
+  - modprobe zram || apt-get install -y "linux-modules-extra-$(uname -r)"; modprobe zram && apt-get install -y systemd-zram-generator && printf '[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\nswap-priority = 100\n' > /etc/systemd/zram-generator.conf && systemctl daemon-reload && systemctl restart systemd-zram-setup@zram0.service && systemctl start dev-zram0.swap || true
   # 2 GB of swap: room for an agent's browser on a 4 GB server.
   - test -f /swapfile || { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; }
   - systemctl restart ssh

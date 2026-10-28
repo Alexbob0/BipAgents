@@ -54,6 +54,9 @@ def test_the_user_data_the_apps_send_sets_up_the_server_and_runs_the_cloud_insta
     zram = next(c for c in commands if "zram" in c)
     assert zram.startswith('modprobe zram || apt-get install -y "linux-modules-extra-$(uname -r)"; modprobe zram && ')
     assert zram.endswith("|| true")
+    # Debian's zram-generator starts the device as it is installed (lz4): set up again with the settings written
+    assert zram.index("zram-generator.conf") < zram.index("systemctl restart systemd-zram-setup@zram0.service") < zram.index(
+        "systemctl start dev-zram0.swap")
     assert commands.index(zram) < next(i for i, c in enumerate(commands) if "/swapfile" in c) < commands.index(install)
     assert "SystemMaxUse=200M" in files["/etc/systemd/journald.conf.d/60-bipagents.conf"]["content"]
 
