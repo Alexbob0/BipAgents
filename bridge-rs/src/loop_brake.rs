@@ -39,11 +39,17 @@
 //!
 //!     enabled = true
 //!     same_tool = 10          tool_calls = 60        same_call = 3        same_lookup = 5      writes = 10
-//!     browser_calls = 40      page_reads = 15
+//!     browser_calls = 40      page_reads = 15        discovery_same = 5   discovery_calls = 8
 //!     task_same_tool = 40     task_tool_calls = 120  task_same_call = 5   task_same_lookup = 8 task_writes = 40
-//!     task_browser_calls = 80 task_page_reads = 30
+//!     task_browser_calls = 80 task_page_reads = 30   task_discovery_same = 5 task_discovery_calls = 15
 //!     routine_tool_calls = 40 idle_seconds = 120
 //!     rescue = true           rescue_tool_calls = 5  rescue_seconds = 180
+//!
+//! Searching its own tools (2026-10-28, real-day bench: 9 `tool_search` and 2 `tool_describe`, all different, in 3
+//! minutes, unheld): Hermes' `tool_search` and `tool_describe` count apart. The same query (`discovery_query`: its
+//! words, whatever the options) is told at 3 and stops the turn at `discovery_same` (5); different queries count
+//! toward `discovery_calls` (8 in all, told at 5). The usual plain line follows (« je cherchais sans fin un outil
+//! pour le faire »), then the rescue turn, which may not search its tools again.
 //!
 //! Read-only lookups (2026-10-28, Alex's home server: Vie diagnosing a nightly job was stopped after 5 calls, 3 of
 //! them the same `session_search`): searching past conversations, the Carnet, the web, files, mails or the memory
@@ -87,6 +93,11 @@ pub struct Limits {
     pub browser_calls: u32,
     /// … and more page reads (its content, a screenshot, a snapshot) than this.
     pub page_reads: u32,
+    /// Searching its own tools (Hermes' `tool_search`, `tool_describe`): the same query this many times stops the
+    /// turn…
+    pub discovery_same: u32,
+    /// … and more discovery calls than this in all, whatever the queries.
+    pub discovery_calls: u32,
 }
 
 /// `[brake]`.
@@ -121,6 +132,8 @@ impl Default for Settings {
                 writes: 10,
                 browser_calls: 40,
                 page_reads: 15,
+                discovery_same: 5,
+                discovery_calls: 8,
             },
             // under Hermes' own cap of 150 model calls (tool_diet.rs), so the brake speaks first
             task: Limits {
@@ -131,6 +144,8 @@ impl Default for Settings {
                 writes: 40,
                 browser_calls: 80,
                 page_reads: 30,
+                discovery_same: 5,
+                discovery_calls: 15,
             },
             routine_tool_calls: 40,
             idle_seconds: 120.0,
@@ -159,6 +174,8 @@ impl Settings {
             writes: n(&format!("{prefix}writes"), d.writes, 1),
             browser_calls: n(&format!("{prefix}browser_calls"), d.browser_calls, 5),
             page_reads: n(&format!("{prefix}page_reads"), d.page_reads, 2),
+            discovery_same: n(&format!("{prefix}discovery_same"), d.discovery_same, 2),
+            discovery_calls: n(&format!("{prefix}discovery_calls"), d.discovery_calls, 2),
         };
         Settings {
             enabled: table.get("enabled").and_then(Value::as_bool).unwrap_or(d.enabled),
@@ -180,7 +197,17 @@ impl Settings {
     /// The rescue turn's limits: a few calls to answer, never a new round of work.
     pub fn rescue_limits(&self) -> Limits {
         let calls = self.rescue_tool_calls;
-        Limits { same_tool: 3, tool_calls: calls, same_call: 2, same_lookup: 2, writes: 2, browser_calls: calls, page_reads: 2 }
+        Limits {
+            same_tool: 3,
+            tool_calls: calls,
+            same_call: 2,
+            same_lookup: 2,
+            writes: 2,
+            browser_calls: calls,
+            page_reads: 2,
+            discovery_same: 2,
+            discovery_calls: 2,
+        }
     }
 
     pub fn limits(&self, background: bool) -> Limits {
@@ -290,6 +317,29 @@ pub fn lookup_tool(tool: &str, signature: Option<&str>) -> bool {
         || ["_search", "_list", "_read", "_get"].iter().any(|end| name.ends_with(end))
 }
 
+/// Hermes' tool search (tool_diet.rs: the tools behind it): looking for a tool, not doing the work. The real-day
+/// bench of 2026-10-28 (GLM « medium », « ask Coach » with no message_agent in view) made 9 `tool_search` and 2
+/// `tool_describe` in 3 minutes, all different, and nothing held it: each stayed under `same_tool` and `same_lookup`.
+pub const DISCOVERY_TOOLS: [&str; 2] = ["tool_search", "tool_describe"];
+
+pub fn discovery_tool(tool: &str) -> bool {
+    DISCOVERY_TOOLS.contains(&bare(tool))
+}
+
+/// What a discovery call looked for (its query or the tool it describes, in lower case, spaces folded): the same
+/// query again with other options is the same search. A signature that isn't JSON (a preview, a hash) is used whole.
+pub fn discovery_query(signature: &str) -> String {
+    let parsed: Option<Value> = serde_json::from_str(signature).ok();
+    let found = parsed.as_ref().and_then(|v| {
+        ["query", "q", "name", "tool", "tool_name", "names"]
+            .iter()
+            .find_map(|k| v.get(*k))
+            .map(|q| q.as_str().map(str::to_string).unwrap_or_else(|| q.to_string()))
+    });
+    let text = found.unwrap_or_else(|| signature.to_string()).to_lowercase();
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// A tool's answer that says it failed (`tool.completed`: Hermes' `error`, or an error in its preview).
 pub fn completed_with_error(data: &serde_json::Map<String, Value>) -> bool {
     if data.get("error").and_then(Value::as_bool).unwrap_or(false) {
@@ -316,6 +366,8 @@ pub enum Over {
     PageReads,
     /// The visible browser, too many calls.
     Browser,
+    /// Searching its own tools again and again (the same query, or too many searches).
+    Discovery,
 }
 
 /// A turn's tool calls so far.
@@ -326,6 +378,9 @@ pub struct TurnCount {
     pub page_reads: u32,
     per_tool: HashMap<String, u32>,
     per_call: HashMap<String, u32>,
+    /// Discovery calls (`DISCOVERY_TOOLS`) in all, and by query.
+    pub discovery: u32,
+    per_query: HashMap<String, u32>,
     /// The turn's last call (tool and arguments), and whether it answered with an error: the identical call right
     /// after is a retry, not « the same call again ».
     last_call: Option<String>,
@@ -357,6 +412,10 @@ pub enum Warning {
     TooMany(u32, u32),
     PageReads(u32, u32),
     Browser(u32, u32),
+    /// Tool searches: the same query (how many times, the hard limit it is stopped at)…
+    DiscoverySame(u32, u32),
+    /// … or many in all (how many, the hard limit it is stopped past).
+    Discovery(u32, u32),
 }
 
 /// The steers the bridge's brake gives start with this (the apps hide such rows: `[bipagents:`).
@@ -370,6 +429,8 @@ impl Warning {
             Warning::TooMany(..) => "total".into(),
             Warning::PageReads(..) => "page_reads".into(),
             Warning::Browser(..) => "browser".into(),
+            Warning::DiscoverySame(..) => "discovery_same".into(),
+            Warning::Discovery(..) => "discovery".into(),
         }
     }
 
@@ -381,6 +442,8 @@ impl Warning {
             Warning::TooMany(n, _) => format!("{n} tool calls"),
             Warning::PageReads(n, _) => format!("the browser read the page {n} times"),
             Warning::Browser(n, _) => format!("{n} browser calls"),
+            Warning::DiscoverySame(n, _) => format!("the same tool search {n} times"),
+            Warning::Discovery(n, _) => format!("{n} tool searches"),
         }
     }
 
@@ -402,6 +465,14 @@ impl Warning {
             Warning::Browser(count, hard) => {
                 format!("you have made {count} browser steps in this turn; past {hard} the turn is stopped")
             }
+            Warning::DiscoverySame(count, hard) => format!(
+                "you have searched your tools for the same thing {count} times in this turn; at {hard} the turn is \
+stopped. If no tool does it, say so to the person"
+            ),
+            Warning::Discovery(count, hard) => format!(
+                "you have searched your tools {count} times in this turn; past {hard} the turn is stopped. Use a tool \
+you found, or tell the person plainly what you can't do"
+            ),
         };
         format!(
             "{WARN_MARK} A note from the bridge, not from your person: {what}. Change approach (other words, another \
@@ -470,6 +541,23 @@ impl TurnCount {
                 return Some(Over::Browser);
             }
             near(self.browser, limits.browser_calls, false, &|| Warning::Browser(self.browser, limits.browser_calls));
+        }
+        if discovery_tool(&name) {
+            self.discovery += 1;
+            let discovery = self.discovery;
+            if let Some(query) = signature.filter(|s| !s.trim().is_empty()).map(discovery_query) {
+                let again = self.per_query.entry(query).or_insert(0);
+                *again += 1;
+                let again = *again;
+                if again >= limits.discovery_same {
+                    return Some(Over::Discovery);
+                }
+                near(again, limits.discovery_same, true, &|| Warning::DiscoverySame(again, limits.discovery_same));
+            }
+            if discovery > limits.discovery_calls {
+                return Some(Over::Discovery);
+            }
+            near(discovery, limits.discovery_calls, false, &|| Warning::Discovery(discovery, limits.discovery_calls));
         }
         let work = browser || WORK_TOOLS.contains(&name.as_str());
         let same = self.per_tool.entry(name.clone()).or_insert(0);
@@ -641,6 +729,13 @@ pub fn notice_head(over: &Over, lang: &str) -> String {
             _ => "I stopped: I couldn't get anywhere in the browser.",
         }
         .to_string(),
+        Over::Discovery => match lang {
+            "fr" => "Je me suis arrêté : je cherchais sans fin un outil pour le faire.",
+            "de" => "Ich habe aufgehört: Ich habe endlos nach einem Werkzeug dafür gesucht.",
+            "es" => "Me he detenido: buscaba sin parar una herramienta para hacerlo.",
+            _ => "I stopped: I kept looking for a tool to do it.",
+        }
+        .to_string(),
     }
 }
 
@@ -691,6 +786,7 @@ pub const RESCUE_MARK: &str = "[bipagents:loop_rescue]";
 pub fn stopped_tool(over: &Over) -> Option<String> {
     match over {
         Over::SameTool(tool) | Over::SameCall(tool) => Some(tool.clone()),
+        Over::Discovery => Some("tool_search".into()),
         _ => None,
     }
 }
@@ -707,11 +803,15 @@ pub fn rescue_input(over: &Over, lang: &str) -> String {
         Over::TooMany => "made far too many tool calls in one turn".to_string(),
         Over::PageReads => "kept reading the same page in the browser without managing to".to_string(),
         Over::Browser => "made too many browser steps without getting anywhere".to_string(),
+        Over::Discovery => "kept searching your tools (tool_search, tool_describe) for one to do it".to_string(),
     };
     let dont = match over {
         Over::SameCall(tool) | Over::SameTool(tool) => format!("Don't call {tool} again in this turn."),
         Over::PageReads | Over::Browser => "Don't use the browser again in this turn.".to_string(),
         Over::TooMany => "Don't start new work in this turn.".to_string(),
+        Over::Discovery => {
+            "Don't search your tools again in this turn: if none you have does it, say so plainly.".to_string()
+        }
     };
     format!(
         "{RESCUE_MARK} {head}\n\n(A note from the bridge, not from your person.) You were stopped because you {what}. \
@@ -730,6 +830,7 @@ pub fn reason(over: &Over) -> String {
         Over::SameCall(tool) => format!("same call repeated ({tool})"),
         Over::PageReads => "the browser read the page too many times".to_string(),
         Over::Browser => "too many browser calls".to_string(),
+        Over::Discovery => "too many tool searches".to_string(),
     }
 }
 
@@ -989,6 +1090,58 @@ mod tests {
             turn.note("mcp_bipagents_calendar_add", Some(&sig), false, &limits),
             Some(Over::SameCall("calendar_add".into()))
         );
+    }
+
+    /// Real-day bench 2026-10-28: « ask Coach » with no message_agent in view, 9 different tool_search and 2
+    /// tool_describe in 3 minutes, nothing held it.
+    #[test]
+    fn searching_its_tools_again_and_again_is_braked() {
+        let limits = Settings::default().conversation;
+        // the same query (other options, other spacing): told at 3, stopped at 5
+        let mut turn = TurnCount::default();
+        let same = |n: u32| canonical(&json!({"query": "message  Agent", "limit": n}));
+        for n in 1..=4u32 {
+            assert_eq!(turn.note("tool_search", Some(&same(n)), false, &limits), None, "{n}");
+            let warning = turn.take_warning();
+            assert_eq!(warning.is_some(), n == 3, "{n}: {warning:?}");
+            if let Some(w) = warning {
+                assert_eq!(w, Warning::DiscoverySame(3, 5));
+                assert!(w.text().contains("say so to the person"));
+            }
+        }
+        assert_eq!(turn.note("tool_search", Some(&same(5)), false, &limits), Some(Over::Discovery));
+        // different queries: past 8 discovery calls in all, tool_describe included
+        let mut turn = TurnCount::default();
+        let mut stopped = None;
+        for n in 0..11u32 {
+            let (tool, args) = if n % 5 == 4 { ("tool_describe", json!({"name": format!("t{n}")})) } else {
+                ("tool_search", json!({"query": format!("agent {n}")}))
+            };
+            if let Some(over) = turn.note(tool, Some(&canonical(&args)), false, &limits) {
+                stopped = Some((n, over));
+                break;
+            }
+        }
+        assert_eq!(stopped, Some((8, Over::Discovery)));
+        assert_eq!(stopped_tool(&Over::Discovery).as_deref(), Some("tool_search"));
+        assert_eq!(
+            notice_text(&Over::Discovery, "fr"),
+            "Je me suis arrêté : je cherchais sans fin un outil pour le faire. Dis-moi si tu veux que je réessaie."
+        );
+        assert!(rescue_input(&Over::Discovery, "fr").contains("Don't search your tools again"));
+        // a normal turn: two searches, then the tool found is called
+        let mut turn = TurnCount::default();
+        for (tool, args) in [
+            ("tool_search", json!({"query": "mail"})),
+            ("tool_describe", json!({"name": "mcp__bipagents__mail_read"})),
+            ("tool_call", json!({"name": "mcp__bipagents__mail_read", "arguments": {"id": 1}})),
+            ("tool_call", json!({"name": "mcp__bipagents__mail_read", "arguments": {"id": 2}})),
+        ] {
+            assert_eq!(turn.note(tool, Some(&canonical(&args)), false, &limits), None);
+            assert_eq!(turn.take_warning(), None);
+        }
+        assert_eq!(discovery_query("{\"query\": \"Mail  READ\", \"limit\": 3}"), "mail read");
+        assert_eq!(discovery_query("44136fa355b3"), "44136fa355b3");
     }
 
     #[test]

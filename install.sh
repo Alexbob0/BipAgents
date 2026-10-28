@@ -69,6 +69,18 @@ VENV="$DIR/installer/.venv"
 uv pip install --quiet --python "$VENV/bin/python" -r "$DIR/installer/requirements.txt"
 # Questions are asked on the terminal even when this script comes through a pipe (curl … | bash).
 run() { env PYTHONPATH="$DIR/installer" "$VENV/bin/python" -m bipinstall "$@"; }
+# A new install (no subcommand): when the bridge of this version isn't out yet (GitHub Actions builds it after each
+# change, or its build failed), the version before whose bridge is out (installer/bipinstall/rustbridge.py
+# pick_released). An update keeps its current bridge instead (rustbridge.keep_in_step).
+case "${1:-}" in
+  ""|-*)
+    picked="$(git -C "$DIR" rev-parse HEAD)"
+    run bridge released-version || true
+    if [ "$(git -C "$DIR" rev-parse HEAD)" != "$picked" ]; then
+      uv pip install --quiet --python "$VENV/bin/python" -r "$DIR/installer/requirements.txt"
+    fi
+    ;;
+esac
 if [ ! -t 0 ] && (exec </dev/tty) 2>/dev/null; then
   run "$@" </dev/tty
 else

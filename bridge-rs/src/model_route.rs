@@ -61,9 +61,10 @@ pub fn add_thinking_floor(base_url: &str, body: &mut Value) {
 
 /// A Hermes config with the routing for its model's address (`model.provider: custom`), or None when nothing changes.
 /// GLM through EUrouter also gets its thinking floor there (agents_admin::with_thinking_floor): every path that
-/// writes a profile's model passes here.
-pub fn with_routing(data: &Yaml, order: &[String]) -> Option<Yaml> {
-    let floored = crate::agents_admin::with_thinking_floor(data);
+/// writes a profile's model passes here. `chosen`: the level the person chose for that profile
+/// (agents_admin::chosen_thinking), None when they never did.
+pub fn with_routing(data: &Yaml, order: &[String], chosen: Option<&str>) -> Option<Yaml> {
+    let floored = crate::agents_admin::with_thinking_floor(data, chosen);
     let data = floored.as_ref().unwrap_or(data);
     let routed = with_routing_only(data, order);
     routed.or(floored)
@@ -116,7 +117,8 @@ pub fn write(path: &std::path::Path, order: &[String]) -> anyhow::Result<bool> {
         return Ok(false);
     }
     let data = crate::agents_admin::load_or_empty(path)?;
-    match with_routing(&data, order) {
+    let chosen = path.parent().and_then(crate::agents_admin::chosen_thinking);
+    match with_routing(&data, order, chosen.as_deref()) {
         Some(changed) => {
             crate::agents_admin::replace_yaml(path, &changed)?;
             Ok(true)
@@ -168,16 +170,16 @@ mod tests {
     #[test]
     fn a_profile_gets_one_entry_for_the_router_and_keeps_it() {
         let data = pyyaml::load(EU).unwrap();
-        let routed = with_routing(&data, &order()).unwrap();
+        let routed = with_routing(&data, &order(), None).unwrap();
         assert_eq!(
             pyyaml::dump(&routed),
             format!(
                 "{EU}{LOW}providers:\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - melious\n        allow_fallbacks: true\n"
             )
         );
-        assert_eq!(with_routing(&routed, &order()), None); // nothing more to do
+        assert_eq!(with_routing(&routed, &order(), None), None); // nothing more to do
         // turned off: the entry goes, and `providers` with it; GLM's floor stays
-        assert_eq!(pyyaml::dump(&with_routing(&routed, &[]).unwrap()), format!("{EU}{LOW}"));
+        assert_eq!(pyyaml::dump(&with_routing(&routed, &[], None).unwrap()), format!("{EU}{LOW}"));
     }
 
     #[test]
@@ -185,16 +187,26 @@ mod tests {
         // nothing chosen, or « none » (GLM answers nothing to it there): « low »; pinning off changes nothing to that
         for effort in ["", "agent:\n  reasoning_effort: none\n", "agent:\n  reasoning_effort: false\n"] {
             let data = pyyaml::load(&format!("{EU}{effort}")).unwrap();
-            assert_eq!(pyyaml::dump(&with_routing(&data, &[]).unwrap()), format!("{EU}{LOW}"), "{effort}");
+            assert_eq!(pyyaml::dump(&with_routing(&data, &[], None).unwrap()), format!("{EU}{LOW}"), "{effort}");
         }
-        // a level above, another model or another server: untouched
+        // Hermes' template « medium » is no choice (real-day bench 2026-10-28): « low » too, unless the person chose it
+        let medium = pyyaml::load(&format!("{EU}agent:\n  reasoning_effort: medium\n")).unwrap();
+        assert_eq!(pyyaml::dump(&with_routing(&medium, &[], None).unwrap()), format!("{EU}{LOW}"));
+        assert_eq!(with_routing(&medium, &[], Some("medium")), None);
+        // a chosen level a rewrite lost comes back; « none » chosen is written « low »
+        let low = pyyaml::load(&format!("{EU}{LOW}")).unwrap();
+        let back = with_routing(&low, &[], Some("high")).unwrap();
+        assert_eq!(pyyaml::dump(&back), format!("{EU}agent:\n  reasoning_effort: high\n"));
+        assert_eq!(with_routing(&low, &[], Some("none")), None);
+        assert_eq!(pyyaml::dump(&with_routing(&medium, &[], Some("none")).unwrap()), format!("{EU}{LOW}"));
+        // a level above that only a person writes, another model or another server: untouched
         for text in [
-            format!("{EU}agent:\n  reasoning_effort: medium\n"),
+            format!("{EU}agent:\n  reasoning_effort: high\n"),
             EU.replace("glm-5.3-flash", "deepseek/deepseek-v4.1-flash"),
             EU.replace("https://api.eurouter.ai/api/v1", "http://sparks:8000/v1"),
             format!("{}agent:\n  reasoning_effort: none\n", EU.replace("https://api.eurouter.ai/api/v1", "http://sparks:8000/v1")),
         ] {
-            assert_eq!(with_routing(&pyyaml::load(&text).unwrap(), &[]), None, "{text}");
+            assert_eq!(with_routing(&pyyaml::load(&text).unwrap(), &[], None), None, "{text}");
         }
     }
 
@@ -223,7 +235,7 @@ mod tests {
         let text = format!(
             "{EU}providers:\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n  bipagents-thinking:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\n"
         );
-        let routed = with_routing(&pyyaml::load(&text).unwrap(), &order()).unwrap();
+        let routed = with_routing(&pyyaml::load(&text).unwrap(), &order(), None).unwrap();
         let providers = routed.get("providers").unwrap();
         assert!(providers.get(ROUTE_PROVIDER).is_none());
         let extra = providers.get("bipagents-thinking").and_then(|e| e.get("extra_body")).unwrap();
@@ -238,7 +250,7 @@ mod tests {
             "model:\n  provider: openrouter\n  default: x\n",
             "agent:\n  max_turns: 60\n",
         ] {
-            assert_eq!(with_routing(&pyyaml::load(text).unwrap(), &order()), None, "{text}");
+            assert_eq!(with_routing(&pyyaml::load(text).unwrap(), &order(), None), None, "{text}");
         }
     }
 }

@@ -57,7 +57,12 @@ def key(repo: Path = REPO) -> Optional[str]:
     """This checkout's release key, the same hash the workflow computes: sha256 of the tree id of bridge-rs/ (the
     binaries are built from that folder alone, their embedded files in bridge-rs/assets/), 12 characters. None
     without bridge-rs/ (or outside a git checkout)."""
-    done = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD:bridge-rs"], capture_output=True, text=True)
+    return key_at(repo, "HEAD")
+
+
+def key_at(repo: Path, commit: str) -> Optional[str]:
+    """The release key of another commit of the checkout (`key`)."""
+    done = subprocess.run(["git", "-C", str(repo), "rev-parse", f"{commit}:bridge-rs"], capture_output=True, text=True)
     if done.returncode != 0:
         return None
     return hashlib.sha256(done.stdout.strip().encode()).hexdigest()[:12]
@@ -143,6 +148,70 @@ def fetch(home: Path, release: str, name: str, opener: Opener = _download) -> Pa
         shutil.rmtree(staging, ignore_errors=True)
     _prune(folder)
     return target
+
+
+def released(release: str, opener: Opener = _download) -> bool:
+    """Whether the release of this key is out (its SHA256SUMS answers)."""
+    try:
+        opener(f"https://github.com/{SLUG}/releases/download/bridge-{release}/{SUMS}")
+    except Exception:   # noqa: BLE001 - 404 while the workflow builds (or failed), or no network
+        return False
+    return True
+
+
+# How far back a new install looks for a version whose bridge is out (commits of main, first parent).
+LOOK_BACK = 40
+# At most this many different bridges asked about (commits that leave bridge-rs/ alone share their key).
+ASKED = 8
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+
+
+def newest_released(repo: Path = REPO, opener: Opener = _download, look_back: int = LOOK_BACK) -> Optional[str]:
+    """The newest commit of this checkout's line (HEAD first, then the ones before it) whose bridge release is out:
+    HEAD itself most days; the commit before when the newest version's bridge is still being built, or its build
+    failed (real-day bench 2026-10-28: the public main's release had failed in CI, every new install of the offer
+    stopped at step 3/5). A light clone (`--depth 1`) is deepened first. None: none of the last `look_back`."""
+    if _git(repo, "rev-parse", "--is-shallow-repository").stdout.strip() == "true":
+        _git(repo, "fetch", "--quiet", f"--deepen={look_back}", "origin")
+    commits = _git(repo, "rev-list", "--first-parent", f"--max-count={look_back}", "HEAD").stdout.split()
+    answers: dict = {}
+    for commit in commits:
+        release = key_at(repo, commit)
+        if not release:
+            continue
+        if release not in answers:
+            if len(answers) >= ASKED:
+                return None
+            answers[release] = released(release, opener)
+        if answers[release]:
+            return commit
+    return None
+
+
+def pick_released(repo: Path = REPO, opener: Opener = _download) -> str:
+    """Before a new install (install.sh): this checkout moved back to the newest version whose bridge is out, when the
+    one it has isn't (never for an update, a developer's clone, a changed checkout, a machine with no build of ours or
+    with its own build). Says what it did ("" when nothing). Never fails the install: at worst nothing changes."""
+    from .checkout import is_install_clone
+    if os.environ.get(BUILD) or not asset() or not is_install_clone(repo):
+        return ""
+    release = key(repo)
+    if not release or released(release, opener):
+        return ""
+    if _git(repo, "diff", "--quiet", "HEAD", "--").returncode != 0:
+        return ""
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    found = newest_released(repo, opener)
+    if not found or found == head:
+        return (f"The bridge of this version ({release}) isn't out yet, nor one of the versions just before: "
+                "the install tries it anyway.")
+    if _git(repo, "checkout", "--quiet", "-B", "main", found).returncode != 0:
+        return ""
+    return (f"The bridge of the newest version isn't out yet: installing the one before ({found[:9]}, bridge "
+            f"{key(repo)}). `bipagents update` brings the newest once it is out.")
 
 
 def local_build(home: Path, release: str, folder: Path) -> Path:
@@ -251,15 +320,24 @@ def restart(home: Path) -> None:
     subprocess.run(bridge_restart(home), check=False)
 
 
-def keep_in_step(home: Path, repo: Path = REPO) -> Optional[str]:
+def keep_in_step(home: Path, repo: Path = REPO, wait: float = 0.0, sleep=None) -> Optional[str]:
     """After a pull (`bipagents update`): this version's binaries, the service on them. Says what it did, or why it
-    kept the previous ones (None: the service still runs the Python bridge, which the migration rust-bridge moves)."""
+    kept the previous ones (None: the service still runs the Python bridge, which the migration rust-bridge moves).
+    `wait`: seconds to wait for a release still being built (a nightly update, unattended), asked again every 30 s.
+    The service is only rewritten once the binaries are here: an update never leaves the bridge on a missing one."""
+    import time
     if python_service(home):
         return None
-    try:
-        ensure(home, repo)
-    except RustBridgeError as exc:
-        return f"{exc}: the previous bridge keeps running."
+    sleep = sleep or time.sleep
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            ensure(home, repo)
+            break
+        except RustBridgeError as exc:
+            if "isn't out yet" not in str(exc) or time.monotonic() >= deadline:
+                return f"{exc}: the previous bridge keeps running (the next update fetches this one)."
+            sleep(30)
     rewrite_service(home, program(home, repo))
     return f"Bridge {key(repo)} in place."
 
@@ -286,6 +364,11 @@ def main(argv: List[str]) -> int:
         if choice != "genkey" and "--config" not in rest:
             rest += ["--config", str(find_config(None))]
         return subprocess.run(cli(home) + rest, check=False).returncode
+    if choice == "released-version":   # install.sh, before a new install (pick_released)
+        said = pick_released()
+        if said:
+            print(ui.note(said))
+        return 0
     if choice == "python":
         print(ui.fail("The Python bridge was retired on 2026-10-21 (it stays in BipAgents' history): the bridge is "
                       "the Rust one now."))

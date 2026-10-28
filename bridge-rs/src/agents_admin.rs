@@ -1051,6 +1051,23 @@ pub const DEFAULT_THINKING: &str = "medium";
 pub const GLM_THINKING: &str = "low";
 /// Next to a GLM profile whose `reasoning_effort` is « low » because the person chose « none »: the app shows « none ».
 pub const THINKING_OFF_MARK: &str = ".bipagents-thinking-off";
+/// Next to a profile's config: the level the person chose (from the app or the console), one word. A level in the
+/// config without it is not the person's: Hermes' config template writes `reasoning_effort: medium` in every new
+/// profile (real-day bench 2026-10-28: the offer ran GLM at « medium », 1.8× the cost), so GLM through EUrouter gets
+/// its « low » there. Kept apart from config.yaml, which Hermes' own commands rewrite, so a chosen level a rewrite
+/// lost is put back ([`heal_thinking_of`]).
+pub const THINKING_CHOSEN_MARK: &str = ".bipagents-thinking-chosen";
+
+/// The level the person chose for the profile in `folder` ([`THINKING_CHOSEN_MARK`]), None when they never did.
+pub fn chosen_thinking(folder: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(folder.join(THINKING_CHOSEN_MARK)).ok()?;
+    let level = text.trim().to_lowercase();
+    THINKING_LEVELS.contains(&level.as_str()).then_some(level)
+}
+
+fn record_thinking(folder: &Path, level: &str) -> std::io::Result<()> {
+    std::fs::write(folder.join(THINKING_CHOSEN_MARK), format!("{level}\n"))
+}
 
 /// Models whose thinking can't be switched off: GLM through EUrouter (measured 2026-10-27, internal/research/
 /// token-diet-step3-2026-10-27.md). There `reasoning_effort: none` makes GLM think ~400 tokens and answer NOTHING
@@ -1088,17 +1105,33 @@ fn written_thinking(data: &Yaml) -> Option<String> {
     Some(effort)
 }
 
-/// A config with GLM's floor (see [`keeps_thinking_on`]): nothing chosen or « none » becomes « low ». None when
-/// nothing changes (another model, a level above none). Applied wherever the bridge writes a model's routing
-/// (model_route::with_routing): at each start for every agent, at a claim, for the hub new agents are cloned from,
-/// when the model or the level changes.
-pub fn with_thinking_floor(data: &Yaml) -> Option<Yaml> {
-    if !thinking_floor(data) || written_thinking(data).is_some_and(|l| l != "none") {
+/// A config with GLM's floor (see [`keeps_thinking_on`]), `chosen` the level the person chose ([`chosen_thinking`]):
+/// - chosen: that level (« none » written « low »), also when a rewrite of the config lost it;
+/// - nothing chosen: « low », over Hermes' template « medium » too (never the person's: [`THINKING_CHOSEN_MARK`]);
+///   « high » or « xhigh », which only a person writes (bridges before the record didn't keep one), stay.
+///
+/// None when nothing changes (another model, the level already right). Applied wherever the bridge writes a model's
+/// routing (model_route::with_routing): at each start for every agent, at a claim, for the hub new agents are cloned
+/// from, when the model or the level changes, each time the bridge gives an agent its tools.
+pub fn with_thinking_floor(data: &Yaml, chosen: Option<&str>) -> Option<Yaml> {
+    if !thinking_floor(data) {
+        return None;
+    }
+    let written = written_thinking(data);
+    let wanted = match chosen {
+        Some("none") | None => GLM_THINKING,
+        Some(level) => level,
+    };
+    let kept = match chosen {
+        Some(_) => written.as_deref() == Some(wanted),
+        None => written.as_deref().is_some_and(|l| [GLM_THINKING, "high", "xhigh"].contains(&l)),
+    };
+    if kept {
         return None;
     }
     let mut out = data.clone();
     let mut settings = out.get("agent").filter(|a| a.is_map()).cloned().unwrap_or_else(Yaml::map);
-    settings.insert("reasoning_effort", Yaml::str(GLM_THINKING));
+    settings.insert("reasoning_effort", Yaml::str(wanted));
     out.insert("agent", settings);
     Some(out)
 }
@@ -1157,13 +1190,29 @@ pub fn read_thinking(config: &Config, agent: &AgentConfig) -> Option<String> {
     {
         return None;
     }
+    let folder = profile_folder(config, agent);
+    if let Some(chosen) = chosen_thinking(&folder) {
+        return Some(chosen); // the person's, whatever a rewrite of the config left there (healed: heal_thinking_of)
+    }
     let floor = thinking_floor(&data);
     let default = if floor { GLM_THINKING } else { DEFAULT_THINKING };
     let Some(effort) = written_thinking(&data) else { return Some(default.into()) };
-    if floor && effort == GLM_THINKING && profile_folder(config, agent).join(THINKING_OFF_MARK).exists() {
-        return Some("none".into()); // what the person chose; GLM gets its floor
+    if floor && effort == GLM_THINKING && folder.join(THINKING_OFF_MARK).exists() {
+        return Some("none".into()); // what the person chose (before the record); GLM gets its floor
+    }
+    if floor && effort == DEFAULT_THINKING {
+        return Some(default.into()); // Hermes' template « medium », never the person's: GLM thinks « low »
     }
     Some(if THINKING_LEVELS.contains(&effort.as_str()) { effort } else { default.into() })
+}
+
+/// The level the person chose from the app or the console: recorded ([`THINKING_CHOSEN_MARK`]), then written.
+pub fn choose_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow::Result<String> {
+    if !THINKING_LEVELS.contains(&level) || read_thinking(config, agent).is_none() {
+        return Err(LookupError(agent.name.clone()).into());
+    }
+    record_thinking(&profile_folder(config, agent), level)?;
+    set_thinking(config, agent, level)
 }
 
 /// The agent's thinking level, read by Hermes from the next message (it reloads a profile's config when it
@@ -1202,7 +1251,8 @@ pub fn set_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow
     let mut settings = data.get("agent").filter(|a| a.is_map()).cloned().unwrap_or_else(Yaml::map);
     settings.insert("reasoning_effort", Yaml::str(written));
     data.insert("agent", settings);
-    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order) {
+    let chosen = chosen_thinking(&profile_folder(config, agent));
+    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order, chosen.as_deref()) {
         data = routed; // the thinking entry is the one Hermes picks for the router's address: it carries the routing
     }
     replace_yaml(&path, &data)?;
@@ -1250,7 +1300,8 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
         }
     }
     let floor_after = thinking_floor(&data);
-    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order) {
+    let recorded = chosen_thinking(&profile_folder(config, agent));
+    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order, recorded.as_deref()) {
         data = routed;
     }
     replace_yaml(&path, &data)?;
@@ -1324,29 +1375,44 @@ pub fn heal_browser_proxy(config: &Config) {
 /// At start:
 /// - profiles set by an earlier bridge with the chat template's thinking forced on: that wins over a turn asking
 ///   for none (Live), so it goes (their reasoning_effort stays);
-/// - GLM through EUrouter ([`keeps_thinking_on`], 2026-10-28): nothing chosen (Hermes' « medium ») becomes « low »,
-///   « none » becomes « low » with the person's choice kept for the app, and the ignored `enable_thinking` entry
-///   goes. A level the person set (« medium » or more) stays: the bridge writes `reasoning_effort` only when the
-///   person picks one (the installer never does), so a written level is theirs.
+/// - GLM through EUrouter ([`keeps_thinking_on`], 2026-10-28): nothing chosen (Hermes' template « medium »
+///   included: the migration of existing places, real-day bench 2026-10-28) becomes « low », « none » becomes
+///   « low » with the person's choice kept for the app, and the ignored `enable_thinking` entry goes;
+/// - a level the person chose ([`THINKING_CHOSEN_MARK`]) that a rewrite of the config lost is put back.
 pub fn heal_thinking(config: &Config) {
     for name in config.agents.keys() {
         let Ok(agent) = editable(config, name) else { continue };
-        let Some(level) = read_thinking(config, &agent) else { continue };
-        let Ok(data) = load_or_empty(&profile_config_path(config, &agent)) else { continue };
-        let entry = data.get("providers").and_then(|p| p.get(THINKING_PROVIDER)).is_some();
-        let heal = if thinking_floor(&data) {
-            entry || written_thinking(&data).is_none_or(|l| l == "none")
-        } else {
-            entry && level != "none"
-        };
-        if !heal {
-            continue;
+        heal_thinking_of(config, &agent);
+    }
+}
+
+/// [`heal_thinking`] for one agent; whether its config changed. Also each time the bridge gives an agent its tools
+/// (agent_tools::register): Hermes' own commands rewrite the config meanwhile (`hermes config set`, `tools enable`),
+/// and an agent still being made after a claim lost the level the person had just set (« Prof » back to « medium »,
+/// real-day bench 2026-10-28).
+pub fn heal_thinking_of(config: &Config, agent: &AgentConfig) -> bool {
+    let Some(level) = read_thinking(config, agent) else { return false };
+    let Ok(data) = load_or_empty(&profile_config_path(config, agent)) else { return false };
+    let chosen = chosen_thinking(&profile_folder(config, agent));
+    let entry = data.get("providers").and_then(|p| p.get(THINKING_PROVIDER)).is_some();
+    let heal = if thinking_floor(&data) {
+        entry || with_thinking_floor(&data, chosen.as_deref()).is_some()
+    } else {
+        (entry && level != "none")
+            || (!entry && level == "none" && chosen.is_some())
+            || chosen.is_some_and(|c| written_thinking(&data).as_deref() != Some(c.as_str()))
+    };
+    if !heal {
+        return false;
+    }
+    match set_thinking(config, agent, &level) {
+        Ok(_) => {
+            tracing::info!(target: "bipbridge::agents", agent = %agent.name, level = %level, "thinking level healed");
+            true
         }
-        match set_thinking(config, &agent, &level) {
-            Ok(_) => tracing::info!(target: "bipbridge::agents", agent = %agent.name, level = %level, "thinking level healed"),
-            Err(err) => {
-                tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %format!("{err:#}"), "thinking level not healed")
-            }
+        Err(err) => {
+            tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %format!("{err:#}"), "thinking level not healed");
+            false
         }
     }
 }
@@ -1787,8 +1853,10 @@ async fn put_thinking(
 ) -> ApiResult<Response> {
     let config = state.config();
     let agent = editable(&config, &agent_id).map_err(|_| not_managed())?;
+    // an agent a claim is still making: its profile first (its config is written meanwhile)
+    crate::cloud_setup::READINESS.wait(&agent.name, crate::cloud_setup::READY_WAIT).await;
     let _guard = LOCK.lock().await;
-    match set_thinking(&config, &agent, &body.level) {
+    match choose_thinking(&config, &agent, &body.level) {
         Ok(level) => Ok(web::ok(json!({"id": agent.name, "thinking": level}))),
         Err(exc) if exc.downcast_ref::<LookupError>().is_some() => {
             Err(HttpError::new(409, "this agent's model can't be switched from here"))
