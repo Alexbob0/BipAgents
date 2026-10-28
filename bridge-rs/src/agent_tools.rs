@@ -85,6 +85,8 @@ pub const KNOWLEDGE_SEARCH: &str = "knowledge_search";
 pub const PROPOSE_TASK: &str = "propose_task";
 pub const KNOWLEDGE_TOOLS: [&str; 2] = [KNOWLEDGE_READ, KNOWLEDGE_SEARCH];
 pub const PAGE_TOOLS: [&str; 4] = [CREATE_PAGE, LIST_PAGES, READ_PAGE, DELETE_PAGE];
+/// The tools that make files in the place: refused plainly when it is full (storage_watch.rs).
+pub const WRITING_TOOLS: [&str; 3] = [CREATE_AUDIO, CREATE_PODCAST, CREATE_PAGE];
 
 fn create_audio_tool() -> Value {
     json!({
@@ -264,6 +266,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.push(crate::routes::route_tool());
     tools.push(crate::maps::tool());
     tools.push(crate::dates::tool());
+    tools.push(crate::storage_watch::tool()); // the space a recurring production takes, and what to keep
     tools
 });
 
@@ -369,10 +372,18 @@ pub fn media_roots(config: &Config) -> IndexMap<String, String> {
     roots
 }
 
+/// The files sent to the phone from a space card (storage_watch.rs): documents too, until the person saved them.
+fn send_roots(config: &Config) -> IndexMap<String, String> {
+    let root = crate::storage_watch::send_root(config).to_string_lossy().into_owned();
+    IndexMap::from([(crate::storage_watch::SEND_PREFIX.to_string(), root)])
+}
+
 /// The host file of a `MEDIA:` path under `[media] roots` (media and documents) or the bridge's own folders (media
 /// only: a page's record and source beside it are never served).
 pub fn served_media(config: &Config, path: &str) -> Option<String> {
-    crate::media::resolve(path, &config.media_roots).or_else(|| crate::media::resolve_media(path, &media_roots(config)))
+    crate::media::resolve(path, &config.media_roots)
+        .or_else(|| crate::media::resolve_media(path, &media_roots(config)))
+        .or_else(|| crate::media::resolve(path, &send_roots(config)))
 }
 
 /// `tools_version()` of a tool list: the first 10 hex digits of the SHA-256 of `json.dumps(tools, sort_keys=True)`.
@@ -1031,6 +1042,7 @@ impl AudioMaker {
         let mut made = Dict::new();
         made.insert("path".into(), Value::String(format!("{MEDIA_PREFIX}/{}/{file}", agent.name)));
         made.insert("seconds".into(), json!(pcm.len() as f64 / 2.0 / OUTPUT_RATE as f64));
+        crate::storage_watch::mark_dirty(); // a big write: the place's space measured again soon
         Ok(made)
     }
 
@@ -1325,6 +1337,18 @@ pub async fn call_tool(
         return crate::notebook::fill::tool_call(jobs.as_ref(), agent).await;
     }
     let config = maker.config.get();
+    if WRITING_TOOLS.contains(&name) || name == crate::agent_files::TOOL_NAME {
+        // the place full, or this agent's work paused for space: said plainly, and a card for the person
+        let (c, agent_name) = (config.clone(), agent.name.clone());
+        let refused = tokio::task::spawn_blocking(move || crate::storage_watch::refuse_tool(&c, &agent_name)).await?;
+        if let Some(refused) = refused {
+            return Ok(refused);
+        }
+    }
+    if name == crate::storage_watch::TOOL_NAME {
+        let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
+        return blocking(move || Ok(crate::storage_watch::call(&c, &agent_name, &arguments))).await;
+    }
     if name == crate::archives::records_fill::TOOL {
         if !crate::archives::enabled(&config, &agent.name) {
             return Ok(tool_text("No archive is connected to you: the person adds one in your page of the app.", true));
@@ -1373,12 +1397,6 @@ the BipAgents app.",
         return blocking(move || page_tool(&config, &agent_c, &name_c, &arguments_c)).await;
     }
     if name == crate::agent_files::TOOL_NAME {
-        if crate::place_backup::refuse_when_full().await.is_err() {
-            return Ok(tk::tool_failure(
-                "This place has no room left for files.",
-                "There's no room left for files here: delete some in « Fichiers », or choose to keep them for less time.",
-            ));
-        }
         return blocking(move || Ok(crate::agent_files::call(&config, &agent_c, &arguments_c))).await;
     }
     if crate::archives::TOOL_NAMES.contains(&name) {

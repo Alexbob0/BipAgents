@@ -309,7 +309,12 @@ async fn read_form(request: Request) -> Result<Vec<(String, FormItem)>, FormErro
 /// sees it.
 pub async fn handle_upload(state: AppState, request: Request) -> ApiResult<Value> {
     let config = state.config();
-    crate::place_backup::refuse_when_full().await?; // an offer's place with its 5 GB used up
+    if let Err(full) = crate::place_backup::refuse_when_full().await {
+        // an offer's place with its 5 GB used up: refused, and a card for the person (storage_watch.rs)
+        let c = config.clone();
+        let _ = tokio::task::spawn_blocking(move || crate::storage_watch::upload_refused(&c, None)).await;
+        return Err(full);
+    }
     let form = match read_form(request).await {
         Ok(form) => form,
         Err(FormError::TooLarge(max)) => return Err(body_too_large(max)),

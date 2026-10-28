@@ -11,6 +11,9 @@ fn opt(v: &Value) -> Option<&str> {
 fn souls_match_python() {
     let cases: Vec<Value> = serde_json::from_str(include_str!("golden/souls.json")).unwrap();
     let mut failures = Vec::new();
+    // GOLDEN_SOULS_OUT=<file>: what the Rust gives for each case, to rewrite the golden after a deliberate change
+    // (scripts read it back: `json.dumps(cases, indent=1, ensure_ascii=False)`)
+    let mut gots = Vec::new();
     for (i, case) in cases.iter().enumerate() {
         let input = &case["input"];
         let got: Value = match case["fn"].as_str().unwrap() {
@@ -46,10 +49,15 @@ fn souls_match_python() {
             }
             other => panic!("unknown fn {other}"),
         };
+        gots.push(got.clone());
         if got != case["output"] {
             failures
                 .push(format!("case {i} {}({input}):\n  got      {got}\n  expected {}", case["fn"], case["output"]));
         }
+    }
+    if let Ok(out) = std::env::var("GOLDEN_SOULS_OUT") {
+        std::fs::write(out, serde_json::to_string(&gots).unwrap()).unwrap();
+        return;
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

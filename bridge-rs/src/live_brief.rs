@@ -881,7 +881,11 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
     let recap = blocking(move || {
         // The family news waiting for the agent (family_news.rs) joins the same message, the same way.
         let parts: Vec<String> =
-            [briefs.take_recap(&agent.name, &body.session), crate::family_news::take_notes(&config, &agent.name)]
+            [
+                briefs.take_recap(&agent.name, &body.session),
+                crate::family_news::take_notes(&config, &agent.name),
+                crate::storage_watch::take_note(&config, &agent.name), // the place's space (storage_watch.rs)
+            ]
                 .into_iter()
                 .flatten()
                 .collect();
