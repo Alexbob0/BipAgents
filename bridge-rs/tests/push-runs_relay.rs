@@ -177,8 +177,16 @@ async fn devices_registered_with_the_publishers_relay_go_through_it() {
                 headers: parts.headers,
                 body,
             });
-            let dead = data["token"].as_str().unwrap().ends_with("dead");
-            Json(json!({"status": if dead { 410 } else { 200 }, "reason": if dead { json!("Unregistered") } else { Value::Null }}))
+            let token = data["token"].as_str().unwrap();
+            // Apple's « gone », or the relay's own: a token past its 90 days
+            let reason = if token.ends_with("dead") {
+                json!("Unregistered")
+            } else if token.ends_with("ended") {
+                json!("ExpiredRelayToken")
+            } else {
+                Value::Null
+            };
+            Json(json!({"status": if reason.is_null() { 200 } else { 410 }, "reason": reason}))
         }
     })))
     .await;
@@ -188,10 +196,21 @@ async fn devices_registered_with_the_publishers_relay_go_through_it() {
     let services = app.app.state.clone();
     let (k, v) = auth();
     let h = [(k, v.as_str())];
-    let live = format!("r1.{}", "Ab_-".repeat(15));
-    let dead = format!("r1.{}dead", "x".repeat(56));
+    let live = format!("r2.{}", "Ab_-".repeat(15));
+    let dead = format!("r2.{}dead", "x".repeat(56));
+    let ended = format!("r2.{}ended", "y".repeat(56));
     assert_eq!(app.get("/health", &[]).await.json()["push_relay"], true);
-    for token in [&live, &dead] {
+    // A token of the relay's first format (no end): the relay refuses it, so this bridge does too.
+    let first = app
+        .send_json(
+            "POST",
+            "/v1/devices",
+            &h,
+            &json!({"token": format!("r1.{}", "A".repeat(60)), "environment": "relay"}),
+        )
+        .await;
+    assert_eq!(first.status, StatusCode::BAD_REQUEST);
+    for token in [&live, &dead, &ended] {
         let device = app
             .send_json(
                 "POST",
@@ -211,13 +230,15 @@ async fn devices_registered_with_the_publishers_relay_go_through_it() {
         let sent = sent.lock().unwrap();
         let mut tokens: Vec<String> = sent.iter().map(|r| r.json()["token"].as_str().unwrap().to_string()).collect();
         tokens.sort();
-        let mut expected = vec![live.clone(), dead.clone()];
+        let mut expected = vec![live.clone(), dead.clone(), ended.clone()];
         expected.sort();
         assert_eq!(tokens, expected);
         assert!(sent.iter().all(|r| r.path == "/v1/relay/push" && r.header("authorization").is_none()));
     }
-    // The relay said the second device is gone: forgotten here.
+    // The relay said the second device is gone, and the third's token ended: both forgotten here (the app registers
+    // again with a new token).
     assert!(services.store.get_device(&dead).await.unwrap().is_none());
+    assert!(services.store.get_device(&ended).await.unwrap().is_none());
     assert!(services.store.get_device(&live).await.unwrap().is_some());
     // The app takes it back: its relay token, as it is.
     assert_eq!(app.request("DELETE", &format!("/v1/devices/{live}"), &h, None).await.status, StatusCode::NO_CONTENT);

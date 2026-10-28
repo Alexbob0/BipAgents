@@ -26,9 +26,10 @@ use crate::push::Sender;
 use crate::web::{self, ApiResult, FieldError, HttpError, Json, Validate};
 
 pub static DEVICE_TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9a-f]{32,512}$").expect("valid regex"));
-/// A token from the publisher's push relay (relay/): kept as it is (case-sensitive).
+/// A token from the publisher's push relay (relay/): kept as it is (case-sensitive). `r2.` and later: the first format
+/// (`r1.`, without an end) is refused by the relay, so not taken here either (the app registers again).
 pub static RELAY_TOKEN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^r1\.[A-Za-z0-9_-]{40,8192}$").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"^r[2-9]\.[A-Za-z0-9_-]{40,8192}$").expect("valid regex"));
 /// APNs' own limit for an alert.
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 
