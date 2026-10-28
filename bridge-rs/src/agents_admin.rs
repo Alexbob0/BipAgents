@@ -2025,11 +2025,20 @@ async fn test_service(
 }
 
 /// Moves an agent of the shared hub into its own space (so it may hold credentials). Takes up to two minutes.
-async fn own_space(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
-    let agent = managed_or_404(&state, &agent_id)?;
+/// The agent out of the shared hub into its own space, its conversations, memory and files with it (the app's
+/// « Lui donner son propre espace », or the agent's own first secret, own_space.rs). `keep_hub`: the hub keeps
+/// serving its profile until `Spaces::forget_in_hub` (a turn going on there ends there).
+pub async fn move_into_space(state: &AppState, agent: &AgentConfig, keep_hub: bool) -> ApiResult<AgentConfig> {
     let _guard = LOCK.lock().await;
     let run = default_run();
-    let moved = match crate::spaces::Spaces::new(run.clone()).move_agent(&state.config(), &agent, &state.http).await {
+    let spaces = crate::spaces::Spaces::new(run.clone());
+    let config = state.config();
+    let moving = if keep_hub {
+        spaces.move_agent_keeping_hub(&config, agent, &state.http).await
+    } else {
+        spaces.move_agent(&config, agent, &state.http).await
+    };
+    let moved = match moving {
         Ok(moved) => moved,
         Err(exc) => {
             if let Some(e) = exc.downcast_ref::<crate::spaces::SpaceError>() {
@@ -2041,6 +2050,12 @@ async fn own_space(State(state): State<AppState>, UrlPath(agent_id): UrlPath<Str
     };
     save_agent(&state.config, &moved)?;
     give_tools(&state.config(), &moved, &run).await?; // its profile is a new one, in its space
+    Ok(moved)
+}
+
+async fn own_space(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
+    let agent = managed_or_404(&state, &agent_id)?;
+    let moved = move_into_space(&state, &agent, false).await?;
     let has_url = moved.public_url.as_deref().is_some_and(|u| !u.is_empty());
     Ok(web::ok(json!({"id": moved.name, "name": moved.display_name, "url": moved.public_url,
                       "key": if has_url { Some(moved.hermes_key.clone()) } else { None }, "isolated": true})))

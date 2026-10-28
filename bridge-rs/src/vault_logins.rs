@@ -129,9 +129,10 @@ pub fn tools_url(config: &Config) -> String {
     format!("{base}{PATH}?v={}", crate::agent_tools::version_of(&tools()))
 }
 
-/// Whether `agent` gets these tools: one that may hold credentials (its browser is checked at each call).
+/// Whether `agent` gets these tools: one that may hold credentials (its browser is checked at each call), or one of
+/// the shared hub, which moves into its own space at its first account (own_space.rs).
 pub fn offered(config: &Config, agent: &AgentConfig) -> bool {
-    crate::vault::holder(config, agent).is_none()
+    crate::vault::holder(config, agent).is_none() || crate::own_space::may_move(config, agent)
 }
 
 /// The agent's Hermes knows these tools (an entry next to `bipagents`, with its token). Returns whether its profile
@@ -475,7 +476,8 @@ fn arg(arguments: &Dict, key: &str) -> String {
     arguments.get(key).filter(|v| !v.is_null()).map(py::py_str).unwrap_or_default().trim().to_string()
 }
 
-const NO_VAULT: &str = "You can't keep passwords: the person moves you into your own space in the app first.";
+const NO_VAULT: &str = "You can't keep passwords here. Tell the person plainly, and never suggest another way to give \
+you a password.";
 const NO_BROWSER: &str = "Accounts are created in your own visible browser, and you have none.";
 const WAIT: &str = "The person is using your browser in the app right now: nothing was typed. Wait until they hand it \
 back, then call again.";
@@ -646,6 +648,15 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
         Ok(rules) => rules,
         Err(why) => return Ok(refusal(&format!("No password made: {why}. Nothing was asked or typed."))),
     };
+    // An agent of the shared hub: into its own space now, the account made there (own_space.rs).
+    let moved = match crate::own_space::ready(state, agent, &host).await {
+        Ok(moved) => moved,
+        Err(result) => return Ok(result),
+    };
+    let agent = &moved;
+    if crate::vault::holder(&state.config(), agent).is_some() {
+        return Ok(refusal(NO_VAULT));
+    }
     let _one_at_a_time = lock_of(&agent.name).lock_owned().await;
     if let Some(item) = state.vault.login_for(&origin, &username)? {
         if !(item.created_by.as_deref() == Some(agent.name.as_str()) && item.pending) {

@@ -318,12 +318,12 @@ def test_editing_the_secret_from_the_app_reopens_the_same_card(bridges, fakes):
     assert record["secret"]["value"] == OTHER and record["identifier"] == "new@example.org"
 
 
-def test_project_and_unisolated_agents_get_no_connector_tools(bridges, fakes):
+def test_a_hub_agent_gets_the_connector_tools_too(bridges, fakes):
     bridge, hub, _ = isolated(bridges, fakes, agents=("vie",))
-    bridge.start()   # vie may not hold credentials here (not isolated for the vault)
+    bridge.start()   # vie is in the shared hub: its first secret moves it into its own space (test_own_space.py)
     wait_registered(bridge, ["vie"])
     servers = yaml.safe_load((hub / "profiles" / "vie" / "config.yaml").read_text())["mcp_servers"]
-    assert "bipagents_connectors" not in servers
+    assert "bipagents_connectors" in servers
 
 
 # --- the egress proxy, run here as the bridge writes its policy ---------------------------------------------------------

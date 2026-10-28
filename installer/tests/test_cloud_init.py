@@ -408,7 +408,7 @@ def test_the_beat_says_what_each_place_s_bridge_files_say_of_it(tmp_path, monkey
     import os
     agent = _seat_agent()
     home = tmp_path / "bip"
-    assert agent.activity(str(home), now=1793000000) == {"busy": False}
+    assert agent.activity(str(home), now=1793000000) == {"busy": False, "own_spaces": 0}
     state = home / ".local" / "state" / "bipagents"
     state.mkdir(parents=True)
     (state / "busy").write_text("1793000000")
@@ -426,11 +426,17 @@ def test_the_beat_says_what_each_place_s_bridge_files_say_of_it(tmp_path, monkey
         (folder / "jobs.json").write_text(json.dumps(jobs))
     assert agent.activity(str(home), now=1793000000) == {
         "busy": True, "tz": "Europe/Paris", "last_active_at": "2026-10-26T04:46:40Z",
-        "next_routine_at": "2026-10-27T06:00:00Z"}
+        "next_routine_at": "2026-10-27T06:00:00Z", "own_spaces": 0}
     # a marker the bridge stopped refreshing (it stopped): not busy; a zone that is not one: left out
     (data / "time.json").write_text('{"time_zone": "", "device": "$(reboot)"}')
     assert agent.activity(str(home), now=1793000000 + 600) == {
-        "busy": False, "last_active_at": "2026-10-26T04:46:40Z", "next_routine_at": "2026-10-27T06:00:00Z"}
+        "busy": False, "last_active_at": "2026-10-26T04:46:40Z", "next_routine_at": "2026-10-27T06:00:00Z",
+        "own_spaces": 0}
+    # its agents in their own space (a folder with its profiles each; anything else isn't one)
+    for name in ("vie", "ghibli"):
+        (data / "spaces" / name / "profiles").mkdir(parents=True)
+    (data / "spaces" / "half-made").mkdir()
+    assert agent.activity(str(home), now=1793000000 + 600)["own_spaces"] == 2
     _places(agent, monkeypatch, {"bip": 1000})
     monkeypatch.setattr(agent.pwd, "getpwnam", lambda name: type("P", (), {"pw_dir": str(home)})()
                         if name == "bip" else (_ for _ in ()).throw(KeyError(name)))
