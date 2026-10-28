@@ -32,6 +32,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0008 time zone, routines, wall clock | applies | applies (`97a9ae8ee`, checked 2026-10-24) |
 | 0009 tool search: tools kept direct, skills by name | applies | `tool_search.py` applies; `prompt_builder.py` does not on `97a9ae8ee` (the skills index moved): redo at the next update |
 | 0010 empty replies: changed retries, tool calls written as text | applies | applies (`97a9ae8ee`, `patch --dry-run`, checked 2026-10-27) |
+| 0011 titles with GLM: thinking floored to low | applies | applies (`97a9ae8ee`, checked 2026-10-28) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -265,4 +266,24 @@ suffix names dropped) — 4 of them fail on the previous version of the patch. W
 
 **Bridge side.** The bridge keeps direct every tool an agent has been calling (tool_diet.rs), so the trigger should not
 come back; this patch is the net under it.
+
+## 0011 — conversation titles with GLM: never thinking « none »
+
+**Problem.** Hermes titles a conversation with one small call made with thinking off (`reasoning_config={"enabled":
+False}`, `agent/title_generator.py`). GLM through EUrouter accepts that request but answers with empty content, so
+every conversation of an offer agent (GLM-5.3 Flash) stayed untitled. Hermes already lifts thinking-off aux calls to
+`low` for routes that refuse the disable (`agent/auxiliary_reasoning_floor.py`), but it learns that from a 400, and GLM
+never sends one.
+
+**What the patch does.** `known_reasoning_floor` also floors up front a model whose name (last path segment) starts
+with `glm`: its thinking-off aux calls (the title, and any other aux lane that disables thinking through
+`_build_call_kwargs`) go out at `reasoning: low`. Other models are untouched; an enabled config (the agent's own
+level) is never changed. Hermes-side because the bridge doesn't make titles (it only reads them).
+
+**Files.** `agent/auxiliary_reasoning_floor.py`, `tests/agent/test_auxiliary_reasoning_floor.py` (1 new test).
+
+**Tests.** `tests/agent/test_auxiliary_reasoning_floor.py` and `tests/agent/test_title_generator.py`: 98 passed, 1
+failed with and without the patch (`test_marker_prefix_matches_gateway_constant`, Python 3.12 typing in the test
+environment). `git apply --check` passes on `517b5e10f` (no other patch touches these files) and on `97a9ae8ee`.
+Not yet run end to end against EUrouter.
 

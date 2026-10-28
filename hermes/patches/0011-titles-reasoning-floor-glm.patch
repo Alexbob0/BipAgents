@@ -1,0 +1,54 @@
+diff --git a/agent/auxiliary_reasoning_floor.py b/agent/auxiliary_reasoning_floor.py
+index 748003e179..3e5759c75d 100644
+--- a/agent/auxiliary_reasoning_floor.py
++++ b/agent/auxiliary_reasoning_floor.py
+@@ -30,6 +30,13 @@ _FLOORED_ROUTES: set[tuple[str, str]] = set()
+ _DISABLED_EFFORTS = {"none", "off", "disabled", "false", "0"}
+ 
+ 
++def _answers_empty_when_disabled(model: Optional[str]) -> bool:
++    """GLM (Z.ai) behind OpenAI-compatible relays (EUrouter) accepts a reasoning disable but answers with
++    empty content: no 400 to learn from, so titles stayed empty. Floored up front, by model name."""
++    name = str(model or "").strip().lower().rsplit("/", 1)[-1]
++    return name.startswith("glm")
++
++
+ def _route_key(provider: Optional[str], base_url: Optional[str]) -> str:
+     """Endpoint host:port when known (a base_url override turns a named provider into ``custom``), else
+     the provider name — the same key shape ``auxiliary_structured_output`` uses."""
+@@ -115,8 +122,10 @@ def known_reasoning_floor(
+     otherwise. Runs before the profile projection so every wire shape starts at the floor."""
+     if not _is_disabled(reasoning_config):
+         return reasoning_config
+-    if (_route_key(provider, base_url), str(model or "")) not in _FLOORED_ROUTES and not _catalog_marks_mandatory(
+-        provider, base_url, model,
++    if (
++        (_route_key(provider, base_url), str(model or "")) not in _FLOORED_ROUTES
++        and not _answers_empty_when_disabled(model)
++        and not _catalog_marks_mandatory(provider, base_url, model)
+     ):
+         return reasoning_config
+     logger.info(
+diff --git a/tests/agent/test_auxiliary_reasoning_floor.py b/tests/agent/test_auxiliary_reasoning_floor.py
+index 2eefef4a6c..b2021df121 100644
+--- a/tests/agent/test_auxiliary_reasoning_floor.py
++++ b/tests/agent/test_auxiliary_reasoning_floor.py
+@@ -74,3 +74,18 @@ def test_field_rejection_still_strips_instead_of_stepping_up():
+     retry = client.chat.completions.create.call_args_list[1].kwargs
+     assert "reasoning_effort" not in retry
+     assert not auxiliary_reasoning_floor._FLOORED_ROUTES
++
++
++def test_glm_is_floored_up_front_because_it_answers_empty_when_disabled():
++    """GLM through an OpenAI-compatible relay (EUrouter) accepts reasoning disabled but answers empty, so
++    titles stayed empty: its thinking-off aux calls go out at the floor before any request; other models
++    and an enabled config (the agent's own level) are left alone."""
++    disabled = {"enabled": False}
++    base = "https://api.eurouter.ai/v1"
++    for model in ("glm-5.3-flash", "z-ai/GLM-5.3", "zai-org/glm-4.6"):
++        assert auxiliary_reasoning_floor.known_reasoning_floor(disabled, "custom", base, model, "title_generation") == {
++            "enabled": True, "effort": auxiliary_reasoning_floor.REASONING_FLOOR_EFFORT,
++        }
++    assert auxiliary_reasoning_floor.known_reasoning_floor(disabled, "custom", base, "deepseek-v3.2") == disabled
++    own = {"enabled": True, "effort": "medium"}
++    assert auxiliary_reasoning_floor.known_reasoning_floor(own, "custom", base, "glm-5.3-flash") == own
