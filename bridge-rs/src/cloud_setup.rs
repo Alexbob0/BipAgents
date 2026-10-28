@@ -784,7 +784,8 @@ pub fn write_model_files(folder: &Path, model: &ModelChoice, order: &[String]) -
     }
     section.insert("supports_vision", Yaml::Bool(model.vision));
     data.insert("model", section);
-    if let Some(routed) = crate::model_route::with_routing(&data, order) {
+    let chosen = crate::agents_admin::chosen_thinking(folder);
+    if let Some(routed) = crate::model_route::with_routing(&data, order, chosen.as_deref()) {
         data = routed;
     }
     if path.exists() {

@@ -541,7 +541,9 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "model provider routing not set");
         false
     });
-    Ok(changed || paying || accounts || connecting || handing || link || diet || routed)
+    // The thinking level the person chose, or GLM's « low », after the `hermes config set` above (agents_admin.rs).
+    let thinking = crate::agents_admin::heal_thinking_of(config, agent);
+    Ok(changed || paying || accounts || connecting || handing || link || diet || routed || thinking)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).

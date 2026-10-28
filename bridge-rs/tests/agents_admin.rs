@@ -576,7 +576,7 @@ fn glm_through_eurouter_thinks_low_and_never_none() {
     assert_eq!(data["agent"], json!({"max_turns": 60, "reasoning_effort": "low"}));
     assert_eq!(data["providers"]["bipagents-route"]["extra_body"]["provider"]["allow_fallbacks"], true);
     // « none »: written « low », the person's choice kept for the app, no enable_thinking entry
-    assert_eq!(set_thinking(&c, &agent, "none").unwrap(), "none");
+    assert_eq!(agents_admin::choose_thinking(&c, &agent, "none").unwrap(), "none");
     let data = load(&path);
     assert_eq!(data["agent"]["reasoning_effort"], "low");
     assert!(data["providers"].get("bipagents-thinking").is_none());
@@ -588,13 +588,13 @@ fn glm_through_eurouter_thinks_low_and_never_none() {
         Some(json!({"reasoning": {"enabled": true, "effort": "medium"}}))
     );
     // a level the person picks: theirs, kept at start; tasks follow it from « medium » up
-    assert_eq!(set_thinking(&c, &agent, "medium").unwrap(), "medium");
+    assert_eq!(agents_admin::choose_thinking(&c, &agent, "medium").unwrap(), "medium");
     assert!(!mark.exists());
     heal_thinking(&c);
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
     assert_eq!(agents_admin::task_turn_options(&c, &agent), None);
     // switched to DeepSeek with « none » chosen: really off there (DeepSeek follows it), and back to GLM: « low »
-    set_thinking(&c, &agent, "none").unwrap();
+    agents_admin::choose_thinking(&c, &agent, "none").unwrap();
     set_model(&c, &agent, "deepseek/deepseek-v4.1-flash", None).unwrap();
     let data = load(&path);
     assert_eq!(data["agent"]["reasoning_effort"], "none");
@@ -607,6 +607,68 @@ fn glm_through_eurouter_thinks_low_and_never_none() {
     assert_eq!(data["agent"]["reasoning_effort"], "low");
     assert!(data["providers"].get("bipagents-thinking").is_none());
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none"));
+}
+
+/// Real-day bench 2026-10-28: Hermes' config template writes `reasoning_effort: medium` in every new profile, which
+/// the bridge took for the person's choice; and « Prof », set to « low » while a claim was still making it, was back
+/// to « medium » at task time (Hermes' own `config set` commands rewrite the file meanwhile).
+#[test]
+fn hermes_template_medium_is_no_choice_and_a_lost_choice_comes_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
+    let agent = hub_agent(&config);
+    let c = config.get();
+    let folder = profiles(dir.path()).join(&agent.name);
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("config.yaml");
+    let template = format!("{GLM_EU}  reasoning_effort: medium\n");
+    // a fresh profile (or an existing place, the migration): « low », shown and written
+    std::fs::write(&path, &template).unwrap();
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("low"));
+    assert!(agents_admin::heal_thinking_of(&c, &agent));
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "low");
+    assert!(!agents_admin::heal_thinking_of(&c, &agent)); // nothing more to do
+    // the person sets « low », then a rewrite brings the template back: put back, and at each start too
+    agents_admin::choose_thinking(&c, &agent, "low").unwrap();
+    assert_eq!(std::fs::read_to_string(folder.join(agents_admin::THINKING_CHOSEN_MARK)).unwrap().trim(), "low");
+    std::fs::write(&path, &template).unwrap();
+    assert!(agents_admin::heal_thinking_of(&c, &agent));
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "low");
+    // « medium » the person chose stays, and comes back after a rewrite to « low »; background tasks follow it
+    agents_admin::choose_thinking(&c, &agent, "medium").unwrap();
+    heal_thinking(&c);
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
+    std::fs::write(&path, format!("{GLM_EU}  reasoning_effort: low\n")).unwrap();
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("medium"));
+    heal_thinking(&c);
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
+    // the routing written again (each time the bridge gives the tools) keeps the person's level
+    std::fs::write(&path, &template.replace("medium", "low")).unwrap();
+    bipbridge::model_route::write(&path, &[]).unwrap();
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
+    // another model: the person's level put back too
+    std::fs::write(&path, "model:\n  provider: custom\n  default: local\n  base_url: http://gpu:8888/v1\n").unwrap();
+    agents_admin::choose_thinking(&c, &agent, "high").unwrap();
+    std::fs::write(&path, "model:\n  provider: custom\n  default: local\n  base_url: http://gpu:8888/v1\nagent:\n  reasoning_effort: medium\n").unwrap();
+    assert!(agents_admin::heal_thinking_of(&c, &agent));
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "high");
+}
+
+/// The offer (model fixed, nothing chosen): a claim's model files give GLM « low » in the hub every agent is cloned
+/// from and in the agent made before the claim.
+#[test]
+fn a_claims_model_files_give_glm_low_over_the_template() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("config.yaml"), "agent:\n  reasoning_effort: medium\n  max_turns: 60\n").unwrap();
+    let model = bipbridge::cloud_setup::ModelChoice {
+        provider: "custom".into(),
+        name: "glm-5.3-flash".into(),
+        base_url: Some("https://api.eurouter.ai/api/v1".into()),
+        key: "k".into(),
+        vision: true,
+    };
+    bipbridge::cloud_setup::write_model_files(dir.path(), &model, &[]).unwrap();
+    assert_eq!(load(&dir.path().join("config.yaml"))["agent"]["reasoning_effort"], "low");
 }
 
 #[test]
