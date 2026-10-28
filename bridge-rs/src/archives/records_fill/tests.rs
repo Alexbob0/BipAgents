@@ -337,3 +337,46 @@ async fn the_cap_stops_before_it_is_passed() {
     assert!(nightly_on(&config, &archive));
     assert_eq!(crate::jobs::task_view(&job)["kind"], json!(JOB_KIND));
 }
+
+#[test]
+fn documents_given_up_on_can_be_read_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("records.sqlite")).unwrap();
+    for _ in 0..MAX_TRIES {
+        store.mark("bad", "0:0", "h", 0, false).unwrap();
+    }
+    store.mark("good", "0:0", "h", 2, true).unwrap();
+    let seen = store.seen().unwrap();
+    assert!(skip(seen.get("bad"), "0:0") && skip(seen.get("good"), "0:0"));
+    assert_eq!(store.retry_given_up().unwrap(), 1);
+    let seen = store.seen().unwrap();
+    assert!(!skip(seen.get("bad"), "0:0"), "the given-up document is read again");
+    assert!(skip(seen.get("good"), "0:0"), "a document read well stays read");
+}
+
+#[test]
+fn the_full_pass_report_lists_what_it_found_under_its_totals() {
+    let archive = Archive { id: "mails".into(), agent: "vie".into(), name: "Mails".into(), ..Default::default() };
+    let example = |summary: &str, action: &'static str| Example {
+        kind: "purchase",
+        summary: summary.into(),
+        title: "Votre commande".into(),
+        date: "2024-05-02T10:00:00".into(),
+        reference: "vie/mails/0123456789abcdef".into(),
+        action,
+    };
+    let mut tally = Tally { sent: 12, planned: 40, ..Default::default() };
+    tally.added.insert("purchase", 13);
+    tally.examples = vec![example("Vélo électrique, 1 299 €", "new"), example("Déjà là", "same")];
+    tally.examples.extend((0..11).map(|i| example(&format!("Achat {i}"), "new")));
+    let text = plain_report(&tally, &archive, "fr");
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines[0].starts_with("13 fiches ajoutées depuis « Mails » : 13 achats."), "{text}");
+    assert_eq!(lines[1], "• Vélo électrique, 1 299 € (2024-05-02)");
+    assert!(!text.contains("Déjà là"));
+    assert_eq!(lines.len(), 1 + REPORT_LINES + 1, "{text}");
+    assert_eq!(*lines.last().unwrap(), "… et 3 autres dans tes Fiches.");
+    // nothing found: the totals alone
+    let empty = plain_report(&Tally::default(), &archive, "en");
+    assert_eq!(empty.lines().count(), 1, "{empty}");
+}

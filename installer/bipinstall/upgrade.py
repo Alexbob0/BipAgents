@@ -155,14 +155,26 @@ def installed_accounts() -> List[str]:
     return found
 
 
+def runs_bipagents(account: str) -> bool:
+    """Whether the account's install runs: its bridge or its Hermes gateway. An install that was stopped and left
+    there (aibox's old account after the move to one account per person, 2026-10-13) isn't updated: its Hermes would
+    be patched for nothing, and its stopped services started again."""
+    found = subprocess.run(["pgrep", "-u", account, "-f", "bipbridge|hermes.* gateway"], capture_output=True)
+    return found.returncode == 0
+
+
 def update_others(runner: hermes.Runner) -> None:
     """Each other install of the machine updated in its own account (`update --auto`), after one sudo password."""
     if subprocess.run(["sudo", "-v"]).returncode != 0:
         say(ui.fail("sudo refused: the other installs stay as they are."))
         return
     accounts = installed_accounts()
+    stopped = [account for account in accounts if not runs_bipagents(account)]
+    for account in stopped:
+        say(ui.note(f"{account}: its BipAgents isn't running, left as it is."))
+    accounts = [account for account in accounts if account not in stopped]
     if not accounts:
-        say(ui.note("No other BipAgents install on this machine."))
+        say(ui.note("No other BipAgents install running on this machine."))
         return
     for account in accounts:
         say(ui.bip("happy", f"{account}…"))
@@ -373,7 +385,9 @@ def main(argv: List[str]) -> int:
     elif touched("hermes/patches/") and config:
         # New Hermes fixes: on a Hermes that came with BipAgents, put on now (Hermes itself isn't updated); on the
         # person's own Hermes, theirs to choose.
-        if own_hermes() and Path(hermes.hermes_bin()).exists() and not runner.dry:
+        if platform.system() == "Linux" and not runs_bipagents(os.environ.get("USER", "")):
+            say(ui.note("BipAgents isn't running in this account: its Hermes is left as it is."))
+        elif own_hermes() and Path(hermes.hermes_bin()).exists() and not runner.dry:
             from . import update as hermes_update
             hermes_update.main(["--fixes-only", "--yes", "--config", str(config)])
         else:

@@ -11,6 +11,8 @@
 //! gives back the target's answer in the same call: the asker can answer its person in the same turn. Another
 //! household's agents are never reached here (family_news.rs stays the way there). During a relative's turn or in
 //! a shared conversation the tool is closed like the person's other data (agent_shares.rs `RELATIVE_TOOLS`).
+//! In the Bot Chat itself, where Hermes injects its own, Hermes patch 0012 takes this one out of the model's list
+//! (the bridge can't: Hermes lists an MCP server's tools once, with nothing about the session).
 //!
 //! No Python counterpart.
 

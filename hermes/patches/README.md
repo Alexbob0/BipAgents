@@ -32,6 +32,8 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0008 time zone, routines, wall clock | applies | applies (`97a9ae8ee`, checked 2026-10-24) |
 | 0009 tool search: tools kept direct, skills by name | applies | `tool_search.py` applies; `prompt_builder.py` does not on `97a9ae8ee` (the skills index moved): redo at the next update |
 | 0010 empty replies: changed retries, tool calls written as text | applies | applies (`97a9ae8ee`, `patch --dry-run`, checked 2026-10-27) |
+| 0011 titles with GLM: thinking floored to low | applies | applies (`97a9ae8ee`, checked 2026-10-28) |
+| 0012 Bot Chat: one `message_agent` | applies (after 0006) | not checked yet |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -265,4 +267,45 @@ suffix names dropped) — 4 of them fail on the previous version of the patch. W
 
 **Bridge side.** The bridge keeps direct every tool an agent has been calling (tool_diet.rs), so the trigger should not
 come back; this patch is the net under it.
+
+## 0011 — conversation titles with GLM: never thinking « none »
+
+**Problem.** Hermes titles a conversation with one small call made with thinking off (`reasoning_config={"enabled":
+False}`, `agent/title_generator.py`). GLM through EUrouter accepts that request but answers with empty content, so
+every conversation of an offer agent (GLM-5.3 Flash) stayed untitled. Hermes already lifts thinking-off aux calls to
+`low` for routes that refuse the disable (`agent/auxiliary_reasoning_floor.py`), but it learns that from a 400, and GLM
+never sends one.
+
+**What the patch does.** `known_reasoning_floor` also floors up front a model whose name (last path segment) starts
+with `glm`: its thinking-off aux calls (the title, and any other aux lane that disables thinking through
+`_build_call_kwargs`) go out at `reasoning: low`. Other models are untouched; an enabled config (the agent's own
+level) is never changed. Hermes-side because the bridge doesn't make titles (it only reads them).
+
+**Files.** `agent/auxiliary_reasoning_floor.py`, `tests/agent/test_auxiliary_reasoning_floor.py` (1 new test).
+
+**Tests.** `tests/agent/test_auxiliary_reasoning_floor.py` and `tests/agent/test_title_generator.py`: 98 passed, 1
+failed with and without the patch (`test_marker_prefix_matches_gateway_constant`, Python 3.12 typing in the test
+environment). `git apply --check` passes on `517b5e10f` (no other patch touches these files) and on `97a9ae8ee`.
+Not yet run end to end against EUrouter.
+
+## 0012 — the Bot Chat shows one `message_agent`
+
+**Problem.** Since 2026-10-28 the bridge offers its own `message_agent` (`mcp__bipagents__message_agent`,
+bridge-rs/src/agent_messages.rs) to an agent linked to another one, kept direct by the token diet, because Hermes'
+built-in reaches only the agent's « Bot Chat ». In that Bot Chat the model then saw both. The bridge can't hide its
+tool there: Hermes lists an MCP server's tools once per connection, with nothing about the session.
+
+**What the patch does.** Where the built-in is injected (`ensure_message_agent_tool`, once per turn, and
+`_reinject_authorized_dynamic_tools` on an MCP rebuild), any MCP tool named `mcp__<server>__message_agent` leaves the
+tool list and `valid_tool_names`: one way to write to an agent in the Bot Chat (the built-in, with the peer routes),
+the bridge's everywhere else. Deterministic for the session, so the prompt cache holds. A tool behind the tool search
+is not touched (the diet keeps this one direct).
+
+**Files.** `tools/bot_mode_dm.py`, `tools/mcp_tool_agent.py`; new `tests/tools/test_bot_mode_dm_one_message_agent.py`
+(4 tests). Applies after 0006 (same file).
+
+**Tests.** The new file, `tests/tools/test_bot_mode_dm.py`, `test_bot_mode_dm_sync_peer.py`, `test_bot_relay.py`,
+`test_refresh_agent_mcp_tools.py`, `test_bot_mode_probe.py`, `test_bot_mode_dm_entry.py`: 167 passed, 3 skipped
+(Python 3.12). The series 0001…0012 applies in order on `517b5e10f`. The bridge's side is unchanged (its black-box
+`test_agent_messages.py` still covers the tool's name and its direct entry).
 
