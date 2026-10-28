@@ -836,6 +836,7 @@ impl SharedConfig {
         let mut next = (*self.current.load_full()).clone();
         let out = change(&mut next);
         self.current.store(Arc::new(next));
+        crate::mcp_sessions::poke(); // an agent's tools may have changed: its open MCP streams check now
         out
     }
 

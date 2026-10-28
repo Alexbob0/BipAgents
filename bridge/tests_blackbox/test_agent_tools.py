@@ -40,7 +40,7 @@ def test_the_protocol_and_the_tokens(bridge):
     init = rpc(bridge, "initialize", {"protocolVersion": "2025-06-18"}).json()
     assert init["jsonrpc"] == "2.0" and init["id"] == 1
     result = init["result"]
-    assert result["protocolVersion"] == "2025-06-18" and result["capabilities"] == {"tools": {"listChanged": False}}
+    assert result["protocolVersion"] == "2025-06-18" and result["capabilities"] == {"tools": {"listChanged": True}}
     assert result["serverInfo"]["name"] == "bipagents" and result["instructions"].startswith("BipAgents: create_audio")
     assert rpc(bridge, "initialize").json()["result"]["protocolVersion"] == "2025-06-18"   # the default
     notified = rpc(bridge, "notifications/initialized", request_id=None)

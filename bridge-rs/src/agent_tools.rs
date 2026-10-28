@@ -437,6 +437,15 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     tools
 }
 
+/// The agents whose tools now differ from what their latest MCP session listed, each with since when (Unix time):
+/// their Hermes hasn't fetched the new list yet (mcp_sessions.rs). An agent with no session isn't stale.
+pub fn stale_agents(config: &Config) -> Vec<(String, f64)> {
+    crate::mcp_sessions::SESSIONS.stale(
+        |name| config.agent(Some(name)).map(|agent| version_of(&tools_for(config, agent))),
+        py::time_time(),
+    )
+}
+
 /// Whether `agent` reads a calendar: the phone's, or one of its mailboxes' (caldav.rs).
 pub fn calendar_on(config: &Config, agent: &str) -> bool {
     crate::calendar::enabled(config, agent) || crate::caldav::shared_with(config, agent)
@@ -503,6 +512,7 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// hand are left as they are. Returns whether the profile was changed (a new conversation picks it up). Err: a
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
+    crate::mcp_sessions::poke(); // its tools may have changed: its open MCP streams check now (mcp_sessions.rs)
     crate::notebook::sync_soul(config, agent);
     crate::archives::sync_soul(config, agent);
     crate::souls::sync_payments(config, agent);
@@ -1610,7 +1620,35 @@ line MEDIA:/envoi/<name>. mail_search, mail_read, mail_attachment and mail_draft
 mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
 another of your person's agents (it can't see your files); message_agent asks one of them and brings back its answer.";
 
-async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
+/// The `Mcp-Session-Id` the client sent.
+fn session_header(headers: &HeaderMap) -> Option<String> {
+    headers.get("mcp-session-id").and_then(|v| v.to_str().ok()).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string)
+}
+
+/// The `v=` of the query (the tools' version when the agent's entry was written: `url_with`).
+fn version_in(query: Option<&str>) -> Option<String> {
+    query?.split('&').find_map(|pair| pair.strip_prefix("v=")).map(str::to_string)
+}
+
+/// The session the request names, checked against its agent: Err(404) when it is another agent's.
+fn session_of(headers: &HeaderMap, query: Option<&str>, agent: &str) -> ApiResult<Option<String>> {
+    let Some(id) = session_header(headers) else { return Ok(None) };
+    match crate::mcp_sessions::SESSIONS.check(&id, agent, version_in(query).as_deref()) {
+        crate::mcp_sessions::Known::Other => Err(crate::web::HttpError::new(404, "unknown session")),
+        crate::mcp_sessions::Known::Adopted => {
+            tracing::info!(agent = %agent, "an MCP session from before this bridge started taken on");
+            Ok(Some(id))
+        }
+        crate::mcp_sessions::Known::Yes => Ok(Some(id)),
+    }
+}
+
+async fn mcp(
+    State(state): State<AppState>,
+    uri: axum::http::Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> ApiResult<Response> {
     let agent = agent_of(&state, &headers)?;
     let Ok(message) = serde_json::from_slice::<Value>(&body) else {
         return Ok(crate::web::json_response(400, &rpc_error(&Value::Null, -32700, "parse error")));
@@ -1632,6 +1670,7 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         return Ok(empty(202));
     }
     let method_name = method.as_str().unwrap_or("");
+    let session = if method_name == "initialize" { None } else { session_of(&headers, uri.query(), &agent.name)? };
     if method_name == "initialize" {
         let version = match params.get("protocolVersion") {
             Some(v) if py::truthy(v) => py::py_str(v),
@@ -1639,20 +1678,27 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         };
         let result = json!({
             "protocolVersion": version,
-            "capabilities": {"tools": {"listChanged": false}},
+            // the tools it is given change while it runs: told on its session's stream (mcp_sessions.rs)
+            "capabilities": {"tools": {"listChanged": true}},
             "serverInfo": {"name": SERVER_NAME, "version": crate::VERSION},
             "instructions": INSTRUCTIONS,
         });
-        return Ok(crate::web::json_response(200, &rpc_result(&request_id, result)));
+        let mut response = crate::web::json_response(200, &rpc_result(&request_id, result));
+        let id = crate::mcp_sessions::SESSIONS.open(&agent.name);
+        if let Ok(value) = HeaderValue::from_str(&id) {
+            response.headers_mut().insert("mcp-session-id", value);
+        }
+        return Ok(response);
     }
     if method_name == "ping" {
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, json!({}))));
     }
     if method_name == "tools/list" {
-        return Ok(crate::web::json_response(
-            200,
-            &rpc_result(&request_id, json!({"tools": tools_for(&state.config(), &agent)})),
-        ));
+        let tools = tools_for(&state.config(), &agent);
+        if let Some(id) = session.as_deref() {
+            crate::mcp_sessions::SESSIONS.listed(id, &version_of(&tools));
+        }
+        return Ok(crate::web::json_response(200, &rpc_result(&request_id, json!({"tools": tools}))));
     }
     if method_name != "tools/call" {
         let shown = if method.is_null() { "None".to_string() } else { py::py_str(&method) };
@@ -1733,6 +1779,7 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
     }
+    let agent_name = agent.name.clone();
     let jobs = crate::jobs::jobs_of(&state);
     let push = state.push.clone();
     let maker = state.audio_maker.clone();
@@ -1752,6 +1799,7 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
     }
     let guard = AbortOnDrop(work.abort_handle());
+    let tools_of = (state.clone(), agent_name.clone());
     let events = async_stream::stream! {
         let _guard = guard;
         let mut work = work;
@@ -1759,6 +1807,17 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
             match tokio::time::timeout(Duration::from_secs_f64(KEEPALIVE_SECONDS), &mut work).await {
                 Err(_) => yield Ok::<Bytes, Infallible>(Bytes::from_static(b": reading aloud\n\n")),
                 Ok(Ok(Ok(result))) => {
+                    // its tools changed and its session's stream may be closed: told here too, before the result
+                    if let Some(id) = session.as_deref() {
+                        let (state, name) = &tools_of;
+                        let config = state.config();
+                        if let Some(agent) = config.agent(Some(name)) {
+                            if crate::mcp_sessions::SESSIONS.due(id, &crate::mcp_sessions::fingerprint(&config, agent)) {
+                                tracing::info!(agent = %name, "tools changed: told with a call's result");
+                                yield Ok(Bytes::from(format!("event: message\ndata: {}\n\n", crate::mcp_sessions::LIST_CHANGED)));
+                            }
+                        }
+                    }
                     let payload = py::dumps(&rpc_result(&request_id, Value::Object(result)));
                     yield Ok(Bytes::from(format!("event: message\ndata: {payload}\n\n")));
                     break;
@@ -1780,21 +1839,56 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
     Ok(response)
 }
 
-async fn no_stream(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
-    agent_of(&state, &headers)?;
-    let mut response = empty(405); // no server-initiated stream
-    response.headers_mut().insert("allow", HeaderValue::from_static("POST"));
+/// GET: the session's server stream, where `notifications/tools/list_changed` goes when the agent's tools change
+/// (mcp_sessions.rs). Without a session (a client that never got one): no stream, as before.
+async fn server_stream(State(state): State<AppState>, uri: axum::http::Uri, headers: HeaderMap) -> ApiResult<Response> {
+    let agent = agent_of(&state, &headers)?;
+    let Some(id) = session_of(&headers, uri.query(), &agent.name)? else {
+        let mut response = empty(405); // no server-initiated stream
+        response.headers_mut().insert("allow", HeaderValue::from_static("POST"));
+        return Ok(response);
+    };
+    let sessions = &crate::mcp_sessions::SESSIONS;
+    let Some(number) = sessions.new_stream(&id) else { return Err(crate::web::HttpError::new(404, "unknown session")) };
+    let name = agent.name;
+    let events = async_stream::stream! {
+        let mut quiet_since = Instant::now();
+        loop {
+            if !sessions.serves(&id, number) {
+                break; // ended (DELETE), or a newer stream of the session took over
+            }
+            let config = state.config();
+            let Some(agent) = config.agent(Some(&name)).cloned() else { break };
+            if sessions.due(&id, &crate::mcp_sessions::fingerprint(&config, &agent)) {
+                tracing::info!(agent = %name, "tools changed: told on its MCP stream");
+                yield Ok::<Bytes, Infallible>(Bytes::from(format!("event: message\ndata: {}\n\n", crate::mcp_sessions::LIST_CHANGED)));
+                quiet_since = Instant::now();
+            } else if quiet_since.elapsed().as_secs_f64() >= crate::mcp_sessions::KEEPALIVE_SECONDS {
+                yield Ok(Bytes::from_static(b": keepalive\n\n"));
+                quiet_since = Instant::now();
+            }
+            drop(config);
+            sessions.wait(crate::mcp_sessions::CHECK_SECONDS).await;
+        }
+    };
+    let mut response = Response::new(Body::from_stream(events));
+    response.headers_mut().insert("content-type", HeaderValue::from_static("text/event-stream; charset=utf-8"));
+    response.headers_mut().insert("cache-control", HeaderValue::from_static("no-cache"));
     Ok(response)
 }
 
+/// DELETE: the session ends (its stream with it).
 async fn end_session(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
-    agent_of(&state, &headers)?;
+    let agent = agent_of(&state, &headers)?;
+    if let Some(id) = session_header(&headers) {
+        crate::mcp_sessions::SESSIONS.end(&id, &agent.name);
+    }
     Ok(empty(200))
 }
 
 /// `agent_tools_router()`: the agents' MCP tools, each agent with its own token. Mounted at the root.
 pub fn router() -> Router<AppState> {
-    Router::new().route(PATH, post(mcp).get(no_stream).delete(end_session))
+    Router::new().route(PATH, post(mcp).get(server_stream).delete(end_session))
 }
 
 #[cfg(test)]

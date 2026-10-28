@@ -1040,6 +1040,7 @@ async fn add(
         .map_err(anyhow::Error::from)??;
     }
     tracing::info!(provider = %body.provider, agents = agents_len(&account), "mailbox added");
+    crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
     Ok(web::json_response(201, &Value::Object(public(&account))))
 }
 
@@ -1110,6 +1111,7 @@ async fn change(
     }
     let account = found[index].clone();
     tokio::task::spawn_blocking(move || store.write(&found)).await.map_err(anyhow::Error::from)??;
+    crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
     // Its agents' tools: the calendar's listed or not (a changed entry makes their Hermes fetch the list again).
     let calendar_after = account.contains_key("calendar");
     if calendar_before || calendar_after {
@@ -1144,6 +1146,7 @@ async fn remove(State(state): State<AppState>, UrlPath(account_id): UrlPath<Stri
         return Err(HttpError::new(404, "no such mailbox"));
     }
     tokio::task::spawn_blocking(move || store.write(&kept)).await.map_err(anyhow::Error::from)??;
+    crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
     Ok(web::ok(json!({"ok": true})))
 }
 
