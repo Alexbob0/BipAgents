@@ -1754,13 +1754,14 @@ touche « Démarrer » pour reprendre."
         if event.data.contains_key("bip_summary") {
             return event;
         }
-        let lang = match &self.config {
+        // a script « dans son espace » only when the agent's programs really run in its sandbox (audit #14)
+        let (lang, isolated) = match &self.config {
             Some(shared) => {
                 let config = shared.get();
                 let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
-                crate::handback::language_of(&config, &agent)
+                (crate::handback::language_of(&config, &agent), crate::sandbox::isolates(&config, &agent))
             }
-            None => "en".to_string(),
+            None => ("en".to_string(), false),
         };
         let last = st.backlog.iter().rev().find(|e| e.r#type == "tool.started").map(|e| {
             let text = |key: &str| e.data.get(key).and_then(Value::as_str).unwrap_or("").to_string();
@@ -1768,7 +1769,7 @@ touche « Démarrer » pour reprendre."
             crate::approval_text::LastTool { name: if tool.is_empty() { text("name") } else { tool }, preview: text("preview") }
         });
         let name = if sub.agent.display_name.trim().is_empty() { &sub.agent.name } else { &sub.agent.display_name };
-        let Some(described) = crate::approval_text::describe(name, &lang, &event.data, last.as_ref()) else { return event };
+        let Some(described) = crate::approval_text::describe(name, &lang, &event.data, last.as_ref(), isolated) else { return event };
         let mut data = event.data;
         data.insert("bip_summary".into(), json!(described.summary));
         if let Some(detail) = described.detail {
