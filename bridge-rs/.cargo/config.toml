@@ -1,0 +1,4 @@
+# At most 4 compile jobs at once: on a 16 GB Mac, ten parallel rustc/link jobs of the test binaries filled RAM and
+# swap (2026-10-28). CI runners have fewer cores and are unaffected.
+[build]
+jobs = 4

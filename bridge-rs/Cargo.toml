@@ -102,6 +102,11 @@ rsa = { version = "0.9", features = ["pem"] }
 tempfile = "3"
 
 # The tests make an RSA key at each run: its maths optimised even in debug builds.
+# Debug builds and tests keep line numbers only: full debug info made each of the 66 test binaries' compile and link
+# take ~4–5 GB at once, ten in parallel (the Mac ran out of memory on 2026-10-28), and the target grew to 51 GB.
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
 
