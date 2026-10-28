@@ -26,10 +26,29 @@ use crate::push::Sender;
 use crate::web::{self, ApiResult, FieldError, HttpError, Json, Validate};
 
 pub static DEVICE_TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9a-f]{32,512}$").expect("valid regex"));
-/// A token from the publisher's push relay (relay/): kept as it is (case-sensitive). `r2.` and later: the first format
-/// (`r1.`, without an end) is refused by the relay, so not taken here either (the app registers again).
+/// A token from the publisher's push relay (relay/): kept as it is (case-sensitive). `r2.` and later end after 90
+/// days; the first format (`r1.`, without an end) is taken only until [`R1_UNTIL`], see [`relay_token_taken`].
 pub static RELAY_TOKEN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^r[2-9]\.[A-Za-z0-9_-]{40,8192}$").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"^r[1-9]\.[A-Za-z0-9_-]{40,8192}$").expect("valid regex"));
+/// The end of the transition from the relay's first token format: 2026-12-15, 00:00 UTC (the relay's
+/// `RELAY_R1_UNTIL` default). Until then apps from before 2026-10-28 keep giving `r1.` tokens, which are taken and
+/// used, and the bridge asks the app for a new one (`renew`); after it the relay answers 410 for them anyway.
+pub const R1_UNTIL: u64 = 1_797_292_800;
+
+/// Whether a relay token is of the first format.
+pub fn is_first_format(token: &str) -> bool {
+    token.starts_with("r1.")
+}
+
+/// Whether this bridge takes a relay token at `now` (Unix seconds).
+pub fn relay_token_taken(token: &str, now: u64) -> bool {
+    RELAY_TOKEN.is_match(token) && (!is_first_format(token) || now < R1_UNTIL)
+}
+
+/// Now, in Unix seconds.
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
 /// APNs' own limit for an alert.
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 
@@ -234,4 +253,22 @@ async fn relay_push(
     let result = sender.try_send(&token, &payload, &options).await?;
     tracing::info!(client = %client, token = %redact6(&token), status = result.status, "relayed push");
     Ok(web::ok(json!({"status": result.status, "reason": result.reason, "apns_id": result.apns_id})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_format_relay_tokens_are_taken_until_the_end_of_the_transition() {
+        let (r1, r2) = (format!("r1.{}", "A".repeat(60)), format!("r2.{}", "A".repeat(60)));
+        for now in [R1_UNTIL - 1, R1_UNTIL, R1_UNTIL + 86_400] {
+            assert!(relay_token_taken(&r2, now));
+        }
+        assert!(relay_token_taken(&r1, R1_UNTIL - 1));
+        assert!(!relay_token_taken(&r1, R1_UNTIL));
+        assert!(!relay_token_taken("r1.short", R1_UNTIL - 1));
+        assert!(!relay_token_taken(&"ab".repeat(32), R1_UNTIL - 1));
+        assert!(is_first_format(&r1) && !is_first_format(&r2));
+    }
 }

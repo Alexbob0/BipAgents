@@ -200,16 +200,19 @@ async fn devices_registered_with_the_publishers_relay_go_through_it() {
     let dead = format!("r2.{}dead", "x".repeat(56));
     let ended = format!("r2.{}ended", "y".repeat(56));
     assert_eq!(app.get("/health", &[]).await.json()["push_relay"], true);
-    // A token of the relay's first format (no end): the relay refuses it, so this bridge does too.
-    let first = app
+    // A token of the relay's first format (an app from before 2026-10-28): taken and used until the transition's end
+    // (2026-12-15, after which bipbridge::relay::relay_token_taken refuses it), and the app is asked for a new one.
+    let first = format!("r1.{}", "A".repeat(60));
+    let device = app
         .send_json(
             "POST",
             "/v1/devices",
             &h,
-            &json!({"token": format!("r1.{}", "A".repeat(60)), "environment": "relay"}),
+            &json!({"token": first, "environment": "relay", "agent_ids": ["wellness"]}),
         )
         .await;
-    assert_eq!(first.status, StatusCode::BAD_REQUEST);
+    assert_eq!(device.status, StatusCode::OK);
+    assert_eq!(device.json()["renew"], true);
     for token in [&live, &dead, &ended] {
         let device = app
             .send_json(
@@ -222,15 +225,16 @@ async fn devices_registered_with_the_publishers_relay_go_through_it() {
             .json();
         assert_eq!(device["token"], json!(token)); // kept as is: case-sensitive
         assert_eq!(device["environment"], "relay");
+        assert!(device.get("renew").is_none());
     }
     let resp = app.send_json("POST", "/v1/devices", &h, &json!({"token": token(), "environment": "relay"})).await;
     assert_eq!(resp.status, StatusCode::BAD_REQUEST);
-    assert_eq!(services.push.notify_message("wellness", "out-1", "Le texte du message", None, None).await, 1);
+    assert_eq!(services.push.notify_message("wellness", "out-1", "Le texte du message", None, None).await, 2); // delivered: the r1 one and the live one
     {
         let sent = sent.lock().unwrap();
         let mut tokens: Vec<String> = sent.iter().map(|r| r.json()["token"].as_str().unwrap().to_string()).collect();
         tokens.sort();
-        let mut expected = vec![live.clone(), dead.clone(), ended.clone()];
+        let mut expected = vec![first.clone(), live.clone(), dead.clone(), ended.clone()];
         expected.sort();
         assert_eq!(tokens, expected);
         assert!(sent.iter().all(|r| r.path == "/v1/relay/push" && r.header("authorization").is_none()));

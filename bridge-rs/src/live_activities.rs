@@ -668,7 +668,7 @@ async fn register(State(state): State<AppState>, Json(body): Json<LiveRequest>) 
             if state.push_service.is_none() {
                 return Err(HttpError::new(409, "this bridge has no push relay set up"));
             }
-            if !crate::relay::RELAY_TOKEN.is_match(&token) {
+            if !crate::relay::relay_token_taken(&token, crate::relay::unix_now()) {
                 return Err(HttpError::new(400, "invalid relay token"));
             }
         }

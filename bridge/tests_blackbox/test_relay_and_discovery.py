@@ -163,8 +163,10 @@ def test_devices_registered_with_the_publishers_relay_go_through_it(bridges, fak
         assert device["token"] == token and device["environment"] == "relay"   # kept as is: case-sensitive
     bad = bridge.post("/v1/devices", json={"token": TOKEN, "environment": "relay"}, headers=AUTH)
     assert bad.status_code == 400 and bad.json() == {"detail": "invalid relay token"}
+    # An app from before 2026-10-28 (the relay's first format): taken until 2026-12-15, and asked for a new token.
     old = bridge.post("/v1/devices", json={"token": "r1." + "A" * 60, "environment": "relay"}, headers=AUTH)
-    assert old.status_code == 400   # the relay's old unexpiring tokens are refused (audit 2026-10-27, 20)
+    assert old.status_code == 200 and old.json()["renew"] is True
+    assert bridge.delete("/v1/devices/r1." + "A" * 60, headers=AUTH).status_code == 204
     # A message for the agent: both devices are sent it through the publisher's relay.
     bridge.stop()
     ntfy_message(fakes, "out-1")
