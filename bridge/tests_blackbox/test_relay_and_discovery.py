@@ -154,7 +154,7 @@ def test_status_with_a_model_that_answers(bridges, fakes):
 
 def test_devices_registered_with_the_publishers_relay_go_through_it(bridges, fakes):
     bridge = bridges.new(change=lambda c: c.update(push={"service_url": fakes.push_service.url + "/"}))
-    live, dead = "r1." + "Ab_-" * 15, "r1." + "x" * 56 + "dead"
+    live, dead = "r2." + "Ab_-" * 15, "r2." + "x" * 56 + "dead"
     bridge.start()
     assert bridge.get("/health").json()["push_relay"] is True
     for token in (live, dead):
@@ -163,6 +163,8 @@ def test_devices_registered_with_the_publishers_relay_go_through_it(bridges, fak
         assert device["token"] == token and device["environment"] == "relay"   # kept as is: case-sensitive
     bad = bridge.post("/v1/devices", json={"token": TOKEN, "environment": "relay"}, headers=AUTH)
     assert bad.status_code == 400 and bad.json() == {"detail": "invalid relay token"}
+    old = bridge.post("/v1/devices", json={"token": "r1." + "A" * 60, "environment": "relay"}, headers=AUTH)
+    assert old.status_code == 400   # the relay's old unexpiring tokens are refused (audit 2026-10-27, 20)
     # A message for the agent: both devices are sent it through the publisher's relay.
     bridge.stop()
     ntfy_message(fakes, "out-1")
@@ -183,7 +185,7 @@ def test_devices_registered_with_the_publishers_relay_go_through_it(bridges, fak
 
 def test_a_bridge_without_the_relay_refuses_relay_tokens(bridge):
     assert bridge.get("/health").json()["push_relay"] is False
-    response = bridge.post("/v1/devices", json={"token": "r1." + "A" * 60, "environment": "relay"}, headers=AUTH)
+    response = bridge.post("/v1/devices", json={"token": "r2." + "A" * 60, "environment": "relay"}, headers=AUTH)
     assert response.status_code == 409 and response.json() == {"detail": "this bridge has no push relay set up"}
 
 
