@@ -2,7 +2,7 @@ English · [Français](acceptable-use.fr.md) · [Deutsch](acceptable-use.de.md) 
 
 # Acceptable use policy of the all-included offer
 
-> Last updated: 24 October 2026.
+> Last updated: 28 October 2026.
 
 ## 1. What it is for
 
@@ -22,6 +22,9 @@ You agree not to use your place, your agents or your AI credit, nor let anyone d
 - **attacks and scanning**: scanning ports or looking for flaws on systems that are not yours, denial-of-service
   attacks, password guessing in bulk, exploiting flaws, networks of hijacked machines, phishing pages, hosting or
   spreading malware;
+- **piracy**: downloading or sharing films, series, music, books or software you have no right to, or installing a
+  BitTorrent client to do so. The offer's servers refuse known piracy sites and BitTorrent trackers and limit what each
+  agent downloads per day;
 - **cryptocurrency mining**, or any use designed to hog the server's processor, memory, disk or network;
 - **content illegal towards minors**: any child sexual abuse material or sexual content involving a minor, and any
   pornographic or violent content made accessible to a minor (articles 227-23 and 227-24 of the French Criminal Code);

@@ -3,17 +3,23 @@
 shared folders in podman volumes of their own (shares.rs) and through the file tools (`/v1/agent-tools/files`) with
 their permission checks, the registries-only network, and the way back (`isolate = "off"`). podman is the fake one:
 its volumes are folders of the test."""
+import base64
 import hashlib
 import ipaddress
 import json
 import os
+import socket
+import subprocess
+import sys
+import threading
 import time
 import tomllib
+from pathlib import Path
 
 import yaml
 
 from bbkit.common import AUTH
-from bbkit.servers import wait_until
+from bbkit.servers import free_port, wait_until
 from conftest import managed_install, profile, wait_registered
 
 FILES_PATH = "/v1/agent-tools/files"
@@ -135,8 +141,14 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert vie["docker_env"]["npm_config_https_proxy"] == proxy
     assert oct(os.stat(bridge.state_dir / "sandbox-sites.json").st_mode & 0o777) == "0o600"
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
-    # « Tous les sites » on by default: vie holds nothing private (no vault item, mailbox, health data, money)
-    assert policy["agents"]["vie"] == {"key": hashlib.sha256(token.encode()).hexdigest(), "hosts": [], "any": True}
+    # reading open to every agent, sending guarded: no site validated yet, the guard's limits; a self-install has
+    # neither the download cap nor the connections' limit, nor a share of the processors
+    assert policy["agents"]["vie"] == {"key": hashlib.sha256(token.encode()).hexdigest(), "hosts": []}
+    assert policy["limits"] == {"send_site_hour": 65536, "send_day": 262144, "download_day": 0,
+                                "connections_minute": 0}
+    assert policy["browsers"] == {}
+    assert not any(a.startswith("--cpus") for a in vie["docker_extra_args"])
+    assert not (bridge.state_dir / "sandbox-proxy" / "policy" / "blocklist.txt").exists()
     assert token not in json.dumps(policy) and token not in bridge.log_tail(20000)
     assert vie["docker_env"]["NO_PROXY"] == "localhost,127.0.0.1"
     podman = bridge.commands.of("podman")
@@ -154,7 +166,9 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert all(not ipaddress.ip_address(r).is_loopback for r in resolvers)
     assert f"{bridge.state_dir}/sandbox-proxy/policy:/bip/policy:ro,z" in run
     assert f"{bridge.state_dir}/sandbox-proxy/reports:/bip/reports:z" in run
-    assert "BIP_POLICY=/bip/policy/sites.json" in run and "BIP_REPORTS=/bip/reports/blocked.jsonl" in run
+    assert "BIP_POLICY=/bip/policy/sites.json" in run and "BIP_REPORTS=/bip/reports/sends.jsonl" in run
+    assert "BIP_USAGE=/bip/reports/usage.json" in run and "BIP_BLOCKLIST=/bip/policy/blocklist.txt" in run
+    assert not any("bipagents-browsers" in a for a in run)              # no visible browser on this install
     assert sum(1 for args in podman if args[:1] == ["run"]) == 1       # the network set up once for both agents
     # The uploads are copied into the volume, at the same paths as before.
     assert (volumes[("files", "vie")] / "2026-10" / "0123456789ab-facture.pdf").read_bytes() == b"%PDF facture"
@@ -361,126 +375,177 @@ def site_cards(bridge, agent):
     return [i for i in items if i["run_id"].startswith("bip-site-")]
 
 
-def test_a_site_refused_to_an_agents_programs_asks_the_person(bridges, fakes):
-    """The proxy refused data.gouv.fr to vie's programs (its report, as the proxy writes it): one card for the person,
-    « Autoriser ces sites / Tous les sites pour Vie / Refuser », among the approvals; the agent can ask first (on the
-    same card, a moment later); an older app's answer; the app's list."""
+def send_report(bridge, *rows):
+    """What the proxy writes when it cuts a send (egress_proxy.py)."""
+    reports = bridge.state_dir / "sandbox-proxy" / "reports" / "sends.jsonl"
+    with reports.open("a") as f:
+        for agent, host, size in rows:
+            f.write(json.dumps({"kind": "send", "agent": agent, "host": host, "bytes": size, "day": False,
+                                "at": int(time.time())}) + "\n")
+    return reports
+
+
+def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridges, fakes):
+    """Reading is open; the proxy cut a 2 MB upload of vie's to a site nobody validated (its report): ONE card for the
+    person, « Vie veut envoyer des données à upload.example.net (environ 2 Mo) — Autoriser / Refuser », among the
+    approvals; the agent can ask first (on the same card, a moment later); an older app's answer; the app's list."""
     bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness"))
     started(bridge, hub, ["vie", "wellness"])
-    # « Tous les sites » is on by default for an agent with nothing private: vie's person turns it off.
     view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
-    assert (view["all_sites"], view["all_sites_default"], view["sensitive"]) == (True, True, None)
+    assert view["reading_open"] is True and view["all_sites"] is True and view["sites"] == []
+    # an older app's « Tous les sites » switch: accepted, nothing to change (reading is open)
     off = bridge.patch("/v1/agents/vie/sandbox/sites", json={"all_sites": False}, headers=AUTH)
-    assert off.status_code == 200 and off.json()["all_sites"] is False, off.text
-    reports = bridge.state_dir / "sandbox-proxy" / "reports" / "blocked.jsonl"
+    assert off.status_code == 200 and off.json()["all_sites"] is True, off.text
+    reports = bridge.state_dir / "sandbox-proxy" / "reports" / "sends.jsonl"
     assert reports.parent.is_dir()
-    lines = [{"agent": "vie", "host": "data.gouv.fr"}, {"agent": "vie", "host": "data.gouv.fr"},
-             {"agent": "vie", "host": "localhost"}, {"agent": "nobody", "host": "x.fr"}]
-    reports.write_text("".join(json.dumps(l) + "\n" for l in lines))
+    send_report(bridge, ("vie", "upload.example.net", 2 * 1024 * 1024), ("vie", "upload.example.net", 2 * 1024 * 1024),
+                ("vie", "localhost", 99999), ("nobody", "x.fr", 99999))
     assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1, timeout=10)
     assert wait_until(lambda: not reports.exists(), timeout=5)
     card = site_cards(bridge, "vie")[0]
-    assert card["bip_site"] == "data.gouv.fr" and card["choices"] == ["always", "all_sites", "deny"]
-    assert card["description"] == "Vie veut joindre data.gouv.fr depuis ses programmes"
+    assert card["bip_site"] == "upload.example.net" and card["choices"] == ["always", "deny"]
+    assert card["description"] == "Vie veut envoyer des données à upload.example.net (environ 2 Mo)"
+    assert card["bip_site_kind"] == "send" and card["bip_site_send_bytes"] == 2 * 1024 * 1024
     assert card["bip_site_via"] == "proxy" and card["session_id"] is None
+    assert "a send to a site not validated was cut" in bridge.log_tail(20000)
     # The agent asks first for another one, with its reason; and lists what it has.
     give_tokens(bridge, ["vie", "wellness"])
     text, error = call(bridge, "vie", "sandbox_sites_request", host="https://api.meteo.fr/v1", reason="la pluie demain")
     assert not error and "api.meteo.fr" in text
-    assert call(bridge, "vie", "sandbox_sites_request", host="pypi.org")[0] == "Your programs can reach it already."
+    assert call(bridge, "vie", "sandbox_sites_request", host="pypi.org")[0] == "You may send to it already."
     assert call(bridge, "vie", "sandbox_sites_request", host="10.0.0.1")[1] is True
     # one card, not two: the sites asked a moment apart gather
     [card] = site_cards(bridge, "vie")
-    assert card["bip_sites"] == ["data.gouv.fr", "api.meteo.fr"] and card["bip_site"] == "data.gouv.fr"
-    assert card["description"] == "Vie veut joindre 2 sites depuis ses programmes : data.gouv.fr, api.meteo.fr"
-    assert card["bip_site_reason"] == "la pluie demain" and card["command"] == "data.gouv.fr, api.meteo.fr"
+    assert card["bip_sites"] == ["upload.example.net", "api.meteo.fr"] and card["bip_site"] == "upload.example.net"
+    assert card["description"] == ("Vie veut envoyer des données à 2 sites (environ 2 Mo) : upload.example.net, "
+                                   "api.meteo.fr")
+    assert card["bip_site_reason"] == "la pluie demain" and card["command"] == "upload.example.net, api.meteo.fr"
     assert site_cards(bridge, "wellness") == []
     # An older app (« Autoriser toujours », the first site shown): that one; the other waits on a card of its own.
     answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}", json={"allow": True},
                            headers=AUTH)
     assert answered.status_code == 200, answered.text
-    assert [s["host"] for s in answered.json()["sites"]] == ["data.gouv.fr"]
+    assert [s["host"] for s in answered.json()["sites"]] == ["upload.example.net"]
     assert answered.json()["sites"][0]["by"] == "request"
     [left] = site_cards(bridge, "vie")
     assert left["bip_sites"] == ["api.meteo.fr"] and left["request_id"] != card["request_id"]
     # « Refuser » from a notification
     denied = bridge.post("/v1/approve", json={"agent": "vie", "run_id": left["run_id"], "choice": "deny"}, headers=AUTH)
-    assert denied.status_code == 200, denied.text
+    assert denied.status_code == 200 and denied.json()["choice"] == "deny", denied.text
     assert site_cards(bridge, "vie") == []
     assert bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{left['request_id']}",
                        json={"allow": True}, headers=AUTH).status_code == 404
+    # validated for vie only, its counts reset in the proxy
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
-    assert policy["agents"]["vie"]["hosts"] == ["data.gouv.fr"] and "any" not in policy["agents"]["vie"]
-    assert policy["agents"]["wellness"]["hosts"] == [] and policy["agents"]["wellness"]["any"] is True
+    assert policy["agents"]["vie"]["hosts"] == ["upload.example.net"] and policy["agents"]["vie"]["reset"] > 0
+    assert policy["agents"]["wellness"]["hosts"] == [] and "any" not in policy["agents"]["wellness"]
     kept = bridge.get("/v1/approvals/answered", params={"agent": "vie"}, headers=AUTH).json()["items"]
     assert [(k["command"], k["choice"], k["topic"]) for k in kept] == [
-        ("data.gouv.fr", "always", "site"), ("api.meteo.fr", "deny", "site")]
-    # Refused: the proxy's next refusal asks nothing; the agent's own request neither, today.
-    reports.write_text(json.dumps({"agent": "vie", "host": "api.meteo.fr"}) + "\n")
+        ("upload.example.net", "always", "site"), ("api.meteo.fr", "deny", "site")]
+    # Refused: the proxy's next cut asks nothing; the agent's own request neither, today. A validated site is never
+    # asked about.
+    send_report(bridge, ("vie", "api.meteo.fr", 80000), ("vie", "upload.example.net", 5 * 1024 * 1024))
     assert wait_until(lambda: not reports.exists(), timeout=10)
+    time.sleep(0.5)
     assert site_cards(bridge, "vie") == []
     assert call(bridge, "vie", "sandbox_sites_request", host="api.meteo.fr")[1] is True
-    # The app's list: the registries always open, the sites with their date, one added by hand, one removed.
+    # The app's list: the registries always validated, the sites with their date, one added by hand, one removed.
     view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
     assert "pypi.org" in view["registries"] and view["effective"] is True and view["why"] is None
     assert bridge.post("/v1/agents/vie/sandbox/sites", json={"host": "*.ouraring.com"}, headers=AUTH).status_code == 200
     for bad in ("localhost", "*.com", "192.168.1.1", "nas.local"):
         assert bridge.post("/v1/agents/vie/sandbox/sites", json={"host": bad}, headers=AUTH).status_code == 422, bad
-    assert bridge.delete("/v1/agents/vie/sandbox/sites/data.gouv.fr", headers=AUTH).status_code == 200
-    assert bridge.delete("/v1/agents/vie/sandbox/sites/data.gouv.fr", headers=AUTH).status_code == 404
+    assert bridge.delete("/v1/agents/vie/sandbox/sites/upload.example.net", headers=AUTH).status_code == 200
+    assert bridge.delete("/v1/agents/vie/sandbox/sites/upload.example.net", headers=AUTH).status_code == 404
     assert bridge.get("/v1/agents/nobody/sandbox/sites", headers=AUTH).status_code == 404
     assert bridge.get("/v1/agents/vie/sandbox/sites").status_code == 401
     listed = call(bridge, "vie", "sandbox_sites")[0]
-    assert "*.ouraring.com" in listed and "data.gouv.fr" not in listed and "pypi.org" in listed
+    assert "*.ouraring.com" in listed and "upload.example.net" not in listed and "pypi.org" in listed
+    assert "every public HTTPS site is open" in listed
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
     assert policy["agents"]["vie"]["hosts"] == ["*.ouraring.com"]
+    # the proxy's counts of the day, shown with the list
+    usage = {"day": time.strftime("%Y-%m-%d", time.gmtime()), "at": int(time.time()),
+             "agents": {"vie": {"sent": 1234, "received": 5678, "unvalidated": 1000, "connections": 3, "held": False}}}
+    (bridge.state_dir / "sandbox-proxy" / "reports" / "usage.json").write_text(json.dumps(usage))
+    today = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()["today"]
+    assert today["received"] == 5678 and today["sent"] == 1234
 
 
-def test_sites_asked_together_one_card_three_choices_and_all_sites(bridges, fakes):
-    """Three sites refused together: one card; « Autoriser ces sites » allows the three; « Tous les sites pour Vie »
-    (from a notification) opens every public site with no card any more. An agent with private access (its health
-    switch) starts with « Tous les sites » off, and its programs ask."""
+def test_the_sites_kept_before_reading_was_open_stay_validated(bridges, fakes):
+    """An install from before 2026-10-28: its « Tous les sites » choices and visited sites are dropped, the sites the
+    person allowed are the agent's validated sites, an old reading card still answers."""
     bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+    bridge.state_dir.mkdir(parents=True, exist_ok=True)
+    old = {"agents": {"vie": {"token": "t" * 32, "all_sites": False, "refused": {},
+                              "sites": [{"host": "data.gouv.fr", "at": "2026-10-24T10:00:00+00:00", "by": "request"}],
+                              "visited": {"www.lemonde.fr": time.time()}}},
+           "pending": [{"id": "oldcard1", "agent": "vie", "host": "a.fr", "hosts": ["a.fr"], "reason": "",
+                        "via": "proxy", "at": time.time()}]}
+    (bridge.state_dir / "sandbox-sites.json").write_text(json.dumps(old))
     started(bridge, hub, ["vie", "wellness"])
-    assert bridge.patch("/v1/agents/vie/sandbox/sites", json={"all_sites": False}, headers=AUTH).status_code == 200
-    reports = bridge.state_dir / "sandbox-proxy" / "reports" / "blocked.jsonl"
-    reports.write_text("".join(json.dumps({"agent": "vie", "host": h}) + "\n" for h in ("a.fr", "b.fr", "c.fr")))
-    assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1 and len(site_cards(bridge, "vie")[0]["bip_sites"]) == 3,
-                      timeout=10), site_cards(bridge, "vie")
-    [card] = site_cards(bridge, "vie")
-    view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
-    assert [p["hosts"] for p in view["pending"]] == [["a.fr", "b.fr", "c.fr"]]
-    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}",
-                           json={"allow": True, "hosts": ["a.fr", "b.fr", "c.fr"]}, headers=AUTH)
-    assert answered.status_code == 200, answered.text
-    assert [s["host"] for s in answered.json()["sites"]] == ["a.fr", "b.fr", "c.fr"]
-    assert site_cards(bridge, "vie") == []
-    kept = bridge.get("/v1/approvals/answered", params={"agent": "vie"}, headers=AUTH).json()["items"]
-    assert [(k["command"], k["choice"]) for k in kept] == [("a.fr, b.fr, c.fr", "always")]
-    # « Tous les sites pour Vie »
-    reports.write_text(json.dumps({"agent": "vie", "host": "d.fr"}) + "\n")
-    assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1, timeout=10)
-    run_id = site_cards(bridge, "vie")[0]["run_id"]
-    opened = bridge.post("/v1/approve", json={"agent": "vie", "run_id": run_id, "choice": "all_sites"}, headers=AUTH)
-    assert opened.status_code == 200 and opened.json()["choice"] == "all_sites", opened.text
-    assert bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()["all_sites"] is True
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
-    assert policy["agents"]["vie"]["any"] is True
-    reports.write_text(json.dumps({"agent": "vie", "host": "e.fr"}) + "\n")
-    assert wait_until(lambda: not reports.exists(), timeout=10)
-    assert site_cards(bridge, "vie") == []
-    give_tokens(bridge, ["vie", "wellness"])
-    assert call(bridge, "vie", "sandbox_sites_request", host="f.fr")[0] == "Your programs can reach it already."
-    assert "every public HTTPS site" in call(bridge, "vie", "sandbox_sites")[0]
-    # wellness reads health data: off by default, its programs ask
-    assert bridge.patch("/v1/agents/wellness/settings", json={"health": True}, headers=AUTH).status_code == 200
-    view = bridge.get("/v1/agents/wellness/sandbox/sites", headers=AUTH).json()
-    assert (view["all_sites"], view["all_sites_default"], view["sensitive"]) == (False, False, "health")
-    reports.write_text(json.dumps({"agent": "wellness", "host": "g.fr"}) + "\n")
-    assert wait_until(lambda: len(site_cards(bridge, "wellness")) == 1, timeout=10)
-    # its person may still turn it on
-    on = bridge.patch("/v1/agents/wellness/sandbox/sites", json={"all_sites": True}, headers=AUTH).json()
-    assert on["all_sites"] is True and on["pending"] == [] and site_cards(bridge, "wellness") == []
+    assert policy["agents"]["vie"]["hosts"] == ["data.gouv.fr"] and "any" not in policy["agents"]["vie"]
+    [card] = site_cards(bridge, "vie")
+    assert card["description"] == "Vie veut envoyer des données à a.fr" and card["bip_site_send_bytes"] == 0
+    # an older app's « Tous les sites pour Vie » on it: the sites on the card, not every site
+    opened = bridge.post("/v1/approve", json={"agent": "vie", "run_id": card["run_id"], "choice": "all_sites"},
+                         headers=AUTH)
+    assert opened.status_code == 200 and opened.json()["choice"] == "always", opened.text
+    view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
+    assert [s["host"] for s in view["sites"]] == ["data.gouv.fr", "a.fr"]
+    assert "visited" not in json.loads((bridge.state_dir / "sandbox-sites.json").read_text())["agents"]["vie"]
+
+
+def test_the_offer_caps_downloads_connections_processors_and_refuses_piracy(bridges, fakes):
+    """On an offer place (`cloud`): each sandbox's share of the processors (`--cpus`), the proxy's daily download
+    limit and connections per minute, and the piracy/tracker blocklist fetched by the bridge (here from a local
+    server) for the proxy; the agents' visible browsers go through the proxy, known by their address."""
+    import http.server
+    import threading
+
+    class Lists(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = (b"# Title: piracy\n0.0.0.0 thepiratebay.example\n||rarbg.example^\n" if self.path == "/piracy.txt"
+                    else b"tracker.opentrackr.example\n")
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Lists)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+        port = server.server_address[1]
+        bridge.config["cloud"] = True
+        bridge.config["sandbox"]["blocklist_urls"] = [f"http://127.0.0.1:{port}/piracy.txt",
+                                                     f"http://127.0.0.1:{port}/torrent.txt"]
+        bridge.config.setdefault("browser", {})["enabled"] = True
+        bridge.config["browser"]["runtime"] = "podman"
+        (bridge.data / "browsers" / "vie").mkdir(parents=True)
+        (bridge.data / "browsers" / "vie" / "ports.json").write_text('{"cdp": 9602, "vnc": 9603}')
+        started(bridge, hub, ["vie", "wellness"])
+        vie = terminal(hub, "vie")
+        assert vie["docker_extra_args"] == ["--network=bipagents-sandbox", "--dns=127.0.0.1", "--cpus=1.5"]
+        policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
+        assert policy["limits"] == {"send_site_hour": 65536, "send_day": 262144,
+                                    "download_day": 2048 * 1024 * 1024, "connections_minute": 300}
+        # vie's browser: 10.233.82.11 (its DevTools port is the second pair of the range)
+        assert policy["browsers"] == {"10.233.82.11": "vie"}
+        podman = bridge.commands.of("podman")
+        assert ["network", "create", "--subnet", "10.233.82.0/24", "bipagents-browsers"] in podman
+        run = next(args for args in podman if args[:1] == ["run"])
+        assert "bipagents-browsers:ip=10.233.82.2" in run and "BIP_BROWSERS=10.233.82.2" in run
+        blocklist = bridge.state_dir / "sandbox-proxy" / "policy" / "blocklist.txt"
+        assert wait_until(blocklist.exists, timeout=10)
+        names = [l for l in blocklist.read_text().splitlines() if l and not l.startswith("#")]
+        assert names == ["rarbg.example", "thepiratebay.example", "tracker.opentrackr.example"]
+    finally:
+        server.shutdown()
 
 
 def test_a_deleted_agent_loses_its_volumes(bridges, fakes):
@@ -529,3 +594,152 @@ def test_a_sandbox_holding_its_desktop_browser_is_left_as_it_was(bridges, fakes)
     assert not any(a[:1] == ["run"] or a[:2] == ["network", "create"] for a in bridge.commands.of("podman"))
     servers = yaml.safe_load((hub / "profiles" / "vie" / "config.yaml").read_text())["mcp_servers"]
     assert "bipagents_files" not in servers
+
+
+PROXY_SCRIPT = Path(__file__).resolve().parents[2] / "bridge-rs" / "assets" / "sandbox" / "egress_proxy.py"
+# The proxy as the bridge runs it, with one change: every site is a server of this test (its checks of addresses and
+# names are its own unit tests'; here no name is looked up and nothing leaves this machine).
+LOCAL_SITES = """
+import asyncio, importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("egress", sys.argv[1])
+proxy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(proxy)
+proxy.SINK_IDLE = 0.5
+site = int(os.environ["TEST_SITE_PORT"])
+async def resolve(host, port):
+    return ["127.0.0.1"]
+async def connect(addresses, port):
+    return await asyncio.open_connection("127.0.0.1", site)
+proxy.resolve, proxy.connect = resolve, connect
+asyncio.run(proxy.main())
+"""
+
+
+class Site(threading.Thread):
+    """A site: reads what comes (counted), answers a GET with `serve` bytes."""
+
+    def __init__(self, serve=0):
+        super().__init__(daemon=True)
+        self.serve, self.received = serve, 0
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(16)
+        self.port = self.sock.getsockname()[1]
+
+    def run(self):
+        while True:
+            try:
+                conn, _ = self.sock.accept()
+            except OSError:
+                return
+            threading.Thread(target=self.one, args=(conn,), daemon=True).start()
+
+    def one(self, conn):
+        try:
+            first = conn.recv(65536)
+            self.received += len(first)
+            if self.serve:
+                conn.sendall(b"y" * self.serve)
+            else:
+                while True:
+                    data = conn.recv(65536)
+                    if not data:
+                        break
+                    self.received += len(data)
+        except OSError:
+            pass
+        conn.close()
+
+
+def record(kind, size):
+    return bytes([kind, 3, 3]) + size.to_bytes(2, "big") + b"x" * size
+
+
+def through(port, host, token, payload, wait_answer=0):
+    """A CONNECT as `vie`, then `payload` (a TLS-looking stream); returns the status line and what came back."""
+    sock = socket.create_connection(("127.0.0.1", port), timeout=10)
+    auth = base64.b64encode(f"vie:{token}".encode()).decode()
+    sock.sendall(f"CONNECT {host}:443 HTTP/1.1\r\nProxy-Authorization: Basic {auth}\r\n\r\n".encode())
+    head = b""
+    while b"\r\n\r\n" not in head:
+        head += sock.recv(1)
+    got = 0
+    try:
+        sock.sendall(payload)
+        while got < wait_answer:
+            data = sock.recv(1 << 20)
+            if not data:
+                break
+            got += len(data)
+    except OSError:
+        pass
+    sock.close()
+    return head.split(b"\r\n")[0].decode(), got
+
+
+def test_the_real_proxy_cuts_a_big_upload_and_the_person_gets_one_card(bridges, fakes):
+    """The proxy, run with the bridge's own policy and reports folder: a 2 MB upload to a site vie's person never
+    validated is cut past the hour's budget and becomes ONE card; a page read and a 5 MB download pass; once the person
+    validated the site, the same upload goes whole."""
+    bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+    started(bridge, hub, ["vie", "wellness"])
+    token = json.loads((bridge.state_dir / "sandbox-sites.json").read_text())["agents"]["vie"]["token"]
+    proxy_dir = bridge.state_dir / "sandbox-proxy"
+    site = Site()
+    site.start()
+    reader = Site(serve=5 * 1024 * 1024)
+    reader.start()
+    port = free_port()
+    env = {"BIP_POLICY": str(proxy_dir / "policy" / "sites.json"), "BIP_REPORTS": str(proxy_dir / "reports" / "sends.jsonl"),
+           "BIP_PORT": str(port), "BIP_ALLOW": "pypi.org", "TEST_SITE_PORT": str(site.port), "PATH": "/usr/bin:/bin"}
+    proc = subprocess.Popen([sys.executable, "-I", "-u", "-c", LOCAL_SITES, str(PROXY_SCRIPT)], env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        def up():
+            try:
+                socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+                return True
+            except OSError:
+                return False
+        assert wait_until(up, timeout=10)
+        hello = record(22, 517)
+        # a page read: a request's worth
+        status, _ = through(port, "www.example-news.fr", token, hello + record(23, 400))
+        assert status == "HTTP/1.1 200 Connection established"
+        # the upload: cut, measured, reported
+        upload = hello + b"".join(record(23, 16384) for _ in range(128))
+        status, _ = through(port, "upload.example.net", token, upload)
+        assert status == "HTTP/1.1 200 Connection established"
+        assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1, timeout=15)
+        [card] = site_cards(bridge, "vie")
+        assert card["bip_site"] == "upload.example.net" and card["bip_site_kind"] == "send"
+        assert 1.5 * 1024 * 1024 < card["bip_site_send_bytes"] <= 2.2 * 1024 * 1024
+        assert card["description"].startswith("Vie veut envoyer des données à upload.example.net (environ 2")
+        assert site.received < 64 * 1024 + 2000 + 600       # the read, at most the hour's budget, the handshakes
+        # a download of any size passes (the site answering is another server: the proxy counts what it gets)
+        proc.kill()
+        proc.wait()
+        env["TEST_SITE_PORT"] = str(reader.port)
+        proc = subprocess.Popen([sys.executable, "-I", "-u", "-c", LOCAL_SITES, str(PROXY_SCRIPT)], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert wait_until(up, timeout=10)
+        status, got = through(port, "files.example.net", token, hello + record(23, 300), wait_answer=5 * 1024 * 1024)
+        assert status == "HTTP/1.1 200 Connection established" and got == 5 * 1024 * 1024
+        # « Autoriser »: validated, the same upload goes whole
+        assert bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}",
+                           json={"allow": True, "hosts": ["upload.example.net"]}, headers=AUTH).status_code == 200
+        proc.kill()
+        proc.wait()
+        env["TEST_SITE_PORT"] = str(site.port)
+        proc = subprocess.Popen([sys.executable, "-I", "-u", "-c", LOCAL_SITES, str(PROXY_SCRIPT)], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert wait_until(up, timeout=10)
+        before = site.received
+        through(port, "upload.example.net", token, upload)
+        assert wait_until(lambda: site.received - before >= len(upload), timeout=10)
+        time.sleep(4)
+        assert site_cards(bridge, "vie") == []
+    finally:
+        proc.kill()
+        site.sock.close()
+        reader.sock.close()

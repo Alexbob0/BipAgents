@@ -2,7 +2,7 @@
 
 # Richtlinie zur zulässigen Nutzung des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: 24. Oktober 2026.
+> Zuletzt aktualisiert: 28. Oktober 2026.
 
 ## 1. Wozu sie dient
 
@@ -25,6 +25,9 @@ lassen für:
 - **Angriffe und Scans**: Ports scannen oder nach Lücken in Systemen suchen, die nicht deine sind,
   Denial-of-Service-Angriffe, massenhaftes Ausprobieren von Passwörtern, Ausnutzen von Lücken, Netze gekaperter
   Rechner, Phishing-Seiten, Hosten oder Verbreiten von Schadsoftware;
+- **Piraterie**: Filme, Serien, Musik, Bücher oder Software ohne das Recht dazu herunterladen oder teilen, oder dafür
+  einen BitTorrent-Client installieren. Die Server des Angebots sperren bekannte Piraterie-Seiten und BitTorrent-Tracker
+  und begrenzen, was jeder Agent pro Tag herunterlädt;
 - **Kryptomining** oder jede Nutzung, die darauf angelegt ist, Prozessor, Arbeitsspeicher, Festplatte oder Netz des
   Servers für sich zu beanspruchen;
 - **gegenüber Minderjährigen rechtswidrige Inhalte**: jede Darstellung sexuellen Missbrauchs von Kindern oder sexuelle

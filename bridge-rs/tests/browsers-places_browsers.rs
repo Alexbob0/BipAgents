@@ -260,10 +260,35 @@ async fn deleting_the_agent_removes_its_browser() {
 fn with_a_gpu_and_docker() {
     let s = setup();
     let ports = [("cdp".to_string(), 1), ("vnc".to_string(), 2)].into_iter().collect();
-    let args = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/docker", true);
+    let args = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/docker", true, None);
     assert!(args.contains(&"--device".to_string()) && !args.contains(&"keep-groups".to_string()));
     assert!(!args.contains(&"--userns=keep-id:uid=1000,gid=1000".to_string()));
     assert!(args.iter().any(|a| a.contains("--use-angle=vulkan")));
+    assert!(!args.contains(&"--network".to_string()));
+}
+
+#[test]
+fn through_the_agents_proxy_webrtc_kept_to_it() {
+    let s = setup();
+    let ports = [("cdp".to_string(), 9600), ("vnc".to_string(), 9601)].into_iter().collect();
+    let flags = |args: &[String]| -> Vec<String> {
+        let line = args.iter().find(|a| a.starts_with("STEALTH_BROWSER_ARGS=")).unwrap();
+        line["STEALTH_BROWSER_ARGS=".len()..].split(';').map(str::to_string).collect()
+    };
+    // straight out (no isolated sandboxes here): WebRTC limited all the same
+    let direct = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/podman", false, None);
+    assert!(flags(&direct).contains(&browsers::WEBRTC_FLAG.to_string()));
+    assert!(!flags(&direct).iter().any(|f| f.starts_with("--proxy-server")));
+    // through the proxy: its own address on the browsers' network, Chrome's proxy flag, CONNECT only (no certificate
+    // of ours anywhere)
+    let egress = ("bipagents-browsers:ip=10.233.82.10".to_string(), "--proxy-server=http://10.233.82.2:3128".to_string());
+    let args = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/podman", false, Some(&egress));
+    let at = args.iter().position(|a| a == "--network").unwrap();
+    assert_eq!(args[at + 1], "bipagents-browsers:ip=10.233.82.10");
+    assert!(at + 2 < args.len() && args.last().unwrap() == &s.config.browser.image);
+    assert!(flags(&args).contains(&"--proxy-server=http://10.233.82.2:3128".to_string()));
+    assert!(flags(&args).contains(&browsers::WEBRTC_FLAG.to_string()));
+    assert!(!args.iter().any(|a| a.contains("ignore-certificate") || a.contains("cert")));
 }
 
 #[tokio::test]

@@ -379,14 +379,15 @@ def test_a_connector_reaches_only_its_sites_and_refusals_are_plain(tmp_path):
         assert not (tmp_path / "reports.jsonl").exists()      # a connector's refusal is not a card for the person
     finally:
         proc.kill()
-    # the sandboxes' side: the agent's refusal reads plainly, in urllib's error too
+    # the sandboxes' side: reading is open to the agent (HTTPS), a refusal reads plainly, in urllib's error too
     proc, port = start_proxy(tmp_path, policy, strict=False)
     try:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler(
-            {"https": f"http://vie:{agent_token}@127.0.0.1:{port}"}))
+            {"http": f"http://vie:{agent_token}@127.0.0.1:{port}"}))
         with pytest.raises(OSError) as refused:
-            opener.open("https://blocked.example/", timeout=10)
-        assert "Site not allowed yet for you - your person was asked; retry once they allow it" in str(refused.value)
+            opener.open("http://plain.example/", timeout=10)
+        assert "Only HTTPS sites are reachable (https://, port 443)" in str(refused.value)
+        assert connect(port, "localhost", "vie", agent_token) == (403, "Private address not allowed")
         assert connect(port, "pypi.org", "conn-c_1", token)[0] == 403   # never the registries for a connector
     finally:
         proc.kill()

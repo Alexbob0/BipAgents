@@ -125,10 +125,21 @@ const RETRY: Duration = Duration::from_secs(600);
 const SANDBOX_DIR_MODE: u32 = 0o755;
 const SANDBOX_FILE_MODE: u32 = 0o644;
 
-/// The sandbox's container arguments the bridge owns (`terminal.docker_extra_args`): its network, and no DNS server
-/// (names are resolved by the proxy; nothing leaks through DNS queries).
-pub fn own_args() -> [String; 2] {
-    [format!("--network={NETWORK}"), "--dns=127.0.0.1".to_string()]
+/// The sandbox's container arguments the bridge owns (`terminal.docker_extra_args`): its network, no DNS server
+/// (names are resolved by the proxy; nothing leaks through DNS queries), and on a shared server its share of the
+/// processors (`--cpus`, send_guard.rs).
+pub fn own_args(config: &Config) -> Vec<String> {
+    let mut out = vec![format!("--network={NETWORK}"), "--dns=127.0.0.1".to_string()];
+    if let Some(cpus) = crate::send_guard::cpus(config) {
+        out.push(format!("--cpus={cpus}"));
+    }
+    out
+}
+
+/// One of the arguments the bridge owns (an earlier `--cpus` included, while the bridge sets one).
+fn owned_arg(config: &Config, arg: &str) -> bool {
+    own_args(config).iter().any(|a| a == arg)
+        || (arg.starts_with("--cpus=") && crate::send_guard::cpus(config).is_some())
 }
 
 /// The proxy variables the bridge owns (`terminal.docker_env`).
@@ -354,7 +365,23 @@ pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
         &format!("BIP_POLICY=/bip/policy/{}", crate::sandbox_sites::POLICY_FILE),
         "-e",
         &format!("BIP_REPORTS=/bip/reports/{}", crate::sandbox_sites::REPORTS_FILE),
+        "-e",
+        &format!("BIP_USAGE=/bip/reports/{}", crate::send_guard::USAGE_FILE),
+        // the offer's piracy/tracker list (send_guard.rs), when the bridge keeps one
+        "-e",
+        &format!("BIP_BLOCKLIST=/bip/policy/{}", crate::send_guard::BLOCKLIST_FILE),
     ]);
+    // the agents' visible browsers (send_guard.rs): known by their address on their own network
+    if let (true, Some(browsers)) =
+        (crate::send_guard::browser_routed(config), crate::send_guard::browser_proxy_ip(&config.sandbox.subnet))
+    {
+        command.extend(args(&[
+            "--network",
+            &format!("{}:ip={browsers}", crate::send_guard::BROWSER_NETWORK),
+            "-e",
+            &format!("BIP_BROWSERS={browsers}"),
+        ]));
+    }
     let resolvers = nameservers(&RESOLV_CONFS);
     if resolvers.is_empty() {
         tracing::warn!(target: "bipbridge::sandbox", "no name server found for the sandboxes' proxy: podman's default");
@@ -386,12 +413,35 @@ async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<Stri
             .map_err(|e| format!("connectors' network not created: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
         tracing::info!(target: "bipbridge::sandbox", network = CONNECTOR_NETWORK, subnet = %connectors, "connectors' network created (no route out)");
     }
+    if crate::send_guard::browser_routed(config) {
+        ensure_browser_network(config, run, podman).await?;
+    }
     crate::sandbox_sites::ensure_policy(config).map_err(|e| format!("the agents' sites not written: {e}"))?;
+    // the offer's blocklist fetched now if it is due (the proxy reads it when it appears; never waited for)
+    let c = config.clone();
+    tokio::spawn(async move { crate::send_guard::refresh_blocklist(&c).await });
     run(proxy_command(config, podman), none)
         .await
         .map_err(|e| format!("registries' proxy not started: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
     tracing::info!(target: "bipbridge::sandbox", proxy = PROXY, registries = %config.sandbox.registries.join(","), "registries' proxy started");
     Ok(format!("http://{ip}:{PROXY_PORT}"))
+}
+
+/// The agents' browsers' network (send_guard.rs). Not `--internal`: podman publishes no port of a container on an
+/// internal network, and the bridge reaches each Chrome's DevTools and screen through 127.0.0.1. Chrome itself goes
+/// through the proxy (`--proxy-server`), which knows each browser by its address here.
+pub async fn ensure_browser_network(config: &Config, run: &Run, podman: &str) -> Result<(), String> {
+    let none = BTreeMap::new();
+    let network = crate::send_guard::BROWSER_NETWORK;
+    if run(args(&[podman, "network", "exists", network]), none.clone()).await.is_ok() {
+        return Ok(());
+    }
+    let subnet = crate::send_guard::browser_subnet(&config.sandbox.subnet).ok_or("no valid [sandbox] subnet")?;
+    run(args(&[podman, "network", "create", "--subnet", &subnet, network]), none)
+        .await
+        .map_err(|e| format!("browsers' network not created: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
+    tracing::info!(target: "bipbridge::sandbox", network, subnet = %subnet, "browsers' network created (through the agents' proxy)");
+    Ok(())
 }
 
 /// The proxy's URL for the sandboxes, setting the network and the proxy up once per start (again after a failure,
@@ -476,8 +526,8 @@ pub fn wanted_terminal(config: &Config, agent: &str, current: &Dict, net: Net, r
         }
     };
     let volumes = wanted_volumes(config, agent, &list("docker_volumes"), reads);
-    let ours = own_args();
-    let mut extra: Vec<String> = list("docker_extra_args").into_iter().filter(|a| !ours.contains(a)).collect();
+    let ours = own_args(config);
+    let mut extra: Vec<String> = list("docker_extra_args").into_iter().filter(|a| !owned_arg(config, a)).collect();
     let mut env: Dict = match current.get("docker_env") {
         Some(Value::Object(map)) => map.clone(),
         _ => Dict::new(),
@@ -774,8 +824,10 @@ pub async fn revert(config: &Config, agent: &AgentConfig, folder: &Path, run: &R
             !named.iter().any(|n| n == name) && !name.starts_with("bipagents-share-")
         })
         .collect();
-    let ours = own_args();
-    let extra: Vec<String> = list("docker_extra_args").into_iter().filter(|a| !ours.contains(a)).collect();
+    let extra: Vec<String> = list("docker_extra_args")
+        .into_iter()
+        .filter(|a| !owned_arg(config, a))
+        .collect();
     let mut env: Dict = match current.get("docker_env") {
         Some(Value::Object(map)) => map.clone(),
         _ => Dict::new(),

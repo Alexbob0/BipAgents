@@ -2,7 +2,7 @@
 
 # Politique d'usage acceptable de l'offre tout compris
 
-> Dernière mise à jour : 24 octobre 2026.
+> Dernière mise à jour : 28 octobre 2026.
 
 ## 1. À quoi elle sert
 
@@ -23,6 +23,9 @@ Tu t'engages à ne pas utiliser ta place, tes agents ou ton crédit d'IA, ni lai
 - **les attaques et les balayages** : balayer des ports ou chercher des failles sur des systèmes qui ne sont pas les
   tiens, attaques par déni de service, essais de mots de passe en série, exploitation de failles, réseaux de machines
   piratées, pages d'hameçonnage, hébergement ou diffusion de logiciels malveillants ;
+- **le piratage d'œuvres** : télécharger ou partager des films, séries, musiques, livres ou logiciels sans en avoir le
+  droit, ou installer un client BitTorrent pour le faire. Les serveurs de l'offre refusent les sites de piratage et les
+  traqueurs BitTorrent connus et limitent ce que chaque agent télécharge par jour ;
 - **le minage de cryptomonnaie**, ou tout usage fait pour accaparer le processeur, la mémoire, le disque ou le réseau du
   serveur ;
 - **des contenus illicites envers les mineurs** : tout contenu d'abus sexuel sur mineur ou sexuel impliquant un

@@ -33,7 +33,7 @@ pub const SUBTASK_BODY: &str = "Sous-tâche terminée";
 pub const FAMILY_BODY: &str = "Message de ta famille";
 pub const EMAIL_HELD_BODY: &str = "Veut écrire à quelqu'un de nouveau : ton accord est demandé";
 /// A site the agent's programs want to reach (sandbox_sites.rs), without the site when previews are off.
-pub const SITE_BODY: &str = "Veut joindre un site depuis ses programmes : ton accord est demandé";
+pub const SITE_BODY: &str = "Veut envoyer des données à un site : ton accord est demandé";
 /// An account to create with a password of the vault (vault_logins.rs), without the site when previews are off.
 pub const LOGIN_BODY: &str = "Veut créer un compte sur un site : ton accord est demandé";
 /// A secret or a connector to approve (secrets.rs, connectors.rs), when previews are off.
@@ -557,10 +557,10 @@ impl PushService {
         self.fanout(agent, payload, "alert", 10, Some(format!("email:{held_id}"))).await
     }
 
-    /// A site the agent's programs want to reach (sandbox_sites.rs): tapping opens the app's Boîte, where the card is.
-    pub async fn notify_site_request(&self, agent: &str, host: &str, id: &str) -> usize {
-        let line = format!("Veut joindre {host} depuis ses programmes");
-        let preview = if self.previews() { Some(line.as_str()) } else { None };
+    /// The agent wants to send data to a site (sandbox_sites.rs; `line`: « Veut envoyer des données à exemple.com
+    /// (environ 2 Mo) »): tapping opens the app's Boîte, where the card is.
+    pub async fn notify_site_request(&self, agent: &str, line: &str, id: &str) -> usize {
+        let preview = if self.previews() { Some(line) } else { None };
         let mut payload = reply_payload(agent, &self.title(agent), "session:sites", None, preview, None, SITE_BODY);
         payload.insert("site_request".into(), json!(id));
         self.fanout(agent, payload, "alert", 10, Some(format!("site:{id}"))).await

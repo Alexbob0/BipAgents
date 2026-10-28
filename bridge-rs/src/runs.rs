@@ -1030,12 +1030,6 @@ impl RunHub {
             st.turn.completed(&tool, crate::loop_brake::completed_with_error(&event.data));
         }
         if kind == "tool.started" {
-            // a site its browser or web tools open is open to its programs too (sandbox_sites.rs)
-            if let Some(shared) = self.config.as_ref() {
-                let text = |key: &str| event.data.get(key).and_then(Value::as_str).unwrap_or("");
-                let tool = if text("tool").is_empty() { text("name") } else { text("tool") };
-                crate::sandbox_sites::note_tool_call(&shared.get(), &sub.agent.name, tool, text("preview"));
-            }
             let tool = event.data.get("tool").or_else(|| event.data.get("name")).and_then(Value::as_str).unwrap_or("");
             if browser_tool(tool) {
                 st.used_browser = true;
