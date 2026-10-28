@@ -497,9 +497,9 @@
     "s2": "Nada sale sin tu «Enviar»",
     "s3t": "El agente de la familia",
     "s3": "Listas, compras, fechas; nunca lo privado",
-    "s4t": "Con tus amigos",
-    "s4": "Un viaje, una fiesta: hasta 20 amigos lo siguen, sin suscripción",
-    "lock": "Una conversación compartida va cifrada de extremo a extremo (ni Kerfy Studio puede leerla) y termina en la fecha que elijas.",
+    "s4t": "¡Un agente compartido con tus amigos, gratis!",
+    "s4": "Para un viaje, una fiesta: hasta 20 amigos lo siguen, sin pagar nada ni suscribirse",
+    "lock": "Lo que tus amigos siguen de tu agente de proyecto va cifrado de extremo a extremo (ni Kerfy Studio puede leerlo) y termina en la fecha que elijas.",
     "cta": "Ver Dúo y Familia",
     "a11y": "En la conversación, el agente Día a día propone: ¿avisar a Sam? El texto «Ha llamado el colegio: Léa tiene fiebre, voy a recogerla», Sam como destinatario y los botones Enviar y No, gracias. En casa de Sam llega la notificación.",
     "mock": {

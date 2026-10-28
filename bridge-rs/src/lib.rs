@@ -75,6 +75,8 @@ pub mod dates;
 pub mod device_keys;
 pub mod door_tls;
 pub mod family_agent;
+/// « L'agent de projet »: an agent for one occasion whose thread friends follow (no Python counterpart).
+pub mod project_agent;
 pub mod family_news;
 pub mod files;
 pub mod files_kept;

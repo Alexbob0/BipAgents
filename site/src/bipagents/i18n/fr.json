@@ -497,9 +497,9 @@
     "s2": "Rien ne part sans ton « Envoyer »",
     "s3t": "L’agent de la famille",
     "s3": "Listes, courses, dates ; jamais le privé",
-    "s4t": "Avec tes amis",
-    "s4": "Un voyage, une fête : jusqu’à 20 amis suivent, sans abonnement",
-    "lock": "Une conversation partagée est chiffrée de bout en bout (même Kerfy Studio ne peut pas la lire) et s’arrête à la date que tu choisis.",
+    "s4t": "Un agent partagé avec tes amis, gratuitement !",
+    "s4": "Pour un voyage, une fête : jusqu’à 20 amis le suivent, sans rien payer ni s’abonner",
+    "lock": "Ce que tes amis suivent de ton agent de projet est chiffré de bout en bout (même Kerfy Studio ne peut pas le lire) et s’arrête à la date que tu choisis.",
     "cta": "Voir Duo et Famille",
     "a11y": "Dans la conversation, l’agent Quotidien propose : prévenir Sam ? Les mots « L’école a appelé : Léa a de la fièvre, je vais la chercher », Sam comme destinataire, et les boutons Envoyer et Non merci. Chez Sam, la notification arrive.",
     "mock": {

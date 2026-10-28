@@ -324,6 +324,7 @@ impl AppState {
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
         self.spawn(crate::read_shares::run_forever(self.clone())); // shared conversations' encrypted copies
+        self.spawn(crate::project_agent::run_forever(self.clone())); // projects past their end: archived
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
         self.spawn(crate::archives::scheduler(self.config.clone()));
         crate::agent_email::start(self);
@@ -571,6 +572,7 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
                 "inbox": a.ntfy_topic.as_deref().map(|t| !t.is_empty()).unwrap_or(false),
                 "url": a.public_url,
                 "family": crate::family_agent::is_family(&config, &a.name),
+                "project": crate::project_agent::listing_mark(&config, &a.name),
                 // Never to a web console: it reaches Hermes through the bridge, which adds the key.
                 "key": if url.is_some() && !caller.console { Some(a.hermes_key.clone()) } else { None },
             })
@@ -1636,6 +1638,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::agent_shares::router())
         .merge(crate::family_agent::router())
         .merge(crate::read_shares::router())
+        .merge(crate::project_agent::router())
         .merge(crate::desktop::desktop_admin_router());
     // Under /v1 without the bridge key: a computer sending its agents (the app's one-time code instead), and a
     // server the app created until the app claims it (its own proofs).

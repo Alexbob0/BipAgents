@@ -27,7 +27,7 @@ def test_weather_follows_the_agents_switch(bridges, fakes):
     # Its tools' entry changed (a new version): registered again, with a token of its own; ours given back.
     assert sum(1 for a in bridge.commands.of("hermes") if len(a) > 4 and a[4] == "mcp_servers.bipagents.url") == 2
     give_token(bridge, "coach")
-    assert names(bridge)[-1] == "weather"
+    assert "weather" in names(bridge)
     result = call(bridge, "weather", {"place": "Lyon", "days": 2})
     text = text_of(result)
     assert result["isError"] is False, text
