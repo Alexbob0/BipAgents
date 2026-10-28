@@ -336,6 +336,8 @@ impl AppState {
         self.spawn(self.briefs.clone().sweep_forever());
         // the plan's AI credit used (a server of the offer): routines, the browser and background tasks pause
         self.spawn(crate::credit::run_forever(self.clone()));
+        // an agent's Hermes restarted when there is a reason, once idle (agent_restart.rs)
+        self.spawn(crate::agent_restart::run_forever(self.clone()));
         if self.sleep.enabled() {
             // a server of the offer: the guichet's seat agent reads whether a run goes on (runs.rs BUSY_MARKER)
             self.spawn(self.hub.clone().mark_busy_forever(self.sleep.home.clone(), 60.0));
@@ -1011,7 +1013,17 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
     let names: Vec<String> = config.agents.keys().cloned().collect();
     let checks = futures::future::join_all(config.agents.values().cloned().map(hermes_ok));
     let (results, model) = tokio::join!(checks, model_ok);
-    let agents: Map<String, Value> = names.into_iter().zip(results).collect();
+    let restarts = crate::agent_restart::status_fields(&config);
+    let agents: Map<String, Value> = names
+        .into_iter()
+        .zip(results)
+        .map(|(name, mut result)| {
+            if let Some(last) = restarts.get(&name) {
+                result["last_restart"] = last.clone(); // {at, reason}: diagnostics (agent_restart.rs)
+            }
+            (name, result)
+        })
+        .collect();
     Ok(web::ok(json!({"agents": agents, "model": model, "protected": config.hermes.isolated})))
 }
 

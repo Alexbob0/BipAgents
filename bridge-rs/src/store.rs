@@ -312,6 +312,14 @@ impl Store {
         Ok(())
     }
 
+    /// When the agent's replies (`outbox`) or watched runs (`watched_runs`) were made since `since` (agent_restart.rs:
+    /// its quiet hour).
+    pub async fn activity_times(&self, table: &str, agent: &str, since: &str) -> anyhow::Result<Vec<Row>> {
+        let table = if table == "outbox" { "outbox" } else { "watched_runs" };
+        let sql = format!("SELECT created_at FROM {table} WHERE agent=? AND created_at > ?");
+        self.run(&sql, vec![text(agent), text(since)]).await
+    }
+
     pub async fn forget_run(&self, agent: &str, run_id: &str) -> anyhow::Result<()> {
         self.run("DELETE FROM watched_runs WHERE agent=? AND run_id=?", vec![text(agent), text(run_id)]).await?;
         Ok(())

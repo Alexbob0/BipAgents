@@ -671,6 +671,12 @@ impl Drop for Running {
     }
 }
 
+/// A watcher of the agent is being checked now (agent_restart.rs waits).
+pub fn any_running(agent: &str) -> bool {
+    let prefix = format!("{agent}/");
+    RUNNING.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|k| k.starts_with(&prefix))
+}
+
 pub fn is_running(agent: &str, id: &str) -> bool {
     RUNNING.lock().unwrap_or_else(|e| e.into_inner()).contains(&format!("{agent}/{id}"))
 }

@@ -724,6 +724,15 @@ impl RunHub {
         inner.subs.iter().filter(|(key, sub)| !skip.contains(&key.1) && !lock(&sub.state).finished).count()
     }
 
+    /// A run of the agent goes on now (a turn, a room's, a Live call's, a background task's): agent_restart.rs waits.
+    pub fn agent_running(&self, agent: &str) -> bool {
+        let inner = lock(&self.inner);
+        inner.subs.values().any(|sub| {
+            let st = lock(&sub.state);
+            sub.agent.name == agent && !st.finished && st.terminal.is_none()
+        })
+    }
+
     /// The agent's runs going on at this Hermes address (its turns still in the shared hub while it moves,
     /// own_space.rs).
     pub fn agent_runs_at(&self, agent: &str, hermes_url: &str) -> usize {
