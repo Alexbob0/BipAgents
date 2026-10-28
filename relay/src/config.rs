@@ -8,6 +8,7 @@
 //! - `PORT` (default 8080) or `RELAY_LISTEN` (`0.0.0.0:8080`)
 //! - `RELAY_PUSHES_PER_DEVICE_HOUR` (300), `RELAY_PUSHES_PER_IP_HOUR` (20000), `RELAY_REGISTRATIONS_PER_IP_HOUR` (60)
 //! - `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy that sets `X-Forwarded-For` (the quotas then count its first address)
+//! - `RELAY_GUICHET_KEY` (or `_FILE`): the key the guichet sends its pushes with (tokens sealed for the guichet)
 
 use std::net::SocketAddr;
 
@@ -29,9 +30,13 @@ pub struct Config {
     pub report_url: Option<String>,
     pub report_secret: Option<String>,
     pub reports_per_ip_hour: u32,
-    /// Devices refused (terms of use: abuse), by the 8-hex fingerprint the logs show: `RELAY_BLOCKED` (separated by
-    /// commas or spaces) or `RELAY_BLOCKED_FILE` (one per line, `#` comments).
+    /// Devices refused (terms of use: abuse), by the 8-hex fingerprint the logs show, or single relay tokens by their
+    /// 16-hex id (a token that leaked): `RELAY_BLOCKED` (separated by commas or spaces) or `RELAY_BLOCKED_FILE` (one
+    /// per line, `#` comments).
     pub blocked: Vec<String>,
+    /// The guichet's keys (`RELAY_GUICHET_KEY` or `_FILE`, comma-separated to change it without a gap): a token
+    /// sealed for the guichet is sent with one of them, nothing else; none set: such tokens are refused.
+    pub guichet_keys: Vec<String>,
 }
 
 fn var(name: &str) -> Option<String> {
@@ -95,7 +100,13 @@ impl Config {
                 .map(|line| line.split('#').next().unwrap_or(""))
                 .flat_map(|line| line.split([',', ' ', '\t']))
                 .map(|item| item.trim().to_ascii_lowercase())
-                .filter(|item| item.len() == 8 && item.chars().all(|c| c.is_ascii_hexdigit()))
+                .filter(|item| (item.len() == 8 || item.len() == 16) && item.chars().all(|c| c.is_ascii_hexdigit()))
+                .collect(),
+            guichet_keys: inline_or_file("RELAY_GUICHET_KEY")?
+                .unwrap_or_default()
+                .split(',')
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
                 .collect(),
         })
     }

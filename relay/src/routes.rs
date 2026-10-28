@@ -18,7 +18,7 @@ use crate::config::Config;
 use crate::fcm::Fcm;
 use crate::limits::Quota;
 use crate::payload::{scrub, scrub_live};
-use crate::seal::{Device, Platform, Sealer, PREFIX};
+use crate::seal::{now, Audience, Closed, Device, Platform, Sealer, PREFIX, RETIRED_PREFIX};
 
 pub struct Relay {
     pub sealer: Sealer,
@@ -33,6 +33,8 @@ pub struct Relay {
     http: reqwest::Client,
     trust_forwarded_for: bool,
     blocked: std::collections::HashSet<String>,
+    /// SHA-256 of the guichet's keys: compared as digests, so the comparison tells nothing of the key.
+    guichet_keys: Vec<[u8; 32]>,
 }
 
 impl Relay {
@@ -50,7 +52,18 @@ impl Relay {
             http,
             trust_forwarded_for: config.trust_forwarded_for,
             blocked: config.blocked.into_iter().collect(),
+            guichet_keys: config.guichet_keys.iter().map(|k| Sha256::digest(k.as_bytes()).into()).collect(),
         })
+    }
+
+    /// Whether this push comes from the guichet: `Authorization: Bearer <one of its keys>`.
+    fn sent_by_guichet(&self, headers: &HeaderMap) -> bool {
+        let presented = headers
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")))
+            .map(|k| <[u8; 32]>::from(Sha256::digest(k.trim().as_bytes())));
+        presented.is_some_and(|p| self.guichet_keys.contains(&p))
     }
 
     /// Every minute: the quotas forget what is about to be an hour old.
@@ -111,6 +124,9 @@ struct Register {
     token: String,
     #[serde(default)]
     environment: Option<String>,
+    /// Who will send with it: `bridge` (the default) or `guichet`.
+    #[serde(default)]
+    audience: Audience,
 }
 
 fn apple_token(raw: &str) -> Option<String> {
@@ -161,8 +177,12 @@ async fn register(
     if relay.is_blocked(&device.token) {
         return refuse(StatusCode::FORBIDDEN, "this device is blocked on the relay: write to support@bipagents.com");
     }
-    tracing::info!(platform = ?device.platform, device = %fingerprint(&device.token), "device registered");
-    Json(json!({"relay_token": relay.sealer.seal(&device)})).into_response()
+    tracing::info!(platform = ?device.platform, device = %fingerprint(&device.token), audience = ?body.audience,
+                   "device registered");
+    let issued = now();
+    Json(json!({"relay_token": relay.sealer.seal(&device, body.audience, issued),
+                "expires": issued + crate::seal::LIFETIME_SECS}))
+    .into_response()
 }
 
 fn alert() -> String {
@@ -191,14 +211,26 @@ async fn push(
     headers: HeaderMap,
     Json(body): Json<Push>,
 ) -> Response {
-    if !body.token.starts_with(PREFIX) {
+    if !body.token.starts_with(PREFIX) && !body.token.starts_with(RETIRED_PREFIX) {
         // A device token sent as such (a bridge set up for direct delivery): not a dead token, just the wrong relay.
         return refuse(StatusCode::BAD_REQUEST, "not a relay token: the app registers with /v1/register first");
     }
-    let Some(device) = relay.sealer.open(&body.token) else {
-        // Sealed by a key no longer in use, or altered: the bridge forgets it and the app registers again.
-        return Json(json!({"status": 410, "reason": "BadRelayToken", "apns_id": null})).into_response();
+    // A dead token reads as Apple's 410 (as the bridges and the guichet read it): the sender forgets it and the app
+    // registers again.
+    let gone = |reason: &str| Json(json!({"status": 410, "reason": reason, "apns_id": null})).into_response();
+    let claims = match relay.sealer.open(&body.token, now()) {
+        Ok(claims) => claims,
+        // Sealed by a key no longer in use, or altered.
+        Err(Closed::Invalid) => return gone("BadRelayToken"),
+        // Ended (90 days), or of the first format (no end).
+        Err(Closed::Expired | Closed::Retired) => return gone("ExpiredRelayToken"),
     };
+    if claims.aud == Audience::Guichet && !relay.sent_by_guichet(&headers) {
+        // A token the app gave the guichet, sent by anyone else (or a relay without the guichet's key).
+        tracing::info!(token = %claims.id, "push refused: not the guichet");
+        return refuse(StatusCode::UNAUTHORIZED, "this token is for the guichet");
+    }
+    let device = claims.device;
     // `liveactivity`: a Live Activity's update (an agent's long work on the iPhone's lock screen), Apple only
     let live = body.push_type == "liveactivity";
     if !matches!(body.push_type.as_str(), "alert" | "background" | "liveactivity")
@@ -208,8 +240,8 @@ async fn push(
     {
         return refuse(StatusCode::BAD_REQUEST, "invalid push");
     }
-    if relay.is_blocked(&device.token) {
-        tracing::info!(device = %fingerprint(&device.token), "push refused: device blocked");
+    if relay.is_blocked(&device.token) || relay.blocked.contains(&claims.id) {
+        tracing::info!(device = %fingerprint(&device.token), token = %claims.id, "push refused: device blocked");
         return refuse(StatusCode::FORBIDDEN, "this device is blocked on the relay: write to support@bipagents.com");
     }
     if !relay.per_ip_push.allow(relay.client_ip(peer, &headers).as_bytes())
@@ -217,7 +249,7 @@ async fn push(
     {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "quota exceeded");
     }
-    let payload = match if live { scrub_live(&body.payload) } else { scrub(&body.payload) } {
+    let payload = match if live { scrub_live(&body.payload) } else { scrub(&body.payload, claims.aud) } {
         Ok(payload) => payload,
         Err("payload too large") => return refuse(StatusCode::PAYLOAD_TOO_LARGE, "payload too large"),
         Err(reason) => return refuse(StatusCode::BAD_REQUEST, reason),
@@ -237,7 +269,7 @@ async fn push(
             }
         },
     };
-    tracing::info!(platform = ?device.platform, device = %fingerprint(&device.token), status = outcome.status,
+    tracing::info!(platform = ?device.platform, device = %fingerprint(&device.token), token = %claims.id, status = outcome.status,
                    reason = outcome.reason.as_deref().unwrap_or(""), "push relayed");
     Json(json!({"status": outcome.status, "reason": outcome.reason, "apns_id": outcome.id})).into_response()
 }

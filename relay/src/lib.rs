@@ -5,8 +5,8 @@
 //! are replaced by the generic text), and needs nothing but its own keys: one small binary, as many copies as wanted.
 //!
 //! - `POST /v1/register`   `{"platform": "apns"|"fcm", "token": "…", "environment": "sandbox"|"production"}`
-//!   → `{"relay_token": "r1.…"}` (the app gives it to its bridge instead of its device token)
-//! - `POST /v1/relay/push` `{"token": "r1.…", "payload": {…}, "push_type": "alert"|"background"|"liveactivity", "priority": 5|10,
+//!   → `{"relay_token": "r2.…", "expires": …}` (the app gives it to its bridge instead of its device token)
+//! - `POST /v1/relay/push` `{"token": "r2.…", "payload": {…}, "push_type": "alert"|"background"|"liveactivity", "priority": 5|10,
 //!   "collapse_id": "…"}` → `{"status": 200, "reason": null, "apns_id": "…"}`, Apple's answer; `status` 410 means
 //!   the token is dead (the bridge forgets the device). Same shape as the bridges' own relay.
 //! - `GET /health`
