@@ -161,6 +161,8 @@ pub mod vault_logins;
 // connectors an agent makes on request (2026-10-28): their secrets, their store and approval, their runs
 pub mod connectors;
 pub mod connectors_run;
+/// « Ce que tes agents font tout seuls »: routines, tasks, scans and scheduled connectors in one list (2026-10-28).
+pub mod autonomous;
 pub mod secrets;
 
 pub use app::AppState;

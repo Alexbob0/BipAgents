@@ -496,6 +496,12 @@ impl HermesClient {
         }
     }
 
+    /// `GET /api/jobs?include_disabled=true`: the agent's routines (its scheduled tasks), paused ones included.
+    pub async fn routines(&self, agent: &AgentConfig) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let data = self.get_json(agent, "/api/jobs", &[("include_disabled", "true".to_string())]).await?;
+        Ok(Self::items(data, ["jobs", "data", "items"]))
+    }
+
     /// `GET /api/sessions` (most recent first).
     pub async fn list_sessions(&self, agent: &AgentConfig, limit: i64) -> Result<Vec<Map<String, Value>>, HermesError> {
         let data = self.get_json(agent, "/api/sessions", &[("limit", limit.to_string())]).await?;
