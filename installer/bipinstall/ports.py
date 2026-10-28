@@ -59,9 +59,14 @@ def port_free(port: int, host: str = "127.0.0.1") -> bool:
 
 
 def candidate_bases() -> Iterable[int]:
+    """FIRST_BLOCK, then 9200, 9210… skipping the first install's browser range (9600-9999): a shared server's 40th
+    place would otherwise take 9600, where place 1's browsers listen."""
     yield FIRST_BLOCK
-    for i in range(100):
-        yield NEXT_BLOCKS + i * BLOCK
+    for i in range(100 + BROWSERS_FIRST_COUNT // BLOCK):
+        base = NEXT_BLOCKS + i * BLOCK
+        if BROWSERS_FIRST - BLOCK < base < BROWSERS_FIRST + BROWSERS_FIRST_COUNT:
+            continue
+        yield base
 
 
 def pick_block(is_free: Callable[[int], bool] = port_free, wanted: Optional[int] = None) -> Ports:
