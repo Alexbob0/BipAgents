@@ -1275,7 +1275,7 @@ pub fn router() -> Router<AppState> {
 
 const USAGE: &str = "usage: bipbridge archive list|add|remove|refresh --agent AGENT [--folder FOLDER] [--name NAME] \
 [--id ID] [--overview] [--config CONFIG]
-       bipbridge archive extract --agent AGENT [--id ID] (--sample [N] | --run --budget EUR | --nightly on|off | --status)
+       bipbridge archive extract --agent AGENT [--id ID] (--sample [N] | --run --budget EUR [--retry-given-up] | --nightly on|off | --status)
                  [--model MODEL] [--price-in EUR_PER_M --price-out EUR_PER_M] [--config CONFIG]\n";
 
 /// `bipbridge archive …`: an archive connected, listed, removed or indexed now, without the app (an install set up by
@@ -1304,7 +1304,7 @@ pub fn cli(argv: &[String]) -> i32 {
                     i += 1;
                 }
             }
-            "--run" | "--status" => {
+            "--run" | "--status" | "--retry-given-up" => {
                 options.insert(arg.trim_start_matches('-').into(), "1".into());
             }
             "--overview" => overview = true,

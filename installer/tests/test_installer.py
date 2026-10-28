@@ -945,19 +945,22 @@ def test_the_other_installs_of_the_machine_are_found_and_updated_after_one_sudo(
     Entry = __import__("collections").namedtuple("Entry", "pw_name pw_uid pw_dir")
     monkeypatch.setattr(pwd, "getpwall", lambda: [Entry("root", 0, "/root"), Entry("admin", 1000, "/home/admin"),
                                                    Entry("chi", 1002, "/home/chi"), Entry("alex", 1003, "/home/alex"),
-                                                   Entry("guest", 1004, "/home/guest")])
+                                                   Entry("guest", 1004, "/home/guest"), Entry("aibox", 1005, "/home/aibox")])
     monkeypatch.setenv("USER", "admin")
     ran = []
 
     def fake_run(args, **kwargs):
         ran.append(args)
         ok = args[:2] == ["sudo", "-v"] or (args[:3] == ["sudo", "-n", "test"] and "guest" not in args[-1])
+        ok = ok or (args[0] == "pgrep" and args[2] != "aibox")   # aibox's old install: stopped, left there
         return subprocess.CompletedProcess(args, 0 if ok or args[0] == "bash" else 1)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     upgrade.update_others(hermes.Runner())
     updates = [a[2] for a in ran if a[0] == "bash"]
     assert len(updates) == 2 and updates[0].startswith("sudo -n -u chi bash -c") and "update --auto" in updates[1]
+    assert not any("aibox" in update for update in updates)
+    assert "aibox: its BipAgents isn't running" in capsys.readouterr().out
     assert ran[0] == ["sudo", "-v"] and not any("admin/.config" in " ".join(a) for a in ran)   # not itself
 
 

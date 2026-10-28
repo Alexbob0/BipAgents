@@ -36,11 +36,14 @@
 //!
 //!     GET   /v1/agents/{id}/archives/{archive}/records          state, last sample, models, counts, nightly, job
 //!     POST  /v1/agents/{id}/archives/{archive}/records/sample   {size?, model?, price_in?, price_out?}  (202)
-//!     POST  /v1/agents/{id}/archives/{archive}/records/run      {budget_eur, model?, price_in?, price_out?}
+//!     POST  /v1/agents/{id}/archives/{archive}/records/run      {budget_eur, model?, price_in?, price_out?,
+//!                                                                retry_given_up?}
 //!     PATCH /v1/agents/{id}/archives/{archive}/records          {nightly}
 //!
 //! Command line: `bipbridge archive extract --agent vie [--id mails] --sample 50 [--model M]`, then
-//! `--run --budget 5`. Agent tool: `archive_records` (status, sample, propose).
+//! `--run --budget 5`. Agent tool: `archive_records` (status, sample, propose). A document the model answered badly
+//! `MAX_TRIES` times is left (`given_up` in the state); `--retry-given-up` (`retry_given_up` on the route) gives those
+//! their tries back for the pass it starts, with a stronger model say.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -348,6 +351,12 @@ impl Store {
             params![key, sig, hash, SCHEMA, py::time_time(), records as i64, if ok { 0 } else { 1 }, ok as i64],
         )?;
         Ok(())
+    }
+
+    /// The documents given up on (the model answered badly `MAX_TRIES` times): they get their tries back, so the next
+    /// pass reads them again (with a stronger model, say). How many.
+    pub fn retry_given_up(&self) -> rusqlite::Result<usize> {
+        self.conn.execute("UPDATE done SET tries = 0 WHERE ok = 0 AND tries >= ?1", [MAX_TRIES])
     }
 
     pub fn meta(&self, key: &str) -> Option<String> {
@@ -1225,8 +1234,34 @@ pub fn euros_text(eur: f64, lang: &str) -> String {
     }
 }
 
-/// The full pass's report, in the person's language (the job's report and its notification).
+/// Records listed under a full pass's report at most (its first ones), then « and N more ».
+pub const REPORT_LINES: usize = 10;
+
+/// The full pass's report, in the person's language (the job's report): the totals, then the records this run added
+/// or completed, one line each (leftover of 2026-10-23: the totals alone said nothing of what was found).
 pub fn plain_report(tally: &Tally, archive: &Archive, lang: &str) -> String {
+    let mut text = plain_totals(tally, archive, lang);
+    let found: Vec<&Example> = tally.examples.iter().filter(|e| e.action != "same").collect();
+    let shown = found.len().min(REPORT_LINES);
+    for e in found.iter().take(shown) {
+        let day = e.date.get(..10).unwrap_or(&e.date);
+        let date = if day.is_empty() { String::new() } else { format!(" ({day})") };
+        text += &format!("\n• {}{date}", e.summary);
+    }
+    // the examples stop at 60: what this run did beyond the lines shown
+    let more = (Tally::total(&tally.added) + Tally::total(&tally.updated)).saturating_sub(shown);
+    if more > 0 && shown > 0 {
+        text += &match lang {
+            "fr" => format!("\n… et {more} autres dans tes Fiches."),
+            "de" => format!("\n… und {more} weitere in deinen Einträgen."),
+            "es" => format!("\n… y {more} más en tus registros."),
+            _ => format!("\n… and {more} more in your records."),
+        };
+    }
+    text
+}
+
+fn plain_totals(tally: &Tally, archive: &Archive, lang: &str) -> String {
     let added = Tally::total(&tally.added);
     let updated = Tally::total(&tally.updated);
     let counts = counts_text(&tally.added, lang);
@@ -1811,15 +1846,19 @@ pub fn state_view(config: &Config, agent: &AgentConfig, archive: &Archive) -> Va
     let path = store_path(config, archive);
     let store = if path.exists() { Store::open(&path).ok() } else { None };
     let meta = |k: &str| store.as_ref().and_then(|s| s.meta(k)).and_then(|t| serde_json::from_str::<Value>(&t).ok());
-    let (candidates, read) =
+    let (candidates, read, given_up) =
         match Some(index_path(config, archive)).filter(|p| p.exists()).and_then(|p| Index::open(&p).ok()) {
             Some(index) => {
                 let rows = candidates(&index).unwrap_or_default();
                 let seen = store.as_ref().and_then(|s| s.seen().ok()).unwrap_or_default();
                 let read = rows.iter().filter(|r| skip(seen.get(&r.hit.key), &sig_of(r))).count();
-                (rows.len(), read)
+                let given_up = rows
+                    .iter()
+                    .filter(|r| skip(seen.get(&r.hit.key), &sig_of(r)) && seen.get(&r.hit.key).is_some_and(|s| !s.ok))
+                    .count();
+                (rows.len(), read, given_up)
             }
-            None => (0, 0),
+            None => (0, 0, 0),
         };
     let job = crate::jobs::tasks(config)
         .into_iter()
@@ -1835,7 +1874,7 @@ pub fn state_view(config: &Config, agent: &AgentConfig, archive: &Archive) -> Va
         .map(|j| Value::Object(crate::jobs::task_view(&j)));
     json!({
         "state": if sampling(archive) { "sampling" } else { "idle" },
-        "candidates": candidates, "read": read,
+        "candidates": candidates, "read": read, "given_up": given_up,
         "sample": meta("sample"), "last_night": meta("last_night"),
         "nightly": store.as_ref().and_then(|s| s.meta("nightly")).as_deref() == Some("1"),
         "models": models(config, agent), "sample_size": SAMPLE_SIZE, "sample_cap_eur": config.archive_records.sample_cap_eur,
@@ -1925,6 +1964,14 @@ async fn run_route(
     if running_for(&config, &agent.name).is_some() {
         return Err(HttpError::new(409, "this agent already fills its records from an archive"));
     }
+    if body.get("retry_given_up").and_then(Value::as_bool) == Some(true) {
+        // the documents the model failed on twice are read again by this pass
+        let path = store_path(&config, &archive);
+        let again = tokio::task::spawn_blocking(move || Store::open(&path).and_then(|s| Ok(s.retry_given_up()?)))
+            .await
+            .map_err(anyhow::Error::from)??;
+        tracing::info!(target: "bipbridge::archives", archive = %archive.id, again, "records: given-up documents retried");
+    }
     let job = new_job(&config, &archive, &model, budget, "proposed", "person")?;
     let tell = crate::jobs::jobs_of(&state).tell.clone();
     let out = launch(config, job, tell)?;
@@ -2002,6 +2049,12 @@ fn status_text(view: &Value, archive: &Archive) -> String {
         "Archive « {} »: {} likely documents, {} already read.",
         archive.name, view["candidates"], view["read"]
     );
+    if view["given_up"].as_u64().unwrap_or(0) > 0 {
+        out += &format!(
+            " {} of them could not be read (the model failed twice): --run --retry-given-up reads them again.",
+            view["given_up"]
+        );
+    }
     if let Some(sample) = view.get("sample").filter(|s| s.is_object()) {
         out += &format!(
             "\nLast sample ({} documents read with {}): {} new records would be made ({}), {} already in the Carnet; it cost {:.3} €.",
@@ -2217,6 +2270,15 @@ pub fn cli(config: &Config, agent: &AgentConfig, options: &HashMap<String, Strin
         if running_for(&config, &agent.name).is_some() {
             eprintln!("{}: a pass is running already (see « Tâches de fond »)", agent.name);
             return 1;
+        }
+        if options.contains_key("retry-given-up") {
+            match Store::open(&store_path(&config, &archive)).and_then(|s| Ok(s.retry_given_up()?)) {
+                Ok(n) => println!("{n} documents the model failed on twice are read again by this pass."),
+                Err(err) => {
+                    eprintln!("{err}");
+                    return 1;
+                }
+            }
         }
         let job = match new_job(&config, &archive, &model, budget, "proposed", "person")
             .and_then(|j| set_running(&config, j))

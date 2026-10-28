@@ -105,6 +105,8 @@ def test_a_sample_reports_without_writing_then_the_full_pass_fills_the_records(b
     job = job_of(bridge, job_id)
     assert job["archive"] == "mails" and job["progress"] == {"done": 4, "total": 4}
     assert job["report"].startswith("4 new records from « Mails »")
+    # under the totals, what was found: one line per record
+    assert len([line for line in job["report"].splitlines() if line.startswith("• ")]) == 4, job["report"]
     found = carnet_records(bridge)
     assert [i["item"] for i in found["purchase"]] == ["Vélo électrique"]
     assert found["purchase"][0]["warranty_end"].startswith("2026-05-02")
@@ -122,10 +124,13 @@ def test_a_sample_reports_without_writing_then_the_full_pass_fills_the_records(b
     assert "origin: archive" in page
     state = records_state(bridge)
     assert state["read"] == 4 and state["nightly"] is True and state["job"]["id"] == job_id
+    assert state["given_up"] == 0
 
-    # again: nothing new to read, no model call; a changed document is read again and merged (no duplicate)
+    # again: nothing new to read, no model call (nothing given up to retry either); a changed document is read again
+    # and merged (no duplicate)
     calls = len(extraction_chats(fakes))
-    again = bridge.post(f"/v1/agents/{AGENT}/archives/mails/records/run", json={"budget_eur": 0}, headers=AUTH).json()
+    again = bridge.post(f"/v1/agents/{AGENT}/archives/mails/records/run", json={"budget_eur": 0, "retry_given_up": True},
+                        headers=AUTH).json()
     assert wait_until(lambda: job_of(bridge, again["id"])["state"] == "done", timeout=30)
     assert len(extraction_chats(fakes)) == calls and job_of(bridge, again["id"])["progress"]["total"] == 0
     (folder / "velo.md").write_text((folder / "velo.md").read_text() + "Livré.\n")
