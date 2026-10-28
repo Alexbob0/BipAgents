@@ -330,6 +330,7 @@ fn connector_bundle(state: &AppState, config: &Config, agent: &AgentConfig, conn
         "entry": conn.entry, "tools": tools, "secrets": secrets,
         "schedule": conn.schedule.as_ref().map(|s| json!({"when": s.when, "mechanical": s.mechanical, "tool": s.tool,
                                                           "arguments": s.arguments})),
+        "watch": conn.watch.as_ref().map(|w| json!({"every": w.every, "notify": w.notify})),
         "unofficial": conn.unofficial, "files": files,
     }))
 }
@@ -688,6 +689,11 @@ pub fn checked_connector(item: &Value) -> Result<(Connector, Files), String> {
         }
         _ => None,
     };
+    // a watcher's check (watchers.rs), checked like the agent's own
+    let watch = match item.get("watch") {
+        Some(Value::Object(map)) => Some(crate::watchers::parse_watch(map).map_err(|why| format!("{name}: {why}"))?),
+        _ => None,
+    };
     let declared_tools = item
         .get("tools")
         .and_then(Value::as_array)
@@ -707,11 +713,12 @@ pub fn checked_connector(item: &Value) -> Result<(Connector, Files), String> {
         icon,
         sites,
         entry: head(&s(item, "entry"), 300),
-        kind,
         declared_tools,
         secrets: hints.iter().map(|h| h.name.clone()).collect(),
         secret_hints: hints,
-        schedule,
+        schedule: if watch.is_some() { None } else { schedule },
+        kind: if watch.is_some() { "script".into() } else { kind },
+        watch,
         unofficial: item.get("unofficial").and_then(Value::as_bool).unwrap_or(false),
         from_template: true,
         ..Connector::default()

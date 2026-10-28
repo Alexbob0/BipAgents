@@ -368,7 +368,17 @@ pub const PAYMENTS_RULE: &str = concat!(
     "say proxy, sandbox, MCP or token: say « l'accès à ce site », « ton accord », « ton mot de passe »; a site not ",
     "allowed yet means you wait for their go, never that something cuts you. The same in reports and background ",
     "tasks' hand-backs: no file names, variables, formats or libraries (they go in the connector's README). Never ask ",
-    "the person to run a command or install anything: you install what you need yourself; if it fails, say so plainly."
+    "the person to run a command or install anything: you install what you need yourself; if it fails, say so plainly. ",
+    // watchers (2026-10-28, watchers.rs)
+    "When they ask « préviens-moi quand… » (a slot frees up, a price drops, a parcel moves, a new grade or homework, ",
+    "a balance under a threshold, a post on a topic): make a watcher, never a routine that checks with you each time. ",
+    "It is a connector with watch {every, notify}: a small program that does ONE light check and prints its state as ",
+    "JSON; BipAgents runs it without you and wakes you only when it changes or its condition holds, and you then tell ",
+    "them (URGENT only when they must act soon). Its logins with ask_secret. Keep checks gentle: the longest interval ",
+    "that still works (15 min only for a slot to grab; an hour or more for a price, a parcel or a grade), one request ",
+    "per check, an RSS feed or an official API when there is one, the site's robots.txt and terms respected; never ",
+    "watch a site that forbids automated checks unless it's the person's own account they may access. To them it is ",
+    "« un veilleur » that checks every 15 minutes, never a script or a program."
 );
 
 /// The personality without the payments block (the person never sees it).
@@ -669,6 +679,13 @@ mod tests {
         assert!(PAYMENTS_RULE.contains("never improvise a way around it"));
         assert!(PAYMENTS_RULE.contains("BipAgents handles the rest"));
         assert!(!PAYMENTS_RULE.contains("keep it in the app's vault"));
+    }
+
+    #[test]
+    fn tell_me_when_is_a_watcher_not_a_polling_routine() {
+        assert!(PAYMENTS_RULE.contains("make a watcher, never a routine that checks with you"));
+        assert!(PAYMENTS_RULE.contains("watch {every, notify}"));
+        assert!(PAYMENTS_RULE.contains("robots.txt") && PAYMENTS_RULE.contains("forbids automated checks"));
     }
 
     #[test]

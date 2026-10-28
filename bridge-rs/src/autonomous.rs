@@ -4,12 +4,13 @@
 //!
 //!     schedule    « Chaque jour / chaque semaine »: the agents' routines (Hermes' scheduled tasks, `/api/jobs`) and the
 //!                 connectors' mechanical schedules (connectors_run.rs, no model call)
-//!     on_change   « Quand quelque chose change »: watchers that run often and wake the agent only on a change
-//!                 (planned, not built: the kind `watcher` is reserved, the group stays empty for now)
+//!     on_change   « Quand quelque chose change »: the watchers (watchers.rs), connectors whose program runs often
+//!                 with no model call and wakes the agent only on a change
 //!     now         « En cours »: background tasks and mailbox scans (jobs.rs), proposed, running, paused, or done in
 //!                 the last three days
 //!
-//! Each item: `id` (`routine:<agent>:<job>`, `task:<id>`, `mail_scan:<agent>`, `connector:<agent>:<id>`), `kind`,
+//! Each item: `id` (`routine:<agent>:<job>`, `task:<id>`, `mail_scan:<agent>`, `connector:<agent>:<id>`,
+//! `watcher:<agent>:<id>`), `kind`,
 //! `group`, `agent`, `ref` (the id its own routes take), `title`, `when` ({kind, hour, minute, weekday 1 = Monday, day,
 //! hours, minutes, at, text}: the apps put it in their language; `text` is the French one), `state` (`active`,
 //! `paused`, `waiting` for the person, `running`, `done`), `raw_state`, `last_run` ({at, ok, error} or null),
@@ -24,6 +25,9 @@
 //!     connector   pause / resume / delete         PATCH /v1/agents/{agent}/connectors/{ref} {enabled}, DELETE
 //!                 run                             POST /v1/agents/{agent}/connectors/{ref}/run (here: its schedule's
 //!                                                 tool now, in the background)
+//!     watcher     the same routes; run checks it now (`?wait=true`: answers with the check's outcome). Its `detail`:
+//!                 `notify`, `last_check`, `last_change` (Unix seconds or null), `broken` (« en panne »), `summary`
+//!                 (what it saw last, plain words), `wakes`, `pending`, `description`, `icon`
 //!
 //!     GET  /v1/autonomous[?agent=]    {items, unreachable, budgets}   `unreachable`: agents whose Hermes didn't
 //!                                                                    answer (their routines as last seen, if any)
@@ -393,6 +397,53 @@ pub fn job_item(job: &Dict, now: f64) -> Option<Value> {
     ))
 }
 
+/// A watcher (watchers.rs): group `on_change`, its interval as `when`, its last check as `last_run`; None for any
+/// other connector.
+pub fn watcher_item(agent: &str, conn: &Connector, rt: &crate::watchers::Runtime, settings: &crate::watchers::Settings) -> Option<Value> {
+    let watch = conn.watch.as_ref()?;
+    let minutes = crate::watchers::minutes_of(watch);
+    let state = match conn.status.as_str() {
+        connectors::APPROVED if conn.enabled => "active",
+        connectors::APPROVED => "paused",
+        _ => "waiting",
+    };
+    let last_run = if rt.last_check_at > 0.0 {
+        let error = if rt.last_ok { Value::Null } else { json!(head(&rt.last_message, 200)) };
+        json!({"at": rt.last_check_at, "ok": rt.last_ok, "error": error})
+    } else {
+        Value::Null
+    };
+    let next = crate::watchers::next_check(rt, watch, settings);
+    let next_run = (state == "active" && next > 0.0).then_some(next);
+    let actions: &[&str] = match state {
+        "active" => &["pause", "run", "delete", "open"],
+        "paused" => &["resume", "delete", "open"],
+        _ => &["delete", "open"],
+    };
+    let icon = connectors::icon_of(&conn.icon);
+    let at = |s: f64| if s > 0.0 { json!(s) } else { Value::Null };
+    Some(item(
+        format!("watcher:{agent}:{}", conn.id),
+        "watcher",
+        "on_change",
+        agent,
+        &conn.id,
+        conn.name.clone(),
+        interval_when(u64::from(minutes)),
+        state,
+        &conn.status,
+        last_run,
+        next_run,
+        json!({"ai": false}),
+        actions,
+        json!({"description": head(&conn.description, 300), "notify": watch.notify,
+               "last_check": at(rt.last_check_at), "last_change": at(rt.last_change_at),
+               "broken": rt.broken, "summary": head(&rt.last_summary, 200), "wakes": rt.wakes, "pending": rt.pending,
+               "icon": {"sf": icon.get("sf").cloned().unwrap_or(Value::Null),
+                        "material": icon.get("material").cloned().unwrap_or(Value::Null)}}),
+    ))
+}
+
 /// A connector with a mechanical schedule (the bridge runs it, no model call); None otherwise (a connector called
 /// from a routine shows as that routine).
 pub fn connector_item(agent: &str, conn: &Connector, zone: chrono_tz::Tz) -> Option<Value> {
@@ -500,6 +551,10 @@ pub async fn listing(state: &AppState, only: Option<&str>) -> (Vec<Value>, Vec<S
     for (agent, conn) in connectors::all(&config) {
         if only.is_none_or(|name| name == agent) && config.agent(Some(&agent)).is_some() {
             items.extend(connector_item(&agent, &conn, zone));
+            if conn.watch.is_some() {
+                let rt = crate::watchers::load(&config, &agent, &conn.id);
+                items.extend(watcher_item(&agent, &conn, &rt, &config.watchers));
+            }
         }
     }
     sort_items(&mut items);
@@ -526,10 +581,25 @@ async fn list_route(State(state): State<AppState>, q: web::QueryMap) -> ApiResul
 async fn run_connector_route(
     State(state): State<AppState>,
     UrlPath((agent_id, id)): UrlPath<(String, String)>,
+    q: web::QueryMap,
 ) -> ApiResult<Response> {
     let config = state.config();
     let agent = config.agent(Some(&agent_id)).cloned().ok_or_else(|| HttpError::new(404, "no such agent"))?;
     let conn = connectors::get(&config, &agent.name, &id).ok_or_else(|| HttpError::new(404, "no such connector"))?;
+    if conn.watch.is_some() {
+        // a watcher: checked now (« Lancer maintenant »), gently
+        crate::watchers::may_run_now(&config, &agent.name, &conn).map_err(|code| HttpError::json(409, json!({"code": code})))?;
+        let wait = web::query_str(&q, "wait", false, Some(8))?.is_some_and(|v| ["1", "true", "yes"].contains(&v.as_str()));
+        if wait {
+            let outcome = crate::watchers::check(&state, &agent, &id, "person").await;
+            return Ok(web::ok(json!({"started": true, "outcome": outcome})));
+        }
+        let started = state.clone();
+        tokio::spawn(async move {
+            let _ = crate::watchers::check(&started, &agent, &id, "person").await;
+        });
+        return Ok(web::ok(json!({"started": true})));
+    }
     let Some(schedule) = conn.schedule.clone().filter(|s| s.mechanical && !s.tool.is_empty()) else {
         return Err(HttpError::json(409, json!({"code": "no_schedule"})));
     };
@@ -666,6 +736,38 @@ mod tests {
         assert_eq!(connector_item("lea", &conn, chrono_tz::UTC).unwrap()["main_action"], "resume");
         conn.schedule.as_mut().unwrap().mechanical = false;
         assert!(connector_item("lea", &conn, chrono_tz::UTC).is_none());
+    }
+
+    #[test]
+    fn a_watcher_row() {
+        let mut conn = Connector {
+            id: "c9".into(),
+            name: "Créneau médecin".into(),
+            status: connectors::APPROVED.into(),
+            enabled: true,
+            watch: Some(connectors::Watch { every: "15m".into(), notify: "on_change".into() }),
+            ..Default::default()
+        };
+        let rt = crate::watchers::Runtime {
+            last_check_at: 1_000.0,
+            last_ok: true,
+            last_change_at: 900.0,
+            last_summary: "Prochain créneau : mardi 10 h".into(),
+            ..Default::default()
+        };
+        let settings = crate::watchers::Settings::default();
+        let row = watcher_item("lea", &conn, &rt, &settings).unwrap();
+        assert_eq!((row["kind"].as_str(), row["group"].as_str()), (Some("watcher"), Some("on_change")));
+        assert_eq!(row["id"], "watcher:lea:c9");
+        assert_eq!(row["when"]["text"], "Toutes les 15 minutes");
+        assert_eq!(row["next_run"], 1_900.0);
+        assert_eq!(row["actions"], json!(["pause", "run", "delete", "open"]));
+        assert_eq!((row["detail"]["last_change"].as_f64(), row["detail"]["broken"].as_bool()), (Some(900.0), Some(false)));
+        assert_eq!(row["cost"]["ai"], false);
+        conn.enabled = false;
+        assert_eq!(watcher_item("lea", &conn, &rt, &settings).unwrap()["main_action"], "resume");
+        conn.watch = None;
+        assert!(watcher_item("lea", &conn, &rt, &settings).is_none());
     }
 
     #[test]

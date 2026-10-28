@@ -140,4 +140,4 @@ def test_an_older_app_without_text(bridge):
     response = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"})
     assert response.status_code == 200 and response.json()["recap"] is None   # day 0: nothing from the calendar
     view = bridge.get("/v1/tips", headers=AUTH).json()
-    assert view["day"] == 0 and view["enabled"] is True and len(view["features"]) == 12
+    assert view["day"] == 0 and view["enabled"] is True and len(view["features"]) == 13

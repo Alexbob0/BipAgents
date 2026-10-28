@@ -329,6 +329,7 @@ impl AppState {
         self.spawn(crate::project_agent::run_forever(self.clone())); // projects past their end: archived
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
         self.spawn(crate::connectors_run::scheduler(self.clone())); // the connectors' mechanical schedules
+        self.spawn(crate::watchers::scheduler(self.clone())); // the watchers: checks with no model call
         self.spawn(crate::archives::scheduler(self.config.clone()));
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());

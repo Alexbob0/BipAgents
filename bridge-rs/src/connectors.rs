@@ -114,6 +114,17 @@ pub struct Schedule {
     pub arguments: Value,
 }
 
+/// A watcher (watchers.rs): its program runs every `every` with no model call and wakes the agent only when its state
+/// changes (`on_change`) or its condition holds (`on_condition`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Watch {
+    /// « 15m », « 1h », « 1d »… (watchers.rs `parse_every`).
+    pub every: String,
+    /// `on_change` or `on_condition`.
+    pub notify: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct CardInfo {
@@ -151,6 +162,8 @@ pub struct Connector {
     pub tools: Vec<Value>,
     pub secrets: Vec<String>,
     pub schedule: Option<Schedule>,
+    /// A watcher's check (then `kind` is `script` and `schedule` none).
+    pub watch: Option<Watch>,
     pub unofficial: bool,
     pub status: String,
     pub enabled: bool,
@@ -445,11 +458,20 @@ pub fn schedule_text(schedule: &Option<Schedule>) -> String {
 
 /// The card's sentence.
 pub fn sentence(shown: &str, conn: &Connector, change: &str) -> String {
+    let what = if conn.watch.is_some() { "veilleur" } else { "connecteur" };
     match change {
-        "new" => format!("{shown} a créé le connecteur {}", conn.name),
-        "update" => format!("{shown} a modifié le connecteur {}", conn.name),
-        "template" => format!("{shown} : le connecteur {} vient d'un modèle, à approuver", conn.name),
-        _ => format!("Le connecteur {} de {shown} a changé : à réapprouver", conn.name),
+        "new" => format!("{shown} a créé le {what} {}", conn.name),
+        "update" => format!("{shown} a modifié le {what} {}", conn.name),
+        "template" => format!("{shown} : le {what} {} vient d'un modèle, à approuver", conn.name),
+        _ => format!("Le {what} {} de {shown} a changé : à réapprouver", conn.name),
+    }
+}
+
+/// When it runs, as the card and the apps say it: a watcher's check, else its schedule.
+pub fn when_line(conn: &Connector) -> String {
+    match &conn.watch {
+        Some(watch) => crate::watchers::card_text(watch),
+        None => schedule_text(&conn.schedule),
     }
 }
 
@@ -505,7 +527,8 @@ fn card_item(state: Option<&AppState>, config: &Config, agent: &str, conn: &Conn
         "bip_connector_description": conn.description,
         "bip_connector_sites": conn.sites,
         "bip_connector_secrets": secrets_view(state, agent, conn),
-        "bip_connector_schedule": schedule_text(&conn.schedule),
+        "bip_connector_schedule": when_line(conn),
+        "bip_connector_watch": conn.watch.as_ref().map(crate::watchers::watch_view),
         "bip_connector_tools": tool_names(conn),
         "bip_connector_icon": {"symbol": icon_of(&conn.icon).get("key").cloned().unwrap_or(Value::Null),
                                "image": icon_url(agent, conn)},
@@ -681,6 +704,10 @@ pub async fn answer(state: &AppState, card_id: &str, allow: bool, via: &str) -> 
             c.last_scheduled = py::time_time();
         }
     });
+    if conn.watch.is_some() {
+        // its first check soon: what it sees then is where the comparisons start
+        crate::watchers::approved(&config, &agent, &conn.id);
+    }
     tracing::info!(target: "bipbridge::connectors", agent = %agent, connector = %conn.id, fingerprint = %&pinned[..12], "connector approved by the person");
     // its tools asked of its server, then its entry in the agent's Hermes; its icon in the background
     if let Some(tools) = runner::discover(state, &agent_cfg, &conn.id).await {
@@ -739,6 +766,14 @@ connect.garmin.com, connectapi.garmin.com…) and ask for them together with san
 after the other, so the person gets ONE card; the connector's sites must be exactly those. Heavy work may go to a \
 background task, but a secret never goes in a task's prompt or the conversation: only ask_secret.";
 
+const WATCH: &str = "A watcher (with watch): a script (no MCP) run in its folder with no arguments that does ONE light \
+check and prints ONE JSON object on its standard output: {\"state\": <the compact facts that matter, e.g. \
+{\"slots\": [\"2026-11-04 10:00\"]} or {\"price\": 1299}>, \"summary\": \"one line in plain words\", \"condition\": \
+true|false (on_condition)}. Only what matters in the state (no time of the check, no counters, no ads): the bridge \
+compares it with the last one it kept and wakes you only when it differs. A failure: exit non-zero with one line on \
+standard error. Keep it gentle: an RSS feed or an official API when there is one, one request per check, its site's \
+robots.txt and terms respected.";
+
 const SECRET_RULE: &str = "Never ask for a password, key or code in the conversation, and never write one in a \
 message, a file, a task or a log: always ask_secret. You never see the value; the person types it in a card.";
 
@@ -750,6 +785,12 @@ pub fn tools() -> Vec<Value> {
         "tool": {"type": "string", "description": "the connector's tool to call"},
         "arguments": {"type": "object"},
     }});
+    let watch = json!({"type": "object", "description": "makes it a watcher (« préviens-moi quand… »): BipAgents \
+        runs its program by itself, with no model call, and wakes you with ONE turn only when what it prints changes. \
+        Leave schedule out.", "properties": {
+        "every": {"type": "string", "description": "how often it checks: « 15m » (the least, only for a slot to grab), « 30m », « 1h », « 6h », « 1d »: the longest that still works"},
+        "notify": {"type": "string", "enum": ["on_change", "on_condition"], "description": "on_change: wake you when its state changes; on_condition: when its \"condition\" is true (a balance under a threshold)"},
+    }, "required": ["every", "notify"]});
     let fields = json!({
         "name": {"type": "string", "description": "its name for the person, e.g. « Garmin »"},
         "sites": {"type": "array", "items": {"type": "string"}, "description": "every host it reaches, e.g. [\"sso.garmin.com\", \"connect.garmin.com\"]"},
@@ -762,6 +803,7 @@ pub fn tools() -> Vec<Value> {
         "secrets": {"type": "array", "items": {"type": "string"}, "description": "the names of the secrets it uses (see ask_secret)"},
         "schedule": schedule,
         "unofficial": {"type": "boolean", "description": "true when it uses a service's unofficial API (the person is told it may be blocked)"},
+        "watch": watch,
     });
     let mut update_fields = fields.clone();
     if let Some(map) = update_fields.as_object_mut() {
@@ -790,7 +832,7 @@ pub fn tools() -> Vec<Value> {
             "description": format!("Register a connector you built at the person's request, so it appears in their \
         tools: ONE approval card shows what it does, its sites, its secrets and when it runs. Once approved, its tools \
         are yours (mcp__bipconn_<name>__<tool>); it runs in your isolated space with its secrets and only its sites. \
-        Any later change to its files needs the person's approval again. {BUILD}"),
+        Any later change to its files needs the person's approval again. {BUILD} {WATCH}"),
             "inputSchema": {"type": "object", "properties": fields,
                             "required": ["name", "sites", "description", "icon", "folder", "entry"]},
             "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
@@ -957,6 +999,17 @@ fn apply_fields(base: &mut Connector, arguments: &Dict, creating: bool) -> Resul
     if given("unofficial") {
         base.unofficial = arguments.get("unofficial").map(py::truthy).unwrap_or(false);
     }
+    if given("watch") {
+        base.watch = match arguments.get("watch") {
+            Some(Value::Object(map)) => Some(crate::watchers::parse_watch(map)?),
+            _ => None,
+        };
+    }
+    if base.watch.is_some() {
+        // a watcher is a program run with no arguments that prints its state: its own check, no other schedule
+        base.kind = "script".into();
+        base.schedule = None;
+    }
     Ok(())
 }
 
@@ -1099,7 +1152,7 @@ fn listing_for_agent(state: &AppState, agent: &AgentConfig) -> Dict {
         .iter()
         .map(|c| {
             json!({"name": c.name, "state": status_text(c), "tools": tool_names(c), "sites": c.sites,
-                   "secrets": c.secrets, "schedule": schedule_text(&c.schedule), "folder": c.folder,
+                   "secrets": c.secrets, "schedule": when_line(c), "folder": c.folder,
                    "last_run": c.last_run.as_ref().map(|r| json!({"at": r.at, "ok": r.ok, "message": r.message}))})
         })
         .collect();
@@ -1342,7 +1395,6 @@ pub fn view(state: &AppState, config: &Config, agent: &AgentConfig, conn: &Conne
                             "description": t.get("description").cloned().unwrap_or(json!(""))}))
             .collect()
     };
-    let _ = config;
     json!({
         "id": conn.id, "name": conn.name, "description": conn.description, "agent": agent.name,
         "made_by": if agent.display_name.is_empty() { agent.name.clone() } else { agent.display_name.clone() },
@@ -1353,6 +1405,7 @@ pub fn view(state: &AppState, config: &Config, agent: &AgentConfig, conn: &Conne
         "sites": conn.sites, "secrets": secrets_view(Some(state), &agent.name, conn), "tools": tools,
         "schedule": conn.schedule.as_ref().map(|s| json!({"when": s.when, "text": schedule_text(&conn.schedule),
                                                           "mechanical": s.mechanical, "tool": s.tool})),
+        "watch": conn.watch.as_ref().map(|w| crate::watchers::detail_view(config, &agent.name, conn, w)),
         "last_run": conn.last_run.as_ref().map(|r| json!({"at": r.at, "ok": r.ok, "message": r.message})),
         "unofficial": conn.unofficial, "from_template": conn.from_template,
         "card_run_id": conn.card.as_ref().map(|c| format!("{RUN_PREFIX}{}", c.id)),
@@ -1588,6 +1641,18 @@ mod tests {
         assert!(bad(json!({"secrets": ["Bad-Name"]})).contains("secrets"));
         assert!(bad(json!({"schedule": {"when": "daily 07:00", "mechanical": true}})).contains("schedule.tool"));
         assert!(bad(json!({"entry": ""})).contains("entry"));
+        // a watcher: a script with its own check, no other schedule; its card says how often and when it wakes
+        let mut watcher = Connector::default();
+        let fields = json!({"name": "Prix du vélo", "sites": ["www.decathlon.example"], "description": "Le prix du vélo",
+                            "icon": "plug", "folder": "/workspace/connecteurs/prix_velo", "entry": "python3 check.py",
+                            "kind": "mcp", "schedule": {"when": "hourly", "mechanical": true, "tool": "x"},
+                            "watch": {"every": "15 min", "notify": "on_change"}});
+        apply_fields(&mut watcher, &args(fields), true).unwrap();
+        assert_eq!((watcher.kind.as_str(), watcher.schedule.is_none()), ("script", true));
+        assert_eq!(watcher.watch.as_ref().unwrap().every, "15m");
+        assert_eq!(when_line(&watcher), "Vérifie toutes les 15 min, ne réveille l'agent que si ça change");
+        assert_eq!(sentence("Vie", &watcher, "new"), "Vie a créé le veilleur Prix du vélo");
+        assert!(bad(json!({"watch": {"every": "1m", "notify": "on_change"}})).contains("watch.every"));
     }
 
     #[test]
