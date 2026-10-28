@@ -575,7 +575,7 @@ async fn forward_with(
     if !body.is_empty() || matches!(*method, Method::POST | Method::PUT | Method::PATCH) {
         builder = builder.body(body);
     }
-    let upstream = builder.send().await.map_err(|_| HttpError::new(502, "agent unreachable"))?;
+    let upstream = builder.send().await.map_err(|_| HttpError::new(502, "this agent isn't answering right now"))?;
     let status = StatusCode::from_u16(upstream.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
     // httpx joins a header's values with « , ».
     let mut merged: Vec<(HeaderName, Vec<u8>)> = Vec::new();
@@ -1025,11 +1025,11 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
         .json(&payload)
         .send()
         .await
-        .map_err(|_| HttpError::new(502, "their bridge does not answer"))?;
+        .map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
     if resp.status().as_u16() != 200 {
-        return Err(HttpError::new(403, "their bridge refused the invitation (expired?)"));
+        return Err(HttpError::new(403, "the invitation was refused (expired?)"));
     }
-    let bytes = resp.bytes().await.map_err(|_| HttpError::new(502, "their bridge does not answer"))?;
+    let bytes = resp.bytes().await.map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
     let answer: Value =
         serde_json::from_slice(&bytes).map_err(|e| HttpError::from(anyhow::anyhow!("JSONDecodeError: {e}")))?;
     let name = body_str(&answer, "name")?;

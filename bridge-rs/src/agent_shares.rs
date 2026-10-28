@@ -1020,7 +1020,7 @@ async fn to_owner(
     if let Some(body) = body {
         request = request.json(&body);
     }
-    let resp = request.send().await.map_err(|_| HttpError::new(502, "their bridge does not answer"))?;
+    let resp = request.send().await.map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
     let status = resp.status().as_u16();
     let payload = resp.json::<Value>().await.unwrap_or(Value::Null);
     Ok((status, payload))

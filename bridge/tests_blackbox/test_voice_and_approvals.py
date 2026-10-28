@@ -177,7 +177,8 @@ def test_watch_pushes_approval_when_nobody_follows(bridge, fakes):
     # and the bridge's plain words (approval_text.rs): « Wellness veut supprimer : rm -rf build/ »
     assert set(pending[0]) == {"agent", "run_id", "request_id", "command", "description", "choices", "created_at",
                                "session_id", "bip_summary", "bip_detail"}
-    assert pending[0]["bip_summary"].startswith("Wellness ") and "rm -rf build/" in pending[0]["bip_summary"]
+    assert pending[0]["bip_summary"] == "Wellness wants to delete the folder “build” and everything in it"
+    assert "rm -rf build/" in pending[0]["bip_detail"]
     assert pending[0]["created_at"].endswith("Z") and pending[0]["choices"] == ["once", "session", "deny"]
     assert bridge.get("/v1/approvals?agent=wellness", headers=AUTH).json()["items"] == pending
     assert bridge.get("/v1/approvals?agent=ghost", headers=AUTH).status_code == 404
@@ -280,7 +281,7 @@ def test_answered_approvals_stay_in_the_conversation(bridge, fakes):
 def test_approve_with_hermes_down(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["agents"]["Wellness"].update(hermes_url=fakes.down.url)).start()
     resp = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": "r", "choice": "once"})
-    assert resp.status_code == 502 and resp.json() == {"detail": "Hermes unreachable"}
+    assert resp.status_code == 502 and resp.json() == {"detail": "your agent isn't answering right now: try again in a moment"}
 
 
 def test_voice_reports_unreachable_hermes(bridges, fakes):

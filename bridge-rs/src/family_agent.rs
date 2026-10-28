@@ -754,7 +754,7 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
         Err(exc) => {
             forget(&state.config(), &planned.profile);
             tracing::warn!(error = %format!("{exc:#}"), "family agent: creation failed");
-            return Err(HttpError::new(502, "Hermes could not create the agent"));
+            return Err(HttpError::new(502, "the agent could not be created: try again in a moment"));
         }
     };
     let config = state.config();
@@ -822,7 +822,7 @@ async fn relayed(
 ) -> ApiResult<Response> {
     match ask(state, household, method, path, body).await {
         Some((status, payload)) => Ok(web::json_response(status, &payload)),
-        None => Err(HttpError::new(502, "their bridge does not answer")),
+        None => Err(HttpError::new(502, "their side does not answer right now: try again later")),
     }
 }
 

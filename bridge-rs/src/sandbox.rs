@@ -1173,7 +1173,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                 return error("no such file (give a file, as shared_files_list shows it)");
             };
             let Some((files, _)) = volumes_of(config, &agent.name) else {
-                return error("your sandbox isn't ready for files yet; try again in a moment");
+                return error("your space isn't ready for files yet; try again in a moment");
             };
             let done = (|| -> std::io::Result<()> {
                 let (folder, name) = split_last(&relative);
@@ -1222,7 +1222,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                     return error(&format!("`from` must be a file under {OUTBOX}: copy it there first"));
                 };
                 let Some((_, outbox)) = volumes_of(config, &agent.name) else {
-                    return error("your sandbox isn't ready for files yet; try again in a moment");
+                    return error("your space isn't ready for files yet; try again in a moment");
                 };
                 // Right in /envoi, no folder on the way: nothing the sandbox could swap for a link meanwhile.
                 let name = plain_relative(rest).filter(|r| r.components().count() == 1);

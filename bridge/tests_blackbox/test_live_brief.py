@@ -81,7 +81,7 @@ def test_no_conversation_yet_and_hermes_errors(bridge, fakes):
                                     "model_options": {"reasoning": {"enabled": False}}}
     fakes.hermes.keys[""] = "other"
     refused = brief(bridge, session="s1")
-    assert refused.status_code == 401 and refused.json() == {"detail": "hermes"}
+    assert refused.status_code == 401 and refused.json() == {"detail": "your agent couldn't answer this: try again in a moment"}
 
 
 def test_a_call_continues_in_the_next_briefs(bridge, fakes):

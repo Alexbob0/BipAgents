@@ -313,7 +313,7 @@ impl Imports {
         let folder = self.folder();
         crate::py::makedirs(&folder.to_string_lossy(), 0o700).map_err(anyhow::Error::from)?;
         if free_bytes(&folder).map_err(anyhow::Error::from)? < size.saturating_mul(3).saturating_add(SPARE_BYTES) {
-            return Err(HttpError::new(507, "not enough room on this server"));
+            return Err(HttpError::new(507, "not enough room left for this export"));
         }
         let (part, archive) = (folder.join("archive.part"), folder.join("archive.bipagents"));
         self.set_receiving(Some((0, size)));

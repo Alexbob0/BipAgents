@@ -331,10 +331,10 @@ async fn hermes_down_is_502_and_status_says_why() {
     let (k, v) = auth();
     let h = [(k, v.as_str())];
     let resp = app.get("/v1/sessions/s1/state?agent=wellness", &h).await;
-    assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "Hermes unreachable"})));
+    assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "your agent isn't answering right now: try again in a moment"})));
     let resp =
         app.send_json("POST", "/v1/approve", &h, &json!({"agent": "wellness", "run_id": "r1", "choice": "once"})).await;
-    assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "Hermes unreachable"})));
+    assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "your agent isn't answering right now: try again in a moment"})));
     let status = app.get("/v1/status", &h).await.json();
     assert_eq!(status["agents"]["wellness"], json!({"ok": false, "error": "ConnectError"}));
 }
@@ -393,7 +393,7 @@ async fn relay_only_reaches_known_agents_and_hermes_routes() {
     assert_eq!(app.get("/hermes/wellness/etc/passwd", &[]).await.status, StatusCode::NOT_FOUND);
     // Hermes down behind the door: 502
     let resp = app.get("/hermes/wellness/v1/capabilities", &[]).await;
-    assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "Hermes unreachable"})));
+    assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "your agent isn't answering right now: try again in a moment"})));
 }
 
 #[tokio::test]

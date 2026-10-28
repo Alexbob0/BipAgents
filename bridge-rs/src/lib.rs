@@ -38,6 +38,7 @@ pub mod store;
 
 // -- push-runs -------------------------------------------------------------------------------------
 pub mod apns;
+pub mod approval_command;
 pub mod approval_text;
 pub mod approvals_log;
 pub mod made_files;

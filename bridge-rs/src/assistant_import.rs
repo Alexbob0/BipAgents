@@ -1058,7 +1058,7 @@ async fn create(state: &AppState, body: &Apply, source: &str) -> ApiResult<Agent
                 return Err(exc.into());
             }
             tracing::warn!(target: "bipbridge::import", error = %tk::head(&exc.to_string(), 200), "agent creation failed");
-            Err(HttpError::new(502, "Hermes could not create the agent"))
+            Err(HttpError::new(502, "the agent could not be created: try again in a moment"))
         }
     }
 }

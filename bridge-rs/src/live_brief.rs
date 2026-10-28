@@ -831,7 +831,7 @@ fn setup(state: &AppState, name: &str) -> ApiResult<AgentConfig> {
 
 fn hermes_error(exc: HermesError) -> HttpError {
     match exc {
-        HermesError::Http { status, .. } => HttpError::new(if status >= 500 { 502 } else { status }, "hermes"),
+        HermesError::Http { status, .. } => HttpError::new(if status >= 500 { 502 } else { status }, "your agent couldn't answer this: try again in a moment"),
         other => anyhow::Error::from(other).into(),
     }
 }

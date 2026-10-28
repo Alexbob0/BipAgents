@@ -1116,7 +1116,7 @@ async fn set_agents(
     let names: Vec<String> = agents.iter().map(|a| a.name.clone()).collect();
     for name in conn.agents.iter().filter(|a| !names.contains(a)) {
         if let Some(agent) = config.agent(Some(name)) {
-            unwire(&config, agent, &svc.id, &run).await.map_err(|e| HttpError::new(502, format!("Hermes: {e}")))?;
+            unwire(&config, agent, &svc.id, &run).await.map_err(|e| not_wired(&config, e))?;
         }
     }
     let mut conn = conn;
@@ -1125,10 +1125,20 @@ async fn set_agents(
     store.write(&stored)?;
     if conn.state == "connected" {
         for agent in &agents {
-            wire(&config, agent, &conn, &run).await.map_err(|e| HttpError::new(502, format!("Hermes: {e}")))?;
+            wire(&config, agent, &conn, &run).await.map_err(|e| not_wired(&config, e))?;
         }
     }
     Ok(web::ok(view(svc, Some(&conn))))
+}
+
+/// The agent's settings could not take the service: why, on a self-installed computer; a plain sentence on the offer
+/// (plain words pass 2026-10-28).
+fn not_wired(config: &crate::config::Config, e: impl std::fmt::Display) -> HttpError {
+    if config.cloud {
+        HttpError::new(502, "the service could not be added to your agent: try again in a moment")
+    } else {
+        HttpError::new(502, format!("Hermes: {e}"))
+    }
 }
 
 async fn disconnect(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {

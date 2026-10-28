@@ -240,14 +240,14 @@ async fn relay(
             Ok(r) => r.status().as_u16(),
             Err(exc) => {
                 tracing::info!(agent = %target.name, error = crate::hermes::httpx_error_name(&exc), "LAN relay failed");
-                return Err(HttpError::new(502, "Hermes unreachable"));
+                return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
             }
         };
         if status == 401 {
             state.guard.fail(address.as_deref(), "agent key");
         }
         if !(200..300).contains(&status) {
-            return Err(HttpError::new(status, if status == 404 { "run not found" } else { "refused by Hermes" }));
+            return Err(HttpError::new(status, if status == 404 { "run not found" } else { "your agent refused this request" }));
         }
         let listener = state.hub.subscribe(&target, &run_id, "app", false);
         state.hub.keep(&target, &run_id, None);
@@ -269,7 +269,7 @@ async fn relay(
         Ok(r) => r,
         Err(exc) => {
             tracing::info!(agent = %target.name, error = crate::hermes::httpx_error_name(&exc), "LAN relay failed");
-            return Err(HttpError::new(502, "Hermes unreachable"));
+            return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
         }
     };
     if upstream.status().as_u16() == 401 {

@@ -108,7 +108,7 @@ def test_session_state_route(bridges, fakes):
     assert bridge.get("/v1/sessions/api_bot/state?agent=ghost", headers=AUTH).status_code == 404
     assert bridge.get("/v1/sessions/api_bot/state", headers=AUTH).status_code == 422
     down = bridge.get("/v1/sessions/api_bot/state?agent=panne", headers=AUTH)
-    assert down.status_code == 502 and down.json() == {"detail": "Hermes unreachable"}
+    assert down.status_code == 502 and down.json() == {"detail": "your agent isn't answering right now: try again in a moment"}
     fakes.hermes.keys[""] = "another-key"
     refused = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
     assert refused.status_code == 401 and refused.json() == {"detail": "Hermes refused"}

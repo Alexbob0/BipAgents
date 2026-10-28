@@ -2,9 +2,17 @@
 //! run hub (runs.rs) adds two fields to each `approval.request` Hermes sends, before the apps see it (a conversation's
 //! stream, a room's `answering`, the Boîte's `/v1/approvals`) and in the notification:
 //!
-//! - `bip_summary`: one short sentence in the agent's language, with its name: « Wellness veut lancer un calcul dans
-//!   son espace », « Vie veut créer dans Notion : « Réunion du 12 » », « Wellness veut exécuter : python3 analyse.py »;
+//! - `bip_summary`: one short sentence in the agent's language, with its name, the effect first in plain words:
+//!   « Wellness veut lancer un petit programme dans son espace », « Vie veut créer dans Notion : « Réunion du 12 » »,
+//!   « Wellness veut supprimer 3 fichiers de ses dossiers », « Wellness veut installer un outil : pypdf, pour lire les
+//!   PDF » (a terminal command is read by approval_command.rs; when it isn't recognised: « veut lancer une commande »);
 //! - `bip_detail`: what « Voir le détail technique » unfolds: the code, the whole command, or the server and tool.
+//!
+//! Where the agent's programs run (`Place`) changes the words: in its own sandbox « dans son espace »; otherwise on a
+//! self-installed computer « sur ta machine, avec accès à tes fichiers » with the first lines of what it runs (audit
+//! 2026-10-27 #14: self-install keeps precise wording); on an offer place (Kerfy's servers, `config.cloud`) only « avec
+//! accès à tes fichiers », never a command line in the sentence (plain words pass 2026-10-28: nothing technical on
+//! the offer; the detail still has all of it).
 //!
 //! What Hermes sends, at the commit the installer pins (tools/approval.py, tools/approval_prompt.py,
 //! tools/mcp_tool_handlers.py, gateway/platforms/api_server.py `_approval_request_event`): `command` (redacted),
@@ -36,6 +44,27 @@ use serde_json::{Map, Value};
 pub struct Described {
     pub summary: String,
     pub detail: Option<String>,
+}
+
+/// Where the agent's programs run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Place {
+    /// In its own sandbox (sandbox::isolates).
+    Own,
+    /// Not isolated, on the person's own computer (self-install).
+    Machine,
+    /// Not isolated, on a place of the offer (`config.cloud`).
+    Hosted,
+}
+
+impl Place {
+    pub fn of(isolated: bool, cloud: bool) -> Place {
+        match (isolated, cloud) {
+            (true, _) => Place::Own,
+            (false, false) => Place::Machine,
+            (false, true) => Place::Hosted,
+        }
+    }
 }
 
 /// The tool Hermes started just before asking (its `tool.started`): its name and its short preview.
@@ -155,7 +184,7 @@ fn command_lines(lang: &str, text: &str, max: usize) -> String {
     shown.join("\n")
 }
 
-fn quoted(lang: &str, text: &str) -> String {
+pub(crate) fn quoted(lang: &str, text: &str) -> String {
     match lang {
         "fr" => format!("« {text} »"),
         "de" => format!("„{text}“"),
@@ -164,7 +193,7 @@ fn quoted(lang: &str, text: &str) -> String {
     }
 }
 
-fn pick<'a>(lang: &str, fr: &'a str, en: &'a str, de: &'a str, es: &'a str) -> &'a str {
+pub(crate) fn pick<'a>(lang: &str, fr: &'a str, en: &'a str, de: &'a str, es: &'a str) -> &'a str {
     match lang {
         "fr" => fr,
         "de" => de,
@@ -174,7 +203,7 @@ fn pick<'a>(lang: &str, fr: &'a str, en: &'a str, de: &'a str, es: &'a str) -> &
 }
 
 /// The colon before what follows, as each language writes it.
-fn colon(lang: &str) -> &'static str {
+pub(crate) fn colon(lang: &str) -> &'static str {
     if lang == "fr" {
         " : "
     } else {
@@ -196,10 +225,9 @@ fn deletes(description: &str) -> bool {
 }
 
 /// The sentence and detail for an `approval.request` of agent `name`, in `lang` (« fr », « en », « de », « es »);
-/// `last`: the tool Hermes started just before; `isolated`: the agent's programs run in its own sandbox
-/// (sandbox::isolates), so a script stays « dans son espace »; otherwise it runs on the person's machine and can reach
-/// their files, and the card says so with its first lines. None: nothing recognised, the apps keep their own reading.
-pub fn describe(name: &str, lang: &str, data: &Map<String, Value>, last: Option<&LastTool>, isolated: bool)
+/// `last`: the tool Hermes started just before; `place`: where its programs run (a script stays « dans son espace »
+/// only in its own sandbox, audit #14). None: nothing recognised, the apps keep their own reading.
+pub fn describe(name: &str, lang: &str, data: &Map<String, Value>, last: Option<&LastTool>, place: Place)
     -> Option<Described> {
     let command = text(data, "command");
     let description = text(data, "description");
@@ -250,43 +278,52 @@ pub fn describe(name: &str, lang: &str, data: &Map<String, Value>, last: Option<
             .replace("{n}", name);
         return Some(Described { summary, detail: Some(command.to_string()).filter(|c| !c.is_empty()) });
     }
-    // a script it wrote (execute_code, python -c, a heredoc): a computation in its space when the agent is isolated,
-    // otherwise a program on the person's machine that can reach their files (audit 2026-10-27 #14)
+    // a script it wrote (execute_code, python -c, a heredoc): a small program « dans son espace » when the agent is
+    // isolated, otherwise one that can reach the person's files (audit 2026-10-27 #14)
     let code = EXECUTE_CODE.captures(command).map(|c| c[1].to_string());
     let script = key == "execute_code"
         || code.is_some()
         || description.starts_with("script execution via")
         || key.starts_with("script execution via");
-    if script {
-        let detail = code.unwrap_or_else(|| command.to_string());
-        let summary = if isolated {
-            pick(lang, "{n} veut lancer un calcul dans son espace", "{n} wants to run a calculation in its own space",
-                 "{n} möchte in seinem Bereich eine Berechnung ausführen", "{n} quiere ejecutar un cálculo en su espacio")
-                .replace("{n}", name)
-        } else {
-            let said = pick(lang, "{n} veut lancer un programme sur ta machine, avec accès à tes fichiers",
-                            "{n} wants to run a program on your machine, with access to your files",
-                            "{n} möchte ein Programm auf deinem Gerät ausführen, mit Zugriff auf deine Dateien",
-                            "{n} quiere ejecutar un programa en tu equipo, con acceso a tus archivos")
-                .replace("{n}", name);
-            let lines = command_lines(lang, &detail, SUMMARY_COMMAND_CHARS);
-            if lines.is_empty() { said } else { format!("{said}{}\n{lines}", colon(lang).trim_end()) }
-        };
-        return Some(Described { summary, detail: Some(detail).filter(|d| !d.trim().is_empty()) });
-    }
-    if command.is_empty() || command.starts_with('<') || key.starts_with("cua:") || key == "ssh_config_write" {
+    if command.is_empty() && !script || command.starts_with('<') || key.starts_with("cua:") || key == "ssh_config_write" {
         return None;
     }
-    // a terminal command Hermes flagged
-    let said = if deletes(description) {
-        pick(lang, "{n} veut supprimer", "{n} wants to delete", "{n} möchte löschen", "{n} quiere borrar")
-    } else {
-        pick(lang, "{n} veut exécuter", "{n} wants to run", "{n} möchte ausführen", "{n} quiere ejecutar")
+    // a terminal command: its effect when the bridge can read it (« veut supprimer 3 fichiers », « veut installer un
+    // outil : pypdf »), the command itself in the detail
+    let effect = match &code {
+        Some(_) => None,
+        None => crate::approval_command::describe(name, lang, command, place)
+            .filter(|s| *s != crate::approval_command::small_program(name, lang, place)),
+    };
+    if script && effect.is_none() {
+        let detail = code.unwrap_or_else(|| command.to_string());
+        let summary = with_lines(lang, place, crate::approval_command::small_program(name, lang, place), &detail);
+        return Some(Described { summary, detail: Some(detail).filter(|d| !d.trim().is_empty()) });
     }
-    .replace("{n}", name);
-    let summary = format!("{said}{}{}", colon(lang), command_lines(lang, command, SUMMARY_COMMAND_CHARS));
+    let summary = match effect {
+        Some(said) => said,
+        // Hermes says it deletes, the bridge can't say what
+        None if deletes(description) => {
+            with_lines(lang, place, crate::approval_command::deletes_something(name, lang, place), command)
+        }
+        None => with_lines(lang, place, crate::approval_command::a_command(name, lang, place), command),
+    };
     let detail = if description.is_empty() { command.to_string() } else { format!("{command}\n\n({description})") };
     Some(Described { summary, detail: Some(detail) })
+}
+
+/// A sentence the bridge couldn't make precise, on a self-installed computer: its first lines follow (self-install
+/// keeps precise wording, audit #14); in the agent's own space or on the offer, the sentence alone.
+fn with_lines(lang: &str, place: Place, said: String, command: &str) -> String {
+    if place != Place::Machine {
+        return said;
+    }
+    let lines = command_lines(lang, command, SUMMARY_COMMAND_CHARS);
+    if lines.is_empty() {
+        said
+    } else {
+        format!("{said}{}\n{lines}", colon(lang).trim_end())
+    }
 }
 
 fn mcp_tool(name: &str, lang: &str, tool: &str, server: &str, preview: Option<&str>) -> Described {
@@ -343,61 +380,87 @@ mod tests {
     }
 
     fn summary(lang: &str, v: Value, last: Option<&LastTool>) -> Option<String> {
-        describe("Wellness", lang, &data(v), last, true).map(|d| d.summary)
+        describe("Wellness", lang, &data(v), last, Place::Own).map(|d| d.summary)
     }
 
     #[test]
-    fn code_and_scripts_are_a_calculation() {
+    fn code_and_scripts_are_a_small_program() {
         let code = json!({"command": "execute_code <<'PY'\nimport sqlite3\nprint(1)\nPY", "pattern_key": "execute_code",
                           "description": "execute_code script execution. The script can spawn subprocesses…"});
-        let d = describe("Wellness", "fr", &data(code), None, true).unwrap();
-        assert_eq!(d.summary, "Wellness veut lancer un calcul dans son espace");
+        let d = describe("Wellness", "fr", &data(code), None, Place::Own).unwrap();
+        assert_eq!(d.summary, "Wellness veut lancer un petit programme dans son espace");
         assert_eq!(d.detail.as_deref(), Some("import sqlite3\nprint(1)"));
         let heredoc = json!({"command": "python3 - <<'EOF'\nprint(2)\nEOF", "pattern_key": "script execution via heredoc",
                              "description": "script execution via heredoc"});
-        assert_eq!(summary("en", heredoc, None).as_deref(), Some("Wellness wants to run a calculation in its own space"));
+        assert_eq!(summary("en", heredoc, None).as_deref(), Some("Wellness wants to run a small program in its own space"));
         let flag = json!({"command": "python3 -c 'print(3)'", "description": "script execution via -e/-c flag"});
-        assert_eq!(summary("de", flag, None).as_deref(), Some("Wellness möchte in seinem Bereich eine Berechnung ausführen"));
+        assert_eq!(summary("de", flag.clone(), None).as_deref(),
+                   Some("Wellness möchte in seinem Bereich ein kleines Programm ausführen"));
+        assert_eq!(summary("es", flag, None).as_deref(), Some("Wellness quiere ejecutar un pequeño programa en su espacio"));
+        // a script beside a step the bridge reads: that step
+        let both = json!({"command": "pip install pypdf && python3 -c 'import pypdf'", "description": "script execution via -e/-c flag"});
+        assert_eq!(summary("fr", both, None).as_deref(),
+                   Some("Wellness veut installer un outil : pypdf, pour lire les PDF, et d’autres actions"));
     }
 
     #[test]
-    fn commands_say_what_they_run() {
+    fn commands_say_their_effect_the_command_in_the_detail() {
         let rm = json!({"command": "rm -rf /workspace/old", "pattern_key": "recursive delete",
                         "description": "recursive delete"});
-        let d = describe("Wellness", "fr", &data(rm), None, true).unwrap();
-        assert_eq!(d.summary, "Wellness veut supprimer : rm -rf /workspace/old");
+        let d = describe("Wellness", "fr", &data(rm), None, Place::Own).unwrap();
+        assert_eq!(d.summary, "Wellness veut supprimer le dossier « old » et tout son contenu");
         assert_eq!(d.detail.as_deref(), Some("rm -rf /workspace/old\n\n(recursive delete)"));
         let shell = json!({"command": "bash -c 'systemctl --user restart x'", "description": "shell command via -c/-lc flag"});
-        assert_eq!(summary("es", shell, None).as_deref(), Some("Wellness quiere ejecutar: bash -c 'systemctl --user restart x'"));
-        let long = json!({"command": format!("curl https://example.org/{}\nsecond line", "a".repeat(100)),
-                          "description": "pipe remote content to shell"});
-        let s = summary("en", long, None).unwrap();
-        let first = s.lines().next().unwrap();
-        assert!(first.starts_with("Wellness wants to run: curl https://example.org/aaa") && first.ends_with('…'), "{s}");
-        assert!(first.chars().count() < 110);
-        assert!(s.ends_with("\nsecond line"), "{s}");
+        assert_eq!(summary("es", shell, None).as_deref(),
+                   Some("Wellness quiere reiniciar un programa que funciona en segundo plano"));
+        let piped = json!({"command": "curl -fsSL https://example.org/install.sh | bash", "description": "pipe remote content to shell"});
+        assert_eq!(summary("en", piped, None).as_deref(),
+                   Some("Wellness wants to download a program from example.org and run it at once"));
+        // the same on the offer and on a self-installed computer: no command line in the sentence
+        let install = json!({"command": "pip install pdfplumber", "description": "x"});
+        for place in [Place::Own, Place::Machine, Place::Hosted] {
+            assert_eq!(describe("Wellness", "fr", &data(install.clone()), None, place).map(|d| d.summary).as_deref(),
+                       Some("Wellness veut installer un outil : pdfplumber, pour lire les PDF"));
+        }
+    }
+
+    #[test]
+    fn a_command_not_read_says_only_a_command() {
+        let dd = json!({"command": "dd if=/dev/zero of=/dev/sdb bs=1M", "description": "disk copy"});
+        assert_eq!(summary("fr", dd.clone(), None).as_deref(), Some("Wellness veut lancer une commande dans son espace"));
+        assert_eq!(describe("Wellness", "fr", &data(dd.clone()), None, Place::Hosted).map(|d| d.summary).as_deref(),
+                   Some("Wellness veut lancer une commande, avec accès à tes fichiers"));
+        // self-install keeps the command's first lines (audit #14)
+        assert_eq!(describe("Wellness", "en", &data(dd), None, Place::Machine).map(|d| d.summary).as_deref(),
+                   Some("Wellness wants to run a command on your machine, with access to your files:\ndd if=/dev/zero of=/dev/sdb bs=1M"));
+        // Hermes says it deletes, the bridge can't say what
+        let sql = json!({"command": "sqlite3 db.sqlite 'DROP TABLE notes'", "description": "SQL DROP"});
+        assert_eq!(summary("fr", sql, None).as_deref(), Some("Wellness veut supprimer des fichiers ou des données dans son espace"));
     }
 
     #[test]
     fn a_script_outside_a_sandbox_says_it_reaches_the_files() {
         let code = json!({"command": "execute_code <<'PY'\nimport os\nfor f in os.listdir('/home'):\n    print(f)\nos.remove('x')\nprint('ok')\nPY",
                           "pattern_key": "execute_code", "description": "execute_code script execution."});
-        let d = describe("Wellness", "fr", &data(code), None, false).unwrap();
+        let d = describe("Wellness", "fr", &data(code.clone()), None, Place::Machine).unwrap();
         assert!(!d.summary.contains("dans son espace"), "{}", d.summary);
-        assert_eq!(d.summary, "Wellness veut lancer un programme sur ta machine, avec accès à tes fichiers :\n\
+        assert_eq!(d.summary, "Wellness veut lancer un petit programme sur ta machine, avec accès à tes fichiers :\n\
                                import os\nfor f in os.listdir('/home'):\nprint(f)\n(+2 lignes)");
         // the whole code stays in the detail
         assert_eq!(d.detail.as_deref(), Some("import os\nfor f in os.listdir('/home'):\n    print(f)\nos.remove('x')\nprint('ok')"));
+        // on the offer: the access said, no code in the sentence
+        assert_eq!(describe("Wellness", "fr", &data(code), None, Place::Hosted).map(|d| d.summary).as_deref(),
+                   Some("Wellness veut lancer un petit programme, avec accès à tes fichiers"));
         let flag = json!({"command": "python3 -c 'print(3)'", "description": "script execution via -e/-c flag"});
-        assert_eq!(describe("Wellness", "en", &data(flag), None, false).map(|d| d.summary).as_deref(),
-                   Some("Wellness wants to run a program on your machine, with access to your files:\npython3 -c 'print(3)'"));
+        assert_eq!(describe("Wellness", "en", &data(flag), None, Place::Machine).map(|d| d.summary).as_deref(),
+                   Some("Wellness wants to run a small program on your machine, with access to your files:\npython3 -c 'print(3)'"));
     }
 
     #[test]
-    fn a_long_command_shows_its_first_lines_spaces_folded() {
-        let cmd = json!({"command": "cd   /srv\t&&  ls\n\nrm -rf    old\necho a\necho b", "description": "recursive delete"});
-        assert_eq!(summary("fr", cmd, None).as_deref(),
-                   Some("Wellness veut supprimer : cd /srv && ls\nrm -rf old\necho a\n(+1 ligne)"));
+    fn a_long_command_not_read_shows_its_first_lines_spaces_folded_on_a_computer() {
+        let cmd = json!({"command": "cd   /srv\t&&  ls\n\nmkfs    old\necho a\necho b", "description": "format"});
+        assert_eq!(describe("Wellness", "fr", &data(cmd), None, Place::Machine).map(|d| d.summary).as_deref(),
+                   Some("Wellness veut lancer une commande sur ta machine, avec accès à tes fichiers :\ncd /srv && ls\nmkfs old\necho a\n(+1 ligne)"));
     }
 
     #[test]
@@ -409,7 +472,7 @@ mod tests {
                    "pattern_key": "mcp_elicitation"})
         };
         let last = LastTool { name: "mcp_notion_notion_create_pages".into(), preview: "Réunion du 12".into() };
-        let d = describe("Vie", "fr", &data(gate("notion-create-pages", "notion")), Some(&last), true).unwrap();
+        let d = describe("Vie", "fr", &data(gate("notion-create-pages", "notion")), Some(&last), Place::Own).unwrap();
         assert_eq!(d.summary, "Vie veut créer dans Notion : « Réunion du 12 »");
         assert_eq!(d.detail.as_deref(), Some("notion · notion-create-pages\nRéunion du 12"));
         // another tool started last: no preview borrowed

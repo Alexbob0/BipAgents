@@ -945,7 +945,7 @@ async fn session_state(
                 ));
             }
             if exc.is_transport() {
-                return Err(HttpError::new(502, "Hermes unreachable"));
+                return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
             }
             return Err(anyhow::anyhow!(exc).into());
         }
@@ -1157,7 +1157,7 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
     let (status, payload) =
         match state.hermes.approve(&agent, &run_id, &body.choice.trim().to_lowercase(), request_id).await {
             Ok(r) => r,
-            Err(exc) if exc.is_transport() => return Err(HttpError::new(502, "Hermes unreachable")),
+            Err(exc) if exc.is_transport() => return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment")),
             Err(exc) => return Err(anyhow::anyhow!(exc).into()),
         };
     if (200..300).contains(&status) {

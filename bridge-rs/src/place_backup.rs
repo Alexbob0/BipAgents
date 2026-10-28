@@ -82,7 +82,7 @@ pub fn storage_full(home: &Path) -> bool {
 pub async fn refuse_when_full() -> ApiResult<()> {
     let full = tokio::task::spawn_blocking(|| storage_full(&home())).await.map_err(anyhow::Error::from)?;
     if full {
-        return Err(crate::web::HttpError::new(507, "storage full: this place's 5 GB are used up"));
+        return Err(crate::web::HttpError::new(507, "no room left: the 5 GB of your agents' space are used up"));
     }
     Ok(())
 }

@@ -350,7 +350,7 @@ pub async fn create(state: &AppState, new: NewProject) -> ApiResult<(AgentConfig
         Err(exc) => {
             forget(&state.config(), &planned.profile);
             tracing::warn!(error = %format!("{exc:#}"), "project agent: creation failed");
-            return Err(HttpError::new(502, "Hermes could not create the agent"));
+            return Err(HttpError::new(502, "the agent could not be created: try again in a moment"));
         }
     };
     let config = state.config();

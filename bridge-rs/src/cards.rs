@@ -359,7 +359,7 @@ const PHONE_SECRETS: [&str; 13] = [
 /// person's word that it is a virtual card with a cap. `secret` is emptied: nothing of the card's is kept here.
 pub fn parse_phone(body: &Dict, record: &mut Dict, secret: &mut Dict, rules: PhoneRules) -> Result<(), VaultError> {
     if PHONE_SECRETS.iter().any(|k| body.get(*k).is_some_and(|v| !v.is_null())) {
-        return Err(invalid("on this server, the card's number stays on your phone: it is never sent to be kept"));
+        return Err(invalid("the card's number stays on your phone: it is never sent to be kept"));
     }
     secret.clear();
     let mut meta: Dict = match record.get("card") {
