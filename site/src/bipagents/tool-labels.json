@@ -264,6 +264,17 @@
    "counts": false
   },
   {
+   "id": "mailAttachment",
+   "names": [
+    "mail_attachment"
+   ],
+   "prefixes": [],
+   "keys": [
+    "attachment"
+   ],
+   "counts": true
+  },
+  {
    "id": "createAudio",
    "names": [
     "create_audio",
@@ -704,6 +715,11 @@
      "many": "Prépare {n} brouillons d’e-mail",
      "now": "Je prépare un brouillon de mail…"
     },
+    "mailAttachment": {
+     "one": "Récupère une pièce jointe",
+     "many": "Récupère {n} pièces jointes",
+     "now": "Je récupère une pièce jointe…"
+    },
     "createAudio": {
      "one": "Enregistre un audio",
      "many": "Enregistre {n} audios",
@@ -982,6 +998,11 @@
      "one": "Drafts an e-mail",
      "many": "Drafts {n} e-mails",
      "now": "Drafting an email…"
+    },
+    "mailAttachment": {
+     "one": "Saves an attachment",
+     "many": "Saves {n} attachments",
+     "now": "Saving an attachment…"
     },
     "createAudio": {
      "one": "Records an audio",
@@ -1262,6 +1283,11 @@
      "many": "Entwirft {n} E-Mails",
      "now": "Ich entwerfe eine E-Mail…"
     },
+    "mailAttachment": {
+     "one": "Speichert einen Anhang",
+     "many": "Speichert {n} Anhänge",
+     "now": "Ich speichere einen Anhang…"
+    },
     "createAudio": {
      "one": "Nimmt ein Audio auf",
      "many": "Nimmt {n} Audios auf",
@@ -1540,6 +1566,11 @@
      "one": "Prepara un borrador de correo",
      "many": "Prepara {n} borradores de correo",
      "now": "Preparando un borrador de correo…"
+    },
+    "mailAttachment": {
+     "one": "Guarda un adjunto",
+     "many": "Guarda {n} adjuntos",
+     "now": "Guardando un adjunto…"
     },
     "createAudio": {
      "one": "Graba un audio",

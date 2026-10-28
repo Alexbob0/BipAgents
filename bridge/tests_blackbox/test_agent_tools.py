@@ -48,7 +48,7 @@ def test_the_protocol_and_the_tokens(bridge):
     assert rpc(bridge, "ping", request_id="abc").json() == {"jsonrpc": "2.0", "id": "abc", "result": {}}
     tools = rpc(bridge, "tools/list").json()["result"]["tools"]
     assert [t["name"] for t in tools] == ["create_audio", "create_podcast", "list_voices", "create_page", "list_pages",
-                                          "read_page", "delete_page", "mail_search", "mail_read", "mail_draft",
+                                          "read_page", "delete_page", "mail_search", "mail_read", "mail_attachment", "mail_draft",
                                           "knowledge_read", "knowledge_search", "reminders_list", "reminders_add",
                                           "reminders_complete", "propose_task", "start_task", "route", "map_image", "upcoming_dates",
                                           # the Carnet's (on by default)
