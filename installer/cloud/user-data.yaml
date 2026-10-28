@@ -43,6 +43,8 @@ packages:
   # The server's ready-made Hermes comes packed with zstd; root's BipAgents reads its settings with PyYAML.
   - zstd
   - python3-yaml
+  # The places read the server's shared images through fuse-overlayfs (installer/bipinstall/shared_images.py).
+  - fuse-overlayfs
   # The metadata service for root only (bipagents-metadata-block.service, below).
   - nftables
 
@@ -160,7 +162,7 @@ runcmd:
   - systemctl start "user@$(id -u bip).service"
   # Hermes and the agents' images once for the whole server, ready-made (installer/bipinstall/shared_hermes.py and
   # shared_images.py), both at once, by root's own BipAgents (the one the seat agent uses too): the places then point
-  # at them instead of installing their own. A failure only costs time: the place installs its own, as before.
+  # at them instead of installing their own, the images through a read-only view of root's store for each account. A failure only costs time: the place installs its own, as before.
   # Each phase's time goes to /var/log/bipagents-timeline.log (installer/README.md, measuring an install).
   - echo "$(date -u +%FT%TZ) shared start" >> /var/log/bipagents-timeline.log
   - test -d /usr/local/lib/bipagents/repo/.git || git clone --quiet --filter=blob:none https://github.com/Alexbob0/BipAgents.git /usr/local/lib/bipagents/repo

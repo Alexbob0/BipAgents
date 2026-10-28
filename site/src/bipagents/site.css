@@ -218,9 +218,9 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .phone-screen { border-radius: 46px; overflow: hidden; background: var(--ground); }
 .phone-screen img { width: 100%; height: auto; }
 /* The hero, on the right: one asks, the agent answers with something useful — three cards of the app's own demo (the
-   walk's map, big, on the left; the booking's approval and a reminder on the right). One column on a phone; each
+   walk's map, big, on the left; the booking and the subscriptions on the right). One column on a phone; each
    exchange fades in once, quickly, one after another; with reduced motion they are simply there. */
-.show { position: relative; z-index: 2; width: min(600px, 100%); display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; align-items: start; }
+.show { position: relative; z-index: 2; width: min(680px, 100%); display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: center; }
 .ex-col { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
 .ex { display: flex; flex-direction: column; gap: 6px; min-width: 0; animation: pop-in .4s ease-out both; animation-delay: calc(var(--i, 0) * 200ms + 100ms); }
 .ex-ask { align-self: flex-end; max-width: 92%; background: var(--ink); color: var(--ground); padding: 8px 13px; border-radius: 18px 18px 5px 18px;
@@ -240,11 +240,21 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .ex-map img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ex-map i { position: absolute; translate: -50% -50%; width: 18px; height: 18px; border-radius: 50%; background: var(--c); color: #fff;
   box-shadow: 0 0 0 2px #fff; font: normal 1000 10.5px/18px var(--font); text-align: center; }
-.ex-rem { display: flex; align-items: center; gap: 10px; }
-.ex-rem-ic { flex: none; width: 38px; height: 38px; border-radius: 12px; background: var(--tint, var(--ground2)); display: grid; place-items: center; font-size: 19px; }
-.ex-rem > span:last-child { display: grid; line-height: 1.3; min-width: 0; }
-.ex-rem b { font-size: 15px; font-weight: 1000; }
-.ex-rem span span { font-size: 13px; font-weight: 800; color: var(--ink2); }
+/* The booking: the agent's finds as small chips (the picked one marked), then the approval with its detail. */
+.ex-line { font-size: 13px; font-weight: 800; line-height: 1.3; color: var(--ink2); }
+.ex-chips { list-style: none; margin: -3px 0 0; padding: 0; display: grid; gap: 3px; }
+.ex-chips li { font-size: 11.5px; font-weight: 800; line-height: 1.2; padding: 4px 9px; border-radius: 9px; background: var(--ground2);
+  color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-chips .on { background: var(--tint, var(--ground2)); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.ex-ok { display: grid; gap: 6px; padding-top: 9px; border-top: 1px solid var(--line); }
+.ex-detail { font-size: 12px; font-weight: 800; line-height: 1.3; color: var(--ink2); margin-top: -3px; }
+/* The subscriptions: the two asleep (name, price, since when), what cancelling saves, the choice. */
+.ex-subs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ex-subs li { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: baseline; }
+.ex-subs b { font-size: 14px; font-weight: 1000; min-width: 0; }
+.ex-subs span { font-size: 12.5px; font-weight: 900; white-space: nowrap; }
+.ex-subs small { grid-column: 1 / -1; font-size: 12px; font-weight: 800; color: var(--ink2); line-height: 1.25; }
+.ex-save { font-size: 13.5px; font-weight: 1000; padding: 6px 10px; border-radius: 10px; background: var(--tint, var(--ground2)); color: var(--gold-deep); }
 /* Each exchange opens the demo on that scenario: the ask's link covers the whole exchange; a light lift on hover, a
    ring on keyboard focus, a small arrow on the card (phones have no hover). */
 .ex { position: relative; }
@@ -270,6 +280,22 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   .ex-btns span { font-size: 13px; padding: 8px 10px; }
 }
 @media (prefers-reduced-motion: reduce) { .ex { animation: none; } }
+/* On a computer, the three cards as a loose stack (Alex's pick « Pile », 2026-10-27), slightly turned: the map big
+   behind, the booking in front, the subscriptions small on top; the one under the pointer straightens and comes to the front. */
+@media (min-width: 1040px) {
+  .show { display: block; position: relative; width: min(560px, 100%); height: 620px; margin-inline: auto; }
+  .show .ex-col { display: contents; }
+  .show .ex { position: absolute; transition: rotate .25s ease, translate .25s ease; }
+  .show .ex--map { left: 0; top: 0; width: 66%; rotate: -3deg; z-index: 1; }
+  .show .ex--approve { right: 0; top: 6%; width: 49%; rotate: 2.5deg; z-index: 2; }
+  .show .ex--subs { left: 6%; bottom: 0; width: 46%; rotate: -1.5deg; z-index: 3; }
+  .show .ex .ex-card { box-shadow: 0 0 0 1px var(--line), 0 18px 40px -18px rgba(29, 31, 36, .28); }
+}
+@media (min-width: 1040px) and (hover: hover) {
+  .show .ex:hover { rotate: 0deg; translate: 0 -4px; z-index: 4; }
+  .show .ex:hover .ex-card { translate: none; }
+}
+@media (min-width: 1040px) and (prefers-reduced-motion: reduce) { .show .ex { transition: none; } }
 
 /* -- Compared: Muse, dots, Grok Bot, BipAgents. A face-off (one product against BipAgents) picked in a segmented
    control, or the whole table; without the script, the whole table. Marks (check, cross, half, dash) always sit next
@@ -786,7 +812,7 @@ a.store:hover { transform: translateY(-2px); }
    the right column), on a computer as on a phone. ------------------------------------------------------------------ */
 @media (min-width: 1040px) {
   .hero-copy { grid-column: 1; grid-row: 1; }
-  .hero-stage { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+  .hero-stage { grid-column: 2; grid-row: 1 / span 2; align-self: center; height: auto; }
   .priv { grid-column: 1; grid-row: 2; }
 }
 /* while one reads the privacy answers, the agents' cards stay in view beside them */

@@ -324,9 +324,9 @@ def small_map(source: Path) -> str:
 
 def hero_show(demo: Dict[str, Any], t: Dict[str, Any], lang: str, map_file: str, demo_href: str) -> str:
     """The home's first screen, on the right: what one asks and what the agent answers with, taken from the app's own
-    demo (demo.json): the walk's map, the booking's approval, a reminder. Two columns on a computer, one on a phone;
-    each exchange fades in once, one after another (none with reduced motion). A tap on one
-    opens the demo page on that same scenario (/demo/#walk: site.js picks the tab from the address)."""
+    demo (demo.json): the walk's map, the booking (its 3 finds, then the approval), the subscriptions to cancel. A loose
+    stack on a computer, one column on a phone; each exchange fades in once, one after another (none with reduced
+    motion). A tap on one opens the demo page on that same scenario (/demo/#walk: site.js picks the tab from the address)."""
     tidy = french_spaces if lang == "fr" else (lambda s: s)
     e = lambda s: html.escape(tidy(s), quote=False)
     agents = {a["id"]: a for a in demo["agents"]}
@@ -345,15 +345,22 @@ def hero_show(demo: Dict[str, Any], t: Dict[str, Any], lang: str, map_file: str,
         return (f'<li class="ex ex--{kind}" style="--i:{i};--tint:var(--{tone}-tint)">'
                 f'<p class="ex-ask">{go}</p><div class="ex-card">{head(agent)}{card}</div></li>')
 
-    # The booking: the agent asks before sending (the second restaurant chosen, as in the demo's own run).
+    # The booking: the agent found 3 places (the three as chips, the second picked, as in the demo's own run), then
+    # asks before sending: the approval with its detail (« Pasta Mia · 20 h 30 · 2 personnes · vendredi soir »).
     book = scen["book_table"]
     asked = next(s for s in book["steps"] if "ask" in s)
-    answer = asked["ask"]["choices"][1]
+    choices = asked["ask"]["choices"]
+    answer = choices[1]
+    found = re.split(r"(?<=[.?!])\s", asked["ask"]["question"])[0]
     approve = next(s for s in asked["then"] if "approve" in s)["approve"]
-    fill_in = lambda s: s.replace("{answer}", answer)
+    where = answer.split(" · ★")[0]
+    detail = " · ".join([where] + approve["command"].split("\n")[1:])
     c = t["control"]
-    approval = (f'<p class="ex-say">{e(fill_in(approve["description"]))}</p>'
-                f'<p class="ex-btns" aria-hidden="true"><span class="on">{e(c["once"])}</span><span>{e(c["deny"])}</span></p>')
+    chips = "".join(f'<li{" class=on" if x == answer else ""}>{e(x)}</li>' for x in choices)
+    approval = (f'<p class="ex-line">{e(found)}</p><ul class="ex-chips" aria-hidden="true">{chips}</ul>'
+                f'<div class="ex-ok"><p class="ex-say">{e(approve["description"])}</p>'
+                f'<p class="ex-detail">{e(detail)}</p>'
+                f'<p class="ex-btns" aria-hidden="true"><span class="on">{e(c["once"])}</span><span>{e(c["deny"])}</span></p></div>')
     # The walk: the map with its numbered stops (the main picture).
     walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
     stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
@@ -363,15 +370,22 @@ def hero_show(demo: Dict[str, Any], t: Dict[str, Any], lang: str, map_file: str,
     walk_card = (f'<p class="ex-title">🌳 {e(walk["title"])}</p>'
                  f'<div class="ex-map"><img src="/assets/showcase/{map_file}" alt="{e(walk["alt"])} · {names}" '
                  f'width="440" height="293" decoding="async">{pins}</div>')
-    # The reminder: « Every Monday · 7 pm · Bins » → the what, then the when.
-    preview = next(s for s in scen["bins"]["steps"] if s.get("tool") == "cronjob")["preview"]
-    *when, what = preview.split(" · ")
-    reminder = (f'<p class="ex-rem"><span class="ex-rem-ic" aria-hidden="true">🔔</span><span>'
-                f'<b>{e(what)}</b><span>{e(" · ".join(when))}</span></span></p>')
-    # Three exchanges: the walk's map on the left (the main picture), the approval and the reminder on the right.
+    # The subscriptions: the two the agent found asleep, read from its question (« CinéPlus (13,99 €/mois, pas ouvert
+    # depuis juillet) »), what cancelling both saves a month, and the choice.
+    subs_q = next(s for s in scen["subscriptions"]["steps"] if "ask" in s)["ask"]["question"]
+    subs = re.findall(r"([A-Z][\w\u00C0-\u024F]*(?: [A-Z][\w\u00C0-\u024F]*)*) \(([^()]*?\d[.,]\d\d[^,()]*), ([^()]+)\)", subs_q)
+    if len(subs) != 2:
+        raise ValueError(f"demo.json subscriptions ({lang}): expected two « Name (price, since) », got {subs}")
+    euros = sum(float(re.search(r"\d+[.,]\d+", price).group().replace(",", ".")) for _, price, _ in subs)
+    rows = "".join(f'<li><b>{e(name)}</b><span>{e(price)}</span><small>{e(since)}</small></li>' for name, price, since in subs)
+    subs_card = (f'<ul class="ex-subs">{rows}</ul>'
+                 f'<p class="ex-save">{e(t["show"]["saved"].replace("{amount}", money(round(euros), lang, cents=False)))}</p>'
+                 f'<p class="ex-btns" aria-hidden="true"><span class="on">{e(t["show"]["cancelBoth"])}</span>'
+                 f'<span>{e(t["show"]["choose"])}</span></p>')
+    # Three exchanges: the walk's map on the left (the main picture), the booking and the subscriptions on the right.
     left = one(0, "daily", "coral", scen["walk"]["prompt"], walk_card, "map", "walk")
     right = (one(1, "daily", "coral", book["prompt"], approval, "approve", "book_table")
-             + one(2, "home", "teal", scen["bins"]["prompt"], reminder, "remind", "bins"))
+             + one(2, "budget", "gold", scen["subscriptions"]["prompt"], subs_card, "subs", "subscriptions"))
     return f'<ul class="ex-col">{left}</ul><ul class="ex-col">{right}</ul>'
 
 
@@ -379,7 +393,7 @@ def hero_show(demo: Dict[str, Any], t: Dict[str, Any], lang: str, map_file: str,
 
 # The demo page's tabs (scenario, agent); /demo/#<scenario> opens on one (the home's first-screen cards link there).
 DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"),
-             ("bins", "home"))
+             ("bins", "home"), ("subscriptions", "budget"))
 # The pages: (name, template, path under the language's root). The home sells, and its prices hold the self-install
 # too (« on my computer », #install); the demo and every question have their own pages, sharing the header and the
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).

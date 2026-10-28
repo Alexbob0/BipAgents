@@ -77,6 +77,7 @@ def test_root_pulls_both_images_once_under_the_places_names_and_keeps_the_one_be
     assert all(a[:7] == shared_images.store_podman(store) for a in podman.ran if a[0] == "podman")
     data = json.loads(setting.read_text())
     assert data["store"] == str(store) and data["browser"] == {"key": "k1", "id": "b2"} and data["sandbox"]["id"] == "s1"
+    assert data["views"] == str(shared_images.VIEWS)
     assert oct(setting.stat().st_mode & 0o777) == "0o644"
 
 
@@ -98,21 +99,43 @@ def test_root_pulls_again_each_night_before_the_places_refresh(tmp_path):
     assert "OnCalendar=*-*-* 00:50:00" in units["bipagents-images.timer"]
     ran = []
     shared_images.install_timer(Path("/r"), tmp_path, run=lambda args, timeout=0: ran.append(args) or (0, ""))
-    assert (tmp_path / "bipagents-images.timer").is_file() and ["systemctl", "enable", "bipagents-images.timer"] in ran
+    assert (tmp_path / "bipagents-images.timer").is_file()
+    assert ["systemctl", "enable", "bipagents-images.timer", "bipagents-image-views.service"] in ran
+    # The views again at each boot, before the places' own services start.
+    views = units["bipagents-image-views.service"]
+    assert "ExecStart=/usr/bin/python3 -m bipinstall.shared_images views" in views
+    assert "Before=systemd-user-sessions.service" in views and "WantedBy=multi-user.target" in views
 
 
-def test_an_account_reads_the_store_when_both_images_run_right_from_it(tmp_path, setting):
+@pytest.fixture
+def view(tmp_path, monkeypatch):
+    """root mounted this account's view, fuse-overlayfs is there."""
+    fuse = tmp_path / "fuse-overlayfs"
+    fuse.write_text("")
+    monkeypatch.setattr(shared_images, "FUSE_OVERLAYFS", str(fuse))
+    mounted = {"/var/lib/bipagents/views/bip2"}
+    monkeypatch.setattr(shared_images, "is_mounted", lambda p: str(p) in mounted)
+    return mounted
+
+
+SHARED = {"store": "/var/lib/bipagents/images", "views": "/var/lib/bipagents/views",
+          "browser": {"key": "k1", "id": "b2"}, "sandbox": {"id": "s1"}}
+
+
+def test_an_account_reads_its_view_of_the_store_when_both_images_run_right_from_it(tmp_path, setting, view):
     setting.parent.mkdir(parents=True)
-    setting.write_text(json.dumps({"store": "/var/lib/bipagents/images", "browser": {"key": "k1", "id": "b2"},
-                                   "sandbox": {"id": "s1"}}))
+    setting.write_text(json.dumps(SHARED))
     home = tmp_path / "home"
     podman = Podman()
-    assert shared_images.use_shared(hermes.Runner(), ENGINE, home, run=podman, say=lambda t: None)
+    assert shared_images.use_shared(hermes.Runner(), ENGINE, home, run=podman, say=lambda t: None, user="bip2")
     conf = (home / shared_images.STORAGE_CONF).read_text()
-    assert 'additionalimagestores = ["/var/lib/bipagents/images"]' in conf and 'driver = "overlay"' in conf
+    assert 'additionalimagestores = ["/var/lib/bipagents/views/bip2"]' in conf and 'driver = "overlay"' in conf
+    # The browser's keep-id shifted as fuse-overlayfs reads it: the kernel's overlay would copy the whole image.
+    assert f'[storage.options.overlay]\nmount_program = "{shared_images.FUSE_OVERLAYFS}"' in conf
     checks = podman.did("run")
     assert [c[-3] for c in checks] == [shared_images.SANDBOX, shared_images.BROWSER]
     assert all("--pull=never" in c and "--network=none" in c for c in checks)
+    assert "--userns=keep-id:uid=1000,gid=1000" in checks[1] and not any("--userns" in a for a in checks[0])
     assert 'stat -c %u /home/bip)" = "$(id -u)"' in checks[1][-1]
     # Its browser then needs nothing: no pull, no build.
     runner = hermes.Runner()
@@ -121,21 +144,91 @@ def test_an_account_reads_the_store_when_both_images_run_right_from_it(tmp_path,
     assert shared_images.source_of(home) == {"source": "shared", "key": "k1"}
 
 
-def test_an_account_where_the_store_does_not_run_right_takes_the_setting_back(tmp_path, setting):
+def test_without_a_view_or_fuse_overlayfs_the_account_keeps_its_own_images(tmp_path, setting, view, monkeypatch):
     setting.parent.mkdir(parents=True)
-    setting.write_text(json.dumps({"store": "/var/lib/bipagents/images", "sandbox": {"id": "s1"}}))
+    home, said = tmp_path / "home", []
+    old = dict(SHARED)
+    del old["views"]                   # pulled by an older BipAgents: root's store as it is, unusable rootless
+    setting.write_text(json.dumps(old))
+    assert not shared_images.use_shared(hermes.Runner(), ENGINE, home, run=Podman(), say=said.append, user="bip2")
+    assert "no view" in said[-1] and not (home / shared_images.STORAGE_CONF).exists()
+    setting.write_text(json.dumps(SHARED))
+    assert not shared_images.use_shared(hermes.Runner(), ENGINE, home, run=Podman(), say=said.append, user="bip3")
+    assert "no view" in said[-1]       # root mounted none for this account (an older kernel, say)
+    monkeypatch.setattr(shared_images, "FUSE_OVERLAYFS", str(tmp_path / "missing"))
+    assert not shared_images.use_shared(hermes.Runner(), ENGINE, home, run=Podman(), say=said.append, user="bip2")
+    assert "fuse-overlayfs" in said[-1] and not (home / shared_images.STORAGE_CONF).exists()
+
+
+def test_an_account_where_the_store_does_not_run_right_takes_the_setting_back(tmp_path, setting, view):
+    setting.parent.mkdir(parents=True)
+    setting.write_text(json.dumps({"store": "/var/lib/bipagents/images", "views": "/var/lib/bipagents/views",
+                                   "sandbox": {"id": "s1"}}))
     home = tmp_path / "home"
     said = []
-    assert not shared_images.use_shared(hermes.Runner(), ENGINE, home, run=Podman(runs=1), say=said.append)
+    assert not shared_images.use_shared(hermes.Runner(), ENGINE, home, run=Podman(runs=1), say=said.append, user="bip2")
     assert not (home / shared_images.STORAGE_CONF).exists() and "gets its own" in said[-1]
     own = home / shared_images.STORAGE_CONF
     own.parent.mkdir(parents=True, exist_ok=True)
     own.write_text("[storage]\ndriver = \"vfs\"\n")
-    assert not shared_images.use_shared(hermes.Runner(), ENGINE, home, run=Podman(), say=said.append)
+    assert not shared_images.use_shared(hermes.Runner(), ENGINE, home, run=Podman(), say=said.append, user="bip2")
     assert own.read_text() == "[storage]\ndriver = \"vfs\"\n"   # someone's own setting stays
     assert not shared_images.use_shared(hermes.Runner(), "/usr/bin/docker", home, run=Podman(), say=said.append)
     setting.unlink()
     assert not shared_images.use_shared(hermes.Runner(), ENGINE, tmp_path / "other", run=Podman(), say=said.append)
+
+
+def test_each_account_s_view_maps_the_store_s_ids_as_its_podman_does():
+    # The store's root is the account, its ids 1, 2... the account's subordinate ids in /etc/subuid's order.
+    assert shared_images.idmap(1001, 1001, [(300000, 65536)], [(300000, 65536)]) == (
+        "u:0:1001:1 u:1:300000:65536 g:0:1001:1 g:1:300000:65536")
+    assert shared_images.idmap(1002, 1005, [(165536, 65536), (400000, 65536)], [(400000, 10)]) == (
+        "u:0:1002:1 u:1:165536:65536 u:65537:400000:65536 g:0:1005:1 g:1:400000:10")
+
+
+def test_a_view_is_mounted_when_mountinfo_has_it_bind_mounts_of_the_same_disk_too(tmp_path):
+    info = tmp_path / "mountinfo"
+    info.write_text("29 1 252:1 / / rw,relatime shared:1 - ext4 /dev/vda1 rw\n"
+                    "312 29 252:1 /var/lib/bipagents/images /var/lib/bipagents/views/bip2 ro,relatime,idmapped "
+                    "shared:1 - ext4 /dev/vda1 rw\n"
+                    "313 29 252:1 /x /srv/a\\040b rw shared:1 - ext4 /dev/vda1 rw\n")
+    assert shared_images.is_mounted(Path("/var/lib/bipagents/views/bip2"), info)
+    assert shared_images.is_mounted(Path("/var/lib/bipagents/views/bip2/"), info)
+    assert not shared_images.is_mounted(Path("/var/lib/bipagents/views/bip3"), info)
+    assert shared_images.is_mounted(Path("/srv/a b"), info)
+    assert not shared_images.is_mounted(Path("/x"), tmp_path / "missing")
+
+
+def test_root_mounts_one_read_only_view_per_account_once(tmp_path, monkeypatch):
+    store, folder = tmp_path / "lib" / "images", tmp_path / "lib" / "views"
+    (store / "overlay-images").mkdir(parents=True)
+    subuid, subgid = tmp_path / "subuid", tmp_path / "subgid"
+    subuid.write_text("lab:100000:65536\nbip:200000:65536\nbip2:400000:65536\nbip2:900000:10\ngone:1:2\nbad line\n")
+    subgid.write_text("bip:200000:65536\nbip2:400000:65536\n")
+    accounts = {"lab": (999, 999), "bip": (1000, 1000), "bip2": (1001, 1001)}
+
+    def account(name):
+        if name not in accounts:
+            raise KeyError(name)
+        return type("P", (), {"pw_uid": accounts[name][0], "pw_gid": accounts[name][1]})()
+    ran, mounted = [], {str(folder / "bip")}
+    got = shared_images.views(store, folder, run=lambda a, t=0: ran.append(a) or (0, ""), files=(subuid, subgid),
+                              account=account, mounted_at=lambda p: str(p) in mounted)
+    assert got == ["bip", "bip2"]          # bip's was mounted already (its browser may be reading it): left as it is
+    assert len(ran) == 1 and ran[0][:3] == ["mount", "--bind", "-o"]
+    assert ran[0][3] == ("ro,X-mount.idmap=u:0:1001:1 u:1:400000:65536 u:65537:900000:10 "
+                         "g:0:1001:1 g:1:400000:65536") and ran[0][4:] == [str(store), str(folder / "bip2")]
+    assert oct(store.stat().st_mode & 0o777) == "0o700" and oct(store.parent.stat().st_mode & 0o777) == "0o711"
+    assert oct(folder.stat().st_mode & 0o777) == "0o711"
+    # Under the mount point, an empty store: an account whose view isn't mounted keeps a podman that works.
+    for name in shared_images.SKELETON:
+        assert (folder / "bip2" / name).is_file()
+    said = []
+    monkeypatch.setattr(shared_images, "say", said.append)
+    assert shared_images.views(store, folder, run=lambda a, t=0: (32, "mount: bad option"), files=(subuid, subgid),
+                               account=account, mounted_at=lambda p: False) == []
+    assert "bad option" in said[-1]
+    assert shared_images.views(tmp_path / "empty", folder, run=lambda a, t=0: (0, "")) == []   # nothing pulled yet
 
 
 class Engine(hermes.Runner):

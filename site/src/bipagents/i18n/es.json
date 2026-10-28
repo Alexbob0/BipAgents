@@ -48,7 +48,9 @@
   "show": {
     "a11y": "Ejemplos: tú pides, tu agente responde con una tarjeta útil",
     "more": "Ver la demo completa",
-    "reminder": "Recordatorio",
+    "saved": "≈ {amount} ahorrados al mes",
+    "cancelBoth": "Cancelar las dos",
+    "choose": "Elegir",
     "go": "Verlo en la demo"
   },
   "vs": {
@@ -136,6 +138,7 @@
     "tab3": "Mis salidas",
     "tab4": "Hace frío",
     "tab5": "Un recordatorio",
+    "tab6": "Mis suscripciones",
     "point1": "Cada paso a la vista",
     "point2": "Mapas y mini apps en sus respuestas",
     "point3": "Tu visto bueno antes de reservar, pagar o enviar",
