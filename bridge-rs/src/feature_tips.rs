@@ -820,8 +820,8 @@ fn example_for(f: &Feature, service: Option<&str>) -> String {
 fn tip_note(f: &Feature, service: Option<&str>) -> String {
     format!(
         "A tip for your person, at a good moment (the bridge picked it): {}. After answering what they asked, add ONE short, \
-warm sentence in their language that offers it, e.g. « {} ». A card « Essayer / Plus tard / Pas pour moi » shows under \
-your reply: don't explain it, don't insist, don't bring it up again.",
+warm sentence in their language that offers it, e.g. « {} ». A card « Essayer / Plus tard / Pas pour moi » waits for \
+them in the app: don't explain it, don't insist, don't bring it up again.",
         hint_for(f, service),
         example_for(f, service)
     )
@@ -841,7 +841,7 @@ fn week_note(store: &Store, f: &Feature, now: f64) -> String {
         "Your person started with their agents one week ago ({messages} messages this week{used}). After answering what \
 they asked, give them a short, warm « ta première semaine » recap in their language (2 or 3 sentences): what you did \
 together this week, from your conversation. Then offer ONE thing to try: {} (e.g. « {} »). A card « Essayer / Plus \
-tard / Pas pour moi » shows under your reply: don't explain it, don't insist.",
+tard / Pas pour moi » waits for them in the app: don't explain it, don't insist.",
         f.hint, f.example
     )
 }
