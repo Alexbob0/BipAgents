@@ -1713,13 +1713,15 @@ fn assemble(state: &AppState, config: &Config) -> Router {
     let inner: Router =
         app.fallback(move |request: Request| not_found(routes.clone(), request)).with_state(state.clone());
     // Python's middlewares wrap the whole app (before routing): here around the routed app, as one service.
-    // FastAPI reads bodies of any size (axum's extractors stop at 2 MB by default); an exception in a route is a
-    // plain-text 500, logged as uvicorn does.
+    // Bodies: one limit for the whole app, before routing (body_limit.rs: 4 MB, raised on the few routes that take
+    // large bodies), so axum's own per-extractor limit is off. An exception in a route is a plain-text 500, logged as
+    // uvicorn does.
     Router::new()
         .fallback_service(inner)
         .layer(middleware::from_fn(method_not_allowed_detail))
         .layer(middleware::from_fn_with_state(state.clone(), crate::place_move::guard))
         .layer(middleware::from_fn_with_state(state.clone(), crate::files::upload_size_limit))
+        .layer(middleware::from_fn(crate::body_limit::body_limit))
         .layer(axum::extract::DefaultBodyLimit::disable())
         .layer(tower_http::catch_panic::CatchPanicLayer::custom(internal_error))
 }

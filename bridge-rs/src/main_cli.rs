@@ -953,7 +953,9 @@ pub fn serve_door_on(
                     request.extensions_mut().insert(crate::auth::Scheme("https"));
                     router.clone().oneshot(request.map(axum::body::Body::new))
                 });
-                let builder = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+                let mut builder = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+                // a connection that never finishes its request's head is closed (audit 2026-10-27 #10)
+                builder.http1().timer(hyper_util::rt::TokioTimer::new()).header_read_timeout(Duration::from_secs(30));
                 let connection = builder.serve_connection_with_upgrades(hyper_util::rt::TokioIo::new(tls), service);
                 tokio::select! {
                     _ = connection => {},

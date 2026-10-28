@@ -81,6 +81,7 @@ pub mod family_agent;
 /// « L'agent de projet »: an agent for one occasion whose thread friends follow (no Python counterpart).
 pub mod project_agent;
 pub mod family_news;
+pub mod body_limit;
 pub mod files;
 pub mod files_kept;
 pub mod households;

@@ -787,11 +787,16 @@ fn household_caller(state: &AppState, headers: &HeaderMap) -> ApiResult<String> 
     household.ok_or_else(|| HttpError::new(401, "unknown household"))
 }
 
-/// Starlette's `await request.json()`: invalid JSON is an uncaught error (500).
+/// Starlette's `await request.json()`: invalid JSON is an uncaught error (500). Small bodies only (64 KiB): some of
+/// these routes are open (`/family/accept`).
 async fn request_json(request: Request) -> ApiResult<Value> {
-    let bytes = axum::body::to_bytes(request.into_body(), usize::MAX)
-        .await
-        .map_err(|_| HttpError::new(400, "There was an error parsing the body"))?;
+    let bytes = axum::body::to_bytes(request.into_body(), 64 * 1024).await.map_err(|e| {
+        if crate::body_limit::is_too_large(&e) {
+            HttpError::new(413, "request body too large")
+        } else {
+            HttpError::new(400, "There was an error parsing the body")
+        }
+    })?;
     serde_json::from_slice(&bytes).map_err(|e| HttpError::from(anyhow::anyhow!("JSONDecodeError: {e}")))
 }
 

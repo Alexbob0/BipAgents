@@ -77,6 +77,13 @@ def test_pairing_route_and_hermes_relay(bridges, fakes):
     seen = fakes.hermes.seen("/v1/runs", "POST")[-1]
     assert seen.path == "/v1/runs" and seen.query == "x=1" and seen.json() == {"input": "Salut"}
     assert seen.header("authorization") == f"Bearer {HERMES_KEY}"  # Hermes checks its own key
+    # a turn with its photos inline (over the 4 MB of other routes), streamed to Hermes
+    photos = {"input": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,"
+                                                                                       + "A" * (6 * 1024 * 1024)}}]}]}
+    assert bridge.post("/hermes/wellness/v1/runs", json=photos, headers=hermes_auth).status_code == 202
+    assert fakes.hermes.seen("/v1/runs", "POST")[-1].json() == photos
+    plain = bridge.post("/hermes/wellness/api/sessions", json={"title": "x" * (5 * 1024 * 1024)}, headers=hermes_auth)
+    assert plain.status_code != 413 and fakes.hermes.seen("/api/sessions", "POST")[-1].json()["title"] == "x" * (5 << 20)
     # a run's events come from the bridge's run hub (one Hermes subscription, the brake's counts: loop_brake.rs), in
     # the same SSE; Hermes still says first whether the key is good and the run there
     fakes.hermes.run_info["run_1"] = {"status": "running"}

@@ -238,6 +238,29 @@ def test_upload_size_limit_without_content_length(bridge):
     assert resp.status_code == 413
 
 
+def test_bodies_are_limited_except_where_large_ones_are_needed(bridges):
+    """Audit 2026-10-27 #10: 4 MB for every route (open ones included, read before any key), the uploads keeping
+    their own limit; the open household route reads 64 KiB at most."""
+    bridge = bridges.new("limits", change=lambda c: c["limits"].update({"upload_max_mb": 8})).start()
+    big = b"{" + b" " * (5 * 1024 * 1024) + b"}"
+    for path in ("/family/accept", "/v1/import/hello", "/peer/p/vie/v1/runs", "/v1/agents"):
+        refused = bridge.post(path, content=big, headers={"content-type": "application/json"})
+        assert refused.status_code == 413, path
+        assert refused.json() == {"detail": "request body too large"}
+
+    def chunks():  # no Content-Length: stopped while it is read
+        for _ in range(6):
+            yield b" " * (1024 * 1024)
+    assert bridge.post("/family/accept", content=chunks(), headers={"content-type": "application/json"}).status_code == 413
+    medium = b'{"code": "' + b"x" * (100 * 1024) + b'"}'
+    assert bridge.post("/family/accept", content=medium, headers={"content-type": "application/json"}).status_code == 413
+    # a 6 MB file still goes up
+    sent = bridge.post("/v1/files", headers=AUTH, data={"agent": "wellness"},
+                       files={"file": ("photo.jpg", b"j" * (6 * 1024 * 1024), "image/jpeg")})
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["size"] == 6 * 1024 * 1024
+
+
 def test_upload_errors(bridge):
     unknown = bridge.post("/v1/files", headers=AUTH, data={"agent": "inconnu"}, files={"file": ("a.txt", b"x", "text/plain")})
     assert unknown.status_code == 404 and unknown.json() == {"detail": "unknown agent"}
