@@ -554,7 +554,9 @@ impl Briefs {
             }
             Err(other) => return Err(other.into()),
         }
-        let extra = json!({"model_options": {"reasoning": {"enabled": false}}});
+        // thinking off, or GLM's « low » through EUrouter (« none » makes it answer nothing there)
+        let options = crate::agents_admin::quick_turn_options(&self.config.get(), agent);
+        let extra = json!({"model_options": options});
         let reply = self.hermes.session_chat(agent, &scratch, &request, extra.as_object().cloned(), 240.0).await;
         let deleted = self.hermes.delete_session(agent, &scratch).await;
         // Deleted or not, deleted again over the next half hour (`sweep_scratch`).
@@ -838,14 +840,19 @@ async fn live_brief(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
     let agent = web::query_required(&q, "agent")?;
     let session = web::query_str(&q, "session", false, None)?;
     let config = setup(&state, &agent)?;
+    // What the call's turns send as `model_options` (the apps since 2026-10-28; before, always thinking off): GLM
+    // through EUrouter can't switch thinking off and answers nothing to « none », so it gets « low ».
+    let options = crate::agents_admin::quick_turn_options(&state.config(), &config);
     let chosen = match session.filter(|s| !s.is_empty()) {
         Some(s) => Some(s),
         None => state.briefs.latest(&config).await.map_err(hermes_error)?,
     };
     let Some(chosen) = chosen else {
-        return Ok(web::ok(json!({"session": null, "text": "", "points_at": null})));
+        return Ok(web::ok(json!({"session": null, "text": "", "points_at": null, "model_options": options})));
     };
-    Ok(web::ok(Value::Object(state.briefs.brief(&config, &chosen).await.map_err(hermes_error)?)))
+    let mut brief = state.briefs.brief(&config, &chosen).await.map_err(hermes_error)?;
+    brief.insert("model_options".into(), options);
+    Ok(web::ok(Value::Object(brief)))
 }
 
 async fn blocking<T: Send + 'static>(work: impl FnOnce() -> std::io::Result<T> + Send + 'static) -> ApiResult<T> {

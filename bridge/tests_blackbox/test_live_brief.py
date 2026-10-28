@@ -76,7 +76,9 @@ def test_routes(bridge, fakes):
 
 
 def test_no_conversation_yet_and_hermes_errors(bridge, fakes):
-    assert brief(bridge).json() == {"session": None, "text": "", "points_at": None}
+    # model_options: what the call's turns send (thinking off; « low » for GLM through EUrouter, test_agents_admin)
+    assert brief(bridge).json() == {"session": None, "text": "", "points_at": None,
+                                    "model_options": {"reasoning": {"enabled": False}}}
     fakes.hermes.keys[""] = "other"
     refused = brief(bridge, session="s1")
     assert refused.status_code == 401 and refused.json() == {"detail": "hermes"}
