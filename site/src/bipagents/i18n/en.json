@@ -497,9 +497,9 @@
     "s2": "Nothing leaves without your “Send”",
     "s3t": "The family’s agent",
     "s3": "Lists, shopping, dates; never what’s private",
-    "s4t": "With your friends",
-    "s4": "A trip, a party: up to 20 friends follow along, no subscription",
-    "lock": "A shared conversation is end-to-end encrypted (even Kerfy Studio can’t read it) and stops on the date you choose.",
+    "s4t": "An agent shared with your friends, for free!",
+    "s4": "For a trip, a party: up to 20 friends follow it, with nothing to pay and no subscription",
+    "lock": "What your friends follow of your project agent is end-to-end encrypted (even Kerfy Studio can’t read it) and stops on the date you choose.",
     "cta": "See Duo and Family",
     "a11y": "In the conversation, the Daily agent offers: let Sam know? The words “The school called: Léa has a fever, I’m picking her up”, Sam as the recipient, and the Send and No thanks buttons. At Sam’s, the notification arrives.",
     "mock": {
