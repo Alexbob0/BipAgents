@@ -371,6 +371,7 @@ pub async fn create(state: &AppState, new: NewProject) -> ApiResult<(AgentConfig
         }
     }
     tracing::info!(agent = %agent.name, "project agent: created");
+    crate::own_space::apart_when_idle(state, &agent.name); // its guests: out of the person's hub (own_space.rs)
     let entry = entry(&config, &agent.name).unwrap_or(Value::Null);
     let shown = view(&config, &agent, &entry);
     Ok((agent, shown))

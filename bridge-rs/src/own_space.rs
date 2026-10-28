@@ -162,6 +162,64 @@ async fn finish(state: AppState, agent: String, hub_url: String, new_url: String
     }
 }
 
+/// How long an agent other people talk to may stay busy before its move out of the hub is given up (tried again when
+/// it is shared again).
+const APART_WAIT: Duration = Duration::from_secs(6 * 60 * 60);
+/// The move waits so long first: the app sets the new agent up (its look, its settings, its first words) without
+/// waiting behind a move that holds the agents' lock for a minute.
+const APART_SETTLE: Duration = Duration::from_secs(60);
+
+/// An agent other people talk to (vault.rs `others_facing`) leaves the shared hub for its own space once idle, so the
+/// hub stays the person's alone and their agents keep their credentials there (Alex, 2026-10-28). Called when the
+/// family's agent or a project agent is made and when an agent is shared with a relative. Only on an install that
+/// protects the vault (elsewhere nothing holds credentials, nothing to keep apart); a move that fails is logged and
+/// the hub keeps it (its agents then move at their first secret, as before).
+pub fn apart_when_idle(state: &AppState, agent: &str) {
+    let (state, name) = (state.clone(), agent.to_string());
+    tokio::spawn(async move { apart(state, name).await });
+}
+
+/// Whether `agent` should leave the hub now (`apart_when_idle`).
+pub fn should_leave_hub(config: &Config, agent: &AgentConfig) -> bool {
+    config.hermes.isolated
+        && !agent.isolated
+        && crate::vault::in_hub(config, agent)
+        && crate::vault::others_facing(config, &agent.name)
+}
+
+async fn apart(state: AppState, name: String) {
+    tokio::time::sleep(APART_SETTLE).await;
+    let started = Instant::now();
+    loop {
+        let config = state.config();
+        let Some(agent) = config.agent(Some(&name)).cloned() else { return };
+        if !should_leave_hub(&config, &agent) {
+            return;
+        }
+        if state.hub.agent_runs_at(&name, &agent.hermes_url) == 0 {
+            let lock = lock_of(&name);
+            let _one_at_a_time = lock.lock_owned().await;
+            let config = state.config();
+            let Some(agent) = config.agent(Some(&name)).cloned() else { return };
+            if !should_leave_hub(&config, &agent) {
+                return;
+            }
+            tracing::info!(target: "bipbridge::own_space", agent = %name, "other people talk to it: moving out of the shared hub");
+            match crate::agents_admin::move_into_space(&state, &agent, false).await {
+                Ok(_) => tracing::info!(target: "bipbridge::own_space", agent = %name, "in its own space: the hub is the person's alone"),
+                Err(exc) => tracing::warn!(target: "bipbridge::own_space", agent = %name, error = ?exc, "move out of the shared hub failed: it stays there, the hub's agents move at their first secret"),
+            }
+            state.vault.warn_hub_holders(&state.config());
+            return;
+        }
+        if started.elapsed() > APART_WAIT {
+            tracing::warn!(target: "bipbridge::own_space", agent = %name, "still busy: stays in the shared hub for now");
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
 /// Whether `value` reads as the result of a failed move (tests).
 pub fn is_failure(result: &Dict) -> bool {
     result.get("content").and_then(Value::as_array).and_then(|c| c.first()).and_then(|c| c.get("text")).and_then(Value::as_str)

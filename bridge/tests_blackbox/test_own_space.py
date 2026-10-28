@@ -10,6 +10,7 @@ import time
 import tomllib
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 import yaml
 
 from bbkit.common import AUTH
@@ -221,3 +222,24 @@ def test_an_agent_linked_to_a_relative_keeps_the_hub_moving(bridges, fakes):
     wait_registered(bridge, ["coach", "cuisine"])
     vault = {a["id"]: a.get("why") for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
     assert {k: vault[k] for k in ("coach", "cuisine")} == dict.fromkeys(("coach", "cuisine"), "needs_own_space")
+
+
+@pytest.mark.slow
+def test_a_new_project_agent_leaves_the_hub_so_it_stays_private(bridges, fakes):
+    """An agent other people talk to lives in its own space (moved a minute after it is made, once idle); the hub
+    keeps only the person's agents, whose credentials then stay there."""
+    bridge, hub = hub_place(bridges, fakes, agents=("coach",), hub_python=hub_podman)
+    bridge.start()
+    wait_registered(bridge, ["coach"])
+    made = bridge.post("/v1/project-agents", headers=AUTH, json={"name": "Fête", "ends": time.time() + 86400})
+    assert made.status_code == 201, made.text
+    agent = made.json()["agent"]
+
+    def moved():
+        section = tomllib.loads(bridge.toml_text())["agents"].get(agent, {})
+        return section.get("isolated") is True and section.get("space") == str(bridge.root / "spaces" / agent)
+    assert wait_until(moved, timeout=150), bridge.log_tail(4000)
+    assert wait_until(lambda: any(e["argv"] == ["profile", "delete", agent, "--yes"]
+                                  for e in bridge.commands.entries("hermes")), timeout=20)
+    vault = {a["id"]: a.get("why") for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
+    assert vault["coach"] is None
