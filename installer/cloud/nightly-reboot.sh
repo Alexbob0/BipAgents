@@ -24,6 +24,7 @@ RandomizedDelaySec=30min
 EOF
 cat > /etc/needrestart/conf.d/60-bipagents.conf <<'EOF'
 $nrconf{restart} = 'a';
+$nrconf{override_rc}{qr(^cloud-)} = 0;
 EOF
 m=$(( 0x$(cut -c1-4 /etc/machine-id) % 45 )) && printf 'Unattended-Upgrade::Automatic-Reboot-Time "00:%02d";\n' "$m" > /etc/apt/apt.conf.d/53bipagents-reboot-time
 

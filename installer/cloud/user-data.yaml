@@ -7,6 +7,9 @@
 # pairing secret: their script holds only a one-time token with which root fetches each place's setup from the guichet
 # at first boot (seat-agent.py --bootstrap), and only root may ask the metadata service anything (below).
 #
+# Ubuntu 24.04 and Debian 13, x86 and ARM (internal/research/os-arm-test-2026-10-28.md): the same text, no branch
+# by system but the zram line's fallback (below).
+#
 # It creates the `bip` account (BipAgents and its agents, without sudo: an agent that got out of its sandbox would not
 # be root), lets in only the bridge's door (443) and SSH by key, turns on security updates, then runs the installer in
 # `--cloud` mode as `bip` (installer/bipinstall/cloud.py). Its log: /var/log/bipagents-install.log.
@@ -47,6 +50,11 @@ packages:
   - fuse-overlayfs
   # The metadata service for root only (bipagents-metadata-block.service, below).
   - nftables
+  # In Ubuntu's cloud images already, not in Debian 13's (Hetzner's has no sudo at all): the install's `sudo -iu bip`,
+  # the user bus rootless podman's systemd cgroups need, and the restarts after an update (below).
+  - sudo
+  - dbus-user-session
+  - needrestart
 
 write_files:
   - path: /etc/bipagents/cloud.json
@@ -80,8 +88,9 @@ write_files:
       Unattended-Upgrade::Automatic-Reboot "true";
       Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
       Unattended-Upgrade::Automatic-Reboot-Time "00:20";
-  # The updates themselves at 23:00-23:30, just before (Ubuntu's own time, 06:00-07:00, would leave a kernel fix
-  # waiting a whole day for the next night).
+  # The updates themselves at 23:00-23:30, just before (the systems' own time, 06:00-07:00, would leave a kernel fix
+  # waiting a whole day for the next night). Debian marks /var/run/reboot-required too (unattended-upgrades' own
+  # kernel hook, /etc/kernel/postinst.d).
   - path: /etc/systemd/system/apt-daily-upgrade.timer.d/60-bipagents.conf
     content: |
       [Timer]
@@ -126,10 +135,13 @@ write_files:
       [Install]
       WantedBy=sysinit.target
   # Services whose libraries an update replaced are restarted (needrestart; it never restarts user@.service, so the
-  # places' own services keep theirs until the night's reboot or their own restart).
+  # places' own services keep theirs until the night's reboot or their own restart). Never cloud-init's own units:
+  # on Debian 13 the apt-get of runcmd below restarted cloud-final.service, killing the first boot halfway
+  # (2026-10-28).
   - path: /etc/needrestart/conf.d/60-bipagents.conf
     content: |
       $nrconf{restart} = 'a';
+      $nrconf{override_rc}{qr(^cloud-)} = 0;
   # A place's space encrypted at rest (its setup carries "keys") needs the server hardened first: swap emptied and
   # encrypted, no core dumps, the journal in memory (runcmd below, add-seat.sh). The same text as
   # installer/cloud/space-hardening.sh (installer/tests/test_cloud_init.py checks it).
@@ -217,9 +229,11 @@ runcmd:
   - systemctl restart systemd-journald
   # Compressed memory (zram: half the memory, zstd) ahead of the swap file: the server holds about 1.5x more before
   # slowing down (the places' installs then leave it as it is). Ubuntu's cloud kernels keep the module in
-  # linux-modules-extra (DigitalOcean, 2026-10-26). The guichet's seat agent sets it up on servers installed before,
-  # and again after a kernel update (installer/cloud/seat-agent.py, the same text).
-  - modprobe zram || apt-get install -y "linux-modules-extra-$(uname -r)"; modprobe zram && apt-get install -y systemd-zram-generator && printf '[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\nswap-priority = 100\n' > /etc/systemd/zram-generator.conf && systemctl daemon-reload && systemctl start dev-zram0.swap || true
+  # linux-modules-extra (DigitalOcean, 2026-10-26); Debian's kernels have the module (cloud and arm64), so that
+  # install never runs there, and its zram-generator starts the device at once with its own defaults (lz4), hence the
+  # restart once the settings are written. The guichet's seat agent sets it up on servers installed before,
+  # and again after a kernel update (installer/cloud/seat-agent.py, the same text and the same restart).
+  - modprobe zram || apt-get install -y "linux-modules-extra-$(uname -r)"; modprobe zram && apt-get install -y systemd-zram-generator && printf '[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\nswap-priority = 100\n' > /etc/systemd/zram-generator.conf && systemctl daemon-reload && systemctl restart systemd-zram-setup@zram0.service && systemctl start dev-zram0.swap || true
   # 2 GB of swap: room for an agent's browser on a 4 GB server.
   - test -f /swapfile || { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; }
   # A place to be encrypted at rest (its setup, written by the seat agent's --bootstrap above on the guichet's servers,

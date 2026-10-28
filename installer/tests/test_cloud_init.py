@@ -54,6 +54,9 @@ def test_the_user_data_the_apps_send_sets_up_the_server_and_runs_the_cloud_insta
     zram = next(c for c in commands if "zram" in c)
     assert zram.startswith('modprobe zram || apt-get install -y "linux-modules-extra-$(uname -r)"; modprobe zram && ')
     assert zram.endswith("|| true")
+    # Debian's zram-generator starts the device as it is installed (lz4): set up again with the settings written
+    assert zram.index("zram-generator.conf") < zram.index("systemctl restart systemd-zram-setup@zram0.service") < zram.index(
+        "systemctl start dev-zram0.swap")
     assert commands.index(zram) < next(i for i, c in enumerate(commands) if "/swapfile" in c) < commands.index(install)
     assert "SystemMaxUse=200M" in files["/etc/systemd/journald.conf.d/60-bipagents.conf"]["content"]
 
@@ -64,7 +67,9 @@ def test_no_model_key_or_other_secret_has_a_place_in_it():
     assert text.isascii(), "DigitalOcean ignores a user-data holding non-ASCII characters (accents, guillemets)"
     assert sorted(set(re.findall(r"\{\{(\w+)\}\}", text))) == ["language", "pair", "profile"]
     assert "KEY" not in text.replace("SSH", "")
-    assert len(render("x" * 43).encode()) < 16_000   # far under the providers' user-data limits (64 KB at DigitalOcean)
+    # far under the providers' user-data limits (32 KiB at Hetzner, the guichet's USER_DATA_MAX; 64 KB at DigitalOcean),
+    # with room for what the guichet adds (the places' setups)
+    assert len(render("x" * 43).encode()) < 20_000
 
 
 def test_the_server_reboots_at_night_when_an_update_asks_at_a_minute_of_its_own(tmp_path):
@@ -80,6 +85,8 @@ def test_the_server_reboots_at_night_when_an_update_asks_at_a_minute_of_its_own(
     timer = files["/etc/systemd/system/apt-daily-upgrade.timer.d/60-bipagents.conf"]
     assert "OnCalendar=\nOnCalendar=*-*-* 23:00\n" in timer and "RandomizedDelaySec=30min" in timer
     assert "$nrconf{restart} = 'a';" in files["/etc/needrestart/conf.d/60-bipagents.conf"]
+    # never cloud-init's own units: restarted by runcmd's apt-get on Debian 13, they killed the first boot halfway
+    assert "$nrconf{override_rc}{qr(^cloud-)} = 0;" in files["/etc/needrestart/conf.d/60-bipagents.conf"]
     commands = data["runcmd"]
     minute = next(c for c in commands if "53bipagents-reboot-time" in c)
     assert commands.index(minute) < commands.index("systemctl daemon-reload") < commands.index(
