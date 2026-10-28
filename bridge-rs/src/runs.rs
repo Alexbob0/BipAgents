@@ -1026,6 +1026,16 @@ impl RunHub {
             st.last_tool = crate::loop_brake::bare(&tool).to_string();
             st.last_tool_at = crate::py::time_time();
             self.brake(sub, &mut st, &event);
+            // a use of a feature to discover (feature_tips.rs: a podcast made, the Carnet filled…)
+            if let (Some(shared), true) = (self.config.clone(), crate::feature_tips::feature_for_tool(&tool).is_some()) {
+                self.spawn(async move {
+                    let config = shared.get();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        crate::feature_tips::tool_used(&config, &tool, crate::py::time_time())
+                    })
+                    .await;
+                });
+            }
         } else if kind == "tool.completed" {
             // a call that failed: the identical call right after is a retry, not « the same call again »
             let tool = crate::loop_brake::event_tool(&event.data);
