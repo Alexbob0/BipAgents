@@ -1,0 +1,63 @@
+--- a/tools/cronjob_tools.py
++++ b/tools/cronjob_tools.py
+@@ -68,7 +68,10 @@
+ 
+ 
+ def _dumps(payload: dict[str, Any]) -> str:
+-    return json.dumps(payload, indent=2)
++    # ensure_ascii=False: the model reads this result. With escapes it sees its own accented
++    # words come back as backslash-u sequences, takes them for a broken encoding and starts
++    # writing its prompts without accents.
++    return json.dumps(payload, indent=2, ensure_ascii=False)
+ 
+ 
+ def _notify_provider_jobs_changed_safe() -> None:
+--- /dev/null
++++ b/tests/tools/test_cronjob_accents.py
+@@ -0,0 +1,46 @@
++"""The cronjob tool keeps a long accented prompt intact and answers the model in plain UTF-8
++(no \\uXXXX escapes, which a model takes for a broken encoding and then avoids accents)."""
++
++import json
++
++import pytest
++
++from tools.cronjob_tools import _cronjob_handler, cronjob
++
++_BASE = ("Chaque soir à 22 h, relis la journée : événements, idées notées, tâches à reprendre. "
++         "Écris un résumé élégant, avec « guillemets » et accents (é è ê à ù ç ô î ï œ). ")
++
++
++def _long(n: int) -> str:
++    return (_BASE * (n // len(_BASE) + 1))[:n]
++
++
++@pytest.fixture(autouse=True)
++def _cron_dir(tmp_path, monkeypatch):
++    monkeypatch.setattr("cron.jobs.CRON_DIR", tmp_path / "cron")
++    monkeypatch.setattr("cron.jobs.JOBS_FILE", tmp_path / "cron" / "jobs.json")
++    monkeypatch.setattr("cron.jobs.OUTPUT_DIR", tmp_path / "cron" / "output")
++
++
++@pytest.mark.parametrize("size", [3000, 8000])
++def test_long_accented_prompt_round_trips_and_result_is_readable(size):
++    from cron.jobs import get_job
++
++    prompt = _long(size).strip()  # stored stripped
++    out = cronjob(action="create", prompt=prompt, schedule="every 24h", name="Routine du soir détendue")
++    created = json.loads(out)
++    assert created["success"], created
++    assert "\\u00e9" not in out and "journée" in out and "détendue" in out
++    job_id = created["job_id"]
++    assert get_job(job_id)["prompt"] == prompt
++
++    # As a model sends it: JSON tool-call arguments with \u escapes.
++    args = json.loads(json.dumps({"action": "update", "job_id": job_id, "prompt": prompt + " Fin."}))
++    out = _cronjob_handler(args)
++    updated = json.loads(out)
++    assert updated["success"], updated
++    assert "\\u00" not in out
++    assert get_job(job_id)["prompt"] == prompt + " Fin."
++
++    listed = cronjob(action="list")
++    assert "\\u00" not in listed and "Routine du soir détendue" in listed

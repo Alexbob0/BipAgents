@@ -93,7 +93,8 @@ fn digits(text: &str) -> usize {
 /// The IBAN's checksum (ISO 13616: mod 97 = 1).
 fn iban_ok(text: &str) -> bool {
     let raw: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-    if !(15..=34).contains(&raw.len()) {
+    // ASCII only: `\d` in IBAN also matches other scripts' digits (« ७ », 3 bytes), and `raw[4..]` below slices bytes.
+    if !raw.is_ascii() || !(15..=34).contains(&raw.len()) {
         return false;
     }
     let moved = format!("{}{}", &raw[4..], &raw[..4]);
@@ -234,6 +235,14 @@ mod tests {
 
     fn kinds(text: &str) -> Vec<&'static str> {
         scan(text).into_iter().map(|f| f.kind).collect()
+    }
+
+    #[test]
+    fn non_ascii_digits_and_long_accented_texts_never_panic() {
+        // Devanagari digits match `\d`; an IBAN-shaped run of them is not an IBAN (and once sliced mid-character).
+        assert!(!kinds("virement FR७६ ABCD ABCD ABCD").contains(&"iban"));
+        let long = "Relis la journée : événements, idées, tâches à reprendre, « guillemets » œ. ".repeat(120);
+        assert!(scan(&long).is_empty());
     }
 
     #[test]

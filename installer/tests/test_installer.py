@@ -184,7 +184,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
                                                                 "0010-empty-replies-changed-retries-leaked-tool-calls.patch",
                                                                 "0011-titles-reasoning-floor-glm.patch",
                                                                 "0012-bot-chat-one-message-agent.patch",
-                                                                "0013-mcp-results-vault-scrub.patch"]
+                                                                "0013-mcp-results-vault-scrub.patch",
+                                                                "0014-cron-results-plain-utf8.patch"]
 
 
 def test_bot_mode_marker(tmp_path):

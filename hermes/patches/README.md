@@ -35,6 +35,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0011 titles with GLM: thinking floored to low | applies | applies (`97a9ae8ee`, checked 2026-10-28) |
 | 0012 Bot Chat: one `message_agent` | applies (after 0006) | not checked yet |
 | 0013 MCP results: vault passwords scrubbed | applies | applies (`97a9ae8ee`: the file is the same, checked 2026-10-28) |
+| 0014 routine tool results in plain UTF-8 | applies | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-28) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -335,3 +336,22 @@ password field back; this is the net under those rules, not a wall against an ag
 `test_mcp_structured_content.py`, `test_mcp_image_content.py`, `test_mcp_empty_error_message.py`: 137 passed, 5 failed
 for a missing Pillow in the test environment (`test_mcp_image_content.py`'s native image tests), Python 3.12. No other
 patch touches the file; `patch --dry-run` passes on `517b5e10f` and `97a9ae8ee`.
+
+## 0014 — routine tool results in plain UTF-8
+
+**Problem.** Hermes' `cronjob` tool answers the model with `json.dumps(..., indent=2)`, so every non-ASCII character
+comes back as a `\uXXXX` escape: an agent that creates or updates a French routine reads its own « journée » back as
+`journ\u00e9e` in the name and the prompt preview. Hermes' other tools mostly answer in plain UTF-8. Seen 2026-10-28: an
+agent (GLM-5.3 Flash) rewrote its nightly routine's prompt without accents, blaming « a limit on long texts ». No such
+limit exists on that path: a 3 000, 8 000 or 20 000-character accented prompt is stored and read back intact, and
+tool-call arguments with `\u` escapes decode fine; only the escaped results remained.
+
+**What the patch does.** The tool's results are written with `ensure_ascii=False`. Same JSON, readable words.
+
+**Files.** `tools/cronjob_tools.py` (`_dumps`); new `tests/tools/test_cronjob_accents.py` (create, update through JSON
+tool-call arguments and list, with 3 000 and 8 000-character accented prompts; fails without the patch).
+
+**Tests.** The new file with `test_cronjob_tools.py`, `test_cronjob_job_args.py`, `test_cron_prompt_injection.py`:
+81 passed, 2 skipped, Python 3.12, with 0008 and 0013 applied. No other patch touches the file; `git apply --check`
+passes on `517b5e10f`, `patch --dry-run` on upstream `main` (`8acb7f6580`, 2026-10-28), which still escapes. A small
+upstream PR candidate.
