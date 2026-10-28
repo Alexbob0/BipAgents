@@ -320,6 +320,8 @@ impl AppState {
             self.spawn(watcher.run());
         }
         self.spawn(purge_loop(self.clone()));
+        // what takes the place's space, measured; the 80/95 % cards, the pause when full (storage_watch.rs)
+        self.spawn(crate::storage_watch::run_forever(self.clone()));
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
@@ -404,6 +406,11 @@ async fn purge_loop(state: AppState) {
             let removed = tokio::task::spawn_blocking(move || crate::agent_tools::purge_audio(&c, days, None)).await?;
             if removed > 0 {
                 tracing::info!(removed = removed, "agent audio purged");
+            }
+            let c = config.clone();
+            let removed = tokio::task::spawn_blocking(move || crate::storage_watch::apply_rules(&c)).await?;
+            if removed > 0 {
+                tracing::info!(removed = removed, "files past the space rules purged");
             }
             let removed = state.outbox.purge().await?;
             if removed > 0 {
@@ -1115,6 +1122,10 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             Err(HttpError::new(404, "no such request (answered already?)"))
         };
     }
+    // a space card (what to keep when the place fills up, storage_watch.rs), answered here
+    if let Some(id) = run_id.strip_prefix(crate::storage_watch::RUN_PREFIX) {
+        return crate::storage_watch::approve(&state, &agent, id, &body.choice).await;
+    }
     let request_id = body.request_id.as_deref();
     let (status, payload) =
         match state.hermes.approve(&agent, &run_id, &body.choice.trim().to_lowercase(), request_id).await {
@@ -1190,6 +1201,7 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
     if shared.is_none() {
         items.extend(crate::sandbox_sites::pending_items(&config, name.as_deref()));
         items.extend(crate::vault_logins::pending_items(&config, name.as_deref()));
+        items.extend(crate::storage_watch::pending_items(&config, name.as_deref()));
     }
     for item in items.iter_mut() {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
@@ -1582,6 +1594,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(agents_admin::router())
         .merge(crate::agent_groups::router())
         .merge(crate::files_kept::router())
+        .merge(crate::storage_watch::router())
         .merge(crate::dates::router())
         .merge(crate::vault::router())
         .merge(crate::card_pay::app_router())

@@ -50,7 +50,7 @@ def test_the_protocol_and_the_tokens(bridge):
     assert [t["name"] for t in tools] == ["create_audio", "create_podcast", "list_voices", "create_page", "list_pages",
                                           "read_page", "delete_page", "mail_search", "mail_read", "mail_draft",
                                           "knowledge_read", "knowledge_search", "reminders_list", "reminders_add",
-                                          "reminders_complete", "propose_task", "start_task", "route", "map_image", "upcoming_dates",
+                                          "reminders_complete", "propose_task", "start_task", "route", "map_image", "upcoming_dates", "space_estimate",
                                           # the Carnet's (on by default)
                                           "notebook_search", "notebook_read", "notebook_note", "notebook_edit",
                                           "notebook_task", "notebook_record", "notebook_fill"]

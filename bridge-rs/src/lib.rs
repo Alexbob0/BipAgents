@@ -32,6 +32,7 @@ pub mod hermes;
 pub mod lan;
 pub mod logs;
 pub mod main_cli;
+pub mod storage_watch;
 pub mod store;
 
 // -- push-runs -------------------------------------------------------------------------------------

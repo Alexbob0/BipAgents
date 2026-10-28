@@ -17,7 +17,8 @@ use crate::config::Config;
 
 /// Per agent.
 pub const KEEP: usize = 1000;
-const CHOICES: [&str; 4] = ["once", "session", "always", "deny"];
+/// Hermes' words, and the space cards' (storage_watch.rs).
+const CHOICES: [&str; 8] = ["once", "session", "always", "deny", "keep_last", "archive", "send", "delete"];
 static WRITING: Mutex<()> = Mutex::new(());
 
 fn file(config: &Config, agent: &str) -> PathBuf {
@@ -43,7 +44,7 @@ fn key(entry: &Map<String, Value>) -> String {
 pub fn record(config: &Config, agent: &str, fields: &Map<String, Value>) -> anyhow::Result<Map<String, Value>> {
     let choice = fields.get("choice").and_then(Value::as_str).map(|c| c.trim().to_lowercase()).unwrap_or_default();
     if !CHOICES.contains(&choice.as_str()) {
-        anyhow::bail!("choice: once, session, always or deny");
+        anyhow::bail!("choice: once, session, always or deny (a space card: keep_last, archive, send or delete)");
     }
     let run_id = text(fields.get("run_id"), 200);
     if run_id.is_null() {

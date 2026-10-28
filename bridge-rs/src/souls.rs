@@ -166,6 +166,15 @@ pub const ACK_RULE: &str = concat!(
     "Don't repeat these at the end. Not for quick answers."
 );
 
+/// What a recurring production keeps (Alex, 2026-10-28: an agent that makes something every day says what space it
+/// takes and asks what to keep; storage_watch.rs). Rust bridge only, like FAMILY_RULE (in tests/golden/souls.json by
+/// hand). Short: it is paid on every call.
+pub const SPACE_RULE: &str = concat!(
+    "Before you set up something recurring that makes files (a routine making podcasts or pages, regular downloads), ",
+    "call space_estimate and tell your person in one plain sentence the space it will take and how many you propose ",
+    "to keep (« Je garderai les 30 derniers, environ 150 Mo. »); once they chose, save it with keep_last."
+);
+
 pub fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
@@ -174,7 +183,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{ACK_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{BLOCK_END}"
     )
 }
 
