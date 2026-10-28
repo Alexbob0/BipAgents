@@ -651,7 +651,22 @@ impl HermesClient {
         session_id: &str,
         instructions: Option<&str>,
     ) -> Result<String, HermesError> {
+        self.start_run_with(agent, text, session_id, instructions, None).await
+    }
+
+    /// [`Self::start_run`] with this run's `model_options` (e.g. its thinking level, `{"reasoning": {...}}`).
+    pub async fn start_run_with(
+        &self,
+        agent: &AgentConfig,
+        text: &str,
+        session_id: &str,
+        instructions: Option<&str>,
+        model_options: Option<Value>,
+    ) -> Result<String, HermesError> {
         let mut body = Map::new();
+        if let Some(options) = model_options {
+            body.insert("model_options".into(), options);
+        }
         body.insert("input".into(), Value::String(text.to_string()));
         body.insert("session_id".into(), Value::String(session_id.to_string()));
         if let Some(instructions) = instructions.filter(|i| !i.is_empty()) {

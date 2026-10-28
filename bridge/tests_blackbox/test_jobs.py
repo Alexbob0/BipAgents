@@ -43,6 +43,7 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     assert fakes.hermes.created == [("", {"title": "🧩 Écoles du quartier"})]
     run = fakes.hermes.seen("/v1/runs", "POST")[0].json()
     assert run["session_id"] == "api_s1" and run["input"] == "Écoles du quartier\n\nCompare les trois écoles près de chez nous."
+    assert "model_options" not in run   # the agent's own thinking level (GLM through EUrouter: « medium », agents_admin)
     assert run["instructions"].startswith("This is a background task the person gave you from the app (« Tâches de fond »)")
     stored = bridge.state_dir / "jobs" / f"{job['id']}.json"
     assert oct(os.stat(stored).st_mode & 0o777) == "0o600" and json.loads(stored.read_text())["run_id"] == "r1"

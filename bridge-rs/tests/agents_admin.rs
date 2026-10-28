@@ -555,6 +555,88 @@ fn thinking_forced_on_by_an_earlier_bridge_is_healed() {
     assert_eq!(read_thinking(&config.get(), &agent).as_deref(), Some("xhigh"));
 }
 
+const GLM_EU: &str =
+    "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.ai/api/v1\nagent:\n  max_turns: 60\n";
+
+#[test]
+fn glm_through_eurouter_thinks_low_and_never_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
+    let agent = hub_agent(&config);
+    let c = config.get();
+    let folder = profiles(dir.path()).join(&agent.name);
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("config.yaml");
+    let mark = folder.join(agents_admin::THINKING_OFF_MARK);
+    // nothing chosen: « low » shown, and written at start
+    std::fs::write(&path, GLM_EU).unwrap();
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("low"));
+    heal_thinking(&c);
+    let data = load(&path);
+    assert_eq!(data["agent"], json!({"max_turns": 60, "reasoning_effort": "low"}));
+    assert_eq!(data["providers"]["bipagents-route"]["extra_body"]["provider"]["allow_fallbacks"], true);
+    // « none »: written « low », the person's choice kept for the app, no enable_thinking entry
+    assert_eq!(set_thinking(&c, &agent, "none").unwrap(), "none");
+    let data = load(&path);
+    assert_eq!(data["agent"]["reasoning_effort"], "low");
+    assert!(data["providers"].get("bipagents-thinking").is_none());
+    assert!(mark.exists());
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none"));
+    assert_eq!(agents_admin::quick_turn_options(&c, &agent), json!({"reasoning": {"enabled": true, "effort": "low"}}));
+    assert_eq!(
+        agents_admin::task_turn_options(&c, &agent),
+        Some(json!({"reasoning": {"enabled": true, "effort": "medium"}}))
+    );
+    // a level the person picks: theirs, kept at start; tasks follow it from « medium » up
+    assert_eq!(set_thinking(&c, &agent, "medium").unwrap(), "medium");
+    assert!(!mark.exists());
+    heal_thinking(&c);
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
+    assert_eq!(agents_admin::task_turn_options(&c, &agent), None);
+    // switched to DeepSeek with « none » chosen: really off there (DeepSeek follows it), and back to GLM: « low »
+    set_thinking(&c, &agent, "none").unwrap();
+    set_model(&c, &agent, "deepseek/deepseek-v4.1-flash", None).unwrap();
+    let data = load(&path);
+    assert_eq!(data["agent"]["reasoning_effort"], "none");
+    assert!(!mark.exists());
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none"));
+    assert_eq!(agents_admin::quick_turn_options(&c, &agent), json!({"reasoning": {"enabled": false}}));
+    assert_eq!(agents_admin::task_turn_options(&c, &agent), None);
+    set_model(&c, &agent, "glm-5.3-flash", None).unwrap();
+    let data = load(&path);
+    assert_eq!(data["agent"]["reasoning_effort"], "low");
+    assert!(data["providers"].get("bipagents-thinking").is_none());
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none"));
+}
+
+#[test]
+fn glm_none_written_by_an_earlier_bridge_is_healed_to_low() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
+    let agent = hub_agent(&config);
+    let c = config.get();
+    let folder = profiles(dir.path()).join(&agent.name);
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("config.yaml");
+    std::fs::write(
+        &path,
+        format!("{GLM_EU}  reasoning_effort: none\nproviders:\n  bipagents-thinking:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\n"),
+    )
+    .unwrap();
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none"));
+    heal_thinking(&c);
+    let data = load(&path);
+    assert_eq!(data["agent"]["reasoning_effort"], "low");
+    assert!(data["providers"].get("bipagents-thinking").is_none());
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none")); // the app still shows the person's choice
+    // a self-hosted server keeps « none » and its enable_thinking entry
+    std::fs::write(&path, "model:\n  provider: custom\n  default: glm-5.3\n  base_url: http://sparks:8000/v1\nagent:\n  reasoning_effort: none\n").unwrap();
+    std::fs::remove_file(folder.join(agents_admin::THINKING_OFF_MARK)).unwrap();
+    heal_thinking(&c);
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "none");
+    assert_eq!(agents_admin::quick_turn_options(&c, &agent), json!({"reasoning": {"enabled": false}}));
+}
+
 #[test]
 fn an_earlier_bridge_block_gets_the_rule_about_what_agents_read() {
     let dir = tempfile::tempdir().unwrap();
