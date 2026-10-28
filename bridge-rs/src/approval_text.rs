@@ -59,6 +59,8 @@ static PERSONAL: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 const SUMMARY_COMMAND_CHARS: usize = 80;
+/// The lines of a command or a script the card shows before « (+N lignes) ».
+const SUMMARY_COMMAND_LINES: usize = 3;
 const SUMMARY_PREVIEW_CHARS: usize = 80;
 const SUMMARY_MESSAGE_CHARS: usize = 160;
 
@@ -104,14 +106,53 @@ fn server_name(server: &str) -> String {
         .join(" ")
 }
 
-/// The first line, at most `max` characters (« … » when cut).
-fn cut(text: &str, max: usize) -> String {
-    let line = text.trim().lines().next().unwrap_or("").trim();
-    if line.chars().count() <= max && text.trim().lines().nth(1).is_none() {
+static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[ \t\x0B\x0C\r]+").expect("valid regex"));
+
+/// One line with its runs of spaces and tabs folded to one space.
+fn folded(line: &str) -> String {
+    SPACES.replace_all(line.trim(), " ").to_string()
+}
+
+/// At most `max` characters (« … » when cut).
+fn cut_line(line: &str, max: usize) -> String {
+    if line.chars().count() <= max {
         return line.to_string();
     }
     let head: String = line.chars().take(max.saturating_sub(1)).collect();
     format!("{}…", head.trim_end())
+}
+
+/// The first line, spaces folded, at most `max` characters (« … » when cut or when more lines follow).
+fn cut(text: &str, max: usize) -> String {
+    let mut lines = text.trim().lines().map(folded).filter(|l| !l.is_empty());
+    let line = lines.next().unwrap_or_default();
+    if line.chars().count() <= max && lines.next().is_none() {
+        return line;
+    }
+    let head: String = line.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", head.trim_end())
+}
+
+/// A command or a script as the card shows it: its first `SUMMARY_COMMAND_LINES` non-empty lines, spaces folded,
+/// each at most `max` characters, then « (+N lignes) » when more follow (the whole of it stays in the detail).
+fn command_lines(lang: &str, text: &str, max: usize) -> String {
+    let lines: Vec<String> = text.trim().lines().map(folded).filter(|l| !l.is_empty()).collect();
+    let mut shown: Vec<String> = lines.iter().take(SUMMARY_COMMAND_LINES).map(|l| cut_line(l, max)).collect();
+    let more = lines.len().saturating_sub(SUMMARY_COMMAND_LINES);
+    if more > 0 {
+        let word = match (lang, more) {
+            ("fr", 1) => "ligne",
+            ("fr", _) => "lignes",
+            ("de", 1) => "Zeile",
+            ("de", _) => "Zeilen",
+            ("es", 1) => "línea",
+            ("es", _) => "líneas",
+            (_, 1) => "line",
+            _ => "lines",
+        };
+        shown.push(format!("(+{more} {word})"));
+    }
+    shown.join("\n")
 }
 
 fn quoted(lang: &str, text: &str) -> String {
@@ -155,8 +196,11 @@ fn deletes(description: &str) -> bool {
 }
 
 /// The sentence and detail for an `approval.request` of agent `name`, in `lang` (« fr », « en », « de », « es »);
-/// `last`: the tool Hermes started just before. None: nothing recognised, the apps keep their own reading.
-pub fn describe(name: &str, lang: &str, data: &Map<String, Value>, last: Option<&LastTool>) -> Option<Described> {
+/// `last`: the tool Hermes started just before; `isolated`: the agent's programs run in its own sandbox
+/// (sandbox::isolates), so a script stays « dans son espace »; otherwise it runs on the person's machine and can reach
+/// their files, and the card says so with its first lines. None: nothing recognised, the apps keep their own reading.
+pub fn describe(name: &str, lang: &str, data: &Map<String, Value>, last: Option<&LastTool>, isolated: bool)
+    -> Option<Described> {
     let command = text(data, "command");
     let description = text(data, "description");
     let key = text(data, "pattern_key");
@@ -206,18 +250,28 @@ pub fn describe(name: &str, lang: &str, data: &Map<String, Value>, last: Option<
             .replace("{n}", name);
         return Some(Described { summary, detail: Some(command.to_string()).filter(|c| !c.is_empty()) });
     }
-    // a script it wrote (execute_code, python -c, a heredoc): a computation in its space
+    // a script it wrote (execute_code, python -c, a heredoc): a computation in its space when the agent is isolated,
+    // otherwise a program on the person's machine that can reach their files (audit 2026-10-27 #14)
     let code = EXECUTE_CODE.captures(command).map(|c| c[1].to_string());
     let script = key == "execute_code"
         || code.is_some()
         || description.starts_with("script execution via")
         || key.starts_with("script execution via");
     if script {
-        let summary = pick(lang, "{n} veut lancer un calcul dans son espace", "{n} wants to run a calculation in its own space",
-                           "{n} möchte in seinem Bereich eine Berechnung ausführen",
-                           "{n} quiere ejecutar un cálculo en su espacio")
-            .replace("{n}", name);
         let detail = code.unwrap_or_else(|| command.to_string());
+        let summary = if isolated {
+            pick(lang, "{n} veut lancer un calcul dans son espace", "{n} wants to run a calculation in its own space",
+                 "{n} möchte in seinem Bereich eine Berechnung ausführen", "{n} quiere ejecutar un cálculo en su espacio")
+                .replace("{n}", name)
+        } else {
+            let said = pick(lang, "{n} veut lancer un programme sur ta machine, avec accès à tes fichiers",
+                            "{n} wants to run a program on your machine, with access to your files",
+                            "{n} möchte ein Programm auf deinem Gerät ausführen, mit Zugriff auf deine Dateien",
+                            "{n} quiere ejecutar un programa en tu equipo, con acceso a tus archivos")
+                .replace("{n}", name);
+            let lines = command_lines(lang, &detail, SUMMARY_COMMAND_CHARS);
+            if lines.is_empty() { said } else { format!("{said}{}\n{lines}", colon(lang).trim_end()) }
+        };
         return Some(Described { summary, detail: Some(detail).filter(|d| !d.trim().is_empty()) });
     }
     if command.is_empty() || command.starts_with('<') || key.starts_with("cua:") || key == "ssh_config_write" {
@@ -230,7 +284,7 @@ pub fn describe(name: &str, lang: &str, data: &Map<String, Value>, last: Option<
         pick(lang, "{n} veut exécuter", "{n} wants to run", "{n} möchte ausführen", "{n} quiere ejecutar")
     }
     .replace("{n}", name);
-    let summary = format!("{said}{}{}", colon(lang), cut(command, SUMMARY_COMMAND_CHARS));
+    let summary = format!("{said}{}{}", colon(lang), command_lines(lang, command, SUMMARY_COMMAND_CHARS));
     let detail = if description.is_empty() { command.to_string() } else { format!("{command}\n\n({description})") };
     Some(Described { summary, detail: Some(detail) })
 }
@@ -289,14 +343,14 @@ mod tests {
     }
 
     fn summary(lang: &str, v: Value, last: Option<&LastTool>) -> Option<String> {
-        describe("Wellness", lang, &data(v), last).map(|d| d.summary)
+        describe("Wellness", lang, &data(v), last, true).map(|d| d.summary)
     }
 
     #[test]
     fn code_and_scripts_are_a_calculation() {
         let code = json!({"command": "execute_code <<'PY'\nimport sqlite3\nprint(1)\nPY", "pattern_key": "execute_code",
                           "description": "execute_code script execution. The script can spawn subprocesses…"});
-        let d = describe("Wellness", "fr", &data(code), None).unwrap();
+        let d = describe("Wellness", "fr", &data(code), None, true).unwrap();
         assert_eq!(d.summary, "Wellness veut lancer un calcul dans son espace");
         assert_eq!(d.detail.as_deref(), Some("import sqlite3\nprint(1)"));
         let heredoc = json!({"command": "python3 - <<'EOF'\nprint(2)\nEOF", "pattern_key": "script execution via heredoc",
@@ -310,7 +364,7 @@ mod tests {
     fn commands_say_what_they_run() {
         let rm = json!({"command": "rm -rf /workspace/old", "pattern_key": "recursive delete",
                         "description": "recursive delete"});
-        let d = describe("Wellness", "fr", &data(rm), None).unwrap();
+        let d = describe("Wellness", "fr", &data(rm), None, true).unwrap();
         assert_eq!(d.summary, "Wellness veut supprimer : rm -rf /workspace/old");
         assert_eq!(d.detail.as_deref(), Some("rm -rf /workspace/old\n\n(recursive delete)"));
         let shell = json!({"command": "bash -c 'systemctl --user restart x'", "description": "shell command via -c/-lc flag"});
@@ -318,8 +372,32 @@ mod tests {
         let long = json!({"command": format!("curl https://example.org/{}\nsecond line", "a".repeat(100)),
                           "description": "pipe remote content to shell"});
         let s = summary("en", long, None).unwrap();
-        assert!(s.starts_with("Wellness wants to run: curl https://example.org/aaa") && s.ends_with('…'), "{s}");
-        assert!(s.chars().count() < 110);
+        let first = s.lines().next().unwrap();
+        assert!(first.starts_with("Wellness wants to run: curl https://example.org/aaa") && first.ends_with('…'), "{s}");
+        assert!(first.chars().count() < 110);
+        assert!(s.ends_with("\nsecond line"), "{s}");
+    }
+
+    #[test]
+    fn a_script_outside_a_sandbox_says_it_reaches_the_files() {
+        let code = json!({"command": "execute_code <<'PY'\nimport os\nfor f in os.listdir('/home'):\n    print(f)\nos.remove('x')\nprint('ok')\nPY",
+                          "pattern_key": "execute_code", "description": "execute_code script execution."});
+        let d = describe("Wellness", "fr", &data(code), None, false).unwrap();
+        assert!(!d.summary.contains("dans son espace"), "{}", d.summary);
+        assert_eq!(d.summary, "Wellness veut lancer un programme sur ta machine, avec accès à tes fichiers :\n\
+                               import os\nfor f in os.listdir('/home'):\nprint(f)\n(+2 lignes)");
+        // the whole code stays in the detail
+        assert_eq!(d.detail.as_deref(), Some("import os\nfor f in os.listdir('/home'):\n    print(f)\nos.remove('x')\nprint('ok')"));
+        let flag = json!({"command": "python3 -c 'print(3)'", "description": "script execution via -e/-c flag"});
+        assert_eq!(describe("Wellness", "en", &data(flag), None, false).map(|d| d.summary).as_deref(),
+                   Some("Wellness wants to run a program on your machine, with access to your files:\npython3 -c 'print(3)'"));
+    }
+
+    #[test]
+    fn a_long_command_shows_its_first_lines_spaces_folded() {
+        let cmd = json!({"command": "cd   /srv\t&&  ls\n\nrm -rf    old\necho a\necho b", "description": "recursive delete"});
+        assert_eq!(summary("fr", cmd, None).as_deref(),
+                   Some("Wellness veut supprimer : cd /srv && ls\nrm -rf old\necho a\n(+1 ligne)"));
     }
 
     #[test]
@@ -331,7 +409,7 @@ mod tests {
                    "pattern_key": "mcp_elicitation"})
         };
         let last = LastTool { name: "mcp_notion_notion_create_pages".into(), preview: "Réunion du 12".into() };
-        let d = describe("Vie", "fr", &data(gate("notion-create-pages", "notion")), Some(&last)).unwrap();
+        let d = describe("Vie", "fr", &data(gate("notion-create-pages", "notion")), Some(&last), true).unwrap();
         assert_eq!(d.summary, "Vie veut créer dans Notion : « Réunion du 12 »");
         assert_eq!(d.detail.as_deref(), Some("notion · notion-create-pages\nRéunion du 12"));
         // another tool started last: no preview borrowed
