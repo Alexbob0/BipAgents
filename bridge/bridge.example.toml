@@ -180,19 +180,26 @@ port = 8650
 # The brake on a turn going round in circles (loop_brake.rs): a conversation's turn calling one tool more than
 # same_tool times, more than tool_calls tools in all, or the same call same_call times is stopped, and the person told
 # in plain words; the agents' write tools (calendar, reminders, contacts, Carnet, drafts, pages, audio) refuse the same
-# write twice in a turn and more than `writes`. Background tasks: the task_* limits. Work tools (terminal, code, files,
-# web search, the browser) count for the total only.
+# write twice in a turn and more than `writes`, counted per turn (per run), never across conversations. Background
+# tasks: the task_* limits. Work tools (terminal, code, files, web search) count for the total only; the visible
+# browser has its own limits (browser_calls, page_reads), under Hermes' cap of 150. A routine (Hermes' cron, no run the
+# bridge can stop): its calls of the bridge's tools are refused past same_tool of one tool or routine_tool_calls in all.
 # [brake]
 # enabled = true
 # same_tool = 10
 # tool_calls = 60
 # same_call = 3
 # writes = 10
+# browser_calls = 40          # a browsing turn's total: tool_calls + browser_calls
+# page_reads = 15             # the page's content, a screenshot, a snapshot
 # task_same_tool = 40
-# task_tool_calls = 150
+# task_tool_calls = 120
 # task_same_call = 5
 # task_writes = 40
-# idle_seconds = 600          # with no run followed (a routine), the agent's calls are one turn until quiet this long
+# task_browser_calls = 80
+# task_page_reads = 30
+# routine_tool_calls = 30
+# idle_seconds = 120          # with no run followed (a routine), the agent's calls are one turn until quiet this long
 
 # Card payments by the agents on a place of the all-included offer (cards.rs, « expérimental » during the beta). The
 # card's number and expiry stay on the phone that added it; the app sends them with each payment the person approves,

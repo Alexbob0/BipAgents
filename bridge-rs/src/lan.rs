@@ -227,6 +227,34 @@ async fn relay(
             forwarded.push((HeaderName::from_static("authorization"), v));
         }
     }
+    // A run's events come from the run hub, which holds the single Hermes subscription (Hermes' event buffer has one
+    // reader) and counts its tools for the brake (loop_brake.rs): the lab and the apps' direct fallbacks follow runs
+    // here. Hermes still checks the key, and says first whether the run is there (its own 404).
+    let events_of = RUN_EVENTS.captures(&path).map(|c| c[1].to_string()).filter(|r| crate::app::RUN_ID.is_match(r));
+    if let (true, Some(run_id)) = (method == Method::GET, events_of) {
+        let mut check = state.http.get(format!("{}/v1/runs/{run_id}", target.hermes_url));
+        for (name, value) in forwarded.iter().filter(|(n, _)| !matches!(n.as_str(), "accept" | "content-length")) {
+            check = check.header(name.clone(), value.clone());
+        }
+        let status = match check.timeout(std::time::Duration::from_secs(30)).send().await {
+            Ok(r) => r.status().as_u16(),
+            Err(exc) => {
+                tracing::info!(agent = %target.name, error = crate::hermes::httpx_error_name(&exc), "LAN relay failed");
+                return Err(HttpError::new(502, "Hermes unreachable"));
+            }
+        };
+        if status == 401 {
+            state.guard.fail(address.as_deref(), "agent key");
+        }
+        if !(200..300).contains(&status) {
+            return Err(HttpError::new(status, if status == 404 { "run not found" } else { "refused by Hermes" }));
+        }
+        let listener = state.hub.subscribe(&target, &run_id, "app", false);
+        state.hub.keep(&target, &run_id, None);
+        return Ok(crate::app::listener_events(listener));
+    }
+    let starts_run = method == Method::POST && path == "v1/runs";
+    let request_body = if starts_run { body.clone() } else { Bytes::new() };
     let mut url = format!("{}/{}", target.hermes_url, path);
     if let Some(query) = uri.query().filter(|q| !q.is_empty()) {
         url.push('?');
@@ -260,8 +288,16 @@ async fn relay(
     let mut response = Response::new(Body::from_stream(stream));
     *response.status_mut() = status;
     *response.headers_mut() = response_headers;
+    if starts_run {
+        // the run it started followed by the hub whoever looks at it (the brake, loop_brake.rs)
+        return Ok(crate::runs::keep_started(&state.hub, &target, &request_body, response).await);
+    }
     Ok(response)
 }
+
+/// `v1/runs/<id>/events`.
+static RUN_EVENTS: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"^v1/runs/([^/]+)/events/?\z").expect("valid regex"));
 
 #[cfg(test)]
 mod tests {

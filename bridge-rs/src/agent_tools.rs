@@ -1647,16 +1647,22 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
             return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
         }
     }
-    // The brake (loop_brake.rs): the same write twice in a turn, or too many writes, refused in plain words.
-    let runs = state.hub.live_runs(&agent.name);
-    if let Some(refused) =
-        crate::loop_brake::WRITES.check(&state.config().brake, &agent.name, &runs, &name, &arguments, py::time_time())
-    {
+    // The brake (loop_brake.rs), per turn (the run the hub follows, else the routine's): the same write twice, too many
+    // writes, or a routine going round in circles, refused in plain words.
+    let turn = state.hub.turn_of(&agent.name, &name);
+    if let Some(refused) = crate::loop_brake::TURNS.check(
+        &state.config().brake,
+        &agent.name,
+        turn.as_ref(),
+        &name,
+        &arguments,
+        py::time_time(),
+    ) {
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(refused))));
     }
-    let wrote = |agent: &str, name: &str, arguments: &Dict, result: &Dict| {
+    let wrote = move |agent: &str, name: &str, arguments: &Dict, result: &Dict| {
         if !result.get("isError").map(py::truthy).unwrap_or(false) {
-            crate::loop_brake::WRITES.record(agent, name, arguments);
+            crate::loop_brake::TURNS.record(agent, turn.as_ref(), name, arguments);
         }
     };
     if crate::family_news::TOOL_NAMES.contains(&name.as_str()) {

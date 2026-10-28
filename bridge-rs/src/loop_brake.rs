@@ -11,14 +11,25 @@
 //!   arguments) `same_call` times is stopped (Hermes' `POST /v1/runs/{id}/stop`), and the conversation gets a short
 //!   plain line (`bridge.notice`, code `loop_stopped`, in the agent's language): « Je me suis arrêté : je tournais en
 //!   rond sur l'agenda. Dis-moi si tu veux que je réessaie. » The work tools a turn legitimately repeats (the terminal,
-//!   code, files, web search, the visible browser) are not held to `same_tool`, only to the total, and a run that
-//!   browses gets the background limits for its total (the person watches it live). Calls a sub-agent makes while it
-//!   works don't count (as for the steer);
-//! - the bridge's own write tools (calendar, reminders, contacts, Carnet, mail drafts, pages, audio, family news) are
-//!   refused past `writes` writes in a turn, and the very same write (same tool, same arguments) twice in a turn is
-//!   refused at once, with a plain answer the model can act on (« already done »). A « turn » here: the agent's runs
-//!   the hub follows at that moment; with none (a routine, a run nobody follows), the agent's calls until it has been
-//!   quiet `idle_seconds`, and then only the cap applies (the person may have asked for the same thing again).
+//!   code, files, web search, the visible browser) are not held to `same_tool`, only to the total. The visible
+//!   browser has its own, lower limits (`browser_calls` calls, `page_reads` page reads or screenshots in a turn),
+//!   well under Hermes' own cap of 150 (tool_diet.rs), so a page the agent can't read ends on « Je me suis arrêté : je
+//!   n'arrivais pas à lire cette page… », not on a silent failure; a browsing turn's total is `tool_calls` +
+//!   `browser_calls`. Calls a sub-agent makes while it works don't count (as for the steer);
+//! - the bridge's own tools are counted at its MCP endpoint, per turn: the run the hub follows for the agent then
+//!   (the one that just called this tool when several go on), keyed by its run id, never per agent across
+//!   conversations. Its write tools (calendar, reminders, contacts, Carnet, mail drafts, pages, audio, family news)
+//!   are refused past `writes` writes in that turn, and the very same write (same tool, same arguments) twice in it is
+//!   refused at once with a plain answer the model can act on (« already done »). A turn no run of the hub carries
+//!   (a routine, Hermes' cron) is the agent's calls until it has been quiet `idle_seconds`: there, the cap applies,
+//!   one bridge tool more than `same_tool` times or more than `routine_tool_calls` bridge calls in all are refused
+//!   with « stop and answer with what you have » (the bridge can't stop a cron turn: Hermes has no stop for it).
+//!
+//! Every run the bridge starts or relays is followed by the hub, whoever looks at it (2026-10-27 evening, the token
+//! lab's bench): the app's runs through the bridge's `GET /v1/runs/{id}/events`, but also those started and followed
+//! through the door's Hermes relay (`/hermes/<agent>/v1/runs`, lan.rs: the lab, the apps' direct fallbacks), peers'
+//! messages (peers.rs), Live, rooms, relatives, background tasks. Before, the relay's runs were invisible to the hub:
+//! no stop at all, and their writes counted per agent across conversations (a reminder refused at the first write).
 //!
 //! Background tasks (jobs.rs, « Tâches de fond »: work with a budget, many calls by design) have their own, higher
 //! limits (`task_*`); they are stopped the same way, the task then ends as stopped. The mail scan (mail_scan.rs) makes
@@ -28,8 +39,10 @@
 //!
 //!     enabled = true
 //!     same_tool = 10          tool_calls = 60        same_call = 3        writes = 10
-//!     task_same_tool = 40     task_tool_calls = 150  task_same_call = 5   task_writes = 40
-//!     idle_seconds = 600
+//!     browser_calls = 40      page_reads = 15
+//!     task_same_tool = 40     task_tool_calls = 120  task_same_call = 5   task_writes = 40
+//!     task_browser_calls = 80 task_page_reads = 30
+//!     routine_tool_calls = 30 idle_seconds = 120
 //!
 //! No Python counterpart (owner group: push-runs).
 
@@ -52,6 +65,10 @@ pub struct Limits {
     pub same_call: u32,
     /// The bridge's write tools refuse past this many writes.
     pub writes: u32,
+    /// The visible browser: more calls than this stops the turn…
+    pub browser_calls: u32,
+    /// … and more page reads (its content, a screenshot, a snapshot) than this.
+    pub page_reads: u32,
 }
 
 /// `[brake]`.
@@ -60,6 +77,8 @@ pub struct Settings {
     pub enabled: bool,
     pub conversation: Limits,
     pub task: Limits,
+    /// A turn no followed run carries (a routine): more bridge tool calls than this are refused.
+    pub routine_tool_calls: u32,
     /// With no run followed: the agent's calls form one turn until it has been quiet this long.
     pub idle_seconds: f64,
 }
@@ -68,9 +87,18 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             enabled: true,
-            conversation: Limits { same_tool: 10, tool_calls: 60, same_call: 3, writes: 10 },
-            task: Limits { same_tool: 40, tool_calls: 150, same_call: 5, writes: 40 },
-            idle_seconds: 600.0,
+            conversation: Limits {
+                same_tool: 10,
+                tool_calls: 60,
+                same_call: 3,
+                writes: 10,
+                browser_calls: 40,
+                page_reads: 15,
+            },
+            // under Hermes' own cap of 150 model calls (tool_diet.rs), so the brake speaks first
+            task: Limits { same_tool: 40, tool_calls: 120, same_call: 5, writes: 40, browser_calls: 80, page_reads: 30 },
+            routine_tool_calls: 30,
+            idle_seconds: 120.0,
         }
     }
 }
@@ -84,20 +112,19 @@ impl Settings {
                 None => default,
             }
         };
+        let limits = |prefix: &str, d: Limits| Limits {
+            same_tool: n(&format!("{prefix}same_tool"), d.same_tool, 2),
+            tool_calls: n(&format!("{prefix}tool_calls"), d.tool_calls, 5),
+            same_call: n(&format!("{prefix}same_call"), d.same_call, 2),
+            writes: n(&format!("{prefix}writes"), d.writes, 1),
+            browser_calls: n(&format!("{prefix}browser_calls"), d.browser_calls, 5),
+            page_reads: n(&format!("{prefix}page_reads"), d.page_reads, 2),
+        };
         Settings {
             enabled: table.get("enabled").and_then(Value::as_bool).unwrap_or(d.enabled),
-            conversation: Limits {
-                same_tool: n("same_tool", d.conversation.same_tool, 2),
-                tool_calls: n("tool_calls", d.conversation.tool_calls, 5),
-                same_call: n("same_call", d.conversation.same_call, 2),
-                writes: n("writes", d.conversation.writes, 1),
-            },
-            task: Limits {
-                same_tool: n("task_same_tool", d.task.same_tool, 2),
-                tool_calls: n("task_tool_calls", d.task.tool_calls, 5),
-                same_call: n("task_same_call", d.task.same_call, 2),
-                writes: n("task_writes", d.task.writes, 1),
-            },
+            conversation: limits("", d.conversation),
+            task: limits("task_", d.task),
+            routine_tool_calls: n("routine_tool_calls", d.routine_tool_calls, 5),
             idle_seconds: table.get("idle_seconds").and_then(Value::as_f64).unwrap_or(d.idle_seconds).clamp(10.0, 86_400.0),
         }
     }
@@ -138,6 +165,15 @@ const WORK_TOOLS: [&str; 10] = [
 ];
 const PREVIEW_ONLY_TOOLS: [&str; 3] = ["terminal", "execute_code", "process"];
 
+/// The visible browser's tools that read the page (`mcp__stealth__get_page_content`, a screenshot, Hermes'
+/// `browser_snapshot`…): the bench's loop read the same page 141 and 145 times.
+pub fn page_read_tool(tool: &str) -> bool {
+    let tool = tool.to_ascii_lowercase();
+    ["page_content", "get_page", "page_text", "read_page", "screenshot", "snapshot", "browser_vision", "get_content"]
+        .iter()
+        .any(|t| tool.contains(t))
+}
+
 /// The bridge's tools that change something for the person.
 pub const WRITE_TOOLS: [&str; 18] = [
     "calendar_add",
@@ -173,12 +209,18 @@ pub enum Over {
     TooMany,
     /// The same call again and again (its bare tool name).
     SameCall(String),
+    /// The visible browser read the page too many times.
+    PageReads,
+    /// The visible browser, too many calls.
+    Browser,
 }
 
 /// A turn's tool calls so far.
 #[derive(Debug, Default, Clone)]
 pub struct TurnCount {
     pub total: u32,
+    pub browser: u32,
+    pub page_reads: u32,
     per_tool: HashMap<String, u32>,
     per_call: HashMap<String, u32>,
 }
@@ -210,6 +252,18 @@ impl TurnCount {
     pub fn note(&mut self, tool: &str, signature: Option<&str>, browser: bool, limits: &Limits) -> Option<Over> {
         let name = bare(tool).to_string();
         self.total += 1;
+        if browser {
+            self.browser += 1;
+            if page_read_tool(&name) {
+                self.page_reads += 1;
+                if self.page_reads > limits.page_reads {
+                    return Some(Over::PageReads);
+                }
+            }
+            if self.browser > limits.browser_calls {
+                return Some(Over::Browser);
+            }
+        }
         let work = browser || WORK_TOOLS.contains(&name.as_str());
         let same = self.per_tool.entry(name.clone()).or_insert(0);
         *same += 1;
@@ -231,7 +285,6 @@ impl TurnCount {
         None
     }
 }
-
 /// What the person's subject was, in plain words: the area of the tool the turn kept calling.
 fn area(tool: &str, lang: &str) -> Option<&'static str> {
     let tool = bare(tool);
@@ -292,6 +345,30 @@ la convierta en una tarea en segundo plano."
 make it a background task."
                 .to_string(),
         },
+        Over::PageReads => match lang {
+            "fr" => "Je me suis arrêté : je n'arrivais pas à lire cette page. Dis-moi si tu veux que je réessaie, ou \
+donne-moi un autre lien."
+                .to_string(),
+            "de" => "Ich habe aufgehört: Ich konnte diese Seite nicht lesen. Sag mir, ob ich es noch einmal versuchen \
+soll, oder gib mir einen anderen Link."
+                .to_string(),
+            "es" => "Me he detenido: no conseguía leer esta página. Dime si quieres que lo intente de nuevo, o dame \
+otro enlace."
+                .to_string(),
+            _ => "I stopped: I couldn't read this page. Tell me if you want me to try again, or give me another link."
+                .to_string(),
+        },
+        Over::Browser => match lang {
+            "fr" => "Je me suis arrêté : je n'arrivais pas à avancer dans le navigateur. Dis-moi si tu veux que je \
+réessaie."
+                .to_string(),
+            "de" => "Ich habe aufgehört: Ich bin im Browser nicht weitergekommen. Sag mir, ob ich es noch einmal \
+versuchen soll."
+                .to_string(),
+            "es" => "Me he detenido: no conseguía avanzar en el navegador. Dime si quieres que lo intente de nuevo."
+                .to_string(),
+            _ => "I stopped: I couldn't get anywhere in the browser. Tell me if you want me to try again.".to_string(),
+        },
     }
 }
 
@@ -301,58 +378,101 @@ pub fn reason(over: &Over) -> String {
         Over::SameTool(tool) => format!("same tool too many times ({tool})"),
         Over::TooMany => "too many tool calls".to_string(),
         Over::SameCall(tool) => format!("same call repeated ({tool})"),
+        Over::PageReads => "the browser read the page too many times".to_string(),
+        Over::Browser => "too many browser calls".to_string(),
     }
 }
 
-// -- the bridge's write tools ---------------------------------------------------------------------------------------
+// -- the bridge's own tools, at its MCP endpoint ---------------------------------------------------------------------
+
+/// The turn a call of the bridge's tools belongs to: the run the hub follows (`RunHub::turn_of`), or none (a routine).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Turn {
+    pub run_id: String,
+    /// A background task's run (jobs.rs): the task's limits.
+    pub background: bool,
+}
 
 #[derive(Debug, Default)]
-struct WriteTurn {
-    /// The runs the turn is (sorted ids; empty: none followed).
-    runs: String,
+struct BridgeTurn {
     writes: u32,
     seen: HashSet<String>,
+    /// A turn with no run (a routine): all its bridge calls, by tool and in all.
+    calls: u32,
+    per_tool: HashMap<String, u32>,
     last: f64,
 }
 
-/// Each agent's writes in its current turn.
+/// Each turn's calls of the bridge's tools: by `agent` + run id, or `agent` alone for the turn no run carries.
 #[derive(Debug, Default)]
-pub struct Writes {
-    turns: Mutex<HashMap<String, WriteTurn>>,
+pub struct Turns {
+    turns: Mutex<HashMap<String, BridgeTurn>>,
 }
 
-pub static WRITES: LazyLock<Writes> = LazyLock::new(Writes::default);
+pub static TURNS: LazyLock<Turns> = LazyLock::new(Turns::default);
 
-impl Writes {
-    /// A write tool's call by `agent`, whose runs going on are `runs` (`(run id, background)`, from the hub): None when
-    /// it may go on, else the refusal the model gets. Other tools always go on.
+fn turn_key(agent: &str, turn: Option<&Turn>) -> String {
+    format!("{agent}\u{1f}{}", turn.map(|t| t.run_id.as_str()).unwrap_or(""))
+}
+
+fn signature_of(tool: &str, arguments: &Dict) -> String {
+    format!("{}\u{1f}{}", bare(tool), canonical(&Value::Object(arguments.clone())))
+}
+
+impl Turns {
+    /// A call of the bridge's tool `tool` by `agent` in `turn`: None when it may go on, else the refusal the model
+    /// gets.
     pub fn check(
         &self,
         settings: &Settings,
         agent: &str,
-        runs: &[(String, bool)],
+        turn: Option<&Turn>,
         tool: &str,
         arguments: &Dict,
         now: f64,
     ) -> Option<Dict> {
-        if !settings.enabled || !write_tool(tool) {
+        if !settings.enabled {
             return None;
         }
-        let mut ids: Vec<&str> = runs.iter().map(|(id, _)| id.as_str()).collect();
-        ids.sort();
-        let key = ids.join(",");
-        let background = runs.iter().any(|(_, background)| *background);
-        let limits = settings.limits(background);
+        let limits = settings.limits(turn.is_some_and(|t| t.background));
         let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
-        let turn = turns.entry(agent.to_string()).or_default();
-        if turn.runs != key || (key.is_empty() && now - turn.last > settings.idle_seconds) {
-            *turn = WriteTurn { runs: key, ..WriteTurn::default() };
+        if turns.len() > 2_000 {
+            turns.retain(|_, t| now - t.last < 86_400.0);
         }
-        turn.last = now;
-        let signature = format!("{}\u{1f}{}", bare(tool), canonical(&Value::Object(arguments.clone())));
-        // Only within a run the hub follows: without one, the « turn » is a guess, and the person may well have asked
-        // for the same thing again since (« refais le podcast »).
-        if !turn.runs.is_empty() && turn.seen.contains(&signature) {
+        let entry = turns.entry(turn_key(agent, turn)).or_default();
+        if turn.is_none() && now - entry.last > settings.idle_seconds {
+            *entry = BridgeTurn::default();
+        }
+        entry.last = now;
+        if turn.is_none() {
+            // a routine: Hermes can't stop it, so its calls of the bridge's tools are held here
+            entry.calls += 1;
+            let same = entry.per_tool.entry(bare(tool).to_string()).or_insert(0);
+            *same += 1;
+            let (same, calls) = (*same, entry.calls);
+            if same > limits.same_tool || calls > settings.routine_tool_calls {
+                tracing::info!(agent = %agent, tool = %tool, calls = calls, same = same,
+                    "going round in circles in a turn no run carries: tool refused");
+                return Some(tool_text(
+                    &format!(
+                        "Refused: {} in this turn already, too many. Stop calling tools now: answer the person with \
+what you have, and say plainly what you couldn't find or do.",
+                        if same > limits.same_tool {
+                            format!("you called {} {} times", bare(tool), same - 1)
+                        } else {
+                            format!("you made {} calls", calls - 1)
+                        }
+                    ),
+                    true,
+                ));
+            }
+        }
+        if !write_tool(tool) {
+            return None;
+        }
+        // Only within a followed run: without one, the « turn » is a guess, and the person may well have asked for
+        // the same thing again since (« refais le podcast »).
+        if turn.is_some() && entry.seen.contains(&signature_of(tool, arguments)) {
             tracing::info!(agent = %agent, tool = %tool, "the same write again in this turn: refused");
             return Some(tool_text(
                 "Already done in this turn with exactly these arguments: not done again. There is nothing more to do for \
@@ -360,13 +480,13 @@ it; tell the person what you did.",
                 false,
             ));
         }
-        if turn.writes >= limits.writes {
-            tracing::info!(agent = %agent, tool = %tool, writes = turn.writes, "too many writes in this turn: refused");
+        if entry.writes >= limits.writes {
+            tracing::info!(agent = %agent, tool = %tool, writes = entry.writes, "too many writes in this turn: refused");
             return Some(tool_text(
                 &format!(
                     "Refused: you already made {} changes for the person in this turn, the most allowed at once. Stop \
 here: tell the person what you did and ask them before doing more.",
-                    turn.writes
+                    entry.writes
                 ),
                 true,
             ));
@@ -374,16 +494,16 @@ here: tell the person what you did and ask them before doing more.",
         None
     }
 
-    /// A write tool's call that `check` let through went well: counted in the agent's turn (a refused or failed one
-    /// is not: the model may correct its arguments and call again).
-    pub fn record(&self, agent: &str, tool: &str, arguments: &Dict) {
+    /// A write tool's call that `check` let through went well: counted in its turn (a refused or failed one is not:
+    /// the model may correct its arguments and call again).
+    pub fn record(&self, agent: &str, turn: Option<&Turn>, tool: &str, arguments: &Dict) {
         if !write_tool(tool) {
             return;
         }
         let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
-        let turn = turns.entry(agent.to_string()).or_default();
-        turn.writes += 1;
-        turn.seen.insert(format!("{}\u{1f}{}", bare(tool), canonical(&Value::Object(arguments.clone()))));
+        let entry = turns.entry(turn_key(agent, turn)).or_default();
+        entry.writes += 1;
+        entry.seen.insert(signature_of(tool, arguments));
     }
 }
 
@@ -493,6 +613,12 @@ mod tests {
         assert_eq!(s.task.writes, 1, "clamped");
         assert_eq!(s.idle_seconds, 10.0);
         assert_eq!(Settings::from_table(&Value::Null), Settings::default());
+        let s = Settings::from_table(&json!({"page_reads": 8, "task_browser_calls": 60, "routine_tool_calls": 12}));
+        assert_eq!((s.conversation.page_reads, s.task.browser_calls, s.routine_tool_calls), (8, 60, 12));
+        assert_eq!(s.conversation.browser_calls, 40);
+        // under Hermes' cap of 150 (tool_diet.rs): the brake speaks first
+        let d = Settings::default();
+        assert!(d.conversation.tool_calls + d.conversation.browser_calls < 150 && d.task.tool_calls < 150);
     }
 
     #[test]
@@ -511,43 +637,211 @@ mod tests {
 
     #[test]
     fn writes_capped_and_the_same_write_refused() {
-        let writes = Writes::default();
+        let turns = Turns::default();
         let settings = Settings::default();
-        let runs = vec![("run_1".to_string(), false)];
+        let run = |id: &str| Some(Turn { run_id: id.to_string(), background: false });
         let add = |n: usize| args(&[("title", &format!("Event {n}")), ("start", "2026-10-28")]);
         // a call let through and done (as the MCP route does)
-        let call = |settings: &Settings, agent: &str, runs: &[(String, bool)], tool: &str, a: &Dict, now: f64| {
-            let refused = writes.check(settings, agent, runs, tool, a, now);
+        let call = |settings: &Settings, agent: &str, turn: Option<Turn>, tool: &str, a: &Dict, now: f64| {
+            let refused = turns.check(settings, agent, turn.as_ref(), tool, a, now);
             if refused.is_none() {
-                writes.record(agent, tool, a);
+                turns.record(agent, turn.as_ref(), tool, a);
             }
             refused
         };
-        assert!(call(&settings, "coach", &runs, "calendar_list", &Dict::new(), 0.0).is_none());
-        assert!(call(&settings, "coach", &runs, "calendar_add", &add(0), 0.0).is_none());
-        let again = call(&settings, "coach", &runs, "mcp__bipagents__calendar_add", &add(0), 1.0).unwrap();
+        assert!(call(&settings, "coach", run("run_1"), "calendar_list", &Dict::new(), 0.0).is_none());
+        assert!(call(&settings, "coach", run("run_1"), "calendar_add", &add(0), 0.0).is_none());
+        let again = call(&settings, "coach", run("run_1"), "mcp__bipagents__calendar_add", &add(0), 1.0).unwrap();
         assert_eq!(again["isError"], json!(false));
         // a call checked but failed (not recorded) may come again
-        assert!(writes.check(&settings, "coach", &runs, "calendar_add", &add(50), 1.0).is_none());
+        assert!(turns.check(&settings, "coach", run("run_1").as_ref(), "calendar_add", &add(50), 1.0).is_none());
         for n in 1..10 {
-            assert!(call(&settings, "coach", &runs, "calendar_add", &add(n), 2.0).is_none(), "{n}");
+            assert!(call(&settings, "coach", run("run_1"), "calendar_add", &add(n), 2.0).is_none(), "{n}");
         }
-        let refused = call(&settings, "coach", &runs, "notebook_note", &add(99), 3.0).unwrap();
+        let refused = call(&settings, "coach", run("run_1"), "notebook_note", &add(99), 3.0).unwrap();
         assert_eq!(refused["isError"], json!(true));
         // another agent, or the next turn: counted afresh
-        assert!(call(&settings, "other", &runs, "calendar_add", &add(0), 3.0).is_none());
-        let next = vec![("run_2".to_string(), false)];
-        assert!(call(&settings, "coach", &next, "calendar_add", &add(0), 4.0).is_none());
+        assert!(call(&settings, "other", run("run_1"), "calendar_add", &add(0), 3.0).is_none());
+        assert!(call(&settings, "coach", run("run_2"), "calendar_add", &add(0), 4.0).is_none());
+        // and the first turn is still its own (two runs at once: each its count)
+        assert!(call(&settings, "coach", run("run_1"), "calendar_add", &add(77), 4.0).is_some());
         // no run followed: one turn until quiet for idle_seconds
-        let none: Vec<(String, bool)> = Vec::new();
         for n in 0..10 {
-            assert!(call(&settings, "solo", &none, "create_audio", &add(0), n as f64).is_none(), "the same, no run: {n}");
+            assert!(call(&settings, "solo", None, "create_audio", &add(0), n as f64).is_none(), "the same, no run: {n}");
         }
-        assert!(call(&settings, "solo", &none, "calendar_add", &add(1), 100.0).is_some());
-        assert!(call(&settings, "solo", &none, "calendar_add", &add(1), 100.0 + 601.0).is_none());
+        assert!(call(&settings, "solo", None, "calendar_add", &add(1), 100.0).is_some());
+        assert!(call(&settings, "solo", None, "calendar_add", &add(1), 100.0 + 121.0).is_none());
         // off
         let off = Settings { enabled: false, ..Settings::default() };
-        assert!(call(&off, "coach", &next, "calendar_add", &add(0), 5.0).is_none());
+        assert!(call(&off, "coach", run("run_2"), "calendar_add", &add(0), 5.0).is_none());
+    }
+
+    // -- the token lab's bench of 2026-10-27 (internal/research/token-diet-step3-2026-10-27.md), its real sequences --
+
+    /// A turn's tools as the bench saw them (`turns[].tools`), runs of the same tool.
+    fn sequence(runs: &[(&str, usize)]) -> Vec<String> {
+        runs.iter().flat_map(|(tool, n)| std::iter::repeat_n(tool.to_string(), *n)).collect()
+    }
+
+    /// The run hub's count fed the turn's tool.started events: where it stops (the call's index), and why.
+    fn stopped(tools: &[String], signature: impl Fn(&str) -> Option<String>) -> Option<(usize, Over)> {
+        let limits = Settings::default().conversation;
+        let mut turn = TurnCount::default();
+        let mut browsing = false;
+        tools.iter().enumerate().find_map(|(i, tool)| {
+            let browser = crate::runs::browser_tool(tool);
+            browsing |= browser;
+            // runs.rs: a browsing turn's total is tool_calls + browser_calls
+            let limits = if browsing { Limits { tool_calls: limits.tool_calls + limits.browser_calls, ..limits } } else { limits };
+            turn.note(tool, signature(tool).as_deref(), browser, &limits).map(|over| (i, over))
+        })
+    }
+
+    const NOTE: &str = "mcp__bipagents__notebook_note";
+    const SEARCH: &str = "mcp__bipagents__notebook_search";
+    const READ_PAGE: &str = "mcp__stealth__get_page_content";
+
+    fn birthday() -> Vec<String> {
+        // glm-all-2, birthday_lookup: 20 notebook_note (6 identical), 11 min, no answer
+        sequence(&[
+            (SEARCH, 1), (NOTE, 1), ("tool_search", 1), (NOTE, 2), ("mcp__bipagents__notebook_read", 1), ("terminal", 1),
+            (NOTE, 1), ("tool_call", 1), ("tool_search", 1), (NOTE, 1), ("terminal", 1), (NOTE, 4), ("terminal", 1),
+            (NOTE, 3), ("terminal", 1), (NOTE, 8), ("terminal", 1),
+        ])
+    }
+
+    #[test]
+    fn the_bench_birthday_loop_is_stopped() {
+        let tools = birthday();
+        assert_eq!((tools.len(), tools.iter().filter(|t| *t == NOTE).count()), (30, 20));
+        // the bench's events carry no arguments: at the 11th notebook_note
+        let (at, over) = stopped(&tools, |_| None).unwrap();
+        assert_eq!(over, Over::SameTool("notebook_note".into()));
+        assert_eq!(tools[..=at].iter().filter(|t| *t == NOTE).count(), 11);
+        assert_eq!(notice_text(&over, "fr"), "Je me suis arrêté : je tournais en rond sur le Carnet. Dis-moi si tu veux que je réessaie.");
+        // with its arguments (the same note again): at the 3rd identical call
+        let (at, over) = stopped(&tools, |t| (t == NOTE).then(|| "{\"title\":\"Julie\"}".to_string())).unwrap();
+        assert_eq!(over, Over::SameCall("notebook_note".into()));
+        assert_eq!(tools[..=at].iter().filter(|t| *t == NOTE).count(), 3);
+        // and at the MCP: the 11th write of the turn refused, the same note again answered « already done »
+        let turns = Turns::default();
+        let settings = Settings::default();
+        let turn = Some(Turn { run_id: "run_1d523504".into(), background: false });
+        let mut refused = Vec::new();
+        for (i, tool) in tools.iter().enumerate().filter(|(_, t)| *t == NOTE) {
+            let a = args(&[("title", "Julie"), ("text", &format!("note {i}"))]);
+            match turns.check(&settings, "quotidien", turn.as_ref(), tool, &a, i as f64) {
+                None => turns.record("quotidien", turn.as_ref(), tool, &a),
+                Some(r) => refused.push(r),
+            }
+        }
+        assert_eq!(refused.len(), 10);
+        assert!(refused.iter().all(|r| r["isError"] == json!(true)));
+        let same = args(&[("title", "Julie"), ("text", "note 1")]);
+        assert_eq!(turns.check(&settings, "quotidien", turn.as_ref(), NOTE, &same, 40.0).unwrap()["isError"], json!(false));
+    }
+
+    #[test]
+    fn the_bench_draft_loop_is_stopped() {
+        // glm-concise-2, draft_reply: 25 notebook_search
+        let tools = sequence(&[("mcp__bipagents__calendar_list", 1), (SEARCH, 2), ("tool_describe", 1), (SEARCH, 23)]);
+        let (at, over) = stopped(&tools, |_| None).unwrap();
+        assert_eq!(over, Over::SameTool("notebook_search".into()));
+        assert_eq!(tools[..=at].iter().filter(|t| *t == SEARCH).count(), 11, "the 11th search");
+    }
+
+    #[test]
+    fn the_bench_browser_loops_are_stopped_before_hermes_cap() {
+        // glm-base-2 and glm-concise-2, browser_public: 141 and 145 page reads, cut by Hermes at 150, no answer
+        let base = sequence(&[
+            ("skill_view", 1), ("mcp__stealth__spawn_browser", 1), ("mcp__stealth__navigate", 1), (READ_PAGE, 1),
+            ("tool_search", 1), ("search_files", 1), ("mcp__stealth__navigate", 1), ("tool_search", 1), (READ_PAGE, 3),
+            ("tool_describe", 1), (READ_PAGE, 5), ("mcp__stealth__execute_script", 1), (READ_PAGE, 132),
+        ]);
+        let concise = sequence(&[
+            ("skill_view", 1), ("mcp__stealth__spawn_browser", 1), ("mcp__stealth__navigate", 1), (READ_PAGE, 1),
+            ("terminal", 1), ("tool_describe", 1), (READ_PAGE, 144),
+        ]);
+        for (tools, reads) in [(base, 141), (concise, 145)] {
+            assert_eq!((tools.len(), tools.iter().filter(|t| *t == READ_PAGE).count()), (150, reads));
+            // the bridge's events carry the page reads' arguments: the same each time, still not « same call » (the
+            // browser's), but the page reads' own limit
+            let (at, over) = stopped(&tools, |t| Some(format!("{t} {{}}"))).unwrap();
+            assert_eq!(over, Over::PageReads);
+            assert_eq!(tools[..=at].iter().filter(|t| *t == READ_PAGE).count(), 16);
+            assert!(at < 30, "long before Hermes' 150: {at}");
+        }
+        assert_eq!(
+            notice_text(&Over::PageReads, "fr"),
+            "Je me suis arrêté : je n'arrivais pas à lire cette page. Dis-moi si tu veux que je réessaie, ou donne-moi un \
+autre lien."
+        );
+        // browsing that goes on without reading the page: at its own limit, still under Hermes' cap
+        let clicks = sequence(&[("mcp__stealth__click_element", 200)]);
+        let (at, over) = stopped(&clicks, |_| None).unwrap();
+        assert_eq!((at, over), (40, Over::Browser));
+    }
+
+    #[test]
+    fn the_bench_legitimate_turns_go_on() {
+        // the bench's good turns: browsing that reads a few pages, a long file delivery with the terminal
+        let browsing = sequence(&[
+            ("skill_view", 1), ("mcp__stealth__spawn_browser", 1), ("mcp__stealth__navigate", 6), (READ_PAGE, 6),
+            ("mcp__bipagents__calendar_list", 1),
+        ]);
+        assert_eq!(stopped(&browsing, |_| None), None);
+        let files = sequence(&[("terminal", 12), ("write_file", 10), ("read_file", 10)]);
+        assert_eq!(stopped(&files, |_| None), None);
+    }
+
+    #[test]
+    fn the_bench_false_positives_are_allowed() {
+        // DeepSeek (reminder ×2, plan_day, map_walk) and the morning brief: refused at the first or second write of a
+        // conversation, because earlier conversations' writes of the same agent were counted with them
+        let turns = Turns::default();
+        let settings = Settings::default();
+        let call = |agent: &str, turn: Option<Turn>, tool: &str, a: &Dict, now: f64| {
+            let refused = turns.check(&settings, agent, turn.as_ref(), tool, a, now);
+            if refused.is_none() {
+                turns.record(agent, turn.as_ref(), tool, a);
+            }
+            refused
+        };
+        let run = |id: &str| Some(Turn { run_id: id.to_string(), background: false });
+        // an earlier conversation of the agent wrote 20 notes (its last ones refused)
+        for i in 0..20 {
+            call("quotidien", run("run_birthday"), NOTE, &args(&[("text", &format!("n{i}"))]), i as f64);
+        }
+        // the next conversations, a minute later each
+        let reminder = |text: &str| args(&[("title", text), ("due", "2026-10-28T09:00")]);
+        assert!(call("quotidien", run("run_reminder"), "mcp__bipagents__reminders_add", &reminder("Pharmacie"), 60.0).is_none());
+        assert!(call("quotidien", run("run_reminder"), "mcp__bipagents__reminders_add", &reminder("Banque"), 61.0).is_none());
+        let page = args(&[("title", "Ma journée"), ("html", "<h1>Mardi</h1>")]);
+        assert!(call("quotidien", run("run_plan_day"), "mcp__bipagents__create_page", &page, 120.0).is_none());
+        assert!(call("quotidien", run("run_map_walk"), "mcp__bipagents__create_page", &page, 180.0).is_none());
+        // the morning brief (a routine, no run): its page, after the bench's turns
+        assert!(call("quotidien", None, "mcp__bipagents__create_page", &page, 240.0).is_none());
+        // a routine's search loop (35 Carnet searches in the bench): refused from the 11th, in plain words
+        let mut refused = None;
+        for i in 0..35 {
+            if let Some(r) = call("budget", None, SEARCH, &args(&[("query", &format!("ville {i}"))]), 1000.0 + i as f64) {
+                refused = Some((i, r));
+                break;
+            }
+        }
+        let (i, r) = refused.unwrap();
+        assert_eq!(i, 10);
+        assert!(r["content"][0]["text"].as_str().unwrap().contains("answer the person with what you have"));
+        // and a routine's calls of many tools: at routine_tool_calls
+        let mut at = None;
+        for i in 0..40 {
+            let tool = format!("mcp__bipagents__tool_{}", i % 8);
+            if call("coach", None, &tool, &Dict::new(), 5000.0 + i as f64).is_some() {
+                at = Some(i);
+                break;
+            }
+        }
+        assert_eq!(at, Some(30));
     }
 
     #[test]
