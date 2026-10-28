@@ -330,6 +330,11 @@ fn sample_loops_are_cut_early() {
     assert_eq!((d[0].action, d[0].index), (Action::Refuse, 10));
     let (_, d) = by_name("terminal_runaway");
     assert_eq!(d[0].reason, "too many tool calls");
+    // searching its own tools (real-day bench 2026-10-28): the 9th search of the hunt, the 5th same query
+    let (_, d) = by_name("tool_search_hunt");
+    assert_eq!((d[0].reason.as_str(), d[0].index), ("too many tool searches", 9), "{d:?}");
+    let (_, d) = by_name("tool_search_same_query");
+    assert_eq!((d[0].reason.as_str(), d[0].index), ("too many tool searches", 4), "{d:?}");
     // a write that failed may be made again with the same arguments, unwarned
     let (_, d) = by_name("write_failed_then_retried");
     assert!(d.is_empty(), "{d:?}");
