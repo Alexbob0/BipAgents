@@ -14,7 +14,8 @@ from bbkit.mcp import give_token
 from conftest import managed_install, profile
 
 PYTHON = os.environ.get("MCP_SDK_PYTHON")
-CLIENT = str(Path(__file__).parent / "bbkit" / "mcp_sdk_client.py")
+# another client with the same output (e.g. one driving Hermes' own tools/mcp_tool code)
+CLIENT = os.environ.get("MCP_SDK_CLIENT") or str(Path(__file__).parent / "bbkit" / "mcp_sdk_client.py")
 TOKEN = "coach-token-" + "q" * 30
 
 pytestmark = pytest.mark.skipif(not PYTHON, reason="no Python with the MCP SDK given (MCP_SDK_PYTHON)")
@@ -44,5 +45,7 @@ def test_the_sdk_client_hears_the_change_and_lists_again(bridges, fakes):
         client.kill()
     text = "\n".join(out)
     assert "LISTCHANGED True" in text, text
-    assert "MESSAGE ToolListChangedNotification" in text, text
-    assert "RELISTED calendar_list,calendar_add,calendar_update,calendar_delete" in text, text
+    assert "ToolListChangedNotification" in text or "received tools/list_changed notification" in text, text
+    relisted = [line for line in out if line.startswith("RELISTED ")]
+    assert relisted and set(relisted[0].split()[1].split(",")) == {
+        "calendar_list", "calendar_add", "calendar_update", "calendar_delete"}, text
