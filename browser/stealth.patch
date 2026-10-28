@@ -158,7 +158,7 @@ index a614108..37d8328 100644
 +                # None runs yet: started apart with the flags nodriver would have used, then connected to like a
 +                # Chrome the person opened from the app (open_browser.sh with no flags).
 +                config.host, config.port = "127.0.0.1", port
-+                _launch_detached(config())
++                _launch_detached(_without_dropped_args(config()))
 +                if not await _wait_for_chrome(port, seconds):
 +                    raise Exception(f"Chrome did not open its DevTools on port {port} within {seconds:.0f} s")
 +            config.host, config.port = "127.0.0.1", port

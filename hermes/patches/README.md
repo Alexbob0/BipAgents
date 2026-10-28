@@ -215,11 +215,18 @@ on, the same ladder also resends a request whose thinking already ate the turn (
 comes back reasoning-only).
 
 **What the patch does.**
-- A reply without `tool_calls` whose text holds a tool call in a known native format (DeepSeek DSML, DeepSeek V3
-  `<｜tool▁call▁begin｜>…`, Hermes/Qwen `<tool_call>{…}</tool_call>`) for a tool the session has becomes a real call:
-  direct when the tool is in the request, else through `tool_call` (same scope check, approvals and hooks as any deferred
-  call); a call to a tool the session does not have becomes a call of that name, which Hermes' unknown-tool path
-  answers with the tools there are (`agent/leaked_tool_calls.py`).
+- A reply without `tool_calls` that is nothing but tool-call markup in a known native format (DeepSeek DSML, DeepSeek
+  V3 `<｜tool▁call▁begin｜>…`, Hermes/Qwen `<tool_call>{…}</tool_call>`) becomes real calls
+  (`agent/leaked_tool_calls.py`), within strict limits (security audit 2026-10-27, finding 12: markup in a page the
+  agent read must never run):
+  - only for a custom OpenAI-compatible server (`provider == custom`) or a model whose name contains `deepseek`
+    (`RECOVERY_PROVIDERS` / `RECOVERY_MODEL_MARKERS`, a small explicit list); every other provider is left alone;
+  - only when the model's own assistant message, `<think>`/reasoning blocks and whitespace aside, is ONLY that markup:
+    any prose around it, a code fence or a quote mark, and nothing is run; tool results and other roles never are;
+  - only exact names offered in this request: direct when the tool is in the request, else through `tool_call` when
+    it is in the session's deferred set (same scope check, approvals and hooks as any deferred call). A suffix match
+    (a dropped MCP server prefix) or an unknown name is dropped, never dispatched; when nothing is left the reply is
+    empty and the changed empty retries below point the model at the listed tools and `tool_search`.
 - A streamed empty reply whose tokens never arrived (completion tokens > 0, no content, reasoning or tool call) is asked
   again once without streaming, so the server's held-back text reaches the parser.
 - Every recovery call (post-tool nudge, thinking prefill, empty retry) goes out with thinking off: Hermes' one-shot
@@ -237,7 +244,7 @@ comes back reasoning-only).
 **Files.** `agent/leaked_tool_calls.py` (new), `agent/turn_response_intake.py`, `agent/turn_empty_response.py`,
 `agent/turn_api_request.py`, `agent/turn_api_call.py`, `agent/chat_completion_helpers.py` (stream delta fields),
 `agent/turn_final_response.py`, `agent/turn_context.py`; new `tests/agent/test_empty_response_answers_without_thinking.py`
-(15 tests); `tests/agent/test_run_agent.py`: three empty-retry tests now expect 1 call + 2 changed retries.
+(18 tests); `tests/agent/test_run_agent.py`: three empty-retry tests now expect 1 call + 2 changed retries.
 
 **Tests.** The new file, `tests/agent/test_run_agent.py` and the empty-response, prefill, guard, fallback and reasoning-off suites: 366
 passed (Python 3.14). The whole `tests/agent/` has the same failures with and without the patch (environment: no
@@ -246,7 +253,15 @@ Anthropic SDK, provider snapshots). End to end with real Hermes against DeepSeek
 cleared): before, 6 turns out of 6 failed (4 « No reply », 2 with the raw DSML markup as the answer); after, 6 out of 6
 answered with the tool's data, through `tool_call`. The same with the tool gone altogether (not even behind the
 search): before 2 of 2 failed, after 4 of 4 answered (the model, told the tool is not there, says it cannot read the
-data).
+data). That last run predates the 2026-10-28 restriction: an unknown name is now dropped instead of called, so the
+model is pointed at the listed tools by the changed empty retry rather than by the unknown-tool answer (not re-run end
+to end yet).
+
+Restriction of 2026-10-28 (audit finding 12): 6 tests in the new file (markup alone from a custom server or a DeepSeek
+model recovered; the same markup in prose, fenced, quoted, in a tool result or from another provider not; unknown and
+suffix names dropped) — 4 of them fail on the previous version of the patch. With it, the new file,
+`tests/agent/test_run_agent.py` and the dropped-call, empty-response, prefill and tool-call repair suites: 373 passed
+(Python 3.14); the whole series 0001…0010 passes `git apply --check` on `517b5e10f`.
 
 **Bridge side.** The bridge keeps direct every tool an agent has been calling (tool_diet.rs), so the trigger should not
 come back; this patch is the net under it.

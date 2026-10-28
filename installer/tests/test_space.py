@@ -38,17 +38,36 @@ def test_the_services_holding_someone_s_data_wait_for_the_open_folder(tmp_path):
     assert not list((tmp_path / ".config" / "systemd" / "user").glob("*.d"))
 
 
-def test_the_key_service_from_the_offer_s_setup_and_the_backup_token(tmp_path, monkeypatch):
+def test_the_key_service_token_is_the_setup_s_own_never_the_backups(tmp_path, monkeypatch):
+    """Audit 2026-10-27, 17: the key service's token stays in clear beside the encrypted folder; it is a token of its
+    own (the setup's keys.token), never the backups' one, which opens the place's backups and mailboxes."""
     monkeypatch.delenv("BIPAGENTS_KEYS_URL", raising=False)
     monkeypatch.delenv("BIPAGENTS_KEYS_TOKEN", raising=False)
     config = tmp_path / ".config" / "bipagents"
     config.mkdir(parents=True)
-    (config / "keys.json").write_text(json.dumps({"url": "https://keys.example", "grant": "{}", "signature": "c2ln"}))
     (config / "backup.json").write_text(json.dumps({"url": "https://g", "token": "place-token-0123456789"}))
+    (config / "keys.json").write_text(json.dumps({"url": "https://keys.example", "grant": "{}", "signature": "c2ln"}))
     found = space.key_service(None, tmp_path)
-    assert found == {"BIPAGENTS_KEYS_URL": "https://keys.example", "BIPAGENTS_KEYS_TOKEN": "place-token-0123456789",
+    assert found["BIPAGENTS_KEYS_TOKEN"] == ""   # no fallback to the backups' token: encrypt refuses
+    (config / "keys.json").write_text(json.dumps({"url": "https://keys.example", "grant": "{}", "signature": "c2ln",
+                                                  "token": "keys-token-0123456789"}))
+    found = space.key_service(None, tmp_path)
+    assert found == {"BIPAGENTS_KEYS_URL": "https://keys.example", "BIPAGENTS_KEYS_TOKEN": "keys-token-0123456789",
                      "BIPAGENTS_KEYS_GRANT": "{}", "BIPAGENTS_KEYS_SIGNATURE": "c2ln"}
     assert space.key_service("https://other", tmp_path)["BIPAGENTS_KEYS_URL"] == "https://other"
+
+
+def test_encrypt_refuses_without_a_key_service_token_of_its_own(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(space, "missing_tools", lambda: None)
+    monkeypatch.setenv("BIPAGENTS_KEYS_URL", "https://keys.example")
+    monkeypatch.delenv("BIPAGENTS_KEYS_TOKEN", raising=False)
+    config = tmp_path / ".config" / "bipagents"
+    config.mkdir(parents=True)
+    (config / "backup.json").write_text(json.dumps({"url": "https://g", "token": "place-token-0123456789"}))
+    said, ran = [], []
+    assert space.encrypt(None, say=said.append, runner=lambda *a, **k: ran.append(a)) == 1
+    assert ran == [] and "key-service token" in said[-1]
 
 
 def _encrypting(tmp_path, monkeypatch, bridge_code):
@@ -97,18 +116,22 @@ def test_a_failure_removes_the_drop_ins_and_starts_everything_as_before(tmp_path
 
 def test_the_offer_s_setup_turns_it_on_per_place(tmp_path):
     base = {"v": 1, "pair": "A" * 43, "backup": {"url": "https://g.example", "token": "t" * 32}}
+    keys = {"url": "https://keys.example", "grant": "{}", "signature": "c2ln", "token": "k" * 43}
     path = tmp_path / "cloud.json"
     path.write_text(json.dumps(base))
     assert cloud.read(path).keys is None   # off unless the guichet asks
-    path.write_text(json.dumps({**base, "keys": {"url": "https://keys.example", "grant": "{}", "signature": "c2ln"}}))
-    assert cloud.read(path).keys == {"url": "https://keys.example", "grant": "{}", "signature": "c2ln"}
-    for wrong in ({"url": "http://keys.example", "grant": "{}", "signature": "s"}, {"url": "https://k"}, "x"):
+    path.write_text(json.dumps({**base, "keys": keys}))
+    assert cloud.read(path).keys == keys
+    for wrong in ({"url": "http://keys.example", "grant": "{}", "signature": "s", "token": "k" * 43},
+                  {"url": "https://k"}, "x",
+                  # an older guichet's setup, without a token of its own: encryption refused, never the backups'
+                  {"url": "https://keys.example", "grant": "{}", "signature": "c2ln"},
+                  dict(keys, token="short"), dict(keys, token="t" * 32)):
         path.write_text(json.dumps({**base, "keys": wrong}))
         with pytest.raises(cloud.CloudError):
             cloud.read(path)
-    path.write_text(json.dumps({"v": 1, "pair": "A" * 43, "keys": {"url": "https://k", "grant": "{}", "signature": "s"}}))
-    with pytest.raises(cloud.CloudError):   # its token is the backups' one
-        cloud.read(path)
+    path.write_text(json.dumps({"v": 1, "pair": "A" * 43, "keys": keys}))   # its token is its own: backups apart
+    assert cloud.read(path).keys == keys
 
 
 def test_the_hardening_script_is_ascii_and_valid_bash():

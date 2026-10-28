@@ -734,11 +734,11 @@ fn invitations_are_one_time_and_expire() {
     households.set_name("Alex").unwrap();
     let code = households.invite().unwrap();
     let key = "k".repeat(40);
-    let answer = households.accept(&code, "Léa", "https://b.ts.net", &key, None).unwrap();
+    let answer = households.accept(&code, "Léa", "https://b.ts.net", &key, None, None).unwrap();
     assert_eq!(households.caller(&key).as_deref(), Some("lea"));
     assert!(answer["key"].as_str().unwrap().len() >= 32 && answer["name"] == "Alex");
     assert!(!std::fs::read_to_string(&path).unwrap().contains(&key)); // only a digest of their key
-    assert!(households.accept(&code, "Léa", "https://b.ts.net", &key, None).is_err()); // used once
+    assert!(households.accept(&code, "Paul", "https://b.ts.net", &key, None, None).is_err()); // used once
     let late = households.invite().unwrap();
     let mut data = households.load();
     let past = bipbridge::py::time_time() - 1.0;
@@ -746,7 +746,7 @@ fn invitations_are_one_time_and_expire() {
         data["invites"].as_object().unwrap().keys().map(|k| (k.clone(), json!(past))).collect();
     data.insert("invites".into(), Value::Object(invites));
     households.save(&data).unwrap();
-    assert!(households.accept(&late, "Paul", "https://c.ts.net", &"p".repeat(40), None).is_err());
+    assert!(households.accept(&late, "Paul", "https://c.ts.net", &"p".repeat(40), None, None).is_err());
 }
 
 type Received = Arc<Mutex<Vec<(String, Option<String>, Value)>>>;

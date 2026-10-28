@@ -23,7 +23,7 @@ from typing import Callable, List, Optional, Tuple
 
 import httpx
 
-from . import hermes
+from . import hermes, release_key
 
 VOICES_URL = os.environ.get("BIPAGENTS_VOICES_URL", "")
 RELEASE = os.environ.get("BIPAGENTS_VOICES_RELEASE", "")   # a given release instead of the latest
@@ -215,7 +215,13 @@ def install(languages: List[str], home: Path, runner: hermes.Runner, say: Callab
                 if tag is None:
                     raise ValueError("no voices release for this Pocket yet")
                 where = f"{DOWNLOADS}/{tag}/"
-                sums = sums_of(client.get(f"{where}SHA256SUMS").raise_for_status().text)
+                raw_sums = client.get(f"{where}SHA256SUMS").raise_for_status().content
+                signature = None
+                if release_key.pinned():   # the sums are trusted only once signed by BipAgents' release key
+                    answer = client.get(f"{where}{release_key.SIGNATURE}")
+                    signature = answer.content if answer.status_code == 200 else None
+                release_key.check(raw_sums, signature)
+                sums = sums_of(raw_sums.decode("utf-8"))
                 raw = client.get(f"{where}index.json").raise_for_status().content
                 if hashlib.sha256(raw).hexdigest() != sums.get("index.json"):
                     raise ValueError("index.json: checksum")

@@ -55,7 +55,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional
 
-from . import bridgeconf, hermes
+from . import bridgeconf, hermes, release_key
 
 REPO = Path(__file__).resolve().parents[2]
 PATCHES = REPO / "hermes" / "patches"
@@ -170,7 +170,15 @@ def prebuilt(runner: hermes.Runner, base: Path, version: str, *, fetch: Fetch = 
         base.mkdir(parents=True, exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix=f".{version}-", dir=base))   # the same disk: the tree moves in at once
         fetch(f"{release_url(version)}/{SUMS}", work / SUMS)
-        sums = {line.split()[-1].lstrip("*"): line.split()[0].lower()
+        signature = None
+        if release_key.pinned():   # the sums are trusted only once signed by BipAgents' release key
+            try:
+                fetch(f"{release_url(version)}/{release_key.SIGNATURE}", work / release_key.SIGNATURE)
+                signature = (work / release_key.SIGNATURE).read_bytes()
+            except Exception:   # noqa: BLE001 - no signature published: refused just below
+                signature = None
+        release_key.check((work / SUMS).read_bytes(), signature, warn=say)
+        sums ={line.split()[-1].lstrip("*"): line.split()[0].lower()
                 for line in (work / SUMS).read_text(encoding="utf-8").splitlines() if len(line.split()) == 2}
         if name not in sums:
             raise ValueError(f"{name} is not in the release's {SUMS}")

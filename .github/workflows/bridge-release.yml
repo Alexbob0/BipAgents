@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read   # the release job alone may write (it publishes)
 
 concurrency:
   group: bridge-release-${{ github.ref }}
@@ -30,7 +30,9 @@ jobs:
       key: ${{ steps.key.outputs.key }}
       exists: ${{ steps.exists.outputs.exists }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          persist-credentials: false
       - id: key
         run: |
           test -d bridge-rs || { echo "key=" >> "$GITHUB_OUTPUT"; exit 0; }
@@ -54,9 +56,11 @@ jobs:
       run:
         working-directory: bridge-rs
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal -c clippy && rustup default stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2
         with:
           workspaces: bridge-rs
       - run: cargo clippy --all-targets --locked -- -D warnings
@@ -70,9 +74,11 @@ jobs:
       matrix:
         arch: [x86_64, aarch64]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal && rustup default stable && rustup target add ${{ matrix.arch }}-unknown-linux-gnu
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2
         with:
           workspaces: bridge-rs
           key: ${{ matrix.arch }}
@@ -84,7 +90,7 @@ jobs:
         run: |
           out=bridge-rs/target/${{ matrix.arch }}-unknown-linux-gnu/release
           tar -C "$out" -czf bipbridge-linux-${{ matrix.arch }}.tar.gz bipbridge bip-browser-mcp
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # v7
         with:
           name: linux-${{ matrix.arch }}
           path: bipbridge-linux-${{ matrix.arch }}.tar.gz
@@ -94,9 +100,11 @@ jobs:
     needs: [key, test]
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal && rustup default stable && rustup target add aarch64-apple-darwin x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2
         with:
           workspaces: bridge-rs
       - name: Build both and join them
@@ -109,7 +117,7 @@ jobs:
             lipo -create -output universal/$bin target/aarch64-apple-darwin/release/$bin target/x86_64-apple-darwin/release/$bin
           done
           tar -C universal -czf ../bipbridge-macos-universal.tar.gz bipbridge bip-browser-mcp
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # v7
         with:
           name: macos
           path: bipbridge-macos-universal.tar.gz
@@ -118,16 +126,40 @@ jobs:
     name: Release bridge-${{ needs.key.outputs.key }}
     needs: [key, linux, macos]
     runs-on: ubuntu-latest
+    # The only job that may write to the repository, and the only one given the release key (the environment's
+    # secrets): it runs none of the build's code, only sha256sum, minisign and gh.
+    permissions:
+      contents: write
+    environment: release
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333   # v8
         with:
           merge-multiple: true
+      # SHA256SUMS signed with BipAgents' release key (installer/bipinstall/release_key.py checks it against the key
+      # pinned in the checkout): a token that can change a release can't swap an archive and its sum together.
+      - name: Sign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          sha256sum bipbridge-*.tar.gz > SHA256SUMS
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::warning::No MINISIGN_SECRET_KEY secret: SHA256SUMS published unsigned (installs with a pinned release key refuse it)."
+            exit 0
+          fi
+          sudo apt-get update -q >/dev/null && sudo apt-get install -y -q minisign >/dev/null
+          umask 077
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/release.key"
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s "$RUNNER_TEMP/release.key" -m SHA256SUMS \
+            -t "BipAgents bridge-${{ needs.key.outputs.key }} built from ${GITHUB_SHA::12}"
+          rm -f "$RUNNER_TEMP/release.key"
+          test -s SHA256SUMS.minisig
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sha256sum bipbridge-*.tar.gz > SHA256SUMS
-          gh release create "bridge-${{ needs.key.outputs.key }}" bipbridge-*.tar.gz SHA256SUMS \
+          signature=; [ -f SHA256SUMS.minisig ] && signature=SHA256SUMS.minisig
+          gh release create "bridge-${{ needs.key.outputs.key }}" bipbridge-*.tar.gz SHA256SUMS $signature \
             -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "Bridge ${{ needs.key.outputs.key }}" \
             --notes "The bridge in Rust, built from ${GITHUB_SHA::12} (${GITHUB_REF_NAME}). Installs of this version fetch it by themselves (\`bipagents update\`, \`bipagents bridge rust\` again)."

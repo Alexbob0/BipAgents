@@ -1,21 +1,30 @@
-//! What a notification may carry through the relay: ids and the agent's name, never what the agent said.
+//! What a notification may carry through the relay: ids, never what the agent said, nor a title.
 //!
 //! The bridge's payloads are generic by default; one set to show previews puts a line of the message in the
 //! alert's body. The relay replaces any body that is not one of the app's generic, translated texts (`loc-key`)
 //! with « Nouveau message », and keeps only short id-like values next to `aps`. The app's notification extension
-//! then fetches the real text from the person's own bridge.
+//! then fetches the real text from the person's own bridge. The alert's title never passes (the apps name the agent
+//! from their own list); the guichet's texts (accounts, servers) pass only on a token sealed for the guichet, and
+//! `category`, `sound` and `interruption-level` only with the values the apps use.
 
 use serde_json::{Map, Value};
 
+use crate::seal::Audience;
+
 pub const GENERIC_BODY: &str = "Nouveau message";
-/// The app's generic, translated texts (its string catalog's keys, bridge/bipbridge/push.py, and the guichet's
-/// word on a server of the all-included offer, guichet/bipguichet/phones.py): nothing else passes.
-const GENERIC_BODIES: &[&str] = &[
+/// The app's generic, translated texts a bridge sends (its string catalog's keys, bridge-rs push.rs).
+const BRIDGE_BODIES: &[&str] = &[
     GENERIC_BODY,
     "Ta réponse est prête.",
     "Une question pour toi",
     "Approbation requise",
     "Sous-tâche terminée",
+    "Message de ta famille",
+];
+/// The guichet's words (a server of the all-included offer, the account, the family, shared conversations): only on
+/// a token sealed for the guichet, sent with its key, so a bridge's token can't make them up.
+const GUICHET_BODIES: &[&str] = &[
+    GENERIC_BODY,
     "Ton serveur ne répond plus : on s’en occupe.",
     "Tes agents ont une nouvelle place : ouvre l’app pour les y remettre.",
     "Ton serveur répond de nouveau.",
@@ -23,13 +32,15 @@ const GENERIC_BODIES: &[&str] = &[
     "Ton abonnement annuel se renouvelle bientôt : la date, le prix et comment l’arrêter sont dans tes e-mails.",
     "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.",
     "Ton compte est en cours de récupération sur un autre appareil : si ce n’est pas toi, arrête-la dans l’app.",
-    "Message de ta famille",
     "Quelqu’un de ta famille veut relier ses agents aux tiens : accepte ou refuse dans l’app.",
     // a conversation someone shows this person read-only (the guichet's read_shares.rs); the app names it itself
     "Nouveau message dans une conversation partagée",
 ];
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
-const TITLE_MAX: usize = 80;
+/// The values the apps use; anything else is dropped (no « time-sensitive », no custom sound).
+const CATEGORIES: &[&str] = &["MESSAGE", "APPROVAL"];
+const SOUNDS: &[&str] = &["default"];
+const INTERRUPTION_LEVELS: &[&str] = &["active", "passive"];
 const VALUE_MAX: usize = 256;
 const LIST_MAX: usize = 10;
 const LIST_ITEM_MAX: usize = 64;
@@ -45,20 +56,17 @@ const APS_KEYS: &[&str] = &[
     "relevance-score",
 ];
 
-fn short(text: &str, max: usize) -> String {
-    text.chars().take(max).collect()
-}
-
 fn id_like_key(key: &str) -> bool {
     !key.is_empty() && key.len() <= 40 && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-fn alert(value: &Value) -> Value {
+fn alert(value: &Value, aud: Audience) -> Value {
     let mut out = Map::new();
-    if let Some(title) = value.get("title").and_then(Value::as_str) {
-        out.insert("title".into(), Value::String(short(title, TITLE_MAX)));
-    }
-    let generic = value.get("loc-key").and_then(Value::as_str).filter(|k| GENERIC_BODIES.contains(k));
+    let bodies = match aud {
+        Audience::Bridge => BRIDGE_BODIES,
+        Audience::Guichet => GUICHET_BODIES,
+    };
+    let generic = value.get("loc-key").and_then(Value::as_str).filter(|k| bodies.contains(k));
     let body = generic.unwrap_or(GENERIC_BODY).to_string();
     out.insert("body".into(), Value::String(body.clone()));
     out.insert("loc-key".into(), Value::String(body));
@@ -80,7 +88,7 @@ fn custom(value: &Value) -> Option<Value> {
 }
 
 /// The payload as the relay forwards it, or why it refuses it.
-pub fn scrub(payload: &Value) -> Result<Value, &'static str> {
+pub fn scrub(payload: &Value, aud: Audience) -> Result<Value, &'static str> {
     let object = payload.as_object().ok_or("payload must be an object")?;
     let mut out = Map::new();
     if let Some(aps) = object.get("aps") {
@@ -90,8 +98,18 @@ pub fn scrub(payload: &Value) -> Result<Value, &'static str> {
             if !APS_KEYS.contains(&key.as_str()) {
                 continue;
             }
-            if key == "alert" {
-                clean.insert(key.clone(), alert(value));
+            let allowed = match key.as_str() {
+                "category" => Some(CATEGORIES),
+                "sound" => Some(SOUNDS),
+                "interruption-level" => Some(INTERRUPTION_LEVELS),
+                _ => None,
+            };
+            if let Some(allowed) = allowed {
+                if let Some(v) = value.as_str().filter(|v| allowed.contains(v)) {
+                    clean.insert(key.clone(), Value::String(v.into()));
+                }
+            } else if key == "alert" {
+                clean.insert(key.clone(), alert(value, aud));
             } else if matches!(value, Value::String(_) | Value::Number(_) | Value::Bool(_)) {
                 clean.insert(key.clone(), custom(value).unwrap_or(Value::Null));
             }
@@ -199,31 +217,46 @@ mod tests {
         let preview = json!({"aps": {"alert": {"title": "Vie", "body": "Ton rendez-vous chez le médecin est à 9h"},
                                      "mutable-content": 1, "category": "MESSAGE", "thread-id": "vie"},
                              "agent": "vie", "outbox_id": "abc123"});
-        let clean = scrub(&preview).unwrap();
-        assert_eq!(
-            clean["aps"]["alert"],
-            json!({"title": "Vie", "body": "Nouveau message", "loc-key": "Nouveau message"})
-        );
+        let clean = scrub(&preview, Audience::Bridge).unwrap();
+        assert_eq!(clean["aps"]["alert"], json!({"body": "Nouveau message", "loc-key": "Nouveau message"}));
         assert_eq!(clean["aps"]["category"], "MESSAGE");
         assert_eq!(clean["outbox_id"], "abc123");
         let generic = json!({"aps": {"alert": {"title": "Vie", "body": "Approbation requise", "loc-key": "Approbation requise"}}});
-        assert_eq!(scrub(&generic).unwrap()["aps"]["alert"]["body"], "Approbation requise");
+        assert_eq!(scrub(&generic, Audience::Bridge).unwrap()["aps"]["alert"]["body"], "Approbation requise");
         let plain = json!({"aps": {"alert": "Un texte entier"}});
-        assert_eq!(scrub(&plain).unwrap()["aps"]["alert"]["body"], GENERIC_BODY);
+        assert_eq!(scrub(&plain, Audience::Bridge).unwrap()["aps"]["alert"]["body"], GENERIC_BODY);
         // The guichet's word on a server of the all-included offer.
         let down = "Ton serveur ne répond plus : on s’en occupe.";
         let server = json!({"aps": {"alert": {"title": "BipAgents", "body": down, "loc-key": down}}, "kind": "server"});
-        let clean = scrub(&server).unwrap();
-        assert_eq!(clean["aps"]["alert"]["body"], down);
+        let clean = scrub(&server, Audience::Guichet).unwrap();
+        assert_eq!(clean["aps"]["alert"], json!({"body": down, "loc-key": down}));
         assert_eq!(clean["kind"], "server");
         // A conversation shown read-only (the guichet's read_shares.rs): the share's id only, the app names it.
         let shared = "Nouveau message dans une conversation partagée";
         let push = json!({"aps": {"alert": {"title": "BipAgents", "body": shared, "loc-key": shared},
                                   "thread-id": "Q2xxZm9vYmFyYmF6cXV4", "mutable-content": 1},
                           "kind": "rshare", "rshare": "Q2xxZm9vYmFyYmF6cXV4"});
-        let clean = scrub(&push).unwrap();
+        let clean = scrub(&push, Audience::Guichet).unwrap();
         assert_eq!(clean["aps"]["alert"]["body"], shared);
         assert_eq!((clean["kind"].clone(), clean["rshare"].clone()), (json!("rshare"), json!("Q2xxZm9vYmFyYmF6cXV4")));
+    }
+
+    #[test]
+    fn a_bridges_token_cannot_speak_as_the_guichet_nor_set_a_title() {
+        let account = "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.";
+        let forged = json!({"aps": {"alert": {"title": "Sécurité BipAgents", "body": account, "loc-key": account},
+                                    "category": "ACCOUNT_ALERT", "sound": "alarm.caf",
+                                    "interruption-level": "time-sensitive", "badge": 1}});
+        let clean = scrub(&forged, Audience::Bridge).unwrap();
+        assert_eq!(clean["aps"], json!({"alert": {"body": GENERIC_BODY, "loc-key": GENERIC_BODY}, "badge": 1}));
+        let fine = json!({"aps": {"alert": {"loc-key": "Approbation requise"}, "category": "APPROVAL", "sound": "default",
+                                  "interruption-level": "passive"}});
+        let clean = scrub(&fine, Audience::Bridge).unwrap();
+        assert_eq!(
+            (&clean["aps"]["category"], &clean["aps"]["sound"], &clean["aps"]["interruption-level"]),
+            (&json!("APPROVAL"), &json!("default"), &json!("passive"))
+        );
+        assert!(clean["aps"]["alert"].get("title").is_none());
     }
 
     #[test]
@@ -253,21 +286,24 @@ mod tests {
         let payload = json!({"aps": {"content-available": 1, "unknown": "x"}, "agent": "vie",
                              "choices": ["once", "deny"], "note": "line one\nline two", "big": "x".repeat(300),
                              "nested": {"text": "secret"}, "bad key!": "x", "count": 3});
-        let clean = scrub(&payload).unwrap();
+        let clean = scrub(&payload, Audience::Bridge).unwrap();
         assert_eq!(
             clean,
             json!({"aps": {"content-available": 1}, "agent": "vie", "choices": ["once", "deny"], "count": 3})
         );
-        assert!(scrub(&json!("text")).is_err());
+        assert!(scrub(&json!("text"), Audience::Bridge).is_err());
     }
 
     #[test]
     fn firebase_gets_strings_as_the_android_app_reads_them() {
-        let payload = scrub(&json!({"aps": {"alert": {"title": "Vie", "body": "x"}, "category": "APPROVAL"},
-                                    "agent": "vie", "run_id": "r1", "choices": ["once", "deny"]}))
+        let payload = scrub(
+            &json!({"aps": {"alert": {"title": "Vie", "body": "x"}, "category": "APPROVAL"},
+                                    "agent": "vie", "run_id": "r1", "choices": ["once", "deny"]}),
+            Audience::Bridge,
+        )
         .unwrap();
         let data = fcm_data(&payload);
-        assert_eq!(data["title"], "Vie");
+        assert!(!data.contains_key("title"));
         assert_eq!(data["body"], GENERIC_BODY);
         assert_eq!(data["category"], "APPROVAL");
         assert_eq!(data["choices"], "[\"once\",\"deny\"]");

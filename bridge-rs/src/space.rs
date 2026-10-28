@@ -7,9 +7,13 @@
 //! (exec) as the normal bridge. Nobody has anything to do.
 //!
 //! What it protects against, and what not (the design note says it in full): a copy of the disk (snapshots, images,
-//! a disk taken out, backups of the volume) read away from this server opens nothing. Kerfy Studio, which runs the key
-//! service, could put both shares together; anyone reading the running server's memory, or booting it with its own
-//! code and asking the key service from its address, too (that last one is logged and refused from another address).
+//! a disk taken out, backups of the volume) read away from this server doesn't open the space: the key service gives
+//! the other share only to this server's address. The copy does hold, in clear, this server's share and the key
+//! service's token (keyservice.json): a token of its own, used for nothing else at the guichet (audit 2026-10-27, 17;
+//! the backups' token stays inside the folder), but whoever also sends from this server's address can ask with it.
+//! Kerfy Studio, which runs the key service, could put both shares together; anyone reading the running server's
+//! memory, or booting it with its own code and asking the key service from its address, too (that last one is checked
+//! with the provider by the guichet, logged, and held for good once seen: keys-rs).
 //!
 //!     ~/.local/share/bipagents/space/       outside the encrypted folder ($BIPAGENTS_SPACE_DIR)
 //!         space.json        Settings: on or off, the folders, the door, the services to start (0600)
@@ -122,8 +126,9 @@ pub struct Settings {
     pub enabled_at: f64,
 }
 
-/// Where the other share is, and how this place proves itself: its own token (the guichet's place token, the one its
-/// backups use) and, the first time, the guichet's signed grant for it.
+/// Where the other share is, and how this place proves itself: its own key-service token (from its setup's
+/// keys.token; never the backups' token, since this file stays in clear outside the folder) and, the first time, the
+/// guichet's signed grant for it.
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct KeyService {
@@ -277,7 +282,8 @@ pub trait ShareSource: Send + Sync {
     async fn share(&self) -> Result<Zeroizing<Vec<u8>>, ShareError>;
 }
 
-/// Kerfy's key service (keys-rs/): `POST {url}/v1/share` with the place's token, the grant the first time.
+/// Kerfy's key service (keys-rs/): `POST {url}/v1/share` with the place's key-service token, the grant the first
+/// time.
 pub struct HttpShare {
     pub service: KeyService,
     pub client: reqwest::Client,

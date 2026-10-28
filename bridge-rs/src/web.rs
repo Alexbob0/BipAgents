@@ -317,9 +317,13 @@ fn is_json_content_type(headers: &HeaderMap) -> Option<bool> {
 /// Reads the request body the way FastAPI does before validating a model.
 #[allow(clippy::result_large_err)]
 pub async fn read_body(headers: &HeaderMap, body: axum::body::Body) -> Result<BodyValue, Response> {
-    let bytes = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .map_err(|_| HttpError::new(400, "There was an error parsing the body").into_response())?;
+    let bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+        if crate::body_limit::is_too_large(&e) {
+            crate::body_limit::too_large_response()
+        } else {
+            HttpError::new(400, "There was an error parsing the body").into_response()
+        }
+    })?;
     if bytes.is_empty() {
         return Ok(BodyValue::Missing);
     }

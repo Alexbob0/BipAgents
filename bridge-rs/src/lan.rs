@@ -179,7 +179,7 @@ fn methods_empty() -> axum::routing::MethodRouter<AppState> {
                  method: Method,
                  uri: Uri,
                  headers: HeaderMap,
-                 body: Bytes| async move {
+                 body: Body| async move {
         relay(state, addr, Path((agent, String::new())), method, uri, headers, body).await
     };
     on(axum::routing::MethodFilter::GET, empty)
@@ -196,8 +196,9 @@ async fn relay(
     method: Method,
     uri: Uri,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> ApiResult<Response> {
+    // the body is not read before these checks, and then streamed to Hermes (body_limit.rs caps it)
     if state.guard.blocked(address.as_deref()) {
         return Err(HttpError::new(429, "too many wrong keys, try again later"));
     }
@@ -254,7 +255,28 @@ async fn relay(
         return Ok(crate::app::listener_events(listener));
     }
     let starts_run = method == Method::POST && path == "v1/runs";
-    let request_body = if starts_run { body.clone() } else { Bytes::new() };
+    // A run started with the agent's key (or by the web console) is read whole, to follow the run it starts;
+    // anything else goes to Hermes as it comes, and Hermes checks the key.
+    let presented = forwarded
+        .iter()
+        .find(|(n, _)| n.as_str() == "authorization")
+        .and_then(|(_, v)| crate::auth::extract_bearer(v.to_str().ok()));
+    let keyed = crate::auth::key_matches(&target.hermes_key, presented.as_deref());
+    let (request_body, body) = if starts_run && keyed {
+        let bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+            if crate::body_limit::is_too_large(&e) {
+                HttpError::new(413, "request body too large")
+            } else {
+                HttpError::new(400, "There was an error parsing the body")
+            }
+        })?;
+        (bytes.clone(), reqwest::Body::from(bytes))
+    } else if axum::body::HttpBody::is_end_stream(&body) {
+        (Bytes::new(), reqwest::Body::from(Bytes::new())) // a GET: no body at all, not an empty chunked one
+    } else {
+        (Bytes::new(), reqwest::Body::wrap_stream(body.into_data_stream()))
+    };
+    let starts_run = starts_run && keyed;
     let mut url = format!("{}/{}", target.hermes_url, path);
     if let Some(query) = uri.query().filter(|q| !q.is_empty()) {
         url.push('?');

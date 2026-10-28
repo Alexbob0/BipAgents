@@ -787,11 +787,16 @@ fn household_caller(state: &AppState, headers: &HeaderMap) -> ApiResult<String> 
     household.ok_or_else(|| HttpError::new(401, "unknown household"))
 }
 
-/// Starlette's `await request.json()`: invalid JSON is an uncaught error (500).
+/// Starlette's `await request.json()`: invalid JSON is an uncaught error (500). Small bodies only (64 KiB): some of
+/// these routes are open (`/family/accept`).
 async fn request_json(request: Request) -> ApiResult<Value> {
-    let bytes = axum::body::to_bytes(request.into_body(), usize::MAX)
-        .await
-        .map_err(|_| HttpError::new(400, "There was an error parsing the body"))?;
+    let bytes = axum::body::to_bytes(request.into_body(), 64 * 1024).await.map_err(|e| {
+        if crate::body_limit::is_too_large(&e) {
+            HttpError::new(413, "request body too large")
+        } else {
+            HttpError::new(400, "There was an error parsing the body")
+        }
+    })?;
     serde_json::from_slice(&bytes).map_err(|e| HttpError::from(anyhow::anyhow!("JSONDecodeError: {e}")))
 }
 
@@ -812,13 +817,15 @@ fn family_tools_changed(state: &AppState) {
 }
 
 async fn family_accept(State(state): State<AppState>, request: Request) -> ApiResult<Response> {
+    // a household already linked that links again says so with its current key (it then keeps its place)
+    let current = Some(bearer(request.headers())).filter(|t| !t.is_empty());
     let body = request_json(request).await?;
     let (code, name, url, key) =
         (body_str(&body, "code")?, body_str(&body, "name")?, body_str(&body, "url")?, body_str(&body, "key")?);
     // the certificate their address serves when it is a door (sent over ours, checked, with our one-time code)
     let fingerprint = body_str(&body, "fingerprint")?;
     let fingerprint = Some(fingerprint.as_str()).filter(|f| !f.is_empty());
-    match state.households.accept(&code, &name, &url, &key, fingerprint) {
+    match state.households.accept(&code, &name, &url, &key, fingerprint, current.as_deref()) {
         Ok(mut answer) => {
             family_tools_changed(&state);
             if let Some(own) = crate::door_tls::door_fingerprint(&state.config()) {
@@ -826,6 +833,7 @@ async fn family_accept(State(state): State<AppState>, request: Request) -> ApiRe
             }
             Ok(web::ok(Value::Object(answer)))
         }
+        Err(HouseholdError(message)) if message == crate::households::NAME_TAKEN => Err(HttpError::new(409, message)),
         Err(HouseholdError(message)) => Err(HttpError::new(403, message)),
     }
 }
@@ -1019,13 +1027,25 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
     if let Some(own) = crate::door_tls::door_fingerprint(&config) {
         payload["fingerprint"] = json!(own);
     }
-    let resp = crate::door_tls::client_for(&state.http, fingerprint.as_deref())
+    let mut call = crate::door_tls::client_for(&state.http, fingerprint.as_deref())
         .post(format!("{url}/family/accept"))
         .timeout(std::time::Duration::from_secs(15))
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|_| HttpError::new(502, "their bridge does not answer"))?;
+        .json(&payload);
+    // already linked to the household at this address: our current key lets theirs know we are linking again
+    let current = state
+        .households
+        .public()
+        .into_iter()
+        .find(|h| h.get("url").and_then(Value::as_str) == Some(url.as_str()))
+        .and_then(|h| state.households.get(&crate::py::py_str(&h["id"])))
+        .and_then(|e| e.get("key_out").and_then(Value::as_str).map(str::to_string));
+    if let Some(current) = current {
+        call = call.bearer_auth(current);
+    }
+    let resp = call.send().await.map_err(|_| HttpError::new(502, "their bridge does not answer"))?;
+    if resp.status().as_u16() == 409 {
+        return Err(HttpError::new(409, "their bridge is already linked to a household with this name"));
+    }
     if resp.status().as_u16() != 200 {
         return Err(HttpError::new(403, "their bridge refused the invitation (expired?)"));
     }

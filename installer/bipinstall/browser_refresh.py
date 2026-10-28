@@ -22,13 +22,21 @@ What it did goes to the journal (`journalctl --user -u bipagents-refresh-browser
 Since 2026-10-27 the image usually isn't built here (shared_images.py): on a server of the offer it is the server's,
 pulled by root each night (this job only restarts the idle browsers on it); elsewhere it comes from GHCR, built each
 night by GitHub Actions when there is something new, and this job pulls it again. Steps 2-3 are for an image built here.
+
+Since 2026-10-28 (security audit 2026-10-27, 11 and 21), an image whose DevTools relay asks for the browser's secret
+(label bipagents.relay ≥ 3) gives each browser of this account that isn't running on an older image its secret, the
+mount of it in its unit, and Hermes' `browser.cdp_url` carrying it (`secure_devtools`), before any restart: a browser set
+up by an older bridge never starts on the new image without them.
 """
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import platform
 import re
+import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -172,6 +180,90 @@ def browsers_root(home: Path) -> Path:
     return home / ".local" / "share" / "hermes-bridge" / "browsers"
 
 
+CDP_SECRET = "cdp.token"                 # bridge-rs browsers.rs CDP_SECRET, next to vnc.pass
+CDP_MOUNT = "/run/bipagents/cdp.token"   # where the container's relay reads it (browser/devtools_relay.py)
+RELAY_SECRET = 3                         # the relay version that asks for it (label bipagents.relay)
+
+
+def relay_version(engine: str, image: str, run: Run) -> int:
+    code, out = run([engine, "image", "inspect", "--format", '{{index .Config.Labels "bipagents.relay"}}', image], 60)
+    return int(out.strip()) if code == 0 and out.strip().isdigit() else 0
+
+
+def cdp_secret(place: Path) -> str:
+    """The browser's DevTools secret, made (0600) when it has none or an unusable one."""
+    path = place / CDP_SECRET
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        text = ""
+    if len(text) < 16 or not text.isalnum():
+        text = secrets.token_hex(32)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(text + "\n")
+    os.chmod(path, 0o600)
+    return text
+
+
+def with_cdp_mount(text: str, place: Path) -> str:
+    """A unit's `podman run` (as the bridge wrote it) with the secret mounted read-only, before its published ports."""
+    marker = " -p 127.0.0.1:"
+    if CDP_MOUNT in text or marker not in text:
+        return text
+    at = text.index(marker)
+    return text[:at] + " -v " + shlex.quote(f"{place / CDP_SECRET}:{CDP_MOUNT}:ro,Z") + text[at:]
+
+
+def with_cdp_url(text: str, port: int, secret: str) -> str:
+    """A Hermes config whose `cdp_url` is this browser's relay, with the secret in front of its path."""
+    plain = re.compile(rf"^([ \t]*cdp_url:[ \t]*)(['\"]?)http://127\.0\.0\.1:{port}/?\2[ \t]*$", re.M)
+    return plain.sub(lambda m: f"{m.group(1)}http://127.0.0.1:{port}/t/{secret}", text)
+
+
+def _write(path: Path, text: str) -> None:
+    partial = path.with_name(path.name + ".part")
+    partial.write_text(text, encoding="utf-8")
+    os.chmod(partial, path.stat().st_mode & 0o777)
+    partial.replace(path)
+
+
+def secure_devtools(home: Path, agent: str) -> bool:
+    """The agent's browser gets its DevTools secret: the file, its mount in the container's unit (and in the unit its
+    first use writes, mcp.json), Hermes' `browser.cdp_url` carrying it. Returns whether a unit changed."""
+    place = browsers_root(home) / agent
+    try:
+        port = int(json.loads((place / "ports.json").read_text(encoding="utf-8"))["cdp"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    secret = cdp_secret(place)
+    changed = False
+    unit = home / ".config" / "systemd" / "user" / f"bipagents-browser-{agent}.service"
+    if unit.is_file():
+        text = unit.read_text(encoding="utf-8")
+        if with_cdp_mount(text, place) != text:
+            _write(unit, with_cdp_mount(text, place))
+            changed = True
+    mcp = place / "mcp.json"
+    try:
+        settings = json.loads(mcp.read_text(encoding="utf-8"))
+        text = settings["unit"]["text"]
+    except (OSError, ValueError, KeyError, TypeError):
+        settings = None
+    if settings is not None and with_cdp_mount(text, place) != text:
+        settings["unit"]["text"] = with_cdp_mount(text, place)
+        _write(mcp, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
+    roots = [home / ".hermes"] + sorted((home / ".local" / "share" / "bipagents" / "spaces").glob("*"))
+    for config in (root / "profiles" / agent / "config.yaml" for root in roots):
+        try:
+            text = config.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if with_cdp_url(text, port, secret) != text:
+            _write(config, with_cdp_url(text, port, secret))
+    return changed
+
+
 def restart_old(engine: str, home: Path, run: Run, now: Optional[float] = None) -> List[str]:
     """This install's running browsers on an image older than the current one, restarted when unused for
     IDLE_RESTART (their profiles stay; a browser in use keeps going, and takes the new image at its next start).
@@ -184,6 +276,7 @@ def restart_old(engine: str, home: Path, run: Run, now: Optional[float] = None) 
     units = home / ".config" / "systemd" / "user"
     root = browsers_root(home)
     restarted = []
+    to_restart, on_old = [], set()
     for name in out.split():
         agent = name.removeprefix("bipagents-browser-")
         if name == agent or not (units / f"{name}.service").is_file():
@@ -197,7 +290,19 @@ def restart_old(engine: str, home: Path, run: Run, now: Optional[float] = None) 
             unused = float("inf")
         if unused < IDLE_RESTART:
             say(f"{agent}'s browser is in use: on the new image at its next start")
+            on_old.add(agent)   # its relay doesn't know the secret yet: left as it is until a later night
             continue
+        to_restart.append((agent, name))
+    if relay_version(engine, IMAGE, run) >= RELAY_SECRET:
+        agents = {p.name.removeprefix("bipagents-browser-").removesuffix(".service")
+                  for p in units.glob("bipagents-browser-*.service")}
+        agents.update(p.parent.name for p in root.glob("*/mcp.json"))   # set up, never used yet (no unit)
+        agents = sorted(agents)
+        changed = [agent for agent in agents if agent not in on_old and secure_devtools(home, agent)]
+        if changed:
+            run(["systemctl", "--user", "daemon-reload"], 60)
+            say(f"DevTools secret given to the browsers of {', '.join(changed)}")
+    for agent, name in to_restart:
         code, said = run(["systemctl", "--user", "restart", f"{name}.service"], 180)
         if code == 0:
             restarted.append(agent)

@@ -8,8 +8,10 @@ Rust (un binaire de 4,6 Mo, ~4 Mo de mémoire au repos) qui **ne stocke rien** e
 
 ## Fonctionnement
 
-1. L'app inscrit son jeton Apple ou Firebase : `POST /v1/register` → un **jeton de relais** (`r1.…`), le jeton de
-   l'appareil chiffré avec une clé que seul le relais détient (XChaCha20-Poly1305). L'app le donne à son bridge.
+1. L'app inscrit son jeton Apple ou Firebase : `POST /v1/register` → un **jeton de relais** (`r2.…`), le jeton de
+   l'appareil chiffré avec une clé que seul le relais détient (XChaCha20-Poly1305), avec son identifiant, une fin
+   (90 jours) et qui peut s'en servir (`audience` : `bridge`, ou `guichet`). L'app le donne à son bridge (ou au
+   guichet), et en prend un nouveau tous les 30 jours.
 2. Le bridge envoie sa notification avec le jeton de relais : `POST /v1/relay/push` (même forme que le relais des
    bridges). Le relais ouvre le jeton, nettoie la notification et l'envoie à Apple (HTTP/2, jeton ES256) ou à Google
    (FCM v1).
@@ -33,14 +35,28 @@ personne ne s'en sert.
 
 | Route | Corps | Réponse |
 | --- | --- | --- |
-| `POST /v1/register` | `{"platform": "apns"\|"fcm", "token": "…", "environment": "sandbox"\|"production"}` | `{"relay_token": "r1.…"}` |
-| `POST /v1/relay/push` (ou `/v1/push`) | `{"token": "r1.…", "payload": {…}, "push_type": "alert"\|"background", "priority": 5\|10, "collapse_id": "…"}` | `{"status": 200, "reason": null, "apns_id": "…"}` |
+| `POST /v1/register` | `{"platform": "apns"\|"fcm", "token": "…", "environment": "sandbox"\|"production", "audience": "bridge"\|"guichet"}` | `{"relay_token": "r2.…", "expires": 1800000000}` |
+| `POST /v1/relay/push` (ou `/v1/push`) | `{"token": "r2.…", "payload": {…}, "push_type": "alert"\|"background"\|"liveactivity", "priority": 5\|10, "collapse_id": "…"}` ; un jeton `guichet` avec `Authorization: Bearer <RELAY_GUICHET_KEY>` | `{"status": 200, "reason": null, "apns_id": "…"}` |
 | `POST /v1/report` | `{"reason", "comment", "text", "category", "app", "model", "platform": "ios"\|"android", "lang"}` | `202 {"ok": true}` : « Signaler cette réponse » transmis à `RELAY_REPORT_URL` avec le secret, gardé nulle part ; 503 s'il n'est pas réglé, 502 s'il n'a pas pu partir (l'app propose alors un e-mail) |
 | `GET /health` | | `{"status": "ok", "apns": true, "fcm": true}` |
 
-Un jeton chiffré avec une autre clé, ou altéré, répond `{"status": 410, "reason": "BadRelayToken"}` (le bridge
+Un jeton chiffré avec une autre clé, ou altéré, répond `{"status": 410, "reason": "BadRelayToken"}` ; un jeton
+arrivé à sa fin, ou du premier format (`r1.…`, sans fin), `{"status": 410, "reason": "ExpiredRelayToken"}` (le bridge
 l'oublie, l'app se réinscrit) ; un jeton d'appareil brut est refusé en HTTP 400 (un bridge réglé pour l'envoi direct,
-pas un appareil disparu).
+pas un appareil disparu). Un jeton `guichet` envoyé sans la clé du guichet est refusé en HTTP 401 : une copie des
+jetons du guichet ne sert à rien seule.
+
+**Transition (jusqu'à `RELAY_R1_UNTIL`, le 2026-12-15 par défaut).** Les apps, bridges et le guichet sortis avant le
+2026-10-28 ne connaissent que le premier format ; jusqu'à cette date : les jetons `r1.` marchent encore (tout
+expéditeur, comme avant) ; une app qui s'inscrit sans `audience` (une ancienne) reçoit un jeton `r1.` ; une
+inscription `bridge` renvoie aussi `legacy_token` (`r1.`), qu'une app récente donne à un bridge qui refuse `r2.` ; un
+jeton `guichet` envoyé sans aucun `Authorization` passe (un ancien guichet). Chaque cas est journalisé (`warn`) et
+`/health` ajoute `r1_until`, `r1_used`, `guichet_without_key` et un `warning`. Après cette date, tout ce qui précède
+s'applique. `RELAY_R1_UNTIL=0` y met fin tout de suite.
+
+Ce qui passe dans `aps` : jamais `alert.title` (les apps nomment l'agent d'après leur propre liste) ; les textes du
+guichet (serveurs, compte, famille, conversations partagées) seulement sur un jeton `guichet` ; `category`
+`MESSAGE`/`APPROVAL`, `sound` `default`, `interruption-level` `active`/`passive`, rien d'autre.
 
 ## Réglages (environnement seulement)
 
@@ -53,7 +69,8 @@ pas un appareil disparu).
 | `RELAY_PUSHES_PER_DEVICE_HOUR`, `RELAY_PUSHES_PER_IP_HOUR`, `RELAY_REGISTRATIONS_PER_IP_HOUR` | `300`, `20000`, `60` |
 | `RELAY_TRUST_FORWARDED_FOR` | `1` derrière un proxy qui pose `X-Forwarded-For` |
 | `RELAY_REPORT_URL`, `RELAY_REPORT_SECRET` ou `RELAY_REPORT_SECRET_FILE`, `RELAY_REPORTS_PER_IP_HOUR` | où vont les signalements (le `/v1/reports` du guichet), le secret qu'il vérifie, `20` |
-| `RELAY_BLOCKED` ou `RELAY_BLOCKED_FILE` | appareils refusés pour abus (conditions d'utilisation), par l'empreinte de 8 caractères hexadécimaux que montrent les journaux ; redémarrer pour appliquer |
+| `RELAY_BLOCKED` ou `RELAY_BLOCKED_FILE` | appareils refusés pour abus (conditions d'utilisation), par l'empreinte de 8 caractères hexadécimaux que montrent les journaux, ou un jeton de relais qui a fuité, par son identifiant de 16 caractères (`token` dans les journaux) ; redémarrer pour appliquer |
+| `RELAY_GUICHET_KEY` ou `RELAY_GUICHET_KEY_FILE` | la clé avec laquelle le guichet envoie ses notifications (séparées par des virgules pour en changer : l'ancienne et la nouvelle passent) ; sans elle, les jetons `guichet` sont refusés |
 | `RUST_LOG` | `info` (lignes JSON) |
 
 ## Le lancer

@@ -77,7 +77,12 @@ async fn harness(per_device: u32) -> Harness {
     harness_with(per_device, Vec::new(), Sealer::generate_key()).await
 }
 
+/// The transition from the first token format is over in these (`r1_until` 0), except where a test opens it.
 async fn harness_with(per_device: u32, blocked: Vec<String>, seal_keys: String) -> Harness {
+    harness_full(per_device, blocked, seal_keys, 0).await
+}
+
+async fn harness_full(per_device: u32, blocked: Vec<String>, seal_keys: String, r1_until: u64) -> Harness {
     use p256::pkcs8::{EncodePrivateKey, LineEnding};
     let seen: Shared = Arc::default();
     let fake = Router::new()
@@ -116,6 +121,8 @@ async fn harness_with(per_device: u32, blocked: Vec<String>, seal_keys: String) 
         report_secret: Some("relay-report-secret".into()),
         reports_per_ip_hour: 2,
         blocked,
+        guichet_keys: vec!["guichet-key-1".into()],
+        r1_until,
     };
     let relay = Arc::new(Relay::new(config, reqwest::Client::new()).unwrap());
     Harness { relay: serve(router(relay)).await, seen, http: reqwest::Client::new() }
@@ -159,7 +166,7 @@ async fn an_iphone_gets_its_notification_without_the_message_and_its_token_stays
     let seen = h.seen.lock().unwrap();
     let (to, headers, sent) = &seen.apple[0];
     assert_eq!(to, &device);
-    assert_eq!(sent["aps"]["alert"], json!({"title": "Vie", "body": "Nouveau message", "loc-key": "Nouveau message"}));
+    assert_eq!(sent["aps"]["alert"], json!({"body": "Nouveau message", "loc-key": "Nouveau message"}));
     assert_eq!(sent["outbox_id"], "out-1");
     assert_eq!(headers["apns-topic"], "io.github.bipagents");
     assert_eq!(headers["apns-push-type"], "alert");
@@ -175,11 +182,15 @@ async fn dead_and_foreign_tokens_are_told_apart() {
     let (_, body) = h.post("/v1/relay/push", json!({"token": dead, "payload": preview("vie")})).await;
     assert_eq!((body["status"].as_u64(), body["reason"].as_str()), (Some(410), Some("Unregistered")));
     // Sealed by another relay (or a retired key): dead too, the bridge forgets it and the app registers again.
-    let other = Sealer::new(&[[9u8; 32]]).unwrap().seal(&bipagents_relay::seal::Device {
-        platform: bipagents_relay::seal::Platform::Apns,
-        environment: "production".into(),
-        token: "ab".repeat(32),
-    });
+    let other = Sealer::new(&[[9u8; 32]]).unwrap().seal(
+        &bipagents_relay::seal::Device {
+            platform: bipagents_relay::seal::Platform::Apns,
+            environment: "production".into(),
+            token: "ab".repeat(32),
+        },
+        bipagents_relay::seal::Audience::Bridge,
+        bipagents_relay::seal::now(),
+    );
     let (_, body) = h.post("/v1/relay/push", json!({"token": other, "payload": preview("vie")})).await;
     assert_eq!((body["status"].as_u64(), body["reason"].as_str()), (Some(410), Some("BadRelayToken")));
     // A raw device token is a misconfigured bridge, not a dead device: refused, nothing forgotten.
@@ -249,11 +260,15 @@ async fn a_device_blocked_for_abuse_gets_nothing() {
     assert_eq!(status, 403, "{body}");
     assert!(body["detail"].as_str().unwrap().contains("support@bipagents.com"));
     // A token sealed before it was blocked: refused too, nothing reaches Apple.
-    let sealed = Sealer::from_base64_list(&key).unwrap().seal(&bipagents_relay::seal::Device {
-        platform: bipagents_relay::seal::Platform::Apns,
-        environment: "production".into(),
-        token: device,
-    });
+    let sealed = Sealer::from_base64_list(&key).unwrap().seal(
+        &bipagents_relay::seal::Device {
+            platform: bipagents_relay::seal::Platform::Apns,
+            environment: "production".into(),
+            token: device,
+        },
+        bipagents_relay::seal::Audience::Bridge,
+        bipagents_relay::seal::now(),
+    );
     let (status, _) = h.post("/v1/relay/push", json!({"token": sealed, "payload": preview("vie")})).await;
     assert_eq!(status, 403);
     assert!(h.seen.lock().unwrap().apple.is_empty());
@@ -283,4 +298,174 @@ async fn a_report_of_a_reply_is_passed_on_with_the_secret_and_kept_nowhere() {
     h.post("/v1/report", report.clone()).await;
     let (status, _) = h.post("/v1/report", report).await;
     assert_eq!(status, 429, "two reports an hour per address in this test");
+}
+
+#[tokio::test]
+async fn an_ended_or_first_format_token_reads_as_gone_and_reaches_nobody() {
+    use bipagents_relay::seal::{Audience, Claims, Device, Platform, LIFETIME_SECS};
+    let key = Sealer::generate_key();
+    let h = harness_with(100, Vec::new(), key.clone()).await;
+    let (status, body) = h.post("/v1/register", json!({"platform": "apns", "token": "ab".repeat(32)})).await;
+    assert_eq!(status, 200);
+    assert!(body["relay_token"].as_str().unwrap().starts_with("r2."));
+    let expires = body["expires"].as_u64().unwrap();
+    let now = bipagents_relay::seal::now();
+    assert!((now + LIFETIME_SECS - 5..=now + LIFETIME_SECS + 5).contains(&expires), "ends in 90 days");
+    // Sealed 91 days ago by this very relay: ended.
+    let then = now - LIFETIME_SECS - 24 * 3600;
+    let ended = Sealer::from_base64_list(&key).unwrap().seal_claims(&Claims {
+        device: Device { platform: Platform::Apns, environment: "production".into(), token: "ab".repeat(32) },
+        id: "0011223344556677".into(),
+        aud: Audience::Bridge,
+        iat: then,
+        exp: then + LIFETIME_SECS,
+    });
+    let (status, body) = h.post("/v1/relay/push", json!({"token": ended, "payload": preview("vie")})).await;
+    assert_eq!((status, body["status"].as_u64(), body["reason"].as_str()), (200, Some(410), Some("ExpiredRelayToken")));
+    // A token of the first format (no end): gone too, the app registers again.
+    let first = format!("r1.{}", "A".repeat(80));
+    let (_, body) = h.post("/v1/relay/push", json!({"token": first, "payload": preview("vie")})).await;
+    assert_eq!((body["status"].as_u64(), body["reason"].as_str()), (Some(410), Some("ExpiredRelayToken")));
+    assert!(h.seen.lock().unwrap().apple.is_empty());
+}
+
+#[tokio::test]
+async fn a_token_for_the_guichet_works_only_with_its_key_and_only_it_speaks_as_the_guichet() {
+    let h = harness(100).await;
+    let account = "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.";
+    let word = json!({"aps": {"alert": {"title": "BipAgents", "body": account, "loc-key": account}, "sound": "default"},
+                      "kind": "server"});
+    let (status, body) =
+        h.post("/v1/register", json!({"platform": "apns", "token": "ab".repeat(32), "audience": "guichet"})).await;
+    assert_eq!(status, 200);
+    let guichet_token = body["relay_token"].as_str().unwrap().to_string();
+    // Leaked (the guichet's database, a log): useless without the guichet's key.
+    let (status, _) = h.post("/v1/relay/push", json!({"token": guichet_token, "payload": word})).await;
+    assert_eq!(status, 401);
+    let push_with = |key: &'static str| {
+        h.http
+            .post(format!("{}/v1/relay/push", h.relay))
+            .bearer_auth(key)
+            .json(&json!({"token": guichet_token, "payload": word}))
+            .send()
+    };
+    assert_eq!(push_with("not-the-key").await.unwrap().status().as_u16(), 401);
+    assert!(h.seen.lock().unwrap().apple.is_empty());
+    assert_eq!(push_with("guichet-key-1").await.unwrap().status().as_u16(), 200);
+    // A bridge's token can't make up the guichet's word, nor give a title: the generic text, no title.
+    let bridge_token = h.register("apns", &"ab".repeat(32)).await;
+    let (status, _) = h.post("/v1/relay/push", json!({"token": bridge_token, "payload": word})).await;
+    assert_eq!(status, 200);
+    let seen = h.seen.lock().unwrap();
+    assert_eq!(seen.apple[0].2["aps"]["alert"], json!({"body": account, "loc-key": account}));
+    assert_eq!(seen.apple[1].2["aps"]["alert"], json!({"body": "Nouveau message", "loc-key": "Nouveau message"}));
+}
+
+#[tokio::test]
+async fn a_leaked_token_can_be_refused_by_its_id() {
+    use bipagents_relay::seal::{Audience, Claims, Device, Platform, LIFETIME_SECS};
+    let key = Sealer::generate_key();
+    let h = harness_with(100, vec!["0011223344556677".into()], key.clone()).await;
+    let now = bipagents_relay::seal::now();
+    let sealer = Sealer::from_base64_list(&key).unwrap();
+    let token = |id: &str| {
+        sealer.seal_claims(&Claims {
+            device: Device { platform: Platform::Apns, environment: "production".into(), token: "ab".repeat(32) },
+            id: id.into(),
+            aud: Audience::Bridge,
+            iat: now,
+            exp: now + LIFETIME_SECS,
+        })
+    };
+    let (status, _) =
+        h.post("/v1/relay/push", json!({"token": token("0011223344556677"), "payload": preview("vie")})).await;
+    assert_eq!(status, 403);
+    let (status, _) =
+        h.post("/v1/relay/push", json!({"token": token("8899aabbccddeeff"), "payload": preview("vie")})).await;
+    assert_eq!(status, 200, "the same phone's new token still works");
+}
+
+/// The transition (`RELAY_R1_UNTIL`): apps, bridges and guichet from before 2026-10-28 keep working with this relay.
+#[tokio::test]
+async fn during_the_transition_older_apps_bridges_and_guichet_keep_working() {
+    let key = Sealer::generate_key();
+    let h = harness_full(100, Vec::new(), key.clone(), bipagents_relay::seal::now() + 30 * 24 * 3600).await;
+    let iphone = "ab".repeat(32);
+    // An older app (no audience): a first-format token, the only kind its bridges take.
+    let (status, body) = h.post("/v1/register", json!({"platform": "apns", "token": iphone})).await;
+    assert_eq!(status, 200);
+    let old_app = body["relay_token"].as_str().unwrap().to_string();
+    assert!(old_app.starts_with("r1.") && body.get("legacy_token").is_none());
+    // A token sealed by the relay as it was (same key, first format) works too: the bridges' stored ones.
+    let stored = Sealer::from_base64_list(&key).unwrap().seal_retired(&bipagents_relay::seal::Device {
+        platform: bipagents_relay::seal::Platform::Apns,
+        environment: "production".into(),
+        token: iphone.clone(),
+    });
+    for token in [&old_app, &stored] {
+        let (status, body) = h.post("/v1/relay/push", json!({"token": token, "payload": preview("vie")})).await;
+        assert_eq!((status, body["status"].as_u64()), (200, Some(200)), "{body}");
+    }
+    // The guichet's word on a first-format token (the guichet holds them), without its key: as before.
+    let account = "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.";
+    let word = json!({"aps": {"alert": {"body": account, "loc-key": account}}, "kind": "server"});
+    let (status, _) = h.post("/v1/relay/push", json!({"token": old_app, "payload": word})).await;
+    assert_eq!(status, 200);
+    // A newer app: its own token, plus a first-format one for a bridge that refuses r2 (an older bridge).
+    let (_, body) = h.post("/v1/register", json!({"platform": "apns", "token": iphone, "audience": "bridge"})).await;
+    let (new_app, legacy) = (body["relay_token"].as_str().unwrap(), body["legacy_token"].as_str().unwrap());
+    assert!(new_app.starts_with("r2.") && legacy.starts_with("r1."));
+    for token in [new_app, legacy] {
+        let (status, _) = h.post("/v1/relay/push", json!({"token": token, "payload": preview("vie")})).await;
+        assert_eq!(status, 200);
+    }
+    // A newer app's guichet token, sent by an older guichet (no key yet): through; a wrong key is still refused.
+    let (_, body) = h.post("/v1/register", json!({"platform": "apns", "token": iphone, "audience": "guichet"})).await;
+    let guichet_token = body["relay_token"].as_str().unwrap().to_string();
+    assert!(body.get("legacy_token").is_none());
+    let (status, _) = h.post("/v1/relay/push", json!({"token": guichet_token, "payload": word})).await;
+    assert_eq!(status, 200);
+    let wrong = h
+        .http
+        .post(format!("{}/v1/relay/push", h.relay))
+        .bearer_auth("not-the-key")
+        .json(&json!({"token": guichet_token, "payload": word}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status().as_u16(), 401);
+    // An altered first-format token is still nobody's.
+    let altered = format!("r1.{}", "A".repeat(80));
+    let (_, body) = h.post("/v1/relay/push", json!({"token": altered, "payload": preview("vie")})).await;
+    assert_eq!(body["reason"].as_str(), Some("BadRelayToken"));
+    assert_eq!(h.seen.lock().unwrap().apple.len(), 6);
+    // /health warns, with the counts.
+    let health: Value = h.http.get(format!("{}/health", h.relay)).send().await.unwrap().json().await.unwrap();
+    assert!(health["warning"].as_str().unwrap().contains("r1"));
+    assert_eq!(health["r1_used"].as_u64(), Some(5), "{health}");
+    assert_eq!(health["guichet_without_key"].as_u64(), Some(1));
+    assert!(health["r1_until"].as_str().unwrap().len() == 10);
+}
+
+#[tokio::test]
+async fn after_the_transition_first_format_tokens_are_gone() {
+    let key = Sealer::generate_key();
+    let h = harness_full(100, Vec::new(), key.clone(), bipagents_relay::seal::now() - 1).await;
+    let iphone = "ab".repeat(32);
+    let stored = Sealer::from_base64_list(&key).unwrap().seal_retired(&bipagents_relay::seal::Device {
+        platform: bipagents_relay::seal::Platform::Apns,
+        environment: "production".into(),
+        token: iphone.clone(),
+    });
+    let (_, body) = h.post("/v1/relay/push", json!({"token": stored, "payload": preview("vie")})).await;
+    assert_eq!((body["status"].as_u64(), body["reason"].as_str()), (Some(410), Some("ExpiredRelayToken")));
+    // An app without an audience now gets the new format, and nobody a first-format fallback.
+    let (_, body) = h.post("/v1/register", json!({"platform": "apns", "token": iphone})).await;
+    assert!(body["relay_token"].as_str().unwrap().starts_with("r2.") && body.get("legacy_token").is_none());
+    let (_, body) = h.post("/v1/register", json!({"platform": "apns", "token": iphone, "audience": "guichet"})).await;
+    let (status, _) = h.post("/v1/relay/push", json!({"token": body["relay_token"], "payload": preview("vie")})).await;
+    assert_eq!(status, 401, "the guichet's key is required");
+    let health: Value = h.http.get(format!("{}/health", h.relay)).send().await.unwrap().json().await.unwrap();
+    assert!(health.get("warning").is_none());
+    assert!(h.seen.lock().unwrap().apple.is_empty());
 }

@@ -62,6 +62,7 @@ SETUP = ".config/bipagents/setup.json"     # its bridge's pairing secret while i
 LOCKED = ".local/share/bipagents/space/locked.json"   # its encrypted space not open yet, and why (space.rs)
 CREDIT = ".local/state/bipagents/credit.json"   # its plan's AI credit as the guichet says it (bridge-rs/src/credit.rs)
 CREDIT_STATES = ("ok", "low", "full", "stopped")
+HARDENED = "/var/lib/bipagents/space-hardened"   # space-hardening.sh was done (user-data.yaml, add-seat.sh)
 PAIR_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
 
@@ -442,8 +443,9 @@ def uptime(path="/proc/uptime"):
         return None
 
 
-def vitals(meminfo="/proc/meminfo", root="/", uptime_path="/proc/uptime"):
-    """The server's own numbers: memory, swap and disk in MB and GB, the load, how long it has been up."""
+def vitals(meminfo="/proc/meminfo", root="/", uptime_path="/proc/uptime", hardened=HARDENED):
+    """The server's own numbers: memory, swap and disk in MB and GB, the load, how long it has been up; and whether
+    space-hardening.sh was done (encrypted places need it: swap encrypted, no core dumps, journal in memory)."""
     info = {}
     try:
         with open(meminfo) as fh:
@@ -458,7 +460,8 @@ def vitals(meminfo="/proc/meminfo", root="/", uptime_path="/proc/uptime"):
     return {"memory_mb": info.get("MemTotal"), "available_mb": info.get("MemAvailable"),
             "swap_mb": info.get("SwapTotal"), "swap_used_mb": info.get("SwapTotal", 0) - info.get("SwapFree", 0),
             "disk_gb": round(disk.total / 1e9, 1), "disk_free_gb": round(disk.free / 1e9, 1),
-            "load": [round(load[0], 2), round(load[1], 2)], "uptime": uptime(uptime_path)}
+            "load": [round(load[0], 2), round(load[1], 2)], "uptime": uptime(uptime_path),
+            "space_hardened": os.path.exists(hardened)}
 
 
 def health():

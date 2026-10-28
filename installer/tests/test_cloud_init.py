@@ -282,7 +282,7 @@ def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_number
     (tmp_path / "uptime").write_text("754.31 2900.02\n")
     numbers = agent.vitals(str(meminfo), str(tmp_path), str(tmp_path / "uptime"))
     assert set(numbers) == {"memory_mb", "available_mb", "swap_mb", "swap_used_mb", "disk_gb", "disk_free_gb", "load",
-                            "uptime"}
+                            "uptime", "space_hardened"}
     assert numbers["uptime"] == 754 and agent.uptime(str(tmp_path / "missing")) is None
     assert numbers["memory_mb"] == 7812 and numbers["available_mb"] == 2929 and numbers["swap_used_mb"] == 1023
 
@@ -647,3 +647,61 @@ def test_the_seat_agent_waits_for_its_token_and_keeps_the_metadata_block(tmp_pat
     ran.clear()
     agent.metadata_block(str(rules), lambda *args: ran.append(args) or 0)
     assert ran == [("nft", "list", "table", "inet", "bipagents_metadata")]   # there: left as it is
+
+
+def test_an_encrypted_place_s_server_is_hardened_before_any_place_runs():
+    """Audit 2026-10-27, 19: space-hardening.sh ships in the first-boot files and runs as root, after the swap file
+    is made and before any place is installed, whenever a place's setup carries "keys"; a failure installs nothing."""
+    script = ROOT / "installer" / "cloud" / "space-hardening.sh"
+    data = yaml.safe_load(render("A" * 43))
+    files = {f["path"]: f for f in data["write_files"]}
+    shipped = files["/usr/local/lib/bipagents/space-hardening.sh"]
+    assert shipped["content"] == script.read_text(encoding="utf-8") and shipped["permissions"] == "0755"
+    commands = data["runcmd"]
+    hardening = next(c for c in commands if "space-hardening.sh" in c)
+    assert hardening.startswith("if grep -qs '\"keys\"' /etc/bipagents/cloud*.json; then bash ")
+    assert "|| exit 1" in hardening and "|| true" not in hardening
+    swap = next(i for i, c in enumerate(commands) if "mkswap /swapfile" in c)
+    install = next(i for i, c in enumerate(commands) if "/install.sh |" in c)
+    shared = next(i for i, c in enumerate(commands) if "bipinstall.shared_hermes enable" in c)
+    assert swap < commands.index(hardening) < min(install, shared)
+    # add-seat.sh (the other places, and any place installed again later): the same, before its account is made.
+    seat = (ROOT / "installer" / "cloud" / "add-seat.sh").read_text(encoding="utf-8")
+    assert seat.index('space-hardening.sh"') < seat.index("useradd") < seat.index("install.sh")
+
+
+def test_add_seat_installs_no_encrypted_place_when_the_hardening_fails(tmp_path):
+    import shutil
+    import subprocess
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    shutil.copy(ROOT / "installer" / "cloud" / "add-seat.sh", lib / "add-seat.sh")
+    ran = tmp_path / "ran"
+    (lib / "space-hardening.sh").write_text(f"#!/bin/bash\necho hardening >> {ran}\nexit 1\n")
+    setup = tmp_path / "cloud2.json"
+    setup.write_text(json.dumps({"v": 1, "port": 444, "keys": {"url": "https://k", "grant": "{}", "signature": "s",
+                                                                "token": "k" * 43}}))
+    result = subprocess.run(["bash", str(lib / "add-seat.sh"), "2", str(setup)], capture_output=True, text=True)
+    assert result.returncode == 1 and ran.read_text() == "hardening\n"
+    assert "not installed" in result.stderr
+
+
+def test_the_hardening_script_empties_the_old_swap_and_hides_no_failure():
+    text = (ROOT / "installer" / "cloud" / "space-hardening.sh").read_text(encoding="utf-8")
+    swap = text[text.index("# Swap"):text.index("# Core dumps")]
+    assert "|| true" not in swap
+    assert swap.index("swapoff /swapfile") < swap.index("dd if=/dev/zero of=/swapfile") \
+        < swap.index("/dev/mapper/bipswap none swap") < swap.index("swapon /dev/mapper/bipswap")
+    journal = text[text.index("# The journal"):]
+    assert journal.index("Storage=volatile") < journal.index("rm -rf /var/log/journal\n")
+    assert '> "$DONE"' in text
+
+
+def test_the_beat_says_whether_the_server_is_hardened(tmp_path):
+    agent = _seat_agent()
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal:        8000000 kB\n")
+    done = tmp_path / "space-hardened"
+    assert agent.vitals(str(meminfo), str(tmp_path), str(tmp_path / "up"), str(done))["space_hardened"] is False
+    done.write_text("2026-10-28T10:00:00Z\n")
+    assert agent.vitals(str(meminfo), str(tmp_path), str(tmp_path / "up"), str(done))["space_hardened"] is True

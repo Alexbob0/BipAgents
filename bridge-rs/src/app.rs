@@ -744,7 +744,7 @@ async fn register_device(State(state): State<AppState>, Json(body): Json<DeviceR
         if state.push_service.is_none() {
             return Err(HttpError::new(409, "this bridge has no push relay set up"));
         }
-        if !crate::relay::RELAY_TOKEN.is_match(&token) {
+        if !crate::relay::relay_token_taken(&token, crate::relay::unix_now()) {
             return Err(HttpError::new(400, "invalid relay token"));
         }
     } else if environment == "fcm" {
@@ -767,8 +767,13 @@ async fn register_device(State(state): State<AppState>, Json(body): Json<DeviceR
     if !unknown.is_empty() {
         return Err(HttpError::json(400, json!({"error": "unknown agent_ids", "agent_ids": unknown})));
     }
-    let device = state.store.upsert_device(&token, &environment, &agent_ids).await?;
+    let mut device = state.store.upsert_device(&token, &environment, &agent_ids).await?;
     tracing::info!(token = %redact6(&token), env = %environment, agents = ?J(&agent_ids), "device registered");
+    if environment == "relay" && crate::relay::is_first_format(&token) {
+        // the relay's first format, until its end: used, and the app asked for a new one at its next refresh
+        tracing::warn!(token = %redact6(&token), "first-format relay token (r1): the app is asked for a new one");
+        device.insert("renew".into(), Value::Bool(true));
+    }
     Ok(web::ok(Value::Object(device)))
 }
 
@@ -1726,13 +1731,15 @@ fn assemble(state: &AppState, config: &Config) -> Router {
     let inner: Router =
         app.fallback(move |request: Request| not_found(routes.clone(), request)).with_state(state.clone());
     // Python's middlewares wrap the whole app (before routing): here around the routed app, as one service.
-    // FastAPI reads bodies of any size (axum's extractors stop at 2 MB by default); an exception in a route is a
-    // plain-text 500, logged as uvicorn does.
+    // Bodies: one limit for the whole app, before routing (body_limit.rs: 4 MB, raised on the few routes that take
+    // large bodies), so axum's own per-extractor limit is off. An exception in a route is a plain-text 500, logged as
+    // uvicorn does.
     Router::new()
         .fallback_service(inner)
         .layer(middleware::from_fn(method_not_allowed_detail))
         .layer(middleware::from_fn_with_state(state.clone(), crate::place_move::guard))
         .layer(middleware::from_fn_with_state(state.clone(), crate::files::upload_size_limit))
+        .layer(middleware::from_fn(crate::body_limit::body_limit))
         .layer(axum::extract::DefaultBodyLimit::disable())
         .layer(tower_http::catch_panic::CatchPanicLayer::custom(internal_error))
 }

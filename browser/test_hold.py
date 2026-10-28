@@ -29,7 +29,7 @@ def test_the_relay_tells_its_version_even_while_held(monkeypatch, tmp_path):
     assert not devtools_relay.VERSION_PATH.match(HEAD + b"\r\n")
     answer = devtools_relay.version_answer()
     head, _, body = answer.partition(b"\r\n\r\n")
-    assert head.startswith(b"HTTP/1.1 200 OK") and json.loads(body) == {"relay": 2, "hold_token": True}
+    assert head.startswith(b"HTTP/1.1 200 OK") and json.loads(body)["relay"] == 3 and json.loads(body)["hold_token"] is True
     assert f"Content-Length: {len(body)}".encode() in head
 
 

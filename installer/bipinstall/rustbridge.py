@@ -5,7 +5,7 @@ were built from (the tree of bridge-rs/, which holds everything the binary embed
 knows which release is its own without asking anyone.
 
     bipagents bridge           which version runs, and whether its binaries are here
-    bipagents bridge rust      this checkout's binaries again (checked against the release's SHA256SUMS, into
+    bipagents bridge rust      this checkout's binaries again (checked against the release's signed SHA256SUMS, into
                                ~/.local/share/bipagents/bridge/<key>/), the service put back on them, restarted
     bipagents bridge browser add --agent vie
                                the bridge's own command line (check, qr, peer-token, browser, spaces…), on this
@@ -32,6 +32,8 @@ import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Callable, List, Optional
+
+from . import release_key
 
 REPO = Path(__file__).resolve().parents[2]
 SLUG = "Alexbob0/BipAgents"
@@ -104,11 +106,22 @@ def fetch(home: Path, release: str, name: str, opener: Opener = _download) -> Pa
         return target
     base = f"https://github.com/{SLUG}/releases/download/bridge-{release}"
     try:
-        sums = opener(f"{base}/{SUMS}").decode()
+        raw_sums = opener(f"{base}/{SUMS}")
         archive = opener(f"{base}/{name}")
     except Exception as exc:   # noqa: BLE001 - 404 while the workflow still builds, or no network
         raise RustBridgeError(f"the bridge of this version isn't out yet ({type(exc).__name__}); "
                               "try again in a few minutes") from exc
+    signature = None
+    if release_key.pinned():   # the sums are trusted only once signed by BipAgents' release key
+        try:
+            signature = opener(f"{base}/{release_key.SIGNATURE}")
+        except Exception:   # noqa: BLE001 - no signature published: refused just below
+            signature = None
+    try:
+        release_key.check(raw_sums, signature)
+    except release_key.ReleaseSignatureError as exc:
+        raise RustBridgeError(f"bridge {release}: {exc}") from exc
+    sums = raw_sums.decode()
     expected = next((line.split()[0] for line in sums.splitlines() if line.strip().endswith(name)), None)
     if expected is None or hashlib.sha256(archive).hexdigest() != expected:
         raise RustBridgeError(f"{name} doesn't match the release's {SUMS}: not installed")

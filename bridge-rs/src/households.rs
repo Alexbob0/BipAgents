@@ -28,6 +28,9 @@ use crate::Dict;
 /// « cuisine__lea »: agent cuisine of the household lea.
 pub const SEPARATOR: &str = "__";
 pub const INVITE_SECONDS: f64 = 600.0;
+/// A link whose name would take an existing household's place (its id is the name's slug): refused, unless the
+/// request carries that household's current key (the same household linking again). Mapped to 409.
+pub const NAME_TAKEN: &str = "a household with this name is already linked: unlink it first";
 
 /// Python's `HouseholdError` (a `ValueError`).
 #[derive(Debug, Clone, thiserror::Error)]
@@ -162,6 +165,7 @@ impl Households {
     /// The other bridge introduces itself with our code and the key it will call us with (we keep its digest).
     /// Returns the key we will call it with, and our name.
     /// `fingerprint`: the certificate their address serves when it is a door (door_tls.rs), None for a public one.
+    /// `current`: the key they call us with today, when they link again (then they may keep their place).
     pub fn accept(
         &self,
         code: &str,
@@ -169,8 +173,12 @@ impl Households {
         url: &str,
         their_key: &str,
         fingerprint: Option<&str>,
+        current: Option<&str>,
     ) -> Result<Dict, HouseholdError> {
         let mut data = self.load();
+        // checked before the invitation is used, so that it still works once the name is sorted out
+        let replace = current.and_then(|token| caller_in(&data, token));
+        taken(&data, name, replace.as_deref())?;
         let known = match data.get_mut("invites") {
             Some(Value::Object(invites)) => invites.shift_remove(&digest(code)).is_some(),
             _ => false,
@@ -179,7 +187,7 @@ impl Households {
             return Err(HouseholdError("this invitation is unknown or expired".into()));
         }
         let ours = crate::py::token_urlsafe(32);
-        Self::add(&mut data, name, url, &ours, their_key, fingerprint)?;
+        Self::add(&mut data, name, url, &ours, their_key, fingerprint, replace.as_deref())?;
         self.save(&data).map_err(|e| HouseholdError(e.to_string()))?;
         let mut out = Dict::new();
         out.insert("key".into(), json!(ours));
@@ -197,7 +205,9 @@ impl Households {
         fingerprint: Option<&str>,
     ) -> anyhow::Result<String> {
         let mut data = self.load();
-        let household = Self::add(&mut data, name, url, key_out, key_in, fingerprint)?;
+        // the household we already reach at this very address (we called it ourselves) is linking again
+        let replace = linked_at(&data, url);
+        let household = Self::add(&mut data, name, url, key_out, key_in, fingerprint, replace.as_deref())?;
         self.save(&data)?;
         Ok(household)
     }
@@ -209,6 +219,7 @@ impl Households {
         key_out: &str,
         key_in: &str,
         fingerprint: Option<&str>,
+        replace: Option<&str>,
     ) -> Result<String, HouseholdError> {
         let short = key_out.chars().count().min(key_in.chars().count()) < 32;
         if name.trim().is_empty() || !(url.starts_with("http://") || url.starts_with("https://")) || short {
@@ -225,6 +236,7 @@ impl Households {
         if household == slug(&own) {
             return Err(HouseholdError("a household cannot link to itself (or to one with the same name)".into()));
         }
+        taken(data, name, replace)?;
         let mut entry = json!({
             "name": name.trim().chars().take(40).collect::<String>(),
             "url": url.trim_end_matches('/'),
@@ -248,19 +260,7 @@ impl Households {
     }
 
     pub fn caller(&self, token: &str) -> Option<String> {
-        let wanted = digest(token);
-        let data = self.load();
-        let households = data.get("households")?.as_object()?;
-        households
-            .iter()
-            .find(|(_, v)| {
-                let key_in = v
-                    .get("key_in")
-                    .map(crate::py::py_str)
-                    .filter(|_| v.get("key_in").map(crate::py::truthy).unwrap_or(false));
-                key_in.map(|k| crate::auth::constant_time_eq(k.as_bytes(), wanted.as_bytes())).unwrap_or(false)
-            })
-            .map(|(h, _)| h.clone())
+        caller_in(&self.load(), token)
     }
 
     /// The certificate a linked household's bridge says it serves (`POST /family/door`, with its key): kept with its
@@ -330,6 +330,42 @@ impl Households {
     }
 }
 
+/// The linked household whose key `token` is.
+fn caller_in(data: &Dict, token: &str) -> Option<String> {
+    let wanted = digest(token);
+    let households = data.get("households")?.as_object()?;
+    households
+        .iter()
+        .find(|(_, v)| {
+            let key_in = v
+                .get("key_in")
+                .map(crate::py::py_str)
+                .filter(|_| v.get("key_in").map(crate::py::truthy).unwrap_or(false));
+            key_in.map(|k| crate::auth::constant_time_eq(k.as_bytes(), wanted.as_bytes())).unwrap_or(false)
+        })
+        .map(|(h, _)| h.clone())
+}
+
+/// The linked household we call at `url`.
+fn linked_at(data: &Dict, url: &str) -> Option<String> {
+    let url = url.trim_end_matches('/');
+    let households = data.get("households")?.as_object()?;
+    households
+        .iter()
+        .find(|(_, v)| v.get("url").and_then(Value::as_str).is_some_and(|u| u.trim_end_matches('/') == url))
+        .map(|(h, _)| h.clone())
+}
+
+/// `NAME_TAKEN` when `name` would take the place of a linked household other than `replace` (the one linking again).
+fn taken(data: &Dict, name: &str, replace: Option<&str>) -> Result<(), HouseholdError> {
+    let household = slug(name);
+    let exists = data.get("households").and_then(Value::as_object).is_some_and(|h| h.contains_key(&household));
+    if exists && replace != Some(household.as_str()) {
+        return Err(HouseholdError(NAME_TAKEN.into()));
+    }
+    Ok(())
+}
+
 /// `data_dir/households.json` (next to the database).
 pub fn path_for(config: &Config) -> String {
     crate::py::join(&config.data_dir(), "households.json")
@@ -363,11 +399,11 @@ mod tests {
         assert!(households.invite().is_err()); // name the household first
         households.set_name("Alex").unwrap();
         let code = households.invite().unwrap();
-        let answer = households.accept(&code, "Léa", "https://b.ts.net", &"k".repeat(40), None).unwrap();
+        let answer = households.accept(&code, "Léa", "https://b.ts.net", &"k".repeat(40), None, None).unwrap();
         assert_eq!(households.caller(&"k".repeat(40)).as_deref(), Some("lea"));
         assert!(answer["key"].as_str().unwrap().len() >= 32 && answer["name"] == "Alex");
         assert!(!std::fs::read_to_string(&households.path).unwrap().contains(&"k".repeat(40))); // only a digest
-        assert!(households.accept(&code, "Léa", "https://b.ts.net", &"k".repeat(40), None).is_err()); // used once
+        assert!(households.accept(&code, "Paul", "https://b.ts.net", &"k".repeat(40), None, None).is_err()); // used once
         let late = households.invite().unwrap();
         let mut data = households.load();
         let expired: Dict = data["invites"]
@@ -378,6 +414,37 @@ mod tests {
             .collect();
         data.insert("invites".into(), Value::Object(expired));
         households.save(&data).unwrap();
-        assert!(households.accept(&late, "Paul", "https://c.ts.net", &"p".repeat(40), None).is_err());
+        assert!(households.accept(&late, "Paul", "https://c.ts.net", &"p".repeat(40), None, None).is_err());
+    }
+
+    /// A second household with an existing household's name cannot take its place (audit 2026-10-27 #9); the same
+    /// household, with its current key, may link again.
+    #[test]
+    fn a_name_already_linked_is_refused_unless_it_is_the_same_household() {
+        let dir = tempfile::tempdir().unwrap();
+        let households = Households::new(&dir.path().join("households.json").to_string_lossy());
+        households.set_name("Alex").unwrap();
+        let code = households.invite().unwrap();
+        households.accept(&code, "Léa", "https://b.ts.net", &"k".repeat(40), None, None).unwrap();
+        let before = households.get("lea").unwrap();
+        let code = households.invite().unwrap();
+        let err = households.accept(&code, "LÉA", "https://evil.ts.net", &"e".repeat(40), None, None).unwrap_err();
+        assert_eq!(err.0, NAME_TAKEN);
+        // a wrong key is no better
+        let err = households
+            .accept(&code, "Léa", "https://evil.ts.net", &"e".repeat(40), None, Some(&"x".repeat(40)))
+            .unwrap_err();
+        assert_eq!(err.0, NAME_TAKEN);
+        assert_eq!(households.get("lea").unwrap(), before);
+        assert_eq!(households.caller(&"e".repeat(40)), None);
+        // the refusals did not use the invitation up: Léa herself links again with her current key
+        households.accept(&code, "Léa", "https://b2.ts.net", &"n".repeat(40), None, Some(&"k".repeat(40))).unwrap();
+        assert_eq!(households.caller(&"n".repeat(40)).as_deref(), Some("lea"));
+        assert_eq!(households.caller(&"k".repeat(40)), None);
+        // joining: a linked name at another address is refused, the same address links again
+        let err = households.joined("Lea", "https://other.ts.net", &"o".repeat(40), &"i".repeat(40), None).unwrap_err();
+        assert_eq!(err.to_string(), NAME_TAKEN);
+        households.joined("Léa", "https://b2.ts.net/", &"o".repeat(40), &"i".repeat(40), None).unwrap();
+        assert_eq!(households.caller(&"i".repeat(40)).as_deref(), Some("lea"));
     }
 }

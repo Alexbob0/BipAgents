@@ -52,7 +52,8 @@ RUN chmod 755 /opt/stealth/entrypoint.sh /opt/stealth/mcp.sh /opt/stealth/open_b
 # devtools_relay.py),
 # the persistent profile and launch flags (the bridge adds the language, and a GPU's when it passes /dev/dri in), and
 # the flags the server adds in any container that this one does without (a single process, no GPU at all, and a
-# redundant one Chrome shows a warning bar for), a browser always shown on the screen (an agent's headless ignored), and
+# redundant one Chrome shows a warning bar for; nodriver's --remote-allow-origins=*, so Chrome refuses a DevTools
+# WebSocket from a web page), a browser always shown on the screen (an agent's headless ignored), and
 # how long a starting Chrome may take to open its DevTools (nodriver's own ~3 s failed cold starts on a loaded server).
 # BROWSER_IDLE_TIMEOUT=0: the server's own reaper never lets go of the agent's browser; the bridge stops the whole
 # container once nobody uses it (bip-browser-mcp's `idle`).
@@ -60,12 +61,16 @@ ENV DISPLAY=:99 \
     STEALTH_CDP_PORT=9222 \
     STEALTH_USER_DATA_DIR=/home/bip/profile \
     STEALTH_BROWSER_ARGS="--start-maximized;--no-first-run;--no-default-browser-check;--disable-dev-shm-usage;--ignore-gpu-blocklist;--test-type;--hide-crash-restore-bubble" \
-    STEALTH_DROP_ARGS="--single-process;--disable-gpu;--disable-setuid-sandbox" \
+    STEALTH_DROP_ARGS="--single-process;--disable-gpu;--disable-setuid-sandbox;--remote-allow-origins=*" \
     STEALTH_HEADFUL=1 \
     STEALTH_CONNECT_SECONDS=45 \
     BROWSER_IDLE_TIMEOUT=0 \
     PYTHONWARNINGS=ignore \
     PYTHONUNBUFFERED=1
+
+# The DevTools relay's version (devtools_relay.py RELAY_VERSION): from 3 it asks for the browser's secret, and the
+# nightly refresh (browser_refresh.py) gives the browsers set up before it theirs.
+LABEL bipagents.relay="3"
 
 USER bip
 WORKDIR /home/bip

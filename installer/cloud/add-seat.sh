@@ -32,6 +32,14 @@ if [ -n "$version" ]; then
     [ "${#version}" -eq 40 ] || { echo "add-seat.sh: a version is a commit's 40 characters" >&2; exit 2; }
     pin="BIPAGENTS_TO=$version "
 fi
+here=$(dirname "$0")
+# A place to be encrypted at rest (its setup carries "keys"): the server hardened first, as root (swap emptied and
+# encrypted, no core dumps, the journal in memory; done once, space-hardening.sh beside this script). If that fails,
+# the place is not installed: no encrypted place on an unhardened server.
+if grep -qs '"keys"' "$setup"; then
+    bash "$here/space-hardening.sh" \
+        || { echo "add-seat.sh: the server's hardening for encrypted spaces failed: place $n not installed" >&2; exit 1; }
+fi
 
 id -u "$user" >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$user"
 passwd --lock "$user" >/dev/null
@@ -47,7 +55,6 @@ loginctl enable-linger "$user"
 systemctl start "user@$(id -u "$user").service"
 # Its soft memory ceiling (MemoryHigh on its slice, a share of the server's memory) before its install's heavy steps;
 # the seat agent keeps it set every two minutes after.
-here=$(dirname "$0")
 [ -f "$here/seat-agent.py" ] && python3 "$here/seat-agent.py" --ceiling >/dev/null 2>&1
 # Hermes and the agents' images of the version it installs, ready-made and shared by the server's places (usually
 # there already: nothing to fetch). Its install then points at them instead of fetching its own. Each phase's time

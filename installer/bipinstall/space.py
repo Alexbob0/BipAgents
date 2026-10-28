@@ -8,9 +8,10 @@ it (a drop-in each: `ConditionPathExists` on the open folder's marker) and the b
     bipagents encrypt [--yes] [--keep-rollback] [--allow-other]     encrypt now (the agents stop for a minute or so)
     bipagents encrypt status | unlock | lock | rollback | finish    the bridge's `space` command
 
-The key service: --key-service URL (or $BIPAGENTS_KEYS_URL) and this place's token ($BIPAGENTS_KEYS_TOKEN, else the
-guichet's place token from ~/.config/bipagents/backup.json); a server of the offer has both from its setup
-(keys.json: the address and the guichet's grant). Off unless run: the offer turns it on per place by putting « keys »
+The key service: --key-service URL (or $BIPAGENTS_KEYS_URL) and this place's own key-service token
+($BIPAGENTS_KEYS_TOKEN, else keys.json's); a server of the offer has both from its setup (keys.json: the address,
+the token and the guichet's grant). Never the backups' token (backup.json): the key service's token stays in clear
+beside the encrypted folder, so it must open nothing else at the guichet (audit 2026-10-27, 17). Off unless run: the offer turns it on per place by putting « keys »
 in the place's setup (cloud.py), a self-hosted install only by running this."""
 from __future__ import annotations
 
@@ -108,10 +109,7 @@ def key_service(args_url: Optional[str], base: Optional[Path] = None) -> Dict[st
     except (OSError, ValueError):
         pass
     url = args_url or os.environ.get("BIPAGENTS_KEYS_URL") or saved.get("url") or ""
-    token = os.environ.get("BIPAGENTS_KEYS_TOKEN") or ""
-    if not token:
-        from . import backup
-        token = backup.settings(base).get("token") or ""
+    token = os.environ.get("BIPAGENTS_KEYS_TOKEN") or saved.get("token") or ""
     found = {"BIPAGENTS_KEYS_URL": url, "BIPAGENTS_KEYS_TOKEN": token}
     if saved.get("grant") and saved.get("signature"):
         found.update({"BIPAGENTS_KEYS_GRANT": saved["grant"], "BIPAGENTS_KEYS_SIGNATURE": saved["signature"]})
@@ -147,7 +145,8 @@ def encrypt(url: Optional[str], keep_rollback: bool = False, allow_other: bool =
         return 1
     keys = key_service(url)
     if not keys["BIPAGENTS_KEYS_URL"] or not keys["BIPAGENTS_KEYS_TOKEN"]:
-        say(ui.sad("No key service: give --key-service URL (and this place's token in $BIPAGENTS_KEYS_TOKEN)."))
+        say(ui.sad("No key service: give --key-service URL and this place's own key-service token in "
+                   "$BIPAGENTS_KEYS_TOKEN (never the backups' token)."))
         return 1
     space = home() / SPACE
     gated = gated_units()
