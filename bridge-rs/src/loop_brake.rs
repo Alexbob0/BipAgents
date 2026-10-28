@@ -38,11 +38,27 @@
 //! `[brake]` in bridge.toml (every value optional):
 //!
 //!     enabled = true
-//!     same_tool = 10          tool_calls = 60        same_call = 3        writes = 10
+//!     same_tool = 10          tool_calls = 60        same_call = 3        same_lookup = 5      writes = 10
 //!     browser_calls = 40      page_reads = 15
-//!     task_same_tool = 40     task_tool_calls = 120  task_same_call = 5   task_writes = 40
+//!     task_same_tool = 40     task_tool_calls = 120  task_same_call = 5   task_same_lookup = 8 task_writes = 40
 //!     task_browser_calls = 80 task_page_reads = 30
-//!     routine_tool_calls = 30 idle_seconds = 120
+//!     routine_tool_calls = 40 idle_seconds = 120
+//!     rescue = true           rescue_tool_calls = 5  rescue_seconds = 180
+//!
+//! Read-only lookups (2026-10-28, Alex's home server: Vie diagnosing a nightly job was stopped after 5 calls, 3 of
+//! them the same `session_search`): searching past conversations, the Carnet, the web, files, mails or the memory
+//! the same way again is how a diagnosis goes, so it takes `same_lookup` identical calls (5), not `same_call` (3,
+//! for writes and actions). A call made again right after the identical call failed (`tool.completed` with an
+//! error) is a retry, never counted as « the same call ».
+//!
+//! The rescue turn (2026-10-28, Alex: a bare « I stopped » helps nobody): a person's conversation turn the brake
+//! stopped is followed by ONE short turn of the same agent in the same conversation (runs.rs `loop_rescue`), told
+//! out of sight (`rescue_input`, its row hidden by the apps: `[bipagents:loop_rescue]`) why it was stopped, not to
+//! call that tool again, and to answer with what it has: what it tried, what it found, what blocked it, one or two
+//! ways forward. That turn has tight limits (`rescue_limits`: `rescue_tool_calls` calls, the stopped tool refused at
+//! the bridge's MCP and stopping the turn at its second call) and is never rescued itself. The person reads the
+//! brake's short line (`notice_head`), then the agent's own reply; when the rescue fails too, the full plain line.
+//! Background tasks and routines get no rescue turn.
 //!
 //! No Python counterpart (owner group: push-runs).
 
@@ -61,8 +77,10 @@ pub struct Limits {
     pub same_tool: u32,
     /// More calls than this in all stops it.
     pub tool_calls: u32,
-    /// The same call (tool and arguments) this many times stops it.
+    /// The same call (tool and arguments) this many times stops it…
     pub same_call: u32,
+    /// … but a read-only lookup's (`lookup_tool`: past conversations, the Carnet, the web, files…) this many times.
+    pub same_lookup: u32,
     /// The bridge's write tools refuse past this many writes.
     pub writes: u32,
     /// The visible browser: more calls than this stops the turn…
@@ -81,6 +99,14 @@ pub struct Settings {
     pub routine_tool_calls: u32,
     /// With no run followed: the agent's calls form one turn until it has been quiet this long.
     pub idle_seconds: f64,
+    /// A limit getting close (`soft_limit`, about two thirds) is told to the agent once, before any stop.
+    pub warn: bool,
+    /// A stopped conversation turn is followed by one short turn that explains (runs.rs `loop_rescue`)…
+    pub rescue: bool,
+    /// … with at most this many tool calls…
+    pub rescue_tool_calls: u32,
+    /// … and this long at most before it is stopped too.
+    pub rescue_seconds: f64,
 }
 
 impl Default for Settings {
@@ -91,14 +117,27 @@ impl Default for Settings {
                 same_tool: 10,
                 tool_calls: 60,
                 same_call: 3,
+                same_lookup: 5,
                 writes: 10,
                 browser_calls: 40,
                 page_reads: 15,
             },
             // under Hermes' own cap of 150 model calls (tool_diet.rs), so the brake speaks first
-            task: Limits { same_tool: 40, tool_calls: 120, same_call: 5, writes: 40, browser_calls: 80, page_reads: 30 },
-            routine_tool_calls: 30,
+            task: Limits {
+                same_tool: 40,
+                tool_calls: 120,
+                same_call: 5,
+                same_lookup: 8,
+                writes: 40,
+                browser_calls: 80,
+                page_reads: 30,
+            },
+            routine_tool_calls: 40,
             idle_seconds: 120.0,
+            warn: true,
+            rescue: true,
+            rescue_tool_calls: 5,
+            rescue_seconds: 180.0,
         }
     }
 }
@@ -116,6 +155,7 @@ impl Settings {
             same_tool: n(&format!("{prefix}same_tool"), d.same_tool, 2),
             tool_calls: n(&format!("{prefix}tool_calls"), d.tool_calls, 5),
             same_call: n(&format!("{prefix}same_call"), d.same_call, 2),
+            same_lookup: n(&format!("{prefix}same_lookup"), d.same_lookup, 2),
             writes: n(&format!("{prefix}writes"), d.writes, 1),
             browser_calls: n(&format!("{prefix}browser_calls"), d.browser_calls, 5),
             page_reads: n(&format!("{prefix}page_reads"), d.page_reads, 2),
@@ -126,7 +166,21 @@ impl Settings {
             task: limits("task_", d.task),
             routine_tool_calls: n("routine_tool_calls", d.routine_tool_calls, 5),
             idle_seconds: table.get("idle_seconds").and_then(Value::as_f64).unwrap_or(d.idle_seconds).clamp(10.0, 86_400.0),
+            warn: table.get("warn").and_then(Value::as_bool).unwrap_or(d.warn),
+            rescue: table.get("rescue").and_then(Value::as_bool).unwrap_or(d.rescue),
+            rescue_tool_calls: n("rescue_tool_calls", d.rescue_tool_calls, 1),
+            rescue_seconds: table
+                .get("rescue_seconds")
+                .and_then(Value::as_f64)
+                .unwrap_or(d.rescue_seconds)
+                .clamp(20.0, 1_800.0),
         }
+    }
+
+    /// The rescue turn's limits: a few calls to answer, never a new round of work.
+    pub fn rescue_limits(&self) -> Limits {
+        let calls = self.rescue_tool_calls;
+        Limits { same_tool: 3, tool_calls: calls, same_call: 2, same_lookup: 2, writes: 2, browser_calls: calls, page_reads: 2 }
     }
 
     pub fn limits(&self, background: bool) -> Limits {
@@ -200,6 +254,55 @@ pub fn write_tool(tool: &str) -> bool {
     WRITE_TOOLS.contains(&bare(tool))
 }
 
+/// Read-only lookups: searching or reading what is there (Hermes' past conversations, the Carnet, the web, files,
+/// mails, the calendar, contacts, the agent's pages, skills, its memory read), held to `same_lookup`.
+const LOOKUP_TOOLS: [&str; 14] = [
+    "session_search",
+    "web_search",
+    "web_extract",
+    "read_file",
+    "search_files",
+    "notebook_search",
+    "notebook_read",
+    "read_page",
+    "list_pages",
+    "skill_view",
+    "skills_list",
+    "tool_search",
+    "tool_describe",
+    "message_search",
+];
+
+/// `signature`: the call's arguments or preview (Hermes' `memory` both reads and writes: a read only by its action).
+pub fn lookup_tool(tool: &str, signature: Option<&str>) -> bool {
+    let name = bare(tool);
+    if write_tool(name) {
+        return false;
+    }
+    if name == "memory" {
+        let s = signature.unwrap_or("").to_ascii_lowercase();
+        return ["\"read\"", "\"view\"", "\"search\"", "\"list\""].iter().any(|a| s.contains(a))
+            || s.starts_with("read")
+            || s.starts_with("search");
+    }
+    LOOKUP_TOOLS.contains(&name)
+        || name.starts_with("knowledge_")
+        || ["_search", "_list", "_read", "_get"].iter().any(|end| name.ends_with(end))
+}
+
+/// A tool's answer that says it failed (`tool.completed`: Hermes' `error`, or an error in its preview).
+pub fn completed_with_error(data: &serde_json::Map<String, Value>) -> bool {
+    if data.get("error").and_then(Value::as_bool).unwrap_or(false) {
+        return true;
+    }
+    let preview = data.get("preview").and_then(Value::as_str).unwrap_or("").trim_start();
+    let head = preview.chars().take(80).collect::<String>().to_ascii_lowercase();
+    head.starts_with("error")
+        || head.starts_with("{\"error\"")
+        || head.contains("\"success\": false")
+        || head.contains("\"success\":false")
+}
+
 /// Why a turn was stopped.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Over {
@@ -223,6 +326,88 @@ pub struct TurnCount {
     pub page_reads: u32,
     per_tool: HashMap<String, u32>,
     per_call: HashMap<String, u32>,
+    /// The turn's last call (tool and arguments), and whether it answered with an error: the identical call right
+    /// after is a retry, not « the same call again ».
+    last_call: Option<String>,
+    last_tool: String,
+    last_failed: bool,
+    /// A rescue turn's stopped tool (bare name): its second call stops the turn (the first is refused at the MCP for
+    /// the bridge's tools, and the rescue's instruction says not to call it).
+    pub banned: Option<String>,
+    banned_calls: u32,
+    /// The limits already brought close in this turn (told once each), and the one the last call brought close.
+    warned: HashSet<String>,
+    warning: Option<Warning>,
+}
+
+/// About two thirds of a hard limit: where the agent is told it gets close (same call 3 of 5 for a lookup, 2 of 3
+/// for a write, 40 of 60 calls, 7 of 10 for one tool).
+pub fn soft_limit(hard: u32) -> u32 {
+    (2 * hard + 1) / 3
+}
+
+/// A limit the turn gets close to: the agent is told, in a steer (runs.rs `brake`), before being stopped.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Warning {
+    /// The same call (tool, how many times, the hard limit it is stopped at).
+    SameCall(String, u32, u32),
+    /// One tool many times (tool, how many times, the hard limit it is stopped past).
+    SameTool(String, u32, u32),
+    /// Many calls in all, many page reads, many browser calls (how many, the hard limit).
+    TooMany(u32, u32),
+    PageReads(u32, u32),
+    Browser(u32, u32),
+}
+
+/// The steers the bridge's brake gives start with this (the apps hide such rows: `[bipagents:`).
+pub const WARN_MARK: &str = "[bipagents:brake]";
+
+impl Warning {
+    fn key(&self) -> String {
+        match self {
+            Warning::SameCall(tool, _, _) => format!("call:{tool}"),
+            Warning::SameTool(tool, _, _) => format!("tool:{tool}"),
+            Warning::TooMany(..) => "total".into(),
+            Warning::PageReads(..) => "page_reads".into(),
+            Warning::Browser(..) => "browser".into(),
+        }
+    }
+
+    /// For the logs.
+    pub fn reason(&self) -> String {
+        match self {
+            Warning::SameCall(tool, n, _) => format!("same call {n} times ({tool})"),
+            Warning::SameTool(tool, n, _) => format!("same tool {n} times ({tool})"),
+            Warning::TooMany(n, _) => format!("{n} tool calls"),
+            Warning::PageReads(n, _) => format!("the browser read the page {n} times"),
+            Warning::Browser(n, _) => format!("{n} browser calls"),
+        }
+    }
+
+    /// The note the agent gets (a steer, after its current tool calls), in English, out of the person's sight.
+    pub fn text(&self) -> String {
+        let what = match self {
+            Warning::SameCall(tool, n, hard) => {
+                format!("you have made exactly the same {tool} call {n} times in this turn; at {hard} the turn is stopped")
+            }
+            Warning::SameTool(tool, count, hard) => {
+                format!("you have called {tool} {count} times in this turn; past {hard} the turn is stopped")
+            }
+            Warning::TooMany(count, hard) => {
+                format!("you have made {count} tool calls in this turn; past {hard} the turn is stopped")
+            }
+            Warning::PageReads(count, hard) => {
+                format!("you have read the page {count} times in this turn; past {hard} the turn is stopped")
+            }
+            Warning::Browser(count, hard) => {
+                format!("you have made {count} browser steps in this turn; past {hard} the turn is stopped")
+            }
+        };
+        format!(
+            "{WARN_MARK} A note from the bridge, not from your person: {what}. Change approach (other words, another \
+source, another tool), or answer the person now with what you have and say what is missing."
+        )
+    }
 }
 
 /// A call's arguments in a stable form (keys sorted), for telling the same call.
@@ -252,6 +437,26 @@ impl TurnCount {
     pub fn note(&mut self, tool: &str, signature: Option<&str>, browser: bool, limits: &Limits) -> Option<Over> {
         let name = bare(tool).to_string();
         self.total += 1;
+        let key = signature.filter(|s| !s.trim().is_empty()).map(|s| format!("{name}\u{1f}{s}"));
+        let retry = self.last_failed && key.is_some() && self.last_call == key;
+        self.last_call = key;
+        self.last_tool = name.clone();
+        self.last_failed = false;
+        if self.banned.as_deref() == Some(name.as_str()) {
+            self.banned_calls += 1;
+            if self.banned_calls > 1 {
+                return Some(Over::SameCall(name));
+            }
+        }
+        // the first limit getting close: told once before the stop (`warning`)
+        let mut close: Option<Warning> = None;
+        let mut near = |count: u32, hard: u32, at_hard: bool, warning: &dyn Fn() -> Warning| {
+            // `at_hard`: the limit is reached at `hard` (else passed after it)
+            let soft = soft_limit(hard);
+            if close.is_none() && soft >= 2 && soft < hard + u32::from(!at_hard) && count == soft {
+                close = Some(warning());
+            }
+        };
         if browser {
             self.browser += 1;
             if page_read_tool(&name) {
@@ -259,30 +464,57 @@ impl TurnCount {
                 if self.page_reads > limits.page_reads {
                     return Some(Over::PageReads);
                 }
+                near(self.page_reads, limits.page_reads, false, &|| Warning::PageReads(self.page_reads, limits.page_reads));
             }
             if self.browser > limits.browser_calls {
                 return Some(Over::Browser);
             }
+            near(self.browser, limits.browser_calls, false, &|| Warning::Browser(self.browser, limits.browser_calls));
         }
         let work = browser || WORK_TOOLS.contains(&name.as_str());
         let same = self.per_tool.entry(name.clone()).or_insert(0);
         *same += 1;
-        if !work && *same > limits.same_tool {
+        let same = *same;
+        if !work && same > limits.same_tool {
             return Some(Over::SameTool(name));
         }
+        if !work {
+            near(same, limits.same_tool, false, &|| Warning::SameTool(name.clone(), same, limits.same_tool));
+        }
         if let Some(signature) = signature.filter(|s| !s.trim().is_empty()) {
-            if !browser && !PREVIEW_ONLY_TOOLS.contains(&name.as_str()) {
+            if !browser && !PREVIEW_ONLY_TOOLS.contains(&name.as_str()) && !retry {
                 let again = self.per_call.entry(format!("{name}\u{1f}{signature}")).or_insert(0);
                 *again += 1;
-                if *again >= limits.same_call {
+                let again = *again;
+                let limit = if lookup_tool(&name, Some(signature)) { limits.same_lookup } else { limits.same_call };
+                if again >= limit {
                     return Some(Over::SameCall(name));
                 }
+                near(again, limit, true, &|| Warning::SameCall(name.clone(), again, limit));
             }
         }
         if self.total > limits.tool_calls {
             return Some(Over::TooMany);
         }
+        near(self.total, limits.tool_calls, false, &|| Warning::TooMany(self.total, limits.tool_calls));
+        if let Some(warning) = close {
+            if self.warned.insert(warning.key()) {
+                self.warning = Some(warning);
+            }
+        }
         None
+    }
+
+    /// The limit the last call brought close (once per kind and tool in a turn), for the note the agent gets.
+    pub fn take_warning(&mut self) -> Option<Warning> {
+        self.warning.take()
+    }
+
+    /// The turn's call of `tool` answered (`tool.completed`): `failed` when with an error.
+    pub fn completed(&mut self, tool: &str, failed: bool) {
+        if bare(tool) == self.last_tool {
+            self.last_failed = failed;
+        }
     }
 }
 /// What the person's subject was, in plain words: the area of the tool the turn kept calling.
@@ -310,66 +542,184 @@ fn area(tool: &str, lang: &str) -> Option<&'static str> {
     }
 }
 
-/// The line the person reads in the conversation, in the agent's language (fr, en, de, es; else English).
-pub fn notice_text(over: &Over, lang: &str) -> String {
-    let lang = lang.split(['-', '_']).next().unwrap_or("en").to_lowercase();
+/// A read-only lookup's purpose in plain words, as the apps word it (HermesKit ToolKind, the app's ToolKindText:
+/// « Je cherche dans nos anciennes discussions… »): what the turn kept doing again, never a tool's name.
+fn lookup_phrase(tool: &str, lang: &str) -> Option<&'static str> {
+    let tool = bare(tool);
+    let pick = |fr, en, de, es| Some(match lang { "fr" => fr, "de" => de, "es" => es, _ => en });
+    if tool == "session_search" || tool == "message_search" {
+        pick(
+            "la même recherche dans nos anciennes discussions",
+            "the same search in our past conversations",
+            "dieselbe Suche in unseren früheren Unterhaltungen",
+            "la misma búsqueda en nuestras conversaciones anteriores",
+        )
+    } else if tool.starts_with("notebook_") {
+        pick("la même recherche dans le Carnet", "the same search in the Notebook", "dieselbe Suche im Notizbuch", "la misma búsqueda en el Cuaderno")
+    } else if tool == "web_search" {
+        pick("la même recherche sur le web", "the same web search", "dieselbe Websuche", "la misma búsqueda en la web")
+    } else if tool == "web_extract" {
+        pick(
+            "la même lecture d'une page web",
+            "the same reading of a web page",
+            "dasselbe Lesen einer Webseite",
+            "la misma lectura de una página web",
+        )
+    } else if tool == "read_file" || tool == "search_files" {
+        pick("la même lecture de fichier", "the same file reading", "dasselbe Lesen einer Datei", "la misma lectura de un archivo")
+    } else if tool.starts_with("mail_") {
+        pick("la même recherche dans les e-mails", "the same search in the e-mails", "dieselbe Suche in den E-Mails", "la misma búsqueda en los correos")
+    } else if tool.starts_with("calendar_") {
+        pick("la même consultation de l'agenda", "the same look at the calendar", "denselben Blick in den Kalender", "la misma consulta de la agenda")
+    } else if tool.starts_with("contacts_") {
+        pick("la même recherche dans les contacts", "the same search in the contacts", "dieselbe Suche in den Kontakten", "la misma búsqueda en los contactos")
+    } else if tool.starts_with("reminders_") {
+        pick("la même consultation des rappels", "the same look at the reminders", "denselben Blick in die Erinnerungen", "la misma consulta de los recordatorios")
+    } else if tool == "memory" || tool.starts_with("knowledge_") {
+        pick("la même lecture de ma mémoire", "the same look into my memory", "denselben Blick in mein Gedächtnis", "la misma consulta de mi memoria")
+    } else if tool == "read_page" || tool == "list_pages" {
+        pick("la même lecture de mes pages", "the same look at my pages", "denselben Blick in meine Seiten", "la misma consulta de mis páginas")
+    } else {
+        None
+    }
+}
+
+fn language(lang: &str) -> String {
+    lang.split(['-', '_']).next().unwrap_or("en").to_lowercase()
+}
+
+/// « the same call again » of a lookup: said as what it was for (« je relançais la même recherche dans nos anciennes
+/// discussions »).
+fn repeated_lookup(over: &Over, lang: &str) -> Option<&'static str> {
+    match over {
+        Over::SameCall(tool) if lookup_tool(tool, None) => lookup_phrase(tool, lang),
+        _ => None,
+    }
+}
+
+/// The line's first sentence: what happened. Alone above the rescue turn's reply (runs.rs `loop_rescue`).
+pub fn notice_head(over: &Over, lang: &str) -> String {
+    let lang = language(lang);
     let lang = lang.as_str();
+    if let Some(what) = repeated_lookup(over, lang) {
+        return match lang {
+            "fr" => format!("Je me suis arrêté : je relançais {what}."),
+            "de" => format!("Ich habe aufgehört: Ich habe immer wieder {what} gestartet."),
+            "es" => format!("Me he detenido: repetía {what}."),
+            _ => format!("I stopped: I kept repeating {what}."),
+        };
+    }
     match over {
         Over::SameTool(tool) | Over::SameCall(tool) => match (area(tool, lang), lang) {
-            (Some(on), "fr") => format!("Je me suis arrêté : je tournais en rond sur {on}. Dis-moi si tu veux que je réessaie."),
-            (None, "fr") => "Je me suis arrêté : je refaisais sans cesse la même étape. Dis-moi si tu veux que je réessaie."
-                .to_string(),
-            (Some(on), "de") => format!(
-                "Ich habe aufgehört: Ich habe mich bei {on} im Kreis gedreht. Sag mir, ob ich es noch einmal versuchen soll."
-            ),
-            (None, "de") => "Ich habe aufgehört: Ich habe immer wieder denselben Schritt gemacht. Sag mir, ob ich es noch \
-einmal versuchen soll."
-                .to_string(),
-            (Some(on), "es") => format!("Me he detenido: estaba dando vueltas con {on}. Dime si quieres que lo intente de nuevo."),
-            (None, "es") => "Me he detenido: repetía el mismo paso una y otra vez. Dime si quieres que lo intente de nuevo."
-                .to_string(),
-            (Some(on), _) => format!("I stopped: I was going round in circles with {on}. Tell me if you want me to try again."),
-            (None, _) => "I stopped: I kept repeating the same step. Tell me if you want me to try again.".to_string(),
+            (Some(on), "fr") => format!("Je me suis arrêté : je tournais en rond sur {on}."),
+            (None, "fr") => "Je me suis arrêté : je refaisais sans cesse la même étape.".to_string(),
+            (Some(on), "de") => format!("Ich habe aufgehört: Ich habe mich bei {on} im Kreis gedreht."),
+            (None, "de") => "Ich habe aufgehört: Ich habe immer wieder denselben Schritt gemacht.".to_string(),
+            (Some(on), "es") => format!("Me he detenido: estaba dando vueltas con {on}."),
+            (None, "es") => "Me he detenido: repetía el mismo paso una y otra vez.".to_string(),
+            (Some(on), _) => format!("I stopped: I was going round in circles with {on}."),
+            (None, _) => "I stopped: I kept repeating the same step.".to_string(),
         },
         Over::TooMany => match lang {
-            "fr" => "Je me suis arrêté : cette demande me prenait beaucoup trop d'étapes d'un coup. Dis-moi si tu veux que \
-je continue, ou que j'en fasse une tâche de fond."
-                .to_string(),
-            "de" => "Ich habe aufgehört: Diese Anfrage brauchte viel zu viele Schritte auf einmal. Sag mir, ob ich \
-weitermachen oder eine Hintergrundaufgabe daraus machen soll."
-                .to_string(),
-            "es" => "Me he detenido: esta petición me llevaba demasiados pasos de una vez. Dime si quieres que siga, o que \
-la convierta en una tarea en segundo plano."
-                .to_string(),
-            _ => "I stopped: this request was taking far too many steps at once. Tell me if you want me to go on, or to \
-make it a background task."
-                .to_string(),
+            "fr" => "Je me suis arrêté : cette demande me prenait beaucoup trop d'étapes d'un coup.",
+            "de" => "Ich habe aufgehört: Diese Anfrage brauchte viel zu viele Schritte auf einmal.",
+            "es" => "Me he detenido: esta petición me llevaba demasiados pasos de una vez.",
+            _ => "I stopped: this request was taking far too many steps at once.",
+        }
+        .to_string(),
+        Over::PageReads => match lang {
+            "fr" => "Je me suis arrêté : je n'arrivais pas à lire cette page.",
+            "de" => "Ich habe aufgehört: Ich konnte diese Seite nicht lesen.",
+            "es" => "Me he detenido: no conseguía leer esta página.",
+            _ => "I stopped: I couldn't read this page.",
+        }
+        .to_string(),
+        Over::Browser => match lang {
+            "fr" => "Je me suis arrêté : je n'arrivais pas à avancer dans le navigateur.",
+            "de" => "Ich habe aufgehört: Ich bin im Browser nicht weitergekommen.",
+            "es" => "Me he detenido: no conseguía avanzar en el navegador.",
+            _ => "I stopped: I couldn't get anywhere in the browser.",
+        }
+        .to_string(),
+    }
+}
+
+/// The line's second sentence: what the person can do.
+pub fn notice_tail(over: &Over, lang: &str) -> &'static str {
+    let lang = language(lang);
+    let lang = lang.as_str();
+    if repeated_lookup(over, lang).is_some() {
+        return match lang {
+            "fr" => "Dis-moi si tu veux que je réessaie autrement.",
+            "de" => "Sag mir, ob ich es anders versuchen soll.",
+            "es" => "Dime si quieres que lo intente de otra manera.",
+            _ => "Tell me if you want me to try another way.",
+        };
+    }
+    match over {
+        Over::TooMany => match lang {
+            "fr" => "Dis-moi si tu veux que je continue, ou que j'en fasse une tâche de fond.",
+            "de" => "Sag mir, ob ich weitermachen oder eine Hintergrundaufgabe daraus machen soll.",
+            "es" => "Dime si quieres que siga, o que la convierta en una tarea en segundo plano.",
+            _ => "Tell me if you want me to go on, or to make it a background task.",
         },
         Over::PageReads => match lang {
-            "fr" => "Je me suis arrêté : je n'arrivais pas à lire cette page. Dis-moi si tu veux que je réessaie, ou \
-donne-moi un autre lien."
-                .to_string(),
-            "de" => "Ich habe aufgehört: Ich konnte diese Seite nicht lesen. Sag mir, ob ich es noch einmal versuchen \
-soll, oder gib mir einen anderen Link."
-                .to_string(),
-            "es" => "Me he detenido: no conseguía leer esta página. Dime si quieres que lo intente de nuevo, o dame \
-otro enlace."
-                .to_string(),
-            _ => "I stopped: I couldn't read this page. Tell me if you want me to try again, or give me another link."
-                .to_string(),
+            "fr" => "Dis-moi si tu veux que je réessaie, ou donne-moi un autre lien.",
+            "de" => "Sag mir, ob ich es noch einmal versuchen soll, oder gib mir einen anderen Link.",
+            "es" => "Dime si quieres que lo intente de nuevo, o dame otro enlace.",
+            _ => "Tell me if you want me to try again, or give me another link.",
         },
-        Over::Browser => match lang {
-            "fr" => "Je me suis arrêté : je n'arrivais pas à avancer dans le navigateur. Dis-moi si tu veux que je \
-réessaie."
-                .to_string(),
-            "de" => "Ich habe aufgehört: Ich bin im Browser nicht weitergekommen. Sag mir, ob ich es noch einmal \
-versuchen soll."
-                .to_string(),
-            "es" => "Me he detenido: no conseguía avanzar en el navegador. Dime si quieres que lo intente de nuevo."
-                .to_string(),
-            _ => "I stopped: I couldn't get anywhere in the browser. Tell me if you want me to try again.".to_string(),
+        _ => match lang {
+            "fr" => "Dis-moi si tu veux que je réessaie.",
+            "de" => "Sag mir, ob ich es noch einmal versuchen soll.",
+            "es" => "Dime si quieres que lo intente de nuevo.",
+            _ => "Tell me if you want me to try again.",
         },
     }
+}
+
+/// The line the person reads in the conversation, in the agent's language (fr, en, de, es; else English).
+pub fn notice_text(over: &Over, lang: &str) -> String {
+    format!("{} {}", notice_head(over, lang), notice_tail(over, lang))
+}
+
+/// The rescue turn's input starts with this (the apps hide the row, but for its plain line: HermesKit StoppedTurn,
+/// Android Hermes.kt); `person_request` skips it (`[bipagents:`).
+pub const RESCUE_MARK: &str = "[bipagents:loop_rescue]";
+
+/// The tool a rescue turn may not call again (bare name): the one the turn kept calling.
+pub fn stopped_tool(over: &Over) -> Option<String> {
+    match over {
+        Over::SameTool(tool) | Over::SameCall(tool) => Some(tool.clone()),
+        _ => None,
+    }
+}
+
+/// The rescue turn's input (runs.rs `loop_rescue`): the mark, the person's line (in their language: what the apps
+/// show of this row), then the agent's instruction, in English, out of the person's sight.
+pub fn rescue_input(over: &Over, lang: &str) -> String {
+    let what = match over {
+        Over::SameCall(tool) => match lookup_phrase(tool, "en").filter(|_| lookup_tool(tool, None)) {
+            Some(phrase) => format!("repeated {phrase} ({tool}) with the same arguments again and again"),
+            None => format!("made exactly the same {tool} call again and again"),
+        },
+        Over::SameTool(tool) => format!("called {tool} too many times in one turn"),
+        Over::TooMany => "made far too many tool calls in one turn".to_string(),
+        Over::PageReads => "kept reading the same page in the browser without managing to".to_string(),
+        Over::Browser => "made too many browser steps without getting anywhere".to_string(),
+    };
+    let dont = match over {
+        Over::SameCall(tool) | Over::SameTool(tool) => format!("Don't call {tool} again in this turn."),
+        Over::PageReads | Over::Browser => "Don't use the browser again in this turn.".to_string(),
+        Over::TooMany => "Don't start new work in this turn.".to_string(),
+    };
+    format!(
+        "{RESCUE_MARK} {head}\n\n(A note from the bridge, not from your person.) You were stopped because you {what}. \
+{dont} With what you already have, answer the person in their language: what you were trying to do, what you found \
+so far, what blocked you, and propose one or two concrete ways forward (or ask one precise question). Use another \
+tool only if it is really needed, two at most.",
+        head = notice_head(over, lang)
+    )
 }
 
 /// For the logs.
@@ -391,6 +741,8 @@ pub struct Turn {
     pub run_id: String,
     /// A background task's run (jobs.rs): the task's limits.
     pub background: bool,
+    /// A rescue turn's stopped tool (bare name): refused here.
+    pub banned: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -401,6 +753,29 @@ struct BridgeTurn {
     calls: u32,
     per_tool: HashMap<String, u32>,
     last: f64,
+    /// A routine's limit getting close: the note added to the call's result (`take_note`), once per limit.
+    note: Option<String>,
+    warned: HashSet<String>,
+}
+
+/// `note` added to a tool's result (its first text, else a text of its own).
+pub fn add_note(result: &mut Dict, note: &str) {
+    if let Some(Value::Array(content)) = result.get_mut("content") {
+        if let Some(Value::String(text)) = content.first_mut().and_then(|c| c.get_mut("text")) {
+            text.push_str("\n\n");
+            text.push_str(note);
+            return;
+        }
+        content.push(json!({"type": "text", "text": note}));
+    }
+}
+
+/// Reading one given item (a mail, its attachment, a Carnet or app page): a routine reading 14 different mails is
+/// working, not looping (2026-10-28, the replay's `mail_scan_busy_night`), so its limit on one tool counts the same
+/// item read again, not reads of different items.
+pub fn item_read(tool: &str) -> bool {
+    let name = bare(tool);
+    !write_tool(name) && (name.ends_with("_read") || name == "mail_attachment" || name == "read_page")
 }
 
 /// Each turn's calls of the bridge's tools: by `agent` + run id, or `agent` alone for the turn no run carries.
@@ -434,6 +809,16 @@ impl Turns {
         if !settings.enabled {
             return None;
         }
+        if let Some(banned) = turn.and_then(|t| t.banned.as_deref()).filter(|b| *b == bare(tool)) {
+            tracing::info!(agent = %agent, tool = %tool, "the tool the turn kept calling, in its rescue turn: refused");
+            return Some(tool_text(
+                &format!(
+                    "Refused: you were stopped for calling {banned} again and again, so it isn't available in this \
+turn. Answer the person now with what you already have."
+                ),
+                true,
+            ));
+        }
         let limits = settings.limits(turn.is_some_and(|t| t.background));
         let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
         if turns.len() > 2_000 {
@@ -447,9 +832,27 @@ impl Turns {
         if turn.is_none() {
             // a routine: Hermes can't stop it, so its calls of the bridge's tools are held here
             entry.calls += 1;
-            let same = entry.per_tool.entry(bare(tool).to_string()).or_insert(0);
+            let key = if item_read(tool) { signature_of(tool, arguments) } else { bare(tool).to_string() };
+            let same = entry.per_tool.entry(key).or_insert(0);
             *same += 1;
             let (same, calls) = (*same, entry.calls);
+            // getting close (about two thirds): told in the call's result, once per limit (a routine can't be steered)
+            let close = if same == soft_limit(limits.same_tool) {
+                Some((format!("tool:{}", bare(tool)), format!("you have called {} {same} times", bare(tool))))
+            } else if calls == soft_limit(settings.routine_tool_calls) {
+                Some(("total".to_string(), format!("you have made {calls} calls")))
+            } else {
+                None
+            };
+            if let (Some((key, what)), true) = (close, settings.warn) {
+                if entry.warned.insert(key) {
+                    tracing::info!(agent = %agent, tool = %tool, calls = calls, same = same,
+                        "brake_warned: a routine told it is going round in circles");
+                    entry.note = Some(format!(
+                        "{WARN_MARK} Note from the bridge: {what} in this turn, close to the limit. Change approach, or finish with what you have."
+                    ));
+                }
+            }
             if same > limits.same_tool || calls > settings.routine_tool_calls {
                 tracing::info!(agent = %agent, tool = %tool, calls = calls, same = same,
                     "going round in circles in a turn no run carries: tool refused");
@@ -494,6 +897,12 @@ here: tell the person what you did and ask them before doing more.",
         None
     }
 
+    /// The note a routine's call gets with its result (its limits getting close), once.
+    pub fn take_note(&self, agent: &str, turn: Option<&Turn>) -> Option<String> {
+        let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
+        turns.get_mut(&turn_key(agent, turn)).and_then(|t| t.note.take())
+    }
+
     /// A write tool's call that `check` let through went well: counted in its turn (a refused or failed one is not:
     /// the model may correct its arguments and call again).
     pub fn record(&self, agent: &str, turn: Option<&Turn>, tool: &str, arguments: &Dict) {
@@ -527,13 +936,18 @@ pub fn event_signature(data: &serde_json::Map<String, Value>) -> Option<String> 
     data.get("preview").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).map(str::to_string)
 }
 
-/// The notice event's data (`bridge.notice`, code `loop_stopped`).
-pub fn notice(over: &Over, lang: &str) -> serde_json::Map<String, Value> {
+/// The notice event's data (`bridge.notice`, code `loop_stopped`). `rescue`: a rescue turn follows (runs.rs
+/// `loop_rescue`), so only the line's first sentence (the agent's own reply says the rest).
+pub fn notice(over: &Over, lang: &str, rescue: bool) -> serde_json::Map<String, Value> {
     let mut data = serde_json::Map::new();
     data.insert("type".into(), json!(crate::runs::NOTICE));
     data.insert("code".into(), json!("loop_stopped"));
     data.insert("reason".into(), json!(reason(over)));
-    data.insert("text".into(), json!(notice_text(over, lang)));
+    let text = if rescue { notice_head(over, lang) } else { notice_text(over, lang) };
+    data.insert("text".into(), json!(text));
+    if rescue {
+        data.insert("rescue".into(), json!(true));
+    }
     data
 }
 
@@ -585,8 +999,12 @@ mod tests {
             assert_eq!(turn.note("terminal", Some("cargo test"), false, &limits), None, "{i}");
             assert_eq!(turn.note("mcp__stealth__click_element", Some("{\"x\":1}"), true, &limits), None, "{i}");
         }
-        assert_eq!(turn.note("web_search", Some("tour Eiffel"), false, &limits), None);
-        assert_eq!(turn.note("web_search", Some("tour Eiffel"), false, &limits), None);
+        assert_eq!(turn.total, 58);
+        // the same web search: a lookup, held to same_lookup (5)
+        let mut turn = TurnCount::default();
+        for _ in 0..4 {
+            assert_eq!(turn.note("web_search", Some("tour Eiffel"), false, &limits), None);
+        }
         assert_eq!(turn.note("web_search", Some("tour Eiffel"), false, &limits), Some(Over::SameCall("web_search".into())));
         let mut turn = TurnCount::default();
         let stopped = (0..100).find_map(|i| turn.note("terminal", Some(&format!("ls {i}")), false, &limits));
@@ -639,7 +1057,7 @@ mod tests {
     fn writes_capped_and_the_same_write_refused() {
         let turns = Turns::default();
         let settings = Settings::default();
-        let run = |id: &str| Some(Turn { run_id: id.to_string(), background: false });
+        let run = |id: &str| Some(Turn { run_id: id.to_string(), background: false, banned: None });
         let add = |n: usize| args(&[("title", &format!("Event {n}")), ("start", "2026-10-28")]);
         // a call let through and done (as the MCP route does)
         let call = |settings: &Settings, agent: &str, turn: Option<Turn>, tool: &str, a: &Dict, now: f64| {
@@ -726,7 +1144,7 @@ mod tests {
         // and at the MCP: the 11th write of the turn refused, the same note again answered « already done »
         let turns = Turns::default();
         let settings = Settings::default();
-        let turn = Some(Turn { run_id: "run_1d523504".into(), background: false });
+        let turn = Some(Turn { run_id: "run_1d523504".into(), background: false, banned: None });
         let mut refused = Vec::new();
         for (i, tool) in tools.iter().enumerate().filter(|(_, t)| *t == NOTE) {
             let a = args(&[("title", "Julie"), ("text", &format!("note {i}"))]);
@@ -807,7 +1225,7 @@ autre lien."
             }
             refused
         };
-        let run = |id: &str| Some(Turn { run_id: id.to_string(), background: false });
+        let run = |id: &str| Some(Turn { run_id: id.to_string(), background: false, banned: None });
         // an earlier conversation of the agent wrote 20 notes (its last ones refused)
         for i in 0..20 {
             call("quotidien", run("run_birthday"), NOTE, &args(&[("text", &format!("n{i}"))]), i as f64);
@@ -834,14 +1252,14 @@ autre lien."
         assert!(r["content"][0]["text"].as_str().unwrap().contains("answer the person with what you have"));
         // and a routine's calls of many tools: at routine_tool_calls
         let mut at = None;
-        for i in 0..40 {
+        for i in 0..50 {
             let tool = format!("mcp__bipagents__tool_{}", i % 8);
             if call("coach", None, &tool, &Dict::new(), 5000.0 + i as f64).is_some() {
                 at = Some(i);
                 break;
             }
         }
-        assert_eq!(at, Some(30));
+        assert_eq!(at, Some(40));
     }
 
     #[test]
@@ -852,5 +1270,239 @@ autre lien."
         assert_eq!(event_signature(&data(json!({"args": {"b": 1, "a": 2}, "preview": "p"}))).unwrap(), "{\"a\":2,\"b\":1}");
         assert_eq!(event_signature(&data(json!({"args": {}, "preview": "p"}))).unwrap(), "p");
         assert_eq!(event_signature(&data(json!({"preview": " "}))), None);
+    }
+
+    // -- 2026-10-28 09:24, Alex's home server: Vie diagnosing the failing « scan-emails-fond-nuit » job was stopped
+    // after 5 calls, « same call repeated (session_search) » --
+
+    const SESSIONS: &str = "session_search";
+
+    #[test]
+    fn the_mornings_diagnosis_goes_on_now() {
+        let limits = Settings::default().conversation;
+        let mut turn = TurnCount::default();
+        let query = "scan-emails-fond-nuit";
+        let calls = [
+            (SESSIONS, query),
+            ("skill_view", "cronjob"),
+            (SESSIONS, query),
+            ("read_file", "~/.hermes/cron/jobs.json"),
+            (SESSIONS, query),
+        ];
+        for (i, (tool, preview)) in calls.iter().enumerate() {
+            assert_eq!(turn.note(tool, Some(preview), false, &limits), None, "call {i}");
+        }
+        assert_eq!(turn.total, 5);
+        // the same lookup a 4th and a 5th time: stopped at the 5th
+        assert_eq!(turn.note(SESSIONS, Some(query), false, &limits), None);
+        assert_eq!(turn.note(SESSIONS, Some(query), false, &limits), Some(Over::SameCall(SESSIONS.into())));
+    }
+
+    #[test]
+    fn five_identical_lookups_stop_and_are_said_in_plain_words() {
+        let limits = Settings::default().conversation;
+        let mut turn = TurnCount::default();
+        let stopped = (0..10).find_map(|i| turn.note(SESSIONS, Some("nuit"), false, &limits).map(|o| (i, o)));
+        assert_eq!(stopped, Some((4, Over::SameCall(SESSIONS.into()))));
+        let over = Over::SameCall(SESSIONS.into());
+        assert_eq!(
+            notice_text(&over, "fr"),
+            "Je me suis arrêté : je relançais la même recherche dans nos anciennes discussions. Dis-moi si tu veux que je \
+réessaie autrement."
+        );
+        assert_eq!(notice_head(&over, "fr"), "Je me suis arrêté : je relançais la même recherche dans nos anciennes discussions.");
+        assert!(notice_text(&over, "en").contains("the same search in our past conversations"));
+        assert!(notice_text(&over, "de").contains("früheren Unterhaltungen"));
+        assert!(notice_text(&over, "es-ES").contains("conversaciones anteriores"));
+        for lang in ["fr", "en", "de", "es"] {
+            assert!(!notice_text(&over, lang).contains("session_search"), "never a tool's name: {lang}");
+        }
+        assert!(notice_text(&Over::SameCall("mcp__bipagents__notebook_search".into()), "fr").contains("dans le Carnet"));
+        assert!(notice_text(&Over::SameCall("web_search".into()), "fr").contains("la même recherche sur le web"));
+        // writes and actions keep same_call (3)
+        let mut turn = TurnCount::default();
+        let stopped = (0..10).find_map(|i| turn.note("mcp_bipagents_calendar_add", Some("{\"t\":1}"), false, &limits).map(|o| (i, o)));
+        assert_eq!(stopped, Some((2, Over::SameCall("calendar_add".into()))));
+        // Hermes' memory: a read is a lookup, an addition is not
+        assert!(lookup_tool("memory", Some("{\"action\": \"read\"}")) && !lookup_tool("memory", Some("add: le code du portail")));
+        assert!(lookup_tool("mcp_bipagents_calendar_list", None) && !lookup_tool("mcp_bipagents_calendar_add", None));
+    }
+
+    #[test]
+    fn a_retry_after_an_error_is_not_the_same_call() {
+        let limits = Settings::default().conversation;
+        let mut turn = TurnCount::default();
+        let failed = |turn: &mut TurnCount| turn.completed("mcp_bipagents_calendar_add", true);
+        let call = "{\"title\":\"Dentiste\"}";
+        // the same write five times, each right after the identical one failed: retries
+        assert_eq!(turn.note("mcp_bipagents_calendar_add", Some(call), false, &limits), None);
+        for _ in 0..4 {
+            failed(&mut turn);
+            assert_eq!(turn.note("mcp_bipagents_calendar_add", Some(call), false, &limits), None);
+        }
+        // it went through, then the same again: counted (2nd, then 3rd: stopped)
+        turn.completed("mcp_bipagents_calendar_add", false);
+        assert_eq!(turn.note("mcp_bipagents_calendar_add", Some(call), false, &limits), None);
+        assert_eq!(turn.note("mcp_bipagents_calendar_add", Some(call), false, &limits), Some(Over::SameCall("calendar_add".into())));
+        // an error, then another call in between: the identical call after is counted again
+        let mut turn = TurnCount::default();
+        for _ in 0..4 {
+            assert_eq!(turn.note(SESSIONS, Some("nuit"), false, &limits), None);
+            turn.completed(SESSIONS, false);
+        }
+        turn.completed(SESSIONS, true);
+        assert_eq!(turn.note("skill_view", Some("cronjob"), false, &limits), None);
+        assert_eq!(turn.note(SESSIONS, Some("nuit"), false, &limits), Some(Over::SameCall(SESSIONS.into())));
+        // what tells an error
+        let data = |v: Value| v.as_object().cloned().unwrap();
+        assert!(completed_with_error(&data(json!({"tool": "x", "error": true}))));
+        assert!(completed_with_error(&data(json!({"tool": "x", "preview": "{\"success\": false, \"error\": \"db locked\"}"}))));
+        assert!(completed_with_error(&data(json!({"tool": "x", "preview": "Error: timeout"}))));
+        assert!(!completed_with_error(&data(json!({"tool": "x", "error": false, "preview": "3 sessions found"}))));
+    }
+
+    #[test]
+    fn the_rescue_turn_is_short_and_may_not_call_the_tool_again() {
+        let settings = Settings::default();
+        let limits = settings.rescue_limits();
+        let over = Over::SameCall(SESSIONS.into());
+        let mut turn = TurnCount { banned: stopped_tool(&over), ..TurnCount::default() };
+        // once (Hermes' own tool: it runs; the bridge's: refused at the MCP), twice: stopped
+        assert_eq!(turn.note(SESSIONS, Some("autre"), false, &limits), None);
+        assert_eq!(turn.note(SESSIONS, Some("encore"), false, &limits), Some(Over::SameCall(SESSIONS.into())));
+        // at most 5 calls
+        let mut turn = TurnCount::default();
+        let stopped = (0..10).find_map(|i| turn.note("read_file", Some(&format!("f{i}")), false, &limits).map(|o| (i, o)));
+        assert_eq!(stopped, Some((5, Over::TooMany)));
+        // its input: the mark, the person's line, then the agent's instruction (out of sight)
+        let input = rescue_input(&over, "fr");
+        assert!(input.starts_with(
+            "[bipagents:loop_rescue] Je me suis arrêté : je relançais la même recherche dans nos anciennes discussions.\n\n"
+        ));
+        assert!(input.contains("Don't call session_search again in this turn."));
+        assert!(input.contains("answer the person in their language"));
+        assert!(rescue_input(&Over::TooMany, "en").contains("Don't start new work"));
+        // the bridge's own tool, in the rescue turn: refused, in plain words the model can act on
+        let turns = Turns::default();
+        let rescue = Turn { run_id: "run_r".into(), background: false, banned: Some("notebook_search".into()) };
+        let refused = turns
+            .check(&settings, "vie", Some(&rescue), "mcp__bipagents__notebook_search", &args(&[("words", "nuit")]), 0.0)
+            .unwrap();
+        assert_eq!(refused["isError"], json!(true));
+        assert!(refused["content"][0]["text"].as_str().unwrap().contains("Answer the person now"));
+        assert!(turns.check(&settings, "vie", Some(&rescue), "mcp__bipagents__calendar_list", &Dict::new(), 0.0).is_none());
+        // the notice when a rescue follows: its first sentence only
+        let data = notice(&over, "fr", true);
+        assert_eq!(data["text"], json!(notice_head(&over, "fr")));
+        assert_eq!(data["rescue"], json!(true));
+        assert!(!notice(&over, "fr", false).contains_key("rescue"));
+    }
+
+    #[test]
+    fn the_agent_is_told_before_the_stop_and_a_turn_that_changes_approach_goes_on() {
+        let limits = Settings::default().conversation;
+        assert_eq!((soft_limit(5), soft_limit(3), soft_limit(60), soft_limit(10)), (3, 2, 40, 7));
+        let mut turn = TurnCount::default();
+        // the same lookup: told at the 3rd (stopped at the 5th), once
+        for i in 0..2 {
+            assert_eq!(turn.note(SESSIONS, Some(NIGHT_Q), false, &limits), None);
+            assert_eq!(turn.take_warning(), None, "{i}");
+        }
+        assert_eq!(turn.note(SESSIONS, Some(NIGHT_Q), false, &limits), None);
+        let warning = turn.take_warning().unwrap();
+        assert_eq!(warning, Warning::SameCall(SESSIONS.into(), 3, 5));
+        assert!(warning.text().starts_with("[bipagents:brake] A note from the bridge, not from your person: you have made \
+exactly the same session_search call 3 times in this turn; at 5 the turn is stopped. Change approach"));
+        // it changes approach: other searches, other tools; never stopped, told once more when the total gets close
+        let mut told = Vec::new();
+        for i in 0..50 {
+            let tool = ["web_search", "read_file", "search_files", "terminal"][i % 4];
+            assert_eq!(turn.note(tool, Some(&format!("autre piste {i}")), false, &limits), None, "{i}");
+            told.extend(turn.take_warning());
+        }
+        assert_eq!(told, vec![Warning::TooMany(40, 60)]);
+        assert_eq!(turn.total, 53);
+        // a write: told at the 2nd identical one (stopped at the 3rd)
+        let mut turn = TurnCount::default();
+        assert_eq!(turn.note("mcp_bipagents_calendar_add", Some("{\"t\":1}"), false, &limits), None);
+        assert_eq!(turn.take_warning(), None);
+        assert_eq!(turn.note("mcp_bipagents_calendar_add", Some("{\"t\":1}"), false, &limits), None);
+        assert_eq!(turn.take_warning(), Some(Warning::SameCall("calendar_add".into(), 2, 3)));
+        // one tool with different arguments: at the 7th of 10
+        let mut turn = TurnCount::default();
+        let told: Vec<_> = (0..7)
+            .filter_map(|i| {
+                turn.note("mcp_bipagents_reminders_add", Some(&format!("{i}")), false, &limits);
+                turn.take_warning()
+            })
+            .collect();
+        assert_eq!(told, vec![Warning::SameTool("reminders_add".into(), 7, 10)]);
+    }
+
+    const NIGHT_Q: &str = "scan-emails-fond-nuit";
+
+    #[test]
+    fn a_routine_reading_many_mails_goes_on_and_is_told_when_close() {
+        // the replay's mail_scan_busy_night: 3 searches, 14 different mails read, 2 notes, in a routine
+        let turns = Turns::default();
+        let settings = Settings::default();
+        let mut refused = Vec::new();
+        let mut notes = Vec::new();
+        let mut call = |tool: &str, a: Dict, i: usize| {
+            match turns.check(&settings, "vie", None, tool, &a, i as f64) {
+                Some(r) => refused.push((i, r)),
+                None => turns.record("vie", None, tool, &a),
+            }
+            notes.extend(turns.take_note("vie", None).map(|n| (i, n)));
+        };
+        let mut i = 0;
+        for q in ["facture", "banque", "école"] {
+            call("mcp_bipagents_mail_search", args(&[("query", q)]), i);
+            i += 1;
+        }
+        for m in 0..14 {
+            call("mcp_bipagents_mail_read", args(&[("id", &format!("m{m}"))]), i);
+            i += 1;
+        }
+        call("mcp_bipagents_mail_attachment", args(&[("id", "m3"), ("n", "1")]), i);
+        i += 1;
+        for n in 0..2 {
+            call("mcp_bipagents_notebook_note", args(&[("text", &format!("n{n}"))]), i);
+            i += 1;
+        }
+        assert!(refused.is_empty(), "{refused:?}");
+        assert!(notes.is_empty(), "20 calls: under the total's two thirds (27 of 40): {notes:?}");
+        // the same mail read again and again: told at the 7th, refused at the 11th
+        let turns = Turns::default();
+        let mut told = None;
+        let refused_at = (0..20).find(|i| {
+            let a = args(&[("id", "m1")]);
+            let r = turns.check(&settings, "lea", None, "mcp_bipagents_mail_read", &a, 100.0 + *i as f64);
+            if let Some(note) = turns.take_note("lea", None) {
+                told.get_or_insert((*i, note));
+            }
+            r.is_some()
+        });
+        assert_eq!(refused_at, Some(10));
+        let (at, note) = told.unwrap();
+        assert_eq!(at, 6);
+        assert!(note.starts_with("[bipagents:brake] Note from the bridge: you have called mail_read 7 times"));
+        let mut result = crate::tools_knowledge::tool_text("Mail 1", false);
+        add_note(&mut result, &note);
+        assert!(result["content"][0]["text"].as_str().unwrap().starts_with("Mail 1\n\n[bipagents:brake]"));
+        assert!(item_read("mcp_bipagents_mail_read") && item_read("mail_attachment") && !item_read("notebook_search"));
+    }
+
+    #[test]
+    fn the_new_settings_from_the_config() {
+        let s = Settings::from_table(&json!({"same_lookup": 7, "task_same_lookup": 12, "rescue": false,
+                                             "rescue_tool_calls": 3, "rescue_seconds": 5}));
+        assert_eq!((s.conversation.same_lookup, s.task.same_lookup), (7, 12));
+        assert_eq!(s.conversation.same_call, 3, "writes and actions unchanged");
+        assert!(!s.rescue);
+        assert_eq!(s.rescue_limits().tool_calls, 3);
+        assert_eq!(s.rescue_seconds, 20.0, "clamped");
+        let d = Settings::default();
+        assert_eq!((d.conversation.same_lookup, d.conversation.same_call, d.rescue, d.rescue_tool_calls), (5, 3, true, 5));
     }
 }

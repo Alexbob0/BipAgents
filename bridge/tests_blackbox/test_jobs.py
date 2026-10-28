@@ -134,7 +134,8 @@ def test_an_agent_proposes_a_task_the_person_starts(bridges, fakes):
     for _ in range(5):
         call(bridge, "propose_task", {"title": "Encore", "prompt": "x"})
     too_many = call(bridge, "propose_task", {"title": "Encore", "prompt": "x"})
-    assert too_many["isError"] and text_of(too_many) == "enough of your proposals are waiting for the person already"
+    # (a turn no run carries: the brake's note that the same tool comes back often, after the answer)
+    assert too_many["isError"] and text_of(too_many).startswith("enough of your proposals are waiting for the person already")
 
 
 @pytest.mark.slow

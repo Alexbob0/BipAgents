@@ -531,9 +531,9 @@ pub async fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
     let card = figure(&id, &drawn, line, directions);
     tool_text(
         &format!(
-            "Map ready: {id} ({} markers). In a page, paste this as it is into create_page's HTML (a live map in the app, \
-its picture elsewhere):\n{card}\nOr to show the picture alone, put this line alone on its own line in your reply:\n\
-MEDIA:{PREFIX}/{agent}/{id}.png",
+            "MEDIA:{PREFIX}/{agent}/{id}.png\nMap ready: {id} ({} markers). To show the picture alone, put the MEDIA line \
+above alone on its own line in your reply, exactly as it is. In a page, paste this as it is into create_page's HTML (a \
+live map in the app, its picture elsewhere):\n{card}",
             drawn.places.len()
         ),
         false,

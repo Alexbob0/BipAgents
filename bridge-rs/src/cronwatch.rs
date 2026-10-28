@@ -129,6 +129,24 @@ pub fn session_started(session: &Dict) -> Option<NaiveDateTime> {
     None
 }
 
+/// A routine's reply handing over the audio the bridge made for that agent during the routine (made_files.rs:
+/// files made in no run the hub follows, from the routine's start, `started`, to now). 2026-10-28, aibox: a
+/// podcast made at 07:52, the reply carried the day before's path.
+pub fn with_audio_made(agent: &str, session_id: &str, started: Option<NaiveDateTime>, reply: String) -> String {
+    let Some(start) = started.and_then(|s| Local.from_local_datetime(&s).earliest()) else { return reply };
+    // the session's id has whole seconds: a file made in the routine's first second still counts
+    let from = start.timestamp() as f64 - 2.0;
+    let made = crate::made_files::MADE.in_routine(agent, from, crate::py::time_time());
+    match crate::made_files::fix_reply(&reply, agent, &made) {
+        Some(fixed) => {
+            tracing::info!(agent = %agent, session = %session_id, files = made.len(),
+                "routine reply: the MEDIA line of the audio made in it handed over");
+            fixed
+        }
+        None => reply,
+    }
+}
+
 pub fn job_id(session_id: &str) -> Option<String> {
     CRON_ID.captures(session_id).map(|c| c["job"].to_string())
 }
@@ -415,6 +433,7 @@ impl CronWatcher {
                 st.candidate.remove(&key);
                 st.done.insert(key);
             }
+            let reply = with_audio_made(&agent.name, &sid, started, reply);
             let mut title = match session.get("title") {
                 Some(Value::String(t)) => Some(t.clone()),
                 _ => None,
@@ -627,6 +646,32 @@ mod tests {
     fn msgs(value: Value) -> Vec<Dict> {
         value.as_array().unwrap().iter().map(|m| m.as_object().cloned().unwrap()).collect()
     }
+    #[test]
+    fn a_routines_reply_hands_over_the_audio_made_in_it() {
+        // 2026-10-28, aibox: the 07:50 routine made a podcast at 07:52, its reply carried the day before's path
+        let today = "/bipagents/audio/routinier/20261028-075253-podcast.m4a";
+        let yesterday = "/bipagents/audio/routinier/20261027-095308-podcast.m4a";
+        let started = Local::now().naive_local() - chrono::Duration::minutes(3);
+        let made_at = crate::py::time_time() - 60.0;
+        crate::made_files::MADE.note("routinier", yesterday, None, made_at - 86_000.0);
+        crate::made_files::MADE.note("routinier", today, None, made_at);
+        let sid = "cron_job_20261028_075000";
+        // stale: replaced
+        let stale = format!("🎙️ Podcast du 28 octobre.\nMEDIA:{yesterday}");
+        assert_eq!(with_audio_made("routinier", sid, Some(started), stale), format!("🎙️ Podcast du 28 octobre.\nMEDIA:{today}"));
+        // missing: added
+        assert_eq!(with_audio_made("routinier", sid, Some(started), "Podcast prêt.".into()), format!("Podcast prêt.\nMEDIA:{today}"));
+        // right: untouched
+        let right = format!("Podcast prêt.\nMEDIA:{today}");
+        assert_eq!(with_audio_made("routinier", sid, Some(started), right.clone()), right);
+        // a routine that started after the file was made (nothing made in it): untouched, the old line kept
+        let later = Local::now().naive_local();
+        let asked = format!("Le voici.\nMEDIA:{yesterday}");
+        assert_eq!(with_audio_made("routinier", sid, Some(later), asked.clone()), asked);
+        // another agent's routine: nothing of this one's
+        assert_eq!(with_audio_made("autre", sid, Some(started), "Rien.".into()), "Rien.");
+    }
+
 
     #[test]
     fn cron_session_helpers() {

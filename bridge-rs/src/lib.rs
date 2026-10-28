@@ -39,6 +39,7 @@ pub mod store;
 pub mod apns;
 pub mod approval_text;
 pub mod approvals_log;
+pub mod made_files;
 pub mod credit;
 pub mod cronwatch;
 pub mod no_reply;

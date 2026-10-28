@@ -25,8 +25,10 @@ def test_an_agent_makes_a_page_and_the_app_gets_it_locked(bridge):
     result = call(bridge, "create_page", {"html": DASHBOARD, "title": "Prises de sang"})
     text = result["content"][0]["text"]
     assert result["isError"] is False and "id prises-de-sang" in text and "fonts.googleapis.com" in text
-    assert text.startswith("Page ready: id prises-de-sang, version 1.\nWarning: the page asks for things on the network")
-    media = text.split("MEDIA:")[1].strip()
+    # the MEDIA line first (2026-10-28: a shortened view of the result still has it)
+    assert text.startswith("MEDIA:/bipagents/pages/wellness/prises-de-sang.html\nPage ready: id prises-de-sang, "
+                           "version 1.\nWarning: the page asks for things on the network")
+    media = text.split("MEDIA:")[1].split()[0]
     assert media == "/bipagents/pages/wellness/prises-de-sang.html"
     page = bridge.get("/v1/media", params={"path": media}, headers=AUTH)
     assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
@@ -56,7 +58,8 @@ def test_an_agent_makes_a_page_and_the_app_gets_it_locked(bridge):
         assert bridge.get("/v1/media", params={"path": f"/bipagents/pages/wellness/{other}"}, headers=AUTH).status_code == 404
     # Updated with its id; listed, read back, deleted, by the agent or from the app.
     updated = call(bridge, "create_page", {"html": "<p>v2</p>", "title": "Prises de sang", "page": "prises-de-sang"})
-    assert updated["content"][0]["text"].startswith("Page updated: id prises-de-sang, version 2.")
+    assert updated["content"][0]["text"].startswith(
+        "MEDIA:/bipagents/pages/wellness/prises-de-sang.html\nPage updated: id prises-de-sang, version 2.")
     listed = call(bridge, "list_pages", {})["content"][0]["text"]
     assert listed.startswith("prises-de-sang: Prises de sang (changed now ago, version 2)")
     assert call(bridge, "read_page", {"page": "prises-de-sang"})["content"][0]["text"] == "<p>v2</p>"
@@ -88,8 +91,9 @@ def test_every_page_gets_the_kit_and_goes_inside_the_reply(bridge):
               '<div id="w"></div><script>Bip.bars("#w", {labels: ["S1", "S2"], values: [18, 21]})</script>')
     made = call(bridge, "create_page", {"html": source, "title": "Tes sorties"})
     text = made["content"][0]["text"]
-    assert "put this line alone on its own line in your reply, where the page belongs in your text" in text
-    assert text.endswith("\nMEDIA:/bipagents/pages/wellness/tes-sorties.html")
+    assert "put the MEDIA line above alone on its own line in your reply, exactly as it is, where the page belongs in " \
+           "your text" in text
+    assert text.startswith("MEDIA:/bipagents/pages/wellness/tes-sorties.html\n")
     page = bridge.get("/v1/media", params={"path": "/bipagents/pages/wellness/tes-sorties.html"}, headers=AUTH)
     assert page.headers["content-security-policy"].startswith("sandbox allow-scripts; default-src 'none'")
     kept = page.text

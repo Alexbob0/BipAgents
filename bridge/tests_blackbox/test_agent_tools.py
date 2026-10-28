@@ -78,8 +78,10 @@ def test_an_agent_turns_a_text_into_audio_with_its_voice(bridge, fakes):
     text = "Bonjour et bienvenue dans ce podcast.\n\nVoici les nouvelles du jour."
     result = call(bridge, "create_audio", {"text": text, "title": "Podcast du matin"})
     assert result["isError"] is False
-    assert re.fullmatch(r"Audio ready \(\d+ s\)\.\nTo give it to the person, put this line alone at the end of your "
-                        r"reply:\nMEDIA:/bipagents/audio/wellness/\d{8}-\d{6}-podcast-du-matin\.m4a",
+    # the MEDIA line first (2026-10-28: a shortened view of the result still has it)
+    assert re.fullmatch(r"MEDIA:/bipagents/audio/wellness/\d{8}-\d{6}-podcast-du-matin\.m4a\nAudio ready \(\d+ s\): "
+                        r"to give it to the person, put the MEDIA line above alone at the end of your reply, exactly "
+                        r"as it is \(a new file each time: never one from an earlier turn\)\.",
                         result["content"][0]["text"]), result
     media = media_of(result)
     # Read with the agent's reading voice, one paragraph at a time, in the background queue.
@@ -156,7 +158,7 @@ def test_a_podcast_gives_each_host_a_voice_of_their_own(bridge, fakes):
     result = call(bridge, "create_podcast", {"title": "Le point", "turns": turns})
     assert result["isError"] is False
     text = result["content"][0]["text"]
-    assert "Voices:\n- Max: 4193\n- Léa: pocket:colibri\n" in text and "-le-point.m4a" in text
+    assert text.endswith("Voices:\n- Max: 4193\n- Léa: pocket:colibri") and "-le-point.m4a" in text
     # The first host with the agent's voice, the other with another one; turns read in order.
     assert [body["voice"] for body in fakes.kyutai.inputs] == ["4193", "4193"]
     assert [body["voice"] for body in fakes.pocket.inputs] == ["colibri"]

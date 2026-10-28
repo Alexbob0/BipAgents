@@ -147,7 +147,7 @@ async fn an_agent_turns_a_text_into_audio_with_its_voice() {
     let text = "Bonjour et bienvenue dans ce podcast.\n\nVoici les nouvelles du jour.";
     let result = call(&app, "create_audio", json!({"text": text, "title": "Podcast du matin"})).await;
     assert_eq!(result["isError"], false, "{result}");
-    let media = text_of(&result).split("MEDIA:").nth(1).unwrap().trim().to_string();
+    let media = text_of(&result).split("MEDIA:").nth(1).unwrap().split_whitespace().next().unwrap().to_string();
     assert!(media.starts_with("/bipagents/audio/wellness/") && media.contains("podcast-du-matin"), "{media}");
     // Read with the agent's reading voice, one paragraph at a time, in the background queue.
     let voices: Vec<Value> = backend.with(|s| s.kyutai_inputs.iter().map(|b| b["voice"].clone()).collect());

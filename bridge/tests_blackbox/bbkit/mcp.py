@@ -35,4 +35,4 @@ def text_of(result: Dict[str, Any]) -> str:
 
 
 def media_of(result: Dict[str, Any]) -> str:
-    return text_of(result).split("MEDIA:")[1].strip()
+    return text_of(result).split("MEDIA:")[1].split()[0]

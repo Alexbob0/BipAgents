@@ -107,7 +107,7 @@ async fn an_agent_makes_a_page_and_the_app_gets_it_locked() {
         result["isError"] == false && text.contains("id prises-de-sang") && text.contains("fonts.googleapis.com"),
         "{text}"
     );
-    let media = text.split("MEDIA:").nth(1).unwrap().trim().to_string();
+    let media = text.split("MEDIA:").nth(1).unwrap().split_whitespace().next().unwrap().to_string();
     assert_eq!(media, "/bipagents/pages/wellness/prises-de-sang.html");
     let page = app.get(&format!("/v1/media?path={media}"), &[(k, &v)]).await;
     assert_eq!(page.status, 200);
