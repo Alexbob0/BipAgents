@@ -2,14 +2,18 @@
 
 - **bipagents.com** sells the all-included offer, honestly. The home is short (reworked 2026-10-24 after a user
   review): the hero — on the left why, private and in Europe, with a « See more » that opens in place where your data
-  is and who can read it (`#private` opens it); on the right the approval card, in a loop —, « What they do » (six
-  cards, one per kind of agent, each with its live Bip and four lines: a grid on a computer, a row to swipe on a phone),
-  the Carnet, the family, the comparison (`#compared`), the prices as two ways side by side — « All included » (the
+  is and who can read it (`#private` opens it, right under its button, so privacy comes first on the page as in the
+  header; lightened 2026-10-27: short points, two buttons, the self-install as a small link); on the right « What
+  they do » (`#results`): three things one asks and the card the agent answers with, taken from the app's demo by
+  `hero_show()` in build.py (the walk's map, the booking's approval, a reminder), fading in once — each one a link to
+  the demo on that scenario (`/demo/#walk`, `#book_table`, `#bins`) —, the Carnet, « Duo, Family and friends » as one
+  story in four tiles (places + shared credit, agents passing news on, the family's agent, sharing one conversation
+  with friends), the comparison (`#compared`), the prices as two ways side by side — « All included » (the
   plans: monthly/yearly, Solo/Duo/Famille, web price against the stores' price, computed live) and « On your
   computer », free, whose install (what it means, what it needs, three steps with the command to copy, Windows, what
   one then does oneself) opens in place (`#install` opens it) —, six questions that settle a purchase, the footer
   (store badges, company, links). On a phone, a bar at the bottom keeps the beta's button. Their own pages: `/demo/` (the app's own demo
-  playing in a chat: four scenarios, with the walk's map and the page kit's « Your runs » page inside the replies),
+  playing in a chat: five scenarios, `/demo/#<scenario>` opening on one, with the walk's map and the page kit's « Your runs » page inside the replies),
   `/faq/` (every question), `/beta/` (the public beta: what it is, what testers get, what we ask, TestFlight and
   Google Play badges, its terms on kerfystudio.com `/beta/`; « Join the beta » is the main button everywhere, the
   Carnet section after the cards shows what the agents keep); `/install/` only sends to the home's `#install`. English at `/`, French, German and

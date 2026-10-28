@@ -2,9 +2,9 @@
 //! voice the person chose for the agent in the app (its server voice for reading — Drama 3, Kokoro… — else its Bip);
 //! `create_podcast` makes a conversation between hosts, each with a voice of their own (the person's voice model when
 //! it reads, else Bips); `list_voices` lists the voices the agent may give them; `create_page` and its kin keep the
-//! small web pages the agent makes for the person (pages.py); `mail_search`, `mail_read` and `mail_draft` reach
-//! the mailboxes the person connected for it (mailbox.py); `propose_task` proposes a background task the person starts
-//! in the app (jobs.py); `tell_family` proposes to pass something on to the family's agents, which the person sends
+//! small web pages the agent makes for the person (pages.py); `mail_search`, `mail_read`, `mail_attachment` and
+//! `mail_draft` reach the mailboxes the person connected for it (mailbox.py); `propose_task` proposes a background
+//! task the person starts in the app (jobs.py); `tell_family` proposes to pass something on to the family's agents, which the person sends
 //! or not from the app (family_news.rs, only for an install with a linked household).
 //!
 //! The agent's own Hermes calls it (an MCP server entry `bipagents` in its profile, with a token of its own), not its
@@ -384,6 +384,12 @@ pub fn version_of(tools: &[Value]) -> String {
 /// The tools of `agent`: the install's, the Carnet's (on by default), `health` when the person gave it their health data, the calendar's when they
 /// shared their calendar with it, the address book's when they shared that, `weather` when its « Météo » is on.
 pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
+    if crate::family_agent::is_family(config, &agent.name) {
+        return crate::family_agent::tools(config); // nobody's private data (family_agent.rs)
+    }
+    if crate::project_agent::is_project(config, &agent.name) {
+        return crate::project_agent::tools(config); // shown to friends: nobody's private data (project_agent.rs)
+    }
     let mut tools = install_tools(config).to_vec();
     if crate::notebook::enabled(config, &agent.name) {
         tools.extend(crate::notebook::tools::tools(crate::notebook::health_agent(config, &agent.name)));
@@ -1438,8 +1444,12 @@ the BipAgents app.",
         let result =
             blocking(move || crate::calendar::call(&config, &agent_c.name, &name_c, &arguments_c, None, &remote))
                 .await?;
-        let asked = result.get("content").and_then(|c| c.get(0)).and_then(|c| c.get("text")).and_then(Value::as_str)
-            == Some(crate::calendar::ASKED);
+        let asked = result
+            .get("content")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("text"))
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.starts_with(crate::calendar::ASKED));
         if let Some(push) = push {
             if asked {
                 // The person's phone woken to do it now (a silent push; else when the app opens).
@@ -1554,7 +1564,7 @@ conversation between hosts with different voices; create_page makes a small web 
 (a dashboard, a tracker, a chart, a tool) on any subject, shown in the app; each \
 gives a MEDIA: line for your reply. Any other file you made (a spreadsheet, a document, a picture) reaches \
 the person when you save it in /envoi (or /workspace when your sandbox has no /envoi) and end your reply with a \
-line MEDIA:/envoi/<name>. mail_search, mail_read and mail_draft reach the \
+line MEDIA:/envoi/<name>. mail_search, mail_read, mail_attachment and mail_draft reach the \
 mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
 another of your person's agents (it can't see your files).";
 
@@ -1616,21 +1626,70 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
     };
     // a deferred tool's call that the model's constrained names ended on an in-view tool (tool_diet.rs)
     let name = crate::tool_diet::reroute(&state.config(), &agent, &name, &arguments);
+    if crate::family_agent::is_family(&state.config(), &agent.name) {
+        // the family's agent: only the family's tools, in every turn, its creator's too (family_agent.rs)
+        if let Some(closed) = crate::family_agent::closed_tool(&name) {
+            tracing::info!(agent = %agent.name, tool = %name, "tool closed for the family's agent");
+            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+        }
+        if crate::family_agent::TOOL_NAMES.contains(&name.as_str()) {
+            let result = crate::family_agent::call_tool(&state.config(), &agent, &name, &arguments)?;
+            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+        }
+    }
+    if crate::project_agent::is_project(&state.config(), &agent.name) {
+        // a project agent: only its few tools, in every turn (project_agent.rs)
+        if let Some(closed) = crate::project_agent::closed_tool(&name) {
+            tracing::info!(agent = %agent.name, tool = %name, "tool closed for a project agent");
+            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+        }
+    }
     if crate::agent_shares::relative_turn(&state.config(), &agent.name) {
         // a relative talks to this agent: the person's own data stays closed (agent_shares.rs)
         if let Some(closed) = crate::agent_shares::closed_tool(&name) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
             return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
         }
+    } else if crate::read_shares::shared_turn(&state, &agent.name) {
+        // a conversation shown to people the person invited: the same doors closed (read_shares.rs)
+        if let Some(closed) = crate::read_shares::closed_tool(&name) {
+            tracing::info!(agent = %agent.name, tool = %name, "tool closed in a shared conversation");
+            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+        }
     }
+    // The brake (loop_brake.rs), per turn (the run the hub follows, else the routine's): the same write twice, too many
+    // writes, or a routine going round in circles, refused in plain words.
+    let turn = state.hub.turn_of(&agent.name, &name);
+    if let Some(refused) = crate::loop_brake::TURNS.check(
+        &state.config().brake,
+        &agent.name,
+        turn.as_ref(),
+        &name,
+        &arguments,
+        py::time_time(),
+    ) {
+        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(refused))));
+    }
+    let wrote = move |agent: &str, name: &str, arguments: &Dict, result: &Dict| {
+        if !result.get("isError").map(py::truthy).unwrap_or(false) {
+            crate::loop_brake::TURNS.record(agent, turn.as_ref(), name, arguments);
+        }
+    };
     if crate::family_news::TOOL_NAMES.contains(&name.as_str()) {
         let result = crate::family_news::call_tool(&state.http, &state.config(), &agent, &name, &arguments).await?;
+        wrote(&agent.name, &name, &arguments, &result);
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
     }
     let jobs = crate::jobs::jobs_of(&state);
     let push = state.push.clone();
     let maker = state.audio_maker.clone();
-    let work = tokio::spawn(async move { call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await });
+    let work = tokio::spawn(async move {
+        let result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
+        if let Ok(done) = &result {
+            wrote(&agent.name, &name, &arguments, done);
+        }
+        result
+    });
     let accept = headers.get("accept").and_then(|v| v.to_str().ok()).unwrap_or("");
     if !accept.contains("text/event-stream") {
         let result = work.await.map_err(anyhow::Error::from)??;

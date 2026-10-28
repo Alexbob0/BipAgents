@@ -24,13 +24,11 @@
     </ul>
     <p class="priv-ask"><span id="priv-q">{{private.ask}}</span>
       <button type="button" class="priv-more" aria-expanded="false" aria-controls="private" aria-describedby="priv-q" data-more="{{private.more}}" data-less="{{private.less}}"><span class="priv-label">{{private.more}}</span><i aria-hidden="true"></i></button></p>
-    <p class="words">{{hero.words}}</p>
     <div class="cta-row">
       <a class="pill pill-buy" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
       <a class="pill pill-soft" href="{{demohref}}">{{hero.watch}} <small class="pill-time">{{hero.watchTime}}</small></a>
-      <a class="pill pill-soft" href="#install"><span aria-hidden="true">💻</span>{{pricing.mode.self}}</a>
     </div>
-    <p class="hero-price">{{hero.price}}</p>
+    <p class="hero-alt"><a href="#install"><span aria-hidden="true">💻</span> {{hero.self}}</a></p>
   </div>
 
   <!-- « See more »: where your data is, who can access it (docs/legal/offer.en.md §9, privacy.en.md §5.4,
@@ -55,54 +53,12 @@
     <p class="priv-links"><a href="{{private.href}}">{{private.compare}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
   </div>
 
-  <!-- What they do, at a glance: one result per kind of agent, like the phone's notifications (bridge-rs
-       agent_templates.yaml; the booking was approved first). They come in one after another, then stay still; a phone
-       shows the first four. -->
+  <!-- What they do: one asks, the agent answers with something useful — the cards of the app's own demo (demo.json,
+       built by site/build.py hero_show): the walk's map, the booking, the subscriptions to cancel.
+       Each exchange appears once, one after another, then stays still. -->
   <div class="hero-stage" id="results">
-    <ul class="results" aria-label="{{results.a11y}}">
-      <li class="res" style="--i:0;--tint:var(--coral-tint)">
-        <div class="res-bip" data-bip="daily" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.daily.agent}}</b><span class="ai">{{ai}}</span><time>{{results.daily.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">🍝</span>{{results.daily.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:1;--tint:var(--green-tint)">
-        <div class="res-bip" data-bip="wellness" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.wellness.agent}}</b><span class="ai">{{ai}}</span><time>{{results.wellness.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">😴</span>{{results.wellness.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:2;--tint:var(--gold-tint)">
-        <div class="res-bip" data-bip="finance" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.finance.agent}}</b><span class="ai">{{ai}}</span><time>{{results.finance.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">💳</span>{{results.finance.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:3;--tint:var(--teal-tint)">
-        <div class="res-bip" data-bip="home" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.family.agent}}</b><span class="ai">{{ai}}</span><time>{{results.family.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">🏫</span>{{results.family.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:4;--tint:var(--blue-tint)">
-        <div class="res-bip" data-bip="work" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.work.agent}}</b><span class="ai">{{ai}}</span><time>{{results.work.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">✉️</span>{{results.work.line}}</p>
-        </div>
-      </li>
-      <li class="res" style="--i:5;--tint:var(--violet-tint)">
-        <div class="res-bip" data-bip="learning" data-interactive aria-hidden="true"></div>
-        <div class="res-txt">
-          <p class="res-head"><b>{{results.learning.agent}}</b><span class="ai">{{ai}}</span><time>{{results.learning.time}}</time></p>
-          <p class="res-line"><span class="res-ic" aria-hidden="true">📚</span>{{results.learning.line}}</p>
-        </div>
-      </li>
-    </ul>
+    <div class="show" role="group" aria-label="{{show.a11y}}">{{heroshow}}</div>
+    <p class="show-more"><a href="{{demohref}}">{{show.more}} <span aria-hidden="true">→</span></a></p>
   </div>
 </section>
 
@@ -114,8 +70,9 @@
       <h2>{{notebook.title}}</h2>
       <p class="sub">{{notebook.sub}}</p>
       <ul class="nb-list">
-        <li>{{notebook.i1}}</li><li>{{notebook.i2}}</li><li>{{notebook.i3}}</li>
-        <li>{{notebook.i4}}</li><li>{{notebook.i5}}</li><li>{{notebook.i6}}</li>
+        <li><span aria-hidden="true">🔔</span>{{notebook.i1}}</li><li><span aria-hidden="true">✈️</span>{{notebook.i2}}</li>
+        <li><span aria-hidden="true">🧾</span>{{notebook.i3}}</li><li><span aria-hidden="true">🔁</span>{{notebook.i4}}</li>
+        <li><span aria-hidden="true">📄</span>{{notebook.i5}}</li><li><span aria-hidden="true">📅</span>{{notebook.i6}}</li>
       </ul>
       <p class="nb-line"><span aria-hidden="true">🗂️</span>{{notebook.line1}}</p>
       <p class="nb-line"><span aria-hidden="true">🔎</span>{{notebook.line2}}</p>
@@ -143,7 +100,7 @@
   </div>
 </section>
 
-<!-- ============================================================ FAMILY: agents that pass news on, after you approve
+<!-- ============================================================ TOGETHER: Duo/Famille and friends, one story
      (bridge-rs family_news.rs, peers.rs, shares.rs; no group chats yet) -->
 <section class="section fam-section" id="family">
   <div class="section-head reveal">
@@ -168,14 +125,15 @@
       </figure>
     </div>
     <div class="fam-copy">
-      <ol class="fam-steps reveal">
-        <li style="--tint:var(--coral-tint)"><h3>{{family.s1t}}</h3><p>{{family.s1}}</p></li>
-        <li style="--tint:var(--teal-tint)"><h3>{{family.s2t}}</h3><p>{{family.s2}}</p></li>
-        <li style="--tint:var(--gold-tint)"><h3>{{family.s3t}}</h3><p>{{family.s3}}</p></li>
-      </ol>
-      <ul class="fam-points reveal">
-        <li>{{family.p1}}</li><li>{{family.p2}}</li><li>{{family.p3}}</li><li>{{family.p4}}</li>
+      <!-- One story, from home to friends: places + shared credit (Duo/Famille), agents passing news on after you
+           approve, the family's shared agent and Carnet, one conversation shared read-only with friends (shares.rs). -->
+      <ul class="fam-tiles reveal">
+        <li style="--tint:var(--coral-tint)"><span class="fam-ic" aria-hidden="true">🏠</span><h3>{{family.s1t}}</h3><p>{{family.s1}}</p></li>
+        <li style="--tint:var(--teal-tint)"><span class="fam-ic" aria-hidden="true">💬</span><h3>{{family.s2t}}</h3><p>{{family.s2}}</p></li>
+        <li style="--tint:var(--gold-tint)"><span class="fam-ic" aria-hidden="true">🛒</span><h3>{{family.s3t}}</h3><p>{{family.s3}}</p></li>
+        <li style="--tint:var(--violet-tint)"><span class="fam-ic" aria-hidden="true">🧳</span><h3>{{family.s4t}}</h3><p>{{family.s4}}</p></li>
       </ul>
+      <p class="fam-lock reveal"><span aria-hidden="true">🔒</span>{{family.lock}}</p>
       <p class="fam-cta reveal"><a class="pill pill-soft" href="#pricing">{{family.cta}}</a></p>
     </div>
   </div>

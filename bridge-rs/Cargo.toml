@@ -53,6 +53,8 @@ percent-encoding = "2"
 png = "0.17"
 qrcode = { version = "0.14", default-features = false }
 rand = "0.8"
+# read_shares.rs: P-256 boxes and AES-256-GCM (already built for rustls)
+ring = "0.17"
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "pem", "ring"] }
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "stream", "multipart", "gzip", "brotli", "deflate", "zstd"] }

@@ -209,7 +209,9 @@ fn places(config: &Config, agent: &AgentConfig) -> Vec<(String, Vec<PathBuf>)> {
 
 /// The folder of this machine behind a folder `path` as the agent sees it in its sandbox (`/workspace/notes`, a
 /// mounted folder, its outbox…): the newest when several of its sandboxes have one. None: not one of its places, or no
-/// such folder (or a link on the way).
+/// such folder (or a link on the way). Its real path (`canonicalize`), and only when that is still inside the place: a
+/// folder the sandbox swapped for a link between the walk and the resolution never leads out (security audit
+/// 2026-10-27); the archives then open it only while it still leads there (beneath.rs `open_exact`).
 pub(crate) fn sandbox_folder(config: &Config, agent: &AgentConfig, path: &str) -> Option<PathBuf> {
     let path = path.trim().trim_end_matches('/');
     for (prefix, folders) in places(config, agent) {
@@ -233,7 +235,8 @@ pub(crate) fn sandbox_folder(config: &Config, agent: &AgentConfig, path: &str) -
                         return None;
                     }
                 }
-                Some(at)
+                let (real, place) = (std::fs::canonicalize(&at).ok()?, std::fs::canonicalize(folder).ok()?);
+                real.starts_with(&place).then_some(real)
             })
             .max_by_key(|candidate| candidate.metadata().and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH));
         return found;

@@ -4,7 +4,6 @@
 //! name only). No model, nothing sent anywhere.
 
 use std::io::{BufRead, Read};
-use std::path::Path;
 use std::process::Stdio;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -390,14 +389,14 @@ pub fn pdftotext() -> Option<String> {
     FOUND.clone()
 }
 
-/// A PDF's text (its first 50 pages), when `pdftotext` is there and answers in time.
-pub fn pdf_text(path: &Path) -> Option<String> {
+/// A PDF's text (its first 50 pages), when `pdftotext` is there and answers in time. The file already open (never
+/// through a link: `agent_files::open_beneath`) is given as its input (`/dev/stdin`), never its path, which a folder
+/// swapped for a link meanwhile would lead elsewhere (security audit 2026-10-27).
+pub fn pdf_text(file: std::fs::File) -> Option<String> {
     let program = pdftotext()?;
     let mut child = std::process::Command::new(program)
-        .args(["-q", "-l", "50", "-enc", "UTF-8"])
-        .arg(path)
-        .arg("-")
-        .stdin(Stdio::null())
+        .args(["-q", "-l", "50", "-enc", "UTF-8", "/dev/stdin", "-"])
+        .stdin(Stdio::from(file))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()

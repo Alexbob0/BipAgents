@@ -1,6 +1,7 @@
 """A small IMAP4rev1 server for the mailbox tests: plain connection then STARTTLS (as Proton Mail Bridge on this machine,
-whose certificate the bridge does not check), LOGIN, LIST, SELECT/EXAMINE, UID SEARCH (ALL, SINCE, BEFORE, FROM, TEXT,
-CHARSET), UID FETCH (BODY.PEEK[], BODY.PEEK[HEADER.FIELDS (…)], BODY.PEEK[TEXT], partials), APPEND, LOGOUT. It records
+whose certificate the bridge does not check) — or plain only with `starttls = False`, as hydroxide without TLS
+options —, LOGIN, LIST, SELECT/EXAMINE, UID SEARCH (ALL, SINCE, BEFORE, FROM, TEXT,
+CHARSET), UID FETCH (RFC822.SIZE, BODY.PEEK[], BODY.PEEK[HEADER.FIELDS (…)], BODY.PEEK[TEXT], partials), APPEND, LOGOUT. It records
 every command it gets."""
 from __future__ import annotations
 
@@ -94,6 +95,7 @@ class FakeImap:
         self.appended: List[Tuple[str, str, bytes]] = []
         self.logins: List[Tuple[str, bool]] = []
         self.tls_seen = 0
+        self.starttls = True
 
     def add(self, folder: str, uid: int, raw: bytes) -> None:
         self.folders.setdefault(folder, []).append((uid, raw))
@@ -111,7 +113,8 @@ class FakeImap:
         stream = conn.makefile("rwb")
         state = {"user": None, "folder": None, "conn": conn, "stream": stream}
         try:
-            self._send(state, b"* OK [CAPABILITY IMAP4rev1 STARTTLS] fake IMAP ready\r\n")
+            self._send(state, b"* OK [CAPABILITY IMAP4rev1" + (b" STARTTLS" if self.starttls else b"")
+                       + b"] fake IMAP ready\r\n")
             while True:
                 line = state["stream"].readline()
                 if not line:
@@ -145,10 +148,10 @@ class FakeImap:
 
     def _dispatch(self, state, tag: str, command: str, args: str, payload: bytes) -> bool:
         if command == "CAPABILITY":
-            caps = "IMAP4rev1 AUTH=PLAIN" + ("" if state.get("tls") else " STARTTLS")
+            caps = "IMAP4rev1 AUTH=PLAIN" + ("" if state.get("tls") or not self.starttls else " STARTTLS")
             self._send(state, f"* CAPABILITY {caps}\r\n".encode())
             self._ok(state, tag)
-        elif command == "STARTTLS":
+        elif command == "STARTTLS" and self.starttls:
             self._ok(state, tag, "begin TLS now")
             state["stream"].flush()
             tls = self.context.wrap_socket(state["conn"], server_side=True)
@@ -276,6 +279,8 @@ class FakeImap:
                     label += f"<{start}>"
                 chunks.append((label, data))
             out = f"* {seq} FETCH (UID {uid}".encode()
+            if "RFC822.SIZE" in items.upper():
+                out += f" RFC822.SIZE {len(raw)}".encode()
             for label, data in chunks:
                 out += f" {label} {{{len(data)}}}\r\n".encode() + data
             self._send(state, out + b")\r\n")

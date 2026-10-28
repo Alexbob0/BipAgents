@@ -518,6 +518,23 @@ BipAgents app.",
                 return Ok(tool_text("nothing to change", true));
             }
             let mut queue = list_of(&data, "queue");
+            let args_v = Value::Object(args.clone());
+            let twin = if adding {
+                crate::phone_asks::twin(&queue, agent, now, |a| a == &args_v)
+            } else {
+                queue.iter().find(|op| crate::phone_asks::waiting(op) && op.get("args") == Some(&args_v))
+            };
+            if let Some(twin) = twin {
+                // phone_asks.rs: the same request again (a model checking its work in a copy that doesn't show it yet)
+                return Ok(tool_text(
+                    &format!(
+                        "Already asked (request {}): not asked again. The contact shows in contacts_search once the \
+phone has done it and shared the address book again.",
+                        text(twin, "id")
+                    ),
+                    false,
+                ));
+            }
             queue.push(json!({"id": py::token_hex(6), "op": if adding { "add" } else { "update" }, "agent": agent,
                               "created": now, "state": "pending", "args": args}));
             data.insert("queue".into(), Value::Array(queue));

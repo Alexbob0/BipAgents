@@ -661,7 +661,10 @@ impl Jobs {
         }
         let session_id = tk::str_or_empty(job.get("session_id"));
         let base = counters(&self.hermes.session(&agent, &session_id).await.map_err(refused)?);
-        let run_id = self.hermes.start_run(&agent, text, &session_id, Some(INSTRUCTIONS)).await.map_err(refused)?;
+        // GLM through EUrouter thinks at « low » in chat since 2026-10-28; tasks stay at « medium » until measured.
+        let options = crate::agents_admin::task_turn_options(&self.config.get(), &agent);
+        let run_id =
+            self.hermes.start_run_with(&agent, text, &session_id, Some(INSTRUCTIONS), options).await.map_err(refused)?;
         let now = py::time_time();
         let before = job.get("tokens").cloned().unwrap_or(json!({}));
         let started = job.get("started").filter(|v| py::truthy(v)).cloned().unwrap_or(json!(now));
@@ -684,6 +687,7 @@ impl Jobs {
         save(&self.config.get(), job)?;
         if let Some(hub) = &self.hub {
             hub.watch(&agent, &run_id, Some(&session_id), false); // approvals and questions still pushed
+            hub.mark_background(&agent.name, &run_id); // the brake's higher limits (loop_brake.rs)
         }
         let id = tk::str_or_empty(job.get("id"));
         self.follow(&id);
@@ -714,6 +718,7 @@ impl Jobs {
                 if !run_id.is_empty() {
                     let session = job.get("session_id").filter(|v| !v.is_null()).map(py::py_str);
                     hub.watch(agent, &run_id, session.as_deref(), false);
+                    hub.mark_background(&agent.name, &run_id);
                 }
             }
             self.follow(&tk::str_or_empty(job.get("id")));

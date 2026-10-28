@@ -584,7 +584,12 @@ pub async fn make_profile(
         .await?;
     }
     run(strings(&[&hermes, "-p", &profile, "config", "set", "API_SERVER_KEY", &agent.hermes_key]), env.clone()).await?;
-    if !install.isolated {
+    // The family's agent (family_agent.rs): never anything that reads the place's disk or drives a browser with
+    // someone's logins, sandboxed or not.
+    // A project agent (project_agent.rs) the same: shown to friends, it reaches nobody's files.
+    let family =
+        crate::family_agent::is_family(&config, &profile) || crate::project_agent::is_project(&config, &profile);
+    if !install.isolated || family {
         // Same account as this bridge and no sandbox: nothing that reads the disk until the person turns it on.
         let mut args = strings(&[&hermes, "-p", &profile, "tools", "disable"]);
         args.extend(strings(&DISK_TOOLS));
@@ -596,7 +601,7 @@ pub async fn make_profile(
     mark_as_bot(&folder)?;
     // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
     wait_served(http, &agent, true).await?;
-    let mut agent = with_browser(&config, agent, run).await;
+    let mut agent = if family { agent } else { with_browser(&config, agent, run).await };
     agent = mount_uploads(shared, &agent, run, false).await?;
     if shared.get().agents.contains_key(&profile) {
         save_agent(shared, &agent)?;
@@ -1042,6 +1047,84 @@ pub const THINKING_PROVIDER: &str = "bipagents-thinking";
 pub const THINKING_LEVELS: [&str; 5] = ["none", "low", "medium", "high", "xhigh"];
 /// What Hermes asks a custom server for when nothing is set.
 pub const DEFAULT_THINKING: &str = "medium";
+/// GLM's level through EUrouter when nothing is chosen, and what « none » becomes there (see [`keeps_thinking_on`]).
+pub const GLM_THINKING: &str = "low";
+/// Next to a GLM profile whose `reasoning_effort` is « low » because the person chose « none »: the app shows « none ».
+pub const THINKING_OFF_MARK: &str = ".bipagents-thinking-off";
+
+/// Models whose thinking can't be switched off: GLM through EUrouter (measured 2026-10-27, internal/research/
+/// token-diet-step3-2026-10-27.md). There `reasoning_effort: none` makes GLM think ~400 tokens and answer NOTHING
+/// (Entrim), `chat_template_kwargs.enable_thinking` is ignored, and « low » cuts its thinking to ~1 token on an
+/// easy question: −74 % cost, 3× faster, same quality as « medium » (Hermes' default). So « low » is their default
+/// and their floor: « none » is sent as « low ». Melious, the router's second provider, refuses any reasoning field
+/// for GLM (400), but EUrouter skips it by itself when the request carries one and fallbacks are allowed (they
+/// always are, model_route.rs): measured 2026-10-28. Hermes also retries a turn once without the field on that 400.
+pub fn keeps_thinking_on(model: &str, base_url: &str) -> bool {
+    model.to_lowercase().contains("glm") && crate::model_route::pins(base_url)
+}
+
+/// Whether a Hermes config's model is one of [`keeps_thinking_on`] (provider `custom`, its model id and address).
+pub fn thinking_floor(data: &Yaml) -> bool {
+    let Some(model) = data.get("model").filter(|m| m.is_map()) else { return false };
+    model.get("provider").and_then(Yaml::as_str) == Some("custom")
+        && keeps_thinking_on(
+            &model.get("default").map(Yaml::py_str).unwrap_or_default(),
+            model.get("base_url").and_then(Yaml::as_str).unwrap_or(""),
+        )
+}
+
+/// The level written in a config (`agent.reasoning_effort`, « off »/false read as « none »), None when unset.
+fn written_thinking(data: &Yaml) -> Option<String> {
+    let effort = data.get("agent").filter(|a| a.is_map()).and_then(|a| a.get("reasoning_effort"));
+    let effort = match effort {
+        None | Some(Yaml::Null) => return None,
+        Some(Yaml::Str(s)) if s.is_empty() => return None,
+        Some(value) => value.py_str().trim().to_lowercase(),
+    };
+    if ["none", "false", "disabled", "off"].contains(&effort.as_str()) {
+        // YAML false reads « false »
+        return Some("none".into());
+    }
+    Some(effort)
+}
+
+/// A config with GLM's floor (see [`keeps_thinking_on`]): nothing chosen or « none » becomes « low ». None when
+/// nothing changes (another model, a level above none). Applied wherever the bridge writes a model's routing
+/// (model_route::with_routing): at each start for every agent, at a claim, for the hub new agents are cloned from,
+/// when the model or the level changes.
+pub fn with_thinking_floor(data: &Yaml) -> Option<Yaml> {
+    if !thinking_floor(data) || written_thinking(data).is_some_and(|l| l != "none") {
+        return None;
+    }
+    let mut out = data.clone();
+    let mut settings = out.get("agent").filter(|a| a.is_map()).cloned().unwrap_or_else(Yaml::map);
+    settings.insert("reasoning_effort", Yaml::str(GLM_THINKING));
+    out.insert("agent", settings);
+    Some(out)
+}
+
+/// The `model_options` of a turn that wants an answer at once (Live calls, the Live notes): thinking off, or GLM's
+/// floor where it can't be switched off (« none » would make it answer nothing). Hermes 517b5e10f reads both shapes
+/// (`gateway/platforms/api_server_request_options.py`); to a custom server « enabled: false » goes out as
+/// `reasoning_effort: none`, « effort: low » as `reasoning_effort: low`.
+pub fn quick_turn_options(config: &Config, agent: &AgentConfig) -> Value {
+    let floor = load_or_empty(&profile_config_path(config, agent)).map(|d| thinking_floor(&d)).unwrap_or(false);
+    if floor {
+        json!({"reasoning": {"enabled": true, "effort": GLM_THINKING}})
+    } else {
+        json!({"reasoning": {"enabled": false}})
+    }
+}
+
+/// The `model_options` of a background task's run (jobs.rs): « medium » for GLM until « low » is measured on long
+/// tasks (decided 2026-10-28 after the bench). None: the agent's own level (another model, or a level the person
+/// set above « low »).
+pub fn task_turn_options(config: &Config, agent: &AgentConfig) -> Option<Value> {
+    let data = load_or_empty(&profile_config_path(config, agent)).ok()?;
+    let level = written_thinking(&data).unwrap_or_else(|| GLM_THINKING.into());
+    (thinking_floor(&data) && (level == "none" || level == GLM_THINKING))
+        .then(|| json!({"reasoning": {"enabled": true, "effort": DEFAULT_THINKING}}))
+}
 
 fn profile_config_path(config: &Config, agent: &AgentConfig) -> PathBuf {
     profile_folder(config, agent).join("config.yaml")
@@ -1074,31 +1157,31 @@ pub fn read_thinking(config: &Config, agent: &AgentConfig) -> Option<String> {
     {
         return None;
     }
-    let effort = data.get("agent").filter(|a| a.is_map()).and_then(|a| a.get("reasoning_effort"));
-    let effort = match effort {
-        None | Some(Yaml::Null) => return Some(DEFAULT_THINKING.into()),
-        Some(Yaml::Str(s)) if s.is_empty() => return Some(DEFAULT_THINKING.into()),
-        Some(value) => value.py_str().trim().to_lowercase(),
-    };
-    if ["none", "false", "disabled", "off"].contains(&effort.as_str()) {
-        // YAML false reads « false »
-        return Some("none".into());
+    let floor = thinking_floor(&data);
+    let default = if floor { GLM_THINKING } else { DEFAULT_THINKING };
+    let Some(effort) = written_thinking(&data) else { return Some(default.into()) };
+    if floor && effort == GLM_THINKING && profile_folder(config, agent).join(THINKING_OFF_MARK).exists() {
+        return Some("none".into()); // what the person chose; GLM gets its floor
     }
-    Some(if THINKING_LEVELS.contains(&effort.as_str()) { effort } else { DEFAULT_THINKING.into() })
+    Some(if THINKING_LEVELS.contains(&effort.as_str()) { effort } else { default.into() })
 }
 
 /// The agent's thinking level, read by Hermes from the next message (it reloads a profile's config when it
 /// changes): `reasoning_effort`, which GLM-like servers follow (the model still answers an easy question at once).
 /// « none » also turns the chat template's `enable_thinking` off (bound to the model's address), for servers that
 /// only follow that one. Never on: it would win over a turn that asks for no thinking (Live).
+/// GLM through EUrouter ([`keeps_thinking_on`]): « none » is written « low » (its floor) and remembered by
+/// [`THINKING_OFF_MARK`], so the app still shows the person's choice; no `enable_thinking` entry (ignored there).
 pub fn set_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow::Result<String> {
     if !THINKING_LEVELS.contains(&level) || read_thinking(config, agent).is_none() {
         return Err(LookupError(agent.name.clone()).into());
     }
     let path = profile_config_path(config, agent);
     let mut data = load_or_empty(&path)?;
+    let floor = thinking_floor(&data);
+    let written = if floor && level == "none" { GLM_THINKING } else { level };
     let mut providers = data.get("providers").filter(|p| p.is_map()).cloned().unwrap_or_else(Yaml::map);
-    if level == "none" {
+    if written == "none" {
         let api = data.get("model").and_then(|m| m.get("base_url")).cloned().unwrap_or(Yaml::Null);
         let mut kwargs = Yaml::map();
         kwargs.insert("enable_thinking", Yaml::Bool(false));
@@ -1117,12 +1200,18 @@ pub fn set_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow
         data.remove("providers");
     }
     let mut settings = data.get("agent").filter(|a| a.is_map()).cloned().unwrap_or_else(Yaml::map);
-    settings.insert("reasoning_effort", Yaml::str(level));
+    settings.insert("reasoning_effort", Yaml::str(written));
     data.insert("agent", settings);
     if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order) {
         data = routed; // the thinking entry is the one Hermes picks for the router's address: it carries the routing
     }
     replace_yaml(&path, &data)?;
+    let mark = profile_folder(config, agent).join(THINKING_OFF_MARK);
+    if floor && level == "none" {
+        std::fs::write(&mark, "")?;
+    } else if mark.exists() {
+        std::fs::remove_file(&mark)?;
+    }
     Ok(level.to_string())
 }
 
@@ -1151,16 +1240,26 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
     }
     let path = profile_config_path(config, agent);
     let mut data = load_or_empty(&path)?;
+    let floor_before = thinking_floor(&data);
+    // the level the person chose (« none » under GLM's floor included), carried over to the new model
+    let chosen = written_thinking(&data).and_then(|_| read_thinking(config, agent));
     if let Some(model) = data.get_mut("model") {
         model.insert("default", Yaml::str(name));
         if let Some(vision) = vision {
             model.insert("supports_vision", Yaml::Bool(vision));
         }
     }
+    let floor_after = thinking_floor(&data);
     if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order) {
         data = routed;
     }
     replace_yaml(&path, &data)?;
+    if floor_before != floor_after {
+        // to or from GLM through EUrouter: « none » written as that model needs it (set_thinking)
+        if let Some(level) = chosen {
+            set_thinking(config, agent, &level)?;
+        }
+    }
     Ok(read_model(config, agent).unwrap_or_else(|| json!({})))
 }
 
@@ -1222,15 +1321,32 @@ pub fn heal_browser_proxy(config: &Config) {
     }
 }
 
-/// Profiles set by an earlier bridge with the chat template's thinking forced on: that wins over a turn asking for
-/// none (Live), so it goes (their reasoning_effort stays).
+/// At start:
+/// - profiles set by an earlier bridge with the chat template's thinking forced on: that wins over a turn asking
+///   for none (Live), so it goes (their reasoning_effort stays);
+/// - GLM through EUrouter ([`keeps_thinking_on`], 2026-10-28): nothing chosen (Hermes' « medium ») becomes « low »,
+///   « none » becomes « low » with the person's choice kept for the app, and the ignored `enable_thinking` entry
+///   goes. A level the person set (« medium » or more) stays: the bridge writes `reasoning_effort` only when the
+///   person picks one (the installer never does), so a written level is theirs.
 pub fn heal_thinking(config: &Config) {
     for name in config.agents.keys() {
         let Ok(agent) = editable(config, name) else { continue };
-        let Some(level) = read_thinking(config, &agent).filter(|l| l != "none") else { continue };
+        let Some(level) = read_thinking(config, &agent) else { continue };
         let Ok(data) = load_or_empty(&profile_config_path(config, &agent)) else { continue };
-        if data.get("providers").and_then(|p| p.get(THINKING_PROVIDER)).is_some() {
-            let _ = set_thinking(config, &agent, &level);
+        let entry = data.get("providers").and_then(|p| p.get(THINKING_PROVIDER)).is_some();
+        let heal = if thinking_floor(&data) {
+            entry || written_thinking(&data).is_none_or(|l| l == "none")
+        } else {
+            entry && level != "none"
+        };
+        if !heal {
+            continue;
+        }
+        match set_thinking(config, &agent, &level) {
+            Ok(_) => tracing::info!(target: "bipbridge::agents", agent = %agent.name, level = %level, "thinking level healed"),
+            Err(err) => {
+                tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %format!("{err:#}"), "thinking level not healed")
+            }
         }
     }
 }
@@ -1325,6 +1441,24 @@ pub async fn write_settings(
     {
         return Err(AgentError("the tools of an agent set up by hand are changed on its server".into()).into());
     }
+    if crate::family_agent::is_family(&config, &agent.name)
+        && crate::family_agent::refused_setting(
+            &toolsets,
+            body.browser,
+            body.health == Some(true) || body.notebook == Some(true),
+        )
+    {
+        return Err(AgentError("the family's agent keeps nobody's private data: these tools stay off".into()).into());
+    }
+    if crate::project_agent::is_project(&config, &agent.name)
+        && crate::project_agent::refused_setting(
+            &toolsets,
+            body.browser,
+            body.health == Some(true) || body.notebook == Some(true),
+        )
+    {
+        return Err(AgentError("a project agent is shown to friends: these tools stay off".into()).into());
+    }
     if !skills.is_empty() {
         if let Err(exc) = crate::own_skills::set_enabled(&profile_folder(&config, agent), &skills) {
             return Err(match exc.downcast_ref::<LookupError>() {
@@ -1401,13 +1535,19 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
         Some(lang) if !lang.is_empty() => crate::souls::with_language(&text, Some(lang)),
         _ => text,
     };
-    let text = crate::souls::with_health(&text, crate::health::enabled(config, &agent.name));
-    let text = crate::souls::with_notebook(&text, crate::notebook::enabled(config, &agent.name));
-    let text = crate::souls::with_archives(&text, crate::archives::enabled(config, &agent.name));
+    // the family's agent: none of its creator's private tools, its own block instead (family_agent.rs)
+    let project = crate::project_agent::is_project(config, &agent.name);
+    let family = crate::family_agent::is_family(config, &agent.name);
+    let closed = family || project;
+    let text = crate::souls::with_health(&text, !closed && crate::health::enabled(config, &agent.name));
+    let text = crate::souls::with_notebook(&text, !closed && crate::notebook::enabled(config, &agent.name));
+    let text = crate::souls::with_archives(&text, !closed && crate::archives::enabled(config, &agent.name));
     let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
     let text = crate::dates::with_dates(&text, line.as_deref());
     let text = crate::guide::with_blocks(config, agent, &text);
-    let text = if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+    let text = crate::family_agent::with_family(&text, family);
+    let text = crate::project_agent::with_project(&text, project);
+    let text = if closed || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         text
     } else {
         crate::souls::with_payments(&text)
@@ -1423,6 +1563,8 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
+    let (soul, _) = crate::family_agent::split_family(&soul);
+    let (soul, _) = crate::project_agent::split_project(&soul);
     Ok(crate::guide::split_blocks(&soul))
 }
 
@@ -1486,6 +1628,8 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     crate::health::forget(&config, &agent.name);
     crate::weather::forget(&config, &agent.name);
     crate::guide::forget(&config, &agent.name);
+    crate::family_agent::forget(&config, &agent.name);
+    crate::project_agent::forget(&config, &agent.name);
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, "agent deleted");
     Ok(())
 }
@@ -1914,8 +2058,12 @@ async fn remove_claim(State(state): State<AppState>) -> ApiResult<Response> {
 async fn remove_agent(state: AppState, agent_id: String) -> ApiResult<Response> {
     let agent = managed_or_404(&state, &agent_id)?;
     let _guard = LOCK.lock().await;
+    let family = crate::family_agent::is_family(&state.config(), &agent.name);
     let result = async {
         delete_agent(&state.config, &agent, &default_run()).await?;
+        if family {
+            crate::family_agent::deleted(&state, &agent); // the members' apps drop it at once
+        }
         crate::agent_groups::set_group(&state.config(), &agent.name, "")?;
         state.vault.forget_agent(&state.config(), &agent.name).await
     }

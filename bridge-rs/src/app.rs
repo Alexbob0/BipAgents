@@ -323,6 +323,8 @@ impl AppState {
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
+        self.spawn(crate::read_shares::run_forever(self.clone())); // shared conversations' encrypted copies
+        self.spawn(crate::project_agent::run_forever(self.clone())); // projects past their end: archived
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
         self.spawn(crate::archives::scheduler(self.config.clone()));
         crate::agent_email::start(self);
@@ -569,6 +571,8 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
                 "uploads": a.upload_dir_host.as_deref().map(|u| !u.is_empty()).unwrap_or(false),
                 "inbox": a.ntfy_topic.as_deref().map(|t| !t.is_empty()).unwrap_or(false),
                 "url": a.public_url,
+                "family": crate::family_agent::is_family(&config, &a.name),
+                "project": crate::project_agent::listing_mark(&config, &a.name),
                 // Never to a web console: it reaches Hermes through the bridge, which adds the key.
                 "key": if url.is_some() && !caller.console { Some(a.hermes_key.clone()) } else { None },
             })
@@ -1046,10 +1050,16 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
             return Err(HttpError::new(400, "invalid session_id"));
         }
     }
-    let mut listener = state.hub.subscribe(&agent_cfg, &run_id, "app", true);
+    let listener = state.hub.subscribe(&agent_cfg, &run_id, "app", true);
     if let Some(s) = session_id.filter(|s| !s.is_empty()) {
         listener.sub.set_session_id(Some(s));
     }
+    Ok(listener_events(listener))
+}
+
+/// A listener of the run hub as the SSE the app reads (`event: <type>`, `data: <json>`, a keepalive comment every
+/// 10 s): the bridge's `GET /v1/runs/{id}/events`, and the door's relay of Hermes' own (lan.rs).
+pub fn listener_events(mut listener: crate::runs::Listener) -> Response {
     let events = async_stream::stream! {
         loop {
             match tokio::time::timeout(Duration::from_secs_f64(SSE_KEEPALIVE_SECONDS), listener.queue.recv()).await {
@@ -1067,14 +1077,14 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
         listener.close();
     };
     let response = Response::new(Body::from_stream(events));
-    Ok(with_headers(
+    with_headers(
         response,
         &[
             ("content-type", "text/event-stream; charset=utf-8".into()),
             ("cache-control", "no-store".into()),
             ("x-accel-buffering", "no".into()),
         ],
-    ))
+    )
 }
 
 async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>) -> ApiResult<Response> {
@@ -1626,6 +1636,9 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::peers::household_admin_router())
         .merge(crate::family_news::router())
         .merge(crate::agent_shares::router())
+        .merge(crate::family_agent::router())
+        .merge(crate::read_shares::router())
+        .merge(crate::project_agent::router())
         .merge(crate::desktop::desktop_admin_router());
     // Under /v1 without the bridge key: a computer sending its agents (the app's one-time code instead), and a
     // server the app created until the app claims it (its own proofs).
@@ -1655,6 +1668,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key
         .merge(crate::agent_shares::household_router()) // the agents shared with them, the same key
+        .merge(crate::family_agent::household_router()) // the family's agent and its Carnet, the same key
         .merge(crate::rooms_remote::household_router()) // their agents in this person's discussions, the same key
         .nest("/desktop/static/novnc", crate::desktop::static_files())
         .merge(crate::desktop::desktop_router()) // the page and its stream: a short-lived ticket from the route above

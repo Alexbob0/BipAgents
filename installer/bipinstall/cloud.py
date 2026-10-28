@@ -88,8 +88,9 @@ def _global(address: str) -> bool:
 
 
 def public_address(metadata: Optional[Callable[[], Optional[str]]] = None) -> Optional[str]:
-    """This server's public IPv4: the one its main route leaves from (DigitalOcean and OVHcloud put it on the
-    interface itself), else what the provider's metadata service says."""
+    """This server's public IPv4: the one its main route leaves from (DigitalOcean, OVHcloud and Hetzner put it on the
+    interface itself), else what the provider's metadata service says. On a server set up by user-data.yaml only
+    root may ask the metadata service (a place's account is refused at once): there the interface's is the one."""
     for target in ("1.1.1.1", "9.9.9.9"):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:

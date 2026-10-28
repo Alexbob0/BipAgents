@@ -310,9 +310,90 @@ def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
     return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), page["template"])
 
 
+def small_map(source: Path) -> str:
+    """A smaller copy of the walk's map for the home's first screen (≈ 440 px wide), when sips is there; else the map
+    itself. Returns the file's name."""
+    target = source.with_name("walk-map-small.jpg")
+    if source.exists() and shutil.which("sips"):
+        done = subprocess.run(["sips", "-Z", "440", "-s", "format", "jpeg", "-s", "formatOptions", "62", str(source),
+                               "--out", str(target)], capture_output=True)
+        if done.returncode == 0 and target.exists():
+            return target.name
+    return source.name
+
+
+def hero_show(demo: Dict[str, Any], t: Dict[str, Any], lang: str, map_file: str, demo_href: str) -> str:
+    """The home's first screen, on the right: what one asks and what the agent answers with, taken from the app's own
+    demo (demo.json): the walk's map, the booking (its 3 finds, then the approval), the subscriptions to cancel. A loose
+    stack on a computer, one column on a phone; each exchange fades in once, one after another (none with reduced
+    motion). A tap on one opens the demo page on that same scenario (/demo/#walk: site.js picks the tab from the address)."""
+    tidy = french_spaces if lang == "fr" else (lambda s: s)
+    e = lambda s: html.escape(tidy(s), quote=False)
+    agents = {a["id"]: a for a in demo["agents"]}
+    scen = {k: localized(v, lang) for k, v in demo["scenarios"].items()}
+
+    def head(agent: str) -> str:
+        a = agents[agent]
+        return (f'<p class="ex-from"><span class="ex-av" data-bip-static="{a["category"]}"></span>'
+                f'<b>{e(localized(a["name"], lang))}</b><span class="ai">{e(t["ai"])}</span>'
+                f'<span class="ex-arrow" aria-hidden="true">→</span></p>')
+
+    def one(i: int, agent: str, tone: str, ask: str, card: str, kind: str, scenario: str) -> str:
+        # The whole exchange is the link: the ask's link stretched over it (the runs card's own link stays on top).
+        go = (f'<a class="ex-go" href="{demo_href}#{scenario}">{e(ask)}'
+              f'<span class="vh"> · {e(t["show"]["go"])}</span></a>')
+        return (f'<li class="ex ex--{kind}" style="--i:{i};--tint:var(--{tone}-tint)">'
+                f'<p class="ex-ask">{go}</p><div class="ex-card">{head(agent)}{card}</div></li>')
+
+    # The booking: the agent found 3 places (the three as chips, the second picked, as in the demo's own run), then
+    # asks before sending: the approval with its detail (« Pasta Mia · 20 h 30 · 2 personnes · vendredi soir »).
+    book = scen["book_table"]
+    asked = next(s for s in book["steps"] if "ask" in s)
+    choices = asked["ask"]["choices"]
+    answer = choices[1]
+    found = re.split(r"(?<=[.?!])\s", asked["ask"]["question"])[0]
+    approve = next(s for s in asked["then"] if "approve" in s)["approve"]
+    where = answer.split(" · ★")[0]
+    detail = " · ".join([where] + approve["command"].split("\n")[1:])
+    c = t["control"]
+    chips = "".join(f'<li{" class=on" if x == answer else ""}>{e(x)}</li>' for x in choices)
+    approval = (f'<p class="ex-line">{e(found)}</p><ul class="ex-chips" aria-hidden="true">{chips}</ul>'
+                f'<div class="ex-ok"><p class="ex-say">{e(approve["description"])}</p>'
+                f'<p class="ex-detail">{e(detail)}</p>'
+                f'<p class="ex-btns" aria-hidden="true"><span class="on">{e(c["once"])}</span><span>{e(c["deny"])}</span></p></div>')
+    # The walk: the map with its numbered stops (the main picture).
+    walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
+    stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
+                       demo["pages"]["walk"]["template"])
+    pins = "".join(f'<i style="left:{x}%;top:{y}%;--c:{col}">{n}</i>' for n, (x, y, col, _) in enumerate(stops, 1))
+    names = " · ".join(e(walk[k]) for *_, k in stops)
+    walk_card = (f'<p class="ex-title">🌳 {e(walk["title"])}</p>'
+                 f'<div class="ex-map"><img src="/assets/showcase/{map_file}" alt="{e(walk["alt"])} · {names}" '
+                 f'width="440" height="293" decoding="async">{pins}</div>')
+    # The subscriptions: the two the agent found asleep, read from its question (« CinéPlus (13,99 €/mois, pas ouvert
+    # depuis juillet) »), what cancelling both saves a month, and the choice.
+    subs_q = next(s for s in scen["subscriptions"]["steps"] if "ask" in s)["ask"]["question"]
+    subs = re.findall(r"([A-Z][\w\u00C0-\u024F]*(?: [A-Z][\w\u00C0-\u024F]*)*) \(([^()]*?\d[.,]\d\d[^,()]*), ([^()]+)\)", subs_q)
+    if len(subs) != 2:
+        raise ValueError(f"demo.json subscriptions ({lang}): expected two « Name (price, since) », got {subs}")
+    euros = sum(float(re.search(r"\d+[.,]\d+", price).group().replace(",", ".")) for _, price, _ in subs)
+    rows = "".join(f'<li><b>{e(name)}</b><span>{e(price)}</span><small>{e(since)}</small></li>' for name, price, since in subs)
+    subs_card = (f'<ul class="ex-subs">{rows}</ul>'
+                 f'<p class="ex-save">{e(t["show"]["saved"].replace("{amount}", money(round(euros), lang, cents=False)))}</p>'
+                 f'<p class="ex-btns" aria-hidden="true"><span class="on">{e(t["show"]["cancelBoth"])}</span>'
+                 f'<span>{e(t["show"]["choose"])}</span></p>')
+    # Three exchanges: the walk's map on the left (the main picture), the booking and the subscriptions on the right.
+    left = one(0, "daily", "coral", scen["walk"]["prompt"], walk_card, "map", "walk")
+    right = (one(1, "daily", "coral", book["prompt"], approval, "approve", "book_table")
+             + one(2, "budget", "gold", scen["subscriptions"]["prompt"], subs_card, "subs", "subscriptions"))
+    return f'<ul class="ex-col">{left}</ul><ul class="ex-col">{right}</ul>'
+
+
 # -- bipagents.com ---------------------------------------------------------------------------------------------------
 
-DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"))
+# The demo page's tabs (scenario, agent); /demo/#<scenario> opens on one (the home's first-screen cards link there).
+DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"),
+             ("bins", "home"), ("subscriptions", "budget"))
 # The pages: (name, template, path under the language's root). The home sells, and its prices hold the self-install
 # too (« on my computer », #install); the demo and every question have their own pages, sharing the header and the
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
@@ -348,6 +429,7 @@ def bipagents(version: str) -> Path:
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
     map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")
+    map_small = small_map(assets / "showcase" / map_file) if map_file else ""
     agents = {a["id"]: a for a in demo["agents"]}
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / "partials").glob("*.html")}
     templates = {name: re.sub(r"\{\{>(\w+)\}\}", lambda m: partials[m.group(1)], (src / file).read_text(encoding="utf-8"))
@@ -364,7 +446,7 @@ def bipagents(version: str) -> Path:
     default_currency = next(code for code, c in currencies.items() if not c.get("countries"))
     base = currencies[default_currency]
     # No price « in the app » while the app isn't in the stores: no reference price for something not on sale.
-    stores_live = any(cfg["stores"]["bipagents"].values())
+    stores_live = any(cfg["stores"]["bipagents"].get(k) for k in ("appStore", "googlePlay"))
     if not stores_live:
         currencies = {code: {**c, "store": None} for code, c in currencies.items()}
         prices = {**prices, "currencies": currencies}
@@ -394,6 +476,7 @@ def bipagents(version: str) -> Path:
         values["currencyoptions"] = "".join(
             f'<option value="{code}"{" selected" if code == default_currency else ""}>{html.escape(c["symbol"])} {code}</option>'
             for code, c in currencies.items())
+        values["heroshow"] = hero_show(demo, t, lang, map_small, f"{paths[lang]}demo/")
         default_url = checkout_url(cfg, "famille", "year", lang)
         badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
         # The public beta (site/config.json « beta »): TestFlight and Google Play's testing links once they are set.
@@ -494,30 +577,34 @@ def bipagents(version: str) -> Path:
 def links(src: Path, out: Path) -> None:
     """The links that open the app: https://bipagents.com/p#… (a shared place), with the files that let iOS and Android
     open them in the app (universal links, App Links), and the page shown where it isn't installed. BIP_TEAM_ID (the
-    Apple team) and BIP_PLAY_SHA256 (Google Play's app signing certificate) come from the environment."""
-    team = os.environ.get("BIP_TEAM_ID", "TEAMID")
-    play = os.environ.get("BIP_PLAY_SHA256", "PLAY:APP:SIGNING:SHA256")
+    Apple team) and BIP_PLAY_SHA256 (Google Play's app signing certificate) come from the environment, else from
+    site/config.json (stores.bipagents: appleTeamId, playSigningSha256 — neither is secret)."""
+    stores = config()["stores"]["bipagents"]
+    team = os.environ.get("BIP_TEAM_ID") or stores.get("appleTeamId") or "TEAMID"
+    play = os.environ.get("BIP_PLAY_SHA256") or stores.get("playSigningSha256") or "PLAY:APP:SIGNING:SHA256"
     if team == "TEAMID" or play.startswith("PLAY:"):
         print("links: BIP_TEAM_ID / BIP_PLAY_SHA256 not set, placeholders written (set them before publishing)")
     known = out / ".well-known"
     known.mkdir(parents=True, exist_ok=True)
     (known / "apple-app-site-association").write_text(json.dumps({"applinks": {"details": [{
         "appIDs": [f"{team}.com.kerfystudio.bipagents"],
-        "components": [{"/": "/p", "#": "*", "comment": "a place of a Duo or a family, shared with this person"}]}]}},
+        "components": [{"/": "/p", "#": "*", "comment": "a place of a Duo or a family, shared with this person"},
+                       {"/": "/v", "#": "*", "comment": "a conversation shown to this person read-only"}]}]}},
         indent=2) + "\n", encoding="utf-8")
     (known / "assetlinks.json").write_text(json.dumps([{
         "relation": ["delegate_permission/common.handle_all_urls"],
         "target": {"namespace": "android_app", "package_name": "com.kerfystudio.bipagents",
                    "sha256_cert_fingerprints": [play]}}], indent=2) + "\n", encoding="utf-8")
     # The page shown where the app isn't installed: the store links from site/config.json once the owner has them.
-    page = (src / "links" / "p.html").read_text(encoding="utf-8")
-    stores = config()["stores"]["bipagents"]
-    if stores.get("appStore"):
-        page = page.replace("https://apps.apple.com/app/bipagents/idAPPSTOREID", stores["appStore"])
-    if stores.get("googlePlay"):
-        page = page.replace("https://play.google.com/store/apps/details?id=com.kerfystudio.bipagents", stores["googlePlay"])
-    (out / "p").mkdir(parents=True, exist_ok=True)
-    (out / "p" / "index.html").write_text(page, encoding="utf-8")
+    # /p: a place shared with this person; /v: a conversation shown to them read-only (« Partager en lecture »).
+    for name in ("p", "v"):
+        page = (src / "links" / f"{name}.html").read_text(encoding="utf-8")
+        if stores.get("appStore"):
+            page = page.replace("https://apps.apple.com/app/bipagents/idAPPSTOREID", stores["appStore"])
+        if stores.get("googlePlay"):
+            page = page.replace("https://play.google.com/store/apps/details?id=com.kerfystudio.bipagents", stores["googlePlay"])
+        (out / name).mkdir(parents=True, exist_ok=True)
+        (out / name / "index.html").write_text(page, encoding="utf-8")
 
 
 def main(argv: List[str]) -> int:

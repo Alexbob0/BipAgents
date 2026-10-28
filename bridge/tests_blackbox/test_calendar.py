@@ -90,6 +90,53 @@ def test_the_phone_shares_its_calendar_and_does_what_the_agents_ask(bridges, fak
     assert call(bridge, "calendar_list", {}, token=TOKEN)["isError"]
 
 
+def test_what_the_agent_asked_shows_until_the_phone_shares_again(bridges, fakes):
+    """2026-10-27, token lab: an agent added an event, listed the calendar to check, didn't find it (the phone hadn't
+    synced) and added it again, 255 times in one turn. Its own adds are listed now, marked; the same one isn't asked
+    again; one still waiting can be cancelled or changed by its id; the same write twice in a turn is refused."""
+    bridge = coach(bridges, fakes)
+    assert bridge.put("/v1/calendar/agents", json={"agents": ["coach"]}, headers=AUTH).status_code == 200
+    give_token(bridge, "coach", TOKEN)
+    assert bridge.put("/v1/calendar", json=COPY, headers=AUTH).json() == {"events": 3}
+    asked = text_of(call(bridge, "calendar_add", {"title": "Test", "start": "2026-10-28T10:00"}, token=TOKEN))
+    assert "next sync" in asked and "calendar_list shows it as asked" in asked
+    op_id = bridge.get("/v1/calendar/queue", headers=AUTH).json()["queue"][0]["id"]
+    assert f"with the id {op_id}" in asked
+    listed = text_of(call(bridge, "calendar_list", {"from": "2026-10-27", "to": "2026-10-29"}, token=TOKEN))
+    assert f"- id {op_id} · default calendar (phone) · 2026-10-28 10:00–11:00 · Test · asked by you, not on the phone yet" \
+        in listed
+    # the same event again (other words for the same moment): not asked again, its id given
+    again = call(bridge, "calendar_add", {"title": " test", "start": "2026-10-28T10:00:00", "duration_minutes": 30},
+                 token=TOKEN)
+    assert not again["isError"] and text_of(again).startswith(f"Already asked: id {op_id}")
+    # exactly the same call again
+    same = call(bridge, "calendar_add", {"title": "Test", "start": "2026-10-28T10:00"}, token=TOKEN)
+    assert not same["isError"] and text_of(same).startswith(f"Already asked: id {op_id}")
+    # an event already in the phone's copy
+    known = text_of(call(bridge, "calendar_add", {"title": "Dentiste", "start": "2026-10-22T10:00"}, token=TOKEN))
+    assert known.startswith("Already in the calendar: id e1")
+    assert len(bridge.get("/v1/calendar/queue", headers=AUTH).json()["queue"]) == 1
+    # changed, then cancelled, before the phone does it
+    assert text_of(call(bridge, "calendar_update", {"id": op_id, "title": "Banque"}, token=TOKEN)).startswith("Changed")
+    assert bridge.get("/v1/calendar/queue", headers=AUTH).json()["queue"][0]["args"]["title"] == "Banque"
+    assert text_of(call(bridge, "calendar_delete", {"id": op_id}, token=TOKEN)).startswith("Cancelled")
+    assert bridge.get("/v1/calendar/queue", headers=AUTH).json()["queue"] == []
+    assert "Banque" not in text_of(call(bridge, "calendar_list", {"from": "2026-10-27", "to": "2026-10-29"}, token=TOKEN))
+    # done by the phone: listed as added until its next copy, which has it
+    call(bridge, "calendar_add", {"title": "Coiffeur", "start": "2026-10-28T15:00"}, token=TOKEN)
+    op_id = bridge.get("/v1/calendar/queue", headers=AUTH).json()["queue"][0]["id"]
+    assert bridge.post(f"/v1/calendar/queue/{op_id}", json={"done": True}, headers=AUTH).json() == {"ok": True}
+    listed = text_of(call(bridge, "calendar_list", {"from": "2026-10-27", "to": "2026-10-29"}, token=TOKEN))
+    assert "Coiffeur · added by the phone just now" in listed
+    assert call(bridge, "calendar_delete", {"id": op_id}, token=TOKEN)["isError"]
+    shared = {**COPY, "events": COPY["events"] + [
+        {"id": "e9", "calendar": "C1", "title": "Coiffeur", "start": "2026-10-28T15:00:00+01:00",
+         "end": "2026-10-28T16:00:00+01:00", "all_day": False}]}
+    assert bridge.put("/v1/calendar", json=shared, headers=AUTH).json() == {"events": 4}
+    listed = text_of(call(bridge, "calendar_list", {"from": "2026-10-27", "to": "2026-10-29"}, token=TOKEN))
+    assert "- id e9 · Perso (phone)" in listed and op_id not in listed
+
+
 def test_the_copy_is_checked(bridges, fakes):
     bridge = coach(bridges, fakes)
     assert bridge.put("/v1/calendar", json={"events": [{"id": "x" * 301, "start": "2026-10-22"}]},

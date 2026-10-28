@@ -14,7 +14,6 @@
 
 use std::collections::HashSet;
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -47,9 +46,10 @@ pub struct Report {
 }
 
 /// A file read whole (at most `limit` bytes), never through a link; a file of a podman volume this account can't
-/// open is read through `podman unshare` (its owner is a user of the sandbox).
+/// open is read as the sandboxes' « root » (its owner is a user of the sandbox), by this binary and the same walk
+/// (`bipbridge fs-as-root read`, beneath.rs), never `head` on a path that a folder swapped for a link would lead out.
 pub fn read_file(root: &Path, relative: &Path, limit: u64, unshare: Option<&str>) -> std::io::Result<Vec<u8>> {
-    match crate::agent_files::open_beneath(root, relative) {
+    match crate::beneath::open_file_exact(root, relative) {
         Ok(file) => {
             let mut out = Vec::new();
             file.take(limit).read_to_end(&mut out)?;
@@ -57,12 +57,10 @@ pub fn read_file(root: &Path, relative: &Path, limit: u64, unshare: Option<&str>
         }
         Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied && unshare.is_some() => {
             let podman = unshare.unwrap_or_default();
-            let out = std::process::Command::new(podman)
-                .args(["unshare", "head", "-c", &limit.to_string(), "--"])
-                .arg(root.join(relative))
-                .stdin(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .output()?;
+            let limit = limit.to_string();
+            let args =
+                [std::ffi::OsStr::new("read"), root.as_os_str(), relative.as_os_str(), std::ffi::OsStr::new(&limit)];
+            let out = crate::beneath::as_root(podman, &args)?;
             if !out.status.success() {
                 return Err(err);
             }
@@ -83,7 +81,7 @@ fn documents(
 ) -> std::io::Result<()> {
     let name = relative.to_string_lossy().into_owned();
     if format == Format::Mbox {
-        let file = crate::agent_files::open_beneath(root, relative)?;
+        let file = crate::beneath::open_file_exact(root, relative)?;
         return extract::mbox_messages(file, |offset, raw| {
             each(format!("{name}#{offset}"), extract::mail(raw));
             true
@@ -97,9 +95,9 @@ fn documents(
     }
     let doc = match format {
         Format::Pdf => {
-            // pdftotext reads the file by its path: checked to be a plain file first (no link)
-            crate::agent_files::open_beneath(root, relative)?;
-            let text = if unshare.is_none() { extract::pdf_text(&root.join(relative)) } else { None };
+            // pdftotext reads the file opened here (no link on the way), not its path
+            let file = crate::beneath::open_file_exact(root, relative)?;
+            let text = if unshare.is_none() { extract::pdf_text(file) } else { None };
             extract::pdf(&name, text)
         }
         Format::Eml => extract::mail(&read_file(root, relative, extract::MAX_FILE, unshare)?),
@@ -131,42 +129,42 @@ pub fn index_folder(
     let mut stack: Vec<PathBuf> = vec![PathBuf::new()];
     let mut in_batch = 0;
     index.begin()?;
+    // The root as it was checked (`refused_folder`), and every folder below it through descriptors: an archive inside
+    // a folder its agent's sandbox writes in (`/workspace/notes`) can't be swapped for a link to this machine's files.
+    let top = crate::beneath::Dir::open_exact(root)?;
     while let Some(folder) = stack.pop() {
-        let entries = match std::fs::read_dir(root.join(&folder)) {
+        let entries = match top.sub(&folder).and_then(|dir| dir.entries()) {
             Ok(entries) => entries,
             Err(_) => {
                 report.unreadable += 1;
                 continue;
             }
         };
-        let mut names: Vec<_> = entries.flatten().collect();
-        names.sort_by_key(|e| e.file_name());
-        for entry in names {
-            let relative = folder.join(entry.file_name());
-            if entry.file_name().to_string_lossy().starts_with('.') || left_out(&relative) {
+        for (name, meta) in entries {
+            let relative = folder.join(&name);
+            if name.to_string_lossy().starts_with('.') || left_out(&relative) {
                 continue;
             }
-            let Ok(meta) = entry.path().symlink_metadata() else { continue };
-            if meta.file_type().is_symlink() {
-                continue;
+            match meta.kind {
+                crate::beneath::Kind::Dir => {
+                    if relative.components().count() < crate::beneath::MAX_DEPTH {
+                        stack.push(relative);
+                    }
+                    continue;
+                }
+                crate::beneath::Kind::File => {}
+                _ => continue,
             }
-            if meta.is_dir() {
-                stack.push(relative);
-                continue;
-            }
-            if !meta.is_file() {
-                continue;
-            }
-            let Some(format) = extract::format_of(&entry.file_name().to_string_lossy()) else { continue };
+            let Some(format) = extract::format_of(&name.to_string_lossy()) else { continue };
             report.files += 1;
             let file = relative.to_string_lossy().into_owned();
-            let (size, mtime) = (meta.len() as i64, meta.mtime());
+            let (size, mtime) = (meta.size as i64, meta.mtime);
             if index.file_state(&file) == Some((size, mtime)) {
                 index.mark_seen(&file, pass)?;
             } else {
                 index.remove_file(&file)?;
                 let mut added = 0;
-                let result = documents(root, &relative, format, meta.len(), unshare, &mut |loc, doc| {
+                let result = documents(root, &relative, format, meta.size, unshare, &mut |loc, doc| {
                     if index.insert(&loc, &file, size, mtime, format.kind(), &doc, pass).is_ok() {
                         added += 1;
                     }
@@ -407,7 +405,8 @@ mod tests {
     #[test]
     fn a_folder_is_indexed_then_only_its_changes() {
         let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("docs");
+        // an archive's folder is a real path (`locate` resolves it): the walks check it still leads there
+        let root = std::fs::canonicalize(dir.path()).unwrap().join("docs");
         std::fs::create_dir_all(root.join("2024")).unwrap();
         std::fs::create_dir_all(root.join(".cache")).unwrap();
         std::fs::write(root.join("2024/achat.md"), "# Commande vélo\nDate: 2024-05-02\nMerci").unwrap();
@@ -425,5 +424,26 @@ mod tests {
         std::fs::remove_file(root.join("2024/page.html")).unwrap();
         index_folder(&root, &index, None, &|_| {}).unwrap();
         assert_eq!(index.count(), 1);
+    }
+
+    /// An archive in a folder its agent's sandbox writes in (`/workspace/notes`): the sandbox swaps that folder for a
+    /// link to this machine's files after it was checked. The walk and the reads refuse it (security audit
+    /// 2026-10-27).
+    #[test]
+    fn an_archive_folder_swapped_for_a_link_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(dir.path()).unwrap();
+        let (root, home) = (base.join("workspace/notes"), base.join("home"));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(root.join("a.md"), "notes").unwrap();
+        std::fs::write(home.join("a.md"), "home secret").unwrap();
+        let index = Index::open(&base.join("i.sqlite")).unwrap();
+        assert_eq!(index_folder(&root, &index, None, &|_| {}).unwrap().files, 1);
+        assert_eq!(read_file(&root, Path::new("a.md"), 100, None).unwrap(), b"notes");
+        std::fs::rename(&root, base.join("workspace/notes.real")).unwrap();
+        std::os::unix::fs::symlink(&home, &root).unwrap();
+        assert!(index_folder(&root, &Index::open(&base.join("j.sqlite")).unwrap(), None, &|_| {}).is_err());
+        assert!(read_file(&root, Path::new("a.md"), 100, None).is_err());
     }
 }

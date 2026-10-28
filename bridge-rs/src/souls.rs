@@ -93,6 +93,16 @@ pub const FAMILY_RULE: &str = concat!(
     "once per topic; if your person said no, don't propose it again."
 );
 
+/// The hand-over to a project agent (decided by Alex on 2026-10-28, project_agent.rs): rare, once per topic, only a
+/// summary the person sees on the card goes over. Rust bridge only, like FAMILY_RULE (added to tests/golden/souls.json
+/// by hand). Short: it is paid on every call.
+pub const PROJECT_RULE: &str = concat!(
+    "When your person plans something with friends (a trip, a party, a move) and it grows past a quick question, you ",
+    "may propose once per topic, rarely, a project agent they share read-only with those friends: create_project_agent ",
+    "with a short summary of what is decided and nothing private. They decide on a card; after a no, don't propose it ",
+    "again."
+);
+
 /// A reply drafted for the person to send themselves (a message shared to the app: WhatsApp, Signal, Messages…): the
 /// app recognises the fenced block and offers « Envoyer avec… » under the reply (decided 2026-10-22; nothing is ever
 /// sent by the app or the agent). Rust bridge only, like FAMILY_RULE.
@@ -174,7 +184,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{ACK_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{ACK_RULE}\n{BLOCK_END}"
     )
 }
 
@@ -325,7 +335,8 @@ pub const PAYMENTS_END: &str = "<!-- /bipagents:payments -->";
 /// Every agent (decided 2026-10-26, handover.rs): it prepares purchases, the person pays; no card number in chat.
 pub const PAYMENTS_RULE: &str = concat!(
     "Shopping for your person: you prepare (search, compare, cart, delivery, address) up to the payment page, then ",
-    "hand the payment over with hand_over_payment; you never pay by yourself and never press the final pay button. ",
+    "hand the payment over with hand_over_payment; you never pay by yourself and never press the final pay button ",
+    "(only when the person gave you a card for it, pay_with_card asks them, then BipAgents types it for you). ",
     "Never ask for, accept or type card numbers, security codes or bank logins in chat; if they send one, tell them ",
     "not to and don't use it."
 );

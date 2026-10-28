@@ -1,8 +1,11 @@
 #cloud-config
 # BipAgents on a server of the all-included offer ("no computer"), or any server set up with cloud-init.
 # Whoever creates the server fills in {{pair}} (a one-time pairing secret, base64url), {{language}} (fr, en, de, es)
-# and {{profile}} (solo, mini); nothing else secret is ever here, since the provider keeps it. The model key goes from
-# the phone to the bridge once paired (bridge-rs/src/cloud_setup.rs).
+# and {{profile}} (solo, mini); nothing else secret is ever here, since the provider keeps it and serves it to the
+# server for its whole life (its metadata service, 169.254.169.254). The model key goes from the phone to the bridge
+# once paired (bridge-rs/src/cloud_setup.rs). The guichet's servers, shared by several people, don't even carry the
+# pairing secret: their script holds only a one-time token with which root fetches each place's setup from the guichet
+# at first boot (seat-agent.py --bootstrap), and only root may ask the metadata service anything (below).
 #
 # It creates the `bip` account (BipAgents and its agents, without sudo: an agent that got out of its sandbox would not
 # be root), lets in only the bridge's door (443) and SSH by key, turns on security updates, then runs the installer in
@@ -40,6 +43,10 @@ packages:
   # The server's ready-made Hermes comes packed with zstd; root's BipAgents reads its settings with PyYAML.
   - zstd
   - python3-yaml
+  # The places read the server's shared images through fuse-overlayfs (installer/bipinstall/shared_images.py).
+  - fuse-overlayfs
+  # The metadata service for root only (bipagents-metadata-block.service, below).
+  - nftables
 
 write_files:
   - path: /etc/bipagents/cloud.json
@@ -81,6 +88,43 @@ write_files:
       OnCalendar=
       OnCalendar=*-*-* 23:00
       RandomizedDelaySec=30min
+  # The provider's metadata service (169.254.169.254, and its IPv6 addresses) answers anyone on the server: it serves
+  # the first-boot script and the server's own details. Only root may ask it (cloud-init, the provider's agents): the
+  # places' accounts (uid 1000 and up) are refused, and so are their agents' browsers and sandboxes (rootless podman:
+  # pasta and slirp4netns send as the place's uid) and any container of root's (forwarded). Its own table, so ufw's
+  # rules are never touched; loaded at every boot before the network, and again by the seat agent if it went.
+  - path: /etc/bipagents/metadata-block.nft
+    content: |
+      table inet bipagents_metadata
+      delete table inet bipagents_metadata
+      table inet bipagents_metadata {
+        chain output {
+          type filter hook output priority 0; policy accept;
+          meta skuid >= 1000 ip daddr 169.254.0.0/16 reject
+          meta skuid >= 1000 ip6 daddr { fd00:ec2::254, fe80::a9fe:a9fe } reject
+        }
+        chain forward {
+          type filter hook forward priority 0; policy accept;
+          ip daddr 169.254.0.0/16 drop
+          ip6 daddr { fd00:ec2::254, fe80::a9fe:a9fe } drop
+        }
+      }
+  - path: /etc/systemd/system/bipagents-metadata-block.service
+    content: |
+      [Unit]
+      Description=BipAgents: the provider's metadata service for root only
+      DefaultDependencies=no
+      Before=network-pre.target
+      Wants=network-pre.target
+      After=local-fs.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/sbin/nft -f /etc/bipagents/metadata-block.nft
+
+      [Install]
+      WantedBy=sysinit.target
   # Services whose libraries an update replaced are restarted (needrestart; it never restarts user@.service, so the
   # places' own services keep theirs until the night's reboot or their own restart).
   - path: /etc/needrestart/conf.d/60-bipagents.conf
@@ -94,6 +138,8 @@ runcmd:
   # The night's reboot minute, 00:00 to 00:44, from the machine id (the same each time it is worked out).
   - m=$(( 0x$(cut -c1-4 /etc/machine-id) % 45 )) && printf 'Unattended-Upgrade::Automatic-Reboot-Time "00:%02d";\n' "$m" > /etc/apt/apt.conf.d/53bipagents-reboot-time
   - systemctl daemon-reload
+  # Before any place's account runs anything: the metadata service for root only (above).
+  - systemctl enable --now bipagents-metadata-block.service
   - systemctl restart systemd-journald
   # Compressed memory (zram: half the memory, zstd) ahead of the swap file: the server holds about 1.5x more before
   # slowing down (the places' installs then leave it as it is). Ubuntu's cloud kernels keep the module in
@@ -116,7 +162,7 @@ runcmd:
   - systemctl start "user@$(id -u bip).service"
   # Hermes and the agents' images once for the whole server, ready-made (installer/bipinstall/shared_hermes.py and
   # shared_images.py), both at once, by root's own BipAgents (the one the seat agent uses too): the places then point
-  # at them instead of installing their own. A failure only costs time: the place installs its own, as before.
+  # at them instead of installing their own, the images through a read-only view of root's store for each account. A failure only costs time: the place installs its own, as before.
   # Each phase's time goes to /var/log/bipagents-timeline.log (installer/README.md, measuring an install).
   - echo "$(date -u +%FT%TZ) shared start" >> /var/log/bipagents-timeline.log
   - test -d /usr/local/lib/bipagents/repo/.git || git clone --quiet --filter=blob:none https://github.com/Alexbob0/BipAgents.git /usr/local/lib/bipagents/repo

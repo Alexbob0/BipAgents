@@ -638,6 +638,9 @@ pub struct Config {
     /// `[jobs]` (jobs.rs, runs.rs): not in the serialized form either.
     #[serde(skip)]
     pub jobs: JobsConfig,
+    /// `[brake]` (loop_brake.rs): a turn going round in circles stopped. Not in the serialized form either.
+    #[serde(skip)]
+    pub brake: crate::loop_brake::Settings,
     /// `[rooms]` (rooms.rs): not in the serialized form either.
     #[serde(skip)]
     pub rooms: RoomsConfig,
@@ -655,6 +658,9 @@ pub struct Config {
     /// until the person turns them on. Not in the serialized form either.
     #[serde(skip)]
     pub cards: String,
+    /// `[payments]` (cards.rs): the offer's switch for agent card payments on its places. Not serialized either.
+    #[serde(skip)]
+    pub payments: PaymentsConfig,
     /// `[[archives]]` (archives/): folders an existing install connects to its agents, searched on demand. Their
     /// tables as written (checked by archives/). Not in the serialized form either.
     #[serde(skip)]
@@ -683,6 +689,24 @@ pub struct Config {
     pub setup_file: Option<String>,
     pub setup_progress: Option<String>,
     pub source_path: Option<String>,
+}
+
+/// `[payments]`: on a place of the all-included offer, whether agents may pay with a card the person keeps on their
+/// phone (cards.rs, « expérimental » during the beta). Kerfy Studio writes it into the offer's places' bridge.toml; it
+/// turns it on for everyone at once, and off the same way. Self-hosted installs ignore it (`[vault] cards`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaymentsConfig {
+    /// `offer_cards`: false by default. Off: the apps don't show card payments on the offer's places, and no agent
+    /// pays with a card there (the hand-over, handover.rs, stays).
+    pub offer_cards: bool,
+    /// `offer_cap_max_eur`: the highest cap a person may set on a card there (150 € by default, 1 to 1000).
+    pub offer_cap_max_eur: i64,
+}
+
+impl Default for PaymentsConfig {
+    fn default() -> Self {
+        PaymentsConfig { offer_cards: false, offer_cap_max_eur: 150 }
+    }
 }
 
 impl Config {
@@ -725,11 +749,13 @@ impl Config {
             maps: MapsConfig::default(),
             notebook: NotebookConfig::default(),
             jobs: JobsConfig::default(),
+            brake: crate::loop_brake::Settings::default(),
             rooms: RoomsConfig::default(),
             connections: crate::connections::Settings::default(),
             link: crate::link_wallet::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
+            payments: PaymentsConfig::default(),
             archives: Vec::new(),
             push_relay_url: None,
             push_relay_key: None,
@@ -1628,6 +1654,12 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
     if !["auto", "on", "off"].contains(&cards.as_str()) {
         return Err(ConfigError::new("vault.cards must be 'auto', 'on' or 'off'"));
     }
+    let payments_t = table(data, "payments");
+    let payments = PaymentsConfig {
+        offer_cards: b(payments_t, "offer_cards", false),
+        offer_cap_max_eur: i(payments_t, "offer_cap_max_eur", PaymentsConfig::default().offer_cap_max_eur)?
+            .clamp(1, 1000),
+    };
 
     let mut pronunciations = IndexMap::new();
     if let Value::Object(langs) = table(data, "pronunciations") {
@@ -1681,11 +1713,13 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         maps,
         notebook,
         jobs,
+        brake: crate::loop_brake::Settings::from_table(table(data, "brake")),
         rooms,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
         link: crate::link_wallet::Settings::from_table(table(data, "link")),
         archive_records,
         cards,
+        payments,
         archives: match data.get("archives") {
             Some(Value::Array(items)) => items.iter().filter(|v| v.is_object()).cloned().collect(),
             _ => Vec::new(),

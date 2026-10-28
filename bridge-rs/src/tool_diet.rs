@@ -91,6 +91,16 @@ pub const BRIDGE_PREFIX: &str = "mcp__bipagents__";
 /// The visible browser's MCP entry (browsers.rs).
 pub const BROWSER_SERVER: &str = "stealth";
 
+/// The visible browser's tools kept out of the search for an agent that has it (its MCP server in the profile). Behind
+/// the search, a fresh agent asked to open a page had no browser tool in view: on 2026-10-27 (token lab, GLM-5.3 Flash,
+/// names constrained to the request's tools) its call ended on `calendar_add`, and the turn went round in circles on
+/// the calendar (loop_brake.rs). Its other tools (tabs, scripts, closing…) stay behind the search.
+pub const BROWSER_DIRECT: [&str; 6] =
+    ["spawn_browser", "navigate", "get_page_content", "click_element", "type_text", "take_screenshot"];
+
+/// Hermes' iteration cap (`agent.max_turns`) written in a profile that has none: model calls in one turn.
+pub const MAX_TURNS: u32 = 150;
+
 /// How far back the tools an agent's model called directly stay in view.
 pub const CALLED_DAYS: f64 = 30.0;
 
@@ -212,6 +222,7 @@ pub fn kind_diet(kind: &str) -> KindDiet {
                 "calendar_add",
                 "mail_search",
                 "mail_read",
+                "mail_attachment",
                 "mail_draft",
                 "notebook_search",
                 "notebook_note",
@@ -340,9 +351,17 @@ pub struct Diet {
     pub compact_skills: Vec<String>,
 }
 
-/// The diet of an agent of `kind` that has `bridge_tools`, holds a vault item or not, has written skills or not, and
-/// whose model `called` these tools directly lately (Hermes' names: `mcp__bipagents__health`, `execute_code`…).
-pub fn diet(kind: &str, bridge_tools: &[String], holds_vault_item: bool, writes_skills: bool, called: &[String]) -> Diet {
+/// The diet of an agent of `kind` that has `bridge_tools`, its visible browser or not, holds a vault item or not, has
+/// written skills or not, and whose model `called` these tools directly lately (Hermes' names:
+/// `mcp__bipagents__health`, `execute_code`…).
+pub fn diet(
+    kind: &str,
+    bridge_tools: &[String],
+    browser: bool,
+    holds_vault_item: bool,
+    writes_skills: bool,
+    called: &[String],
+) -> Diet {
     let plan = kind_diet(kind);
     let mut defer: Vec<String> = vec![MARK.to_string()];
     let mut add = |name: &str| {
@@ -365,6 +384,9 @@ pub fn diet(kind: &str, bridge_tools: &[String], holds_vault_item: bool, writes_
             .filter(|name| bridge_tools.iter().any(|t| t == *name))
             .take(MAX_DIRECT)
             .for_each(|name| add(&format!("!{BRIDGE_PREFIX}{name}")));
+    }
+    if browser {
+        BROWSER_DIRECT.iter().for_each(|name| add(&format!("!mcp__{BROWSER_SERVER}__{name}")));
     }
     // What the model has been calling directly stays direct (module doc), beyond MAX_DIRECT too.
     for name in called.iter().filter(|n| !n.is_empty() && !SEARCH_TOOLS.contains(&n.as_str())) {
@@ -473,7 +495,10 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
         .collect();
     let writes_skills = !crate::own_skills::listing(&folder).is_empty();
     let called = called_directly(&folder.join("state.db"), crate::py::time_time() - CALLED_DAYS * 86_400.0);
-    Some(diet(&kind, &tools, holds_vault_item(config, agent), writes_skills, &called))
+    let browser = crate::agents_admin::load_or_empty(&folder.join("config.yaml"))
+        .ok()
+        .is_some_and(|data| data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)).is_some_and(Yaml::is_map));
+    Some(diet(&kind, &tools, browser, holds_vault_item(config, agent), writes_skills, &called))
 }
 
 /// `parent[key]`, made a dict when missing or not one.
@@ -504,6 +529,13 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     }
     let skills = map_at(&mut data, "skills")?;
     skills.insert("compact_categories", strings(&diet.compact_skills));
+    // Hermes has no iteration cap by default (`agent.max_turns` unset: unlimited, 267 model calls in one turn on
+    // 2026-10-27): one, unless the profile has its own. The bridge's brake (loop_brake.rs) stops loops much earlier;
+    // this is for the runs it doesn't follow (routines).
+    let agent = map_at(&mut data, "agent")?;
+    if agent.get("max_turns").is_none_or(|v| *v == Yaml::Null) {
+        agent.insert("max_turns", Yaml::Int(MAX_TURNS as i128));
+    }
     if let Some(Yaml::Map(_)) = data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)) {
         let entry = data.get_mut("mcp_servers").and_then(|s| s.get_mut(BROWSER_SERVER))?;
         let filter = map_at(entry, "tools")?;
@@ -580,7 +612,7 @@ mod tests {
     #[test]
     fn deferred_not_removed_and_bridge_tools_out_of_the_search() {
         let tools = names(&["notebook_search", "calendar_list", "create_podcast", "weather"]);
-        let d = diet("daily", &tools, false, false, &[]);
+        let d = diet("daily", &tools, false, false, false, &[]);
         assert_eq!(d.defer[0], MARK);
         for name in HERMES_DEFAULT_DEFERRED.iter().chain(ALWAYS_DEFERRED.iter()).chain(VAULT_TOOLS.iter()) {
             assert!(d.defer.contains(&name.to_string()), "{name}");
@@ -594,8 +626,20 @@ mod tests {
         // a tool it doesn't have, or one its kind doesn't use much, stays behind the search
         assert!(!d.defer.iter().any(|n| n.ends_with("reminders_add") || n.ends_with("create_podcast")));
         // an agent holding a vault item, or writing skills, keeps those tools
-        let d = diet("daily", &tools, true, true, &[]);
+        let d = diet("daily", &tools, false, true, true, &[]);
         assert!(!d.defer.iter().any(|n| n.starts_with("browser_vault") || n == "skill_manage"));
+    }
+
+    #[test]
+    fn the_visible_browser_in_view_for_an_agent_that_has_it() {
+        // 2026-10-27: « open this page in your browser », no browser tool in view, a call ending on calendar_add
+        let tools = names(&["calendar_add", "calendar_list"]);
+        let with = diet("daily", &tools, true, false, false, &[]);
+        for name in BROWSER_DIRECT {
+            assert!(with.defer.contains(&format!("!mcp__stealth__{name}")), "{name}");
+        }
+        let without = diet("daily", &tools, false, false, false, &[]);
+        assert!(!without.defer.iter().any(|n| n.contains("stealth")));
     }
 
     #[test]
@@ -609,7 +653,7 @@ mod tests {
             "execute_code",
             "tool_call",
         ]);
-        let d = diet("wellness", &tools, false, false, &called);
+        let d = diet("wellness", &tools, false, false, false, &called);
         assert!(d.defer.contains(&"!mcp__bipagents__notebook_read".to_string()));
         assert!(d.defer.contains(&"!mcp__stealth__navigate".to_string()));
         assert!(!d.defer.contains(&"execute_code".to_string()), "a core tool it calls is not deferred");
@@ -675,14 +719,14 @@ mod tests {
     #[test]
     fn at_most_eight_bridge_tools_direct() {
         let all: Vec<String> = kind_diet("daily").direct.iter().map(|s| s.to_string()).collect();
-        let d = diet("daily", &all, false, false, &[]);
+        let d = diet("daily", &all, false, false, false, &[]);
         let expected = if DIRECT_BRIDGE_TOOLS { MAX_DIRECT } else { 0 };
         assert_eq!(d.defer.iter().filter(|n| n.starts_with("!mcp__")).count(), expected);
     }
 
     #[test]
     fn written_once_and_a_persons_own_list_kept() {
-        let d = diet("wellness", &names(&["health"]), false, false, &[]);
+        let d = diet("wellness", &names(&["health"]), false, false, false, &[]);
         let data = pyyaml::load("model:\n  default: x\nmcp_servers:\n  stealth:\n    url: http://a\n").unwrap();
         let changed = with_diet(&data, &d).expect("changed");
         assert_eq!(
@@ -697,6 +741,12 @@ mod tests {
         assert!(matches!(written, Yaml::Seq(items) if items.len() == d.defer.len()));
         assert_eq!(changed.get("model").and_then(|m| m.get("default")).and_then(Yaml::as_str), Some("x"));
         assert!(with_diet(&changed, &d).is_none(), "the same again changes nothing");
+        let cap = |data: &Yaml| data.get("agent").and_then(|a| a.get("max_turns")).cloned();
+        assert_eq!(cap(&changed), Some(Yaml::Int(MAX_TURNS as i128)));
+        let own = pyyaml::load("agent:
+  max_turns: 40
+").unwrap();
+        assert_eq!(cap(&with_diet(&own, &d).unwrap()), Some(Yaml::Int(40)), "its own cap kept");
         // the person's own list
         let theirs = pyyaml::load("tools:\n  tool_search:\n    defer: [todo_list]\n").unwrap();
         let kept = with_diet(&theirs, &d).expect("skills still written");

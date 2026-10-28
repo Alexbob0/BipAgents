@@ -223,6 +223,10 @@ async fn a_relative_talks_to_a_shared_agent_in_her_own_conversation() {
     assert!(closed["content"][0]["text"].as_str().unwrap().contains("relative"));
     let open = tool(&a, "cuisine-token", "knowledge_read").await;
     assert!(!open["content"][0]["text"].as_str().unwrap_or("").contains("relative of your person is talking"));
+    // the dates read the birthdays of Alex's Carnet: closed too (2026-10-27)
+    let dates = tool(&a, "cuisine-token", "upcoming_dates").await;
+    assert_eq!(dates["isError"], true);
+    assert!(dates["content"][0]["text"].as_str().unwrap().contains("relative"));
 
     // The approval is hers: in her thread and her Boîte, not in Alex's; Alex can't answer it.
     let mut thread = Value::Null;

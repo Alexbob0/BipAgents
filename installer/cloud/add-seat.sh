@@ -3,8 +3,10 @@
 # Run as root at first boot, after the first place (installer/cloud/user-data.yaml), and by the seat agent
 # (installer/cloud/seat-agent.py) when the guichet orders a place installed again for its next person:
 #     add-seat.sh <n> <setup file>
+# The setup file (root's, 0600) comes from the guichet over HTTPS, never from the first-boot script the provider keeps:
+# fetched at first boot with a one-time token (seat-agent.py --bootstrap), later in a signed order.
 # The account bip<n> (bip for place 1; without sudo), its own range of user ids for its agents' sandboxes, its door's
-# port (from the setup file: 443 for place 1, 444, 445, 446) let in by the firewall, then the installer's --cloud mode
+# port (from the setup file: 443 for place 1, 444, 445 ... up to 482 for place 40) let in by the firewall, then the installer's --cloud mode
 # as that account. The voices already running on the server are shared. Its log: /var/log/bipagents-install<n>.log.
 # ASCII only, like user-data.yaml (installer/tests/test_cloud_init.py checks both).
 set -u

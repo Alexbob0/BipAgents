@@ -503,6 +503,7 @@ async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String> {
     if let (Some(route), Some(map)) = (&model.route, body.as_object_mut()) {
         map.insert("provider".into(), route.clone());
     }
+    crate::model_route::add_thinking_floor(&model.base, &mut body);
     for attempt in 0..2 {
         let mut request = HTTP.post(format!("{}/chat/completions", model.base)).json(&body);
         if !model.key.is_empty() {

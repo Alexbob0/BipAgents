@@ -671,9 +671,14 @@ async fn relay(state: AppState, target: String, path: String, request: Request) 
         headers.insert("authorization", value);
     }
     let url = format!("{}/{path}", agent.hermes_url);
-    let response = forward(&state, &parts.method, &url, &query, body, headers).await?;
+    let starts_run = parts.method == Method::POST && path == "v1/runs";
+    let response = forward(&state, &parts.method, &url, &query, body.clone(), headers).await?;
     if let Some(sender) = sender {
         tracing::info!(sender = %sender, target = %agent.name, "agent message");
+    }
+    if starts_run {
+        // the turn it started followed by the hub, for the brake (loop_brake.rs)
+        return Ok(crate::runs::keep_started(&state.hub, &agent, &body, response).await);
     }
     Ok(response)
 }
@@ -903,7 +908,13 @@ async fn deliver(state: AppState, target: String, path: String, request: Request
     }
     tracing::info!(sender = %remote, target = %agent.name, "household message");
     let url = format!("{}/{path}", agent.hermes_url);
-    forward(&state, &parts.method, &url, &query, body, headers).await
+    let starts_run = parts.method == Method::POST && path == "v1/runs";
+    let response = forward(&state, &parts.method, &url, &query, body.clone(), headers).await?;
+    if starts_run {
+        // the turn it started followed by the hub, for the brake (loop_brake.rs)
+        return Ok(crate::runs::keep_started(&state.hub, &agent, &body, response).await);
+    }
+    Ok(response)
 }
 
 async fn deliver_path(
@@ -1039,9 +1050,12 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
 }
 
 async fn unlink(state: &AppState, household: &str) -> ApiResult<Response> {
+    let entry = state.households.get(household);
     if state.households.remove(household).is_err() {
         return Err(HttpError::new(404, "no such household"));
     }
+    // the family's agent held here: that member gets what is the family's (family_agent.rs)
+    crate::family_agent::after_unlink(state, household, entry);
     let mut data = state.links.load();
     let suffix = format!("{SEPARATOR}{household}");
     let kept: Vec<(String, String)> =

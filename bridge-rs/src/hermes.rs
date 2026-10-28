@@ -502,6 +502,25 @@ impl HermesClient {
         Ok(Self::items(data, ["sessions", "data", "items"]))
     }
 
+    /// The agent's « Bot Chat » session(s) (its single thread), hidden ones included, oldest first (read_shares.rs:
+    /// a project agent's whole thread shared).
+    pub async fn bot_chat_sessions(&self, agent: &AgentConfig) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let params = [("limit", "200".to_string()), ("title", "Bot Chat".to_string()), ("include_hidden", "1".into())];
+        let data = self.get_json(agent, "/api/sessions", &params).await?;
+        let mut rows: Vec<Map<String, Value>> = Self::items(data, ["sessions", "data", "items"])
+            .into_iter()
+            .filter(crate::cronwatch::is_bot_chat)
+            .collect();
+        let started = |row: &Map<String, Value>| {
+            ["started_at", "created_at", "created"]
+                .iter()
+                .find_map(|k| row.get(*k).and_then(Value::as_f64))
+                .unwrap_or(0.0)
+        };
+        rows.sort_by(|a, b| started(a).total_cmp(&started(b)));
+        Ok(rows)
+    }
+
     /// `GET /api/sessions?limit=&offset=`: one page of the list (Hermes reads at most 200 at a time).
     pub async fn list_sessions_page(
         &self,
@@ -538,6 +557,18 @@ impl HermesClient {
     ) -> Result<Vec<Map<String, Value>>, HermesError> {
         let data = self
             .get_json(agent, &format!("/api/sessions/{session_id}/messages"), &[("inline_images", "false".into())])
+            .await?;
+        Ok(Self::items(data, ["messages", "data", "items"]))
+    }
+
+    /// The same with the photos inline (`data:` URIs: megabytes), for the few times they are needed (read_shares.rs).
+    pub async fn session_messages_with_images(
+        &self,
+        agent: &AgentConfig,
+        session_id: &str,
+    ) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let data = self
+            .get_json(agent, &format!("/api/sessions/{session_id}/messages"), &[("inline_images", "true".into())])
             .await?;
         Ok(Self::items(data, ["messages", "data", "items"]))
     }
@@ -639,7 +670,22 @@ impl HermesClient {
         session_id: &str,
         instructions: Option<&str>,
     ) -> Result<String, HermesError> {
+        self.start_run_with(agent, text, session_id, instructions, None).await
+    }
+
+    /// [`Self::start_run`] with this run's `model_options` (e.g. its thinking level, `{"reasoning": {...}}`).
+    pub async fn start_run_with(
+        &self,
+        agent: &AgentConfig,
+        text: &str,
+        session_id: &str,
+        instructions: Option<&str>,
+        model_options: Option<Value>,
+    ) -> Result<String, HermesError> {
         let mut body = Map::new();
+        if let Some(options) = model_options {
+            body.insert("model_options".into(), options);
+        }
         body.insert("input".into(), Value::String(text.to_string()));
         body.insert("session_id".into(), Value::String(session_id.to_string()));
         if let Some(instructions) = instructions.filter(|i| !i.is_empty()) {

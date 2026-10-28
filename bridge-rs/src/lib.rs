@@ -31,6 +31,7 @@ pub mod guard;
 pub mod hermes;
 pub mod lan;
 pub mod logs;
+pub mod loop_brake;
 pub mod main_cli;
 pub mod store;
 
@@ -67,17 +68,22 @@ pub mod voices;
 // -- agents ----------------------------------------------------------------------------------------
 pub mod agent_groups;
 pub mod agent_shares;
+pub mod read_shares;
 pub mod agents_admin;
 /// The person's time zone and standard dates (no Python counterpart).
 pub mod dates;
 pub mod device_keys;
 pub mod door_tls;
+pub mod family_agent;
+/// « L'agent de projet »: an agent for one occasion whose thread friends follow (no Python counterpart).
+pub mod project_agent;
 pub mod family_news;
 pub mod files;
 pub mod files_kept;
 pub mod households;
 pub mod own_skills;
 pub mod peers;
+pub mod beneath;
 pub mod sandbox;
 pub mod sandbox_adopt;
 pub mod sandbox_sites;
@@ -116,6 +122,7 @@ pub mod message_search;
 pub mod notebook;
 pub mod notes_import;
 pub mod pages;
+pub mod phone_asks;
 pub mod reminders;
 pub mod rooms;
 pub mod rooms_remote;

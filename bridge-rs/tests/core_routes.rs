@@ -78,7 +78,7 @@ async fn agents_listing() {
         resp.json(),
         json!({"bridge": {"url": null, "lan": null},
                "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "server_voice": null, "category": null,
-                           "color": null, "outfit": "", "costumes": true, "uploads": true, "inbox": true, "url": null, "key": null,
+                           "color": null, "outfit": "", "costumes": true, "uploads": true, "inbox": true, "url": null, "family": false, "project": null, "key": null,
                            "group": ""}],
                "unclaimed": []})
     );
@@ -267,7 +267,10 @@ async fn fake_hermes() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>
         .route(
             "/v1/runs/run_1/events",
             get(|| async {
-                ([("content-type", "text/event-stream")], "data: {\"event\": \"message.delta\", \"delta\": \"Hi\"}\n\n")
+                // a run's end: the door's relay serves a run's events from the run hub, until its end (lan.rs)
+                let body = "data: {\"event\": \"message.delta\", \"delta\": \"Hi\"}\n\n\
+                            data: {\"event\": \"run.completed\", \"output\": \"Hi\"}\n\n";
+                ([("content-type", "text/event-stream")], body)
             }),
         )
         .fallback(any(move |request: Request| {
@@ -376,7 +379,7 @@ async fn pairing_route_and_hermes_relay() {
 
     let events = app.get("/hermes/wellness/v1/runs/run_1/events", &[("authorization", &hermes_auth)]).await;
     assert!(events.header("content-type").unwrap().starts_with("text/event-stream"));
-    assert!(events.text().contains("message.delta"));
+    assert!(events.text().contains("message.delta") && events.text().contains("run.completed"));
 
     assert_eq!(app.get("/hermes/nobody/v1/runs", &[]).await.status, StatusCode::NOT_FOUND);
     assert_eq!(app.get("/hermes/wellness/admin", &[]).await.json(), json!({"detail": "not found"}));

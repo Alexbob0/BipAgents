@@ -197,8 +197,9 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .proofs li { display: flex; gap: 12px; align-items: center; font-weight: 700; color: var(--ink2); font-size: 16.5px; line-height: 1.4; }
 .proofs li > span { flex: none; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; background: var(--card); box-shadow: var(--shadow); }
 .proofs b { color: var(--ink); font-weight: 1000; }
-.words { margin-top: 12px; max-width: 560px; color: var(--muted); font-size: 14px; font-weight: 700; line-height: 1.5; }
-.words b { color: var(--ink2); font-weight: 900; }
+.hero-alt { margin-top: 14px; font-size: 14.5px; font-weight: 800; }
+.hero-alt a { color: var(--ink2); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.hero-alt a:hover { color: var(--ink); text-decoration-color: currentColor; }
 .pill-time { font-size: 12.5px; font-weight: 900; padding: 3px 8px; border-radius: 999px; background: var(--ground2); color: var(--ink2); }
 @media (max-width: 520px) {   /* the three buttons stack, full width, on a phone */
   .hero .cta-row { display: grid; grid-template-columns: 1fr; }
@@ -216,31 +217,85 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   background: #000; border-radius: 20px; z-index: 2; }
 .phone-screen { border-radius: 46px; overflow: hidden; background: var(--ground); }
 .phone-screen img { width: 100%; height: auto; }
-/* The hero: what the agents did, one result per kind of agent, like the phone's notifications. They come in one
-   after another on load (~120 ms apart), then stay still; with reduced motion they are simply there. A phone shows
-   the first four. */
-.results { list-style: none; margin: 0; padding: 0; width: min(440px, 100%); display: grid; gap: 12px; position: relative; z-index: 2; }
-.res { display: flex; align-items: center; gap: 14px; padding: 12px 16px 12px 12px; border-radius: 24px;
-  background: var(--card); box-shadow: var(--shadow-big); animation: res-in .5s cubic-bezier(.2, .8, .3, 1) both;
-  animation-delay: calc(var(--i, 0) * 120ms + 150ms); }
-.res:nth-child(even) { margin-left: 22px; margin-right: -22px; }
-.res-bip { flex: 0 0 52px; height: 52px; border-radius: 16px; background: var(--tint, var(--ground2)); touch-action: auto; }
-.res-txt { min-width: 0; flex: 1; }
-.res-head { display: flex; align-items: center; gap: 6px; font-size: 13.5px; line-height: 1.3; color: var(--ink2); }
-.res-head b { font-weight: 1000; color: var(--ink); }
-.res-head .ai { background: var(--tint, var(--ground2)); color: var(--ink2); }
-.res-head time { margin-left: auto; padding-left: 8px; color: var(--muted); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
-.res-line { margin-top: 3px; font-size: 15px; font-weight: 800; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; }
-.res-ic { margin-right: 6px; }
-@keyframes res-in { from { opacity: 0; transform: translateY(12px) scale(.98); } }
-@media (max-width: 520px) {
-  .res:nth-child(n+5) { display: none; }
-  .res:nth-child(even) { margin-left: 0; margin-right: 0; }
-  .res { padding: 11px 14px 11px 10px; gap: 12px; }
-  .res-bip { flex-basis: 46px; height: 46px; }
-  .res-line { font-size: 14.5px; }
+/* The hero, on the right: one asks, the agent answers with something useful — three cards of the app's own demo (the
+   walk's map, big, on the left; the booking and the subscriptions on the right). One column on a phone; each
+   exchange fades in once, quickly, one after another; with reduced motion they are simply there. */
+.show { position: relative; z-index: 2; width: min(680px, 100%); display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: center; }
+.ex-col { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.ex { display: flex; flex-direction: column; gap: 6px; min-width: 0; animation: pop-in .4s ease-out both; animation-delay: calc(var(--i, 0) * 200ms + 100ms); }
+.ex-ask { align-self: flex-end; max-width: 92%; background: var(--ink); color: var(--ground); padding: 8px 13px; border-radius: 18px 18px 5px 18px;
+  font-size: 13.5px; font-weight: 800; line-height: 1.35; }
+.ex-card { background: var(--card); border-radius: 20px; padding: 12px 13px 13px; box-shadow: var(--shadow-big); display: grid; gap: 9px; min-width: 0; }
+.ex-from { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2); }
+.ex-from b { font-weight: 1000; color: var(--ink); }
+.ex-from .ai { background: var(--tint, var(--ground2)); color: var(--ink2); }
+.ex-av { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--tint, var(--ground2)); display: grid; place-items: center; }
+.ex-av svg { width: 22px; height: 22px; }
+.ex-say { font-size: 14px; font-weight: 900; line-height: 1.35; }
+.ex-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+.ex-btns span { flex: 1 1 auto; text-align: center; padding: 7px 8px; border-radius: 999px; font-weight: 900; font-size: 12px; background: var(--ground2); white-space: nowrap; }
+.ex-btns .on { background: var(--ink); color: var(--ground); }
+.ex-title { font-weight: 1000; font-size: 14.5px; line-height: 1.3; }
+.ex-map { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 3 / 2; background: var(--ground2); }
+.ex-map img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ex-map i { position: absolute; translate: -50% -50%; width: 18px; height: 18px; border-radius: 50%; background: var(--c); color: #fff;
+  box-shadow: 0 0 0 2px #fff; font: normal 1000 10.5px/18px var(--font); text-align: center; }
+/* The booking: the agent's finds as small chips (the picked one marked), then the approval with its detail. */
+.ex-line { font-size: 13px; font-weight: 800; line-height: 1.3; color: var(--ink2); }
+.ex-chips { list-style: none; margin: -3px 0 0; padding: 0; display: grid; gap: 3px; }
+.ex-chips li { font-size: 11.5px; font-weight: 800; line-height: 1.2; padding: 4px 9px; border-radius: 9px; background: var(--ground2);
+  color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-chips .on { background: var(--tint, var(--ground2)); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.ex-ok { display: grid; gap: 6px; padding-top: 9px; border-top: 1px solid var(--line); }
+.ex-detail { font-size: 12px; font-weight: 800; line-height: 1.3; color: var(--ink2); margin-top: -3px; }
+/* The subscriptions: the two asleep (name, price, since when), what cancelling saves, the choice. */
+.ex-subs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ex-subs li { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: baseline; }
+.ex-subs b { font-size: 14px; font-weight: 1000; min-width: 0; }
+.ex-subs span { font-size: 12.5px; font-weight: 900; white-space: nowrap; }
+.ex-subs small { grid-column: 1 / -1; font-size: 12px; font-weight: 800; color: var(--ink2); line-height: 1.25; }
+.ex-save { font-size: 13.5px; font-weight: 1000; padding: 6px 10px; border-radius: 10px; background: var(--tint, var(--ground2)); color: var(--gold-deep); }
+/* Each exchange opens the demo on that scenario: the ask's link covers the whole exchange; a light lift on hover, a
+   ring on keyboard focus, a small arrow on the card (phones have no hover). */
+.ex { position: relative; }
+.ex-go { color: inherit; text-decoration: none; }
+.ex-go::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: 20px; }
+.ex-go:focus-visible { outline: none; }
+.ex-go:focus-visible::after { outline: 3px solid var(--ink); outline-offset: 4px; }
+.ex-card { transition: translate .2s ease, box-shadow .2s ease; }
+.ex-arrow { margin-left: auto; font-weight: 1000; font-size: 15px; color: var(--muted); transition: translate .2s ease, color .2s ease; }
+@media (hover: hover) {
+  .ex:hover .ex-card { translate: 0 -3px; }
+  .ex:hover .ex-ask { filter: brightness(1.15); }
+  .ex:hover .ex-arrow { color: var(--ink); translate: 3px 0; }
 }
-@media (prefers-reduced-motion: reduce) { .res { animation: none; } }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.show-more { position: relative; z-index: 2; margin-top: 18px; text-align: center; font-weight: 900; font-size: 14.5px; }
+.show-more a { color: var(--ink); }
+@media (max-width: 640px) {   /* a phone: one column, in the order they come in */
+  .show { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+  .ex-col { display: contents; }
+  .ex { order: var(--i, 0); }
+  .ex-say { font-size: 14.5px; }
+  .ex-btns span { font-size: 13px; padding: 8px 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .ex { animation: none; } }
+/* On a computer, the three cards as a loose stack (Alex's pick « Pile », 2026-10-27), slightly turned: the map big
+   behind, the booking in front, the subscriptions small on top; the one under the pointer straightens and comes to the front. */
+@media (min-width: 1040px) {
+  .show { display: block; position: relative; width: min(560px, 100%); height: 620px; margin-inline: auto; }
+  .show .ex-col { display: contents; }
+  .show .ex { position: absolute; transition: rotate .25s ease, translate .25s ease; }
+  .show .ex--map { left: 0; top: 0; width: 66%; rotate: -3deg; z-index: 1; }
+  .show .ex--approve { right: 0; top: 6%; width: 49%; rotate: 2.5deg; z-index: 2; }
+  .show .ex--subs { left: 6%; bottom: 0; width: 46%; rotate: -1.5deg; z-index: 3; }
+  .show .ex .ex-card { box-shadow: 0 0 0 1px var(--line), 0 18px 40px -18px rgba(29, 31, 36, .28); }
+}
+@media (min-width: 1040px) and (hover: hover) {
+  .show .ex:hover { rotate: 0deg; translate: 0 -4px; z-index: 4; }
+  .show .ex:hover .ex-card { translate: none; }
+}
+@media (min-width: 1040px) and (prefers-reduced-motion: reduce) { .show .ex { transition: none; } }
 
 /* -- Compared: Muse, dots, Grok Bot, BipAgents. A face-off (one product against BipAgents) picked in a segmented
    control, or the whole table; without the script, the whole table. Marks (check, cross, half, dash) always sit next
@@ -486,7 +541,6 @@ mark.todo { background: #FFE58A; color: #5A4300; border-radius: 4px; padding: 0 
 .store-glyph { display: grid; place-items: center; }
 a.store { transition: transform .2s; }
 a.store:hover { transform: translateY(-2px); }
-.hero-price { margin-top: 18px; font-weight: 900; color: var(--ink2); font-size: 15.5px; }
 
 /* -- Header progress, phone tilt --------------------------------------------------------------------------------- */
 .progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; pointer-events: none; }
@@ -663,9 +717,8 @@ a.store:hover { transform: translateY(-2px); }
 @media (min-width: 960px) { .nb { grid-template-columns: 1.1fr .9fr; gap: 64px; } }
 .nb-list { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 10px; }
 @media (min-width: 560px) { .nb-list { grid-template-columns: 1fr 1fr; gap: 10px 18px; } }
-.nb-list li { position: relative; padding-left: 22px; color: var(--ink2); font-weight: 700; font-size: 15.5px; line-height: 1.45; }
-.nb-list li::before { content: ""; position: absolute; left: 2px; top: .5em; width: 9px; height: 9px; border-radius: 50%; background: var(--teal); }
-.nb-list b { color: var(--ink); font-weight: 900; }
+.nb-list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: var(--card); box-shadow: var(--shadow); color: var(--ink); font-weight: 900; font-size: 15px; line-height: 1.3; }
+.nb-list li span { flex: none; font-size: 18px; }
 .nb-line { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; font-weight: 800; font-size: 16px; line-height: 1.45; }
 .nb-line + .nb-line { margin-top: 10px; }
 .nb-line span { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--card); box-shadow: var(--shadow); font-size: 14px; }
@@ -744,22 +797,26 @@ a.store:hover { transform: translateY(-2px); }
 .fam-btns .on { background: var(--ink); color: var(--ground); box-shadow: none; }
 .fam-notif { justify-self: end; width: 88%; display: grid; gap: 2px; padding: 10px 14px; border-radius: 18px; background: color-mix(in srgb, var(--card) 92%, transparent); box-shadow: var(--shadow); font-size: 13px; font-weight: 700; line-height: 1.35; }
 .fam-notif small { font-size: 11.5px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-.fam-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
-.fam-steps li { border-radius: 22px; padding: 16px 18px; background: var(--tint); }
-.fam-steps h3 { font-size: 18px; }
-.fam-steps p { margin-top: 4px; color: var(--ink2); font-weight: 700; font-size: 15.5px; line-height: 1.45; }
-.fam-points { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; }
-.fam-points li { position: relative; padding-left: 24px; font-weight: 800; color: var(--ink2); font-size: 15px; line-height: 1.45; }
-.fam-points li::before { content: "✓"; position: absolute; left: 0; color: var(--green-deep); font-weight: 1000; }
+.fam-tiles { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+.fam-tiles li { border-radius: 22px; padding: 16px 16px 18px; background: var(--tint); display: grid; align-content: start; gap: 4px; }
+.fam-ic { width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; font-size: 20px; background: var(--card); box-shadow: var(--shadow); margin-bottom: 6px; }
+.fam-tiles h3 { font-size: 16.5px; line-height: 1.25; }
+.fam-tiles p { color: var(--ink2); font-weight: 700; font-size: 14.5px; line-height: 1.4; }
+@media (max-width: 400px) { .fam-tiles { gap: 10px; } .fam-tiles li { padding: 14px 13px 15px; } .fam-tiles h3 { font-size: 15.5px; } .fam-tiles p { font-size: 13.5px; } }
+.fam-lock { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; color: var(--ink2); font-weight: 700; font-size: 14.5px; line-height: 1.45; }
+.fam-lock span { flex: none; }
 .fam-cta { margin-top: 20px; }
 
-/* -- Hero: « See more » on privacy — where your data is, who can read it. The answers open under the first screen,
-   across both columns (the button sits with the privacy proof, on the left). ------------------------------------------ */
+/* -- Hero: « See more » on privacy — where your data is, who can read it. The answers open in place, right under the
+   button, in the left column: privacy comes first on the page as in the header (« Private », then « What they do »,
+   the right column), on a computer as on a phone. ------------------------------------------------------------------ */
 @media (min-width: 1040px) {
   .hero-copy { grid-column: 1; grid-row: 1; }
-  .hero-stage { grid-column: 2; grid-row: 1; }
-  .priv { grid-column: 1 / -1; grid-row: 2; }
+  .hero-stage { grid-column: 2; grid-row: 1 / span 2; align-self: center; height: auto; }
+  .priv { grid-column: 1; grid-row: 2; }
 }
+/* while one reads the privacy answers, the agents' cards stay in view beside them */
+@media (min-width: 1040px) and (min-height: 760px) { .hero-stage { position: sticky; top: 80px; } }
 .priv-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; max-width: 560px; font-weight: 900; font-size: 16px; }
 .priv-more, .way-open { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font: inherit; }
 .priv-more { height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--ink); color: var(--ground); font-weight: 900; font-size: 15px; }
@@ -767,7 +824,7 @@ a.store:hover { transform: translateY(-2px); }
 .priv-more[aria-expanded="true"] i, .way-open[aria-expanded="true"] i { transform: translateY(2px) rotate(-135deg); }
 .priv { display: grid; gap: 14px; scroll-margin-top: 100px; animation: pop-in .45s cubic-bezier(.2, .8, .3, 1) both; }
 .priv[hidden], .self-panel[hidden] { display: none; }
-@media (min-width: 760px) { .priv { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 760px) and (max-width: 1039px) { .priv { grid-template-columns: 1fr 1fr; } }
 .priv-card { border-radius: 26px; padding: 22px 22px 24px; background: var(--card); box-shadow: var(--shadow); }
 .priv-where { background: var(--green-tint); box-shadow: none; }
 .priv-card h2 { display: flex; align-items: center; gap: 10px; font-size: 21px; line-height: 1.2; letter-spacing: -.01em; }

@@ -306,6 +306,29 @@ def test_thinking_level_is_set_in_the_agents_config(bridges, fakes):
     assert bridge.get("/v1/agents/nobody/thinking", headers=AUTH).status_code == 404
 
 
+def test_glm_through_eurouter_thinks_low_and_never_none(bridges, fakes):
+    """GLM through EUrouter (bench 2026-10-27): nothing chosen becomes « low » at start, « none » is written « low »
+    (GLM answers nothing to « none » there) while the app keeps showing « none », Live turns ask for « low »."""
+    bridge, home = managed(bridges, fakes, start=False)
+    bridge.config["agents"]["coach"] = {"hermes_url": f"{fakes.hermes.url}/p/coach", "hermes_key": "k" * 32}
+    folder = profile(home, "coach")
+    (folder / "config.yaml").write_text("model:\n  provider: custom\n  default: glm-5.3-flash\n"
+                                        "  base_url: https://api.eurouter.ai/api/v1\nagent:\n  max_turns: 60\n")
+    bridge.start()
+    wait_registered(bridge, ["coach"])
+    assert wait_until(lambda: yaml.safe_load((folder / "config.yaml").read_text())["agent"].get("reasoning_effort") == "low")
+    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json() == {"id": "coach", "thinking": "low"}
+    assert bridge.put("/v1/agents/coach/thinking", headers=AUTH, json={"level": "none"}).json() == {
+        "id": "coach", "thinking": "none"}
+    data = yaml.safe_load((folder / "config.yaml").read_text())
+    assert data["agent"]["reasoning_effort"] == "low" and "bipagents-thinking" not in data.get("providers", {})
+    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json()["thinking"] == "none"
+    live = bridge.get("/v1/live/brief", params={"agent": "coach"}, headers=AUTH).json()
+    assert live["model_options"] == {"reasoning": {"enabled": True, "effort": "low"}}
+    bridge.put("/v1/agents/coach/thinking", headers=AUTH, json={"level": "high"})
+    assert yaml.safe_load((folder / "config.yaml").read_text())["agent"]["reasoning_effort"] == "high"
+
+
 def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(bridges, fakes):
     """Given its HERMES_HOME on the machine (`host_home`), an agent in a container of its own has its personality,
     language and thinking changed from the app; never its tools, its container or its deletion."""

@@ -874,6 +874,23 @@ def test_each_install_of_a_machine_hands_out_browser_ports_of_its_own():
     assert "[browser]\nenabled = true\nfirst_port = 20040\nports = 40" in bridge_toml(inst)
 
 
+def test_forty_places_on_one_server_get_port_blocks_clear_of_the_first_install_s_browsers():
+    """A shared server holds up to 40 places (seat-agent.py's MAX_SEATS): the 40th block used to be 9600, where place
+    1's browsers listen. The blocks now skip that range, and every place's browsers get a range of their own."""
+    from bipinstall.ports import BROWSERS_FIRST, BROWSERS_FIRST_COUNT, browser_ports
+    taken = set()
+    blocks = []
+    for _ in range(42):
+        ports = pick_block(lambda port: port not in taken)
+        blocks.append(ports.base)
+        taken.update(range(ports.base, ports.base + 10))
+    assert blocks[:2] == [8640, 9200] and blocks[39:] == [9580, 9590, 10000]
+    first_browsers = set(range(BROWSERS_FIRST, BROWSERS_FIRST + BROWSERS_FIRST_COUNT))
+    assert not taken & first_browsers
+    browsers = [set(range(first, first + count)) for first, count in map(browser_ports, blocks)]
+    assert sum(len(b) for b in browsers) == len(set().union(*browsers))   # no two places share a browser port
+
+
 def test_an_update_moves_the_browsers_into_the_install_s_own_ports(tmp_path, monkeypatch):
     """Two accounts on one machine gave their first browsers 9600 and 9601: only one could run. The update writes
     this install's range and sets the browsers up again in it (their profiles kept)."""

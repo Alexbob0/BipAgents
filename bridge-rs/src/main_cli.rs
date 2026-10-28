@@ -208,6 +208,11 @@ pub fn parse_args(argv: &[String]) -> Result<Args, ArgsExit> {
 
 /// The process's exit code.
 pub fn main(argv: Vec<String>) -> i32 {
+    // `bipbridge fs-as-root …`: file work as the sandboxes' « root », run by the bridge itself under `podman unshare`
+    // (beneath.rs `as_root`); not for people.
+    if argv.first().map(String::as_str) == Some(crate::beneath::CLI) {
+        return crate::beneath::cli(&argv[1..]);
+    }
     // `bipbridge space …`: the encrypted space (space.rs), its own command line.
     if argv.first().map(String::as_str) == Some("space") {
         return crate::space::cli(&argv[1..]);
