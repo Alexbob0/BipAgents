@@ -42,3 +42,6 @@ docs/store/shots/
 /target-*/
 bridge-rs/target/
 keys-rs/target/
+
+# Real brake traces from an install (scripts/brake-traces/export.py): never committed
+bridge-rs/tests/fixtures/brake-traces-real/
