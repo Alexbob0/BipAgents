@@ -406,9 +406,12 @@ async fn register_now(state: &AppState, agent: &AgentConfig) {
 
 // --- the cards -------------------------------------------------------------------------------------------------------
 
-static WAITERS: LazyLock<Mutex<BTreeMap<String, (Arc<Notify>, Option<bool>)>>> = LazyLock::new(Default::default);
+/// Each waiting card: what wakes its agent's call, and the person's answer once given.
+type Waiters = BTreeMap<String, (Arc<Notify>, Option<bool>)>;
 
-fn waiters() -> std::sync::MutexGuard<'static, BTreeMap<String, (Arc<Notify>, Option<bool>)>> {
+static WAITERS: LazyLock<Mutex<Waiters>> = LazyLock::new(Default::default);
+
+fn waiters() -> std::sync::MutexGuard<'static, Waiters> {
     WAITERS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -688,7 +691,7 @@ pub async fn answer(state: &AppState, card_id: &str, allow: bool, via: &str) -> 
 
 /// The agent's call waits for the person's answer to `card` (None: not yet).
 async fn wait_answer(card: &str) -> Option<bool> {
-    let Some(notify) = waiters().get(card).map(|(n, _)| n.clone()) else { return None };
+    let notify = waiters().get(card).map(|(n, _)| n.clone())?;
     let deadline = tokio::time::Instant::now() + ASK_WAIT;
     let outcome = loop {
         let wakeup = notify.notified();

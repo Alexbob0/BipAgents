@@ -538,8 +538,11 @@ async fn script_session(args: &[String], env: &Env, input: &Value) -> Result<(Va
     Ok((json!({"content": [{"type": "text", "text": text}], "isError": failed}), stderr))
 }
 
+/// A run's secrets: its variables, the names used, and the codes taken (for blanking).
+type RunSecrets = (Env, Vec<String>, Vec<Zeroizing<String>>);
+
 /// The secrets' variables of a run, the names used, and the codes taken (for blanking).
-fn secrets_env(state: &AppState, agent: &str, conn: &Connector) -> Result<(Env, Vec<String>, Vec<Zeroizing<String>>), RunError> {
+fn secrets_env(state: &AppState, agent: &str, conn: &Connector) -> Result<RunSecrets, RunError> {
     let kept = state.vault.secret_values(agent).map_err(|_| RunError::Failed("the vault can't be read".into()))?;
     let items = state.vault.secret_items(agent);
     let mut env: Env = Vec::new();
