@@ -299,6 +299,18 @@ pub struct SandboxConfig {
     pub registries: Vec<String>,
     /// The proxy's image (default: the agents' sandbox image, already on this machine).
     pub image: String,
+    /// The send guard (send_guard.rs): KB an agent may send per hour to one site its person did not validate, and per
+    /// day across such sites (None: the defaults, 64 and 256).
+    pub send_site_kb_hour: Option<u64>,
+    pub send_day_kb: Option<u64>,
+    /// The offer's limits (None: on for an offer place, off on a self-install; 0: off): MB an agent may download per
+    /// day, new connections per agent per minute, CPUs per sandbox (podman `--cpus`), the piracy/tracker blocklist.
+    pub download_day_mb: Option<u64>,
+    pub connections_per_minute: Option<u64>,
+    pub cpus: Option<f64>,
+    pub blocklist: Option<bool>,
+    /// Where the blocklist comes from (domains, one per line, `#` comments; fetched weekly).
+    pub blocklist_urls: Vec<String>,
 }
 
 impl Default for SandboxConfig {
@@ -308,6 +320,13 @@ impl Default for SandboxConfig {
             subnet: "10.233.80.0/24".into(),
             registries: crate::sandbox::REGISTRIES.iter().map(|s| s.to_string()).collect(),
             image: String::new(),
+            send_site_kb_hour: None,
+            send_day_kb: None,
+            download_day_mb: None,
+            connections_per_minute: None,
+            cpus: None,
+            blocklist: None,
+            blocklist_urls: crate::send_guard::BLOCKLIST_URLS.iter().map(|s| s.to_string()).collect(),
         }
     }
 }
@@ -1201,6 +1220,14 @@ fn f(table: &Value, key: &str, default: f64) -> Result<f64> {
     }
 }
 
+/// A count that may be left out (None), never below 0.
+fn opt_u(table: &Value, key: &str) -> Result<Option<u64>> {
+    match get(table, key) {
+        Some(v) => Ok(Some(py::py_int(v).map_err(value_error)?.max(0) as u64)),
+        None => Ok(None),
+    }
+}
+
 fn narrow<T: TryFrom<i64>>(value: i64, what: &str) -> Result<T> {
     T::try_from(value).map_err(|_| ConfigError(format!("{what}: {value} is out of range")))
 }
@@ -1545,6 +1572,19 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
             _ => defaults.registries,
         },
         image: s(sandbox_t, "image", ""),
+        send_site_kb_hour: opt_u(sandbox_t, "send_site_kb_hour")?,
+        send_day_kb: opt_u(sandbox_t, "send_day_kb")?,
+        download_day_mb: opt_u(sandbox_t, "download_day_mb")?,
+        connections_per_minute: opt_u(sandbox_t, "connections_per_minute")?,
+        cpus: match get(sandbox_t, "cpus") {
+            Some(v) => Some(py::py_float(v).map_err(value_error)?.max(0.0)),
+            None => None,
+        },
+        blocklist: get(sandbox_t, "blocklist").map(py::truthy),
+        blocklist_urls: match get(sandbox_t, "blocklist_urls") {
+            Some(Value::Array(items)) => items.iter().map(|u| py::py_str(u).trim().to_string()).collect(),
+            _ => defaults.blocklist_urls,
+        },
     };
     if !["auto", "on", "off"].contains(&sandbox.isolate.as_str()) {
         return Err(ConfigError::new("sandbox.isolate must be 'auto', 'on' or 'off'"));

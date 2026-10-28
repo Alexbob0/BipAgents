@@ -89,6 +89,7 @@ pub mod beneath;
 pub mod sandbox;
 pub mod sandbox_adopt;
 pub mod sandbox_sites;
+pub mod send_guard;
 pub mod sent_files;
 pub mod services;
 pub mod shares;

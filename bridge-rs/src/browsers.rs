@@ -408,11 +408,26 @@ fn first_part(lang: &str) -> &str {
     lang.split('-').next().unwrap_or(lang)
 }
 
-/// `podman run` (or docker) for the agent's container.
-pub fn run_args(config: &Config, agent: &str, ports: &IndexMap<String, u16>, engine: &str, gpu: bool) -> Vec<String> {
+/// Chrome's WebRTC kept to proxied traffic: no UDP of its own, so an in-page torrent client (WebTorrent) reaches no
+/// peer, and no address of this machine leaks to a page (send-guard.md, 2026-10-28).
+pub const WEBRTC_FLAG: &str = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp";
+
+/// `podman run` (or docker) for the agent's container. `egress`: its network and Chrome's proxy flag when it goes
+/// through the agents' proxy (send_guard.rs `browser_egress`).
+pub fn run_args(
+    config: &Config,
+    agent: &str,
+    ports: &IndexMap<String, u16>,
+    engine: &str,
+    gpu: bool,
+    egress: Option<&(String, String)>,
+) -> Vec<String> {
     let place = folder(config, agent);
     let lang = language(config);
-    let mut flags = vec![format!("--accept-lang={lang},{}", first_part(&lang))];
+    let mut flags = vec![format!("--accept-lang={lang},{}", first_part(&lang)), WEBRTC_FLAG.to_string()];
+    if let Some((_, proxy)) = egress {
+        flags.push(proxy.clone());
+    }
     if gpu {
         flags.extend(GPU_FLAGS.iter().map(|f| f.to_string()));
     }
@@ -482,6 +497,9 @@ pub fn run_args(config: &Config, agent: &str, ports: &IndexMap<String, u16>, eng
         if podman {
             args.extend(["--group-add".to_string(), "keep-groups".to_string()]);
         }
+    }
+    if let Some((network, _)) = egress {
+        args.extend(["--network".to_string(), network.clone()]);
     }
     args.push(config.browser.image.clone());
     args
@@ -627,7 +645,18 @@ pub async fn setup_with(
     let ports_value = Value::Object(ports.iter().map(|(k, v)| (k.clone(), json!(v))).collect());
     std::fs::write(place.join("ports.json"), format!("{}\n", crate::py::dumps(&ports_value)))?;
 
-    let text = systemd_unit(name, &engine, &run_args(config, name, &ports, &engine, gpu_available(config)));
+    // through the agents' proxy where the sandboxes are isolated (send_guard.rs): its network and the proxy up first,
+    // else straight out as before
+    let cdp_port = ports.get("cdp").copied().unwrap_or(0);
+    let egress = match crate::send_guard::browser_egress(config, &engine, cdp_port) {
+        Some(found) if crate::sandbox::network(config, run).await.is_ok() => {
+            crate::sandbox_sites::ensure_agent(config, name)?;
+            Some(found)
+        }
+        _ => None,
+    };
+    let gpu = gpu_available(config);
+    let text = systemd_unit(name, &engine, &run_args(config, name, &ports, &engine, gpu, egress.as_ref()));
     let changed = unit.exists() && std::fs::read_to_string(&unit).map(|t| t != text).unwrap_or(true);
     if !deferred {
         if let Some(parent) = unit.parent() {

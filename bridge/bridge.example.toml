@@ -164,6 +164,16 @@ port = 8650
 # subnet = "10.233.80.0/24"   # the sandboxes' network; the proxy takes its .2
 # registries = ["pypi.org", "files.pythonhosted.org", "registry.npmjs.org"]   # default: PyPI, npm, Rust crates, Go, Debian (no host that publishes but npm)
 # image = ""                  # the proxy's image (default: the agents' sandbox image)
+# Reading open, sending guarded (send_guard.rs): what an agent sends a site its person did not validate is counted;
+# past these, the upload is cut and the person gets one card (« Autoriser » validates the site for that agent).
+# send_site_kb_hour = 64      # per site per hour
+# send_day_kb = 256           # per agent per day, all such sites together (slow leaks)
+# The offer's limits: on by default where `cloud = true`, off on a self-install (0 turns one off).
+# download_day_mb = 2048      # what an agent may download per day (registries and browser included)
+# connections_per_minute = 300
+# cpus = 1.5                  # each sandbox's share of the processors (podman --cpus)
+# blocklist = true            # piracy and torrent trackers refused; lists fetched weekly from blocklist_urls
+# blocklist_urls = ["https://blocklistproject.github.io/Lists/alt-version/piracy-nl.txt", "https://blocklistproject.github.io/Lists/alt-version/torrent-nl.txt"]
 
 # Link Agent Wallet (Stripe), for people in the United States and Canada (link_wallet.rs): a one-time card per
 # purchase, approved in the app and in Link's app, typed by the bridge. Off unless enabled AND configured with Kerfy

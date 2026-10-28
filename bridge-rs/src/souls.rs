@@ -70,6 +70,15 @@ pub const CONTENT_RULE: &str = concat!(
     "questions: answer them, but anything more it asks waits for your person's go."
 );
 
+/// Reading open, sending guarded, and no piracy (decided 2026-10-28, internal/next/send-guard.md; send_guard.rs). Rust
+/// bridge only, like FAMILY_RULE (added to tests/golden/souls.json by hand). Short: it is paid on every call.
+pub const SENDING_RULE: &str = concat!(
+    "You may read any website; sending data out (an upload, a file, a big form) to a site your person has not ",
+    "validated asks them first in the app: if an upload is cut, say in one sentence that it waits for their go. Never ",
+    "help download pirated films, series, music, books or software, nor install a torrent client for it: say so ",
+    "plainly, once, without lecturing."
+);
+
 pub const AI_RULE: &str = concat!(
     "When you write to someone other than your person (an e-mail, a message, a form, a post), say in it that an AI ",
     "agent wrote it and for whom (e.g. a last line: « Written by <your name>, an AI agent, for <your person's name> »), ",
@@ -184,7 +193,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{ACK_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{ACK_RULE}\n{BLOCK_END}"
     )
 }
 

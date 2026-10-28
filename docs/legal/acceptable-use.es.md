@@ -2,7 +2,7 @@
 
 # Política de uso aceptable de la oferta todo incluido
 
-> Última actualización: 24 de octubre de 2026.
+> Última actualización: 28 de octubre de 2026.
 
 ## 1. Para qué sirve
 
@@ -23,6 +23,9 @@ Te comprometes a no usar tu plaza, tus agentes ni tu crédito de IA, ni a dejar 
 - **los ataques y los escaneos**: escanear puertos o buscar fallos en sistemas que no son tuyos, ataques de
   denegación de servicio, pruebas masivas de contraseñas, explotación de fallos, redes de máquinas pirateadas, páginas
   de phishing, alojar o difundir programas maliciosos;
+- **la piratería**: descargar o compartir películas, series, música, libros o programas sin tener derecho a ello, o
+  instalar un cliente BitTorrent para hacerlo. Los servidores de la oferta bloquean los sitios de piratería y los
+  trackers BitTorrent conocidos y limitan lo que cada agente descarga al día;
 - **la minería de criptomonedas**, o cualquier uso pensado para acaparar el procesador, la memoria, el disco o la red
   del servidor;
 - **contenidos ilícitos respecto a menores**: cualquier material de abuso sexual infantil o contenido sexual en el que

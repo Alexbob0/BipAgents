@@ -356,6 +356,7 @@ impl AppState {
         if config.hermes.enabled() {
             self.spawn(crate::sandbox::isolate_all(self.config.clone(), agents_admin::default_run()));
             self.spawn(crate::sandbox_sites::watch(self.clone()));
+            self.spawn(crate::send_guard::watch(self.clone()));
             self.spawn(crate::shares::mirror_forever(self.config.clone()));
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
             let shared = self.config.clone();
@@ -1105,11 +1106,7 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
     // a card of the bridge's own (a site for the agent's programs, sandbox_sites.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::sandbox_sites::RUN_PREFIX) {
         let decision = crate::sandbox_sites::decision_of_choice(&body.choice);
-        let choice = match decision {
-            crate::sandbox_sites::Decision::AllSites => "all_sites",
-            crate::sandbox_sites::Decision::DenyAll => "deny",
-            _ => "always",
-        };
+        let choice = if decision == crate::sandbox_sites::Decision::DenyAll { "deny" } else { "always" };
         return match crate::sandbox_sites::answer(&state.config(), &agent.name, id, decision, "notification")
             .map_err(anyhow::Error::from)?
         {

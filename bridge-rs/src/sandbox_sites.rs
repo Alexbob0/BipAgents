@@ -1,48 +1,42 @@
-//! The sites an agent's sandbox may reach besides the package registries (owner decision 2026-10-23, « Ok on fait
-//! ça »). An isolated sandbox (sandbox.rs) reaches the internet only through the proxy `bipagents-egress`
-//! (assets/sandbox/egress_proxy.py); each one gets its own proxy credentials (`http://<agent>:<token>@…` in its
-//! proxy variables), so the proxy knows which agent asks and lets it through to the registries and to the hosts its
-//! person allowed it (HTTPS only; exact names, or `*.domain` added by hand in the app).
+//! The sites an agent may SEND data to (owner decisions 2026-10-23, then 2026-10-28: « il faudrait pas bloquer le site
+//! mais bloquer l'envoi d'informations sans validation », internal/next/send-guard.md). An isolated sandbox
+//! (sandbox.rs) reaches the internet only through the proxy `bipagents-egress` (assets/sandbox/egress_proxy.py); each
+//! one gets its own proxy credentials (`http://<agent>:<token>@…` in its proxy variables), and the agent's visible
+//! browser is known by its address (send_guard.rs), so the proxy knows which agent asks.
 //!
-//! - **Refused → the person decides**: the proxy appends each refusal to a known agent to a reports file the bridge
-//!   reads every few seconds (`watch`), and the bridge raises ONE card for the person: « <Agent> veut joindre
-//!   data.gouv.fr depuis ses programmes — Autoriser toujours / Refuser ». It is listed with Hermes' own approvals
-//!   (`GET /v1/approvals`, run id `bip-site-<id>`, choices `always`/`deny`, the host in `bip_site`), a notification
-//!   says so, and the answer comes back here (`POST /v1/agents/{agent}/sandbox/sites/requests/{id}`, or `/v1/approve`)
-//!   and is kept with the person's other decisions (approvals_log.rs). One card per agent and host at a time, at most
-//!   `MAX_PENDING` per agent; a refused host is not asked about again for `QUIET_AFTER_NO` (7 days) unless the agent
-//!   asks itself (`sandbox_sites_request`, once a day at most).
-//! - **Fewer cards (owner, 2026-10-25: « il y a trop de demandes d'accord »)**:
-//!   - *what the person's request opened already*: a site the same agent opened itself (a `browser_navigate` or a
-//!     `web_extract` its run reported, a tab of its own Chrome) is open to its programs for `VISIT_TTL` (7 days), with
-//!     its registrable domain and that domain's usual subdomains (`www.`, `static.`, `cdn.`…; `registrable`);
-//!   - *one card per agent*: the hosts refused within `GROUP_WINDOW` gather on one card (« Vie veut joindre 3 sites
-//!     depuis ses programmes : a, b, c »), choices `always` (these sites), `all_sites` (« Tous les sites pour Vie »)
-//!     and `deny`. Older apps read `bip_site` (the first host) and answer `{allow}`: that host only, the others wait
-//!     on a card of their own;
-//!   - *« Tous les sites »*, a switch per agent (`all_sites`): its programs reach any public site on HTTPS, with no
-//!     card (the proxy's `"any"`). Off by default for an agent that holds something sensitive (`sensitive`: vault
-//!     items, a mailbox, health data, the money category), on for the others. Local and private addresses stay
-//!     refused either way.
-//! - **The agent asks first**: `sandbox_sites_request` (host + reason) raises the same card; `sandbox_sites` lists
-//!   what it may reach (both on the `bipagents_files` MCP entry of an isolated agent, sandbox.rs).
-//! - **The list in the apps**: « Sites autorisés » in each agent's options (the routes below).
-//! - Never this machine: a name of a local network (`localhost`, `.local`, `.internal`…) or an address is refused here,
-//!   and the proxy refuses any name that resolves to a private, loopback or Tailscale address.
+//! - **Reading is open**: every agent's programs and browser reach any public HTTPS site, with no card. This machine
+//!   and private or Tailscale addresses stay refused (here for the names, in the proxy for what they resolve to).
+//! - **Sending is guarded, for every agent** (whatever it reads can be written to a file and uploaded): the proxy
+//!   counts what each tunnel sends a site this list doesn't hold; past a small volume it cuts the tunnel and reports it
+//!   (`send_guard.rs` has the thresholds and why). The bridge reads the reports every few seconds (`watch`) and raises
+//!   ONE card per agent: « <Agent> veut envoyer des données à exemple.com (environ 2 Mo) — Autoriser / Refuser ». It is
+//!   listed with Hermes' own approvals (`GET /v1/approvals`, run id `bip-site-<id>`, choices `always`/`deny`, the host
+//!   in `bip_site`, the size in `bip_site_send_bytes`, `bip_site_kind: "send"`), a notification says so, and the answer
+//!   comes back here (`POST /v1/agents/{agent}/sandbox/sites/requests/{id}`, or `/v1/approve`) and is kept with the
+//!   person's other decisions (approvals_log.rs). « Autoriser » validates that site for sending, for that agent, until
+//!   removed in « Sites autorisés », and clears the proxy's counts for it (`reset`). Hosts reported within
+//!   `GROUP_WINDOW` gather on one card; at most `MAX_PENDING` cards per agent; a refused host is not asked about again
+//!   for `QUIET_AFTER_NO` (7 days) unless the agent asks itself (`sandbox_sites_request`, once a day at most).
+//! - **Older apps** read `bip_site` (the first host) and the French `description`, and answer `{allow}` (that host
+//!   only, the others wait on a card of their own) or « Tous les sites » (`all_sites`: every host on the card).
+//! - **Connectors**: the sites on a connector's approval card are validated for sending, for the connector and for its
+//!   agent (connectors.rs).
+//! - **Migration** (2026-10-28): the lists kept from the « reading » cards are the agents' validated sites; the « Tous
+//!   les sites » switch and the visited sites are gone (the PATCH an older app sends is accepted and does nothing).
 //! - Isolation off, or no podman: the list is kept and shown, with no effect (`effective: false`).
 //!
 //! `<data>/sandbox-sites.json` (0600) keeps each agent's token, sites, refusals and the cards waiting;
-//! `<data>/sandbox-proxy/policy/sites.json` is what the proxy reads (the tokens' SHA-256 and the hosts, mounted
-//! read-only), `<data>/sandbox-proxy/reports/` what it writes.
+//! `<data>/sandbox-proxy/policy/sites.json` is what the proxy reads (the tokens' SHA-256, the hosts, the limits, the
+//! browsers' addresses; mounted read-only), `<data>/sandbox-proxy/reports/` what it writes (`sends.jsonl`, and
+//! `usage.json`: today's counts).
 //!
 //! The routes (bridge key):
 //!
 //!     GET    /v1/agents/{agent}/sandbox/sites                    {registries, sites, pending, effective, why,
-//!                                                                  all_sites, all_sites_default, sensitive, visited}
-//!     PATCH  /v1/agents/{agent}/sandbox/sites          {all_sites}   the « Tous les sites » switch
+//!                                                                  reading_open, today}
 //!     POST   /v1/agents/{agent}/sandbox/sites          {host}    added by the person (`*.domain` allowed)
 //!     DELETE /v1/agents/{agent}/sandbox/sites/{host}             removed
-//!     POST   /v1/agents/{agent}/sandbox/sites/requests/{id} {allow, hosts?, all_sites?}   a card answered
+//!     POST   /v1/agents/{agent}/sandbox/sites/requests/{id} {allow, hosts?}   a card answered
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -73,24 +67,10 @@ pub const QUIET_AFTER_NO: f64 = 7.0 * 86400.0;
 pub const QUIET_EXPLICIT: f64 = 86400.0;
 /// A card nobody answered goes after so long.
 pub const PENDING_TTL: f64 = 14.0 * 86400.0;
-/// Hosts refused within so long gather on one card.
+/// Hosts reported within so long gather on one card.
 pub const GROUP_WINDOW: f64 = 120.0;
 /// Hosts on one card.
 pub const MAX_HOSTS: usize = 8;
-/// A site the agent opened itself (browser, web tools): open to its programs for so long.
-pub const VISIT_TTL: f64 = 7.0 * 86400.0;
-/// Sites opened kept per agent.
-const MAX_VISITS: usize = 300;
-/// A visit noted again only after so long (the file is not written at each page).
-const VISIT_AGAIN: f64 = 3600.0;
-/// The subdomains a site usually loads its parts from, opened with a site the agent visited.
-const USUAL_SUBDOMAINS: [&str; 12] =
-    ["www", "static", "cdn", "api", "assets", "img", "images", "media", "fonts", "files", "download", "m"];
-/// Second levels under which a registrable domain has three labels (`gouv.fr`, `co.uk`).
-const SECOND_LEVELS: [&str; 20] = [
-    "co", "com", "net", "org", "edu", "ac", "gov", "gouv", "ltd", "plc", "me", "nom", "or", "ne", "go", "gob", "mil",
-    "govt", "nic", "asso",
-];
 const WATCH_EVERY: Duration = Duration::from_secs(3);
 const REPORTS_MAX: u64 = 512 * 1024;
 
@@ -143,17 +123,23 @@ pub struct Store {
 pub struct AgentSites {
     #[serde(default)]
     pub token: String,
+    /// The sites validated for sending.
     #[serde(default)]
     pub sites: Vec<Site>,
     /// Host → when the person said no (Unix seconds); with when the agent last asked again.
     #[serde(default)]
     pub refused: BTreeMap<String, f64>,
-    /// « Tous les sites »: the person's choice (None: the default, `all_sites_default`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub all_sites: Option<bool>,
-    /// Host → when the agent last opened it itself (browser, web tools).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub visited: BTreeMap<String, f64>,
+    /// When the person last allowed a site (the proxy clears the agent's counts then).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub reset: f64,
+}
+
+fn is_zero(value: &f64) -> bool {
+    *value == 0.0
+}
+
+fn no_bytes(value: &u64) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -175,9 +161,12 @@ pub struct Pending {
     pub hosts: Vec<String>,
     #[serde(default)]
     pub reason: String,
-    /// « proxy » (refused) or « agent » (asked first).
+    /// « proxy » (a send cut) or « agent » (asked first).
     pub via: String,
     pub at: f64,
+    /// About how much the agent sent or tried to send (bytes; 0: not measured, the agent asked first).
+    #[serde(default, skip_serializing_if = "no_bytes")]
+    pub bytes: u64,
 }
 
 impl Pending {
@@ -208,7 +197,7 @@ pub fn reports_dir(config: &Config) -> PathBuf {
 }
 
 pub const POLICY_FILE: &str = "sites.json";
-pub const REPORTS_FILE: &str = "blocked.jsonl";
+pub const REPORTS_FILE: &str = "sends.jsonl";
 
 pub fn load(config: &Config) -> Store {
     std::fs::read_to_string(store_path(config)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
@@ -228,24 +217,39 @@ fn write_private(path: &Path, body: &[u8], mode: u32) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// The proxy's view: per agent, its token's SHA-256, its hosts (the person's, then those its visits opened) and
-/// whether any site is open to it (nothing secret).
+/// The sites the agent's approved connectors reach (validated for sending with them).
+fn connector_sites(config: &Config, agent: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for c in crate::connectors::of_agent(config, agent) {
+        if c.status == crate::connectors::APPROVED && c.enabled {
+            for site in c.sites {
+                if !out.contains(&site) {
+                    out.push(site);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The proxy's view: per agent, its token's SHA-256, the hosts validated for sending (its person's, its connectors')
+/// and when its person last allowed one; the connectors' own entries; the limits; the browsers' addresses (nothing
+/// secret).
 pub fn policy_of(config: &Config, store: &Store) -> Value {
-    let now = py::time_time();
     let mut agents = Dict::new();
     for (name, entry) in &store.agents {
         if entry.token.is_empty() {
             continue;
         }
         let mut hosts: Vec<String> = entry.sites.iter().map(|s| s.host.clone()).collect();
-        for host in visited_names(entry, now) {
+        for host in connector_sites(config, name) {
             if !hosts.contains(&host) {
                 hosts.push(host);
             }
         }
         let mut item = json!({"key": crate::agent_tools::digest(&entry.token), "hosts": hosts});
-        if all_sites_on(config, name, entry) {
-            item["any"] = json!(true);
+        if entry.reset > 0.0 {
+            item["reset"] = json!(entry.reset);
         }
         agents.insert(name.clone(), item);
     }
@@ -253,7 +257,11 @@ pub fn policy_of(config: &Config, store: &Store) -> Value {
     for (name, item) in crate::connectors::proxy_identities(config) {
         agents.insert(name, item);
     }
-    json!({"agents": agents})
+    let browsers: serde_json::Map<String, Value> = crate::send_guard::browsers_map(config)
+        .into_iter()
+        .filter(|(_, agent)| agent.as_str().is_some_and(|a| agents.contains_key(a)))
+        .collect();
+    json!({"agents": agents, "browsers": browsers, "limits": crate::send_guard::limits(config)})
 }
 
 /// The proxy's file written again when it changed (the proxy reads it again then).
@@ -342,196 +350,47 @@ pub fn clean_host(raw: &str, wildcard: bool) -> Result<String, String> {
     Ok(host)
 }
 
-/// The registries every sandbox reaches.
+/// The registries every sandbox reaches (and sends to without counting).
 pub fn registries(config: &Config) -> Vec<String> {
     config.sandbox.registries.clone()
 }
 
-fn covered(sites: &[Site], host: &str) -> bool {
-    sites.iter().any(|s| match s.host.strip_prefix("*.") {
-        Some(base) => host == s.host || host.ends_with(&format!(".{base}")),
-        None => s.host == host,
+fn covered(sites: &[String], host: &str) -> bool {
+    sites.iter().any(|s| match s.strip_prefix("*.") {
+        Some(base) => host == s || host.ends_with(&format!(".{base}")),
+        None => s == host,
     })
 }
 
-/// The registrable domain of a host, simply (`www.data.gouv.fr` → `data.gouv.fr`, `a.b.example.org` →
-/// `example.org`, `www.bbc.co.uk` → `bbc.co.uk`): None under shared hosting (`x.github.io`), whose neighbours are
-/// anybody's, and for a suffix itself (`co.uk`).
-pub fn registrable(host: &str) -> Option<String> {
-    if SHARED_HOSTING.iter().any(|s| host == *s || host.ends_with(&format!(".{s}"))) {
-        return None;
+/// Whether the agent may send to `host` without a card: a registry, one of its validated sites, a site of one of its
+/// approved connectors.
+pub fn validated(config: &Config, agent: &str, host: &str) -> bool {
+    if registries(config).iter().any(|r| r == host) {
+        return true;
     }
-    let labels: Vec<&str> = host.trim_start_matches("*.").split('.').collect();
-    if labels.len() < 2 {
-        return None;
-    }
-    let second = labels[labels.len() - 2];
-    let keep = if SECOND_LEVELS.contains(&second) || second.len() <= 2 { 3 } else { 2 };
-    if labels.len() < keep {
-        return None;
-    }
-    Some(labels[labels.len() - keep..].join("."))
+    let mut sites: Vec<String> =
+        load(config).agents.get(agent).map(|a| a.sites.iter().map(|s| s.host.clone()).collect()).unwrap_or_default();
+    sites.extend(connector_sites(config, agent));
+    covered(&sites, host)
 }
 
-/// The names a visit to `host` opens: itself, its registrable domain and that domain's usual subdomains.
-pub fn visit_names(host: &str) -> Vec<String> {
-    let mut names = vec![host.to_string()];
-    if let Some(base) = registrable(host) {
-        for name in std::iter::once(base.clone()).chain(USUAL_SUBDOMAINS.iter().map(|sub| format!("{sub}.{base}"))) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-    }
-    names
-}
-
-/// The names the agent's recent visits open.
-fn visited_names(entry: &AgentSites, now: f64) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
-    for (host, at) in &entry.visited {
-        if now - at < VISIT_TTL {
-            for name in visit_names(host) {
-                if !names.contains(&name) {
-                    names.push(name);
-                }
-            }
-        }
-    }
-    names
-}
-
-/// What the agent holds that a program on the open internet should not reach freely, if anything: « finance » (the
-/// money category), « health » (its health switch), « mail » (a mailbox), « vault » (items of the vault given to it).
-/// What cannot be read counts as sensitive.
-pub fn sensitive(config: &Config, agent: &AgentConfig) -> Option<&'static str> {
-    if agent.category.as_deref() == Some("finance") {
-        return Some("finance");
-    }
-    if crate::health::enabled(config, &agent.name) {
-        return Some("health");
-    }
-    match crate::mailbox::of(config).of_agent(&agent.name) {
-        Ok(list) if list.is_empty() => {}
-        _ => return Some("mail"),
-    }
-    let vault = crate::vault::Vault::new(&py::join(&config.data_dir(), "vault"));
-    match vault.try_items() {
-        Ok(items) if !items.iter().any(|i| i.agents.contains_key(&agent.name)) => None,
-        _ => Some("vault"),
-    }
-}
-
-/// « Tous les sites » when the person never chose: on, unless the agent holds something sensitive.
-pub fn all_sites_default(config: &Config, agent: &str) -> bool {
-    config.agent(Some(agent)).is_some_and(|a| sensitive(config, a).is_none())
-}
-
-fn all_sites_on(config: &Config, agent: &str, entry: &AgentSites) -> bool {
-    entry.all_sites.unwrap_or_else(|| all_sites_default(config, agent))
-}
-
-/// Whether `host` is on the agent's list: a registry, one of its sites, or a site it opened lately.
-fn listed(config: &Config, store: &Store, agent: &str, host: &str) -> bool {
-    registries(config).iter().any(|r| r == host)
-        || store.agents.get(agent).is_some_and(|a| {
-            covered(&a.sites, host) || visited_names(a, py::time_time()).iter().any(|n| n == host)
-        })
-}
-
-/// Whether the agent's sandbox may reach `host` already (on its list, or « Tous les sites »).
-pub fn reachable(config: &Config, agent: &str, host: &str) -> bool {
-    let store = load(config);
-    let entry = store.agents.get(agent).cloned().unwrap_or_default();
-    listed(config, &store, agent, host) || all_sites_on(config, agent, &entry)
-}
-
-/// The sites `text` names (`https://host/…`, a run's preview of a tool call), made plain.
-pub fn hosts_in(text: &str) -> Vec<String> {
-    let mut found: Vec<String> = Vec::new();
-    for (at, _) in text.match_indices("://") {
-        let scheme = text[..at].rsplit(|c: char| !c.is_ascii_alphabetic()).next().unwrap_or("").to_lowercase();
-        if scheme != "https" && scheme != "http" {
-            continue;
-        }
-        let rest = &text[at + 3..];
-        let end = rest.find(|c: char| c.is_whitespace() || "/?#\"'<>),]".contains(c)).unwrap_or(rest.len());
-        if let Ok(host) = clean_host(&rest[..end], false) {
-            if !found.contains(&host) && found.len() < 20 {
-                found.push(host);
-            }
-        }
-    }
-    found
-}
-
-/// The agent opened `hosts` itself (its browser, its web tools): open to its programs for `VISIT_TTL`, and the cards
-/// waiting about them answered by it. Written at most once per `VISIT_AGAIN` per host.
-pub fn note_visits(config: &Config, agent: &str, hosts: &[String]) {
-    let now = py::time_time();
-    let known = load(config);
-    let entry = known.agents.get(agent);
-    let fresh: Vec<String> = hosts
-        .iter()
-        .filter_map(|h| clean_host(h, false).ok())
-        .filter(|h| !registries(config).contains(h))
-        .filter(|h| !entry.and_then(|e| e.visited.get(h)).is_some_and(|at| now - at < VISIT_AGAIN))
-        .collect();
-    if fresh.is_empty() {
-        return;
-    }
-    let result = change(config, |store| {
-        let entry = store.agents.entry(agent.to_string()).or_default();
-        for host in &fresh {
-            entry.visited.insert(host.clone(), now);
-        }
-        entry.visited.retain(|_, at| now - *at < VISIT_TTL);
-        while entry.visited.len() > MAX_VISITS {
-            let oldest = entry.visited.iter().min_by(|a, b| a.1.total_cmp(b.1)).map(|(h, _)| h.clone());
-            let Some(oldest) = oldest else { break };
-            entry.visited.remove(&oldest);
-        }
-        let opened = visited_names(entry, now);
-        for card in store.pending.iter_mut().filter(|p| p.agent == agent) {
-            let left: Vec<String> = card.all_hosts().into_iter().filter(|h| !opened.contains(h)).collect();
-            if let Some(first) = left.first() {
-                card.host = first.clone();
-            }
-            card.hosts = left;
-        }
-        store.pending.retain(|p| !(p.agent == agent && p.hosts.is_empty() && opened.contains(&p.host)));
-    });
-    match result {
-        Ok(()) => tracing::info!(target: "bipbridge::sandbox", agent, hosts = %fresh.join(", "), "sites opened by the agent"),
-        Err(exc) => tracing::warn!(target: "bipbridge::sandbox", agent, error = %exc, "sites opened not kept"),
-    }
-}
-
-/// A tool call a run reported (`tool.started`: the tool and its preview): the sites a browser or a web tool opened.
-/// Cheap for the others; the file is written off the caller's thread.
-pub fn note_tool_call(config: &Config, agent: &str, tool: &str, preview: &str) {
-    let tool = tool.to_ascii_lowercase();
-    let opens = tool.ends_with("navigate") || tool.ends_with("web_extract") || tool.ends_with("web_crawl");
-    if !opens || preview.is_empty() {
-        return;
-    }
-    let mut hosts = hosts_in(preview);
-    if hosts.is_empty() {
-        // a navigation's preview may be the bare address
-        if let Some(host) = preview.split_whitespace().next().and_then(|w| clean_host(w, false).ok()) {
-            hosts.push(host);
-        }
-    }
-    if hosts.is_empty() {
-        return;
-    }
-    let (config, agent) = (config.clone(), agent.to_string());
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => {
-            handle.spawn_blocking(move || note_visits(&config, &agent, &hosts));
-        }
-        Err(_) => note_visits(&config, &agent, &hosts),
-    }
+/// « environ 2 Mo », « environ 300 Ko ».
+pub fn about(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    let b = bytes as f64;
+    let (value, unit) = if b >= KB * KB * KB {
+        (b / (KB * KB * KB), "Go")
+    } else if b >= KB * KB {
+        (b / (KB * KB), "Mo")
+    } else {
+        ((b / KB).max(1.0), "Ko")
+    };
+    let shown = if value < 10.0 && unit != "Ko" {
+        format!("{:.1}", value).trim_end_matches(".0").replace('.', ",")
+    } else {
+        format!("{}", value.round() as u64)
+    };
+    format!("environ {shown} {unit}")
 }
 
 // --- an agent's token ----------------------------------------------------------------------------------------------
@@ -563,6 +422,20 @@ pub fn ensure_policy(config: &Config) -> std::io::Result<()> {
     write_policy(config, &load(config))
 }
 
+/// A browser that goes through the proxy needs an entry for its agent (the proxy knows the browser by its address,
+/// and finds the agent's validated sites there): made like a sandbox's, without handing the token out.
+pub fn ensure_agent(config: &Config, agent: &str) -> std::io::Result<()> {
+    if load(config).agents.get(agent).is_some_and(|a| !a.token.is_empty()) {
+        return ensure_policy(config);
+    }
+    change(config, |store| {
+        let entry = store.agents.entry(agent.to_string()).or_default();
+        if entry.token.is_empty() {
+            entry.token = py::token_urlsafe(24);
+        }
+    })
+}
+
 // --- the list ------------------------------------------------------------------------------------------------------
 
 /// Added (true), or already there (false). Err: why not.
@@ -571,6 +444,7 @@ pub fn add(config: &Config, agent: &str, raw: &str, by: &str) -> Result<bool, St
     if registries(config).contains(&host) {
         return Ok(false);
     }
+    let now = py::time_time();
     change(config, |store| {
         let entry = store.agents.entry(agent.to_string()).or_default();
         if entry.sites.iter().any(|s| s.host == host) {
@@ -581,13 +455,14 @@ pub fn add(config: &Config, agent: &str, raw: &str, by: &str) -> Result<bool, St
         }
         entry.sites.push(Site { host: host.clone(), at: crate::tools_knowledge::now_iso_seconds(), by: by.into() });
         entry.refused.remove(&host);
+        entry.reset = now;
         store.pending.retain(|p| !(p.agent == agent && p.host == host));
         Ok(true)
     })
     .map_err(|e| e.to_string())?
     .inspect(|added| {
         if *added {
-            tracing::info!(target: "bipbridge::sandbox", agent, host = %host, by, "site allowed in the sandbox");
+            tracing::info!(target: "bipbridge::sandbox", agent, host = %host, by, "site validated for sending");
         }
     })
 }
@@ -601,7 +476,7 @@ pub fn remove(config: &Config, agent: &str, host: &str) -> std::io::Result<bool>
         before != entry.sites.len()
     })?;
     if removed {
-        tracing::info!(target: "bipbridge::sandbox", agent, host = %host, "site no longer allowed in the sandbox");
+        tracing::info!(target: "bipbridge::sandbox", agent, host = %host, "site no longer validated for sending");
     }
     Ok(removed)
 }
@@ -628,7 +503,7 @@ pub fn effect(config: &Config, agent: &AgentConfig) -> (bool, Option<&'static st
     (false, Some("agent"))
 }
 
-/// What the app shows.
+/// What the app shows. `all_sites: true` for older apps (their « Tous les sites » switch shows on: reading is open).
 pub fn view(config: &Config, agent: &AgentConfig) -> Value {
     let store = load(config);
     let entry = store.agents.get(&agent.name).cloned().unwrap_or_default();
@@ -638,24 +513,23 @@ pub fn view(config: &Config, agent: &AgentConfig) -> Value {
         .filter(|p| p.agent == agent.name)
         .map(|p| {
             json!({"id": p.id, "host": p.host, "hosts": p.all_hosts(), "reason": p.reason, "via": p.via,
-                   "at": iso(p.at)})
+                   "at": iso(p.at), "send_bytes": if p.bytes > 0 { json!(p.bytes) } else { Value::Null }})
         })
         .collect();
     let (effective, why) = effect(config, agent);
-    let now = py::time_time();
-    let mut visited: Vec<(&String, &f64)> = entry.visited.iter().filter(|(_, at)| now - **at < VISIT_TTL).collect();
-    visited.sort_by(|a, b| b.1.total_cmp(a.1));
-    let sensitive = sensitive(config, agent);
+    let connectors: Vec<String> = connector_sites(config, &agent.name);
     json!({
         "registries": registries(config),
         "sites": entry.sites,
+        "connector_sites": connectors,
         "pending": pending,
         "effective": effective,
         "why": why,
-        "all_sites": entry.all_sites.unwrap_or(sensitive.is_none()),
-        "all_sites_default": sensitive.is_none(),
-        "sensitive": sensitive,
-        "visited": visited.iter().map(|(h, at)| json!({"host": h, "at": iso(**at)})).collect::<Vec<_>>(),
+        "reading_open": true,
+        "all_sites": true,
+        "all_sites_default": true,
+        "sensitive": null,
+        "today": crate::send_guard::usage(config, &agent.name),
     })
 }
 
@@ -670,7 +544,7 @@ fn iso(at: f64) -> String {
 /// What came of asking.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Asked {
-    /// Reachable already.
+    /// Validated already.
     Already,
     /// A card waits for the person (`true`: made now).
     Card(Pending, bool),
@@ -681,14 +555,14 @@ pub enum Asked {
     Invalid(String),
 }
 
-/// The person asked about `host` for `agent` (`via`: « proxy » or « agent »), unless it is reachable, refused lately
-/// or asked already.
-pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str) -> Asked {
+/// The person asked whether `agent` may send to `host` (`via`: « proxy », a send cut, with about how many `bytes`; or
+/// « agent », asked first), unless it is validated, refused lately or asked already.
+pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str, bytes: u64) -> Asked {
     let host = match clean_host(raw, false) {
         Ok(h) => h,
         Err(why) => return Asked::Invalid(why),
     };
-    if reachable(config, agent, &host) {
+    if validated(config, agent, &host) {
         return Asked::Already;
     }
     let reason: String = reason.trim().chars().take(300).collect();
@@ -699,6 +573,7 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str) -> 
             if p.reason.is_empty() && !reason.is_empty() {
                 p.reason = reason.clone();
             }
+            p.bytes = p.bytes.max(bytes);
             return Asked::Card(p.clone(), false);
         }
         let entry = store.agents.entry(agent.to_string()).or_default();
@@ -724,6 +599,7 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str) -> 
             if p.reason.is_empty() && !reason.is_empty() {
                 p.reason = reason.clone();
             }
+            p.bytes += bytes;
             return Asked::Card(p.clone(), false);
         }
         if store.pending.iter().filter(|p| p.agent == agent).count() >= MAX_PENDING {
@@ -737,6 +613,7 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str) -> 
             reason: reason.clone(),
             via: via.to_string(),
             at: now,
+            bytes,
         };
         store.pending.push(card.clone());
         Asked::Card(card, true)
@@ -744,7 +621,7 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str) -> 
     match result {
         Ok(asked) => {
             if let Asked::Card(card, true) = &asked {
-                tracing::info!(target: "bipbridge::sandbox", agent, host = %card.host, via, "site asked of the person");
+                tracing::info!(target: "bipbridge::sandbox", agent, host = %card.host, via, bytes, "sending asked of the person");
             }
             asked
         }
@@ -753,11 +630,17 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str) -> 
 }
 
 /// The sentence on a card (and in older apps' detail).
-pub fn sentence(shown: &str, hosts: &[String]) -> String {
+pub fn sentence(shown: &str, hosts: &[String], bytes: u64) -> String {
+    let size = if bytes > 0 { format!(" ({})", about(bytes)) } else { String::new() };
     match hosts {
-        [one] => format!("{shown} veut joindre {one} depuis ses programmes"),
-        _ => format!("{shown} veut joindre {} sites depuis ses programmes : {}", hosts.len(), hosts.join(", ")),
+        [one] => format!("{shown} veut envoyer des données à {one}{size}"),
+        _ => format!("{shown} veut envoyer des données à {} sites{size} : {}", hosts.len(), hosts.join(", ")),
     }
+}
+
+fn shown_name(config: &Config, agent: &str) -> String {
+    let shown = config.agent(Some(agent)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty());
+    shown.unwrap_or_else(|| agent.to_string())
 }
 
 /// The cards waiting, in Hermes' approvals' shape (`GET /v1/approvals`), oldest first.
@@ -768,20 +651,20 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
         .into_iter()
         .filter(|p| agent.is_none_or(|a| a == p.agent) && now - p.at < PENDING_TTL)
         .filter_map(|p| {
-            let shown = config.agent(Some(&p.agent)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty());
-            let shown = shown.unwrap_or_else(|| p.agent.clone());
             let hosts = p.all_hosts();
             let item = json!({
                 "agent": p.agent,
                 "run_id": format!("{RUN_PREFIX}{}", p.id),
                 "request_id": p.id,
                 "command": hosts.join(", "),
-                "description": sentence(&shown, &hosts),
-                "choices": ["always", "all_sites", "deny"],
+                "description": sentence(&shown_name(config, &p.agent), &hosts, p.bytes),
+                "choices": ["always", "deny"],
                 "created_at": p.at,
                 "session_id": null,
                 "bip_site": p.host,
                 "bip_sites": hosts,
+                "bip_site_kind": "send",
+                "bip_site_send_bytes": p.bytes,
                 "bip_site_reason": if p.reason.is_empty() { Value::Null } else { json!(p.reason) },
                 "bip_site_via": p.via,
             });
@@ -793,18 +676,18 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
 /// What the person said on a card.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Decision {
-    /// « Autoriser ces sites » (the hosts shown) or « Refuser » (them all).
+    /// « Autoriser » (the hosts shown) or « Refuser » (them all).
     Hosts(bool, Vec<String>),
     /// An older app's answer, which showed the first host only: that one; the others wait on a card of their own.
     First(bool),
     /// « Refuser », every host on the card.
     DenyAll,
-    /// « Tous les sites pour <agent> ».
+    /// An older app's « Tous les sites pour <agent> »: every host on the card validated.
     AllSites,
 }
 
-/// A card answered: the hosts allowed for good, or refused (not asked again for a while), or « Tous les sites » on.
-/// The decision is kept with the person's others. None: no such card (answered already, or gone).
+/// A card answered: the hosts validated for sending, or refused (not asked again for a while). The decision is kept
+/// with the person's others. None: no such card (answered already, or gone).
 pub fn answer(config: &Config, agent: &str, id: &str, decision: Decision, via: &str) -> std::io::Result<Option<Pending>> {
     let now = py::time_time();
     let decided = change(config, |store| {
@@ -815,16 +698,10 @@ pub fn answer(config: &Config, agent: &str, id: &str, decision: Decision, via: &
             Decision::Hosts(allow, shown) => (*allow, hosts.iter().filter(|h| shown.contains(h)).cloned().collect()),
             Decision::First(allow) => (*allow, hosts[..1].to_vec()),
             Decision::DenyAll => (false, hosts.clone()),
-            Decision::AllSites => (true, Vec::new()),
+            Decision::AllSites => (true, hosts.clone()),
         };
-        let left: Vec<String> = match &decision {
-            Decision::AllSites => Vec::new(),
-            _ => hosts.iter().filter(|h| !chosen.contains(h)).cloned().collect(),
-        };
+        let left: Vec<String> = hosts.iter().filter(|h| !chosen.contains(h)).cloned().collect();
         let entry = store.agents.entry(agent.to_string()).or_default();
-        if decision == Decision::AllSites {
-            entry.all_sites = Some(true);
-        }
         for host in &chosen {
             if allow {
                 if !entry.sites.iter().any(|s| &s.host == host) && entry.sites.len() < MAX_SITES {
@@ -839,6 +716,9 @@ pub fn answer(config: &Config, agent: &str, id: &str, decision: Decision, via: &
                 entry.refused.insert(host.clone(), now);
             }
         }
+        if allow && !chosen.is_empty() {
+            entry.reset = now;
+        }
         if let Some(first) = left.first() {
             // not answered: on a card of their own (no new notification)
             store.pending.push(Pending {
@@ -850,54 +730,38 @@ pub fn answer(config: &Config, agent: &str, id: &str, decision: Decision, via: &
             });
         }
         let shown_hosts = if chosen.is_empty() { hosts } else { chosen };
-        let choice = match (&decision, allow) {
-            (Decision::AllSites, _) => "all_sites",
-            (_, true) => "always",
-            (_, false) => "deny",
-        };
-        Some((card, shown_hosts, choice))
+        Some((card, shown_hosts, if allow { "always" } else { "deny" }))
     })?;
     let Some((card, hosts, choice)) = decided else { return Ok(None) };
-    {
-        let shown = config.agent(Some(agent)).map(|a| a.display_name.clone()).unwrap_or_default();
-        let shown = if shown.is_empty() { agent.to_string() } else { shown };
-        // kept in the log's words (once/session/always/deny): « Tous les sites » is « always » for `*`
-        let (command, description, kept) = if choice == "all_sites" {
-            ("*".to_string(), format!("{shown} peut joindre tous les sites depuis ses programmes"), "always")
-        } else {
-            (hosts.join(", "), sentence(&shown, &hosts), choice)
-        };
-        let fields = json!({
-            "session_id": null, "run_id": format!("{RUN_PREFIX}{}", card.id), "request_id": card.id,
-            "command": command, "description": description, "topic": "site", "choice": kept, "via": via,
-        });
-        if let Some(map) = fields.as_object() {
-            if let Err(exc) = crate::approvals_log::record(config, agent, map) {
-                tracing::warn!(target: "bipbridge::sandbox", agent, error = %exc, "site decision not kept");
-            }
+    let fields = json!({
+        "session_id": null, "run_id": format!("{RUN_PREFIX}{}", card.id), "request_id": card.id,
+        "command": hosts.join(", "), "description": sentence(&shown_name(config, agent), &hosts, card.bytes),
+        "topic": "site", "choice": choice, "via": via,
+    });
+    if let Some(map) = fields.as_object() {
+        if let Err(exc) = crate::approvals_log::record(config, agent, map) {
+            tracing::warn!(target: "bipbridge::sandbox", agent, error = %exc, "site decision not kept");
         }
-        tracing::info!(target: "bipbridge::sandbox", agent, hosts = %hosts.join(", "), choice, "site card answered");
     }
+    tracing::info!(target: "bipbridge::sandbox", agent, hosts = %hosts.join(", "), choice, "sending card answered");
     Ok(Some(card))
-}
-
-/// The « Tous les sites » switch, set by the person.
-pub fn set_all_sites(config: &Config, agent: &str, on: bool) -> std::io::Result<()> {
-    change(config, |store| {
-        store.agents.entry(agent.to_string()).or_default().all_sites = Some(on);
-        if on {
-            store.pending.retain(|p| p.agent != agent);
-        }
-    })?;
-    tracing::info!(target: "bipbridge::sandbox", agent, on, "all sites for the agent's programs");
-    Ok(())
 }
 
 // --- the proxy's reports -------------------------------------------------------------------------------------------
 
-/// The refusals the proxy reported since the last call: (agent, host), the file emptied.
-pub fn take_reports(config: &Config) -> Vec<(String, String)> {
+/// A send the proxy cut.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Report {
+    pub agent: String,
+    pub host: String,
+    pub bytes: u64,
+}
+
+/// The sends the proxy cut since the last call, the file emptied (lines of an older proxy, refusals to read, are
+/// left: reading is open).
+pub fn take_reports(config: &Config) -> Vec<Report> {
     let file = reports_dir(config).join(REPORTS_FILE);
+    let _ = std::fs::remove_file(reports_dir(config).join("blocked.jsonl")); // the reading cards' file, before 2026-10-28
     let Ok(meta) = file.symlink_metadata() else { return Vec::new() };
     let taking = reports_dir(config).join(format!("{REPORTS_FILE}.taking"));
     if !meta.is_file() || std::fs::rename(&file, &taking).is_err() {
@@ -914,17 +778,22 @@ pub fn take_reports(config: &Config) -> Vec<(String, String)> {
         Err(_) => String::new(),
     };
     let _ = std::fs::remove_file(&taking);
-    let mut seen: Vec<(String, String)> = Vec::new();
+    let mut seen: Vec<Report> = Vec::new();
     for line in body.lines() {
         let Ok(Value::Object(row)) = serde_json::from_str::<Value>(line) else { continue };
+        if row.get("kind").and_then(Value::as_str) != Some("send") {
+            continue;
+        }
         let (Some(agent), Some(host)) =
             (row.get("agent").and_then(Value::as_str), row.get("host").and_then(Value::as_str))
         else {
             continue;
         };
-        let pair = (agent.to_string(), host.to_string());
-        if !seen.contains(&pair) && seen.len() < 100 {
-            seen.push(pair);
+        let bytes = row.get("bytes").and_then(Value::as_u64).unwrap_or(0);
+        if let Some(known) = seen.iter_mut().find(|r| r.agent == agent && r.host == host) {
+            known.bytes = known.bytes.max(bytes);
+        } else if seen.len() < 100 {
+            seen.push(Report { agent: agent.to_string(), host: host.to_string(), bytes });
         }
     }
     seen
@@ -939,29 +808,20 @@ pub async fn watch(state: AppState) {
         let config = state.config();
         let c = config.clone();
         let reports = tokio::task::spawn_blocking(move || take_reports(&c)).await.unwrap_or_default();
-        let isolated: Vec<AgentConfig> =
-            config.agents.values().filter(|a| crate::sandbox::isolates(&config, a)).cloned().collect();
-        let mut looked: Vec<String> = Vec::new();
-        for (agent, host) in reports {
-            let Some(found) = isolated.iter().find(|a| a.name == agent).cloned() else { continue };
-            if !looked.contains(&agent) {
-                // what its browser shows now first: a site the person's request opened asks nothing
-                note_tabs(&config, &agent).await;
-                looked.push(agent.clone());
-            }
+        for report in reports {
+            let Some(found) = config.agent(Some(&report.agent)).cloned() else { continue };
+            tracing::warn!(target: "bipbridge::sandbox", agent = %report.agent, host = %report.host, bytes = report.bytes, "a send to a site not validated was cut");
             let c = config.clone();
-            let (a, h) = (agent.clone(), host.clone());
-            let asked = tokio::task::spawn_blocking(move || ask(&c, &a, &h, "", "proxy")).await;
+            let asked =
+                tokio::task::spawn_blocking(move || ask(&c, &report.agent, &report.host, "", "proxy", report.bytes))
+                    .await;
             if let Ok(Asked::Card(card, true)) = asked {
                 notify(&state, &found, &card).await;
             }
         }
         if ticks.is_multiple_of(10) {
-            for agent in isolated.iter().filter(|a| !looked.contains(&a.name)) {
-                note_tabs(&config, &agent.name).await;
-            }
-            // visits gone stale, a default changed (a mailbox connected, the health switch): the proxy's file
-            // follows within half a minute (written only when it changed)
+            // a connector approved, a browser started, the limits changed: the proxy's file follows within half a
+            // minute (written only when it changed)
             let c = config.clone();
             let _ = tokio::task::spawn_blocking(move || ensure_policy(&c)).await;
         }
@@ -972,22 +832,11 @@ pub async fn watch(state: AppState) {
     }
 }
 
-/// The sites the agent's own Chrome shows (its tabs), noted as opened by it.
-async fn note_tabs(config: &Config, agent: &str) {
-    let Some(port) = crate::desktop_page::cdp_port(config, agent) else { return };
-    let token = crate::browsers::hold_token(config, agent);
-    let Ok(tabs) = crate::desktop_page::tabs(port, token.as_deref()).await else { return };
-    let hosts: Vec<String> = tabs.iter().flat_map(|t| hosts_in(&t.url)).collect();
-    if hosts.is_empty() {
-        return;
-    }
-    let (c, a) = (config.clone(), agent.to_string());
-    let _ = tokio::task::spawn_blocking(move || note_visits(&c, &a, &hosts)).await;
-}
-
 /// The person told (a notification that opens the app's Boîte, where the card is).
 pub async fn notify(state: &AppState, agent: &AgentConfig, card: &Pending) {
-    state.push.notify_site_request(&agent.name, &card.host, &card.id).await;
+    let size = if card.bytes > 0 { format!(" ({})", about(card.bytes)) } else { String::new() };
+    let line = format!("Veut envoyer des données à {}{size}", card.host);
+    state.push.notify_site_request(&agent.name, &line, &card.id).await;
 }
 
 // --- the routes ----------------------------------------------------------------------------------------------------
@@ -1009,7 +858,7 @@ pub struct Answer {
     /// The hosts the card showed (an older app sends none: the first host only).
     #[serde(default)]
     pub hosts: Option<Vec<String>>,
-    /// « Tous les sites pour <agent> ».
+    /// An older app's « Tous les sites pour <agent> »: every host on the card.
     #[serde(default)]
     pub all_sites: bool,
 }
@@ -1030,23 +879,14 @@ impl Answer {
     }
 }
 
-/// A card answered through `/v1/approve` (a notification, or an app that answers Hermes' way): `all_sites`,
-/// `deny` (all its hosts), else an older app's « Autoriser toujours » (the first host).
+/// A card answered through `/v1/approve` (a notification, or an app that answers Hermes' way): `deny` (all its
+/// hosts), an older app's `all_sites` (all of them allowed), else « Autoriser » (the first host, what older apps show).
 pub fn decision_of_choice(choice: &str) -> Decision {
     match choice.trim().to_lowercase().as_str() {
         "all_sites" => Decision::AllSites,
         "deny" => Decision::DenyAll,
         _ => Decision::First(true),
     }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Switch {
-    pub all_sites: bool,
-}
-
-impl Validate for Switch {
-    fn validate(&self, _errors: &mut Vec<FieldError>) {}
 }
 
 fn agent_of(config: &Config, name: &str) -> Result<AgentConfig, HttpError> {
@@ -1099,18 +939,10 @@ async fn answer_route(
     }
 }
 
-async fn switch_route(
-    State(state): State<AppState>,
-    UrlPath(name): UrlPath<String>,
-    Json(body): Json<Switch>,
-) -> ApiResult<Response> {
+/// An older app's « Tous les sites » switch: reading is open to every agent now, nothing to change.
+async fn switch_route(State(state): State<AppState>, UrlPath(name): UrlPath<String>) -> ApiResult<Response> {
     let config = state.config();
     let agent = agent_of(&config, &name)?;
-    let (c, a) = (config.clone(), agent.name.clone());
-    tokio::task::spawn_blocking(move || set_all_sites(&c, &a, body.all_sites))
-        .await
-        .map_err(anyhow::Error::from)?
-        .map_err(anyhow::Error::from)?;
     Ok(web::ok(view(&config, &agent)))
 }
 
@@ -1132,18 +964,19 @@ pub fn tools() -> Vec<Value> {
     vec![
         json!({
             "name": LIST,
-            "description": "List the sites your programs (pip, npm, curl, your scripts) can reach from your sandbox: the \
-        package registries, always, and the sites your person allowed you.",
+            "description": "List the sites your programs (pip, npm, curl, your scripts) and your browser may SEND data \
+        to: the package registries, and the sites your person validated. Reading any public HTTPS site is open.",
             "inputSchema": {"type": "object", "properties": {}},
             "annotations": read_only,
         }),
         // Marked read-only: it only shows the person a card, which is their decision (no second question first).
         json!({
             "name": REQUEST,
-            "description": "Ask your person to let your programs reach a site from your sandbox (HTTPS only), when a \
-        script or a tool you run needs it (an API, data they asked for): they see a card in the app. Give the site's \
-        exact name and, in a few plain words, why. Then tell them in one sentence; retry once they allowed it. A site \
-        your programs were refused is asked about by itself: ask here only to explain why, or to ask first.",
+            "description": "Ask your person to let you send data to a site (an upload, an API you write to, a form \
+        with files), when what they asked needs it: they see a card in the app. Reading sites needs no request. Give \
+        the site's exact name and, in a few plain words, why. Then tell them in one sentence; retry once they allowed \
+        it. A send cut by the guard (a connection reset while uploading) asks by itself: ask here only to explain why, \
+        or to ask first.",
             "inputSchema": {"type": "object", "properties": {
                 "host": {"type": "string", "description": "the site's name, e.g. data.gouv.fr"},
                 "reason": {"type": "string", "description": "why, in a few plain words in your person's language"},
@@ -1159,25 +992,26 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
     let (on, _) = effect(config, agent);
     if name == LIST {
         let entry = load(config).agents.get(&agent.name).cloned().unwrap_or_default();
-        let mut lines = vec![format!("Always open (package registries): {}", registries(config).join(", "))];
-        if all_sites_on(config, &agent.name, &entry) {
-            lines.push("Your person opened every public HTTPS site to your programs.".into());
+        let mut lines = vec![
+            "Reading: every public HTTPS site is open to your programs and your browser.".to_string(),
+            format!("Sending, always allowed (package registries): {}", registries(config).join(", ")),
+        ];
+        let mut sites: Vec<String> = entry.sites.iter().map(|s| s.host.clone()).collect();
+        for site in connector_sites(config, &agent.name) {
+            if !sites.contains(&site) {
+                sites.push(site);
+            }
         }
-        let opened: Vec<String> = entry
-            .visited
-            .iter()
-            .filter(|(_, at)| py::time_time() - **at < VISIT_TTL)
-            .map(|(h, _)| h.clone())
-            .collect();
-        if !opened.is_empty() {
-            lines.push(format!("Open for a week, as you visited them (and their www., static.…): {}", opened.join(", ")));
-        }
-        if entry.sites.is_empty() {
-            lines.push("Allowed by your person: none yet (sandbox_sites_request asks for one).".into());
+        if sites.is_empty() {
+            lines.push("Sending, validated by your person: none yet (sandbox_sites_request asks for one).".into());
         } else {
-            let sites: Vec<String> = entry.sites.iter().map(|s| s.host.clone()).collect();
-            lines.push(format!("Allowed by your person: {}", sites.join(", ")));
+            lines.push(format!("Sending, validated by your person: {}", sites.join(", ")));
         }
+        lines.push(
+            "To any other site, a few KB (a page, an API call, a login, a small form) go; an upload past that is cut \
+             and your person is asked."
+                .into(),
+        );
         let waiting: Vec<String> =
             load(config).pending.iter().filter(|p| p.agent == agent.name).map(|p| p.host.clone()).collect();
         if !waiting.is_empty() {
@@ -1186,19 +1020,14 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         if !on {
             lines.push("(Your sandbox is not isolated here: this list has no effect.)".into());
         }
-        lines.push(
-            "Read web pages with your web tools or your browser, never curl or a script; programs only for an API or \
-             data your person asked for."
-                .into(),
-        );
         return (lines.join("\n"), false, None);
     }
     let text = |key: &str| arguments.get(key).and_then(Value::as_str).unwrap_or("").to_string();
-    match ask(config, &agent.name, &text("host"), &text("reason"), "agent") {
-        Asked::Already => ("Your programs can reach it already.".into(), false, None),
+    match ask(config, &agent.name, &text("host"), &text("reason"), "agent", 0) {
+        Asked::Already => ("You may send to it already.".into(), false, None),
         Asked::Card(card, made) => (
             format!(
-                "Your person sees a card asking to let your programs reach {}{}. Tell them in one plain sentence why; \
+                "Your person sees a card asking to let you send data to {}{}. Tell them in one plain sentence why; \
                  retry once they allowed it.",
                 card.all_hosts().join(", "),
                 if made { "" } else { " (asked already, still waiting)" }
@@ -1208,7 +1037,8 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         ),
         Asked::Refused(when) => (
             format!(
-                "Your person refused this site ({when}): don't ask again today; do without it or ask them in words."
+                "Your person refused sending to this site ({when}): don't ask again today; do without it or ask them \
+                 in words."
             ),
             true,
             None,
@@ -1264,7 +1094,17 @@ mod tests {
     }
 
     #[test]
-    fn a_card_once_then_the_persons_word() {
+    fn sizes_in_plain_words() {
+        assert_eq!(about(2 * 1024 * 1024 + 100_000), "environ 2,1 Mo");
+        assert_eq!(about(2 * 1024 * 1024), "environ 2 Mo");
+        assert_eq!(about(300 * 1024), "environ 300 Ko");
+        assert_eq!(about(10), "environ 1 Ko");
+        assert_eq!(about(25 * 1024 * 1024), "environ 25 Mo");
+        assert_eq!(about(3 * 1024 * 1024 * 1024), "environ 3 Go");
+    }
+
+    #[test]
+    fn a_send_cut_one_card_then_the_persons_word() {
         let (_dir, config) = config();
         let url = proxy_url(&config, "vie", "http://10.233.80.2:3128").unwrap();
         let token = load(&config).agents["vie"].token.clone();
@@ -1273,44 +1113,51 @@ mod tests {
         let policy: Value =
             serde_json::from_str(&std::fs::read_to_string(policy_dir(&config).join(POLICY_FILE)).unwrap()).unwrap();
         assert_eq!(policy["agents"]["vie"]["key"], json!(crate::agent_tools::digest(&token)));
-        assert!(!policy.to_string().contains(&token));
-        // the proxy refused it: one card, not two
-        let Asked::Card(card, true) = ask(&config, "vie", "data.gouv.fr", "", "proxy") else { panic!() };
-        assert!(matches!(ask(&config, "vie", "data.gouv.fr", "open data", "agent"), Asked::Card(_, false)));
-        assert_eq!(load(&config).pending[0].reason, "open data");
-        assert_eq!(ask(&config, "vie", "pypi.org", "", "agent"), Asked::Already);
+        assert_eq!(policy["limits"]["send_site_hour"], json!(65536));
+        assert!(policy["agents"]["vie"].get("any").is_none() && !policy.to_string().contains(&token));
+        // the proxy cut a send: one card, not two
+        let Asked::Card(card, true) = ask(&config, "vie", "upload.example.net", "", "proxy", 2 * 1024 * 1024) else {
+            panic!()
+        };
+        assert!(matches!(ask(&config, "vie", "upload.example.net", "a backup", "agent", 0), Asked::Card(_, false)));
+        assert_eq!(load(&config).pending[0].reason, "a backup");
+        assert_eq!(ask(&config, "vie", "pypi.org", "", "agent", 0), Asked::Already);
         let items = pending_items(&config, Some("vie"));
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["run_id"], json!(format!("bip-site-{}", card.id)));
-        assert_eq!(items[0]["choices"], json!(["always", "all_sites", "deny"]));
-        assert_eq!(items[0]["bip_sites"], json!(["data.gouv.fr"]));
+        assert_eq!(items[0]["choices"], json!(["always", "deny"]));
+        assert_eq!(items[0]["bip_site_kind"], json!("send"));
+        assert_eq!(items[0]["bip_site_send_bytes"], json!(2 * 1024 * 1024));
+        assert_eq!(items[0]["description"], json!("vie veut envoyer des données à upload.example.net (environ 2 Mo)"));
         // refused: quiet for a week from the proxy, a day when the agent asks itself
         assert!(answer(&config, "vie", &card.id, Decision::First(false), "app").unwrap().is_some());
         assert!(answer(&config, "vie", &card.id, Decision::First(false), "app").unwrap().is_none());
-        assert!(matches!(ask(&config, "vie", "data.gouv.fr", "", "proxy"), Asked::Refused(_)));
-        assert!(matches!(ask(&config, "vie", "data.gouv.fr", "", "agent"), Asked::Refused(_)));
+        assert!(matches!(ask(&config, "vie", "upload.example.net", "", "proxy", 100_000), Asked::Refused(_)));
+        assert!(matches!(ask(&config, "vie", "upload.example.net", "", "agent", 0), Asked::Refused(_)));
         assert_eq!(crate::approvals_log::list(&config, "vie", None)[0]["choice"], json!("deny"));
-        // allowed: in the list and the proxy's file
-        let Asked::Card(card, true) = ask(&config, "vie", "api.meteo.fr", "", "agent") else { panic!() };
+        // allowed: validated, in the proxy's file, the counts reset
+        let Asked::Card(card, true) = ask(&config, "vie", "api.meteo.fr", "", "agent", 0) else { panic!() };
         answer(&config, "vie", &card.id, Decision::First(true), "app").unwrap();
-        assert!(reachable(&config, "vie", "api.meteo.fr") && !reachable(&config, "budget", "api.meteo.fr"));
-        let policy = std::fs::read_to_string(policy_dir(&config).join(POLICY_FILE)).unwrap();
-        assert!(policy.contains("api.meteo.fr"));
-        // hosts asked a moment apart: one card (MAX_HOSTS on it), then another
-        assert!(matches!(ask(&config, "vie", "s0.example.org", "", "proxy"), Asked::Card(_, true)));
+        assert!(validated(&config, "vie", "api.meteo.fr") && !validated(&config, "budget", "api.meteo.fr"));
+        let policy = policy_of(&config, &load(&config));
+        assert_eq!(policy["agents"]["vie"]["hosts"], json!(["api.meteo.fr"]));
+        assert!(policy["agents"]["vie"]["reset"].as_f64().unwrap() > 0.0);
+        // hosts reported a moment apart: one card (MAX_HOSTS on it), their sizes added, then another
+        assert!(matches!(ask(&config, "vie", "s0.example.org", "", "proxy", 70_000), Asked::Card(_, true)));
         for i in 1..MAX_HOSTS {
-            assert!(matches!(ask(&config, "vie", &format!("s{i}.example.org"), "", "proxy"), Asked::Card(_, false)));
+            assert!(matches!(ask(&config, "vie", &format!("s{i}.example.org"), "", "proxy", 70_000), Asked::Card(_, false)));
         }
-        assert!(matches!(ask(&config, "vie", "one-more.example.org", "", "proxy"), Asked::Card(_, true)));
+        assert_eq!(load(&config).pending[0].bytes, 70_000 * MAX_HOSTS as u64);
+        assert!(matches!(ask(&config, "vie", "one-more.example.org", "", "proxy", 1), Asked::Card(_, true)));
         assert_eq!(load(&config).pending.len(), 2);
         // at most MAX_PENDING cards (each made out of the window)
         for i in 0..MAX_PENDING {
             change(&config, |s| s.pending.iter_mut().for_each(|p| p.at -= GROUP_WINDOW)).unwrap();
-            let asked = ask(&config, "vie", &format!("late{i}.example.org"), "", "proxy");
+            let asked = ask(&config, "vie", &format!("late{i}.example.org"), "", "proxy", 1);
             assert_eq!(matches!(asked, Asked::Card(_, true)), i + 2 < MAX_PENDING, "{i}");
         }
         assert!(remove(&config, "vie", "api.meteo.fr").unwrap());
-        assert!(!reachable(&config, "vie", "api.meteo.fr"));
+        assert!(!validated(&config, "vie", "api.meteo.fr"));
         forget(&config, "vie");
         assert!(load(&config).agents.is_empty() && load(&config).pending.is_empty());
     }
@@ -1327,122 +1174,67 @@ mod tests {
     }
 
     #[test]
-    fn a_registrable_domain_simply() {
-        assert_eq!(registrable("www.data.gouv.fr").as_deref(), Some("data.gouv.fr"));
-        assert_eq!(registrable("a.b.example.org").as_deref(), Some("example.org"));
-        assert_eq!(registrable("example.org").as_deref(), Some("example.org"));
-        assert_eq!(registrable("news.bbc.co.uk").as_deref(), Some("bbc.co.uk"));
-        assert_eq!(registrable("co.uk"), None);
-        assert_eq!(registrable("x.github.io"), None);
-        assert_eq!(registrable("bucket.s3.amazonaws.com"), None);
-        let names = visit_names("news.example.org");
-        assert_eq!(&names[..3], &["news.example.org", "example.org", "www.example.org"]);
-        assert!(names.contains(&"static.example.org".to_string()) && !names.contains(&"evil.example.org".to_string()));
-        assert_eq!(visit_names("me.github.io"), vec!["me.github.io"]);
-        assert_eq!(
-            hosts_in("{\"urls\": [\"https://Www.Lemonde.fr/a?b\", \"http://x.org:8080/\"]} ftp://no.fr https://localhost/"),
-            vec!["www.lemonde.fr", "x.org"]
-        );
-    }
-
-    #[test]
-    fn a_site_the_agent_opened_asks_nothing() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = with_agents(&dir, json!({"vie": {"hermes_url": "http://127.0.0.1:9300"}}));
-        proxy_url(&config, "vie", "http://10.233.80.2:3128").unwrap();
-        set_all_sites(&config, "vie", false).unwrap();
-        // a card waits for static.lemonde.fr; then the browser opens www.lemonde.fr: answered by it
-        assert!(matches!(ask(&config, "vie", "static.lemonde.fr", "", "proxy"), Asked::Card(_, true)));
-        assert!(matches!(ask(&config, "vie", "evil.example", "", "proxy"), Asked::Card(_, false)));
-        note_tool_call(&config, "vie", "browser_navigate", "https://www.lemonde.fr/politique/");
-        assert_eq!(load(&config).pending[0].all_hosts(), vec!["evil.example"]);
-        assert_eq!(ask(&config, "vie", "lemonde.fr", "", "proxy"), Asked::Already);
-        assert_eq!(ask(&config, "vie", "cdn.lemonde.fr", "", "proxy"), Asked::Already);
-        assert!(matches!(ask(&config, "vie", "tracker.lemonde.fr", "", "proxy"), Asked::Card(_, false)));
-        let policy = policy_of(&config, &load(&config));
-        let hosts = policy["agents"]["vie"]["hosts"].as_array().unwrap();
-        assert!(hosts.contains(&json!("www.lemonde.fr")) && hosts.contains(&json!("static.lemonde.fr")));
-        assert!(policy["agents"]["vie"].get("any").is_none());
-        // web_extract and a bare address too; local ones never
-        note_tool_call(&config, "vie", "web_extract", "[\"https://data.gouv.fr/x\"]");
-        note_tool_call(&config, "vie", "browser_navigate", "meteo.fr");
-        note_tool_call(&config, "vie", "browser_navigate", "http://192.168.1.1/");
-        note_tool_call(&config, "vie", "terminal", "curl https://other.fr");
-        let visited: Vec<String> = load(&config).agents["vie"].visited.keys().cloned().collect();
-        assert_eq!(visited, vec!["data.gouv.fr", "meteo.fr", "www.lemonde.fr"]);
-        // a week later: closed again
-        change(&config, |s| s.agents.get_mut("vie").unwrap().visited.values_mut().for_each(|at| *at -= VISIT_TTL))
-            .unwrap();
-        assert!(!reachable(&config, "vie", "www.lemonde.fr"));
-    }
-
-    #[test]
-    fn one_card_three_choices() {
+    fn one_card_older_apps_answers() {
         let dir = tempfile::tempdir().unwrap();
         let config = with_agents(&dir, json!({"vie": {"hermes_url": "http://127.0.0.1:9300", "display_name": "Vie"}}));
         proxy_url(&config, "vie", "http://10.233.80.2:3128").unwrap();
-        set_all_sites(&config, "vie", false).unwrap();
         for host in ["a.fr", "b.fr", "c.fr"] {
-            ask(&config, "vie", host, "", "proxy");
+            ask(&config, "vie", host, "", "proxy", 100 * 1024);
         }
         let items = pending_items(&config, Some("vie"));
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0]["description"], json!("Vie veut joindre 3 sites depuis ses programmes : a.fr, b.fr, c.fr"));
+        assert_eq!(
+            items[0]["description"],
+            json!("Vie veut envoyer des données à 3 sites (environ 300 Ko) : a.fr, b.fr, c.fr")
+        );
         assert_eq!((&items[0]["bip_site"], &items[0]["command"]), (&json!("a.fr"), &json!("a.fr, b.fr, c.fr")));
         // an older app: the first host only, the others on a card of their own
         let id = items[0]["request_id"].as_str().unwrap().to_string();
         answer(&config, "vie", &id, Decision::First(true), "app").unwrap().unwrap();
-        assert!(reachable(&config, "vie", "a.fr") && !reachable(&config, "vie", "b.fr"));
+        assert!(validated(&config, "vie", "a.fr") && !validated(&config, "vie", "b.fr"));
         let card = load(&config).pending[0].clone();
         assert_eq!(card.all_hosts(), vec!["b.fr", "c.fr"]);
-        // « Autoriser ces sites »
+        // « Autoriser »
         answer(&config, "vie", &card.id, Decision::Hosts(true, vec!["b.fr".into(), "c.fr".into()]), "app").unwrap();
-        assert!(reachable(&config, "vie", "c.fr") && load(&config).pending.is_empty());
+        assert!(validated(&config, "vie", "c.fr") && load(&config).pending.is_empty());
         // « Refuser » from a notification: all of them
-        ask(&config, "vie", "d.fr", "", "proxy");
-        ask(&config, "vie", "e.fr", "", "proxy");
+        ask(&config, "vie", "d.fr", "", "proxy", 1);
+        ask(&config, "vie", "e.fr", "", "proxy", 1);
         let card = load(&config).pending[0].clone();
         answer(&config, "vie", &card.id, decision_of_choice("deny"), "notification").unwrap();
-        assert!(matches!(ask(&config, "vie", "e.fr", "", "proxy"), Asked::Refused(_)));
-        // « Tous les sites pour Vie »
-        ask(&config, "vie", "f.fr", "", "proxy");
+        assert!(matches!(ask(&config, "vie", "e.fr", "", "proxy", 1), Asked::Refused(_)));
+        // an older app's « Tous les sites pour Vie »: the hosts on the card, not every site
+        ask(&config, "vie", "f.fr", "", "proxy", 1);
         let card = load(&config).pending[0].clone();
         answer(&config, "vie", &card.id, decision_of_choice("all_sites"), "notification").unwrap();
-        assert_eq!(ask(&config, "vie", "g.fr", "", "proxy"), Asked::Already);
-        assert_eq!(policy_of(&config, &load(&config))["agents"]["vie"]["any"], json!(true));
+        assert!(validated(&config, "vie", "f.fr") && !validated(&config, "vie", "g.fr"));
+        assert!(matches!(ask(&config, "vie", "g.fr", "", "proxy", 1), Asked::Card(_, true)));
         let kept: Vec<(Value, Value)> = crate::approvals_log::list(&config, "vie", None)
             .iter()
             .map(|k| (k["command"].clone(), k["choice"].clone()))
             .collect();
-        assert!(kept.contains(&(json!("*"), json!("always"))) && kept.contains(&(json!("d.fr, e.fr"), json!("deny"))));
+        assert!(kept.contains(&(json!("f.fr"), json!("always"))) && kept.contains(&(json!("d.fr, e.fr"), json!("deny"))));
     }
 
     #[test]
-    fn all_sites_by_default_unless_the_agent_holds_something_sensitive() {
+    fn the_old_store_keeps_its_lists_as_validated() {
         let dir = tempfile::tempdir().unwrap();
-        let config = with_agents(
-            &dir,
-            json!({"vie": {"hermes_url": "http://127.0.0.1:9300"},
-                   "budget": {"hermes_url": "http://127.0.0.1:9301", "category": "finance"}}),
-        );
-        assert!(all_sites_default(&config, "vie") && !all_sites_default(&config, "budget"));
-        assert_eq!(sensitive(&config, config.agent(Some("budget")).unwrap()), Some("finance"));
-        assert!(!all_sites_default(&config, "nobody"));
-        for name in ["vie", "budget"] {
-            proxy_url(&config, name, "http://10.233.80.2:3128").unwrap();
-        }
+        let config = with_agents(&dir, json!({"vie": {"hermes_url": "http://127.0.0.1:9300"}}));
+        let old = json!({"agents": {"vie": {"token": "t".repeat(32), "all_sites": false,
+            "sites": [{"host": "data.gouv.fr", "at": "2026-10-24T10:00:00+00:00", "by": "request"}],
+            "visited": {"www.lemonde.fr": 1.0e9}, "refused": {}}},
+            "pending": [{"id": "abc", "agent": "vie", "host": "x.fr", "hosts": ["x.fr"], "reason": "", "via": "proxy",
+                         "at": py::time_time()}]});
+        std::fs::write(dir.path().join("sandbox-sites.json"), old.to_string()).unwrap();
+        assert!(validated(&config, "vie", "data.gouv.fr") && !validated(&config, "vie", "www.lemonde.fr"));
+        ensure_policy(&config).unwrap();
         let policy = policy_of(&config, &load(&config));
-        assert_eq!(policy["agents"]["vie"]["any"], json!(true));
-        assert!(policy["agents"]["budget"].get("any").is_none());
-        assert_eq!(ask(&config, "vie", "x.fr", "", "proxy"), Asked::Already);
-        assert!(matches!(ask(&config, "budget", "x.fr", "", "proxy"), Asked::Card(_, true)));
-        // switched on: the cards waiting go
-        set_all_sites(&config, "budget", true).unwrap();
-        assert!(load(&config).pending.is_empty());
-        set_all_sites(&config, "vie", false).unwrap();
-        assert!(policy_of(&config, &load(&config))["agents"]["vie"].get("any").is_none());
+        assert_eq!(policy["agents"]["vie"]["hosts"], json!(["data.gouv.fr"]));
+        assert!(policy["agents"]["vie"].get("any").is_none());
+        // an old reading card still answers
+        assert_eq!(pending_items(&config, Some("vie"))[0]["bip_site_send_bytes"], json!(0));
         let shown = view(&config, config.agent(Some("vie")).unwrap());
-        assert_eq!((shown["all_sites"].clone(), shown["all_sites_default"].clone()), (json!(false), json!(true)));
+        assert_eq!((shown["reading_open"].clone(), shown["all_sites"].clone()), (json!(true), json!(true)));
     }
 
     #[test]
@@ -1452,10 +1244,18 @@ mod tests {
         let file = reports_dir(&config).join(REPORTS_FILE);
         std::fs::write(
             &file,
-            "{\"agent\":\"vie\",\"host\":\"a.fr\"}\nnot json\n{\"agent\":\"vie\",\"host\":\"a.fr\"}\n{\"agent\":\"w\",\"host\":\"b.fr\"}\n",
+            "{\"kind\":\"send\",\"agent\":\"vie\",\"host\":\"a.fr\",\"bytes\":70000}\nnot json\n\
+             {\"kind\":\"send\",\"agent\":\"vie\",\"host\":\"a.fr\",\"bytes\":90000}\n{\"agent\":\"w\",\"host\":\"old.fr\"}\n\
+             {\"kind\":\"send\",\"agent\":\"w\",\"host\":\"b.fr\",\"bytes\":1}\n",
         )
         .unwrap();
-        assert_eq!(take_reports(&config), vec![("vie".into(), "a.fr".into()), ("w".into(), "b.fr".into())]);
+        assert_eq!(
+            take_reports(&config),
+            vec![
+                Report { agent: "vie".into(), host: "a.fr".into(), bytes: 90000 },
+                Report { agent: "w".into(), host: "b.fr".into(), bytes: 1 }
+            ]
+        );
         assert!(take_reports(&config).is_empty() && !file.exists());
     }
 }
