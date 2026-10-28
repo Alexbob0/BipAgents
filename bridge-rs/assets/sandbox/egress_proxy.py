@@ -321,7 +321,8 @@ async def handle(reader, writer):
             return await answer(writer, 407, "Proxy Authentication Required",
                                 'Proxy-Authenticate: Basic realm="bipagents"\r\n')
         log("blocked", method, target, agent)
-        report(agent, host, port)
+        if not strict:
+            report(agent, host, port)
         return await answer(writer, 403, refusal(agent, strict))
     addresses = await resolve(host, port)
     if not addresses:

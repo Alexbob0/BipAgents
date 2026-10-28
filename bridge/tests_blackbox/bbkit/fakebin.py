@@ -34,10 +34,46 @@ ARGS = sys.argv[2:]
 LOG = os.environ.get("BB_COMMANDS")
 RULES = os.environ.get("BB_RULES")
 
+# A connector's container (connectors_run.rs) talks on its stdin: never read here, it goes to the program run.
+INTERACTIVE = NAME == "podman" and ARGS[:1] == ["run"] and "bipagents.role=connector" in ARGS
 try:
-    stdin = sys.stdin.read() if not sys.stdin.isatty() else ""
+    stdin = "" if INTERACTIVE or sys.stdin.isatty() else sys.stdin.read()
 except Exception:
     stdin = ""
+
+def exec_container(image):
+    """`podman run … <image> <command…>` played on this machine: the command runs in the `-w` folder (mapped through
+    the `-v` mounts), with only the variables `-e` names (`NAME=value`, or `NAME` taken from this environment) and
+    PATH; paths under a mount point are mapped too. `python3` is this Python."""
+    at = ARGS.index(image)
+    options, command = ARGS[:at], ARGS[at + 1:]
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+    mounts, workdir, i = {}, None, 0
+    while i < len(options):
+        if options[i] == "-e" and i + 1 < len(options):
+            key, eq, value = options[i + 1].partition("=")
+            env[key] = value if eq else os.environ.get(key, "")
+            i += 2
+        elif options[i] == "-v" and i + 1 < len(options):
+            host, target = options[i + 1].split(":")[:2]
+            mounts[target] = host
+            i += 2
+        elif options[i] == "-w" and i + 1 < len(options):
+            workdir = options[i + 1]
+            i += 2
+        else:
+            i += 1
+    def mapped(path):
+        for target, host in mounts.items():
+            if path == target or path.startswith(target + "/"):
+                return host + path[len(target):]
+        return path
+    env = {k: mapped(v) for k, v in env.items()}
+    if workdir:
+        os.chdir(mapped(workdir))
+    if command and command[0] == "python3":
+        command[0] = sys.executable
+    os.execvpe(command[0], command, env)
 
 def record(extra=None):
     if not LOG:
@@ -164,6 +200,8 @@ def gateway():
 
 found = rule()
 record({"rule": bool(found)})
+if found is not None and found.get("exec_image") and found["exec_image"] in ARGS:
+    exec_container(found["exec_image"])
 if found is not None:
     if found.get("stdout"):
         sys.stdout.write(found["stdout"])
@@ -220,11 +258,14 @@ class Commands:
             self.log.unlink()
 
     def rule(self, cmd: str, prefix: List[str], exit: int = 0, stdout: str = "", stderr: str = "",
-             times: int = -1, stdout_file: str = "") -> None:
+             times: int = -1, stdout_file: str = "", exec_image: str = "") -> None:
         rules = json.loads(self.rules_path.read_text(encoding="utf-8"))
         item: Dict[str, Any] = {"cmd": cmd, "prefix": prefix, "exit": exit, "stdout": stdout, "stderr": stderr}
         if stdout_file:
             item["stdout_file"] = stdout_file   # bytes (a tar stream for `podman cp … -`)
+        if exec_image:
+            item["exec_image"] = exec_image     # `podman run … <image> <command>`: the command run here
+            item["prefix"] = prefix
         if times >= 0:
             item["times"] = times
         rules.append(item)
