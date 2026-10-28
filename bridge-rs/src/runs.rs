@@ -1791,14 +1791,16 @@ touche « Démarrer » pour reprendre."
         if event.data.contains_key("bip_summary") {
             return event;
         }
-        // a script « dans son espace » only when the agent's programs really run in its sandbox (audit #14)
-        let (lang, isolated) = match &self.config {
+        // a script « dans son espace » only when the agent's programs really run in its sandbox (audit #14); on the
+        // offer no command line in the sentence
+        let (lang, place) = match &self.config {
             Some(shared) => {
                 let config = shared.get();
                 let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
-                (crate::handback::language_of(&config, &agent), crate::sandbox::isolates(&config, &agent))
+                let place = crate::approval_text::Place::of(crate::sandbox::isolates(&config, &agent), config.cloud);
+                (crate::handback::language_of(&config, &agent), place)
             }
-            None => ("en".to_string(), false),
+            None => ("en".to_string(), crate::approval_text::Place::Machine),
         };
         let last = st.backlog.iter().rev().find(|e| e.r#type == "tool.started").map(|e| {
             let text = |key: &str| e.data.get(key).and_then(Value::as_str).unwrap_or("").to_string();
@@ -1806,7 +1808,7 @@ touche « Démarrer » pour reprendre."
             crate::approval_text::LastTool { name: if tool.is_empty() { text("name") } else { tool }, preview: text("preview") }
         });
         let name = if sub.agent.display_name.trim().is_empty() { &sub.agent.name } else { &sub.agent.display_name };
-        let Some(described) = crate::approval_text::describe(name, &lang, &event.data, last.as_ref(), isolated) else { return event };
+        let Some(described) = crate::approval_text::describe(name, &lang, &event.data, last.as_ref(), place) else { return event };
         let mut data = event.data;
         data.insert("bip_summary".into(), json!(described.summary));
         if let Some(detail) = described.detail {

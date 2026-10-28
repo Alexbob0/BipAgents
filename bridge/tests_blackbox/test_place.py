@@ -129,7 +129,7 @@ def test_a_place_with_its_5_gb_used_up_refuses_files_and_notes(bridge):
     state.write_text(json.dumps({"last_ok": 1790000000.0, "bytes": 5 * 2**30}))
     full = bridge.post("/v1/files", headers=AUTH, data={"agent": "wellness"},
                        files={"file": ("a.pdf", b"%PDF-1.4", "application/pdf")})
-    assert full.status_code == 507 and full.json() == {"detail": "storage full: this place's 5 GB are used up"}
+    assert full.status_code == 507 and full.json() == {"detail": "no room left: the 5 GB of your agents' space are used up"}
 
 
 # -- one's own Hermes, sent in -----------------------------------------------------------------------------------------

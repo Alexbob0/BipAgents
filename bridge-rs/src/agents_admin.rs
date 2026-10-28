@@ -1787,7 +1787,7 @@ async fn new_agent(State(state): State<AppState>, Json(body): Json<NewAgent>) ->
                 return Err(exc.into());
             }
             tracing::warn!(target: "bipbridge::agents", error = %head(&exc.to_string(), 200), "agent creation failed");
-            return Err(HttpError::new(502, "Hermes could not create the agent"));
+            return Err(HttpError::new(502, "the agent could not be created: try again in a moment"));
         }
     };
     Ok(web::json_response(201, &created(&state.config(), &agent)))
@@ -1806,7 +1806,7 @@ async fn claim(State(state): State<AppState>, Json(body): Json<Claim>) -> ApiRes
                 return Err(exc.into());
             }
             tracing::warn!(target: "bipbridge::agents", agent = %body.id, error = %tail(&exc.to_string(), 200), "claim failed");
-            return Err(HttpError::new(502, "Hermes did not serve the agent"));
+            return Err(HttpError::new(502, "the agent could not be started: try again in a moment"));
         }
     };
     Ok(web::json_response(201, &created(&state.config(), &agent)))
@@ -1817,7 +1817,7 @@ async fn get_settings(State(state): State<AppState>, UrlPath(agent_id): UrlPath<
     let agent = editable(&config, &agent_id).map_err(|_| not_managed())?;
     match read_settings(&config, &agent, &state.http).await {
         Ok(settings) => Ok(web::ok(settings)),
-        Err(exc) if exc.downcast_ref::<GatewayError>().is_some() => Err(HttpError::new(502, "Hermes unreachable")),
+        Err(exc) if exc.downcast_ref::<GatewayError>().is_some() => Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment")),
         Err(exc) => Err(exc.into()),
     }
 }

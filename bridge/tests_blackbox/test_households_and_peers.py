@@ -59,7 +59,7 @@ def test_two_households_write_to_each_other_only_where_both_allowed(bridges, fak
     joined = b.post("/v1/family/join", headers=AUTH, json={"url": invitation["url"], "code": invitation["code"]})
     assert joined.status_code == 200 and joined.json() == {"id": "alex", "name": "Alex"}
     again = b.post("/v1/family/join", headers=AUTH, json={"url": invitation["url"], "code": invitation["code"]})
-    assert again.status_code == 403 and again.json() == {"detail": "their bridge refused the invitation (expired?)"}
+    assert again.status_code == 403 and again.json() == {"detail": "the invitation was refused (expired?)"}
     assert a.get("/v1/family", headers=AUTH).json() == {"name": "Alex", "url": a.url,
                                                         "households": [{"id": "lea", "name": "Léa", "url": b.url, "relink": False}]}
     stored = json.loads((a.state_dir / "households.json").read_text())

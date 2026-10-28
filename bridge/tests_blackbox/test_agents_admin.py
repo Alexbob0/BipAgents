@@ -155,7 +155,7 @@ def test_a_failing_hermes_is_a_502(bridges, fakes):
     bridge, _ = managed(bridges, fakes)
     bridge.commands.rule("hermes", ["profile", "create"], exit=1, stderr="no space left")
     failed = bridge.post("/v1/agents", headers=AUTH, json={"name": "Budget", "kind": "finance"})
-    assert failed.status_code == 502 and failed.json() == {"detail": "Hermes could not create the agent"}
+    assert failed.status_code == 502 and failed.json() == {"detail": "the agent could not be created: try again in a moment"}
     assert "budget" not in tomllib.loads(bridge.toml_text()).get("agents", {})
 
 
@@ -205,7 +205,7 @@ def test_settings_with_the_gateway_down(bridges, fakes):
     bridge.config_path.write_text(text)
     bridge.start(write=False)
     down = bridge.get("/v1/agents/budget/settings", headers=AUTH)
-    assert down.status_code == 502 and down.json() == {"detail": "Hermes unreachable"}
+    assert down.status_code == 502 and down.json() == {"detail": "your agent isn't answering right now: try again in a moment"}
 
 
 def test_an_isolated_install_keeps_the_agents_tools(bridges, fakes):

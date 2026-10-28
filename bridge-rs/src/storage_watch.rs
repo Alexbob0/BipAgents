@@ -803,7 +803,7 @@ pub fn refuse_tool(config: &Config, agent: &str) -> Option<Dict> {
     full_card(config, agent, false);
     tracing::info!(target: "bipbridge::storage", agent, paused, "tool refused: no room left");
     Some(tk::tool_failure(
-        "This place has no room left: nothing new can be saved for now. A card with the choices (keep the last ones, \
+        "Your person's space has no room left: nothing new can be saved for now. A card with the choices (keep the last ones, \
 archive, send to the phone, delete) waits in your person's approvals.",
         "Ton espace est plein : je ne peux plus rien enregistrer pour l'instant. Je t'ai mis une carte pour choisir quoi garder.",
     ))
@@ -1133,7 +1133,7 @@ pub fn tool() -> Value {
     json!({
         "name": TOOL_NAME,
         "description": "Before you set up something recurring that makes files (a routine making podcasts or pages, \
-    regular downloads), see the space it will take: gives the average size of yours, the space a month, the place's room, \
+    regular downloads), see the space it will take: gives the average size of yours, the space a month, the room left, \
     and a number to keep. Tell your person in one plain sentence and propose to keep the last N. Once they chose, call it \
     again with keep_last: only the last N are kept from then on.",
         "inputSchema": {"type": "object", "properties": {
@@ -1194,7 +1194,7 @@ pub fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
     tk::tool_text(
         &format!(
             "One of your {} takes about {} ({}). At {per_week} a week: about {} a month. {room}{current} \
-Propose to keep the last {keep} (about {}): the place is a working space, not a storage. Once your person chose, call \
+Propose to keep the last {keep} (about {}): their space is a working space, not a storage. Once your person chose, call \
 space_estimate again with keep_last.",
             kind_en(kind),
             size_en(average),

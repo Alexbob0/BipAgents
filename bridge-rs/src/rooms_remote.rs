@@ -141,7 +141,7 @@ async fn call(
     if let Some(body) = body {
         request = request.json(&body);
     }
-    let resp = request.send().await.map_err(|_| "their bridge does not answer".to_string())?;
+    let resp = request.send().await.map_err(|_| "their side does not answer right now: try again later".to_string())?;
     let status = resp.status().as_u16();
     Ok((status, resp.json().await.unwrap_or(Value::Null)))
 }

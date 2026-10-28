@@ -240,7 +240,7 @@ pub fn call(config: &Config, agent: &AgentConfig, arguments: &Dict) -> Dict {
     };
     if !has_uploads(&target) {
         return tool_failure(
-            &format!("{} can't receive files on this server.", shown(&target)),
+            &format!("{} can't receive files here.", shown(&target)),
             &format!("{} can't receive files for now.", shown(&target)),
         );
     }

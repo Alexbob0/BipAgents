@@ -124,7 +124,7 @@ def test_a_claim_with_the_secret_pairs_the_app_once(bridges, fakes):
     assert not cloud.setup_file.exists()
     assert bridge.get("/v1/setup", params={"nonce": NONCE}).json() == {"state": "claimed"}
     again = bridge.post("/v1/setup/claim", json=claim_body(challenge))
-    assert again.status_code == 410 and again.json() == {"detail": "this server is already paired"}
+    assert again.status_code == 410 and again.json() == {"detail": "these agents are already linked to an app"}
 
 
 def test_challenges_are_single_use_and_claims_wait_for_the_install(bridges, fakes):
@@ -189,7 +189,7 @@ def test_claiming_sets_the_model_once_and_creates_the_agents_left(bridges, fakes
                          "agents": [{"name": "Quotidien", "kind": "daily"}, {"name": "Maison", "kind": "home"}],
                          "language": "fr"})
     failed = bridge.post("/v1/setup/claim", json=claim_body(cloud.challenge(), wanted))
-    assert failed.status_code == 502 and failed.json() == {"detail": "the server could not finish: try again"}
+    assert failed.status_code == 502 and failed.json() == {"detail": "the setup could not finish: try again"}
     commands = bridge.commands.of("hermes")
     assert ["config", "set", "model.provider", "openrouter"] in commands
     assert ["config", "set", "model.base_url", "https://openrouter.ai/api/v1"] in commands

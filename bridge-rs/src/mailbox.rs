@@ -575,7 +575,7 @@ fn save_attachment(
     if agent_config.upload_dir_host.as_deref().is_none_or(str::is_empty)
         || agent_config.upload_dir_container.as_deref().is_none_or(str::is_empty)
     {
-        return Ok(tool_text("You can't receive files on this server, so attachments can't be saved for you.", true));
+        return Ok(tool_text("You can't receive files here, so attachments can't be saved for you.", true));
     }
     let (file, from) = attachment(account, folder, uid, wanted, opener)?;
     let mut limits = config.limits.clone();

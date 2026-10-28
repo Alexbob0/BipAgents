@@ -1127,7 +1127,7 @@ async fn claim(shared: Arc<Shared>, state: AppState, address: Option<String>, bo
     let agents = {
         let _lock = shared.lock.lock().await;
         let Some(secret) = secret_of(&config) else {
-            return Err(HttpError::new(410, "this server is already paired"));
+            return Err(HttpError::new(410, "these agents are already linked to an app"));
         };
         if !shared.challenges.take(&body.challenge) {
             return Err(HttpError::new(400, "challenge unknown or expired: ask /v1/setup again"));
@@ -1197,7 +1197,7 @@ async fn claim(shared: Arc<Shared>, state: AppState, address: Option<String>, bo
             Ok(a) => a,
             Err(exc) => {
                 tracing::warn!(error = %pyx::tail(&format!("{exc:#}"), 300), "claim failed");
-                return Err(HttpError::new(502, "the server could not finish: try again"));
+                return Err(HttpError::new(502, "the setup could not finish: try again"));
             }
         };
         let _ = std::fs::remove_file(&setup_file); // paired: the secret is gone for good

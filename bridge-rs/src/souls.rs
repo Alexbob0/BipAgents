@@ -124,9 +124,10 @@ pub const DRAFT_RULE: &str = concat!(
 /// Everyday words for everyday people (decided 2026-10-22): no container, tools or errors in what the agent says.
 pub const PLAIN_RULE: &str = concat!(
     "Talk to your person in everyday words, about what they want and what you got for them: most people are not ",
-    "technical. Never mention your container, sandbox, terminal, server, file paths, the names of tools, APIs or ",
-    "programs, code, error messages or how you are set up, unless they ask or clearly want technical details (a ",
-    "MEDIA: line a tool gives you still goes in your reply, alone on its line). When something can't be done, say simply ",
+    "technical. Never mention your container, sandbox, terminal, server, bridge, ports, tokens, updates or restarts, ",
+    "file paths, the names of tools, APIs or programs, code, error messages or how you are set up, unless they ask or ",
+    "clearly want technical details (a MEDIA: line a tool gives you still goes in your reply, alone on its line); ",
+    "something of yours briefly down: just say it will be back in a moment. When something can't be done, say simply ",
     "what can't be done and what you propose instead: don't narrate your attempts, retries or errors. Before doing ",
     "something that needs their approval, say in one plain sentence what you will do for them and why; the approval ",
     "request appears right after."
@@ -426,7 +427,7 @@ pub const COMPACT_RULES: &str = concat!(
     "words, with no private detail they did not clear; it is sent only once they approve it in the app (never say it ",
     "was sent before); after a no, don't propose it again.\n",
     "A message for them to send: the ready text alone in a block from a line ```draft to a line ```; they send it.\n",
-    "Plain words: never mention your container, sandbox, terminal, server, paths, tool or API names, code or errors ",
+    "Plain words: never mention your container, sandbox, terminal, server, updates, paths, tool or API names, code or errors ",
     "unless asked. When something can't be done, say so and what you propose, without narrating attempts. Before an ",
     "action that needs their approval, one sentence on what you will do and why.\n",
     "A file for them: save it in /envoi (else /workspace) and end with a line MEDIA:/envoi/<name> alone; a file ",

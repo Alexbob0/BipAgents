@@ -390,7 +390,7 @@ pub fn place_token(home: &Path) -> Option<(String, String)> {
 
 async fn guichet(deps: &Deps, method: reqwest::Method, agent: &str, body: Option<Value>) -> Result<Value, HttpError> {
     let Some((base, token)) = place_token(&deps.home) else {
-        return Err(HttpError::new(503, "Kerfy Studio's addresses are for the places of the offer"));
+        return Err(HttpError::new(503, "these addresses come with the all-included offer only"));
     };
     let mut req = deps.http.request(method, format!("{base}/v1/mailboxes/{agent}")).bearer_auth(token);
     if let Some(b) = body {

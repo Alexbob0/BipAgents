@@ -215,7 +215,7 @@ pub fn listing_row(config: &Config) -> Option<Value> {
 }
 
 fn unavailable() -> ConnectError {
-    ConnectError { status: 404, code: "unavailable", message: "Link isn't offered on this server".into() }
+    ConnectError { status: 404, code: "unavailable", message: "Link isn't offered here".into() }
 }
 
 // -- sign-in (OAuth authorization code with PKCE, a confidential client) ---------------------------------------------
@@ -832,7 +832,7 @@ static SERVER: ToolServer = ToolServer { name: SERVER_NAME, instructions: INSTRU
 async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
     let config = state.config();
     if !available(&config) {
-        return Err(HttpError::new(404, "Link isn't offered on this server"));
+        return Err(HttpError::new(404, "Link isn't offered here"));
     }
     crate::card_pay::serve(state, headers, body, &SERVER).await
 }

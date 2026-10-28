@@ -809,7 +809,7 @@ fn creation_failed(exc: anyhow::Error) -> HttpError {
         return exc.into();
     }
     tracing::warn!(target: "bipbridge::guide", error = %tk::head(&exc.to_string(), 200), "agent creation failed");
-    HttpError::new(502, "Hermes could not create the agent")
+    HttpError::new(502, "the agent could not be created: try again in a moment")
 }
 
 fn created_json(config: &Config, agent: &AgentConfig) -> Value {
@@ -886,7 +886,7 @@ async fn put_guide(
 ) -> ApiResult<Response> {
     let config = state.config();
     let agent = crate::agents_admin::editable(&config, &agent_id)
-        .map_err(|_| HttpError::new(404, "no such agent managed by this bridge"))?;
+        .map_err(|_| HttpError::new(404, "no such agent here"))?;
     let previous = if body.on == Some(true) {
         make_guide(&config, &agent.name, false)?
     } else {

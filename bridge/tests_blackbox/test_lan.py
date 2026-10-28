@@ -119,7 +119,7 @@ def test_hermes_down_through_the_door(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["agents"]["Wellness"].update(hermes_url=f"http://127.0.0.1:{free_port()}"))
     bridge.start()
     resp = bridge.get("/hermes/wellness/v1/capabilities", headers={"Authorization": f"Bearer {HERMES_KEY}"})
-    assert resp.status_code == 502 and resp.json() == {"detail": "Hermes unreachable"}
+    assert resp.status_code == 502 and resp.json() == {"detail": "your agent isn't answering right now: try again in a moment"}
 
 
 def test_wrong_agent_keys_through_the_door_get_the_address_blocked(bridge, fakes):
