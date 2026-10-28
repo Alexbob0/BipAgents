@@ -80,6 +80,8 @@ def test_the_server_reboots_at_night_when_an_update_asks_at_a_minute_of_its_own(
     timer = files["/etc/systemd/system/apt-daily-upgrade.timer.d/60-bipagents.conf"]
     assert "OnCalendar=\nOnCalendar=*-*-* 23:00\n" in timer and "RandomizedDelaySec=30min" in timer
     assert "$nrconf{restart} = 'a';" in files["/etc/needrestart/conf.d/60-bipagents.conf"]
+    # never cloud-init's own units: restarted by runcmd's apt-get on Debian 13, they killed the first boot halfway
+    assert "$nrconf{override_rc}{qr(^cloud-)} = 0;" in files["/etc/needrestart/conf.d/60-bipagents.conf"]
     commands = data["runcmd"]
     minute = next(c for c in commands if "53bipagents-reboot-time" in c)
     assert commands.index(minute) < commands.index("systemctl daemon-reload") < commands.index(
