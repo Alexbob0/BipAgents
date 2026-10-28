@@ -2065,6 +2065,8 @@ async fn remove_agent(state: AppState, agent_id: String) -> ApiResult<Response> 
             crate::family_agent::deleted(&state, &agent); // the members' apps drop it at once
         }
         crate::agent_groups::set_group(&state.config(), &agent.name, "")?;
+        crate::connectors::forget(&state.config(), &agent.name); // its connectors (connectors.rs)
+        crate::secrets::forget(&agent);
         state.vault.forget_agent(&state.config(), &agent.name).await
     }
     .await;

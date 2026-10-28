@@ -477,7 +477,9 @@ pub fn called_directly(state_db: &Path, since: f64) -> Vec<String> {
 /// Whether `agent` holds an item of the vault Hermes fills from (a card is paid through the bridge instead).
 pub fn holds_vault_item(config: &Config, agent: &AgentConfig) -> bool {
     let vault = crate::vault::Vault::new(&crate::py::join(&config.data_dir(), "vault"));
-    vault.items().iter().any(|item| item.kind != crate::cards::KIND && item.agents.contains_key(&agent.name))
+    vault.items().iter().any(|item| {
+        item.kind != crate::cards::KIND && item.kind != crate::secrets::VAULT_KIND && item.agents.contains_key(&agent.name)
+    })
 }
 
 fn profile_folder(config: &Config, agent: &AgentConfig) -> Option<PathBuf> {
@@ -498,7 +500,14 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
     let browser = crate::agents_admin::load_or_empty(&folder.join("config.yaml"))
         .ok()
         .is_some_and(|data| data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)).is_some_and(Yaml::is_map));
-    Some(diet(&kind, &tools, browser, holds_vault_item(config, agent), writes_skills, &called))
+    let mut out = diet(&kind, &tools, browser, holds_vault_item(config, agent), writes_skills, &called);
+    // the connectors the person approved are called like any tool (connectors.rs)
+    for entry in crate::connectors::direct_entries(config, agent) {
+        if !out.defer.contains(&entry) {
+            out.defer.push(entry);
+        }
+    }
+    Some(out)
 }
 
 /// `parent[key]`, made a dict when missing or not one.

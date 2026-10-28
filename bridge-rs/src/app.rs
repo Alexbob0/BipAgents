@@ -326,6 +326,7 @@ impl AppState {
         self.spawn(crate::read_shares::run_forever(self.clone())); // shared conversations' encrypted copies
         self.spawn(crate::project_agent::run_forever(self.clone())); // projects past their end: archived
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
+        self.spawn(crate::connectors_run::scheduler(self.clone())); // the connectors' mechanical schedules
         self.spawn(crate::archives::scheduler(self.config.clone()));
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
@@ -1125,6 +1126,25 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             Err(HttpError::new(404, "no such request (answered already?)"))
         };
     }
+    // a secret card (secrets.rs): refused here; the value only comes through the app's secure field
+    if let Some(id) = run_id.strip_prefix(crate::secrets::RUN_PREFIX) {
+        if body.choice.trim().to_lowercase() != "deny" {
+            return Err(HttpError::json(409, json!({"code": "needs_secure_field"})));
+        }
+        return if crate::secrets::deny(&state.config(), Some(&agent.name), id, "notification") {
+            Ok(web::ok(json!({"ok": true, "choice": "deny"})))
+        } else {
+            Err(HttpError::new(404, "no such request (answered already?)"))
+        };
+    }
+    // a connector's approval card (connectors.rs)
+    if let Some(id) = run_id.strip_prefix(crate::connectors::RUN_PREFIX) {
+        let allow = body.choice.trim().to_lowercase() != "deny";
+        return crate::connectors::answered_response(
+            crate::connectors::answer(&state, id, allow, "notification").await,
+            allow,
+        );
+    }
     let request_id = body.request_id.as_deref();
     let (status, payload) =
         match state.hermes.approve(&agent, &run_id, &body.choice.trim().to_lowercase(), request_id).await {
@@ -1200,6 +1220,8 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
     if shared.is_none() {
         items.extend(crate::sandbox_sites::pending_items(&config, name.as_deref()));
         items.extend(crate::vault_logins::pending_items(&config, name.as_deref()));
+        items.extend(crate::secrets::pending_items(&config, name.as_deref()));
+        items.extend(crate::connectors::pending_items(&state, &config, name.as_deref()));
     }
     for item in items.iter_mut() {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
@@ -1596,6 +1618,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::vault::router())
         .merge(crate::card_pay::app_router())
         .merge(crate::vault_logins::app_router())
+        .merge(crate::secrets::app_router())
+        .merge(crate::connectors::app_router())
         .merge(crate::handover::app_router())
         .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())
@@ -1661,6 +1685,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::sandbox::router()) // the agents' file tools (shared folders), same tokens
         .merge(crate::card_pay::router()) // the agents' card payment tools, same tokens
         .merge(crate::vault_logins::router()) // the agents' vault tools (accounts with a vault password), same tokens
+        .merge(crate::connectors::router()) // the connectors agents make, and each one's own MCP entry, same tokens
         .merge(crate::handover::router()) // « l'agent prépare, tu paies »: the payment handed to the person
         .merge(crate::link_wallet::router()) // Link Agent Wallet (US/CA), behind its flag
         .merge(crate::agent_tools::router()) // the agents' MCP tools (create_audio), each agent with its own token
