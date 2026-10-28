@@ -726,8 +726,14 @@ impl Page {
         self.front.get("icon").and_then(Value::as_str).map(str::trim).filter(|i| !i.is_empty()).map(str::to_string)
     }
 
+    /// The page's kind (its frontmatter's `type`); a « trip » named like a list of trips (« Voyages ») is read as a
+    /// subject: a list of its items, no countdown.
     pub fn kind(&self) -> String {
-        tk::str_or_empty(self.front.get("type"))
+        let kind = tk::str_or_empty(self.front.get("type"));
+        if kind == "trip" && trip::is_collection(&self.title) {
+            return "subject".into();
+        }
+        kind
     }
 
     pub fn aliases(&self) -> Vec<String> {
@@ -1433,6 +1439,15 @@ pub(crate) fn note_locked(
             }
         })
     };
+    // one trip page per journey: never a list of trips
+    if kind == "trip"
+        && (trip::is_collection(&title) || found.as_ref().is_some_and(|f| trip::is_collection(&f.page.title)))
+    {
+        return refuse(
+            "This page gathers several trips: make one trip page per journey, named by its place and month \
+             (« Amsterdam, déc. 2021 »), with its start and end; this page can stay a subject linking them.",
+        );
+    }
     let (path, before, mut page, created) = match found {
         Some(f) => {
             let before = read_page_text(config, part, &f.path);
