@@ -53,7 +53,9 @@ CONF = "/etc/bipagents/guichet.json"
 PUBLIC_KEY = "/etc/bipagents/guichet.pub"
 DONE = "/var/lib/bipagents/orders-done"
 LIB = "/usr/local/lib/bipagents"
-MAX_SEATS = 8
+# Places one server may hold at most: doors 443 to 482, accounts bip, bip2 ... bip40. How many a server really holds
+# comes from its size, decided by the guichet (pool.rs: its density rule, at most 40).
+MAX_SEATS = 40
 BACKUP_STATE = ".local/state/bipagents/backup.json"
 ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge-rs/src/sleep.rs)
 SETUP = ".config/bipagents/setup.json"     # its bridge's pairing secret while it waits for an app (cloud_setup.py)

@@ -35,7 +35,7 @@ the order to `place-move.py`.
   Kerfy machine. Forget the key once both orders are done.
 - `move.source.address`: the source server's public IPv4 or IPv6 address. Only this address may connect: the `from=`
   option in `authorized_keys` and a `ufw allow from` rule both restrict it.
-- `move.port`: the listener's port (default 2222, allowed range 1024-65535, never a place's door 443-450). The
+- `move.port`: the listener's port (default 2222, allowed range 1024-65535, never a place's door 443-482). The
   provider's own firewall must let this port through between the two servers. DigitalOcean, OVH and Hetzner have no
   such firewall by default.
 - `move.expires`: when the listener closes on its own if nothing finished. Default: 6 hours.

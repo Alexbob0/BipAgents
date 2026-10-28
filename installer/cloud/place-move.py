@@ -49,7 +49,7 @@ import urllib.request
 
 LIB = "/usr/local/lib/bipagents"
 MOVES = "/var/lib/bipagents/moves"
-MAX_SEATS = 8
+MAX_SEATS = 40                  # places on one server at most: doors 443 to 482 (seat-agent.py)
 KEEP_SECONDS = 7 * 86400
 SMALL_DELTA = 32 * 2 ** 20      # bytes changed between two copies: small enough to switch
 MAX_ROUNDS = 6                  # copies before the quiet moment, at most
