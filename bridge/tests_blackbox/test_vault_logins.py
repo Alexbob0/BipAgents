@@ -2,7 +2,7 @@
 one card for the person first (listed with the approvals), then a password made by the bridge typed into a fake Chrome's
 password fields only (its DevTools protocol), kept encrypted « en attente de confirmation » and never handed back to
 the agent nor logged; corrected rules within 15 minutes need no new card; the person's hold on the browser is
-respected."""
+respected; only a frame of the approved site is typed into, its origin checked again in the page before typing."""
 import json
 import re
 import threading
@@ -27,10 +27,16 @@ class FakeChrome:
     """Chrome's DevTools as the bridge uses them: one page on `url` with an e-mail field and two password fields (the
     second one its confirmation). It answers the login script's calls by name (`detect` reports `self.reported`, the
     page's inputs the script would pick) and the bridge's checks on a field (`Runtime.callFunctionOn`), and records
-    what was typed where."""
+    what was typed where.
+
+    `fields_frame`: the address of a child frame holding the password fields (None: the main frame holds them).
+    `live_origin`: what `location.origin` says in the page when the bridge checks a field (None: that frame's own),
+    a page that went to another site after Chrome's frame tree was read."""
 
     def __init__(self, url="https://shop.example/signup"):
         self.url = url
+        self.fields_frame = None
+        self.live_origin = None
         self.port = free_port()
         self.inputs = [{"name": "email", "type": "email", "value": "alex@example.org"},
                        {"name": "password", "type": "password", "value": ""},
@@ -82,9 +88,12 @@ class FakeChrome:
         if method == "Target.attachToTarget":
             return {"sessionId": "S-page"}
         if method == "Page.getFrameTree":
-            return {"frameTree": {"frame": {"id": "F-main", "url": self.url}}}
+            tree = {"frame": {"id": "F-main", "url": self.url}}
+            if self.fields_frame:
+                tree["childFrames"] = [{"frame": {"id": "F-child", "url": self.fields_frame}}]
+            return {"frameTree": tree}
         if method == "Page.createIsolatedWorld":
-            return {"executionContextId": 1}
+            return {"executionContextId": 2 if params.get("frameId") == "F-child" else 1}
         if method == "DOM.focus":
             self.focused = self._input(params["objectId"])
             return {}
@@ -96,15 +105,16 @@ class FakeChrome:
         if method == "Runtime.callFunctionOn":
             index = self._input(params["objectId"])
             field, function = self.inputs[index], params["functionDeclaration"]
-            arg = (params.get("arguments") or [{}])[0].get("value")
+            args = [a.get("value") for a in params.get("arguments") or []]
+            arg = args[0] if args else None
             password = field["type"] == "password"
             if "activeElement" in function:
-                value = password and self.focused == index
+                value = password and self.focused == index and arg == self.origin()
             elif "this.value === v" in function:
                 value = password and field["value"] == arg
             elif "p.set(" in function:
-                value = password
-                if password:
+                value = password and args[1:] == [self.origin()]
+                if value:
                     field["value"] = arg
             else:
                 value = password
@@ -119,6 +129,8 @@ class FakeChrome:
             name, args = call.group(1), call.group(2)
             first = int(args.split(",")[0]) if args and args.split(",")[0].strip().isdigit() else None
             if name == "detect":
+                if params.get("contextId") != (2 if self.fields_frame else 1):
+                    return {"result": {"type": "object", "value": {"focused": False, "count": 0, "fields": []}}}
                 fields = [{"i": k, "type": "password", "empty": not self.inputs[n]["value"]} for k, n in enumerate(self.reported)]
                 value = {"focused": self.focused_field, "count": 2, "fields": fields}
                 return {"result": {"type": "object", "value": value}}
@@ -130,6 +142,13 @@ class FakeChrome:
                     field["value"] = ""
             return {"result": {"type": "boolean", "value": True}}
         return {}
+
+    def origin(self):
+        """`location.origin` in the frame holding the fields, as the page says it."""
+        if self.live_origin:
+            return self.live_origin
+        scheme, rest = (self.fields_frame or self.url).split("://", 1)
+        return f"{scheme}://{rest.split('/', 1)[0]}"
 
     def stop(self):
         self.loop.call_soon_threadsafe(lambda: self.done.done() or self.done.set_result(None))
@@ -346,6 +365,42 @@ def test_never_typed_into_a_field_that_is_not_a_password(bridges, fakes):
         result, card = create(bridge)
         assert card and result["isError"] is True and "could not be typed" in result["content"][0]["text"]
         assert chrome.typed == [] and chrome.value("email") == "alex@example.org"
+        assert bridge.get("/v1/vault", headers=AUTH).json()["items"] == []
+    finally:
+        chrome.stop()
+
+
+def test_a_password_field_in_another_sites_frame_is_never_typed_into(bridges, fakes):
+    """The right page, but the field the agent focused lives in a frame of another site (an ad, a look-alike widget,
+    a subdomain): nothing is asked, nothing typed. A frame of the approved site itself still is."""
+    chrome = FakeChrome()
+    try:
+        bridge = login_bridge(bridges, fakes, chrome)
+        for frame in ("https://ads.evil.test/login", "https://shop.example.evil.test/x", "https://www.shop.example/x",
+                      "http://shop.example/x", "about:blank"):
+            chrome.fields_frame = frame
+            refused = tool(bridge, "vault_create_login", ARGS)
+            assert refused["isError"] is True and "No password field" in refused["content"][0]["text"], frame
+        assert cards(bridge) == [] and chrome.typed == []
+        assert bridge.get("/v1/vault", headers=AUTH).json()["items"] == []
+        chrome.fields_frame = "https://shop.example/embedded-signup"
+        result, card = create(bridge)
+        assert card and result["isError"] is False, result
+        assert [name for name, _ in chrome.typed] == ["password", "confirm"]
+    finally:
+        chrome.stop()
+
+
+def test_a_page_that_left_the_site_before_typing_gets_nothing(bridges, fakes):
+    """Chrome's frame tree still showed the approved site, but in the page the field's frame is now elsewhere: the
+    check made on the field right before typing refuses, nothing is typed nor kept."""
+    chrome = FakeChrome()
+    try:
+        bridge = login_bridge(bridges, fakes, chrome)
+        chrome.live_origin = "https://evil.test"
+        result, card = create(bridge)
+        assert card and result["isError"] is True and "could not be typed" in result["content"][0]["text"]
+        assert chrome.typed == [] and chrome.value("password") == "" and chrome.value("confirm") == ""
         assert bridge.get("/v1/vault", headers=AUTH).json()["items"] == []
     finally:
         chrome.stop()
