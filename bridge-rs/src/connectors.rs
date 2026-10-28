@@ -333,8 +333,9 @@ pub fn save_icon(config: &Config, agent: &str, id: &str, data: &[u8]) {
 // --- who gets them ---------------------------------------------------------------------------------------------------
 
 /// Whether `agent` may make connectors: it may hold credentials, its sandbox is isolated, and it is neither the
-/// family's agent nor a project agent (both closed). An agent of the shared hub too: its first secret moves it into
-/// its own space, sandbox included (own_space.rs).
+/// family's agent nor a project agent (both closed). An agent of a hub only the person's agents use holds them there
+/// (vault.rs `holds_in_hub`); one of a hub that hosts an agent other people talk to moves into its own space at its
+/// first secret, sandbox included (own_space.rs).
 pub fn offered(config: &Config, agent: &AgentConfig) -> bool {
     if crate::family_agent::is_family(config, &agent.name) || crate::project_agent::is_project(config, &agent.name) {
         return false;

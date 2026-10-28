@@ -16,6 +16,15 @@
 //! - a move that fails: one plain line (`own_space_failed`), the agent is told to say it will try again later, and
 //!   the next calls within `RETRY_AFTER` get the same answer without trying.
 //!
+//! **Since 2026-10-28 evening** (Alex: « Fais ce soir »), a person's own agents are no longer separated from each
+//! other: in a hub that only the person's agents use, an agent holds credentials right where it is (vault.rs
+//! `holds_in_hub`), and nothing moves. What must stay apart from the person's passwords is any agent other people
+//! talk to (vault.rs `others_facing`: the family's agent, project agents, agents shared with a relative, agents linked
+//! with another household's). As long as the hub hosts one of those, the move above is what happens, as before; the
+//! credentials already kept in the hub stay there (logged at start and at each move, `Vault::warn_hub_holders`) until
+//! their agent moves or the person takes them back. The trade-off, plainly: one of the person's agents tricked by what
+//! it read could reach another of their agents' passwords; it costs no ~250 MB container per agent.
+//!
 //! No Python counterpart.
 
 use std::collections::HashMap;
@@ -37,8 +46,10 @@ pub const RETRY_AFTER: Duration = Duration::from_secs(120);
 /// How long the hub keeps serving a moved agent's profile for a turn still going on there.
 const HUB_WAIT: Duration = Duration::from_secs(30 * 60);
 
-/// An agent of the shared hub that moves into its own space by itself when it needs to keep a secret: never the
-/// family's agent nor a project agent, never on an install that doesn't protect the vault (`unprotected_install`).
+/// An agent of the shared hub that moves into its own space by itself when it needs to keep a secret: one that may not
+/// hold it in the hub (`vault::holds_in_hub`: the hub hosts an agent other people talk to, or its tools have no
+/// sandbox of their own), never the family's agent nor a project agent, never on an install that doesn't protect the
+/// vault (`unprotected_install`). Asked again at each call.
 pub fn may_move(config: &Config, agent: &AgentConfig) -> bool {
     crate::vault::holder(config, agent).as_deref() == Some("needs_own_space")
         && !crate::family_agent::is_family(config, &agent.name)
@@ -103,6 +114,7 @@ pub async fn ready(state: &AppState, agent: &AgentConfig, service: &str) -> Resu
     if failed_recently(&current.name) {
         return Err(tool_text(FAILED_FOR_AGENT, true));
     }
+    state.vault.warn_hub_holders(&config);
     notice(state, &current.name, MOVING, &moving_text(service), service);
     tracing::info!(target: "bipbridge::own_space", agent = %current.name, "moving into its own space to keep a secret");
     let hub_url = current.hermes_url.clone();

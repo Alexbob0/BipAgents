@@ -8,9 +8,12 @@
 //! Write-only: the app never reads a secret back. It replaces or deletes it. One exception: a login an agent created
 //! with a password the vault made (vault_logins.rs), which the person never typed, is shown to them on request.
 //!
-//! An agent can hold an item only when it has its own space (`isolated`): in a shared gateway, an agent with a
-//! terminal could read another's vault. Agents created from the app live in the shared hub until they move
-//! into their own space.
+//! An agent holds items in its own space (`isolated`), or, since 2026-10-28 (Alex), in the shared hub when only the
+//! person's own agents live there (`holds_in_hub`): in a shared gateway an agent with a terminal could read
+//! another's vault, which is accepted between one person's agents, never with an agent other people talk to
+//! (`others_facing`). While the hub hosts one, its agents move into their own space at their first secret
+//! (own_space.rs), as before. Trade-off: one agent tricked by what it read could reach the person's other agents'
+//! passwords, in exchange for no extra container per agent.
 //!
 //! Port of `bridge/bipbridge/vault.py` (owner group: browsers-places).
 
@@ -187,12 +190,108 @@ pub fn in_hub(config: &Config, agent: &AgentConfig) -> bool {
         && agent.hermes_url.starts_with(&format!("{}/p/", config.hermes.hub_url))
 }
 
+/// The agents of this place that people other than its person talk to (Alex, 2026-10-28): the family's agent,
+/// project agents (with guests), agents shared with a relative (agent_shares.rs), and any agent another household's
+/// agents may write to or be written to by (a link of « Qui peut écrire à qui » with a relative's agent at the other
+/// end, peers.rs; rooms_remote.rs uses the same links). Each file read once.
+pub fn others_facing_agents(config: &Config) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    if let Some(family) = crate::family_agent::own(config) {
+        out.insert(family);
+    }
+    let links = crate::peers::links_of(&crate::peers::Links::new(&crate::py::join(&config.data_dir(), "peers.json")).load());
+    let remote = |id: &str| config.agent(Some(id)).is_none() && crate::households::split(id).is_some();
+    for (source, target) in &links {
+        if remote(source) {
+            out.insert(target.to_lowercase());
+        }
+        if remote(target) {
+            out.insert(source.to_lowercase());
+        }
+    }
+    for name in config.agents.keys() {
+        if crate::project_agent::is_project(config, name) || !crate::agent_shares::shared_with(config, name).is_empty() {
+            out.insert(name.clone());
+        }
+    }
+    out
+}
+
+/// Whether people other than this place's person talk to `agent` (`others_facing_agents`).
+pub fn others_facing(config: &Config, agent: &str) -> bool {
+    others_facing_agents(config).contains(&agent.trim().to_lowercase())
+}
+
+/// Whether `agent`, of the shared hub, holds credentials right there, with no move (Alex, 2026-10-28: a person's own
+/// agents are no longer separated from each other): the install protects the vault, the hub's Python can write its
+/// items, the agent's tools run in a sandbox of their own (sandbox.rs: connectors need one, the move gives it one),
+/// the agent is not others-facing and the hub hosts none. `holder` asks at each secret's use, not only when the tools
+/// are offered: once an others-facing agent appears in the hub, a new secret moves its agent as before.
+pub fn holds_in_hub(config: &Config, agent: &AgentConfig) -> bool {
+    hub_may_hold(config, agent, &others_facing_agents(config))
+        && crate::sandbox::isolates(config, agent)
+}
+
+/// `holds_in_hub` but the sandbox (unit tests).
+fn hub_may_hold(config: &Config, agent: &AgentConfig, facing: &std::collections::HashSet<String>) -> bool {
+    config.hermes.isolated
+        && !agent.isolated
+        && in_hub(config, agent)
+        && !config.hermes.python.is_empty()
+        && !facing.contains(&agent.name)
+        && !config.agents.values().any(|a| in_hub(config, a) && facing.contains(&a.name))
+}
+
+/// The hub's agents holding credentials although the hub now hosts an others-facing agent (logged at start and when
+/// an agent becomes others-facing: their items stay in their profile's vault until they move or are taken back).
+pub fn hub_holders_at_risk(config: &Config, records: &[Dict]) -> Vec<String> {
+    let facing = others_facing_agents(config);
+    if !config.agents.values().any(|a| in_hub(config, a) && facing.contains(&a.name)) {
+        return Vec::new();
+    }
+    let mut out: Vec<String> = config
+        .agents
+        .values()
+        .filter(|a| in_hub(config, a) && !a.isolated)
+        .filter(|a| {
+            records.iter().any(|r| {
+                r.get("agents").and_then(Value::as_object).and_then(|m| m.get(&a.name)).and_then(Value::as_str)
+                    .is_some_and(|h| h != CARD_HANDLE && !h.is_empty())
+            })
+        })
+        .map(|a| a.name.clone())
+        .collect();
+    out.sort();
+    out
+}
+
+/// The agent as the vault reaches its Hermes: an agent holding credentials in the hub gets the hub's Python and its
+/// profile's HERMES_HOME (as that Python sees it), the others are as they are.
+pub fn vault_target(config: &Config, agent: &AgentConfig) -> AgentConfig {
+    if agent.isolated || !in_hub(config, agent) || config.hermes.python.is_empty() {
+        return agent.clone();
+    }
+    let mut target = agent.clone();
+    let home = if !config.hermes.container_home.is_empty() {
+        crate::py::join(&crate::py::join(&config.hermes.container_home, "profiles"), &agent.name)
+    } else {
+        crate::spaces::hub_profile(config, &agent.name).to_string_lossy().into_owned()
+    };
+    target.python = config.hermes.python.clone();
+    target.hermes_home = Some(home);
+    target.hermes_root = Some(config.hermes.root.clone()).filter(|r| !r.is_empty());
+    target
+}
+
 /// None when the agent can hold credentials, else why not.
 pub fn holder(config: &Config, agent: &AgentConfig) -> Option<String> {
     if !config.hermes.isolated {
         return Some("unprotected_install".into()); // the agents could read the bridge's own copy: no credentials at all
     }
     if !agent.isolated {
+        if holds_in_hub(config, agent) {
+            return None; // one of the person's own agents, in a hub only they use
+        }
         // An agent of the shared hub can move into its own space from the app; one set up by hand is up to its
         // administrator (its own container, then `isolated`, `python` and `hermes_home` in this file).
         return Some(if in_hub(config, agent) { "needs_own_space" } else { "not_configured" }.into());
@@ -319,6 +418,17 @@ impl Vault {
         let key = std::fs::read_to_string(&self.key_path)?;
         fernet::Fernet::new(pyx::strip(&key))
             .ok_or_else(|| VaultError::Invalid("Fernet key must be 32 url-safe base64-encoded bytes.".into()).into())
+    }
+
+/// Logs the hub's agents that hold credentials while the hub hosts an others-facing agent (`hub_holders_at_risk`):
+    /// their items stay in their profile's vault (nothing is taken back by itself), new secrets move them.
+    pub fn warn_hub_holders(&self, config: &Config) {
+        let at_risk = hub_holders_at_risk(config, &self.read().unwrap_or_default());
+        if !at_risk.is_empty() {
+            tracing::warn!(target: "bipbridge::vault", agents = ?at_risk, "the hub hosts an agent other people talk to, \
+                and these agents of the hub hold credentials there: they stay until the agent moves or the person \
+                takes them back; a new secret moves the agent into its own space");
+        }
     }
 
     fn read(&self) -> anyhow::Result<Vec<Dict>> {
@@ -516,7 +626,7 @@ impl Vault {
         }
     }
 
-    async fn give(&self, record: &mut Dict, agents: &[AgentConfig]) -> anyhow::Result<()> {
+    async fn give(&self, config: &Config, record: &mut Dict, agents: &[AgentConfig]) -> anyhow::Result<()> {
         let card = record.get("kind").and_then(Value::as_str) == Some(crate::cards::KIND);
         for agent in agents {
             if card {
@@ -524,7 +634,7 @@ impl Vault {
                 Self::handles(record).insert(agent.name.clone(), json!(CARD_HANDLE));
                 continue;
             }
-            let answer = (self.run)(agent.clone(), Self::to_hermes(record)).await?;
+            let answer = (self.run)(vault_target(config, agent), Self::to_hermes(record)).await?;
             let handle = answer.get("id").ok_or_else(|| anyhow::anyhow!("KeyError: 'id'"))?;
             Self::handles(record).insert(agent.name.clone(), json!(crate::py::py_str(handle)));
             let item = record.get("id").map(crate::py::py_str).unwrap_or_default();
@@ -537,7 +647,7 @@ impl Vault {
         let item = record.get("id").map(crate::py::py_str).unwrap_or_default();
         for agent_id in agent_ids {
             let handle = Self::handles(record).shift_remove(agent_id);
-            let agent = config.agent(Some(agent_id));
+            let agent = config.agent(Some(agent_id)).map(|a| vault_target(config, a));
             let handle = handle.filter(|h| crate::py::truthy(h) && h.as_str() != Some(CARD_HANDLE));
             if let (Some(handle), Some(agent)) = (handle, agent) {
                 if !agent.python.is_empty() && agent.hermes_home.as_deref().map(|h| !h.is_empty()).unwrap_or(false) {
@@ -569,7 +679,7 @@ impl Vault {
         record.insert("created_at".into(), json!(now()));
         record.insert("updated_at".into(), json!(now()));
         let _lock = self.lock.lock().await;
-        if let Err(exc) = self.give(&mut record, &agents).await {
+        if let Err(exc) = self.give(config, &mut record, &agents).await {
             let given: Vec<String> = Self::handles(&mut record).keys().cloned().collect();
             self.take_back(config, &mut record, &given).await;
             return Err(exc);
@@ -610,7 +720,7 @@ impl Vault {
         let give = Self::check(config, &to_give)?;
         let to_take: Vec<String> = had.iter().filter(|a| !wanted.contains(a) || changed).cloned().collect();
         self.take_back(config, &mut record, &to_take).await;
-        self.give(&mut record, &give).await?;
+        self.give(config, &mut record, &give).await?;
         record.insert("updated_at".into(), json!(now()));
         records[index] = record.clone();
         self.write(&records)?;
@@ -767,7 +877,7 @@ impl Vault {
         record.insert("pending".into(), json!(true));
         record.insert("confirmed_at".into(), Value::Null);
         record.insert("updated_at".into(), json!(now()));
-        if let Err(exc) = self.give(&mut record, std::slice::from_ref(agent)).await {
+        if let Err(exc) = self.give(config, &mut record, std::slice::from_ref(agent)).await {
             let given: Vec<String> = Self::handles(&mut record).keys().cloned().collect();
             self.take_back(config, &mut record, &given).await;
             return Err(exc);
@@ -1077,6 +1187,100 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A protected place whose hub serves `agents`, its data in `dir`.
+    fn place(dir: &std::path::Path, agents: &[&str]) -> Config {
+        let mut config = Config::with_key("k".repeat(32));
+        config.outbox.db_path = dir.join("outbox.db").to_string_lossy().into_owned();
+        config.hermes.isolated = true;
+        config.hermes.bin = "/usr/bin/hermes".into();
+        config.hermes.hub_url = "http://127.0.0.1:8642".into();
+        config.hermes.home = dir.join("hermes").to_string_lossy().into_owned();
+        config.hermes.python = vec!["/usr/bin/python3".into()];
+        for name in agents {
+            let agent = AgentConfig {
+                name: name.to_string(),
+                hermes_url: format!("http://127.0.0.1:8642/p/{name}"),
+                ..Default::default()
+            };
+            config.agents.insert(name.to_string(), agent);
+        }
+        config
+    }
+
+    fn may(config: &Config, name: &str) -> bool {
+        hub_may_hold(config, &config.agents[name], &others_facing_agents(config))
+    }
+
+    #[test]
+    fn a_hub_of_the_person_s_own_agents_holds_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = place(dir.path(), &["coach", "cuisine"]);
+        assert!(!others_facing(&config, "coach"));
+        assert!(may(&config, "coach") && may(&config, "cuisine"));
+        // the hub's Python and the profile's home as that Python sees it
+        let target = vault_target(&config, &config.agents["coach"]);
+        assert_eq!(target.python, vec!["/usr/bin/python3".to_string()]);
+        assert_eq!(target.hermes_home, Some(dir.path().join("hermes/profiles/coach").to_string_lossy().into_owned()));
+        let mut contained = config.clone();
+        contained.hermes.container_home = "/opt/data".into();
+        assert_eq!(vault_target(&contained, &config.agents["coach"]).hermes_home.as_deref(), Some("/opt/data/profiles/coach"));
+        // not on an unprotected install, nor without the hub's Python
+        let mut open = config.clone();
+        open.hermes.isolated = false;
+        assert!(!may(&open, "coach"));
+        assert_eq!(holder(&open, &open.agents["coach"]).as_deref(), Some("unprotected_install"));
+        let mut no_python = config.clone();
+        no_python.hermes.python.clear();
+        assert!(!may(&no_python, "coach"));
+        assert_eq!(holder(&no_python, &no_python.agents["coach"]).as_deref(), Some("needs_own_space"));
+    }
+
+    #[test]
+    fn an_others_facing_agent_in_the_hub_keeps_everyone_moving() {
+        for which in ["family", "project", "peer"] {
+            let dir = tempfile::tempdir().unwrap();
+            let config = place(dir.path(), &["coach", "fete"]);
+            let (file, text) = match which {
+                "family" => ("family-agent.json", r#"{"agent": "fete"}"#),
+                "project" => (
+                    "project-agents.json",
+                    r#"{"projects": {"fete": {"created": 1.0, "ends": 9999999999.0, "archived": null}}}"#,
+                ),
+                _ => ("peers.json", r#"{"links": [["cuisine__lea", "fete"]]}"#),
+            };
+            std::fs::write(dir.path().join(file), text).unwrap();
+            assert!(others_facing(&config, "fete"), "{which}");
+            assert!(!others_facing(&config, "coach"), "{which}");
+            assert!(!may(&config, "fete") && !may(&config, "coach"), "{which}");
+            assert_eq!(holder(&config, &config.agents["coach"]).as_deref(), Some("needs_own_space"), "{which}");
+            assert_eq!(holder(&config, &config.agents["fete"]).as_deref(), Some("needs_own_space"), "{which}");
+            // once the others-facing agent lives in its own space, the hub is private again
+            let mut moved = config.clone();
+            let fete = moved.agents.get_mut("fete").unwrap();
+            fete.isolated = true;
+            fete.space = Some("/srv/spaces/fete".into());
+            fete.hermes_url = "http://127.0.0.1:8700".into();
+            assert!(may(&moved, "coach"), "{which}");
+        }
+        // a link between two of the person's own agents changes nothing
+        let dir = tempfile::tempdir().unwrap();
+        let config = place(dir.path(), &["coach", "cuisine"]);
+        std::fs::write(dir.path().join("peers.json"), r#"{"links": [["coach", "cuisine"]]}"#).unwrap();
+        assert!(may(&config, "coach") && !others_facing(&config, "cuisine"));
+    }
+
+    #[test]
+    fn credentials_left_in_a_hub_no_longer_private_are_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = place(dir.path(), &["coach", "fete"]);
+        let records: Vec<Dict> = vec![json!({"agents": {"coach": "vault_1"}}).as_object().unwrap().clone()];
+        assert!(hub_holders_at_risk(&config, &records).is_empty());
+        std::fs::write(dir.path().join("family-agent.json"), r#"{"agent": "fete"}"#).unwrap();
+        assert_eq!(hub_holders_at_risk(&config, &records), vec!["coach".to_string()]);
+        let cards: Vec<Dict> = vec![json!({"agents": {"coach": CARD_HANDLE}}).as_object().unwrap().clone()];
+        assert!(hub_holders_at_risk(&config, &cards).is_empty());
+    }
 
     #[test]
     fn origins_as_typed() {
