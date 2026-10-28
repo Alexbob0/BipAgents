@@ -387,6 +387,9 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if crate::family_agent::is_family(config, &agent.name) {
         return crate::family_agent::tools(config); // nobody's private data (family_agent.rs)
     }
+    if crate::project_agent::is_project(config, &agent.name) {
+        return crate::project_agent::tools(config); // shown to friends: nobody's private data (project_agent.rs)
+    }
     let mut tools = install_tools(config).to_vec();
     if crate::notebook::enabled(config, &agent.name) {
         tools.extend(crate::notebook::tools::tools(crate::notebook::health_agent(config, &agent.name)));
@@ -1632,6 +1635,13 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         if crate::family_agent::TOOL_NAMES.contains(&name.as_str()) {
             let result = crate::family_agent::call_tool(&state.config(), &agent, &name, &arguments)?;
             return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+        }
+    }
+    if crate::project_agent::is_project(&state.config(), &agent.name) {
+        // a project agent: only its few tools, in every turn (project_agent.rs)
+        if let Some(closed) = crate::project_agent::closed_tool(&name) {
+            tracing::info!(agent = %agent.name, tool = %name, "tool closed for a project agent");
+            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
         }
     }
     if crate::agent_shares::relative_turn(&state.config(), &agent.name) {

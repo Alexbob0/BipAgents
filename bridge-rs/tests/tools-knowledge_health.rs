@@ -108,7 +108,7 @@ async fn the_phone_sends_its_days_only_once_an_agent_has_health_on() {
         agent_tools::version_of(&agent_tools::tools_for(&config, config.agent(Some("coach")).unwrap()))
     )));
     assert_ne!(urls[0], agent_tools::tools_url(&config));
-    assert_eq!(tool_names(&app).await.last().unwrap(), "health");
+    assert!(tool_names(&app).await.contains(&"health".to_string()));
     // A new switch reads activity, sleep and heart; weight is in « body », chosen here too.
     assert_eq!(health::categories(&config, "coach"), vec!["activity", "sleep", "heart"]);
     let before = agent_tools::version_of(&agent_tools::tools_for(&config, config.agent(Some("coach")).unwrap()));

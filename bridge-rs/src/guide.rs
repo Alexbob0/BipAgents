@@ -54,7 +54,11 @@ pub const SETUP_END: &str = "<!-- /bipagents:setup -->";
 pub const PROPOSE_AGENT: &str = "propose_agent";
 pub const SUGGEST_SWITCH: &str = "suggest_switch";
 pub const PROPOSE_PROFILE: &str = "propose_profile";
-pub const TOOL_NAMES: [&str; 3] = [PROPOSE_AGENT, SUGGEST_SWITCH, PROPOSE_PROFILE];
+/// The hand-over to a project agent (project_agent.rs, 2026-10-28): any of the person's own agents may propose it.
+pub const CREATE_PROJECT: &str = "create_project_agent";
+pub const TOOL_NAMES: [&str; 4] = [PROPOSE_AGENT, SUGGEST_SWITCH, PROPOSE_PROFILE, CREATE_PROJECT];
+/// Friends named on a project card, at most.
+pub const FRIENDS_MAX: usize = 20;
 /// A declined subject waits this long before it may be proposed again.
 pub const DECLINE_SECONDS: f64 = 30.0 * 86400.0;
 /// Cards of one agent waiting for the person.
@@ -186,7 +190,32 @@ pub fn tools(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if needs_role(&state, agent) || needs_name(&state, agent) {
         out.push(propose_profile_tool());
     }
+    if may_propose_project(config, agent) {
+        out.push(create_project_tool());
+    }
     out
+}
+
+/// Whether `agent` may propose a project agent: the person's own agents, not the family's nor a project agent.
+fn may_propose_project(config: &Config, agent: &AgentConfig) -> bool {
+    config.hermes.enabled()
+        && !crate::family_agent::is_family(config, &agent.name)
+        && !crate::project_agent::is_project(config, &agent.name)
+}
+
+fn create_project_tool() -> Value {
+    json!({
+        "name": CREATE_PROJECT,
+        "description": "Propose making a project agent your person shares read-only with friends (a trip, a party, a \
+    move): they see a card with your summary and decide. Rarely, once per topic.",
+        "inputSchema": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "the project's short name, e.g. Voyage à Lisbonne"},
+            "friends": {"type": "array", "items": {"type": "string"}, "description": "first names of the friends"},
+            "summary": {"type": "string", "description": "what is decided so far, in their language, with nothing \
+    private: the only thing handed over"},
+            "ends": {"type": "string", "description": "the event's last day (YYYY-MM-DD), if known"}},
+            "required": ["name", "summary"]},
+    })
 }
 
 fn propose_agent_tool() -> Value {
@@ -457,6 +486,7 @@ fn key_of(p: &Dict) -> String {
     match p.get("type").and_then(Value::as_str) {
         Some("agent") => format!("agent:{}", str_of(p, "kind")),
         Some("switch") => format!("switch:{}", str_of(p, "target")),
+        Some("project") => format!("project:{}", tk::squeeze(&str_of(p, "name")).to_lowercase()),
         _ => format!("profile:{}", str_of(p, "agent")),
     }
 }
@@ -480,6 +510,36 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
     proposal.insert("agent".into(), json!(agent.name));
     proposal.insert("created".into(), json!(now().round()));
     match name {
+        CREATE_PROJECT if !may_propose_project(config, agent) => {
+            return Ok(tool_text("Only your person's own agents propose project agents.", true));
+        }
+        CREATE_PROJECT => {
+            let project = arg(arguments, "name", 40);
+            let summary = arg(arguments, "summary", crate::project_agent::SUMMARY_MAX);
+            if project.is_empty() || summary.is_empty() {
+                return Ok(tool_text("give the project's name and a short summary of what is decided", true));
+            }
+            if find_agent(config, &project).is_some() {
+                return Ok(tool_text(&format!("they already have an agent named {project}"), true));
+            }
+            let friends: Vec<String> = arguments
+                .get("friends")
+                .and_then(Value::as_array)
+                .map(|all| {
+                    all.iter()
+                        .filter_map(Value::as_str)
+                        .map(|f| tk::head(&tk::squeeze(f), 40).to_string())
+                        .filter(|f| !f.is_empty())
+                        .take(FRIENDS_MAX)
+                        .collect()
+                })
+                .unwrap_or_default();
+            proposal.insert("type".into(), json!("project"));
+            proposal.insert("name".into(), json!(project));
+            proposal.insert("friends".into(), json!(friends));
+            proposal.insert("summary".into(), json!(summary));
+            proposal.insert("ends".into(), json!(project_ends(&arg(arguments, "ends", 20))));
+        }
         PROPOSE_AGENT | SUGGEST_SWITCH if !is_the_guide => {
             return Ok(tool_text("Only the agent the person chose as their guide proposes agents.", true));
         }
@@ -552,6 +612,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
     }
     let card = match name {
         PROPOSE_AGENT => format!("A card to create {} is", str_of(&proposal, "name")),
+        CREATE_PROJECT => format!("A card to make the project agent {} is", str_of(&proposal, "name")),
         SUGGEST_SWITCH => format!(
             "A card to continue with {} is",
             config.agents.get(&str_of(&proposal, "target")).map(|t| t.display_name.as_str()).unwrap_or("")
@@ -574,8 +635,23 @@ fn language_of(config: &Config, agent: &AgentConfig) -> String {
         .unwrap_or_else(|| crate::notebook::language(config))
 }
 
+/// A project card's end: the event's last day + 7 days (the end of that day, local time), None when not given or
+/// not a date ahead within the year (the app then proposes 30 days).
+pub fn project_ends(day: &str) -> Option<f64> {
+    let date = chrono::NaiveDate::parse_from_str(day.trim(), "%Y-%m-%d").ok()?;
+    let end = (date + chrono::Duration::days(7)).and_hms_opt(23, 59, 0)?;
+    let at = end.and_local_timezone(chrono::Local).earliest()?.timestamp() as f64;
+    crate::project_agent::ends_ok(Some(at)).ok()
+}
+
 /// `text` saved in `agent`'s memory as information handed over by `from` (the older handovers go).
-fn hand_over(config: &Config, agent: &AgentConfig, from: &str, text: &str, lang: &str) -> anyhow::Result<()> {
+pub(crate) fn hand_over(
+    config: &Config,
+    agent: &AgentConfig,
+    from: &str,
+    text: &str,
+    lang: &str,
+) -> anyhow::Result<()> {
     let text = tk::squeeze(&text.replace('§', ""));
     if text.is_empty() {
         return Ok(());
@@ -897,6 +973,36 @@ async fn accept(
             hand_over(&config, &agent, &from.display_name, &str_of(&proposal, "handover"), &lang)?;
             refresh(&config);
             Ok(web::json_response(201, &json!({"type": "agent", "kind": kind, "agent": created_json(&config, &agent)})))
+        }
+        Some("project") => {
+            let name = body
+                .name
+                .as_deref()
+                .map(tk::squeeze)
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| str_of(&proposal, "name"));
+            let ends = proposal
+                .get("ends")
+                .and_then(Value::as_f64)
+                .filter(|e| crate::project_agent::ends_ok(Some(*e)).is_ok())
+                .unwrap_or_else(|| now() + crate::project_agent::DEFAULT_DAYS * 86400.0);
+            let new = crate::project_agent::NewProject {
+                name,
+                ends,
+                lang: lang.clone(),
+                category: from.category.clone().unwrap_or_default(),
+                // exactly the summary the card showed, nothing else of the main thread
+                summary: str_of(&proposal, "summary"),
+                from: Some(from.clone()),
+            };
+            let (agent, project) = crate::project_agent::create(&state, new).await?;
+            take_proposal(&state.config(), &id)?;
+            let config = state.config();
+            Ok(web::json_response(
+                201,
+                &json!({"type": "project", "agent": created_json(&config, &agent), "project": project,
+                        "friends": proposal.get("friends").cloned().unwrap_or(json!([]))}),
+            ))
         }
         Some("switch") => {
             let Some(target) = config.agents.get(&str_of(&proposal, "target")).cloned() else {

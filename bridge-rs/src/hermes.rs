@@ -502,6 +502,25 @@ impl HermesClient {
         Ok(Self::items(data, ["sessions", "data", "items"]))
     }
 
+    /// The agent's « Bot Chat » session(s) (its single thread), hidden ones included, oldest first (read_shares.rs:
+    /// a project agent's whole thread shared).
+    pub async fn bot_chat_sessions(&self, agent: &AgentConfig) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let params = [("limit", "200".to_string()), ("title", "Bot Chat".to_string()), ("include_hidden", "1".into())];
+        let data = self.get_json(agent, "/api/sessions", &params).await?;
+        let mut rows: Vec<Map<String, Value>> = Self::items(data, ["sessions", "data", "items"])
+            .into_iter()
+            .filter(crate::cronwatch::is_bot_chat)
+            .collect();
+        let started = |row: &Map<String, Value>| {
+            ["started_at", "created_at", "created"]
+                .iter()
+                .find_map(|k| row.get(*k).and_then(Value::as_f64))
+                .unwrap_or(0.0)
+        };
+        rows.sort_by(|a, b| started(a).total_cmp(&started(b)));
+        Ok(rows)
+    }
+
     /// `GET /api/sessions?limit=&offset=`: one page of the list (Hermes reads at most 200 at a time).
     pub async fn list_sessions_page(
         &self,

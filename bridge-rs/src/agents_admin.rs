@@ -586,7 +586,9 @@ pub async fn make_profile(
     run(strings(&[&hermes, "-p", &profile, "config", "set", "API_SERVER_KEY", &agent.hermes_key]), env.clone()).await?;
     // The family's agent (family_agent.rs): never anything that reads the place's disk or drives a browser with
     // someone's logins, sandboxed or not.
-    let family = crate::family_agent::is_family(&config, &profile);
+    // A project agent (project_agent.rs) the same: shown to friends, it reaches nobody's files.
+    let family =
+        crate::family_agent::is_family(&config, &profile) || crate::project_agent::is_project(&config, &profile);
     if !install.isolated || family {
         // Same account as this bridge and no sandbox: nothing that reads the disk until the person turns it on.
         let mut args = strings(&[&hermes, "-p", &profile, "tools", "disable"]);
@@ -1448,6 +1450,15 @@ pub async fn write_settings(
     {
         return Err(AgentError("the family's agent keeps nobody's private data: these tools stay off".into()).into());
     }
+    if crate::project_agent::is_project(&config, &agent.name)
+        && crate::project_agent::refused_setting(
+            &toolsets,
+            body.browser,
+            body.health == Some(true) || body.notebook == Some(true),
+        )
+    {
+        return Err(AgentError("a project agent is shown to friends: these tools stay off".into()).into());
+    }
     if !skills.is_empty() {
         if let Err(exc) = crate::own_skills::set_enabled(&profile_folder(&config, agent), &skills) {
             return Err(match exc.downcast_ref::<LookupError>() {
@@ -1525,15 +1536,18 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
         _ => text,
     };
     // the family's agent: none of its creator's private tools, its own block instead (family_agent.rs)
+    let project = crate::project_agent::is_project(config, &agent.name);
     let family = crate::family_agent::is_family(config, &agent.name);
-    let text = crate::souls::with_health(&text, !family && crate::health::enabled(config, &agent.name));
-    let text = crate::souls::with_notebook(&text, !family && crate::notebook::enabled(config, &agent.name));
-    let text = crate::souls::with_archives(&text, !family && crate::archives::enabled(config, &agent.name));
+    let closed = family || project;
+    let text = crate::souls::with_health(&text, !closed && crate::health::enabled(config, &agent.name));
+    let text = crate::souls::with_notebook(&text, !closed && crate::notebook::enabled(config, &agent.name));
+    let text = crate::souls::with_archives(&text, !closed && crate::archives::enabled(config, &agent.name));
     let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
     let text = crate::dates::with_dates(&text, line.as_deref());
     let text = crate::guide::with_blocks(config, agent, &text);
     let text = crate::family_agent::with_family(&text, family);
-    let text = if family || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+    let text = crate::project_agent::with_project(&text, project);
+    let text = if closed || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         text
     } else {
         crate::souls::with_payments(&text)
@@ -1550,6 +1564,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
     let (soul, _) = crate::family_agent::split_family(&soul);
+    let (soul, _) = crate::project_agent::split_project(&soul);
     Ok(crate::guide::split_blocks(&soul))
 }
 
@@ -1614,6 +1629,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     crate::weather::forget(&config, &agent.name);
     crate::guide::forget(&config, &agent.name);
     crate::family_agent::forget(&config, &agent.name);
+    crate::project_agent::forget(&config, &agent.name);
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, "agent deleted");
     Ok(())
 }

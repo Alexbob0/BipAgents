@@ -206,13 +206,37 @@ fn content_key(share: &Value) -> Option<[u8; 32]> {
     STD.decode(s(share, "key")).ok().and_then(|k| <[u8; 32]>::try_from(k.as_slice()).ok())
 }
 
+/// Whether a share is of an agent's whole thread (a project agent's, project_agent.rs) rather than one conversation.
+pub fn is_thread(share: &Value) -> bool {
+    share.get("thread").and_then(Value::as_bool) == Some(true)
+}
+
 /// The live shares of this conversation.
 pub fn shares_for(config: &Config, agent: &str, session: &str) -> Vec<Value> {
     let at = now();
     shares_of(config)
         .into_values()
-        .filter(|v| s(v, "agent") == agent && s(v, "session") == session && v["ends"].as_f64().unwrap_or(0.0) > at)
+        .filter(|v| {
+            s(v, "agent") == agent
+                && !is_thread(v)
+                && s(v, "session") == session
+                && v["ends"].as_f64().unwrap_or(0.0) > at
+        })
         .collect()
+}
+
+/// The live shares of this agent's whole thread.
+pub fn thread_shares(config: &Config, agent: &str) -> Vec<Value> {
+    let at = now();
+    shares_of(config)
+        .into_values()
+        .filter(|v| s(v, "agent") == agent && is_thread(v) && v["ends"].as_f64().unwrap_or(0.0) > at)
+        .collect()
+}
+
+/// The share of this agent's thread kept here, if any.
+pub fn thread_share(config: &Config, agent: &str) -> Option<Value> {
+    shares_of(config).into_values().find(|v| s(v, "agent") == agent && is_thread(v))
 }
 
 // -- the agent in a shared conversation ---------------------------------------------------------------------------------
@@ -244,7 +268,7 @@ pub fn shared_turn(state: &AppState, agent: &str) -> bool {
     shares_of(&state.config()).values().any(|v| {
         s(v, "agent") == agent
             && v["ends"].as_f64().unwrap_or(0.0) > at
-            && state.hub.session_busy(agent, &s(v, "session"))
+            && (is_thread(v) || state.hub.session_busy(agent, &s(v, "session")))
     })
 }
 
@@ -512,6 +536,32 @@ fn refused(status: u16, body: &Value) -> HttpError {
     HttpError::new(if status >= 500 { 502 } else { status }, detail)
 }
 
+/// The messages a share shows: its conversation's, or for a share of a whole thread, those of the agent's « Bot
+/// Chat » session(s), oldest first (one list, so a message's place is the same with or without its images).
+async fn messages_of(
+    state: &AppState,
+    agent: &crate::config::AgentConfig,
+    share: &Value,
+    images: bool,
+) -> Option<Vec<Dict>> {
+    let sessions: Vec<String> = if is_thread(share) {
+        let rows = state.hermes.bot_chat_sessions(agent).await.ok()?;
+        rows.iter().map(|r| tk::str_or_empty(r.get("id"))).filter(|id| !id.is_empty()).collect()
+    } else {
+        vec![s(share, "session")]
+    };
+    let mut all = Vec::new();
+    for session in sessions {
+        let found = if images {
+            state.hermes.session_messages_with_images(agent, &session).await
+        } else {
+            state.hermes.session_messages(agent, &session).await
+        };
+        all.extend(found.ok()?);
+    }
+    Some(all)
+}
+
 /// Brings one share up to date: new viewers keyed (their proof checked), a new key after a removal, new or changed
 /// items sent (`notify`: viewers told of new messages). The share as kept then; None when it is gone (stopped, ended).
 pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Value>, HttpError> {
@@ -620,7 +670,7 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
     }
     // the items: what changed since last time
     let messages = match config.agent(Some(&s(&share, "agent"))) {
-        Some(agent) => state.hermes.session_messages(agent, &s(&share, "session")).await.ok(),
+        Some(agent) => messages_of(state, agent, &share, false).await,
         None => None,
     };
     if let Some(messages) = messages {
@@ -630,7 +680,7 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         let mut photo_items = Vec::new();
         if !wanted.is_empty() {
             if let Some(agent) = config.agent(Some(&s(&share, "agent"))) {
-                if let Ok(inline) = state.hermes.session_messages_with_images(agent, &s(&share, "session")).await {
+                if let Some(inline) = messages_of(state, agent, &share, true).await {
                     let (items, found) = new_photos(&inline, &wanted);
                     photo_items = items;
                     let mut all = done.clone();
@@ -718,7 +768,8 @@ pub fn view(share: &Value) -> Value {
         .map(|v| v.iter().filter(|x| x["state"] == "ok").count())
         .unwrap_or(0);
     json!({
-        "id": share["id"], "agent": share["agent"], "session": share["session"], "title": share["title"],
+        "id": share["id"], "agent": share["agent"], "session": share.get("session").cloned().unwrap_or(Value::Null),
+        "thread": is_thread(share), "title": share["title"],
         "ends": share["ends"], "count": count,
         "viewers": share.get("viewers").cloned().unwrap_or_else(|| json!([])),
         "invites": share.get("invites_open").cloned().unwrap_or_else(|| json!([])),
@@ -753,10 +804,15 @@ fn known(config: &Config, id: &str) -> ApiResult<Value> {
 
 async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let agent = web::query_required(&q, "agent")?;
-    let session = web::query_required(&q, "session")?;
+    let session = q.get("session").map(str::to_string).filter(|s| !s.is_empty());
     let config = state.config();
     let mut out = Vec::new();
-    for share in shares_for(&config, &agent, &session) {
+    // no session: the shares of the agent's whole thread (a project agent's)
+    let found = match &session {
+        Some(session) => shares_for(&config, &agent, session),
+        None => thread_shares(&config, &agent),
+    };
+    for share in found {
         let id = s(&share, "id");
         match sync(&state, &id, true).await {
             Ok(Some(fresh)) => out.push(view(&fresh)),
@@ -772,7 +828,15 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     let body = body_of(&body)?;
     let config = state.config();
     let agent = crate::app::agent_or_404(&config, Some(&text_field(&body, "agent", 80)?))?;
-    let session = text_field(&body, "session", 200)?;
+    // a project agent's whole thread (project_agent.rs), never another agent's: its main thread holds private things
+    let thread = body.get("thread").and_then(Value::as_bool) == Some(true);
+    if thread && !crate::project_agent::is_project(&config, &agent.name) {
+        return Err(HttpError::new(422, "thread: only a project agent's thread is shared"));
+    }
+    if thread && !thread_shares(&config, &agent.name).is_empty() {
+        return Err(HttpError::new(409, "this project is shared already"));
+    }
+    let session = if thread { String::new() } else { text_field(&body, "session", 200)? };
     let title = text_field(&body, "title", 120)?;
     let from = text_field(&body, "from", 40)?;
     let id = text_field(&body, "share", 64)?;
@@ -786,9 +850,13 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     if !guichet_ok(&guichet_url) {
         return Err(HttpError::new(422, "guichet: an https address"));
     }
-    let share = json!({"id": id, "agent": agent.name, "session": session, "title": title, "from": from,
+    let mut share = json!({"id": id, "agent": agent.name, "session": session, "title": title, "from": from,
                        "guichet": guichet_url.trim_end_matches('/'), "writer": writer, "ends": ends,
                        "created": now(), "invites": {}});
+    if thread {
+        share["thread"] = json!(true);
+        share.as_object_mut().expect("an object").remove("session");
+    }
     put_share(&config, &id, Some(share)).map_err(|e| HttpError::new(500, e.to_string()))?;
     match sync(&state, &id, false).await {
         Ok(Some(share)) => Ok(web::ok(view(&share))),
@@ -873,28 +941,46 @@ async fn remove_viewer(
 
 async fn set_ends(State(state): State<AppState>, UrlPath(id): UrlPath<String>, body: Bytes) -> ApiResult<Response> {
     let body = body_of(&body)?;
-    let config = state.config();
-    let share = known(&config, &id)?;
     let ends = body["ends"].as_f64().ok_or_else(|| HttpError::new(422, "ends: a date"))?;
-    let (status, answer) = guichet(&state, &share, reqwest::Method::POST, "/ends", Some(json!({"ends": ends})))
+    let share = known(&state.config(), &id)?;
+    let project = is_thread(&share) && crate::project_agent::is_project(&state.config(), &s(&share, "agent"));
+    let ends = if project { crate::project_agent::ends_ok(Some(ends))? } else { ends };
+    change_ends(&state, &id, ends).await?;
+    if project {
+        // a project's share ends with the project (project_agent.rs)
+        crate::project_agent::set_ends_of(&state.config(), &s(&share, "agent"), ends)?;
+    }
+    after(&state, &id).await
+}
+
+/// A share's end date changed at the guichet.
+pub async fn change_ends(state: &AppState, id: &str, ends: f64) -> ApiResult<()> {
+    let share = known(&state.config(), id)?;
+    let (status, answer) = guichet(state, &share, reqwest::Method::POST, "/ends", Some(json!({"ends": ends})))
         .await
         .map_err(|e| HttpError::new(502, e))?;
     if status != 200 {
         return Err(refused(status, &answer));
     }
-    after(&state, &id).await
+    Ok(())
 }
 
-/// Stopped: deleted at the guichet (the viewers' apps then delete their copy) and here.
-async fn stop(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
+/// A share stopped: deleted at the guichet (the viewers' apps then delete their copy) and here.
+pub async fn stop_share(state: &AppState, id: &str) -> ApiResult<()> {
     let config = state.config();
-    let share = known(&config, &id)?;
+    let share = known(&config, id)?;
     let (status, body) =
-        guichet(&state, &share, reqwest::Method::DELETE, "", None).await.map_err(|e| HttpError::new(502, e))?;
-    if status != 200 && status != 404 {
+        guichet(state, &share, reqwest::Method::DELETE, "", None).await.map_err(|e| HttpError::new(502, e))?;
+    if status != 200 && status != 404 && status != 410 {
         return Err(refused(status, &body));
     }
-    put_share(&config, &id, None).map_err(|e| HttpError::new(500, e.to_string()))?;
+    put_share(&config, id, None).map_err(|e| HttpError::new(500, e.to_string()))?;
+    Ok(())
+}
+
+/// Stopped by the owner.
+async fn stop(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
+    stop_share(&state, &id).await?;
     Ok(web::ok(json!({"ok": true})))
 }
 
