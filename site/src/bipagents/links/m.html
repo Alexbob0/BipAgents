@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>BipAgents</title>
+<link rel="icon" href="/assets/favicon.svg">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+  main { max-width: 560px; margin: 8vh auto; padding: 0 16px; }
+  .head { display: flex; gap: 16px; align-items: center; }
+  .bip { width: 88px; height: 88px; flex: none; }
+  .bip svg { width: 100%; height: 100%; }
+  h1 { margin: 0; }
+  .intro { margin: 8px 0 0; }
+  section { margin: 22px 0; }
+  h2 { font-size: 1rem; margin: 0 0 8px; }
+  ul { margin: 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .what { white-space: pre-line; opacity: .85; }
+  .warn { display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 999px; background: #FFF1D6; color: #7A4B00; font-size: .85rem; }
+  .sites { opacity: .7; font-size: .9rem; }
+  .never { font-size: .9rem; opacity: .75; }
+  .actions { text-align: center; margin: 28px 0; }
+  .open { display: inline-block; padding: 14px 22px; border-radius: 999px; font-weight: 800; text-decoration: none; background: var(--ink, #222); color: var(--bg, #fff); }
+  .stores { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 18px 0; }
+  .stores a { display: inline-block; padding: 10px 18px; border-radius: 999px; text-decoration: none; background: var(--card, #fff); border: 1px solid var(--line, #ddd); color: inherit; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="head">
+    <div class="bip" id="bip"></div>
+    <div>
+      <h1 id="name" data-t="title">An agent model to add</h1>
+      <p class="intro" id="intro"></p>
+    </div>
+  </div>
+  <p id="state" data-t="loading">Loading…</p>
+  <div id="details" hidden>
+    <section id="what-box"><h2 data-t="what">What it does</h2><p class="what" id="what"></p></section>
+    <section id="tools-box"><h2 data-t="tools">Its tools</h2><ul id="tools"></ul></section>
+    <section id="skills-box"><h2 data-t="skills">What it knows how to do</h2><ul id="skills"></ul></section>
+    <section id="routines-box"><h2 data-t="routines">Its routines (off until you turn them on)</h2><ul id="routines"></ul></section>
+    <section id="connectors-box"><h2 data-t="connectors">Its connectors</h2>
+      <p class="never" data-t="own_password">They ask for your own password, kept in your server's vault; you approve each one first.</p>
+      <ul id="connectors"></ul></section>
+  </div>
+  <p class="never" data-t="never">Never copied: its creator's memory, Carnet, conversations, files, passwords and links with their family.</p>
+  <div class="actions">
+    <a class="open" id="open" href="#" data-t="add">Add to BipAgents</a>
+    <div class="stores">
+      <a href="https://apps.apple.com/app/bipagents/idAPPSTOREID">App Store</a>
+      <a href="https://play.google.com/store/apps/details?id=com.kerfystudio.bipagents">Google Play</a>
+    </div>
+    <p><small data-t="install">No BipAgents yet? Install it, then come back here and tap « Add to BipAgents ».</small></p>
+  </div>
+</main>
+<script type="module">
+  import { staticBip } from "/assets/bips.js";
+  const GUICHET = "https://guichet.bipagents.com";
+  const texts = {
+    fr: {title: "Un modèle d’agent à ajouter", loading: "Chargement…", what: "Ce qu’il fait", tools: "Ses outils",
+         skills: "Ce qu’il sait faire", routines: "Ses routines (éteintes jusqu’à ce que tu les allumes)", connectors: "Ses connecteurs",
+         own_password: "Ils te demandent ton propre mot de passe, gardé dans le coffre de ton serveur ; tu approuves chacun d’abord.",
+         never: "Jamais copié : la mémoire, le Carnet, les conversations, les fichiers, les mots de passe et les liens familiaux de la personne qui l’a créé.",
+         add: "Ajouter à BipAgents", install: "Pas encore BipAgents ? Installe-le, puis reviens ici et touche « Ajouter à BipAgents ».",
+         unofficial: "Non officiel : le service peut le bloquer", family: "Ce modèle est réservé à une famille : ouvre-le dans l’app.",
+         gone: "Ce modèle n’est plus partagé.", error: "Impossible de charger ce modèle pour l’instant.",
+         browser: "Son propre navigateur", weather: "Météo", notebook: "Carnet", web: "Recherche web", bad: "Ce lien n’est pas valide."},
+    de: {title: "Eine Agenten-Vorlage zum Hinzufügen", loading: "Wird geladen…", what: "Was er macht", tools: "Seine Werkzeuge",
+         skills: "Was er kann", routines: "Seine Routinen (aus, bis du sie einschaltest)", connectors: "Seine Konnektoren",
+         own_password: "Sie fragen nach deinem eigenen Passwort, das im Tresor deines Servers bleibt; du genehmigst jeden zuerst.",
+         never: "Nie kopiert: Gedächtnis, Notizbuch, Unterhaltungen, Dateien, Passwörter und Familienverbindungen der Person, die ihn erstellt hat.",
+         add: "Zu BipAgents hinzufügen", install: "Noch kein BipAgents? Installiere es, komm hierher zurück und tippe auf « Zu BipAgents hinzufügen ».",
+         unofficial: "Inoffiziell: der Dienst kann ihn sperren", family: "Diese Vorlage ist für eine Familie: öffne sie in der App.",
+         gone: "Diese Vorlage wird nicht mehr geteilt.", error: "Diese Vorlage lässt sich gerade nicht laden.",
+         browser: "Eigener Browser", weather: "Wetter", notebook: "Notizbuch", web: "Websuche", bad: "Dieser Link ist ungültig."},
+    es: {title: "Un modelo de agente para añadir", loading: "Cargando…", what: "Lo que hace", tools: "Sus herramientas",
+         skills: "Lo que sabe hacer", routines: "Sus rutinas (apagadas hasta que las enciendas)", connectors: "Sus conectores",
+         own_password: "Te piden tu propia contraseña, guardada en la caja fuerte de tu servidor; apruebas cada uno antes.",
+         never: "Nunca se copia: la memoria, el Cuaderno, las conversaciones, los archivos, las contraseñas ni los lazos familiares de quien lo creó.",
+         add: "Añadir a BipAgents", install: "¿Aún no tienes BipAgents? Instálalo, vuelve aquí y toca « Añadir a BipAgents ».",
+         unofficial: "No oficial: el servicio puede bloquearlo", family: "Este modelo es solo para una familia: ábrelo en la app.",
+         gone: "Este modelo ya no se comparte.", error: "No se puede cargar este modelo ahora.",
+         browser: "Su propio navegador", weather: "Tiempo", notebook: "Cuaderno", web: "Búsqueda web", bad: "Este enlace no es válido."},
+    en: {unofficial: "Unofficial: the service may block it", family: "This model is for one family only: open it in the app.",
+         gone: "This model isn’t shared any more.", error: "This model can’t be loaded right now.",
+         browser: "Its own browser", weather: "Weather", notebook: "Carnet", web: "Web search", bad: "This link isn’t valid."}
+  };
+  const lang = (navigator.language || "en").slice(0, 2), t = Object.assign({}, texts.en, texts[lang] || {});
+  if (texts[lang] && lang !== "en") {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-t]").forEach(el => { if (t[el.dataset.t]) el.textContent = t[el.dataset.t]; });
+  }
+  const $ = id => document.getElementById(id);
+  const say = text => { $("state").textContent = text; $("state").hidden = false; };
+  const item = (list, text, extra) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    if (extra) li.append(extra);
+    $(list).append(li);
+  };
+  const part = location.pathname.split("/").filter(Boolean)[1] || location.hash.slice(1);
+  const id = /^[A-Za-z0-9_-]{16,64}$/.test(part) ? part : "";
+  $("bip").innerHTML = staticBip("daily", "happy", null, 88);
+  if (!id) {
+    say(t.bad);
+    $("open").hidden = true;
+  } else {
+    $("open").href = "bipagents://template/" + id;
+    fetch(GUICHET + "/v1/templates/" + id, {credentials: "omit"}).then(async r => {
+      if (r.status === 404) return say(t.family);
+      if (r.status === 410) { $("open").hidden = true; return say(t.gone); }
+      if (!r.ok) return say(t.error);
+      const p = await r.json();
+      $("state").hidden = true;
+      $("details").hidden = false;
+      $("name").textContent = p.name || "";
+      $("intro").textContent = p.intro || "";
+      const category = (p.look && p.look.category) || "daily";
+      $("bip").innerHTML = staticBip(category, "happy", null, 88);
+      $("what").textContent = p.instructions || "";
+      $("what-box").hidden = !p.instructions;
+      const tools = p.tools || {};
+      (tools.toolsets || []).forEach(n => item("tools", t[n] || n));
+      ["browser", "weather", "notebook"].forEach(n => { if (tools[n]) item("tools", t[n]); });
+      $("tools-box").hidden = !$("tools").children.length;
+      (p.skills || []).forEach(s => item("skills", s.description ? s.name + " — " + s.description : s.name));
+      $("skills-box").hidden = !(p.skills || []).length;
+      (p.routines || []).forEach(r => item("routines", r.display ? r.name + " (" + r.display + ")" : r.name));
+      $("routines-box").hidden = !(p.routines || []).length;
+      (p.connectors || []).forEach(c => {
+        const extra = document.createElement("div");
+        const sites = document.createElement("div");
+        sites.className = "sites";
+        sites.textContent = (c.sites || []).join(", ");
+        extra.append(sites);
+        if (c.unofficial) {
+          const warn = document.createElement("span");
+          warn.className = "warn";
+          warn.textContent = t.unofficial;
+          extra.append(warn);
+        }
+        item("connectors", c.description ? c.name + " — " + c.description : c.name, extra);
+      });
+      $("connectors-box").hidden = !(p.connectors || []).length;
+    }).catch(() => say(t.error));
+  }
+</script>
+</body>
+</html>
