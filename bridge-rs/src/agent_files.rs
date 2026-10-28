@@ -67,13 +67,13 @@ fn detail(exc: &crate::web::HttpError) -> String {
     crate::py::py_str(&exc.detail)
 }
 
-fn links(config: &Config) -> Vec<(String, String)> {
+pub(crate) fn links(config: &Config) -> Vec<(String, String)> {
     let data = crate::peers::Links::new(&crate::py::join(&config.data_dir(), "peers.json")).load();
     crate::peers::links_of(&data)
 }
 
 /// The agents of this place `agent` may write to.
-fn targets<'a>(config: &'a Config, agent: &'a str) -> impl Iterator<Item = String> + 'a {
+pub(crate) fn targets<'a>(config: &'a Config, agent: &'a str) -> impl Iterator<Item = String> + 'a {
     links(config)
         .into_iter()
         .filter(move |(from, to)| {
@@ -182,7 +182,7 @@ fn shown_name(file: &Path) -> String {
 }
 
 /// The recipient named as the agent may have written it: `bip/kerfy-studio`, `@kerfy-studio`, « Kerfy Studio ».
-fn recipient<'a>(config: &'a Config, wanted: &str) -> Option<&'a AgentConfig> {
+pub(crate) fn recipient<'a>(config: &'a Config, wanted: &str) -> Option<&'a AgentConfig> {
     let name = wanted.trim();
     let name = name.strip_prefix(&format!("{}/", crate::peers::PEER_NAME)).unwrap_or(name).trim_start_matches('@');
     config.agent(Some(name)).or_else(|| {
@@ -191,7 +191,7 @@ fn recipient<'a>(config: &'a Config, wanted: &str) -> Option<&'a AgentConfig> {
     })
 }
 
-fn shown(agent: &AgentConfig) -> &str {
+pub(crate) fn shown(agent: &AgentConfig) -> &str {
     if agent.display_name.is_empty() {
         &agent.name
     } else {

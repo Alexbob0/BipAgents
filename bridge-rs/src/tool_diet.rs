@@ -384,6 +384,11 @@ pub fn diet(
             .filter(|name| bridge_tools.iter().any(|t| t == *name))
             .take(MAX_DIRECT)
             .for_each(|name| add(&format!("!{BRIDGE_PREFIX}{name}")));
+        // asking another agent (agent_messages.rs), whatever the kind: behind the search, the real-day bench's agent
+        // hunted for it with 9 tool searches
+        if bridge_tools.iter().any(|t| t == crate::agent_messages::TOOL_NAME) {
+            add(&format!("!{BRIDGE_PREFIX}{}", crate::agent_messages::TOOL_NAME));
+        }
     }
     if browser {
         BROWSER_DIRECT.iter().for_each(|name| add(&format!("!mcp__{BROWSER_SERVER}__{name}")));

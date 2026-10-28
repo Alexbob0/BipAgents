@@ -421,6 +421,9 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if crate::agent_files::offered(config, &agent.name) {
         tools.push(crate::agent_files::tool());
     }
+    if crate::agent_messages::offered(config, &agent.name) {
+        tools.push(crate::agent_messages::tool()); // in any conversation, not only its Bot Chat (agent_messages.rs)
+    }
     if crate::archives::enabled(config, &agent.name) {
         tools.extend(crate::archives::tools(config, &agent.name));
     }
@@ -1593,7 +1596,7 @@ gives a MEDIA: line for your reply. Any other file you made (a spreadsheet, a do
 the person when you save it in /envoi (or /workspace when your sandbox has no /envoi) and end your reply with a \
 line MEDIA:/envoi/<name>. mail_search, mail_read, mail_attachment and mail_draft reach the \
 mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
-another of your person's agents (it can't see your files).";
+another of your person's agents (it can't see your files); message_agent asks one of them and brings back its answer.";
 
 async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
     let agent = agent_of(&state, &headers)?;
@@ -1708,6 +1711,11 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
             crate::loop_brake::add_note(result, &note);
         }
     };
+    if name == crate::agent_messages::TOOL_NAME {
+        let mut result = crate::agent_messages::call(&state.http, &state.config(), &agent, &arguments).await;
+        wrote(&agent.name, &name, &arguments, &mut result);
+        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+    }
     if crate::family_news::TOOL_NAMES.contains(&name.as_str()) {
         let mut result = crate::family_news::call_tool(&state.http, &state.config(), &agent, &name, &arguments).await?;
         wrote(&agent.name, &name, &arguments, &mut result);
