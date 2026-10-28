@@ -504,6 +504,11 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "vault account tools not registered");
         false
     });
+    // The connectors it makes (connectors.rs): their tools' entry, and one per connector the person approved.
+    let connecting = crate::connectors::register(config, agent, run).await.unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "connector tools not registered");
+        false
+    });
     // « L'agent prépare, tu paies » (handover.rs) for every agent, and Link Agent Wallet (link_wallet.rs) for the
     // agents the person chose, where it is on.
     let handing = crate::handover::register(config, agent, run).await.unwrap_or_else(|exc| {
@@ -525,7 +530,7 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "model provider routing not set");
         false
     });
-    Ok(changed || paying || accounts || handing || link || diet || routed)
+    Ok(changed || paying || accounts || connecting || handing || link || diet || routed)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).

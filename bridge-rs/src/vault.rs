@@ -123,6 +123,10 @@ pub struct Item {
     pub pending: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confirmed_at: Option<String>,
+    /// A secret an agent asked for (secrets.rs): its kind (password, token, code), the identifier's label, when last
+    /// used. Never its value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret_info: Option<Value>,
 }
 
 impl Item {
@@ -135,6 +139,11 @@ impl Item {
                "agents": agents, "created_at": self.created_at, "updated_at": self.updated_at});
         if let (Some(card), Value::Object(map)) = (&self.card, &mut out) {
             map.insert("card".into(), crate::cards::public(card));
+        }
+        if let (Some(info), Value::Object(map)) = (&self.secret_info, &mut out) {
+            map.insert("created_by".into(), json!(self.created_by));
+            map.insert("secret".into(), info.clone());
+            return out;
         }
         if let (Some(agent), Value::Object(map)) = (&self.created_by, &mut out) {
             map.insert("created_by".into(), json!(agent));
@@ -812,11 +821,126 @@ impl Vault {
     pub async fn forget_agent(&self, _config: &Config, agent_id: &str) -> anyhow::Result<()> {
         let _lock = self.lock.lock().await;
         let mut records = self.read()?;
+        // the secrets it asked for go with it (nobody else may use them)
+        records.retain(|r| !Self::is_secret_of(r, agent_id, None));
         for record in records.iter_mut() {
             Self::handles(record).shift_remove(agent_id);
         }
         self.write(&records)
     }
+
+    // -- secrets an agent asked for (secrets.rs) --------------------------------------------------------------------
+
+    fn is_secret_of(record: &Dict, agent: &str, name: Option<&str>) -> bool {
+        record.get("kind").and_then(Value::as_str) == Some(crate::secrets::VAULT_KIND)
+            && record.get("created_by").and_then(Value::as_str) == Some(agent)
+            && name.is_none_or(|n| record.get("label").and_then(Value::as_str) == Some(n))
+    }
+
+    /// The secret `new.name` of `agent` kept (replacing the one of that name). `value: None` (a one-time code): its
+    /// name and identifier only, never a value.
+    pub async fn save_secret(&self, config: &Config, agent: &AgentConfig, new: &NewSecret<'_>) -> anyhow::Result<Item> {
+        if let Some(why) = holder(config, agent) {
+            return Err(VaultError::CannotHold([(agent.name.clone(), why)].into_iter().collect()).into());
+        }
+        let _lock = self.lock.lock().await;
+        let mut records = self.read()?;
+        let index = records.iter().position(|r| Self::is_secret_of(r, &agent.name, Some(new.name)));
+        let mut record = match index {
+            Some(at) => records[at].clone(),
+            None => {
+                let mut record = Dict::new();
+                record.insert("id".into(), json!(format!("item_{}", &crate::py::uuid4_hex()[..12])));
+                record.insert("created_at".into(), json!(now()));
+                record
+            }
+        };
+        record.insert("kind".into(), json!(crate::secrets::VAULT_KIND));
+        record.insert("label".into(), json!(new.name));
+        record.insert("origin".into(), if new.origin.is_empty() { Value::Null } else { json!(new.origin) });
+        let identifier = pyx::strip(new.identifier).to_string();
+        if identifier.is_empty() {
+            record.insert("identifier_type".into(), Value::Null);
+            record.insert("identifier".into(), Value::Null);
+        } else {
+            record.insert("identifier_type".into(), json!(identifier_type_of(&identifier)));
+            record.insert("identifier".into(), json!(pyx::head(&identifier, 200)));
+        }
+        record.insert("has_otp".into(), json!(false));
+        record.insert("agents".into(), json!({agent.name.as_str(): CARD_HANDLE}));
+        record.insert("created_by".into(), json!(agent.name));
+        let last = record.get("secret_info").and_then(|i| i.get("last_used_at")).cloned().unwrap_or(Value::Null);
+        record.insert(
+            "secret_info".into(),
+            json!({"kind": new.kind, "identifier_label": new.identifier_label, "last_used_at": last}),
+        );
+        let secret = match new.value {
+            Some(value) => json!({"value": value}),
+            None => json!({}),
+        };
+        record.insert("secret".into(), secret);
+        record.insert("updated_at".into(), json!(now()));
+        match index {
+            Some(at) => records[at] = record.clone(),
+            None => records.push(record.clone()),
+        }
+        self.write(&records)?;
+        Ok(Self::item(&record))
+    }
+
+    /// `agent`'s secrets (metadata).
+    pub fn secret_items(&self, agent: &str) -> Vec<Item> {
+        self.read().unwrap_or_default().iter().filter(|r| Self::is_secret_of(r, agent, None)).map(Self::item).collect()
+    }
+
+    /// `agent`'s secrets with a value: (name, item, value). Only for a connector's run and for blanking.
+    pub fn secret_values(&self, agent: &str) -> anyhow::Result<Vec<(String, Item, zeroize::Zeroizing<String>)>> {
+        Ok(self
+            .read()?
+            .iter()
+            .filter(|r| Self::is_secret_of(r, agent, None))
+            .filter_map(|r| {
+                let value = r.get("secret").and_then(|s| s.get("value")).and_then(Value::as_str)?;
+                let item = Self::item(r);
+                Some((item.label.clone(), item, zeroize::Zeroizing::new(value.to_string())))
+            })
+            .collect())
+    }
+
+    /// When `agent`'s secrets `names` were last used (a connector's run).
+    pub async fn touch_secrets(&self, agent: &str, names: &[String]) -> anyhow::Result<()> {
+        if names.is_empty() {
+            return Ok(());
+        }
+        let _lock = self.lock.lock().await;
+        let mut records = self.read()?;
+        let mut changed = false;
+        for record in records.iter_mut() {
+            let name = record.get("label").and_then(Value::as_str).unwrap_or("").to_string();
+            if Self::is_secret_of(record, agent, None) && names.contains(&name) {
+                if let Some(Value::Object(info)) = record.get_mut("secret_info") {
+                    info.insert("last_used_at".into(), json!(now()));
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.write(&records)?;
+        }
+        Ok(())
+    }
+}
+
+/// A secret as the person gave it (secrets.rs).
+pub struct NewSecret<'a> {
+    pub name: &'a str,
+    /// `https://connect.garmin.com`, or empty.
+    pub origin: &'a str,
+    pub kind: &'a str,
+    pub identifier_label: &'a str,
+    pub identifier: &'a str,
+    /// None for a one-time code: never kept.
+    pub value: Option<&'a str>,
 }
 
 /// What an identifier looks like: an e-mail, a phone number, else a user name.
@@ -864,7 +988,18 @@ fn as_dict(value: Value) -> ApiResult<Dict> {
 
 async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
-    let items: Vec<Value> = state.vault.try_items()?.iter().map(Item::public).collect();
+    let items: Vec<Value> = state
+        .vault
+        .try_items()?
+        .iter()
+        .map(|item| {
+            let mut out = item.public();
+            if let (Some(agent), Some(info)) = (&item.created_by, out.get_mut("secret")) {
+                info["used_by"] = json!(crate::connectors::used_by(&config, agent, &item.label));
+            }
+            out
+        })
+        .collect();
     let agents: Vec<Value> = config
         .agents
         .values()

@@ -249,6 +249,10 @@ pub fn policy_of(config: &Config, store: &Store) -> Value {
         }
         agents.insert(name.clone(), item);
     }
+    // the connectors the person approved (connectors.rs): their own credentials, their sites only
+    for (name, item) in crate::connectors::proxy_identities(config) {
+        agents.insert(name, item);
+    }
     json!({"agents": agents})
 }
 

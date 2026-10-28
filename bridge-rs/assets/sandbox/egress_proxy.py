@@ -14,6 +14,13 @@ decision is one line of its log (`podman logs bipagents-egress`).
 - **Never this machine nor its networks**: a name that resolves to a private, loopback, link-local, shared (Tailscale
   100.64/10) or reserved address is refused, the registries included; the connection goes to the address checked,
   never resolved again. The `Proxy-Authorization` header is never passed on.
+- **Connectors** (bridge-rs/src/connectors_run.rs): a policy entry with `"connector": true` (`conn-<id>`) reaches its
+  approved hosts only, on HTTPS — never the registries, never `any` — and is not reported (its sites were approved
+  with it). A connection that arrives on one of `BIP_STRICT`'s addresses (this proxy's address on the connectors'
+  network) is held to that: a connector's own credentials or nothing.
+- **Refusals read plainly**: the reason phrase says what happens (« Site not allowed yet for you - your person was
+  asked; retry once they allow it »): clients show it in their error, so the agent tells its person it waits for
+  their go, not that « the proxy » cuts it.
 
 Run by the bridge with `python3 -u -c <this file>`: standard library only.
 """
@@ -31,6 +38,7 @@ REGISTRIES = {h.strip().lower().rstrip(".") for h in os.environ.get("BIP_ALLOW",
 PORT = int(os.environ.get("BIP_PORT", "3128"))
 POLICY = os.environ.get("BIP_POLICY", "")
 REPORTS = os.environ.get("BIP_REPORTS", "")
+STRICT = {a.strip() for a in os.environ.get("BIP_STRICT", "").split(",") if a.strip()}
 WAIT = 30
 REPORT_EVERY = 3600
 REPORTS_MAX = 256 * 1024
@@ -90,17 +98,27 @@ def host_matches(host, pattern):
     return host == pattern
 
 
-def allowed(host, port, wanted, agent=None):
-    """Registries (HTTPS, and plain HTTP for apt); an agent's own hosts on HTTPS only."""
+def connector(agent):
+    """A connector's credentials (`"connector": true`): its approved hosts only."""
+    entry = policy().get(agent) if agent else None
+    return isinstance(entry, dict) and entry.get("connector") is True
+
+
+def allowed(host, port, wanted, agent=None, strict=False):
+    """Registries (HTTPS, and plain HTTP for apt); an agent's own hosts on HTTPS only. `strict` (the connectors'
+    network) or a connector's credentials: that connector's hosts on HTTPS, nothing else."""
     host = normal(host)
     if port != wanted:
         return False
-    if host in REGISTRIES:
+    held = strict or connector(agent)
+    if held and not connector(agent):
+        return False
+    if host in REGISTRIES and not held:
         return True
     if agent is None or wanted != 443:
         return False
     entry = policy().get(agent) or {}
-    if entry.get("any") is True and not local_name(host):
+    if entry.get("any") is True and not held and not local_name(host):
         return True
     hosts = entry.get("hosts") or []
     return any(isinstance(p, str) and host_matches(host, p) for p in hosts)
@@ -160,7 +178,7 @@ def log(verdict, method, target, agent=None):
 
 def report(agent, host, port):
     """A site refused to a known agent, for the bridge to ask its person (once an hour per agent and host)."""
-    if not REPORTS or agent is None or port != 443:
+    if not REPORTS or agent is None or port != 443 or connector(agent):
         return
     key = (agent, host)
     now = time.time()
@@ -199,9 +217,28 @@ async def pipe(reader, writer):
             pass
 
 
+NOT_YET = "Site not allowed yet for you - your person was asked; retry once they allow it"
+NOT_CONNECTOR = "Site not approved for this connector - your person approves its sites with it"
+NOT_OPEN = "Site not allowed - only package registries without your own access"
+PRIVATE = "Private address not allowed"
+BODIES = {
+    NOT_YET: "This site is not open to you yet: your person was asked in the BipAgents app. Retry once they allow it.",
+    NOT_CONNECTOR: "This connector may only reach the sites your person approved with it.",
+    NOT_OPEN: "Only the package registries can be reached without your own access.",
+    PRIVATE: "Addresses of this machine and its networks are never reachable.",
+}
+
+
+def refusal(agent, strict):
+    """The reason phrase of a refusal: what happens, in words the agent repeats to its person."""
+    if strict or connector(agent):
+        return NOT_CONNECTOR
+    return NOT_YET if agent else NOT_OPEN
+
+
 async def answer(writer, status, reason, extra=""):
-    body = (f"{status} {reason}: from this sandbox, only the package registries and the sites the person allowed "
-            "can be reached.\n").encode()
+    body = (BODIES.get(reason) or f"{status} {reason}.") + "\n"
+    body = body.encode()
     writer.write(f"HTTP/1.1 {status} {reason}\r\nContent-Type: text/plain; charset=utf-8\r\n{extra}"
                  f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body)
     try:
@@ -273,19 +310,25 @@ async def handle(reader, writer):
     else:
         return await answer(writer, 400, "Bad Request")
     host = normal(host)
-    if not allowed(host, port, wanted, agent):
+    try:
+        local = (writer.get_extra_info("sockname") or ("",))[0]
+    except Exception:
+        local = ""
+    strict = local in STRICT
+    if not allowed(host, port, wanted, agent, strict):
         if agent is None and not auth and wanted == 443 and port == 443:
             # a client that sends its credentials only when asked (the registries need none)
             log("ask-credentials", method, target)
             return await answer(writer, 407, "Proxy Authentication Required",
                                 'Proxy-Authenticate: Basic realm="bipagents"\r\n')
         log("blocked", method, target, agent)
-        report(agent, host, port)
-        return await answer(writer, 403, "Forbidden")
+        if not strict:
+            report(agent, host, port)
+        return await answer(writer, 403, refusal(agent, strict))
     addresses = await resolve(host, port)
     if addresses == []:
         log("blocked-address", method, target, agent)
-        return await answer(writer, 403, "Forbidden")
+        return await answer(writer, 403, PRIVATE)
     if addresses is None:
         # the reason is in the client's error (« 502 Bad Gateway (site name not found) »), so the agent says it
         log("failed (name not found)", method, target, agent)

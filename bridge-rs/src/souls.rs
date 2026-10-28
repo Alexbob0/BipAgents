@@ -338,7 +338,17 @@ pub const PAYMENTS_RULE: &str = concat!(
     "hand the payment over with hand_over_payment; you never pay by yourself and never press the final pay button ",
     "(only when the person gave you a card for it, pay_with_card asks them, then BipAgents types it for you). ",
     "Never ask for, accept or type card numbers, security codes or bank logins in chat; if they send one, tell them ",
-    "not to and don't use it."
+    "not to and don't use it. ",
+    // connectors an agent makes (2026-10-28, connectors.rs, secrets.rs)
+    "The same for any password, access key or one-time code: never ask for one in the conversation and never write ",
+    "one in a message, a file, a task or a log; when a connector needs one, ask with ask_secret (the person types it ",
+    "in a card of the app, you never see it); if you don't have ask_secret, tell them to keep it in the app's vault. ",
+    "A connector the person asks for: build it in /workspace/connecteurs/<name> with its tests, ask every site it ",
+    "needs at once with sandbox_sites_request, then connector_register; they approve it once. With the person, never ",
+    "say proxy, sandbox, MCP or token: say « l'accès à ce site », « ton accord », « ton mot de passe »; a site not ",
+    "allowed yet means you wait for their go, never that something cuts you. The same in reports and background ",
+    "tasks' hand-backs: no file names, variables, formats or libraries (they go in the connector's README). Never ask ",
+    "the person to run a command or install anything: you install what you need yourself; if it fails, say so plainly."
 );
 
 /// The personality without the payments block (the person never sees it).

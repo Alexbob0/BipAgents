@@ -89,8 +89,24 @@ pub const REGISTRIES: [&str; 10] = [
     "security.debian.org",
 ];
 pub const NETWORK: &str = "bipagents-sandbox";
+/// The connectors' own network (connectors_run.rs): no route out either, and on it the proxy is strict — only a
+/// connector's own credentials, only its approved sites, never the registries (`BIP_STRICT`).
+pub const CONNECTOR_NETWORK: &str = "bipagents-connectors";
 pub const PROXY: &str = "bipagents-egress";
 pub const PROXY_PORT: u16 = 3128;
+
+/// `10.233.80.0/24` → `10.233.81.0/24`: the connectors' network, next to the sandboxes'.
+pub fn connector_subnet(subnet: &str) -> Option<String> {
+    proxy_ip(subnet)?;
+    let parts: Vec<u8> = subnet.split('/').next()?.split('.').map(|p| p.parse::<u8>()).collect::<Result<_, _>>().ok()?;
+    let third = parts[2].checked_add(1)?;
+    Some(format!("{}.{}.{third}.0/24", parts[0], parts[1]))
+}
+
+/// The proxy's address on the connectors' network.
+pub fn connector_proxy_ip(subnet: &str) -> Option<String> {
+    proxy_ip(&connector_subnet(subnet)?)
+}
 /// Hermes' default sandbox image (hermes_cli/config_defaults.py), with its registry (podman won't guess in a service).
 pub const DEFAULT_IMAGE: &str = "docker.io/nousresearch/hermes-sandbox:desktop";
 /// Where the agent finds the files it was sent, and the shared files it fetched (read-only).
@@ -265,7 +281,7 @@ fn args(items: &[&str]) -> Vec<String> {
 }
 
 /// The image the proxy runs in: `[sandbox] image`, else the hub's sandbox image, else Hermes' default.
-fn proxy_image(config: &Config) -> String {
+pub(crate) fn proxy_image(config: &Config) -> String {
     if !config.sandbox.image.is_empty() {
         return config.sandbox.image.clone();
     }
@@ -292,6 +308,7 @@ fn proxy_image(config: &Config) -> String {
 /// The `podman run` of the registries' proxy (replacing the one before: its allow-list may have changed).
 pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
     let ip = proxy_ip(&config.sandbox.subnet).unwrap_or_default();
+    let strict = connector_proxy_ip(&config.sandbox.subnet).unwrap_or_default();
     let allow = config.sandbox.registries.join(",");
     let mut command = args(&[
         podman,
@@ -305,6 +322,11 @@ pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
         "podman",
         "--network",
         &format!("{NETWORK}:ip={ip}"),
+        // the connectors' network (connectors_run.rs): strict there
+        "--network",
+        &format!("{CONNECTOR_NETWORK}:ip={strict}"),
+        "-e",
+        &format!("BIP_STRICT={strict}"),
         "--cap-drop",
         "ALL",
         "--security-opt",
@@ -356,6 +378,13 @@ async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<Stri
         .await
         .map_err(|e| format!("network not created: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
         tracing::info!(target: "bipbridge::sandbox", network = NETWORK, subnet = %config.sandbox.subnet, "sandboxes' network created (no route out)");
+    }
+    let connectors = connector_subnet(&config.sandbox.subnet).ok_or("no valid [sandbox] subnet")?;
+    if run(args(&[podman, "network", "exists", CONNECTOR_NETWORK]), none.clone()).await.is_err() {
+        run(args(&[podman, "network", "create", "--internal", "--subnet", &connectors, CONNECTOR_NETWORK]), none.clone())
+            .await
+            .map_err(|e| format!("connectors' network not created: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
+        tracing::info!(target: "bipbridge::sandbox", network = CONNECTOR_NETWORK, subnet = %connectors, "connectors' network created (no route out)");
     }
     crate::sandbox_sites::ensure_policy(config).map_err(|e| format!("the agents' sites not written: {e}"))?;
     run(proxy_command(config, podman), none)
