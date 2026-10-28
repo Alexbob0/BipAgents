@@ -222,6 +222,7 @@ pub fn kind_diet(kind: &str) -> KindDiet {
                 "calendar_add",
                 "mail_search",
                 "mail_read",
+                "mail_attachment",
                 "mail_draft",
                 "notebook_search",
                 "notebook_note",

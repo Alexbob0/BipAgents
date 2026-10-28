@@ -2,9 +2,9 @@
 //! voice the person chose for the agent in the app (its server voice for reading — Drama 3, Kokoro… — else its Bip);
 //! `create_podcast` makes a conversation between hosts, each with a voice of their own (the person's voice model when
 //! it reads, else Bips); `list_voices` lists the voices the agent may give them; `create_page` and its kin keep the
-//! small web pages the agent makes for the person (pages.py); `mail_search`, `mail_read` and `mail_draft` reach
-//! the mailboxes the person connected for it (mailbox.py); `propose_task` proposes a background task the person starts
-//! in the app (jobs.py); `tell_family` proposes to pass something on to the family's agents, which the person sends
+//! small web pages the agent makes for the person (pages.py); `mail_search`, `mail_read`, `mail_attachment` and
+//! `mail_draft` reach the mailboxes the person connected for it (mailbox.py); `propose_task` proposes a background
+//! task the person starts in the app (jobs.py); `tell_family` proposes to pass something on to the family's agents, which the person sends
 //! or not from the app (family_news.rs, only for an install with a linked household).
 //!
 //! The agent's own Hermes calls it (an MCP server entry `bipagents` in its profile, with a token of its own), not its
@@ -1561,7 +1561,7 @@ conversation between hosts with different voices; create_page makes a small web 
 (a dashboard, a tracker, a chart, a tool) on any subject, shown in the app; each \
 gives a MEDIA: line for your reply. Any other file you made (a spreadsheet, a document, a picture) reaches \
 the person when you save it in /envoi (or /workspace when your sandbox has no /envoi) and end your reply with a \
-line MEDIA:/envoi/<name>. mail_search, mail_read and mail_draft reach the \
+line MEDIA:/envoi/<name>. mail_search, mail_read, mail_attachment and mail_draft reach the \
 mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
 another of your person's agents (it can't see your files).";
 

@@ -230,7 +230,7 @@ def test_a_mailbox_is_indexed_read_only_and_incrementally(bridges, fakes):
     assert added.status_code == 201, added.text
     assert added.json()["years"] == 2 and added.json()["kind"] == "mail" and added.json()["account"] == account["id"]
     archive = wait_ready(bridge, "coach", added.json()["id"], documents=3)   # INBOX ×2 in 2 years, Sent; no drafts
-    assert archive["account_label"] == "Proton (Proton Mail Bridge) · alex@proton.me"
+    assert archive["account_label"] == "Proton (Proton Mail Bridge / hydroxide) · alex@proton.me"
     commands = list(fakes.imap.commands)
     assert any(c.startswith("EXAMINE") for c in commands)
     assert not any(c.startswith(("SELECT", "STORE", "APPEND", "COPY", "MOVE", "EXPUNGE")) for c in commands), commands
