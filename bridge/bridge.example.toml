@@ -188,17 +188,23 @@ port = 8650
 # enabled = true
 # same_tool = 10
 # tool_calls = 60
-# same_call = 3
+# same_call = 3               # writes and actions
+# same_lookup = 5             # read-only lookups (past conversations, Carnet, web, files, mails…); a retry after an error isn't counted
 # writes = 10
+# warn = true                 # about two thirds of a limit: the agent is told once (a steer; a routine: in the tool's result)
+# rescue = true               # a stopped conversation turn: one short turn where the agent says what happened and proposes
+# rescue_tool_calls = 5
+# rescue_seconds = 180
 # browser_calls = 40          # a browsing turn's total: tool_calls + browser_calls
 # page_reads = 15             # the page's content, a screenshot, a snapshot
 # task_same_tool = 40
 # task_tool_calls = 120
 # task_same_call = 5
+# task_same_lookup = 8
 # task_writes = 40
 # task_browser_calls = 80
 # task_page_reads = 30
-# routine_tool_calls = 30
+# routine_tool_calls = 40     # a routine reading many different mails is held to the same item read again, not to mail_read
 # idle_seconds = 120          # with no run followed (a routine), the agent's calls are one turn until quiet this long
 
 # Card payments by the agents on a place of the all-included offer (cards.rs, « expérimental » during the beta). The
