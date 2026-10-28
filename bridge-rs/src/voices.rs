@@ -238,7 +238,7 @@ async fn set_agent_voices(
 }
 
 /// The agent's Bip as the person chose it in the app (category, custom colour): every app shows the same one.
-async fn set_agent_appearance(
+pub(crate) async fn set_agent_appearance(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
     Json(body): Json<AgentAppearance>,

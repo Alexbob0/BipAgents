@@ -107,8 +107,33 @@ fn skill_files(skills: &Path) -> Vec<(Vec<String>, PathBuf)> {
     out
 }
 
-/// The agent's own skills, from its profile folder: name, description, enabled.
+/// The agent's own skills, from its profile folder: name, description, enabled (and `imported: true` for those a
+/// model brought, templates.rs).
 pub fn listing(profile: &Path) -> Vec<Dict> {
+    let imported = imported(profile);
+    let mut out: Vec<Dict> = folders(profile).into_iter().map(|(entry, _)| entry).collect();
+    for entry in out.iter_mut() {
+        if entry.get("name").and_then(Value::as_str).is_some_and(|n| imported.contains(n)) {
+            entry.insert("imported".into(), json!(true));
+        }
+    }
+    out
+}
+
+/// The list of the skills a model brought (`skills/.bipagents-imported.json`).
+pub const IMPORTED_FILE: &str = ".bipagents-imported.json";
+
+pub fn imported(profile: &Path) -> BTreeSet<String> {
+    std::fs::read_to_string(profile.join("skills").join(IMPORTED_FILE))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .collect()
+}
+
+/// The agent's own skills with their folders (`listing`'s entries, sorted the same way).
+pub fn folders(profile: &Path) -> Vec<(Dict, PathBuf)> {
     let skills = profile.join("skills");
     if !skills.is_dir() {
         return Vec::new();
@@ -117,7 +142,7 @@ pub fn listing(profile: &Path) -> Vec<Dict> {
     others.extend(from_hub(&skills));
     others.extend(BRIDGE_SKILLS.iter().cloned());
     let off: BTreeSet<String> = disabled(&config(profile)).into_iter().collect();
-    let mut found: IndexMap<String, Dict> = IndexMap::new();
+    let mut found: IndexMap<String, (Dict, PathBuf)> = IndexMap::new();
     for (parts, skill_md) in skill_files(&skills) {
         if parts.iter().any(|p| p.starts_with('.')) {
             continue; // .archive, .hub, pending writes
@@ -150,10 +175,11 @@ pub fn listing(profile: &Path) -> Vec<Dict> {
         entry.insert("name".into(), json!(name));
         entry.insert("description".into(), json!(description));
         entry.insert("enabled".into(), json!(!off.contains(&name)));
-        found.insert(name, entry);
+        let dir = skill_md.parent().map(Path::to_path_buf).unwrap_or_default();
+        found.insert(name, (entry, dir));
     }
-    let mut out: Vec<Dict> = found.into_values().collect();
-    out.sort_by_key(|skill| skill.get("name").and_then(Value::as_str).unwrap_or("").to_lowercase());
+    let mut out: Vec<(Dict, PathBuf)> = found.into_values().collect();
+    out.sort_by_key(|(skill, _)| skill.get("name").and_then(Value::as_str).unwrap_or("").to_lowercase());
     out
 }
 

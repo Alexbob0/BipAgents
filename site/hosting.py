@@ -49,7 +49,7 @@ def csp(site: Path) -> str:
         "img-src 'self' data:",
         "font-src 'self'",
         "media-src 'self'",
-        "connect-src 'self'",
+        "connect-src 'self' https://guichet.bipagents.com",  # /m/<id>: a shared model's preview
         "frame-src 'self'",
         "worker-src 'self'",
         "object-src 'none'",
@@ -89,6 +89,8 @@ AddDefaultCharset utf-8
   # Stylesheets and scripts asked with ?v=<build> never change under that address.
   RewriteCond %{{QUERY_STRING}} (^|&)v=[0-9]+(&|$)
   RewriteRule \\.(css|js)$ - [E=VERSIONED:1]
+  # /m/<id>: an agent shared as a model, one page reads the id from the address
+  RewriteRule ^m/[A-Za-z0-9_-]{{16,64}}/?$ /m/index.html [L]
 </IfModule>
 
 <IfModule mod_headers.c>

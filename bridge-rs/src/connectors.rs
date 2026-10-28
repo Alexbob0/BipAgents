@@ -166,6 +166,18 @@ pub struct Connector {
     /// When the schedule last ran it (Unix seconds; set at approval so it doesn't run at once).
     pub last_scheduled: f64,
     pub icon_type: Option<String>,
+    /// Came from a model (« Partager comme modèle », templates.rs): approved by this person only, never by its creator.
+    pub from_template: bool,
+    /// The secrets' kind and identifier label a model gave (none of the creator's values): the secret card uses them.
+    pub secret_hints: Vec<SecretHint>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SecretHint {
+    pub name: String,
+    pub kind: String,
+    pub identifier_label: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -431,6 +443,7 @@ pub fn sentence(shown: &str, conn: &Connector, change: &str) -> String {
     match change {
         "new" => format!("{shown} a créé le connecteur {}", conn.name),
         "update" => format!("{shown} a modifié le connecteur {}", conn.name),
+        "template" => format!("{shown} : le connecteur {} vient d'un modèle, à approuver", conn.name),
         _ => format!("Le connecteur {} de {shown} a changé : à réapprouver", conn.name),
     }
 }
@@ -494,6 +507,7 @@ fn card_item(state: Option<&AppState>, config: &Config, agent: &str, conn: &Conn
         "bip_connector_unofficial": conn.unofficial,
         "bip_connector_private_state": true,
         "bip_connector_change": card.change,
+        "bip_connector_from_template": conn.from_template,
     });
     item.as_object().cloned().unwrap_or_default()
 }
@@ -518,11 +532,11 @@ pub fn pending_items(state: &AppState, config: &Config, agent: Option<&str>) -> 
     out
 }
 
-fn new_card(change: &str) -> CardInfo {
+pub(crate) fn new_card(change: &str) -> CardInfo {
     CardInfo { id: format!("c{}", &py::uuid4_hex()[..12]), at: py::time_time(), change: change.into() }
 }
 
-async fn announce(state: &AppState, agent: &str, conn: &Connector, card: &CardInfo) {
+pub(crate) async fn announce(state: &AppState, agent: &str, conn: &Connector, card: &CardInfo) {
     let config = state.config();
     let line = sentence(&shown_name(&config, agent), conn, &card.change);
     tracing::info!(target: "bipbridge::connectors", agent, connector = %conn.id, change = %card.change, card = %card.id, "connector card raised");
@@ -1290,7 +1304,7 @@ pub fn view(state: &AppState, config: &Config, agent: &AgentConfig, conn: &Conne
         "schedule": conn.schedule.as_ref().map(|s| json!({"when": s.when, "text": schedule_text(&conn.schedule),
                                                           "mechanical": s.mechanical, "tool": s.tool})),
         "last_run": conn.last_run.as_ref().map(|r| json!({"at": r.at, "ok": r.ok, "message": r.message})),
-        "unofficial": conn.unofficial,
+        "unofficial": conn.unofficial, "from_template": conn.from_template,
         "card_run_id": conn.card.as_ref().map(|c| format!("{RUN_PREFIX}{}", c.id)),
         "created_at": conn.created_at, "approved_at": conn.approved_at, "updated_at": conn.updated_at,
         "fingerprint": &conn.fingerprint[..conn.fingerprint.len().min(12)],
@@ -1394,7 +1408,10 @@ async fn edit_secret_route(
         return Err(HttpError::new(404, "this connector uses no such secret"));
     }
     let item = state.vault.secret_items(&agent.name).into_iter().find(|i| i.label == name);
-    let info = item.as_ref().and_then(|i| i.secret_info.clone()).unwrap_or(json!({}));
+    // a model's connector: the kind and label it gave, until the person's own secret is kept
+    let hint = conn.secret_hints.iter().find(|h| h.name == name);
+    let hinted = hint.map(|h| json!({"kind": h.kind, "identifier_label": h.identifier_label})).unwrap_or(json!({}));
+    let info = item.as_ref().and_then(|i| i.secret_info.clone()).unwrap_or(hinted);
     let kind = info.get("kind").and_then(Value::as_str).unwrap_or("password").to_string();
     let origin = item
         .as_ref()

@@ -138,10 +138,10 @@ pub fn routine_files(config: &Config) -> Vec<(Option<String>, PathBuf)> {
 }
 
 /// Hermes' cross-process lock on a cron folder (`<cron dir>/.jobs.lock`, its `_jobs_lock`), held while it lives.
-struct JobsLock(std::fs::File);
+pub(crate) struct JobsLock(std::fs::File);
 
 impl JobsLock {
-    fn take(folder: &Path) -> std::io::Result<JobsLock> {
+    pub(crate) fn take(folder: &Path) -> std::io::Result<JobsLock> {
         use std::os::fd::AsRawFd;
         let file = std::fs::OpenOptions::new().create(true).append(true).open(folder.join(".jobs.lock"))?;
         for _ in 0..50 {

@@ -589,15 +589,17 @@ def links(src: Path, out: Path) -> None:
     (known / "apple-app-site-association").write_text(json.dumps({"applinks": {"details": [{
         "appIDs": [f"{team}.com.kerfystudio.bipagents"],
         "components": [{"/": "/p", "#": "*", "comment": "a place of a Duo or a family, shared with this person"},
-                       {"/": "/v", "#": "*", "comment": "a conversation shown to this person read-only"}]}]}},
+                       {"/": "/v", "#": "*", "comment": "a conversation shown to this person read-only"},
+                       {"/": "/m/*", "comment": "an agent shared as a model (« Partager comme modèle »)"}]}]}},
         indent=2) + "\n", encoding="utf-8")
     (known / "assetlinks.json").write_text(json.dumps([{
         "relation": ["delegate_permission/common.handle_all_urls"],
         "target": {"namespace": "android_app", "package_name": "com.kerfystudio.bipagents",
                    "sha256_cert_fingerprints": [play]}}], indent=2) + "\n", encoding="utf-8")
     # The page shown where the app isn't installed: the store links from site/config.json once the owner has them.
-    # /p: a place shared with this person; /v: a conversation shown to them read-only (« Partager en lecture »).
-    for name in ("p", "v"):
+    # /p: a place shared with this person; /v: a conversation shown to them read-only (« Partager en lecture »);
+    # /m/<id>: an agent shared as a model (.htaccess sends every /m/<id> to /m/index.html).
+    for name in ("p", "v", "m"):
         page = (src / "links" / f"{name}.html").read_text(encoding="utf-8")
         if stores.get("appStore"):
             page = page.replace("https://apps.apple.com/app/bipagents/idAPPSTOREID", stores["appStore"])
