@@ -316,6 +316,35 @@ pub(crate) fn proxy_image(config: &Config) -> String {
     }
 }
 
+/// The proxy's own resolv.conf: this machine's real name servers only.
+pub fn proxy_resolv(config: &Config) -> PathBuf {
+    crate::sandbox_sites::proxy_dir(config).join("resolv.conf")
+}
+
+/// The file's text: at most three servers (the resolver reads no more), a short timeout.
+pub fn resolv_text(servers: &[String]) -> String {
+    let mut text: String = servers.iter().take(3).map(|ns| format!("nameserver {ns}\n")).collect();
+    text.push_str("options timeout:2 attempts:2\n");
+    text
+}
+
+/// Writes the proxy's resolv.conf from this machine's resolvers, or removes it when none is found (podman's default).
+pub fn write_proxy_resolv(config: &Config, files: &[&str]) -> std::io::Result<()> {
+    let path = proxy_resolv(config);
+    let servers = nameservers(files);
+    if servers.is_empty() {
+        tracing::warn!(target: "bipbridge::sandbox", "no name server found for the sandboxes' proxy: podman's default");
+        return match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&path, resolv_text(&servers))
+}
+
 /// The `podman run` of the registries' proxy (replacing the one before: its allow-list may have changed).
 pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
     let ip = proxy_ip(&config.sandbox.subnet).unwrap_or_default();
@@ -382,11 +411,12 @@ pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
             &format!("BIP_BROWSERS={browsers}"),
         ]));
     }
-    let resolvers = nameservers(&RESOLV_CONFS);
-    if resolvers.is_empty() {
-        tracing::warn!(target: "bipbridge::sandbox", "no name server found for the sandboxes' proxy: podman's default");
+    // its own resolv.conf (set_up_network writes it): podman would put the internal networks' resolvers first,
+    // which never answer for the internet (aibox 2026-10-28); a file mounted there is left as it is
+    let resolv = proxy_resolv(config);
+    if resolv.is_file() {
+        command.extend(["-v".to_string(), format!("{}:/etc/resolv.conf:ro,z", resolv.display())]);
     }
-    command.extend(resolvers.iter().map(|ns| format!("--dns={ns}")));
     command.extend(args(&["--entrypoint", "python3"]));
     command.push(proxy_image(config));
     command.extend(args(&["-u", "-c", PROXY_SCRIPT]));
@@ -408,7 +438,7 @@ async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<Stri
     }
     let connectors = connector_subnet(&config.sandbox.subnet).ok_or("no valid [sandbox] subnet")?;
     if run(args(&[podman, "network", "exists", CONNECTOR_NETWORK]), none.clone()).await.is_err() {
-        run(args(&[podman, "network", "create", "--internal", "--subnet", &connectors, CONNECTOR_NETWORK]), none.clone())
+        run(args(&[podman, "network", "create", "--internal", "--disable-dns", "--subnet", &connectors, CONNECTOR_NETWORK]), none.clone())
             .await
             .map_err(|e| format!("connectors' network not created: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
         tracing::info!(target: "bipbridge::sandbox", network = CONNECTOR_NETWORK, subnet = %connectors, "connectors' network created (no route out)");
@@ -417,6 +447,7 @@ async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<Stri
         ensure_browser_network(config, run, podman).await?;
     }
     crate::sandbox_sites::ensure_policy(config).map_err(|e| format!("the agents' sites not written: {e}"))?;
+    write_proxy_resolv(config, &RESOLV_CONFS).map_err(|e| format!("the proxy's name servers not written: {e}"))?;
     // the offer's blocklist fetched now if it is due (the proxy reads it when it appears; never waited for)
     let c = config.clone();
     tokio::spawn(async move { crate::send_guard::refresh_blocklist(&c).await });
@@ -1404,11 +1435,20 @@ mod tests {
         std::fs::write(&stub, "nameserver 100.100.100.100\n").unwrap();
         assert_eq!(nameservers(&files), vec!["100.100.100.100"]);
         assert!(nameservers(&[dir.path().join("none").to_str().unwrap()]).is_empty());
+        assert_eq!(resolv_text(&["192.168.1.1".into()]), "nameserver 192.168.1.1\noptions timeout:2 attempts:2\n");
+        // the proxy gets the file, mounted over podman's own (whose first servers are the internal networks')
         let mut config = Config::with_key("k".repeat(32));
+        config.outbox.db_path = dir.path().join("data/bridge.db").to_string_lossy().into_owned();
         config.sandbox.subnet = "10.233.80.0/24".into();
+        std::fs::write(&stub, "nameserver 127.0.0.53\n").unwrap();
+        write_proxy_resolv(&config, &files).unwrap();
+        assert_eq!(std::fs::read_to_string(proxy_resolv(&config)).unwrap(), resolv_text(&["192.168.1.1".into(), "2a01:cb00::1".into()]));
         let command = proxy_command(&config, "podman");
-        let entry = command.iter().position(|a| a == "--entrypoint").unwrap();
-        assert!(command.iter().all(|a| !a.starts_with("--dns=") || command.iter().position(|b| b == a).unwrap() < entry));
+        let mount = format!("{}:/etc/resolv.conf:ro,z", proxy_resolv(&config).display());
+        assert!(command.contains(&mount) && !command.iter().any(|a| a.starts_with("--dns=")));
+        // none found: no file, podman's default
+        write_proxy_resolv(&config, &[dir.path().join("none").to_str().unwrap()]).unwrap();
+        assert!(!proxy_resolv(&config).exists() && !proxy_command(&config, "podman").contains(&mount));
     }
 
     #[test]

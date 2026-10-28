@@ -161,9 +161,13 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert "github.com" not in allow
     assert run[run.index("--entrypoint") + 1] == "python3" and "docker.io/nousresearch/hermes-sandbox:desktop" in run
     assert run[run.index("--user") + 1] == "0:0"
-    # this machine's resolvers, never a loopback stub nor the internal network's own (aibox 2026-10-28)
-    resolvers = [a.removeprefix("--dns=") for a in run if a.startswith("--dns=")]
-    assert all(not ipaddress.ip_address(r).is_loopback for r in resolvers)
+    # its own resolv.conf: this machine's resolvers, never a loopback stub nor the internal networks' (aibox 2026-10-28)
+    resolv = bridge.state_dir / "sandbox-proxy" / "resolv.conf"
+    if resolv.exists():
+        assert f"{resolv}:/etc/resolv.conf:ro,z" in run
+        servers = [line.split()[1] for line in resolv.read_text().splitlines() if line.startswith("nameserver")]
+        assert servers and all(not ipaddress.ip_address(s.split("%")[0]).is_loopback for s in servers)
+    assert not any(a.startswith("--dns=") for a in run)
     assert f"{bridge.state_dir}/sandbox-proxy/policy:/bip/policy:ro,z" in run
     assert f"{bridge.state_dir}/sandbox-proxy/reports:/bip/reports:z" in run
     assert "BIP_POLICY=/bip/policy/sites.json" in run and "BIP_REPORTS=/bip/reports/sends.jsonl" in run

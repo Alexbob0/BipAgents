@@ -163,9 +163,9 @@ def test_the_code_volumes_follow_their_folders_at_each_start(bridges, fakes):
     assert wait_until(lambda: (places["skills"] / "oura" / "SKILL.md").exists(), timeout=15)
     assert wait_until(lambda: not (places["skills"] / "garmin" / "SKILL.md").exists(), timeout=5)
     assert wait_until(lambda: "adopted code refreshed" in bridge.log_tail(4000), timeout=10)
-    time.sleep(0.5)
-    # The bridge's own start kept the adopted volumes.
-    assert f"bipagents-wellness-skills:/home/hermes/.hermes/profiles/wellness/skills:ro" in volumes_of(folder)
+    # The bridge's own start kept the adopted volumes (written once its start is done: slower on the CI).
+    assert wait_until(lambda: "bipagents-wellness-skills:/home/hermes/.hermes/profiles/wellness/skills:ro" in volumes_of(folder),
+                      timeout=20)
 
 
 def test_an_unrecognised_mount_is_kept_and_a_relative_one_too(bridges, fakes):

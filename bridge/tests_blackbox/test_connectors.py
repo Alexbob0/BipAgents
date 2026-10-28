@@ -322,8 +322,11 @@ def test_project_and_unisolated_agents_get_no_connector_tools(bridges, fakes):
     bridge, hub, _ = isolated(bridges, fakes, agents=("vie",))
     bridge.start()   # vie may not hold credentials here (not isolated for the vault)
     wait_registered(bridge, ["vie"])
-    servers = yaml.safe_load((hub / "profiles" / "vie" / "config.yaml").read_text())["mcp_servers"]
-    assert "bipagents_connectors" not in servers
+    def servers():   # read whole: the fake `hermes` and the bridge's start may be rewriting it (slower on the CI)
+        data = yaml.safe_load((hub / "profiles" / "vie" / "config.yaml").read_text())
+        return data.get("mcp_servers") if isinstance(data, dict) else None
+    assert wait_until(lambda: servers() is not None, timeout=20)
+    assert "bipagents_connectors" not in servers()
 
 
 # --- the egress proxy, run here as the bridge writes its policy ---------------------------------------------------------
