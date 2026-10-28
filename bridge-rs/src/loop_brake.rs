@@ -1099,7 +1099,7 @@ mod tests {
         let limits = Settings::default().conversation;
         // the same query (other options, other spacing): told at 3, stopped at 5
         let mut turn = TurnCount::default();
-        let same = |n: u32| canonical(&json!({"query": format!("message  Agent"), "limit": n}));
+        let same = |n: u32| canonical(&json!({"query": "message  Agent", "limit": n}));
         for n in 1..=4u32 {
             assert_eq!(turn.note("tool_search", Some(&same(n)), false, &limits), None, "{n}");
             let warning = turn.take_warning();

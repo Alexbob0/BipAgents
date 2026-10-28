@@ -643,7 +643,7 @@ fn hermes_template_medium_is_no_choice_and_a_lost_choice_comes_back() {
     heal_thinking(&c);
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
     // the routing written again (each time the bridge gives the tools) keeps the person's level
-    std::fs::write(&path, &template.replace("medium", "low")).unwrap();
+    std::fs::write(&path, template.replace("medium", "low")).unwrap();
     bipbridge::model_route::write(&path, &[]).unwrap();
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
     // another model: the person's level put back too
