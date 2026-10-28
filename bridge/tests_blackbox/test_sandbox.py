@@ -4,6 +4,7 @@ shared folders in podman volumes of their own (shares.rs) and through the file t
 their permission checks, the registries-only network, and the way back (`isolate = "off"`). podman is the fake one:
 its volumes are folders of the test."""
 import hashlib
+import ipaddress
 import json
 import os
 import time
@@ -139,7 +140,7 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert token not in json.dumps(policy) and token not in bridge.log_tail(20000)
     assert vie["docker_env"]["NO_PROXY"] == "localhost,127.0.0.1"
     podman = bridge.commands.of("podman")
-    assert ["network", "create", "--internal", "--subnet", "10.233.80.0/24", "bipagents-sandbox"] in podman
+    assert ["network", "create", "--internal", "--disable-dns", "--subnet", "10.233.80.0/24", "bipagents-sandbox"] in podman
     run = next(args for args in podman if args[:1] == ["run"])
     assert run[run.index("--name") + 1] == "bipagents-egress" and "--replace" in run
     assert "bipagents-sandbox:ip=10.233.80.2" in run and "podman" in run and "--read-only" in run
@@ -148,6 +149,9 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert "github.com" not in allow
     assert run[run.index("--entrypoint") + 1] == "python3" and "docker.io/nousresearch/hermes-sandbox:desktop" in run
     assert run[run.index("--user") + 1] == "0:0"
+    # this machine's resolvers, never a loopback stub nor the internal network's own (aibox 2026-10-28)
+    resolvers = [a.removeprefix("--dns=") for a in run if a.startswith("--dns=")]
+    assert all(not ipaddress.ip_address(r).is_loopback for r in resolvers)
     assert f"{bridge.state_dir}/sandbox-proxy/policy:/bip/policy:ro,z" in run
     assert f"{bridge.state_dir}/sandbox-proxy/reports:/bip/reports:z" in run
     assert "BIP_POLICY=/bip/policy/sites.json" in run and "BIP_REPORTS=/bip/reports/blocked.jsonl" in run

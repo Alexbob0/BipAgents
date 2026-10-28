@@ -144,7 +144,8 @@ async def resolve(host, port):
     loop = asyncio.get_running_loop()
     try:
         found = await asyncio.wait_for(loop.getaddrinfo(host, port, type=socket.SOCK_STREAM), WAIT)
-    except Exception:
+    except Exception as exc:
+        log(f"name-not-found ({type(exc).__name__}: {str(exc)[:120]})", "RESOLVE", host)
         return None
     addresses = [info[4][0] for info in found]
     if not addresses or not all(public(a) for a in addresses):
@@ -282,14 +283,18 @@ async def handle(reader, writer):
         report(agent, host, port)
         return await answer(writer, 403, "Forbidden")
     addresses = await resolve(host, port)
-    if not addresses:
-        log("blocked-address" if addresses == [] else "failed", method, target, agent)
-        return await answer(writer, 403 if addresses == [] else 502, "Forbidden" if addresses == [] else "Bad Gateway")
+    if addresses == []:
+        log("blocked-address", method, target, agent)
+        return await answer(writer, 403, "Forbidden")
+    if addresses is None:
+        # the reason is in the client's error (« 502 Bad Gateway (site name not found) »), so the agent says it
+        log("failed (name not found)", method, target, agent)
+        return await answer(writer, 502, "Bad Gateway (site name not found)")
     try:
         up_reader, up_writer = await connect(addresses, port)
-    except Exception:
-        log("failed", method, target, agent)
-        return await answer(writer, 502, "Bad Gateway")
+    except Exception as exc:
+        log(f"failed ({type(exc).__name__}: {str(exc)[:120]})", method, target, agent)
+        return await answer(writer, 502, "Bad Gateway (site unreachable)")
     log("allowed", method, target, agent)
     if request:
         up_writer.write(request)

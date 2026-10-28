@@ -147,6 +147,33 @@ pub fn proxy_ip(subnet: &str) -> Option<String> {
     Some(format!("{}.{}.{}.2", parts[0], parts[1], parts[2]))
 }
 
+/// Where this machine's resolvers are written: the usual file, then systemd-resolved's list of the real ones when the
+/// usual file only names its local stub (Fedora, Ubuntu: `127.0.0.53`).
+pub const RESOLV_CONFS: [&str; 2] = ["/etc/resolv.conf", "/run/systemd/resolve/resolv.conf"];
+
+/// The name servers the proxy asks (`--dns`), from the first file that names one reachable from a container: never a
+/// loopback stub, nor a link-local address bound to an interface (`fe80::1%eth0`). Without them podman would give the
+/// proxy only the sandboxes' network's own resolver, which never answers for the internet on an internal network
+/// (seen on aibox 2026-10-28: every site « name not found », the registries included).
+pub fn nameservers(files: &[&str]) -> Vec<String> {
+    for file in files {
+        let Ok(text) = std::fs::read_to_string(file) else { continue };
+        let found: Vec<String> = text
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("nameserver"))
+            .map(|rest| rest.trim().to_string())
+            .filter(|ns| {
+                !ns.contains('%')
+                    && ns.parse::<std::net::IpAddr>().is_ok_and(|ip| !ip.is_loopback() && !ip.is_unspecified())
+            })
+            .collect();
+        if !found.is_empty() {
+            return found;
+        }
+    }
+    Vec::new()
+}
+
 pub fn files_volume(agent: &str) -> String {
     format!("bipagents-files-{agent}")
 }
@@ -305,9 +332,13 @@ pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
         &format!("BIP_POLICY=/bip/policy/{}", crate::sandbox_sites::POLICY_FILE),
         "-e",
         &format!("BIP_REPORTS=/bip/reports/{}", crate::sandbox_sites::REPORTS_FILE),
-        "--entrypoint",
-        "python3",
     ]);
+    let resolvers = nameservers(&RESOLV_CONFS);
+    if resolvers.is_empty() {
+        tracing::warn!(target: "bipbridge::sandbox", "no name server found for the sandboxes' proxy: podman's default");
+    }
+    command.extend(resolvers.iter().map(|ns| format!("--dns={ns}")));
+    command.extend(args(&["--entrypoint", "python3"]));
     command.push(proxy_image(config));
     command.extend(args(&["-u", "-c", PROXY_SCRIPT]));
     command
@@ -318,7 +349,8 @@ async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<Stri
     let none = BTreeMap::new();
     if run(args(&[podman, "network", "exists", NETWORK]), none.clone()).await.is_err() {
         run(
-            args(&[podman, "network", "create", "--internal", "--subnet", &config.sandbox.subnet, NETWORK]),
+            // no resolver of its own: the sandboxes have none (`--dns=127.0.0.1`), the proxy gets this machine's
+            args(&[podman, "network", "create", "--internal", "--disable-dns", "--subnet", &config.sandbox.subnet, NETWORK]),
             none.clone(),
         )
         .await
@@ -1275,6 +1307,27 @@ mod tests {
         assert_eq!(proxy_ip("10.233.80.0/16"), None);
         assert_eq!(proxy_ip("10.233.80.1/24"), None);
         assert_eq!(proxy_ip("nonsense"), None);
+    }
+
+    #[test]
+    fn the_proxy_asks_this_machines_real_resolvers() {
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("resolv.conf");
+        let real = dir.path().join("resolved.conf");
+        // aibox, 2026-10-28: the usual file names only systemd-resolved's stub, the real one is the box
+        std::fs::write(&stub, "nameserver 127.0.0.53\noptions edns0 trust-ad\nsearch lan\n").unwrap();
+        std::fs::write(&real, "# resolved\nnameserver 192.168.1.1\nnameserver fe80::1%eth0\nnameserver 2a01:cb00::1\n").unwrap();
+        let files = [stub.to_str().unwrap(), real.to_str().unwrap()];
+        assert_eq!(nameservers(&files), vec!["192.168.1.1", "2a01:cb00::1"]);
+        // a usual file with a reachable server is enough; none anywhere: podman's default
+        std::fs::write(&stub, "nameserver 100.100.100.100\n").unwrap();
+        assert_eq!(nameservers(&files), vec!["100.100.100.100"]);
+        assert!(nameservers(&[dir.path().join("none").to_str().unwrap()]).is_empty());
+        let mut config = Config::with_key("k".repeat(32));
+        config.sandbox.subnet = "10.233.80.0/24".into();
+        let command = proxy_command(&config, "podman");
+        let entry = command.iter().position(|a| a == "--entrypoint").unwrap();
+        assert!(command.iter().all(|a| !a.starts_with("--dns=") || command.iter().position(|b| b == a).unwrap() < entry));
     }
 
     #[test]
