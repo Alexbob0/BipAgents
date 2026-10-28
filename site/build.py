@@ -119,7 +119,7 @@ def node_bip(category: str, mood: str = "idle", costume: str | None = None) -> s
 
 
 def favicon(category: str = "daily") -> str:
-    """The app's icon « Lueur bleuet » (scripts/pixel/icon.py) as an SVG with rounded corners."""
+    """The app's icon « Relief classique, rose » (scripts/pixel/icon.py) as an SVG with rounded corners."""
     drawn = node_draw("m.iconSVG(26)")
     return drawn or ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">'
                      '<rect width="120" height="120" rx="26" fill="#25272D"/></svg>')
