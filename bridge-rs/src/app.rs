@@ -1048,10 +1048,16 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
             return Err(HttpError::new(400, "invalid session_id"));
         }
     }
-    let mut listener = state.hub.subscribe(&agent_cfg, &run_id, "app", true);
+    let listener = state.hub.subscribe(&agent_cfg, &run_id, "app", true);
     if let Some(s) = session_id.filter(|s| !s.is_empty()) {
         listener.sub.set_session_id(Some(s));
     }
+    Ok(listener_events(listener))
+}
+
+/// A listener of the run hub as the SSE the app reads (`event: <type>`, `data: <json>`, a keepalive comment every
+/// 10 s): the bridge's `GET /v1/runs/{id}/events`, and the door's relay of Hermes' own (lan.rs).
+pub fn listener_events(mut listener: crate::runs::Listener) -> Response {
     let events = async_stream::stream! {
         loop {
             match tokio::time::timeout(Duration::from_secs_f64(SSE_KEEPALIVE_SECONDS), listener.queue.recv()).await {
@@ -1069,14 +1075,14 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
         listener.close();
     };
     let response = Response::new(Body::from_stream(events));
-    Ok(with_headers(
+    with_headers(
         response,
         &[
             ("content-type", "text/event-stream; charset=utf-8".into()),
             ("cache-control", "no-store".into()),
             ("x-accel-buffering", "no".into()),
         ],
-    ))
+    )
 }
 
 async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>) -> ApiResult<Response> {

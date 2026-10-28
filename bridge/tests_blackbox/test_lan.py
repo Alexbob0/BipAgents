@@ -9,7 +9,6 @@ import stat
 import httpx
 
 from bbkit.common import AUTH, BRIDGE_KEY, HERMES_KEY, REMOTE, sse
-from bbkit.fakes import CLOSE
 from bbkit.servers import free_port
 
 
@@ -78,10 +77,16 @@ def test_pairing_route_and_hermes_relay(bridges, fakes):
     seen = fakes.hermes.seen("/v1/runs", "POST")[-1]
     assert seen.path == "/v1/runs" and seen.query == "x=1" and seen.json() == {"input": "Salut"}
     assert seen.header("authorization") == f"Bearer {HERMES_KEY}"  # Hermes checks its own key
-    fakes.hermes.runs["run_1"] = [sse("message.delta", delta="Hi"), CLOSE]
+    # a run's events come from the bridge's run hub (one Hermes subscription, the brake's counts: loop_brake.rs), in
+    # the same SSE; Hermes still says first whether the key is good and the run there
+    fakes.hermes.run_info["run_1"] = {"status": "running"}
+    fakes.hermes.runs["run_1"] = [sse("message.delta", delta="Hi"), sse("run.completed", output="Hi")]
     events = bridge.get("/hermes/wellness/v1/runs/run_1/events", headers=hermes_auth)
     assert events.headers["content-type"].startswith("text/event-stream") and b"message.delta" in events.content
-    assert events.content == sse("message.delta", delta="Hi").encode()
+    assert events.content == (sse("message.delta", delta="Hi") + sse("run.completed", output="Hi")).encode()
+    assert bridge.get("/hermes/wellness/v1/runs/run_9/events", headers=hermes_auth).status_code == 404
+    refused = bridge.get("/hermes/wellness/v1/runs/run_1/events", headers={"Authorization": "Bearer nope"})
+    assert refused.status_code == 401
     wrong = bridge.get("/hermes/wellness/api/sessions", headers={"Authorization": "Bearer nope"})
     assert wrong.status_code == 401 and wrong.json() == {"error": "bad key"}   # Hermes' own answer, passed on
     assert bridge.get("/hermes/wellness/health").status_code == 200

@@ -10,6 +10,10 @@
 //! follower, push an `APPROVAL` notification (once per request); when such a run completes, push a
 //! « reply ready » alert that opens its conversation.
 //!
+//! Every run the bridge starts or relays is followed here, whoever looks at it (`keep`, 2026-10-27): the door's Hermes
+//! relay (lan.rs) serves a run's events from the hub and follows the runs started through it, as does a peer's message
+//! (peers.rs), so the brake (loop_brake.rs) counts and stops every turn, not only those the app follows here.
+//!
 //! Long-work safety net (2026-10-22, `[jobs] handoff`): a conversation's run that goes past ~15 tool calls or ~3
 //! minutes is steered once to hand the rest over to a background task (`handoff`). Since 2026-10-24 (owner's report:
 //! a clothes search handed to a sub-agent stopped silently, twice): never while a sub-agent (`delegate_task`) works
@@ -167,6 +171,36 @@ pub fn rescue_prompt(request: &str, steps: &[String], said: &str) -> String {
     out
 }
 
+/// A `POST /v1/runs` relayed to an agent's Hermes (the door's relay, lan.rs; a peer's message, peers.rs): its answer
+/// (a small JSON) read whole to follow the run it started (`RunHub::keep`, for the brake), and given back unchanged.
+pub async fn keep_started(
+    hub: &Arc<RunHub>,
+    agent: &AgentConfig,
+    request: &[u8],
+    response: axum::response::Response,
+) -> axum::response::Response {
+    if !response.status().is_success() {
+        return response;
+    }
+    let (parts, body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, 4 << 20).await else {
+        let mut failed = axum::response::Response::new(axum::body::Body::from("Hermes' answer was lost"));
+        *failed.status_mut() = axum::http::StatusCode::BAD_GATEWAY;
+        return failed;
+    };
+    let answer: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    let answer = answer.get("run").filter(|r| r.is_object()).unwrap_or(&answer);
+    let run_id = answer.get("run_id").or_else(|| answer.get("id")).and_then(Value::as_str);
+    let session = serde_json::from_slice::<Value>(request)
+        .ok()
+        .and_then(|b| b.get("session_id").and_then(Value::as_str).map(str::to_string));
+    if let Some(run_id) = run_id.filter(|r| crate::app::RUN_ID.is_match(r)) {
+        hub.keep(agent, run_id, session.as_deref());
+        tracing::info!(agent = %agent.name, run_id = %run_id, "relayed run followed");
+    }
+    axum::response::Response::from_parts(parts, axum::body::Body::from(bytes))
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -305,6 +339,15 @@ pub struct SubscriptionState {
     /// The brake's count of the run's tool calls, and whether it stopped the run.
     pub turn: crate::loop_brake::TurnCount,
     pub braked: bool,
+    /// Followed for the brake whoever looks (`keep`: a run started or followed through the door's Hermes relay, a
+    /// peer's message): kept alive like a watched run, without its pushes.
+    pub kept: bool,
+    /// An app or a Live call has followed the run (a kept run nobody looked at is not « followed » for cronwatch's
+    /// Bot Chat push: `followed_recently`).
+    pub ever_followed: bool,
+    /// The run's last tool call (bare name) and when: which run a call of the bridge's tools belongs to (`turn_of`).
+    pub last_tool: String,
+    pub last_tool_at: f64,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -338,6 +381,10 @@ impl Default for SubscriptionState {
             background: false,
             turn: crate::loop_brake::TurnCount::default(),
             braked: false,
+            kept: false,
+            ever_followed: false,
+            last_tool: String::new(),
+            last_tool_at: 0.0,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -468,6 +515,9 @@ impl RunHub {
             if watch {
                 st.watched = true;
             }
+            if kind == "voice" || kind == "app" {
+                st.ever_followed = true;
+            }
             for event in &st.backlog {
                 let _ = tx.send(Some(event.clone()));
             }
@@ -527,6 +577,23 @@ impl RunHub {
                 item.insert("room_id".into(), json!(room_id));
             }
         }
+    }
+
+    /// Follow the run for the brake (loop_brake.rs) whoever looks at it, without the pushes of `watch`: a run started
+    /// or followed through the door's Hermes relay (lan.rs), a peer's message (peers.rs). Before 2026-10-27 evening
+    /// those runs were invisible to the hub: never counted nor stopped, their writes counted per agent.
+    pub fn keep(self: &Arc<Self>, agent: &AgentConfig, run_id: &str, session_id: Option<&str>) -> Arc<RunSubscription> {
+        let mut inner = lock(&self.inner);
+        let sub = self.get_or_start(&mut inner, agent, run_id);
+        let mut st = lock(&sub.state);
+        st.kept = true;
+        if let Some(s) = session_id.filter(|s| !s.is_empty()) {
+            if st.session_id.as_deref().map(str::is_empty).unwrap_or(true) {
+                st.session_id = Some(s.to_string());
+            }
+        }
+        drop(st);
+        sub
     }
 
     /// After a restart: watch again the runs that were watched, and rebuild what Hermes still waits for (an
@@ -592,6 +659,9 @@ impl RunHub {
             let st = lock(&sub.state);
             if sub.agent.name != agent || st.session_id.as_deref() != Some(session_id) {
                 continue;
+            }
+            if st.kept && !st.watched && !st.ever_followed {
+                continue; // followed for the brake only (a peer's message): its reply still pushed
             }
             if !st.finished {
                 return true;
@@ -735,7 +805,7 @@ impl RunHub {
         if was_followed && st.followers() == 0 && st.watched && !st.finished {
             self.push_unseen(&inner, sub, &mut st);
         }
-        if st.listeners.is_empty() && !st.watched && !st.finished {
+        if st.listeners.is_empty() && !st.watched && !st.kept && !st.finished {
             if let Some(cancel) = &st.cancel {
                 cancel.cancel();
             }
@@ -897,7 +967,7 @@ impl RunHub {
                         let notice = SSEEvent::new("bridge.error", data.as_object().cloned().unwrap_or_default(), "");
                         let st = lock(&sub.state);
                         st.send_all(Some(&notice));
-                        if !st.watched {
+                        if !st.watched && !st.kept {
                             return Ok(());
                         }
                     }
@@ -909,7 +979,7 @@ impl RunHub {
             }
             {
                 let st = lock(&sub.state);
-                if st.listeners.is_empty() && !st.watched {
+                if st.listeners.is_empty() && !st.watched && !st.kept {
                     return Ok(());
                 }
             }
@@ -935,6 +1005,9 @@ impl RunHub {
             self.handoff(sub, &mut st, &event);
         }
         if kind == "tool.started" {
+            let tool = crate::loop_brake::event_tool(&event.data);
+            st.last_tool = crate::loop_brake::bare(&tool).to_string();
+            st.last_tool_at = crate::py::time_time();
             self.brake(sub, &mut st, &event);
         }
         if kind == "tool.started" {
@@ -1067,8 +1140,10 @@ impl RunHub {
         }
         let browser = browser_tool(&tool);
         let mut limits = settings.limits(st.background);
-        if browser || st.used_browser {
-            limits.tool_calls = limits.tool_calls.max(settings.task.tool_calls);
+        if (browser || st.used_browser) && !st.background {
+            // a browsing turn: the browser's own calls on top (its own limits, browser_calls and page_reads, well
+            // under Hermes' cap of 150, so a page it can't read ends on the plain line, not a silent failure)
+            limits.tool_calls += limits.browser_calls;
         }
         let signature = crate::loop_brake::event_signature(&event.data);
         let Some(over) = st.turn.note(&tool, signature.as_deref(), browser, &limits) else { return };
@@ -1090,7 +1165,8 @@ impl RunHub {
         let notice = SSEEvent::new(NOTICE, data, raw);
         append_to_backlog(&mut st.backlog, &notice);
         st.send_all(Some(&notice));
-        if let (true, Some(push)) = (st.watched && st.end_push && st.followers() == 0, self.push.clone()) {
+        let unseen = st.followers() == 0 && ((st.watched && st.end_push) || (st.kept && !st.background));
+        if let (true, Some(push)) = (unseen, self.push.clone()) {
             // its own push instead of the run's end one (whose text would be the loop's last words)
             st.end_push = false;
             let (agent, run_id, session) = (sub.agent.name.clone(), sub.run_id.clone(), st.session_id.clone());
@@ -1114,18 +1190,25 @@ impl RunHub {
         }
     }
 
-    /// The agent's runs going on that the hub follows: `(run id, background task's)`.
-    pub fn live_runs(&self, agent: &str) -> Vec<(String, bool)> {
+    /// The turn a call of the bridge's tool `tool` by `agent` belongs to (loop_brake.rs, its MCP counts): the agent's
+    /// run going on that the hub follows; with several, the one whose last call was this tool, else the one that
+    /// called a tool last. None: no run of the agent followed (a routine, Hermes' cron).
+    pub fn turn_of(&self, agent: &str, tool: &str) -> Option<crate::loop_brake::Turn> {
+        let tool = crate::loop_brake::bare(tool);
         let inner = lock(&self.inner);
-        inner
-            .subs
-            .values()
-            .filter(|sub| sub.agent.name == agent)
-            .filter_map(|sub| {
-                let st = lock(&sub.state);
-                (!st.finished && st.terminal.is_none()).then(|| (sub.run_id.clone(), st.background))
-            })
-            .collect()
+        let mut best: Option<((bool, f64), crate::loop_brake::Turn)> = None;
+        for sub in inner.subs.values().filter(|sub| sub.agent.name == agent) {
+            let st = lock(&sub.state);
+            if st.finished || st.terminal.is_some() {
+                continue;
+            }
+            let key = (st.last_tool == tool, st.last_tool_at.max(st.followed_since));
+            if best.as_ref().is_none_or(|(k, _)| key > *k) {
+                let turn = crate::loop_brake::Turn { run_id: sub.run_id.clone(), background: st.background };
+                best = Some((key, turn));
+            }
+        }
+        best.map(|(_, turn)| turn)
     }
 
     /// The long-work safety net (decided 2026-10-22, independent of the model): a run in a person's conversation (not a
@@ -1178,7 +1261,8 @@ impl RunHub {
             }
             _ => {}
         }
-        let held = st.delegating > 0 || st.subagents > 0;
+        // a run kept for the brake only (a peer's message nobody looks at): no steer, no rescue, as before
+        let held = st.delegating > 0 || st.subagents > 0 || (st.kept && !st.watched && !st.ever_followed);
         if st.steered || st.braked || st.handed_off || !st.end_push || st.finished || held {
             return;
         }
@@ -1637,8 +1721,7 @@ mod tests {
         };
         let (chat, task) = (run("run_chat"), run("run_task"));
         hub.mark_background("daily", "run_task");
-        assert_eq!(hub.live_runs("daily").len(), 2);
-        assert!(hub.live_runs("daily").contains(&("run_task".to_string(), true)));
+        assert!(lock(&task.state).background && !lock(&chat.state).background);
         for i in 0..30 {
             let tool = if i % 2 == 0 { "mcp__bipagents__calendar_add" } else { "mcp__bipagents__calendar_list" };
             hub.dispatch(&chat, started(tool));
@@ -1653,6 +1736,49 @@ mod tests {
         drop(st);
         // the background task's run goes further (40 of one tool)
         assert!(notices(&task).is_empty() && !lock(&task.state).braked);
+    }
+
+    #[tokio::test]
+    async fn the_bridges_tools_are_counted_in_the_run_that_calls_them() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "daily".into(), ..Default::default() };
+        assert_eq!(hub.turn_of("daily", "reminders_add"), None, "no run: a routine's turn");
+        let run = |id: &str| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), id));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let started = |tool: &str| SSEEvent::new("tool.started", json!({"tool": tool}).as_object().cloned().unwrap(), "{}");
+        let (chat, task) = (run("run_chat"), run("run_task"));
+        hub.mark_background("daily", "run_task");
+        hub.dispatch(&chat, started("mcp__bipagents__reminders_add"));
+        hub.dispatch(&task, started("mcp_bipagents_notebook_search"));
+        let turn = |tool: &str| hub.turn_of("daily", tool).map(|t| (t.run_id, t.background));
+        assert_eq!(turn("mcp__bipagents__reminders_add"), Some(("run_chat".into(), false)));
+        assert_eq!(turn("notebook_search"), Some(("run_task".into(), true)));
+        assert_eq!(turn("calendar_add"), Some(("run_task".into(), true)), "else the one that called a tool last");
+        assert_eq!(hub.turn_of("other", "calendar_add"), None);
+        lock(&task.state).finished = true;
+        assert_eq!(turn("notebook_search"), Some(("run_chat".into(), false)));
+    }
+
+    #[tokio::test]
+    async fn a_browsing_turn_is_stopped_before_hermes_cap() {
+        // 2026-10-27, the bench: 145 page reads, cut by Hermes' cap of 150 with no answer
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "daily".into(), ..Default::default() };
+        let sub = Arc::new(RunSubscription::new(agent, "run_browse"));
+        lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+        let started = |tool: &str| SSEEvent::new("tool.started", json!({"tool": tool, "preview": "{}"}).as_object().cloned().unwrap(), "{}");
+        hub.dispatch(&sub, started("mcp__stealth__navigate"));
+        for _ in 0..145 {
+            hub.dispatch(&sub, started("mcp__stealth__get_page_content"));
+        }
+        let st = lock(&sub.state);
+        assert!(st.braked);
+        assert_eq!(st.turn.page_reads, 16);
+        let notice = st.backlog.iter().find(|e| e.r#type == NOTICE).unwrap();
+        assert_eq!(notice.data["reason"], json!("the browser read the page too many times"));
     }
 
     #[tokio::test]
