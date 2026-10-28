@@ -59,6 +59,8 @@ pub const PAUSE_REASON: &str = "bipagents-template: turned on by the person in t
 pub const FIND_TOOL: &str = "find_template";
 pub const LINK_BASE: &str = "https://bipagents.com/m/";
 pub const DEFAULT_GUICHET: &str = "https://guichet.bipagents.com";
+/// A bundle's files decoded: (relative path, executable, content).
+type Files = Vec<(PathBuf, bool, Vec<u8>)>;
 const STD: base64::engine::general_purpose::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
 /// What never travels, in the person's words (shown on the review screen).
@@ -144,7 +146,7 @@ fn safe_path(path: &str) -> Option<PathBuf> {
 }
 
 /// A bundle's files checked and decoded: (path, exec, bytes).
-fn decode_files(files: Option<&Value>, max: usize) -> Result<Vec<(PathBuf, bool, Vec<u8>)>, String> {
+fn decode_files(files: Option<&Value>, max: usize) -> Result<Files, String> {
     let Some(Value::Array(items)) = files else { return Err("files: a list".into()) };
     if items.is_empty() || items.len() > max {
         return Err(format!("files: 1 to {max}"));
@@ -629,7 +631,7 @@ fn skill_slug(name: &str) -> Option<String> {
 }
 
 /// A connector of a bundle, checked as `connector_register` checks the agent's (and its files).
-pub fn checked_connector(item: &Value) -> Result<(Connector, Vec<(PathBuf, bool, Vec<u8>)>), String> {
+pub fn checked_connector(item: &Value) -> Result<(Connector, Files), String> {
     let name = crate::cards::quoted(&s(item, "name"), 40);
     let slug = connectors::slug(&name);
     if name.is_empty() || slug.len() < 2 {
