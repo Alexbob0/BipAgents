@@ -394,6 +394,23 @@ impl CronWatcher {
         }
     }
 
+    /// A routine's reply with a `MEDIA:` line for each file it only cites from the agent's own folders
+    /// (cited_files.rs).
+    async fn with_cited_files(&self, agent: &AgentConfig, reply: String) -> String {
+        if !crate::cited_files::may_cite(&reply) {
+            return reply;
+        }
+        let (config, agent, text) = (self.config.clone(), agent.clone(), reply.clone());
+        let found = tokio::task::spawn_blocking(move || crate::cited_files::cited(&config.get(), &agent, &text))
+            .await
+            .unwrap_or_default();
+        if found.is_empty() {
+            reply
+        } else {
+            crate::cited_files::with_cards(&reply, &found)
+        }
+    }
+
     /// One round for one agent; returns how many replies were stored. `now`: local time, naive (Python's
     /// `datetime.now()`).
     pub async fn poll(&self, agent: &AgentConfig, now: Option<NaiveDateTime>) -> anyhow::Result<usize> {
@@ -434,6 +451,7 @@ impl CronWatcher {
                 st.done.insert(key);
             }
             let reply = with_audio_made(&agent.name, &sid, started, reply);
+            let reply = self.with_cited_files(agent, reply).await;
             let mut title = match session.get("title") {
                 Some(Value::String(t)) => Some(t.clone()),
                 _ => None,
