@@ -558,6 +558,19 @@ BipAgents app.",
     Ok(tool_text(ASKED, false))
 }
 
+/// An event asked to the phone by the bridge itself (meet.rs: a date both households accepted), as an agent's
+/// `calendar_add` would: `event` as `new_event` gives it. Its request id.
+pub fn queue_event(config: &Config, agent: &str, event: &Value) -> anyhow::Result<String> {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let mut queue = list_of(&data, "queue");
+    let id = py::token_hex(6);
+    queue.push(json!({"id": id, "op": "add", "agent": agent, "created": py::time_time(), "state": "pending", "args": event}));
+    data.insert("queue".into(), Value::Array(queue));
+    write(config, &data)?;
+    Ok(id)
+}
+
 /// What a request queued for the phone answers, at its start (the phone is woken when it starts so).
 pub const ASKED: &str =
     "Asked: the person's phone does it at its next sync (usually within minutes, or when the app opens).";

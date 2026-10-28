@@ -1668,6 +1668,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::assistant_import::router())
         .merge(crate::guide::router())
         .merge(crate::rooms::router())
+        .merge(crate::meet::router())
         .merge(crate::reminders::router())
         .merge(crate::notebook::api::router())
         .merge(crate::calendar::router())
@@ -1725,6 +1726,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::agent_shares::household_router()) // the agents shared with them, the same key
         .merge(crate::family_agent::household_router()) // the family's agent and its Carnet, the same key
         .merge(crate::rooms_remote::household_router()) // their agents in this person's discussions, the same key
+        .merge(crate::meet::household_router()) // a date to find together, the same key
         .nest("/desktop/static/novnc", crate::desktop::static_files())
         .merge(crate::desktop::desktop_router()) // the page and its stream: a short-lived ticket from the route above
         .route("/v1/voice", get(crate::voice_ws::voice_endpoint));

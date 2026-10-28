@@ -46,7 +46,8 @@
 //!     GET    /v1/rooms                              {rooms: [room]}   the newest first
 //!     POST   /v1/rooms                              {participants: [id], title?, mode?}  → room
 //!     GET    /v1/rooms/{id}                         room
-//!     PATCH  /v1/rooms/{id}                         {title?, participants?, mode?}  → room
+//!     PATCH  /v1/rooms/{id}                         {title?, participants?, mode?}  → room   (« Ajouter un agent »: a
+//!                                                   relative's too, along the same links as at creation)
 //!     DELETE /v1/rooms/{id}                         {ok}   its turn stopped, its hidden conversations deleted
 //!     GET    /v1/rooms/{id}/messages?after=&limit=  {messages, answering, last_id}   (the app is looking: no push)
 //!     POST   /v1/rooms/{id}/messages                {text}  → {message, route: {by, agents}, answering}
@@ -1381,13 +1382,24 @@ async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
 }
 
 async fn create(State(state): State<AppState>, Json(body): Json<NewRoom>) -> ApiResult<Response> {
+    let room = create_room(&state, &body.participants, body.title.as_deref(), body.mode.as_deref()).await?;
+    Ok(web::ok(room_view(&state.config(), &room, Some(&*state.hub))))
+}
+
+/// A new room, its participants checked as for the app's « Nouvelle discussion » (the guide's card too, guide.rs).
+pub async fn create_room(
+    state: &AppState,
+    given: &[String],
+    title: Option<&str>,
+    mode: Option<&str>,
+) -> ApiResult<Room> {
     let config = state.config();
-    let participants = participants_of(&config, &body.participants)?;
-    let mode = mode_of(body.mode.as_deref())?.unwrap_or_else(auto);
-    let title = tk::squeeze(body.title.as_deref().unwrap_or(""));
+    let participants = participants_of(&config, given)?;
+    let mode = mode_of(mode)?.unwrap_or_else(auto);
+    let title = tk::squeeze(title.unwrap_or(""));
     let title = if title.is_empty() { default_title(&config, &participants) } else { title };
     let at = now();
-    let guests = guests_of(&state, &config, &participants).await;
+    let guests = guests_of(state, &config, &participants).await;
     let room = Room {
         id: format!("g{}", py::token_hex(6)),
         title,
@@ -1404,7 +1416,7 @@ async fn create(State(state): State<AppState>, Json(body): Json<NewRoom>) -> Api
         save(&config, &room)?;
     }
     tracing::info!(room = %room.id, participants = ?room.participants, "rooms: discussion created");
-    Ok(web::ok(room_view(&config, &room, Some(&*state.hub))))
+    Ok(room)
 }
 
 async fn view(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {

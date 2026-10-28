@@ -127,6 +127,7 @@ pub mod jobs;
 pub mod mail_scan;
 pub mod mailbox;
 pub mod map_tiles;
+pub mod meet;
 pub mod maps;
 pub mod memory_edit;
 pub mod memory_language;

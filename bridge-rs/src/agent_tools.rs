@@ -415,6 +415,9 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if calendar_on(config, &agent.name) {
         tools.extend(crate::calendar::tools());
     }
+    if crate::meet::offered(config, &agent.name) {
+        tools.push(crate::meet::tool()); // a date to find with a relative's household (meet.rs)
+    }
     if crate::contacts::enabled(config, &agent.name) {
         tools.extend(crate::contacts::tools());
     }
@@ -1384,6 +1387,10 @@ pub async fn call_tool(
     }
     if name == crate::templates::FIND_TOOL {
         return Ok(crate::templates::find_call(&config, agent, arguments).await);
+    }
+    if name == crate::meet::TOOL_NAME {
+        let (config, agent, arguments) = (config.clone(), agent.clone(), arguments.clone());
+        return blocking(move || Ok(crate::meet::call(&config, &agent, &arguments))).await;
     }
     if crate::guide::TOOL_NAMES.contains(&name) {
         let (config, agent, name, arguments) = (config.clone(), agent.clone(), name.to_string(), arguments.clone());
