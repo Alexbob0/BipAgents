@@ -7,7 +7,7 @@ diff --git a/model_tools.py b/model_tools.py
 
 +def _browser_vault_only() -> bool:
 +    """``browser.vault_only``: the profile browses with a browser of its own (an MCP server's tools); of the
-+    ``browser`` toolset it keeps only the vault (``browser_vault_*``, which fills that same browser through
++    ``browser`` toolset it keeps only the vault (``browser_vault``/``browser_vault_*``, which fills that same browser through
 +    ``browser.cdp_url``)."""
 +    try:
 +        from hermes_cli.config import read_raw_config
@@ -26,7 +26,7 @@ diff --git a/model_tools.py b/model_tools.py
      if disabled_toolsets:
          _apply_toolset_selection(tools, disabled_toolsets, quiet_mode, disable=True)
 +    if any(t.startswith("browser_") for t in tools) and _browser_vault_only():
-+        tools = {t for t in tools if not t.startswith("browser_") or t.startswith("browser_vault_")}
++        tools = {t for t in tools if not t.startswith("browser_") or t.startswith("browser_vault")}
      return tools
 
 
