@@ -34,6 +34,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0010 empty replies: changed retries, tool calls written as text | applies | applies (`97a9ae8ee`, `patch --dry-run`, checked 2026-10-27) |
 | 0011 titles with GLM: thinking floored to low | applies | applies (`97a9ae8ee`, checked 2026-10-28) |
 | 0012 Bot Chat: one `message_agent` | applies (after 0006) | not checked yet |
+| 0013 MCP results: vault passwords scrubbed | applies | applies (`97a9ae8ee`: the file is the same, checked 2026-10-28) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -309,3 +310,28 @@ is not touched (the diet keeps this one direct).
 (Python 3.12). The series 0001…0012 applies in order on `517b5e10f`. The bridge's side is unchanged (its black-box
 `test_agent_messages.py` still covers the tool's name and its direct entry).
 
+## 0013 — MCP tool results: vault passwords scrubbed
+
+**Problem.** Hermes registers a password with its redaction boundary when `browser_vault_fill` types it, and scrubs
+it from its own `browser_*` results. An agent with its visible browser browses with an MCP server instead (`stealth`,
+patch 0007): a page script run there (`execute_script`) reading the field the vault just filled sent the password to
+the model untouched. A login the app's bridge typed when creating an account (bridge-rs/src/vault_logins.rs) was never
+registered at all.
+
+**What the patch does.** Every MCP tool result, before it reaches the model, goes through the same exact-bytes scrub
+(`«redacted-vault-secret»`), against the registered values plus every login password of the profile's vault (read
+again only when the vault file changes), each also in its JSON-escaped forms (a server's JSON text block inside the
+handler's own JSON). Text without a vault password is untouched, so what the model sees only changes when it would have
+seen a password.
+
+**Limit.** Exact bytes only: a script that transforms the value (reversed, encoded, split) still gets something out.
+Hermes' vault tools tell the agent never to type a password itself, the bridge's account tools never to read a
+password field back; this is the net under those rules, not a wall against an agent that wants the password
+(browser/README.md, Limits).
+
+**Files.** `tools/mcp_tool_handlers.py`; new `tests/tools/test_mcp_vault_scrub.py` (3 tests).
+
+**Tests.** The new file (3 passed; its handler test fails without the patch) with `test_mcp_tool.py`,
+`test_mcp_structured_content.py`, `test_mcp_image_content.py`, `test_mcp_empty_error_message.py`: 137 passed, 5 failed
+for a missing Pillow in the test environment (`test_mcp_image_content.py`'s native image tests), Python 3.12. No other
+patch touches the file; `patch --dry-run` passes on `517b5e10f` and `97a9ae8ee`.

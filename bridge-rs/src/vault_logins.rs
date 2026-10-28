@@ -20,8 +20,8 @@
 //!    answer is told to the agent plainly. The decision is kept with the person's others (approvals_log.rs);
 //! 4. on « yes », the browser is held as for a card payment (the person's hold is respected: if they hold it, nothing
 //!    is typed and the agent is told to wait), the page checked again, a password made (CSPRNG, 20 characters of
-//!    every class by default, within the rules), typed into the focused password field and its confirmation only
-//!    (login_fill.rs), saved encrypted « en attente de confirmation » with the agent that created it, then the
+//!    every class by default, within the rules), typed into the focused password field and its confirmation only,
+//!    in a frame of that very origin, checked again in the page before each write (login_fill.rs), saved encrypted « en attente de confirmation » with the agent that created it, then the
 //!    browser given back. The agent gets « filled and saved as <name> », never the password; nothing logs it;
 //! 5. the site refused that password: the agent calls again with corrected rules within 15 minutes, for the same site
 //!    and identifier, without a new card; the waiting login is replaced. After that, a new card;
@@ -529,7 +529,7 @@ async fn sign_up_page(config: &Config, agent: &AgentConfig, origin: &str) -> Res
             "Your browser shows {shown}, not {origin}: open the sign-up page of that site first, then call again."
         )));
     }
-    match crate::login_fill::find(&mut page).await {
+    match crate::login_fill::find(&mut page, origin).await {
         Ok(Some(_)) => Ok((port, url)),
         Ok(None) => Err(refusal(
             "No password field to fill on this page. Click into the sign-up form's password field with your browser, \
@@ -598,7 +598,7 @@ async fn type_and_keep(
                     call again."
             .into());
     }
-    let Some(fields) = crate::login_fill::find(&mut page).await.map_err(|e| unreachable_text(&e))? else {
+    let Some(fields) = crate::login_fill::find(&mut page, origin).await.map_err(|e| unreachable_text(&e))? else {
         return Err("The password field is gone from the page: nothing was typed. Click into it and call again.".into());
     };
     let password = generate(rules)?;
