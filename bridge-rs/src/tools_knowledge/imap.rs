@@ -126,6 +126,9 @@ static TAGGED: LazyLock<Regex> =
 
 const MAXLINE: usize = 1_000_000;
 
+/// How long a server on this machine has to greet before it is taken for a TLS one (`connect_local`).
+const LOCAL_GREETING: Duration = Duration::from_secs(3);
+
 fn tls_config(verify: bool) -> Arc<rustls::ClientConfig> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let builder = rustls::ClientConfig::builder_with_provider(provider)
@@ -222,17 +225,65 @@ impl Client {
     pub fn connect_starttls(host: &str, port: u16, timeout: Duration, verify: bool) -> Result<Client, ImapError> {
         let plain = tcp(host, port, timeout)?;
         let clone = plain.try_clone().map_err(|e| os_error(&e))?;
-        let mut client = Client::start(Box::new(plain))?;
-        if !client.capabilities.iter().any(|c| c == "STARTTLS") {
+        let client = Client::start(Box::new(plain))?;
+        if !client.offers_starttls() {
             return Err(ImapError::Imap("TLS not supported by server".into()));
         }
-        let (typ, _) = client.simple("STARTTLS", &[])?;
+        client.upgrade(clone, host, verify)
+    }
+
+    /// A server on this machine — Proton Mail Bridge or hydroxide (decided 2026-10-28) — whose certificate, when it
+    /// has one, is its own (not checked):
+    ///
+    /// - STARTTLS when it offers it (Proton Mail Bridge; hydroxide never does);
+    /// - implicit TLS when it says nothing until spoken to (hydroxide started with `-tls-cert`: `ListenAndServeTLS`);
+    /// - else plain (hydroxide's default: `AllowInsecureAuth` without TLS options).
+    ///
+    /// The connected address must be a loopback one (whatever `host` resolved to): the password never goes in clear
+    /// over a network. Err `Imap("not a server on this machine")` otherwise.
+    pub fn connect_local(host: &str, port: u16, timeout: Duration) -> Result<Client, ImapError> {
+        let plain = tcp(host, port, timeout)?;
+        Client::loopback_only(&plain)?;
+        let clone = plain.try_clone().map_err(|e| os_error(&e))?;
+        clone.set_read_timeout(Some(LOCAL_GREETING)).map_err(|e| os_error(&e))?;
+        let client = match Client::start(Box::new(plain)) {
+            Ok(client) => client,
+            // Silent: a TLS server waiting for our hello.
+            Err(ImapError::Os { name: "TimeoutError", .. }) => {
+                let stream = tcp(host, port, timeout)?;
+                Client::loopback_only(&stream)?;
+                return Client::start(wrap(stream, host, false)?);
+            }
+            Err(exc) => return Err(exc),
+        };
+        clone.set_read_timeout(Some(timeout)).map_err(|e| os_error(&e))?;
+        if client.offers_starttls() {
+            return client.upgrade(clone, host, false);
+        }
+        Ok(client)
+    }
+
+    /// Err unless the stream's other end is this machine.
+    fn loopback_only(stream: &TcpStream) -> Result<(), ImapError> {
+        match stream.peer_addr() {
+            Ok(peer) if peer.ip().is_loopback() => Ok(()),
+            _ => Err(ImapError::Imap("not a server on this machine".into())),
+        }
+    }
+
+    fn offers_starttls(&self) -> bool {
+        self.capabilities.iter().any(|c| c == "STARTTLS")
+    }
+
+    /// `starttls(context)` on a started connection (`clone`: its socket).
+    fn upgrade(mut self, clone: TcpStream, host: &str, verify: bool) -> Result<Client, ImapError> {
+        let (typ, _) = self.simple("STARTTLS", &[])?;
         if typ != "OK" {
             return Err(ImapError::Imap("Couldn't establish TLS session".into()));
         }
-        client.reader = BufReader::new(wrap(clone, host, verify)?);
-        client.capabilities = client.get_capabilities()?;
-        Ok(client)
+        self.reader = BufReader::new(wrap(clone, host, verify)?);
+        self.capabilities = self.get_capabilities()?;
+        Ok(self)
     }
 
     fn start(stream: Box<dyn Stream>) -> Result<Client, ImapError> {

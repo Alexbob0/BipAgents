@@ -547,10 +547,7 @@ fn walk(message: &mail_parser::Message, id: usize, out: &mut Walked, depth: usiz
         }
         PartType::Message(inner) if depth < 10 => walk(inner, 0, out, depth + 1),
         body => {
-            let name = part.attachment_name().map(|n| super::strip(n).to_string()).filter(|n| !n.is_empty());
-            let disposition = part.content_disposition().map(|d| d.c_type.to_lowercase());
-            if name.is_some() || disposition.as_deref() == Some("attachment") {
-                let shown = name.map(|n| decode_header(&n)).filter(|n| !n.is_empty()).unwrap_or_else(|| "?".into());
+            if let Some(shown) = attached(part) {
                 out.files.push(shown);
                 return;
             }
@@ -574,6 +571,57 @@ fn walk(message: &mail_parser::Message, id: usize, out: &mut Walked, depth: usiz
             }
         }
     }
+}
+
+/// A part's name when it is an attachment (named, or `Content-Disposition: attachment`): « ? » for a nameless one.
+fn attached(part: &mail_parser::MessagePart) -> Option<String> {
+    let name = part.attachment_name().map(|n| super::strip(n).to_string()).filter(|n| !n.is_empty());
+    let disposition = part.content_disposition().map(|d| d.c_type.to_lowercase());
+    if name.is_none() && disposition.as_deref() != Some("attachment") {
+        return None;
+    }
+    Some(name.map(|n| decode_header(&n)).filter(|n| !n.is_empty()).unwrap_or_else(|| "?".into()))
+}
+
+/// One attachment: its name as `message_text` lists it, its type, its bytes decoded.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attachment {
+    pub name: String,
+    pub content_type: String,
+    pub data: Vec<u8>,
+}
+
+fn collect(message: &mail_parser::Message, id: usize, out: &mut Vec<Attachment>, depth: usize) {
+    let Some(part) = message.parts.get(id) else { return };
+    match &part.body {
+        PartType::Multipart(children) => {
+            for child in children {
+                collect(message, *child as usize, out, depth);
+            }
+        }
+        PartType::Message(inner) if depth < 10 => collect(inner, 0, out, depth + 1),
+        _ => {
+            if let Some(name) = attached(part) {
+                let content_type = part
+                    .content_type()
+                    .map(|ct| match &ct.c_subtype {
+                        Some(sub) => format!("{}/{}", ct.c_type, sub).to_lowercase(),
+                        None => ct.c_type.to_lowercase(),
+                    })
+                    .unwrap_or_else(|| "application/octet-stream".into());
+                out.push(Attachment { name, content_type, data: part.contents().to_vec() });
+            }
+        }
+    }
+}
+
+/// The message's attachments, in the order `parse_message` lists their names.
+pub fn attachments(raw: &[u8]) -> Vec<Attachment> {
+    let mut out = Vec::new();
+    if let Some(message) = MessageParser::new().parse(raw) {
+        collect(&message, 0, &mut out, 0);
+    }
+    out
 }
 
 /// The message's headers and its parts' texts.
