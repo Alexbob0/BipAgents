@@ -946,7 +946,9 @@ impl RunHub {
                                     // a turn the brake stopped: its rescue turn's end instead (loop_rescue)
                                     let event = self.loop_rescue(sub, event).await;
                                     // the audio made in the turn handed over whatever the model wrote
-                                    self.hand_over_files(sub, event)
+                                    let event = self.hand_over_files(sub, event);
+                                    // and the files its reply only cites, from the agent's own folders
+                                    self.hand_over_cited(sub, event).await
                                 } else {
                                     event
                                 };
@@ -1390,21 +1392,66 @@ impl RunHub {
             "files made in the turn: their MEDIA lines handed over");
         let unseen: Vec<&String> =
             made.iter().filter(|path| fixed.contains(path.as_str()) && !said.contains(path.as_str())).collect();
+        self.with_media_lines(sub, event, &said, fixed, &unseen, "bip_media_fixed")
+    }
+
+    /// The end's `output` replaced by `fixed` (flagged `flag`), and, when text was streamed, a last delta with the
+    /// `MEDIA:` line of each of `unseen` for the screen.
+    fn with_media_lines(
+        &self,
+        sub: &Arc<RunSubscription>,
+        event: SSEEvent,
+        said: &str,
+        fixed: String,
+        unseen: &[&String],
+        flag: &str,
+    ) -> SSEEvent {
         if !said.trim().is_empty() && !unseen.is_empty() {
             let lines: String = unseen.iter().map(|path| format!("\n\nMEDIA:{path}")).collect();
             let mut delta = Map::new();
             delta.insert("event".into(), json!("message.delta"));
             delta.insert("run_id".into(), event.data.get("run_id").cloned().unwrap_or_else(|| json!(sub.run_id)));
             delta.insert("delta".into(), json!(lines));
-            delta.insert("bip_media_fixed".into(), json!(true));
+            delta.insert(flag.into(), json!(true));
             let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(delta.clone()));
             self.forward(sub, &SSEEvent::new("message.delta", delta, raw));
         }
         let mut data = event.data;
         data.insert("output".into(), json!(fixed));
-        data.insert("bip_media_fixed".into(), json!(true));
+        data.insert(flag.into(), json!(true));
         let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
         SSEEvent::new(event.r#type, data, raw)
+    }
+
+    /// The files the reply only cites (« c'est dans /envoi/notes.md »), when they are in the agent's own folders
+    /// (cited_files.rs), handed over with a `MEDIA:` line each at its end (`bip_files_cited`), so the apps show a
+    /// file card; the path's text stays as the agent wrote it.
+    async fn hand_over_cited(&self, sub: &Arc<RunSubscription>, event: SSEEvent) -> SSEEvent {
+        if event.r#type != "run.completed" {
+            return event;
+        }
+        let Some(shared) = self.config.clone() else { return event };
+        let said: String =
+            lock(&sub.state).backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
+        let output = as_str(event.data.get("output")).filter(|o| !o.trim().is_empty());
+        let reply = output.unwrap_or_else(|| said.clone());
+        if !crate::cited_files::may_cite(&reply) {
+            return event;
+        }
+        let (agent, text) = (sub.agent.clone(), reply.clone());
+        let found = tokio::task::spawn_blocking(move || {
+            let config = shared.get();
+            let agent = config.agent(Some(&agent.name)).cloned().unwrap_or(agent);
+            crate::cited_files::cited(&config, &agent, &text)
+        })
+        .await
+        .unwrap_or_default();
+        if found.is_empty() {
+            return event;
+        }
+        let fixed = crate::cited_files::with_cards(&reply, &found);
+        let unseen: Vec<&String> = found.iter().collect();
+        self.with_media_lines(sub, event, &said, fixed, &unseen, "bip_files_cited")
     }
 
     /// An event shown in this run's stream as it is (the rescue turn's, the bridge's word), without this run's own

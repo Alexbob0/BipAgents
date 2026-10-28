@@ -156,6 +156,12 @@ pub(crate) fn volume_mountpoint(volume: &str) -> Option<PathBuf> {
 
 /// The agent's places: (prefix as it sees it, folders on this machine), the longest prefix first.
 fn places(config: &Config, agent: &AgentConfig) -> Vec<(String, Vec<PathBuf>)> {
+    places_of(config, agent, true)
+}
+
+/// `places`; without `everything`, only its own working folders (`/envoi`, `/workspace`, `/root`, its shared
+/// folder and the ones it may read, its received files): never its Hermes profile nor the folders mounted by hand.
+fn places_of(config: &Config, agent: &AgentConfig, everything: bool) -> Vec<(String, Vec<PathBuf>)> {
     let mut out: Vec<(String, Vec<PathBuf>)> = Vec::new();
     let isolated = crate::sandbox::volumes_of(config, &agent.name);
     if let Some((_, outbox)) = &isolated {
@@ -170,7 +176,8 @@ fn places(config: &Config, agent: &AgentConfig) -> Vec<(String, Vec<PathBuf>)> {
             .unwrap_or_default();
         out.push(("/workspace".into(), tasks.iter().map(|t| t.join("workspace")).collect()));
         out.push(("/root".into(), tasks.iter().map(|t| t.join("home")).collect()));
-        for (host, seen, named) in hand_mounts(config, agent, &profile) {
+        let mounts = if everything { hand_mounts(config, agent, &profile) } else { Vec::new() };
+        for (host, seen, named) in mounts {
             out.push((seen, vec![host.clone()]));
             if !named {
                 out.push((host.to_string_lossy().trim_end_matches('/').to_string(), vec![host]));
@@ -181,7 +188,7 @@ fn places(config: &Config, agent: &AgentConfig) -> Vec<(String, Vec<PathBuf>)> {
             names.push(real.to_string_lossy().into_owned());
         }
         names.dedup();
-        for name in names {
+        for name in names.into_iter().filter(|_| everything) {
             out.push((name.trim_end_matches('/').to_string(), vec![profile.clone()]));
         }
     }
@@ -275,6 +282,25 @@ fn open_source(config: &Config, agent: &AgentConfig, path: &str) -> Result<std::
         }
     }
     Err(why)
+}
+
+/// The size of the agent's file behind `path` (as it sees it) when the person may open it from a reply that only
+/// cites it (cited_files.rs): in its own working folders on this machine (`places_of` without its profile nor the
+/// folders mounted by hand; never copied out of a container), a regular file reached name by name without a link,
+/// not secret-looking, a type the apps open, at most the upload limit.
+pub(crate) fn cited_file(config: &Config, agent: &AgentConfig, path: &str) -> Option<u64> {
+    crate::media::content_type_of(path)?;
+    for (prefix, folders) in places_of(config, agent, false) {
+        let Some(rest) = under(path, &prefix) else { continue };
+        let relative = plain_relative(rest)?;
+        if secret_looking(&relative) {
+            return None;
+        }
+        let file = folders.iter().filter_map(|folder| open_beneath(folder, &relative).ok()).max_by_key(modified)?;
+        let meta = file.metadata().ok().filter(|m| m.is_file())?;
+        return (meta.len() <= config.limits.upload_max_bytes).then_some(meta.len());
+    }
+    None
 }
 
 /// The paths the agent may mean: a relative one is in its sandbox's working folder (`/root` by default in Hermes'
