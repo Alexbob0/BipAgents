@@ -736,7 +736,22 @@ def activity(home, now=None):
     soonest = next_routine(home)
     if soonest is not None:
         out["next_routine_at"] = iso(soonest)
+    out["own_spaces"] = own_spaces(home)
     return out
+
+
+SPACES = os.path.join(BRIDGE_DATA, "spaces")         # its bridge's agents in their own space (bridge-rs/src/spaces.rs)
+
+
+def own_spaces(home):
+    """How many of the place's agents run in their own space (own Hermes and container): the guichet weighs each
+    (weights.rs, `own_space_agent_mb`)."""
+    root = os.path.join(home, SPACES)
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return 0
+    return sum(1 for name in names if os.path.isdir(os.path.join(root, name, "profiles")))
 
 
 def places_activity(memory):

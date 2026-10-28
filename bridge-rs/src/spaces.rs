@@ -208,6 +208,36 @@ pub fn copy_profile(source: &Path, target: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The hub's copy of the conversations again into the space (SQLite backup), after a turn that went on in the hub
+/// while the agent moved: its end is kept too.
+pub fn resync_database(source: &Path, target: &Path) -> anyhow::Result<()> {
+    let database = source.join("state.db");
+    if !database.exists() {
+        return Ok(());
+    }
+    let src = rusqlite::Connection::open_with_flags(&database, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let mut dst = rusqlite::Connection::open(target.join("state.db"))?;
+    let backup = rusqlite::backup::Backup::new(&src, &mut dst)?;
+    loop {
+        match backup.step(-1)? {
+            rusqlite::backup::StepResult::Done => break,
+            rusqlite::backup::StepResult::More => {}
+            _ => std::thread::sleep(Duration::from_millis(250)),
+        }
+    }
+    Ok(())
+}
+
+/// The hub's folder of an agent's profile.
+pub fn hub_profile(config: &Config, agent: &str) -> PathBuf {
+    let hub = PathBuf::from(if config.hermes.home.is_empty() {
+        crate::py::join(&home_dir(), ".hermes")
+    } else {
+        config.hermes.home.clone()
+    });
+    hub.join("profiles").join(agent)
+}
+
 /// `shutil.which(name)`: an executable of that name on the PATH.
 pub fn which(name: &str) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
@@ -320,6 +350,19 @@ impl Spaces {
         agent: &AgentConfig,
         http: &reqwest::Client,
     ) -> anyhow::Result<AgentConfig> {
+        let moved = self.move_agent_keeping_hub(config, agent, http).await?;
+        self.forget_in_hub(config, &agent.name).await?;
+        Ok(moved)
+    }
+
+    /// The move without its last step: the hub still serves the profile, so a turn going on there ends there (the
+    /// move an agent's own call starts, own_space.rs); `forget_in_hub` once it has.
+    pub async fn move_agent_keeping_hub(
+        &self,
+        config: &Config,
+        agent: &AgentConfig,
+        http: &reqwest::Client,
+    ) -> anyhow::Result<AgentConfig> {
         let hub = PathBuf::from(if config.hermes.home.is_empty() {
             crate::py::join(&home_dir(), ".hermes")
         } else {
@@ -423,15 +466,19 @@ impl Spaces {
                 return Err(exc);
             }
         };
-        // Served by its own gateway now: the hub forgets it.
+        tracing::info!(agent = %agent.name, port = port, sandbox = sandbox_available(config), "agent moved into its own space");
+        Ok(moved)
+    }
+
+    /// Served by its own gateway now: the hub forgets it.
+    pub async fn forget_in_hub(&self, config: &Config, agent: &str) -> anyhow::Result<()> {
         let hub_env = if config.hermes.home.is_empty() {
             BTreeMap::new()
         } else {
             BTreeMap::from([("HERMES_HOME".to_string(), config.hermes.home.clone())])
         };
-        self.run(&[&config.hermes.bin, "profile", "delete", &agent.name, "--yes"], hub_env).await?;
-        tracing::info!(agent = %agent.name, port = port, sandbox = sandbox_available(config), "agent moved into its own space");
-        Ok(moved)
+        self.run(&[&config.hermes.bin, "profile", "delete", agent, "--yes"], hub_env).await?;
+        Ok(())
     }
 
     /// A deleted agent's space: its gateway stopped, its folder gone.

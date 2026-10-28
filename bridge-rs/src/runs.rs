@@ -724,6 +724,33 @@ impl RunHub {
         inner.subs.iter().filter(|(key, sub)| !skip.contains(&key.1) && !lock(&sub.state).finished).count()
     }
 
+    /// The agent's runs going on at this Hermes address (its turns still in the shared hub while it moves,
+    /// own_space.rs).
+    pub fn agent_runs_at(&self, agent: &str, hermes_url: &str) -> usize {
+        let inner = lock(&self.inner);
+        inner
+            .subs
+            .values()
+            .filter(|sub| sub.agent.name == agent && sub.agent.hermes_url == hermes_url && !lock(&sub.state).finished)
+            .count()
+    }
+
+    /// A word of the bridge (`bridge.notice`, `data` with its `code` and `text`) in the agent's runs going on now:
+    /// the apps show it in the conversation. Returns how many runs got it.
+    pub fn notice_agent(&self, agent: &str, data: Map<String, Value>) -> usize {
+        let subs: Vec<Arc<RunSubscription>> = lock(&self.inner)
+            .subs
+            .values()
+            .filter(|sub| sub.agent.name == agent && !lock(&sub.state).finished)
+            .cloned()
+            .collect();
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        for sub in &subs {
+            self.dispatch(sub, SSEEvent::new(NOTICE, data.clone(), raw.clone()));
+        }
+        subs.len()
+    }
+
     /// A run of the agent goes on in this conversation (the hub follows it).
     pub fn session_busy(&self, agent: &str, session_id: &str) -> bool {
         let inner = lock(&self.inner);

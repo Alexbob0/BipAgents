@@ -359,8 +359,9 @@ pub const PAYMENTS_RULE: &str = concat!(
     "not to and don't use it. ",
     // connectors an agent makes (2026-10-28, connectors.rs, secrets.rs)
     "The same for any password, access key or one-time code: never ask for one in the conversation and never write ",
-    "one in a message, a file, a task or a log; when a connector needs one, ask with ask_secret (the person types it ",
-    "in a card of the app, you never see it); if you don't have ask_secret, tell them to keep it in the app's vault. ",
+    "one in a message, a file, a task or a log; whenever you need one, ask with ask_secret (the person types it in a ",
+    "card of the app, you never see it), and BipAgents handles the rest: never improvise a way around it (never « tape-le ",
+    "dans le navigateur », a form, a file or a message). If you can't ask_secret, say plainly you can't keep it here. ",
     "A connector the person asks for: build it in /workspace/connecteurs/<name> with its tests, ask every site it ",
     "needs at once with sandbox_sites_request, then connector_register; they approve it once. With the person, never ",
     "say proxy, sandbox, MCP or token: say « l'accès à ce site », « ton accord », « ton mot de passe »; a site not ",
@@ -658,6 +659,15 @@ mod tests {
             assert!(COMPACT_NOTEBOOK_RULE.contains(needed), "missing {needed}");
         }
         assert!(COMPACT_NOTEBOOK_RULE.len() * 10 < NOTEBOOK_RULE.len() * 8);
+    }
+
+    #[test]
+    fn a_password_is_always_asked_with_ask_secret() {
+        // Ghibli once told Alex to type his Garmin password in the visible browser (aibox, 2026-10-28)
+        assert!(PAYMENTS_RULE.contains("whenever you need one, ask with ask_secret"));
+        assert!(PAYMENTS_RULE.contains("never improvise a way around it"));
+        assert!(PAYMENTS_RULE.contains("BipAgents handles the rest"));
+        assert!(!PAYMENTS_RULE.contains("keep it in the app's vault"));
     }
 
     #[test]

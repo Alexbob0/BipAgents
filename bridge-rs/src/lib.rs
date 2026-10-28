@@ -89,6 +89,8 @@ pub mod files;
 pub mod files_kept;
 pub mod households;
 pub mod own_skills;
+/// A hub agent moves into its own space by itself the first time it needs to keep a secret.
+pub mod own_space;
 pub mod peers;
 pub mod beneath;
 pub mod sandbox;

@@ -301,7 +301,7 @@ fn shown_name(config: &Config, agent: &str) -> String {
 }
 
 /// « Garmin » from `connect.garmin.com`, else the secret's name.
-fn service_of(request: &Request) -> String {
+pub fn service_of(request: &Request) -> String {
     let host = request.host();
     let parts: Vec<&str> = host.split('.').filter(|p| !p.is_empty()).collect();
     let word = if parts.len() >= 2 { parts[parts.len() - 2] } else { request.name.as_str() };

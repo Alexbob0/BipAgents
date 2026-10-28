@@ -15,7 +15,8 @@
 //! - **the allowed sites**: its container reaches only the hosts on its card, through the egress proxy's strict side.
 //!
 //! Tools of the agents (MCP entry `bipagents_connectors`, same token as `bipagents`), for agents that may hold
-//! credentials and whose sandbox is isolated — never the family's agent nor a project agent: `ask_secret`,
+//! credentials and whose sandbox is isolated, and for those of the shared hub, which move into their own space at
+//! their first `ask_secret` or `connector_register` (own_space.rs) — never the family's agent nor a project agent: `ask_secret`,
 //! `connector_register`, `connector_update`, `connector_remove`, `connector_list`.
 //!
 //! `<data>/connectors/connectors.json` (0600): per agent, its connectors (and each one's proxy token);
@@ -319,12 +320,16 @@ pub fn save_icon(config: &Config, agent: &str, id: &str, data: &[u8]) {
 // --- who gets them ---------------------------------------------------------------------------------------------------
 
 /// Whether `agent` may make connectors: it may hold credentials, its sandbox is isolated, and it is neither the
-/// family's agent nor a project agent (both closed).
+/// family's agent nor a project agent (both closed). An agent of the shared hub too: its first secret moves it into
+/// its own space, sandbox included (own_space.rs).
 pub fn offered(config: &Config, agent: &AgentConfig) -> bool {
-    crate::vault::holder(config, agent).is_none()
-        && !crate::family_agent::is_family(config, &agent.name)
-        && !crate::project_agent::is_project(config, &agent.name)
-        && crate::sandbox::isolates(config, agent)
+    if crate::family_agent::is_family(config, &agent.name) || crate::project_agent::is_project(config, &agent.name) {
+        return false;
+    }
+    if crate::own_space::may_move(config, agent) {
+        return true;
+    }
+    crate::vault::holder(config, agent).is_none() && crate::sandbox::isolates(config, agent)
 }
 
 fn base_url(config: &Config) -> String {
@@ -1168,12 +1173,57 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
     })
 }
 
+const NOT_HERE: &str = "Connectors and secrets aren't available to you here. Tell the person plainly that you can't keep \
+this access, and never suggest another way to give you a password.";
+
+/// The service a call keeps an access for, as the conversation names it (« Garmin »).
+fn service_named(name: &str, arguments: &Dict) -> String {
+    if name == ASK_SECRET {
+        let request = secrets::Request {
+            name: arg(arguments, "name").to_lowercase(),
+            origin: crate::vault::normalize_origin(&arg(arguments, "site")).unwrap_or_default(),
+            ..Default::default()
+        };
+        return secrets::service_of(&request);
+    }
+    crate::cards::quoted(&arg(arguments, "name"), 60)
+}
+
 pub async fn call(state: &AppState, agent: &AgentConfig, name: &str, arguments: &Dict, _asker: &Asker) -> anyhow::Result<Dict> {
     if !offered(&state.config(), agent) {
-        return Ok(refusal(
-            "Connectors need your own isolated space, where you may keep secrets: the person moves you there in the app first.",
-        ));
+        return Ok(refusal(NOT_HERE));
     }
+    // An agent of the shared hub keeps its first secret, or makes its first connector: it moves into its own space
+    // now, and the call goes on there (own_space.rs).
+    let moved;
+    let agent = if matches!(name, ASK_SECRET | REGISTER) && crate::own_space::may_move(&state.config(), agent) {
+        // a call the tool refuses anyway gets its refusal at once: nothing moves for it
+        let valid = if name == ASK_SECRET {
+            secrets::valid_name(&arg(arguments, "name").to_lowercase())
+                && secrets::KINDS.contains(&arg(arguments, "kind").to_lowercase().as_str())
+                && !arg(arguments, "reason").is_empty()
+                && (arg(arguments, "site").is_empty() || crate::vault::normalize_origin(&arg(arguments, "site")).is_ok())
+        } else {
+            apply_fields(&mut Connector::default(), arguments, true).is_ok()
+        };
+        if !valid {
+            return if name == ASK_SECRET {
+                ask_secret_tool(state, agent, arguments).await
+            } else {
+                register_tool(state, agent, arguments).await
+            };
+        }
+        moved = match crate::own_space::ready(state, agent, &service_named(name, arguments)).await {
+            Ok(a) => a,
+            Err(result) => return Ok(result),
+        };
+        if !offered(&state.config(), &moved) {
+            return Ok(refusal(NOT_HERE));
+        }
+        &moved
+    } else {
+        agent
+    };
     match name {
         ASK_SECRET => ask_secret_tool(state, agent, arguments).await,
         REGISTER => register_tool(state, agent, arguments).await,
