@@ -60,6 +60,27 @@ pub fn squeeze(s: &str) -> String {
     split_ws(s).join(" ")
 }
 
+/// Text from elsewhere (a family message, a sender's name, a background report) put inside a `<!--bip:… -->` note for
+/// the agent: its own `<!--` and `-->` get non-breaking hyphens (U+2011, they look the same), so it can neither end
+/// the note early nor open a fake one (audit 2026-10-27 #15). The apps' and live_brief's strip, lazy up to the first
+/// `-->`, then removes exactly the note.
+pub fn in_note(s: &str) -> String {
+    let mut out = s.to_string();
+    loop {
+        let next = out.replace("-->", "\u{2011}\u{2011}>").replace("<!--", "<!\u{2011}\u{2011}");
+        if next == out {
+            return out;
+        }
+        out = next;
+    }
+}
+
+/// `in_note` on one line: control characters (new lines included) become spaces, runs of spaces one.
+pub fn in_note_line(s: &str) -> String {
+    let flat: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    in_note(&squeeze(&flat))
+}
+
 /// `s[:n]` (in characters).
 pub fn head(s: &str, n: usize) -> &str {
     match s.char_indices().nth(n) {

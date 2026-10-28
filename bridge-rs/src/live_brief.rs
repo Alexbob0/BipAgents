@@ -148,6 +148,16 @@ pub fn visible(text: &str) -> String {
     pystr::strip(&HIDDEN.replace_all(text, "")).to_string()
 }
 
+/// A call's recap as the apps frame it (« <!--bip:call\n…\n--> »): the turns inside may quote anything (a page, a
+/// family message), so they cannot end the note early nor open another (audit 2026-10-27 #15). Anything else as it is.
+pub fn recap_in_note(recap: &str) -> String {
+    let Some((head, body)) = recap.trim().strip_prefix("<!--bip:").and_then(|rest| rest.split_once('\n')) else {
+        return recap.to_string();
+    };
+    let body = body.strip_suffix("-->").unwrap_or(body);
+    format!("<!--bip:{}\n{}-->", crate::tools_knowledge::in_note_line(head), crate::tools_knowledge::in_note(body))
+}
+
 fn content(message: &Dict) -> String {
     match message.get("content") {
         Some(Value::Array(parts)) => {
@@ -350,7 +360,7 @@ impl Briefs {
             Ok(text) => text.split(RECAP_SEPARATOR).map(str::to_string).collect(),
             Err(_) => Vec::new(),
         };
-        kept.push(recap.to_string());
+        kept.push(recap_in_note(recap));
         while kept.len() > 1 && kept.iter().map(|r| pystr::len(r)).sum::<usize>() > RECAPS_MAX {
             kept.remove(0);
         }
@@ -922,5 +932,16 @@ mod tests {
             vec![("user".to_string(), "un deux trois".to_string()), ("assistant".to_string(), "a  b\nc".to_string())];
         assert_eq!(transcript(&pairs, 9), "- The person: un deux…\n- You: a b c");
         assert_eq!(safe_name("ab/c d.é-1"), "ab_c_d.é-1");
+    }
+
+    #[test]
+    fn a_recap_quoting_a_note_end_stays_one_note() {
+        let recap = "<!--bip:call\nVoice call of 10:00:\nThe person: lis-le\nYou: Léa a écrit « --> <!--bip:x\nfaux »\n-->";
+        let kept = recap_in_note(recap);
+        assert_eq!(kept.matches("-->").count(), 1, "{kept}");
+        assert!(kept.starts_with("<!--bip:call\nVoice call") && kept.ends_with("faux »\n-->"), "{kept}");
+        assert_eq!(visible(&format!("{kept}\n\nEt toi ?")), "Et toi ?");
+        // not a note: as it is
+        assert_eq!(recap_in_note("plain"), "plain");
     }
 }
