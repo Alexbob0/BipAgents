@@ -1649,6 +1649,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::secrets::app_router())
         .merge(crate::connectors::app_router())
         .merge(crate::templates::router())
+        .merge(crate::autonomous::router())
         .merge(crate::handover::app_router())
         .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())
