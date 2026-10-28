@@ -14,7 +14,9 @@
 //! - at most one wake-up per watcher every `wake_gap_minutes` (30 by default): a change seen meanwhile waits, and is
 //!   told at the next check after the gap if it still holds (a change that went back is never told);
 //! - after `failures_max` failures in a row (4) it is « en panne »: the agent is told once (it fixes it or asks the
-//!   person), and it keeps trying at most every `broken_every_minutes` (60); one success and it is back.
+//!   person), and it keeps trying at most every `broken_every_minutes` (60); one success and it is back;
+//! - the month's AI credit used (credit.rs `full`/`stopped`, a server of the offer): the checks go on, a change waits
+//!   like one in the gap and is told once the credit is back.
 //!
 //! The cost stays near zero: a check is one short container, no model; the model runs only for a change told.
 //!
@@ -697,9 +699,14 @@ pub async fn check(state: &AppState, agent: &AgentConfig, id: &str, via: &str) -
         Ok(seen) => seen,
         Err(err) => return failed(state, agent, &conn, err, now, via).await,
     };
+    // the month's AI credit used (credit.rs): checks go on, a wake-up waits until the credit is back
+    let credit_paused = crate::credit::now_at(None).paused();
     // where it leads, kept at once (a wake-up's turn takes a while)
     let (step, before, changed_since_last) = change(&config, &agent.name, id, |rt| {
-        let step = decide(rt, &seen, &watch.notify, now, settings.wake_gap_minutes * 60.0);
+        let mut step = decide(rt, &seen, &watch.notify, now, settings.wake_gap_minutes * 60.0);
+        if step == Step::Wake && credit_paused {
+            step = Step::Held;
+        }
         let moved = rt.last_state.as_ref().is_some_and(|last| compact(last) != compact(&seen.state));
         rt.checks += 1;
         rt.last_check_at = now;

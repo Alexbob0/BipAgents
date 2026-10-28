@@ -188,6 +188,20 @@ def test_wake_ups_are_rate_limited_and_a_change_that_waits_is_told_after(bridges
     assert soon.status_code == 409 and soon.json()["detail"]["code"] == "too_soon"
 
 
+def test_a_used_credit_holds_the_wake_up_until_it_is_back(bridges, fakes):
+    bridge, value, conn, _ = setup(bridges, fakes)
+    assert check(bridge, conn)["step"] == "baseline"
+    credit = bridge.home / ".local" / "state" / "bipagents" / "credit.json"
+    credit.parent.mkdir(parents=True, exist_ok=True)
+    credit.write_text(json.dumps({"state": "full", "resumes": time.time() + 86400}))
+    value.write_text("mercredi 09:00")
+    held = check(bridge, conn)
+    assert held["step"] == "held" and not held["woke"] and not turns(fakes)
+    credit.write_text(json.dumps({"state": "ok"}))
+    assert check(bridge, conn)["step"] == "woke"
+    assert len(turns(fakes)) == 1
+
+
 def test_failures_in_a_row_mark_it_broken_and_the_agent_is_told_once(bridges, fakes):
     bridge, value, conn, _ = setup(bridges, fakes)
     assert check(bridge, conn)["step"] == "baseline"

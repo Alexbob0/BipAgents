@@ -18,7 +18,8 @@
 //! - the agent's browser: its tools refused with a plain message ([`BROWSER_REFUSED`], browser_mcp.rs);
 //! - background tasks: new ones refused ([`JOBS_REFUSED`]); a running task stops after its current step (jobs.rs),
 //!   a mail scan after its current batch (mail_scan.rs), an archive's extraction after its current document
-//!   (archives/records_fill.rs).
+//!   (archives/records_fill.rs);
+//! - watchers: their checks go on, but a change waits to wake its agent (watchers.rs).
 //!
 //! Back to `ok` or `low` (a pack bought, the new month): the routines paused here resume, the tasks and mail scans
 //! paused for the credit go on ([`run_forever`]).
