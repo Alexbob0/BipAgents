@@ -97,8 +97,10 @@ and keys. A flag older than 15 minutes (the app closed without handing it back) 
 
 - Linux only (the screen is an X server in the container). On a Mac, this will come with a separate macOS account.
 - With its page tools (`execute_script`), an agent can read what a page shows, a field the vault filled included.
-  The vault keeps passwords out of the agent's conversation and memory, but an agent that wants a password can look
-  at the field. Give vault items only to agents you trust with them.
+  The vault keeps passwords out of the agent's conversation and memory: a page tool's answer holding one of its
+  passwords reaches the model as « redacted » (Hermes patch 0013, exact bytes). But an agent that wants a password can
+  still get it out of the field in another form (a script that encodes it). Give vault items only to agents you trust
+  with them.
 - The DevTools port asks for a secret of its own (`cdp.token` next to `vnc.pass`, mounted read-only in the container;
   the bridge shows it as `X-Bip-Cdp`, Hermes' `browser.cdp_url` as `/t/<secret>/`), and refuses any request carrying
   an `Origin` (a web page's): another account of a shared machine, or a page in the browser, can't drive it. The VNC

@@ -93,8 +93,10 @@ au commit testé avec BipAgents (`a7b9eea`, fixé dans le `Containerfile`), et a
 
 - Linux seulement (l'écran est un serveur X dans le conteneur). Sur Mac, ça viendra avec un compte macOS séparé.
 - Avec ses outils de page (`execute_script`), un agent peut lire ce qu'une page affiche, y compris un champ rempli
-  par le coffre. Le coffre garde les mots de passe hors de la conversation et de la mémoire de l'agent, mais un agent
-  qui veut un mot de passe peut regarder le champ. Ne donne un identifiant qu'aux agents à qui tu le confierais.
+  par le coffre. Le coffre garde les mots de passe hors de la conversation et de la mémoire de l'agent : une réponse
+  d'outil de page qui contient un de ses mots de passe arrive au modèle « masquée » (patch Hermes 0013, à l'octet
+  près). Mais un agent qui veut un mot de passe peut encore le sortir du champ sous une autre forme (un script qui
+  l'encode). Ne donne un identifiant qu'aux agents à qui tu le confierais.
 - Le port DevTools demande un secret propre au navigateur (`cdp.token` à côté de `vnc.pass`, monté en lecture seule
   dans le conteneur ; le pont le montre en en-tête `X-Bip-Cdp`, l'adresse `browser.cdp_url` de Hermes le porte en
   `/t/<secret>/`) et refuse toute requête portant un `Origin` (celle d'une page web) : ni un autre compte d'une

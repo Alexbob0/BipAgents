@@ -1,0 +1,161 @@
+diff --git a/tests/tools/test_mcp_vault_scrub.py b/tests/tools/test_mcp_vault_scrub.py
+new file mode 100644
+index 0000000000..77a0cf730f
+--- /dev/null
++++ b/tests/tools/test_mcp_vault_scrub.py
+@@ -0,0 +1,85 @@
++"""An MCP tool's result never carries a vault password to the model (BipAgents patch 0013)."""
++import json
++from types import SimpleNamespace
++
++import pytest
++
++from tools import mcp_tool_handlers as handlers
++
++
++@pytest.fixture()
++def vault(tmp_path, monkeypatch):
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    handlers._VAULT_LOGINS_SEEN.clear()
++    from agent import redact
++    redact.clear_vault_redaction_values()
++    from agent.vault_store import VaultStore
++    store = VaultStore(base_dir=tmp_path / "vault")
++    monkeypatch.setattr("agent.vault_store.get_vault_store", lambda: store)
++    yield store
++    redact.clear_vault_redaction_values()
++
++
++def result_of(text):
++    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], structuredContent=None, isError=False)
++
++
++def test_a_page_script_reading_a_filled_password_gets_it_redacted(vault):
++    vault.add_item("login", "Shop", {"identifier_type": "email", "identifier": "a@b.example",
++                                     "password": 'S3cr"et\\pw!é'}, origin="https://shop.example")
++    page = json.dumps({"result": 'S3cr"et\\pw!é', "other": "kept"})   # the server's JSON text block
++    out = handlers._scrub_vault_values(handlers._render_call_tool_result(result_of(page), "stealth"))
++    assert "S3cr" not in out and "redacted-vault-secret" in out and "kept" in out
++    assert handlers._scrub_vault_values("S3cr et pw") == "S3cr et pw"   # only the exact bytes
++
++
++def test_a_login_saved_later_is_scrubbed_too_and_text_without_one_is_untouched(vault):
++    assert handlers._scrub_vault_values("nothing secret here") == "nothing secret here"
++    vault.add_item("login", "Bank", {"identifier_type": "username", "identifier": "alex",
++                                     "password": "Tr0ub4dor&3-late"}, origin="https://bank.example")
++    import os
++    os.utime(vault._vault_path, ns=(1, 1))   # a new copy of the vault file (mtime changed)
++    assert handlers._scrub_vault_values("value=Tr0ub4dor&3-late") == "value=«redacted-vault-secret»"
++
++
++def test_the_tool_handler_scrubs_what_the_server_returned(vault, monkeypatch):
++    vault.add_item("login", "Shop", {"identifier_type": "email", "identifier": "a@b.example",
++                                     "password": "hunter2-hunter2"}, origin="https://shop.example")
++    seen = []
++
++    def dispatch(server_name, server, op, call, *args, **kwargs):
++        import asyncio
++        seen.append(asyncio.run(call()))
++        return seen[-1]
++
++    async def call_tool(server, server_name, tool_name, args):
++        return result_of("the field holds hunter2-hunter2")
++
++    class Lock:
++        async def __aenter__(self):
++            return self
++
++        async def __aexit__(self, *exc):
++            return False
++
++    server = SimpleNamespace(_rpc_lock=Lock(), _pending_call_context=None)
++    monkeypatch.setattr(handlers, "_trust_gate_check", lambda *a: None)
++    monkeypatch.setattr(handlers, "_check_circuit_breaker", lambda *a: None)
++    monkeypatch.setattr(handlers, "_acquire_call_server", lambda *a: (server, None))
++    monkeypatch.setattr(handlers, "_tool_is_read_only", lambda *a: True)
++    monkeypatch.setattr(handlers, "_call_tool_racing_stdio_death", call_tool)
++    monkeypatch.setattr(handlers, "_dispatch", dispatch)
++
++    class Inflight:
++        def __init__(self, *a, **k):
++            pass
++
++        async def __aenter__(self):
++            return self
++
++        async def __aexit__(self, *exc):
++            return False
++
++    monkeypatch.setattr(handlers, "_track_inflight_rpc", Inflight)
++    out = handlers._make_tool_handler("stealth", "execute_script", 30)({"script": "f.value"})
++    assert "hunter2-hunter2" not in out and "«redacted-vault-secret»" in out
+diff --git a/tools/mcp_tool_handlers.py b/tools/mcp_tool_handlers.py
+index e5c4de2de0..2106079cfd 100644
+--- a/tools/mcp_tool_handlers.py
++++ b/tools/mcp_tool_handlers.py
+@@ -563,6 +563,56 @@ def _render_call_tool_result(result, server_name: str, image_paths: Optional[lis
+         return json.dumps({"result": text_result}, ensure_ascii=False)
+ 
+ 
++_VAULT_LOGINS_SEEN: dict = {}  # vault file -> mtime_ns of the copy whose passwords are registered
++
++
++def _escaped_forms(value: str) -> set:
++    """The password as it may sit in a rendered result: as is, JSON-escaped once or twice (a server's JSON text block,
++    then this handler's own JSON), with or without ``\\uXXXX`` for non-ASCII."""
++    forms = {value}
++    for _ in range(2):
++        forms |= {json.dumps(f, ensure_ascii=a)[1:-1] for f in list(forms) for a in (False, True)}
++    return forms
++
++
++def _register_vault_logins() -> None:
++    """Every login password of this profile's vault, registered with the vault redaction boundary
++    (agent/redact.py), read again only when the vault file changes. A password typed into a page by someone else
++    than ``browser_vault_fill`` in this process (an earlier run, the app's bridge creating an account) is covered too."""
++    try:
++        from agent.redact import register_vault_redaction_value
++        from agent.vault_store import get_vault_store
++        store = get_vault_store()
++        path = store._vault_path
++        try:
++            stamp = path.stat().st_mtime_ns
++        except FileNotFoundError:
++            return
++        if _VAULT_LOGINS_SEEN.get(str(path)) == stamp:
++            return
++        for meta in store.list_items():
++            if meta.kind != "login":
++                continue
++            password = str(store.resolve_secret(meta.id).get("password") or "")
++            for form in _escaped_forms(password) if password else ():
++                register_vault_redaction_value(form)
++        _VAULT_LOGINS_SEEN[str(path)] = stamp
++    except Exception:  # never let the scrub break a tool call; the fill-time registrations still apply
++        logger.debug("vault scrub: could not read the vault's logins", exc_info=True)
++
++
++def _scrub_vault_values(text: Any) -> Any:
++    """An MCP tool's result, as the model will see it, without any vault password (``«redacted-vault-secret»``).
++
++    Hermes scrubs its own ``browser_*`` results; an MCP server driving the same browser (a page script reading the
++    field the vault just filled) went to the model untouched."""
++    if not isinstance(text, str) or not text:
++        return text
++    _register_vault_logins()
++    from agent.redact import redact_registered_vault_values
++    return redact_registered_vault_values(text)
++
++
+ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float, *, native_images: bool = False):
+     """Sync handler (``handler(args_dict, **kwargs)``) calling an MCP tool via the background loop. Always a JSON
+     string, except with ``native_images`` (the registry handler the agent loop dispatches): a result carrying
+@@ -593,7 +643,7 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float, *,
+             if getattr(server, "_mark_session_proven", None) is not None:  # round-trip done: transport healthy
+                 server._mark_session_proven()
+             image_paths.clear()
+-            return _render_call_tool_result(result, server_name, image_paths)
++            return _scrub_vault_values(_render_call_tool_result(result, server_name, image_paths))
+ 
+         def _on_failure(exc):
+             _core._bump_server_error(server_name)
