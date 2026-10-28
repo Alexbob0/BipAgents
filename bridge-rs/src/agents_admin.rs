@@ -1979,8 +1979,18 @@ async fn set_agent_links(State(state): State<AppState>, request: Request) -> Api
         _ => Vec::new(),
     };
     manual.sort();
-    // Who may write to whom decides who gets send_files_to_agent (agent_files.rs): their tools' list follows.
+    // An agent linked with another household's: out of the person's hub once idle (own_space.rs).
     let config = state.config();
+    for (from, to) in &wanted {
+        let (ours, theirs) = if crate::households::split(from).is_some() { (to, from) } else { (from, to) };
+        if crate::households::split(theirs).is_none() {
+            continue;
+        }
+        if let Some(agent) = config.agent(Some(ours)).filter(|a| crate::own_space::should_leave_hub(&config, a)) {
+            crate::own_space::apart_when_idle(&state, &agent.name);
+        }
+    }
+    // Who may write to whom decides who gets send_files_to_agent (agent_files.rs): their tools' list follows.
     let run = default_run();
     for agent in config.agents.values() {
         give_tools(&config, agent, &run).await?;

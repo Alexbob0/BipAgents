@@ -16,6 +16,15 @@
 //! - a move that fails: one plain line (`own_space_failed`), the agent is told to say it will try again later, and
 //!   the next calls within `RETRY_AFTER` get the same answer without trying.
 //!
+//! **Since 2026-10-28 evening** (Alex: « Fais ce soir »), a person's own agents are no longer separated from each
+//! other: in a hub that only the person's agents use, an agent holds credentials right where it is (vault.rs
+//! `holds_in_hub`), and nothing moves. What must stay apart from the person's passwords is any agent other people
+//! talk to (vault.rs `others_facing`: the family's agent, project agents, agents shared with a relative, agents linked
+//! with another household's). As long as the hub hosts one of those, the move above is what happens, as before; the
+//! credentials already kept in the hub stay there (logged at start and at each move, `Vault::warn_hub_holders`) until
+//! their agent moves or the person takes them back. The trade-off, plainly: one of the person's agents tricked by what
+//! it read could reach another of their agents' passwords; it costs no ~250 MB container per agent.
+//!
 //! No Python counterpart.
 
 use std::collections::HashMap;
@@ -37,8 +46,10 @@ pub const RETRY_AFTER: Duration = Duration::from_secs(120);
 /// How long the hub keeps serving a moved agent's profile for a turn still going on there.
 const HUB_WAIT: Duration = Duration::from_secs(30 * 60);
 
-/// An agent of the shared hub that moves into its own space by itself when it needs to keep a secret: never the
-/// family's agent nor a project agent, never on an install that doesn't protect the vault (`unprotected_install`).
+/// An agent of the shared hub that moves into its own space by itself when it needs to keep a secret: one that may not
+/// hold it in the hub (`vault::holds_in_hub`: the hub hosts an agent other people talk to, or its tools have no
+/// sandbox of their own), never the family's agent nor a project agent, never on an install that doesn't protect the
+/// vault (`unprotected_install`). Asked again at each call.
 pub fn may_move(config: &Config, agent: &AgentConfig) -> bool {
     crate::vault::holder(config, agent).as_deref() == Some("needs_own_space")
         && !crate::family_agent::is_family(config, &agent.name)
@@ -103,6 +114,7 @@ pub async fn ready(state: &AppState, agent: &AgentConfig, service: &str) -> Resu
     if failed_recently(&current.name) {
         return Err(tool_text(FAILED_FOR_AGENT, true));
     }
+    state.vault.warn_hub_holders(&config);
     notice(state, &current.name, MOVING, &moving_text(service), service);
     tracing::info!(target: "bipbridge::own_space", agent = %current.name, "moving into its own space to keep a secret");
     let hub_url = current.hermes_url.clone();
@@ -147,6 +159,64 @@ async fn finish(state: AppState, agent: String, hub_url: String, new_url: String
     match spaces.forget_in_hub(&config, &agent).await {
         Ok(()) => tracing::info!(target: "bipbridge::own_space", agent = %agent, "the hub forgot the moved agent"),
         Err(exc) => tracing::warn!(target: "bipbridge::own_space", agent = %agent, error = %exc, "the hub kept the moved agent's profile"),
+    }
+}
+
+/// How long an agent other people talk to may stay busy before its move out of the hub is given up (tried again when
+/// it is shared again).
+const APART_WAIT: Duration = Duration::from_secs(6 * 60 * 60);
+/// The move waits so long first: the app sets the new agent up (its look, its settings, its first words) without
+/// waiting behind a move that holds the agents' lock for a minute.
+const APART_SETTLE: Duration = Duration::from_secs(60);
+
+/// An agent other people talk to (vault.rs `others_facing`) leaves the shared hub for its own space once idle, so the
+/// hub stays the person's alone and their agents keep their credentials there (Alex, 2026-10-28). Called when the
+/// family's agent or a project agent is made and when an agent is shared with a relative. Only on an install that
+/// protects the vault (elsewhere nothing holds credentials, nothing to keep apart); a move that fails is logged and
+/// the hub keeps it (its agents then move at their first secret, as before).
+pub fn apart_when_idle(state: &AppState, agent: &str) {
+    let (state, name) = (state.clone(), agent.to_string());
+    tokio::spawn(async move { apart(state, name).await });
+}
+
+/// Whether `agent` should leave the hub now (`apart_when_idle`).
+pub fn should_leave_hub(config: &Config, agent: &AgentConfig) -> bool {
+    config.hermes.isolated
+        && !agent.isolated
+        && crate::vault::in_hub(config, agent)
+        && crate::vault::others_facing(config, &agent.name)
+}
+
+async fn apart(state: AppState, name: String) {
+    tokio::time::sleep(APART_SETTLE).await;
+    let started = Instant::now();
+    loop {
+        let config = state.config();
+        let Some(agent) = config.agent(Some(&name)).cloned() else { return };
+        if !should_leave_hub(&config, &agent) {
+            return;
+        }
+        if state.hub.agent_runs_at(&name, &agent.hermes_url) == 0 {
+            let lock = lock_of(&name);
+            let _one_at_a_time = lock.lock_owned().await;
+            let config = state.config();
+            let Some(agent) = config.agent(Some(&name)).cloned() else { return };
+            if !should_leave_hub(&config, &agent) {
+                return;
+            }
+            tracing::info!(target: "bipbridge::own_space", agent = %name, "other people talk to it: moving out of the shared hub");
+            match crate::agents_admin::move_into_space(&state, &agent, false).await {
+                Ok(_) => tracing::info!(target: "bipbridge::own_space", agent = %name, "in its own space: the hub is the person's alone"),
+                Err(exc) => tracing::warn!(target: "bipbridge::own_space", agent = %name, error = ?exc, "move out of the shared hub failed: it stays there, the hub's agents move at their first secret"),
+            }
+            state.vault.warn_hub_holders(&state.config());
+            return;
+        }
+        if started.elapsed() > APART_WAIT {
+            tracing::warn!(target: "bipbridge::own_space", agent = %name, "still busy: stays in the shared hub for now");
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 

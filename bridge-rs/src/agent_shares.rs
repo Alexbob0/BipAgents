@@ -919,6 +919,9 @@ async fn put_shares(
         told.insert(household.clone(), json!(tell_relative(&state, household, &agent, shared).await));
     }
     tracing::info!(agent = %agent.name, added = ?added, removed = ?removed, "shared agent: shares set");
+    if !added.is_empty() {
+        crate::own_space::apart_when_idle(&state, &agent.name); // a relative talks to it: out of the person's hub
+    }
     let mut view = share_view(&config, &agent);
     view["told"] = Value::Object(told);
     Ok(web::ok(view))

@@ -1,13 +1,16 @@
-"""An agent of the shared hub moves into its own space by itself the first time it needs to keep a secret
-(bridge-rs/src/own_space.rs): the secrets' and connectors' tools are offered to it (never to the family's agent nor a
-project agent, never on an install that doesn't protect the vault), its first ask_secret moves it at once with no
-card, keeping its conversations, memory and files, then raises the secret card as usual; a move that fails is one
-plain answer, not retried at once."""
+"""Credentials and the shared hub (bridge-rs/src/own_space.rs, vault.rs `holds_in_hub`). In a hub only the person's
+own agents use, an agent keeps its secrets right there: the card comes at once, nothing moves. In a hub that also
+hosts an agent other people talk to (the family's agent, a project agent, one shared with or linked to a relative), an
+agent moves into its own space by itself the first time it needs to keep a secret: the secrets' and connectors' tools
+are offered to it (never to the family's agent nor a project agent, never on an install that doesn't protect the
+vault), its first ask_secret moves it at once with no card, keeping its conversations, memory and files, then raises
+the secret card as usual; a move that fails is one plain answer, not retried at once."""
 import json
 import time
 import tomllib
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 import yaml
 
 from bbkit.common import AUTH
@@ -20,11 +23,16 @@ ASK = {"name": "garmin", "site": "connect.garmin.example", "kind": "password",
        "identifier_label": "E-mail de ton compte Garmin", "reason": "Pour tes séances"}
 
 
-def hub_place(bridges, fakes, agents=("coach",), start=None, protected=True):
+def hub_place(bridges, fakes, agents=("coach",), start=None, protected=True, project=None, hub_python=None):
     bridge = bridges.new()
     bridge.config["sandbox"] = {"isolate": "on"}   # its tools in a container (the default on Linux)
+    agents = tuple(agents) + ((project,) if project else ())
     hub = managed_install(bridge, fakes, agents=agents, isolated=protected,
-                          python=["/usr/bin/false"])
+                          python=hub_python(bridge) if hub_python else ["/usr/bin/false"])
+    if project:   # an agent other people talk to, in the hub
+        bridge.state_dir.mkdir(parents=True, exist_ok=True)
+        (bridge.state_dir / "project-agents.json").write_text(json.dumps({"projects": {project: {
+            "created": time.time(), "ends": time.time() + 86400, "archived": None, "from": None, "lang": "fr"}}}))
     (hub / "config.yaml").write_text("model:\n  provider: custom\n  default: glm\n")
     (hub / ".env").write_text("CUSTOM_MODEL_API_KEY=sk-hub\n")
     for name in agents:
@@ -66,9 +74,9 @@ def entries(hub, name):
 
 
 def test_a_hub_agent_asks_a_secret_moves_by_itself_then_gets_the_card(bridges, fakes):
-    bridge, hub = hub_place(bridges, fakes)
+    bridge, hub = hub_place(bridges, fakes, project="fete")
     bridge.start()
-    wait_registered(bridge, ["coach"])
+    wait_registered(bridge, ["coach", "fete"])
     use_token_of(hub)
     # offered in the hub: the connectors' and the vault's account tools
     servers = entries(hub, "coach")
@@ -110,9 +118,9 @@ def test_a_hub_agent_asks_a_secret_moves_by_itself_then_gets_the_card(bridges, f
 
 
 def test_a_move_that_fails_is_one_plain_answer_and_not_retried_at_once(bridges, fakes):
-    bridge, hub = hub_place(bridges, fakes, start="exit 3")
+    bridge, hub = hub_place(bridges, fakes, start="exit 3", project="fete")
     bridge.start()
-    wait_registered(bridge, ["coach"])
+    wait_registered(bridge, ["coach", "fete"])
     use_token_of(hub)
     first = tool(bridge, "ask_secret", ASK)
     assert first["isError"] and "try again a bit later" in text(first) and "space" not in text(first)
@@ -146,3 +154,92 @@ def test_an_install_that_does_not_protect_the_vault_offers_none(bridges, fakes):
     wait_registered(other, ["coach"])
     servers = entries(other_hub, "coach")
     assert "bipagents_connectors" not in servers and "bipagents_vault" not in servers
+
+
+def hub_podman(bridge):
+    return [f"{bridge.fakebin}/podman", "exec", "-i", "hermes-hub", "/opt/hermes/venv/bin/python"]
+
+
+def hub_vault_calls(bridge):
+    return [json.loads(e["stdin"]) for e in bridge.commands.entries("podman") if e["argv"][:3] == ["exec", "-i", "hermes-hub"]]
+
+
+def test_a_hub_of_the_person_s_own_agents_keeps_secrets_without_moving(bridges, fakes):
+    bridge, hub = hub_place(bridges, fakes, agents=("coach", "cuisine"), hub_python=hub_podman)
+    bridge.commands.rule("podman", ["exec", "-i", "hermes-hub"], stdout=json.dumps({"id": "vault_1"}) + "\n")
+    bridge.start()
+    wait_registered(bridge, ["coach", "cuisine"])
+    use_token_of(hub)
+    servers = entries(hub, "coach")
+    assert "bipagents_connectors" in servers and "bipagents_vault" in servers
+    vault = {a["id"]: a.get("why") for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
+    assert {k: vault[k] for k in ("coach", "cuisine")} == {"coach": None, "cuisine": None}
+    with ThreadPoolExecutor(1) as pool:
+        call = pool.submit(tool, bridge, "ask_secret", ASK)
+        assert wait_until(lambda: secret_cards(bridge), timeout=20), bridge.log_tail(4000)
+        card = secret_cards(bridge)[0]
+        assert card["description"] == "Coach a besoin de ton accès Garmin (connect.garmin.example)"
+        sent = bridge.post(f"/v1/vault/secrets/requests/{card['request_id']}", headers=AUTH,
+                           json={"allow": True, "value": "Fake-Pa55word", "identifier": "alex@example.org"})
+        assert sent.status_code == 200, sent.text
+        result = call.result(timeout=60)
+    assert not result["isError"] and "Saved as « garmin »" in text(result), text(result)
+    # nothing moved: no space, still served by the hub
+    assert not (bridge.root / "spaces" / "coach").exists() and (hub / "profiles" / "coach").is_dir()
+    section = tomllib.loads(bridge.toml_text())["agents"]["coach"]
+    assert not section.get("isolated") and not section.get("space")
+    assert not any(e["argv"][:2] == ["profile", "delete"] for e in bridge.commands.entries("hermes"))
+    # a login from the app goes into the hub profile's own vault, through the hub's Python
+    made = bridge.post("/v1/vault", headers=AUTH, json={"label": "SNCF", "site": "sncf-connect.com",
+                                                        "identifier": "alex@example.org", "password": "s3cret-Pass!",
+                                                        "agents": ["coach"]})
+    assert made.status_code == 201, made.text
+    [request] = hub_vault_calls(bridge)
+    assert request["home"] == str(hub / "profiles" / "coach") and request["op"] == "add"
+
+
+def test_an_others_facing_agent_never_gets_credentials_and_its_hub_keeps_moving(bridges, fakes):
+    bridge, hub = hub_place(bridges, fakes, agents=("coach", "famille"), project="fete", hub_python=hub_podman)
+    (bridge.state_dir / "family-agent.json").write_text(json.dumps({"agent": "famille", "created": 1.0, "lang": "fr"}))
+    bridge.start()
+    wait_registered(bridge, ["coach", "famille", "fete"])
+    vault = {a["id"]: a.get("why") for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
+    assert {k: vault[k] for k in ("coach", "famille", "fete")} == dict.fromkeys(("coach", "famille", "fete"), "needs_own_space")
+    for name in ("coach", "famille", "fete"):
+        made = bridge.post("/v1/vault", headers=AUTH, json={"label": "SNCF", "site": "sncf-connect.com",
+                                                            "identifier": "a@b.c", "password": "p", "agents": [name]})
+        assert made.status_code >= 400, made.text
+    assert not hub_vault_calls(bridge)
+    assert "bipagents_connectors" in entries(hub, "coach")   # offered: its first secret moves it
+
+
+def test_an_agent_linked_to_a_relative_keeps_the_hub_moving(bridges, fakes):
+    bridge, hub = hub_place(bridges, fakes, agents=("coach", "cuisine"), hub_python=hub_podman)
+    bridge.state_dir.mkdir(parents=True, exist_ok=True)
+    # a relative's agent may write to Cuisine (« Qui peut écrire à qui »)
+    (bridge.state_dir / "peers.json").write_text(json.dumps({"links": [["cuisine__lea", "cuisine"]], "tokens": {}}))
+    bridge.start()
+    wait_registered(bridge, ["coach", "cuisine"])
+    vault = {a["id"]: a.get("why") for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
+    assert {k: vault[k] for k in ("coach", "cuisine")} == dict.fromkeys(("coach", "cuisine"), "needs_own_space")
+
+
+@pytest.mark.slow
+def test_a_new_project_agent_leaves_the_hub_so_it_stays_private(bridges, fakes):
+    """An agent other people talk to lives in its own space (moved a minute after it is made, once idle); the hub
+    keeps only the person's agents, whose credentials then stay there."""
+    bridge, hub = hub_place(bridges, fakes, agents=("coach",), hub_python=hub_podman)
+    bridge.start()
+    wait_registered(bridge, ["coach"])
+    made = bridge.post("/v1/project-agents", headers=AUTH, json={"name": "Fête", "ends": time.time() + 86400})
+    assert made.status_code == 201, made.text
+    agent = made.json()["agent"]
+
+    def moved():
+        section = tomllib.loads(bridge.toml_text())["agents"].get(agent, {})
+        return section.get("isolated") is True and section.get("space") == str(bridge.root / "spaces" / agent)
+    assert wait_until(moved, timeout=150), bridge.log_tail(4000)
+    assert wait_until(lambda: any(e["argv"] == ["profile", "delete", agent, "--yes"]
+                                  for e in bridge.commands.entries("hermes")), timeout=20)
+    vault = {a["id"]: a.get("why") for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
+    assert vault["coach"] is None

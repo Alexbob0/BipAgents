@@ -343,6 +343,7 @@ impl AppState {
             self.spawn(self.hub.clone().mark_busy_forever(self.sleep.home.clone(), 60.0));
             self.spawn(self.sleep.clone().run_forever());
         }
+        self.vault.warn_hub_holders(&config); // own_space.rs: credentials kept in a hub that is no longer private
         let hub = self.hub.clone();
         let agents = config.agents.clone();
         self.spawn(async move {
