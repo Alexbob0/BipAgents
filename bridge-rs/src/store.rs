@@ -391,6 +391,12 @@ impl Store {
         Ok(self.run_count("DELETE FROM devices WHERE token=?", vec![text(token)]).await? > 0)
     }
 
+    /// A device's row dropped only when it has this environment (a phone's former token, replaced).
+    pub async fn delete_device_in(&self, token: &str, environment: &str) -> anyhow::Result<bool> {
+        Ok(self.run_count("DELETE FROM devices WHERE token=? AND environment=?", vec![text(token), text(environment)]).await?
+            > 0)
+    }
+
     pub async fn devices_for_agent(&self, agent: &str) -> anyhow::Result<Vec<Row>> {
         let rows = self.run("SELECT * FROM devices", vec![]).await?;
         Ok(rows
@@ -563,6 +569,10 @@ mod tests {
         assert_eq!(store.devices_for_agent("z").await.unwrap().len(), 0);
         assert!(store.delete_device("ab").await.unwrap());
         assert!(!store.delete_device("ab").await.unwrap());
+        store.upsert_device("cd", "fcm", &["a".into()]).await.unwrap();
+        assert!(!store.delete_device_in("cd", "relay").await.unwrap());
+        assert!(store.delete_device_in("cd", "fcm").await.unwrap());
+        assert!(store.get_device("cd").await.unwrap().is_none());
 
         let item = store
             .add_outbox("lea", "Bonjour", NewOutbox { ntfy_id: Some("n1".into()), ..Default::default() })
