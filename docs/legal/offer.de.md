@@ -114,6 +114,13 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 
 ## 4. Die kostenlose Woche
 
+- **Neukunde.** Die kostenlose Woche gilt nur für Neukunden. Neukunde ist, wer noch nie ein BipAgents-Abo hatte, ob
+  bezahlt, im Test oder widerrufen, laufend oder beendet, über den App Store, Google Play oder die Website
+  bipagents.com. Um das zu prüfen, nutzen wir die bei der Bestellung angegebene E-Mail-Adresse, dein BipAgents-Konto,
+  deine Kundenkennung bei unserem Zahlungsdienstleister Stripe und eine an dein Gerät gebundene Markierung (Apples
+  DeviceCheck auf dem iPhone, ein Fingerabdruck des Geräts auf Android), wie in unserer
+  [Datenschutzerklärung](privacy.de.md) (Abschnitt 5.3) erklärt. Apple und Google wenden zusätzlich ihre eigenen Regeln
+  an: Sie gewähren nur ein Testangebot pro Apple- oder Google-Konto. Beta-Plätze (Beta-Codes) zählen nicht als Abo.
 - Ein Tarif beginnt mit **einer kostenlosen Woche**, wenn dein Gerät und dein Store-Konto noch nie eine hatten. Sonst bietet dir die App denselben Tarif ohne kostenlose Woche an. Vor dem Kauf
   sagt dir die App, ob die kostenlose Woche gilt, wann sie endet und welcher Preis danach folgt.
 - Die kostenlose Woche gilt auch **auf der Website**, mit derselben Regel (eine pro Person): Die Bestellseite

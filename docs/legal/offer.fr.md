@@ -113,6 +113,14 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 
 ## 4. La semaine gratuite
 
+- **Nouvel abonné.** La semaine gratuite est réservée aux nouveaux abonnés. Est nouvel abonné la personne qui n'a
+  jamais eu d'abonnement BipAgents, qu'il soit payant, en essai ou rétracté, en cours ou terminé, par l'App Store,
+  Google Play ou le site bipagents.com. Pour le vérifier, nous utilisons l'adresse e-mail donnée à la commande, ton
+  compte BipAgents, ton identifiant client chez notre prestataire de paiement Stripe et une marque liée à ton appareil
+  (DeviceCheck d'Apple sur iPhone, une empreinte de l'appareil sur Android), comme expliqué dans notre
+  [politique de confidentialité](privacy.fr.md) (section 5.3). Apple et Google appliquent en plus leurs propres règles :
+  ils n'accordent qu'une offre d'essai par compte Apple ou Google. Les places bêta (codes bêta) ne comptent pas comme un
+  abonnement.
 - Un forfait commence par **une semaine gratuite** si ton appareil et ton compte du store n'en ont jamais eu.
   Sinon, l'app te propose le même forfait sans semaine gratuite.
   Avant l'achat, l'app te dit si la semaine gratuite s'applique, quand elle finit et le prix qui suivra.

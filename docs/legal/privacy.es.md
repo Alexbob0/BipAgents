@@ -361,6 +361,11 @@ paga seguir el crédito de la familia y fijar límites, y a cada persona saber l
 ejecución del contrato (artículo 6.1.b del RGPD), ya que el crédito compartido forma parte del plan Duo o Familia. El
 límite fijado se conserva mientras dure la suscripción.
 
+**Solo una semana gratis por persona.** Para saber si ya has tenido una suscripción a BipAgents, también comparamos el
+correo electrónico dado en el pedido, tu cuenta BipAgents y tu identificador de cliente en Stripe con nuestras
+suscripciones anteriores. No guardamos ningún dato de tu tarjeta: se introduce en Stripe y nunca pasa por nuestros
+servidores.
+
 **Solo una semana gratis por dispositivo.**
 
 - **En iPhone**, la app usa DeviceCheck de Apple: Apple guarda dos bits por dispositivo para Kerfy Studio («ya tuvo

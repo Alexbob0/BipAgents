@@ -107,6 +107,13 @@ section 6); the services you connect to your agents and their own subscriptions.
 
 ## 4. The free week
 
+- **New subscriber.** The free week is for new subscribers only. A new subscriber is a person who never had a BipAgents
+  subscription, whether paid, on trial or withdrawn, current or ended, through the App Store, Google Play or the
+  bipagents.com website. To check it, we use the email address given with the order, your BipAgents account, your
+  customer identifier at our payment provider Stripe and a mark tied to your device (Apple's DeviceCheck on iPhone, a
+  fingerprint of the device on Android), as explained in our [privacy policy](privacy.en.md) (section 5.3). Apple and
+  Google also apply their own rules: they grant only one trial offer per Apple or Google account. Beta places (beta
+  codes) don't count as a subscription.
 - A plan starts with **a free week** if your device and your store account never had one. Otherwise, the app offers you the same plan without a free week. Before the purchase, the app tells
   you whether the free week applies, when it ends and the price that follows it.
 - The free week applies **on the website** too, with the same rule (one per person): the order page tells you

@@ -368,6 +368,10 @@ agents**. Finalité : permettre à la personne qui paie de suivre le crédit de 
 chacun de connaître ce qu'il lui reste ; base légale : l'exécution du contrat (article 6.1.b du RGPD), le partage du
 crédit faisant partie du forfait Duo ou Famille. La limite fixée est gardée tant que l'abonnement dure.
 
+**Une seule semaine gratuite par personne.** Pour savoir si tu as déjà eu un abonnement BipAgents, nous comparons aussi
+l'adresse e-mail donnée à la commande, ton compte BipAgents et ton identifiant client Stripe avec nos abonnements passés.
+Nous ne gardons aucune donnée de ta carte : elle est saisie chez Stripe et ne passe pas par nos serveurs.
+
 **Une seule semaine gratuite par appareil.**
 
 - **Sur iPhone**, l'app utilise DeviceCheck d'Apple : Apple garde deux bits par appareil pour Kerfy Studio (« a déjà eu

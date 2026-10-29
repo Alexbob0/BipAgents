@@ -351,6 +351,10 @@ the family's credit and set limits, and letting each person know what they have 
 the contract (Article 6(1)(b) GDPR), sharing the credit being part of the Duo or Family plan. The limit set is kept as
 long as the subscription lasts.
 
+**Only one free week per person.** To know whether you have already had a BipAgents subscription, we also compare the
+email address given with the order, your BipAgents account and your Stripe customer identifier with our past
+subscriptions. We keep no data of your card: it is entered at Stripe and never goes through our servers.
+
 **Only one free week per device.**
 
 - **On iPhone**, the app uses Apple's DeviceCheck: Apple keeps two bits per device for Kerfy Studio ("already had a

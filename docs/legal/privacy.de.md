@@ -384,6 +384,10 @@ Limits zu setzen, und jeder Person, zu wissen, was ihr bleibt; Rechtsgrundlage: 
 Abs. 1 lit. b DSGVO), da das geteilte Guthaben Teil des Duo- oder Familien-Tarifs ist. Das gesetzte Limit wird
 aufbewahrt, solange das Abo läuft.
 
+**Nur eine kostenlose Woche pro Person.** Um zu wissen, ob du schon ein BipAgents-Abo hattest, vergleichen wir auch die
+bei der Bestellung angegebene E-Mail-Adresse, dein BipAgents-Konto und deine Kundenkennung bei Stripe mit unseren
+früheren Abos. Wir speichern keine Daten deiner Karte: Sie wird bei Stripe eingegeben und läuft nie über unsere Server.
+
 **Nur eine kostenlose Woche pro Gerät.**
 
 - **Auf dem iPhone** nutzt die App DeviceCheck von Apple: Apple bewahrt für Kerfy Studio zwei Bits pro Gerät auf

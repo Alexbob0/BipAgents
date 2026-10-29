@@ -113,6 +113,14 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 ## 4. La semana gratis
 
+- **Nuevo suscriptor.** La semana gratis es solo para nuevos suscriptores. Es nuevo suscriptor la persona que nunca ha
+  tenido una suscripción a BipAgents, de pago, en prueba o desistida, en curso o terminada, por la App Store, Google
+  Play o el sitio bipagents.com. Para comprobarlo, usamos el correo electrónico dado en el pedido, tu cuenta BipAgents,
+  tu identificador de cliente en nuestro proveedor de pago Stripe y una marca ligada a tu dispositivo (DeviceCheck de
+  Apple en iPhone, una huella del dispositivo en Android), como se explica en nuestra
+  [política de privacidad](privacy.es.md) (sección 5.3). Apple y Google aplican además sus propias reglas: solo
+  conceden una oferta de prueba por cuenta de Apple o Google. Las plazas beta (códigos beta) no cuentan como
+  suscripción.
 - Un plan empieza con **una semana gratis** si tu dispositivo y tu cuenta de la tienda nunca han tenido una. Si no, la app te propone el mismo plan sin semana gratis. Antes de la
   compra, la app te dice si se aplica la semana gratis, cuándo termina y el precio que la sigue.
 - La semana gratis se aplica también **en el sitio**, con la misma regla (una por persona): la
