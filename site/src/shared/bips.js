@@ -399,6 +399,20 @@ export function motionFrame(id, t, body, deep) {
 }
 /** A thinking episode's animation: the `episode`-th of the rotation (small Bips: the ones readable small). */
 export const thinkingVariant = (episode, small) => { const l = small ? THINKING_SMALL : THINKING; return l[((episode % l.length) + l.length) % l.length]; };
+/** How long a variant plays before the next one takes over within the same episode (Alex, 2026-10-29): whole loops of
+ *  its own, about 7–9 s, so it changes where its loop starts again. */
+export const THINKING_TURN = { today: 7, chantier: 2.2 * 4, vague: 1.3 * 6, construit: 4.2 * 2, bulle: 4 / 2.6 * 5, puzzle: 0.9 * 8,
+  jongle: 1.1 * 7, scanner: 1.8 * 4, relief: 1.6 * 5, empile: 3.6 * 2 };
+/** What an episode plays `elapsed` seconds in: its variant, then the next ones in turn, and the time within it. */
+export function thinkingNow(episode, elapsed, small) {
+  const l = small ? THINKING_SMALL : THINKING, round = l.reduce((a, v) => a + THINKING_TURN[v], 0);
+  let t = Math.max(0, elapsed) % round;
+  for (let k = episode; ; k++) {
+    const v = thinkingVariant(k, small);
+    if (t < THINKING_TURN[v]) return [v, t];
+    t -= THINKING_TURN[v];
+  }
+}
 
 /** A motion frame as SVG markup, with the look's colours and costume (only on a whole Bip). */
 function drawMotion(look, items, fr, ppu, pose) {
@@ -689,8 +703,8 @@ export class Bip {
     const st = stateOf(this.base);
     if (this.thinking) {
       if (this.episode == null) { this.episode = nextEpisode(this.c.id); this.mt = 0; }
-      const v = thinkingVariant(this.episode, (this.el.clientWidth || 48) <= 56);
-      return MOTIONS[v] ? [v, this.mt] : null;
+      const [v, t] = thinkingNow(this.episode, this.mt, (this.el.clientWidth || 48) <= 56);
+      return MOTIONS[v] ? [v, t] : null;
     }
     if (st === STATES.sleep) return ["sleep", this.t];
     if (st === STATES.listen) return ["listen", this.t];
