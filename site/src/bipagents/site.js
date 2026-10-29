@@ -127,6 +127,9 @@ function toolLabel(rawTool, rawArgs) {
         const v = object[key], value = Array.isArray(v) ? v.find(x => typeof x === "string" && x.trim()) : v;
         if (typeof value === "string" && (detail = shown(value, key))) break;
       }
+    } else if (kind === "messageAgent") {
+      // The recipient is worded (« J’écris à Léa… »): a plain preview names it only as a bare handle, never the message.
+      if (/^@?[\p{L}\p{N}_.\-]+(\/[\p{L}\p{N}_.\-@]+)?$/u.test(text)) detail = shown(text.replace(/^@/, ""), "target");
     } else if (!text.startsWith("{") && !text.startsWith("[")) {
       detail = shown(text, "");
     }
