@@ -277,7 +277,7 @@ pub fn kind_diet(kind: &str) -> KindDiet {
         },
         "guide" => KindDiet {
             deferred: &["terminal", "execute_code", "write_file", "patch", "search_files", "web_extract"],
-            direct: &["propose_agent", "suggest_switch", "notebook_search"],
+            direct: &["propose_agent", "propose_team", "suggest_switch", "notebook_search"],
             compact_skills: &[
                 "autonomous-ai-agents",
                 "software-development",

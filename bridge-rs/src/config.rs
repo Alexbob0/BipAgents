@@ -561,6 +561,22 @@ impl Default for RoomsConfig {
     }
 }
 
+/// `[guide]` (guide_team.rs): a team proposed in one card. `team_max`: agents on one team card (1 to 6, 6 by
+/// default); `agents_max`: the place's agents at most, the hook the offer may set (0, the default: no limit; the card
+/// then shows how many places are left); `first_turns`: each new team agent writes its first message (on by default).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GuideConfig {
+    pub team_max: usize,
+    pub agents_max: usize,
+    pub first_turns: bool,
+}
+
+impl Default for GuideConfig {
+    fn default() -> Self {
+        GuideConfig { team_max: 6, agents_max: 0, first_turns: true }
+    }
+}
+
 /// `[archive_records]`: records filled from an agent's archives (archives/records_fill.rs): the models the person may
 /// pick for the one-time pass, the price counted for a model whose price is unknown, the caps of a sample and of the
 /// nightly pass on new documents.
@@ -663,6 +679,9 @@ pub struct Config {
     /// `[rooms]` (rooms.rs): not in the serialized form either.
     #[serde(skip)]
     pub rooms: RoomsConfig,
+    /// `[guide]` (guide_team.rs): not in the serialized form either.
+    #[serde(skip)]
+    pub guide: GuideConfig,
     /// `[connections]` (connections.rs): not in the serialized form either.
     #[serde(skip)]
     pub connections: crate::connections::Settings,
@@ -776,6 +795,7 @@ impl Config {
             jobs: JobsConfig::default(),
             brake: crate::loop_brake::Settings::default(),
             rooms: RoomsConfig::default(),
+            guide: GuideConfig::default(),
             connections: crate::connections::Settings::default(),
             watchers: crate::watchers::Settings::default(),
             agent_restart: crate::agent_restart::Settings::default(),
@@ -1673,6 +1693,14 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         turn_seconds: f(rooms_t, "turn_seconds", rmd.turn_seconds)?.clamp(10.0, 3600.0),
     };
 
+    let guide_t = table(data, "guide");
+    let gd = GuideConfig::default();
+    let guide = GuideConfig {
+        team_max: i(guide_t, "team_max", gd.team_max as i64)?.clamp(1, 6) as usize,
+        agents_max: i(guide_t, "agents_max", gd.agents_max as i64)?.clamp(0, 1000) as usize,
+        first_turns: b(guide_t, "first_turns", gd.first_turns),
+    };
+
     let records_t = table(data, "archive_records");
     let rd = ArchiveRecordsConfig::default();
     let mut extract_models = Vec::new();
@@ -1764,6 +1792,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         jobs,
         brake: crate::loop_brake::Settings::from_table(table(data, "brake")),
         rooms,
+        guide,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
         watchers: crate::watchers::Settings::from_table(table(data, "watchers")),
         agent_restart: crate::agent_restart::Settings::from_table(table(data, "agent_restart")),
