@@ -171,9 +171,16 @@ ATT, rien n’est envoyé à Meta. Un abonnement et un compte gardent au plus **
 comme `insta-nov-a`, ou `asa-542370539` pour Apple Search Ads), sa provenance (le lien du site, le referrer de Google
 Play, Apple Search Ads, le lot d’un code bêta, ou la réponse de la personne) et sa date ; le premier reçu est gardé,
 jamais remplacé. Jamais d’identifiant de clic, d’identifiant publicitaire, de jeton Apple ni rien d’autre du referrer.
-Pourquoi : savoir quelles campagnes se remboursent et arrêter les autres. Le rapport hebdomadaire que lit Kerfy Studio
-ne contient que des comptes par campagne et par semaine, jamais une personne. Le nom de campagne disparaît avec le
-compte ou l’abonnement (5 ans après la fin d’un abonnement, comme ses autres données de contrat). Les boutiques
+Pourquoi : savoir quelles campagnes se remboursent et arrêter les autres. Base légale : l’intérêt légitime de Kerfy
+Studio (art. 6.1.f RGPD). La règle, écrite aussi dans le code du guichet : **des comptes seulement, jamais un autre
+usage, 13 mois.** Lire le referrer d’installation de Google Play et demander un jeton à AdServices passent par le
+téléphone, ce que la règle ePrivacy (art. 82 de la loi Informatique et Libertés) n’admet sans consentement que pour une
+pure mesure d’audience : l’attribution n’est lue que par le rapport hebdomadaire, qui ne contient que des comptes par
+campagne et par semaine, jamais une personne ; elle ne sert à rien d’autre (ni e-mail, ni offre, ni profil, jamais
+transmise à qui que ce soit). Chaque nom de campagne est effacé **13 mois après son enregistrement** (la purge
+quotidienne du guichet), ou avant avec le compte ou l’abonnement ; les semaines plus anciennes du rapport comptent
+alors simplement moins d’abonnements attribués. Chacun peut s’y opposer en écrivant à privacy@bipagents.com : Kerfy
+Studio efface la sienne et marque le compte et ses abonnements pour que rien n’y soit plus jamais enregistré. Les boutiques
 comptent elles-mêmes les installations venues de publicités dans leurs tableaux de bord (App Store Connect, Google
 Play Console), comme pour toute app ; le lien du site transmet la campagne à Stripe Checkout (`metadata`) pour qu’elle
 arrive au guichet avec l’achat.
