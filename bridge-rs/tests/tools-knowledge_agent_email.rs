@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
 use axum::extract::Path as UrlPath;
-use axum::http::{HeaderMap, Request};
+use axum::http::{HeaderMap, Request, StatusCode};
 use axum::routing::put;
 use axum::{Json, Router};
 use base64::Engine;
@@ -363,4 +363,93 @@ async fn a_kerfy_studio_address_asked_of_the_guichet_with_the_place_s_token() {
     assert_eq!(status, 200);
     assert_eq!(asked.lock().unwrap()[1].0, "DELETE lea");
     assert!(agent_email::load(&agent_email::folder(&config), "lea").is_none());
+}
+
+/// The agent's address exists at the guichet but this place lost its password (an old restore): refused as « can't
+/// be taken back here » and nothing deleted, until the person starts again (`start_again`, their OK in the app): the
+/// old address deleted at the guichet, a new one asked and kept. Turning off with no record here deletes it there too.
+#[tokio::test]
+async fn an_address_whose_password_was_lost_starts_again_only_when_asked() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = hub_config(dir.path());
+    let app = TestApp::new(config.clone());
+    let state = &app.app.state;
+    let ran: Ran = Default::default();
+    let deps = deps(dir.path(), &ran);
+
+    // the guichet: lea's address made, its password not on this place
+    let made: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(Some("lea.old1@a.bipagents.test".into())));
+    let calls: Arc<Mutex<Vec<String>>> = Default::default();
+    let (m1, m2, c1, c2) = (made.clone(), made.clone(), calls.clone(), calls.clone());
+    let guichet = Router::new().route(
+        "/v1/mailboxes/{agent}",
+        put(move |Json(body): Json<Value>| {
+            let (made, calls) = (m1.clone(), c1.clone());
+            async move {
+                calls.lock().unwrap().push(format!("PUT {}", body.get("current").map_or("", |_| "current")));
+                let mut made = made.lock().unwrap();
+                if made.is_some() {
+                    let refused = json!({"detail": "this address exists: its current password is needed"});
+                    return (StatusCode::FORBIDDEN, Json(refused));
+                }
+                *made = Some("lea.new2@a.bipagents.test".into());
+                (
+                    StatusCode::OK,
+                    Json(json!({"address": "lea.new2@a.bipagents.test", "password": "new-once",
+                                "imap": {"host": "mail.bipagents.test", "port": 993, "security": "tls"},
+                                "smtp": {"host": "mail.bipagents.test", "port": 465, "security": "tls"},
+                                "authserv_id": "mail.bipagents.test", "retention_days": 90})),
+                )
+            }
+        })
+        .delete(move |headers: HeaderMap| {
+            let (made, calls) = (m2.clone(), c2.clone());
+            async move {
+                assert_eq!(headers.get("authorization").unwrap(), "Bearer place-token");
+                calls.lock().unwrap().push("DELETE".into());
+                match made.lock().unwrap().take() {
+                    Some(_) => (StatusCode::OK, Json(json!({"ok": true}))),
+                    None => (StatusCode::NOT_FOUND, Json(json!({"detail": "no such address"}))),
+                }
+            }
+        }),
+    );
+    let url = spawn_fake(guichet).await;
+    let settings = dir.path().join(".config/bipagents/backup.json");
+    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    std::fs::write(&settings, json!({"url": format!("{url}/v1/backup"), "token": "place-token"}).to_string()).unwrap();
+
+    // asked as usual: refused, and nothing deleted
+    let ask = json!({"kind": "bipagents", "allowed": ["alex@example.com"]});
+    let (status, out) = send(state, &deps, "POST", "/v1/agents/lea/email", Some(ask.clone())).await;
+    assert_eq!(status, 409, "{out}");
+    assert!(out["detail"].as_str().unwrap().contains("can't be taken back here"), "{out}");
+    assert_eq!(*calls.lock().unwrap(), vec!["PUT ".to_string()]);
+    assert!(made.lock().unwrap().is_some());
+    let folder = agent_email::folder(&config);
+    assert!(agent_email::load(&folder, "lea").is_none());
+
+    // the person starts again: deleted, then a new address kept like any new one
+    let mut again = ask.clone();
+    again["start_again"] = json!(true);
+    let (status, view) = send(state, &deps, "POST", "/v1/agents/lea/email", Some(again)).await;
+    assert_eq!(status, 201, "{view}");
+    assert_eq!(view["address"], "lea.new2@a.bipagents.test");
+    assert_eq!(*calls.lock().unwrap(), vec!["PUT ".to_string(), "PUT ".into(), "DELETE".into(), "PUT ".into()]);
+    assert_eq!(agent_email::current_password(&folder, "lea").as_deref(), Some("new-once"));
+    let env = std::fs::read_to_string(dir.path().join(".hermes/profiles/lea/.env")).unwrap();
+    assert!(env.contains("EMAIL_PASSWORD=new-once\n") && env.contains("EMAIL_ADDRESS=lea.new2@a.bipagents.test\n"));
+
+    // an old restore again: no record here, the address still at the guichet: turning off deletes it there
+    std::fs::remove_file(folder.join("lea.json")).unwrap();
+    calls.lock().unwrap().clear();
+    let (status, out) = send(state, &deps, "DELETE", "/v1/agents/lea/email", None).await;
+    assert_eq!(status, 200, "{out}");
+    assert_eq!(*calls.lock().unwrap(), vec!["DELETE".to_string()]);
+    assert!(made.lock().unwrap().is_none());
+    assert!(agent_email::current_password(&folder, "lea").is_none());
+
+    // not a place of the offer, no record: nothing to turn off
+    std::fs::remove_file(&settings).unwrap();
+    assert_eq!(send(state, &deps, "DELETE", "/v1/agents/lea/email", None).await.0, 404);
 }

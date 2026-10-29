@@ -22,7 +22,7 @@
 //! deleted here every day. A mailbox of the person's own is never purged.
 //!
 //!     GET    /v1/agents/{agent}/email                 the view (below)
-//!     POST   /v1/agents/{agent}/email                 {kind: bipagents|own, …}       turned on
+//!     POST   /v1/agents/{agent}/email                 {kind: bipagents|own, start_again?, …}   turned on
 //!     PATCH  /v1/agents/{agent}/email                 {allowed?, daily_limit?}
 //!     DELETE /v1/agents/{agent}/email                 turned off (a Kerfy Studio address deleted with its mail)
 //!     POST   /v1/agents/{agent}/email/held/{id}       {send: bool}                   a held mail sent or dropped
@@ -32,6 +32,13 @@
 //!
 //! The guichet gives an address it already made a new password only with its current one (audit 2026-10-27, 17):
 //! when it answers « exists », the bridge asks again with the password it holds (its record's, else the kept one).
+//! When this place no longer holds it (an old restore), the answer is 409 « … it can't be taken back here » (the
+//! apps know it by these words) and nothing changes. The person can then start again with a new address
+//! (Alex 2026-10-29): the same POST with `start_again: true`, sent only after their explicit OK in the app, deletes
+//! the old address at the guichet (`DELETE /v1/mailboxes/{agent}`, with the place's token: the address and all its
+//! mail; it stays reserved until the mail server deleted it) and asks a new one, kept like any new address. Without
+//! that flag nothing is ever deleted. `DELETE …/email` also asks the guichet to delete the address on a place of the
+//! offer when this place has no record of it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -472,8 +479,9 @@ async fn guichet(deps: &Deps, method: reqwest::Method, agent: &str, body: Option
 }
 
 /// The agent's Kerfy Studio address asked of the guichet. One it already has is given a new password only with its
-/// current one (audit 2026-10-27, 17): asked again with the password this place holds, when it holds one.
-async fn ask_address(deps: &Deps, dir: &Path, agent: &AgentConfig) -> Result<Value, HttpError> {
+/// current one (audit 2026-10-27, 17): asked again with the password this place holds, when it holds one. When it
+/// holds none, `start_again` (the person's explicit OK) deletes the old address at the guichet and asks a new one.
+async fn ask_address(deps: &Deps, dir: &Path, agent: &AgentConfig, start_again: bool) -> Result<Value, HttpError> {
     let first = guichet_call(deps, reqwest::Method::PUT, &agent.name, Some(json!({"name": agent.display_name}))).await?;
     let refusal = match first {
         Ok(given) => return Ok(given),
@@ -487,6 +495,9 @@ async fn ask_address(deps: &Deps, dir: &Path, agent: &AgentConfig) -> Result<Val
         )
     };
     let Some(current) = current_password(dir, &agent.name) else {
+        if start_again {
+            return start_again_with_a_new_address(deps, dir, agent).await;
+        }
         tracing::warn!(agent = %agent.name, detail = %refusal.detail, "agent e-mail address exists, no password kept");
         return Err(lost());
     };
@@ -496,9 +507,31 @@ async fn ask_address(deps: &Deps, dir: &Path, agent: &AgentConfig) -> Result<Val
             tracing::info!(agent = %agent.name, "agent e-mail address asked again with its current password");
             Ok(given)
         }
+        Err(r) if r.address_exists() && start_again => start_again_with_a_new_address(deps, dir, agent).await,
         Err(r) if r.address_exists() => Err(lost()),
         Err(r) => Err(r.into_http()),
     }
+}
+
+/// The old address deleted at the guichet (with all its mail), then a new one asked: only on the person's request.
+async fn start_again_with_a_new_address(deps: &Deps, dir: &Path, agent: &AgentConfig) -> Result<Value, HttpError> {
+    tracing::warn!(agent = %agent.name, "agent e-mail: deleting the old address at the guichet, as the person asked");
+    delete_at_guichet(deps, dir, &agent.name).await?;
+    let given = guichet(deps, reqwest::Method::PUT, &agent.name, Some(json!({"name": agent.display_name}))).await?;
+    tracing::info!(agent = %agent.name, "agent e-mail: a new address given after the old one was deleted");
+    Ok(given)
+}
+
+/// The agent's address deleted at the guichet (none there: fine), and the password kept for it forgotten.
+async fn delete_at_guichet(deps: &Deps, dir: &Path, agent: &str) -> Result<(), HttpError> {
+    match guichet(deps, reqwest::Method::DELETE, agent, None).await {
+        Ok(_) => {}
+        Err(e) if e.status.as_u16() == 404 => {}
+        Err(e) => return Err(e),
+    }
+    let _lock = LOCK.lock().await;
+    forget_given(dir, agent); // the address is gone at the guichet
+    Ok(())
 }
 
 // -- the view and the routes ---------------------------------------------------------------------------------------
@@ -549,6 +582,10 @@ pub struct TurnOn {
     pub allowed: Vec<String>,
     #[serde(default)]
     pub daily_limit: Option<i64>,
+    /// kind bipagents: the address exists and this place lost its password: delete it at the guichet and ask a new
+    /// one (the person's explicit OK in the app)
+    #[serde(default)]
+    pub start_again: bool,
     #[serde(default)]
     pub address: Option<String>,
     #[serde(default)]
@@ -673,7 +710,7 @@ async fn turn_on(
     };
     match body.kind.as_str() {
         "bipagents" => {
-            let given = ask_address(&deps, &dir, &agent).await?;
+            let given = ask_address(&deps, &dir, &agent, body.start_again).await?;
             let text = |v: &Value| v.as_str().unwrap_or("").to_string();
             let port = |v: &Value, default: u16| v.as_u64().map(|p| p as u16).unwrap_or(default);
             record.address = text(&given["address"]).to_lowercase();
@@ -779,15 +816,18 @@ async fn turn_off(
     let config = state.config();
     let agent = agent_of(&config, &name)?;
     let dir = folder(&config);
-    let record = load(&dir, &agent.name).ok_or_else(|| HttpError::new(404, "no address"))?;
-    if record.kind == "bipagents" {
-        match guichet(&deps, reqwest::Method::DELETE, &agent.name, None).await {
-            Ok(_) => {}
-            Err(e) if e.status.as_u16() == 404 => {}
-            Err(e) => return Err(e),
+    let Some(record) = load(&dir, &agent.name) else {
+        // no record here (an old restore): on a place of the offer the guichet may still have the agent's address,
+        // deleted on the person's request all the same
+        if place_token(&deps.home).is_none() {
+            return Err(HttpError::new(404, "no address"));
         }
-        let _lock = LOCK.lock().await;
-        forget_given(&dir, &agent.name); // the address is gone at the guichet
+        delete_at_guichet(&deps, &dir, &agent.name).await?;
+        tracing::info!(agent = %agent.name, "agent e-mail: address deleted at the guichet, none kept here");
+        return Ok(web::ok(json!({"ok": true})));
+    };
+    if record.kind == "bipagents" {
+        delete_at_guichet(&deps, &dir, &agent.name).await?;
     }
     {
         let _lock = LOCK.lock().await;
