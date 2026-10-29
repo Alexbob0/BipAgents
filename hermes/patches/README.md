@@ -37,6 +37,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0013 MCP results: vault passwords scrubbed | applies | applies (`97a9ae8ee`: the file is the same, checked 2026-10-28) |
 | 0014 routine tool results in plain UTF-8 | applies | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-28) |
 | 0015 time anchor: the time with each message | applies (after 0009) | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-29) |
+| 0016 `message_agent`: the bridge's, Bot Chat included | applies (after 0012) | not checked yet |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -390,3 +391,29 @@ without it (missing `requests` and other packages in the test environment), the 
 passes after 0001–0014, `patch --dry-run` on upstream `main` (`8acb7f6580`). An upstream PR candidate: there the
 marker would be neutral (`bip:` is BipAgents' notes prefix) and the hint shown only when a client stamps its
 messages.
+
+## 0016 — `message_agent`: the bridge's, even in the Bot Chat
+
+**Problem.** Since 2026-10-29 the bridge's `message_agent` (`mcp__bipagents__message_agent`) asks the other agent in
+the two agents' own conversation « A ⇄ B » (bridge-rs/src/agent_pairs.rs), not in the target's « Bot Chat », the
+person's main conversation with it (Alex: « Les échanges entre 2 bots dans une conversation à part »). Hermes'
+built-in still writes into the target's Bot Chat (through the bridge's peer routes, `hermes peer dm`), and 0012 kept
+the built-in in the Bot Chat: an agent asking from its own Bot Chat still filled the other one's.
+
+**What the patch does.** The other way round from 0012, on top of it: where the built-in would be injected
+(`ensure_message_agent_tool`, once per turn, and `_reinject_authorized_dynamic_tools` on an MCP rebuild) and an MCP
+tool named `mcp__<server>__message_agent` is in the staged list, the built-in is not added, and a copy added before
+the MCP tools were listed leaves the list and `valid_tool_names`. One way to write to an agent everywhere, the
+bridge's, and every exchange in its pair's conversation. Without such an MCP tool (an install without the bridge, an
+agent linked to nobody) the built-in is injected as upstream. Deterministic for the session, so the prompt cache
+holds. A tool behind the tool search is not seen (the token diet keeps this one direct, `!mcp__bipagents__message_agent`).
+0012's `drop_mcp_message_agent` stays, unused; a separate patch so an install that has 0012 gets this one as a new fix
+(`hermes-update --fixes-only`).
+
+**Files.** `tools/bot_mode_dm.py`, `tools/mcp_tool_agent.py`; 0012's `tests/tools/test_bot_mode_dm_one_message_agent.py`
+rewritten for the new rule (7 tests).
+
+**Tests.** `patch --dry-run` after 0006 and 0012 on `517b5e10f`; the files compile (`py_compile`). The test file was
+not run on the Mac (no Hermes test environment there): run it with `tests/tools/test_bot_mode_dm.py`,
+`test_bot_mode_dm_sync_peer.py`, `test_refresh_agent_mcp_tools.py` and `test_bot_mode_probe.py` before the release.
+The bridge's side: black-box `test_agent_messages.py` and `test_agent_pairs.py`.

@@ -2,8 +2,8 @@
 
 Real-day bench 2026-10-28: Quotidien, linked to Coach with `PUT /v1/agent-links` (200), never had `message_agent`:
 Hermes injects its own only in an agent's « Bot Chat ». The bridge's tool is offered once a link lets the agent write
-to another one, kept out of Hermes' tool search, checks the link, writes in the target's Bot Chat signed like a peer's
-message and brings its answer back in the same call."""
+to another one, kept out of Hermes' tool search, checks the link, asks the target in the two agents' own conversation
+(not its Bot Chat any more, 2026-10-29) signed like a peer's message and brings its answer back in the same call."""
 import hashlib
 import json
 
@@ -63,20 +63,24 @@ def test_a_linked_agent_gets_message_agent_and_its_call_brings_the_answer(bridge
     assert wait_until(lambda: any(
         args[:2] == ["-p", "quotidien"] and args[4] == "mcp_servers.bipagents.url"
         for args in bridge.commands.of("hermes") if len(args) > 5), timeout=10)
-    # the call: Coach's Bot Chat (made when it has none), signed as a peer's message, its answer brought back
-    fakes.hermes.chat_reply = "Tu as dormi 7 h 10 en moyenne cette semaine."
+    # the call: in Quotidien and Coach's own conversation (agent_pairs.rs, test_agent_pairs.py), signed as a peer's
+    # message, its answer brought back
+    fakes.hermes.run_output = "Tu as dormi 7 h 10 en moyenne cette semaine."
     text, failed = ask(bridge, "quotidien", target="bip/coach", message="Combien d'heures a-t-il dormi cette semaine ?")
     assert not failed, text
     assert "Coach (bip/coach) answered:" in text and "7 h 10" in text
     created = [body for agent, body in fakes.hermes.created if agent == "coach"]
-    assert created and all(body == {"title": "Bot Chat"} for body in created)
-    chat = fakes.hermes.chats[-1]
-    assert chat["agent"] == "coach" and chat["message"] == (
+    assert len(created) == 1 and created[0]["title"].startswith("BipAgents · ⇄ p")
+    runs = [r for r in fakes.hermes.started.values() if r["agent"] == "coach"]
+    assert runs[-1]["input"].endswith(
         "Message from Quotidien (@quotidien): Combien d'heures a-t-il dormi cette semaine ?")
-    # its existing Bot Chat is used, by name too; the other way round stays closed
+    assert not [c for c in fakes.hermes.chats if c["agent"] == "coach"]      # nothing in its Bot Chat
+    # the same conversation again, by name too
     text, failed = ask(bridge, "quotidien", target="Coach", message="Et la semaine d'avant ?")
-    assert not failed and len([b for a, b in fakes.hermes.created if a == "coach"]) == len(created)
-    assert fakes.hermes.chats[-1]["session"] == fakes.hermes.chats[-2]["session"]
+    assert not failed and len([b for a, b in fakes.hermes.created if a == "coach"]) == 1
+    runs = [r for r in fakes.hermes.started.values() if r["agent"] == "coach"]
+    assert runs[-1]["session_id"] == runs[-2]["session_id"]
+    # the other way round stays closed
     refused, failed = ask(bridge, "coach", target="bip/quotidien", message="Salut")
     assert failed
     text, failed = ask(bridge, "quotidien", target="bip/coach__lea", message="Salut")

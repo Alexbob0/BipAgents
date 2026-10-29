@@ -1706,6 +1706,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::assistant_import::router())
         .merge(crate::guide::router())
         .merge(crate::rooms::router())
+        .merge(crate::agent_pairs::router())
         .merge(crate::meet::router())
         .merge(crate::reminders::router())
         .merge(crate::notebook::api::router())
