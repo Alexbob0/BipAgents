@@ -56,8 +56,8 @@ Using BipAgents with your own computer or your own server stays free and is not 
 | Plan | People | Server | Price in the app (App Store, Google Play), VAT included | Price on the bipagents.com website, in euros, VAT included |
 |---|---|---|---|---|
 | Solo | 1 | a place on a server shared with other subscribers | €7.99 per month or €79.90 per year | €7.49 per month or €74.90 per year |
-| Duo | 2 | two places on one server, shared with other subscribers | €12.99 per month or €129.90 per year | €11.99 per month or €119.90 per year |
-| Family | up to 6 | a place for each person, on servers shared with other subscribers | €19.99 per month or €199.90 per year | €17.99 per month or €179.90 per year |
+| Duo | 2 | two places on one server, shared with other subscribers | €12.99 per month or €129.90 per year (€129.99 in the App Store) | €11.99 per month or €119.90 per year |
+| Family | up to 6 | a place for each person, on servers shared with other subscribers | €19.99 per month or €199.90 per year (€199.99 in the App Store) | €17.99 per month or €179.90 per year |
 
 **The yearly subscription** costs 10 months for 12 and is paid at once, in advance, for the 12 months. It renews every
 year at the same price, unless a price change is announced in advance (section 5), until you cancel it; before each

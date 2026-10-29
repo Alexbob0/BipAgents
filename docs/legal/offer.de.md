@@ -62,8 +62,8 @@ diese Bedingungen.
 | Tarif | Personen | Server | Preis in der App (App Store, Google Play), inkl. MwSt. | Preis auf der Website bipagents.com, in Euro, inkl. MwSt. |
 |---|---|---|---|---|
 | Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 7,99 € pro Monat oder 79,90 € pro Jahr | 7,49 € pro Monat oder 74,90 € pro Jahr |
-| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 12,99 € pro Monat oder 129,90 € pro Jahr | 11,99 € pro Monat oder 119,90 € pro Jahr |
-| Familie | bis zu 6 | ein Platz pro Person, auf Servern, die ihr mit anderen Abonnenten teilt | 19,99 € pro Monat oder 199,90 € pro Jahr | 17,99 € pro Monat oder 179,90 € pro Jahr |
+| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 12,99 € pro Monat oder 129,90 € pro Jahr (129,99 € im App Store) | 11,99 € pro Monat oder 119,90 € pro Jahr |
+| Familie | bis zu 6 | ein Platz pro Person, auf Servern, die ihr mit anderen Abonnenten teilt | 19,99 € pro Monat oder 199,90 € pro Jahr (199,99 € im App Store) | 17,99 € pro Monat oder 179,90 € pro Jahr |
 
 **Das Jahresabo** kostet 10 Monate für 12 und wird auf einmal, im Voraus, für die 12 Monate bezahlt. Es verlängert sich
 jedes Jahr zum selben Preis, außer bei einer vorher angekündigten Preisänderung (Abschnitt 5), bis du es kündigst; vor

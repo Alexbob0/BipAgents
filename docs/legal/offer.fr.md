@@ -60,8 +60,8 @@ conditions.
 | Forfait | Personnes | Serveur | Prix TTC dans l'app (App Store, Google Play) | Prix TTC sur le site bipagents.com, en euros |
 |---|---|---|---|---|
 | Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 7,99 € par mois ou 79,90 € par an | 7,49 € par mois ou 74,90 € par an |
-| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 12,99 € par mois ou 129,90 € par an | 11,99 € par mois ou 119,90 € par an |
-| Famille | jusqu'à 6 | une place pour chaque personne, sur des serveurs partagés avec d'autres abonnés | 19,99 € par mois ou 199,90 € par an | 17,99 € par mois ou 179,90 € par an |
+| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 12,99 € par mois ou 129,90 € par an (129,99 € dans l'App Store) | 11,99 € par mois ou 119,90 € par an |
+| Famille | jusqu'à 6 | une place pour chaque personne, sur des serveurs partagés avec d'autres abonnés | 19,99 € par mois ou 199,90 € par an (199,99 € dans l'App Store) | 17,99 € par mois ou 179,90 € par an |
 
 **L'abonnement annuel** coûte 10 mois pour 12 et se paie en une fois, d'avance, pour les 12 mois. Il se renouvelle
 chaque année au même prix, sauf changement de prix annoncé à l'avance (section 5), jusqu'à ce que tu le résilies ; avant
