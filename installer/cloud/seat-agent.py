@@ -737,6 +737,31 @@ def activity(home, now=None):
     if soonest is not None:
         out["next_routine_at"] = iso(soonest)
     out["own_spaces"] = own_spaces(home)
+    found = measures(home)
+    if found:
+        out["measures"] = found
+    return out
+
+
+MEASURES = os.path.join(BRIDGE_DATA, "measures.json")   # the beta's measures (bridge-rs/src/beta_measures.rs)
+MEASURE_TIMES = ("guide_message_at", "first_accept_at", "routine_at")
+MEASURE_COUNTS = ("team_proposed", "team_accepted", "team_refused", "team_ticked")
+
+
+def measures(home):
+    """The beta's measures its bridge keeps: times and counts only, nothing of anyone; anything else is left out."""
+    found = read_json(os.path.join(home, MEASURES))
+    if not isinstance(found, dict):
+        return {}
+
+    def number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value < 1e11
+
+    out = {key: found[key] for key in MEASURE_TIMES if number(found.get(key)) and found[key] > 0}
+    out.update({key: int(found[key]) for key in MEASURE_COUNTS if number(found.get(key)) and found[key] < 10000})
+    hours = found.get("message_hours")
+    if isinstance(hours, list):
+        out["message_hours"] = sorted({int(h) for h in hours if number(h)})[-240:]
     return out
 
 

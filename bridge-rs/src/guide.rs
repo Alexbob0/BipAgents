@@ -721,6 +721,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         return Ok(tool_text("enough of your cards are waiting for the person already", true));
     }
     let first = state.intro.contains(&agent.name) && (name == PROPOSE_AGENT || name == PROPOSE_TEAM);
+    if name == PROPOSE_TEAM && !replaces {
+        crate::beta_measures::team_proposed(config);
+    }
     change(config, |s| {
         s.proposals.retain(|p| key_of(p) != key);
         s.proposals.push(proposal.clone());
@@ -1127,6 +1130,7 @@ async fn accept(
             };
             take_proposal(&state.config(), &id)?;
             let config = state.config();
+            crate::beta_measures::card_accepted(&config, None, now());
             hand_over(&config, &agent, &from.display_name, &str_of(&proposal, "handover"), &lang)?;
             refresh(&config);
             Ok(web::json_response(201, &json!({"type": "agent", "kind": kind, "agent": created_json(&config, &agent)})))
@@ -1235,6 +1239,9 @@ async fn decline(State(state): State<AppState>, UrlPath(id): UrlPath<String>) ->
     let key = key_of(&proposal);
     let agent = str_of(&proposal, "agent");
     let profile = proposal.get("type").and_then(Value::as_str) == Some("profile");
+    if proposal.get("type").and_then(Value::as_str) == Some("team") {
+        crate::beta_measures::team_refused(&config);
+    }
     change(&config, |s| {
         s.declined.retain(|_, until| *until > now());
         s.declined.insert(key, now() + DECLINE_SECONDS);

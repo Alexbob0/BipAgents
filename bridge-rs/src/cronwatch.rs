@@ -473,6 +473,7 @@ impl CronWatcher {
             message.insert("tags".into(), json!([format!("session:{sid}")]));
             if self.outbox.ingest(agent, &message, notify, true).await?.is_some() {
                 stored += 1;
+                crate::beta_measures::routine_delivered(&self.config.get(), crate::py::time_time());
                 tracing::info!(agent = %agent.name, session = %sid, chars = pyx::len(&reply), "cron reply stored");
             }
         }

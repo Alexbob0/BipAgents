@@ -479,6 +479,7 @@ pub async fn accept(
     let answer = json!({"type": "team", "agents": agents, "failed": failed, "room": room_view,
                         "first_turns": config.guide.first_turns});
     if failed.is_empty() {
+        crate::beta_measures::card_accepted(&state.config(), Some(made.len()), crate::py::time_time());
         let kept = answer.clone();
         crate::guide::change(&state.config(), |s| {
             s.proposals.retain(|p| tk::str_or_empty(p.get("id")) != id);

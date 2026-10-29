@@ -918,6 +918,11 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
         guide: crate::feature_tips::guide_of(&config),
     };
     let recap = blocking(move || {
+        // the beta's measures (beta_measures.rs): that the person wrote, and to the guide or not; never what
+        if !body.session.starts_with("cron_") {
+            let to_guide = moment.guide.as_deref() == Some(agent.name.as_str());
+            crate::beta_measures::person_message(&config, to_guide, crate::py::time_time());
+        }
         // The family news waiting for the agent (family_news.rs) joins the same message, the same way.
         // The current time first (dates/now.rs), then what waited for this message.
         let parts: Vec<String> =

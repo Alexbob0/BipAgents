@@ -410,6 +410,22 @@ def test_the_beat_s_body_and_its_order(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "settings.json").read_text()) == {"memory_high_share": 0.3}
 
 
+def test_the_beat_carries_the_beta_measures_times_and_counts_only(tmp_path):
+    agent = _seat_agent()
+    home = tmp_path / "bip"
+    data = home / ".local" / "share" / "hermes-bridge"
+    data.mkdir(parents=True)
+    (data / "measures.json").write_text(json.dumps({
+        "guide_message_at": 1793000000.5, "first_accept_at": True, "routine_at": -3,
+        "message_hours": [1793001600, 1792998000, "x", 1793001600], "team_proposed": 2, "team_ticked": 3.0,
+        "team_refused": "1", "text": "never sent"}))
+    assert agent.activity(str(home), now=1793000000)["measures"] == {
+        "guide_message_at": 1793000000.5, "team_proposed": 2, "team_ticked": 3,
+        "message_hours": [1792998000, 1793001600]}
+    (data / "measures.json").write_text("[1]")
+    assert "measures" not in agent.activity(str(home), now=1793000000)
+
+
 def test_the_beat_says_what_each_place_s_bridge_files_say_of_it(tmp_path, monkeypatch):
     """busy, tz, last_active_at, next_routine_at: read from the bridge's and Hermes' files, left out when unknown."""
     import os
