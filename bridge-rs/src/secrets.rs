@@ -56,6 +56,11 @@ pub const MAX_WAITING: usize = 2;
 pub const MAX_PER_HOUR: usize = 10;
 pub const MAX_VALUE: usize = 4096;
 pub const MAX_IDENTIFIER: usize = 200;
+/// The refusal's code when an agent other people talk to gets a secret without the person's confirmation.
+pub const CONFIRM_OTHERS: &str = "confirm_others";
+/// Its words, for an app that doesn't know the code.
+pub const CONFIRM_OTHERS_TEXT: &str = "Mets à jour l’app pour donner cet accès : d’autres personnes parlent à cet agent, \
+l’app doit d’abord te le demander.";
 /// What a secret's value becomes.
 pub const MARK: &str = "[secret]";
 
@@ -397,7 +402,13 @@ fn item_of(config: &Config, id: &str, card: &Card) -> Dict {
         "bip_secret_edit": r.edit,
         "bip_secret_connector": r.connector,
     });
-    item.as_object().cloned().unwrap_or_default()
+    let mut item = item.as_object().cloned().unwrap_or_default();
+    if crate::vault::others_facing(config, &card.agent) {
+        // other people talk to it: the app asks one confirmation first (`give`'s `confirmed_others`)
+        item.insert("bip_secret_others".into(), json!(true));
+        item.insert("bip_secret_others_names".into(), json!(crate::vault::others_names(config, &card.agent)));
+    }
+    item
 }
 
 /// The cards waiting (`GET /v1/approvals`), oldest first.
@@ -452,16 +463,21 @@ pub fn deny(config: &Config, agent: Option<&str>, id: &str, via: &str) -> bool {
 #[derive(Debug)]
 pub enum GiveError {
     NoCard,
+    /// The agent talks with other people too, and the person did not confirm (an app from before the confirmation).
+    ConfirmOthers,
     Invalid(String),
     Failed(anyhow::Error),
 }
 
 /// The person gave the value (and the identifier): kept in the vault, or held for the next run (a code). Never logged.
+/// For an agent other people talk to (vault.rs `others_facing`), only once the person confirmed it
+/// (`confirmed_others`, the apps' « … parle aussi avec … Continuer ? »): an app that doesn't ask can't skip it.
 pub async fn give(
     state: &AppState,
     id: &str,
     value: Zeroizing<String>,
     identifier: Option<String>,
+    confirmed_others: bool,
     via: &str,
 ) -> Result<String, GiveError> {
     let config = state.config();
@@ -478,6 +494,10 @@ pub async fn give(
     }
     if request.identifier_required() && identifier.is_empty() {
         return Err(GiveError::Invalid("the identifier is required".into()));
+    }
+    if !confirmed_others && crate::vault::others_facing(&config, &agent) {
+        tracing::info!(agent = %agent, secret = %request.name, "secret not kept: other people talk to the agent, not confirmed");
+        return Err(GiveError::ConfirmOthers);
     }
     if request.kind == "code" {
         codes().insert((agent.clone(), request.name.clone()), (value, Instant::now()));
@@ -535,9 +555,12 @@ async fn answer_route(State(state): State<AppState>, Path(id): Path<String>, bod
     } else {
         let value = Zeroizing::new(body.get("value").and_then(Value::as_str).unwrap_or("").to_string());
         let identifier = body.get("identifier").and_then(Value::as_str).map(str::to_string);
-        match give(&state, &id, value, identifier, "app").await {
+        let confirmed = body.get("confirmed_others").and_then(Value::as_bool) == Some(true);
+        match give(&state, &id, value, identifier, confirmed, "app").await {
             Ok(name) => web::ok(json!({"ok": true, "name": name})),
             Err(GiveError::NoCard) => return Err(HttpError::new(404, "no such request (answered already?)")),
+            Err(GiveError::ConfirmOthers) => return Err(HttpError::json(409, json!({"code": CONFIRM_OTHERS,
+                "message": CONFIRM_OTHERS_TEXT}))),
             Err(GiveError::Invalid(why)) => return Err(HttpError::new(400, why)),
             Err(GiveError::Failed(exc)) => {
                 tracing::warn!(request = %id, error = %crate::agents_admin::tail(&exc.to_string(), 200), "secret not kept");

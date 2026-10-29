@@ -583,7 +583,7 @@ pub async fn make_profile(
         )
         .await?;
     }
-    run(strings(&[&hermes, "-p", &profile, "config", "set", "API_SERVER_KEY", &agent.hermes_key]), env.clone()).await?;
+    run(strings(&[&hermes, "-p", &profile, "config", "set", "API_SERVER_KEY", "--", &agent.hermes_key]), env.clone()).await?;
     // The family's agent (family_agent.rs): never anything that reads the place's disk or drives a browser with
     // someone's logins, sandboxed or not.
     // A project agent (project_agent.rs) the same: shown to friends, it reaches nobody's files.
@@ -748,7 +748,7 @@ pub async fn claim_profile(
         Some(key) if !key.is_empty() => key,
         _ => {
             let key = crate::py::token_urlsafe(32);
-            run(strings(&[&install.bin, "-p", name, "config", "set", "API_SERVER_KEY", &key]), env.clone()).await?;
+            run(strings(&[&install.bin, "-p", name, "config", "set", "API_SERVER_KEY", "--", &key]), env.clone()).await?;
             key
         }
     };

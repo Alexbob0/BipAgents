@@ -209,6 +209,21 @@ def test_without_the_registries_proxy_the_sandbox_gets_no_network_at_all(bridges
     assert wait_until(lambda: "sandboxes without network" in bridge.log_tail(2000), timeout=10)
 
 
+def test_a_proxy_left_half_stopped_by_the_last_stop_is_removed_and_started_again(bridges, fakes):
+    """The proxy's monitor dies with a bridge stop that times out; `--replace` then fails at the next start (lab
+    2026-10-29). The bridge removes it and starts it again at once: the sandboxes keep their network."""
+    bridge, hub, _ = isolated(bridges, fakes, agents=("vie",))
+    bridge.commands.rule("podman", ["run", "-d", "--replace", "--name", "bipagents-egress"], exit=125, times=1,
+                         stderr="Error: replacing container 70232002 as it could not be stopped: conmon exited prematurely")
+    started(bridge, hub, ["vie"])
+    assert wait_until(lambda: terminal(hub, "vie").get("docker_env", {}).get("HTTPS_PROXY", "").endswith(":3128"),
+                      timeout=15), bridge.log_tail(3000)
+    calls = [a for a in bridge.commands.of("podman") if a[:1] in (["run"], ["rm"])]
+    runs = [i for i, a in enumerate(calls) if a[:5] == ["run", "-d", "--replace", "--name", "bipagents-egress"]]
+    assert len(runs) == 2 and calls[runs[0] + 1] == ["rm", "-f", "--ignore", "bipagents-egress"], calls
+    assert "sandboxes without network" not in bridge.log_tail(4000)
+
+
 def test_the_shared_folders_are_volumes_and_the_file_tools_follow_the_links(bridges, fakes):
     bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness", "budget"))
     started(bridge, hub, ["vie", "wellness", "budget"])

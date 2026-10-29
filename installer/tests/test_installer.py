@@ -104,6 +104,13 @@ def test_model_check_tells_vision():
     assert not down.ok and down.error == "ConnectError"
 
 
+def test_a_key_never_starts_with_a_dash(monkeypatch):
+    """`hermes config set API_SERVER_KEY <key>`: a key starting with « - » would be read as an option."""
+    drawn = iter(["-xPdIb1o6", "-abc", "Zk3-_q"])
+    monkeypatch.setattr(hermes.secrets, "token_urlsafe", lambda n: next(drawn))
+    assert hermes.new_key() == "Zk3-_q"
+
+
 def test_hermes_setup_commands(monkeypatch, tmp_path):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
     runner = hermes.Runner(dry=True)

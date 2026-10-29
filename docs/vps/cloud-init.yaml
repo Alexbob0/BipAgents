@@ -23,6 +23,7 @@ package_update: true
 package_upgrade: true
 packages:
   - podman
+  - catatonit   # the sandboxes' init (`podman run --init`): not installed with podman on Debian 13's cloud images
   - uidmap
   - slirp4netns
   - passt

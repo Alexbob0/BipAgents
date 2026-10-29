@@ -78,6 +78,9 @@ pub enum VaultError {
     /// Payment cards are off on this install (`[vault] cards`).
     #[error("payment cards are off on this server")]
     CardsOff,
+    /// `ConfirmOthers(agents)`: other people talk to these agents and the person did not confirm (`confirmed_others`).
+    #[error("other people talk to these agents: the person must confirm")]
+    ConfirmOthers(Vec<String>),
 }
 
 /// A card found for an agent (`Vault::card_for`): its numbers stay in the bridge.
@@ -220,6 +223,44 @@ pub fn others_facing_agents(config: &Config) -> std::collections::HashSet<String
 /// Whether people other than this place's person talk to `agent` (`others_facing_agents`).
 pub fn others_facing(config: &Config, agent: &str) -> bool {
     others_facing_agents(config).contains(&agent.trim().to_lowercase())
+}
+
+/// Who else talks to `agent`, by name, for the confirmation before it gets a credential (secrets.rs): the linked
+/// households of the family's agent, the relatives it is shared with, the households whose agents are linked with it.
+/// Empty when none is known by name (the apps then say « d'autres personnes »). Project guests have no names here: a
+/// project agent never gets credentials.
+pub fn others_names(config: &Config, agent: &str) -> Vec<String> {
+    let agent = agent.trim().to_lowercase();
+    let linked = crate::households::Households::new(&crate::households::path_for(config));
+    let mut households: Vec<String> = crate::agent_shares::shared_with(config, &agent);
+    let links = crate::peers::links_of(&crate::peers::Links::new(&crate::py::join(&config.data_dir(), "peers.json")).load());
+    for (source, target) in &links {
+        let other = if target.to_lowercase() == agent {
+            source
+        } else if source.to_lowercase() == agent {
+            target
+        } else {
+            continue;
+        };
+        if config.agent(Some(other)).is_none() {
+            if let Some((_, household)) = crate::households::split(other) {
+                households.push(household);
+            }
+        }
+    }
+    let mut names: Vec<String> = Vec::new();
+    for household in households {
+        let name = linked
+            .get(&household)
+            .and_then(|h| h.get("name").map(crate::py::py_str))
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_default();
+        if !name.is_empty() && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
 }
 
 /// Whether `agent`, of the shared hub, holds credentials right there, with no move (Alex, 2026-10-28: a person's own
@@ -616,6 +657,25 @@ impl Vault {
         Ok(agents)
     }
 
+    /// An others-facing agent (`others_facing`) gets a login only once the person confirmed it (`confirmed_others`
+    /// in the body, the app's « … parle aussi avec … Continuer ? »), as for a secret card (secrets.rs `give`).
+    /// A card is left out: each of its payments already asks the person (card_pay.rs).
+    fn confirmed(config: &Config, body: &Dict, record: &Dict, agents: &[AgentConfig]) -> Result<(), VaultError> {
+        if body.get("confirmed_others").and_then(Value::as_bool) == Some(true)
+            || record.get("kind").and_then(Value::as_str) == Some(crate::cards::KIND)
+        {
+            return Ok(());
+        }
+        let others: Vec<String> =
+            agents.iter().filter(|a| others_facing(config, &a.name)).map(|a| a.name.clone()).collect();
+        if others.is_empty() {
+            Ok(())
+        } else {
+            tracing::info!(agents = ?others, "vault item not given: other people talk to the agents, not confirmed");
+            Err(VaultError::ConfirmOthers(others))
+        }
+    }
+
     fn handles(record: &mut Dict) -> &mut Dict {
         if !matches!(record.get("agents"), Some(Value::Object(_))) {
             record.insert("agents".into(), Value::Object(Dict::new()));
@@ -674,6 +734,7 @@ impl Vault {
             None => Vec::new(),
         };
         let agents = Self::check(config, &wanted)?;
+        Self::confirmed(config, body, &record, &agents)?;
         record.insert("id".into(), json!(format!("item_{}", &crate::py::uuid4_hex()[..12])));
         record.insert("agents".into(), json!({}));
         record.insert("created_at".into(), json!(now()));
@@ -718,6 +779,9 @@ impl Vault {
         // A changed item is written again everywhere (Hermes has no update): taken back, then given.
         let to_give: Vec<String> = wanted.iter().filter(|a| !had.contains(a) || changed).cloned().collect();
         let give = Self::check(config, &to_give)?;
+        // only an agent that gets this login now: one that already holds it was confirmed when it got it
+        let added: Vec<AgentConfig> = give.iter().filter(|a| !had.contains(&a.name)).cloned().collect();
+        Self::confirmed(config, body, &record, &added)?;
         let to_take: Vec<String> = had.iter().filter(|a| !wanted.contains(a) || changed).cloned().collect();
         self.take_back(config, &mut record, &to_take).await;
         self.give(config, &mut record, &give).await?;
@@ -1074,6 +1138,8 @@ fn answer(exc: anyhow::Error) -> HttpError {
             VaultError::CannotHold(reasons) => HttpError::json(409, json!({"code": "cannot_hold", "agents": reasons})),
             VaultError::Unprotected => HttpError::json(409, json!({"code": "unprotected_install"})),
             VaultError::CardsOff => HttpError::json(409, json!({"code": "cards_off"})),
+            VaultError::ConfirmOthers(agents) => HttpError::json(409, json!({"code": crate::secrets::CONFIRM_OTHERS,
+                "agents": agents, "message": crate::secrets::CONFIRM_OTHERS_TEXT})),
             VaultError::Invalid(text) => HttpError::new(400, text.clone()),
         };
     }
@@ -1115,7 +1181,13 @@ async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
         .values()
         .map(|a| {
             let why = holder(&config, a);
-            json!({"id": a.name, "name": a.display_name, "can_hold": why.is_none(), "why": why})
+            let mut row = json!({"id": a.name, "name": a.display_name, "can_hold": why.is_none(), "why": why});
+            if others_facing(&config, &a.name) {
+                // the app asks one confirmation before giving it a login (`confirmed_others`)
+                row["others"] = json!(true);
+                row["others_names"] = json!(others_names(&config, &a.name));
+            }
+            row
         })
         .collect();
     let mut out = json!({"protected": config.hermes.isolated, "items": items, "agents": agents,
@@ -1255,6 +1327,11 @@ mod tests {
             assert!(!may(&config, "fete") && !may(&config, "coach"), "{which}");
             assert_eq!(holder(&config, &config.agents["coach"]).as_deref(), Some("needs_own_space"), "{which}");
             assert_eq!(holder(&config, &config.agents["fete"]).as_deref(), Some("needs_own_space"), "{which}");
+            // the start's tidy moves it out (own_space.rs), never on an unprotected install
+            assert_eq!(crate::own_space::to_tidy(&config), vec!["fete".to_string()], "{which}");
+            let mut open = config.clone();
+            open.hermes.isolated = false;
+            assert!(crate::own_space::to_tidy(&open).is_empty(), "{which}");
             // once the others-facing agent lives in its own space, the hub is private again
             let mut moved = config.clone();
             let fete = moved.agents.get_mut("fete").unwrap();
@@ -1262,12 +1339,30 @@ mod tests {
             fete.space = Some("/srv/spaces/fete".into());
             fete.hermes_url = "http://127.0.0.1:8700".into();
             assert!(may(&moved, "coach"), "{which}");
+            assert!(crate::own_space::to_tidy(&moved).is_empty(), "{which}");
         }
         // a link between two of the person's own agents changes nothing
         let dir = tempfile::tempdir().unwrap();
         let config = place(dir.path(), &["coach", "cuisine"]);
         std::fs::write(dir.path().join("peers.json"), r#"{"links": [["coach", "cuisine"]]}"#).unwrap();
         assert!(may(&config, "coach") && !others_facing(&config, "cuisine"));
+    }
+
+    #[test]
+    fn who_else_talks_to_an_agent_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = place(dir.path(), &["coach", "cuisine", "notes"]);
+        let data = std::path::PathBuf::from(config.data_dir());
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("households.json"),
+                       r#"{"households": {"lea": {"name": "Léa"}, "marc": {"name": "Marc"}, "anon": {}}}"#).unwrap();
+        std::fs::write(data.join("agent-shares.json"), r#"{"shared": {"coach": ["lea", "gone"]}}"#).unwrap();
+        std::fs::write(data.join("peers.json"),
+                       r#"{"links": [["cuisine__marc", "cuisine"], ["cuisine", "x__anon"], ["coach", "notes"]]}"#).unwrap();
+        assert!(others_facing(&config, "coach") && others_facing(&config, "cuisine"));
+        assert_eq!(others_names(&config, "coach"), vec!["Léa".to_string()]);
+        assert_eq!(others_names(&config, "Cuisine"), vec!["Marc".to_string()]); // a household with no name: left out
+        assert!(others_names(&config, "notes").is_empty() && !others_facing(&config, "notes"));
     }
 
     #[test]

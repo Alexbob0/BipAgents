@@ -271,6 +271,10 @@ pub struct SpacesConfig {
     /// A space in a container of its own (start/stop commands): its HERMES_HOME as the agent sees it, for the
     /// attachments' folder (e.g. /home/hermes/.hermes). Empty: the same path as on this host.
     pub container_home: String,
+    /// own_space.rs `tidy_at_start`: seconds after the bridge starts before the agents other people talk to that
+    /// still live in the shared hub are moved out (default 300; the tests shorten it).
+    #[serde(skip)]
+    pub tidy_after: f64,
 }
 
 impl Default for SpacesConfig {
@@ -282,6 +286,7 @@ impl Default for SpacesConfig {
             start: None,
             stop: None,
             container_home: String::new(),
+            tidy_after: 300.0,
         }
     }
 }
@@ -1568,6 +1573,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         start: opt_s(spaces_t, "start"),
         stop: opt_s(spaces_t, "stop"),
         container_home: py::rstrip_slash(&s(spaces_t, "container_home", "")),
+        tidy_after: f(spaces_t, "tidy_after", 300.0)?.max(0.0),
     };
     if spaces.sandbox != "auto" && spaces.sandbox != "none" {
         return Err(ConfigError::new("spaces.sandbox must be 'auto' or 'none'"));

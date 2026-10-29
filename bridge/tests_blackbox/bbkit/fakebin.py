@@ -136,7 +136,8 @@ def hermes():
     if args[:2] == ["config", "set"] and len(args) > 3:
         folder = home / "profiles" / profile if profile else home
         folder.mkdir(parents=True, exist_ok=True)
-        key, value = args[2], args[3]
+        # `config set KEY -- VALUE`: argparse's end of options, for a value that starts with « - » (a key)
+        key, value = args[2], (args[4] if args[3] == "--" and len(args) > 4 else args[3])
         if key.replace("_", "").isalnum() and key.upper() == key:
             env = folder / ".env"
             lines = [l for l in (env.read_text().splitlines() if env.exists() else []) if l.split("=", 1)[0] != key]
