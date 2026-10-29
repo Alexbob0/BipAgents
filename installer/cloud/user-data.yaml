@@ -28,6 +28,9 @@ package_update: true
 package_upgrade: true
 packages:
   - podman
+  # Hermes starts each sandbox with `podman run --init`: its init binary is only a Recommends of podman, which
+  # Debian 13's cloud images don't install (lab 2026-10-29: every agent's terminal failed, « catatonit not found »).
+  - catatonit
   - uidmap
   - slirp4netns
   - passt

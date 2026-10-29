@@ -26,7 +26,7 @@ def test_the_user_data_the_apps_send_sets_up_the_server_and_runs_the_cloud_insta
     assert text.startswith("#cloud-config\n") and "{{" not in text
     data = yaml.safe_load(text)
     assert data["users"][1] == {"name": "bip", "shell": "/bin/bash", "lock_passwd": True}   # no sudo
-    assert {"podman", "uidmap", "ufw", "unattended-upgrades"} <= set(data["packages"])
+    assert {"podman", "catatonit", "uidmap", "ufw", "unattended-upgrades"} <= set(data["packages"])
     files = {f["path"]: f for f in data["write_files"]}
     setup = files["/etc/bipagents/cloud.json"]
     assert setup["permissions"] == "0600"
