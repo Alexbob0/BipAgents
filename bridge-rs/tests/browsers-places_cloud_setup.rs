@@ -399,10 +399,16 @@ fn fake_hermes(home: std::path::PathBuf, commands: Arc<Mutex<Vec<Vec<String>>>>)
             std::fs::copy(home.join("config.yaml"), folder.join("config.yaml")).unwrap();
             std::fs::copy(home.join(".env"), folder.join(".env")).unwrap();
         }
-        if args.len() == 7 && args[1] == "-p" && args[3..5] == ["config".to_string(), "set".to_string()] {
+        // `config set KEY [--] VALUE`: the bridge puts `--` before a key's value (one starting with « - »)
+        let value = match args.len() {
+            7 => Some(&args[6]),
+            8 if args[6] == "--" => Some(&args[7]),
+            _ => None,
+        };
+        if let (Some(value), true) = (value, args[1] == "-p" && args[3..5] == ["config".to_string(), "set".to_string()]) {
             let env = home.join("profiles").join(&args[2]).join(".env");
             let text = std::fs::read_to_string(&env).unwrap_or_default();
-            std::fs::write(&env, format!("{text}{}={}\n", args[5], args[6])).unwrap();
+            std::fs::write(&env, format!("{text}{}={}\n", args[5], value)).unwrap();
         }
         Box::pin(async { Ok(String::new()) })
     })
@@ -492,6 +498,7 @@ async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_
         "config".into(),
         "set".into(),
         "API_SERVER_KEY".into(),
+        "--".into(),
         maison.hermes_key.clone()
     ]));
     let started = std::time::Instant::now();

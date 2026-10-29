@@ -354,7 +354,8 @@ async fn profiles_created_on_the_server_can_be_claimed() {
     assert_eq!(jardin.public_url.as_deref(), Some("https://mini.ts.net:8642/p/jardin"));
     let cuisine = claim_profile(&config, "cuisine", None, &http, &run).await.unwrap();
     let ran = commands.lock().unwrap().clone();
-    assert_eq!(ran[0], ["/opt/hermes", "-p", "cuisine", "config", "set", "API_SERVER_KEY", &cuisine.hermes_key]);
+    // `--` before the key: a key starting with « - » was read as an option (lab, 2026-10-29)
+    assert_eq!(ran[0], ["/opt/hermes", "-p", "cuisine", "config", "set", "API_SERVER_KEY", "--", &cuisine.hermes_key]);
     assert!(ran[1..].iter().all(|a| a[5].starts_with("mcp_servers.bipagents.")));
     let urls: Vec<String> = sessions.lock().unwrap().iter().map(|(u, _)| u.clone()).collect();
     assert_eq!(urls, ["/p/jardin/api/sessions", "/p/cuisine/api/sessions"]); // their « Discussion »
