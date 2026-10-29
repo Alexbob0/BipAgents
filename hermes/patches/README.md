@@ -36,6 +36,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0012 Bot Chat: one `message_agent` | applies (after 0006) | not checked yet |
 | 0013 MCP results: vault passwords scrubbed | applies | applies (`97a9ae8ee`: the file is the same, checked 2026-10-28) |
 | 0014 routine tool results in plain UTF-8 | applies | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-28) |
+| 0015 time anchor: the time with each message | applies (after 0009) | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-29) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -355,3 +356,35 @@ tool-call arguments and list, with 3 000 and 8 000-character accented prompts; f
 81 passed, 2 skipped, Python 3.12, with 0008 and 0013 applied. No other patch touches the file; `git apply --check`
 passes on `517b5e10f`, `patch --dry-run` on upstream `main` (`8acb7f6580`, 2026-10-28), which still escapes. A small
 upstream PR candidate.
+
+## 0015 — the current time with each message, never from the terminal
+
+**Problem.** Agents got the date wrong in conversations that last days (Alex, 2026-10-29: « C'est super important »).
+Hermes' system prompt carries « Conversation started: … » and, once rebuilt on a later day, « Today's date (as of the
+last context rebuild): … »; the prompt is only rebuilt at a compaction and the model server's cache keeps it, so that
+date goes stale. Its execution guidance also tells the model « Current time, date, timezone → use terminal (e.g.
+date) » and « 'What time is it?' → run `date` »: a tool call each time (slow, costly) while the stale date still wins,
+and servers run in UTC.
+
+**What the patch does.** (a) The two terminal-for-time lines leave the execution guidance (and its line → tools
+map). (b) The « as of the last context rebuild » line is replaced by one constant line, `NOW_LINE_HINT`: the current
+date and time are at the top of each message (a `bip:now` line), trust the latest one, don't check the clock with a
+tool. It never changes, so the prompt stays byte-stable for the whole conversation. (c) Each routine run's prompt gets
+the same line after the cron hint, in the routines' zone (`cron.timezone` of patch 0008, else the profile's), e.g.
+`<!--bip:now Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+01:00)-->`. The conversations' lines come from the
+bridge and the apps (bridge-rs/src/dates/now.rs): in the new user message, never in the system prompt, so the cache
+holds; the apps hide every `<!--bip:…-->` note.
+
+**Files.** `agent/prompt_builder.py`, `agent/system_prompt.py`, `cron/scheduler_prompt.py` (`now_line`),
+`tests/agent/test_system_prompt.py` (the two tests that expected the old line); new `tests/cron/test_cron_now_line.py`
+(6 tests: the routine's zone while the profile's is another, both passes of the repeated hour on 2026-10-25 in
+Europe/Paris, before and after the jump on 2026-03-08 in America/New_York, no terminal-time hint).
+
+**Tests.** The new file with `test_system_prompt.py`, `test_system_prompt_switch_invalidation.py`,
+`test_prompt_builder.py`, `test_cron_wall_clock_once_and_zone.py`, `test_cron_prompt_injection.py`,
+`test_scheduler.py` and the other cron prompt tests (`test_prompt_cache_boundary.py`, `test_notepad.py`,
+`test_cron_context_from.py`, `test_cron_script.py`, …), Python 3.12, all patches applied: the same failures as
+without it (missing `requests` and other packages in the test environment), the 6 new tests pass. `git apply --check`
+passes after 0001–0014, `patch --dry-run` on upstream `main` (`8acb7f6580`). An upstream PR candidate: there the
+marker would be neutral (`bip:` is BipAgents' notes prefix) and the hint shown only when a client stamps its
+messages.
