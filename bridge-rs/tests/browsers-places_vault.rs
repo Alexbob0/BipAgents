@@ -20,7 +20,11 @@ fn setup(dir: &std::path::Path) -> (Config, Vault, Calls) {
                                    "hermes_home": "/home/hermes/.hermes"});
     data["agents"]["Budget"] = json!({"hermes_url": "http://127.0.0.1:8646/p/budget", "hermes_key": "b".repeat(32)});
     // the agents cannot read the bridge's files
-    data["hermes"] = json!({"isolated": true, "bin": "/opt/hermes", "hub_url": "http://127.0.0.1:8646"});
+    let home = dir.join("hermes-home");
+    data["hermes"] = json!({"isolated": true, "bin": "/opt/hermes", "hub_url": "http://127.0.0.1:8646",
+                            "home": home.to_string_lossy()});
+    // Vie's own browser on: its « Coordonnées » reach its Hermes vault (vault.rs `follow_browser`)
+    browser(dir, "vie", Some(true));
     let config = parse_config(&data, None).unwrap();
     let calls: Calls = Arc::default();
     let seen = calls.clone();
@@ -36,6 +40,17 @@ fn setup(dir: &std::path::Path) -> (Config, Vault, Calls) {
     });
     let vault = Vault::with_run(&dir.join("vault").to_string_lossy(), run);
     (config, vault, calls)
+}
+
+/// The agent's browser in its Hermes profile: on, off, or none.
+fn browser(dir: &std::path::Path, agent: &str, on: Option<bool>) {
+    let folder = dir.join("hermes-home").join("profiles").join(agent);
+    std::fs::create_dir_all(&folder).unwrap();
+    let text = match on {
+        Some(on) => format!("mcp_servers:\n  stealth:\n    url: http://127.0.0.1:9601/mcp\n    enabled: {on}\n"),
+        None => "model: test\n".to_string(),
+    };
+    std::fs::write(folder.join("config.yaml"), text).unwrap();
 }
 
 fn login(extra: Value) -> Dict {
@@ -332,4 +347,56 @@ async fn an_agent_other_people_talk_to_reads_only_what_the_person_confirmed_for_
     vault.create(&config, &contact(json!({"label": "Maison", "agents": ["vie"], "confirmed_others": true}))).await.unwrap();
     let read: Vec<String> = vault.contacts_for(&config, "vie").unwrap().into_iter().map(|e| e.label).collect();
     assert_eq!(read, vec!["Maison".to_string()]);
+}
+
+#[tokio::test]
+async fn contact_details_reach_the_agents_hermes_vault_only_while_its_browser_is_on() {
+    // 2026-10-29 (model bench): each entry in an agent's Hermes vault shows Hermes' five vault tools on every call
+    let dir = tempfile::tempdir().unwrap();
+    let (config, vault, calls) = setup(dir.path());
+    let vie = config.agent(Some("vie")).unwrap().clone();
+    browser(dir.path(), "vie", Some(false));
+    let item = vault.create(&config, &contact(json!({"agents": ["vie"]}))).await.unwrap();
+    assert!(calls.lock().unwrap().is_empty(), "browser off: nothing written into Hermes");
+    assert_eq!(item.agents.get("vie").map(String::as_str), Some("bridge"));
+    assert_eq!(vault.contacts_for(&config, "vie").unwrap().len(), 1, "the agent still reads it");
+    // a login next to it keeps today's way: into Hermes, browser or not
+    let sncf = vault.create(&config, &login(json!({"agents": ["vie"]}))).await.unwrap();
+    assert_eq!(ops(&calls), vec![("vie".into(), "add".into())]);
+    calls.lock().unwrap().clear();
+    // nothing to do while the browser stays off
+    assert!(!vault.follow_browser(&config, &vie).await.unwrap());
+    // the browser turned on: the entry written, its handle kept
+    browser(dir.path(), "vie", Some(true));
+    assert!(vault.follow_browser(&config, &vie).await.unwrap());
+    let (_, request) = calls.lock().unwrap()[0].clone();
+    assert_eq!((request["op"].as_str(), request["kind"].as_str()), (Some("add"), Some("address")));
+    let handle = vault.items().into_iter().find(|i| i.id == item.id).unwrap().agents["vie"].clone();
+    assert!(handle.starts_with("vault_"), "{handle}");
+    assert_eq!(calls.lock().unwrap().len(), 1, "the login was not written again");
+    assert!(!vault.follow_browser(&config, &vie).await.unwrap(), "once");
+    calls.lock().unwrap().clear();
+    // turned off: taken out of Hermes, the bridge's copy kept, the login left
+    browser(dir.path(), "vie", Some(false));
+    assert!(vault.follow_browser(&config, &vie).await.unwrap());
+    let removed = calls.lock().unwrap().clone();
+    assert_eq!(removed.len(), 1);
+    assert_eq!((removed[0].1["op"].as_str(), removed[0].1["id"].as_str()), (Some("remove"), Some(handle.as_str())));
+    let items = vault.items();
+    assert_eq!(items.iter().find(|i| i.id == item.id).unwrap().agents["vie"], "bridge");
+    assert!(items.iter().find(|i| i.id == sncf.id).unwrap().agents["vie"].starts_with("vault_"));
+    assert_eq!(vault.contacts_for(&config, "vie").unwrap().len(), 1);
+    // unshared while off: nothing to remove from Hermes; an agent with no browser at all gets nothing written
+    calls.lock().unwrap().clear();
+    vault.update(&config, &item.id, &dict(json!({"agents": []}))).await.unwrap();
+    assert!(calls.lock().unwrap().is_empty());
+    browser(dir.path(), "vie", None);
+    vault.update(&config, &item.id, &dict(json!({"agents": ["vie"]}))).await.unwrap();
+    assert!(calls.lock().unwrap().is_empty());
+    // on again (the bridge's start), then unshared: removed from Hermes
+    browser(dir.path(), "vie", Some(true));
+    assert!(vault.follow_browsers(&config).await);
+    calls.lock().unwrap().clear();
+    vault.update(&config, &item.id, &dict(json!({"agents": []}))).await.unwrap();
+    assert_eq!(ops(&calls), vec![("vie".into(), "remove".into())]);
 }

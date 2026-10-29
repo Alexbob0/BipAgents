@@ -6,7 +6,8 @@
 //!   secrets: the app reads the fields back to edit them (`contact` in the listing), and an agent that was given the
 //!   entry reads it with `vault_contact_details` (a letter, an e-mail, a form in a message). Passwords and cards stay
 //!   unreadable by the model.
-//! - **Browser**: written into the agent's own Hermes vault as an `address` item (`hermes_secret`), so
+//! - **Browser**: written into the agent's own Hermes vault as an `address` item (`hermes_secret`) while its browser
+//!   is on, and only then (vault.rs `follow_browser`: an item there shows Hermes' five vault tools on every call), so
 //!   `browser_vault_fill` fills a form's name, address, phone and e-mail (Hermes patch 0017 maps the name, phone and
 //!   e-mail fields; an unpatched Hermes fills the address only, and one that refuses an incomplete address leaves the
 //!   entry to the bridge's own read: handle `bridge`).
@@ -24,9 +25,19 @@
 //!   reply that ends the turn (made_files.rs, as the files the bridge made), the apps' hidden marks: they draw
 //!   « 🔒 <label> », which opens the vault on that entry. The id and label only, never a field. A login an agent created
 //!   (vault_logins.rs) and a card it paid with (card_pay.rs) get the same chip.
+//! - **A listing used** (model bench, 2026-10-29: GLM-5.3 Flash, DeepSeek V4.1 Flash and a local model all called
+//!   `vault_contact_details` without a label, then wrote the letter with the entry's address): the entries a listing
+//!   returned in the turn are kept (`LISTED`), and at the turn's end each one whose distinctive details are in the
+//!   reply gets its chip (`used_marks`: address line 1, postal code + city, a phone, an e-mail, the full name; case,
+//!   spaces and accents ignored). A listing of exactly one entry: any of its details. An entry none of whose details
+//!   are in the reply never gets a chip.
 //!
 //! No Python counterpart (owner group: browsers-places).
 
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+
+use regex::Regex;
 use serde_json::{json, Value};
 
 use crate::browsers::pyx;
@@ -321,10 +332,11 @@ pub fn tools() -> Vec<Value> {
             "description": "The person's contact details (coordonnées) kept in their vault for you: name, postal \
         address, phones, e-mails, each entry with its label and when to use it. Use them to write a letter, an e-mail \
         or a message, or to fill a form outside your browser; in your browser, browser_vault_fill fills them itself. \
-        Give the label of the entry you use, so the person sees which one. Personal data: use it only for what the \
+        When the person names one (« mon adresse pro »), call with its label. Personal data: use it only for what the \
         person asked.",
             "inputSchema": {"type": "object", "properties": {
-                "label": {"type": "string", "description": "the entry to use; leave out to list them all"},
+                "label": {"type": "string", "description": "the entry to use, as the person names it (« mon adresse \
+        pro »); leave out only to see which entries there are"},
             }},
             "annotations": {"readOnlyHint": true, "destructiveHint": false, "openWorldHint": false},
         }),
@@ -383,6 +395,7 @@ pub async fn call(state: &crate::app::AppState, agent: &AgentConfig, name: &str,
                 );
             }
             if wanted.is_empty() {
+                note_listed(state, &agent.name, name, &entries);
                 let all: Vec<String> = entries.iter().map(|e| describe(&e.label, e.hint.as_deref(), &e.secret)).collect();
                 return tool_text(
                     &format!(
@@ -417,8 +430,8 @@ pub async fn call(state: &crate::app::AppState, agent: &AgentConfig, name: &str,
                 tracing::info!(agent = %agent.name, item = %item.id, "contact details saved by the agent");
                 tool_text(
                     &format!(
-                        "Saved as « {} » in the person's vault (« Coordonnées »); you can use it now, and your browser \
-                         fills it with browser_vault_fill. Tell the person in a few words.\n{}",
+                        "Saved as « {} » in the person's vault (« Coordonnées »); you can use it now (in your browser, \
+                         if you have it on, browser_vault_fill fills it). Tell the person in a few words.\n{}",
                         item.label,
                         chip_line(&mark)
                     ),
@@ -440,6 +453,146 @@ pub async fn call(state: &crate::app::AppState, agent: &AgentConfig, name: &str,
         },
         other => tool_text(&format!("unknown tool: {other}"), true),
     }
+}
+
+// --- a listing used in the reply (module doc) ------------------------------------------------------------------
+
+/// What is looked for in a reply: folded words (`folded`), or a phone number's digits (`phone_digits`).
+#[derive(Debug, Clone, PartialEq)]
+enum Needle {
+    Words(String),
+    Phone(String),
+}
+
+/// An entry a listing returned in a turn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Listed {
+    /// Its chip (`mark`).
+    pub mark: String,
+    /// Address line 1, postal code + city, each phone and e-mail, the full name.
+    distinctive: Vec<Needle>,
+    /// Every detail but the country (for a listing of this one entry only).
+    any: Vec<Needle>,
+    /// A listing returned this entry alone.
+    sole: bool,
+    run_id: Option<String>,
+    at: f64,
+}
+
+/// The entries listed, by agent (in memory: a restart forgets them, as made_files.rs's files).
+static LISTED: LazyLock<Mutex<HashMap<String, Vec<Listed>>>> = LazyLock::new(Default::default);
+
+/// A day: a turn's reply comes long before.
+const KEEP_SECONDS: f64 = 86_400.0;
+
+/// Lower case, without accents, every character but letters, digits and « @ » a space, spaces collapsed, one around:
+/// « 8 Allée des Essais, Bât. C » and « 8 allee des essais bat c » are the same.
+fn folded(text: &str) -> String {
+    let plain = crate::tools_knowledge::ascii_fold(&crate::tools_knowledge::spaced_punctuation(text)).to_lowercase();
+    let mapped: String = plain.chars().map(|c| if c.is_ascii_alphanumeric() || c == '@' { c } else { ' ' }).collect();
+    format!(" {} ", mapped.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn text_needle(text: &str) -> Option<Needle> {
+    let text = folded(text).trim().to_string();
+    (text.chars().count() >= 3).then_some(Needle::Words(text))
+}
+
+/// A phone's last 9 digits (« +33 6 00 00 00 01 » and « 06 00 00 00 01 » the same), all of a shorter one; None under
+/// 6 digits (too common in a text).
+fn phone_digits(phone: &str) -> Option<Needle> {
+    let digits: Vec<char> = phone.chars().filter(char::is_ascii_digit).collect();
+    (digits.len() >= 6).then(|| Needle::Phone(digits[digits.len().saturating_sub(9)..].iter().collect()))
+}
+
+/// Digits as phones are written in a text (spaces, non-breaking ones, « . - ( ) / » between them).
+static DIGIT_RUN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\d[\d \x{a0}\x{202f}.\-()/]*\d").expect("valid regex"));
+
+/// What an entry's details are looked for as: (distinctive ones, all but the country).
+fn needles(secret: &Dict) -> (Vec<Needle>, Vec<Needle>) {
+    let field = |name: &str| secret.get(name).map(py::py_str).filter(|t| !t.trim().is_empty());
+    let listed = |key: &str| secret.get(key).map(list_of).unwrap_or_default();
+    let mut distinctive: Vec<Needle> = Vec::new();
+    distinctive.extend(field("address_line1").and_then(|t| text_needle(&t)));
+    if let (Some(code), Some(city)) = (field("postal_code"), field("city")) {
+        distinctive.extend(text_needle(&format!("{code} {city}")));
+    }
+    distinctive.extend(listed(PHONES).iter().filter_map(|p| phone_digits(p)));
+    distinctive.extend(listed(EMAILS).iter().filter_map(|e| text_needle(e)));
+    distinctive.extend(field("full_name").and_then(|t| text_needle(&t)));
+    let mut any = distinctive.clone();
+    for name in ["address_line2", "city", "postal_code", "state"] {
+        any.extend(field(name).and_then(|t| text_needle(&t)));
+    }
+    (distinctive, any)
+}
+
+fn found(needle: &Needle, folded_reply: &str, digit_runs: &[String]) -> bool {
+    match needle {
+        Needle::Words(text) => folded_reply.contains(&format!(" {text} ")),
+        Needle::Phone(digits) => digit_runs.iter().any(|run| run.contains(digits.as_str())),
+    }
+}
+
+/// The entries one listing gave `agent` in its current turn: the run the hub follows, or none (a routine).
+pub fn note_listed(state: &crate::app::AppState, agent: &str, tool: &str, entries: &[Entry]) {
+    let run = state.hub.turn_of(agent, tool).map(|t| t.run_id);
+    note_listed_in(agent, entries, run.as_deref(), py::time_time());
+}
+
+pub fn note_listed_in(agent: &str, entries: &[Entry], run_id: Option<&str>, at: f64) {
+    let mut all = LISTED.lock().unwrap_or_else(|e| e.into_inner());
+    let kept = all.entry(agent.to_string()).or_default();
+    kept.retain(|l| at - l.at < KEEP_SECONDS);
+    let sole = entries.len() == 1;
+    for entry in entries {
+        let (distinctive, any) = needles(&entry.secret);
+        let mark = mark(&entry.id, &entry.label);
+        // listed again in the same turn: kept once, alone if one of the listings had it alone
+        if let Some(before) = kept.iter_mut().find(|l| l.mark == mark && l.run_id.as_deref() == run_id) {
+            before.distinctive = distinctive;
+            before.any = any;
+            before.sole |= sole;
+            before.at = at;
+            continue;
+        }
+        kept.push(Listed { mark, distinctive, any, sole, run_id: run_id.map(str::to_string), at });
+    }
+}
+
+/// The entries listed in the run `run_id`.
+pub fn listed_in_run(agent: &str, run_id: &str) -> Vec<Listed> {
+    let all = LISTED.lock().unwrap_or_else(|e| e.into_inner());
+    all.get(agent)
+        .map(|l| l.iter().filter(|l| l.run_id.as_deref() == Some(run_id)).cloned().collect())
+        .unwrap_or_default()
+}
+
+/// The entries listed in a turn no run carries (a routine), between `from` and `to` (Unix seconds).
+pub fn listed_in_routine(agent: &str, from: f64, to: f64) -> Vec<Listed> {
+    let all = LISTED.lock().unwrap_or_else(|e| e.into_inner());
+    all.get(agent)
+        .map(|l| l.iter().filter(|l| l.run_id.is_none() && l.at >= from && l.at <= to).cloned().collect())
+        .unwrap_or_default()
+}
+
+/// The chips of the `listed` entries whose details `reply` uses (module doc), each once.
+pub fn used_marks(reply: &str, listed: &[Listed]) -> Vec<String> {
+    if listed.is_empty() {
+        return Vec::new();
+    }
+    let folded_reply = folded(reply);
+    let digit_runs: Vec<String> =
+        DIGIT_RUN.find_iter(reply).map(|m| m.as_str().chars().filter(char::is_ascii_digit).collect()).collect();
+    let mut out: Vec<String> = Vec::new();
+    for entry in listed {
+        let needles = if entry.sole { &entry.any } else { &entry.distinctive };
+        if !out.contains(&entry.mark) && needles.iter().any(|n| found(n, &folded_reply, &digit_runs)) {
+            out.push(entry.mark.clone());
+        }
+    }
+    out
 }
 
 /// An entry as the agents' tools read it.
@@ -542,11 +695,69 @@ mod tests {
         assert_eq!(mark_id("<!--bip:vault nope-->"), None);
     }
 
+    fn entry(id: &str, label: &str, secret: Value) -> Entry {
+        Entry { id: id.into(), label: label.into(), hint: None, secret: dict(secret) }
+    }
+
+    fn pro() -> Entry {
+        entry("item_000000000001", "Kerfy Studio (pro)", json!({"full_name": "Camille Exemple",
+            "address_line1": "8 allée des Essais", "address_line2": "Bâtiment C", "city": "Testville",
+            "postal_code": "00100", "country": "FR", "phones": ["+33 6 00 00 00 01"], "emails": ["pro@example.org"]}))
+    }
+
+    fn home() -> Entry {
+        entry("item_000000000002", "Domicile", json!({"full_name": "Camille Exemple", "address_line1": "3 rue du Test",
+            "city": "Lyon", "postal_code": "69001", "country": "FR", "phones": ["04 00 00 00 09"]}))
+    }
+
+    #[test]
+    fn a_listing_used_in_the_reply_gets_the_chip_of_what_it_used() {
+        let both = [pro(), home()];
+        note_listed_in("lettres", &both, Some("run_a"), 1_000.0);
+        let listed = listed_in_run("lettres", "run_a");
+        assert_eq!(listed.len(), 2);
+        let pro_mark = mark("item_000000000001", "Kerfy Studio (pro)");
+        let home_mark = mark("item_000000000002", "Domicile");
+        // the letter with the pro address: its chip only (accents, case, non-breaking spaces ignored)
+        let letter = "Kerfy Studio\n8 ALLEE DES ESSAIS, Bât. C\n00100\u{a0}Testville\n\nObjet : résiliation";
+        assert_eq!(used_marks(letter, &listed), vec![pro_mark.clone()]);
+        // one phone is enough, however it is written
+        assert_eq!(used_marks("Appelle le 04.00.00.00.09 demain.", &listed), vec![home_mark.clone()]);
+        assert_eq!(used_marks("Tél. +33 (0)6 00 00 00 01", &listed), vec![pro_mark.clone()]);
+        // an e-mail, the full name: both entries carry the name
+        assert_eq!(used_marks("Écris à PRO@example.org", &listed), vec![pro_mark.clone()]);
+        assert_eq!(used_marks("Camille Exemple", &listed), vec![pro_mark.clone(), home_mark.clone()]);
+        // with two entries, the city alone or part of a word is not distinctive; nothing used, nothing added
+        assert!(used_marks("Rendez-vous à Lyon.", &listed).is_empty());
+        assert!(used_marks("J'ai deux adresses pour toi : laquelle ?", &listed).is_empty());
+        assert!(used_marks("8 allée des Essaisons", &listed).is_empty());
+        // another run, or a routine: not this turn's
+        assert!(listed_in_run("lettres", "run_b").is_empty() && listed_in_routine("lettres", 0.0, 2_000.0).is_empty());
+    }
+
+    #[test]
+    fn a_listing_of_one_entry_counts_any_of_its_details() {
+        note_listed_in("seule", &[home()], None, 5_000.0);
+        let listed = listed_in_routine("seule", 4_000.0, 6_000.0);
+        let home_mark = mark("item_000000000002", "Domicile");
+        assert_eq!(used_marks("Le colis part pour Lyon.", &listed), vec![home_mark]);
+        assert!(used_marks("Le colis part demain.", &listed).is_empty());
+        // the country code alone is no use of the entry
+        assert!(used_marks("FR", &listed).is_empty());
+        // listed again with another entry in the same turn: still kept once, still alone once
+        note_listed_in("seule", &[home(), pro()], None, 5_001.0);
+        assert_eq!(listed_in_routine("seule", 4_000.0, 6_000.0).len(), 2);
+        assert_eq!(used_marks("à Lyon", &listed_in_routine("seule", 4_000.0, 6_000.0)).len(), 1);
+    }
+
     #[test]
     fn the_tools_are_described_for_tool_search() {
         let tools = tools();
         assert_eq!(tools.iter().map(|t| t["name"].as_str().unwrap()).collect::<Vec<_>>(), [READ, SAVE]);
         assert!(tools[0]["description"].as_str().unwrap().contains("coordonnées"));
         assert_eq!(tools[1]["inputSchema"]["required"], json!(["label"]));
+        // the person names an entry: the model is asked for its label
+        assert!(tools[0]["description"].as_str().unwrap().contains("call with its label"));
+        assert!(tools[0]["inputSchema"]["properties"]["label"]["description"].as_str().unwrap().contains("mon adresse"));
     }
 }

@@ -136,7 +136,10 @@ pub fn with_audio_made(agent: &str, session_id: &str, started: Option<NaiveDateT
     let Some(start) = started.and_then(|s| Local.from_local_datetime(&s).earliest()) else { return reply };
     // the session's id has whole seconds: a file made in the routine's first second still counts
     let from = start.timestamp() as f64 - 2.0;
-    let made = crate::made_files::MADE.in_routine(agent, from, crate::py::time_time());
+    let mut made = crate::made_files::MADE.in_routine(agent, from, crate::py::time_time());
+    // the « Coordonnées » a listing gave in the routine, used in its reply: their chips (vault_contacts.rs)
+    let listed = crate::vault_contacts::listed_in_routine(agent, from, crate::py::time_time());
+    made.extend(crate::vault_contacts::used_marks(&reply, &listed));
     match crate::made_files::fix_reply(&reply, agent, &made) {
         Some(fixed) => {
             tracing::info!(agent = %agent, session = %session_id, files = made.len(),

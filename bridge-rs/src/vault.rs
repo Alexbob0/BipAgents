@@ -338,6 +338,15 @@ pub fn vault_target(config: &Config, agent: &AgentConfig) -> AgentConfig {
     target
 }
 
+fn is_address(record: &Dict) -> bool {
+    record.get("kind").and_then(Value::as_str) == Some(crate::vault_contacts::KIND)
+}
+
+/// Whether `agent`'s own browser is on (browsers.rs: its `stealth` MCP server enabled in its Hermes profile).
+pub fn browser_on(config: &Config, agent: &AgentConfig) -> bool {
+    crate::browsers::state(&crate::agents_admin::home_root(config, agent), &agent.name) == Some(true)
+}
+
 /// None when the agent can hold credentials, else why not.
 pub fn holder(config: &Config, agent: &AgentConfig) -> Option<String> {
     if !config.hermes.isolated {
@@ -742,6 +751,13 @@ impl Vault {
                 Self::handles(record).insert(agent.name.clone(), json!(CARD_HANDLE));
                 continue;
             }
+            if is_address(record) && !browser_on(config, agent) {
+                // « Coordonnées » reach the agent's Hermes vault only for its browser fill: without its browser the
+                // entry stays the bridge's (read with vault_contact_details), and Hermes shows no vault tools for it
+                // (`follow_browser` writes it when the browser is turned on).
+                Self::handles(record).insert(agent.name.clone(), json!(CARD_HANDLE));
+                continue;
+            }
             let answer = match (self.run)(vault_target(config, agent), Self::to_hermes(record)).await {
                 Ok(answer) => answer,
                 Err(exc) if record.get("kind").and_then(Value::as_str) == Some(crate::vault_contacts::KIND) => {
@@ -999,6 +1015,70 @@ impl Vault {
         let item = Self::item(record);
         self.write(&records)?;
         Ok(item)
+    }
+
+    /// The « Coordonnées » given to `agent` follow its browser (2026-10-29, model bench: each entry written into its
+    /// Hermes vault showed Hermes' five `browser_vault_*` tools, ≈ 1 220 tokens per call, to agents that never
+    /// browse): written into its Hermes vault while its browser is on, taken out of it when it is off; the bridge's own
+    /// copy stays (`vault_contact_details`). Logins and cards are left as they are. Whether anything changed.
+    pub async fn follow_browser(&self, config: &Config, agent: &AgentConfig) -> anyhow::Result<bool> {
+        if !self.path.exists() {
+            return Ok(false);
+        }
+        let on = browser_on(config, agent);
+        let _lock = self.lock.lock().await;
+        let mut records = self.read()?;
+        let mut changed = false;
+        for record in records.iter_mut().filter(|r| is_address(r)) {
+            let handle = match record.get("agents").and_then(|a| a.get(&agent.name)) {
+                Some(handle) => crate::py::py_str(handle),
+                None => continue,
+            };
+            let item = record.get("id").map(crate::py::py_str).unwrap_or_default();
+            if on && handle == CARD_HANDLE {
+                // its browser now fills it (a Hermes without patch 0017 may refuse it: then it stays the bridge's)
+                match (self.run)(vault_target(config, agent), Self::to_hermes(record)).await {
+                    Ok(answer) => {
+                        let Some(id) = answer.get("id").map(crate::py::py_str) else { continue };
+                        Self::handles(record).insert(agent.name.clone(), json!(id));
+                        tracing::info!(agent = %agent.name, item = %item, "contact details given to the agent's browser");
+                        changed = true;
+                    }
+                    Err(exc) => tracing::warn!(agent = %agent.name, item = %item, error = %exc,
+                        "contact details not written into the agent's Hermes vault: its browser won't fill them"),
+                }
+            } else if !on && handle != CARD_HANDLE {
+                let mut request = Dict::new();
+                request.insert("op".into(), json!("remove"));
+                request.insert("id".into(), json!(handle));
+                if let Err(exc) = (self.run)(vault_target(config, agent), request).await {
+                    tracing::warn!(agent = %agent.name, item = %item, error = %exc,
+                        "contact details not removed from the agent's Hermes vault");
+                    continue;
+                }
+                Self::handles(record).insert(agent.name.clone(), json!(CARD_HANDLE));
+                tracing::info!(agent = %agent.name, item = %item, "contact details taken out of the agent's Hermes vault: \
+                    no browser");
+                changed = true;
+            }
+        }
+        if changed {
+            self.write(&records)?;
+        }
+        Ok(changed)
+    }
+
+    /// `follow_browser` for every agent (at the bridge's start: entries written before 2026-10-29 for agents without
+    /// their browser, and browsers turned on or off while it was stopped).
+    pub async fn follow_browsers(&self, config: &Config) -> bool {
+        let mut changed = false;
+        for agent in config.agents.values() {
+            match self.follow_browser(config, agent).await {
+                Ok(c) => changed |= c,
+                Err(exc) => tracing::warn!(agent = %agent.name, error = %exc, "contact details not matched to its browser"),
+            }
+        }
+        changed
     }
 
     // -- logins created by an agent (vault_logins.rs) ---------------------------------------------------------

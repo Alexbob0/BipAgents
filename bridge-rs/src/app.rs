@@ -368,6 +368,16 @@ impl AppState {
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
             let shared = self.config.clone();
             self.spawn(async move { crate::browsers::vault_only_all(&shared.get()).await });
+            if config.hermes.isolated {
+                // « Coordonnées » in an agent's Hermes vault only while its browser is on (vault.rs)
+                let (shared, vault) = (self.config.clone(), self.vault.clone());
+                self.spawn(async move {
+                    let config = shared.get();
+                    if vault.follow_browsers(&config).await {
+                        crate::tool_diet::apply_all(&config);
+                    }
+                });
+            }
             if config.cloud {
                 // a place of the reserve: its first agent made before its claim; what a claim left, finished
                 self.spawn(crate::cloud_setup::prepare_when_installed(self.config.clone(), self.http.clone()));

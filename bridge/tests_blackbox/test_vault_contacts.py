@@ -11,6 +11,7 @@ from cryptography.fernet import Fernet
 from bbkit.common import AUTH, HERMES_KEY, read_sse, sse
 from bbkit.mcp import TOKEN, give_token
 from bbkit.servers import wait_until
+from conftest import wait_registered
 
 HERMES_AUTH = {"Authorization": f"Bearer {HERMES_KEY}"}
 
@@ -24,13 +25,29 @@ PRO = {"kind": "address", "label": "Kerfy Studio (pro)", "hint": "pour tout ce q
        "phones": ["+33 6 00 00 00 01", "01 00 00 00 02"], "emails": ["camille@example.org"]}
 
 
-def contacts_bridge(bridges, fakes, shared=False):
+def browser(home, agent, on):
+    """The agent's own browser in its Hermes profile (`home`/profiles/`agent`), on or off."""
+    folder = home / "profiles" / agent
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "config.yaml").write_text("mcp_servers:\n  stealth:\n    url: http://127.0.0.1:9601/mcp\n"
+                                        f"    enabled: {'true' if on else 'false'}\n")
+
+
+def contacts_bridge(bridges, fakes, shared=False, vie_browser=True, vie_space=None):
+    """Vie and Coach in their own containers; Vie's browser on unless `vie_browser` is False (its « Coordonnées »
+    reach its Hermes vault only then); `vie_space`: Vie served from a space of its own (the app may then switch its
+    browser)."""
     bridge = bridges.new()
     for name in ("vie", "coach"):
         bridge.config["agents"][name.capitalize()] = {
             "hermes_url": fakes.down.url, "hermes_key": "k" * 32, "isolated": True,
             "python": f"{bridge.fakebin}/podman exec -i hermes-{name} python", "hermes_home": "/home/hermes/.hermes"}
         bridge.commands.rule("podman", ["exec", "-i", f"hermes-{name}"], stdout=ANSWER)
+    if vie_space is not None:
+        bridge.config["agents"]["Vie"].update({"space": str(vie_space), "sandboxed": True})
+        (bridge.data / "browsers" / "vie").mkdir(parents=True)          # set up before: switched on and off
+        (bridge.data / "browsers" / "vie" / "ports.json").write_text('{"devtools": 9600, "vnc": 9601}')
+    browser(vie_space if vie_space is not None else bridge.home / ".hermes", "vie", vie_browser)
     bridge.config["agents"]["Budget"] = {"hermes_url": f"{fakes.hermes.url}/p/budget", "hermes_key": "b" * 32}
     bridge.config["hermes"] = {"isolated": True, "bin": str(bridge.fakebin / "hermes"), "hub_url": fakes.hermes.url}
     if shared:
@@ -208,3 +225,94 @@ def test_the_reply_of_the_turn_carries_the_entrys_chip(bridges, fakes):
     assert events[-1][0] == "run.completed" and end["output"] == f"{reply}\n{mark}"
     streamed = "".join(d.get("delta", "") for n, d in events if n == "message.delta")
     assert streamed.endswith(f"\n\n{mark}") and "pro@example.org" not in mark
+
+
+HOME_ENTRY = {"kind": "address", "label": "Domicile", "full_name": "Camille Exemple", "address_line1": "3 rue du Test",
+              "city": "Lyon", "postal_code": "69001", "country": "FR", "phones": ["04 00 00 00 09"]}
+
+
+def turn_with_a_listing(bridge, fakes, run_id, reply):
+    """A turn of Wellness that lists its « Coordonnées » (no label: what the bench's models did), then ends with
+    `reply`: the end's output as the app gets it."""
+    gate = threading.Event()
+    fakes.hermes.runs[run_id] = [sse("tool.started", run_id=run_id, tool="mcp_bipagents_vault_vault_contact_details",
+                                     preview="{}"),
+                                 gate, sse("message.delta", run_id=run_id, delta=reply),
+                                 sse("run.completed", run_id=run_id, output=reply)]
+    seen = len(fakes.hermes.event_requests)
+    posted = bridge.post("/hermes/wellness/v1/runs", json={"input": "Écris une lettre", "session_id": f"api_{run_id}"},
+                         headers=HERMES_AUTH)
+    assert posted.status_code == 202, posted.text
+    assert wait_until(lambda: len(fakes.hermes.event_requests) > seen)
+    listed, error = tool(bridge, TOKEN, "vault_contact_details", {})
+    assert not error and "<!--bip:vault" not in listed, listed     # the listing itself carries no chip
+    gate.set()
+    with bridge.stream("GET", f"/hermes/wellness/v1/runs/{run_id}/events", headers=HERMES_AUTH) as resp:
+        events = read_sse(resp)
+    assert events[-1][0] == "run.completed"
+    return events[-1][1]["output"]
+
+
+def test_a_listing_used_in_the_reply_gets_the_chip_of_the_entry_used(bridges, fakes):
+    """Model bench, 2026-10-29: GLM, DeepSeek and a local model listed the entries (no label) and wrote the letter with
+    the address. The entries whose details the reply uses get their chip at the turn's end; never one it doesn't use."""
+    bridge = bridges.new()
+    bridge.config["agents"]["Wellness"].update({"isolated": True, "hermes_home": "/home/hermes/.hermes",
+                                                "python": f"{bridge.fakebin}/podman exec -i hermes-wellness python"})
+    bridge.config["hermes"] = {"isolated": True, "bin": str(bridge.fakebin / "hermes"), "hub_url": fakes.down.url}
+    bridge.commands.rule("podman", ["exec", "-i", "hermes-wellness"], stdout=ANSWER)
+    bridge.start()
+    give_token(bridge)
+    pro = bridge.post("/v1/vault", headers=AUTH, json={**PRO, "agents": ["wellness"]}).json()
+    pro_mark = f"<!--bip:vault {pro['id']} Kerfy Studio (pro)-->"
+    # one entry listed, the letter carries its address (another case, accents dropped, a non-breaking space)
+    letter = "Kerfy Studio\n1 RUE DE L'ESSAI, Bat. B\n00100 Testville\n\nObjet : résiliation"
+    assert turn_with_a_listing(bridge, fakes, "r1", letter) == f"{letter}\n{pro_mark}"
+    # two entries listed, the reply uses the home one (its phone, written otherwise): its chip only
+    home = bridge.post("/v1/vault", headers=AUTH, json={**HOME_ENTRY, "agents": ["wellness"]}).json()
+    home_mark = f"<!--bip:vault {home['id']} Domicile-->"
+    call = "Je t'ai noté de rappeler le 04.00.00.00.09 depuis la maison."
+    assert turn_with_a_listing(bridge, fakes, "r2", call) == f"{call}\n{home_mark}"
+    # listed, then a reply with none of their details: no chip, the reply as it was
+    plain = "Tu as deux adresses dans ton coffre : laquelle je mets sur la lettre ?"
+    assert turn_with_a_listing(bridge, fakes, "r3", plain) == plain
+
+
+def test_contact_details_reach_the_agents_hermes_vault_only_while_its_browser_is_on(bridges, fakes, tmp_path):
+    """Each entry in an agent's Hermes vault makes Hermes show its five `browser_vault_*` tools on every call (≈ 1 220
+    tokens): an entry is written there only while the agent's browser is on, taken out when it is turned off or the
+    entry unshared. The agent reads it from the bridge either way; a login keeps going into Hermes."""
+    space = tmp_path / "spaces" / "vie"
+    bridge = contacts_bridge(bridges, fakes, vie_browser=False, vie_space=space)
+    wait_registered(bridge, ["vie"])     # its tools written into its profile first: the switches then write theirs
+    give_token(bridge, "vie", VIE)       # the test's token, after the bridge's own
+    made =bridge.post("/v1/vault", headers=AUTH, json={**PRO, "agents": ["vie"]})
+    assert made.status_code == 201, made.text
+    item = made.json()
+    assert hermes_requests(bridge, "vie") == []                      # its browser is off
+    assert [r["agents"] for r in records(bridge)] == [{"vie": "bridge"}]
+    read, error = tool(bridge, VIE, "vault_contact_details", {"label": "Kerfy Studio (pro)"})
+    assert not error and "Camille Exemple" in read
+    bridge.post("/v1/vault", headers=AUTH, json={"label": "SNCF", "site": "sncf-connect.com", "identifier": "a@example.org",
+                                                  "password": "s3cret-Pass!", "agents": ["vie"]})
+    assert [r["kind"] for r in hermes_requests(bridge, "vie")] == ["login"]
+    bridge.commands.clear()
+    # the person turns its browser on: the entry is written into its Hermes vault
+    on = bridge.patch("/v1/agents/vie/settings", headers=AUTH, json={"browser": True})
+    assert on.status_code == 200, on.text
+    [added] = hermes_requests(bridge, "vie")
+    assert added["op"] == "add" and added["kind"] == "address" and added["secret"]["city"] == "Testville"
+    assert records(bridge)[0]["agents"] == {"vie": "vault_1"}
+    bridge.commands.clear()
+    # and off: taken out of it, kept in the bridge, the login left
+    off = bridge.patch("/v1/agents/vie/settings", headers=AUTH, json={"browser": False})
+    assert off.status_code == 200, off.text
+    assert [(r["op"], r["id"]) for r in hermes_requests(bridge, "vie")] == [("remove", "vault_1")]
+    assert [r["agents"]["vie"] for r in records(bridge)] == ["bridge", "vault_1"]
+    read, error = tool(bridge, VIE, "vault_contact_details", {})
+    assert not error and "Kerfy Studio (pro)" in read
+    # on again, then unshared: removed from Hermes
+    bridge.patch("/v1/agents/vie/settings", headers=AUTH, json={"browser": True})
+    bridge.commands.clear()
+    assert bridge.patch(f"/v1/vault/{item['id']}", headers=AUTH, json={"agents": []}).status_code == 200
+    assert [r["op"] for r in hermes_requests(bridge, "vie")] == ["remove"]

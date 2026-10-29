@@ -98,6 +98,11 @@ pub const BROWSER_SERVER: &str = "stealth";
 pub const BROWSER_DIRECT: [&str; 6] =
     ["spawn_browser", "navigate", "get_page_content", "click_element", "type_text", "take_screenshot"];
 
+/// A bridge tool kept direct brings the one it leads to (first, then), when the agent has it. Behind the search,
+/// `mail_read` cost the real-day bench's loops (2026-10-29, GLM-5.3 Flash): after `tool_describe` on it the model
+/// called `mail_search` again with the same arguments 14 to 17 times, never `tool_call`, until the brake refused.
+pub const DIRECT_PAIRS: [(&str, &str); 1] = [("mail_search", "mail_read")];
+
 /// Hermes' iteration cap (`agent.max_turns`) written in a profile that has none: model calls in one turn.
 pub const MAX_TURNS: u32 = 150;
 
@@ -405,6 +410,14 @@ pub fn diet(
             defer.retain(|d| d != name);
         }
     }
+    // Their companions next to them, beyond MAX_DIRECT (`DIRECT_PAIRS`).
+    for (first, then) in DIRECT_PAIRS {
+        let first = format!("!{BRIDGE_PREFIX}{first}");
+        let then_entry = format!("!{BRIDGE_PREFIX}{then}");
+        if defer.contains(&first) && bridge_tools.iter().any(|t| t == then) && !defer.contains(&then_entry) {
+            defer.push(then_entry);
+        }
+    }
     Diet { kind: kind.to_string(), defer, compact_skills: plan.compact_skills.iter().map(|c| c.to_string()).collect() }
 }
 
@@ -479,11 +492,15 @@ pub fn called_directly(state_db: &Path, since: f64) -> Vec<String> {
     read().unwrap_or_default()
 }
 
-/// Whether `agent` holds an item of the vault Hermes fills from (a card is paid through the bridge instead).
+/// Whether `agent` holds an item of the vault Hermes fills from (a card is paid through the bridge instead; an item
+/// kept by the bridge only, handle `bridge`, is not in its Hermes vault: « Coordonnées » of an agent without its
+/// browser, vault.rs `give`).
 pub fn holds_vault_item(config: &Config, agent: &AgentConfig) -> bool {
     let vault = crate::vault::Vault::new(&crate::py::join(&config.data_dir(), "vault"));
     vault.items().iter().any(|item| {
-        item.kind != crate::cards::KIND && item.kind != crate::secrets::VAULT_KIND && item.agents.contains_key(&agent.name)
+        item.kind != crate::cards::KIND
+            && item.kind != crate::secrets::VAULT_KIND
+            && item.agents.get(&agent.name).is_some_and(|handle| handle != crate::vault::CARD_HANDLE)
     })
 }
 
@@ -654,6 +671,29 @@ mod tests {
         }
         let without = diet("daily", &tools, false, false, false, &[]);
         assert!(!without.defer.iter().any(|n| n.contains("stealth")));
+    }
+
+    #[test]
+    fn mail_read_comes_with_mail_search() {
+        // 2026-10-29 (real-day bench, GLM-5.3 Flash): mail_read behind the search, mail_search called again and again
+        let mail = names(&["notebook_search", "mail_search", "mail_read", "mail_draft"]);
+        let d = diet("daily", &mail, false, false, false, &[]);
+        assert!(d.defer.contains(&"!mcp__bipagents__mail_search".to_string()));
+        assert!(d.defer.contains(&"!mcp__bipagents__mail_read".to_string()));
+        assert!(!d.defer.contains(&"!mcp__bipagents__mail_draft".to_string()), "the others stay behind the search");
+        // mail_search kept direct by the model's own calls: mail_read with it
+        let called = names(&["mcp__bipagents__mail_search"]);
+        let d = diet("wellness", &mail, false, false, false, &called);
+        assert!(d.defer.contains(&"!mcp__bipagents__mail_read".to_string()));
+        // no mail_search in view (a kind that doesn't use it): mail_read stays behind the search too
+        let d = diet("wellness", &mail, false, false, false, &[]);
+        assert!(!d.defer.iter().any(|n| n.contains("mail_")));
+        // without the mail tools nothing comes
+        let d = diet("daily", &names(&["mail_search"]), false, false, false, &[]);
+        assert!(!d.defer.contains(&"!mcp__bipagents__mail_read".to_string()));
+        // the work kind had it already: once
+        let d = diet("work", &mail, false, false, false, &[]);
+        assert_eq!(d.defer.iter().filter(|n| n.ends_with("mail_read")).count(), 1);
     }
 
     #[test]
