@@ -18,7 +18,7 @@
 //!     GET  /v1/guide                          {can_create, first_run, candidate, guide, intro, proposals}
 //!     POST /v1/guide/first-run                {choice: "guide" | "myself", name?, lang?}
 //!     PUT  /v1/agents/{id}/guide              {on}   → {guide}
-//!     POST /v1/guide/proposals/{id}/accept    {name?, role?, lang?, group?}   (agent: created; switch: handed over)
+//!     POST /v1/guide/proposals/{id}/accept    {name?, role?, lang?, group?, category?, color? (project)}   (agent: created; switch: handed over)
 //!     POST /v1/guide/proposals/{id}/decline   the same subject isn't proposed again for 30 days
 //!     data_dir/guide.json                     the state (0600)
 //!
@@ -875,6 +875,11 @@ pub struct Accept {
     pub members: Option<Vec<String>>,
     #[serde(default, deserialize_with = "web::lax::opt_bool")]
     pub room: Option<bool>,
+    /// A project card: the Bip the person picked on it (a category, a colour `#RRGGBB`): a new agent, its own face.
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 impl Validate for Accept {
@@ -892,6 +897,8 @@ impl Validate for Accept {
         check_max_len(errors, "name", self.name.as_deref(), 40);
         check_max_len(errors, "role", self.role.as_deref(), 400);
         check_max_len(errors, "lang", self.lang.as_deref(), 20);
+        check_max_len(errors, "category", self.category.as_deref(), 20);
+        check_max_len(errors, "color", self.color.as_deref(), 20);
         check_max_len(errors, "group", self.group.as_deref(), crate::agent_groups::MAX_LEN);
     }
 }
@@ -1140,7 +1147,9 @@ async fn accept(
                 name,
                 ends,
                 lang: lang.clone(),
-                category: from.category.clone().unwrap_or_default(),
+                // the Bip picked on the card (an app from before the picker sends none: the apps set the look after)
+                category: body.category.clone().unwrap_or_default(),
+                color: crate::project_agent::color_ok(body.color.as_deref()),
                 // exactly the summary the card showed, nothing else of the main thread
                 summary: str_of(&proposal, "summary"),
                 from: Some(from.clone()),
