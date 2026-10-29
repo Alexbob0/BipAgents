@@ -166,13 +166,34 @@ fn s(arguments: &Dict, key: &str) -> String {
     tk::str_or_empty(arguments.get(key)).trim().to_string()
 }
 
-/// What the agent says after filing (or not: the person turned these mentions off).
-fn mention(config: &Config, what: &str) -> String {
-    if super::mentions(config) {
-        format!("\nKeep your answer to the person as it was, and add at its end one short line in their language, e.g. « Noté dans ton Carnet : {what} ».")
+/// What the agent says after filing (or not: the person turned these mentions off). `told`: the person's other
+/// agents the bridge queued the news for (news.rs), named as the person sees them.
+fn mention(config: &Config, what: &str, told: &[String]) -> String {
+    let told_line = if told.is_empty() {
+        String::new()
     } else {
-        "\nThe person turned these mentions off: don't mention it.".into()
+        let names = super::news::names_text(told, &super::language(config));
+        let verb = if told.len() == 1 { "est" } else { "sont" };
+        format!(" · {names} {verb} au courant")
+    };
+    let note = if told.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\nThe bridge passes this on to {} at their next turn: don't message them about it.",
+            super::news::names_text(told, "en")
+        )
+    };
+    if super::mentions(config) {
+        format!("\nKeep your answer to the person as it was, and add at its end one short line in their language, e.g. « Noté dans ton Carnet : {what}{told_line} ».{note}")
+    } else {
+        format!("\nThe person turned these mentions off: don't mention it.{note}")
     }
+}
+
+/// The change queued for the other agents it concerns (news.rs): their names.
+fn tell(config: &Config, agent: &str, part: Part, path: &str, title: &str, extra: &str, text: &str) -> Vec<String> {
+    super::news::queue(config, agent, part, path, title, extra, text, crate::py::time_time())
 }
 
 /// One call of a Carnet tool by `agent`. Err: a file that cannot be written.
@@ -301,6 +322,10 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                 }
                 Ok(written) => {
                     let what = format!("{} — {}", written.title, written.added.join(" ; "));
+                    let facts =
+                        if written.added.is_empty() { s(arguments, "summary") } else { written.added.join(" ; ") };
+                    let told =
+                        tell(config, agent, written.part.unwrap_or(part), &written.path, &written.title, "", &facts);
                     let made = if written.created { "new page" } else { "updated" };
                     let under = if written.sections.is_empty() {
                         String::new()
@@ -314,7 +339,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                             written.path,
                             marker(part),
                             written.added.len(),
-                            mention(config, &what)
+                            mention(config, &what, &told)
                         ),
                         false,
                     ))
@@ -353,10 +378,18 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                 &s(arguments, "summary"),
                 &who,
             ) {
-                Ok((written, summary)) => Ok(tool_text(
-                    &format!("Corrected in the Carnet: {} ({summary}).{}", written.title, mention(config, &summary)),
-                    false,
-                )),
+                Ok((written, summary)) => {
+                    let part = written.part.unwrap_or(Part::Main);
+                    let told = tell(config, agent, part, &written.path, &written.title, "", &summary);
+                    Ok(tool_text(
+                        &format!(
+                            "Corrected in the Carnet: {} ({summary}).{}",
+                            written.title,
+                            mention(config, &summary, &told)
+                        ),
+                        false,
+                    ))
+                }
                 Err(err) => caught(err),
             }
         }
@@ -439,12 +472,22 @@ the conversation, ask them in one sentence: yes is action add with origin accept
                             let phone =
                                 if reminder { " It will also appear in the person's phone reminders." } else { "" };
                             let due = if task.due.is_empty() { String::new() } else { format!(", due {}", task.due) };
+                            let tasks = super::words(&super::language(config)).tasks_path();
+                            let told = tell(
+                                config,
+                                agent,
+                                part,
+                                &tasks,
+                                "",
+                                &s(arguments, "page"),
+                                &format!("task: {}{due}", task.title),
+                            );
                             Ok(tool_text(
                                 &format!(
                                     "Task in the Carnet: {} (id {}{due}).{phone}{}",
                                     task.title,
                                     task.id,
-                                    mention(config, &task.title)
+                                    mention(config, &task.title, &told)
                                 ),
                                 false,
                             ))
@@ -460,12 +503,12 @@ the conversation, ask them in one sentence: yes is action add with origin accept
                 _ => Ok(tool_text("action is add, done, list, propose or decline", true)),
             }
         }
-        RECORD => record(config, arguments, &who).or_else(caught),
+        RECORD => record(config, agent, arguments, &who).or_else(caught),
         _ => Ok(tool_text(&format!("unknown tool: {name}"), true)),
     }
 }
 
-fn record(config: &Config, arguments: &Dict, who: &Who) -> anyhow::Result<Dict> {
+fn record(config: &Config, agent: &str, arguments: &Dict, who: &Who) -> anyhow::Result<Dict> {
     use super::records::{self, Upserted};
     let action = s(arguments, "action");
     let kind = records::kind(&s(arguments, "type"));
@@ -515,7 +558,14 @@ fn record(config: &Config, arguments: &Dict, who: &Who) -> anyhow::Result<Dict> 
                 Upserted::Updated => "Updated in the Carnet",
                 Upserted::Same => "Already in the Carnet",
             };
-            let mention = if done == Upserted::Same { String::new() } else { mention(config, &line) };
+            let mention = if done == Upserted::Same {
+                String::new()
+            } else {
+                let path = records::path_of(&super::language(config), kind);
+                let title = path.rsplit('/').next().unwrap_or("").trim_end_matches(".md").to_string();
+                let told = tell(config, agent, Part::Main, &path, &title, "", &line);
+                mention(config, &line, &told)
+            };
             Ok(tool_text(&format!("{what}: {} (id {id}): {line}.{mention}", kind.id), false))
         }
         "remove" => {

@@ -925,6 +925,7 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
                 Some(crate::dates::now::line(&config, &agent)),
                 briefs.take_recap(&agent.name, &body.session),
                 crate::family_news::take_notes(&config, &agent.name),
+                crate::notebook::news::take_now(&config, &agent.name), // the Carnet's news (notebook/news.rs)
                 crate::storage_watch::take_note(&config, &agent.name), // the place's space (storage_watch.rs)
                 crate::feature_tips::on_message(
                     &config,
