@@ -3,16 +3,19 @@
 //!
 //! Hermes injects its own `message_agent` only in an agent's canonical « Bot Chat » (tools/bot_mode_dm.py:
 //! `message_agent_authorized`, the session's title): in the person's other conversations, the bench's, a routine's
-//! or a background task's, the agent has no way to reach another one, whatever links the person turned on, and it
-//! hunts for one (18 calls, tool_search ×9). So the bridge offers its own `message_agent` (`mcp__bipagents__
+//! or a background task's, the agent had no way to reach another one, whatever links the person turned on, and it
+//! hunted for one (18 calls, tool_search ×9). So the bridge offers its own `message_agent` (`mcp__bipagents__
 //! message_agent`) to an agent that may write to another agent of this place (the links of « Qui peut écrire à
-//! qui », peers.rs; the same ones as `send_files_to_agent`). It checks the link, writes in the target's « Bot Chat »
-//! signed as Hermes signs a peer's message (« Message from Quotidien (@quotidien): … », peers.rs `SIGNATURE`), and
-//! gives back the target's answer in the same call: the asker can answer its person in the same turn. Another
-//! household's agents are never reached here (family_news.rs stays the way there). During a relative's turn or in
-//! a shared conversation the tool is closed like the person's other data (agent_shares.rs `RELATIVE_TOOLS`).
-//! In the Bot Chat itself, where Hermes injects its own, Hermes patch 0012 takes this one out of the model's list
-//! (the bridge can't: Hermes lists an MCP server's tools once, with nothing about the session).
+//! qui », peers.rs; the same ones as `send_files_to_agent`). It checks the link and asks the target in the two agents'
+//! own conversation « A ⇄ B » (agent_pairs.rs, since 2026-10-29: not in the target's Bot Chat any more, the person's
+//! main conversation with it), signed as Hermes signs a peer's message (« Message from Quotidien (@quotidien): … »,
+//! peers.rs `SIGNATURE`), and gives back the target's answer in the same call: the asker can answer its person in
+//! the same turn. Another household's agents are never reached here (family_news.rs stays the way there). During a
+//! relative's turn or in a shared conversation the tool is closed like the person's other data (agent_shares.rs
+//! `RELATIVE_TOOLS`).
+//! In the Bot Chat, where Hermes injects its own (which writes into the target's Bot Chat), Hermes patch 0016 leaves
+//! Hermes' own out when this one is listed: one way to write to an agent everywhere, and every exchange in its pair's
+//! conversation (the bridge can't hide its tool per session: Hermes lists an MCP server's tools once).
 //!
 //! No Python counterpart.
 
@@ -53,7 +56,13 @@ pub fn signed(sender: &AgentConfig, message: &str) -> String {
 }
 
 /// One call, for `agent`.
-pub async fn call(http: &reqwest::Client, config: &Config, agent: &AgentConfig, arguments: &Dict) -> Dict {
+pub async fn call(
+    http: &reqwest::Client,
+    hub: Option<std::sync::Arc<crate::runs::RunHub>>,
+    config: &Config,
+    agent: &AgentConfig,
+    arguments: &Dict,
+) -> Dict {
     let wanted = arguments.get("target").or_else(|| arguments.get("agent")).map(crate::py::py_str).unwrap_or_default();
     let message = arguments.get("message").or_else(|| arguments.get("text")).map(crate::py::py_str).unwrap_or_default();
     if message.trim().is_empty() {
@@ -84,38 +93,20 @@ pub async fn call(http: &reqwest::Client, config: &Config, agent: &AgentConfig, 
             &format!("I can't write to {shown} yet: you can allow it in the app, under « Qui peut écrire à qui »."),
         );
     }
-    let hermes = crate::hermes::HermesClient::new(http.clone());
-    let session = match hermes.bot_chat_sessions(&target).await {
-        Ok(rows) if !rows.is_empty() => {
-            rows.last().and_then(|r| r.get("id")).map(crate::py::py_str).filter(|id| !id.is_empty())
-        }
-        Ok(_) => None,
-        Err(exc) => {
-            tracing::warn!(agent = %agent.name, target = %target.name, error = %exc, "message to an agent: its conversations not read");
-            return unreachable(&shown);
-        }
-    };
-    let session = match session {
-        Some(id) => id,
-        None => match hermes.create_session(&target, crate::peers::BOT_CHAT_TITLE).await {
-            Ok(id) => id,
-            Err(exc) => {
-                tracing::warn!(agent = %agent.name, target = %target.name, error = %exc, "message to an agent: no Bot Chat");
-                return unreachable(&shown);
-            }
-        },
-    };
-    let message = crate::dates::now::stamped(config, &target, &signed(agent, &message));
-    match hermes.session_chat(&target, &session, &message, None, ANSWER_SECONDS).await {
-        Ok(reply) if !reply.trim().is_empty() => {
+    match crate::agent_pairs::ask(http, hub, config, agent, &target, &message, ANSWER_SECONDS).await {
+        crate::agent_pairs::Answer::Text(reply) => {
             tracing::info!(agent = %agent.name, target = %target.name, "message to an agent answered");
             tool_text(&format!("{shown} (bip/{}) answered:\n{}", target.name, reply.trim()), false)
         }
-        Ok(_) => tool_text(&format!("{shown} got your message but answered nothing."), false),
-        Err(exc) => {
-            tracing::warn!(agent = %agent.name, target = %target.name, error = %exc, "message to an agent not answered");
-            unreachable(&shown)
-        }
+        crate::agent_pairs::Answer::Empty => tool_text(&format!("{shown} got your message but answered nothing."), false),
+        crate::agent_pairs::Answer::Waiting => tool_text(
+            &format!(
+                "{shown} got your message and is still on it (it may be waiting for your person's approval). Don't \
+send it again: its answer will be in your conversation with {shown}, which your person can open."
+            ),
+            false,
+        ),
+        crate::agent_pairs::Answer::Unreachable => unreachable(&shown),
     }
 }
 

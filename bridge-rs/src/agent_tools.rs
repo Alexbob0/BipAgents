@@ -1770,7 +1770,7 @@ async fn mcp(
         }
     };
     if name == crate::agent_messages::TOOL_NAME {
-        let mut result = crate::agent_messages::call(&state.http, &state.config(), &agent, &arguments).await;
+        let mut result = crate::agent_messages::call(&state.http, Some(state.hub.clone()), &state.config(), &agent, &arguments).await;
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
     }
