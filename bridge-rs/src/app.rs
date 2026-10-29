@@ -482,8 +482,16 @@ pub struct DeviceRequest {
     pub environment: Option<String>,
     #[serde(default)]
     pub agent_ids: Vec<String>,
+    /// the token this phone registered before (the OS rotated it, or the relay's was renewed): its row dropped at
+    /// once, in the same environment, so the phone isn't notified twice (audit 2026-10-27, 20). Older apps omit it.
+    #[serde(default)]
+    pub previous: Option<String>,
 }
-impl Validate for DeviceRequest {}
+impl Validate for DeviceRequest {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "previous", self.previous.as_deref(), 600);
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct WatchRequest {
@@ -773,12 +781,27 @@ async fn register_device(State(state): State<AppState>, Json(body): Json<DeviceR
     }
     let mut device = state.store.upsert_device(&token, &environment, &agent_ids).await?;
     tracing::info!(token = %redact6(&token), env = %environment, agents = ?J(&agent_ids), "device registered");
+    if let Some(previous) = previous_token(body.previous.as_deref(), &environment).filter(|p| *p != token) {
+        // the same phone's former token: forgotten now rather than told too until its push fails
+        if state.store.delete_device_in(&previous, &environment).await? {
+            tracing::info!(token = %redact6(&previous), env = %environment, "previous device token dropped");
+        }
+    }
     if environment == "relay" && crate::relay::is_first_format(&token) {
         // the relay's first format, until its end: used, and the app asked for a new one at its next refresh
         tracing::warn!(token = %redact6(&token), "first-format relay token (r1): the app is asked for a new one");
         device.insert("renew".into(), Value::Bool(true));
     }
     Ok(web::ok(Value::Object(device)))
+}
+
+/// The former token a registration names, written the way its environment keeps tokens (APNs' in lowercase hex).
+fn previous_token(given: Option<&str>, environment: &str) -> Option<String> {
+    let token = given?.trim().replace([' ', '<', '>'], "");
+    if token.is_empty() {
+        return None;
+    }
+    Some(if environment == "sandbox" || environment == "production" { token.to_lowercase() } else { token })
 }
 
 async fn delete_device(State(state): State<AppState>, Path(token): Path<String>) -> ApiResult<Response> {
@@ -1771,4 +1794,18 @@ fn internal_error(panic: Box<dyn std::any::Any + Send + 'static>) -> Response {
         .unwrap_or_else(|| "panic".to_string());
     tracing::error!(target: "uvicorn.error", exc = %message, "Exception in ASGI application\n");
     HttpError::internal().into_response()
+}
+
+#[cfg(test)]
+mod device_tests {
+    use super::previous_token;
+
+    #[test]
+    fn a_previous_token_is_written_as_its_environment_keeps_tokens() {
+        assert_eq!(previous_token(Some(" <AB CD> "), "production").as_deref(), Some("abcd"));
+        assert_eq!(previous_token(Some("Fcm:Token"), "fcm").as_deref(), Some("Fcm:Token"));
+        assert_eq!(previous_token(Some("r2.AbC"), "relay").as_deref(), Some("r2.AbC"));
+        assert_eq!(previous_token(Some("  "), "fcm"), None);
+        assert_eq!(previous_token(None, "fcm"), None);
+    }
 }

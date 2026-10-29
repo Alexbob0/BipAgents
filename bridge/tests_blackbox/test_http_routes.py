@@ -306,6 +306,46 @@ def test_device_register_update_delete(bridge):
         assert db.execute("SELECT count(*) FROM devices").fetchone()[0] == 0
 
 
+def test_a_new_token_naming_the_previous_one_replaces_it(bridge):
+    """The OS rotated the phone's token: the app names the former one (`previous`), whose row goes at once, in the
+    same environment only (audit 2026-10-27, 20)."""
+    old, new, other = "b" * 64, "c" * 64, "d" * 64
+    for token in (old, other):
+        assert bridge.post("/v1/devices", headers=AUTH, json={"token": token, "environment": "production",
+                                                               "agent_ids": ["wellness"]}).status_code == 200
+    fcm_row = "fcm:" + "b" * 40
+    bridge.post("/v1/devices", headers=AUTH, json={"token": fcm_row, "environment": "fcm"})
+    resp = bridge.post("/v1/devices", headers=AUTH, json={"token": new, "environment": "production",
+                                                           "agent_ids": ["wellness"], "previous": old.upper()})
+    assert resp.status_code == 200 and set(resp.json()) == {"token", "environment", "agent_ids", "created_at", "updated_at"}
+    with bridge.db() as db:
+        rows = sorted(r[0] for r in db.execute("SELECT token FROM devices"))
+    assert rows == sorted([new, other, fcm_row])
+    # another environment's row is not this phone's former token: kept
+    bridge.post("/v1/devices", headers=AUTH, json={"token": "fcm:" + "e" * 40, "environment": "fcm", "previous": other})
+    with bridge.db() as db:
+        assert db.execute("SELECT count(*) FROM devices WHERE token=?", (other,)).fetchone()[0] == 1
+    dropped = bridge.logged("previous device token dropped")
+    assert len(dropped) == 1 and dropped[0]["token"] == "bbbbbb…" and old not in bridge.log_path.read_text()
+    # naming itself, or an empty previous, changes nothing
+    again = bridge.post("/v1/devices", headers=AUTH, json={"token": new, "environment": "production", "previous": new})
+    assert again.status_code == 200
+    assert bridge.post("/v1/devices", headers=AUTH, json={"token": new, "previous": ""}).status_code == 200
+    with bridge.db() as db:
+        assert db.execute("SELECT count(*) FROM devices WHERE token=?", (new,)).fetchone()[0] == 1
+    too_long = bridge.post("/v1/devices", headers=AUTH, json={"token": new, "previous": "x" * 601})
+    assert too_long.status_code == 422
+
+
+def test_an_old_app_without_previous_keeps_both_tokens(bridge):
+    old, new = "b" * 64, "c" * 64
+    for token in (old, new):
+        assert bridge.post("/v1/devices", headers=AUTH, json={"token": token, "environment": "production"}).status_code == 200
+    with bridge.db() as db:
+        assert sorted(r[0] for r in db.execute("SELECT token FROM devices")) == [old, new]
+    assert bridge.logged("previous device token dropped") == []
+
+
 def test_device_validation(bridge):
     hex_ = bridge.post("/v1/devices", headers=AUTH, json={"token": "not-hex"})
     assert hex_.status_code == 400 and hex_.json() == {"detail": "invalid device token (hex expected)"}
