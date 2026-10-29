@@ -122,6 +122,7 @@ pub mod whatsapp_import;
 pub mod assistant_import;
 pub mod favicons;
 pub mod guide;
+pub mod guide_team;
 pub mod handback;
 pub mod health;
 pub mod jobs;
