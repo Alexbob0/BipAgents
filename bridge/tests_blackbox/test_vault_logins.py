@@ -214,7 +214,8 @@ def test_the_tools_are_listed_for_an_agent_that_may_hold_credentials(bridges, fa
     bridge = login_bridge(bridges, fakes)
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
     listed = bridge.post(VAULT, json=body, headers={"Authorization": f"Bearer {TOKEN}"}).json()["result"]["tools"]
-    assert [t["name"] for t in listed] == ["vault_create_login", "vault_confirm_login"]
+    assert [t["name"] for t in listed] == ["vault_create_login", "vault_confirm_login", "vault_contact_details",
+                                         "vault_save_contact_details"]
     assert "captchas stay the person's" in listed[0]["description"]
     assert bridge.post(VAULT, json=body, headers={"Authorization": "Bearer nope"}).status_code == 401
 

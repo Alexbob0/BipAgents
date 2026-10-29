@@ -141,6 +141,7 @@ pub fn fix_reply(reply: &str, agent: &str, made: &[String]) -> Option<String> {
     if made.is_empty() {
         return None;
     }
+    let marks = missing_marks(reply, made);
     let carried: Vec<String> = MEDIA_LINE.captures_iter(reply).map(|c| c[1].to_string()).collect();
     let mut missing: Vec<String> = Vec::new();
     for path in made {
@@ -149,7 +150,17 @@ pub fn fix_reply(reply: &str, agent: &str, made: &[String]) -> Option<String> {
         }
     }
     if missing.is_empty() {
-        return None;
+        if marks.is_empty() {
+            return None;
+        }
+        let mut fixed = reply.trim_end().to_string();
+        for mark in marks {
+            if !fixed.is_empty() {
+                fixed.push('\n');
+            }
+            fixed.push_str(&mark);
+        }
+        return Some(fixed);
     }
     let mut fixed = MEDIA_LINE
         .replace_all(reply, |caps: &regex::Captures| {
@@ -175,7 +186,43 @@ pub fn fix_reply(reply: &str, agent: &str, made: &[String]) -> Option<String> {
             fixed.push_str(&format!("MEDIA:{path}"));
         }
     }
+    for mark in marks {
+        let end = fixed.trim_end().len();
+        fixed.truncate(end);
+        if !fixed.is_empty() {
+            fixed.push('\n');
+        }
+        fixed.push_str(&mark);
+    }
     (fixed != reply).then_some(fixed)
+}
+
+/// Whether `made` holds a vault entry's mark (vault_contacts.rs: the reply's chip) rather than a file's path.
+pub fn is_mark(made: &str) -> bool {
+    made.starts_with(crate::vault_contacts::MARK_OPEN)
+}
+
+/// The line a reply carries for `made`: a file's `MEDIA:` line, or a vault entry's mark as it is.
+pub fn line_of(made: &str) -> String {
+    if is_mark(made) {
+        made.to_string()
+    } else {
+        format!("MEDIA:{made}")
+    }
+}
+
+/// The vault entries' marks noted in the turn that `reply` doesn't carry yet (by their entry's id: the model may have
+/// copied the label differently), each once.
+fn missing_marks(reply: &str, made: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for mark in made.iter().filter(|m| is_mark(m)) {
+        let Some(id) = crate::vault_contacts::mark_id(mark) else { continue };
+        let carried = reply.contains(&format!("{}{id}", crate::vault_contacts::MARK_OPEN));
+        if !carried && !out.iter().any(|m| crate::vault_contacts::mark_id(m) == Some(id)) {
+            out.push(mark.clone());
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -232,6 +279,22 @@ mod tests {
         let others = "Voici la photo.\nMEDIA:/home/hermes/.hermes/media/photo.jpg\nMEDIA:/envoi/devis.pdf\n\
 MEDIA:/bipagents/audio/coach/20261027-seance.m4a";
         assert_eq!(fix_reply(others, "vie", &[TODAY.into()]).unwrap(), format!("{others}\nMEDIA:{TODAY}"));
+    }
+
+    #[test]
+    fn a_vault_entry_used_in_the_turn_gets_its_chip() {
+        let mark = crate::vault_contacts::mark("item_0123456789ab", "Kerfy Studio (pro)");
+        let reply = "J'ai enregistré tes coordonnées pro.";
+        assert_eq!(fix_reply(reply, "vie", &[mark.clone()]).unwrap(), format!("{reply}\n{mark}"));
+        // carried already, even with another label: nothing added
+        assert_eq!(fix_reply(&format!("{reply}\n{mark}"), "vie", &[mark.clone()]), None);
+        let other_label = format!("{reply}\n<!--bip:vault item_0123456789ab Kerfy-->");
+        assert_eq!(fix_reply(&other_label, "vie", &[mark.clone()]), None);
+        // with a page made in the same turn: both, the mark last, each once
+        let fixed = fix_reply(reply, "vie", &[PAGE.into(), mark.clone(), mark.clone()]).unwrap();
+        assert_eq!(fixed, format!("{reply}\nMEDIA:{PAGE}\n{mark}"));
+        assert_eq!(line_of(&mark), mark);
+        assert_eq!(line_of(PAGE), format!("MEDIA:{PAGE}"));
     }
 
     #[test]
