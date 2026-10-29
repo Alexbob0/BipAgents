@@ -89,6 +89,20 @@
      skill_names = _job_skill_names(job)
      if not skill_names:
          return _scan_assembled_cron_prompt(
+--- a/hermes_state_common.py
++++ b/hermes_state_common.py
+@@ -57,7 +57,10 @@
+     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+ 
+ 
+-_PREVIEW_CONTENT_SQL = "REPLACE(REPLACE(m.content, X'0A', ' '), X'0D', ' ')"
++# A leading now line (the current time a client puts at the top of each message) is not the person's words.
++_PREVIEW_CONTENT_SQL = ("REPLACE(REPLACE(CASE WHEN m.content LIKE '<!--bip:now %' AND INSTR(m.content, '-->') > 0"
++                        " THEN LTRIM(SUBSTR(m.content, INSTR(m.content, '-->') + 3), CHAR(10) || CHAR(13) || ' ')"
++                        " ELSE m.content END, X'0A', ' '), X'0D', ' ')")
+ # User-invoked and gateway auto-load scaffolds both get the head+tail excerpt window:
+ # the typed request sits at the tail (auto-load) or behind the instruction marker.
+ # No LIKE wildcards in either prefix, so no ESCAPE clause is needed.
 --- a/tests/agent/test_system_prompt.py
 +++ b/tests/agent/test_system_prompt.py
 @@ -11,7 +11,7 @@
@@ -124,11 +138,11 @@
      def test_same_day_session_keeps_single_line(self):
          from hermes_time import now as hermes_now
 --- /dev/null
-+++ b/tests/cron/test_cron_now_line.py
-@@ -0,0 +1,64 @@
++++ b/tests/agent/test_now_line.py
+@@ -0,0 +1,78 @@
 +"""The current time comes with each message, never from the terminal: each routine run's prompt
 +starts with a now line in the routines' zone (``cron.timezone``), right across clock changes, and
-+the prompt no longer sends the model to ``date``."""
++the prompt no longer sends the model to ``date``; a session's preview skips the line."""
 +
 +from datetime import datetime
 +from zoneinfo import ZoneInfo
@@ -190,3 +204,17 @@
 +        assert "run `date`" not in text
 +        assert "use terminal" in text  # the other lines stay
 +    assert "bip:now" in NOW_LINE_HINT and "don't check the clock" in NOW_LINE_HINT
++
++
++def test_a_session_preview_skips_the_now_line():
++    import sqlite3
++
++    from hermes_state_common import _PREVIEW_RAW_SELECT, _shape_preview
++
++    db = sqlite3.connect(":memory:")
++    db.execute("CREATE TABLE messages (content TEXT)")
++    now = "<!--bip:now Thursday, October 29, 2026, 08:40, Europe/Paris (UTC+01:00)-->"
++    for content in (f"{now}\nOn part à Lisbonne quand ?", "Sans heure", "<!--bip:now cut"):
++        db.execute("INSERT INTO messages VALUES (?)", (content,))
++    previews = [_shape_preview(raw) for (raw,) in db.execute(f"SELECT {_PREVIEW_RAW_SELECT} FROM messages m")]
++    assert previews == ["On part à Lisbonne quand ?", "Sans heure", "<!--bip:now cut"]

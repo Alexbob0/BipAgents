@@ -373,18 +373,20 @@ tool. It never changes, so the prompt stays byte-stable for the whole conversati
 the same line after the cron hint, in the routines' zone (`cron.timezone` of patch 0008, else the profile's), e.g.
 `<!--bip:now Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+01:00)-->`. The conversations' lines come from the
 bridge and the apps (bridge-rs/src/dates/now.rs): in the new user message, never in the system prompt, so the cache
-holds; the apps hide every `<!--bip:…-->` note.
+holds; the apps hide every `<!--bip:…-->` note. (d) A session's preview (the head of its first user message, 60
+characters) skips a leading now line, else every conversation's preview would be the line.
 
 **Files.** `agent/prompt_builder.py`, `agent/system_prompt.py`, `cron/scheduler_prompt.py` (`now_line`),
-`tests/agent/test_system_prompt.py` (the two tests that expected the old line); new `tests/cron/test_cron_now_line.py`
-(6 tests: the routine's zone while the profile's is another, both passes of the repeated hour on 2026-10-25 in
-Europe/Paris, before and after the jump on 2026-03-08 in America/New_York, no terminal-time hint).
+`hermes_state_common.py` (`_PREVIEW_CONTENT_SQL`), `tests/agent/test_system_prompt.py` (the two tests that expected
+the old line); new `tests/agent/test_now_line.py` (7 tests: the routine's zone while the profile's is another, both
+passes of the repeated hour on 2026-10-25 in Europe/Paris, before and after the jump on 2026-03-08 in
+America/New_York, no terminal-time hint, the preview).
 
 **Tests.** The new file with `test_system_prompt.py`, `test_system_prompt_switch_invalidation.py`,
 `test_prompt_builder.py`, `test_cron_wall_clock_once_and_zone.py`, `test_cron_prompt_injection.py`,
 `test_scheduler.py` and the other cron prompt tests (`test_prompt_cache_boundary.py`, `test_notepad.py`,
 `test_cron_context_from.py`, `test_cron_script.py`, …), Python 3.12, all patches applied: the same failures as
-without it (missing `requests` and other packages in the test environment), the 6 new tests pass. `git apply --check`
+without it (missing `requests` and other packages in the test environment), the 7 new tests pass. `git apply --check`
 passes after 0001–0014, `patch --dry-run` on upstream `main` (`8acb7f6580`). An upstream PR candidate: there the
 marker would be neutral (`bip:` is BipAgents' notes prefix) and the hint shown only when a client stamps its
 messages.
