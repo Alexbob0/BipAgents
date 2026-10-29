@@ -60,14 +60,14 @@ conditions.
 | Forfait | Personnes | Serveur | Prix TTC dans l'app (App Store, Google Play) | Prix TTC sur le site bipagents.com, en euros |
 |---|---|---|---|---|
 | Solo | 1 | une place sur un serveur partagé avec d'autres abonnés | 7,99 € par mois ou 79,90 € par an | 7,49 € par mois ou 74,90 € par an |
-| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 12,99 € par mois ou 129,90 € par an (129,99 € dans l'App Store) | 11,99 € par mois ou 119,90 € par an |
-| Famille | jusqu'à 6 | une place pour chaque personne, sur des serveurs partagés avec d'autres abonnés | 19,99 € par mois ou 199,90 € par an (199,99 € dans l'App Store) | 17,99 € par mois ou 179,90 € par an |
+| Duo | 2 | deux places sur un même serveur, partagé avec d'autres abonnés | 12,99 € par mois ou 129,00 € par an | 11,99 € par mois ou 119,90 € par an |
+| Famille | jusqu'à 6 | une place pour chaque personne, sur des serveurs partagés avec d'autres abonnés | 19,99 € par mois ou 199,00 € par an | 17,99 € par mois ou 179,90 € par an |
 
-**L'abonnement annuel** coûte 10 mois pour 12 et se paie en une fois, d'avance, pour les 12 mois. Il se renouvelle
-chaque année au même prix, sauf changement de prix annoncé à l'avance (section 5), jusqu'à ce que tu le résilies ; avant
-chaque renouvellement d'un abonnement annuel pris sur le site, Kerfy Studio te le rappelle (section 5). Son crédit d'IA
-est donné mois par mois, comme pour l'abonnement mensuel (section 6). Les prix du site sont plus bas que ceux des
-stores.
+**L'abonnement annuel** coûte au plus 10 mois pour 12 et se paie en une fois, d'avance, pour les 12 mois. Il se
+renouvelle chaque année au même prix, sauf changement de prix annoncé à l'avance (section 5), jusqu'à ce que tu le
+résilies ; avant chaque renouvellement, Kerfy Studio te le rappelle (section 5 : toujours pour le site, dans l'app si
+nous connaissons ton adresse e-mail). Son crédit d'IA est donné mois par mois, comme pour l'abonnement mensuel
+(section 6). Les prix du site sont plus bas que ceux des stores.
 
 **Les prix du site dans chaque monnaie.** Sur le site, chaque monnaie a ses propres prix, fixés par Kerfy Studio (ce
 ne sont pas des conversions) : la page des prix te propose celle de ton pays, tu peux en choisir une autre, et la page
@@ -149,8 +149,12 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   24 heures avant) ; sur le site, Stripe prélève ta carte au début de chaque période.
 - **Rappel avant le renouvellement annuel** : pour un abonnement annuel pris sur le site, Kerfy Studio t'écrit environ
   65 jours puis 35 jours avant chaque renouvellement, par e-mail et par une notification de l'app : la date, le prix,
-  comment résilier et la date limite pour le faire. Pour un abonnement pris dans l'app, le store envoie ses propres
-  rappels, selon ses règles.
+  comment résilier et la date limite pour le faire.
+- **Abonnement annuel par l'App Store ou Google Play** : ton abonnement est renouvelé automatiquement pour un an, sauf
+  si tu le résilies au plus tard 24 heures avant la date de renouvellement, dans les réglages de ton compte Apple ou
+  Google. Si nous connaissons ton adresse e-mail, nous t'envoyons un rappel environ 65 jours puis 35 jours avant cette
+  date. Il t'indique la date du renouvellement, la date limite pour l'arrêter et comment faire. Si nous n'avons pas ton
+  adresse, tu reçois seulement les rappels d'Apple ou de Google.
 - **Changer de forfait** (Réglages › Offre tout compris › Changer de forfait) : vers un forfait plus grand, tout de
   suite, et le store tient compte de ce qu'il reste de ton mois ; vers un forfait plus petit, à ton renouvellement (les
   places en trop : section 8). Pour un abonnement pris sur le site, tu changes de forfait sur la page client de Stripe

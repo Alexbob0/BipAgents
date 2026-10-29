@@ -61,14 +61,14 @@ condiciones.
 | Plan | Personas | Servidor | Precio en la app (App Store, Google Play), IVA incluido | Precio en el sitio bipagents.com, en euros, IVA incluido |
 |---|---|---|---|---|
 | Solo | 1 | una plaza en un servidor compartido con otros suscriptores | 7,99 € al mes o 79,90 € al año | 7,49 € al mes o 74,90 € al año |
-| Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 12,99 € al mes o 129,90 € al año (129,99 € en el App Store) | 11,99 € al mes o 119,90 € al año |
-| Familia | hasta 6 | una plaza por persona, en servidores compartidos con otros abonados | 19,99 € al mes o 199,90 € al año (199,99 € en el App Store) | 17,99 € al mes o 179,90 € al año |
+| Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 12,99 € al mes o 129,00 € al año | 11,99 € al mes o 119,90 € al año |
+| Familia | hasta 6 | una plaza por persona, en servidores compartidos con otros abonados | 19,99 € al mes o 199,00 € al año | 17,99 € al mes o 179,90 € al año |
 
-**La suscripción anual** cuesta 10 meses por 12 y se paga de una vez, por adelantado, por los 12 meses. Se renueva cada
-año al mismo precio, salvo un cambio de precio anunciado con antelación (sección 5), hasta que la canceles; antes de
-cada renovación de una suscripción anual contratada en el sitio, Kerfy Studio te la recuerda (sección 5). Su crédito de
-IA se da mes a mes, como en la suscripción mensual (sección 6). Los precios del sitio son más bajos que los de las
-tiendas.
+**La suscripción anual** cuesta como mucho 10 meses por 12 y se paga de una vez, por adelantado, por los 12 meses.
+Se renueva cada año al mismo precio, salvo un cambio de precio anunciado con antelación (sección 5), hasta que la
+canceles; antes de cada renovación, Kerfy Studio te la recuerda (sección 5: siempre en el sitio, en la app si conocemos
+tu correo electrónico). Su crédito de IA se da mes a mes, como en la suscripción mensual (sección 6). Los precios del
+sitio son más bajos que los de las tiendas.
 
 **Los precios del sitio en cada moneda.** En el sitio, cada moneda tiene sus propios precios, fijados por Kerfy Studio
 (no son conversiones): la página de precios te propone la de tu país, puedes elegir otra, y la página de pago de
@@ -148,8 +148,12 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   Stripe cobra tu tarjeta al principio de cada periodo.
 - **Recordatorio antes de la renovación anual**: para una suscripción anual contratada en el sitio, Kerfy Studio te
   escribe unos 65 días y luego 35 días antes de cada renovación, por correo y con una notificación de la app: la fecha,
-  el precio, cómo cancelar y hasta cuándo. Para una suscripción contratada en la app, la tienda envía sus propios
-  recordatorios, según sus reglas.
+  el precio, cómo cancelar y hasta cuándo.
+- **Suscripción anual por el App Store o Google Play**: tu suscripción se renueva automáticamente por un año, salvo
+  que la canceles como muy tarde 24 horas antes de la fecha de renovación, en los ajustes de tu cuenta de Apple o de
+  Google. Si conocemos tu correo electrónico, te enviamos un recordatorio unos 65 días y luego 35 días antes de esa
+  fecha. Indica la fecha de renovación, la fecha límite para detenerla y cómo hacerlo. Si no tenemos tu dirección, solo
+  recibes los recordatorios de Apple o de Google.
 - **Cambiar de plan** (Ajustes › Plan todo incluido › Cambiar de plan): a un plan más grande, enseguida, y la tienda
   tiene en cuenta lo que queda de tu mes; a un plan más pequeño, en tu renovación (las plazas de más: sección 8). Para
   una suscripción contratada en el sitio, cambias de plan en la página de cliente de Stripe (sección 11).

@@ -62,13 +62,14 @@ diese Bedingungen.
 | Tarif | Personen | Server | Preis in der App (App Store, Google Play), inkl. MwSt. | Preis auf der Website bipagents.com, in Euro, inkl. MwSt. |
 |---|---|---|---|---|
 | Solo | 1 | ein Platz auf einem Server, den du mit anderen Abonnenten teilst | 7,99 € pro Monat oder 79,90 € pro Jahr | 7,49 € pro Monat oder 74,90 € pro Jahr |
-| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 12,99 € pro Monat oder 129,90 € pro Jahr (129,99 € im App Store) | 11,99 € pro Monat oder 119,90 € pro Jahr |
-| Familie | bis zu 6 | ein Platz pro Person, auf Servern, die ihr mit anderen Abonnenten teilt | 19,99 € pro Monat oder 199,90 € pro Jahr (199,99 € im App Store) | 17,99 € pro Monat oder 179,90 € pro Jahr |
+| Duo | 2 | zwei Plätze auf demselben Server, geteilt mit anderen Abonnenten | 12,99 € pro Monat oder 129,00 € pro Jahr | 11,99 € pro Monat oder 119,90 € pro Jahr |
+| Familie | bis zu 6 | ein Platz pro Person, auf Servern, die ihr mit anderen Abonnenten teilt | 19,99 € pro Monat oder 199,00 € pro Jahr | 17,99 € pro Monat oder 179,90 € pro Jahr |
 
-**Das Jahresabo** kostet 10 Monate für 12 und wird auf einmal, im Voraus, für die 12 Monate bezahlt. Es verlängert sich
-jedes Jahr zum selben Preis, außer bei einer vorher angekündigten Preisänderung (Abschnitt 5), bis du es kündigst; vor
-jeder Verlängerung eines Jahresabos von der Website erinnert dich Kerfy Studio daran (Abschnitt 5). Sein KI-Guthaben
-gibt es Monat für Monat, wie beim Monatsabo (Abschnitt 6). Die Preise auf der Website sind niedriger als in den Stores.
+**Das Jahresabo** kostet höchstens 10 Monate für 12 und wird auf einmal, im Voraus, für die 12 Monate bezahlt. Es
+verlängert sich jedes Jahr zum selben Preis, außer bei einer vorher angekündigten Preisänderung (Abschnitt 5), bis du
+es kündigst; vor jeder Verlängerung erinnert dich Kerfy Studio daran (Abschnitt 5: immer bei der Website, in der App,
+wenn wir deine E-Mail-Adresse kennen). Sein KI-Guthaben gibt es Monat für Monat, wie beim Monatsabo (Abschnitt 6). Die
+Preise auf der Website sind niedriger als in den Stores.
 
 **Die Preise der Website in jeder Währung.** Auf der Website hat jede Währung ihre eigenen Preise, von Kerfy Studio
 festgelegt (keine Umrechnungen): Die Preisseite schlägt dir die deines Landes vor, du kannst eine andere wählen, und
@@ -149,7 +150,12 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   tun); auf der Website belastet Stripe deine Karte zu Beginn jedes Zeitraums.
 - **Erinnerung vor der jährlichen Verlängerung**: Bei einem Jahresabo von der Website schreibt dir Kerfy Studio etwa 65
   Tage und dann 35 Tage vor jeder Verlängerung, per E-Mail und mit einer Mitteilung der App: das Datum, den Preis, wie
-  du kündigst und bis wann. Bei einem Abo aus der App schickt der Store seine eigenen Erinnerungen, nach seinen Regeln.
+  du kündigst und bis wann.
+- **Jahresabo über den App Store oder Google Play**: Dein Abo verlängert sich automatisch um ein Jahr, außer du
+  kündigst es spätestens 24 Stunden vor dem Verlängerungsdatum in den Einstellungen deines Apple- oder Google-Kontos.
+  Wenn wir deine E-Mail-Adresse kennen, schicken wir dir etwa 65 Tage und dann 35 Tage vor diesem Datum eine
+  Erinnerung. Sie nennt das Verlängerungsdatum, die Frist, um die Verlängerung zu stoppen, und wie das geht. Wenn wir
+  deine Adresse nicht haben, bekommst du nur die Erinnerungen von Apple oder Google.
 - **Tarif wechseln** (Einstellungen › Alles-inklusive-Angebot › Angebot ändern): zu einem größeren Tarif sofort, und der
   Store berücksichtigt, was von deinem Monat übrig ist; zu einem kleineren Tarif bei deiner Verlängerung (die
   überzähligen Plätze: Abschnitt 8). Bei einem Abo von der Website wechselst du den Tarif auf der Kundenseite von Stripe

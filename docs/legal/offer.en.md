@@ -56,13 +56,14 @@ Using BipAgents with your own computer or your own server stays free and is not 
 | Plan | People | Server | Price in the app (App Store, Google Play), VAT included | Price on the bipagents.com website, in euros, VAT included |
 |---|---|---|---|---|
 | Solo | 1 | a place on a server shared with other subscribers | €7.99 per month or €79.90 per year | €7.49 per month or €74.90 per year |
-| Duo | 2 | two places on one server, shared with other subscribers | €12.99 per month or €129.90 per year (€129.99 in the App Store) | €11.99 per month or €119.90 per year |
-| Family | up to 6 | a place for each person, on servers shared with other subscribers | €19.99 per month or €199.90 per year (€199.99 in the App Store) | €17.99 per month or €179.90 per year |
+| Duo | 2 | two places on one server, shared with other subscribers | €12.99 per month or €129.00 per year | €11.99 per month or €119.90 per year |
+| Family | up to 6 | a place for each person, on servers shared with other subscribers | €19.99 per month or €199.00 per year | €17.99 per month or €179.90 per year |
 
-**The yearly subscription** costs 10 months for 12 and is paid at once, in advance, for the 12 months. It renews every
-year at the same price, unless a price change is announced in advance (section 5), until you cancel it; before each
-renewal of a yearly subscription bought on the website, Kerfy Studio reminds you of it (section 5). Its AI credit is
-given month by month, as with the monthly subscription (section 6). The website's prices are lower than the stores'.
+**The yearly subscription** costs at most 10 months for 12 and is paid at once, in advance, for the 12 months. It
+renews every year at the same price, unless a price change is announced in advance (section 5), until you cancel it;
+before each renewal, Kerfy Studio reminds you of it (section 5: always for the website, in the app if we know your
+email address). Its AI credit is given month by month, as with the monthly subscription (section 6). The website's
+prices are lower than the stores'.
 
 **The website's prices in each currency.** On the website, each currency has its own prices, set by Kerfy Studio (they
 are not conversions): the pricing page offers your country's, you can choose another one, and Stripe's payment page
@@ -140,8 +141,12 @@ section 6); the services you connect to your agents and their own subscriptions.
   the website, Stripe charges your card at the start of each period.
 - **Reminder before the yearly renewal**: for a yearly subscription bought on the website, Kerfy Studio writes to you
   about 65 days and then 35 days before each renewal, by email and with an app notification: the date, the price, how to
-  cancel and the deadline to do so. For a subscription bought in the app, the store sends its own reminders, under its
-  rules.
+  cancel and the deadline to do so.
+- **Yearly subscription through the App Store or Google Play**: your subscription renews automatically for one year
+  unless you cancel it at least 24 hours before the renewal date, in your Apple or Google account settings. If we know
+  your email address, we send you a reminder about 65 days and then 35 days before that date. It gives the renewal
+  date, the deadline to stop it and how to do so. If we don't have your address, you only get Apple's or Google's
+  reminders.
 - **Changing plan** (Settings › All-included plan › Change plan): to a bigger plan, at once, and the store takes into
   account what is left of your month; to a smaller plan, at your renewal (the extra places: section 8). For a
   subscription bought on the website, you change plan on Stripe's customer page (section 11).
