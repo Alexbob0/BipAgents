@@ -60,6 +60,32 @@ async fn the_person_reads_and_edits_what_the_agent_remembers() {
     assert_eq!(app.get("/v1/agents/coach/memory", &[]).await.status, 401);
 }
 
+/// « What it knows about you » is common to the person's own agents (shared_memory.rs): an edit goes to all of them.
+#[tokio::test]
+async fn an_edit_of_what_it_knows_about_you_goes_to_all_own_agents() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut dict = config_dict(dir.path(), &Urls::default());
+    dict["hermes"] = json!({"bin": "/opt/hermes", "home": dir.path().join(".hermes").to_string_lossy(), "hub_url": "http://127.0.0.1:8642"});
+    for (name, shown) in [("coach", "Coach"), ("budget", "Budget")] {
+        dict["agents"][name] =
+            json!({"display_name": shown, "hermes_url": format!("http://127.0.0.1:8642/p/{name}"), "hermes_key": "k"});
+        std::fs::create_dir_all(dir.path().join(format!(".hermes/profiles/{name}/memories"))).unwrap();
+    }
+    let app = TestApp::new(parse_config(&dict, None).unwrap());
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let edited = app
+        .send_json("PUT", "/v1/agents/coach/memory/user", &h, &json!({"entries": ["Alex déménage à Nantes."]}))
+        .await
+        .json();
+    assert_eq!(edited["entries"], json!(["Alex déménage à Nantes."]));
+    let budget = app.get("/v1/agents/budget/memory", &h).await.json();
+    assert_eq!(budget["user"]["entries"], json!(["Alex déménage à Nantes."]));
+    // removed in Budget's page: gone from Coach too
+    app.send_json("PUT", "/v1/agents/budget/memory/user", &h, &json!({"entries": []})).await;
+    assert_eq!(app.get("/v1/agents/coach/memory", &h).await.json()["user"]["entries"], json!([]));
+}
+
 #[tokio::test]
 async fn knowledge_pages_are_listed_read_edited_and_removed_inside_their_folder() {
     let dir = tempfile::tempdir().unwrap();
