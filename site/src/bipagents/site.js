@@ -503,11 +503,26 @@ const region = (function () {
   const buy = $("#buy"), sticky = $(".sticky-buy"), picker = $("select[data-currency]", root);
   const fineTax = $(".fine-tax"), fineDefault = fineTax && fineTax.textContent;
 
-  // The checkout's address, with the currency the visitor sees.
+  // The ad campaign this page was opened with (an ad's link: ?utm_campaign=…), read from the page's own address only:
+  // no cookie, no storage; another page opened, it is gone (decided 2026-10-29). A short name or nothing, as the
+  // guichet keeps it (attribution.rs), which hands it to Stripe Checkout's metadata.
+  const campaign = (() => {
+    try {
+      const c = (new URLSearchParams(location.search).get("utm_campaign") || "").trim().toLowerCase();
+      return /^[a-z0-9][a-z0-9._-]{0,47}$/.test(c) ? c : "";
+    } catch (e) { return ""; }
+  })();
+
+  // The checkout's address, with the currency the visitor sees (and the campaign, when the page came from an ad).
   function withCurrency(url, code) {
     if (!url) return url;
-    if (/\{currency\}|%7Bcurrency%7D/i.test(url)) return url.replace(/\{currency\}|%7Bcurrency%7D/gi, code);
-    try { const u = new URL(url, location.href); u.searchParams.set("currency", code); return u.href; } catch (e) { return url; }
+    if (/\{currency\}|%7Bcurrency%7D/i.test(url)) url = url.replace(/\{currency\}|%7Bcurrency%7D/gi, code);
+    try {
+      const u = new URL(url, location.href);
+      if (!/[?&]currency=/.test(url)) u.searchParams.set("currency", code);
+      if (campaign) u.searchParams.set("campaign", campaign);
+      return u.href;
+    } catch (e) { return url; }
   }
 
   function render() {

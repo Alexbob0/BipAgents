@@ -24,10 +24,12 @@ the bridge's interface contract, before the apps' code for it.
 
 - **iOS** (`BipAgents.xcodeproj/.../Package.resolved`, `Packages/*/Package.swift`): one outside package,
   `onnxruntime-swift-package-manager` 1.24.2 (it runs the Bips' voices on the phone). There are no analytics, crash,
-  advertising or attribution SDKs. The app does not use MetricKit, AdSupport or AppTrackingTransparency.
+  advertising or attribution SDKs. The app does not use MetricKit, AdSupport or AppTrackingTransparency (no IDFA, no
+  « Allow tracking? » prompt). It uses Apple's AdServices framework once (`AAAttribution.attributionToken()`, below).
 - **Android** (`android/app/build.gradle.kts`, `android/gradle/libs.versions.toml`): AndroidX/Compose, OkHttp,
   kotlinx-serialization, CameraX, Media3, Glance, ZXing, ONNX Runtime, Health Connect client, and these Google
-  libraries: Play Billing, Play Asset Delivery, Play Integrity, Credential Manager + Google ID, ML Kit document scanner
+  libraries: Play Billing, Play Asset Delivery, Play Integrity, Play Install Referrer (`installreferrer`, read once,
+  below), Credential Manager + Google ID, ML Kit document scanner
   (Play services) and **Firebase Cloud Messaging only** (`firebase-messaging`; no Analytics, no Crashlytics, no
   `google-services` plugin).
 - ONNX Runtime's Android usage telemetry to Microsoft is turned off twice: its `TelemetryInitializer` is removed from
@@ -147,9 +149,22 @@ This is the all-included offer's service, with accounts and family links (`App/F
 | Inviting someone to a shared place (Duo, Famille) | `POST /v1/account/invitations` | the place's number, the invitee's e-mail, the inviter's first name (`who`), the app language. Nothing about the place itself: the guichet's e-mail only says to open the app and sign in with that address |
 | Invitations received (signed-in, approved account) | `GET /v1/account/invitations/received` | the account token. The answer holds the places offered to this address and still ready to pair, with what pairing needs (address, port, certificate fingerprint, pairing secret, the AI key the guichet issued, claim token), over HTTPS. Once paired, `POST /v1/account/places` with the claim binds the place to the account |
 | Family links | `POST /v1/account/family/devices` (body `{email, siblings}`), `POST /v1/account/family/invitations` | the other person's e-mail (in the request body, not in the URL), the household name (`from`), one **sealed box** per device of theirs |
+| Where the person came from (once; `App/Features/Cloud/Attribution.swift`, `android/.../cloud/Attribution.kt`) | `POST /v1/attribution` | the subscription or account token and **one** of: Android, the ad campaign's name from Google Play's install referrer (`utm_campaign` only); iPhone, AdServices' attribution token (the guichet asks Apple and keeps only « asa- » + the Apple Search Ads campaign's number, never the token); the answer to « Comment nous as-tu connus ? » (Instagram, X, a friend or family, an article or a podcast, a search, other) if the person answered. Sent once, only when the phone has the offer or an account; nothing for a self-install without one |
 | « Partager en lecture »: the owner starts sharing one conversation | `POST /v1/rshares` | the account token, the end date. The answer is the share's id and a token the app hands to the person's own bridge, which does the rest (below) |
 | « Partager en lecture »: a person opens an invitation | `POST /v1/rshares/look`, `/v1/rshares/redeem` | the account token, the invitation's id, a **P-256 public key made for this share** and a **proof** (an HMAC of that key with the secret after « # » in the link, which itself is never sent) |
 | « Partager en lecture »: reading | `GET /v1/rshares/shared`, `/v1/rshares/{id}/items`, `POST …/mute`, `DELETE …/me` | the account token; the answers are **ciphertext** and the content key **sealed for this device**, opened on the phone only |
+
+**Ad campaigns (decided 2026-10-29).** Kerfy Studio counts which of its ads bring subscribers itself, at the guichet:
+no advertising SDK (no Meta SDK, no pixel, no Conversions API), no IDFA, no ATT prompt, nothing sent to Meta. A
+subscription and an account keep at most **one campaign name** (a short label such as `insta-nov-a`, or `asa-542370539`
+for Apple Search Ads), where it came from (the website's link, Google Play's referrer, Apple Search Ads, a beta code's
+batch, or the person's own answer) and when; the first one told is kept, never replaced. Never a click id, an
+advertising id, Apple's token or anything else from the referrer. Why: to know which campaigns pay for themselves and
+stop the others. The weekly report Kerfy Studio reads holds counts per campaign and week only, never a person. The
+campaign name goes when the account or the subscription is deleted (5 years after a subscription's end, like its other
+contract data). The stores themselves count installs from ads in their own dashboards (App Store Connect, Google Play
+Console), as for any app; the website's link passes the campaign to Stripe Checkout (`metadata`) so it reaches the
+guichet with the purchase.
 
 **What is encrypted end to end (public code):** `AccountCrypto`. A box is sealed on one device for
 another device's P-256 key: an ephemeral ECDH key, HKDF-SHA256 (info `bipagents-box-v1`), then AES-256-GCM. Only the
@@ -204,6 +219,10 @@ Used only when the build sets a relay host (`BIPPushRelayHost` / `push.relayHost
 
 - **Stores:** StoreKit 2 (products, purchases, `Transaction.updates`, offer codes, `Storefront`), Play Billing
   (purchases, billing config country). The stores see the purchase. The guichet gets the proof (§2).
+- **Where an install came from:** iOS asks AdServices for an attribution token (`AAAttribution.attributionToken()`,
+  no ATT, no IDFA) during the first 30 days, until the guichet has it; the token goes to the guichet, which asks Apple
+  (`api-adservices.apple.com`). Android reads Google Play's install referrer once at the first launch
+  (`InstallReferrerClient`) and keeps only its `utm_campaign` on the phone until sent (§2).
 - **Free-week checks:** DeviceCheck (`DCDevice.generateToken`, `CloudOffer.swift`); Play Integrity (`DeviceProof.kt`,
   only if `play.cloudProject` is set).
 - **Sign-in:** Sign in with Apple (scope: e-mail) (`AccountSignIn.swift`). On iOS, Google uses the authorization-code
@@ -273,6 +292,8 @@ The apps play no part in it.
   places with their backup keys. These are not in iCloud Keychain or in backups that move to another device.
 - Android: the same secrets in the app's private preferences, encrypted with an AES key that stays in the Android
   Keystore (`model/Secrets.kt`). `allowBackup="false"`.
+- Until the guichet has them: the install referrer's campaign name and the answer to « Comment nous as-tu connus ? »
+  (SharedPreferences / UserDefaults `attribution*`), then removed. The AdServices token is never stored.
 - Conversation caches, voice-note recordings and downloaded voices stay in the app's own storage. The relay token cache
   and the health hashes are in UserDefaults or SharedPreferences.
 
