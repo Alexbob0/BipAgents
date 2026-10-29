@@ -21,7 +21,8 @@
 //!     POST   /v1/notebook/close                {path, close}   a person marked close (« proche ») or not
 //!     POST   /v1/notebook/icon                 {path, icon}    a subject's or area's icon, the person's choice ("": automatic)
 //!     GET    /v1/notebook/proposals            the agents' task proposals, the kinds declined
-//!     POST   /v1/notebook/proposals/{id}       {accept, never?}   the person's answer to a proposal (yes: its task added)
+//!     POST   /v1/notebook/proposals/{id}       {accept, never?}   the person's answer to a proposal (yes: its task added;
+//!                                              a split, kind `split`: the page's trips made, trip_split.rs)
 //!     GET    /v1/notebook/records              the records (purchases, subscriptions, contracts, papers, bookings), by
 //!                                              type, the soonest next date first, their archived ones apart (records.rs)
 //!     POST   /v1/notebook/records/archive      {type, id, archived}   a record archived, or brought back (archive.rs)
@@ -356,8 +357,10 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
     // a trip's layout, a records page's table (null for the other pages)
     let trip = if kind == "trip" { super::trip::view(config, part, path, &page) } else { Value::Null };
     let records = super::records::page_view(config, &page, chrono::Local::now().date_naive()).unwrap_or(Value::Null);
+    // a page holding several journeys: its split proposal, answered on the page too
+    let split = if part == Part::Main { super::trip_split::open_for(config, path, &page) } else { None };
     Ok(json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(), "trip": trip,
-              "records": records, "archived": w.archived(path),
+              "records": records, "split": split, "archived": w.archived(path),
               "frontmatter": page.front, "aliases": page.aliases(),
               "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
               "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
@@ -664,6 +667,11 @@ async fn answer_proposal(
 ) -> ApiResult<Response> {
     let config = state.config();
     let push = state.push.clone();
+    // « Séparer » on a page holding several journeys: its trips made (no task)
+    if body.accept && super::trip_split::is_split(&config, &id) {
+        let split = blocking(move || super::trip_split::accept(&config, &id, &Who::you(&config))).await?;
+        return Ok(web::ok(json!({"split": split})));
+    }
     if body.accept {
         let (task, reminder) = blocking(move || super::accept(&config, &id, &Who::you(&config))).await?;
         if reminder {

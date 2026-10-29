@@ -383,6 +383,15 @@ async fn run_inner(
     })
     .await??;
     record.extend(archives.view());
+    // a page holding several journeys (« Voyages »): its split proposed to the person, once (no model)
+    let splits = tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::trip_split::detect(&c)
+    })
+    .await??;
+    if splits > 0 {
+        record.insert("splits".into(), json!(splits));
+    }
     let proposed = tokio::task::spawn_blocking({
         let c = config.clone();
         move || super::records::propose_due(&c, Local::now().date_naive())

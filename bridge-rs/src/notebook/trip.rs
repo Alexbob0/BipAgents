@@ -441,7 +441,7 @@ const AFTER_WORDS: &[&str] = &[
     "quittung",
 ];
 
-fn weight(text: &str, explicit: bool) -> u32 {
+pub(crate) fn weight(text: &str, explicit: bool) -> u32 {
     let folded = fold(text);
     if has_any(&folded, AFTER_WORDS) {
         0

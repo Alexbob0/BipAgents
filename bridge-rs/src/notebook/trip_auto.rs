@@ -627,7 +627,7 @@ impl Group {
     }
 }
 
-const MONTHS: [[&str; 12]; 4] = [
+pub(crate) const MONTHS: [[&str; 12]; 4] = [
     ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."],
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
     ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."],
