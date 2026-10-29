@@ -33,6 +33,9 @@ const GUICHET_BODIES: &[&str] = &[
     "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.",
     "Ton compte est en cours de récupération sur un autre appareil : si ce n’est pas toi, arrête-la dans l’app.",
     "Quelqu’un de ta famille veut relier ses agents aux tiens : accepte ou refuse dans l’app.",
+    // a free week ends in two days (the guichet's trial_notices.rs): bought on the website, then in a store
+    "Ta semaine gratuite finit après-demain : rien n’est prélevé si tu l’arrêtes avant. Le prix et le lien pour l’arrêter sont dans tes e-mails.",
+    "Ta semaine gratuite finit après-demain, puis ton forfait devient payant. Pour arrêter : Réglages › Offre tout compris.",
     // a conversation someone shows this person read-only (the guichet's read_shares.rs); the app names it itself
     "Nouveau message dans une conversation partagée",
 ];
