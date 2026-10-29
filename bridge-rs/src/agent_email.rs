@@ -27,7 +27,11 @@
 //!     DELETE /v1/agents/{agent}/email                 turned off (a Kerfy Studio address deleted with its mail)
 //!     POST   /v1/agents/{agent}/email/held/{id}       {send: bool}                   a held mail sent or dropped
 //!
-//!     data_dir/agent-email/<agent>.json (chmod 600), data_dir/agent-email/held/<agent>/<id>.eml|.json
+//!     data_dir/agent-email/<agent>.json (chmod 600), data_dir/agent-email/held/<agent>/<id>.eml|.json,
+//!     data_dir/agent-email/given/<agent>.json (chmod 600: the guichet's last password, until the address is deleted)
+//!
+//! The guichet gives an address it already made a new password only with its current one (audit 2026-10-27, 17):
+//! when it answers « exists », the bridge asks again with the password it holds (its record's, else the kept one).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -178,6 +182,41 @@ pub fn save(folder: &Path, record: &Record) -> anyhow::Result<()> {
 fn forget(folder: &Path, agent: &str) {
     let _ = std::fs::remove_file(record_path(folder, agent));
     let _ = std::fs::remove_dir_all(folder.join("held").join(agent));
+}
+
+/// The last password the guichet gave for an agent's Kerfy Studio address, kept apart from its record until the
+/// address is deleted there: the guichet gives an existing address a new password only with its current one
+/// (audit 2026-10-27, 17), so a record lost here (its profile not written) doesn't lose the address.
+fn given_path(folder: &Path, agent: &str) -> PathBuf {
+    folder.join("given").join(format!("{agent}.json"))
+}
+
+pub fn keep_given(folder: &Path, agent: &str, address: &str, password: &str) -> anyhow::Result<()> {
+    let dir = folder.join("given");
+    std::fs::create_dir_all(&dir)?;
+    crate::py::chmod(&folder.to_string_lossy(), 0o700)?;
+    crate::py::chmod(&dir.to_string_lossy(), 0o700)?;
+    let path = given_path(folder, agent);
+    let tmp = path.with_extension("tmp");
+    let text = serde_json::to_string(&json!({"address": address, "password": password}))?;
+    crate::py::write_with_mode(&tmp.to_string_lossy(), text.as_bytes(), 0o600)?;
+    std::fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
+/// The address's current password: its record's, else the one kept when the guichet gave it.
+pub fn current_password(folder: &Path, agent: &str) -> Option<String> {
+    let from_record = load(folder, agent).filter(|r| r.kind == "bipagents").map(|r| r.password);
+    let kept = || {
+        let text = std::fs::read_to_string(given_path(folder, agent)).ok()?;
+        let data: Value = serde_json::from_str(&text).ok()?;
+        data.get("password")?.as_str().map(str::to_string)
+    };
+    from_record.or_else(kept).filter(|p| !p.is_empty())
+}
+
+fn forget_given(folder: &Path, agent: &str) {
+    let _ = std::fs::remove_file(given_path(folder, agent));
 }
 
 pub fn records(folder: &Path) -> Vec<Record> {
@@ -388,7 +427,29 @@ pub fn place_token(home: &Path) -> Option<(String, String)> {
     Some((base, token.to_string()))
 }
 
-async fn guichet(deps: &Deps, method: reqwest::Method, agent: &str, body: Option<Value>) -> Result<Value, HttpError> {
+/// The guichet's refusal: its status and its detail.
+struct Refusal {
+    status: u16,
+    detail: String,
+}
+
+impl Refusal {
+    /// « this address exists: its current password is needed »: the guichet's 403 for an address already made.
+    fn address_exists(&self) -> bool {
+        self.status == 403 && self.detail.contains("exists")
+    }
+
+    fn into_http(self) -> HttpError {
+        HttpError::new(if matches!(self.status, 404 | 409 | 503) { self.status } else { 502 }, self.detail)
+    }
+}
+
+async fn guichet_call(
+    deps: &Deps,
+    method: reqwest::Method,
+    agent: &str,
+    body: Option<Value>,
+) -> Result<Result<Value, Refusal>, HttpError> {
     let Some((base, token)) = place_token(&deps.home) else {
         return Err(HttpError::new(503, "these addresses come with the all-included offer only"));
     };
@@ -400,10 +461,44 @@ async fn guichet(deps: &Deps, method: reqwest::Method, agent: &str, body: Option
     let status = res.status().as_u16();
     let data: Value = res.json().await.unwrap_or(Value::Null);
     if (200..300).contains(&status) {
-        return Ok(data);
+        return Ok(Ok(data));
     }
     let detail = data.get("detail").and_then(Value::as_str).unwrap_or("the guichet refused").to_string();
-    Err(HttpError::new(if matches!(status, 404 | 409 | 503) { status } else { 502 }, detail))
+    Ok(Err(Refusal { status, detail }))
+}
+
+async fn guichet(deps: &Deps, method: reqwest::Method, agent: &str, body: Option<Value>) -> Result<Value, HttpError> {
+    guichet_call(deps, method, agent, body).await?.map_err(Refusal::into_http)
+}
+
+/// The agent's Kerfy Studio address asked of the guichet. One it already has is given a new password only with its
+/// current one (audit 2026-10-27, 17): asked again with the password this place holds, when it holds one.
+async fn ask_address(deps: &Deps, dir: &Path, agent: &AgentConfig) -> Result<Value, HttpError> {
+    let first = guichet_call(deps, reqwest::Method::PUT, &agent.name, Some(json!({"name": agent.display_name}))).await?;
+    let refusal = match first {
+        Ok(given) => return Ok(given),
+        Err(r) if r.address_exists() => r,
+        Err(r) => return Err(r.into_http()),
+    };
+    let lost = || {
+        HttpError::new(
+            409,
+            "this agent already has an address and this place no longer has its password: it can't be taken back here",
+        )
+    };
+    let Some(current) = current_password(dir, &agent.name) else {
+        tracing::warn!(agent = %agent.name, detail = %refusal.detail, "agent e-mail address exists, no password kept");
+        return Err(lost());
+    };
+    let body = json!({"name": agent.display_name, "current": current});
+    match guichet_call(deps, reqwest::Method::PUT, &agent.name, Some(body)).await? {
+        Ok(given) => {
+            tracing::info!(agent = %agent.name, "agent e-mail address asked again with its current password");
+            Ok(given)
+        }
+        Err(r) if r.address_exists() => Err(lost()),
+        Err(r) => Err(r.into_http()),
+    }
 }
 
 // -- the view and the routes ---------------------------------------------------------------------------------------
@@ -578,8 +673,7 @@ async fn turn_on(
     };
     match body.kind.as_str() {
         "bipagents" => {
-            let given =
-                guichet(&deps, reqwest::Method::PUT, &agent.name, Some(json!({"name": agent.display_name}))).await?;
+            let given = ask_address(&deps, &dir, &agent).await?;
             let text = |v: &Value| v.as_str().unwrap_or("").to_string();
             let port = |v: &Value, default: u16| v.as_u64().map(|p| p as u16).unwrap_or(default);
             record.address = text(&given["address"]).to_lowercase();
@@ -591,6 +685,11 @@ async fn turn_on(
             record.smtp_security = given["smtp"]["security"].as_str().unwrap_or("tls").to_string();
             record.authserv_id = text(&given["authserv_id"]);
             record.retention_days = given["retention_days"].as_i64();
+            if !record.address.is_empty() && !record.password.is_empty() {
+                // kept before anything else can fail: the guichet's password for this address is this one now
+                let _lock = LOCK.lock().await;
+                keep_given(&dir, &agent.name, &record.address, &record.password)?;
+            }
             if record.address.is_empty() || record.password.is_empty() || record.imap_host.is_empty() {
                 return Err(HttpError::new(502, "the guichet's answer is incomplete"));
             }
@@ -687,6 +786,8 @@ async fn turn_off(
             Err(e) if e.status.as_u16() == 404 => {}
             Err(e) => return Err(e),
         }
+        let _lock = LOCK.lock().await;
+        forget_given(&dir, &agent.name); // the address is gone at the guichet
     }
     {
         let _lock = LOCK.lock().await;
@@ -929,6 +1030,28 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, r#"{"url": "https://guichet.test/v1/backup/", "token": "t1", "password": "p"}"#).unwrap();
         assert_eq!(place_token(dir.path()), Some(("https://guichet.test".into(), "t1".into())));
+    }
+
+    #[test]
+    fn the_guichet_s_password_is_kept_apart_until_the_address_goes() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("agent-email");
+        assert_eq!(current_password(&folder, "lea"), None);
+        keep_given(&folder, "lea", "lea.k7m2@a.bipagents.test", "pw1").unwrap();
+        assert_eq!(current_password(&folder, "lea").as_deref(), Some("pw1"));
+        assert!(records(&folder).is_empty(), "the kept password is no record");
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(given_path(&folder, "lea")).unwrap().permissions().mode() & 0o777, 0o600);
+        // a record of Kerfy Studio's address wins; one of the person's own mailbox is never sent to the guichet
+        let mut record = Record { agent: "lea".into(), kind: "bipagents".into(), password: "pw2".into(), ..Record::default() };
+        save(&folder, &record).unwrap();
+        assert_eq!(current_password(&folder, "lea").as_deref(), Some("pw2"));
+        record.kind = "own".into();
+        save(&folder, &record).unwrap();
+        assert_eq!(current_password(&folder, "lea").as_deref(), Some("pw1"));
+        forget(&folder, "lea");
+        forget_given(&folder, "lea");
+        assert_eq!(current_password(&folder, "lea"), None);
     }
 
     #[test]
