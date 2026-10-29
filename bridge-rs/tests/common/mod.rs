@@ -23,6 +23,19 @@ pub const BRIDGE_KEY: &str = "test-bridge-key-0123456789abcdef0123456789";
 pub const HERMES_KEY: &str = "hermes-wellness-key-xyz";
 pub const NTFY_TOKEN: &str = "tk_testtoken";
 
+/// The current time the bridge puts at the top of the turns it starts and of the apps' messages (src/dates/now.rs):
+/// (what it says, the rest); (None, the text) without one.
+pub fn split_now(text: &str) -> (Option<String>, String) {
+    let Some(rest) = text.strip_prefix(bipbridge::dates::now::OPEN) else { return (None, text.to_string()) };
+    let Some((line, after)) = rest.split_once("-->") else { return (None, text.to_string()) };
+    (Some(line.to_string()), after.strip_prefix('\n').unwrap_or(after).to_string())
+}
+
+/// A turn's own words, without the current time at its top.
+pub fn without_now(text: &str) -> String {
+    split_now(text).1
+}
+
 /// `Authorization: Bearer <bridge key>`.
 pub fn auth() -> (&'static str, String) {
     ("authorization", format!("Bearer {BRIDGE_KEY}"))

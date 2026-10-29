@@ -320,6 +320,7 @@ async fn guest_turn(
         }
     };
     let rules = guest_instructions(&title, &host, &roster);
+    let input = crate::dates::now::stamped(&config, &agent, &input);
     let run_id = state
         .hermes
         .start_run(&agent, &input, &session, Some(&rules))

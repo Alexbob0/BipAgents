@@ -860,7 +860,9 @@ async fn two_households_write_to_each_other_only_where_both_allowed() {
     let (path, auth_header, body) = received.lock().unwrap().last().unwrap().clone();
     assert_eq!(path, "/b/p/cuisine/v1/runs");
     assert_eq!(auth_header, Some(format!("Bearer cuisine-key-{}", "x".repeat(24))));
-    assert_eq!(body["message"], "Message from Vie (Alex) (@vie__alex): qu'est-ce qu'on mange ce soir ?");
+    let (now, message_text) = common::split_now(body["message"].as_str().unwrap());
+    assert!(now.is_some(), "the current time at its top");
+    assert_eq!(message_text, "Message from Vie (Alex) (@vie__alex): qu'est-ce qu'on mange ce soir ?");
     // Only Cuisine's Bot Chat: not another of its conversations, nor its sessions' list or its runs' approvals.
     let mut other = message.clone();
     other["session_id"] = json!("s9");

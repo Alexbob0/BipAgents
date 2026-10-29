@@ -26,6 +26,7 @@
 //!
 //! No Python counterpart.
 
+pub mod now;
 pub mod standard;
 pub mod words;
 

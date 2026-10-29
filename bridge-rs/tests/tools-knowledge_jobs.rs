@@ -164,7 +164,7 @@ async fn a_task_runs_in_its_own_conversation_and_ends_with_its_report() {
     assert_eq!(posted[0]["title"], "🧩 Écoles du quartier");
     assert_eq!(posted[1]["session_id"], "s1");
     assert_eq!(posted[1]["instructions"], jobs::INSTRUCTIONS);
-    assert!(posted[1]["input"].as_str().unwrap().starts_with("Écoles du quartier\n\nCompare"));
+    assert!(common::without_now(posted[1]["input"].as_str().unwrap()).starts_with("Écoles du quartier\n\nCompare"));
     assert_eq!(
         told.lock().unwrap().clone(),
         vec![(
@@ -209,7 +209,7 @@ async fn a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one() {
     assert_eq!((done["state"].as_str(), done["runs"].as_i64()), (Some("done"), Some(2)));
     assert_eq!(done["tokens"]["input"].as_i64().unwrap(), before + 100_000); // the second run's own usage added
     let g = fake.lock().unwrap();
-    assert_eq!(g.runs["r2"]["input"], "Continue, et termine par ton rapport.");
+    assert_eq!(common::without_now(g.runs["r2"]["input"].as_str().unwrap()), "Continue, et termine par ton rapport.");
     assert_eq!(g.requests.iter().filter(|(m, p, _)| m == "POST" && p.ends_with("/api/sessions")).count(), 1);
 }
 
@@ -229,7 +229,7 @@ async fn the_person_pauses_resumes_and_forgets_a_task() {
     let view = board.view(&id).unwrap();
     assert_eq!((view["state"].as_str(), view["reason"].as_str()), (Some("paused"), Some("stopped")));
     board.resume(&id, None, None).await.unwrap();
-    assert_eq!(fake.lock().unwrap().runs["r2"]["input"], jobs::CONTINUE);
+    assert_eq!(common::without_now(fake.lock().unwrap().runs["r2"]["input"].as_str().unwrap()), jobs::CONTINUE);
     board.forget(&id).await.unwrap();
     assert!(jobs::load(&config, &id).is_none());
     assert_eq!(fake.lock().unwrap().runs["r2"]["status"], "cancelled");
@@ -379,7 +379,7 @@ async fn a_finished_task_is_handed_back_to_the_conversation_it_came_from() {
     assert_eq!(turn["session_id"], "api_c");
     // its rules in the note, the system prompt (and the conversation's prompt cache) untouched
     assert!(turn.get("instructions").is_none(), "{turn}");
-    let note = turn["input"].as_str().unwrap();
+    let note = &common::without_now(turn["input"].as_str().unwrap());
     assert!(note.contains(bipbridge::handback::INSTRUCTIONS));
     let page = format!("/bipagents/pages/coach/rapport-{id}.html");
     assert!(note.starts_with("<!--bip:task\nYour background work « Écoles » is finished."), "{note}");
@@ -448,7 +448,7 @@ async fn the_month_s_credit_used_stops_a_task_after_its_step_refuses_new_ones_an
     assert!(!board.credit_used());
     std::fs::write(&credit, json!({"state": "ok"}).to_string()).unwrap();
     board.resume_after_credit(&config).await;
-    assert_eq!(fake.lock().unwrap().runs["r2"]["input"], jobs::CONTINUE);
+    assert_eq!(common::without_now(fake.lock().unwrap().runs["r2"]["input"].as_str().unwrap()), jobs::CONTINUE);
     assert_eq!(board.view(&id).unwrap()["state"], "running");
     board.forget(&id).await.unwrap();
 }

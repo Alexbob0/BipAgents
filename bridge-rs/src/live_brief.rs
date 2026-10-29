@@ -865,6 +865,7 @@ async fn live_brief(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
     let agent = web::query_required(&q, "agent")?;
     let session = web::query_str(&q, "session", false, None)?;
     let config = setup(&state, &agent)?;
+    let now = crate::dates::now::line(&state.config(), &config); // the call's start time (dates/now.rs)
     // What the call's turns send as `model_options` (the apps since 2026-10-28; before, always thinking off): GLM
     // through EUrouter can't switch thinking off and answers nothing to « none », so it gets « low ».
     let options = crate::agents_admin::quick_turn_options(&state.config(), &config);
@@ -873,9 +874,11 @@ async fn live_brief(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
         None => state.briefs.latest(&config).await.map_err(hermes_error)?,
     };
     let Some(chosen) = chosen else {
-        return Ok(web::ok(json!({"session": null, "text": "", "points_at": null, "model_options": options})));
+        return Ok(web::ok(json!({"session": null, "text": now, "points_at": null, "model_options": options})));
     };
     let mut brief = state.briefs.brief(&config, &chosen).await.map_err(hermes_error)?;
+    let text = brief.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+    brief.insert("text".into(), json!(format!("{now}\n{text}")));
     brief.insert("model_options".into(), options);
     Ok(web::ok(Value::Object(brief)))
 }
@@ -916,8 +919,10 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
     };
     let recap = blocking(move || {
         // The family news waiting for the agent (family_news.rs) joins the same message, the same way.
+        // The current time first (dates/now.rs), then what waited for this message.
         let parts: Vec<String> =
             [
+                Some(crate::dates::now::line(&config, &agent)),
                 briefs.take_recap(&agent.name, &body.session),
                 crate::family_news::take_notes(&config, &agent.name),
                 crate::storage_watch::take_note(&config, &agent.name), // the place's space (storage_watch.rs)

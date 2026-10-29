@@ -362,12 +362,14 @@ async fn routes() {
         .send_json("POST", "/v1/live/recaps/take", &a, &json!({"agent": "Wellness", "session": "api_old"}))
         .await
         .json();
-    assert_eq!(taken, json!({"recap": format!("{first}\n{second}")}));
+    let (now, recap) = common::split_now(taken["recap"].as_str().unwrap());
+    assert!(now.is_some(), "the current time first");
+    assert_eq!(recap, format!("{first}\n{second}"));
     let again = app
         .send_json("POST", "/v1/live/recaps/take", &a, &json!({"agent": "Wellness", "session": "api_old"}))
         .await
         .json();
-    assert_eq!(again, json!({"recap": null}));
+    assert_eq!(common::without_now(again["recap"].as_str().unwrap()), "", "only the current time");
     let resp = app
         .send_json("POST", "/v1/live/recaps", &[], &json!({"agent": "Wellness", "session": "api_old", "recap": "x"}))
         .await;
