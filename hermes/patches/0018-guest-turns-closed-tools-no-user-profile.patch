@@ -1,0 +1,678 @@
+BipAgents guest turns: a run or a session chat marked guest_turn {tools} (someone other than the agent's person
+writes it) gets only those tools (MCP names + web_search), hidden from the list and refused in the dispatcher,
+no USER.md, no context files, no memory writes or background review; its prompt is never stored.
+
+diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
+index 4a67918ab5..6aa038eec1 100644
+--- a/agent/agent_runtime_helpers.py
++++ b/agent/agent_runtime_helpers.py
+@@ -2559,6 +2559,11 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
+     )
+     if not isinstance(function_args, dict):
+         function_args = {}
++    # A guest turn runs only its own tools (patch 0018), whichever path reaches this dispatch.
++    from agent.guest_turn import refusal_result as _guest_refusal_result
++    guest_refused = _guest_refusal_result(agent, function_name)
++    if guest_refused is not None:
++        return guest_refused
+     hook_ids = tool_hook_ids(agent, effective_task_id, tool_call_id)
+     _tool_middleware_trace = list(tool_request_middleware_trace or [])
+     try:
+diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
+index 5f0cf4c631..39c1725ffa 100644
+--- a/agent/chat_completion_helpers.py
++++ b/agent/chat_completion_helpers.py
+@@ -1571,6 +1571,9 @@ def _build_api_kwargs_for_mode(agent, api_messages: list, tools_for_api: list |
+     reasoning_config = _reasoning_config_for_wire(agent)
+     if tools_for_api is None:
+         tools_for_api = agent.tools
++    # A guest turn sends only its own tools, whatever rebuilt or merged agent.tools since (patch 0018).
++    from agent.guest_turn import request_tools as _guest_request_tools
++    tools_for_api = _guest_request_tools(agent, tools_for_api)
+     # The one place request_overrides are consumed: static /fast values are already pinned
+     # in agent.request_overrides; auto/cold windows layer the fast override per request.
+     request_overrides = effective_request_overrides(agent)
+diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
+index 6404de28b8..8c27e2cb64 100644
+--- a/agent/conversation_loop.py
++++ b/agent/conversation_loop.py
+@@ -744,6 +744,13 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
+     Mutates ``agent._cached_system_prompt`` and persists a freshly-built prompt on first
+     build. Row states ``missing``/``null``/``empty``/``present`` are logged and DB
+     failures log at WARNING so silent prefix-cache misses show in ``agent.log``."""
++    from agent import guest_turn
++    if guest_turn.active(agent):
++        # A guest turn (patch 0018): its own prompt (no USER.md, its tools only), built for the turn and never
++        # stored, nor the session's tool pin restored or written: the person's next turn gets theirs back.
++        guest_turn.narrow(agent)
++        agent._cached_system_prompt = agent._build_system_prompt(system_message)
++        return
+     stored_prompt = None
+     stored_state = "missing"
+     session_row = None
+diff --git a/agent/guest_turn.py b/agent/guest_turn.py
+new file mode 100644
+index 0000000000..bc4860215b
+--- /dev/null
++++ b/agent/guest_turn.py
+@@ -0,0 +1,139 @@
++"""Guest turns: someone other than the agent's person writes this turn (BipAgents patch 0018).
++
++A client (BipAgents' bridge) marks a run or a session chat with ``guest_turn: {"tools": [...]}`` when the words it
++carries are not the agent's person's: a relative talking to an agent shared with them, a family member talking to the
++family's agent, another household's agent, a relative's discussion. For that turn only:
++
++- the model is offered the listed MCP tools (``mcp__<server>__<tool>``, which the client already limits on its side)
++  and the listed Hermes tools of ``NATIVE_TOOLS`` (``web_search``: it reads nothing of anyone), each in view (never
++  behind the tool search), and nothing else: no terminal, files, browser or vault fill, code execution,
++  ``session_search`` (the person's past conversations), memory writes, routines, messages to other agents,
++  delegation, skills;
++- the dispatcher refuses any other tool a model names anyway (``refusal``), whatever added it to the list;
++- the system prompt leaves out the person's profile (USER.md) and the working directory's context files; MEMORY.md
++  (the agent's own notes) and SOUL.md (its personality) stay; it is built for the turn and never stored on the
++  session, so the person's own next turn gets their usual prompt back;
++- no memory or skill nudge, no background review, no external memory provider (nothing the guest says is written
++  into the agent's memory or skills).
++
++A malformed mark fails the request (400): a client that asks for a closed turn never gets an open one.
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++from typing import Any, Optional
++
++logger = logging.getLogger(__name__)
++
++FIELD = "guest_turn"
++# Hermes' own tools a guest turn may keep: they read nothing of the agent's person and act on nothing of theirs.
++NATIVE_TOOLS = frozenset({"web_search"})
++MAX_TOOLS = 64
++MAX_NAME = 200
++REFUSAL = (
++    "This tool is closed during this turn: someone other than your person is writing, and their turns only get the "
++    "tools listed for them. Answer with what you have, without your person's data."
++)
++
++
++class GuestTurnError(ValueError):
++    """A ``guest_turn`` mark is malformed."""
++
++
++def parse(value: Any) -> Optional[frozenset]:
++    """The tools a marked turn may use (``None``: not a guest turn). MCP names and ``NATIVE_TOOLS`` are kept, any
++    other Hermes tool is dropped (closed, never opened by a client's mistake)."""
++    if value is None:
++        return None
++    if not isinstance(value, dict) or set(value) - {"tools"} or not isinstance(value.get("tools"), list):
++        raise GuestTurnError("guest_turn must be an object {\"tools\": [names]}")
++    names = value["tools"]
++    if len(names) > MAX_TOOLS:
++        raise GuestTurnError(f"guest_turn lists more than {MAX_TOOLS} tools")
++    for name in names:
++        if not isinstance(name, str) or not 0 < len(name) <= MAX_NAME or any(c.isspace() for c in name):
++            raise GuestTurnError("guest_turn tools must be tool names")
++    return frozenset(n for n in names if n.startswith("mcp__") or n in NATIVE_TOOLS)
++
++
++def active(agent: Any) -> bool:
++    # Only a set ``apply`` made counts (an agent double whose attributes are all truthy is not a guest).
++    return isinstance(getattr(agent, "_guest_tools", None), frozenset)
++
++
++def _name(tool: Any) -> str:
++    try:
++        return str(tool["function"]["name"])
++    except Exception:
++        return ""
++
++
++def apply(agent: Any, allowed: frozenset) -> None:
++    """Close ``agent`` (freshly built for this turn) to ``allowed``."""
++    agent._guest_tools = frozenset(allowed)
++    defs: list = []
++    try:
++        import model_tools
++        # Raw schemas, every enabled tool: the allowed ones are put in view even when the tool search defers them.
++        defs = model_tools.get_tool_definitions(
++            enabled_toolsets=getattr(agent, "enabled_toolsets", None),
++            disabled_toolsets=getattr(agent, "disabled_toolsets", None),
++            quiet_mode=True, skip_tool_search_assembly=True) or []
++    except Exception:
++        logger.warning("guest turn: tool definitions unavailable, the turn gets no tools", exc_info=True)
++    seen: set = set()
++    kept = []
++    for tool in list(defs) + list(getattr(agent, "tools", None) or []):
++        name = _name(tool)
++        if name in agent._guest_tools and name not in seen:
++            seen.add(name)
++            kept.append(tool)
++    agent._guest_tool_defs = kept
++    narrow(agent)
++    # The person's profile stays out; MEMORY.md (the agent's notes) and the personality stay.
++    agent._user_profile_enabled = False
++    agent.skip_context_files = True
++    agent.load_soul_identity = True
++    # Nothing the guest says goes into memory or skills.
++    agent._memory_nudge_interval = 0
++    agent._skill_nudge_interval = 0
++    agent.skip_background_review = True
++    manager = getattr(agent, "_memory_manager", None)
++    agent._memory_manager = None
++    if manager is not None:
++        try:
++            manager.shutdown_all()
++        except Exception:
++            logger.debug("guest turn: memory provider shutdown failed", exc_info=True)
++    logger.info("guest turn: tools %s", sorted(seen))
++
++
++def narrow(agent: Any) -> None:
++    """Put the turn's tools back to the guest's (after anything that rebuilt or merged the list)."""
++    if not active(agent):
++        return
++    agent.tools = list(getattr(agent, "_guest_tool_defs", []))
++    agent.valid_tool_names = {_name(t) for t in agent.tools}
++
++
++def request_tools(agent: Any, tools: Optional[list]) -> Optional[list]:
++    """The tools a request of this turn sends to the model."""
++    if not active(agent) or tools is None:
++        return tools
++    kept = [t for t in tools if _name(t) in agent._guest_tools]
++    return kept or None
++
++
++def refusal(agent: Any, name: str) -> Optional[str]:
++    """Why ``name`` can't run during this turn (``None``: it can)."""
++    if not active(agent) or name in agent._guest_tools:
++        return None
++    logger.info("guest turn: tool %s refused", name)
++    return REFUSAL
++
++
++def refusal_result(agent: Any, name: str) -> Optional[str]:
++    message = refusal(agent, name)
++    return None if message is None else json.dumps({"error": message}, ensure_ascii=False)
+diff --git a/agent/tool_executor.py b/agent/tool_executor.py
+index ca8ab97c85..d875dba5bc 100644
+--- a/agent/tool_executor.py
++++ b/agent/tool_executor.py
+@@ -707,6 +707,10 @@ def _dispatch_authorized_once(
+             callback()
+ 
+     block_message, block_error_type = scope_block, "tool_scope_block"
++    if block_message is None:
++        # A guest turn runs only its own tools (patch 0018), before any plugin may rewrite the call.
++        from agent.guest_turn import refusal as _guest_refusal
++        block_message, block_error_type = _guest_refusal(agent, ref.name), "guest_turn_block"
+     if block_message is None:
+         block_error_type = "plugin_block"
+         resolve = lambda: _pre_tool_block(agent, ref)
+diff --git a/agent/turn_context.py b/agent/turn_context.py
+index 47a6870c21..1177fac3a3 100644
+--- a/agent/turn_context.py
++++ b/agent/turn_context.py
+@@ -1138,6 +1138,9 @@ def build_turn_context(
+         ensure_message_agent_tool(agent)
+     except Exception:
+         logger.debug("message_agent injection skipped", exc_info=True)
++    # A guest turn keeps its own tools only (patch 0018).
++    from agent.guest_turn import narrow as _guest_narrow
++    _guest_narrow(agent)
+ 
+     _ensure_session_row(agent, pending_cli_message)
+ 
+diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
+index 097a601872..54b5ecce0b 100644
+--- a/gateway/platforms/api_server.py
++++ b/gateway/platforms/api_server.py
+@@ -2344,8 +2344,11 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         model_options: Optional[dict[str, Any]] = None, route: Optional[dict[str, Any]] = None,
+         session_model: Optional[str] = None, confirmed_runtime_lock: bool = False,
+         room_dispatch: Optional[dict[str, Any]] = None,
+-        room_execution_policy: Optional[dict[str, Any]] = None) -> Any:
++        room_execution_policy: Optional[dict[str, Any]] = None,
++        guest_tools: Optional[frozenset] = None) -> Any:
+         """Create an AIAgent from the gateway runtime config + platform toolsets.
++        ``guest_tools`` (patch 0018, ``agent/guest_turn.py``): someone other than the agent's person writes
++        this turn, which gets only these tools, no USER.md and no memory provider.
+         ``gateway_session_key`` persists across transcripts (memory scope), unlike ``session_id``;
+         ``route`` / ``session_model`` are mutually exclusive; ``confirmed_runtime_lock`` beats the
+         session ``/model`` override, disables the fallback chain and fails closed."""
+@@ -2407,10 +2410,13 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+             "gateway_session_key": gateway_session_key,
+             # The session's provider from the previous request, so its queued recall reaches this turn
+             # (#120116); checked back in by the turn's finally.
+-            "memory_manager": self._memory_sessions.checkout(session_id)}
++            "memory_manager": None if guest_tools is not None else self._memory_sessions.checkout(session_id)}
+         if request_service_tier is not _REQUEST_OPTION_MISSING:
+             agent_kwargs["service_tier"] = request_service_tier
+         agent = AIAgent(**agent_kwargs)
++        if guest_tools is not None:
++            from agent.guest_turn import apply as _apply_guest_turn
++            _apply_guest_turn(agent, guest_tools)
+         route_source = (
+             "session_model_lock" if confirmed_runtime_lock
+             else "session_model_override" if session_override
+@@ -3373,6 +3379,11 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         system_prompt = body.get("system_message") or body.get("instructions")
+         if system_prompt is not None and not isinstance(system_prompt, str):
+             return None, _error_response("system_message must be a string", 400, code="invalid_system_message")
++        from agent.guest_turn import FIELD as _GUEST_FIELD, GuestTurnError, parse as _parse_guest_turn
++        try:
++            guest_tools = _parse_guest_turn(body.get(_GUEST_FIELD))
++        except GuestTurnError as exc:
++            return None, _error_response(str(exc), 400, code="invalid_guest_turn")
+         runtime_request = self._effective_session_runtime_request(session=session, body=body)
+         lock_error = self._runtime_lock_error(runtime_request)
+         if lock_error is not None:
+@@ -3412,7 +3423,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+             # #98619: the client addresses this session by construction — the id is in the
+             # request path (/api/sessions/{session_id}/chat) — so a wake self-post lands where
+             # the client will read it. The audited native-session opt-in.
+-            session_history_delivery="1", **agent_overrides)
++            session_history_delivery="1", guest_tools=guest_tools, **agent_overrides)
+         return {
+             "gateway_session_key": gateway_session_key, "session_id": session_id, "body": body,
+             "user_message": user_message, "runtime_request": runtime_request,
+@@ -3495,6 +3506,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         receipt on the same budget as the local path, so the peer still gets the reply on this call.
+         """
+         session_id = ctx["session_id"]
++        if ctx["run_kwargs"].get("guest_tools") is not None:
++            return None  # a guest turn runs here, closed (patch 0018), never in a live owner's open session
+         admitted = await self._admit_to_live_bot_chat(session_id, ctx["user_message"], ctx["run_kwargs"]["turn_author"])
+         if admitted is None:
+             return None
+@@ -3536,6 +3549,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         the run's single ``assistant.completed`` event; a receipt still open at the budget is a
+         ``run.queued`` event (the 202 shape), a failed one an ``error`` event carrying the reason."""
+         session_id = ctx["session_id"]
++        if ctx["run_kwargs"].get("guest_tools") is not None:
++            return None  # a guest turn runs here, closed (patch 0018), never in a live owner's open session
+         admitted = await self._admit_to_live_bot_chat(session_id, ctx["user_message"], ctx["run_kwargs"]["turn_author"])
+         if admitted is None:
+             return None
+@@ -4200,7 +4215,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         session_history_delivery: str = "", turn_author: Optional[dict[str, Any]] = None,
+         relay_metadata: Optional[dict[str, Any]] = None, notification_category: str = "result",
+         resume_unanswered_turn: bool = False, approval_notify_callback=None,
+-        approval_session_key: Optional[str] = None) -> tuple:
++        approval_session_key: Optional[str] = None, guest_tools: Optional[frozenset] = None) -> tuple:
+         """Create an agent and run one turn in a thread executor -> ``(result, usage)``.
+         ``approval_notify_callback`` (with ``approval_session_key``) routes dangerous-command
+         approval requests to the caller's stream, keyed like ``/v1/runs`` approvals (#51871).
+@@ -4243,7 +4258,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+                         reasoning_callback=reasoning_callback, status_callback=status_callback,
+                         gateway_session_key=gateway_session_key, requested_model=requested_model,
+                         requested_provider=requested_provider, model_options=model_options, route=route,
+-                        session_model=session_model, confirmed_runtime_lock=confirmed_runtime_lock)
++                        session_model=session_model, confirmed_runtime_lock=confirmed_runtime_lock,
++                        guest_tools=guest_tools)
+                     if agent_ref is not None:
+                         agent_ref[0] = agent
+                     if resume_unanswered_turn:
+diff --git a/gateway/platforms/api_server_runs.py b/gateway/platforms/api_server_runs.py
+index e4b5dd1e3e..4e53f49df4 100644
+--- a/gateway/platforms/api_server_runs.py
++++ b/gateway/platforms/api_server_runs.py
+@@ -669,6 +669,11 @@ async def _handle_runs(self, request: "web.Request", *, _api_server) -> "web.Res
+         turn_author = _api_server._request_turn_author(body)
+     except ValueError as exc:
+         return _json_error(_openai_error, str(exc), code="invalid_author", status=400)
++    from agent.guest_turn import FIELD as _GUEST_FIELD, GuestTurnError, parse as _parse_guest_turn
++    try:
++        guest_tools = _parse_guest_turn(body.get(_GUEST_FIELD))
++    except GuestTurnError as exc:
++        return _json_error(_openai_error, str(exc), code="invalid_guest_turn", status=400)
+     conversation_history, instructions, stored_session_id, history_err = (
+         _resolve_conversation_history(self, body, raw_input, _openai_error=_openai_error))
+     if history_err is not None:
+@@ -743,6 +748,7 @@ async def _handle_runs(self, request: "web.Request", *, _api_server) -> "web.Res
+         agent_kwargs=dict(
+             ephemeral_system_prompt=instructions, session_id=session_id, gateway_session_key=gateway_session_key,
+             route=route, room_dispatch=room_dispatch, room_execution_policy=room_execution_policy,
++            guest_tools=guest_tools,
+             **{k: agent_overrides.get(k) for k in ("requested_model", "requested_provider", "model_options")}),
+         request_profile=_api_server._api_request_profile.get(),
+         browser_control_principal=_api_server._api_request_browser_control_principal.get(),
+@@ -752,7 +758,9 @@ async def _handle_runs(self, request: "web.Request", *, _api_server) -> "web.Res
+     # A canonical Bot Chat that a Desktop holds live is that Desktop's to run: executing here would
+     # be a second writer beside its lease (#114959). The owner's mailbox takes the turn and its
+     # receipt drives this run's status, so `peer run` keeps its run_id and `peer status` still works.
+-    admitted = await self._admit_to_live_bot_chat(session_id, user_message, turn_author) if selected_session_id else None
++    # A guest turn runs here, closed (patch 0018), never in a live owner's open session.
++    admitted = (await self._admit_to_live_bot_chat(session_id, user_message, turn_author)
++                if selected_session_id and guest_tools is None else None)
+     if admitted is not None:
+         task = self._active_run_tasks[run_id] = asyncio.create_task(
+             _execute_run_via_live_owner(self, launch, *admitted, _api_server=_api_server))
+diff --git a/tests/agent/test_guest_turn.py b/tests/agent/test_guest_turn.py
+new file mode 100644
+index 0000000000..0c4709075c
+--- /dev/null
++++ b/tests/agent/test_guest_turn.py
+@@ -0,0 +1,172 @@
++"""Guest turns (BipAgents patch 0018): someone other than the agent's person writes the turn, which gets only its
++listed tools, no USER.md and no memory writes."""
++
++import json
++from types import SimpleNamespace
++from unittest.mock import MagicMock
++
++import pytest
++
++from agent import guest_turn
++
++
++def _tool(name):
++    return {"type": "function", "function": {"name": name, "description": name, "parameters": {"type": "object"}}}
++
++
++# Hermes' own tools that reach the person's data or act, and bridge tools reaching it.
++CLOSED = ["terminal", "read_file", "write_file", "patch", "search_files", "execute_code", "browser_navigate",
++          "browser_vault_fill", "session_search", "memory", "cronjob", "send_message", "message_agent",
++          "delegate_task", "skill_view", "skill_manage", "skills_list", "todo", "clarify", "tool_search", "tool_call",
++          "mcp__bipagents__mail_search", "mcp__bipagents__calendar_list", "mcp__bipagents__contacts_search"]
++ALLOWED = ["mcp__bipagents__knowledge_search", "mcp__bipagents__weather", "web_search"]
++MARK = {"tools": ALLOWED + ["mcp__bipagents__map_image"]}
++
++
++class _Store:
++    def format_for_system_prompt(self, kind):
++        return {"memory": "MEMORY BLOCK", "user": "USER PROFILE BLOCK"}[kind]
++
++
++def _agent(tools=None):
++    return SimpleNamespace(
++        tools=[_tool(n) for n in (tools or ["terminal", "memory", "session_search", "web_search",
++                                            "mcp__bipagents__weather", "mcp__bipagents__mail_search", "tool_search"])],
++        valid_tool_names=set(), enabled_toolsets=["terminal", "web", "memory", "mcp-bipagents"],
++        disabled_toolsets=None, _user_profile_enabled=True, _memory_enabled=True, _memory_store=_Store(),
++        _memory_manager=None, skip_context_files=False, load_soul_identity=False, _memory_nudge_interval=10,
++        _skill_nudge_interval=10, skip_background_review=False)
++
++
++@pytest.fixture
++def catalog(monkeypatch):
++    """The raw catalog: knowledge_search is deferred behind the tool search in the agent's own list."""
++    import model_tools
++    defs = [_tool(n) for n in CLOSED + ALLOWED]
++    monkeypatch.setattr(model_tools, "get_tool_definitions", lambda **kw: [dict(t) for t in defs])
++    return defs
++
++
++def test_parse_keeps_mcp_names_and_web_search_only():
++    assert guest_turn.parse(None) is None
++    allowed = guest_turn.parse({"tools": ["mcp__bipagents__weather", "web_search", "terminal", "session_search",
++                                          "memory", "tool_search"]})
++    assert allowed == frozenset({"mcp__bipagents__weather", "web_search"})
++    assert guest_turn.parse({"tools": []}) == frozenset()
++
++
++@pytest.mark.parametrize("value", ["web_search", ["web_search"], {"tools": "web_search"}, {"tools": [1]},
++                                   {"tools": ["web search"]}, {"tools": [""]}, {"tools": [], "open": True},
++                                   {"tools": ["mcp__x__y"] * 65}])
++def test_a_malformed_mark_is_refused(value):
++    with pytest.raises(guest_turn.GuestTurnError):
++        guest_turn.parse(value)
++
++
++def test_apply_keeps_only_the_listed_tools_in_view(catalog):
++    agent = _agent()
++    guest_turn.apply(agent, guest_turn.parse(MARK))
++    names = [t["function"]["name"] for t in agent.tools]
++    # knowledge_search was behind the tool search: in view now; map_image isn't enabled here: absent
++    assert sorted(names) == sorted(ALLOWED)
++    assert agent.valid_tool_names == set(ALLOWED)
++    for closed in CLOSED:
++        assert closed not in agent.valid_tool_names
++
++
++def test_apply_drops_the_profile_and_every_memory_write(catalog):
++    manager = MagicMock()
++    agent = _agent()
++    agent._memory_manager = manager
++    guest_turn.apply(agent, guest_turn.parse(MARK))
++    assert agent._user_profile_enabled is False and agent._memory_enabled is True
++    assert agent.skip_context_files is True and agent.load_soul_identity is True
++    assert agent._memory_nudge_interval == 0 and agent._skill_nudge_interval == 0
++    assert agent.skip_background_review is True
++    assert agent._memory_manager is None
++    manager.shutdown_all.assert_called_once()
++    from agent.system_prompt import _memory_parts
++    # MEMORY.md (the agent's notes) stays, USER.md (the person's profile) is out
++    assert _memory_parts(agent) == ["MEMORY BLOCK"]
++
++
++def test_the_owners_turn_keeps_the_profile():
++    from agent.system_prompt import _memory_parts
++    assert _memory_parts(_agent()) == ["MEMORY BLOCK", "USER PROFILE BLOCK"]
++
++
++def test_narrow_undoes_any_merge_and_requests_send_the_guests_tools_only(catalog):
++    agent = _agent()
++    guest_turn.apply(agent, guest_turn.parse(MARK))
++    agent.tools.append(_tool("message_agent"))  # e.g. a Bot Chat injection or a pinned tools[] merge
++    agent.valid_tool_names.add("message_agent")
++    sent = guest_turn.request_tools(agent, agent.tools)
++    assert [t["function"]["name"] for t in sent] == [t["function"]["name"] for t in agent.tools[:-1]]
++    guest_turn.narrow(agent)
++    assert "message_agent" not in agent.valid_tool_names
++    assert guest_turn.request_tools(agent, [_tool("terminal")]) is None
++    owner = _agent()
++    assert guest_turn.request_tools(owner, owner.tools) is owner.tools
++
++
++def test_the_dispatcher_refuses_any_other_tool(catalog):
++    agent = _agent()
++    guest_turn.apply(agent, guest_turn.parse(MARK))
++    for name in CLOSED:
++        assert guest_turn.refusal(agent, name) == guest_turn.REFUSAL
++    for name in ALLOWED:
++        assert guest_turn.refusal(agent, name) is None
++    assert guest_turn.refusal(_agent(), "terminal") is None  # the person's own turn: untouched
++
++
++def test_invoke_tool_returns_the_refusal_without_running_anything(catalog, monkeypatch):
++    from agent import agent_runtime_helpers
++    import model_tools
++    ran = []
++    monkeypatch.setattr(model_tools, "handle_function_call", lambda *a, **k: ran.append(a) or "{}")
++    agent = _agent()
++    guest_turn.apply(agent, guest_turn.parse(MARK))
++    result = agent_runtime_helpers.invoke_tool(agent, "terminal", {"command": "cat ~/.ssh/id_rsa"}, "task-1")
++    assert json.loads(result) == {"error": guest_turn.REFUSAL}
++    assert ran == []
++
++
++def test_the_policy_gate_blocks_before_plugins_and_dispatch(catalog, monkeypatch):
++    from agent import tool_executor
++    agent = _agent()
++    guest_turn.apply(agent, guest_turn.parse(MARK))
++    agent._tool_guardrails = MagicMock()
++    hooks = []
++    monkeypatch.setattr(tool_executor, "_pre_tool_block", lambda *a: hooks.append(a) or (None, {}))
++    state = tool_executor._ManagedToolResult(result=None, args={}, middleware_trace=[], blocked=False,
++                                             dispatched=True)
++    ref = tool_executor._ToolCallRef("session_search", {"query": "Alex"}, "task-1", "call-1", [])
++    monkeypatch.setattr(ref, "emit_post", lambda *a, **k: None, raising=False)
++    executed = []
++    result = tool_executor._dispatch_authorized_once(
++        agent, state, ref, execute=lambda args: executed.append(args), scope_block=None, display_index=None,
++        begin_execution=None, authorization_gate=None)
++    assert json.loads(result) == {"error": guest_turn.REFUSAL}
++    assert state.blocked is True and executed == [] and hooks == []
++
++
++def test_the_turns_prompt_is_built_fresh_and_never_stored(catalog):
++    from agent.conversation_loop import _restore_or_build_system_prompt
++    agent = _agent()
++    guest_turn.apply(agent, guest_turn.parse(MARK))
++    agent._session_db = MagicMock()
++    agent._session_db.get_session.return_value = {"system_prompt": "OWNER PROMPT WITH USER PROFILE BLOCK"}
++    agent.tools.append(_tool("terminal"))
++    seen = {}
++
++    def build(system_message):
++        seen["tools"] = set(agent.valid_tool_names)
++        return "GUEST PROMPT"
++
++    agent._build_system_prompt = build
++    agent._cached_system_prompt = None
++    _restore_or_build_system_prompt(agent, None, [{"role": "user", "content": "hi"}])
++    assert agent._cached_system_prompt == "GUEST PROMPT"
++    assert seen["tools"] == set(ALLOWED)  # the prompt describes the guest's tools only
++    agent._session_db.get_session.assert_not_called()
++    agent._session_db.update_system_prompt.assert_not_called()
+diff --git a/tests/gateway/test_api_server_guest_turn.py b/tests/gateway/test_api_server_guest_turn.py
+new file mode 100644
+index 0000000000..7cf561372f
+--- /dev/null
++++ b/tests/gateway/test_api_server_guest_turn.py
+@@ -0,0 +1,143 @@
++"""The api_server takes a run's or a session chat's ``guest_turn`` mark (BipAgents patch 0018) to the agent it builds:
++someone other than the agent's person writes that turn."""
++
++import asyncio
++from unittest.mock import AsyncMock, MagicMock, patch
++
++import pytest
++from aiohttp import web
++from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
++
++from gateway.config import PlatformConfig
++from gateway.platforms.api_server import APIServerAdapter
++
++MARK = {"tools": ["mcp__bipagents__weather", "web_search", "terminal"]}
++
++
++def _app(adapter):
++    app = web.Application()
++    app["api_server_adapter"] = adapter
++    app.router.add_post("/v1/runs", adapter._handle_runs)
++    return app
++
++
++def _agent():
++    agent = MagicMock()
++    agent.run_conversation.return_value = {"final_response": "done"}
++    agent.session_prompt_tokens = agent.session_completion_tokens = agent.session_total_tokens = 0
++    return agent
++
++
++@pytest.mark.asyncio
++async def test_a_marked_run_builds_a_closed_agent_and_never_goes_to_a_live_owner():
++    adapter = APIServerAdapter(PlatformConfig(enabled=True, extra={}))
++    async with TestClient(TestServer(_app(adapter))) as cli:
++        with patch.object(adapter, "_create_agent", return_value=_agent()) as create, \
++                patch.object(adapter, "_admit_to_live_bot_chat", new=AsyncMock(return_value=None)) as live:
++            resp = await cli.post("/v1/runs", json={"input": "Tu sais où est Alex ?", "session_id": "s-marie",
++                                                    "guest_turn": MARK})
++            assert resp.status == 202
++            for _ in range(40):
++                if create.call_args is not None:
++                    break
++                await asyncio.sleep(0.05)
++    assert create.call_args.kwargs["guest_tools"] == frozenset({"mcp__bipagents__weather", "web_search"})
++    live.assert_not_called()
++
++
++@pytest.mark.asyncio
++async def test_an_unmarked_run_is_the_persons_own():
++    adapter = APIServerAdapter(PlatformConfig(enabled=True, extra={}))
++    async with TestClient(TestServer(_app(adapter))) as cli:
++        with patch.object(adapter, "_create_agent", return_value=_agent()) as create:
++            resp = await cli.post("/v1/runs", json={"input": "hello"})
++            assert resp.status == 202
++            for _ in range(40):
++                if create.call_args is not None:
++                    break
++                await asyncio.sleep(0.05)
++    assert create.call_args.kwargs["guest_tools"] is None
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("mark", [["web_search"], {"tools": "web_search"}, {"tools": [3]}, {"tools": [], "x": 1}])
++async def test_a_malformed_mark_fails_the_run(mark):
++    adapter = APIServerAdapter(PlatformConfig(enabled=True, extra={}))
++    async with TestClient(TestServer(_app(adapter))) as cli:
++        with patch.object(adapter, "_create_agent") as create:
++            resp = await cli.post("/v1/runs", json={"input": "hello", "guest_turn": mark})
++            assert resp.status == 400
++            assert (await resp.json())["error"]["code"] == "invalid_guest_turn"
++    create.assert_not_called()
++    assert adapter._run_statuses == {}
++
++
++def _session_host(body):
++    host = APIServerAdapter(PlatformConfig(enabled=True, extra={}))
++    host._get_existing_session_or_404 = AsyncMock(return_value=({"id": "bot-1"}, None))
++    host._read_json_body = AsyncMock(return_value=(body, None))
++    host._effective_session_runtime_request = MagicMock(return_value={})
++    host._runtime_lock_error = MagicMock(return_value=None)
++    host._persist_session_runtime_lock = MagicMock(return_value=True)
++    host._stored_session_model = MagicMock(return_value=None)
++    host._resolve_route = MagicMock(return_value=None)
++    host._request_route_conflict_error = MagicMock(return_value=None)
++    return host
++
++
++def _request():
++    return make_mocked_request("POST", "/api/sessions/bot-1/chat", match_info={"session_id": "bot-1"})
++
++
++@pytest.mark.asyncio
++async def test_a_marked_session_chat_carries_the_mark_and_stays_here():
++    host = _session_host({"message": "Message from Vie (Alex): bonjour", "guest_turn": MARK})
++    ctx, err = await host._prepare_session_chat(_request())
++    assert err is None
++    assert ctx["run_kwargs"]["guest_tools"] == frozenset({"mcp__bipagents__weather", "web_search"})
++    host._admit_to_live_bot_chat = AsyncMock(return_value=("home", {}))
++    assert await host._answer_through_live_bot_chat(ctx) is None
++    host._admit_to_live_bot_chat.assert_not_called()
++
++
++@pytest.mark.asyncio
++async def test_a_session_chat_with_a_malformed_mark_is_refused():
++    host = _session_host({"message": "bonjour", "guest_turn": {"tools": "all"}})
++    ctx, err = await host._prepare_session_chat(_request())
++    assert ctx is None and err.status == 400
++
++
++@pytest.mark.asyncio
++async def test_create_agent_closes_the_agent_it_builds(monkeypatch):
++    """``_create_agent`` hands the mark to ``agent.guest_turn.apply`` and checks out no memory provider."""
++    host = APIServerAdapter(PlatformConfig(enabled=True, extra={}))
++    built = {}
++
++    class FakeAgent:
++        def __init__(self, **kwargs):
++            built.update(kwargs)
++
++    import gateway.run as gateway_run
++    import run_agent
++    import agent.guest_turn as guest_turn
++    monkeypatch.setattr(run_agent, "AIAgent", FakeAgent)
++    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", lambda: {"model": "m"})
++    monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: {})
++    monkeypatch.setattr(gateway_run, "_checkpoint_agent_kwargs", lambda cfg: {})
++    monkeypatch.setattr(gateway_run, "_current_max_iterations", lambda: 10)
++    monkeypatch.setattr(gateway_run.GatewayRunner, "_load_reasoning_config", staticmethod(lambda m: None))
++    monkeypatch.setattr(gateway_run.GatewayRunner, "_load_fallback_model", staticmethod(lambda: None))
++    monkeypatch.setattr(host, "_select_agent_runtime", lambda kw, model, **k: (model, False, None, None))
++    monkeypatch.setattr(host, "_ensure_session_db", lambda: None)
++    checkout = MagicMock(return_value="session-manager")
++    monkeypatch.setattr(host._memory_sessions, "checkout", checkout)
++    applied = []
++    monkeypatch.setattr(guest_turn, "apply", lambda agent, tools: applied.append(tools))
++    allowed = frozenset({"web_search"})
++    agent = host._create_agent(session_id="s-marie", guest_tools=allowed)
++    assert isinstance(agent, FakeAgent) and applied == [allowed]
++    assert built["memory_manager"] is None
++    checkout.assert_not_called()
++    applied.clear()
++    host._create_agent(session_id="s-alex")
++    assert applied == [] and built["memory_manager"] == "session-manager"

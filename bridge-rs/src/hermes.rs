@@ -32,6 +32,12 @@ pub fn is_flush(event_type: &str) -> bool {
     FLUSH_TYPES.contains(&event_type)
 }
 
+/// The `guest_turn` mark of a run or a session chat (Hermes patch 0018): someone other than the agent's person writes
+/// this turn, which may use `tools` only (exact names, `mcp__bipagents__<tool>` or `web_search`).
+pub fn guest_turn(tools: &[String]) -> Value {
+    serde_json::json!({ "tools": tools })
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SSEEvent {
     pub r#type: String,
@@ -688,7 +694,37 @@ impl HermesClient {
         instructions: Option<&str>,
         model_options: Option<Value>,
     ) -> Result<String, HermesError> {
+        self.start_run_body(agent, text, session_id, instructions, model_options, None).await
+    }
+
+    /// [`Self::start_run`] for a turn someone other than the agent's person writes (a relative, a member of the
+    /// family's agent, a relative's discussion): Hermes offers it only `tools` and none of its own tools that reach
+    /// the person's data or act, and leaves the person's profile (USER.md) out of its prompt (patch 0018,
+    /// `guest_turn`). A Hermes without the patch ignores the field: the bridge's own closures still hold.
+    pub async fn start_guest_run(
+        &self,
+        agent: &AgentConfig,
+        text: &str,
+        session_id: &str,
+        instructions: Option<&str>,
+        tools: &[String],
+    ) -> Result<String, HermesError> {
+        self.start_run_body(agent, text, session_id, instructions, None, Some(tools)).await
+    }
+
+    async fn start_run_body(
+        &self,
+        agent: &AgentConfig,
+        text: &str,
+        session_id: &str,
+        instructions: Option<&str>,
+        model_options: Option<Value>,
+        guest_tools: Option<&[String]>,
+    ) -> Result<String, HermesError> {
         let mut body = Map::new();
+        if let Some(tools) = guest_tools {
+            body.insert("guest_turn".into(), guest_turn(tools));
+        }
         if let Some(options) = model_options {
             body.insert("model_options".into(), options);
         }

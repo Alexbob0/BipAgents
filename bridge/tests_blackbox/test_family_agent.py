@@ -77,6 +77,11 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
     assert sent.status_code == 200, sent.text
     run = fakes.hermes.started["r1"]
     assert run["agent"] == "famille" and "You are the family's agent" in run["instructions"]
+    # a member's run is marked for Hermes: the family's tools and web search only (patch 0018)
+    assert run["guest_turn"] == {"tools": [
+        "mcp__bipagents__knowledge_read", "mcp__bipagents__knowledge_search", "mcp__bipagents__weather",
+        "mcp__bipagents__route", "mcp__bipagents__map_image", "mcp__bipagents__family_notebook_read",
+        "mcp__bipagents__family_notebook_write", "web_search"]}
     fakes.hermes.started["r1"]["status"] = "completed"
     assert wait(lambda: b.get(path, headers=AUTH).json()["run"] is None)
 

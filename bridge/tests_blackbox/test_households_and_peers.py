@@ -91,6 +91,9 @@ def test_two_households_write_to_each_other_only_where_both_allowed(bridges, fak
     now, words = split_now(body["message"])
     assert now and words == "Message from Vie (Alex) (@vie__alex): qu'est-ce qu'on mange ce soir ?"   # the time on top
     assert body["session_id"] == "bot-1"
+    # Another household's agent writes: the turn is closed like a relative's (patch 0018's mark)
+    assert body["guest_turn"]["tools"][-1] == "web_search" and "mcp__bipagents__weather" in body["guest_turn"]["tools"]
+    assert not {"terminal", "session_search", "mcp__bipagents__mail_search"} & set(body["guest_turn"]["tools"])
     # Only Cuisine's Bot Chat: not another of its conversations, nor its sessions' list or its runs' approvals.
     other = dict(message, session_id="s9")
     assert a.post("/peer/p/cuisine__lea/v1/runs", headers={"Authorization": f"Bearer {token}"}, json=other).status_code == 403

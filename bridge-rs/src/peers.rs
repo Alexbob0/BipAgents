@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 
 use axum::body::{Body, Bytes};
 use axum::extract::{Path as UrlPath, Request, State};
@@ -759,6 +759,43 @@ pub fn resign(body: &[u8], sender: &str, name: &str, household: &str) -> Vec<u8>
     crate::py::dumps(&Value::Object(data)).into_bytes()
 }
 
+/// A message from another household's agent is a turn someone other than this person drives: it is marked for
+/// Hermes (`guest_turn`, patch 0018: only the bridge tools of `agent_shares::RELATIVE_TOOLS` and `web_search`, no
+/// Hermes tool that reaches the person's data or acts, no USER.md in the prompt), and while it goes on the bridge's
+/// MCP tools answer only `RELATIVE_TOOLS` (`household_turn`, agent_tools.rs).
+pub fn guest_marked(body: &[u8]) -> Vec<u8> {
+    let Some(Value::Object(mut data)) = body_json(body) else { return body.to_vec() };
+    let tools = crate::agent_shares::guest_tools(&crate::agent_shares::RELATIVE_TOOLS);
+    data.insert("guest_turn".into(), crate::hermes::guest_turn(&tools));
+    crate::py::dumps(&Value::Object(data)).into_bytes()
+}
+
+/// A household message's turn is taken as going on for this long at most (Hermes' peer DM waits 600 s).
+pub const HOUSEHOLD_TURN_SECONDS: f64 = 600.0;
+/// Household messages' turns going on: (id, agent, since).
+static HOUSEHOLD_TURNS: Mutex<Vec<(u64, String, f64)>> = Mutex::new(Vec::new());
+static HOUSEHOLD_TURN_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn household_turn_began(agent: &str) -> u64 {
+    let id = HOUSEHOLD_TURN_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut turns = HOUSEHOLD_TURNS.lock().unwrap_or_else(|e| e.into_inner());
+    turns.push((id, agent.to_string(), crate::py::time_time()));
+    id
+}
+
+fn household_turn_ended(id: u64) {
+    HOUSEHOLD_TURNS.lock().unwrap_or_else(|e| e.into_inner()).retain(|(t, _, _)| *t != id);
+}
+
+/// Whether another household's agent has a turn of `agent` going on (a session chat until it answers, a run for
+/// `HOUSEHOLD_TURN_SECONDS`: the bridge doesn't follow its end).
+pub fn household_turn(agent: &str) -> bool {
+    let at = crate::py::time_time();
+    let mut turns = HOUSEHOLD_TURNS.lock().unwrap_or_else(|e| e.into_inner());
+    turns.retain(|(_, _, since)| at - since < HOUSEHOLD_TURN_SECONDS);
+    turns.iter().any(|(_, a, _)| a == agent)
+}
+
 async fn relay_path(
     State(state): State<AppState>,
     UrlPath((target, path)): UrlPath<(String, String)>,
@@ -915,6 +952,7 @@ async fn deliver(state: AppState, target: String, path: String, request: Request
             state.households.get(&household).and_then(|h| h.get("name").map(crate::py::py_str)).unwrap_or_default();
         body = Bytes::from(resign(&body, &sender, &name, &household_name));
         body = Bytes::from(crate::dates::now::stamped_body_for(&state.config(), &agent, &body));
+        body = Bytes::from(guest_marked(&body));
     }
     let mut headers = forwarded_headers(&parts.headers, true);
     if let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", agent.hermes_key)) {
@@ -923,7 +961,12 @@ async fn deliver(state: AppState, target: String, path: String, request: Request
     tracing::info!(sender = %remote, target = %agent.name, "household message");
     let url = format!("{}/{path}", agent.hermes_url);
     let starts_run = parts.method == Method::POST && path == "v1/runs";
-    let response = forward(&state, &parts.method, &url, &query, body.clone(), headers).await?;
+    let turn = is_message(&parts.method, &path).then(|| household_turn_began(&agent.name));
+    let response = forward(&state, &parts.method, &url, &query, body.clone(), headers).await;
+    if let (Some(turn), false) = (turn, starts_run && response.as_ref().is_ok_and(|r| r.status().is_success())) {
+        household_turn_ended(turn); // a session chat answers when its turn is over; a run refused never ran
+    }
+    let response = response?;
     if starts_run {
         // the turn it started followed by the hub, for the brake (loop_brake.rs)
         return Ok(crate::runs::keep_started(&state.hub, &agent, &body, response).await);
@@ -1137,6 +1180,21 @@ pub fn household_admin_router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_households_message_is_marked_and_closes_the_tools_while_it_goes_on() {
+        let out: Value = serde_json::from_slice(&guest_marked(br#"{"message": "salut"}"#)).unwrap();
+        assert_eq!(out["message"], "salut");
+        let tools: Vec<&str> = out["guest_turn"]["tools"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        assert!(tools.contains(&"mcp__bipagents__weather") && tools.contains(&"web_search"));
+        assert!(!tools.iter().any(|t| ["terminal", "session_search", "mcp__bipagents__mail_search"].contains(t)));
+        assert_eq!(guest_marked(b"not json"), b"not json");
+        assert!(!household_turn("cuisine-test"));
+        let turn = household_turn_began("cuisine-test");
+        assert!(household_turn("cuisine-test") && !household_turn("vie-test"));
+        household_turn_ended(turn);
+        assert!(!household_turn("cuisine-test"));
+    }
 
     #[test]
     fn resigning_and_quoting() {
