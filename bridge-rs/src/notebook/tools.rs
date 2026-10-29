@@ -169,7 +169,7 @@ fn s(arguments: &Dict, key: &str) -> String {
 /// What the agent says after filing (or not: the person turned these mentions off).
 fn mention(config: &Config, what: &str) -> String {
     if super::mentions(config) {
-        format!("\nTell the person in one short line, in their language, e.g. « Noté dans ton Carnet : {what} ».")
+        format!("\nKeep your answer to the person as it was, and add at its end one short line in their language, e.g. « Noté dans ton Carnet : {what} ».")
     } else {
         "\nThe person turned these mentions off: don't mention it.".into()
     }
