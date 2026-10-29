@@ -335,8 +335,9 @@ def save_decoder(mimi: Dict, out: Path) -> Path:
 
 
 def samples(out: Path, index: Dict) -> None:
-    # A sample per language with the first Bip, spoken as the apps will: to listen to before shipping.
-    from reference import Package, save_wav
+    # A sample per language with the first Bip, spoken as the apps will: to listen to before shipping. Then the
+    # reference the apps' engine tests compare theirs with, named after these packages.
+    from reference import Package, save_wav, engine_test_reference
     import numpy as np
     (out / "samples").mkdir(exist_ok=True)
     for language in index["languages"]:
@@ -347,6 +348,8 @@ def samples(out: Path, index: Dict) -> None:
         save_wav(out / "samples" / f"{language}-colibri.wav", audio)
         print(f"{language}: sample {len(audio) / 24000:.1f} s of audio in {spent:.1f} s "
               f"({len(audio) / 24000 / spent:.1f}x real time, one thread)", flush=True)
+    if "french" in index["languages"]:
+        print(f"the apps' tests' reference: {engine_test_reference(out).name}", flush=True)
 
 
 if __name__ == "__main__":
