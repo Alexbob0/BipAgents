@@ -1902,6 +1902,19 @@ async fn patch_settings(
             return Err(hermes_failed(exc, 502, "Hermes could not change the agent"));
         }
     }
+    if body.browser.is_some() {
+        // its « Coordonnées » in its Hermes vault only while its browser is on (vault.rs `follow_browser`)
+        let config = state.config();
+        let agent = config.agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
+        match state.vault.follow_browser(&config, &agent).await {
+            Ok(true) => {
+                let _ = crate::tool_diet::apply(&config, &agent);
+            }
+            Ok(false) => {}
+            Err(exc) => tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %exc,
+                "contact details not matched to its browser"),
+        }
+    }
     match read_settings(&state.config(), &agent, &state.http).await {
         Ok(settings) => Ok(web::ok(settings)),
         Err(exc) if exc.downcast_ref::<GatewayError>().is_some() => {

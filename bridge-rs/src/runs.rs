@@ -1419,15 +1419,22 @@ impl RunHub {
         }
         let agent = sub.agent.name.as_str();
         let mut made = crate::made_files::MADE.in_run(agent, &sub.run_id);
+        // the « Coordonnées » a listing gave in the turn: a chip for those the reply uses (vault_contacts.rs)
+        let mut listed = crate::vault_contacts::listed_in_run(agent, &sub.run_id);
         if let Some(other) = as_str(event.data.get("run_id")).filter(|r| *r != sub.run_id) {
             made.extend(crate::made_files::MADE.in_run(agent, &other));
+            listed.extend(crate::vault_contacts::listed_in_run(agent, &other));
         }
-        if made.is_empty() {
+        if made.is_empty() && listed.is_empty() {
             return event;
         }
         let said: String =
             lock(&sub.state).backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
         let output = as_str(event.data.get("output")).filter(|o| !o.trim().is_empty());
+        made.extend(crate::vault_contacts::used_marks(output.as_deref().unwrap_or(&said), &listed));
+        if made.is_empty() {
+            return event;
+        }
         let Some(fixed) = crate::made_files::fix_reply(output.as_deref().unwrap_or(&said), agent, &made) else {
             return event;
         };
